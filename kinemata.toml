@@ -565,7 +565,7 @@ section = ["policy", "seed_whitelists", "workset", "deny"]
 # side; the `default:` map's `standalone` arm is the declared side.
 # CATCHES: a floor literal appearing for a row whose arm is prose -- which would
 # shadow nothing on a finished standalone box and FABRICATE an identity on a
-# half-created one, in the words of the test this mirrors.
+# half-created one.
 #
 # ⚑ THE PREDICATE IS REQUIRED AND THE REASON IS IN ITS DOCSTRING: "the arm is
 # declared empty" and "the row has no arm at all" collapse to the same value in a
@@ -1658,8 +1658,12 @@ where = { id_matches = '^agent\.shell\.template$' }
 # `section`, `where`, `field` and `relation` reach them. Each view below is one
 # registry for ONE fact, because a registry carries one `[[parity]]` -- and each
 # has its parity, with the measurement and its controls, below the banner.
-# 🛑 NONE RETIRES A TEST. Which pytest cases each one makes redundant is a later
-# decision, made against the test.
+# ⚑ A VIEW THAT COMPARES A `keys:` ROW'S `default:` OR `value:` CELL IS THAT ROW'S
+# CARRIER, WHEREVER IT SITS IN THIS FILE (`key-types` compares `type:`, and is not
+# one). `test_manifest_conformance` derives which views and rows those are
+# (section 4c, `CARRIED_DEFAULT_KEYS` / `CARRIED_VALUE_KEYS`) and counts the rows in
+# its coverage ledger, so the pytest case a view duplicated was retired with it
+# (2026-09-25). That derivation is the list; this file keeps none.
 # ⚑ WHAT THE SEVEN VIEWS COST ELSEWHERE, measured 2026-09-24: none carries an
 # `antipattern`, so `check`'s `silent:` tally goes 376/476 to 497/597 -- by
 # exactly their 121 entries (3 + 5 + 2 + 2 + 46 + 45 + 18) -- and `check`,
@@ -1745,8 +1749,8 @@ section = "keys"
 where = { holds = "kinemata_views:cli_routed_key" }
 
 # FACT: the `config.*` and `system.*` path rows' `default:` cells ARE
-# `settings/bootstrap.py`'s two tables, verbatim. `test_manifest_conformance`
-# `TestPathDefaults` -- the path-default arm of § 4.3's first bullet.
+# `settings/bootstrap.py`'s two tables, verbatim -- the path-default arm of § 4.3's
+# first bullet, and the rows' only value carrier.
 # CATCHES: a default respelled on either side; a `config`/`system` path row
 # without its bootstrap literal, or a literal without its row.
 [[registry]]
@@ -1785,8 +1789,10 @@ where = { holds = "kinemata_views:bootstrap_path_row" }
 # decoy naming itself -- or, for the group outside NAMED, is absent and a read
 # BLOCKs -- so a derivation that picks the wrong root for a mode reds (controls at
 # the channel tables).
-# 🛑 NONE RETIRES A TEST. A pin leaves the suite only when the coverage ledger
-# (`TestDefaultsCoverage`) can count a kinemata view in its place.
+# ⚑ EACH VIEW BELOW IS ITS ROWS' CARRIER: the coverage ledger in
+# `test_manifest_conformance` (section 4c) derives the rows from this file and counts
+# them, and the pytest cases these views duplicated were retired (2026-09-25). What a
+# view cannot print stays in that file, named at the view.
 # WHAT IS AND IS NOT DECLARED, ROW BY ROW -- one verdict per row, with where each
 # half of a PARTIAL lives and the measured refusal behind every NOT EXPRESSIBLE:
 # `~/canon/workbook/plans/2026-09-25-s43-remainder-verdicts.md`. This file keeps no
@@ -1801,7 +1807,6 @@ where = { holds = "kinemata_views:bootstrap_path_row" }
 # FACT: the workset anchor floor's own `default:` rows -- the layout anchors, the
 # canon roots and the non-layout `workset.*` scalars -- are what
 # `settings_launch.workset_anchor_floor` supplies, in every mode.
-# `test_manifest_conformance` `TestAnchorDefaults` and `TestAnchorScalarDefaults`.
 # AUTHORITY: `declared`; the cells are the spec §2c formulas, the floor is on trial.
 # CATCHES: an anchor formula or scalar respelled on either side, in any arm; a
 # standalone `<None>` arm the floor stops supplying; a key the floor starts
@@ -1814,7 +1819,8 @@ section = "keys"
 where = { id_matches = '^(workset\.(boxes|vault_ro|vault_rw|logs|canon|skip_kuid_check|registry|template)|box\.canon)$' }
 
 # FACT: the same floor's two `meta.box.*` rows, `path` and `home`, carry the
-# `value:` formulas the manifest declares. `TestValueAnchorFormulas`.
+# `value:` formulas the manifest declares. (`TestValueAnchorFormulas` keeps the
+# spelling.)
 [[registry]]
 name = "workset-anchor-meta"
 kind = "yaml-mapping"
@@ -1824,7 +1830,8 @@ where = { id_matches = '^meta\.box\.(path|home)$' }
 
 # FACT: the auth floor's two `meta.box.*` rows carry their `value:` cells --
 # `workset_path`'s per-mode formula with its standalone `null`, and
-# `agent.auth.share_support`'s node-selector formula. `TestValueAuthFormulas`.
+# `agent.auth.share_support`'s node-selector formula. (`TestValueAuthFormulas` keeps
+# the spelling.)
 # ⚑ The regex names the two rows because `meta.box.auth.*` also holds the three
 # `<computed>` rows no floor emits.
 [[registry]]
@@ -1835,8 +1842,8 @@ section = "keys"
 where = { id_matches = '^meta\.box\.(auth\.workset_path|agent\.auth\.share_support)$' }
 
 # FACT: the box scalars' defaults are `config.box_scalar_defaults_floor`'s, the
-# one recipe both the launch resolve and the set-time probe fold.
-# `TestScalarDefaults` (`box.image`, `box.share_images`, `box.enable_vault`).
+# one recipe both the launch resolve and the set-time probe fold -- `box.image`,
+# `box.share_images`, `box.enable_vault`.
 # ⚑ `box.shell` is not here: the floor suppresses its `""` by design, and its row
 # is the E3 `<None>` exemption. `workset.skip_kuid_check` is `workset-anchor-floor`'s.
 [[registry]]
@@ -1848,7 +1855,8 @@ where = { id_matches = '^box\.(image|share_images|enable_vault)$' }
 
 # FACT: the `agent.default.*` BEHAVIOR rows are `core-defaults.yaml`'s
 # `agent_default:` table, read by `core_defaults.behavior_defaults`.
-# `TestBehaviorDefaults`.
+# (`TestBehaviorDefaults` keeps the `type:` and `choices:` columns, and the
+# `access_default` accessor, the one leaf with a second reader.)
 [[registry]]
 name = "behavior-floor"
 kind = "yaml-mapping"
@@ -1857,8 +1865,9 @@ section = "keys"
 where = { id_matches = '^agent\.default\.(access|allow_helpers|continue_mode|bootstrap|label)$' }
 
 # FACT: the shell tier's `label`, `access` and `allow_helpers` are the
-# `agent_shell:` table's -- the half of `TestShellTierDefaults` `shell-tier-fence`
-# does not hold. The two views split one table, and together they hold all of it.
+# `agent_shell:` table's -- the half `shell-tier-fence` does not hold. The two views
+# split one table, and together they hold all of it. (`TestShellTierDefaults` keeps
+# the `type:` and `choices:` columns, for all six rows.)
 [[registry]]
 name = "shell-tier-behavior"
 kind = "yaml-mapping"
@@ -1867,8 +1876,8 @@ section = "keys"
 where = { id_matches = '^agent\.shell\.(label|access|allow_helpers)$' }
 
 # FACT: every `<scope>.env.<VAR>` row with a default is `core-defaults.yaml`'s
-# `env:` table, read by `core_defaults.env_default_categories`.
-# `TestSingletonDefaults.test_the_core_env_floor`.
+# `env:` table, read by `core_defaults.env_default_categories` -- and nothing else:
+# the oracle prints the whole table, so a shipped env default with no row reds.
 [[registry]]
 name = "env-defaults"
 kind = "yaml-mapping"
@@ -1877,7 +1886,8 @@ section = "keys"
 where = { id_matches = '\.env\.' }
 
 # FACT: the helper-hub spawn budget defaults are `settings_launch.SYSTEM_SCALAR_FLOOR`,
-# the floor every resolve is seeded with. `test_the_spawn_budget_floor`, launch half.
+# the floor every resolve is seeded with -- the launch half; `spawn-budget-fallback`
+# holds the in-box half.
 [[registry]]
 name = "spawn-budget-floor"
 kind = "yaml-mapping"
@@ -1886,9 +1896,9 @@ section = "keys"
 where = { id_matches = '^system\.helpers\.' }
 
 # FACT: the agent-tier CANON roots -- the node arm, the `default` fallback and the
-# shell fence arm -- are what `core_defaults.canon_default_categories` floors.
-# `TestSingletonDefaults`' two canon cases, and the E5 `agent.<agent>.canon` hop
-# with the same two hops `agent-template-source` declares.
+# shell fence arm -- are what `core_defaults.canon_default_categories` floors. The
+# node arm `agent.<agent>.canon` crosses its `@meta.agent.<agent>.path` hop with the
+# same two hops `agent-template-source` declares.
 [[registry]]
 name = "canon-defaults"
 kind = "yaml-mapping"
@@ -1897,7 +1907,8 @@ section = "keys"
 where = { id_matches = '^agent\.(<agent>|default|shell)\.canon$' }
 
 # FACT: the workset CHANNEL root and its four workset-LOCAL leaves default to the
-# formulas the manifest declares, per arm. `TestWorksetChannelDefaults`.
+# formulas the manifest declares, per arm. (`TestWorksetChannelDefaults` keeps the
+# arms no view reaches: the partition leaves at PRIMARY, every leaf at STANDALONE.)
 # ⚑ ONE VIEW PER ARM, and the same rows in both: the rows are per-mode maps, and
 # a `translate` (the intra-family hop, on the parity) needs `text`, which reaches
 # a map only through a path `field`. The `standalone` arm is `null` on all five
@@ -1917,8 +1928,8 @@ section = "keys"
 where = { id_matches = '^workset\.channel(root|s\.(common|chat|broadcast|share))$' }
 
 # FACT: the two ALL-PROJECTS partition leaves, `workset.channels.mailboxes` and
-# `share_global`, default to the uniform formulas the manifest declares.
-# `TestWorksetChannelDefaults`, their half.
+# `share_global`, default to the uniform formulas the manifest declares -- in NAMED
+# mode (the parity note says why).
 [[registry]]
 name = "workset-partition"
 kind = "yaml-mapping"
@@ -1928,7 +1939,7 @@ where = { id_matches = '^workset\.channels\.(mailboxes|share_global)$' }
 
 # FACT: the re-rooted `meta.*` rows -- `meta.workset.{path,name,settings}` and
 # `meta.box.mode` -- carry the `value:` formulas `settings_launch.meta_runtime_floor`
-# emits. `TestValueRerootFormulas`.
+# emits. (`TestValueRerootFormulas` keeps the spelling.)
 [[registry]]
 name = "meta-runtime-floor"
 kind = "yaml-mapping"
@@ -1953,9 +1964,9 @@ where = { id_matches = '^~/\.kanibako/state/helper\.sock$' }
 # FACT: `workset.kuid`'s PRIMARY and NAMED arms are the value the anchor floor
 # supplies there -- `kuid.SENTINEL`. The STANDALONE arm is the prose `<generated at
 # creation>`, which no floor may emit (`standalone-absences`). One view per arm,
-# as the channel tables are, because the standalone arm is not a value.
-# `TestAnchorScalarDefaults` / `test_the_workset_kuid_sentinel`, value half; the
-# `is kuid.SENTINEL` IDENTITY is not a printable fact and stays with the test.
+# as the channel tables are, because the standalone arm is not a value. The
+# `is kuid.SENTINEL` IDENTITY is not a printable fact and stays with
+# `TestWorksetKuidDefault`, beside the prose-arm case `standalone-absences` cannot make.
 [[registry]]
 name = "kuid-primary"
 kind = "yaml-mapping"
@@ -1972,8 +1983,9 @@ where = { id_matches = '^workset\.kuid$' }
 
 # FACT: the agent-identity LITERAL rows -- `meta.agent.default.name` and the shell
 # fence's `meta.agent.shell.{path,name,settings,mode}` -- carry the values the
-# identity and grammar floors emit when that node is the active one.
-# `TestValueAgentIdentity`, its literal cases. `mode = {}` is a map and needs `json`.
+# identity and grammar floors emit when that node is the active one. `mode = {}` is
+# a map and needs `json`. (`TestValueAgentIdentity` keeps the spellings, the
+# parametric relation, the set-time path floor and the negative discriminators.)
 [[registry]]
 name = "agent-identity-literals"
 kind = "yaml-mapping"
@@ -1982,8 +1994,9 @@ section = "keys"
 where = { id_matches = '^meta\.agent\.(default\.name|shell\.(path|name|settings|mode))$' }
 
 # FACT: the rows whose `value:` is the `<computed>` placeholder are exactly the keys
-# `settings_launch._materialize_auth_active` writes. `TestValueAuthActiveFormulas`,
-# the producer half. The guard reads the cell itself -- no id list.
+# `settings_launch._materialize_auth_active` writes, each a bool, on a bare store.
+# The guard reads the cell itself -- no id list. `TestValueAuthActiveFormulas` keeps
+# the fail-closed VALUES through `build_launch_snapshot`, which this view does not read.
 # ⚑ MEMBERSHIP ONLY: `<computed>` is not a value, so the truth table stays with
 # `test_settings_launch.TestAuthActiveKeys`.
 [[registry]]
@@ -1996,9 +2009,8 @@ where = { field = "value", equals = "<computed>" }
 # FACT: the two PRE-SNAPSHOT readers answer a missing file with the declared
 # default -- `config.read_workset_skip_kuid_check` and `config.read_box_enable_vault`,
 # the second carriers of `workset.skip_kuid_check` and `box.enable_vault` beside
-# their floors (`workset-anchor-floor`, `box-scalar-floor`). The two
-# `..._equals_the_pre_snapshot_reader` twin cases: each carrier is pinned to the
-# manifest, so they cannot part without a red.
+# their floors (`workset-anchor-floor`, `box-scalar-floor`). Each carrier is pinned
+# to the manifest, so the reader and the floor cannot part without a red.
 [[registry]]
 name = "reader-defaults"
 kind = "yaml-mapping"
@@ -2008,7 +2020,7 @@ where = { id_matches = '^(workset\.skip_kuid_check|box\.enable_vault)$' }
 
 # FACT: the in-box spawn FALLBACK, `channels.helpers.resolve_spawn_budget` with
 # nothing handed down, answers the declared `system.helpers.*` defaults -- the
-# second carrier `test_the_spawn_budget_floor` pins beside `spawn-budget-floor`.
+# second carrier of the budget beside `spawn-budget-floor`.
 # What it adds over that view: both read `bootstrap.SPAWN_BUDGET_DEFAULTS`, but this
 # one reaches the fallback's own `DEFAULT_DEPTH`/`DEFAULT_BREADTH` derivation and its
 # last-arm position in `resolve_spawn_budget`'s order (handed-down > own settings >
@@ -2176,13 +2188,16 @@ extract = '(?m)^(\S+)$'
 # NEGATIVE CONTROL, a scratch copy whose standalone floor also emits
 # `workset.kuid = "abcde"`: rc=1, `workset.kuid: declared and produced, where
 # neither may be`.
-# 🛑 THIS COVERS THE SECOND OF THE TEST'S TWO ASSERTIONS, NOT THE FIRST.
-# `test_the_standalone_arm_is_what_the_floor_supplies` asserts (1) the arm is
-# `<None>` or a `<…>` placeholder and (2) the floor answers each as declared. The
-# predicate SELECTS on (1), so a row whose arm became a real value drops out of
-# the view rather than failing -- the selector limit stated at the head of the
-# narrowed views. (2) is what this table and `standalone-nulls` check. The test
-# keeps (1).
+# 🛑 THIS COVERS HALF OF THE STANDALONE-ARM RULE, NOT ALL OF IT. The rule is
+# (1) the arm is `<None>` or a `<…>` placeholder and (2) the floor answers each as
+# declared. The predicate SELECTS on (1), so a row whose arm became a real value
+# drops out of the view rather than failing -- the selector limit stated at the
+# head of the narrowed views. (2) is what this table and `standalone-nulls` check.
+# (1) is held elsewhere, per row: for `workset.registry` and `workset.template` by
+# `workset-anchor-floor`, whose parity compares the WHOLE `default:` map with the
+# floor's standalone `None` in it, so a value written into that arm reds there; for
+# `workset.kuid`, which `every_mode_cell` drops from that view, by
+# `test_manifest_conformance`'s `TestWorksetKuidDefault.test_the_standalone_arm_is_prose`.
 [[parity]]
 registry = "standalone-absences"
 relation = "disjoint"
@@ -2559,13 +2574,16 @@ extract = '(?m)^ci-python: (\S+)$'
 # than style. The conformance job installs `-e .` and DELIBERATELY not the three
 # plugin packages -- its own comment says so at the install step -- so in that
 # environment `importlib.metadata.entry_points(group="kanibako.agents")` yields
-# exactly one entry, core's `no_agent`, and importing `kanibako.plugins.claude`
-# raises `ModuleNotFoundError`. Both measured 2026-09-19 in the kinemata venv,
-# which is installed the same way. An oracle built on the running environment
-# would have enumerated one name out of four and read green over three
+# NO entry at all (the root `pyproject.toml` declares no built-in entry point;
+# the plain-shell target is seeded in `targets.discover_targets`), and importing
+# `kanibako.plugins.claude` raises `ModuleNotFoundError`. Both measured
+# 2026-09-25 in a throwaway venv holding only `pip install -e .` of this tree,
+# CI's install. An oracle built on the running environment would have
+# enumerated none of the three plugin names and read green over three
 # unexamined distributions -- the vacuity this file keeps paying attention to,
-# arriving as a partial rather than an empty set, where `disjoint`'s own
-# empty-oracle refusal could not have caught it.
+# arriving as a partial rather than an empty set (the `shell` literal would
+# still be produced), where `disjoint`'s own empty-oracle refusal could not
+# have caught it.
 #
 # ⚑ THE AST WALK SELECTS BY BASE CLASS, not by filename. `target.py` is where all
 # three plugins put the class today; a plugin that moved it would drop out of a
@@ -2584,14 +2602,15 @@ extract = '(?m)^ci-python: (\S+)$'
 # at launch, which raises. It is the sentence "whose `Target.name` spells a
 # reserved name" that reaches further than the mechanism does.
 #
-# Measured 2026-09-19 on this tree, kinemata `0.2.0`:
+# Measured 2026-09-25 on this tree, kinemata `0.4.1`:
 #   `# reserved-agent-names: 2 declared, 4 produced, no identifier is both
 #   declared and produced.`  rc=0
-# The 4 are `no_agent`, `claude`, `codex` and `goose`, printed over 8 lines --
-# each names itself twice, once as an entry-point key and once as `Target.name`,
-# core's `no_agent` included, because `NoAgentTarget.name` returns a literal and
-# is walked like the rest. That the two agree is a different fact and is not what
-# this table checks.
+# The 4 are `claude`, `codex`, `goose` and `shell`, printed over 7 lines. Each
+# plugin names itself twice, once as an entry-point key and once as
+# `Target.name`; core's `shell` names itself ONCE, through the AST half alone
+# (`ShellTarget.name` returns a literal and is walked like the rest), because
+# core declares no entry point. That the two halves agree for a plugin is a
+# different fact and is not what this table checks.
 # NEGATIVE CONTROL, run against a scratch tree in /tmp carrying its own copy of
 # this config, so this repository's config was never edited for it: a fourth
 # package declaring `shell = "kanibako.plugins.rogue:RogueTarget"` and a
@@ -2831,11 +2850,11 @@ authority = "declared"
 # `agent-template-source`, above). The oracle prints with `json.dumps`, for the
 # reason `shell-template-none`'s parity gives, above.
 # ⚑ SCOPE: these three rows, not the whole `agent_shell:` table. Its other rows
-# (`label`, `access`, `allow_helpers`) are pinned by the manifest-conformance
-# tests THROUGH the manifest's `type:` -- the floor ships `allow_helpers` as the
-# string `"true"` where the manifest writes the bool `true`, a difference only the
-# declared type reconciles, and json compares data as written. So the oracle
-# filters to the same three leaves, and "and nothing else" holds within them.
+# (`label`, `access`, `allow_helpers`) are `shell-tier-behavior`'s, below, which
+# compares them in `text` form through a `translate` -- the floor ships
+# `allow_helpers` as the string `"true"` where the manifest writes the bool `true`,
+# and json compares data as written. So the oracle filters to the same three
+# leaves, and "and nothing else" holds within them.
 [[registry]]
 name = "shell-tier-fence"
 kind = "yaml-mapping"
@@ -3040,7 +3059,7 @@ extract = '(?m)^kanibako-routed: (\S+)$'
 # FACT: every `config.*`/`system.*` path row's `default:` IS the literal
 # `settings/bootstrap.py` carries -- `CONFIG_PATH_DEFAULTS` and
 # `SYSTEM_PATH_DEFAULTS`, the tables `settings/paths.py` hands its `LevelView`s
-# as the tier defaults. `test_manifest_conformance` `TestPathDefaults`.
+# as the tier defaults.
 # AUTHORITY: `declared`; the manifest cell is the spec's default.
 # ⚑ NO `translate`: both sides spell the `@`-ref and `$XDG_*` tokens verbatim.
 #   `# bootstrap-path-defaults: 18 declared, 18 produced, in agreement,
@@ -3308,7 +3327,8 @@ authority = "declared"
 # agent spells its key segment and store dirname as one string and would hide a
 # split. Its store dir is created in a scratch `agents/` so the node arm takes the
 # STORE branch; the absent-store branch (`@agent.default.canon`, J-1 option (a))
-# is not reached here and stays with `TestNoOracleExemptions`. The two hops are
+# is not reached here and stays with `test_seed_hostdest`'s
+# `test_a_node_without_its_own_canon_falls_back_to_the_default_tier`. The two hops are
 # `agent-template-source`'s, for the same row shape. The oracle prints every
 # SCALAR the producer returns; its `box.bindings.ro` arm is chapter binds, not
 # `keys:` rows.

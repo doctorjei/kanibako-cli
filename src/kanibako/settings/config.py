@@ -173,9 +173,10 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
     table ``resolve_config_paths`` itself iterates — so ACCEPTED HERE ⇒ RESOLVED THERE holds
     by construction, and a key added to §1 carries its own admission (P13).  It is the same
     six spellings as the keyspace's ``DECLARED_CONFIG_LEAVES``, and the two are pinned equal
-    through the manifest (``test_manifest_conformance``); this reader takes the Layer-1
-    table because Layer 1 is resolved by the flat resolver, NOT the keyspace pipeline
-    (spec §1).
+    through the manifest (``test_manifest_conformance``'s ``TestKeySetConformance`` for the
+    leaves, the ``bootstrap-path-defaults`` kinemata view for the table); this reader takes
+    the Layer-1 table because Layer 1 is resolved by the flat resolver, NOT the keyspace
+    pipeline (spec §1).
 
     ⚑ A ``config:`` with NOTHING under it is the created file's own state, not an error —
     ``write_global_config`` writes zero bytes, so absent and empty must agree.  A ``config:``

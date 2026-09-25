@@ -41,6 +41,7 @@ from kanibako.settings.defaults_inventory import (
 )
 from kanibako.settings.keyspace_manifest import manifest_doc
 from tests.test_settings.test_manifest_conformance import (
+    CARRIED_DEFAULT_KEYS,
     EXEMPT_DEFAULT_KEYS,
     PINNED_DEFAULT_KEYS,
 )
@@ -48,6 +49,9 @@ from tests.test_settings.test_manifest_conformance import (
 #: Which conformance class each SOURCE label partitions.  ⚑ THE CORRESPONDENCE LIVES
 #: HERE, not in ``src``: whether a default has a value ORACLE is a property the test
 #: suite cares about, while the command only cares WHERE the value is written down.
+#: ⚑ ``"pinned"`` MEANS "HAS A VALUE ORACLE", whichever carries it: a pytest pin
+#: (``PINNED_DEFAULT_KEYS``) or a kinemata view (``CARRIED_DEFAULT_KEYS``).  Which of the
+#: two carries a row is the conformance file's split, not a provenance fact.
 #: Several labels refine one conformance class (the two canon-producer arms, the two
 #: ``bootstrap`` tiers), so the assertion below is per-class UNION, never 1:1.
 LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
@@ -99,9 +103,12 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     "launch/templates.py (shell fence, present None)": "pinned",
     "(nothing declares it — unset until you set it)": "exempt",
     "(empty — the category starts with no entries)": "exempt",
-    "core_defaults.py (canon producer, per node)": "exempt",
+    # ⚑ The per-NODE canon and layer-2 arms were "exempt" (E5, one ``@``-hop from the
+    # registry) until 2026-09-25, when the ``canon-defaults`` / ``agent-template-source``
+    # kinemata views were counted as their carriers.
+    "core_defaults.py (canon producer, per node)": "pinned",
     "launch/templates.py (layer-2 seed, default arm)": "pinned",
-    "launch/templates.py (layer-2 seed)": "exempt",
+    "launch/templates.py (layer-2 seed)": "pinned",
     # ⚑ THE ``launch/templates.py (layer-3 seed)`` LABEL IS GONE (2026-08-29, same day it
     # was added) and its ``"exempt"`` line with it. ``workset.template`` now reaches the
     # ANCHOR FLOOR, whose group is derived, so it is claimed there — and a key in two
@@ -110,8 +117,9 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     # note saying the key "most likely belongs in the pinned set beside
     # ``agent.default.template``" because ``NO_ORACLE_PATH_JOIN``'s stated reason ("no
     # literal anywhere to compare the manifest to") was FALSE of it. That note was right,
-    # and the pin has now been written — the key moved into
-    # ``_ANCHOR_SCALAR_KEYS_PRIMARY_NAMED``. **No "exempt" survives this arc.**
+    # and the pin was written — the key moved to ``test_manifest_conformance``'s
+    # primary/named anchor-scalar pins, whose carrier since 2026-09-25 is the
+    # ``workset-anchor-floor`` kinemata view. **No "exempt" survives this arc.**
 }
 
 
@@ -158,15 +166,19 @@ class TestSourcePartition:
         A row that moves between "has a code oracle" and "does not" over in
         ``test_manifest_conformance`` reds HERE, because its SOURCE label would then be
         describing an artefact that no longer carries it.
+
+        ⚑ AN ORACLE IS A PIN OR A KINEMATA VIEW — ``PINNED_DEFAULT_KEYS`` or
+        ``CARRIED_DEFAULT_KEYS``, which the conformance file keeps disjoint.
         """
         by_class: dict[str, set[str]] = {"pinned": set(), "exempt": set()}
         for label, keys in source_groups():
             by_class[LABEL_TO_CONFORMANCE_CLASS[label]] |= set(keys)
-        assert by_class["pinned"] == set(PINNED_DEFAULT_KEYS), (
+        oracled = set(PINNED_DEFAULT_KEYS) | set(CARRIED_DEFAULT_KEYS)
+        assert by_class["pinned"] == oracled, (
             f"labelled as having a declaring artefact but conformance exempts: "
-            f"{sorted(by_class['pinned'] - set(PINNED_DEFAULT_KEYS))}; conformance pins "
+            f"{sorted(by_class['pinned'] - oracled)}; conformance pins or carries "
             f"but this file classes as source-less: "
-            f"{sorted(set(PINNED_DEFAULT_KEYS) - by_class['pinned'])}"
+            f"{sorted(oracled - by_class['pinned'])}"
         )
         assert by_class["exempt"] == set(EXEMPT_DEFAULT_KEYS)
 
@@ -405,17 +417,19 @@ class TestEnvRows:
         assert set(registry_env) <= {r.key for r in env_rows()[0]}
 
     def test_the_core_env_floor_is_the_shipped_emitter_s(self):
+        """The listing prints the emitter's table AS EMITTED — the VALUES are not pinned here.
+
+        ⚑ AN UNRESOLVED EXPRESSION (``$TERM``) IS THE CORRECT CELL, not a leak of the
+        declaration.  This listing is the install-wide STATIC view (module docstring) — no
+        box, no resolution — so printing this host's terminal type would be answering a
+        question the section does not ask, and would differ per reader; resolving here
+        reds this equality.  What the emitter emits is the ``env-defaults`` kinemata
+        view's: it holds ``env_default_categories`` to the manifest's ``.env.`` cells, so
+        a literal copy of them here was a second carrier and was retired (2026-09-25).
+        """
         rows, _ = env_rows()
         core = {r.key: r.value for r in rows if r.source == "core-defaults.yaml (env:)"}
         assert core == core_defaults.env_default_categories()
-        # ⚑ AN UNRESOLVED EXPRESSION IS THE CORRECT CELL, not a leak of the declaration.
-        # This listing is the install-wide STATIC view (module docstring) — no box, no
-        # resolution — so printing this host's terminal type would be answering a
-        # question the section does not ask, and would differ per reader.
-        assert core == {
-            "agent.default.env.TERM": "$TERM",
-            "box.env.COLORTERM": "$COLORTERM",
-        }
 
     def test_every_installed_target_is_consulted_and_its_vars_listed(self):
         """Counted against ``discover_targets`` + each target's own ``default_envs``."""

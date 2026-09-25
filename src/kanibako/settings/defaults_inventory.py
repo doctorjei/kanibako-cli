@@ -239,9 +239,8 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("core_defaults.py (canon producer, per node)", frozenset({"agent.<agent>.canon"})),
     # The layer-2 SOURCE key, split by ARM for the same reason the canon pair above
     # is: ONE producer (``agent_template_defaults``) emits both, but the per-node arm
-    # is spelled one @-hop from the registry, while the default arm is a plain literal
-    # with a value oracle. Two labels because a reader would otherwise wonder, and
-    # because the arms sit in different conformance classes.
+    # is spelled one @-hop from the registry, while the default arm is a plain literal.
+    # Two labels because a reader would otherwise wonder.
     # ⚑ The per-node arm's HARNESS-vs-NODE divergence was a boarded question and is
     # CLOSED (2026-08-27): it is node-rooted now, and only the @-hop is left.
     # ⚑ The PRODUCER was split 2026-08-29: ``agent_template_defaults`` carries these two

@@ -747,8 +747,9 @@ because `settings` does not depend on `launch` at module level.
 `workset.kuid` is `kuid.SENTINEL` by reference, not a re-typed `"00000"` — the sentinel's unmintable
 EVEN parity is what keeps PRESENT-SENTINEL ("nothing stored") distinguishable from a wrong id, and
 that property belongs with the codec. `workset.skip_kuid_check` is the `True` that
-`config.read_workset_skip_kuid_check` returns with no file, and `test_manifest_conformance` pins the
-floor against that accessor so the two carriers cannot drift apart silently.
+`config.read_workset_skip_kuid_check` returns with no file, and the `workset-anchor-floor` and
+`reader-defaults` kinemata views hold the floor and that accessor to the same manifest cell, so the
+two carriers cannot drift apart silently.
 
 ⚑ `workset.registry` is spelled as the spec's `@`-ref FORMULA, like every anchor above — NOT as the
 resolved literal `project/workset_registry.py` joins at use. That is the difference from

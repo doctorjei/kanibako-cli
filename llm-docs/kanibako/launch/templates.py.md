@@ -126,7 +126,7 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   `channels.has_workset_channels(proj)` IS `proj.mode is not standalone`, which is the floor's
   `standalone` arm. One condition, two spellings of the mode. For standalone the floor SUPPLIES the
   declared `<None>` as a present `None` and this table declares no layer
-  (`TestAnchorScalarDefaults.test_the_standalone_arm_is_what_the_floor_supplies`); the `None` is
+  (the `workset-anchor-floor` kinemata view compares that `null` arm); the `None` is
   what keeps a user's own `seeded` entry naming `@workset.template` off the host path `/box/home`.
 
 ## `agent_template_defaults` — the AGENT-tier SOURCE arms
