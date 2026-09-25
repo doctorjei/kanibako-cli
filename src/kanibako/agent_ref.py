@@ -30,7 +30,10 @@ _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear 
 # agent but serves the AGENT ROLE, so its name is reserved: it already owns an
 # ``agent.<name>.*`` cascade slot & a store dir, & a true agent claiming one would own them
 # too.  The refusal sits at THIS gate because every user-supplied ref passes through it —
-# the CLI's ``-A``, ``kanibako agent``, the persona store, the stored-agent readers.
+# the CLI's ``--agent``, ``kanibako agent``, the persona store, the stored-agent readers.
+# ⚑ THE RESERVATION REFUSES A CLAIMANT, NOT AN ADDRESS: a ref that ADDRESSES the built-in
+# shell pseudo-agent reaches it through :func:`parse_agent_address`, which is this gate
+# plus that one owner — the name still names nobody else.
 # ⚑ FOLDS FOR COMPARISON, never a prefix test ([R172], keyspec §0): ``Shell``
 # is the same identifier as ``shell`` & is refused like it, while ``shellx``
 # stays an ordinary name, & widening a user-facing refusal past the names the
@@ -155,6 +158,30 @@ def parse_agent_ref(raw: str) -> tuple[str, str]:
 
   node = f"{persona}{CANONICAL_SEP}{harness}"
   return node, harness
+
+
+def parse_agent_address(raw: str) -> tuple[str, str]:
+  """:func:`parse_agent_ref` for a ref that ADDRESSES an agent rather than NAMING one.
+
+  A ref that selects or configures an agent — ``--agent``, ``system.agent``, the
+  ``kanibako agent <agent>`` positional, a ``KANIBAKO_AGENT`` stamp read back — may name
+  the built-in shell pseudo-agent: keyspec §2b invokes it *"as any other agent"*, and
+  its §2d fence declares its own settings file.  Such a ref parses to
+  ``(GENERAL_SLOT, GENERAL_SLOT)``; every other ref goes through
+  :func:`parse_agent_ref` unchanged.
+
+  ⚑ THE §2d RESERVATION STILL HOLDS for everything that would CLAIM the name — a plugin,
+  a persona segment, a harness segment ([R175]: the built-in is the owner, so
+  addressing it claims nothing).  ``shell`` inside a composite ref is refused as
+  before, since a persona cannot ride a pseudo-agent ([R178]).
+  ⚑ ONLY ``shell``, not every pseudo-agent: ``default`` is the any-agent fallback tier,
+  not an agent a ref can select, and its §2d fence declares no settings file.
+  ⚑ FOLDS FOR COMPARISON ([R172]): ``Shell`` addresses the same agent, and the node
+  returned is the lowercase slot.
+  """
+  if isinstance(raw, str) and find_identifier(raw.strip(), {GENERAL_SLOT}) is not None:
+    return GENERAL_SLOT, GENERAL_SLOT
+  return parse_agent_ref(raw)
 
 
 def harness_of(node: str) -> str:

@@ -77,7 +77,9 @@ and *tail* — exactly the shape a rule takes just before one copy drifts. The i
   named default"*). The launch never reads an `agents/default/` dir as a node, so routing one would
   breach the keystore-maps-to-a-real-key rule and foot-gun a user who wants the any-agent default —
   that is the BARE key, e.g. `system set model=…`.
-* **A MALFORMED node ref**, caught by `parse_agent_ref`. The node is used AS-IS for the dir and only
+* **A MALFORMED node ref**, caught by `parse_agent_address` — the ADDRESS grammar, so the `shell`
+  node routes: its §2d fence declares `agent.shell.*` and a settings file the shell tier owns
+  (`[R175]`), and routing the owner's own settings claims nothing. The node is used AS-IS for the dir and only
   VALIDATED here, never re-swapped: canonicalisation happened once, at `config_keys.resolve_key`. So
   breaking the `resolve_key` swap routes a `+` key to an `agents/<node-with-+>/` dir the resolver
   never reads — the canonicalization mutation the gate proves.

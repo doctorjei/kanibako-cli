@@ -321,7 +321,7 @@ def _resolve_watch_context(box: str | None):
     box cannot be resolved / has no shared-credential agent (nothing to watch).
     """
     from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.agent_ref import canonicalize_agent_ref, harness_of, with_harness
+    from kanibako.agent_ref import harness_of, parse_agent_address, with_harness
     from kanibako.identifiers import agent_node_case
     from kanibako.commands.start import _resolve_box_auth_source
     from kanibako.settings.config import user_config_file, load_config
@@ -346,8 +346,10 @@ def _resolve_watch_context(box: str | None):
     # every use below is a key or a key-derived lookup. ``harness_of`` splits on
     # ``℘`` ALONE, so the raw ``+`` form would send ``resolve_target`` after a
     # plugin that does not exist. ⚑ Both separators are accepted, so a box stamped
-    # by an older version keeps working.
-    ref = canonicalize_agent_ref(agent)
+    # by an older version keeps working. ⚑ The ADDRESS grammar, because a plain-shell
+    # box is stamped ``shell`` (keyspec §2b): it resolves to a box-tier auth source,
+    # so ``main`` exits at its private-box arm instead of logging a reservation error.
+    ref = parse_agent_address(agent)[0]
     # 🛑 AND THEN FOLD — canonicalising validates a ref, it does not change a case.
     # The stamp is a VALUE-supplied spelling, so it folds at the hop reaching for a
     # node ([R173]); unfolded, this watcher syncs to a store directory the launch

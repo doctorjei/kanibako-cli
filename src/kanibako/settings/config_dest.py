@@ -18,9 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import overload
 
-from kanibako.agent_ref import parse_agent_ref
+from kanibako.agent_ref import parse_agent_address
 from kanibako.errors import ConfigError
-from kanibako.identifiers import find_identifier
 from kanibako.settings.agent_file import AgentFileSlot, slot_for
 from kanibako.settings.config_keys import (
     _AGENT_DEFAULT_TIER_CURE,
@@ -77,13 +76,11 @@ def check_agent_node(node: str) -> "NodeRouteRefusal | None":
         return NodeRouteRefusal("reserved")
     # ⚑ THE SHELL SLOT IS ROUTABLE (D2): ``agent.shell.*`` is declared (spec §2d
     # fence), and the shell file owns that slot the way a plugin's file owns its
-    # own ([R175] — built-in is a category).  The D6 reservation still refuses
-    # ``shell`` to agents, personas and harnesses at the ref parser — this door
-    # routes the owner's own settings, it lets nobody claim the name.
-    if find_identifier(node, {"shell"}) is not None:
-        return None
+    # own ([R175] — built-in is a category).  The ADDRESS grammar admits it; the
+    # §2d reservation still refuses ``shell`` to agents, personas and harnesses —
+    # this door routes the owner's own settings, it lets nobody claim the name.
     try:
-        parse_agent_ref(node)  # validate only (raises on a malformed ref)
+        parse_agent_address(node)  # validate only (raises on a malformed ref)
     except ConfigError as exc:
         return NodeRouteRefusal("malformed", str(exc))
     return None

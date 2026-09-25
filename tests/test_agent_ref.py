@@ -15,6 +15,7 @@ from kanibako.agent_ref import (
     canonicalize_agent_ref,
     display_agent_ref,
     harness_of,
+    parse_agent_address,
     parse_agent_ref,
     persona_of,
     with_harness,
@@ -414,28 +415,83 @@ def test_the_reservation_leaves_the_agent_default_key_TIER_alone():
 
 
 # ---------------------------------------------------------------------------
-# with_harness  (swap the resolved target into the node; fallback-safe)
+# parse_agent_address  (a ref that SELECTS an agent may name the built-in shell)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("variant", ["shell", "Shell", "SHELL", "  shell  "])
+def test_an_address_may_name_the_shell_pseudo_agent(variant):
+    """Keyspec §2b: the shell box is invoked "as any other agent" — ``--agent shell``.
+
+    Folds for comparison ([R172]) and strips like the claimant grammar; the node
+    it returns is the lowercase slot, so every case keys ``agents/shell/``.
+    INVERT: route it through ``parse_agent_ref`` and every variant raises.
+    """
+    assert parse_agent_address(variant) == (GENERAL_SLOT, GENERAL_SLOT)
+
+
+def test_default_is_not_addressable_as_an_agent():
+    """``default`` is the any-agent fallback TIER, not an agent a ref selects.
+
+    Only ``shell`` is invoked by name (§2b), and only its §2d fence declares an
+    agent settings file.
+    """
+    with pytest.raises(ConfigError, match="RESERVED pseudo-agent name"):
+        parse_agent_address("default")
+
+
+@pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
+def test_an_address_still_refuses_a_pseudo_agent_inside_a_composite(name):
+    """The claimant refusals are untouched: a persona cannot ride a pseudo-agent,
+    and no persona may be named after one ([R178])."""
+    with pytest.raises(ConfigError, match=r"harness segment .* RESERVED"):
+        parse_agent_address(f"navigator+{name}")
+    with pytest.raises(ConfigError, match=r"persona segment .* RESERVED"):
+        parse_agent_address(f"{name}+claude")
+
+
+@pytest.mark.parametrize(
+    "ref", ["claude", "navigator+claude", f"navigator{CANONICAL_SEP}claude", "shellx"],
+)
+def test_every_other_address_parses_exactly_as_a_ref(ref):
+    assert parse_agent_address(ref) == parse_agent_ref(ref)
+
+
+# ---------------------------------------------------------------------------
+# with_harness  (the harness segment takes the resolved NODE spelling)
 # ---------------------------------------------------------------------------
 
 
 def test_with_harness_bare_as_requested():
-    # Bare node, target resolved as requested -> unchanged.
+    # Bare node, harness already in its node spelling -> unchanged.
     assert with_harness("claude", "claude") == "claude"
 
 
-def test_with_harness_bare_fallback():
-    # Bare node, target fell back (e.g. Shell) -> the fallback name.
-    assert with_harness("claude", "shell") == "shell"
+def test_with_harness_bare_takes_the_node_spelling():
+    # Bare node typed with a capital -> the lowercase node ([R173]).
+    assert with_harness("Claude", "claude") == "claude"
 
 
 def test_with_harness_persona_as_requested():
-    # Persona node, target resolved as requested -> node unchanged.
+    # Persona node, harness already in its node spelling -> node unchanged.
     assert with_harness("navigator℘claude", "claude") == "navigator℘claude"
 
 
-def test_with_harness_persona_fallback_keeps_persona_name():
-    # Persona node, target fell back -> persona name kept, harness swapped.
-    assert with_harness("navigator℘claude", "shell") == "navigator℘shell"
+def test_with_harness_persona_keeps_its_case_while_the_harness_folds():
+    # Only the harness is re-spelled; the persona segment is the user's.
+    assert with_harness("Navigator℘Claude", "claude") == "Navigator℘claude"
+
+
+def test_with_harness_does_not_validate():
+    """The swap is pure string work, not a grammar check.
+
+    It will compose a node the grammar refuses — a persona riding a pseudo-agent
+    ([R178]) — and ``parse_agent_ref`` is what refuses it. No launch path asks for
+    that swap: a NAMED target never falls back to ``ShellTarget``.
+    """
+    composed = with_harness("navigator℘claude", "shell")
+    with pytest.raises(ConfigError, match=r"harness segment .* RESERVED"):
+        parse_agent_ref(composed)
 
 
 # ---------------------------------------------------------------------------

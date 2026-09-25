@@ -10776,6 +10776,45 @@ class TestBlankAgentFlagAtALiveBoxAndAStoppedOne(_RunningBoxDriver):
 
 
 # ---------------------------------------------------------------------------
+# A LIVE SHELL BOX — its stamp names the shell pseudo-agent, and reattach reads it
+# ---------------------------------------------------------------------------
+
+
+class TestALiveShellBoxReattaches(_RunningBoxDriver):
+    """A plain-shell box is stamped ``KANIBAKO_AGENT=shell``: its agent IS the shell
+    pseudo-agent (keyspec §2b), resolved to a real target, so the stamp is written.
+
+    The reattach comparison canonicalizes that stamp, and ``--agent shell`` beside it.
+    Through the claimant grammar both refused with *"'shell' is a RESERVED
+    pseudo-agent name"* — a running shell box could not be reattached at all, with or
+    without the flag.  They go through ``agent_ref.parse_agent_address`` now.
+    """
+
+    def _shell(self, m):
+        self._running(m, agent="shell")
+        m.resolve_agent.return_value = _sel("shell")
+        m.target.name = "shell"
+
+    @pytest.mark.parametrize("flag", [None, "shell", "Shell"])
+    def test_a_live_shell_box_reattaches(self, flag, start_mocks):
+        with start_mocks() as m:
+            self._shell(m)
+            assert self._start(explicit_agent=flag) == 0
+            assert not m.runtime.run.called  # a REATTACH, not a new container
+
+    def test_a_different_agent_gets_the_MISMATCH_refusal_not_the_reservation(
+        self, start_mocks,
+    ):
+        """The stamp parses, so what the user hears is about the running agent."""
+        from kanibako.errors import KanibakoError
+
+        with start_mocks() as m:
+            self._shell(m)
+            with pytest.raises(KanibakoError, match="already running agent 'shell'"):
+                self._start(explicit_agent="claude")
+
+
+# ---------------------------------------------------------------------------
 # LIVENESS-MARKER DIR — both ends of the contract must name the SAME directory
 # ---------------------------------------------------------------------------
 

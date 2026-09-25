@@ -92,8 +92,8 @@ def _writeback_on_stop(
         )
         from kanibako.settings.agent_config import agent_settings_path
         from kanibako.agent_ref import (
-            canonicalize_agent_ref,
             harness_of,
+            parse_agent_address,
             with_harness,
         )
         from kanibako.identifiers import agent_node_case
@@ -105,8 +105,12 @@ def _writeback_on_stop(
         # WHOLE string and ``resolve_target`` raises KeyError, which the blanket
         # catch below would swallow — writeback SILENTLY stopping for every persona
         # box. ⚑ Also the BACK-COMPAT seam: a box stamped ``℘`` by an older version
-        # still works, because ``canonicalize_agent_ref`` accepts both separators.
-        ref = canonicalize_agent_ref(agent)
+        # still works, because the ref grammar accepts both separators.
+        # ⚑ THE ADDRESS GRAMMAR: a plain-shell box is stamped ``shell`` (its agent IS
+        # the shell pseudo-agent, keyspec §2b). It resolves to ``ShellTarget``, whose
+        # box-tier auth source makes the writeback below a clean no-op — where the
+        # claimant grammar raised into the blanket catch.
+        ref = parse_agent_address(agent)[0]
         # 🛑 AND THEN FOLD, because canonicalising is not folding: the parser
         # normalises the separator and validates the charset, and changes no case at
         # all. The stamp is a VALUE-supplied spelling, so it folds at the hop that

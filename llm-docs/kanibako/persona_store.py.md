@@ -70,24 +70,25 @@ it feeds.
 ## `locate_entry` — the two clean misses, and the one raise
 
 `locate_entry` takes any accepted agent ref (`navigator+codex`, `navigator℘codex`, or an
-already-canonical node-name) and normalises it through `kanibako.agent_ref.parse_agent_ref`, like
-every other ref source in the tree.
+already-canonical node-name) and normalizes it through `kanibako.agent_ref.parse_agent_address` —
+the ADDRESS grammar, since a lookup names an existing agent and claims nothing.
 
 It returns `None` — a clean "not a persona" — in exactly two cases:
 
-* the ref is BARE (node == harness, e.g. `claude`). A bare agent never has a persona store entry;
+* the ref is BARE (node == harness, e.g. `claude`). A bare agent never has a persona store entry —
+  the built-in `shell` pseudo-agent included, which the address grammar parses as bare;
 * the store dir `<root>/<pid>/<hid>/` is absent, or is not a directory. Store presence is the
   decision (DESIGN §4), so the caller falls through to normal agent handling. An `OSError` while
   stat'ing it is treated the same way.
 
-A MALFORMED ref raises `kanibako.errors.ConfigError` out of `parse_agent_ref` — the same contract
+A MALFORMED ref raises `kanibako.errors.ConfigError` out of `parse_agent_address` — the same contract
 as every other ref consumer, because a bad ref is a user error and not a store miss.
 
 ### ⚑ Path traversal is handled upstream, not here
 
 `.` stopped being a legal segment character on 2026-08-04. Before that, `..+claude` would have
 resolved to `<root>/../claude` — an ordinary harness config dir — and `navigator+..` to
-`<root>/navigator/..`, the store root itself. Both now RAISE from `parse_agent_ref` on the first
+`<root>/navigator/..`, the store root itself. Both now RAISE from `parse_agent_address` on the first
 line of `locate_entry`, rather than being screened out afterwards.
 
 There is deliberately NO second dot-check in this module. One charset, enforced in one place; a
@@ -219,7 +220,7 @@ It is a pure read: no probe, no network, no write, and the token file itself is 
 its pointer is resolved, because usability is the launch gate's job.
 
 **It NEVER RAISES, with one deliberate exception:** a malformed *ref* raises `ConfigError` out of
-`parse_agent_ref`, exactly as it does for every other ref consumer. Everything downstream of a
+`parse_agent_address`, exactly as it does for every other ref consumer. Everything downstream of a
 successfully located entry is fail-soft. That is what makes the function safe to call from the
 credential-lifecycle paths (`stop`, creds-watch), where a raise would break an unrelated operation.
 

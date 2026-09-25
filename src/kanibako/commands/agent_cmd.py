@@ -8,9 +8,10 @@ import sys
 from typing import TYPE_CHECKING
 
 from kanibako.agent_ref import (
-    canonicalize_agent_ref,
+    GENERAL_SLOT,
     display_agent_ref,
     harness_of,
+    parse_agent_address,
     with_harness,
 )
 from kanibako.commands.flags import add_null_flag
@@ -165,12 +166,16 @@ def _agent_node(raw: str) -> str:
     ⚑⚑ THE ANY-AGENT TIER TOKEN IS NOT A REF, and passes through untouched. This is
     the order ``settings.config_dest.check_agent_node`` already uses and it is the same
     reason: ``default`` ADDRESSES the reserved tier rather than NAMING an agent, while
-    ``agent_ref.parse_agent_ref`` is the true-agent grammar and refuses a reserved
-    pseudo-agent name (keyspec §2d). Canonicalising it would raise here and replace the
-    engine's refusal — which names the CURE, the bare-key spelling — with a bare
-    reservation notice. The other reserved name has no tier a verb can address, so it
-    takes the ``canonicalize_agent_ref`` road and surfaces as an ordinary ``ConfigError``
-    — which ``cli.py`` flattens to one ``Error: …`` line at rc 1, like any other.
+    the ref grammar refuses a reserved pseudo-agent name (keyspec §2d). Canonicalizing
+    it would raise here and replace the engine's refusal — which names the CURE, the
+    bare-key spelling — with a bare reservation notice.
+    ⚑ ``shell`` IS ADDRESSED LIKE ANY OTHER AGENT, through
+    :func:`kanibako.agent_ref.parse_agent_address`: its §2d fence declares its own
+    settings file (``meta.agent.shell.settings``), and an ``agent`` verb edits the file
+    of the agent it names (keyspec §2a, ``config set`` at the command's scope).
+    Addressing the built-in claims nothing, so the reservation is untouched. Any other
+    illegal ref surfaces as an ordinary ``ConfigError`` — which ``cli.py`` flattens to
+    one ``Error: …`` line at rc 1, like any other.
 
     ⚑ THE HARNESS SEGMENT FOLDS ([R173]): the launch writes ``agents/claude/``
     from the declared name, so ``agent show Claude`` must read ``agents/claude/``
@@ -184,8 +189,8 @@ def _agent_node(raw: str) -> str:
 
     if raw == AGENT_DEFAULT_SUB:
         return raw
-    node = canonicalize_agent_ref(raw)
-    return with_harness(node, agent_node_case(harness_of(node)))
+    node, harness = parse_agent_address(raw)
+    return with_harness(node, agent_node_case(harness))
 
 
 def run_list(args: argparse.Namespace) -> int:
@@ -647,7 +652,7 @@ def _declared_label(agent_id: str) -> str:
     from kanibako.settings import core_defaults
     from kanibako.targets import get_target
 
-    if agent_id == "shell":
+    if agent_id == GENERAL_SLOT:
         # ⚑ The built-in's tier declaration (D2): no descriptor to read, so the
         # shell floor's own label IS the declaration — the same artefact the
         # launch folds, keeping `agent show` and the box in agreement.

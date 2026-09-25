@@ -72,10 +72,9 @@ from kanibako.settings.paths import (
 )
 from kanibako.agent_ref import (
     GENERAL_SLOT,
-    canonicalize_agent_ref,
     display_agent_ref,
     harness_of,
-    parse_agent_ref,
+    parse_agent_address,
     persona_of,
     with_harness,
 )
@@ -2443,7 +2442,7 @@ def _run_container(
     )
     if _box_indep_ref:
         try:
-            _node, _harness = parse_agent_ref(_box_indep_ref)
+            _node, _harness = parse_agent_address(_box_indep_ref)
             _defer_box = _node != _harness
         except ConfigError:
             _defer_box = False  # malformed ref: surfaced by select_agent below.
@@ -2624,7 +2623,10 @@ def _run_container(
             # for the COMPARISON only and then propagate the raw stamp.
             # ⚑ Both separators are accepted, so a box stamped ``℘`` by an older
             # version reattaches unchanged.
-            stored_agent = canonicalize_agent_ref(stored_agent)
+            # ⚑ THE ADDRESS GRAMMAR, on both sides: a plain-shell box is stamped
+            # ``shell`` (keyspec §2b — its agent IS the shell pseudo-agent), and
+            # ``--agent shell`` selects it; the claimant grammar refused both.
+            stored_agent = parse_agent_address(stored_agent)[0]
             # ⚑ ``is not None`` is the GIVEN predicate here as well, and the
             # canonicalize inside it is what refuses a given-but-BLANK ref at a
             # LIVE box — the very ``ConfigError`` a stopped box gets from
@@ -2632,7 +2634,7 @@ def _run_container(
             # two answers again: refused at a live box, silently resolved from
             # the cascade at a stopped one.
             if explicit_agent is not None and (
-                canonicalize_agent_ref(explicit_agent) != stored_agent
+                parse_agent_address(explicit_agent)[0] != stored_agent
             ):
                 raise KanibakoError(
                     f"Box '{proj.name}' is already running agent "
@@ -2829,18 +2831,22 @@ def _run_container(
 
     # ``agent_id`` is the NODE-name (persona identity), NOT the bare harness: it keys
     # the on-disk ``agents/<node>/`` dir, the ``agent.<node>.*`` keyspace slot, and
-    # the active-agent snapshot discriminator.  ``with_harness`` swaps in the
-    # ACTUALLY-resolved target name (a NoAgent/other fallback is reflected while the
-    # persona name is preserved); for a bare agent whose target resolved as
-    # requested, node == harness == the target's NODE.  ⚑ ``agent_node_case`` is what
+    # the active-agent snapshot discriminator.  ``with_harness`` puts the harness
+    # segment into the RESOLVED target's NODE spelling and leaves the persona
+    # segment as typed.  It is not a fallback: a NAMED target never falls back
+    # (``resolve_target`` raises ``KeyError``), so the harness it swaps in is the one
+    # that was asked for, re-cased; for a bare agent, node == harness == the
+    # target's NODE.  ⚑ ``agent_node_case`` is what
     # makes that the node and not the plugin's declared NAME ([R173], keyspec §0):
     # the name keeps its case, the node — and the ``agents/<node>/`` dir and
     # ``agent.<node>.*`` slot spelled from it — is lowercase.  A plugin calling
     # itself ``Shell`` must not write ``agents/Shell/``.
     # Hoisted HERE (ahead of the baseline
     # probe) so the agent-scope ``bootstrap`` value can be resolved before the probe
-    # consumes it.  ``shell`` for a no-agent / shell launch (target is None) so the
-    # ``agent.default`` bootstrap backstop still applies.
+    # consumes it.  ``shell`` for a launch that resolved NO target (``kanibako shell``,
+    # an explicit entrypoint) so the ``agent.default`` bootstrap backstop still
+    # applies; a plain-shell BOX resolves ``ShellTarget`` and reaches ``shell`` through
+    # the swap like any other agent.
     agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
 
@@ -9018,15 +9024,17 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     ``$KANIBAKO_AGENT`` in the box and the shipped ROM directive tells it to, so the
     value must be the one it can type.  ``℘`` exists only so a node is spellable
     inside a KEY path (``agent_ref``), and this is not one.
-    🛑 **READERS CANONICALISE, THEN DERIVE** — ``canonicalize_agent_ref`` first, and
-    only then ``harness_of`` / a store path / a settings value.  ``harness_of``
+    🛑 **READERS CANONICALIZE, THEN DERIVE** — ``parse_agent_address`` first (the
+    ADDRESS grammar: a plain-shell box is stamped ``shell``, the shell pseudo-agent,
+    which the claimant grammar refuses), and only then ``harness_of`` / a store path /
+    a settings value.  ``harness_of``
     splits on ``℘`` ALONE: hand it ``navigator+claude`` and it returns the WHOLE
     string, so ``resolve_target`` looks up a plugin that does not exist.  In
     ``stop.py`` that sits under a blanket catch, i.e. credential writeback would
     stop running for every persona box in SILENCE.
     ⚑ Canonicalising on READ is also what makes this BACK-COMPATIBLE with a box
     already running: a container stamped ``℘`` by an older version keeps working,
-    because ``canonicalize_agent_ref`` accepts both separators.
+    because the ref grammar accepts both separators.
 
     See ``llm-docs/kanibako/commands/start.py.md``,
     "``_core_env_default_categories``", for the per-variable gates and contracts.

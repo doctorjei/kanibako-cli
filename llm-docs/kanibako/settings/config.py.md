@@ -870,7 +870,7 @@ resolved). The FIRST **PRESENT** one resolves a name — never the first non-EMP
 the only spelling of absence either argument has (no `--agent` at all; `__MISSING__` at the
 selection key), so a present `""` is a VALUE: spec §2h keeps `present-None`, terminal `""` (**≠
 unset**) and the COPY-disable sentinel apart as three idioms. A blank tier therefore reaches
-`canonicalize_agent_ref` and is refused as an empty ref, instead of falling through to the next
+`parse_agent_address` and is refused as an empty ref, instead of falling through to the next
 tier (a typed `--agent ""` taking the cascade's agent) or to the then-live count rule (a stored
 `system.agent: ""` taking the single installed one), silently in both cases.
 
@@ -900,6 +900,12 @@ and the same call VALIDATES the ref shape (raises `ConfigError` on a malformed s
 ⚑ The HARNESS — right of `℘`, the whole name when bare — is what must be an installed target, NOT
 the composite node-name: a persona's name segment is free-form.
 
+⚑ The parse is `agent_ref.parse_agent_address`, the ADDRESS grammar: a ref naming the shell
+pseudo-agent (any case) returns the `shell` node WITHOUT consulting the installed set — it is the
+built-in occupying its own slot (`[R175]`), selectable by name (keyspec §2b). `default` still
+refuses as a reserved name. This function used to carry its own fold-to-compare arm for `shell`;
+the grammar owns it now, so `box create`'s `--agent` validation cannot disagree with it.
+
 ### The pseudo-agent discount — GONE with the rule it served
 
 `_PSEUDO_AGENTS` (`no_agent`, `general`) existed to subtract non-launchable targets from the
@@ -909,8 +915,7 @@ the set is deleted. 🛑 **It was never the keyspec's pseudo-agents** (`default`
 two must not be conflated now that only one of them exists.
 
 ⚑ **Nothing about explicit selection changed.** A named harness validates against the FULL
-`installed` set, so `shell` stays explicitly selectable (`--agent shell` /
-`pref.system.agent: shell`). `general` is NOT a target any distribution registers — the agent-less
+`installed` set. `general` is NOT a target any distribution registers — the agent-less
 slot is `shell` (`GENERAL_SLOT`), which is what those paths pass as `agent_name` — so
 `--agent general` raises `AgentNotInstalledError`, as it did before.
 

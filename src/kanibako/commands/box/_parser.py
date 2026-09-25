@@ -44,7 +44,7 @@ from kanibako.settings.paths import (
     resolve_standalone_project,
     unregister_primary_box_name,
 )
-from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_ref, with_harness
+from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, with_harness
 from kanibako.targets import resolve_target
 from kanibako.utils import (
     container_name_for, container_name_for_box_name, container_name_for_standalone_root,
@@ -762,13 +762,15 @@ def run_create(args: argparse.Namespace) -> int:
     # "resolve from settings" — silently steering the box to a different agent than the
     # one asked for is the dishonest half of that disagreement.
     if _agent_arg is not None:
-        # ⚑ ``parse_agent_ref`` (which strips) OWNS what a legal ref is — charset,
-        # pseudo-agent reservation, and empty-after-strip — so a blank ref is refused
-        # by its message, not by a second spelling of the rule here.  Its
+        # ⚑ ``parse_agent_address`` (which strips) OWNS what a legal SELECTING ref is —
+        # charset, pseudo-agent reservation, and empty-after-strip — so a blank ref is
+        # refused by its message, not by a second spelling of the rule here.  It is the
+        # ADDRESS grammar, not the claimant one: ``--agent shell`` selects the built-in
+        # shell pseudo-agent (keyspec §2b), and names no new agent.  Its
         # ``ConfigError`` is a ``KanibakoError``: ``cli.py`` flattens it to one
         # ``Error:`` line.  The parse is for the REFUSAL only; the RAW ref is what is
         # stored and passed on (selection canonicalizes on read).
-        parse_agent_ref(_agent_arg)
+        parse_agent_address(_agent_arg)
         # The ONE normalized value every consumer below reads — the persist used to
         # strip again on its own, which is how the two doors drifted apart (P10).
         _agent_arg = _agent_arg.strip()

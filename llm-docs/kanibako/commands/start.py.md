@@ -1801,14 +1801,16 @@ Contracts the signature cannot carry:
   writeback and the creds watcher all read it back rather than re-running the selection cascade. It
   carries the NODE identity (full persona), NOT the harness (`target.name`) — but in the OUTSIDE
   spelling (`+`, via `display_agent_ref`), because an env var is a place a HUMAN looks: the shipped
-  ROM directive tells an in-box agent to read `$KANIBAKO_AGENT`. 🛑 **Readers CANONICALISE, THEN
-  derive** — `harness_of` splits on `℘` alone, so deriving from the raw stamp returns the whole
+  ROM directive tells an in-box agent to read `$KANIBAKO_AGENT`. 🛑 **Readers CANONICALIZE, THEN
+  derive**, through `agent_ref.parse_agent_address` (a plain-shell box is stamped `shell`, which the
+  claimant grammar refuses) — `harness_of` splits on `℘` alone, so deriving from the raw stamp returns the whole
   string and `resolve_target` hunts a plugin that does not exist (in `stop.py`, under a blanket
   catch: writeback stops SILENTLY). Canonicalising on read is also what keeps a box stamped by an
   older version working, since both separators are accepted. For a bare agent every spelling here is
-  one string. Emitted only for a REAL agent
-  launch, which is why *target* is the gate: a no-agent / shell launch carries no agent and the
-  variable stays unset.
+  one string. Emitted only when a TARGET resolved, which is why *target* is the gate: `kanibako
+  shell` and an explicit-entrypoint launch resolve none and leave the variable unset, while a
+  plain-shell BOX (`system.agent: shell`, keyspec §2b) resolves `ShellTarget` and is stamped
+  `shell`.
 * **`KANIBAKO_AGENT_MARKERS_DIR`** is UNCONDITIONAL: both the E2b/E2c supervised path and the warm-up
   panel watch enumerate the dir that every agent session's start hook writes its per-PID marker into,
   and the supervisor reads the SAME dir via `--agent-markers-dir`. Harmless where no marker hook is
