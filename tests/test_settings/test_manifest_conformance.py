@@ -55,6 +55,7 @@ with — are 4).
 from __future__ import annotations
 
 import importlib.resources
+import re
 from pathlib import Path
 
 import pytest
@@ -1015,15 +1016,9 @@ class _StubProjectPaths:
 # 3. DEFAULTS conformance — the BIND entries
 # --------------------------------------------------------------------------- #
 
-#: The two ``bind_default_entries`` rows with no ``meta_ref`` carrier to compare to.
+#: The one ``bind_default_entries`` row with no carrier to compare to.
 #: NAMED, with the reason, because a silent skip here would hide a real regression.
 BIND_EXEMPTIONS: dict[str, str] = {
-    "~/.kanibako/state/helper.sock": (
-        "the host source is RUNTIME-PROBED (`source: helper_sock`), so core-defaults.yaml "
-        "carries no meta_ref to compare against; the manifest's default also folds the "
-        "empty OPTIONS slot into the same string, which is a different shape from a "
-        "bare host_src"
-    ),
     "<box_image_dir>": (
         "a PLACEHOLDER dest, not a dest: the manifest writes the whole row as the "
         "conditional `%if @box.share_images: (@box.images_store) else None%`, while the "
@@ -1032,6 +1027,42 @@ BIND_EXEMPTIONS: dict[str, str] = {
         "Two different shapes; comparing them would compare a formula to a value"
     ),
 }
+
+
+#: The helper socket's host source is COMPUTED by the name rule (companion § "Box and
+#: helper identity"), so its row is checked against that rule instead of a ``meta_ref``.
+HELPER_SOCKET_DEST = "~/.kanibako/state/helper.sock"
+_HELPER_SOCKET_CELL = re.compile(r'^\(@system\.runtime/<bounded name of "(?P<t>[^"]+)">, ""\)$')
+
+
+def _spec_socket_name(identity: str, run_dir: Path) -> str:
+    """The companion's name rule, written out independently of the code under test."""
+    import hashlib
+
+    if len(str(run_dir / f"{identity}.sock").encode("utf-8")) < 104:
+        return f"{identity}.sock"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".sock"
+
+
+def _check_helper_socket_row(raw: object) -> None:
+    """The manifest spells the bounded name, and the code computes that name."""
+    from kanibako.commands.start import helper_socket_path
+
+    cell = _HELPER_SOCKET_CELL.match(str(raw))
+    assert cell, f"{HELPER_SOCKET_DEST}: manifest {raw!r} does not spell the bounded name"
+    run_dir = _PROBE_ROOT / "run"
+    # meta.workset.name per mode, spelled as the keyspec's channel rows spell it.
+    ws_names = {"primary": "__PRIMARY__", "named": _StubGroup.name,
+                "standalone": "__STANDALONE__"}
+    for mode, ws_name in ws_names.items():
+        for box_name in ("app", "x" * 120, "箱" * 30):
+            proj = _StubChannelProject(BoxMode(mode))
+            proj.name = box_name
+            identity = (cell["t"].replace("@{meta.box.name}", box_name)
+                        .replace("@{meta.workset.name}", ws_name))
+            assert "@" not in identity, f"unrendered ref in {cell['t']!r}"
+            want = run_dir / _spec_socket_name(identity, run_dir)
+            assert helper_socket_path(proj, run_dir) == want, (mode, box_name)
 
 
 def _core_defaults_doc() -> dict:
@@ -1078,7 +1109,8 @@ class TestBindDefaults:
 
         30 bind DESTS (29 before this phase added the ``images_conf`` row), 19 of them
         carrying a ``default:``; 18 code rows carry a ``meta_ref``/``mode_meta_ref``.  17
-        pair up.  The estimate's "18/20" double-counted the images row: its code carrier
+        pair up, and the helper socket is checked against its name rule.  The estimate's
+        "18/20" double-counted the images row: its code carrier
         (``/var/lib/shared-images``) is the code side of the very ``<box_image_dir>`` row
         the estimate itself exempted.
         """
@@ -1086,7 +1118,7 @@ class TestBindDefaults:
         assert sum(len(a) for a in entries.values()) == 30
         assert len(_manifest_bind_defaults()) == 19
         assert len(_code_bind_refs()) == 18
-        assert len(set(_manifest_bind_defaults()) - set(BIND_EXEMPTIONS)) == 17
+        assert len(set(_manifest_bind_defaults()) - set(BIND_EXEMPTIONS)) == 18
 
     def test_every_exemption_names_a_row_that_exists(self):
         """A stale exemption is worse than none — it silently un-pins a live row."""
@@ -1102,6 +1134,9 @@ class TestBindDefaults:
     )
     def test_the_manifest_bind_default_is_the_code_meta_ref(self, dest):
         arm, raw = _manifest_bind_defaults()[dest]
+        if dest == HELPER_SOCKET_DEST:
+            _check_helper_socket_row(raw)
+            return
         code = _code_bind_refs()
         assert dest in code, (
             f"{arm} {dest}: the manifest declares a default but core-defaults.yaml has "

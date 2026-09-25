@@ -10,7 +10,9 @@ must include expected flags).
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,6 +20,7 @@ from kanibako.commands.start import (
     _UNIX_SOCKET_PATH_LIMIT,
     _validate_mounts,
     bounded_socket_name,
+    helper_socket_path,
     validate_socket_path,
 )
 from kanibako.settings.paths import (
@@ -124,6 +127,16 @@ class TestSocketPathBoundary:
 class TestBoundedSocketName:
     """``bounded_socket_name`` keeps the socket under the AF_UNIX limit."""
 
+    @staticmethod
+    def _identity_of_bytes(run_dir: Path, total: int) -> str:
+        """An ASCII identity whose ``run_dir/<identity>.sock`` is exactly *total* bytes."""
+        return "n" * (total - len(str(run_dir)) - 1 - len(".sock"))
+
+    @staticmethod
+    def _hashed(identity: str) -> str:
+        """The companion's hashed name: 16 hex chars of SHA-256 over UTF-8, plus ``.sock``."""
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".sock"
+
     def test_short_name_verbatim(self):
         """A short combined identity is used verbatim as ``<identity>.sock``."""
         run_dir = Path("/run/user/1000/kanibako")
@@ -152,7 +165,7 @@ class TestBoundedSocketName:
         # A plausibly deep XDG_RUNTIME_DIR.
         run_dir = Path("/run/user/4000000/kanibako")
         socket_path = run_dir / bounded_socket_name(box_name, run_dir)
-        assert len(str(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
+        assert len(os.fsencode(socket_path)) < _UNIX_SOCKET_PATH_LIMIT
 
     def test_very_long_name_falls_back_to_hash(self):
         """An over-long name is replaced by a bounded hash, still under limit."""
@@ -163,15 +176,15 @@ class TestBoundedSocketName:
         assert name != f"{box_name}.sock"
         assert name.endswith(".sock")
         assert len(name) == len("0123456789abcdef") + len(".sock")
-        assert len(str(run_dir / name)) < _UNIX_SOCKET_PATH_LIMIT
+        assert len(os.fsencode(run_dir / name)) < _UNIX_SOCKET_PATH_LIMIT
 
     def test_deterministic(self):
-        """Same box name yields the same socket name (so reattach finds it)."""
+        """The hashed name is a pure function of the identity (so reattach finds it)."""
         run_dir = Path("/run/user/1000/kanibako")
-        box_name = "q" * 200
-        assert bounded_socket_name(box_name, run_dir) == bounded_socket_name(
-            box_name, run_dir
-        )
+        identity = "箱" * 40 + "-myset"
+        first = bounded_socket_name(identity, run_dir)
+        assert first == bounded_socket_name(identity, run_dir)
+        assert first == self._hashed(identity)
 
     def test_distinct_names_distinct_sockets(self):
         """Different over-long names get different bounded sockets."""
@@ -180,19 +193,62 @@ class TestBoundedSocketName:
         b = bounded_socket_name("b" * 200, run_dir)
         assert a != b
 
-    def test_boundary_triggers_fallback(self):
-        """When verbatim hits the limit exactly, the hash fallback engages."""
+    def test_103_bytes_keeps_the_plain_name(self):
+        """A full path of 103 bytes is under the limit, so the name is ``I.sock``."""
         run_dir = Path("/run/user/1000/kanibako")
-        # Pick a name whose verbatim ``<name>.sock`` is exactly at the limit.
-        prefix_len = len(str(run_dir)) + 1  # run_dir + "/"
-        name_len = _UNIX_SOCKET_PATH_LIMIT - prefix_len - len(".sock")
-        box_name = "n" * name_len
-        verbatim = run_dir / f"{box_name}.sock"
-        assert len(str(verbatim)) == _UNIX_SOCKET_PATH_LIMIT  # not < limit
-        # Must therefore fall back, and the result must pass the guard.
-        result = bounded_socket_name(box_name, run_dir)
-        assert result != f"{box_name}.sock"
-        assert len(str(run_dir / result)) < _UNIX_SOCKET_PATH_LIMIT
+        identity = self._identity_of_bytes(run_dir, 103)
+        assert len(os.fsencode(run_dir / f"{identity}.sock")) == 103
+        assert bounded_socket_name(identity, run_dir) == f"{identity}.sock"
+
+    def test_boundary_triggers_fallback(self):
+        """A full path of exactly 104 bytes is not under the limit, so the name is hashed."""
+        run_dir = Path("/run/user/1000/kanibako")
+        identity = self._identity_of_bytes(run_dir, _UNIX_SOCKET_PATH_LIMIT)
+        assert len(os.fsencode(run_dir / f"{identity}.sock")) == _UNIX_SOCKET_PATH_LIMIT
+        result = bounded_socket_name(identity, run_dir)
+        assert result == self._hashed(identity)
+        assert len(os.fsencode(run_dir / result)) < _UNIX_SOCKET_PATH_LIMIT
+
+    def test_multibyte_name_is_measured_in_bytes(self):
+        """A CJK name short in characters but long in bytes must hash, and then fit."""
+        run_dir = Path("/run/user/1000/kanibako")
+        identity = "箱" * 25 + "-__PRIMARY__"
+        verbatim = str(run_dir / f"{identity}.sock")
+        assert len(verbatim) < _UNIX_SOCKET_PATH_LIMIT
+        assert len(os.fsencode(verbatim)) >= _UNIX_SOCKET_PATH_LIMIT
+        name = bounded_socket_name(identity, run_dir)
+        assert name == self._hashed(identity)
+        validate_socket_path(run_dir / name)  # Should not raise.
+
+    def test_short_multibyte_name_stays_plain(self):
+        """A CJK name whose path is under 104 bytes keeps the plain name."""
+        run_dir = Path("/run/user/1000/kanibako")
+        identity = "箱-__PRIMARY__"
+        assert bounded_socket_name(identity, run_dir) == f"{identity}.sock"
+
+    def test_validate_counts_bytes(self):
+        """A path under 104 characters but not under 104 bytes is refused."""
+        path = Path("/run/user/1000/kanibako/" + "箱" * 25 + ".sock")
+        assert len(str(path)) < _UNIX_SOCKET_PATH_LIMIT
+        with pytest.raises(ValueError, match="Socket path too long"):
+            validate_socket_path(path)
+
+
+class TestHelperSocketPath:
+    """``helper_socket_path`` names the socket from ``<box name>-<workset name>``."""
+
+    def test_primary_box_gets_box_and_workset_name(self):
+        run_dir = Path("/run/user/1000/kanibako")
+        proj = MagicMock(mode=BoxMode.primary, group=None)
+        proj.name = "app"
+        assert helper_socket_path(proj, run_dir) == run_dir / "app-__PRIMARY__.sock"
+
+    def test_nameless_box_is_refused(self):
+        """A box without ``meta.box.name`` has no identity to render."""
+        proj = MagicMock(mode=BoxMode.primary, group=None)
+        proj.name = ""
+        with pytest.raises(ValueError, match="box has no name"):
+            helper_socket_path(proj, Path("/run/user/1000/kanibako"))
 
 
 # ── Negative tests: detection false positives ─────────────────────────

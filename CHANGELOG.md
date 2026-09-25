@@ -102,6 +102,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of its handbook chapter, and `kanibako system set --null agent.<agent>.template` skips that
   layer in both. Boxes that already exist are unaffected: seeding happens once, at create.
 
+- **A box name with non-ASCII letters could overflow the helper socket path.** The host socket
+  path was measured in characters, but the AF_UNIX limit is in bytes, so a name such as a CJK one
+  could pass the check and then fail with `AF_UNIX path too long` when the helper hub started. The
+  path is now measured in UTF-8 bytes: a path under 104 bytes keeps the name
+  `<box>-<workset>.sock`, and a longer one gets the hashed name. A box with a non-ASCII name
+  whose path was 104 to 107 bytes long, which used to keep the plain name, now gets the hashed
+  name. The socket is recreated at every launch, and the path inside the box, `~/.kanibako/state/helper.sock`, is unchanged; see MIGRATION.md ("The host
+  helper socket name is measured in bytes").
+
 - **`kanibako-min` shipped without kanibako or the baseline tools.** Its base, droste-seed, has
   no pip, so the image build skipped the cli install in silence, and the baseline tool list it
   derives from `kanibako baseline list` came back empty (measured on the published

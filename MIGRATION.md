@@ -5245,6 +5245,19 @@ translated: `--to default` and `--to workset` fail at argument parsing, exit `2`
 lists the three valid choices. `box convert` and `box move` are not affected: neither has `--to`,
 and their `--default`, `--standalone` and `--workset <ws>` flags are unchanged.
 
+### 2.85 The host helper socket name is measured in bytes
+
+**Read this only if a host-side script builds the helper socket path under `$XDG_RUNTIME_DIR/kanibako/`
+itself.** The socket's file name is `<box>-<workset>.sock` when the full path is under 104 UTF-8
+bytes; otherwise it is the first 16 hex characters of SHA-256 over `<box>-<workset>`, plus
+`.sock`. Before, the path was measured in characters, so a box name with non-ASCII letters whose
+path was under 104 characters but 104 bytes or longer kept the plain name, and at 108 bytes or
+more the helper hub then failed to start.
+
+**What you must do.** Nothing inside a box: the socket is recreated at every launch and is still
+mounted at `~/.kanibako/state/helper.sock`. A host script that computes the path must measure it
+in bytes.
+
 ---
 
 ## 3. For plugin authors

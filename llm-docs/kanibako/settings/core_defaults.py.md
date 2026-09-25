@@ -860,10 +860,10 @@ of 2026-08-29 and in STANDALONE as of 2026-08-30, so writer, gate and mount name
 `resolve_workset_logs(..., standalone=True)`, which hands the pre-snapshot route the already-resolved
 `workset.boxes` (a lone box has no `@meta.box.name` leaf under it).
 
-⚑ **`helper_sock` is NOT routed:** its host path is the LENGTH-BOUNDED (hashable) socket name
-`bounded_socket_name(<box>-<ws>, run_dir)`, which the spec form `@system.runtime/<box>-<ws>.sock`
-cannot reproduce when the name is hashed for the AF_UNIX `sun_path` limit (JC-B2b-3) — so it keeps
-its probed literal host_src (the `.exists()` gate is unchanged either way).
+⚑ **`helper_sock` is NOT routed:** its host path is the bounded socket name
+`bounded_socket_name(<box>-<ws>, run_dir)` — the companion's name rule (§ "Box and helper
+identity"), which no `@`-formula can express (JC-B2b-3) — so it keeps its probed literal host_src
+(the `.exists()` gate is unchanged either way).
 
 ## The image-sharing binds
 
