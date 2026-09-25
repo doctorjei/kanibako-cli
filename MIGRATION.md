@@ -2436,7 +2436,7 @@ dropped token pointer looks like an auth failure, not a config error.
 
 ⚑ **`bindings:` moved too, and its own section has the detail.** At the time this section was
 first written it was the one table still nested; it is flat now, like everything else, and the
-nested spelling is refused with the rest. See **§2.37**, which covers every category in one go.
+nested spelling is refused with the rest. See **"2.37 An agent's settings file has ONE level: everything sits directly under `self:`"**, which covers every category in one go.
 
 `kanibako box show --effective` resolves the same settings a launch does, so it will show you the
 resulting values (and report the refusal, if any) without starting anything.
@@ -2569,14 +2569,22 @@ self:
   (`self: model: opus`), and the same refusal if you leave it. This one had a second failure of its
   own: a flat `model:` in the same file silently beat the nested one, so the nested value was not
   overridden, it was ignored.
+- **You have a key *beside* `self:`** — `model: opus` at the top of the file instead of under the
+  root, say. Nothing but `self:` is read at that level (1.7.2 read it the same way), so the key was
+  ignored without a word and never reached a box. It now **refuses, naming the key and the file**.
+  Move it under `self:` if it is one of this agent's settings; otherwise delete it. A top-level
+  `system:`, `meta:`, `pref:` or `binding_derivations:` table is still dropped with a warning, and
+  an `agent:`, `workset:` or `box:` table is still not read.
 
-**Why refuse it rather than keep accepting it?** Because it was never one spelling — it was two,
-and the flat one won without saying so. A file carrying both a nested and a flat table of one
-category lost the nested one *wholesale*: entries spelled only under `<agent>:` were not
+**Why refuse a nested level rather than keep accepting it?** Because it was never one spelling —
+it was two, and the flat one won without saying so. A file carrying both a nested and a flat table
+of one category lost the nested one *wholesale*: entries spelled only under `<agent>:` were not
 overridden, they were absent, with no message. A refusal that names the table is the smallest
-change that makes that impossible.
+change that makes that impossible. A key *beside* `self:` is refused for the plainer reason every
+other settings file's top level is (*"An undeclared key in a settings file now stops the command,
+and the cure is a hand-edit"*): ignored without a word, it looks exactly like a setting that works.
 
-The refusal prints the fix for the table it found, so you do not have to work it out from here.
+Each refusal prints the fix for what it found, so you do not have to work it out from here.
 `kanibako box show --effective` resolves the same settings a launch does, so you can check a file —
 and see the refusal, if any — without starting anything.
 
@@ -6851,11 +6859,12 @@ plugin contract). The user-visible pieces are three on-disk / box-layout changes
 
 ### 9.1 Per-agent YAML section `crab:` → `agent:`
 
-⚑ **Superseded in v1.8.0 — see §2.37 (line 2094).** The top-level section token
+⚑ **Superseded in v1.8.0 — see *"2.37 An agent's settings file has ONE level: everything sits
+directly under `self:`"*.** The top-level section token
 renamed from `crab` to `agent` at 1.6.0, as shown below, but that is no longer
-the file's root spelling either: v1.8.0 renamed it again, to **`self:`**
-(`settings/agent_file.py:36`). Renaming a `crab:` section to `agent:` today still
-leaves the file unrecognized — go straight to `self:`, and read §2.37 for the
+the file's root spelling either: v1.7.2 renamed it again, to **`self:`**
+(`_ROOT` in `settings/agent_file.py`). Renaming a `crab:` section to `agent:` today still
+leaves the file unrecognized — go straight to `self:`, and read that section for the
 full current shape (every category flat under one `self:` level).
 
 ```yaml

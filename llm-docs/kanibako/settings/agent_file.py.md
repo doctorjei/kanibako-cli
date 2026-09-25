@@ -26,7 +26,7 @@ half is now `level_table`), and `agent reset --all`'s raw surgery (now `clear_ov
 ## What is in here, and what deliberately is not
 
 IN: the root table's spelling · a key TAIL → its `(sections, leaf)` address · the whole-file
-`AgentConfig` round trip · which raw table a cascade level reads · the nested refusal and its cures ·
+`AgentConfig` round trip · which raw table a cascade level reads · the nested and top-level refusals ·
 the file's own spelling as a STRING, for the two messages that quote it at a user.
 
 OUT: `KeyStore` and every store coercion (`settings_assemble._agent_partial`, deliberately — see
@@ -102,6 +102,9 @@ shape, over a different file. Dropped, not relocated.)* Inside `self:`:
   the literal `default` included — the agent file has **no spelling for the all-agents
   tier at all**, which is
   written in the SYSTEM file as `agent: default: <category>:`.
+
+**Beside `self:`, nothing is read** — and a non-scope key there REFUSES BY NAME
+(`_refuse_stray_roots`, below), because no other audit can see it.
 
 ⚑ **THE FLATTEN (S2) IS WHY THIS IS ONE LIST AND NOT THREE.** `secret_path` flattened at
 2026-07-14b, `env` at MBR-1 P3, and `bindings` was the last occupant of the nested shape — kept
@@ -441,6 +444,10 @@ refused, so `agent show` described a shape that could not start a box. The escap
 and was checked: `agent reset --all` reaches `clear_overrides` only, never `load`, so a file in the
 refused shape can still be cleared. The loudest surface is `start.py`'s per-launch load, which is
 why the message quality matters more here than anywhere.
+⚑ **EXCEPT the top-level stray check (`_refuse_stray_roots`), which is CASCADE-ONLY** — it needs
+the drop-set, which lives in `settings_assemble` (importing it here closes a cycle), and without it
+`load` would refuse a `pref:` table the spec drops with a warning. So on a file carrying a stray,
+`agent info` / `list` read silently while the launch refuses: the two readers DO disagree there.
 
 ⚑ **Sparse on the way out**: an EMPTY category is not materialized, or `agent reset --all` would
 count a phantom `{}` as an override. ⚑ **`category_tables` is an OPAQUE carry** — RENAMED from
@@ -558,7 +565,8 @@ rung**, and `settings_assemble` says so at the call site. The call is KEPT rathe
 dropping it re-indexes every `base_levels[n]` consumer, and whether a structurally-empty rung
 should be encoded at all is a re-encoding question boarded on its own.
 
-A missing `self` table, or a non-dict root, yields an empty level.
+The top-level refusal runs first, then the nested one. A missing `self` table, or a non-dict
+root, yields an empty level.
 
 ```_nested_agent_cure(category: str | None, sub_key: str, *, var: str, value: str) -> str```
 The ARM-APPROPRIATE fix for a refused `self.<sub>:` sub-table.
@@ -638,6 +646,29 @@ documented.
 _refuse_env_twin`, the sole twin raise site). That one arbitrates two DECLARED keys contesting one
 slot at COLLAPSE time; this one rejects a FILE SPELLING at ASSEMBLY time, before any key exists.
 Neither weakens the other and neither test may stand in for the other's.
+
+```_refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None```
+RAISE on a key at the FILE's top level that is neither `self` nor a scope token (spec §0).
+
+⚑ **WHY IT HAS TO BE HERE.** In the other settings files an unknown top-level entry rides into the
+launch snapshot, where `settings_launch._refuse_undeclared_snapshot` can refuse it by name. This file
+contributes only its root table, so a stray beside `self:` never reached that audit: a `model:`
+written one level too high set nothing and said nothing (a `v1.7.2` behaviour too — its reader also
+took `self` alone).
+
+⚑⚑ **A SCOPE TOKEN IS NOT THIS RULE'S TO JUDGE.** `system:` (like `meta:`, `binding_derivations:`
+and `pref:`) is dropped WITH A WARNING by `assemble_levels` before `level_table` runs, so it never
+arrives. `agent:` / `workset:` / `box:` do arrive and are passed over unread, as before — whether
+spec §0's defaults-down clause (*"a settings file contributes keys of its OWN scope and of scopes it
+CONTAINS"*) makes a contained scope's table an INPUT here, or the `self:` root makes it a non-input to
+refuse, is an OPEN spec question (`Q85`). Passing them over is correct under NEITHER reading — (a)
+wants them merged, (b) wants them refused — and stands only while `Q85` is pending; refusing them
+now would decide it by accident. Pinned both ways in
+`test_agent_file.py`: `TestLevelTable` (the refusal, and the scope-token control) and
+`TestTheStrayRuleOnTheProductionPath` (every upstream drop, DERIVED from the drop rules, still warns
+and builds).
+
+⚑ It runs in `level_table` only, NOT in `load` — why is under `load` above.
 
 ```state_level(cfg, *, node, path=None) -> AgentFileLevel | None```
 The file's BEHAVIOR as a DISCRIMINATED level, or `None` if it sets none. *path*, the file *cfg* was

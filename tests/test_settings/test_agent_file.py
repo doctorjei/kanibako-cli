@@ -26,6 +26,7 @@ from kanibako.settings.agent_file import (
     stored_leaf_text,
     write_leaf,
 )
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_resolve import SettingsError
 
 
@@ -953,12 +954,81 @@ class TestLevelTable:
         with pytest.raises(SettingsError, match=r"self\.claude"):
             level_table(raw, sub_key="claude", node="claude")
 
+    @pytest.mark.parametrize("stray", ("model", "stray", "env", "config", "Self"))
+    def test_a_top_level_stray_beside_the_root_refuses_by_name(self, stray, tmp_path):
+        # spec §0 — an undeclared key is an ERROR that names it. The file contributes
+        # only its root table, so a key BESIDE ``self:`` never reached the snapshot's §0
+        # audit and used to vanish silently: a ``model:`` one level too high set nothing.
+        # ⚑ Scalar and table alike, with a legal root beside it and with none.
+        path = tmp_path / "agent.yaml"
+        for raw in (
+            {"self": {"env": {"A": "b"}}, stray: "foo"},
+            {stray: {"X": "y"}},
+        ):
+            with pytest.raises(SettingsError) as exc:
+                level_table(raw, sub_key="claude", node="claude", path=path)
+            message = str(exc.value)
+            assert f"`{stray}` at the top level of {path}" in message
+            assert "agent.claude" in message
+
+    @pytest.mark.parametrize("scope", SCOPE_CONTAINMENT)
+    def test_a_scope_table_is_not_this_refusals_to_judge(self, scope):
+        # ⚑ The CONTROL: a scope token at the top level is §0 directional enforcement's
+        # question, not the stray rule's — ``system:`` is dropped upstream, and whether a
+        # contained scope's table is an input of this file is an open spec question.
+        # The stray refusal must not decide it by accident.
+        raw = {"self": {"env": {"A": "b"}}, scope: {"env": {"X": "1"}}}
+        level = level_table(raw, sub_key="claude", node="claude")
+        assert level.table == {"env": {"A": "b"}}
+
     def test_a_bare_sub_key_leaf_is_not_a_table(self):
         # ``claude:`` with nothing under it parses to None. It carries nothing and
         # delivers nothing, so it is a stray scalar, not a nested sub-table.
         assert level_table(
             {"self": {"claude": None}}, sub_key="claude", node="claude",
         ).table == {}
+
+
+class TestTheStrayRuleOnTheProductionPath:
+    """The stray refusal as the cascade reaches it — through ``assemble_levels``, whose
+    upstream DROPS (§0 directional enforcement, §2h) must run before it, or a table the
+    spec says to drop with a warning would refuse instead."""
+
+    @staticmethod
+    def _assemble(tmp_path, text):
+        from kanibako.settings.settings_assemble import assemble_levels
+
+        agent_path = tmp_path / "agent.yaml"
+        agent_path.write_text(text)
+        return assemble_levels(
+            agent_name="claude", base_path=tmp_path / "absent-base.yaml",
+            agent_path=agent_path,
+        )
+
+    def test_a_stray_refuses_the_resolve_naming_the_file(self, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            self._assemble(tmp_path, "self:\n  env:\n    A: b\nmodel: opus\n")
+        assert f"`model` at the top level of {tmp_path / 'agent.yaml'}" in str(exc.value)
+
+    def test_every_table_the_cascade_drops_still_drops(self, tmp_path, caplog):
+        # ⚑ DERIVED FROM THE DROP RULES, never listed (P13): the agent file's directional
+        # drop-set, plus ``pref:`` exactly when §2h's legal levels exclude this file. Each
+        # must build, and warn naming itself.
+        from kanibako.settings.settings_assemble import (
+            _PREF_LEGAL_LEVELS,
+            _upward_scope_drop_set,
+        )
+        from kanibako.settings.settings_prefs import PREF_ROOT
+
+        directional = _upward_scope_drop_set("agent")
+        assert directional, "an empty drop-set would pass this vacuously"
+        pref = set() if "agent" in _PREF_LEGAL_LEVELS else {PREF_ROOT}
+        dropped = sorted(directional | pref)
+        text = "self:\n  env:\n    A: b\n" + "".join(f"{t}:\n  x: 1\n" for t in dropped)
+        with caplog.at_level("WARNING"):
+            self._assemble(tmp_path, text)
+        for token in dropped:
+            assert any(f"'{token}'" in m for m in caplog.messages), (token, caplog.messages)
 
 
 class TestStateLevel:
