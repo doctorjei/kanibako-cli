@@ -49,7 +49,7 @@ def _bootstrap_default() -> str
 def _is_no_bootstrap(program: str | None) -> bool
 def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, key: str, floor: str, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
 def _effective_bootstrap(proj, system_settings_path: 'Path | None', agent_id: str, *, agent_path: 'Path | None'=None) -> str
-def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, agent_cfg) -> 'str | None'
+def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, agent_cfg, *, agent_cfg_path: 'Path | None'=None) -> 'str | None'
 def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> str
 def _bootstrap_available(program: str | None=None) -> bool
 def _check_box_components(proj) -> str | None
@@ -101,7 +101,7 @@ def _preflight_env_persona(agent_cfg, endpoint: str, keyspace_model: object, wir
 def _persona_no_endpoint_error(agent_id: str, wiring) -> str
 def _preflight_config_file_persona(agent_id: str, agent_cfg, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _codex_persona_token_error(agent_cfg, wiring, endpoint: str, display: str, bundle=None) -> 'str | None'
-def _effective_behavior_for_display(target, agent_cfg, project_toml, *, system_settings_path, workset_config_path=None, node_name=None) -> dict[str, str]
+def _effective_behavior_for_display(target, agent_cfg, project_toml, *, system_settings_path, workset_config_path=None, node_name=None, agent_cfg_path=None) -> dict[str, str]
 def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None')
 def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, agent_cfg, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object]'
 def _persona_model_state(snapshot: 'KeyStore', active_agent: str) -> object

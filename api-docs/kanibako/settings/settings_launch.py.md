@@ -26,6 +26,7 @@ _BOX_STORE_KEY = 'workset.boxes'
 ```
 AuthTier = Literal['workset', 'global', 'box']
 _TierFile = tuple[str, Path | None]
+_WrittenLevel = tuple[KeyStore, Path | None, KeyStore | None]
 
 ```
 
@@ -51,6 +52,8 @@ def _materialize_auth_active(snapshot: KeyStore) -> None
 def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]
 def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None
 def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[_TierFile]) -> None
+def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
+def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None

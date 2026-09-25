@@ -163,11 +163,14 @@ class AgentFileLevel:
 
     *node* is the discriminator the tier merges under (``default`` or the active agent), NOT
     necessarily the agent whose file this is.  *table* is raw YAML: no ``KeyStore``, no bind
-    parsing, no precedence (that is ``settings_assemble``'s half of the seam).
+    parsing, no precedence (that is ``settings_assemble``'s half of the seam).  *path* is the
+    file the table was read from, or ``None`` when the caller did not say; it travels WITH the
+    table so a refusal about one of its values can name the file ([R147], read time).
     """
 
     node: str
     table: dict
+    path: Path | None = None
 
 
 def scalar_family_of(tail: str) -> str | None:
@@ -810,14 +813,15 @@ def level_table(
 
 
 def state_level(
-    cfg: "AgentConfig | None", *, node: str
+    cfg: "AgentConfig | None", *, node: str, path: Path | None = None,
 ) -> AgentFileLevel | None:
     """The agent file's BEHAVIOUR as a DISCRIMINATED level, or ``None`` if it sets none.
 
     The per-agent file stores behaviour FLAT (``model`` — already per-agent), not under the
     sub-tables the cascade merges by.  The discriminator is the file's OWN node and is attached
     HERE, at the boundary, not carried undiscriminated through the launch and attached at
-    snapshot build.
+    snapshot build.  *path* is the file *cfg* was read from, attached here for the same
+    reason: the launch's read-time path check names it (:class:`AgentFileLevel`).
 
     ⚑ EVERY producer of a behaviour level goes through here (S1b), and
     ``settings_launch._agent_state_partial`` reads the level's node — so the node a table merges
@@ -855,7 +859,7 @@ def state_level(
         table["run_args"] = list(cfg.run_args)
     if not table:
         return None
-    return AgentFileLevel(node, table)
+    return AgentFileLevel(node, table, path)
 
 
 def _refuse_undeclared_state(state: "Mapping[str, str | None]", *, node: str) -> None:

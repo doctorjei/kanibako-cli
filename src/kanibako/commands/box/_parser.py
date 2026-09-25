@@ -2130,6 +2130,9 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     system_settings_path=std.settings,
                     workset_config_path=workset_path,
                     node_name=agent_id,
+                    agent_cfg_path=(
+                        agent_cfg_path if agent_cfg_path.exists() else None
+                    ),
                 )
             # ⚑ Resolved off the SAME launch pipeline a start takes, so the display
             # cannot drift from what mounts.  A collision is REPORTED, never raised —

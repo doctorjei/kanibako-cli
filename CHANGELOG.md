@@ -76,6 +76,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A bare relative path typed by hand into a settings file is now refused for every path key,
+  not only some.** The v1.8.0-rc2 entry *"A path setting written as a bare relative path is now
+  refused instead of being anchored somewhere"* promised this, but when kanibako read a settings
+  file back it checked only the `config.*` and `system.*` path keys, the workset directory keys,
+  the `workset.channels.*` leaves, and a path key that a bind source is built on (such as
+  `box.canon` in `@box.canon/handbook`). A value none of those checks reached was used as
+  written: `workset.auth.path: auth` in a `workset.yaml` made the workset credential store
+  `auth/<agent>`, relative to whatever directory you ran the command from. A bare relative
+  `secret_path.<VAR>` was caught only when kanibako built a box's mounts, and with a different
+  message. Every path key a settings file stores is now checked when kanibako resolves a box's
+  settings, with the same two-readings message `set` gives. This check names every offending key
+  it finds in one refusal, each with the file that holds it. The earlier checks still run first
+  and still stop at the first fault they find, so a file with several faults can take more than
+  one pass. ⚠️ **A hand-edited value that rc2 accepted can now stop the command** — respell it as
+  `MIGRATION.md`, *A bare relative path in a settings key is refused*, describes.
+
 - **`kanibako-min` shipped without kanibako or the baseline tools.** Its base, droste-seed, has
   no pip, so the image build skipped the cli install in silence, and the baseline tool list it
   derives from `kanibako baseline list` came back empty (measured on the published

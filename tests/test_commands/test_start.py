@@ -508,6 +508,21 @@ class TestEffectiveBootstrapResolution:
         # A DIFFERENT agent (no matching per-agent slot) still sees the default.
         assert _effective_bootstrap(proj, sys_file, "goose") == "zellij"
 
+    def test_a_bare_relative_in_the_agent_file_names_that_file(self, tmp_path):
+        """[R147]'s read-time refusal names the agent file this focused read loaded."""
+        # Mutation: drop ``path=agent_path`` from ``_effective_agent_scalar``'s
+        # ``state_level`` call → the refusal names no file.
+        from kanibako.commands.start import _effective_bootstrap
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.settings_resolve import SettingsError
+        proj = self._proj(tmp_path)
+        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file.parent.mkdir(parents=True)
+        dump_doc(agent_file, {"self": {"canon": "rel"}})
+        with pytest.raises(SettingsError) as exc:
+            _effective_bootstrap(proj, None, "claude", agent_path=agent_file)
+        assert f"agent.claude.canon is set to 'rel' in {agent_file}" in str(exc.value)
+
 
 class TestEffectiveTransformResolution:
     """`_effective_transform` resolves the AGENT-scope ``transform`` key (spec §2d

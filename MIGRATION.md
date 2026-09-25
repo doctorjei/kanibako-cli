@@ -3955,7 +3955,7 @@ like every other.
 
 ### 2.62 A bare relative path in a settings key is refused
 
-**Read this if you set any path key to a value that does not start with `/`, `~`, `$` or `@` —
+**Read this if you set any path key to a value that does not start with `/`, `~`, `$XDG_` or `@` —
 `workset.channelroot: comms`, `system.cache: mycache`, `box.canon: canon`.**
 
 **What changed.** A bare relative path had two different meanings depending on which key carried
@@ -3966,13 +3966,18 @@ through raw, so it resolved against **whatever directory you happened to be stan
 ran the command**. One key, one answer is the rule; this was one keyspace, two answers, and neither
 was written down where you would see it.
 
-It is now refused, at both ends: when you `set` it, and when kanibako reads it back.
+It is now refused, at both ends: when you `set` it, and when kanibako resolves a box's settings. That
+check covers every path key in every settings file. Its refusal names every offending key it finds,
+each with the file that holds it. Some earlier checks run first and stop at the first fault they
+find: the `config.*` and `system.*` path keys, the workset directory keys, and a bind source built
+on a path key (`@box.canon/handbook`). So a file with several faults can take more than one pass.
 
-⚑ **`secret_path.<VAR>` is in the rule too, and for it the `set` end is the only end.** A secret
-pointer's value is deliberately never read into a snapshot — kanibako mounts the file and never
-looks at it — so there is no read-back to catch a bare relative at. `kanibako system set
-system.secret_path.MY_TOKEN=token.txt` is refused with the same message; a value already sitting in
-a settings file is not, and you should check those by hand.
+⚑ **`secret_path.<VAR>` is in the rule too, at both ends.** kanibako mounts the file a secret
+pointer names and never reads the file itself, but the pointer is still a value in your settings
+file, and it is checked like any other path key. `kanibako system set
+system.secret_path.MY_TOKEN=token.txt` is refused with the same message, and so is a
+`secret_path.MY_TOKEN: token.txt` already sitting in a settings file, at every scope and under
+`agent.<node>`.
 
 **Why refused rather than picked.** Both readings are defensible, which is precisely the problem.
 The reason to set one of these keys at all is to move the directory *off* its default — and the
@@ -4010,7 +4015,9 @@ than only the result.
 **What you must do.** In each config or settings file you have written — your
 `kanibako.cfg`, the system `global/settings.yaml`, each workset root's `workset.yaml`, each box
 dir's `box.yaml`, each agent store's `agent.yaml` — look at the value of every key in the list
-above, and of every `secret_path.<VAR>` you have configured, and check its first character. If it is not `/`, `~`, `$` or `@`, respell it from the table.
+above, and of every `secret_path.<VAR>` you have configured, and check how it starts. If it does
+not start with `/`, `~`, `$XDG_` or `@`, respell it from the table; `$AGENT/…` and `$WORKSET/…`
+count as relative, because those variables expand to a bare name.
 There is usually nothing to find: no default kanibako ships is written this way, so a bare relative
 only appears where you typed one. If it was one of the workset directory keys or a
 `workset.channels.*` leaf, `@meta.workset.path/<value>` reproduces exactly what kanibako was doing

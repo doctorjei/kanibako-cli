@@ -955,7 +955,7 @@ def _effective_agent_scalar(
     if agent_state is None and agent_path is not None and Path(agent_path).exists():
         try:
             agent_state = agent_file.state_level(
-                agent_file.load(agent_path), node=agent_id,
+                agent_file.load(agent_path), node=agent_id, path=agent_path,
             )
         except Exception:
             agent_state = None
@@ -1028,6 +1028,8 @@ def _effective_transform(
     agent_id: str,
     target,
     agent_cfg,
+    *,
+    agent_cfg_path: "Path | None" = None,
 ) -> "str | None":
     """Resolve the AGENT-scope ``transform`` key — WHICH binary transform this launch runs.
 
@@ -1039,6 +1041,8 @@ def _effective_transform(
 
     Resolved HERE rather than off the 7b launch snapshot because the patched install
     feeds that snapshot's delivery binds, so the decision must precede it.
+    *agent_cfg_path* is the file *agent_cfg* was read from, so a read-time refusal of
+    one of its values can name it.
     """
     floor = ""
     descriptors = target.setting_descriptors() if target is not None else []
@@ -1053,7 +1057,7 @@ def _effective_transform(
         proj, system_settings_path, agent_id,
         key="transform", floor=floor,
         agent_state=(
-            agent_file.state_level(agent_cfg, node=agent_id)
+            agent_file.state_level(agent_cfg, node=agent_id, path=agent_cfg_path)
             if agent_cfg is not None else None
         ),
     )
@@ -3608,6 +3612,7 @@ def _run_container(
         active_transform = (
             _effective_transform(
                 proj, system_settings_path, agent_id, target, agent_cfg,
+                agent_cfg_path=agent_cfg_path,
             )
             if target and install
             else None
@@ -6115,6 +6120,7 @@ def _effective_behavior_for_display(
     system_settings_path,
     workset_config_path=None,
     node_name=None,
+    agent_cfg_path=None,
 ) -> dict[str, str]:
     """Effective agent BEHAVIOR state for the ``config --effective`` DISPLAY.
 
@@ -6139,6 +6145,8 @@ def _effective_behavior_for_display(
     With no declared descriptors the target has no behavior floor — the effective
     state is just the per-agent file's raw state (preserved from the old
     early-return). Values are scalars, used verbatim (behavior has no @-ref tier).
+    *agent_cfg_path* is the file *agent_cfg* was read from (``None`` when it was
+    generated), so a read-time refusal of one of its values can name it.
     """
     from kanibako.settings import settings_launch
     from kanibako.settings.paths import host_xdg_map
@@ -6169,7 +6177,7 @@ def _effective_behavior_for_display(
     # line above — the same node the ``agent.<node>.*`` cascade slot keys on, and
     # the reason this read exists (fix 4a).  Building it beside ``behavior_floor``
     # would pin a node that has not been decided yet.
-    agent_state = agent_file.state_level(agent_cfg, node=active)
+    agent_state = agent_file.state_level(agent_cfg, node=active, path=agent_cfg_path)
 
     # DISPLAY == LAUNCH: the same persona-store tier the launch resolves against
     # (:func:`_persona_values_for`), read here for the same node. Without it this

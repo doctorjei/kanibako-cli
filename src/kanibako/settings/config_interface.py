@@ -412,9 +412,10 @@ def _bare_relative_path_error(
 ) -> "str | None":
     """[R147] at SET TIME — refuse a bare-relative value for a PATH key, naming both readings.
 
-    The SET-TIME twin of the two read-time seams (``paths._refuse_bare_relative`` and
-    ``settings/workset_dirkeys.resolve_workset_dir_key``), sharing their predicate and
-    their message rather than restating the rule: one rule, one wording, at both ends.
+    The SET-TIME twin of the three read-time seams (``paths._refuse_bare_relative``,
+    ``settings/workset_dirkeys.resolve_workset_dir_key`` and the launch snapshot's
+    sweep, ``settings_launch._refuse_ambiguous_path_values``), sharing their predicate
+    and their message rather than restating the rule: one rule, one wording, at both ends.
 
     *canonical* is the PATH key whose type and anchor govern; *display_key* is the
     spelling the message names (the ``+`` form for a persona node, never ``℘``); and
@@ -1103,8 +1104,9 @@ def set_config_value(
         )
 
     # [R147] — a BARE RELATIVE value for a PATH key is AMBIGUOUS and is REFUSED, the twin of
-    # the read-time refusals in ``paths._refuse_bare_relative`` and
-    # ``workset_dirkeys.resolve_workset_dir_key``. ⚑ THE ONE PLACE IT IS SPELLED for the
+    # the three read-time refusals in ``paths._refuse_bare_relative``,
+    # ``workset_dirkeys.resolve_workset_dir_key`` and
+    # ``settings_launch._refuse_ambiguous_path_values``. ⚑ THE ONE PLACE IT IS SPELLED for the
     # whole CLI: ``system``/``workset``/``box``/``agent set`` all arrive here, so the rule
     # cannot be reachable at one noun and not another.
     # ⚑ POSITION: after every NAME-level refusal above (a retired or wrong-scope spelling

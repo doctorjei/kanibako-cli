@@ -231,9 +231,10 @@ A path key's STORED value must say ON ITS OWN where it points ([R147], 2026-08-2
 is AMBIGUOUS and is REFUSED rather than anchored. `is_unambiguous_path_value` is that test and
 `ambiguous_path_value_error` is the wording every seam refuses with. Both live here so the rule has
 ONE predicate and ONE message wherever it fires: `config_interface._bare_relative_path_error` at set
-time,
-`paths._refuse_bare_relative` on the Layer-1/Layer-2 read, and
-`workset_dirkeys.resolve_workset_dir_key` on the workset dir keys.
+time, and three read-time seams — `paths._refuse_bare_relative` on the Layer-1/Layer-2 read,
+`workset_dirkeys.resolve_workset_dir_key` on the workset dir keys, and
+`settings_launch._refuse_ambiguous_path_values`, the launch snapshot's sweep over every path key a
+settings file stores.
 
 ### `is_unambiguous_path_value(value)`
 
@@ -279,9 +280,11 @@ them). ⚑ **The label is not decoration either:** calling a declaration root "t
 root" would tell the reader a default exists to fall back to, which is the single thing a message
 about an unset, ambiguous value must not invent.
 
-⚑ `secret_path.<VAR>` reaches this refusal at SET time only. At launch it is refused by
-`settings_launch`'s own §2a SOURCE message, because it is the one path key with no declared default
-— so there is no second candidate anchor for a two-readings message to name.
+⚑ `secret_path.<VAR>` reaches this refusal at SET time and, for a value a settings file stores, at
+read time: `settings_launch._refuse_ambiguous_path_values` judges it with the two-readings message,
+its second reading being the scope root `config_keys.path_key_anchor` picks. `settings_launch`'s own
+§2a SOURCE refusal, raised when the mounts are built, covers what that check does not judge: a value
+kanibako supplies itself, and a snapshot `build_launch_snapshot` did not build.
 
 ---
 

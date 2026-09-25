@@ -41,7 +41,7 @@ def clear_overrides(path: Path) -> int
 def load(path: Path) -> AgentConfig
 def save(path: Path, cfg: AgentConfig) -> None
 def level_table(raw: Any, *, sub_key: str, node: str | None=None, path: Path | None=None) -> AgentFileLevel
-def state_level(cfg: 'AgentConfig | None', *, node: str) -> AgentFileLevel | None
+def state_level(cfg: 'AgentConfig | None', *, node: str, path: Path | None=None) -> AgentFileLevel | None
 def _read_address(tail: str) -> tuple[tuple[str, ...], str]
 def _write_address(tail: str) -> tuple[tuple[str, ...], str]
 def _is_table_valued(tail: str) -> bool
@@ -63,4 +63,5 @@ class AgentFileSlot:
 class AgentFileLevel:
     node: str
     table: dict
+    path: Path | None = None
 ```
