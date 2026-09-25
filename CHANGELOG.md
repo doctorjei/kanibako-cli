@@ -121,6 +121,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MIGRATION.md` § *2.47 An undeclared key in a settings file now stops the command, and the cure
   is a hand-edit*.
 
+- **A key at the top level of an agent's `agent.yaml`, beside `self:`, is now refused instead of
+  ignored.** The agent settings file holds its settings under `self:`, and nothing else at its top
+  level was read — nor in 1.7.2, whose `agents/<agent>/settings.yaml` was read the same way. So a
+  `model: opus` written one level too high, or any other stray key there, let the box start and
+  never reached it, with no message; the top-level check for the other settings files did not
+  cover this one. It now stops the command, naming the key and the file: move the setting under
+  `self:`, or delete the line. A top-level `system:`, `meta:`, `pref:` or `binding_derivations:`
+  table is still dropped with a warning, and an `agent:`, `workset:` or `box:` table is still not
+  read. See `MIGRATION.md` § *2.37 An agent's settings file has ONE level: everything sits directly
+  under `self:`*.
+
 - **`box get` and `workset get` no longer read back a `pref.*` request that is not a key.** A pref
   may target only `system.agent` or `agent.<agent>.<key>` (spec §2h), and the closed keyspace
   holds only those requests, but the key check accepted `pref.<key>` for any key: a hand-written

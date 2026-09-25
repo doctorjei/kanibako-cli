@@ -492,6 +492,10 @@ def load(path: Path) -> AgentConfig:
     ⚑ IT RUNS THE SAME REFUSAL THE CASCADE DOES (:func:`_refuse_nested_tables`): two readers of
     ONE file must not disagree about what the file means.  Before this, ``load`` accepted a nested
     sub-table the launch refused, so ``agent show`` described a shape that could not start a box.
+    ⚑ EXCEPT THE TOP-LEVEL STRAY CHECK (:func:`_refuse_stray_roots`), which is CASCADE-ONLY: it
+    needs the drop-set, which lives in ``settings_assemble`` (importing it here closes a cycle),
+    and without it ``load`` would refuse a ``pref:`` table the spec drops with a warning.  So
+    ``agent info`` / ``list`` read a file carrying a stray silently, and the launch refuses it.
     """
     cfg = AgentConfig()
     if not path.exists():
@@ -776,6 +780,43 @@ def _refuse_nested_tables(
         )
 
 
+def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None:
+    """RAISE on a key at the FILE's top level that is neither its root nor a scope token (spec §0).
+
+    ⚑ THE FILE-LEVEL HALF OF THE CLOSED KEYSPACE. In the other settings files an unknown
+    top-level entry rides into the launch snapshot, where the §0 audit can refuse it BY NAME; this
+    file contributes only its root table, so a stray beside ``self:`` never reached that audit
+    and vanished without a word — a ``model:`` written one level too high set nothing.
+
+    ⚑⚑ A SCOPE TOKEN (``kb_store.SCOPE_CONTAINMENT``) IS NOT THIS RULE'S TO JUDGE. ``system:`` is
+    dropped with a warning before this runs (§0 directional enforcement), as are ``meta:``,
+    ``binding_derivations:`` and ``pref:``. ``agent:`` / ``workset:`` / ``box:`` DO arrive, and
+    are passed over UNREAD: whether §0's defaults-down clause makes a contained scope's table an
+    INPUT of this file, or the ``self:`` root makes it a non-input to refuse, is an open spec
+    question (Q85). 🛑 Passing them over is correct under NEITHER reading — the first wants them
+    merged, the second refused — and stands only while Q85 is pending.
+    """
+    from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+
+    agent = node or "<agent>"
+    where = path if path is not None else "the agent settings file"
+    for raw_key in raw:
+        key = str(raw_key)
+        if key == _ROOT or key in SCOPE_CONTAINMENT:
+            continue
+        raise SettingsError(
+            f"`{key}` at the top level of {where} is not a settings key, so kanibako "
+            f"will not read the file.\n"
+            f"This file holds its settings under `{_ROOT}:` — an ALIAS for "
+            f"`agent.{agent}` — and nothing beside it is read (spec §0, closed "
+            f"keyspace). Refusing rather than running: a key here used to be ignored "
+            f"without a word, so whatever it set never reached a box.\n"
+            f"  Fix: if `{key}` is one of this agent's settings, move it under "
+            f"`{_ROOT}:`:\n    {_ROOT}:\n      {key}: …\n"
+            f"  otherwise delete the `{key}` entry from {where}."
+        )
+
+
 def level_table(
     raw: Any, *, sub_key: str, node: str | None = None, path: Path | None = None
 ) -> AgentFileLevel:
@@ -788,10 +829,13 @@ def level_table(
     bare-``agent`` collapse. A missing root table yields an EMPTY table. *path* and *node* only
     render the refusal message; neither is read.
 
-    ⚑ THE REFUSAL RUNS FIRST, over the WHOLE root — see :func:`_refuse_nested_tables`.
+    ⚑ THE REFUSALS RUN FIRST: over the file's TOP level (:func:`_refuse_stray_roots`), then over
+    the WHOLE root (:func:`_refuse_nested_tables`).
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
+    if isinstance(raw, dict):
+        _refuse_stray_roots(raw, node=node, path=path)
     agent = raw.get(_ROOT) if isinstance(raw, dict) else None
     if not isinstance(agent, dict):
         return AgentFileLevel(sub_key, {})

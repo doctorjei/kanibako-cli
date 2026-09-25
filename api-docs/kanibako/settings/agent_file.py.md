@@ -48,6 +48,7 @@ def _is_table_valued(tail: str) -> bool
 def _nested_agent_cure(category: str | None, sub_key: str, *, var: str, value: str) -> str
 def _refused_category(sub_tbl: dict) -> str | None
 def _refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None
+def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None
 def _refuse_undeclared_state(state: 'Mapping[str, str | None]', *, node: str) -> None
 ```
 
