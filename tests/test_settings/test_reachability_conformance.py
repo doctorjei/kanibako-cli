@@ -254,9 +254,9 @@ def _termini(std, config_file, proj, target):
       std=std, proj=proj, target=target, agent_name="claude", agent_cfg=None,
       system_settings_path=None, agent_cfg_path=None, selection_level=selection,
     ))
-    # stop.py / launch/creds_watcher.py's _resolve_box_auth_source — the same build for
-    # the TARGET-LESS paths.  An existing box is what both of those act on, which is
-    # the whole test.
+    # stop.py's and launch/creds_watcher.py's calls to start._resolve_box_auth_source — the
+    # same build for the TARGET-LESS paths.  An existing box is what both of those act on,
+    # which is the whole test.
     drive("box_auth_source", lambda: start_cmd._resolve_box_auth_source(
       std=std, proj=proj, agent_name="claude",
       system_settings_path=None, agent_cfg_path=None, selection_level=selection,
