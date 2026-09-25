@@ -164,12 +164,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skips the entry. `workset.registry`, `workset.channelroot` and the four channel keys
   `workset.channels.{common,chat,broadcast,share}` were unset the same way and now resolve to
   `None`, as declared.
-  ⚑ **One change against v1.8.0-rc2.** There, a `null` at `system.channels.common` or
+  ⚑ **Three changes against v1.8.0-rc2.** There, a `null` at `system.channels.common` or
   `workset.channels.common` silently dropped that channel's mount (`~/channels/common` or
   `~/channels/workset/common`). It now refuses the launch, as a `null` at `chat` or any other
   channel key already did. To go without the mount, suppress the mount itself:
   `box.bindings.rw: {"~/channels/common": null}`, or `{"~/channels/workset/common": null}` for the
   workset channel.
+  A `null` at a non-key such as `box.bindings.<name>` or `agent.seeded.<dest>` used to vanish
+  silently; it is now refused by name like any other undeclared entry. And a `null` at
+  `<scope>.env.<VAR>` or `<scope>.secret_path.<VAR>`, where the VAR is spelled like a category
+  (`common`, `seeded`, `masks`, `bindings`, `caches`, `synced`), was dropped, so the value from a
+  lower scope still reached the box; it now resets the variable as written.
 
 - **`kanibako-min` shipped without kanibako or the baseline tools.** Its base, droste-seed, has
   no pip, so the image build skipped the cli install in silence, and the baseline tool list it

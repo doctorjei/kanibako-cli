@@ -1183,7 +1183,7 @@ def _refuse_undeclared_snapshot(
         f"{named}\n"
         f"kanibako will not resolve settings that carry {them}: an undeclared key "
         f"has no meaning to give the box, and passing it through would be the very "
-        f"'anything goes' behaviour the closed keyspace replaces.\n"
+        f"'anything goes' behavior the closed keyspace replaces.\n"
         f"  Fix: remove {them} BY HAND from the settings file that carries {them} — "
         f"this resolve loaded:\n{where}\n"
         f"  'kanibako box reset' cannot remove what is not a key, and 'kanibako box "

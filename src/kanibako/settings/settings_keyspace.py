@@ -1854,8 +1854,9 @@ def _classify_whole_store_path(
             # ``env``/``secret_path`` <VAR> (``box.secret_path."A.B"``) or a dotted name
             # inside a namespace table (``box: {"env.X": …}``). Asking the oracle would
             # forge a key out of it. Both are LEFT OPEN, not ruled legal: the dotted VAR
-            # under his 2026-08-22 deferral (``tasks/deferred.md``), and the table case
-            # with it until it is ruled.
+            # is left open under his 2026-08-22 deferral (``tasks/deferred.md``); the
+            # table case (``box: {"env.X": …}``) is a separate open conformance gap
+            # (boarded).
             return Judgement(
                 Verdict.DATA_SEGMENT, ".".join(segments[:cut - 1]), cut - 1,
                 f"segment {segments[cut - 1]!r} contains a dot, so this is not a "

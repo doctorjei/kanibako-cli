@@ -5015,9 +5015,8 @@ def test_the_refusal_names_every_undeclared_entry_not_just_the_first(tmp_path):
     ({"canon": "/foo"}, ("canon",)),
     ({"zzz": {"a": 1}}, ("zzz", "zzz.a")),
     ({"box.env.X": "1"}, ("box.env.X",)),
-    # A bare §2a CATEGORY token at the top level. ⚑ RED ON THIS SET ALONE: the merge
-    # drops these by name before §0 sees them; the standalone set's position-aware
-    # merge closes that, and it lands first.
+    # Relies on settings_merge classifying a category by position; a last-segment
+    # rule would drop these before §0 sees them.
     ({"masks": None}, ("masks",)),
     ({"seeded": None}, ("seeded",)),
 ], ids=[
