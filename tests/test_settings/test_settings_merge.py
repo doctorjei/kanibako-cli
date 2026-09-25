@@ -340,20 +340,37 @@ def test_present_none_masks_unmasked() -> None:
     assert _probe(snap, "box", "masks", "/other") is True  # sibling survives
 
 
-@pytest.mark.writes_undeclared(
-    "box.bindings",
-    reason="the present-None AT THE CATEGORY ROOT is the subject — a reset is "
-           "spelled by putting a scalar where the arm root sits, so the write the "
-           "keyspace refuses is exactly what the test has to make.",
-)
-def test_present_none_category_root_omitted() -> None:
-    # A whole-category-root reset (bindings = None) OMITs the whole category — never
-    # a bare None where a tier-2 Mapping is contracted (§5 coupling). The lower
-    # workset bindings subtree is fully cleared.
-    box = KeyStore({"box": {"bindings": None}})
-    ws = KeyStore({"box": {"bindings": {"rw": {"home": Bind("/h", "/home")}}}})
-    snap = merge([box, ws])
-    assert _probe(snap, "box", "bindings") is __MISSING__
+_SCOPES = [("system",), ("workset",), ("box",), ("agent", "claude"), ("agent", "default")]
+
+
+@pytest.mark.parametrize("scope", _SCOPES)
+def test_present_none_at_a_bare_bindings_node_is_kept_for_the_closed_keyspace_refusal(
+    scope,
+) -> None:
+    """Spec §0: the key *"ENDS at the category (for bindings, at the ro/rw ARM)"*; §2a:
+    a present-``None`` resets *"at the CATEGORY (for bindings, at the ARM)"*. So a bare
+    ``<scope>.bindings`` is a NAMESPACE, not a category root: a ``None`` there is KEPT,
+    and the §0 audit judges it a finding (a scalar at a namespace). The ARM reset is
+    the control — it still OMITs.
+
+    Asked of the pure classifiers, so no store carries the undeclared path; the
+    end-to-end refusal is ``test_settings_launch``'s bare-bindings test.
+    MUTATION: restore the ``f"{key}.ro"`` arm in ``settings_merge._is_category_root``
+    and the first assertion reds at every scope.
+    """
+    from kanibako.settings.settings_keyspace import (
+        FINDING_VERDICTS, StoreNode, _classify_whole_store_path, container_notes,
+    )
+    from kanibako.settings.settings_keyspace_probe import keyspace_verdict
+    from kanibako.settings.settings_merge import _OMIT, _resolve_present_none
+
+    node = (*scope, "bindings")
+    assert _resolve_present_none(path=node) is None  # KEPT, not omitted
+    verdict = _classify_whole_store_path(node, oracle=keyspace_verdict).verdict
+    assert verdict in FINDING_VERDICTS
+    assert node not in container_notes({node: StoreNode(verdict, is_node=False)})
+    for arm in ("ro", "rw"):
+        assert _resolve_present_none(path=(*node, arm)) is _OMIT
 
 
 @pytest.mark.parametrize("scope", [("system",), ("workset",), ("box",), ("agent", "claude")])
@@ -614,15 +631,13 @@ def test_bindmap_dotted_dest_is_one_key_not_a_path() -> None:
     assert set(dict.keys(arm)) == {"~/.claude/settings.json", "~/.claude"}
 
 
-@pytest.mark.writes_undeclared(
-    "box.bindings",
-    reason="the same category-root present-None as above, re-exercised against the "
-           "dest-keyed reshape; the scalar at the arm root is the subject here too.",
-)
-def test_bindmap_root_reset_still_omits_the_whole_arm() -> None:
-    # The whole-category-root reset is unchanged by the reshape: ``bindings = None``
-    # drops the category, dest-keyed entries and all.
-    box = KeyStore({"box": {"bindings": None}})
-    ws = KeyStore({"box": {"bindings": {"rw": {"~/a": BindEntry("/w/a")}}}})
+def test_bindmap_arm_reset_omits_the_whole_arm() -> None:
+    # A present-None AT THE ARM (spec §2a) drops that arm, dest-keyed entries and all;
+    # the other arm survives.
+    box = KeyStore({"box": {"bindings": {"rw": None}}})
+    ws = KeyStore({"box": {"bindings": {
+        "rw": {"~/a": BindEntry("/w/a")}, "ro": {"~/b": BindEntry("/w/b")},
+    }}})
     snap = merge([box, ws])
-    assert _probe(snap, "box", "bindings") is __MISSING__
+    assert _probe(snap, "box", "bindings", "rw") is __MISSING__
+    assert _probe(snap, "box", "bindings", "ro", "~/b") == BindEntry("/w/b")

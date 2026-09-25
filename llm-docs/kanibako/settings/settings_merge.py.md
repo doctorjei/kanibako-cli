@@ -157,7 +157,7 @@ A leaf is a category leaf when EITHER:
 * a proper PREFIX of its path is a category (`_is_category_entry`) — an ENTRY reset like
   `bindings.rw[/p] = None`, `common[~/x] = None`, `masks./p = None`; OR
 * the leaf IS a category ROOT (`_is_category_root`) — a whole-CATEGORY-ROOT reset like
-  `caches = None`, `masks = None`, and the long-standing `<scope>.bindings = None` node reset.
+  `caches = None`, `masks = None`, `bindings.rw = None`.
 
 A non-category scalar leaf keeps `None`.
 
@@ -166,8 +166,12 @@ A non-category scalar leaf keeps `None`.
 Both tests ask `settings_keyspace.is_terminal_category_key`, the one carrier of the rule that a
 category sits where the SCOPE ends (one segment, two for the discriminated `agent.<node>` tier). A
 ROOT is a path that is such a key; an ENTRY is a path with a proper prefix that is one.
-⚑ The `<scope>.bindings = None` node reset is kept unchanged, though a bare `bindings` is not a key
-and spec §2a places a reset at the ARM; whether it should exist is an open question.
+⚑ A bare `<scope>.bindings` is NOT a category root. Spec §0 ends the key "at the category (for
+bindings, at the ro/rw ARM)" and §2a resets "at the CATEGORY (for bindings, at the ARM)", so the
+bare node is the NAMESPACE the arms hang under. A `None` there is KEPT and the §0 audit refuses it
+by name, as it does `<scope>.env = None`. Until 2026-09-25 `_is_category_root` also asked about
+`<key>.ro`, which made the bare node a root and OMITTED it, so `bindings: null` silently emptied
+both arms.
 
 Until 2026-09-24 both tests read category TOKENS wherever they fell. The root case read the leaf's
 LAST segment, so a present `None` was OMITTED as a category reset at:

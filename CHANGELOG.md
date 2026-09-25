@@ -177,6 +177,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   See `MIGRATION.md` § *2.47 An undeclared key in a settings file now stops the command, and the
   cure is a hand-edit*.
 
+- **A `null` at a bare `bindings:` is now refused like any other undeclared key.** A bindings
+  reset sits at the arm: `bindings: {rw: null}` drops the read-write bindings a higher level set.
+  In v1.8.0-rc2, `bindings: null` under `box:`, `workset:`, `system:` or `agent: <agent>:` was
+  instead taken as a reset of both arms, with no message, though `bindings` alone names no key. It
+  is now named in the same refusal (*"'box.bindings' is a namespace, not a key: bindings are
+  declared per ARM"*). To clear both arms, write `ro: null` and `rw: null` under `bindings:`. See
+  `MIGRATION.md` § *2.47 An undeclared key in a settings file now stops the command, and the cure
+  is a hand-edit*.
+
 - **`box get` and `workset get` no longer read back a `pref.*` request that is not a key, and
   `box reset` answers a name that is not a key as `get` does.** A pref may target only
   `system.agent` or `agent.<agent>.<key>` (spec §2h), and the closed keyspace holds only those

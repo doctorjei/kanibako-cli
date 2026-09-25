@@ -4987,6 +4987,27 @@ def test_an_undeclared_key_in_a_settings_file_refuses_the_resolve(tmp_path):
 
 
 @pytest.mark.writes_undeclared(
+    "box.bindings",
+    reason="the refused entry IS a null at the bare bindings namespace in a box.yaml; "
+           "the file partial and the merge both write it, and the seam refuses it.",
+)
+def test_a_null_at_the_bare_bindings_node_refuses_the_resolve(tmp_path):
+    """Spec §0/§2a: a bindings reset sits AT THE ARM; a bare ``box.bindings`` is not a
+    key, so ``bindings: null`` is refused by name instead of silently emptying both
+    arms. Every scope: ``test_settings_merge``'s bare-bindings test.
+
+    MUTATION: restore the ``f"{key}.ro"`` arm in ``settings_merge._is_category_root``
+    and this builds, with both arms gone.
+    """
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(_box_yaml(tmp_path, "box:\n  bindings: null\n"))
+    msg = str(e.value)
+    assert "1 entry that is not a settings key" in msg
+    assert "\n  - box.bindings: " in msg
+    assert "declared per ARM" in msg
+
+
+@pytest.mark.writes_undeclared(
     "box.frob", "box.frob.nard", "box.zippity",
     reason="a MULTI-entry refusal needs multiple undeclared writes; the nested one "
            "is there because a fabricated NODE and its leaf are two findings.",
