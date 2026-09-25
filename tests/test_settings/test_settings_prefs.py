@@ -420,6 +420,11 @@ def test_collect_preserves_a_null_request(tmp_path):
     assert p.value is None
 
 
+@pytest.mark.writes_undeclared(
+    "pref.system.agent",
+    reason="the dotted ``system.agent`` entry inside the pref table is the subject; the "
+           "file partial writes it before the walker refuses it.",
+)
 def test_a_dotted_leaf_inside_the_pref_table_is_an_error(tmp_path):
     """D5 — one spelling. A dotted literal would never be bind-parsed, so the
     SAME request would behave differently depending on how it was spelled.
@@ -563,6 +568,11 @@ def test_the_terminal_stop_makes_the_request_VALIDATE_instead_of_crashing(tmp_pa
     assert "resolves at or after the box level" in msg
 
 
+@pytest.mark.writes_undeclared(
+    "pref.agent.claude.common.plugins",
+    reason="the dotted ``common.plugins`` entry is the subject; the file partial writes "
+           "it before the walker refuses it.",
+)
 def test_the_dotted_key_raise_still_fires_everywhere_else(tmp_path):
     """The terminal stop is NARROW: it does not weaken D5's one-spelling rule.
 

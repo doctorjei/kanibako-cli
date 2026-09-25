@@ -1554,6 +1554,32 @@ class TestTheEmptyIdiomsReadBackAsThemselves:
         assert "system.bogus_leaf = null" in out, out
         assert "None" not in out, out
 
+    def test_a_config_table_in_the_settings_file_is_marked_not_listed_as_an_override(
+        self, config_file, tmp_home, capsys,
+    ):
+        """Spec §1: ``config.*`` lives only in the ``.cfg`` files. The stored view lists a
+        ``config:`` table under its OWN heading, naming where it belongs — never among the
+        overrides, which the flat nested flatten would otherwise make it — each entry with
+        the launch refusal's cure: a declared key moves, anything else is deleted.
+        MUTATION: drop the ``misplaced`` subtraction and ``config.registry`` prints twice."""
+        from kanibako.settings.config import user_config_file
+
+        std = _std(config_file)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        doc = load_doc(std.settings) if std.settings.exists() else {}
+        doc["config"] = {"registry": "/x/registry.yaml", "zzz": "/x"}
+        dump_doc(std.settings, doc)
+        capsys.readouterr()
+        assert _show() == 0
+        out = capsys.readouterr().out
+        assert out.count("config.registry = /x/registry.yaml") == 1, out
+        head, _, tail = out.partition("(config.* — stored in ")
+        assert "config.registry" not in head and "config.zzz" not in head, out
+        moved, _, deleted = tail.partition("    config.zzz = /x\n")
+        assert "    config.registry = /x/registry.yaml\n" in moved, out
+        assert f"Fix: move under 'config:' in {user_config_file()}" in moved, out
+        assert "Fix: not a key anywhere" in deleted, out
+
 
 class TestSystemStateSetRefusal:
     """Q16 — ``system set system.state=<unusable>`` is refused AT SET TIME.

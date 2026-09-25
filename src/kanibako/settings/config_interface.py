@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from kanibako.settings.config import (
+    _LAYER1_TABLE,
     load_config,
     load_merged_config,
     load_project_overrides,
@@ -96,6 +97,7 @@ from kanibako.settings.config_keys import (
     scope_bind_retired_error,
     scope_env_var_error,
     scope_key_reason,
+    scope_key_refusal,
     SETUP_MARKER_KEY,
     is_config_file_only_key,
     resolve_key,
@@ -119,7 +121,9 @@ from kanibako.settings.settings_categories import (
     ABSTRACT_CATEGORIES,
     refuse_non_scalar_family_value,
 )
-from kanibako.settings.settings_keyspace import is_terminal_category_key, key_validity
+from kanibako.settings.settings_keyspace import (
+    is_terminal_category_key, is_var_table, key_validity, render_store_path,
+)
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.utils import confirm_prompt
@@ -1412,6 +1416,11 @@ def reset_config_value(
 
     # ``pref.<target>`` — remove the REQUEST from this noun's settings file.
     if _is_pref_key(canonical):
+        # ⚑ §0 FIRST, the question ``get`` asks and in ``get``'s words: "Cleared" / "No
+        # override" for a name that is not a key would be a silent accept.
+        reason = scope_key_reason(canonical)
+        if reason is not None:
+            return scope_key_refusal(key, reason, command_scope, verb="reset")
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return f"Cleared {canonical}"
@@ -1512,6 +1521,11 @@ def reset_config_value(
     # Regular config keys — the same known-key table, and the same ONE spelling, as set/get.
     route = _KEY_ROUTES.get(canonical)
     if route is None:
+        # A name §0 declares no key gets ``get``'s refusal, as the ``pref`` branch above does:
+        # one verb, one refusal. The generic line is left for a DECLARED key with no route.
+        reason = scope_key_reason(canonical)
+        if reason is not None:
+            return scope_key_refusal(key, reason, command_scope, verb="reset")
         return f"Error: unknown config key: {key}"
     # ⚑ Symmetric with ``set_config_value`` BY CONSTRUCTION: the same rule site picks the file.
     dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
@@ -1777,8 +1791,23 @@ def reset_all(
     return f"Reset {count} override(s)." if count else "No overrides to reset."
 
 
-def _undeclared_stored_entries(path: "Path | None") -> dict[str, str]:
-    """Entries STORED in *path* that the keyspace does not declare — ``dotted.key → value``.
+def _undeclared_stored_entries(
+    path: "Path | None",
+) -> dict[tuple[str, ...], tuple[str, str]]:
+    """Entries STORED in *path* that the keyspace does not declare —
+    ``segments → (shown, value)``.
+
+    ⚑ SEGMENTS, NOT A JOINED NAME: a dotted entry name (``box: {"env.X": 1}``) joins to a
+    declared key it is not. *shown* is the display spelling: a dotted entry name is
+    spelled as the launch's refusal spells it (``settings_keyspace.render_store_path``:
+    ``box | env.X``), anything else joined. Only the override subtraction in
+    :func:`show_config` compares the joined form.
+
+    ⚑ THE ``<VAR>`` SLOT IS LEFT AS IT WAS, pending his deferred treatment of the dotted
+    var (``settings_keyspace.is_var_table``): a dotted VAR name under ``env`` /
+    ``secret_path`` takes the ordinary arm, so ``box: {env: {"A.B": 1}}`` is marked
+    ``box.env.A.B``. The launch's §0 audit does not refuse that entry, so this view and
+    the launch DISAGREE at that slot; that disagreement is part of the deferred topic.
 
     ⚑⚑ THIS IS NOT A §0 CARVE-OUT AND MUST NOT BE READ AS ONE.  §0 refuses READING,
     SETTING or RESOLVING an undeclared key; this displays STORED FILE CONTENT.  It
@@ -1807,31 +1836,61 @@ def _undeclared_stored_entries(path: "Path | None") -> dict[str, str]:
     data = load_doc(path)
     if not isinstance(data, dict):
         return {}
-    out: dict[str, str] = {}
+    from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 
-    def _walk(node: dict, prefix: str) -> None:
+    out: dict[tuple[str, ...], tuple[str, str]] = {}
+
+    def _walk(node: dict, parent: tuple[str, ...]) -> None:
         for k, v in node.items():
-            dotted = f"{prefix}{k}"
-            if not prefix and "." in str(k):
-                # ⚑ A DOTTED TOP-LEVEL NAME IS NEVER JOINED: ``box.env.X: 1`` is ONE
-                # entry that names no namespace — the file never splits it into tables —
-                # and asking ``scope_key_reason`` would forge the declared key it spells.
-                # The launch's §0 audit refuses it (``settings_keyspace.
-                # _classify_whole_store_path``); this marks it, so the two agree. Kept in
-                # its stored spelling so the override subtraction still matches it.
-                out[dotted] = render_stored_scalar(v)
+            if not parent and str(k) == _LAYER1_TABLE:
+                # A ``config:`` table has its own block and its own cure
+                # (:func:`_misplaced_config_entries`); listing ``config.zzz`` here as well
+                # would say two things about one line.
                 continue
-            if scope_key_reason(dotted) is None:
+            segments = (*parent, str(k))
+            if "." in str(k) and not is_var_table(parent, oracle=keyspace_verdict):
+                # ⚑ A DOTTED NAME IS NEVER JOINED: ``box: {"env.X": 1}`` (or a top-level
+                # ``box.env.X: 1``) is ONE entry, and asking ``scope_key_reason`` would
+                # forge the declared key it spells. The launch's §0 audit refuses it by
+                # name (``settings_keyspace.dotted_entry_reason``) when the table holding
+                # it is declared; under an undeclared one it names that table instead
+                # (``box.zzz`` for ``box: {zzz: {"a.b": 1}}``), and this marks the deepest
+                # stored path, as everywhere here. NOT at the ``<VAR>`` slot — see the
+                # docstring.
+                out[segments] = (render_store_path(segments), render_stored_scalar(v))
+                continue
+            if scope_key_reason(".".join(segments)) is None:
                 continue  # declared — whatever is under it is DATA, not keys
             if isinstance(v, dict) and v:
-                _walk(v, f"{dotted}.")
+                _walk(v, segments)
             else:
                 # THROUGH ``get``'s own renderer, so one value has one spelling — the rule
                 # three hand-kept arms here used to restate, one of which had drifted.
-                out[dotted] = render_stored_scalar(v)
+                # Spelled JOINED: below a dotted ``<VAR>`` name that is the older spelling,
+                # left as-is pending the deferred dotted-var treatment.
+                out[segments] = (".".join(segments), render_stored_scalar(v))
 
-    _walk(data, "")
+    _walk(data, ())
     return out
+
+
+def _misplaced_config_entries(path: "Path | None") -> dict[str, str]:
+    """The ``config.*`` entries a SETTINGS file carries — ``config.<key> → value``.
+
+    Spec §1: those keys live only in the ``.cfg`` files, so the resolve REFUSES a settings
+    file that carries them (``settings_assemble.refuse_config_table``). This is the stored
+    view of the same lines, read by the same helper and cured in the same words
+    (``settings_assemble.config_entry_groups``). A DISPLAY of file content, like
+    :func:`_undeclared_stored_entries`, and kept apart from it because the cure differs.
+    """
+    if path is None or not path.exists():
+        return {}
+    from kanibako.settings.settings_assemble import stored_config_entries
+
+    return {
+        k: render_stored_scalar(v)
+        for k, v in stored_config_entries(load_doc(path)).items()
+    }
 
 
 def _abstract_declarations(path: "Path | None", scope: str) -> dict[str, str]:
@@ -1970,6 +2029,10 @@ def show_config(
         # keyspace does not declare is not an override, and printing it in both places
         # would say two different things about one line (Convention 0).
         undeclared = _undeclared_stored_entries(settings_src)
+        misplaced = _misplaced_config_entries(settings_src)
+        # The JOINED spelling, for the subtraction ONLY: the flattens below join a dotted
+        # entry name into the key it spells, and it has to be subtracted all the same.
+        not_overrides = {".".join(segs) for segs in undeclared} | set(misplaced)
 
         overrides = load_project_overrides(config_path) if config_path else {}
         # ⚑ Its OWN loop names: the box scalars are ``object`` (two of the four are real
@@ -1992,7 +2055,7 @@ def show_config(
         if system_settings_path is not None:
             nested = _nested_settings_overrides(system_settings_path)
             for k, v in sorted(nested.items()):
-                if k in undeclared:
+                if k in not_overrides:
                     continue
                 print(f"  {k} = {v}", file=out)
                 has_output = True
@@ -2021,7 +2084,7 @@ def show_config(
         # off the §2h allowlist (``pref.box.image``) is no member of the family (spec
         # §0), so it is listed once, as undeclared, below.
         for k, v in sorted(_pref_overrides(config_path).items()):
-            if k in undeclared:
+            if k in not_overrides:
                 continue
             print(f"  {k} = {v}", file=out)
             has_output = True
@@ -2051,7 +2114,20 @@ def show_config(
                 f"remove one by editing that file)",
                 file=out,
             )
-            for k, v in sorted(undeclared.items()):
-                print(f"    {k} = {v}", file=out)
+            for shown, v in sorted(undeclared.values()):
+                print(f"    {shown} = {v}", file=out)
+        if misplaced:
+            from kanibako.settings.settings_assemble import config_entry_groups
+
+            print(
+                f"  (config.* — stored in {settings_src}, a settings file, which cannot "
+                f"hold them: they live only in the .cfg config files (spec §1); edit that "
+                f"file)",
+                file=out,
+            )
+            for cure, group in config_entry_groups(misplaced):
+                for k in group:
+                    print(f"    {k} = {misplaced[k]}", file=out)
+                print(f"      Fix: {cure}.", file=out)
 
     return 0

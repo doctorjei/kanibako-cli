@@ -396,6 +396,15 @@ TERMINAL_CATEGORY_TAILS: Final[frozenset[tuple[str, ...]]] = frozenset({
     ("synced",),
 })
 
+#: The per-VARIABLE families (spec §2a: ``env.<VAR>``, ``secret_path.<VAR>``) — scalar
+#: valued, keyed by a VAR name one segment below the family root.  ⚑ DERIVED, never
+#: listed (P10): §2a's families are dest-keyed terminal or VAR-keyed, so this is every
+#: family root (``settings_categories.CATEGORY_FAMILY_ROOTS``) that heads no
+#: :data:`TERMINAL_CATEGORY_TAILS` entry.
+VAR_KEYED_CATEGORIES: Final[frozenset[str]] = CATEGORY_FAMILY_ROOTS - frozenset(
+    tail[0] for tail in TERMINAL_CATEGORY_TAILS
+)
+
 
 def is_terminal_category_tail(tail: Sequence[str]) -> bool:
     """Does *tail* END at a DEST-KEYED TERMINAL category key? (spec §2a)
@@ -828,7 +837,7 @@ def _category_reason(
         )
 
     # env.<VAR> / secret_path.<VAR> — scalar-valued, VAR-keyed (spec §2a).
-    if head in ("env", "secret_path"):
+    if head in VAR_KEYED_CATEGORIES:
         if len(rest) == 1:
             # The VAR-keyed family's ROOT. Real keys live one segment below it, so
             # the node is structure; only a SCALAR sitting here is a fabrication.
@@ -1794,8 +1803,11 @@ class Verdict:
     ``VALUE``        a proper PREFIX is a declared key, so the rest addresses a VALUE
                      INSIDE it — ``box.caches``'s destinations, ``box.masks``'s
                      entries, a ``bindings`` arm's map. Structure, not a key.
-    ``DATA_SEGMENT`` a segment CONTAINS A DOT, so the path cannot be a key path at
-                     all (see :func:`render_store_path`).
+    ``DATA_SEGMENT`` a dotted segment in key position under an UNDECLARED table, which
+                     is the finding itself, or at the ``<VAR>`` slot of ``env`` /
+                     ``secret_path`` (:func:`is_var_table`). At the root or under any
+                     other declared namespace it is ``UNDECLARED``
+                     (:func:`dotted_entry_reason`).
     ``NAMESPACE``    the keyspace DECLARES this path as an interior — a scope table,
                      an agent tier, a ``meta`` group, an ``auth`` sub-table (see
                      :class:`KeyClass`). PROVISIONAL, exactly as ``UNDECLARED`` is: a
@@ -1882,6 +1894,51 @@ def render_store_path(segments: Collection[str], key_len: int | None = None) -> 
     return f"{head} ⟨{tail}⟩" if head else f"⟨{tail}⟩"
 
 
+def dotted_entry_reason(parent: Sequence[str], name: str) -> str:
+    """Why a stored entry spelled *name* — one segment that CONTAINS A DOT — under the
+    table at *parent* names no key (spec §0).
+
+    A settings file nests a key as tables and never splits a dotted name into them, so
+    ``box: {"env.X": …}`` is one entry named ``env.X`` inside the ``box`` table — not
+    the ``box.env.X`` it spells, and not a key.
+
+    ⚑ NOT ASKED AT THE ``<VAR>`` SLOT (:func:`is_var_table`): a dotted VAR name under
+    ``env``/``secret_path`` is left as it was, pending his deferred treatment of the
+    dotted var.
+    """
+    if not parent:
+        return (
+            f"top-level entry {name!r} is not a keyspace root: a settings file nests "
+            f"a key as tables, and a dotted name is never split into one (spec §0)"
+        )
+    return (
+        f"entry {name!r} inside the {'.'.join(parent)!r} table is not a key: a "
+        f"settings file nests a key as tables, and a dotted name is never split into "
+        f"one (spec §0)"
+    )
+
+
+def is_var_table(
+    parent: Sequence[str], *, oracle: Callable[[str], KeyJudgement],
+) -> bool:
+    """Is the table at *parent* a per-VARIABLE family's root (:data:`VAR_KEYED_CATEGORIES`),
+    so that an entry directly under it sits in the ``<VAR>`` slot?
+
+    ⚑ LEFT AS-IS AT THAT SLOT, pending his deferred treatment of the dotted var: a
+    dotted VAR name there gets no :func:`dotted_entry_reason` finding from the launch's
+    audit (:func:`_classify_whole_store_path`), and the stored view
+    (``config_interface._undeclared_stored_entries``) keeps its own older arm for it.
+    The two do NOT agree at this slot — the stored view marks ``box.env.A.B`` as
+    undeclared while the launch's audit passes it — and that disagreement is part of
+    the deferred topic, not settled here.
+    """
+    return (
+        bool(parent)
+        and parent[-1] in VAR_KEYED_CATEGORIES
+        and oracle(".".join(parent)).cls is KeyClass.NAMESPACE
+    )
+
+
 def classify_store_path(
     segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgement],
 ) -> Judgement:
@@ -1939,27 +1996,29 @@ def _classify_whole_store_path(
         return Judgement(
             Verdict.RESERVED, BINDING_DERIVATIONS_NODE, 1, RESERVED_NODE_REASON,
         )
-    if "." in segments[0]:
-        # ⚑ A DOT AT THE TOP LEVEL names no namespace, whatever else it is — so it is
-        # judged here rather than left to the dotted-segment stop below. The oracle may
-        # not be asked: ``"box.env.X"`` as ONE segment joins to a declared key it is not.
-        return Judgement(
-            Verdict.UNDECLARED, "", len(segments),
-            f"top-level entry {segments[0]!r} is not a keyspace root: a settings file "
-            f"nests a key as tables, and a dotted name is never split into one "
-            f"(spec §0)",
-        )
     for cut in range(1, len(segments) + 1):
         if "." in segments[cut - 1]:
-            # ⚑ STOP, WITHOUT A FINDING. Reached only when NO proper prefix is a declared
-            # key: a destination under one returns VALUE at that key, before its dotted
-            # segment is seen. So this is a dotted segment in KEY position — a dotted
-            # ``env``/``secret_path`` <VAR> (``box.secret_path."A.B"``) or a dotted name
-            # inside a namespace table (``box: {"env.X": …}``). Asking the oracle would
-            # forge a key out of it. Both are LEFT OPEN, not ruled legal: the dotted VAR
-            # is left open under his 2026-08-22 deferral (``tasks/deferred.md``); the
-            # table case (``box: {"env.X": …}``) is a separate open conformance gap
-            # (boarded).
+            # ⚑ A dotted segment in KEY position. Reached only when NO proper prefix is a
+            # declared key: a destination under one returns VALUE at that key, before its
+            # dotted segment is seen. The oracle may not be asked about the JOINED path —
+            # ``box: {"env.X": …}`` joins to ``box.env.X``, a declared key it is not.
+            # The finding's reason: :func:`dotted_entry_reason`.
+            # ⚑ Only at the ROOT or under a declared NAMESPACE. Under an UNDECLARED table
+            # that table is the finding already, and its dotted child is as likely a
+            # destination (``pref.box.bindings.rw``'s) as a name — a reason about key
+            # spelling would be false for it.
+            # ⚑ NOT at the ``<VAR>`` slot of ``env``/``secret_path`` (:func:`is_var_table`):
+            # a dotted VAR name stops here without a finding, left as-is pending his
+            # deferred treatment of the dotted var.
+            parent = segments[:cut - 1]
+            if not parent or (
+                oracle(".".join(parent)).cls is KeyClass.NAMESPACE
+                and not is_var_table(parent, oracle=oracle)
+            ):
+                return Judgement(
+                    Verdict.UNDECLARED, "", len(segments),
+                    dotted_entry_reason(parent, segments[cut - 1]),
+                )
             return Judgement(
                 Verdict.DATA_SEGMENT, ".".join(segments[:cut - 1]), cut - 1,
                 f"segment {segments[cut - 1]!r} contains a dot, so this is not a "

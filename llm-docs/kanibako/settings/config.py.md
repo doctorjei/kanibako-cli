@@ -935,8 +935,16 @@ Preserves all other sections and other agents' agent subsections. Pass the reser
 agent name to target the any-agent default tier.
 
 
+```_flatten_leaves(data: dict, prefix: str = "") -> dict[str, object]```
+Flatten nested dict into DOTTED-key form, each leaf AS STORED. ⚑ THE ONE WALK: `_flatten_dotted`
+below is this with its leaves stringified, so the keys one names are the keys the other names. The
+raw leaf serves the SETTINGS files' `config:` refusal and its stored view
+(`settings_assemble.stored_config_entries`), which read that table exactly as the Layer-1 read
+would and DISPLAY the values — `str()` would print a stored `null` as `None`, a spelling the file
+never held.
+
 ```_flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]```
-Flatten nested dict into DOTTED-key form, stringifying scalar leaves.
+Flatten nested dict into DOTTED-key form, stringifying scalar leaves (`_flatten_leaves`, the walk).
 
 `{"system": {"bindings": {"rw": {"foo": "h:g"}}}}` → `{"system.bindings.rw.foo": "h:g"}`.
 
@@ -946,7 +954,8 @@ keys. The scope categories
 live in `settings_categories` / `settings_keyspace`, and their keys are TERMINAL — a destination is
 DATA, not a key segment — so nothing here flattens one.
 
-⚑ **`str(k)` ON THE UNPREFIXED ARM (2026-09-09): a YAML key need not be a string.** Only the
+⚑ **`str(k)` ON THE UNPREFIXED ARM (2026-09-09; the arm now lives in `_flatten_leaves`): a YAML
+key need not be a string.** Only the
 f-string arm stringified one, so a top-level `1:` / `true:` / `~:` handed an `int`/`bool`/`None`
 out to `_layer1_settings_keys`, which sorts and joins — a `TypeError` traceback in the one file
 whose whole purpose is that a hand-editing user finds out.

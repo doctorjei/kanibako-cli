@@ -36,7 +36,8 @@ def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path
 def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
 def _count_leaves(node: object) -> int
 def _clear_writable_scope_tables(path: Path, command_scope: 'ConfigLevel | None') -> int
-def _undeclared_stored_entries(path: 'Path | None') -> dict[str, str]
+def _undeclared_stored_entries(path: 'Path | None') -> dict[tuple[str, ...], tuple[str, str]]
+def _misplaced_config_entries(path: 'Path | None') -> dict[str, str]
 def _abstract_declarations(path: 'Path | None', scope: str) -> dict[str, str]
 ```
 

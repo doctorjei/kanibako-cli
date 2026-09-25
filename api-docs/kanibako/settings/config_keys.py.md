@@ -65,6 +65,7 @@ def table_leaf_read_cure(canonical: str, active_agent: str | None=None) -> str |
 def agent_category_read_error(canonical: str, key: str) -> str | None
 def foreign_scope_read_error(canonical: str, key: str, command_scope: 'ConfigLevel | None') -> str | None
 def scope_read_key_error(key: str, command_scope: 'ConfigLevel | None', *, active_agent: str | None=None) -> str | None
+def scope_key_refusal(key: str, reason: str, command_scope: 'ConfigLevel | None', *, verb: str, cure: str | None=None) -> str
 def _coerce_value(canonical: str, value: 'str | None') -> object | None
 def _scope_direction_error(canonical: str, command_scope: 'ConfigLevel | None') -> str | None
 def _parse_persona_agent_key(key: str) -> 'tuple[str, str] | None'

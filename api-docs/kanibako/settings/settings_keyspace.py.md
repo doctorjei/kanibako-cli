@@ -25,6 +25,7 @@ SCALAR_AGENT_LEAVES: Final[frozenset[str]] = DECLARED_AGENT_LEAVES - TABLE_VALUE
 ACCESS_TIERS: Final[tuple[str, ...]] = ('restricted', 'editing', 'full')
 BIND_CATEGORIES: Final[frozenset[str]] = frozenset({'bindings.ro', 'bindings.rw', 'caches', 'seeded', 'common', 'synced'})
 TERMINAL_CATEGORY_TAILS: Final[frozenset[tuple[str, ...]]] = frozenset({('masks',), ('bindings', 'ro'), ('bindings', 'rw'), ('caches',), ('seeded',), ('common',), ('synced',)})
+VAR_KEYED_CATEGORIES: Final[frozenset[str]] = CATEGORY_FAMILY_ROOTS - frozenset((tail[0] for tail in TERMINAL_CATEGORY_TAILS))
 DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({'ws_root', 'ws_name', 'project_type'})
 DECLARED_META_RUNTIME_USER_LEAVES: Final[frozenset[str]] = frozenset({'config'})
 DECLARED_META_RUNTIME_ADMIN_LEAVES: Final[frozenset[str]] = frozenset({'config', 'settings'})
@@ -71,6 +72,8 @@ def effective_agent_leaves(agent_leaf_map: 'AgentLeafMap | None') -> Collection[
 def key_validity(key: str, *, valid_agents: Collection[str], agent_leaf_map: 'AgentLeafMap | None'=None) -> str | None
 def key_class(key: str, *, valid_agents: Collection[str], agent_leaf_map: 'AgentLeafMap | None'=None) -> KeyJudgement
 def render_store_path(segments: Collection[str], key_len: int | None=None) -> str
+def dotted_entry_reason(parent: Sequence[str], name: str) -> str
+def is_var_table(parent: Sequence[str], *, oracle: Callable[[str], KeyJudgement]) -> bool
 def classify_store_path(segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgement]) -> Judgement
 def container_notes(nodes: Mapping[tuple[str, ...], StoreNode]) -> dict[tuple[str, ...], str]
 def walk_store_paths(node: KeyStore[Any], prefix: tuple[str, ...]=()) -> Iterator[tuple[tuple[str, ...], bool]]

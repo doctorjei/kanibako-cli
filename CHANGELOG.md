@@ -151,13 +151,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads *"'kanibako box reset <key>' cannot remove what is not a key"*. Deleting the one line by
   hand is still the cure that keeps your other settings.
 
-- **`box get` and `workset get` no longer read back a `pref.*` request that is not a key.** A pref
-  may target only `system.agent` or `agent.<agent>.<key>` (spec §2h), and the closed keyspace
-  holds only those requests, but the key check accepted `pref.<key>` for any key: a hand-written
+- **A `config:` table in a settings file now stops the command, and says where each entry
+  belongs.** The `config.*` keys are the bootstrap paths, and they live only in `kanibako.cfg`
+  (site-wide, `/etc/kanibako/base.cfg`). A declared one (`config.data: /elsewhere`), or an empty
+  `config: {}`, in a `box.yaml`, a `workset.yaml`, the system settings file or the site base file
+  (`/etc/kanibako/settings_base.yaml`) let the box start, and the store stayed where it was
+  whatever the table said; anything else (an undeclared, nested, bare or non-table entry) already
+  stopped it, as an undeclared key. The refusal now names the file and each entry with its cure: a declared key
+  (`config.data`, `config.registry`, …) moves under `config:` in `kanibako.cfg`, whose path the
+  message prints, and there it relocates that path for every box; anything else (`config.zzz`, a
+  nested `config.box.image`, a `config:` that is not a table or holds nothing) is not a key
+  anywhere and is deleted. `box show`, `workset show` and `system show` list the entries under a
+  heading of their own, with the same cures; `system show` no longer prints them as overrides. See
+  `MIGRATION.md` § *2.47 An undeclared key in a settings file now stops the command, and the cure
+  is a hand-edit*.
+
+- **A dotted name like `env.X` under `box:` is now refused like any other undeclared key.** Under
+  `box:` in a `box.yaml` — or inside `workset:`, `system:`, `agent: claude:` or `box: auth:` — an
+  entry spelled `env.X: "1"` or `zzz.q: 1` let the box start, and the entry was carried along
+  unread: kanibako never splits a dotted name into tables, so `box: {env.X: "1"}` is not the
+  `box.env.X` it spells. Each is named in the same refusal as an undeclared top-level entry (*"An
+  entry at a settings file's top level that names none of the keyspace's namespaces is now
+  refused"*, above), and `box show`, `workset show` and `system show` list it among the undeclared
+  entries, spelled as the refusal spells it (`box | env.X`) rather than as the key it resembles.
+  See `MIGRATION.md` § *2.47 An undeclared key in a settings file now stops the command, and the
+  cure is a hand-edit*.
+
+- **`box get` and `workset get` no longer read back a `pref.*` request that is not a key, and
+  `box reset` answers a name that is not a key as `get` does.** A pref may target only
+  `system.agent` or `agent.<agent>.<key>` (spec §2h), and the closed keyspace holds only those
+  requests, but the key check accepted `pref.<key>` for any key: a hand-written
   `pref: {box: {image: …}}` read back through `box get pref.box.image` as if it were set, and
   `box show` listed it as a request. `get` now refuses the name, and `show` lists the entry once,
-  among the undeclared entries it tells you to remove by hand. Launches are unchanged: they
-  already refused such a request by name. Nothing to migrate.
+  among the undeclared entries it tells you to remove by hand. `box reset pref.box.image` (and
+  `workset reset`) removed such an entry as if it were a request, or answered `No override`, and
+  `box reset box.zippity` answered `Error: unknown config key: box.zippity`; both now refuse the
+  name with `get`'s message, and a stored entry stays for that hand edit. Launches are unchanged:
+  they already refused such a request by name. Nothing to migrate.
 
 - **A bare relative path typed by hand into a settings file is now refused for every path key,
   not only some.** The v1.8.0-rc2 entry *"A path setting written as a bare relative path is now

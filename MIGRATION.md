@@ -3148,19 +3148,40 @@ like `box.zippity`, and it gets the same refusal:
 template: my-template   # refused: 'template' is not a declared namespace
 box.env.X: "1"          # refused: a dotted name is never split into tables
 box:
+  env.X: "1"            # refused for the same reason, inside a table too
   env:
     X: "1"              # this is how to write it
 ```
 
 `meta:` and `binding_derivations:` are still dropped with a warning, not refused. v1.8.0-rc2 let
-the other top-level entries through unchecked: the box started and the entry was ignored.
+the other top-level entries through unchecked, and a dotted name like `env.X` or `zzz.q` inside
+`box:`, `workset:`, `system:`, `agent: claude:` or `box: auth:` too: the box started and the entry
+was ignored.
+
+**A `config:` table is refused too, with a message of its own.** The `config.*` keys are the
+bootstrap paths and live only in the config file — `~/.config/kanibako.cfg` by default (site-wide,
+`/etc/kanibako/base.cfg`); a settings file cannot move the store. The message names the file, each
+entry, and that entry's cure:
+
+- a declared key — `config.data`, `config.registry`, `config.journal` and the rest of spec §1's
+  set — moves under `config:` in that config file, at the path the message prints. There it
+  relocates that path for every box, not only the one whose file carried it, so move it only if
+  that is what you meant;
+- anything else — `config.zzz`, a nested `config: {box: {image: …}}`, a `config:` holding a value
+  that is not a table — is not a key anywhere, and the config file would refuse it too: delete it.
+  An empty `config:` means nothing in either file: delete it.
+
+`box show`, `workset show` and `system show` list such lines under a `(config.* — …)` heading of
+their own, with the same cures.
 
 **Which commands.** The ones that build the resolved snapshot. They all build the same one, so they
 all stop at the same place. Measured on the shipped code: `kanibako` / `start`, `shell`, `box info`,
 `box show --effective`, `system show --effective`, `rig list`. `workset share list --effective` and
 `workset show --effective` stop too, but they resolve only the working set's own settings file, so
 their message names that one file, says *this working set*, and points at `workset reset` and the
-two `workset` listings instead of the `box` verbs.
+two `workset` listings instead of the `box` verbs. They do not yet run the `config:` check above: a
+`config:` table holding a declared key, or nothing, lists at exit code 0 there while every launch in
+the working set refuses it; any other entry stops it with the generic refusal above.
 
 ⚑ **A key kanibako RETIRED stops you here too, but with its own message.** Before printing the
 generic text below, the refusal asks whether the file carries a spelling it has a cure for; §2.1
