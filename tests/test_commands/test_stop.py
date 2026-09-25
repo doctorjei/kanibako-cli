@@ -419,6 +419,90 @@ class TestStopWriteback:
             #     failure this guards against is SILENT, so absence is the symptom.
             m_wb.assert_called_once_with(target, proj, auth_src=_SHARED_AUTH)
 
+    def _stop_with_failing_auth_resolve(self, mock_runtime, exc, *, stamp="claude"):
+        """Stop a LIVE box stamped *stamp* whose auth resolve raises *exc*.
+
+        Returns ``(rc, writeback mock)``.
+        """
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = stamp
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch("kanibako.targets.resolve_target"),
+            patch(
+                "kanibako.commands.start._resolve_box_auth_source",
+                side_effect=exc,
+            ),
+            patch(
+                "kanibako.commands.start.writeback_session_credentials"
+            ) as m_wb,
+        ):
+            m_resolve.return_value = MagicMock()
+            return _stop_one(mock_runtime, project_dir=None), m_wb
+
+    @pytest.mark.parametrize("error", ["SettingsError", "ConfigError"])
+    def test_settings_refusal_is_said_and_the_stop_still_happens(
+        self, mock_runtime, capsys, error,
+    ):
+        """🛑 A settings file that turned invalid after the box started refuses the auth
+        resolve; the stop must SAY the credential writeback was skipped, carrying the
+        refusal's own text (which names the file), and still stop the box.
+        Swallowing it left the credentials un-written-back with no word said.
+
+        Both refusal types: ``SettingsError`` (an undeclared key, a stray in
+        ``agent.yaml``) and ``ConfigError`` (a file that is not valid YAML)."""
+        from kanibako.errors import ConfigError
+        from kanibako.settings.settings_resolve import SettingsError
+
+        refusal = {
+            "SettingsError": (
+                SettingsError,
+                "`model` at the top level of /cfg/agents/claude/agent.yaml is not a "
+                "settings key, so kanibako will not read the file.",
+            ),
+            "ConfigError": (
+                ConfigError,
+                "the config file /cfg/agents/claude/agent.yaml is not valid YAML: "
+                "line 2. Fix or remove the file, then retry.",
+            ),
+        }
+        exc_type, text = refusal[error]
+        rc, m_wb = self._stop_with_failing_auth_resolve(mock_runtime, exc_type(text))
+        assert rc == 0
+        mock_runtime.stop.assert_called_once()
+        m_wb.assert_not_called()
+        err = capsys.readouterr().err
+        assert "credential writeback skipped" in err
+        assert text in err
+
+    def test_other_writeback_failure_stays_silent(self, mock_runtime, capsys):
+        """Every failure that is NOT a settings refusal keeps the old best-effort
+        silence — the stop is unaffected and nothing is printed."""
+        rc, m_wb = self._stop_with_failing_auth_resolve(
+            mock_runtime, RuntimeError("not a settings refusal"),
+        )
+        assert rc == 0
+        mock_runtime.stop.assert_called_once()
+        m_wb.assert_not_called()
+        assert capsys.readouterr().err == ""
+
+    def test_malformed_stamp_is_not_reported_as_a_settings_refusal(
+        self, mock_runtime, capsys,
+    ):
+        """A malformed ``KANIBAKO_AGENT`` stamp makes ``agent_address_node`` raise
+        ``ConfigError`` BEFORE the auth resolve. That is not the box's settings, so the
+        report stays scoped to the resolve call: the stop is silent, as before."""
+        rc, m_wb = self._stop_with_failing_auth_resolve(
+            mock_runtime, AssertionError("the auth resolve must not be reached"),
+            stamp="bad+",
+        )
+        assert rc == 0
+        mock_runtime.stop.assert_called_once()
+        m_wb.assert_not_called()
+        assert capsys.readouterr().err == ""
+
     @pytest.mark.parametrize("stamp", [None, ""])
     def test_no_writeback_without_agent_stamp(self, mock_runtime, stamp):
         """A box with NO agent — a ``pref.system.agent: null`` box (D-M6) or a

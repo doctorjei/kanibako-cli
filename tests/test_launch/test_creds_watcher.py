@@ -249,6 +249,91 @@ def test_main_no_context_returns_zero(monkeypatch):
     assert cw.main(["--box", "gone"]) == 0
 
 
+def _main_with_failing_auth_resolve(exc, *, stamp="claude"):
+    """Run ``main`` through the REAL ``_resolve_watch_context`` for a box stamped
+    *stamp* whose auth resolve raises *exc*; its collaborators are imported inside the
+    function, so they are patched at their defining modules."""
+    from unittest.mock import MagicMock, patch
+
+    import kanibako.launch.creds_watcher as cw
+
+    runtime = MagicMock()
+    runtime.inspect_env.return_value = stamp
+    with (
+        patch("kanibako.runtime.container.ContainerRuntime", return_value=runtime),
+        patch("kanibako.settings.config.load_config"),
+        patch("kanibako.settings.paths.load_std_paths"),
+        patch("kanibako.settings.paths.resolve_box_target", return_value=MagicMock()),
+        patch("kanibako.commands.start._resolve_box_auth_source", side_effect=exc),
+        patch("kanibako.targets.resolve_target"),
+        patch("kanibako.utils.container_name_for", return_value="kanibako-x"),
+    ):
+        return cw.main(["--box", "x"])
+
+
+def _watcher_records(caplog):
+    return [r for r in caplog.records if r.name == "kanibako.creds_watcher"]
+
+
+@pytest.mark.parametrize("error", ["SettingsError", "ConfigError"])
+def test_main_warns_on_a_settings_refusal(caplog, error):
+    """🛑 A settings REFUSAL while resolving the box is the user's to fix, not a crash:
+    the watcher logs it at WARNING with the refusal's own text (no stack trace) and
+    exits 0 as before. Both refusal types: ``SettingsError`` (an undeclared key, a
+    stray in ``agent.yaml``) and ``ConfigError`` (a file that is not valid YAML)."""
+    import logging
+
+    from kanibako.errors import ConfigError
+    from kanibako.settings.settings_resolve import SettingsError
+
+    exc_type, text = {
+        "SettingsError": (
+            SettingsError,
+            "`model` at the top level of /cfg/agents/claude/agent.yaml is not a settings key",
+        ),
+        "ConfigError": (
+            ConfigError,
+            "the config file /cfg/agents/claude/agent.yaml is not valid YAML: line 2. "
+            "Fix or remove the file, then retry.",
+        ),
+    }[error]
+    with caplog.at_level(logging.DEBUG, logger="kanibako.creds_watcher"):
+        assert _main_with_failing_auth_resolve(exc_type(text)) == 0
+    [record] = _watcher_records(caplog)
+    assert record.levelno == logging.WARNING
+    assert record.exc_info is None
+    assert "credential writeback skipped" in record.getMessage()
+    assert text in record.getMessage()
+
+
+def test_main_logs_any_other_resolve_failure_with_its_stack(caplog):
+    """Every failure that is NOT a settings refusal keeps the old behavior: an ERROR
+    carrying the stack trace, and exit 0."""
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="kanibako.creds_watcher"):
+        assert _main_with_failing_auth_resolve(RuntimeError("not a refusal")) == 0
+    [record] = _watcher_records(caplog)
+    assert record.levelno == logging.ERROR
+    assert record.exc_info is not None
+
+
+def test_main_does_not_call_a_malformed_stamp_a_settings_refusal(caplog):
+    """A malformed ``KANIBAKO_AGENT`` stamp makes ``agent_address_node`` raise
+    ``ConfigError`` BEFORE the auth resolve. That is not the box's settings, so the
+    WARNING stays scoped to the resolve call: the old ERROR-with-stack path runs."""
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="kanibako.creds_watcher"):
+        assert _main_with_failing_auth_resolve(
+            AssertionError("the auth resolve must not be reached"), stamp="bad+",
+        ) == 0
+    [record] = _watcher_records(caplog)
+    assert record.levelno == logging.ERROR
+    assert record.exc_info is not None
+    assert "credential writeback skipped" not in record.getMessage()
+
+
 def _held_exclusively(directory: Path) -> bool:
     """True iff *directory* is flocked by somebody else (probed non-blockingly)."""
     fd = os.open(directory, os.O_RDONLY)

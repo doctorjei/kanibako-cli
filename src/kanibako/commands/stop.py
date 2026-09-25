@@ -7,11 +7,12 @@ import sys
 
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import ContainerRuntime
-from kanibako.errors import ContainerError
+from kanibako.errors import ConfigError, ContainerError
 from kanibako.settings.paths import (
     load_std_paths,
     resolve_box_target,
 )
+from kanibako.settings.settings_resolve import SettingsError
 from kanibako.utils import container_name_for
 
 
@@ -66,7 +67,10 @@ def _writeback_on_stop(
     container at launch), resolves that plugin's target, and funnels through the
     shared :func:`~kanibako.commands.start.writeback_session_credentials` helper.
     Best-effort: a stop must succeed even if writeback can't run (e.g. no stamp,
-    no agent, container already gone).
+    no agent, container already gone). ⚑ The ONE failure that is SAID is the auth
+    resolve refusing the box's settings (``SettingsError``, or ``ConfigError`` for a
+    file that is not valid YAML) — on stderr, with the refusal's text, because it is
+    the user's to fix; every other failure stays silent.
 
     ⚑ ``box_is_live`` is the caller's SINGLE ``is_running`` reading (P10), not a
     convenience: :func:`_stop_one` needs the same fact to pick its sentence, and
@@ -121,14 +125,30 @@ def _writeback_on_stop(
         # credential dir collapses to the workset auth ROOT and this writeback would
         # land in ``<auth>/`` while the LAUNCH delivered from ``<auth>/<agent>``.
         # The ``KANIBAKO_AGENT`` stamp IS the resolved selection for a running box.
-        auth_src = _resolve_box_auth_source(
-            std=std,
-            proj=proj,
-            agent_name=agent,
-            system_settings_path=std.settings,
-            agent_cfg_path=agent_settings_path(std.agents, agent),
-            selection_level={"system.agent": agent},
-        )
+        agent_cfg_path = agent_settings_path(std.agents, agent)
+        # 🛑 NOT SILENT: a settings file that turned invalid after the box started (a
+        # §0 undeclared key, a stray beside ``self:`` in ``agent.yaml``, a YAML syntax
+        # error) refuses the auth resolve, and swallowing that left the user's
+        # credentials un-written-back with no word said. The refusal's own text names
+        # the file, so it is printed whole. ⚑ SCOPED TO THIS CALL: ``agent_address_node``
+        # above raises ``ConfigError`` too, for a malformed STAMP, and "its settings did
+        # not resolve" would be false for that. The stop still goes ahead either way.
+        try:
+            auth_src = _resolve_box_auth_source(
+                std=std,
+                proj=proj,
+                agent_name=agent,
+                system_settings_path=std.settings,
+                agent_cfg_path=agent_cfg_path,
+                selection_level={"system.agent": agent},
+            )
+        except (SettingsError, ConfigError) as exc:
+            print(
+                f"Warning: credential writeback skipped for {container_name}: its "
+                f"settings did not resolve.\n{exc}",
+                file=sys.stderr,
+            )
+            return
         writeback_session_credentials(target, proj, auth_src=auth_src)
     except Exception:
         # Never let a writeback problem block the stop.

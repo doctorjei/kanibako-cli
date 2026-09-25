@@ -669,6 +669,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the lookup could never match. `ps` and `list` now use the container name `start` gives each
   mode; primary and named boxes are looked up exactly as before.
 
+- **`kanibako stop` now says when it skips credential writeback because the box's settings are
+  refused.** Before stopping a running box, `stop` writes the box's session credentials back to
+  the host. If a settings file was changed after the box started and now fails to resolve — for
+  example, it is no longer valid YAML, it carries an undeclared key, or an agent's `agent.yaml` has
+  a stray key at its top level — the writeback was skipped with no message, and credentials refreshed inside
+  the box never reached the host. (1.7.2 was silent the same way: `stop` ignored every writeback
+  failure.) `stop` now prints a warning to stderr, followed by the refusal itself, which names the
+  file. The box is still stopped. Any other writeback failure is still silent.
+
 ### Added
 
 - **Every box now gets the host's terminal type, and `$TERM` resolves in a settings value.** Two
