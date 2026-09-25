@@ -363,6 +363,73 @@ class TestPersonaGuards:
 
 
 # ---------------------------------------------------------------------------
+# the node is lowercase: a typed agent spelling FOLDS to it ([R173], keyspec §0)
+# ---------------------------------------------------------------------------
+
+class TestTypedAgentCaseReachesTheLowercaseNode:
+    """``agent.Shell.model`` is the ``shell`` node's key, and lands where a launch reads.
+
+    Keyspec §0: an agent's NODE (``agent.<agent>``) and its store directory are always
+    lowercase, and identifiers compare case-blind. The §0 check already accepted
+    ``agent.Shell.model`` as a KEY while the write route kept the typed spelling, so
+    ``set`` reported success into ``agents/Shell/`` — a store nothing reads.
+    (Mutation: ``resolve_key`` back on ``canonicalize_agent_ref``, or
+    ``agent_address_node`` without its fold → RED.)
+    """
+
+    @pytest.mark.parametrize(("typed", "node"), [
+        ("Shell", "shell"), ("SHELL", "shell"), ("Claude", "claude"),
+    ])
+    def test_set_lands_in_the_lowercase_node_and_reads_back_there(
+        self, tmp_path, agents_root, typed, node,
+    ):
+        msg = set_config_value(
+            f"agent.{typed}.model", "x", config_path=_cfg_path(tmp_path),
+            command_scope=ConfigLevel.system, agents_root=agents_root,
+        )
+        assert msg == f"Set agent.{node}.model=x"
+        assert [p.name for p in agents_root.iterdir()] == [store_dirname(node)]
+        assert get_config_value(
+            f"agent.{node}.model",
+            global_config_path=tmp_path / CONFIG_FILENAME, agents_root=agents_root,
+        ) == "x"
+
+    @pytest.mark.parametrize("key", [
+        "agent.Claude.model",
+        f"agent.Claude.secret_path.{_TOKEN_VAR}",
+        "agent.Claude.bindings.ro.share",
+    ])
+    def test_every_resolve_key_arm_folds_the_node(self, key):
+        assert resolve_key(key) == key.replace("agent.Claude.", "agent.claude.", 1)
+
+    def test_a_persona_segment_keeps_its_case(self):
+        # Only the HARNESS folds — a persona segment keeps the user's case ([R173]).
+        assert resolve_key("agent.Nav+Claude.model") == "agent.Nav℘claude.model"
+
+    @pytest.mark.parametrize("typed", ["Default", "DEFAULT"])
+    def test_the_any_agent_tier_is_refused_with_its_own_cure_in_any_case(
+        self, tmp_path, agents_root, typed,
+    ):
+        def _set(node):
+            return set_config_value(
+                f"agent.{node}.model", "opus", config_path=_cfg_path(tmp_path),
+                command_scope=ConfigLevel.system, agents_root=agents_root,
+            )
+        assert _set(typed) == _set("default")
+        assert list(agents_root.iterdir()) == []
+
+    def test_a_refusal_names_the_node_the_key_resolved_to(self, tmp_path, agents_root):
+        # The bare-relative refusal spells the key's store root as an ``@``-ref; it must
+        # be the lowercase node's, or the cure it offers names a key that is not one.
+        msg = set_config_value(
+            f"agent.Shell.secret_path.{_TOKEN_VAR}", "x",
+            config_path=_cfg_path(tmp_path),
+            command_scope=ConfigLevel.system, agents_root=agents_root,
+        )
+        assert "'@meta.agent.shell.path/x'" in msg, msg
+
+
+# ---------------------------------------------------------------------------
 # end-to-end: after set, the persona resolves LOADABLE
 # ---------------------------------------------------------------------------
 

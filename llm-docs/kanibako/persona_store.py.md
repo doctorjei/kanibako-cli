@@ -70,8 +70,10 @@ it feeds.
 ## `locate_entry` — the two clean misses, and the one raise
 
 `locate_entry` takes any accepted agent ref (`navigator+codex`, `navigator℘codex`, or an
-already-canonical node-name) and normalizes it through `kanibako.agent_ref.parse_agent_address` —
-the ADDRESS grammar, since a lookup names an existing agent and claims nothing.
+already-canonical node-name) and normalizes it through `kanibako.agent_ref.agent_address_node` —
+the ADDRESS grammar, since a lookup names an existing agent and claims nothing, with the harness
+folded to node case (`[R173]`): `navigator+Claude` looks up `<root>/navigator/claude/`, the
+directory the launch looks up. The persona segment keeps its case.
 
 It returns `None` — a clean "not a persona" — in exactly two cases:
 

@@ -24,6 +24,7 @@ def display_agent_ref(node: str) -> str
 def canonicalize_agent_ref(raw: str) -> str
 def parse_agent_ref(raw: str) -> tuple[str, str]
 def parse_agent_address(raw: str) -> tuple[str, str]
+def agent_address_node(raw: str) -> str
 def harness_of(node: str) -> str
 def persona_of(node: str) -> str
 def with_harness(node: str, harness: str) -> str

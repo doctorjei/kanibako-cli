@@ -877,7 +877,9 @@ def test_remote_unforeseen_seed_failure_stays_silent(
 # The KANIBAKO_AGENT stamp is CANONICALISED on read (step 2 of the ℘ leak)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+@pytest.mark.parametrize(
+    "stamp", ["navigator+claude", "navigator℘claude", "navigator+Claude"],
+)
 def test_box_agent_node_canonicalises_the_stamp(stamp):
     """🛑 The stamp re-enters code as a NODE, in ONE spelling.
 
@@ -891,6 +893,8 @@ def test_box_agent_node_canonicalises_the_stamp(stamp):
 
     ⚑ BOTH SPELLINGS: ``+`` is what this version stamps, ``℘`` what an
     already-running older box carries — the back-compat guarantee, pinned.
+    ⚑ AND A NODE IS LOWERCASE ([R173]): a capitalized harness in the stamp folds,
+    the persona segment keeps its case.
     """
     from kanibako.commands.code_cmd import _resolve_box_agent_node
 
@@ -902,7 +906,9 @@ def test_box_agent_node_canonicalises_the_stamp(stamp):
     assert node == "navigator℘claude"
 
 
-@pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
+@pytest.mark.parametrize(
+    "stamp", ["navigator+claude", "navigator℘claude", "navigator+Claude"],
+)
 def test_remote_seed_hands_the_canonical_node_to_the_extension_lookup(stamp):
     """The REMOTE leg's half of the same rule (twin of the local one above).
 

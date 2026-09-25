@@ -33,7 +33,12 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from urllib.parse import urlsplit
 
-from kanibako.agent_ref import display_agent_ref, harness_of, parse_agent_address, persona_of
+from kanibako.agent_ref import (
+    agent_address_node,
+    display_agent_ref,
+    harness_of,
+    persona_of,
+)
 from kanibako.errors import ConfigError
 from kanibako.settings.paths import user_config_home
 from kanibako.targets.base import _REDACTED, _scrub_endpoint_userinfo
@@ -91,13 +96,19 @@ def locate_entry(ref: str) -> PersonaEntry | None:
     :class:`~kanibako.errors.ConfigError` from ``parse_agent_address``: a bad ref is
     a user error, not a store miss.
 
+    ⚑ THE HARNESS FOLDS, THE PERSONA DOES NOT (``[R173]``): the ``<hid>`` directory is
+    looked up by NODE, through :func:`~kanibako.agent_ref.agent_address_node`, so
+    ``navigator+Claude`` finds ``<root>/navigator/claude/`` — the directory the launch
+    looks up, since it builds its node from the lowercase ``target.name``.
+
     ⚑ PATH TRAVERSAL is handled upstream, not here.  ``.`` stopped being a legal
     segment character on 2026-08-04, so ``..+claude`` and ``navigator+..`` RAISE
     from ``parse_agent_address`` on the first line below.  There is deliberately no
     second dot-check here: one charset, enforced in one place (llm-doc).
     """
-    node, harness = parse_agent_address(ref)
-    if harness_of(node) == node:
+    node = agent_address_node(ref)
+    harness = harness_of(node)
+    if harness == node:
         return None  # bare agent: no persona segment -> never a store entry
     persona = persona_of(node)
     root = persona_store_root()

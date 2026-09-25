@@ -298,7 +298,7 @@ def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | No
     extension seed (:func:`_resolve_box_vscode_extension`) so the box is inspected
     a single time.
     """
-    from kanibako.agent_ref import parse_agent_address
+    from kanibako.agent_ref import agent_address_node
 
     try:
         stamp = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
@@ -309,8 +309,9 @@ def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | No
             # answer in ONE spelling. ⚑ Both separators are accepted, so an
             # older box stamped ``℘`` still resolves. ⚑ The ADDRESS grammar: a
             # plain-shell box is stamped ``shell`` (keyspec §2b), and its node is
-            # the answer, not a swallowed reservation error.
-            return parse_agent_address(stamp)[0]
+            # the answer, not a swallowed reservation error. ⚑ And FOLDED to the
+            # node ([R173]) — the answer is a NODE-name, so it is lowercase.
+            return agent_address_node(stamp)
 
         # Pre-stamp (older) box: fall back to the create-time selection cascade
         # (agent_select reads the SAME box-tier file ``box set
@@ -609,7 +610,7 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
     user can act on, so both stay at debug — and the catch stays blanket so a
     seed bug can never cost the user their editor.
     """
-    from kanibako.agent_ref import parse_agent_address
+    from kanibako.agent_ref import agent_address_node
 
     try:
         image_ref = engine.container_image(container_name)
@@ -623,9 +624,9 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
                 # OUTSIDE spelling and ``_extension_for_agent`` takes a NODE-name
                 # (it derives the harness with ``harness_of``, which splits on ``℘``
                 # alone).  No LOCAL project → resolve the plugin with
-                # project_path=None.
+                # project_path=None.  Folded to the node, as the local leg does.
                 extension = _extension_for_agent(
-                    parse_agent_address(stamp)[0], None,
+                    agent_address_node(stamp), None,
                 )
         except Exception:
             extension = None
