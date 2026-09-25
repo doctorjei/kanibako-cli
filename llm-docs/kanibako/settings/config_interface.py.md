@@ -563,8 +563,9 @@ The order is deliberate at every step.
    spelling gets its own specific message rather than this generic value complaint. It runs
    BEFORE the E3 probe, which splices the value into a candidate store — an illegal value is
    refused, not resolved. `_bare_relative_path_error` shares `is_unambiguous_path_value` and
-   `ambiguous_path_value_error` with the two READ-time seams (`paths._refuse_bare_relative`,
-   `workset_dirkeys.resolve_workset_dir_key`), so the rule has one wording at both ends. ⚑ The
+   `ambiguous_path_value_error` with the three READ-time seams (`paths._refuse_bare_relative`,
+   `workset_dirkeys.resolve_workset_dir_key`, `settings_launch._refuse_ambiguous_path_values`),
+   so the rule has one wording at both ends. ⚑ The
    `config.*` tier never reaches it — guard 1 short-circuits — and that is correct: those six are
    `set: file` with no CLI write route, so read time is their only enforcement. ⚑ The `pref.*`
    spelling does not reach it either; it is checked AT THE TARGET in `_pref_value_error`, beside

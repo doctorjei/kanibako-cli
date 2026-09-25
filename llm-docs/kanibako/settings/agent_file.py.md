@@ -62,11 +62,16 @@ NamedTuple turns TWO tests red, both in `TestRouteCarriesNoAddress` — `test_re
 whose `is_dataclass(slot)` goes False and whose write then raises `AttributeError` rather than
 `FrozenInstanceError`. Nothing else in `test_agent_file_boundary.py` or `test_agent_file.py`.)*
 
-```AgentFileLevel(node: str, table: dict)```  — frozen dataclass
+```AgentFileLevel(node: str, table: dict, path: Path | None = None)```  — frozen dataclass
 ONE cascade tier read out of the file: its §2d discriminator and its RAW table.
 
 *node* is the discriminator the tier merges under (`default` or the active agent), NOT necessarily
 the agent whose file it is — `assemble_levels` builds BOTH tiers from the one file.
+
+*path* is the file the table was read from, or `None` when the caller did not say. It travels with
+the table for the same reason *node* does: `settings_launch`'s read-time [R147] check names the file
+a bare-relative value sits in, and the focused behavior reads in `commands/start.py` hand
+`build_launch_snapshot` a level without an `agent_path`.
 
 ## The root
 
@@ -634,8 +639,9 @@ _refuse_env_twin`, the sole twin raise site). That one arbitrates two DECLARED k
 slot at COLLAPSE time; this one rejects a FILE SPELLING at ASSEMBLY time, before any key exists.
 Neither weakens the other and neither test may stand in for the other's.
 
-```state_level(cfg, *, node) -> AgentFileLevel | None```
-The file's BEHAVIOUR as a DISCRIMINATED level, or `None` if it sets none.
+```state_level(cfg, *, node, path=None) -> AgentFileLevel | None```
+The file's BEHAVIOR as a DISCRIMINATED level, or `None` if it sets none. *path*, the file *cfg* was
+read from, rides on the level (see `AgentFileLevel`).
 
 ⚑⚑ **IT TAKES THE RECORD, NOT `cfg.state`, AND THAT IS THE `run_args` CASCADE (`[R169]`).**
 `run_args` is a behaviour leaf the record models as a FIELD of its own (`_MODELED_KEYS`), so a level

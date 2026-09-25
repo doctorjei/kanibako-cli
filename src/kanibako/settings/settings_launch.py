@@ -42,7 +42,11 @@ if TYPE_CHECKING:
 
 from kanibako import kuid
 from kanibako.agent_ref import GENERAL_SLOT, harness_of, with_harness
-from kanibako.settings.agent_config import store_dirname
+from kanibako.settings.agent_config import (
+    ambiguous_path_value_error,
+    is_unambiguous_path_value,
+    store_dirname,
+)
 from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.agent_file import AgentFileLevel, stored_leaf_text
 from kanibako.settings.config import (
@@ -54,6 +58,7 @@ from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.config_io import load_doc
+from kanibako.settings.config_keys import is_path_valued_key, path_key_anchor
 from kanibako.settings.settings_assemble import (
     assemble_levels,
     cascade_view,
@@ -73,8 +78,10 @@ from kanibako.settings.settings_cli_level import guard_cli_level
 from kanibako.settings.settings_expand import expand
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
+    KeyClass,
     render_store_path,
     undeclared_store_paths,
+    walk_store_paths,
 )
 from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_keyspace_probe import observe as observe_keyspace
@@ -504,8 +511,8 @@ def meta_identity_floor(
 # anchors the spec's §2c binds reference (workset.{boxes,vault_ro,vault_rw,logs} +
 # the workset-local channels) and the RO per-mode BOX ROOT ``meta.box.path``, as REAL
 # @-referenceable floor keys. JC-B2b-1: they do NOT exist as resolvable snapshot keys
-# otherwise — resolve_system_paths derives only the PRIMARY pseudo-keys into
-# StandardPaths, and there is no workset.* tier in the snapshot.
+# otherwise — resolve_system_paths derives only the PRIMARY-workset roots (non-key
+# entries) into StandardPaths, and there is no workset.* tier in the snapshot.
 #
 # ⚑ WHERE THE PER-MODE VARIATION LIVES (spec §2c): HERE and nowhere downstream, so
 # every rooted key and the box home spell themselves ONCE against ``@meta.box.path``
@@ -1148,6 +1155,115 @@ def _refuse_undeclared_snapshot(
     )
 
 
+def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]:
+    """``(key, value)`` for every leaf of *store* that is a PATH key, in walk order.
+
+    ⚑ THE PATH-KEY SET IS :func:`~kanibako.settings.config_keys.is_path_valued_key`,
+    asked of every leaf — the registry's ``type: path`` rows plus the parametric
+    families it recognizes by parser. No list is kept here, so a key added to the
+    registry is swept the day it lands (P13).
+    ⚑ A LEAF IS SWEPT ONLY IF THE §0 ORACLE CALLS IT A KEY. The predicate parses CLI
+    spellings, so it also accepts the bare ``template`` / ``canon`` and nested shapes
+    such as ``agent.claude.nav.template``; in a store those are undeclared entries
+    (§0), and a BARE RELATIVE refusal naming one would send the user to fix a key
+    that does not exist. :func:`keyspace_verdict` is the oracle
+    :func:`_refuse_undeclared_snapshot` refuses on, so the two cannot disagree (P10).
+    ⚑ A SEGMENT WITH A DOT STOPS THE KEY: it is data (a bind destination), never key
+    path — the same rule ``settings_keyspace.classify_store_path`` applies. The
+    oracle cannot catch it: ``("box", "secret_path.X")`` joins to a declared key.
+    """
+    leaves: list[tuple[str, object]] = []
+    for segments, is_node in walk_store_paths(store):
+        if is_node or any("." in seg for seg in segments):
+            continue
+        key = ".".join(segments)
+        if is_path_valued_key(key) and keyspace_verdict(key).cls is KeyClass.KEY:
+            leaves.append((key, snapshot_leaf(store, key)))
+    return leaves
+
+
+#: One settings level a USER wrote, the file it was read from (``None`` when the caller
+#: supplied none), and the FLOOR folded into it as a store (the ``base`` level only;
+#: ``None`` everywhere else). See :func:`_refuse_ambiguous_path_values`.
+_WrittenLevel = tuple[KeyStore, Path | None, KeyStore | None]
+
+
+def _refuse_ambiguous_path_values(
+    written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx,
+) -> None:
+    """RAISE naming EVERY path key a settings file stores as a BARE RELATIVE ([R147], read time).
+
+    The generic read-time sweep: ``paths._refuse_bare_relative`` covers the
+    Layer-1/Layer-2 keys and ``workset_dirkeys.resolve_workset_dir_key`` the workset
+    dir keys, but a key consumed some other way — ``workset.auth.path``, read by
+    credsync through ``meta.box.auth.workset_path`` as a copy-route source root — met
+    neither, so a hand-edited ``workset.yaml`` carried one through. This asks the one
+    question of every path key in every level a user writes, so a new consumer cannot
+    open that gap again.
+
+    ⚑ SAME PREDICATE, SAME ANCHOR, SAME WORDING as the set-time guard and both
+    read-time seams: :func:`path_key_anchor` names the other reading and
+    :func:`ambiguous_path_value_error` writes it. The anchor is resolved against
+    *expanded*, which is why this runs after the expand; an anchor that does not
+    resolve here is named by its own ref spelling, as the helper documents.
+    ⚑ EVERY offender, not the first, each with the FILE that carries it — the cure is
+    a hand-edit, and one name per attempt turns one edit into N launches.
+
+    ⚑⚑ IT JUDGES THE *written* LEVELS, NEVER THE MERGE, because [R147] governs STORED
+    key values. The merge also carries what kanibako supplies itself — the floor
+    (``system.*`` paths already resolved, and refused if bare, by ``paths.py``), the
+    plugin descriptor defaults, the live persona values and the CLI level — and a
+    refusal telling a user to fix a value no file of theirs holds is a false message.
+    That is also why the ``base`` level passes its folded floor: the site file
+    overlays the floor into ONE partial, and a leaf still holding the floor's own
+    value is the floor's, not the file's.
+    ⚑ A SHADOWED value is judged too: it is still a stored value, and it wins the
+    moment the level above it is removed.
+    ⚑ The test is on the STORED spelling: ``$XDG_DATA_HOME/x`` is legal even where that
+    variable answers something odd, and the message quotes what the user typed.
+    ⚑ ONLY A NON-EMPTY STRING IS JUDGED. ``None`` is a reset or a standalone pin. A
+    non-scalar is not judged here: ``refuse_non_scalar_family_value`` refuses one by name
+    in the ``env`` and ``secret_path`` families; the Layer-1/Layer-2 read stringifies
+    one (``config._flatten_dotted``) and ``paths._refuse_bare_relative`` refuses the
+    string as a bare relative; at any other path key (``workset.auth.path``,
+    ``box.canon``) this resolve passes it through and nothing refuses it by name.
+    """
+    offenders = [
+        (key, value, path)
+        for level, path, floor_store in written
+        for key, value in _path_key_leaves(level)
+        if isinstance(value, str) and value and not is_unambiguous_path_value(value)
+        and (floor_store is None or snapshot_leaf(floor_store, key) != value)
+    ]
+    if not offenders:
+        return
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        del chain  # *expanded* holds terminals: nothing is resolved transitively.
+        value = snapshot_leaf(expanded, ref)
+        if isinstance(value, str) and value:
+            return value
+        raise SettingsError(f"'@{ref}' has no resolved value in this snapshot")
+
+    refusals = []
+    for key, value, path in offenders:
+        anchor_ref, anchor_label = path_key_anchor(key)
+        try:
+            anchor: str | None = expand_expr(
+                anchor_ref, space="host", ctx=ctx, lookup=lookup,
+            )
+        except SettingsError:
+            anchor = None
+        refusals.append(ambiguous_path_value_error(
+            key, value,
+            anchor=anchor or anchor_ref,
+            anchor_ref=anchor_ref if anchor else None,
+            where=str(path) if path is not None else None,
+            anchor_label=anchor_label,
+        ))
+    raise SettingsError("\n\n".join(refusals))
+
+
 def build_launch_snapshot(
     *,
     agent_name: str,
@@ -1307,6 +1423,9 @@ def build_launch_snapshot(
         for key, val in workset_anchor.items():
             floor[key] = val
 
+    # Resolved ONCE: the base level is read from it and the read-time path check below
+    # names it.
+    base_path = settings_base_path()
     base_levels = assemble_levels(
         agent_name=agent_name,
         system_path=system_path,
@@ -1314,6 +1433,7 @@ def build_launch_snapshot(
         workset_path=workset_path,
         box_path=box_path,
         floor=floor,
+        base_path=base_path,
     )
     # ``assemble_levels`` ALWAYS returns the 6 levels MOST-SPECIFIC-FIRST (S8):
     #   [box, workset, agent.<active>, agent.default, system, base]
@@ -1390,6 +1510,30 @@ def build_launch_snapshot(
     # exactly the resolves that matter, so a future re-measurement would see only the
     # snapshots that already conform.
     observe_keyspace(expanded, origin="build_launch_snapshot")
+    # [R147] at read time, for EVERY path key a settings file stores. It JUDGES the
+    # levels a user writes — each beside its file — and RESOLVES its anchors off the
+    # expanded snapshot. The persona, descriptor, CLI and floor rungs are kanibako's
+    # own and are deliberately absent (see the function). AFTER the probe, for the
+    # reason the probe states.
+    # The agent file's flat state names the file it was read from — the path travels
+    # WITH the level — and ``agent_path`` answers only when the level carries none.
+    state_path = (agent_state.path if agent_state is not None else None) or agent_path
+    written: list[_WrittenLevel] = [
+        (level, path, None)
+        for level, path in (
+            (base_levels[0], box_path),
+            (box_prefs, box_path),
+            (base_levels[1], workset_path),
+            (ws_prefs, workset_path),
+            (state_partial, state_path),
+            (base_levels[2], agent_path),
+            (base_levels[3], agent_path),
+            (base_levels[4], system_path),
+        )
+        if level is not None
+    ]
+    written.append((base_levels[5], base_path, dotted_partial(floor)))
+    _refuse_ambiguous_path_values(written, expanded, ctx=ctx)
     # Spec §0's RESOLVE clause, enforced. ⚑ A SIBLING of the probe, never a mode of
     # it: the probe is REPORT-ONLY by its own module contract, and the two share the
     # ORACLE so the refusal arms exactly what was measured.
@@ -2309,10 +2453,15 @@ def _emit_scope_node(
             if host_src and not host_src.startswith("/"):
                 # ⚑ [R147] REACHES THIS FAMILY, and a ``type: path`` grep MISSES it:
                 # the manifest declares ``secret_path`` as ``value: path``, parametric
-                # on VAR, so the VALUE is a path key like any other. It is also the
-                # ONE path key with no declared default, hence no second candidate
-                # anchor to name — so the refusal is the §2a SOURCE refusal rather
-                # than the two-readings one.
+                # on VAR, so the VALUE is a path key like any other.
+                # ⚑ TWO REFUSALS, SPLIT BY WHERE THE VALUE CAME FROM. A value a SETTINGS
+                # FILE stores is judged first by ``_refuse_ambiguous_path_values`` in
+                # ``build_launch_snapshot``, and gets the two-readings message, its
+                # second reading anchored at the scope root by ``path_key_anchor``.
+                # This §2a SOURCE refusal is for what the sweep does not judge: a value
+                # kanibako supplies itself (the persona, descriptor, CLI and floor
+                # rungs), and a snapshot ``build_launch_snapshot`` did not build, such
+                # as the one ``workset_cmd``'s preview expands on its own.
                 # 🛑 NOT SOFTENED BY ``fail_soft``: that covers a path that is missing
                 # or unreadable, and this path is neither. podman would MAKE the named
                 # volume, so the mount "succeeds" and the box gets an empty directory

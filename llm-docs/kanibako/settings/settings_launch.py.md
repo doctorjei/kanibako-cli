@@ -954,21 +954,28 @@ the caller supplied the anchor.
 
 ### The tail of the seam: measure, then enforce, then choose the message
 
-Three calls close `build_launch_snapshot`, and the ORDER of all three is load-bearing.
+Four calls close `build_launch_snapshot`. The probe goes FIRST and the message choice goes LAST,
+and both of those positions are load-bearing.
 
 1. `observe_keyspace` — the REPORT-ONLY probe. It runs FIRST because a raise ahead of it would blind
    the instrument to precisely the resolves that matter, so any later re-measurement would see only
    the snapshots that already conform.
-2. `_refuse_undeclared_snapshot` — §0's RESOLVE clause. A SIBLING of the probe, never a mode of it;
+2. `_refuse_ambiguous_path_values` — [R147] at READ time, over EVERY path key a settings file
+   stores. See the subsection below.
+3. `_refuse_undeclared_snapshot` — §0's RESOLVE clause. A SIBLING of the probe, never a mode of it;
    the two share the ORACLE, so what is armed is exactly what was measured.
-3. `_refuse_retired_spelling`, called BY the refusal once it has findings — the message CHOICE.
+4. `_refuse_retired_spelling`, called BY the refusal once it has findings — the message CHOICE.
 
-⚑ **WHY (3) EXISTS.** Every retired spelling is also an undeclared key, so (2) reaches it first —
+(2) and (3) raise independently, so a file carrying BOTH a bare-relative path value and an
+undeclared key reports the path value first and the undeclared key on the next run.
+
+⚑ **WHY (4) EXISTS.** Every retired spelling is also an undeclared key, so (3) reaches it first —
 and the seams that own the tailored retirement messages (`agent_select` for the selection keys,
-`commands/start.py` for the behaviour key) both sit DOWNSTREAM of the resolve. Arming (2) therefore
+`commands/start.py` for the behavior key) both sit DOWNSTREAM of the resolve. Arming (3) therefore
 took those messages away from the users they were written for: a `box.yaml` carrying
-`box: {agent_name: claude}` got "not a settings key", and the ~40 lines `MIGRATION.md` §2.1 spends
-on the cure reached nobody. Measured, and mutation-proved in both directions.
+`box: {agent_name: claude}` got "not a settings key", and the ~40 lines `MIGRATION.md`'s "Settings
+keys renamed or retired" section spends on the cure reached nobody. Measured, and mutation-proved
+in both directions.
 
 ⚑ **IT IS NOT AN EXEMPTION.** The retired key is still refused; only the TEXT differs. A name-keyed
 escape from §0 is the carve-out class the closed keyspace exists to reject, and it would hide the
@@ -997,8 +1004,8 @@ keep their `<box>` / `<agent>` placeholders. 🛑 **THE REASON IS ORDERING, NOT 
 with an identity floor" was simply false. What is true is narrower and sufficient:
 `load_merged_config` (`start.py:2417`) runs well before `select_agent` (`:2666`), so the resolve
 that REACHES this refusal is always the narrow, identity-free one, and a `meta.box.name` read here
-would find nothing on the path that matters. `MIGRATION.md` §2.1 states the placeholder rather than
-leaving a user to notice it.
+would find nothing on the path that matters. `MIGRATION.md`'s "Settings keys renamed or retired"
+section states the placeholder rather than leaving a user to notice it.
 
 ⚑ **THE `base` TIER IS SCANNED**, appended by `_refuse_retired_spelling` itself off
 `settings_base_path()` — the same default `assemble_levels` resolves internally, read rather than
@@ -1013,6 +1020,72 @@ put this seam FIRST, so a site-wide fault would have got strictly LESS help than
 carrying BOTH a retired spelling and an ordinary undeclared key reports the retirement and reveals
 the other on the next run. That is a deliberate trade against §0's own "name every entry" rule: the
 retirement message is worth more than the second line, and the second line is not lost.
+
+### The read-time path sweep — [R147] over every path key a file stores
+
+`_refuse_ambiguous_path_values` refuses a BARE RELATIVE path value in any settings file, and names
+EVERY offending key, each with the file that carries it. The cure is a hand-edit, and naming one key
+per attempt would turn one edit into N launches.
+
+Two other read-time seams already refuse a bare relative: `paths._refuse_bare_relative` for the
+Layer-1/Layer-2 keys and `workset_dirkeys.resolve_workset_dir_key` for the workset dir keys. A key
+consumed some other way met neither of them. `workset.auth.path` is the case that opened the gap:
+credsync reads it through `meta.box.auth.workset_path` as a copy-route SOURCE ROOT, so a
+hand-edited workset file carried a bare relative straight into the credential path. The set-time
+guard never sees a hand-edit. This sweep asks the same question of every path key, so a new consumer
+cannot reopen the gap.
+
+* **THE KEY SET IS DERIVED, NEVER LISTED.** `_path_key_leaves` walks a level and asks
+  `config_keys.is_path_valued_key` of every leaf: the registry's `type: path` rows plus the
+  parametric families it recognizes by parser. A key added to the registry is swept the day it
+  lands. A segment containing a dot stops the walk, because it is data (a bind destination), not key
+  path — the same rule `settings_keyspace.classify_store_path` applies.
+* **A LEAF IS SWEPT ONLY IF THE §0 ORACLE CALLS IT A KEY** (`keyspace_verdict(key).cls is
+  KeyClass.KEY`). The predicate parses CLI spellings, so it also accepts the bare `template` /
+  `canon` (the any-agent tier a verb serves) and nested shapes such as `agent.claude.nav.template`
+  or `agent.claude.nav.secret_path.X`. In a store those are undeclared entries, not keys, and
+  refusing one as a BARE RELATIVE would send the user to "fix" a key that does not exist — after
+  which §0 refuses it anyway. The oracle is the one `_refuse_undeclared_snapshot` refuses on, so
+  the sweep and §0 cannot disagree about what a key is. The dot rule above still binds: the oracle
+  cannot catch a forged key, since `("box", "secret_path.X")` joins to a declared one.
+* **`secret_path.<VAR>` is one of those families**, at every scope and under `agent.<node>`. At read
+  time, a bare relative one in a file used to meet only the category adapter's own `secret_path`
+  refusal, when the mounts were built, and only if it won the merge. The sweep now stops it first,
+  with the two-readings message. The adapter's refusal stays, for values the sweep does not judge.
+* **SAME PREDICATE, ANCHOR AND WORDING as the set-time guard and the other two read-time seams:**
+  `agent_config.is_unambiguous_path_value` decides, `config_keys.path_key_anchor` names the other
+  reading, and `agent_config.ambiguous_path_value_error` writes the message. The anchor resolves
+  against the EXPANDED snapshot, which is why the sweep runs after `expand`. An anchor that does not
+  resolve there is named by its own ref spelling.
+* ⚑⚑ **IT JUDGES THE WRITTEN LEVELS, NEVER THE MERGE.** [R147] governs STORED key values. The merge
+  also carries values kanibako supplies itself: the floor, the plugin descriptor defaults, the live
+  persona values and the CLI level. A refusal telling a user to fix a value no file of theirs holds
+  would be a false message. The judged levels are the box file and its prefs, the workset file and
+  its prefs, the agent file (its flat state and both agent slots), the system file, and the site
+  `base` file.
+* **Each level names its FILE.** The agent file's flat state arrives as an `AgentFileLevel`, which
+  carries the path it was read from (`agent_file.state_level(..., path=)`). That path wins;
+  `agent_path` answers only when the level carries none, so the level is named even when the caller
+  passes no `agent_path`. The focused behavior reads in `commands/start.py`
+  (`_effective_agent_scalar`, `_effective_transform`, `_effective_behavior_for_display`) pass none.
+* ⚑ **The `base` level is the site file overlaid on the floor in ONE partial**, so it is passed with
+  the floor, built into a store by `dotted_partial` so a leaf inside a dict-valued floor entry
+  compares too. A leaf still holding the floor's own value is the floor's and is not judged; a value
+  the site file stores is judged like any other. The base path is resolved ONCE, handed to
+  `assemble_levels` and named by the refusal, so the two cannot disagree about which file it is.
+* **A SHADOWED value is judged too.** It is still a stored value, and it wins as soon as the level
+  above it is removed.
+* **The test reads the STORED spelling.** `$XDG_DATA_HOME/x` is legal even where that variable holds
+  something odd, and the message quotes what the user typed.
+* **Only a non-empty string is judged.** `None` is a reset or a standalone pin. A non-scalar is
+  not judged here: `refuse_non_scalar_family_value` refuses one by name in the `env` and
+  `secret_path` families; the Layer-1/Layer-2 read stringifies one (`config._flatten_dotted`) and
+  `paths._refuse_bare_relative` refuses the string as a bare relative; at any other path key
+  (`workset.auth.path`, `box.canon`) this resolve passes it through and nothing refuses it by name.
+
+Pinned by the `test_R147_*` tests in `tests/test_settings/test_settings_launch.py`, including the
+anti-vacuity test that proves the swept set holds `workset.auth.path` and every registry
+`type: path` key the snapshot carries.
 
 ## Agent SELECTION — the narrow resolve that precedes the launch snapshot (P7)
 

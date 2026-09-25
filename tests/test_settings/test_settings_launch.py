@@ -1615,6 +1615,268 @@ def test_p6d2_workset_auth_path_settable_and_overrides_default(tmp_path):
     assert a.workset_source == "/custom/store/claude"
 
 
+# --------------------------------------------------------------------------- #
+# [R147] at READ time — the generic sweep over every path key a file stores    #
+# --------------------------------------------------------------------------- #
+#
+# ``workset.auth.path`` is consumed by credsync as a copy-route SOURCE ROOT, so
+# neither ``paths._refuse_bare_relative`` nor ``resolve_workset_dir_key`` reached it:
+# a hand-edited workset file carried a bare relative straight into the credential
+# path. The set-time guard never sees a hand-edit.
+
+
+def test_R147_a_hand_edited_bare_relative_workset_auth_path_is_refused(tmp_path):
+    """A bare relative ``workset.auth.path`` in the workset file refuses, naming both readings."""
+    # Mutation: drop ``_refuse_ambiguous_path_values`` from ``build_launch_snapshot``
+    # → the snapshot builds and credsync's source root becomes ``auth/claude``.
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as exc:
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path,
+            workset_file={"workset": {"auth": {"path": "auth"}}},
+        )
+    msg = str(exc.value)
+    assert "workset.auth.path is set to 'auth' in " in msg
+    assert "BARE RELATIVE" in msg
+    # The FILE that carries it is named — ``_auth_snapshot`` writes under tmp_path.
+    assert f" in {tmp_path}" in msg
+    # BOTH readings are named: the key's own root, and the cwd.
+    assert "@meta.workset.path" in msg
+    assert str(Path.cwd() / "auth") in msg
+
+
+def test_R147_the_sweep_reaches_workset_auth_path_in_a_real_snapshot(tmp_path):
+    """Anti-vacuity: the sweep reaches ``workset.auth.path`` and every carried ``type: path`` key."""
+    from kanibako.settings.config_keys import KEY_TYPES
+    from kanibako.settings.kb_store import __MISSING__
+    from kanibako.settings.settings_launch import _path_key_leaves, snapshot_leaf
+
+    snap = _auth_snapshot("primary", tmp_path=tmp_path)
+    swept = {key for key, _value in _path_key_leaves(snap)}
+    assert "workset.auth.path" in swept
+    carried = {
+        key for key, kind in KEY_TYPES.items()
+        if kind == "path" and snapshot_leaf(snap, key) is not __MISSING__
+    }
+    assert carried, "the snapshot carries no registry path key: the check is vacuous"
+    assert carried <= swept
+
+
+def test_R147_every_offending_path_key_is_named_in_one_refusal(tmp_path):
+    """One refusal names every offending key the sweep reaches, not only the first."""
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as exc:
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path,
+            workset_file={"workset": {"auth": {"path": "auth"}, "logs": "./logs"}},
+            box_file={"box": {"canon": "../canon"}},
+        )
+    msg = str(exc.value)
+    assert "workset.auth.path is set to 'auth'" in msg
+    assert "workset.logs is set to './logs'" in msg
+    assert "box.canon is set to '../canon'" in msg
+
+
+def test_R147_a_bare_relative_in_the_SITE_base_file_is_refused(tmp_path, monkeypatch):
+    """A value the site ``base`` file stores is judged like any other, and names that file."""
+    # ONLY ``settings_launch``'s binding is patched: the launch resolves the base path
+    # ONCE and hands it to ``assemble_levels``, so the two cannot name different files.
+    from kanibako.settings import settings_launch as _launch
+    from kanibako.settings.settings_resolve import SettingsError
+
+    base = tmp_path / SITE_SETTINGS_FILENAME
+    base.write_text("workset:\n  auth:\n    path: auth\n", encoding="utf-8")
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+    with pytest.raises(SettingsError) as exc:
+        _auth_snapshot("primary", tmp_path=tmp_path)
+    assert f"workset.auth.path is set to 'auth' in {base}" in str(exc.value)
+
+
+def test_R147_a_value_kanibako_supplies_itself_is_not_judged():
+    """A floor or descriptor default is kanibako's own, so the sweep never judges it."""
+    # Mutation: judge the MERGE instead of the written levels → red.
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(),
+        system_path=None, agent_path=None, workset_path=None, box_path=None,
+        behavior_floor={"template": "unset"},
+        agent_partial=KeyStore({"agent": {"claude": {"canon": "descriptor-canon"}}}),
+    )
+    assert snap.agent.default.template == "unset"
+    assert snap.agent.claude.canon == "descriptor-canon"
+
+
+@pytest.mark.parametrize("value", [
+    "/custom/store", "~/store", "$XDG_DATA_HOME/store", "@meta.workset.path/store",
+])
+def test_R147_an_unambiguous_workset_auth_path_passes_the_sweep(tmp_path, value):
+    """Each of the four legal spellings builds."""
+    snap = _auth_snapshot(
+        "primary", tmp_path=tmp_path,
+        workset_file={"workset": {"auth": {"path": value}}},
+    )
+    assert isinstance(snap.workset.auth.path, str)
+    assert snap.workset.auth.path.startswith("/")
+
+
+@pytest.mark.writes_undeclared(
+    "agent.claude.nav", "agent.claude.nav.template",
+    "agent.claude.nav.secret_path", "agent.claude.nav.secret_path.X",
+    reason="the undeclared nested persona shapes ARE the input under test: the sweep "
+           "must skip them because the §0 oracle does not call them keys.",
+)
+def test_R147_a_leaf_the_keyspace_does_not_declare_is_never_swept():
+    """A path-shaped leaf the §0 oracle calls UNDECLARED is not a key, so the sweep skips it."""
+    # Mutation: drop the oracle test from ``_path_key_leaves`` → red (the bare CLI
+    # spellings and the nested persona shapes all parse as path keys).
+    from kanibako.settings.settings_launch import _path_key_leaves
+
+    store = KeyStore({
+        "template": "foo", "canon": "foo",
+        "agent": {"claude": {"nav": {"template": "x", "secret_path": {"X": "t"}}}},
+        "box": {"canon": "rel"},
+    })
+    assert _path_key_leaves(store) == [("box.canon", "rel")]
+
+
+_R147_UNDECLARED_REASON = (
+    "the refused entry IS an undeclared nested persona shape in a settings file; "
+    "assemble_levels writes it (and the meta.box.agent mirror copies it) before §0 "
+    "refuses it."
+)
+
+
+@pytest.mark.parametrize("stored,named", [
+    pytest.param(
+        {"agent": {"claude": {"nav": {"template": "x"}}}}, "agent.claude.nav.template",
+        marks=pytest.mark.writes_undeclared(
+            "agent.claude.nav", "agent.claude.nav.template",
+            "meta.box.agent.nav", "meta.box.agent.nav.template",
+            reason=_R147_UNDECLARED_REASON,
+        ),
+        id="nested-persona-template",
+    ),
+    pytest.param(
+        {"agent": {"claude": {"nav": {"secret_path": {"X": "t"}}}}},
+        "agent.claude.nav.secret_path.X",
+        marks=pytest.mark.writes_undeclared(
+            "agent.claude.nav", "agent.claude.nav.secret_path",
+            "agent.claude.nav.secret_path.X", "meta.box.agent.nav",
+            "meta.box.agent.nav.secret_path", "meta.box.agent.nav.secret_path.X",
+            reason=_R147_UNDECLARED_REASON,
+        ),
+        id="nested-persona-secret",
+    ),
+])
+def test_R147_an_undeclared_path_shape_gets_the_closed_keyspace_refusal(
+    tmp_path, stored, named,
+):
+    """An undeclared path-shaped entry is refused by §0 by name — never as a BARE RELATIVE."""
+    # Mutation: drop the oracle test from ``_path_key_leaves`` → red (the [R147]
+    # refusal fires first and names a key that does not exist).
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as exc:
+        _auth_snapshot("primary", tmp_path=tmp_path, system_file=stored)
+    msg = str(exc.value)
+    assert "BARE RELATIVE" not in msg
+    assert "not settings keys (spec §0" in msg
+    assert f"\n  - {named}: " in msg
+
+
+@pytest.mark.parametrize("stored,key", [
+    ({"box": {"secret_path": {"X": "token.txt"}}}, "box.secret_path.X"),
+    (
+        {"agent": {"claude": {"secret_path": {"X": "token.txt"}}}},
+        "agent.claude.secret_path.X",
+    ),
+], ids=["box-scope", "agent-node"])
+def test_R147_a_bare_relative_secret_path_in_a_file_gets_the_two_readings_refusal(
+    tmp_path, stored, key,
+):
+    """A file-stored ``secret_path.<VAR>`` refuses at read time with the two-readings message."""
+    # Mutation: exclude ``secret_path`` from ``_path_key_leaves`` → both go red.
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as exc:
+        _auth_snapshot("primary", tmp_path=tmp_path, system_file=stored)
+    msg = str(exc.value)
+    # ``_auth_snapshot`` writes the system file first, as settings-0.yaml.
+    assert f"{key} is set to 'token.txt' in {tmp_path / 'settings-0.yaml'}" in msg
+    assert "kanibako will not guess what it is relative to" in msg
+
+
+@pytest.mark.parametrize("value", [None, ""], ids=["none", "empty"])
+def test_R147_a_reset_or_empty_value_is_not_judged(tmp_path, value):
+    """``None`` and ``""`` are not path spellings, so the sweep passes them."""
+    _auth_snapshot(
+        "primary", tmp_path=tmp_path,
+        workset_file={"workset": {"auth": {"path": value}}},
+    )
+
+
+def test_R147_an_AGENT_rooted_value_is_refused(tmp_path):
+    """``$AGENT`` expands to a bare name, so ``$AGENT/x`` is as relative as ``x``."""
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as exc:
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path,
+            workset_file={"workset": {"auth": {"path": "$AGENT/x"}}},
+        )
+    assert "workset.auth.path is set to '$AGENT/x'" in str(exc.value)
+
+
+def test_R147_a_shadowed_value_is_judged_and_names_its_own_file(tmp_path):
+    """A bare relative under a winning absolute value still refuses, naming the lower file."""
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as exc:
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path,
+            system_file={"agent": {"claude": {"canon": "rel"}}},
+            box_file={"agent": {"claude": {"canon": "/abs"}}},
+        )
+    msg = str(exc.value)
+    assert f"agent.claude.canon is set to 'rel' in {tmp_path / 'settings-0.yaml'}" in msg
+    assert "'/abs'" not in msg
+
+
+def test_R147_a_pref_request_is_judged_and_names_its_file(tmp_path):
+    """A bare relative in a box file's ``pref.*`` request refuses, naming the box file."""
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as exc:
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path,
+            box_file={"pref": {"agent": {"claude": {"secret_path": {"X": "t.txt"}}}}},
+        )
+    # No system or workset file, so the box file is the first written: settings-0.yaml.
+    assert (
+        f"agent.claude.secret_path.X is set to 't.txt' in {tmp_path / 'settings-0.yaml'}"
+        in str(exc.value)
+    )
+
+
+def test_R147_an_agent_file_level_names_the_file_it_carries(tmp_path):
+    """An agent-file level loaded without ``agent_path`` still names its file."""
+    # Mutation: drop the ``agent_state.path`` fallback in ``build_launch_snapshot``
+    # → the refusal names no file.
+    from kanibako.settings.agent_file import AgentFileLevel
+    from kanibako.settings.settings_resolve import SettingsError
+
+    agent_yaml = tmp_path / "agents" / "claude" / "agent.yaml"
+    with pytest.raises(SettingsError) as exc:
+        build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(),
+            system_path=None, agent_path=None, workset_path=None, box_path=None,
+            behavior_floor={"bootstrap": "tmux"},
+            agent_state=AgentFileLevel("claude", {"canon": "rel"}, agent_yaml),
+        )
+    assert f"agent.claude.canon is set to 'rel' in {agent_yaml}" in str(exc.value)
+
+
 def test_p6d2_standalone_scrub_stray_agent_garbage(tmp_path):
     """change 7: standalone → workset.auth.path None + meta.box.auth.workset_path
     None + workset tier disabled → workset_source None (NO /<agent> garbage that
@@ -4343,6 +4605,10 @@ class TestPersonaRungOrdering:
     flips exactly one of these red.
     """
 
+    # ⚑ A contender a SETTINGS FILE stores is spelled ABSOLUTE: the ``secret_path``
+    # class is a path key, and [R147] refuses a bare relative in any file at read time.
+    # The persona and descriptor values are kanibako's own, which the sweep never judges.
+
     def test_persona_beats_the_descriptor_default_partial(self, tmp_path, key, path):
         """The 7a descriptor DEFAULT (``agent_partial``) is the LEAST-specific level
         that spells the ACTIVE slot, and it sits below ``agent.default``.
@@ -4392,11 +4658,11 @@ class TestPersonaRungOrdering:
         snap = _persona_snap(
             tmp_path,
             persona_values={key: "from-persona"},
-            system={"agent": {"default": _nested(key, "from-agent-default")}},
+            system={"agent": {"default": _nested(key, "/from-agent-default")}},
         )
         assert _leaf(snap, path) == "from-persona"
         # The backstop is untouched under its OWN true name — no clobber, no merge.
-        assert _leaf(snap, path, agent_name="default") == "from-agent-default"
+        assert _leaf(snap, path, agent_name="default") == "/from-agent-default"
 
     def test_persona_beats_the_system_file(self, tmp_path, key, path):
         """``system`` CONTAINS ``agent``, so a system file may legally set
@@ -4404,7 +4670,7 @@ class TestPersonaRungOrdering:
         snap = _persona_snap(
             tmp_path,
             persona_values={key: "from-persona"},
-            system={"agent": {"claude": _nested(key, "from-system")}},
+            system={"agent": {"claude": _nested(key, "/from-system")}},
         )
         assert _leaf(snap, path) == "from-persona"
 
@@ -4412,8 +4678,8 @@ class TestPersonaRungOrdering:
         """FILE-BEATS-PERSONA. The agent file holds only non-default values, so an
         ``agent.<active>.<key>`` in it can only be a deliberate user edit."""
         self._contended(
-            tmp_path, key, path, "from-agent-file",
-            **_agent_file_contender(key, "from-agent-file"),
+            tmp_path, key, path, "/from-agent-file",
+            **_agent_file_contender(key, "/from-agent-file"),
         )
 
     def test_persona_loses_to_a_workset_pref(self, tmp_path, key, path):
@@ -4422,14 +4688,14 @@ class TestPersonaRungOrdering:
         those scopes reach the agent tier — and both pref overlays sit above the
         persona rung."""
         self._contended(
-            tmp_path, key, path, "from-workset",
-            workset={"pref": {"agent": {"claude": _nested(key, "from-workset")}}},
+            tmp_path, key, path, "/from-workset",
+            workset={"pref": {"agent": {"claude": _nested(key, "/from-workset")}}},
         )
 
     def test_persona_loses_to_a_box_pref(self, tmp_path, key, path):
         self._contended(
-            tmp_path, key, path, "from-box",
-            box={"pref": {"agent": {"claude": _nested(key, "from-box")}}},
+            tmp_path, key, path, "/from-box",
+            box={"pref": {"agent": {"claude": _nested(key, "/from-box")}}},
         )
 
     @staticmethod
@@ -5353,11 +5619,13 @@ def test_a_bare_relative_secret_path_is_refused_at_the_emit_seam():
     the manifest declares it ``value: path``, parametric on VAR, so the family's rows
     carry no ``type:`` line at all.
 
-    🛑 The refusal is the §2a SOURCE one, not the two-readings one, and that is not a
-    softening: ``secret_path`` is the one path key with NO declared default, so there
-    is no second candidate anchor for a message to name. What there IS is the mount
-    hazard — a source beginning with neither ``.`` nor ``/`` is a NAMED VOLUME to
-    podman, so the box gets an empty directory where its credential should be.
+    🛑 TWO REFUSALS, SPLIT BY WHERE THE VALUE CAME FROM. A value a settings FILE stores
+    is refused first, at ``build_launch_snapshot``, with the two-readings message
+    anchored at the scope root by ``path_key_anchor`` (the ``test_R147_*`` pins). This
+    §2a SOURCE refusal is for what that check does not judge — a value kanibako supplies
+    itself, or a snapshot ``build_launch_snapshot`` did not build, as here — and it names
+    the mount hazard: a source beginning with neither ``.`` nor ``/`` is a NAMED VOLUME
+    to podman, so the box gets an empty directory where its credential should be.
     ⚑ NOT covered by ``fail_soft``: the file is neither missing nor unreadable, and
     the volume makes the mount "succeed", so nothing warns.
     """
