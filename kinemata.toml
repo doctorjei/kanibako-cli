@@ -1235,6 +1235,23 @@ kind = "code-patterns"
   home = []
   note = "compose the logs dir through resolve_workset_logs, never a join"
 
+  # ⚑ THE ADDRESS GRAMMAR'S ONE EXTENSION, spelled in ONE place. A ref that
+  # SELECTS an agent may name the built-in shell pseudo-agent (keyspec §2b);
+  # one that would CLAIM the name may not (§2d). `agent_ref.parse_agent_address`
+  # is that rule. Before it, `config.resolve_agent` and
+  # `config_dest.check_agent_node` each carried a private fold-to-compare arm
+  # for `shell` while `box create`, the `agent` verbs and every reader of the
+  # `KANIBAKO_AGENT` stamp (`start`'s reattach, `stop`, `code`, the creds
+  # watcher) carried none -- so `start --agent shell` launched and
+  # `create --agent shell` refused. A new arm anywhere else is that split
+  # starting again. The literal matches in any case: the rule folds for
+  # comparison ([R172]), so `{"Shell"}` is the same arm.
+  [[registry.entry]]
+  id = "shell-address-arm"
+  antipatterns = ['''find_identifier\(.*\{\s*(?:["'](?i:shell)["']|GENERAL_SLOT)\s*\}''']
+  home = ["src/kanibako/agent_ref.py"]
+  note = "a ref that ADDRESSES the shell pseudo-agent parses through agent_ref.parse_agent_address"
+
 # ---------------------------------------------------------------------------
 # FACT: `self` is a FILE-SURFACE alias and nothing else. The per-agent file's
 # root table is spelled in exactly one module.

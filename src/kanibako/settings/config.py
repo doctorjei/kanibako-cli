@@ -1001,7 +1001,7 @@ def resolve_agent(
     two states mean different things and must not print the same sentence.
     """
     # ⚑ Lazy: kanibako.targets imports paths/config indirectly (cycle risk).
-    from kanibako.agent_ref import canonicalize_agent_ref, harness_of, with_harness
+    from kanibako.agent_ref import GENERAL_SLOT, parse_agent_address, with_harness
     from kanibako.errors import AgentNotInstalledError, AgentUnsetError
     from kanibako.identifiers import find_identifier
     from kanibako.install_method import install_command
@@ -1021,16 +1021,6 @@ def resolve_agent(
     raw_resolved = explicit_agent if explicit_agent is not None else requested
 
     if raw_resolved is not None:
-        # ⚑ THE SHELL PSEUDO-AGENT IS SELECTABLE BY NAME (spec §2b) though no
-        # agent, persona or harness may CLAIM the name (D6).  It names the
-        # built-in occupying its own slot ([R175]), so it resolves WITHOUT
-        # consulting the installed set — the seeded registry answers the same
-        # way, but the ref grammar refuses the name before any lookup runs.
-        # Fold-to-compare ([R172]): any case reaches it, and the NODE returned
-        # is lowercase.  ``default`` gets no such arm: the any-agent tier is not
-        # a launchable agent, so it stays a reservation refusal.
-        if find_identifier(raw_resolved.strip(), {"shell"}) is not None:
-            return "shell"
         # ⚑ Canonicalise + validate the ref shape; the HARNESS is what must be
         # installed — NOT the composite node-name (a persona segment is free-form).
         # ⚑ It also STRIPS, and it OWNS every way a ref can be illegal — charset,
@@ -1038,8 +1028,14 @@ def resolve_agent(
         # ITS message rather than by a second predicate spelled here.  The
         # ``ConfigError`` is a ``KanibakoError``: ``cli.py`` flattens it to one
         # ``Error:`` line with the offending value first.
-        node = canonicalize_agent_ref(raw_resolved)
-        harness = harness_of(node)
+        # ⚑ THE ADDRESS GRAMMAR, so the SHELL PSEUDO-AGENT IS SELECTABLE BY NAME
+        # (spec §2b) though no agent, persona or harness may CLAIM the name (§2d).
+        # It is the built-in occupying its own slot ([R175]), so it resolves
+        # WITHOUT consulting the installed set.  ``default`` stays a reservation
+        # refusal: the any-agent tier is not a launchable agent.
+        node, harness = parse_agent_address(raw_resolved)
+        if node == GENERAL_SLOT:
+            return node
         # ⚑⚑ THE INSTALLED SET IS READ *ONLY INSIDE THIS BRANCH*, AND THAT IS THE
         # POINT (P3/P4): it answers "is this NAME installed?" and is not in scope on
         # the refusal path below, so the installed-agent count rule cannot be

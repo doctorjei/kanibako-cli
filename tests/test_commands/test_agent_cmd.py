@@ -1752,24 +1752,26 @@ class TestAgentResetRoutesThroughTheOneSetter:
         err = capsys.readouterr().err
         assert "reserved any-agent tier" in err
 
-    def test_the_other_pseudo_agent_name_is_refused_by_the_ref_grammar(self, agent_env):
-        """``shell`` is reserved too (keyspec §2d), and takes a different road here.
+    def test_the_other_pseudo_agent_is_ADDRESSED_like_any_agent(self, agent_env):
+        """``shell`` is reserved too (keyspec §2d), and this verb reaches its file.
 
-        The asymmetry with ``default`` above is what ``agent_cmd._agent_node`` encodes and
-        it is deliberate: ``default`` ADDRESSES a declared tier this verb routes to, so it
-        must reach the engine's refusal above — the one carrying the cure. ``shell`` names
-        no tier a verb can address, so the ref grammar refuses it first.
-        ``cli.py`` flattens the ``ConfigError`` to the one-line ``Error: …`` at rc 1 that
-        every ``KanibakoError`` takes; this calls the handler directly, below that seam.
+        The asymmetry with ``default`` above is what ``agent_cmd._agent_node`` encodes:
+        ``default`` is the any-agent tier, whose §2d fence declares no settings file, so
+        it must reach the engine's refusal above — the one carrying the cure. ``shell``'s
+        fence DOES declare one (``meta.agent.shell.settings``), and naming the built-in
+        claims nothing, so the reset clears it like any agent's. This pin used to assert
+        a RESERVED refusal here, on the false premise that ``shell`` names no tier a verb
+        can address.
         """
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.errors import ConfigError
+        from kanibako.settings.config_io import load_doc
 
-        _write_sparse(agent_env, "shell", {"self": {"model": "opus"}})
-        with pytest.raises(ConfigError, match="RESERVED pseudo-agent name"):
-            run_reset(argparse.Namespace(
-                agent_id="shell", key="model", all_keys=False, force=False,
-            ))
+        path = _write_sparse(agent_env, "shell", {"self": {"model": "opus"}})
+        rc = run_reset(argparse.Namespace(
+            agent_id="shell", key="model", all_keys=False, force=False,
+        ))
+        assert rc == 0
+        assert "model" not in (load_doc(path).get("self") or {})
 
     def test_the_refusal_is_the_one_the_shared_resetter_produces(
         self, agent_env, capsys, tmp_path,

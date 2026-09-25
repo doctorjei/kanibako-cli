@@ -84,7 +84,32 @@ Splits on FIRST separator only; second separator in EITHER segment is rejected (
 fs/key-safe: letters & digits in any language, plus `-`/`_` — see :data:`_SAFE_EXTRA` for why
 `.` is not among them).
 
-raises ConfigError: on empty, empty segment, or segment w. illegal character (ex: stray separator)
+raises ConfigError: on empty, empty segment, or segment w. illegal character (ex: stray separator),
+or a segment that is a RESERVED pseudo-agent name (`PSEUDO_AGENT_NAMES`, keyspec §2d).
+
+```parse_agent_address(raw: str) -> tuple[str, str]```
+`parse_agent_ref` for a ref that ADDRESSES an agent rather than NAMING one: `--agent`,
+`system.agent`, the `kanibako agent <agent>` positional, a `KANIBAKO_AGENT` stamp read back, a
+persona-store lookup. The one difference: a ref naming the built-in shell pseudo-agent (any case,
+stripped) parses to `(GENERAL_SLOT, GENERAL_SLOT)` instead of raising.
+
+⚑ **The §2d reservation refuses a CLAIMANT, not an address.** Keyspec §2b invokes the shell box
+*"as any other agent"* (`--agent shell`, `system.agent: shell`), and its §2d fence declares its own
+settings file (`meta.agent.shell.settings`). Addressing the built-in claims nothing (`[R175]`), so
+everything that would CLAIM the name still refuses: a plugin (`targets`), and `shell` as a persona
+or harness segment inside a composite (`[R178]`).
+⚑ **Only `shell`.** `default` is the any-agent fallback TIER — no spec line selects it as an agent,
+and its fence declares no settings file — so it refuses here as in `parse_agent_ref`.
+⚑ **Which one to call:** a site that CREATES or DECLARES a name uses `parse_agent_ref`; a site that
+SELECTS or LOOKS UP an existing agent uses this. The KEY-SEGMENT normalizers —
+`config_keys.resolve_key`, `settings_keyspace.is_valid_agent_segment` /
+`settings_keyspace.agent_declared_leaves`, `settings_prefs.AgentNames.__contains__` — stay on
+`canonicalize_agent_ref` on purpose: they read the `<agent>` segment of a KEY, not a selection, and
+the keyspace answers the pseudo-agent tiers itself (`is_valid_agent_segment` admits
+`PSEUDO_AGENT_NAMES` before it canonicalizes). Before it existed, two sites carried their own
+`find_identifier(..., {"shell"})` arm (`config.resolve_agent`, `config_dest.check_agent_node`) and
+the rest had none (`box create`, `agent <verb>`, `start`'s reattach, the persona-store lookup) —
+which is how `start --agent shell` worked while `create --agent shell` refused.
 
 ```def harness_of(node: str) -> str```
 Return harness (part right of `℘`) of a *node*-name.
@@ -107,15 +132,23 @@ re-split ref on raw separator at call site).
 ```def with_harness(node: str, harness: str) -> str```
 Return *node* with its harness segment REPLACED by *harness*.
 
-Preserves persona name (left of `℘`) while swapping harness; used when actually-RESOLVED target
-differs from requested harness (e.g., `ShellTarget` fallback when named agent's binary absent),
-so the store dir + keyspace slot follow the real target.
+Preserves persona name (left of `℘`) while swapping harness. Its callers use it to put the harness
+segment into the RESOLVED target's NODE spelling (`identifiers.agent_node_case`, `[R173]`: a plugin
+declaring `Claude` keys the lowercase `claude` store directory), or into the registry's stored spelling
+(`config.resolve_agent`), so the store dir + keyspace slot follow the real target while the persona
+segment keeps the user's case.
 
 * bare node (`"claude"`, harness `"claude"`) -> `"claude"` (unchanged);
-* bare node, fallback harness (`"claude"`, `"shell"`) -> `"shell"`;
+* bare node, re-cased harness (`"Claude"`, `"claude"`) -> `"claude"`;
 * persona node (`"navigator℘claude"`, `"claude"`) -> `"navigator℘claude"`;
-* persona node, fallback (`"navigator℘claude"`, `"shell"`) -> `"navigator℘shell"` (persona
-  name kept, harness swapped).
+* persona node, re-cased harness (`"Navigator℘Claude"`, `"claude"`) -> `"Navigator℘claude"`
+  (persona keeps its case, harness takes the node's).
+
+⚑ It does not validate, so it will compose a node the grammar refuses: `with_harness(
+"navigator℘claude", "shell")` returns `navigator℘shell`, which `parse_agent_ref` refuses — a persona
+cannot ride a pseudo-agent (`[R178]`). No launch path asks for that: a NAMED target never falls back
+to `ShellTarget` (`targets.resolve_target` raises `KeyError`; only the name-less auto-detect ends at
+`ShellTarget`), and a missing binary warns and keeps the plugin's target.
 
 ```def display_agent_ref(node: str) -> str```
 Return the USER-FACING form of a *node*-name (`℘` -> `+`).
@@ -128,7 +161,12 @@ is told to read by the shipped ROM directive.
 
 ⚑ The stamp is the one that ROUND-TRIPS: emitted `+`, and canonicalised back to `℘` by every reader
 before anything is derived from it (`stop`, `code`, the creds watcher, `start`'s reattach). That is
-also what keeps a box stamped by an older version working — `canonicalize_agent_ref` accepts both.
+also what keeps a box stamped by an older version working — both parsers accept both separators.
+Every one of those readers goes through `parse_agent_address`, because a plain-shell box is stamped
+`shell`: its agent IS the shell pseudo-agent, resolved to `ShellTarget`. On such a box `stop`'s
+writeback runs and is a no-op (the shell box's auth source is the private box tier), `code` gets
+the `shell` node and no VS Code extension, and a creds watcher run by hand exits at its private-box
+arm — a launch never spawns one for a box that shares no credentials.
 
 Bare names contain no `℘` -> returned unchanged (existing output byte-identical).
 Does NOT validate: it is pure display swap tolerant of any string.

@@ -405,10 +405,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so a third-party plugin could register `default` or `shell` and quietly take over a tier the
   settings system reads for every agent; `mypersona+shell` and `mypersona+default` parsed as
   ordinary refs. A plugin claiming one of the two is now **skipped with a warning on stderr**,
-  which costs that one plugin its registration and leaves the rest of the CLI working, and a ref
-  naming one is refused at rc 1. The rule is a whole-name match that folds for comparison: `Shell`
-  is refused like `shell`, while `shellx` and `defaults` are ordinary agent names and are
-  unaffected, as is the `agent.default.*` key tier itself. Nothing
+  which costs that one plugin its registration and leaves the rest of the CLI working. A ref that
+  would CLAIM one — `default` anywhere, or either name inside a `persona+harness` ref — is refused
+  at rc 1, while `--agent shell` selects the plain-shell box, the pseudo-agent that owns the name.
+  The rule is a whole-name match that folds for comparison: `Shell` is treated like `shell`, while
+  `shellx` and `defaults` are ordinary agent names and are unaffected, as is the `agent.default.*`
+  key tier itself. Nothing
   kanibako ships uses either name. See `MIGRATION.md` § *3.2 `default` and `shell` are reserved
   names a plugin may not take*.
 
@@ -692,9 +694,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   be re-spelled for cleanliness — a key left at the old capital still resolves to the node — see *An
   agent's store directory and cascade slot are its name in lowercase* in
   [MIGRATION.md](MIGRATION.md). ⚑ Reserved names go by comparison too: a plugin calling itself
-  `Shell` is now skipped with the same warning `shell` gets, because it claims the same store —
-  and a name a *user* types is refused the same way, so `--agent Shell` is now answered as a
-  reserved name rather than as an agent that is not installed.
+  `Shell` is now skipped with the same warning `shell` gets, because it claims the same store.
 
 - **Two agent plugins whose names differ only in case are no longer decided by install order.**
   They collapse to one node, so they claim one store directory and one cascade slot. Where both
@@ -710,8 +710,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agents/claude/` store the launch writes instead of the `agents/Claude/` directory it never
   opens. Only the harness folds: a persona segment keeps the case you typed, and key names
   outside the agent segment stay case-sensitive. The reservation folds the same way, so
-  `--agent Shell` is now refused as a RESERVED pseudo-agent name — the *not installed* answer it
-  got before was one identifier getting two refusals by spelling. `shellx` and `defaults` are
+  `--agent Default` and `--agent Shell+claude` are refused as a RESERVED pseudo-agent name, and
+  `--agent Shell` selects the plain-shell box exactly as `--agent shell` does — one identifier,
+  one answer, whatever its spelling. `shellx` and `defaults` are
   still ordinary names; the rule was never a prefix test. ⚑ **Nothing moves, and keys need no
   urgent re-spelling:** the store moved in *An agent's name keeps the case its plugin declares*
   above, and a key left at an old capital now resolves to the node — re-spell it when convenient.

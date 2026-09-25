@@ -298,7 +298,7 @@ def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | No
     extension seed (:func:`_resolve_box_vscode_extension`) so the box is inspected
     a single time.
     """
-    from kanibako.agent_ref import canonicalize_agent_ref
+    from kanibako.agent_ref import parse_agent_address
 
     try:
         stamp = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
@@ -307,8 +307,10 @@ def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | No
             # this function's contract is a NODE-name, which is what the
             # ``select_agent`` fallback below already returns — so both branches
             # answer in ONE spelling. ⚑ Both separators are accepted, so an
-            # older box stamped ``℘`` still resolves.
-            return canonicalize_agent_ref(stamp)
+            # older box stamped ``℘`` still resolves. ⚑ The ADDRESS grammar: a
+            # plain-shell box is stamped ``shell`` (keyspec §2b), and its node is
+            # the answer, not a swallowed reservation error.
+            return parse_agent_address(stamp)[0]
 
         # Pre-stamp (older) box: fall back to the create-time selection cascade
         # (agent_select reads the SAME box-tier file ``box set
@@ -607,7 +609,7 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
     user can act on, so both stay at debug — and the catch stays blanket so a
     seed bug can never cost the user their editor.
     """
-    from kanibako.agent_ref import canonicalize_agent_ref
+    from kanibako.agent_ref import parse_agent_address
 
     try:
         image_ref = engine.container_image(container_name)
@@ -623,7 +625,7 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
                 # alone).  No LOCAL project → resolve the plugin with
                 # project_path=None.
                 extension = _extension_for_agent(
-                    canonicalize_agent_ref(stamp), None,
+                    parse_agent_address(stamp)[0], None,
                 )
         except Exception:
             extension = None

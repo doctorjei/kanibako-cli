@@ -5780,15 +5780,17 @@ SKIPPED; every other agent, and 'kanibako setup', still work. The plugin's autho
 name of its own.
 ```
 
-A user who types the name gets the same sentence as a hard error, at rc 1:
+A user who types `default` as an agent gets the same sentence as a hard error, at rc 1:
 
 ```
-Error: 'shell' is a RESERVED pseudo-agent name (spec §2d, 'Pseudo-agent(s)'); it may not name an
+Error: 'default' is a RESERVED pseudo-agent name (spec §2d, 'Pseudo-agent(s)'); it may not name an
 agent, a persona, or a harness
 ```
 
 The reservation covers both halves of a composite ref, so `--agent mypersona+shell` is refused for
-its harness and `--agent shell+claude` for its persona.
+its harness and `--agent shell+claude` for its persona. `--agent shell` on its own is not refused:
+it selects the plain-shell box, the pseudo-agent that owns the name, and `kanibako agent set shell
+…` configures it.
 
 **A plugin's name is tested by its NODE, so a capital does not escape it.** What a pseudo-agent
 owns is a store directory and a cascade slot, and both are spelled from the node — the name in
@@ -5797,8 +5799,8 @@ and `default` claim, and is skipped with the same warning; the message names bot
 can find the one you wrote. `shellx` and `defaults` are ordinary names and still work — the rule is
 a whole-name match, never a prefix.
 
-**A name a user types is still matched exactly.** `--agent Shell` is answered as an agent that is
-not installed rather than as a reserved name, because no plugin can hold that node.
+**A name a user types folds too.** `--agent Shell` selects the plain-shell box exactly as
+`--agent shell` does, and `--agent Default` is refused like `default`.
 
 **What you must do.**
 
@@ -5808,8 +5810,10 @@ not installed rather than as a reserved name, because no plugin can hold that no
    Everything inside it — the agent settings file, the shared common directory, the caches — moves
    with it and needs no edit.
 3. **Rewrite the selection key wherever it names the old spelling** — `pref.system.agent` in each
-   box's `<box>/box.yaml`, and `system.agent` in `<data>/global/settings.yaml`. Edit the YAML by hand:
-   the value in the file is a ref that no longer parses, so no `set` verb will touch it.
+   box's `<box>/box.yaml`, and `system.agent` in `<data>/global/settings.yaml`. Edit the YAML by hand.
+   A value of `default` no longer parses, so no `set` verb will touch it. A value of `shell` still
+   parses, but it now selects the built-in plain-shell box instead of your plugin, so rewrite it or
+   that box keeps launching a plain shell.
 
 ---
 

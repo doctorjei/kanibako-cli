@@ -187,8 +187,10 @@ cannot disagree. Spelling `args.agent` at any of those four sites again reopens 
 And "given" has ONE spelling: `_agent_arg is not None`. The store check once asked truthiness while
 the persist asked `.strip()` truthiness, which are different questions — `--agent "  "` cleared the
 first and was dropped by the second. A flag the user typed is given even when its value is blank, so
-a given ref is VALIDATED through `parse_agent_ref` (the owner of charset, pseudo-agent reservation
-and empty-after-strip) and refused by its message; it is never read as "resolve from settings",
+a given ref is VALIDATED through `parse_agent_address` (the owner of charset, pseudo-agent reservation
+and empty-after-strip) and refused by its message — the ADDRESS grammar, because `--agent` selects an
+agent rather than naming one: `--agent shell` creates a plain-shell box (keyspec §2b), while
+`shell` inside a composite and `default` stay refused; it is never read as "resolve from settings",
 which would steer the box to an agent the user did not ask for without saying so. The validated ref
 is stripped once at that same site, so no consumer normalizes again. `None` keeps its one meaning —
 recovery, or no flag at all.

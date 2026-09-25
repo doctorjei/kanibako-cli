@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from urllib.parse import urlsplit
 
-from kanibako.agent_ref import display_agent_ref, harness_of, parse_agent_ref, persona_of
+from kanibako.agent_ref import display_agent_ref, harness_of, parse_agent_address, persona_of
 from kanibako.errors import ConfigError
 from kanibako.settings.paths import user_config_home
 from kanibako.targets.base import _REDACTED, _scrub_endpoint_userinfo
@@ -82,19 +82,21 @@ def persona_store_root() -> Path:
 def locate_entry(ref: str) -> PersonaEntry | None:
     """Locate the store entry for an agent *ref*, iff one exists.
 
-    ``None`` is a clean "not a persona": the ref is BARE (node == harness), or
-    the store dir ``<root>/<pid>/<hid>/`` is absent — store PRESENCE decides
+    ``None`` is a clean "not a persona": the ref is BARE (node == harness) — the
+    built-in ``shell`` pseudo-agent included, which a lookup ADDRESSES
+    (:func:`~kanibako.agent_ref.parse_agent_address`) — or the store dir
+    ``<root>/<pid>/<hid>/`` is absent — store PRESENCE decides
     persona-vs-plain (DESIGN §4), so the caller falls through to normal agent
     handling.  A MALFORMED ref instead raises
-    :class:`~kanibako.errors.ConfigError` from ``parse_agent_ref``: a bad ref is
+    :class:`~kanibako.errors.ConfigError` from ``parse_agent_address``: a bad ref is
     a user error, not a store miss.
 
     ⚑ PATH TRAVERSAL is handled upstream, not here.  ``.`` stopped being a legal
     segment character on 2026-08-04, so ``..+claude`` and ``navigator+..`` RAISE
-    from ``parse_agent_ref`` on the first line below.  There is deliberately no
+    from ``parse_agent_address`` on the first line below.  There is deliberately no
     second dot-check here: one charset, enforced in one place (llm-doc).
     """
-    node, harness = parse_agent_ref(ref)
+    node, harness = parse_agent_address(ref)
     if harness_of(node) == node:
         return None  # bare agent: no persona segment -> never a store entry
     persona = persona_of(node)
@@ -310,7 +312,7 @@ def read_persona_bundle(ref: str, target: Target) -> PersonaBundle | None:
     opened (only its pointer is resolved — usability is the launch gate's job).
 
     NEVER RAISES, with ONE deliberate exception: a MALFORMED *ref* raises
-    :class:`~kanibako.errors.ConfigError` out of ``parse_agent_ref``, exactly as
+    :class:`~kanibako.errors.ConfigError` out of ``parse_agent_address``, exactly as
     it does for every other ref consumer.  Everything downstream of a located
     entry is fail-soft, which is what makes this safe to call from the
     credential-lifecycle paths (``stop`` / creds-watch), where a raise would
