@@ -137,9 +137,9 @@ out, the answer is yes"*). Its four members left one at a time: `workset.skip_ku
 `workset.kuid` to `settings_launch.workset_anchor_floor`, and `box.enable_vault` to
 `_BOX_SCALAR_FIELDS` / `box_scalar_defaults_floor`. 🛑 **A reader keeping a literal default is not
 the same thing as a reader OWNING it** — `read_workset_skip_kuid_check` still returns `True` and
-`read_box_enable_vault` still returns `True`, and in both cases a conformance case in
-`tests/test_settings/test_manifest_conformance.py` asserts the reader and the floor equal so the
-two carriers cannot drift.
+`read_box_enable_vault` still returns `True`, and in both cases each carrier is held to the
+manifest cell by a kinemata view — the readers by `reader-defaults`, the floors by
+`workset-anchor-floor` and `box-scalar-floor` — so the two carriers cannot drift.
 
 ⚑ `read_box_enable_vault` did not become redundant; it became NARROWER. Its question is now *which
 TIER authored this value*, which a merge structurally cannot answer, and which lifecycle ops need
@@ -282,7 +282,9 @@ Spec §1: *"The Layer-1 set is exactly the config keys in the table below."* The
 `CONFIG_PATH_DEFAULTS`, **the table `resolve_config_paths` itself iterates**, so ACCEPTED HERE ⇒
 RESOLVED THERE holds by construction and a key joining §1 carries its own admission (P13). It is the
 same six spellings as `settings_keyspace.DECLARED_CONFIG_LEAVES`, pinned equal through the manifest
-(`test_manifest_conformance`); the Layer-1 table is what this reader takes because Layer 1 resolves
+(`test_manifest_conformance`'s `TestKeySetConformance` holds the leaves to the manifest rows, the
+`bootstrap-path-defaults` kinemata view holds the table to them); the Layer-1 table is what this
+reader takes because Layer 1 resolves
 through the flat resolver, NOT the keyspace pipeline (spec §1).
 
 ⚑ A `config:` entry that is **not a table** refuses as well; it used to yield `{}` in silence, which
@@ -650,7 +652,8 @@ OPT-IN strictness, INVERTING the old D9). Sourced from the `workset:` table of a
 
 ⚑ SAME SHAPE AS `read_workset_kuid` ABOVE: `workset_anchor_floor` emits this key too (2026-08-29,
 `da2050a1`), so the literal here is the PRE-SNAPSHOT carrier and not the one the keyspace answers
-from; `test_the_skip_kuid_check_floor_equals_the_pre_snapshot_reader` pins the two equal.
+from; the `reader-defaults` and `workset-anchor-floor` kinemata views hold each to the manifest
+cell, so the two cannot part without a red.
 
 
 ```_split_config_key(flat_key: str) -> tuple[str, str]```
