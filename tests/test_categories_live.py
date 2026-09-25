@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_resolve import (
     ResolveCtx,
@@ -2344,6 +2345,7 @@ class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
         })
         buf = io.StringIO()
         rc = show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=tmp_path / CONFIG_FILENAME,
             effective=True, file=buf,
             category_snapshot=snapshot, category_ctx=make_ctx(),

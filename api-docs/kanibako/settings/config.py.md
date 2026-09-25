@@ -44,6 +44,7 @@ def write_project_config_key(path: Path, flat_key: str, value: str) -> None
 def unset_project_config_key(path: Path, flat_key: str) -> bool
 def load_project_overrides(path: Path) -> dict[str, object]
 def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]
+def agent_settings_of(data: dict, agent_name: str) -> dict[str, str]
 def system_settings_path() -> Path
 def read_system_agent(system_path: Path | None) -> str | None
 def read_system_helpers(settings_path: Path | None) -> dict[str, int]

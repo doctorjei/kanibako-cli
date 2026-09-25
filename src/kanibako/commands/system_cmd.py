@@ -386,6 +386,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
     if action == ConfigAction.show:
         show_config(
             global_config_path=cf,
+            command_scope=ConfigLevel.system,
             config_path=cf,
             effective=args.effective,
             system_settings_path=ssp,

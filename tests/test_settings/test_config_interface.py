@@ -652,6 +652,7 @@ class TestShowConfig:
         project_toml = tmp_path / BOX_META_FILE
 
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
         )
@@ -671,6 +672,7 @@ class TestShowConfig:
         project_toml.write_text('box:\n  image: "my:img"\n')
 
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
@@ -696,6 +698,7 @@ class TestShowConfig:
 
         with pytest.raises(ConfigError) as exc:
             show_config(
+                command_scope=ConfigLevel.box,
                 global_config_path=global_cfg,
                 config_path=project_toml,
                 effective=True,
@@ -714,6 +717,7 @@ class TestShowConfig:
         project_toml = tmp_path / BOX_META_FILE
 
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
@@ -728,6 +732,7 @@ class TestShowConfig:
         project_toml.write_text('box:\n  image: "custom"\n')
 
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
         )
@@ -746,6 +751,7 @@ class TestShowConfig:
         project_toml.write_text('box:\n  image: "my:img"\n')
 
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
@@ -753,6 +759,7 @@ class TestShowConfig:
         baseline = capsys.readouterr().out
 
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
@@ -779,6 +786,7 @@ class TestShowConfig:
         workset_cfg.write_text('box:\n  image: "ws:img"\n')
 
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
@@ -789,27 +797,28 @@ class TestShowConfig:
         assert "ws:img" in captured.out
         assert KanibakoConfig().box_image not in captured.out
 
-    def test_effective_agent_state_renders_with_override_marker(
-        self, tmp_path, capsys,
-    ):
-        """agent_state is rendered; only box-level keys get the override marker."""
+    def test_effective_agent_state_renders_unmarked(self, tmp_path, capsys):
+        """agent_state is rendered UNMARKED, even beside an ``agent:`` table in the box file.
+
+        A box file may not set a containing scope's keys, so the launch drops that table
+        (spec §0); calling ``model`` a box-level override would claim an effect it lacks.
+        """
         global_cfg = tmp_path / CONFIG_FILENAME
         global_cfg.write_text("")
         project_toml = tmp_path / BOX_META_FILE
         project_toml.write_text('agent:\n  default:\n    model: "sonnet"\n')
 
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
             agent_state={"model": "sonnet", "continue_mode": "true"},
         )
         captured = capsys.readouterr()
-        # model is set at box level -> marked override
-        assert "model = sonnet (override)" in captured.out
-        # continue_mode comes from a lower level -> no marker
+        assert "model = sonnet\n" in captured.out
         assert "continue_mode = true\n" in captured.out
-        assert "continue_mode = true (override)" not in captured.out
+        assert "(override)" not in captured.out, captured.out
 
     def test_effective_env_resolved_used_when_supplied(self, tmp_path, capsys):
         """env_resolved is the source dict for the env section when given."""
@@ -818,6 +827,7 @@ class TestShowConfig:
         project_toml = tmp_path / BOX_META_FILE
 
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
@@ -837,12 +847,10 @@ class TestShowConfig:
         # render in the show/effective view (display-only legacy filter) while a
         # real nested scope table still does.
         from kanibako.settings.config_display import _nested_settings_overrides
-        sys_file = tmp_path / "system-settings.yaml"
-        dump_doc(sys_file, {
+        out = _nested_settings_overrides({
             "resource_overrides": {"plugins": "/legacy"},   # dead legacy table
             "workset": {"auth": {"share_allowed": False}},  # a real nested table
         })
-        out = _nested_settings_overrides(sys_file)
         assert not any(k.startswith("resource_overrides") for k in out), out
         assert out.get("workset.auth.share_allowed") == "false"
 
@@ -871,7 +879,10 @@ class TestShowConfig:
                     for cat in ABSTRACT_CATEGORIES},
         })
 
-        show_config(global_config_path=global_cfg, config_path=project_toml)
+        show_config(
+            global_config_path=global_cfg, config_path=project_toml,
+            command_scope=ConfigLevel.box,
+        )
 
         out = capsys.readouterr().out
         for cat in ABSTRACT_CATEGORIES:
@@ -890,7 +901,10 @@ class TestShowConfig:
             "pref": {"system": {"agent": "goose"}},
         })
 
-        show_config(global_config_path=global_cfg, config_path=project_toml)
+        show_config(
+            global_config_path=global_cfg, config_path=project_toml,
+            command_scope=ConfigLevel.box,
+        )
 
         out = capsys.readouterr().out
         assert out.count("custom") == 1, out
@@ -908,7 +922,10 @@ class TestShowConfig:
         project_toml = tmp_path / BOX_META_FILE
         dump_doc(project_toml, {"box": {"bogus": {"common": {"~/x": ["y"]}}}})
 
-        show_config(global_config_path=global_cfg, config_path=project_toml)
+        show_config(
+            global_config_path=global_cfg, config_path=project_toml,
+            command_scope=ConfigLevel.box,
+        )
 
         out = capsys.readouterr().out
         assert "undeclared" in out, out
@@ -932,7 +949,10 @@ class TestShowConfig:
             "system": {"common": {"~/sys": ["higher"]}},
         })
 
-        show_config(global_config_path=global_cfg, config_path=project_toml)
+        show_config(
+            global_config_path=global_cfg, config_path=project_toml,
+            command_scope=ConfigLevel.box,
+        )
 
         out = capsys.readouterr().out
         assert "box.caches.~/ok" in out, out
@@ -3792,6 +3812,7 @@ class TestF6NoFabricatedDefaultOnPlainGet:
         project_toml = tmp_path / BOX_META_FILE
         project_toml.write_text('box:\n  image: "global:img"\n')
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=global_cfg,
             config_path=project_toml,
             effective=True,
@@ -5119,6 +5140,7 @@ class TestEffectiveCategoryBlock:
 
         buf = io.StringIO()
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=tmp_path / CONFIG_FILENAME,
             config_path=tmp_path / BOX_META_FILE,
             effective=True,
@@ -5216,6 +5238,7 @@ class TestEffectiveCategoryBlock:
 
         buf = io.StringIO()
         rc = show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=tmp_path / CONFIG_FILENAME,
             config_path=tmp_path / BOX_META_FILE,
             effective=True,
@@ -5516,6 +5539,7 @@ class TestPrefShow:
                      }}}},
         }))
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=tmp_path / "g.yaml", config_path=f, effective=False,
         )
         out = capsys.readouterr().out
@@ -5536,6 +5560,7 @@ class TestPrefShow:
             "agent": {"claude": {"template": "/ws/tpl/x"}},
         })
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=tmp_path / "g.yaml",
             config_path=tmp_path / "s.yaml",
             effective=True, category_snapshot=snap,
@@ -5570,6 +5595,7 @@ class TestPrefShow:
             "agent": {"claude": {"common": KeyStore(), "model": None}},
         })
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=tmp_path / "g.yaml",
             config_path=tmp_path / "s.yaml",
             effective=True, category_snapshot=snap,
@@ -5622,6 +5648,7 @@ class TestPrefShow:
             workset_path=None, box_path=box_file,
         )
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=tmp_path / "g.yaml",
             config_path=tmp_path / "s.yaml",
             effective=True, category_snapshot=snap,
@@ -6644,7 +6671,10 @@ class TestStoredViewMarksUndeclaredEntries:
         global_cfg.write_text("")
         project_toml = tmp_path / BOX_META_FILE
         project_toml.write_text(text)
-        show_config(global_config_path=global_cfg, config_path=project_toml)
+        show_config(
+            global_config_path=global_cfg, config_path=project_toml,
+            command_scope=ConfigLevel.box,
+        )
         return capsys.readouterr().out
 
     def test_an_undeclared_entry_is_printed_and_MARKED(self, tmp_path, capsys):
@@ -6717,6 +6747,7 @@ class TestStoredViewMarksUndeclaredEntries:
         ssp = tmp_path / "settings.yaml"
         ssp.write_text("system:\n  agent: claude\n  frobnicate: 1\n")
         show_config(
+            command_scope=ConfigLevel.system,
             global_config_path=global_cfg, config_path=global_cfg,
             system_settings_path=ssp,
         )
@@ -6724,6 +6755,47 @@ class TestStoredViewMarksUndeclaredEntries:
         assert "undeclared" in out
         assert "system.frobnicate = 1" in out
         assert "system.agent" not in out.split("undeclared", 1)[1]
+
+    @pytest.mark.parametrize("noun,table", [
+        (ConfigLevel.box, "agent"),
+        (ConfigLevel.box, "workset"),
+        (ConfigLevel.workset, "agent"),
+        (ConfigLevel.workset, "system"),
+        (ConfigLevel.system, "pref"),
+    ])
+    def test_a_table_the_cascade_drops_gets_no_row_at_any_noun(
+        self, tmp_path, capsys, noun, table,
+    ):
+        """The launch drops *table* from *noun*'s file (``settings_assemble.cascade_view``), so
+        the stored view lists nothing from it — not as an override, not as undeclared.
+
+        The noun's own ``zippity`` is the control: it is still marked undeclared.
+        MUTATION: return the raw ``load_doc(path)`` from ``_noun_stored_view`` and every case
+        reds.
+        """
+        from kanibako.settings.settings_assemble import cascade_view
+
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        settings = tmp_path / "settings.yaml"
+        doc = {
+            table: {"default": {"model": "DROPPED", "foo.bar": "DROPPED"}},
+            noun.value: {"zippity": "KEPT"},
+        }
+        dump_doc(settings, doc)
+        assert table not in cascade_view(doc, level=noun.value)  # the case IS a drop
+        if noun is ConfigLevel.box:
+            show_config(
+                command_scope=noun, global_config_path=global_cfg, config_path=settings,
+            )
+        else:
+            show_config(
+                command_scope=noun, global_config_path=global_cfg,
+                config_path=global_cfg, system_settings_path=settings,
+            )
+        out = capsys.readouterr().out
+        assert "DROPPED" not in out, out
+        assert f"    {noun.value}.zippity = KEPT" in out, out
 
 
 # ---------------------------------------------------------------------------
@@ -6874,5 +6946,5 @@ def test_the_config_block_renders_a_stored_leaf_as_the_undeclared_block_does(
 
     f = tmp_path / BOX_META_FILE
     dump_doc(f, {"config": {"data": raw}, "box": {"zzz": raw}})
-    _shown, undeclared_value = _undeclared_stored_entries(f)[("box", "zzz")]
-    assert _misplaced_config_entries(f) == {"config.data": undeclared_value}
+    _shown, undeclared_value = _undeclared_stored_entries(load_doc(f))[("box", "zzz")]
+    assert _misplaced_config_entries(load_doc(f)) == {"config.data": undeclared_value}

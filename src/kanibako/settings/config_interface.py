@@ -19,6 +19,7 @@ from typing import Any, Callable, Mapping
 
 from kanibako.settings.config import (
     _LAYER1_TABLE,
+    agent_settings_of,
     load_config,
     load_merged_config,
     load_project_overrides,
@@ -1791,11 +1792,34 @@ def reset_all(
     return f"Reset {count} override(s)." if count else "No overrides to reset."
 
 
-def _undeclared_stored_entries(
-    path: "Path | None",
-) -> dict[tuple[str, ...], tuple[str, str]]:
-    """Entries STORED in *path* that the keyspace does not declare —
+def _noun_stored_view(path: "Path | None", command_scope: ConfigLevel) -> dict:
+    """The noun's settings file AS THE CASCADE READS IT — the one read :func:`show_config` makes.
+
+    ⚑ ONE CARRIER OF THE VERDICT. ``settings_assemble.cascade_view`` is what the launch's own
+    seams judge a file by, and it READS the drop rules ``assemble_levels`` applies rather than
+    restating them.  Re-reading the raw file here gave a table directional enforcement drops a
+    second verdict: an ``agent:`` table in a ``box.yaml`` printed as overrides and, for a
+    dotted entry inside it, as undeclared — under the launch's warning that it is ignored.
+    ⚑ SILENT, like ``cascade_view``: the drop warning is the launch's.  ``box show`` prints it,
+    because every box verb's path resolve assembles the file (``config.resolve_box_enable_vault``),
+    as do ``workset show --effective`` and ``system show --effective``; plain ``workset show``
+    and ``system show`` print nothing for such a table.
+    """
+    from kanibako.settings.settings_assemble import cascade_view
+
+    return cascade_view(load_doc(path), level=command_scope.value)
+
+
+def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]:
+    """Entries STORED in a settings doc that the keyspace does not declare —
     ``segments → (shown, value)``.
+
+    ⚑⚑ *data* IS THE FILE AS THE CASCADE READS IT (:func:`_noun_stored_view`), and that is
+    what gives this view the launch's verdict rather than a second one.  Walked raw, an
+    ``agent:`` table in a ``box.yaml`` — which directional enforcement drops WHOLE, with a
+    warning naming the file and key (spec §0) — had a dotted entry inside it listed here as
+    undeclared: one file, two readers, two answers.  A table the cascade drops is not
+    walked, so nothing in it is marked.
 
     ⚑ SEGMENTS, NOT A JOINED NAME: a dotted entry name (``box: {"env.X": 1}``) joins to a
     declared key it is not. *shown* is the display spelling: a dotted entry name is
@@ -1821,21 +1845,12 @@ def _undeclared_stored_entries(
     (``box.bindings.ro``, ``box.caches``, ``box.masks``) holds DESTINATIONS inside its
     value, so descending into one would report working entries as undeclared.
     Anything else that is a non-empty mapping is a NAMESPACE (``box``, ``box.auth``,
-    ``agent.default``, ``pref.system``) and is walked through, which is what keeps a
-    DECLARED-but-dropped table — an ``agent:`` table in a ``box.yaml``, which
-    directional enforcement discards — out of the result: its leaves are declared, so
-    nothing in it is marked.  That table's fate is a DIFFERENT fact and gets no marker
-    here.
+    ``agent.default``, ``pref.system``) and is walked through.
 
     ⚑ What is marked is the DEEPEST stored path, not the shallowest refused one:
     ``box.auth.bogus`` rather than ``box.auth``.  The user has to find the line in a
     YAML file, and the deep form is the only one that says which line.
     """
-    if path is None or not path.exists():
-        return {}
-    data = load_doc(path)
-    if not isinstance(data, dict):
-        return {}
     from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 
     out: dict[tuple[str, ...], tuple[str, str]] = {}
@@ -1874,8 +1889,8 @@ def _undeclared_stored_entries(
     return out
 
 
-def _misplaced_config_entries(path: "Path | None") -> dict[str, str]:
-    """The ``config.*`` entries a SETTINGS file carries — ``config.<key> → value``.
+def _misplaced_config_entries(data: dict) -> dict[str, str]:
+    """The ``config.*`` entries a SETTINGS doc carries — ``config.<key> → value``.
 
     Spec §1: those keys live only in the ``.cfg`` files, so the resolve REFUSES a settings
     file that carries them (``settings_assemble.refuse_config_table``). This is the stored
@@ -1883,18 +1898,16 @@ def _misplaced_config_entries(path: "Path | None") -> dict[str, str]:
     (``settings_assemble.config_entry_groups``). A DISPLAY of file content, like
     :func:`_undeclared_stored_entries`, and kept apart from it because the cure differs.
     """
-    if path is None or not path.exists():
-        return {}
     from kanibako.settings.settings_assemble import stored_config_entries
 
     return {
         k: render_stored_scalar(v)
-        for k, v in stored_config_entries(load_doc(path)).items()
+        for k, v in stored_config_entries(data).items()
     }
 
 
-def _abstract_declarations(path: "Path | None", scope: str) -> dict[str, str]:
-    """*scope*'s OWN ABSTRACT-category declarations in a settings file — ``key → value``.
+def _abstract_declarations(data: dict, scope: str) -> dict[str, str]:
+    """*scope*'s OWN ABSTRACT-category declarations in a settings doc — ``key → value``.
 
     Spec §0 on ``common`` / ``caches`` / ``seeded``: *"They remain real, declared keys: a
     user sets them in YAML …, ``config show`` lists them"* — an obligation on the PLAIN
@@ -1905,14 +1918,12 @@ def _abstract_declarations(path: "Path | None", scope: str) -> dict[str, str]:
     one way here and another way at the system noun.  The narrowing is what lets it run at
     a noun whose settings file IS its config file — see the call site.
 
-    ⚑⚑ *scope* IS NOT A CONVENIENCE FILTER — IT IS WHAT KEEPS THE ROWS TRUE.  The flatten
-    walks EVERY top-level scope table, and a table naming a CONTAINING scope (a
-    ``workset:`` table hand-pasted into a box's file) is dropped at assembly and *"never
-    enters the merge"* (spec §0, directional enforcement), with a warning printed over this
-    very output.  Listed here it would assert an override that has no effect — the same
-    false surface the missing ``.env`` block below refuses, and the likeliest way for it to
-    arise is the mis-scope this view is the user's only chance to notice.  The DOWNWARD case
-    needs no exception: a box is the innermost scope, so it contains nothing.
+    ⚑ *scope* SELECTS THE NOUN'S OWN TABLE: the flatten walks every top-level table the doc
+    carries, ``pref:`` and hand-written junk included, and only the noun's own declarations
+    are its rows.  A table naming a CONTAINING scope (a ``workset:`` table hand-pasted into a
+    box's file) never gets this far — *data* is the file as the cascade reads it
+    (:func:`_noun_stored_view`), and directional enforcement has already dropped it there
+    (spec §0), so this filter is not the carrier of that rule.
 
     ⚑ The key ends at the CATEGORY and the destination is one whole segment after it, so the
     split is ``config_dest._category_segments`` rather than a ``.``-split: a destination
@@ -1921,7 +1932,7 @@ def _abstract_declarations(path: "Path | None", scope: str) -> dict[str, str]:
     happens to be named after one (``box.bogus.common.x``) out of the list.
     """
     out: dict[str, str] = {}
-    for dotted, value in _nested_settings_overrides(path).items():
+    for dotted, value in _nested_settings_overrides(data).items():
         segments = _category_segments(dotted)
         if segments[0] != scope:
             continue
@@ -1934,6 +1945,7 @@ def _abstract_declarations(path: "Path | None", scope: str) -> dict[str, str]:
 def show_config(
     *,
     global_config_path: Path,
+    command_scope: ConfigLevel,
     config_path: Path | None = None,
     env_global: Path | None = None,
     env_project: Path | None = None,
@@ -1948,11 +1960,18 @@ def show_config(
     category_error: str | None = None,
     category_declared_by: Any = None,
 ) -> int:
-    """Display config values — overrides only, or the full resolved view.  Returns an exit code."""
+    """Display config values — overrides only, or the full resolved view.  Returns an exit code.
+
+    *command_scope* is the NOUN showing, and it fixes the level its settings file is judged at.
+    """
     out = file or sys.stdout
     # The file agent SETTINGS are displayed from: the system settings file at SYSTEM, else the
     # level's own ``config_path``.
     settings_src = noun_settings_file(config_path, system_settings_path)
+    # ⚑ AS THE CASCADE READS IT (:func:`_noun_stored_view`): every block below that shows a
+    # table the cascade could drop takes *stored*; the box scalars and ``_pref_overrides`` read
+    # *config_path*, whose ``box:``/``pref:`` tables the cascade never drops at the box.
+    stored = _noun_stored_view(settings_src, command_scope)
 
     if effective:
         # Show all resolved values
@@ -1965,21 +1984,16 @@ def show_config(
             marker = " (override)" if fld.name in overrides else ""
             print(f"  {fld.name} = {val}{marker}", file=out)
 
-        # Agent settings: render a supplied box-view ``agent_state`` (marking only the keys set
-        # at the box level), else fall back to the project-level overrides.
+        # Agent settings: render a supplied box-view ``agent_state``, else fall back to the
+        # project-level overrides.  ⚑ *agent_state* is UNMARKED: a box file cannot set an agent
+        # key — §0 drops its ``agent:`` table — so no row in it is a box-level override.
         if agent_state is not None:
-            proj_agent = (
-                read_agent_settings(settings_src, "default")
-                if settings_src and settings_src.exists()
-                else {}
-            )
             if agent_state:
                 print("", file=out)
                 for k, v in sorted(agent_state.items()):
-                    marker = " (override)" if k in proj_agent else ""
-                    print(f"  {k} = {v}{marker}", file=out)
-        elif settings_src and settings_src.exists():
-            settings = read_agent_settings(settings_src, "default")
+                    print(f"  {k} = {v}", file=out)
+        else:
+            settings = agent_settings_of(stored, "default")
             if settings:
                 print("", file=out)
                 for k, v in sorted(settings.items()):
@@ -1989,7 +2003,7 @@ def show_config(
         # 2026-09-19 workset too): the nested settings-tier entries such a ``set`` stores and the
         # launch cascade reads (F2 — the effective view must show what set wrote).
         if system_settings_path is not None:
-            nested = _nested_settings_overrides(system_settings_path)
+            nested = _nested_settings_overrides(stored)
             if nested:
                 print("", file=out)
                 for k in sorted(nested):
@@ -2028,8 +2042,8 @@ def show_config(
         # Resolved FIRST because the override blocks below subtract it: an entry the
         # keyspace does not declare is not an override, and printing it in both places
         # would say two different things about one line (Convention 0).
-        undeclared = _undeclared_stored_entries(settings_src)
-        misplaced = _misplaced_config_entries(settings_src)
+        undeclared = _undeclared_stored_entries(stored)
+        misplaced = _misplaced_config_entries(stored)
         # The JOINED spelling, for the subtraction ONLY: the flattens below join a dotted
         # entry name into the key it spells, and it has to be subtracted all the same.
         not_overrides = {".".join(segs) for segs in undeclared} | set(misplaced)
@@ -2041,11 +2055,9 @@ def show_config(
             print(f"  {okey} = {overrides[okey]}", file=out)
             has_output = True
 
-        if settings_src and settings_src.exists():
-            settings = read_agent_settings(settings_src, "default")
-            for k, v in sorted(settings.items()):
-                print(f"  {k} = {v}", file=out)
-                has_output = True
+        for k, v in sorted(agent_settings_of(stored, "default").items()):
+            print(f"  {k} = {v}", file=out)
+            has_output = True
 
         # A NOUN THAT KEEPS ITS SETTINGS APART FROM ITS CONFIG FILE: the nested
         # settings-tier overrides ARE overrides at this level.
@@ -2053,7 +2065,7 @@ def show_config(
         # cannot tell an override from junk; the subtraction is what keeps an undeclared
         # entry out of a list whose heading claims everything in it is an override.
         if system_settings_path is not None:
-            nested = _nested_settings_overrides(system_settings_path)
+            nested = _nested_settings_overrides(stored)
             for k, v in sorted(nested.items()):
                 if k in not_overrides:
                     continue
@@ -2072,22 +2084,23 @@ def show_config(
             # they were — no clause obliges them, and for ``secret_path`` [R149] reads
             # the other way ("you may not want your secret files - even just locations
             # - being dumped to the terminal").
-            # ⚑ The noun's OWN scope, and the helper needs it: see its docstring for
-            # what an upward-scope table in this file would otherwise assert.
-            declared = _abstract_declarations(settings_src, ConfigLevel.box.value)
+            # ⚑ The noun's OWN scope, and the helper needs it: see its docstring.
+            declared = _abstract_declarations(stored, ConfigLevel.box.value)
             for k, v in sorted(declared.items()):
                 print(f"  {k} = {v}", file=out)
                 has_output = True
 
-        # ``pref`` REQUESTS stored at this noun (§2h) ARE overrides at this level —
-        # the ones that are KEYS.  ⚑ SUBTRACTED like the nested block above: a request
-        # off the §2h allowlist (``pref.box.image``) is no member of the family (spec
-        # §0), so it is listed once, as undeclared, below.
-        for k, v in sorted(_pref_overrides(config_path).items()):
-            if k in not_overrides:
-                continue
-            print(f"  {k} = {v}", file=out)
-            has_output = True
+            # ``pref`` REQUESTS stored at this noun (§2h) ARE overrides at this level —
+            # the ones that are KEYS.  ⚑ BOX-ONLY: at a noun with a separate settings file
+            # the nested flatten above already walks its ``pref:`` table, and *config_path*
+            # there is the Layer-1 file, which holds none.  ⚑ SUBTRACTED like the nested
+            # block: a request off the §2h allowlist (``pref.box.image``) is no member of
+            # the family (spec §0), so it is listed once, as undeclared, below.
+            for k, v in sorted(_pref_overrides(config_path).items()):
+                if k in not_overrides:
+                    continue
+                print(f"  {k} = {v}", file=out)
+                has_output = True
 
         # ⚑ NO docker ``.env`` block, deliberately — those rows would name a refused spelling
         # AND assert an override that has no effect.
@@ -2102,7 +2115,7 @@ def show_config(
         # the same fact at every scope, and a noun exempted from it would be a noun
         # whose junk is invisible.  Why this is not a §0 carve-out:
         # :func:`_undeclared_stored_entries`.
-        # ⚑ ONE BLOCK DOES NOT SUBTRACT: ``read_agent_settings`` renders an agent leaf
+        # ⚑ ONE BLOCK DOES NOT SUBTRACT: ``agent_settings_of`` renders an agent leaf
         # FLAT (``bogus = x`` for ``agent.default.bogus``), so an undeclared one appears
         # there under a different spelling.  Not filtered because the two are not the
         # same string, and matching them would need this display to re-derive the agent

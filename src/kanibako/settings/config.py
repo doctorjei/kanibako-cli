@@ -791,6 +791,18 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     for one stored value: ``str()`` printed ``None`` for the §2h present-``None`` OMIT idiom and
     ``True`` for a bool the routed read spells ``true``.
     """
+    if not path.exists():
+        return {}
+    return agent_settings_of(load_doc(path), agent_name)
+
+
+def agent_settings_of(data: dict, agent_name: str) -> dict[str, str]:
+    """:func:`read_agent_settings` over a settings doc already in hand.
+
+    ⚑ FOR A READER THAT MUST JUDGE A FILE BY WHAT THE CASCADE READS FROM IT —
+    ``config_interface.show_config`` hands in ``settings_assemble.cascade_view``'s output,
+    because re-reading the path would see an ``agent:`` table directional enforcement drops.
+    """
     # ⚑ FUNCTION-SCOPE, AND IT MUST STAY THAT WAY: ``agent_file`` imports
     # ``agent_config``, which imports THIS module for ``AGENT_META_FILE``, so a
     # module-scope import here closes ``config → agent_file → agent_config → config``.
@@ -801,9 +813,6 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
         rendered = stored_leaf_text(leaf, v)
         return render_stored_scalar(v) if rendered is None else rendered
 
-    if not path.exists():
-        return {}
-    data = load_doc(path)
     agent = data.get("agent", {})
     if not isinstance(agent, dict):
         return {}

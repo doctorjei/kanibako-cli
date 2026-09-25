@@ -56,8 +56,8 @@ def _flatten_table(node: dict, prefix: str, out: dict[str, str]) -> None:
             out[f"{prefix}{k}"] = render_stored_scalar(v) if text is None else text
 
 
-def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
-    """Flatten a settings file's nested SCOPE tables to ``dotted.key → value``.
+def _nested_settings_overrides(data: dict) -> dict[str, str]:
+    """Flatten a settings doc's nested SCOPE tables to ``dotted.key → value``.
 
     The display companion of the ``_SETTINGS_SCOPE_TOKENS`` routing (F2).  ⚑ IT SERVES
     EVERY NOUN THAT KEEPS ITS SETTINGS APART FROM ITS CONFIG FILE — the system scope, and
@@ -73,13 +73,13 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
     exactly as in :func:`_pref_overrides`.  Skipping ``agent`` does NOT put the argv list
     out of reach: a ``pref:`` table is not a scope table but is not skipped either, so
     ``pref.agent.default.run_args`` walks through here and printed the Python repr
-    ``['--p', '--q']`` in ``system show``.
+    ``['--p', '--q']`` — at the workset noun, the one this walk serves where a ``pref:``
+    table is legal (spec §2h) and so survives the cascade view.
+
+    ⚑ A DOC, NOT A PATH: the caller hands in the file as the cascade reads it
+    (``config_interface._noun_stored_view``), so a table directional enforcement drops is
+    never flattened into a row that claims to override something.
     """
-    if path is None or not path.exists():
-        return {}
-    data = load_doc(path)
-    if not isinstance(data, dict):
-        return {}
     out: dict[str, str] = {}
 
     for key, val in data.items():
@@ -97,8 +97,8 @@ def _nested_settings_overrides(path: Path | None) -> dict[str, str]:
 def _pref_overrides(path: Path | None) -> dict[str, str]:
     """Flatten a settings file's ``pref:`` table to ``pref.<target> -> value``.
 
-    ``config show`` must LIST prefs (spec §2h read verbs). The box/workset plain
-    view reads ``load_project_overrides`` + ``read_agent_settings``, neither of
+    ``config show`` must LIST prefs (spec §2h read verbs). The box's plain
+    view reads ``load_project_overrides`` + ``agent_settings_of``, neither of
     which can see a ``pref:`` table, so it is flattened here through
     :func:`_flatten_table` — literally the walk ``_nested_settings_overrides``
     uses, which is what the two docstrings claimed while each carried its own copy.

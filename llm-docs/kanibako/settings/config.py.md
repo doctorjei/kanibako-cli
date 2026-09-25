@@ -703,6 +703,12 @@ The agent SELECTION is not here either — it is the request `pref.system.agent`
 `agent.<agent_name>`) are honored. Configs are hand-edited to the new shape. The common no-config
 case (absent file, or absent/empty `agent` table) still returns `{}` unchanged.
 
+```agent_settings_of(data: dict, agent_name: str) -> dict[str, str]```
+`read_agent_settings` over a settings doc already in hand — the same read, one body. It exists for
+`config_interface.show_config`, which hands in the file AS THE CASCADE READS IT
+(`settings_assemble.cascade_view`): re-reading the path would see an `agent:` table that
+directional enforcement drops (a box or workset file), and print its leaves as overrides.
+
 
 ```read_system_agent(system_path: Path | None) -> str | None```
 The stored `system.agent` SETTING from the system settings tier; `None` when unset or empty.

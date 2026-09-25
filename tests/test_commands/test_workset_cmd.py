@@ -1731,8 +1731,8 @@ class TestWorksetShowListsTheAbstractTrio:
     def test_a_pref_request_is_not_doubled_by_the_flatten(
         self, config_file, tmp_home, capsys,
     ):
-        """``_pref_overrides`` reads the CONFIG path and the flatten reads the
-        SETTINGS path; aiming both at ``workset.yaml`` prints each pref twice."""
+        """The flatten is this noun's one ``pref`` producer; ``_pref_overrides`` serves the
+        box alone, so a request prints once."""
         from kanibako.commands.workset_cmd import _workset_config_path
         from kanibako.settings.config_io import dump_doc, load_doc
 

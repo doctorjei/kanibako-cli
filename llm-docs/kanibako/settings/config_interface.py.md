@@ -989,7 +989,7 @@ settings live in (`settings_dest` — `config_path` at box/workset, the system s
 SYSTEM) and is gated by the §0 containment guard.
 
 
-```show_config(*, global_config_path, config_path=None, env_global=None, env_project=None, effective=False, file=None, workset_path=None, agent_state=None, env_resolved=None, system_settings_path=None, category_snapshot=None, category_ctx=None, category_error=None, category_declared_by=None) -> int```
+```show_config(*, global_config_path, command_scope, config_path=None, env_global=None, env_project=None, effective=False, file=None, workset_path=None, agent_state=None, env_resolved=None, system_settings_path=None, category_snapshot=None, category_ctx=None, category_error=None, category_declared_by=None) -> int```
 Display config values — overrides only, or the full resolved view. Returns an exit code.
 
 * *effective=False*: show only overrides at this level.
@@ -1014,12 +1014,25 @@ config file supplies it** — SYSTEM, and the WORKSET since 2026-09-19, which pa
 settings file here and the Layer-1 file as *config_path*. When `None` — the BOX, whose settings
 file IS its config file — the settings display reads *config_path*.
 
+⚑⚑ **THE NOUN'S SETTINGS FILE IS READ AS THE CASCADE READS IT** (`_noun_stored_view`:
+`settings_assemble.cascade_view` at *command_scope*'s level): every block below that shows a table
+the cascade could drop takes that view, never the path. The box scalars and `_pref_overrides` read
+*config_path*, whose `box:` / `pref:` tables the cascade never drops at the box. `cascade_view` is
+what the launch's own seams judge a file by,
+so a table the launch drops — an `agent:` table in a box's settings file, a `system:` table in a
+workset's file, a `pref:` table in the system settings file — gets no row here either. Read raw,
+the box case printed the table's leaves as overrides and a dotted entry in it as undeclared, under the
+launch's own warning that the table is ignored: one file, two readers, two answers. The view is
+SILENT, like `cascade_view`; the drop warning is the launch's. `box show` prints it (every box
+verb's path resolve assembles the file), as do `workset show --effective` and
+`system show --effective`; plain `workset show` and `system show` print nothing for such a table.
+
 ### What each view prints
 
 The `--effective` view prints, in order: the merged `KanibakoConfig` fields (each marked
 `(override)` when the level overrides it); the agent settings — a fully-resolved *agent_state*
-when supplied (the box view, marking only the keys actually set at the box level), else the
-project-level overrides; at a noun that supplies *system_settings_path* the nested settings-tier
+when supplied (the box view, UNMARKED: a box file cannot set an agent key — §0 drops its `agent:`
+table — so no row in it is a box-level override), else the project-level overrides; at a noun that supplies *system_settings_path* the nested settings-tier
 entries in that file (`system.auth.share_allowed`, downward scope defaults) — the values a
 `set` at that scope stores and the launch cascade reads (F2: the effective view must show what
 set wrote); the `pref`
@@ -1039,12 +1052,11 @@ second time, the scalars under a second spelling. The narrowing is to the spec's
 the file — a box's `bindings` / `masks` / `synced` / `env` / `secret_path` stay unlisted in this
 view, no clause obliging them and [R149] reading the other way for the last.
 
-⚑ **It is narrowed by SCOPE as well as by category, and that half is not cosmetic.** The flatten
-walks every top-level scope table, so a `workset:` table pasted into a box's file would be listed
-here — while directional enforcement DROPS it at assembly ("never enters the merge", §0) and
-prints a warning over this very output. A row the box does not get is not an override of
-anything; the helper takes the noun's own scope token and keeps to it. The downward case needs no
-exception, the box containing nothing.
+⚑ **It is narrowed by SCOPE as well as by category.** The flatten walks every top-level table the
+doc carries, `pref:` and hand-written junk included, and only the noun's own declarations are its
+rows. It is NOT what keeps a `workset:` table pasted into a box's file out: that table never
+reaches it, because the doc is the cascade view above, which directional enforcement has already
+dropped it from (§0).
 
 ⚑ **Then, LAST and not counted as an override, the entries the noun's settings file carries that
 the keyspace does not DECLARE** (`_undeclared_stored_entries`, whose docstring holds the reasoning).
