@@ -318,14 +318,17 @@ def _resolve_watch_context(box: str | None):
     """Re-resolve the host launch context for *box* (mirrors ``kanibako stop``).
 
     Returns ``(runtime, proj, container_name, target, auth_src)`` or ``None`` when the
-    box cannot be resolved / has no shared-credential agent (nothing to watch).
+    box cannot be resolved / has no shared-credential agent (nothing to watch), or when
+    the auth resolve REFUSES the box's settings (logged at WARNING).
     """
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.agent_ref import agent_address_node, harness_of
     from kanibako.commands.start import _resolve_box_auth_source
+    from kanibako.errors import ConfigError
     from kanibako.settings.config import user_config_file, load_config
     from kanibako.runtime.container import ContainerRuntime
     from kanibako.settings.paths import load_std_paths, resolve_box_target
+    from kanibako.settings.settings_resolve import SettingsError
     from kanibako.targets import resolve_target
     from kanibako.utils import container_name_for
 
@@ -359,14 +362,27 @@ def _resolve_watch_context(box: str | None):
     # a different directory than the launch delivered from, and in a multi-agent
     # workset two agents would share one dir. The ``KANIBAKO_AGENT`` stamp IS the
     # resolved selection for a running box.
-    auth_src = _resolve_box_auth_source(
-        std=std,
-        proj=proj,
-        agent_name=agent,
-        system_settings_path=std.settings,
-        agent_cfg_path=agent_settings_path(std.agents, agent),
-        selection_level={"system.agent": agent},
-    )
+    agent_cfg_path = agent_settings_path(std.agents, agent)
+    # 🛑 A settings REFUSAL (a file that turned invalid after the box started — an
+    # undeclared key, a stray in ``agent.yaml``, a YAML syntax error) is the user's to
+    # fix, not a crash: a WARNING carrying the refusal's own text, which names the file —
+    # never a stack trace. ⚑ SCOPED TO THIS CALL: ``agent_address_node`` above raises
+    # ``ConfigError`` too, for a malformed STAMP, which is not a settings refusal.
+    try:
+        auth_src = _resolve_box_auth_source(
+            std=std,
+            proj=proj,
+            agent_name=agent,
+            system_settings_path=std.settings,
+            agent_cfg_path=agent_cfg_path,
+            selection_level={"system.agent": agent},
+        )
+    except (SettingsError, ConfigError) as exc:
+        log.warning(
+            "creds watcher for box %s: credential writeback skipped, its settings did "
+            "not resolve; exiting.\n%s", container_name, exc,
+        )
+        return None
     return runtime, proj, container_name, target, auth_src
 
 
