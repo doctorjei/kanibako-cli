@@ -3159,8 +3159,11 @@ class TestScopeDirectionGuard:
     def test_removed_bare_vault_keys_are_unknown(self, tmp_path):
         # Bug 4: the old bare ``vault.ro``/``vault.rw`` keys routed to the
         # ``project:`` section P8 DELETED — a silent dead write. They are REMOVED;
-        # a set/reset/flat-form now returns the unknown-key error and writes
-        # nothing (the vault override surface is ``box.bindings.{ro,rw}.vault``).
+        # a set/flat-form now returns the unknown-key error, a reset ``get``'s §0
+        # refusal, and neither writes anything (the vault override surface is
+        # ``box.bindings.{ro,rw}.vault``).
+        from kanibako.settings.config_keys import scope_key_reason, scope_key_refusal
+
         f = tmp_path / BOX_META_FILE
         for key in ("vault.ro", "vault.rw", "vault_ro", "vault_rw"):
             msg = set_config_value(
@@ -3169,7 +3172,9 @@ class TestScopeDirectionGuard:
             assert msg.startswith("Error:"), (key, msg)
             assert "unknown config key" in msg, (key, msg)
         rmsg = reset_config_value("vault.ro", config_path=f)
-        assert rmsg.startswith("Error:") and "unknown config key" in rmsg, rmsg
+        reason = scope_key_reason("vault.ro")
+        assert reason is not None
+        assert rmsg == scope_key_refusal("vault.ro", reason, None, verb="reset"), rmsg
         # Nothing was written by the dead set.
         assert not f.exists() or "project" not in load_doc(f)
 
@@ -5327,6 +5332,44 @@ class TestPrefSetGetReset:
         assert msg == "No override for pref.system.agent"
 
 
+@pytest.mark.parametrize("key", [
+    "pref.box.image", "pref.meta.box.path", "pref.zzz.qqq",
+    "box.zippity", "box.auth.zzz", "box.image.x", "zzz",
+])
+@pytest.mark.parametrize("stored", [True, False], ids=["stored", "absent"])
+def test_reset_of_a_name_that_is_not_a_key_is_refused_as_get_refuses_it(
+    tmp_path, key, stored,
+):
+    """Spec §0: "Cleared" / "No override" for a name that is not a key is a silent
+    accept, and "unknown config key" is a second message for the refusal ``get`` already
+    words. Both reset branches that meet such a name — the ``pref`` branch and the generic
+    tail — ask ``get``'s question and answer in ``get``'s words, and a stored entry is
+    left for the hand edit the message prescribes.
+
+    ⚑ DERIVED from ``get``'s gate, never a copied string (P10).
+    MUTATION: drop either ``scope_key_reason`` check in ``reset_config_value`` and its
+    cases answer "Cleared …", "No override …" or "unknown config key".
+    """
+    from kanibako.settings.config_keys import scope_read_key_error
+
+    f = tmp_path / BOX_META_FILE
+    if stored:
+        head, leaf = key.rsplit(".", 1) if "." in key else ("", key)
+        doc: dict = {}
+        node = doc
+        for seg in filter(None, head.split(".")):
+            node = node.setdefault(seg, {})
+        node[leaf] = "x"
+        dump_doc(f, doc)
+    before = f.read_text() if stored else None
+    msg = reset_config_value(key, config_path=f, command_scope=ConfigLevel.box)
+    get_msg = scope_read_key_error(key, ConfigLevel.box)
+    assert get_msg is not None
+    assert msg == get_msg.replace("cannot be read:", "cannot be reset:"), msg
+    assert (f.read_text() if stored else None) == before
+    assert stored or not f.exists()
+
+
 class TestPrefTargetFiltersAtSetTime:
     """The SAME three filters the launch applies — so a request ``config set``
     accepts is one the launch honours, and one refused here can never become a
@@ -6807,3 +6850,29 @@ class TestScalarFamilyReadRefusal:
         cf, ssp, agents = self._files(tmp_path)
         self._author(ssp, ("system", "env"), "OTHER", "x")
         assert self._get("system.env.FOO", cf, ssp, agents) is None
+
+
+@pytest.mark.parametrize(
+    "raw", [None, "", True, 7, ["a", "b"], "/elsewhere"],
+    ids=["null", "empty-string", "bool", "int", "list", "path"],
+)
+def test_the_config_block_renders_a_stored_leaf_as_the_undeclared_block_does(
+    tmp_path, raw,
+):
+    """One stored value, one spelling (``config_io.render_stored_scalar``): the stored
+    view's ``config.*`` block and its undeclared block print the same leaf the same way.
+    The config block used to render a leaf already stringified by the Layer-1 flatten,
+    so a stored ``null`` printed ``config.data = None`` beside an undeclared ``null``.
+
+    MUTATION: read the ``config:`` table through ``config._flatten_dotted`` again in
+    ``settings_assemble.stored_config_entries`` and the null and bool cases red.
+    """
+    from kanibako.settings.config_interface import (
+        _misplaced_config_entries,
+        _undeclared_stored_entries,
+    )
+
+    f = tmp_path / BOX_META_FILE
+    dump_doc(f, {"config": {"data": raw}, "box": {"zzz": raw}})
+    _shown, undeclared_value = _undeclared_stored_entries(f)[("box", "zzz")]
+    assert _misplaced_config_entries(f) == {"config.data": undeclared_value}

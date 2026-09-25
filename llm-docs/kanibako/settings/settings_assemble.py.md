@@ -472,6 +472,26 @@ assembly. Containment is `system ⊃ agent ⊃ workset ⊃ box` (`kb_store.SCOPE
 source), so the containing set is the HEAD-slice strictly BEFORE *file_scope*. The outermost scope
 (`system`) has an empty set — nothing contains it.
 
+```refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None```
+REFUSE (never drop) a top-level `config:` table in the base, system, workset or box settings file,
+naming the file, each entry and its cure. `stored_config_entries` reads the table exactly as the
+Layer-1 reader would (`config._flatten_leaves`, the walk that reader's `_flatten_dotted`
+stringifies), and `config_entry_groups` splits it on that reader's own declared set
+(`bootstrap.CONFIG_PATH_DEFAULTS`): a declared key moves under `config:` in the Layer-1 file at its
+RESOLVED path (`config.user_config_file`, site-wide `config.config_base_path`), where it relocates
+that path for every box; anything else is deleted: an undeclared or nested entry, or a `config:`
+holding a value that is not a table, that file would refuse too, and a `config:` that flattens to
+nothing means nothing in either file. The stored view shares both helpers, so it names the same
+entries with the same cures. Called from the LAUNCH seam (`settings_launch.build_launch_snapshot`),
+never from `assemble_levels`, which also serves the narrow `box.enable_vault` resolve every box verb
+runs — a raise there would stop the stored `box show` that shows the user the line to delete. Spec
+§1: the `config.*` keys live only in the `.cfg` files and are not a settings tier. It is NOT a fourth
+token of the drop set below, and the difference is deliberate: §0's directional DROP governs a key of
+a CONTAINING scope in a lower file of the cascade, and `config` is not a cascade scope at all — the
+same reason the mirror case (a settings table inside the `.cfg` file) refuses. `config.*` stays a
+KEY to the keyspace (`config set` / `get` address it); what is refused is a settings FILE carrying
+it.
+
 ```_drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict```
 Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec §0).
 
@@ -503,7 +523,11 @@ Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec
    name only. Any other unknown top-level entry is not dropped here: it rides into the merge and is
    REFUSED by name at the launch's §0 audit (`settings_launch._refuse_undeclared_snapshot`), which
    judges the snapshot as a WHOLE store and so has no `UNROOTED` escape (spec §0: no bare top-level
-   keys) — except in the per-agent file, whose partial reads only `self:`.
+   keys). Not in the per-agent file, whose partial reads only `self:`: there
+   `agent_file.level_table` REFUSES by name (`_refuse_stray_roots`) whatever the drops leave (this
+   one takes `system:`, `meta:`, `binding_derivations:`; `settings_prefs` takes `pref:`), except a
+   contained scope's table (`agent:` / `workset:` / `box:`), which it passes over unread pending
+   `Q85`.
 
 `base` is EXEMPT for SCOPE keys (its containing set is empty — it is the system-scope floor) but NOT
 for `meta`: a base-file top-level `meta:` table would clobber the floor's materialized identity

@@ -1087,20 +1087,33 @@ def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> No
     dump_doc(path, existing)
 
 
-def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
-    """Flatten a nested dict into DOTTED-key form, stringifying scalar leaves.
+def _flatten_leaves(data: dict, prefix: str = "") -> dict[str, object]:
+    """Flatten a nested dict into DOTTED-key form, each leaf AS STORED.
 
-    ⚑ NOT a scope-category helper — its callers are the Layer-1 ``config:`` read, the
-    Layer-2 ``system:`` path-tier read, and the Layer-1 refusal that names its keys.
+    ⚑ THE ONE WALK: :func:`_flatten_dotted` is this with its leaves stringified, so the keys
+    one names are the keys the other names. The raw leaf is for the SETTINGS files'
+    ``config:`` refusal and its stored view (``settings_assemble.stored_config_entries``),
+    which reads that table exactly as the Layer-1 read would and DISPLAYS the values —
+    ``str()`` would print a stored ``null`` as ``None``, a spelling the file never held.
     ⚑ ``str(k)`` ON THE UNPREFIXED ARM: a YAML key need not be a string, and only the
     f-string arm stringified one — so a top-level ``1: x`` handed an ``int`` to callers
     that sort and join (:func:`_layer1_settings_keys`).
     """
-    out: dict[str, str] = {}
+    out: dict[str, object] = {}
     for k, v in data.items():
         key = f"{prefix}.{k}" if prefix else str(k)
         if isinstance(v, dict):
-            out.update(_flatten_dotted(v, key))
+            out.update(_flatten_leaves(v, key))
         else:
-            out[key] = str(v)
+            out[key] = v
     return out
+
+
+def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
+    """Flatten a nested dict into DOTTED-key form, stringifying scalar leaves
+    (:func:`_flatten_leaves`, the walk).
+
+    ⚑ NOT a scope-category helper — its callers are the Layer-1 ``config:`` read, the
+    Layer-2 ``system:`` path-tier read, and the Layer-1 refusal that names its keys.
+    """
+    return {key: str(v) for key, v in _flatten_leaves(data, prefix).items()}

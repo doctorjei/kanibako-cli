@@ -1371,6 +1371,25 @@ def test_a_WHOLE_store_judges_its_top_level_where_a_FRAGMENT_declines_to():
     assert _verdict("box.env.X") == Verdict.UNROOTED
 
 
+def test_a_dotted_name_inside_a_table_is_undeclared():
+    """Spec §0: a settings file nests a key as tables, so ``box: {"env.X": …}`` is ONE
+    entry named ``env.X`` — not the declared ``box.env.X`` it spells, and not a key.
+
+    Judged one PATH at a time, so no store is built and nothing undeclared is written.
+    MUTATION: restore the unconditional ``DATA_SEGMENT`` stop in
+    ``_classify_whole_store_path`` and the first three verdicts turn ``DATA_SEGMENT``.
+    """
+    from kanibako.settings.settings_keyspace import Verdict
+
+    assert _verdict("box", "env.X") == Verdict.UNDECLARED
+    assert _verdict("box", "zzz.q") == Verdict.UNDECLARED
+    assert _verdict("box", "auth", "x.y") == Verdict.UNDECLARED
+    # Under an UNDECLARED table the table is the finding; its dotted child may be a
+    # destination, and gets no second, key-spelling reason.
+    assert _verdict("box", "zzz") == Verdict.UNDECLARED
+    assert _verdict("box", "zzz", "a.b") == Verdict.DATA_SEGMENT
+
+
 def _rescued(*rows: tuple[tuple[str, ...], bool]) -> set[tuple[str, ...]]:
     """The paths ``container_notes`` rescues, given ``(segments, is_node)`` rows.
 

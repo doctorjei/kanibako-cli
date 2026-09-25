@@ -29,6 +29,9 @@ _AGENT_FILE_LEVEL: str = 'agent'
 ```
 def refuse_retired_keys(raw: Any, *, level: str, path: Path | None, box_name: str | None=None) -> None
 def refuse_retired_behavior_keys(raw: Any, *, level: str, path: Path | None, subject: str | None=None, box_name: str | None=None) -> None
+def stored_config_entries(raw: Any) -> dict[str, object]
+def config_entry_groups(keys: Iterable[str]) -> list[tuple[str, list[str]]]
+def refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None
 def cascade_view(raw: Any, *, level: str) -> Any
 def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None) -> KeyStore
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore

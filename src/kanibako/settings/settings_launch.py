@@ -64,6 +64,7 @@ from kanibako.settings.settings_assemble import (
     assemble_levels,
     cascade_view,
     dotted_partial,
+    refuse_config_table,
     refuse_retired_behavior_keys,
     refuse_retired_keys,
 )
@@ -1524,9 +1525,26 @@ def build_launch_snapshot(
         for key, val in workset_anchor.items():
             floor[key] = val
 
-    # Resolved ONCE: the base level is read from it and the read-time path check below
-    # names it.
+    # Resolved ONCE: the base level is read from it, and the refusals below name it.
     base_path = settings_base_path()
+    # The settings files this resolve reads, MOST-SPECIFIC-FIRST — the refusals below name
+    # the same set. ``base`` is named LAST: this resolve reads it, at the path
+    # ``assemble_levels`` is handed below.
+    files: tuple[_TierFile, ...] = (
+        ("box", box_path),
+        ("workset", workset_path),
+        ("agent", agent_path),
+        ("system", system_path),
+        ("base", base_path),
+    )
+    # Spec §1: a ``config:`` table in a settings file REFUSES, naming file and keys — before
+    # the resolve, since ``config.*`` are keys and §0's audit below passes them. The agent
+    # file is not asked: ``agent_file.level_table`` already refuses a top-level ``config:``
+    # there, by name, as a stray beside ``self:`` (``_refuse_stray_roots``).
+    for level, path in _loaded_tiers(files):
+        if level != "agent":
+            refuse_config_table(load_doc(path), level=level, path=path)
+
     base_levels = assemble_levels(
         agent_name=agent_name,
         system_path=system_path,
@@ -1636,18 +1654,9 @@ def build_launch_snapshot(
     written.append((base_levels[5], base_path, dotted_partial(floor)))
     # Then spec §0's RESOLVE clause, enforced. ⚑ A SIBLING of the probe, never a mode
     # of it: the probe is REPORT-ONLY by its own module contract, and the two share
-    # the ORACLE so the refusal arms exactly what was measured. ``base`` is named
-    # LAST: this resolve read it, at the path ``assemble_levels`` was handed above.
+    # the ORACLE so the refusal arms exactly what was measured.
     refuse_read_time_faults(
-        written, expanded, ctx=ctx,
-        files=(
-            ("box", box_path),
-            ("workset", workset_path),
-            ("agent", agent_path),
-            ("system", system_path),
-            ("base", base_path),
-        ),
-        subject=ResolveSubject.BOX,
+        written, expanded, ctx=ctx, files=files, subject=ResolveSubject.BOX,
     )
     return expanded
 

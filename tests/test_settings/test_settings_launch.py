@@ -5050,6 +5050,155 @@ def test_a_top_level_stray_in_a_settings_file_refuses_the_resolve(
         assert f"\n  - {path}: " in msg
 
 
+@pytest.mark.parametrize("scope", ["system", "workset", "box"])
+@pytest.mark.parametrize("table,moved,deleted", [
+    ({"data": "/elsewhere", "registry": "/r.yaml"}, ("config.data", "config.registry"), ()),
+    ({"zzz": "/x"}, (), ("config.zzz",)),
+    ({"box": {"image": "x"}}, (), ("config.box.image",)),
+    ({"journal": "/j.yaml", "zzz": "/x"}, ("config.journal",), ("config.zzz",)),
+    ("/str", (), ("config",)),
+    (None, (), ("config",)),
+    ({}, (), ("config",)),
+], ids=["declared", "undeclared-leaf", "nested", "mixed", "non-table", "bare", "empty"])
+def test_a_config_table_in_a_settings_file_refuses_the_resolve(
+    tmp_path, scope, table, moved, deleted,
+):
+    """Spec §1: the ``config.*`` keys *"Live ONLY in the two .cfg files"* and are *"NOT a
+    settings tier"* — so a settings file carrying a ``config:`` table REFUSES, naming the
+    file and every entry with ITS cure: a declared key moves to the resolved
+    ``kanibako.cfg`` (and relocates that path for every box), anything else is deleted:
+    the ``.cfg`` file would refuse it too, or — a ``config:`` holding nothing — read it as
+    nothing (``test_the_config_table_cure_is_what_the_cfg_reader_does``).
+
+    MUTATION: delete the ``refuse_config_table`` loop in ``build_launch_snapshot`` and
+    every case reds: the declared and empty ones build, and the rest refuse with §0's
+    generic message instead of this one.
+    """
+    from kanibako.settings.config import user_config_file
+
+    with pytest.raises(_SettingsError) as e:
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path, **{f"{scope}_file": {"config": table}},
+        )
+    msg = str(e.value)
+    assert f"the {scope} settings file {tmp_path}" in msg, msg
+    for key in (*moved, *deleted):
+        assert f"\n  {key}\n" in msg, msg
+    move = f"Fix: move under 'config:' in {user_config_file()}"
+    assert (move in msg) is bool(moved), msg
+    assert ("for every box" in msg) is bool(moved), msg
+    assert ("not a key anywhere" in msg) is bool(deleted), msg
+
+
+@pytest.mark.parametrize("table,reader", [
+    ({"data": "/elsewhere"}, "accepts"),
+    ({"registry": "/r.yaml"}, "accepts"),
+    ({"zzz": "/x"}, "refuses"),
+    ({"box": {"image": "x"}}, "refuses"),
+    ("/str", "refuses"),
+    (None, "reads nothing"),
+    ({}, "reads nothing"),
+    ({"box": {}}, "reads nothing"),
+], ids=[
+    "data", "registry", "undeclared", "nested", "non-table", "bare", "empty",
+    "only-empty-tables",
+])
+def test_the_config_table_cure_is_what_the_cfg_reader_does(tmp_path, table, reader):
+    """The cure is TRUE: an entry the refusal says to MOVE is one the ``.cfg`` reader
+    accepts, and one it says to DELETE is one that reader refuses — or, for a ``config:``
+    holding nothing, reads as nothing, so deleting it loses nothing. The outside oracle
+    is ``config.bootstrap_config_paths`` on a real file holding exactly that table.
+
+    MUTATION: send every entry to the move cure and the refused and empty cases red.
+    """
+    from kanibako.errors import ConfigError
+    from kanibako.settings.config import bootstrap_config_paths
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.settings_assemble import (
+        config_entry_groups,
+        stored_config_entries,
+    )
+
+    entries = stored_config_entries({"config": table})
+    groups = config_entry_groups(entries)
+    assert len(groups) == 1, groups
+    moves = groups[0][0].startswith("move ")
+    assert moves is (reader == "accepts"), groups
+    cfg = tmp_path / "kanibako.cfg"
+    dump_doc(cfg, {"config": table})
+    if reader == "refuses":
+        with pytest.raises(ConfigError):
+            bootstrap_config_paths(cfg)
+    else:
+        assert set(bootstrap_config_paths(cfg)) == (set(entries) if moves else set())
+
+
+def test_a_config_table_in_the_site_base_file_refuses_too(tmp_path, monkeypatch):
+    """The site base settings file is a settings file like the rest (spec §2). Both
+    bindings are patched because both read it (see the retired-spelling base test)."""
+    from kanibako.settings import settings_assemble as _assemble
+    from kanibako.settings import settings_launch as _launch
+
+    base = tmp_path / SITE_SETTINGS_FILENAME
+    base.write_text("config:\n  data: /elsewhere\n", encoding="utf-8")
+    monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+    with pytest.raises(_SettingsError) as e:
+        _auth_snapshot("primary", tmp_path=tmp_path)
+    assert f"the base settings file {base}" in str(e.value)
+
+
+def test_the_narrow_box_scalar_resolve_does_not_refuse_a_config_table(tmp_path):
+    """The refusal belongs to the LAUNCH seam, not to ``assemble_levels``: that also runs
+    the narrow ``box.enable_vault`` resolve behind every box verb, and ``box show`` has to
+    answer so the user can see the line to delete. MUTATION: call
+    ``refuse_config_table`` from ``assemble_levels`` and this raises."""
+    from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.settings_assemble import assemble_levels
+
+    box = tmp_path / "box.yaml"
+    dump_doc(box, {"config": {"data": "/elsewhere"}})
+    assemble_levels(agent_name="claude", box_path=box)
+
+
+_DOTTED_REASON = "a dotted name inside a scope table is the subject, so the file has to carry one."
+
+
+@pytest.mark.parametrize("scope,tables,named", [
+    pytest.param(
+        "box", {"box": {"env.X": "1"}}, "box | env.X",
+        marks=pytest.mark.writes_undeclared("box.env.X", reason=_DOTTED_REASON),
+    ),
+    pytest.param(
+        "box", {"box": {"zzz.q": 1}}, "box | zzz.q",
+        marks=pytest.mark.writes_undeclared("box.zzz.q", reason=_DOTTED_REASON),
+    ),
+    pytest.param(
+        "workset", {"workset": {"env.X": "1"}}, "workset | env.X",
+        marks=pytest.mark.writes_undeclared("workset.env.X", reason=_DOTTED_REASON),
+    ),
+    pytest.param(
+        "system", {"system": {"zzz.q": 1}}, "system | zzz.q",
+        marks=pytest.mark.writes_undeclared("system.zzz.q", reason=_DOTTED_REASON),
+    ),
+], ids=["box-env-X", "box-zzz", "workset-env-X", "system-zzz"])
+def test_a_dotted_name_inside_a_scope_table_refuses_the_resolve(
+    tmp_path, scope, tables, named,
+):
+    """Spec §0: ``box: {"env.X": "1"}`` is ONE entry named ``env.X`` — a settings file
+    nests a key as tables and never splits a dotted name into one — so it is not the
+    ``box.env.X`` it spells, and an undeclared entry is an ERROR that NAMES it.
+
+    MUTATION: restore the unconditional ``DATA_SEGMENT`` stop in
+    ``settings_keyspace._classify_whole_store_path`` and every case builds.
+    """
+    with pytest.raises(_SettingsError) as e:
+        _auth_snapshot("primary", tmp_path=tmp_path, **{f"{scope}_file": tables})
+    msg = str(e.value)
+    assert "1 entry that is not a settings key" in msg
+    assert f"\n  - {named}: " in msg
+
+
 #: The drop warning each dropped top-level table must leave (settings_assemble /
 #: settings_prefs), keyed by the table.
 _TOP_LEVEL_DROP_WARNING = {

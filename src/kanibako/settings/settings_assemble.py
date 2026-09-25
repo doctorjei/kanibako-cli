@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from kanibako.settings.agent_config import (
     category_root_ref,
@@ -24,7 +24,14 @@ from kanibako.settings.agent_config import (
     root_relative_source,
 )
 from kanibako.settings.agent_file import ROOT_SECTIONS, level_table
-from kanibako.settings.config import settings_base_path
+from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS
+from kanibako.settings.config import (
+    _LAYER1_TABLE,
+    _flatten_leaves,
+    config_base_path,
+    settings_base_path,
+    user_config_file,
+)
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.kb_store import (
     BINDING_DERIVATIONS_NODE,
@@ -470,6 +477,91 @@ def refuse_retired_behavior_keys(
             )
 
 
+def stored_config_entries(raw: Any) -> dict[str, object]:
+    """The top-level ``config:`` table a SETTINGS document carries, as ``config.<key> → value``;
+    empty ⇒ the document carries none.
+
+    ⚑ READ AS THE LAYER-1 READER READS IT — the same walk (``config._flatten_leaves``, which
+    that reader's ``_flatten_dotted`` stringifies), so the entries named here are the ones
+    ``kanibako.cfg`` would accept or refuse if moved there. The values are the leaves AS
+    STORED, for the stored view to render as it renders any stored value. A table that
+    flattens to nothing — ``config:``,
+    ``config: {}``, a ``config:`` whose only leaves are empty tables — or a non-table ``config:``
+    is named by the TABLE name, ``config``, carrying the value as stored.
+
+    ONE reading, two consumers: :func:`refuse_config_table` (the resolve) and the stored view
+    (``config_interface``), so the two cannot disagree about which lines are meant.
+    """
+    if not isinstance(raw, dict) or _LAYER1_TABLE not in raw:
+        return {}
+    table = raw[_LAYER1_TABLE]
+    entries: dict[str, object] = {}
+    if isinstance(table, dict):
+        entries.update(_flatten_leaves(table, _LAYER1_TABLE))
+    return entries or {_LAYER1_TABLE: table}
+
+
+def config_entry_groups(keys: Iterable[str]) -> list[tuple[str, list[str]]]:
+    """*keys* — ``config.*`` entries a SETTINGS file carries — grouped by their CURE, as
+    ``(cure, sorted keys)`` pairs; the refusal and the stored view both print these.
+
+    The split is the Layer-1 reader's own (:data:`~kanibako.settings.bootstrap.
+    CONFIG_PATH_DEFAULTS`, the set ``config.bootstrap_config_paths`` accepts): a DECLARED key
+    is cured by moving it to ``kanibako.cfg`` — named by its resolved path, which callers read
+    and never compose ([R154]) — and anything else by deleting it: an undeclared or nested
+    entry, or a ``config:`` holding a value that is not a table, the ``.cfg`` file would refuse
+    too, and a ``config:`` that flattens to nothing (:func:`stored_config_entries`) means
+    nothing in either file. A moved key is machine-wide, not this file's: the cure says so.
+    """
+    move = (
+        f"move under 'config:' in {user_config_file()} (site-wide: {config_base_path()}) "
+        f"and delete from this settings file; there it relocates that path for every box, "
+        f"not only this one"
+    )
+    delete = (
+        f"not a key anywhere (spec §1 declares: {', '.join(sorted(CONFIG_PATH_DEFAULTS))}) "
+        f"— delete from this settings file"
+    )
+    ordered = sorted(keys)
+    groups = [
+        (move, [k for k in ordered if k in CONFIG_PATH_DEFAULTS]),
+        (delete, [k for k in ordered if k not in CONFIG_PATH_DEFAULTS]),
+    ]
+    return [(cure, group) for cure, group in groups if group]
+
+
+def refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None:
+    """REFUSE a settings file that carries a top-level ``config:`` table, naming the file, the
+    entries and each one's cure (:func:`config_entry_groups`).
+
+    Spec §1: the ``config.*`` keys are Layer 1 — they *"Live ONLY in the two ``.cfg`` files"*
+    and are *"NOT a settings tier"*. §0's directional DROP does not reach them: it governs a
+    key of a CONTAINING scope found in a lower file of the cascade, and ``config`` is not a
+    cascade scope at all. A drop would also leave the owner believing the file moved the store
+    when it did not; the mirror case — a settings table inside the ``.cfg`` file — refuses the
+    same way (``config.bootstrap_config_paths``).
+    ⚑ ``config.*`` stays a KEY to the keyspace (``config set`` / ``get`` address it); what is
+    refused is the FILE carrying it.
+    ⚑ CALLED FROM THE LAUNCH SEAM (``settings_launch.build_launch_snapshot``), NOT from
+    :func:`assemble_levels`: that also serves the narrow, non-refusing ``box.enable_vault``
+    resolve every box verb runs (``config.resolve_box_enable_vault``), and a raise there
+    would stop ``box show`` — the one surface that shows the user the line to delete.
+    """
+    entries = stored_config_entries(raw)
+    if not entries:
+        return
+    where = str(path) if path is not None else "<settings>"
+    body = "".join(
+        "".join(f"  {k}\n" for k in group) + f"    Fix: {cure}.\n"
+        for cure, group in config_entry_groups(entries)
+    )
+    raise SettingsError(
+        f"the {level} settings file {where} carries config.* entries, which a settings "
+        f"file cannot hold: they live only in the .cfg config files, never in a settings "
+        f"tier (spec §1), so kanibako will not read them here.\n{body.rstrip()}"
+    )
+
+
 def _containing_scopes(file_scope: str) -> frozenset[str]:
     """The scope tokens that CONTAIN *file_scope* — the HEAD-slice of
     :data:`SCOPE_CONTAINMENT` strictly before it (spec §0, the drop-set)."""
@@ -530,8 +622,12 @@ def _drop_upward_scopes(
             # Neither a containing scope nor meta — a THIRD rationale: the RESERVED INTERNAL
             # derivations node (R-8), machinery output, never file input. SCOPE TIGHT: this ONE
             # name; any other unknown top-level entry rides on, to be REFUSED by name at the
-            # launch's §0 audit (``settings_launch._refuse_undeclared_snapshot``; llm-docs) —
-            # except in the per-agent file, whose partial reads only ``self:``.
+            # launch's §0 audit (``settings_launch._refuse_undeclared_snapshot``; llm-docs).
+            # Not in the per-agent file, whose partial reads only ``self:``: there
+            # ``agent_file.level_table`` REFUSES by name whatever the drops leave (this one
+            # takes ``system:``, ``meta:``, ``binding_derivations:``; ``settings_prefs``
+            # takes ``pref:``), except a contained scope's table (``agent:`` / ``workset:``
+            # / ``box:``), which it passes over unread pending Q85.
             _log.warning(
                 "Dropping top-level %r table from %s settings file %s: "
                 "'%s' is the RESERVED INTERNAL derivations node (R-8; manifest "

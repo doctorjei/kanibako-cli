@@ -1054,7 +1054,22 @@ cure is a hand edit — a cure nobody can follow for a line they cannot see. Tha
 SUBTRACTS this set before printing: that flatten has no key semantics, so without the subtraction
 one line would appear twice, once called an override and once called junk. The `pref` block
 subtracts it too (2026-09-25): a request whose target is off the §2h allowlist is no key (spec §0,
-`settings_keyspace.PREF_ALLOWLIST`), so a hand-written `pref.box.image` is listed once, as junk. The agent-settings
+`settings_keyspace.PREF_ALLOWLIST`), so a hand-written `pref.box.image` is listed once, as junk.
+The undeclared set is keyed by SEGMENTS; a dotted entry name is printed as the launch's refusal
+prints it (`settings_keyspace.render_store_path`: `box | env.X`), anything else joined. Only the
+subtraction compares the joined form, because the flattens it subtracts from join a dotted entry
+name into the key it spells. The `<VAR>` slot of `env` / `secret_path` (`settings_keyspace.is_var_table`)
+is LEFT AS IT WAS, pending his deferred treatment of the dotted var: a dotted VAR name there is
+marked in the older joined spelling (`box.env.A.B`), while the launch's §0 audit passes it — the
+two do NOT agree at that slot, and that disagreement is part of the deferred topic.
+A top-level `config:` table is NOT among the undeclared entries (`config.data` is a key): it gets its own block after
+it, `_misplaced_config_entries`, printed with the launch refusal's own per-entry cures
+(`settings_assemble.config_entry_groups`: move a declared key to the Layer-1 file, delete the rest),
+and the subtraction reads it too, so it prints once and never as an override.
+`reset` of a name that is not a key — the `pref` branch and the generic tail alike — REFUSES in
+`get`'s words (`config_keys.scope_key_refusal`) instead of removing the line or answering "unknown
+config key": "Cleared" would treat a non-key as a request, and the cure is the hand edit this
+block exists to show. The agent-settings
 block does not subtract, because it renders a leaf FLAT (`bogus`, not `agent.default.bogus`) and
 matching the two would need this display to re-derive a key's spelling.
 

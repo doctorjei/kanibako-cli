@@ -229,6 +229,12 @@ class TestBoxConfigGet:
         assert "hello" in capsys.readouterr().out
 
 
+_DOTTED_REASON = (
+    "a DOTTED entry name inside the box table is the subject, so the fixture has to write "
+    "one; it reaches a KeyStore through ``paths.resolve_project``'s cascade read."
+)
+
+
 class TestBoxGetIsWiredToTheClosedKeyspace:
     """spec §0 at the ``box`` noun: an undeclared name is REFUSED, not "(not set)".
 
@@ -385,6 +391,48 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         out = capsys.readouterr().out
         assert "undeclared" in out, out
         assert "    box.env.X = 1" in out, out
+
+    @pytest.mark.writes_undeclared("box.env.X", reason=_DOTTED_REASON)
+    def test_box_show_marks_a_dotted_name_inside_the_box_table(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """``box: {"env.X": 1}`` is the same subject one table down: ONE entry named
+        ``env.X``, which the launch's §0 audit refuses. Printed in the launch's spelling,
+        never the joined ``box.env.X``, which reads as the declared key it is not.
+        MUTATION: restrict the dotted-name arm in ``_undeclared_stored_entries`` to the
+        top level again and ``undeclared`` never prints.
+        """
+        from kanibako.commands.box._parser import run_show
+
+        project_dir, proj = self._box(config_file, tmp_home)
+        self._merge(proj, {"env.X": "1"})
+        assert run_show(argparse.Namespace(args=[project_dir], effective=False)) == 0
+        out = capsys.readouterr().out
+        assert "undeclared" in out, out
+        assert "    box | env.X = 1" in out, out
+
+    def test_box_show_marks_a_config_table_with_its_own_cure(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """Spec §1: a ``config:`` table in a box's settings file is refused at the resolve,
+        so the stored view must show the line — under a heading of its own, with the
+        refusal's cure (``config.data`` IS a key, so it moves). The delete cure, beside it:
+        ``test_system_cmd_config``."""
+        from kanibako.commands.box._parser import run_show
+        from kanibako.settings.config import user_config_file
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        project_dir, proj = self._box(config_file, tmp_home)
+        path = proj.metadata_path / "box.yaml"
+        doc = load_doc(path)
+        doc["config"] = {"data": "/elsewhere"}
+        dump_doc(path, doc)
+        assert run_show(argparse.Namespace(args=[project_dir], effective=False)) == 0
+        out = capsys.readouterr().out
+        _, _, block = out.partition(f"  (config.* — stored in {path}, ")
+        assert "    config.data = /elsewhere\n" in block, out
+        assert f"Fix: move under 'config:' in {user_config_file()}" in block, out
+        assert "undeclared" not in out, out
 
     def test_box_show_prints_no_such_block_for_a_clean_file(
         self, config_file, tmp_home, credentials_dir, capsys,

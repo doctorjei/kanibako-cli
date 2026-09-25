@@ -1963,20 +1963,46 @@ def scope_read_key_error(
         return agent_category_read_error(canonical, key) or foreign_scope_read_error(
             canonical, key, command_scope,
         )
-    shown = _SCOPE_SHOW_COMMAND.get(
-        command_scope.value if command_scope is not None else "",
-    )
     # ⚑ The ADDRESS cure wins where there is one: a declared key refused only because
     # this scope has no spelling for it is told WHERE it lives, not offered a deletion.
-    cure = table_leaf_read_cure(canonical, active_agent) or (
-        f" If your settings file carries this entry, '{shown}' lists it as "
-        f"undeclared; removing it means editing that file by hand."
-        if shown else ""
+    return scope_key_refusal(
+        key, reason, command_scope, verb="read",
+        cure=table_leaf_read_cure(canonical, active_agent),
     )
-    # ⚑ *key* AS TYPED, not the canonical form: §0 asks the error to name the OFFENDING key,
-    # and the user can only act on the string they wrote.  It is also the ``+`` spelling, so
-    # ``℘`` cannot reach a message by this route.
-    return f"Error: '{key}' cannot be read: {reason}.{cure}"
+
+
+def scope_key_refusal(
+    key: str,
+    reason: str,
+    command_scope: "ConfigLevel | None",
+    *,
+    verb: str,
+    cure: str | None = None,
+) -> str:
+    """The file-scope nouns' refusal of a name §0 declares no key — ``Error: '<key>' cannot
+    be <verb>: <reason>.`` plus the cure.
+
+    ONE message, two verbs: :func:`scope_read_key_error` (``get``) and
+    ``config_interface.reset_config_value`` (its ``pref.*`` branch and its generic tail).
+    *reason* is :func:`scope_key_reason`'s.  With no *cure* the cure is the HAND EDIT,
+    pointing at the stored view that lists the entry as undeclared — the one way to remove
+    that entry ALONE.  (One inside a scope table the noun may write also goes with
+    ``reset --all``, which drops the whole table, declared keys included.)
+
+    ⚑ *key* AS TYPED, not the canonical form: §0 asks the error to name the OFFENDING key,
+    and the user can only act on the string they wrote.  It is also the ``+`` spelling, so
+    ``℘`` cannot reach a message by this route.
+    """
+    if cure is None:
+        shown = _SCOPE_SHOW_COMMAND.get(
+            command_scope.value if command_scope is not None else "",
+        )
+        cure = (
+            f" If your settings file carries this entry, '{shown}' lists it as "
+            f"undeclared; removing it means editing that file by hand."
+            if shown else ""
+        )
+    return f"Error: '{key}' cannot be {verb}: {reason}.{cure}"
 
 
 def _is_path_category_key(key: str) -> bool:
