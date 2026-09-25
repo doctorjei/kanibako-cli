@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for a primary or named box, the workset template, and its handbook chapter likewise takes no
   agent layer. To keep a per-shell template, move the files to
   `<data>/agents/shell/template/box/home` and set `agent.shell.template` to
-  `"@config.agents/shell/template"` in `<data>/global/settings.yaml`; or move them to the system
+  `@config.agents/shell/template` with `kanibako system set`; or move them to the system
   template (`<data>/global/template/box/home`, which seeds every new box) or a workset's
   `template/box/home` — see MIGRATION.md ("The plain-shell store is `<data>/agents/shell/`, and
   `$AGENT` in a plain-shell box is `shell`") for the commands. Boxes that already exist are
@@ -91,6 +91,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and still stop at the first fault they find, so a file with several faults can take more than
   one pass. ⚠️ **A hand-edited value that rc2 accepted can now stop the command** — respell it as
   `MIGRATION.md`, *A bare relative path in a settings key is refused*, describes.
+
+- **A template set with `kanibako system set` or `kanibako agent set` was ignored at create.**
+  Both verbs write `agent.<agent>.template` to the agent's settings file,
+  `<data>/agents/<agent>/agent.yaml`, but the create-time seed read only that file's category
+  tables, never its values. The value did nothing: a new box took the agent's default template
+  instead (the agent store's `template/`, or none for a plain-shell box). 1.7.2 ignored the value
+  the same way, in the file it wrote, `agents/<agent>/settings.yaml`. The seed now reads the file
+  as a launch does, so the template you set seeds a new box's home and supplies the agent layer
+  of its handbook chapter, and `kanibako system set --null agent.<agent>.template` skips that
+  layer in both. Boxes that already exist are unaffected: seeding happens once, at create.
 
 - **`kanibako-min` shipped without kanibako or the baseline tools.** Its base, droste-seed, has
   no pip, so the image build skipped the cli install in silence, and the baseline tool list it

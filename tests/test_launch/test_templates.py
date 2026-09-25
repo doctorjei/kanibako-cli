@@ -428,6 +428,35 @@ def _write_system_settings(std, doc):
     std.settings.write_text(yaml.safe_dump(cur))
 
 
+def _cli_set_agent_key(std, verb, node, key, value):
+    """Write ``agent.<node>.<key>`` through the CLI verb *verb*; ``None`` means ``--null``."""
+    from kanibako.settings.agent_config import AgentConfig
+    from kanibako.settings.agent_file import save
+
+    # ``agent set`` refuses an agent with no file, so that verb gets one first, as
+    # ``setup`` leaves it (empty).  ``system set`` must work without one: fresh install.
+    agent_file = std.agents / node / "agent.yaml"
+    if verb == "agent set" and not agent_file.exists():
+        agent_file.parent.mkdir(parents=True, exist_ok=True)
+        save(agent_file, AgentConfig())
+    if verb == "system set":
+        from kanibako.commands.system_cmd import run_set
+
+        spelled = f"agent.{node}.{key}"
+        args = argparse.Namespace(
+            key_value=spelled if value is None else f"{spelled}={value}",
+            null=value is None, force=False,
+        )
+    else:
+        from kanibako.commands.agent_cmd import run_set
+
+        args = argparse.Namespace(
+            agent_id=node, key_value=key if value is None else f"{key}={value}",
+            null=value is None,
+        )
+    assert run_set(args) == 0
+
+
 def _seed(std, proj, *, agent="claude", deliver_creds=True, agent_cfg_path=None):
     """Drive the one-time home seed (the unified keystore-routed route); return the
     snapshot it resolved, which carries the collapsed seed list."""
@@ -681,6 +710,126 @@ class TestLayeredHomeSeed:
         assert (home / "base-only.txt").read_text() == "base"
         assert (home / "CUSTOM.txt").read_text() == "custom"
 
+    @pytest.mark.parametrize(("node", "verb"), [
+        ("shell", "system set"),
+        ("claude", "system set"),
+        ("claude", "agent set"),
+    ])
+    def test_a_cli_set_agent_template_seeds_its_files_at_create(
+        self, std, config, primary_proj, tmp_path, capsys, node, verb,
+    ):
+        """A CLI-set ``agent.<a>.template`` seeds at create, like a settings-file one.
+
+        The key is ``set: cli+file``, and both verbs write it to the agent settings
+        file (``agents/<a>/agent.yaml``), the ``agent.<active>`` cascade level (spec §2).
+        §2a: create builds the launch snapshot to resolve the seed sources, so the
+        create resolve must read that file's scalars as the launch does.  It used to
+        read only the file's category tables, and the value did nothing.  For
+        ``claude`` the store file is the discriminator: the user's value REPLACES
+        the store default, so the store file must not seed.
+        (``agent set shell`` is refused as a reserved name; ``system set`` is the
+        CLI route for the shell node.)
+        """
+        from kanibako.commands.start import _apply_init_seeds
+        from kanibako.settings.config_io import load_doc
+        from kanibako.targets.shell import ShellTarget
+
+        install_packaged_templates(std, [node])
+        (std.template / "box" / "home" / "base-only.txt").write_text("base")
+        store_home = std.agents / node / "template" / "box" / "home"
+        store_home.mkdir(parents=True, exist_ok=True)
+        (store_home / "store-only.txt").write_text("store")
+        root = tmp_path / "cli-tpl"
+        (root / "box" / "home").mkdir(parents=True)
+        (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
+
+        _cli_set_agent_key(std, verb, node, "template", str(root))
+        agent_file = std.agents / node / "agent.yaml"
+        assert load_doc(agent_file)["self"]["template"] == str(root)
+
+        _apply_init_seeds(
+            std=std, proj=primary_proj, agent_name=node,
+            target=ShellTarget() if node == "shell" else _FakeTarget(),
+            global_config_path=std.settings, agent_config_path=agent_file,
+            logger=logging.getLogger("test-seed"),
+        )
+        home = primary_proj.shell_path
+        assert (home / "base-only.txt").read_text() == "base"
+        assert (home / "CUSTOM.txt").read_text() == "custom"
+        assert not (home / "store-only.txt").exists()
+
+    def test_a_cli_null_agent_template_skips_the_layer_at_create(
+        self, std, config, primary_proj, capsys,
+    ):
+        """``system set --null agent.claude.template`` SKIPS layer 2 at create (§2a).
+
+        The verb writes ``template: null`` to the agent file.  A create resolve that
+        ignores the file keeps the floor's store path, and the store file seeds.
+        (``agent set --null`` is refused at agent scope; ``agent reset`` is its verb.)
+        """
+        from kanibako.commands.start import _launch_seed_list
+
+        install_packaged_templates(std, ["claude"])
+        (std.template / "box" / "home" / "base-only.txt").write_text("base")
+        agent_home = std.agents / "claude" / "template" / "box" / "home"
+        agent_home.mkdir(parents=True, exist_ok=True)
+        (agent_home / "agent-only.txt").write_text("agent")
+
+        _cli_set_agent_key(std, "system set", "claude", "template", None)
+
+        snapshot = _seed(std, primary_proj)
+        srcs = [seed.src for seed in _launch_seed_list(snapshot)]
+        assert "/box/home" not in srcs, srcs
+        assert not any("/agents/claude/" in src for src in srcs), srcs
+        home = primary_proj.shell_path
+        assert (home / "base-only.txt").read_text() == "base"
+        assert not (home / "agent-only.txt").exists()
+
+    @pytest.mark.parametrize("node", ["shell", "claude"])
+    def test_seed_new_box_seeds_a_cli_set_agent_template(
+        self, std, config, primary_proj, tmp_path, capsys, node,
+    ):
+        """The PRODUCTION create entry, ``seed_new_box``, honors a CLI-set template.
+
+        The tests above hand ``agent_config_path`` to ``_apply_init_seeds`` themselves,
+        so a broken wiring in ``seed_new_box`` would leave them green.  This drives the
+        entry ``box create`` calls, which picks the agent file on its own.
+        """
+        from kanibako.commands.start import seed_new_box
+
+        install_packaged_templates(std, [node])
+        (std.template / "box" / "home" / "base-only.txt").write_text("base")
+        store_home = std.agents / node / "template" / "box" / "home"
+        store_home.mkdir(parents=True, exist_ok=True)
+        (store_home / "store-only.txt").write_text("store")
+        root = tmp_path / "cli-tpl"
+        (root / "box" / "home").mkdir(parents=True)
+        (root / "box" / "home" / "CUSTOM.txt").write_text("custom")
+
+        _cli_set_agent_key(std, "system set", node, "template", str(root))
+        seed_new_box(std, config, primary_proj, explicit_agent=node)
+
+        home = primary_proj.shell_path
+        assert (home / "base-only.txt").read_text() == "base"
+        assert (home / "CUSTOM.txt").read_text() == "custom"
+        assert not (home / "store-only.txt").exists()
+
+    def test_seed_new_box_skips_a_cli_null_agent_template(
+        self, std, config, primary_proj, capsys,
+    ):
+        """``system set --null agent.claude.template`` skips layer 2 through ``seed_new_box``."""
+        from kanibako.commands.start import seed_new_box
+
+        install_packaged_templates(std, ["claude"])
+        agent_home = std.agents / "claude" / "template" / "box" / "home"
+        agent_home.mkdir(parents=True, exist_ok=True)
+        (agent_home / "agent-only.txt").write_text("agent")
+
+        _cli_set_agent_key(std, "system set", "claude", "template", None)
+        seed_new_box(std, config, primary_proj, explicit_agent="claude")
+
+        assert not (primary_proj.shell_path / "agent-only.txt").exists()
+
     def test_a_null_agent_template_skips_the_layer_not_the_host_path(
         self, std, config, primary_proj,
     ):
@@ -883,7 +1032,8 @@ def _seed_snapshot(std, proj, *, agent="claude"):
         agent_name=agent,
         target=_FakeTarget() if agent else None,
         global_config_path=std.settings,
-        agent_config_path=std.agents / "claude" / "agent.yaml",
+        # The node's OWN file, as ``seed_new_box`` passes it (``agents/<node>/``).
+        agent_config_path=std.agents / (agent or "claude") / "agent.yaml",
         logger=logging.getLogger("test-seed"),
     )
 
@@ -1352,6 +1502,24 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         self._plant_shell_store(std)
         _write_system_settings(
             std, {"agent": {"shell": {"template": "@config.agents/shell/template"}}},
+        )
+        _install_handbook(std, primary_proj, agent="shell")
+        assert (_handbook_dir(primary_proj) / "agent-only.md").read_text() == (
+            "shell store"
+        )
+
+    def test_a_cli_set_shell_template_reaches_the_handbook_copy(
+        self, std, config, primary_proj, capsys,
+    ):
+        """``system set agent.shell.template=…`` feeds the handbook's agent layer too.
+
+        The verb writes the agent settings file, and the handbook copy reads the
+        snapshot the create seed resolve built, so that resolve must read the file.
+        """
+        self._populate(std)
+        self._plant_shell_store(std)
+        _cli_set_agent_key(
+            std, "system set", "shell", "template", "@config.agents/shell/template",
         )
         _install_handbook(std, primary_proj, agent="shell")
         assert (_handbook_dir(primary_proj) / "agent-only.md").read_text() == (

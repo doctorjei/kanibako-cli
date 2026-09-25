@@ -5153,13 +5153,16 @@ template layer whose source is `<None>` is skipped. A new plain-shell box is see
 system template and, for a box in a workset, that workset's template.
 
 To keep the files for plain-shell boxes only — the faithful equivalent of the old directory —
-move them into the shell store and point `agent.shell.template` at it. Set the key in the system
-settings file, `<data>/global/settings.yaml`:
+move them into the shell store and point `agent.shell.template` at it:
 
 ```bash
 mkdir -p <data>/agents/shell/template/box/home
 cp -a <data>/agents/general/template/. <data>/agents/shell/template/box/home/
+kanibako system set agent.shell.template=@config.agents/shell/template
 ```
+
+The `set` writes the key to the shell agent's settings file, `<data>/agents/shell/agent.yaml`.
+Setting it by hand in the system settings file, `<data>/global/settings.yaml`, works too:
 
 ```yaml
 # <data>/global/settings.yaml
