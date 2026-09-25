@@ -1618,11 +1618,20 @@ show a persona box without the credential the launch actually mounts.
 
 The NARROW resolves leave it `None` deliberately: the image / helper tables
 (`include_base_families=False`, no target) resolve box_dests disjoint from anything a persona
-touches, and the SEED resolve is FILE DELIVERY only, where a behavior scalar or a token pointer has
+touches, and the SEED resolve is FILE DELIVERY only, where a token pointer has
 no meaning. `None` is byte-identical to a pre-persona build. ⚑ The CREATE-time SYNC resolve
 (`_sync_box_at_create`) is NOT among them and DOES carry the tier: it is a FULL resolve whose whole
 product is the bind map, and a persona's `secret_path.<VAR>` is a MOUNT — a map built without it
 would resolve a sync dest against a mount set the launch does not have.
+
+**`agent_cfg`** is the agent settings file's RECORD, and its scalars become the file's half of the
+`agent.<active>` cascade level (`agent_file.state_level`); the file's category tables arrive
+separately, through `agent_cfg_path`. ⚑ **It is NOT gated on `include_base_families`**, only on a
+target: the file is a cascade level, not a launch family. The CREATE seed resolve is narrow and
+still needs it, because `agent.<a>.template` is the layer-2 seed SOURCE (spec §2a) and
+`system set` / `agent set` write it to this file. `_apply_init_seeds` loads the record from
+`agent_config_path`, the path this resolve reads the file's tables from, so the scalars and the
+tables cannot come from two different files. The image and helper resolves pass none.
 
 **`cli_level`** is the §1A CLI LEVEL (P8), built by `settings.settings_cli_level.build_cli_level` and
 validated inside `build_launch_snapshot`. This is the ONE resolve that may carry the EPHEMERAL flag
@@ -1708,6 +1717,9 @@ SECOND fold of `default_seeds()`, independent of the launch fold in `_resolve_la
 a fix applied to one leaves the other silently dropping every declared seed for a persona. The
 template layers beside it are already NODE-keyed by `template_seed_defaults`, so exactly one of the
 two tables is adapted.
+
+⚑ **IT READS THE AGENT FILE'S SCALARS** as well as its tables: the layer-2 source
+`agent.<a>.template` is one. See *`agent_cfg`* under `_resolve_launch_snapshot`.
 
 It is ADDITIVE: with no seed config and no target default seeds, it copies nothing. It routes the
 category config through the ONE launch resolve and applies the COLLAPSED SEED LIST it stored at

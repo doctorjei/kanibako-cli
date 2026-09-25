@@ -7082,7 +7082,7 @@ def _resolve_launch_snapshot(
     # (``agent_cfg``) is wrapped under ``agent.<active>`` (it is NOT the
     # discriminated tables ``assemble_levels`` reads from ``agent_path``, so it is
     # injected as ``agent_state`` — see ``build_launch_snapshot``). Only the MAIN
-    # launch carries behavior (the conditional image/helper resolves do not).
+    # launch carries the behavior FLOOR (the conditional image/helper resolves do not).
     behavior_floor = None
     agent_state = None
     if include_base_families and target is not None:
@@ -7097,8 +7097,10 @@ def _resolve_launch_snapshot(
                 **core_defaults.behavior_defaults(),
                 **{d.key: d.default for d in descriptors},
             }
-        if agent_cfg is not None:
-            agent_state = agent_file.state_level(agent_cfg, node=agent_name)
+    # ⚑ NOT gated on ``include_base_families``: the narrow CREATE seed resolve needs the
+    # file's scalars too.  Why: llm-docs, ``_resolve_launch_snapshot`` → *agent_cfg*.
+    if target is not None and agent_cfg is not None:
+        agent_state = agent_file.state_level(agent_cfg, node=agent_name)
 
     # ``pref.*`` REQUESTS (spec §2h) — collected ONCE here, at the single launch
     # aggregation point, and threaded into the snapshot build. This function runs
@@ -8623,6 +8625,11 @@ def _apply_init_seeds(
     # ``agent.<agent>.bindings.*`` MOUNTs, never the seeded COPY winners.
     # ⚑ The DELIVERIES carrier is DISCARDED: since cutover 2c the seed pass reads
     # the collapsed leaf alone, and this narrow resolve exists only to produce it.
+    # ⚑ The agent file's scalars feed the seed sources (``agent.<a>.template``), read off
+    # the same path as its tables.  Why: llm-docs, ``_resolve_launch_snapshot`` → *agent_cfg*.
+    agent_cfg = (
+        agent_file.load(agent_config_path) if agent_config_path is not None else None
+    )
     snapshot, _ = _resolve_launch_snapshot(
         std=std,
         proj=proj,
@@ -8632,13 +8639,14 @@ def _apply_init_seeds(
         desc=None,
         install=None,
         target=target,
-        agent_cfg=None,
+        agent_cfg=agent_cfg,
         include_base_families=False,
         extra_default_categories=seed_categories,
         deliver_creds=deliver_creds,
         # No persona tier (audit): SEEDING is file delivery — this resolve reads
-        # ``seeded`` COPY winners and nothing else. A behavior scalar or a token
-        # pointer has no meaning here, and a seed must not vary with a store.
+        # ``seeded`` COPY winners and their SOURCE keys, nothing else.  A token pointer
+        # has no meaning here, and a seed must not vary with a store.  The agent FILE
+        # above is not the store: it holds user intent, the store is a live input.
     )
 
     # Group the collapsed seed rows by dest, PRESERVING the list order (system ->
