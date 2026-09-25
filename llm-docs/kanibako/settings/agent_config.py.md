@@ -20,8 +20,9 @@ this one's.
 ## Naming
 
 The module is called `agent_config`, not `agents`, to avoid clashing with the `kanibako.agents`
-entry-point registry of agent adapters. That warning lives at its own site — the `NB:` comment above
-`entry_points(group="kanibako.agents")` in `src/kanibako/targets/__init__.py`, which ends *"Do not
+entry-point registry of agent adapters. That warning lives at its own site — the `NB:` comment
+above `entry_points(group=AGENT_ENTRY_POINT_GROUP)` (the group string is
+`agent_ref.AGENT_ENTRY_POINT_GROUP`) in `src/kanibako/targets/__init__.py`, which ends *"Do not
 'unify'."* Read it there rather than acting on this pointer alone.
 
 ## The `AgentConfig` record

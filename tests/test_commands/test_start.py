@@ -4477,7 +4477,7 @@ class TestApplyInitSeeds:
         """No seed config and target=None → nothing copied (no behavior change)."""
         shell = self._shell(tmp_path)
         glob = tmp_path / CONFIG_FILENAME
-        glob.write_text('box_image: "img"\nagent:\n  default:\n    model: "sonnet"\n')
+        glob.write_text('agent:\n  default:\n    model: "sonnet"\n')
         self._call(
             tmp_path,
             proj=self._proj(shell),
