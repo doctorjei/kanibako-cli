@@ -336,8 +336,7 @@ historical = [
 # `system._boxes` and `system._primary_*` were in that count and are NOT
 # admitted: they are code-only names the manifest records under
 # `not_keys.code_residue` as never spec-sanctioned, so a live use of one is a
-# stray, tracked by the conformance.md row "NINE LIVE CODE USES OF MANIFEST
-# `not_keys.code_residue` NAMES". `not_keys.renamed` stays admitted: a retired
+# stray. `not_keys.renamed` stays admitted: a retired
 # spelling must stay recognizable to be refused with its cure (spec §0).
 #
 # 🛑 TWO AXES ARE NOT EXPRESSIBLE AND ARE REPORTED, NOT APPROXIMATED: the
@@ -353,19 +352,27 @@ historical = [
 # the product's `key_class`. Two more gaps are EXPRESSIBLE, so they are defects
 # rather than axes -- `pref.<target-key>` is never seen (`pref` is not a
 # candidate root) and an agent NODE name is never judged (`agent.cluade.model`
-# passes) -- tracked by the session.md row "Four residual adapter↔product
+# passes) -- tracked by the conformance.md row "Four residual adapter↔product
 # keyspace disagreements".
 #
-# Pre-existing strays are accepted BY DATE in `.kinemata-baseline.json`
-# (until 2026-09-30), accepted by the DIRECTOR; his extension to 2026-09-30
-# covered only the three parity disagreements. Two kinds remain. The
-# `not_keys.code_residue` uses above, carried by their conformance row. And
-# filenames: a filename is a DECLARED CONSTANT, never an exemption by shape
-# (his Q67 answer), so each record is a constant's declaration line in
-# `meta-files`, `agent-plugin-files` or `docker-context-files`, which
-# `undeclared` cannot see because its closure is per registry (mailed to
-# kinemata 2026-09-24). Measured zero sites on either NOT EXPRESSIBLE axis, so
-# neither contributes a record.
+# NO STRAY OF THIS REGISTRY IS ACCEPTED IN `.kinemata-baseline.json`. Measured
+# 2026-09-24 under kinemata `0.4.1`: `undeclared` is clean with no record behind
+# it. Two kinds were accepted there by date until then, and both are gone. The
+# `not_keys.code_residue` uses were renamed out of the key namespace. The
+# filenames went through `defer_to` below: a filename is a DECLARED CONSTANT,
+# never an exemption by shape (his Q67 answer), and each record had been a
+# constant's own declaration line, which `undeclared` could not see across
+# registries until `defer_to`, new in `0.4.0`. Measured zero sites on either NOT
+# EXPRESSIBLE axis, so neither contributes a record.
+#
+# ⚑ `defer_to = ["filenames"]` HANDS A WHOLE-VALUE MATCH OF A DECLARED FILENAME
+# TO THE `filenames` REGISTRY, which is defined beside the file-constant
+# registries below. It names that narrowed view and NOT `meta-files`, because
+# `meta-files` also holds `SETUP_MARKER_KEY`, a KEY kept as a constant. Deferring
+# to it would silence a typo in that key's declaration, which is the only
+# literal the typo has. The negative controls are in the note on `filenames`.
+# ⚑ IT COSTS NO CATCH FROM `0.4.1` ON, AND THAT IS A VERSION FLOOR: see "WHY
+# `defer_to` LOSES NOTHING" on `filenames`.
 #
 # ⚑ No `[[parity]]` table names this registry: `declared()` is a superset of
 # `entries()`, so a parity over it would compare the declaration against a
@@ -394,6 +401,7 @@ name = "keyspace"
 kind = "import"
 target = "kanibako.settings.kinemata_keyspace:KeyspaceRegistry"
 closed = true
+defer_to = ["filenames"]
 
 # The files that DECLARE keys rather than use them. Without this, `unused`
 # refuses outright: every entry is mentioned by its own declaring machinery, so
@@ -730,12 +738,10 @@ modules = [
 # not a kanibako key.
 # AUTHORITY: the owning plugin's `target.py`, which declares each once as a
 # module constant that every site in that module uses.
-# CATCHES: the filename respelled as a literal in any OTHER module. `check`
-# exempts a constant's home module; a respelling inside it is caught instead by
-# `undeclared` on `keyspace`, where a whole-filename literal is a candidate.
-# ⚑ That same `undeclared` still reports each DECLARATION line, because its
-# closure is per registry and cannot see this one's declaration home. That is
-# kinemata's gap, mailed to them 2026-09-24; those lines stay in the baseline.
+# CATCHES: the filename respelled as a literal anywhere, `target.py` included.
+# A constant's `check` home is its declaring STATEMENT, so a second
+# `"config.toml"` elsewhere in codex's `target.py` is a finding here (and again
+# under `filenames`). See "WHY `defer_to` LOSES NOTHING" on `filenames`.
 [[registry]]
 name = "agent-plugin-files"
 kind = "python-constants"
@@ -751,13 +757,98 @@ modules = [
 # declares the name once as a module constant that every site in it uses.
 # Sibling of `agent-plugin-files` rather than a member: that registry's
 # authority is an agent plugin's `target.py`, and docker is no agent.
-# CATCHES: the filename respelled as a literal in any OTHER module; a
-# respelling inside `vscode_remote.py` is caught by `undeclared` on `keyspace`,
-# exactly as for `agent-plugin-files`, whose declaration-line gap this shares.
+# CATCHES: the filename respelled as a literal anywhere, `vscode_remote.py`
+# included, for the reason given on `agent-plugin-files`: only the declaring
+# statement is exempt from `check`. See "WHY `defer_to` LOSES NOTHING" on
+# `filenames`.
 [[registry]]
 name = "docker-context-files"
 kind = "python-constants"
 modules = [
+  "src/kanibako/vscode/vscode_remote.py",
+]
+
+# ---------------------------------------------------------------------------
+# FACT: which declared constants are FILENAMES -- the values `keyspace`'s
+# `defer_to` hands over, so that a filename sharing a key's shape (`box.yaml`,
+# `config.toml`, `meta.json`) is not reported as an undeclared key.
+# AUTHORITY: the same declarations `meta-files`, `agent-plugin-files` and
+# `docker-context-files` read. This is a narrowed VIEW of them, not a fourth
+# place that declares a filename.
+# CATCHES: nothing new in `check`, whose every finding here duplicates one from
+# the registry that owns the fact (see `only` below). It changes what
+# `undeclared` reports, and it is the reason `.kinemata-baseline.json` carries
+# no filename records.
+#
+# ⚑ WHY `defer_to` LOSES NOTHING. `defer_to` hands `undeclared`'s candidate
+# over BY VALUE, wherever the literal is, so the respelling it stops
+# `undeclared` from seeing must be `check`'s to report. From kinemata `0.4.1` it
+# is: a constant's `check` home is its declaring STATEMENT, not its module, so a
+# same-value literal anywhere else, the home module included, is a finding.
+# Measured 2026-09-24 under `0.4.1` on `/tmp` copies with three plants,
+# `_STRAY_A = "config.toml"` in codex's `target.py`, `_STRAY_B = "meta.json"`
+# in `vscode_remote.py` and `_STRAY_C = "box.yaml"` in `config.py`: each fails
+# `check` rc=1, named against its constant twice (its owning registry and this
+# view), while `undeclared` is rc=0 (`deferred: 6 to filenames`).
+# 🛑 SO `0.4.1` IS THIS REGISTRY'S FLOOR. `0.4.0` loads this config and
+# exempts the whole home module from `check`, so the same three plants read
+# rc=0 on both commands there (measured 2026-09-24): lower the pin and a
+# respelling inside a home module is reported by nothing, silently.
+#
+# ⚑ THE SELECTOR IS MEASURED, not taken on trust from upstream's guess. Measured
+# 2026-09-24 with `kinemata ids -r filenames`: `_FILE$` over these four modules
+# selects exactly six public constants. They are `BOX_META_FILE`,
+# `WORKSET_META_FILE` and `AGENT_META_FILE` from `config.py`, and the three
+# third-party names `CODEX_CONFIG_FILE`, `GOOSE_CONFIG_FILE` and
+# `DOCKER_CONTEXT_META_FILE`. With the `where` removed the view selects the same
+# six, so today it removes nothing. It is kept so that a key-shaped
+# constant added to one of these modules later is not deferred just because it
+# lives here.
+# 🛑 `config_keys.py` IS DELIBERATELY NOT A MODULE HERE, though `meta-files`
+# reads it: it holds key tokens, and a key token must never be deferred.
+#
+# ⚑ `only` NAMES THE SAME FOUR MODULES, TO KEEP THIS VIEW FROM REPORTING A
+# BYPASS A SECOND TIME. Every bypass of these six values is already reported by
+# the registry that owns its fact. Measured 2026-09-24 on `mktemp` copies:
+# WITHOUT `only`, a stray `"box.yaml"` in `utils.py` fails `check` with TWO
+# bypasses, one under `meta-files` and one under `filenames`, so accepting it
+# would take two baseline records. Clean, the view also added a `# filenames`
+# section of nine weak signals, each a duplicate. WITH `only`, both go.
+# 🛑 IT NARROWS THE DUPLICATION; IT DOES NOT END IT. A stray inside one of the
+# four modules is still reported twice: each plant above, and a `"box.yaml"`
+# planted in `vscode_remote.py` (measured under `0.4.1`, same day). Only
+# one registry per filename would end it, and that means merging
+# `agent-plugin-files` and `docker-context-files` into this one and narrowing
+# `meta-files` to its key tokens. That undoes the per-fact split above and is
+# not done here. `defer_to` reads this view's entries and ignores `only`, so
+# the deferral is unaffected. `unused` does honor `only`, so it lists entries
+# here as mentioned nowhere (`BOX_META_FILE` and `WORKSET_META_FILE` under
+# `0.4.1`). That is an artifact of the scope, not a finding, and no CI step
+# runs `unused`.
+#
+# 🛑 NEGATIVE CONTROLS, run 2026-09-24 under `0.4.1` on `/tmp` copies of the
+# tree, never on it. With `defer_to` removed, `undeclared` goes rc=1 on the five
+# declaration lines. A planted `BOX_LOCK_NAME = "box.lock"` in `config.py` (a
+# filename outside the `_FILE$` selector) goes rc=1 naming `box.lock`. Renamed
+# to `BOX_LOCK_FILE`, the same constant is deferred and the run is rc=0. A typo
+# planted in `SETUP_MARKER_KEY` goes rc=1: a key token is still judged. A stray
+# `"box.yaml"` planted in `utils.py` fails `check` ONCE, under `meta-files`, and
+# `undeclared` defers it, so a bypass OUTSIDE the four modules has exactly one
+# reporter. Inside them it has two (above).
+[[registry]]
+name = "filenames"
+kind = "python-constants"
+modules = [
+  "src/kanibako/settings/config.py",
+  "packages/agent-codex/src/kanibako/plugins/codex/target.py",
+  "packages/agent-goose/src/kanibako/plugins/goose/target.py",
+  "src/kanibako/vscode/vscode_remote.py",
+]
+where = { id_matches = "_FILE$" }
+only = [
+  "src/kanibako/settings/config.py",
+  "packages/agent-codex/src/kanibako/plugins/codex/target.py",
+  "packages/agent-goose/src/kanibako/plugins/goose/target.py",
   "src/kanibako/vscode/vscode_remote.py",
 ]
 
@@ -839,9 +930,9 @@ kind = "code-patterns"
   #
   # ⚑ `PACKAGED_HANDBOOK` in templates.py is a different fact that happens to
   # share the spelling -- the packaged SOURCE subtree -- which is why the home
-  # here is the YAML rather than that constant. The two call sites pair them in
-  # one expression: `base_src / PACKAGED_HANDBOOK, std.canon / "handbook"`,
-  # constant for the source and a bare literal for the destination.
+  # here is the YAML rather than that constant. The call sites that once paired
+  # a constant source with a bare `"handbook"` destination have read
+  # `_CANON_CHAPTER_LEAF` since `3f573d66`; the entry stays as a tripwire.
   [[registry.entry]]
   id = "CANON_CHAPTER_LEAF"
   antipatterns = ['canon\s*/\s*"handbook"', '"canon/handbook"']

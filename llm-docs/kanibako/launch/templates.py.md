@@ -594,12 +594,13 @@ the resolved canon root as a parameter. Both callers still pass `dest_root=works
 dest: narrowing the copy must not narrow the frame the whitelist judges it in, or every entry looks
 top-level and deny-by-default goes blind.
 
-⚑ `_CANON_CHAPTER_LEAF` is `handbook` alone, because the canon ROOT it hangs off is resolved per
-workset. The chapter is guarantee-created (D7) under `workset.canon` on BOTH paths — spec `:962`
-declares that key UNIFORM IN EVERY MODE, so a lone standalone root has the tier too — which is why
-that one line sits outside the `canon_only` branch. Its sibling half does NOT transfer:
-`workset.template` is `<None>` in standalone (spec `:936`), and the box-template skeleton rooted
-there seeds FUTURE boxes, of which a standalone root will never have one.
+⚑ `_CANON_CHAPTER_LEAF` is `handbook` alone (read from `core_defaults.HANDBOOK_REL`, never
+respelled), because the canon ROOT it hangs off is resolved per workset. The chapter is
+guarantee-created (D7) under `workset.canon` on BOTH paths — spec `:962` declares that key UNIFORM
+IN EVERY MODE, so a lone standalone root has the tier too — which is why that one line sits outside
+the `canon_only` branch. Its sibling half does NOT transfer: `workset.template` is `<None>` in
+standalone (spec `:936`), and the box-template skeleton rooted there seeds FUTURE boxes, of which a
+standalone root will never have one.
 
 ⚑ The whitelist matters MOST here, though not because the tree is the user's own source. A
 STANDALONE `<workset_path>` is a kanibako-MANAGED wrapper (`workset.yaml` + `box_data/` +

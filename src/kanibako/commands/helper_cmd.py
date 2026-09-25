@@ -270,7 +270,7 @@ def run_spawn(args: argparse.Namespace) -> int:
 
     # Copy init script into helper's scripts/
     init_script = resolve_init_script(
-        Path.home().joinpath(*PARENT_SCRIPTS_RELPATH),
+        Path.home() / PARENT_SCRIPTS_RELPATH,
     )
     dest_scripts = helpers_dir / str(helper_num) / HELPER_SCRIPTS_RELPATH
     dest_init = dest_scripts / "helper-init.sh"

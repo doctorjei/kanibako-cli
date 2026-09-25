@@ -388,10 +388,17 @@ root.
 The rom-ROOT-relative posix paths of the packaged CANON bind SOURCES (spec §2c).
 
 ```HANDBOOK_REL = "handbook"```
-The handbook BOOK root, guest-only (nothing packages a handbook).
+The handbook BOOK root under a canon root (the rom packages no handbook). The same leaf names the
+handbook under every host `@<scope>.canon`, which is why `templates._CANON_CHAPTER_LEAF` reads it
+from here.
 
 Declared beside `ROM_CHARTER_REL` for symmetry and because the managed-region deny list needs both
 book roots.
+
+```NOTEBOOK_SCRIPTS_REL = "notebook/scripts"```
+The notebook's reusable-scripts dir, canon-root-relative: the canon's own address for a script a box
+keeps for reuse. `channels.helpers.PARENT_SCRIPTS_RELPATH` builds the parent's helper-entrypoint
+override path from it. SEEDED territory, not skeleton: nothing here creates it.
 
 ```ROM_GUIDE_REL = "charter/general/ROM_GENERAL.md"```
 The load-bearing box guide (the charter's GENERAL chapter), rom-root-relative.
