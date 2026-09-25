@@ -14,7 +14,7 @@ def reset_config_value(key: str, *, config_path: Path, env_path: Path | None=Non
 def effective_value(canonical: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, floor: 'Mapping[str, object] | None'=None) -> 'tuple[str, str] | None'
 def write_system_value(system_settings_path: Path, leaf: str, value: object) -> None
 def reset_all(*, config_path: Path, env_path: Path | None=None, force: bool=False, system_settings_path: Path | None=None, command_scope: 'ConfigLevel | None'=None) -> str
-def show_config(*, global_config_path: Path, config_path: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, effective: bool=False, file: Any=None, workset_path: Path | None=None, agent_state: dict[str, str] | None=None, env_resolved: dict[str, str] | None=None, system_settings_path: Path | None=None, category_snapshot: Any=None, category_ctx: Any=None, category_error: str | None=None, category_declared_by: Any=None) -> int
+def show_config(*, global_config_path: Path, command_scope: ConfigLevel, config_path: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, effective: bool=False, file: Any=None, workset_path: Path | None=None, agent_state: dict[str, str] | None=None, env_resolved: dict[str, str] | None=None, system_settings_path: Path | None=None, category_snapshot: Any=None, category_ctx: Any=None, category_error: str | None=None, category_declared_by: Any=None) -> int
 def _pref_value_error(canonical: str, value: 'str | None', *, config_path: Path, command_scope: 'ConfigLevel | None', system_settings_path: Path | None, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, agent_name: str) -> str | None
 def _yaml_skeleton(target: str) -> list[str]
 def _host_xdg_map(data_home: 'Path | None'=None) -> dict[str, str]
@@ -36,9 +36,10 @@ def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path
 def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
 def _count_leaves(node: object) -> int
 def _clear_writable_scope_tables(path: Path, command_scope: 'ConfigLevel | None') -> int
-def _undeclared_stored_entries(path: 'Path | None') -> dict[tuple[str, ...], tuple[str, str]]
-def _misplaced_config_entries(path: 'Path | None') -> dict[str, str]
-def _abstract_declarations(path: 'Path | None', scope: str) -> dict[str, str]
+def _noun_stored_view(path: 'Path | None', command_scope: ConfigLevel) -> dict
+def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]
+def _misplaced_config_entries(data: dict) -> dict[str, str]
+def _abstract_declarations(data: dict, scope: str) -> dict[str, str]
 ```
 
 ## Classes

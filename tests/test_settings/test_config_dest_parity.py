@@ -1436,14 +1436,20 @@ class TestResetAllAndShowDest:
     def test_show_at_system_renders_the_settings_file(self, bench, capsys):
         bench.seed(bench.ssp, ("agent", "default"), "model", "FROM_SSP")
         show_config(
+            command_scope=ConfigLevel.system,
             global_config_path=bench.cf, config_path=bench.cf,
             system_settings_path=bench.ssp,
         )
         assert "FROM_SSP" in capsys.readouterr().out
 
     def test_show_at_box_renders_the_box_file(self, bench, capsys):
-        bench.seed(bench.box, ("agent", "default"), "model", "FROM_BOX")
-        show_config(global_config_path=bench.cf, config_path=bench.box)
+        # A key the box's OWN file carries: an ``agent:`` table there is an upward scope the
+        # launch drops (spec §0), so the stored view does not list it either.
+        bench.seed(bench.box, ("box",), "image", "FROM_BOX")
+        show_config(
+            global_config_path=bench.cf, config_path=bench.box,
+            command_scope=ConfigLevel.box,
+        )
         assert "FROM_BOX" in capsys.readouterr().out
 
 

@@ -2195,6 +2195,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 category_error = str(exc)
         return show_config(
             global_config_path=config_file,
+            command_scope=ConfigLevel.box,
             config_path=project_toml,
             effective=args.effective,
             workset_path=workset_path,

@@ -138,9 +138,8 @@ declarations were invisible in **both** views at the one noun that owns them, ag
 `system show` already renders its own declarations with. Nothing here re-reads or re-derives the
 file, and there is no workset-only renderer.
 
-The `pref:` table is flattened by that same walk, so `config_path` must **not** also be `ws_config`:
-`_pref_overrides` reads the config path, and pointing both at one file prints every pref request
-twice.
+The `pref:` table is flattened by that same walk, the only `pref` producer at this noun:
+`_pref_overrides` runs at the box alone, whose settings file IS its config file.
 
 `--effective` renders BOTH halves of §0's *"both the declaration and the derived binding"*: the
 declarations through the flatten above, and the binding each ABSTRACT one derives through

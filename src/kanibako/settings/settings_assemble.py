@@ -1022,14 +1022,19 @@ def assemble_levels(
     # LOAD-BEARING: the agent tier never mirrors a non-``self:`` table into its partial, so a
     # post-partial filter could not see (or warn about) a ``system:`` or ``pref:`` table there.
     #
-    # ``pref:`` is legal in the WORKSET and BOX files ONLY (spec §2h) — elsewhere DROPPED with a
+    # ``pref:`` is legal ONLY at :data:`_PREF_LEGAL_LEVELS` (spec §2h) — elsewhere DROPPED with a
     # warning, the SAME treatment the sibling mis-scope gets; the HARD refusal lives at the WRITE
     # site. Directional enforcement then drops any CONTAINING-scope top-level table (spec §0):
     # ``system``'s containing set is empty, and ``base`` is a CODE FLOOR, EXEMPT for SCOPE keys but
     # NOT for ``meta``. Full reasoning: llm-docs.
-    raw_base = refuse_pref_table(raw_base, level="base", path=base_p)
-    raw_system = refuse_pref_table(raw_system, level="system", path=system_path)
-    raw_agent = refuse_pref_table(raw_agent, level="agent", path=agent_path)
+    raw_base, raw_system, raw_agent, raw_workset, raw_box = (
+        raw if level in _PREF_LEGAL_LEVELS else refuse_pref_table(raw, level=level, path=path)
+        for raw, level, path in (
+            (raw_base, "base", base_p), (raw_system, "system", system_path),
+            (raw_agent, "agent", agent_path), (raw_workset, "workset", workset_path),
+            (raw_box, "box", box_path),
+        )
+    )
 
     raw_base = _drop_upward_scopes(raw_base, file_scope="base", path=base_p)
     raw_box = _drop_upward_scopes(raw_box, file_scope="box", path=box_path)

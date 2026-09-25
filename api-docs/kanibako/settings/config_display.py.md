@@ -7,7 +7,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Functions
 ```
 def _flatten_table(node: dict, prefix: str, out: dict[str, str]) -> None
-def _nested_settings_overrides(path: Path | None) -> dict[str, str]
+def _nested_settings_overrides(data: dict) -> dict[str, str]
 def _pref_overrides(path: Path | None) -> dict[str, str]
 def _print_pref_block(snapshot: Any, out: Any) -> None
 def _print_category_block(snapshot: Any, error: str | None, out: Any, box_ctx: Any, declared_by: 'Mapping[str, str] | None'=None) -> None

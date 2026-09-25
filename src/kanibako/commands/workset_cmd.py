@@ -762,6 +762,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # them with, never from a second read of the same file.
         rc = show_config(
             global_config_path=config_file,
+            command_scope=ConfigLevel.workset,
             config_path=config_file,
             effective=args.effective,
             system_settings_path=ws_config,

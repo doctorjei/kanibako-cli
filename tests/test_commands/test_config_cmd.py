@@ -411,6 +411,40 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "undeclared" in out, out
         assert "    box | env.X = 1" in out, out
 
+    @pytest.mark.writes_undeclared(
+        "box.zippity",
+        reason="the CONTROL is an undeclared entry the stored view must still mark; it "
+               "reaches a KeyStore through ``paths.resolve_project``'s narrow cascade read.",
+    )
+    def test_box_show_gives_an_agent_table_the_launchs_verdict(
+        self, config_file, tmp_home, credentials_dir, capsys, caplog,
+    ):
+        """An ``agent:`` table in a ``box.yaml`` is an upward scope: the launch drops it WHOLE,
+        warning with the file and key (spec §0). The stored view must not answer differently —
+        it listed ``model = opus`` as an override and ``agent | default | foo.bar`` as
+        undeclared. ``box.zippity`` is the control: the undeclared block still works.
+        MUTATION: return the raw ``load_doc(path)`` from ``_noun_stored_view`` and this reds.
+        """
+        from kanibako.commands.box._parser import run_show
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        project_dir, proj = self._box(config_file, tmp_home)
+        path = proj.metadata_path / "box.yaml"
+        doc = load_doc(path)
+        doc["agent"] = {"default": {"model": "opus", "foo.bar": "1"}}
+        doc["box"] = {"zippity": "wibble"}
+        dump_doc(path, doc)
+        with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
+            assert run_show(argparse.Namespace(args=[project_dir], effective=False)) == 0
+        out = capsys.readouterr().out
+        assert any(
+            m.startswith(f"Dropping upward-scope key 'agent' from box settings file {path}")
+            for m in caplog.messages
+        ), caplog.messages
+        assert "opus" not in out, out
+        assert "foo.bar" not in out, out
+        assert "    box.zippity = wibble" in out, out
+
     def test_box_show_marks_a_config_table_with_its_own_cure(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):

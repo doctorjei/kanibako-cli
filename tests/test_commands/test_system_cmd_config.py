@@ -36,6 +36,7 @@ from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.config import load_config, read_system_agent
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_io import write_nested_key
+from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.paths import load_std_paths
 from kanibako.settings.settings_keyspace import (
     SCALAR_AGENT_LEAVES,
@@ -1342,16 +1343,15 @@ class TestAListValuedLeafReadsBackAsItsCommandLine:
             assert f"pref.agent.default.{leaf}=--p --q" in out
             assert "['" not in out, out
 
-    def test_show_renders_the_agent_table_and_the_nested_flatten(
+    def test_show_renders_the_agent_table_and_drops_the_pref_table(
         self, config_file, tmp_home, capsys,
     ):
-        """ONE output, TWO producers: ``read_agent_settings`` prints the bare row and
-        ``config_display._nested_settings_overrides`` prints the ``pref`` one.
+        """``config.agent_settings_of`` prints the bare row; the ``pref`` table gets NONE.
 
-        ⚑ At SYSTEM scope the ``pref`` line comes from the NESTED flatten, not from
-        ``_pref_overrides``: that walk skips the ``agent`` table but not ``pref``, which is
-        why a list under ``pref`` reached it at all.  ``_pref_overrides`` is the box/workset
-        noun's flatten and is pinned separately below.
+        ⚑ A ``pref:`` table in the SYSTEM settings file is one the launch DROPS (spec §2h:
+        a request is written only in a workset or box file — ``refuse_pref_table``), so the
+        stored view, which reads the file as the cascade does, lists nothing from it.  The
+        list rendering of a ``pref`` row is pinned at a noun where one is legal, below.
         """
         for leaf in _argv_leaves():
             self._seed(config_file, leaf, pref=True)
@@ -1359,12 +1359,35 @@ class TestAListValuedLeafReadsBackAsItsCommandLine:
             assert _show() == 0
             out = capsys.readouterr().out
             assert f"{leaf} = --a --b" in out
-            assert f"pref.agent.default.{leaf} = --p --q" in out
+            assert "--p --q" not in out, out
+            assert "['" not in out, out
+
+    def test_show_renders_a_pref_list_through_the_nested_flatten_at_the_workset(
+        self, tmp_path, capsys,
+    ):
+        """``config_display._nested_settings_overrides`` — the ``pref`` row's producer where a
+        request is LEGAL (spec §2h) and so survives the cascade view: the workset noun, which
+        hands its settings file over as *system_settings_path*.
+        """
+        from kanibako.settings.config_interface import show_config
+
+        cf = tmp_path / "kanibako.cfg"
+        cf.write_text("")
+        for leaf in _argv_leaves():
+            ws_file = tmp_path / f"workset-{leaf}.yaml"
+            dump_doc(ws_file, {"pref": {"agent": {"default": {leaf: ["--p", "--q"]}}}})
+            capsys.readouterr()
+            show_config(
+                command_scope=ConfigLevel.workset, global_config_path=cf,
+                config_path=cf, system_settings_path=ws_file,
+            )
+            out = capsys.readouterr().out
+            assert f"pref.agent.default.{leaf} = --p --q" in out, out
             assert "['" not in out, out
 
     def test_show_renders_a_noun_file_s_pref_flatten(self, tmp_path, capsys):
         """``config_display._pref_overrides`` — the OTHER flatten, reached through the
-        ``config_path`` noun file a box or workset ``show`` is handed.
+        ``config_path`` noun file a box ``show`` is handed.
         """
         from kanibako.settings.config_interface import show_config
 
@@ -1373,6 +1396,7 @@ class TestAListValuedLeafReadsBackAsItsCommandLine:
             dump_doc(noun, {"pref": {"agent": {"default": {leaf: ["--p", "--q"]}}}})
             capsys.readouterr()
             show_config(
+                command_scope=ConfigLevel.box,
                 global_config_path=tmp_path / "g.yaml",
                 config_path=noun, effective=False,
             )
@@ -1413,6 +1437,7 @@ class TestAListValuedLeafReadsBackAsItsCommandLine:
             })
             capsys.readouterr()
             show_config(
+                command_scope=ConfigLevel.box,
                 global_config_path=tmp_path / "g.yaml",
                 config_path=tmp_path / "s.yaml",
                 effective=True, category_snapshot=snap,
@@ -1517,6 +1542,7 @@ class TestTheEmptyIdiomsReadBackAsThemselves:
         dump_doc(noun, {"pref": {"agent": {"default": {"model": None}}}})
         capsys.readouterr()
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=tmp_path / "g.yaml", config_path=noun, effective=False,
         )
         out = capsys.readouterr().out
@@ -1531,6 +1557,7 @@ class TestTheEmptyIdiomsReadBackAsThemselves:
         snap = KeyStore({"pref": {"agent": {"default": {"model": None}}}})
         capsys.readouterr()
         show_config(
+            command_scope=ConfigLevel.box,
             global_config_path=tmp_path / "g.yaml", config_path=tmp_path / "s.yaml",
             effective=True, category_snapshot=snap,
         )

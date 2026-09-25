@@ -186,6 +186,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MIGRATION.md` § *2.47 An undeclared key in a settings file now stops the command, and the cure
   is a hand-edit*.
 
+- **`box show`, `workset show` and `system show` no longer list lines from a table a launch
+  ignores.** A settings file may not set a containing scope's keys (spec §0), so a launch drops
+  an `agent:` table in a `box.yaml` whole, warning with the file's name — yet `box show` printed
+  that table's settings as overrides (`model = opus`) and listed a dotted entry in it as
+  undeclared (`agent | default | foo.bar`). `show` now reads a settings file the way a launch
+  does, so a table the launch drops gets no line: that also covers an `agent:` or `system:` table
+  in a working set's file, a `workset:` or `system:` table in a `box.yaml`, and a `pref:` table in
+  the system settings file (a request may be written only in a working set or box file, spec
+  §2h). `box show` still prints the launch's warning, as do `workset show --effective` and
+  `system show --effective`; plain `workset show` and `system show` print nothing for such a
+  table. `box show --effective` no longer marks an agent setting `(override)`: the mark came from
+  that same `agent:` table. Nothing to migrate: the lines had no effect.
+
 - **`box get` and `workset get` no longer read back a `pref.*` request that is not a key, and
   `box reset` answers a name that is not a key as `get` does.** A pref may target only
   `system.agent` or `agent.<agent>.<key>` (spec §2h), and the closed keyspace holds only those
