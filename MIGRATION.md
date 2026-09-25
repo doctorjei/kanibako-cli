@@ -342,7 +342,11 @@ inside boxes. In order of likely impact:
     `workset show --effective` exits 1 on a working set file it cannot resolve, where it used to
     print what it could read and exit 0 (§2.77); `box duplicate --to default` is now
     `--to primary` and `--to workset` is now `--to named`, with no alias — see *2.84 `box duplicate
-    --to` takes the mode names: `primary`, `named`, `standalone`*.
+    --to` takes the mode names: `primary`, `named`, `standalone`*; a `bootstrap` of `null` or `""`
+    no longer falls back to `tmux` but means no program — see *2.86 A `bootstrap` of `null` or `""`
+    means no bootstrap program*; and a plain-shell box takes its multiplexer from
+    `agent.shell.bootstrap`, not `agent.default.bootstrap` — see *2.82 The plain-shell store is
+    `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`*.
 
 ---
 
@@ -5126,8 +5130,9 @@ be deleted once you have moved your edits.
 that the keyspace never declared, with a second spelling — the `no_agent` target — beside it
 for the same condition. Both were words for one role, and neither was a real settings node.
 The slot is now the `shell` pseudo-agent (spec §2d, "Pseudo-agent(s)"): a declared node, so
-`agent.shell.*` resolves and the `agent.default` backstop reaches a plain-shell launch exactly
-as before. Concretely: the per-agent settings file for a plain-shell box lives at
+`agent.shell.*` resolves and the `agent.default` backstop reaches a plain-shell launch for every
+key the shell tier does not supply itself — `bootstrap` and `template` are two it does supply
+(both below). Concretely: the per-agent settings file for a plain-shell box lives at
 `<data>/agents/shell/agent.yaml` (`<data>` is `$XDG_DATA_HOME/kanibako`, or whatever
 `config.data` points at), and `$AGENT` inside a plain-shell box is now `shell`, not `general`.
 
@@ -5186,6 +5191,34 @@ cp -a <data>/agents/general/template/. <workset root>/template/box/home/
 Use `no_agent` in place of `general` if that is where your files are. Once they are copied,
 empty the old `template/` directory and re-run the `rmdir` line above. Boxes that already exist
 keep the home they were seeded with.
+
+**A plain-shell box's multiplexer is `agent.shell.bootstrap`.** In v1.7.2 a plain-shell box
+inherited `agent.default.bootstrap`, the value every agent falls back to, so changing it changed
+plain-shell boxes too. The `shell` pseudo-agent now supplies its own value,
+`agent.shell.bootstrap`, which is `tmux` (spec §2d), and a value the shell tier supplies is not
+overridden by the all-agents default. A plain-shell box therefore keeps `tmux` whatever
+`agent.default.bootstrap` says. If you never set `agent.default.bootstrap`, nothing changes: both
+are `tmux`.
+
+If you set `agent.default.bootstrap` and want plain-shell boxes to follow it, set the shell tier's
+own key too. The command writes it to `<data>/agents/shell/agent.yaml`, which every plain-shell
+launch reads:
+
+```bash
+kanibako system set agent.shell.bootstrap=zellij   # or =none for foreground-only plain-shell boxes
+```
+
+If you had set `agent.default.bootstrap`, restart (`kanibako --restart`) any plain-shell box that is
+running when you upgrade: it was started under your value, and it is reattached with `tmux`
+afterward, unless you set `agent.shell.bootstrap` to that value above.
+
+**`kanibako shell --persistent` and `kanibako start --entrypoint` follow the box's own agent.**
+These launches run no agent program. In v1.7.2 they read the plain-shell slot's settings and then
+`agent.default.bootstrap`, so a bootstrap set for the box's agent, such as
+`agent.claude.bootstrap`, did not apply to them. They now use the box's agent's value, the one
+`kanibako start` already uses to decide whether a launch is persistent. If that agent's bootstrap
+is `none`, `kanibako shell --persistent` at its box is now refused, as
+`kanibako start --persistent` already was.
 
 ⚑ **Check anything inside a plain-shell box that branches on `$AGENT`.** A script testing
 `$AGENT = general` now takes the wrong arm. The value is `shell`.
@@ -5257,6 +5290,37 @@ more the helper hub then failed to start.
 **What you must do.** Nothing inside a box: the socket is recreated at every launch and is still
 mounted at `~/.kanibako/state/helper.sock`. A host script that computes the path must measure it
 in bytes.
+
+### 2.86 A `bootstrap` of `null` or `""` means no bootstrap program
+
+**Read this if any of your settings gives `bootstrap` the value `null` or `""`** — at any scope:
+`agent.default.bootstrap` or `agent.<agent>.bootstrap` in `<data>/global/settings.yaml`, the
+`bootstrap` line of an agent's own `<data>/agents/<agent>/agent.yaml`, or a box's or a workset's
+`pref.agent.<agent>.bootstrap`. A `null` written by `--null` counts.
+
+**What changed.** In v1.7.2 a `bootstrap` of `null` or `""` fell back to `tmux`, as if the key were
+not set. Both are now values — spec §2h keeps `""` distinct from unset — and both mean no
+bootstrap program, exactly like `bootstrap: none`: the box runs in the foreground and ends with its
+terminal, and `--persistent`, `--detach` and the background start that `kanibako code` performs are
+refused. The refusal names the setting that gave the value — the agent's own key,
+`agent.default.bootstrap`, or a box's or a workset's pref of either, named with its file — and how
+to give the agent a program. A `null` or `""` on `agent.default.bootstrap` reaches every agent
+that does not supply its own; a plain-shell box does (see *2.82 The plain-shell store is
+`<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`*).
+
+**What to do.** Find the line, then delete it (the default `tmux` answers again unless another
+setting names a value) or give the agent a program. For a line in `<data>/global/settings.yaml` or
+an agent's own file, the `kanibako system set` command below does that: it writes
+`<data>/agents/<agent>/agent.yaml`, which also outranks any `agent.default.bootstrap`. A
+`pref.agent.<agent>.bootstrap` in `<box>/box.yaml` or `<workset>/workset.yaml` outranks that file,
+so edit that pref where it is written:
+
+```bash
+grep -rn 'bootstrap' <data>/global/settings.yaml <data>/agents/*/agent.yaml <box>/box.yaml <workset>/workset.yaml
+kanibako system set agent.<agent>.bootstrap=tmux
+```
+
+If you meant foreground-only on purpose, `none` says so and behaves the same.
 
 ---
 

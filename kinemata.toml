@@ -2418,6 +2418,77 @@ field = "default"
 format = "json"
 authority = "declared"
 
+# FACT: the §2d shell fence's `agent.shell.bootstrap` (`tmux`), `agent.shell.run_args`
+# (`<None>`) and `agent.shell.transform` (`<None>`) are SUPPLIED by the shell tier's
+# own floor, with the values the manifest declares -- never omitted, never
+# stringified.
+# AUTHORITY: `declared`. The manifest rows, sourced from the §2d fence, are the
+# expected values; `core-defaults.yaml`'s `agent_shell:` table, read by
+# `core_defaults.shell_tier_defaults`, is the code on trial.
+# CATCHES: a row OMITTED from `agent_shell:` -- the shape [R177] rejects, which
+# lets the §2d pick read `agent.default.<key>` back into a plain-shell box (for
+# `bootstrap`, a user's `agent.default.bootstrap` instead of the tier's `tmux`);
+# a `<None>` row stringified to `"None"`; a value that drifted from the fence; AND
+# the manifest cell itself changed or removed.
+# ⚑ A VALUE COMPARISON in kinemata `0.4.0`'s `format = "json"`: a declared `null`
+# must meet a printed `null`, which the `text` form cannot carry (measured for
+# `agent-template-source`, above). The oracle prints with `json.dumps`, for the
+# reason `shell-template-none`'s parity gives, above.
+# ⚑ SCOPE: these three rows, not the whole `agent_shell:` table. Its other rows
+# (`label`, `access`, `allow_helpers`) are pinned by the manifest-conformance
+# tests THROUGH the manifest's `type:` -- the floor ships `allow_helpers` as the
+# string `"true"` where the manifest writes the bool `true`, a difference only the
+# declared type reconciles, and json compares data as written. So the oracle
+# filters to the same three leaves, and "and nothing else" holds within them.
+[[registry]]
+name = "shell-tier-fence"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^agent\.shell\.(bootstrap|run_args|transform)$' }
+
+# Measured 2026-09-25, kinemata `0.4.1` (CI's pin), on `5c38aea4` plus the
+# shell-bootstrap working tree, run with `PYTHONPATH=<tree>/src`:
+#   `# shell-tier-fence: 3 declared, 3 produced, in agreement, agreeing on
+#   default.`  rc=0
+#   `check`'s `silent:` tally goes 498/606 to 501/609 -- by its 3 entries, the
+#   only line of `check` output that differs from the same tree with this block
+#   removed; `shape` and `undeclared` print byte-identical output.
+# NEGATIVE CONTROLS, each one edit in a fresh copy under /tmp run with
+# `PYTHONPATH=<copy>/src`, each rc=1. The first, third and fourth were re-run
+# under `0.4.1` on the tree above; the other three were last run under `0.4.0`
+# on `4e63ff63`:
+#   `bootstrap` alone OMITTED from `agent_shell:`:
+#     `agent.shell.bootstrap: declared, produced by nothing`
+#   the three rows OMITTED from `agent_shell:` (the `26db59aa` table):
+#     `agent.shell.bootstrap: declared, produced by nothing`, and the same for
+#     `run_args` and `transform`
+#   `bootstrap: null` in `agent_shell:` (the fence's former `<None>`):
+#     `agent.shell.bootstrap: default declared '"tmux"', code produces 'null'`
+#   the reader stringifying (`str(value)`, no `None` arm):
+#     `agent.shell.run_args: default declared 'null', code produces '"None"'`,
+#     and the same for `transform`
+#   manifest cell `agent.shell.bootstrap` back to `default: null`:
+#     `agent.shell.bootstrap: default declared 'null', code produces '"tmux"'`
+#   manifest cell `default: null` removed from `agent.shell.run_args`:
+#     `agent.shell.run_args: the declaration records no default, and the code
+#     produces 'null'`
+# VACUITY: `equal` reds a silent oracle as "produced by nothing" (the omission
+# controls above), so it needs no guard of its own.
+[[parity]]
+registry = "shell-tier-fence"
+command = ["{python}", "-c", """
+import json
+from kanibako.settings.core_defaults import shell_tier_defaults
+for key, value in sorted(shell_tier_defaults().items()):
+    if key.rsplit(".", 1)[-1] in ("bootstrap", "run_args", "transform"):
+        print(f"kanibako-shell-tier: {key}={json.dumps(value)}")
+"""]
+extract = '(?m)^kanibako-shell-tier: ([^\s=]+)=(.+)$'
+field = "default"
+format = "json"
+authority = "declared"
+
 # ---------------------------------------------------------------------------
 # THE §4.3 TEN, THEIR ORACLES. Registries and the FACT each one states are
 # above the banner, under the same heading. Every figure below was measured

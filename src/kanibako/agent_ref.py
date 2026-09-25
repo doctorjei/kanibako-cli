@@ -50,7 +50,8 @@ PSEUDO_AGENT_NAMES = frozenset({"default", "shell"})
 # dumps).  It OCCUPIES the ``agents/<node>/`` dir & the ``agent.<node>.*``
 # cascade POSITION as a real node-name does — which is why
 # ``_materialize_box_agent_mirror``'s blank short-circuit does not fire & the
-# ``agent.default`` backstop still reaches a no-agent launch.
+# ``agent.default`` backstop still reaches a no-agent launch — for every key the
+# shell tier does not supply itself (why: ``core-defaults.yaml`` ``agent_shell:``).
 # 🛑 IT IS A DECLARED PSEUDO-AGENT (keyspec §2d, "Pseudo-agent(s)"), & the
 # difference from the old ``"general"`` slot is not cosmetic: ``agent.shell.*``
 # is DECLARED, so a closed-keyspace resolve ACCEPTS it where it REFUSED

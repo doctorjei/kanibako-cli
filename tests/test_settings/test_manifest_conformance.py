@@ -314,8 +314,12 @@ _BEHAVIOR_KEYS = (
 #: values, installed unconditionally by ``core_defaults.shell_tier_defaults``.
 #: Typed by the manifest itself, like the behavior tuple above.  (The shell
 #: `canon` arm is dynamic and sits in ``_SINGLETON_KEYS`` with its producer.)
+#: ⚑ ``bootstrap``/``run_args``/``transform`` joined 2026-09-24 from E3, floored by the
+#: same ``agent_shell:`` table: ``bootstrap`` as the tier's own ``tmux`` (it no longer
+#: falls back to ``agent.default``), the other two as PRESENT ``None``.
 _SHELL_TIER_KEYS = (
     "agent.shell.label", "agent.shell.access", "agent.shell.allow_helpers",
+    "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform",
 )
 
 #: (i-e) + the kuid sentinel — one-off rows with a single named carrier each.
@@ -718,6 +722,9 @@ class TestShellTierDefaults:
             "agent.shell.label": "str",
             "agent.shell.access": "enum",
             "agent.shell.allow_helpers": "bool",
+            "agent.shell.bootstrap": "str",
+            "agent.shell.run_args": "list",
+            "agent.shell.transform": "str",
         }, types
 
     @pytest.mark.parametrize("key", _SHELL_TIER_KEYS)
@@ -1237,12 +1244,13 @@ NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
 #: from a floor that has not been written yet.
 #: ⚑ ``agent.shell.template`` LEFT this class 2026-09-24: its ``<None>`` is floored as a
 #: PRESENT ``None`` (a supplied value, [R177]), so it has a carrier and is pinned in
-#: ``_SINGLETON_KEYS`` against it.
+#: ``_SINGLETON_KEYS`` against it.  ``agent.shell.{bootstrap,run_args,transform}`` left
+#: the same day for ``_SHELL_TIER_KEYS``: the ``agent_shell:`` floor carries them —
+#: ``bootstrap`` as the tier's own ``tmux``, the other two as a present ``None``.
 NO_ORACLE_ABSENT: frozenset[str] = frozenset({
     "system.agent", "system.setup_completed", "box.shell",
     "agent.default.model", "agent.default.endpoint", "agent.default.run_args",
     "agent.default.transform",
-    "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform",
 })
 
 #: (E4) ``default: {}`` — the EMPTY CONTAINER a category arm starts at.  That emptiness
@@ -2098,9 +2106,12 @@ class TestDefaultsCoverage:
         ⚑ 60/19 → 61/18 (2026-09-24): ``agent.shell.template`` left E3 for
         ``_SINGLETON_KEYS`` — the shell arm of ``agent_template_defaults`` now floors
         its ``<None>`` as a PRESENT ``None``, so the row has a carrier to pin.
+        ⚑ 61/18 → 64/15 (2026-09-24): ``agent.shell.{bootstrap,run_args,transform}``
+        left E3 for ``_SHELL_TIER_KEYS`` — ``core-defaults.yaml``'s ``agent_shell:``
+        floors them (``bootstrap`` as ``tmux``, the other two as PRESENT ``None``).
         """
-        assert len(PINNED_DEFAULT_KEYS) == 61
-        assert len(EXEMPT_DEFAULT_KEYS) == 18
+        assert len(PINNED_DEFAULT_KEYS) == 64
+        assert len(EXEMPT_DEFAULT_KEYS) == 15
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
 
     def test_every_value_row_is_pinned_or_named(self):

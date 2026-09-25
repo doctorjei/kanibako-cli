@@ -379,12 +379,15 @@ def start_mocks():
                 # authoritative per-launch value _run_container reads off the
                 # settings snapshot.  With a MagicMock ``std``/``proj`` the real
                 # resolver would feed MagicMock paths to build_launch_snapshot, so
-                # stub it to the ``tmux`` default; the zellij / ``none`` tests
-                # override ``start_mocks.effective_bootstrap.return_value``.
-                _effective_bootstrap=DEFAULT,
+                # it is stubbed: it answers ``start_mocks.bootstrap_program()`` (the
+                # ``tmux`` default) for the node it is asked about, and the zellij /
+                # ``none`` tests override ``bootstrap_program.return_value``.  The
+                # real read and its origin are covered with a REAL proj
+                # (``TestEffectiveBootstrapResolution``, ``TestBootstrapOrigin``).
+                _bootstrap_choice=DEFAULT,
                 # AGENT-scope ``transform`` resolution (spec §2d): WHICH binary
                 # transform the launch runs.  Same MagicMock-path rationale as
-                # ``_effective_bootstrap`` above — stub it to what the fixture's
+                # ``_bootstrap_choice`` above — stub it to what the fixture's
                 # target (claude) actually declares, ``tweakcc``.  Tests exercising
                 # a different / absent transform override
                 # ``start_mocks.effective_transform.return_value``; the REAL
@@ -476,8 +479,15 @@ def start_mocks():
             # deferred (byte-identical to today's single materialising resolve).
             m_launch_mount_stubs["read_system_agent"].return_value = None
             # Default agent-scope bootstrap = tmux (the persistent-session default).
-            m_launch_mount_stubs["_effective_bootstrap"].return_value = "tmux"
-            m_launch_mount_stubs["_resolve_bootstrap_program"].return_value = "tmux"
+            from kanibako.commands.start import BootstrapChoice
+            m_bootstrap_program = MagicMock(return_value="tmux")
+            m_launch_mount_stubs["_bootstrap_choice"].side_effect = (
+                lambda proj, system_settings_path, agent_id, *, agent_path=None:
+                BootstrapChoice(m_bootstrap_program(), agent_id)
+            )
+            m_launch_mount_stubs["_resolve_bootstrap_program"].return_value = (
+                BootstrapChoice("tmux", "claude")
+            )
             # Default agent-scope transform = what the fixture's claude target
             # declares (spec §2d ``agent.claude.transform | tweakcc``).
             m_launch_mount_stubs["_effective_transform"].return_value = "tweakcc"
@@ -925,7 +935,8 @@ def start_mocks():
                     register_new_box=m_launch_mount_stubs["_register_new_box"],
                     write_create_entry=m_launch_mount_stubs["_write_create_entry"],
                     read_system_agent=m_launch_mount_stubs["read_system_agent"],
-                    effective_bootstrap=m_launch_mount_stubs["_effective_bootstrap"],
+                    bootstrap_choice=m_launch_mount_stubs["_bootstrap_choice"],
+                    bootstrap_program=m_bootstrap_program,
                     effective_transform=m_launch_mount_stubs["_effective_transform"],
                     resolve_bootstrap_program=m_launch_mount_stubs["_resolve_bootstrap_program"],
                     virtiofs_check=m_virtiofs_check,

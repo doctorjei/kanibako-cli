@@ -1666,9 +1666,10 @@ keys:
     scope: agent
     type: str
     set: cli+file
-    default: null                 # fence <None> — the tier contributes none
-    note: "no multiplexer default at the shell tier; an unset shell box reads the
-           §2d fallback (agent.default.bootstrap) like any other agent."
+    default: tmux
+    note: "the plain-shell box's multiplexer (fence literal), the shell tier's OWN
+           value: agent.default.bootstrap does not reach a plain-shell box. Floored
+           by `core-defaults.yaml agent_shell:`, whose header says why."
     spec: "§2d (shell fence)"
   agent.shell.run_args:
     scope: agent
@@ -1676,14 +1677,16 @@ keys:
     set: cli+file
     default: null
     note: "raw-argv passthrough escape hatch. ⚑ STORED AS A LIST; the CLI takes ONE
-           scalar string and normalizes it to a list before writing ([R169])."
+           scalar string and normalizes it to a list before writing ([R169]).
+           Floored as a PRESENT None by the shell tier floor (fence <None>)."
     spec: "§2d (shell fence)"
   agent.shell.transform:
     scope: agent
     type: str
     set: cli+file
     default: null
-    note: "WHICH binary transform the shell box uses; null = none (fence <None>)."
+    note: "WHICH binary transform the shell box uses; null = none (fence <None>),
+           floored as a PRESENT None by the shell tier floor."
     spec: "§2d (shell fence)"
   agent.shell.transform_settings:
     scope: agent

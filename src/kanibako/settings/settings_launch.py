@@ -1868,6 +1868,49 @@ def _persona_partial(
 # --------------------------------------------------------------------------- #
 
 
+def behavior_pick(
+    snapshot: KeyStore, *, active_agent: str, key: str,
+) -> "tuple[str | None, object]":
+    """The §2d active-over-default pick for ONE *key*, RAW: ``(slot, value)``.
+
+    *slot* is ``"active"`` (``agent.<active_agent>.<key>``) or ``"default"``
+    (``agent.default.<key>``) — the slot that HELD *key* — or ``None`` with
+    ``__MISSING__`` when neither did. A present value (incl. present-``None``) SETS
+    the key and shadows the default backstop below it, and comes back as stored:
+    this pick keeps ABSENT (``__MISSING__``) apart from PRESENT-``None``. The one
+    carrier of the pick: :func:`effective_behavior` reads the value (and collapses a
+    present-``None``), :func:`behavior_slot` the slot, and a caller that must keep
+    the two states apart (``start._persona_model_state``) reads it raw.
+    """
+    agent_node = dict.get(snapshot, "agent", __MISSING__)
+    if not isinstance(agent_node, KeyStore):
+        return None, __MISSING__
+    active_node = dict.get(agent_node, active_agent, __MISSING__)
+    if isinstance(active_node, KeyStore):
+        val = dict.get(active_node, key, __MISSING__)
+        if val is not __MISSING__:
+            return "active", val
+    default_node = dict.get(agent_node, "default", __MISSING__)
+    if isinstance(default_node, KeyStore):
+        val = dict.get(default_node, key, __MISSING__)
+        if val is not __MISSING__:
+            return "default", val
+    return None, __MISSING__
+
+
+def behavior_slot(
+    snapshot: KeyStore, *, active_agent: str, key: str,
+) -> "str | None":
+    """WHICH slot answered *key* in :func:`effective_behavior`'s pick.
+
+    ``"active"`` = ``agent.<active_agent>.<key>``, ``"default"`` =
+    ``agent.default.<key>``, ``None`` = neither holds it. For a caller that must NAME
+    the setting behind a value (a refusal's cure): the value alone cannot tell
+    ``agent.default.bootstrap: none`` from ``agent.claude.bootstrap: none``.
+    """
+    return behavior_pick(snapshot, active_agent=active_agent, key=key)[0]
+
+
 def effective_behavior(
     snapshot: KeyStore, *, active_agent: str, keys: "list[str] | None" = None
 ) -> dict[str, str]:
@@ -1930,13 +1973,7 @@ def effective_behavior(
         key_iter = keys
 
     for key in key_iter:
-        # The §2d active-over-default pick. A present value (incl. present-None) SETS
-        # the key and shadows the default backstop below it.
-        val: object = __MISSING__
-        if isinstance(active_node, KeyStore):
-            val = dict.get(active_node, key, __MISSING__)
-        if val is __MISSING__ and isinstance(default_node, KeyStore):
-            val = dict.get(default_node, key, __MISSING__)
+        _slot, val = behavior_pick(snapshot, active_agent=active_agent, key=key)
         if val is __MISSING__ or val is None:
             continue
         # Behavior leaves are scalars; a category subtree / Bind is NOT behavior.

@@ -54,6 +54,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `$AGENT` in a plain-shell box is `shell`") for the commands. Boxes that already exist are
   unaffected: seeding happens once, at create.
 
+- **A plain-shell box takes its multiplexer from `agent.shell.bootstrap`, not
+  `agent.default.bootstrap`.** In 1.7.2 a plain-shell box inherited the all-agents
+  `agent.default.bootstrap`, so setting it (to `zellij`, say) changed plain-shell boxes too. The
+  `shell` pseudo-agent now supplies its own value, `agent.shell.bootstrap`, which is `tmux`
+  (spec §2d), and a value a tier supplies is not overridden by the all-agents default. A
+  plain-shell box therefore keeps `tmux` whatever `agent.default.bootstrap` says; with neither
+  key set nothing changes. To change plain-shell boxes, set their own key:
+  `kanibako system set agent.shell.bootstrap=zellij` (or `=none`). `agent.shell.run_args` and
+  `agent.shell.transform` are now supplied as `<None>` as well. That changes no launch: the
+  plain-shell target declares no plugin descriptor, so a plain-shell launch passes no agent
+  arguments and patches no binary, and uses neither key. See MIGRATION.md ("The
+  plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`").
+
+- **A `bootstrap` of `null` or `""` now means no bootstrap program, for every agent.** In 1.7.2
+  either one fell back to `tmux`, as if the key were not set. Both are now values (spec §2h keeps
+  `""` distinct from unset), and both behave like `none`: the box runs in the foreground, and
+  `--persistent`, `--detach` and `kanibako code`'s background start are refused. This holds at
+  every scope that can set the key, from `agent.default.bootstrap` in the system settings file to
+  a box's or a workset's `pref.agent.<agent>.bootstrap`. The refusal now names the setting that
+  gave the empty or `none` value — the agent's own key, `agent.default.bootstrap`, or a box's or a
+  workset's pref of either, with its file — and how to give the agent a program; a `none` box that
+  is already running no longer points you at `kanibako start`, which would refuse again, and says
+  that a changed setting applies from its next launch. The "not installed in the image" stop names
+  that same setting, not `agent.default.bootstrap`. See MIGRATION.md ("A `bootstrap` of `null` or
+  `""` means no bootstrap program").
+
+- **`kanibako shell --persistent` and `kanibako start --entrypoint` use the bootstrap of the
+  box's own agent.** In 1.7.2 these launches, which run no agent program, read the plain-shell
+  slot's settings and then `agent.default.bootstrap`, so a value set for the box's agent
+  (`agent.claude.bootstrap`, say) did not apply to them. They now read the same value
+  `kanibako start` uses to decide whether a launch is persistent. See MIGRATION.md ("The
+  plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`").
+
 - **The shipped `STATE_CLEANUP` procedure gains a step: correct references in other documents before
   archiving an element.** Every box receives this procedure in its handbook, and until now it checked
   only what a departing element itself owed — nothing told the reader to fix the documents that restate

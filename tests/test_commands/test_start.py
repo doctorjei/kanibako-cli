@@ -371,15 +371,29 @@ class TestBootstrapNoneInRunContainer:
         be False, the guard would not fire, and the launch would proceed
         (launch_check called) — so this goes red on a re-swallow."""
         with start_mocks() as m:
-            m.effective_bootstrap.return_value = "none"
+            m.bootstrap_program.return_value = "none"
             rc = _run_container(**self._kwargs(persistent=True))
         assert rc == 1
         # Guard fires before the image baseline probe and before any launch.
         m.launch_check.assert_not_called()
         m.runtime.run.assert_not_called()
         err = capsys.readouterr().err
-        assert "agent.default.bootstrap=none" in err
         assert "cannot run a persistent session" in err
+        # The ACTUAL cause (the opt-out, not "no value") and the command.
+        assert "is 'none' (the foreground opt-out)" in err
+        assert "kanibako system set agent." in err
+
+    def test_no_value_blocks_persistent_and_says_so(self, start_mocks, capsys):
+        """A resolved ``None`` (``null`` / ``""``) is no program either — refused, and
+        the message names THAT cause, not the ``none`` opt-out."""
+        with start_mocks() as m:
+            m.bootstrap_program.return_value = None
+            rc = _run_container(**self._kwargs(persistent=True))
+        assert rc == 1
+        m.launch_check.assert_not_called()
+        err = capsys.readouterr().err
+        assert "resolves to no value" in err
+        assert "foreground opt-out" not in err
 
     def test_default_bootstrap_is_tmux(self, start_mocks):
         """The unset/default agent-scope bootstrap resolves to tmux: the none-guard
@@ -393,25 +407,98 @@ class TestBootstrapNoneInRunContainer:
         # Default tmux → not the none-guard → baseline probe ran.
         m.launch_check.assert_called_once()
 
+    def test_a_no_agent_persistent_launch_reads_the_box_agent(self, start_mocks):
+        """``--entrypoint`` / ``kanibako shell`` resolve as the ``shell`` node, but their
+        bootstrap is the BOX's agent's, as ``run_start``'s heuristic read it.
+
+        Keyspec §2b: the plain-shell BOX is an effective ``@system.agent`` of
+        ``shell``; a no-agent launch at an agent box is not one.  The
+        ``_bootstrap_choice`` stub answers ``none`` here, so reading ``agent_id``
+        reds on the refusal.
+        """
+        from kanibako.commands.start import BootstrapChoice
+        with start_mocks() as m:
+            m.bootstrap_program.return_value = "none"
+            m.resolve_bootstrap_program.return_value = BootstrapChoice(
+                "tmux", "claude",
+            )
+            rc = _run_container(**self._kwargs(
+                project_dir="/box", entrypoint="htop", persistent=True,
+                explicit_agent="claude",
+            ))
+        assert rc == 0
+        m.resolve_bootstrap_program.assert_called_once_with("/box", "claude")
+        m.bootstrap_program.assert_not_called()
+        m.launch_check.assert_called_once()
+
+    def test_a_no_agent_launch_on_a_selection_fallback_still_launches(
+        self, start_mocks,
+    ):
+        """A no-agent persistent launch whose box agent could not be SELECTED runs.
+
+        ``_resolve_bootstrap_program`` answers the declared default with no node when
+        selection fails (:class:`TestResolveBootstrapProgramFailSoft` drives that on
+        the real path); ``_run_container`` must launch on it, not refuse.
+        """
+        from kanibako.commands.start import BootstrapChoice
+        with start_mocks() as m:
+            m.resolve_bootstrap_program.return_value = BootstrapChoice("tmux", None)
+            rc = _run_container(**self._kwargs(
+                project_dir="/box", entrypoint="htop", persistent=True,
+            ))
+        assert rc == 0
+        m.launch_check.assert_called_once()
+        m.bootstrap_program.assert_not_called()
+
+    def test_the_baseline_probe_is_told_the_setting_behind_the_program(
+        self, start_mocks,
+    ):
+        """The tier-1 "not in the image" cure names the setting that supplied the
+        program — on a plain-shell box, the shell tier's own key."""
+        from kanibako.commands.start import BootstrapChoice
+        with start_mocks() as m:
+            m.bootstrap_choice.side_effect = None
+            m.bootstrap_choice.return_value = BootstrapChoice("tmux", "shell")
+            rc = _run_container(**self._kwargs(persistent=True))
+        assert rc == 0
+        assert m.launch_check.call_args.kwargs["setting"] == "agent.shell.bootstrap"
+
+    def test_a_no_agent_ephemeral_launch_resolves_no_agent(self, start_mocks):
+        """Plain ``kanibako shell`` (ephemeral) resolves no bootstrap and so no agent."""
+        with start_mocks() as m:
+            rc = _run_container(**self._kwargs(box_shell_mode=True))
+        assert rc == 0
+        m.resolve_bootstrap_program.assert_not_called()
+        m.bootstrap_program.assert_not_called()
+
     def test_none_non_persistent_skips_bootstrap_probe(self, start_mocks):
         """Non-persistent `none` launch proceeds (foreground) and the persistent
         baseline probe is skipped entirely (persistent=False path)."""
         with start_mocks() as m:
-            m.effective_bootstrap.return_value = "none"
+            m.bootstrap_program.return_value = "none"
             rc = _run_container(**self._kwargs(persistent=False))
         assert rc == 0
         # Non-persistent path never runs the (persistent-only) baseline probe.
         m.launch_check.assert_not_called()
 
 
+def _resolved_program(proj, system_settings_path, agent_id, *, agent_path=None):
+    """The program :func:`~kanibako.commands.start._bootstrap_choice` resolves."""
+    from kanibako.commands.start import _bootstrap_choice
+    return _bootstrap_choice(
+        proj, system_settings_path, agent_id, agent_path=agent_path,
+    ).program
+
+
 class TestEffectiveBootstrapResolution:
-    """`_effective_bootstrap` resolves the AGENT-scope ``bootstrap`` behavior key
-    (spec §2d) off the settings snapshot, with the ``tmux`` consumer default —
-    the relocation of the retired box-scope ``box.bootstrap_program``.  It resolves
-    exactly like ``model`` / ``access``: the ``agent.default`` tier lives in the
-    SYSTEM settings file (a box/workset file's ``agent.*`` is an upward write, dropped
-    by directional enforcement), a per-agent override in the agent's OWN file, and a
-    box-level tweak via the ``box.agent.*`` mirror."""
+    """`_bootstrap_choice` resolves the AGENT-scope ``bootstrap`` behavior key
+    (spec §2d) off the settings snapshot, the declared ``agent.default.bootstrap``
+    (``tmux``) answering where no tier supplies one — the relocation of the retired
+    box-scope ``box.bootstrap_program``.  It resolves exactly like ``model`` /
+    ``access``: the ``agent.default`` tier lives in the SYSTEM settings file (a
+    box/workset file's ``agent.*`` is an upward write, dropped by directional
+    enforcement), a per-agent override in the agent's OWN file, and a box-level
+    tweak via the box's ``pref.agent.<agent>.bootstrap`` request (§2h)."""
 
     def _proj(self, tmp_path):
         from types import SimpleNamespace
@@ -428,37 +515,55 @@ class TestEffectiveBootstrapResolution:
         )
 
     def test_default_is_tmux_when_unset(self, tmp_path):
-        from kanibako.commands.start import _effective_bootstrap
         proj = self._proj(tmp_path)
         # No settings file anywhere → the consumer default.
-        assert _effective_bootstrap(proj, None, "claude") == "tmux"
+        assert _resolved_program(proj, None, "claude") == "tmux"
 
     def test_system_agent_default_tier_wins(self, tmp_path):
         """A bare ``bootstrap`` set at system scope lands in the system settings
         file's ``agent.default`` tier and is the effective value for any agent."""
-        from kanibako.commands.start import _effective_bootstrap
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
-        assert _effective_bootstrap(proj, sys_file, "claude") == "zellij"
-        # And for a no-agent / shell box (agent.default backstop still applies).
-        assert _effective_bootstrap(proj, sys_file, "general") == "zellij"
+        assert _resolved_program(proj, sys_file, "claude") == "zellij"
+        assert _resolved_program(proj, sys_file, "goose") == "zellij"
+        # ⚑ NOT for a plain-shell box: its tier SUPPLIES its own ``tmux`` (spec §2d
+        # fence), and a default is a fallback for where nothing was supplied
+        # ([R177]).  :class:`TestShellBootstrapIsTheTiersOwn` pins that side.
+        assert _resolved_program(proj, sys_file, "shell") == "tmux"
+
+    @pytest.mark.parametrize("written", [None, ""])
+    def test_a_true_agent_with_no_value_has_no_program(self, tmp_path, written):
+        """``agent.claude.bootstrap: null`` or ``""`` is NO program, never the default.
+
+        §2h keeps a terminal ``""`` distinct from unset, and a ``null`` the user wrote
+        is a supplied value ([R177]); both used to fall back to ``tmux``.  The
+        launch reads the ``None`` as no bootstrap (``_is_no_bootstrap``).
+        """
+        from kanibako.commands.start import _is_no_bootstrap
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"claude": {"bootstrap": written}}})
+        value = _resolved_program(proj, sys_file, "claude")
+        assert value is None
+        assert _is_no_bootstrap(value)
+        # Another agent still reads the declared default.
+        assert _resolved_program(proj, sys_file, "goose") == "tmux"
 
     def test_none_sentinel_preserved(self, tmp_path):
         """The ``none`` opt-out is a real value, NOT coerced to the tmux default."""
-        from kanibako.commands.start import _effective_bootstrap
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "none"}}})
-        assert _effective_bootstrap(proj, sys_file, "claude") == "none"
+        assert _resolved_program(proj, sys_file, "claude") == "none"
 
     def test_box_pref_override(self, tmp_path):
         """A box-level tweak via the §2h REQUEST ``pref.agent.<a>.bootstrap`` WINS
         the §2d pick — the box's override takes effect. (⮕ P7: was the
         ``box.agent.bootstrap`` mirror, retired by spec §2b.)"""
-        from kanibako.commands.start import _effective_bootstrap
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
@@ -467,19 +572,18 @@ class TestEffectiveBootstrapResolution:
             proj.metadata_path / "box.yaml",
             {"pref": {"agent": {"claude": {"bootstrap": "none"}}}},
         )
-        assert _effective_bootstrap(proj, sys_file, "claude") == "none"
+        assert _resolved_program(proj, sys_file, "claude") == "none"
 
     def test_box_pref_is_sole_agent_scope_setting(self, tmp_path):
         """REGRESSION (F1): the box's REQUEST as the SOLE agent-scope setting — NO
         system ``agent.default.bootstrap``, NO agent-file behavior — must still be
         honored (the retired ``box.bootstrap_program=none`` worked here).
 
-        Mutation-proof: this only passes because ``_effective_bootstrap`` seeds
+        Mutation-proof: this only passes because ``_agent_scalar_pick`` seeds
         ``behavior_floor={"bootstrap": tmux}`` so the snapshot's ``agent`` node exists
         and ``effective_behavior`` reaches the pref-installed value.  Drop that floor
         and the snapshot has no ``agent`` node → ``effective_behavior`` early-returns
         ``{}`` → this returns ``'tmux'`` and the box wrongly launches persistent."""
-        from kanibako.commands.start import _effective_bootstrap
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         # ONLY the box's §2h request is set — no system file at all.
@@ -487,13 +591,12 @@ class TestEffectiveBootstrapResolution:
             proj.metadata_path / "box.yaml",
             {"pref": {"agent": {"claude": {"bootstrap": "none"}}}},
         )
-        assert _effective_bootstrap(proj, None, "claude") == "none"
+        assert _resolved_program(proj, None, "claude") == "none"
 
     def test_per_agent_override_from_agent_file_wins(self, tmp_path):
         """A per-agent ``agent.<agent>.bootstrap`` stored in the agent's OWN file
         (flat ``agent:`` state) WINS the §2d active-over-default pick for that
         agent, over the system-scope ``agent.default`` value."""
-        from kanibako.commands.start import _effective_bootstrap
         from kanibako.settings.config_io import dump_doc
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
@@ -502,17 +605,17 @@ class TestEffectiveBootstrapResolution:
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"bootstrap": "none"}})
         # The active agent (claude) picks its own-file override over the default.
-        assert _effective_bootstrap(
+        assert _resolved_program(
             proj, sys_file, "claude", agent_path=agent_file,
         ) == "none"
         # A DIFFERENT agent (no matching per-agent slot) still sees the default.
-        assert _effective_bootstrap(proj, sys_file, "goose") == "zellij"
+        assert _resolved_program(proj, sys_file, "goose") == "zellij"
 
     def test_a_bare_relative_in_the_agent_file_names_that_file(self, tmp_path):
         """[R147]'s read-time refusal names the agent file this focused read loaded."""
-        # Mutation: drop ``path=agent_path`` from ``_effective_agent_scalar``'s
+        # Mutation: drop ``path=agent_path`` from ``_agent_scalar_pick``'s
         # ``state_level`` call → the refusal names no file.
-        from kanibako.commands.start import _effective_bootstrap
+        from kanibako.commands.start import _bootstrap_choice
         from kanibako.settings.config_io import dump_doc
         from kanibako.settings.settings_resolve import SettingsError
         proj = self._proj(tmp_path)
@@ -520,8 +623,217 @@ class TestEffectiveBootstrapResolution:
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"canon": "rel"}})
         with pytest.raises(SettingsError) as exc:
-            _effective_bootstrap(proj, None, "claude", agent_path=agent_file)
+            _bootstrap_choice(proj, None, "claude", agent_path=agent_file)
         assert f"agent.claude.canon is set to 'rel' in {agent_file}" in str(exc.value)
+
+
+class TestShellBootstrapIsTheTiersOwn:
+    """A plain-shell box's ``bootstrap`` is the shell tier's OWN ``tmux`` (§2d fence).
+
+    ⚑ Supplied by the ``agent_shell:`` floor, so it beats the ``agent.default``
+    fallback ([R177]): a user's ``agent.default.bootstrap`` no longer reaches a
+    plain-shell box, which inherited it before.  ``agent.shell.bootstrap`` does.
+    """
+
+    _proj = TestEffectiveBootstrapResolution._proj
+
+    def test_an_unset_shell_box_runs_tmux(self, tmp_path):
+        proj = self._proj(tmp_path)
+        assert _resolved_program(proj, None, "shell") == "tmux"
+
+    def test_a_user_agent_default_does_not_reach_the_shell_box(self, tmp_path):
+        """The shell tier's ``tmux`` wins; a true agent takes the user's zellij."""
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"bootstrap": "zellij"}}})
+        assert _resolved_program(proj, sys_file, "shell") == "tmux"
+        assert _resolved_program(proj, sys_file, "claude") == "zellij"
+
+    def test_a_user_set_shell_bootstrap_wins(self, tmp_path):
+        """The key is ``set: cli+file``: a value at the shell tier replaces ``tmux``."""
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"shell": {"bootstrap": "zellij"}}})
+        assert _resolved_program(proj, sys_file, "shell") == "zellij"
+
+    def test_the_shell_agent_file_value_wins(self, tmp_path):
+        """The shell node's OWN agent file (where ``system set`` writes it) wins too."""
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        agent_file = tmp_path / "agents" / "shell" / "agent.yaml"
+        agent_file.parent.mkdir(parents=True)
+        dump_doc(agent_file, {"self": {"bootstrap": "zellij"}})
+        assert _resolved_program(
+            proj, None, "shell", agent_path=agent_file,
+        ) == "zellij"
+
+    def test_a_user_null_on_the_shell_tier_is_no_program(self, tmp_path):
+        """``agent.shell.bootstrap: null`` is a supplied no-value: no program."""
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"shell": {"bootstrap": None}}})
+        assert _resolved_program(proj, sys_file, "shell") is None
+
+
+class TestBootstrapOrigin:
+    """The no-program refusal names the setting that ANSWERED, and a cure that works.
+
+    A box or workset ``pref.agent.<node>.bootstrap`` outranks the agent's own file,
+    so ``kanibako system set`` (which writes that file) cannot override it: the
+    cure has to name the pref and its file.
+    """
+
+    _proj = TestEffectiveBootstrapResolution._proj
+
+    def test_a_box_pref_beats_the_agent_file_and_is_named(self, tmp_path):
+        from kanibako.commands.start import _bootstrap_choice, _no_bootstrap_reason
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        box_file = proj.metadata_path / "box.yaml"
+        dump_doc(box_file, {"pref": {"agent": {"claude": {"bootstrap": "none"}}}})
+        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file.parent.mkdir(parents=True)
+        dump_doc(agent_file, {"self": {"bootstrap": "tmux"}})
+        choice = _bootstrap_choice(proj, None, "claude", agent_path=agent_file)
+        assert choice.program == "none"
+        assert choice.pref is not None and choice.pref.level == "box"
+        reason = _no_bootstrap_reason(choice)
+        assert (
+            f"pref.agent.claude.bootstrap in the box settings file {box_file} "
+            "is 'none'"
+        ) in reason
+        assert "set that pref to a program" in reason
+        assert "kanibako system set" not in reason
+
+    def test_without_a_pref_the_cure_is_system_set(self, tmp_path):
+        """No pref: ``system set`` writes the agent file, which every other tier
+        yields to, so the printed command is a real cure."""
+        from kanibako.commands.start import _bootstrap_choice, _no_bootstrap_reason
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"claude": {"bootstrap": None}}})
+        choice = _bootstrap_choice(proj, sys_file, "claude")
+        assert choice.program is None
+        assert choice.pref is None
+        reason = _no_bootstrap_reason(choice)
+        assert "agent.claude.bootstrap resolves to no value" in reason
+        assert "kanibako system set agent.claude.bootstrap=tmux" in reason
+
+    def test_a_system_agent_default_is_named_not_the_node_key(self, tmp_path):
+        """``agent.default.bootstrap: none`` answered: nobody set the node's key, so
+        the cause names the default; the node's key stays the cure (it outranks)."""
+        from kanibako.commands.start import _bootstrap_choice, _no_bootstrap_reason
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"bootstrap": "none"}}})
+        choice = _bootstrap_choice(proj, sys_file, "claude")
+        assert (choice.program, choice.from_default, choice.pref) == (
+            "none", True, None,
+        )
+        reason = _no_bootstrap_reason(choice)
+        assert reason.startswith("agent.default.bootstrap is 'none'")
+        assert "agent.claude.bootstrap is" not in reason
+        assert "kanibako system set agent.claude.bootstrap=tmux" in reason
+        assert "(or change agent.default.bootstrap, for every agent)" in reason
+
+    def test_a_system_agent_default_null_is_named(self, tmp_path):
+        from kanibako.commands.start import _bootstrap_choice, _no_bootstrap_reason
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"bootstrap": None}}})
+        choice = _bootstrap_choice(proj, sys_file, "claude")
+        assert (choice.program, choice.from_default) == (None, True)
+        reason = _no_bootstrap_reason(choice)
+        assert reason.startswith("agent.default.bootstrap resolves to no value")
+        assert "kanibako system set agent.claude.bootstrap=tmux" in reason
+
+    def test_a_box_pref_on_agent_default_is_named_with_its_file(self, tmp_path):
+        """``pref.agent.default.bootstrap: none`` in the box file: named, with the
+        file; and the printed cure — the node's own key — really does beat it."""
+        from kanibako.commands.start import _bootstrap_choice, _no_bootstrap_reason
+        from kanibako.settings.config_io import dump_doc
+        proj = self._proj(tmp_path)
+        box_file = proj.metadata_path / "box.yaml"
+        dump_doc(box_file, {"pref": {"agent": {"default": {"bootstrap": "none"}}}})
+        choice = _bootstrap_choice(proj, None, "claude")
+        assert choice.program == "none" and choice.from_default
+        assert choice.pref is not None and choice.pref.level == "box"
+        reason = _no_bootstrap_reason(choice)
+        assert reason.startswith(
+            f"pref.agent.default.bootstrap in the box settings file {box_file} "
+            "is 'none'"
+        )
+        assert "kanibako system set agent.claude.bootstrap=tmux" in reason
+        assert "(or change that pref, for every agent)" in reason
+        # The cure: ``system set`` writes the agent's own file, whose node slot
+        # outranks the box's ``agent.default`` pref.
+        agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
+        agent_file.parent.mkdir(parents=True)
+        dump_doc(agent_file, {"self": {"bootstrap": "tmux"}})
+        cured = _bootstrap_choice(proj, None, "claude", agent_path=agent_file)
+        assert (cured.program, cured.from_default, cured.pref) == ("tmux", False, None)
+
+    def test_no_node_names_no_key(self):
+        """With no resolved node there is no key to name — no placeholder key."""
+        from kanibako.commands.start import BootstrapChoice, _no_bootstrap_reason
+        reason = _no_bootstrap_reason(BootstrapChoice("none", None))
+        assert ".bootstrap" not in reason
+        assert "kanibako system set" not in reason
+
+
+class TestResolveBootstrapProgramFailSoft:
+    """``_resolve_bootstrap_program`` is fail-soft on agent SELECTION only.
+
+    A launch that runs no agent program (``kanibako shell --persistent``,
+    ``--entrypoint``) reads the box agent's bootstrap here; an illegal agent must
+    not refuse it.  An error reading the bootstrap VALUE is not swallowed.
+    """
+
+    @pytest.mark.parametrize("ref", ["alice+shell", "bad ref!"])
+    def test_an_illegal_agent_ref_falls_back_to_the_declared_default(
+        self, config_file, project_dir, ref,
+    ):
+        """Real path: the ref-grammar refusal is a ``ConfigError`` raised inside
+        selection, and it answers the declared ``tmux`` with no node.  The oracle is
+        ``parse_agent_address``, the grammar selection (``resolve_agent``) applies."""
+        from kanibako.agent_ref import parse_agent_address
+        from kanibako.commands.start import BootstrapChoice, _resolve_bootstrap_program
+        from kanibako.errors import ConfigError
+        with pytest.raises(ConfigError):
+            parse_agent_address(ref)
+        assert _resolve_bootstrap_program(str(project_dir), ref) == BootstrapChoice(
+            "tmux", None,
+        )
+
+    def test_a_bootstrap_read_error_surfaces(self, std, project_dir):
+        """Selection succeeds (``shell``); the READ fails — the node's agent file is
+        not valid YAML — and the ``ConfigError`` must not become a silent ``tmux``
+        launch, as a swallowed agent-file load used to make it."""
+        from kanibako.commands.start import _resolve_bootstrap_program
+        from kanibako.errors import ConfigError
+        from kanibako.settings.agent_config import agent_settings_path
+        agent_file = agent_settings_path(std.agents, "shell")
+        agent_file.parent.mkdir(parents=True, exist_ok=True)
+        agent_file.write_text("self:\n  bootstrap: [unclosed\n")
+        with pytest.raises(ConfigError, match="not valid YAML"):
+            _resolve_bootstrap_program(str(project_dir), "shell")
+
+    def test_a_resolution_failure_falls_back_to_the_declared_default(self):
+        from kanibako.commands.start import BootstrapChoice, _resolve_bootstrap_program
+        from kanibako.errors import ProjectError
+        with patch(
+            "kanibako.commands.start.load_config",
+            side_effect=ProjectError("no such box"),
+        ):
+            assert _resolve_bootstrap_program("/box", None) == BootstrapChoice(
+                "tmux", None,
+            )
 
 
 class TestEffectiveTransformResolution:
@@ -10333,6 +10645,29 @@ class TestRunningBoxOverrideGate(_RunningBoxDriver):
         assert "A box is already running for this project" in err
         assert "kanibako --restart" in err
         assert "cannot be applied" not in err
+
+    def test_no_bootstrap_at_a_live_box_names_the_key_not_start(
+        self, start_mocks, capsys,
+    ):
+        """An AGENT launch with no bootstrap program derives ``persistent``
+        False, so it meets the live box here.  ``kanibako start`` is no cure — it
+        resolves the same bootstrap and lands on this wall again — so the message
+        names the cause, the key, and the cures that change something."""
+        with start_mocks() as m:
+            self._running(m)
+            m.runtime.container_exists.return_value = True
+            m.bootstrap_program.return_value = "none"
+            rc = self._start(persistent=False)
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "A box is already running for this project" in err
+        assert "Reattach:" not in err
+        assert "is 'none' (the foreground opt-out)" in err
+        assert "kanibako system set agent." in err
+        # The settings cure reaches the running box only through a new launch.
+        assert "applies from the box's next launch" in err
+        assert "kanibako --restart" in err
+        assert "kanibako stop" in err
 
     def test_env_is_allowed_alongside_an_entrypoint(self, start_mocks):
         """``-e`` is refused on a REATTACH (nothing would apply it) but honoured

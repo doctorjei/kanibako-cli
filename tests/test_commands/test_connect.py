@@ -10,6 +10,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from kanibako.commands.start import (
+    BootstrapChoice,
     _bootstrap_available,
 )
 
@@ -92,7 +93,7 @@ class TestDefaultPersistence:
         with (
             patch(
                 "kanibako.commands.start._resolve_bootstrap_program",
-                return_value="tmux",
+                return_value=BootstrapChoice("tmux", "claude"),
             ),
             patch("kanibako.commands.start._bootstrap_available", return_value=True),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
@@ -153,7 +154,7 @@ class TestBootstrapNoneAndHostNote:
         with (
             patch(
                 "kanibako.commands.start._resolve_bootstrap_program",
-                return_value="none",
+                return_value=BootstrapChoice("none", "claude"),
             ),
             patch(
                 "kanibako.commands.start._bootstrap_available"
@@ -174,7 +175,7 @@ class TestBootstrapNoneAndHostNote:
         with (
             patch(
                 "kanibako.commands.start._resolve_bootstrap_program",
-                return_value="tmux",
+                return_value=BootstrapChoice("tmux", "claude"),
             ),
             patch("kanibako.commands.start._bootstrap_available", return_value=False),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
@@ -187,7 +188,29 @@ class TestBootstrapNoneAndHostNote:
         assert "'tmux' not found on this host" in err  # names the program
         assert "foreground" in err                      # names the consequence
         assert "Install 'tmux'" in err                  # remedy 1: install
-        assert "agent.default.bootstrap=none" in err      # remedy 2: explicit opt-out
+        # remedy 2: explicit opt-out, on the NODE's key — agent.default.bootstrap
+        # would not reach a tier that supplies its own (the shell tier does).
+        assert "set agent.claude.bootstrap to none" in err
+
+    def test_host_note_without_a_node_names_no_key(self, capsys):
+        """A fail-soft resolve (no node) has no setting to name: the note keeps the
+        install remedy and prints no placeholder key."""
+        args = self._make_args()
+        with (
+            patch(
+                "kanibako.commands.start._resolve_bootstrap_program",
+                return_value=BootstrapChoice("tmux", None),
+            ),
+            patch("kanibako.commands.start._bootstrap_available", return_value=False),
+            patch("kanibako.commands.start._run_container", return_value=0),
+            patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
+        ):
+            from kanibako.commands.start import run_start
+            run_start(args)
+        err = capsys.readouterr().err
+        assert "Install 'tmux' for persistent sessions." in err
+        assert "agent." not in err
+        assert "to none" not in err
 
     def test_no_note_when_program_present(self, capsys):
         """Program present on host: persistent default, and NO note at all.
@@ -200,7 +223,7 @@ class TestBootstrapNoneAndHostNote:
         with (
             patch(
                 "kanibako.commands.start._resolve_bootstrap_program",
-                return_value="tmux",
+                return_value=BootstrapChoice("tmux", "claude"),
             ),
             patch("kanibako.commands.start._bootstrap_available", return_value=True),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
@@ -218,7 +241,7 @@ class TestBootstrapNoneAndHostNote:
         with (
             patch(
                 "kanibako.commands.start._resolve_bootstrap_program",
-                return_value="tmux",
+                return_value=BootstrapChoice("tmux", "claude"),
             ),
             patch("kanibako.commands.start._bootstrap_available", return_value=False),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
@@ -233,13 +256,13 @@ class TestBootstrapNoneAndHostNote:
         assert "not installed" in err
 
     def test_explicit_persistent_with_none_is_clean_error(self, capsys):
-        """--persistent with agent.default.bootstrap=none is a contradiction:
+        """--persistent with agent.claude.bootstrap=none is a contradiction:
         clean error (rc=1), _run_container never reached."""
         args = self._make_args(persistent=True)
         with (
             patch(
                 "kanibako.commands.start._resolve_bootstrap_program",
-                return_value="none",
+                return_value=BootstrapChoice("none", "claude"),
             ),
             patch("kanibako.commands.start._run_container", return_value=0) as m_run,
             patch("kanibako.commands.start.resolve_target", return_value=MagicMock()),
@@ -250,7 +273,9 @@ class TestBootstrapNoneAndHostNote:
         m_run.assert_not_called()
         err = capsys.readouterr().err
         assert "--persistent requires a bootstrap program" in err
-        assert "agent.default.bootstrap=none" in err
+        # Names the ACTUAL cause, on the resolved node's key, and the command.
+        assert "agent.claude.bootstrap is 'none'" in err
+        assert "kanibako system set agent.claude.bootstrap=tmux" in err
 
 
 # ---------------------------------------------------------------------------

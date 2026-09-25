@@ -247,8 +247,10 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 * `endpoint` (persona) — alternate harness base-URL, a sibling of `model` (block B).
 * `bootstrap` — spec §2d ``agent.default.bootstrap | tmux``; "bootstrap STAYS a key". Names the
   in-box multiplexer program for the persistent/reattachable session; the ``none`` sentinel means
-  ephemeral / no-reattach (foreground single-use). Consumed by start.py's persistence-mode heuristic
-  + bootstrap-wrap (consumer default ``tmux`` when unset). RELOCATED from the retired BOX-scope
+  ephemeral / no-reattach (foreground single-use), and a ``null`` or ``""`` means no program too —
+  exactly like ``none``, never the ``tmux`` default. Consumed by start.py's persistence-mode heuristic
+  + bootstrap-wrap (the declared ``agent.default.bootstrap`` floor, ``tmux``, answers only where no
+  tier supplies a value; the shell tier supplies its own ``tmux``). RELOCATED from the retired BOX-scope
   ``box.bootstrap_program`` key (1.7.0-rc clean break — no alias for the old box key).
 * `continue_mode` — spec §2d ``agent.default.continue_mode | true``; "continue vs fresh; resume
   removed". Coerced to bool (default True): true ⇒ continue the most-recent conversation, false ⇒

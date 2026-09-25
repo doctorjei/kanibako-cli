@@ -1349,9 +1349,10 @@ identity). A target with no declared settings contributes no floor → endpoint 
 `effective_behavior` deliberately COLLAPSES a present-None scalar into omission — its own docstring:
 *"the consumer applies its own default"*, the general reset-to-default convention every OTHER
 behavior key wants — and that is exactly the distinction the persona model gate needs KEPT APART.
-`_persona_model_state` reads the SAME snapshot and preserves it, mirroring
-`agent_select.resolve_selected_agent` / `settings_launch.snapshot_leaf`'s ABSENT-vs-PRESENT-None
-idiom for `pref.system.agent: null`.
+`_persona_model_state` reads the SAME snapshot through the SAME pick
+(`settings_launch.behavior_pick`, the one carrier of the §2d active-over-default choice) and keeps
+the raw value, mirroring `agent_select.resolve_selected_agent` / `settings_launch.snapshot_leaf`'s
+ABSENT-vs-PRESENT-None idiom for `pref.system.agent: null`.
 
 The codex-persona provider needs a real model id, so this DELIBERATELY excludes the harness `model`
 DEFAULT floor (e.g. codex's `gpt-5.5` — an own-endpoint default that is wrong for a third-party
