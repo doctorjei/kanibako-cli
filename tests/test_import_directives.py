@@ -1035,7 +1035,7 @@ class TestLinkedIncludeDepth:
         assert re.search(r"^# \d", out, re.M) is None
 
     def test_sys_general_shape(self, home):
-        """``template/handbook/general/SYS_GENERAL.md``: ``### Rules``
+        """``template/system_handbook/general/SYS_GENERAL.md``: ``### Rules``
         + ``1.`` -> ``###``."""
         out = _body(_run(home, {
             "root.md": "### Rules\n\n1. [Canon Sections](@c.md)\n2. [Project Work](@d.md)\n",
@@ -1738,8 +1738,8 @@ class TestPreplink:
     SHIPPED_TITLES = [
         ("rom/COLLECTION.md", "# Canon Law - Introduction"),
         ("rom/charter/ROM_CONTENTS.md", "# Charter (Core Tome, Read-Only)"),
-        ("template/handbook/SYS_CONTENTS.md", "# Handbook (System Tome)"),
-        ("template/handbook/general/SYS_GENERAL.md", "## System-Wide Information"),
+        ("template/system_handbook/SYS_CONTENTS.md", "# Handbook (System Tome)"),
+        ("template/system_handbook/general/SYS_GENERAL.md", "## System-Wide Information"),
         ("template/box/home/canon/notebook/MY_CONTENTS.md", "# Notebook"),
         ("rom/charter/general/ROM_GENERAL.md", "## The Canon"),
     ]

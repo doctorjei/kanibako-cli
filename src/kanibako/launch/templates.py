@@ -451,11 +451,15 @@ copy_resource_tree_if_absent = copy_tree
 #: Subtrees of the packaged template root, by their role.  ⚑ The install is an
 #: ENUMERATED set of (packaged subtree → host dest) pairs, NEVER a whole-tree copy
 #: (P-S2): copying the root wholesale would leave a SECOND, never-read copy of the
-#: handbook at ``@system.template/handbook``.
+#: handbook at ``@system.template/system_handbook``.
+#: ⚑ Each is named for the scope it is for (``agent_default`` = the ``agent.default``
+#: node); ``system_handbook`` lands at ``@system.canon/handbook``.  It must not share the
+#: chapter leaf's spelling (:data:`_CANON_CHAPTER_LEAF`): the canon-layout duplicate-value
+#: check reads two constants with one value as one fact.
 PACKAGED_BOX_TEMPLATE = "box"
 PACKAGED_WORKSET_TEMPLATE = "workset"
 PACKAGED_AGENT_DEFAULT = "agent_default"
-PACKAGED_HANDBOOK = "handbook"
+PACKAGED_HANDBOOK = "system_handbook"
 
 #: The AGENT MOULD's dir name under ``@system.template`` — the host copy every agent
 #: install stamps from (J-5).  ⚑ There is deliberately NO packaged ``template/agent``
@@ -501,9 +505,6 @@ _MOULD_CANON_ROOT = "canon"
 #: ``core-defaults.yaml`` spells ``@<scope>.canon/handbook`` for all four scopes.
 #: It IS the canon layout's handbook book root (:data:`core_defaults.HANDBOOK_REL`), so it
 #: is read from there, never respelled.
-#: ⚑ Not to be confused with :data:`PACKAGED_HANDBOOK`, which names the SOURCE subtree of
-#: the packaged template root.  An install is a (packaged subtree → host dest) PAIR, and
-#: the two halves are independent facts that happen to share a spelling.
 _CANON_CHAPTER_LEAF = HANDBOOK_REL
 
 

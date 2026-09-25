@@ -232,14 +232,14 @@ SEED_MANIFEST: tuple[SeedFile, ...] = (
 # the whole HANDBOOK book — bound, never seeded.
 STORE_MANIFEST: tuple[tuple[str, str], ...] = (
     # packaged rel under data/global/template  ->  host path rel to the store root
-    ("handbook/SYS_CONTENTS.md", "canon:handbook/SYS_CONTENTS.md"),
-    ("handbook/general/SYS_GENERAL.md",
+    ("system_handbook/SYS_CONTENTS.md", "canon:handbook/SYS_CONTENTS.md"),
+    ("system_handbook/general/SYS_GENERAL.md",
      "canon:handbook/general/SYS_GENERAL.md"),
-    ("handbook/general/directives/LOWER_CANON.md",
+    ("system_handbook/general/directives/LOWER_CANON.md",
      "canon:handbook/general/directives/LOWER_CANON.md"),
-    ("handbook/general/directives/DATAPOLICY.md",
+    ("system_handbook/general/directives/DATAPOLICY.md",
      "canon:handbook/general/directives/DATAPOLICY.md"),
-    ("handbook/general/directives/INTERACTION.md",
+    ("system_handbook/general/directives/INTERACTION.md",
      "canon:handbook/general/directives/INTERACTION.md"),
     ("agent_default/canon/handbook/SYS_AGENT.md",
      "agents:default/canon/handbook/SYS_AGENT.md"),

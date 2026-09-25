@@ -962,11 +962,12 @@ kind = "code-patterns"
   # The canon chapter leaf. `core-defaults.yaml` spells `@<scope>.canon/handbook`
   # for all four scopes, so the destination is a CHAPTER fact.
   #
-  # ⚑ `PACKAGED_HANDBOOK` in templates.py is a different fact that happens to
-  # share the spelling -- the packaged SOURCE subtree -- which is why the home
-  # here is the YAML rather than that constant. The call sites that once paired
-  # a constant source with a bare `"handbook"` destination have read
-  # `_CANON_CHAPTER_LEAF` since `3f573d66`; the entry stays as a tripwire.
+  # ⚑ `PACKAGED_HANDBOOK` in templates.py is a different fact -- the packaged
+  # SOURCE subtree, spelled `system_handbook` so it no longer shares this
+  # spelling -- which is why the home here is the YAML rather than that
+  # constant. The call sites that once paired a constant source with a bare
+  # `"handbook"` destination have read `_CANON_CHAPTER_LEAF` since `3f573d66`;
+  # the entry stays as a tripwire.
   [[registry.entry]]
   id = "CANON_CHAPTER_LEAF"
   antipatterns = ['canon\s*/\s*"handbook"', '"canon/handbook"']
