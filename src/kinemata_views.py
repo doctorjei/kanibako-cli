@@ -1,4 +1,5 @@
-"""Predicates `kinemata.toml` names in a `[[registry]] where`, to narrow a view.
+"""Predicates `kinemata.toml` names in a `[[registry]] where`, to narrow a view,
+and the helpers its `[[parity]]` oracles import (see ORACLE HELPERS, below).
 
 🛑 THIS IS NOT PRODUCT CODE AND IT IS NOT A STRAY. It is deliberately tracked, it
 is deliberately OUTSIDE `kanibako/`, and it is deliberately HERE rather than in
@@ -246,4 +247,123 @@ def bootstrap_path_row(entry: Any) -> bool:
     return (
         str(entry.id).split(".", 1)[0] in {"config", "system"}
         and entry.extra.get("type") == "path"
+    )
+
+
+# ---------------------------------------------------------------------------
+# ORACLE HELPERS. Not `where` predicates: the functions below are imported by
+# `[[parity]]` COMMANDS, which run as a subprocess of kinemata with this module
+# on the path for the reason the header gives. They are here, once, because
+# several oracles need each of them and an inline copy per command is the
+# duplication `check` exists to find.
+# ⚑ Each imports kanibako INSIDE the function. A module-level import would run
+# at CONFIG LOAD, where the `where` predicates above are resolved, so a kanibako
+# that failed to import would refuse the config for every command.
+
+
+def every_mode_cell(floors: Any) -> dict[str, Any]:
+    """`{key: cell}` in the manifest's own notation, from one floor per box mode.
+
+    *floors* maps each mode to the floor a builder returned for it. A key the
+    floor gives ONE value in every mode yields that value bare; a key whose modes
+    differ yields the `{mode: value}` map. That is how the manifest writes a
+    `default:` or `value:` cell -- a uniform row is a scalar, a mode-keyed row a
+    map, and a `null` arm is a value -- so the oracle's JSON and the declared cell
+    are compared as data, with no translation. (`format = "json"` refuses a
+    `translate`, so this notation step cannot be declared on the manifest side.)
+    It fails closed: a manifest map whose three arms are equal reds as a scalar.
+
+    🛑 A KEY SOME MODE OMITS IS LEFT OUT, because no cell can spell an omitted
+    arm: the manifest writes a `<…>` placeholder there (`workset.kuid`'s
+    `<generated at creation>`) or the arm is a caller's input the floor was not
+    handed. Each view that prints through this says which keys that drops and
+    which declaration holds them instead.
+    """
+    modes = sorted(floors)
+    common = set.intersection(*(set(floors[mode]) for mode in modes))
+    cells: dict[str, Any] = {}
+    for key in sorted(common):
+        arms = {mode: floors[mode][key] for mode in modes}
+        values = list(arms.values())
+        cells[key] = values[0] if all(v == values[0] for v in values) else arms
+    return cells
+
+
+#: The workset root a sentinel run hands the derivations, as the `@`-ref the
+#: manifest composes from. A derivation joins its output onto this exactly as it
+#: would onto a real path, so what it prints is the manifest's formula when the
+#: composition is the declared one -- the code does the composing, and no
+#: resolver is written here.
+REF_WORKSET_PATH = "@meta.workset.path"
+
+#: The attribute that carries the workset root in each mode -- the E6 row
+#: `meta.runtime.ws_root`: PRIMARY `@config.primary_workset` (`std.primary_workset`),
+#: NAMED the detected workset root (`proj.group.root`), STANDALONE the project dir
+#: (`proj.metadata_path`). Only that attribute carries `REF_WORKSET_PATH`; every
+#: other candidate carries a DECOY naming itself -- or, for the group outside
+#: NAMED, is absent and a read BLOCKs -- so a derivation that reads the wrong root
+#: for a mode reds.
+_ROOT_ATTRIBUTE = {
+    "primary": "primary_workset",
+    "named": "group_root",
+    "standalone": "metadata_path",
+}
+
+
+def _root_or_decoy(mode: str, attribute: str) -> Any:
+    from pathlib import Path
+
+    if _ROOT_ATTRIBUTE[mode] == attribute:
+        return Path(REF_WORKSET_PATH)
+    return Path(f"@DECOY.{attribute}")
+
+
+def ref_token_project(mode: str, *, workset_name: str, box_name: str) -> Any:
+    """The `ProjectPaths` attributes the channel and helper derivations read.
+
+    *workset_name* and *box_name* are the `@`-refs to hand in, spelled as the
+    cell under comparison spells them: bare where the ref ends the cell
+    (`@meta.workset.name`), braced where it is embedded (`@{meta.workset.name}`,
+    `policy.reference_forms`). The caller chooses, because one cell cannot be
+    matched by the other spelling.
+
+    ⚑ MODE-AWARE: `metadata_path` and the named group's `root` carry the workset
+    ref only in the mode whose root they are (`_ROOT_ATTRIBUTE`), a decoy
+    otherwise. Only a NAMED box has a group, as in the product.
+    ⚑ ONLY THE NAMED MODE CARRIES *workset_name*. `channels.workset_name_token`
+    answers PRIMARY and STANDALONE with the constant tokens `__PRIMARY__` /
+    `__STANDALONE__` -- the values `meta.workset.name` resolves to there -- so no
+    input can make those two modes print the ref.
+    """
+    from types import SimpleNamespace
+
+    from kanibako.settings.paths import BoxMode
+
+    box_mode = BoxMode(mode)
+    group = None
+    if box_mode is BoxMode.named:
+        group = SimpleNamespace(
+            name=workset_name, root=_root_or_decoy(mode, "group_root"),
+        )
+    return SimpleNamespace(
+        mode=box_mode, group=group, name=box_name,
+        metadata_path=_root_or_decoy(mode, "metadata_path"),
+    )
+
+
+def ref_token_standard_paths(mode: str) -> Any:
+    """The `StandardPaths` attributes the channel derivations read, as `@`-refs.
+
+    `primary_workset` is the workset ref only for a PRIMARY box and a decoy
+    otherwise (`_ROOT_ATTRIBUTE`). Deliberately NOT a `StandardPaths`:
+    constructing one probes the host's XDG environment, and a sentinel run is
+    about a composition, not about the host.
+    """
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        primary_workset=_root_or_decoy(mode, "primary_workset"),
+        channels_mailboxes=Path("@system.channels.mailboxes"),
+        channels_share=Path("@system.channels.share"),
     )
