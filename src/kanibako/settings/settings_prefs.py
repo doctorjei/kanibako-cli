@@ -55,11 +55,13 @@ from typing import (
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, StoreValue
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
+    PREF_ALLOWLIST,
     ConcedingLeafMap,
     is_terminal_category_key,
     is_terminal_category_tail,
     is_valid_agent_segment,
     key_validity,
+    pref_allowlist_entry,
     unread_harnesses,
     valid_agent_segments,
 )
@@ -74,11 +76,6 @@ PREF_ROOT: Final[str] = "pref"
 #: ⚑ *"This is what BOUNDS the recursion, so it is a hard rule, not a
 #: convenience."*
 PREF_LEGAL_LEVELS: Final[tuple[str, ...]] = ("workset", "box")
-
-#: The ALLOWLIST (spec §2h) — a list of ENTRIES, each either one key or a KEY SET
-#: written with §0's glob convention (:func:`glob_match`). Nothing else is
-#: requestable today.
-ALLOWLIST: Final[tuple[str, ...]] = ("system.agent", "agent.*.**")
 
 #: The LOCATOR CLOSURE (spec §2h) — the forbidden-tier arm that is a
 #: **TERMINATION guarantee, not tidiness**: a key here relocates a cascade-input
@@ -142,36 +139,6 @@ class PrefRequest:
     @property
     def where(self) -> str:
         return str(self.source) if self.source is not None else "<settings>"
-
-
-# ---------------------------------------------------------------------------
-# §0 GLOB convention
-# ---------------------------------------------------------------------------
-
-def glob_match(pattern: str, key: str) -> bool:
-    """Match *key* against a §0 glob *pattern*.
-
-    Convention (spec §0): ``*`` matches exactly ONE segment; ``**`` matches the
-    remaining tail at ANY depth. ``**`` is ONE-or-more *by construction*, not by
-    rule — the separator is part of the pattern, so a zero-length tail on
-    ``agent.*.**`` would yield the malformed ``agent.foo.`` (trailing dot).
-    """
-    pat = pattern.split(".")
-    seg = key.split(".")
-    # ⚑ A key with an EMPTY segment is not a key (§0), and this is where the
-    # "one-or-more BY CONSTRUCTION" argument bites: without this guard
-    # ``agent.*.**`` would MATCH the malformed ``agent.claude.``.
-    if any(s == "" for s in seg):
-        return False
-    for i, token in enumerate(pat):
-        if token == "**":
-            # The tail: one-or-more remaining segments.
-            return len(seg) > i
-        if i >= len(seg):
-            return False
-        if token != "*" and token != seg[i]:
-            return False
-    return len(seg) == len(pat)
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +321,7 @@ def allowlist_reason(
     target: str,
     *,
     valid_agents: Collection[str],
-    allowlist: Sequence[str] = ALLOWLIST,
+    allowlist: Sequence[str] = PREF_ALLOWLIST,
 ) -> str | None:
     """FILTER 2 — is the target requestable IN PRINCIPLE? (spec §2h)
 
@@ -364,9 +331,8 @@ def allowlist_reason(
     is_valid_agent_segment`) — and the test is *is it a VALID agent*, NOT *is it
     the ACTIVE agent*, so pre-configuring an agent you may switch to is legal.
     """
-    for pattern in allowlist:
-        if not glob_match(pattern, target):
-            continue
+    pattern = pref_allowlist_entry(target, allowlist=allowlist)
+    if pattern is not None:
         if pattern == "agent.*.**":
             name = target.split(".")[1]
             if not is_valid_agent_segment(name, valid_agents):
@@ -465,7 +431,7 @@ def validate_pref(
     req: PrefRequest,
     *,
     valid_agents: Collection[str],
-    allowlist: Sequence[str] = ALLOWLIST,
+    allowlist: Sequence[str] = PREF_ALLOWLIST,
 ) -> str | None:
     """Run all THREE filters; return ONE joined reason, or ``None`` to accept.
 
@@ -521,7 +487,7 @@ def apply_prefs(
     requests: Sequence[PrefRequest],
     *,
     valid_agents: "Collection[str] | None" = None,
-    allowlist: Sequence[str] = ALLOWLIST,
+    allowlist: Sequence[str] = PREF_ALLOWLIST,
 ) -> tuple[KeyStore, KeyStore]:
     """Validate every request and build ``(workset_overlay, box_overlay)``.
 

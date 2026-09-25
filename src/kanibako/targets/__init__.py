@@ -10,7 +10,7 @@ import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 
-from kanibako.agent_ref import reserved_pseudo_agent_reason
+from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP, reserved_pseudo_agent_reason
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.settings.bootstrap import STANDALONE_META_DIR
 from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
@@ -237,11 +237,11 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # refusal protects exactly this slot.
     targets["shell"] = ShellTarget
     declared["shell"] = ("shell", "builtin")
-    # Group is agent-domain (a registry of agent adapters) → "kanibako.agents".
+    # Group is agent-domain (a registry of agent adapters): AGENT_ENTRY_POINT_GROUP.
     # NB: distinct from the `kanibako.settings.agent_config` module (per-agent tool
     # config object); the module was named `agent_config` (not `agents`) to
     # avoid clashing with this entry-point registry. Do not "unify".
-    eps = entry_points(group="kanibako.agents")
+    eps = entry_points(group=AGENT_ENTRY_POINT_GROUP)
     for ep in eps:
         # ⚑⚑ ONE BROKEN ADAPTER MUST NOT TAKE THE WHOLE CLI DOWN.  ``ep.load()``
         # imports third-party code, and an adapter built against a different

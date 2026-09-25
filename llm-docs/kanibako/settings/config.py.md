@@ -533,7 +533,7 @@ builder are the same single carriers `_resolve_box_scalars` uses.
 ⚑ **THE TWO ROUTES ARE PINNED EQUAL** by `test_config.py::TestTheTwoBoxScalarResolvesAgree`, over
 six tier combinations, so the split cannot quietly become two answers.
 
-⚑ NO PREF RUNGS, and that is measured: `settings_prefs.ALLOWLIST` is `("system.agent",
+⚑ NO PREF RUNGS, and that is measured: `settings_keyspace.PREF_ALLOWLIST` is `("system.agent",
 "agent.*.**")`, so no §2h request can name a `box.*` key. Splicing the overlays in would move no
 answer and would import `apply_prefs`' raise into path resolution.
 

@@ -65,6 +65,15 @@ deriving one from other makes subset relation hold by construction.
 ``test_word_char_class_equals_isalnum_plus_underscore``), & extras are ``re.escape``-d so class is
 position-independent — consumer may splice characters in on any side without ``-`` forming range.
 
+## The entry-point group
+
+``AGENT_ENTRY_POINT_GROUP`` (``"kanibako.agents"``) is the group a plugin registers its agent under,
+spelled once here beside the reservation a registered name must pass (2026-09-25). Three readers:
+``targets.discover_targets`` (runtime discovery), ``settings.kinemata_keyspace.in_tree_agents``
+(the dev-tooling keyspace gate's agent-node set), and ``kinemata.toml``'s ``reserved-agent-names``
+parity, which calls that function. A distribution's ``pyproject.toml`` still spells the string,
+because packaging requires it there.
+
 ## Functions
 
 ```_is_segment_safe(segment: str) -> bool```

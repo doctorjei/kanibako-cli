@@ -575,6 +575,81 @@ RETIRING_KEYS: Final[frozenset[str]] = frozenset()
 
 
 # ---------------------------------------------------------------------------
+# The pref.* family — its members are the ALLOWLISTED targets (spec §0, §2h)
+# ---------------------------------------------------------------------------
+
+#: The §2h ALLOWLIST — a list of ENTRIES, each either one key or a KEY SET written
+#: with §0's glob convention (:func:`glob_match`). Nothing else is requestable today.
+#: ⚑ IT LIVES HERE, NOT IN ``settings_prefs``, BECAUSE IT BOUNDS THE KEYSPACE: spec §0
+#: declares the family as *"``pref.<target-key>`` for the allowlisted targets in
+#: §2h"*, and §2h says *"the CLOSED keyspace applies"*. So ``pref.box.image`` is not a
+#: key at all, even though ``box.image`` is — :func:`key_class` needs the list, and
+#: ``settings_prefs`` (filter 2) imports it from here, one carrier for both.
+PREF_ALLOWLIST: Final[tuple[str, ...]] = ("system.agent", "agent.*.**")
+
+
+def glob_match(pattern: str, key: str) -> bool:
+    """Match *key* against a §0 glob *pattern*.
+
+    Convention (spec §0): ``*`` matches exactly ONE segment; ``**`` matches the
+    remaining tail at ANY depth. ``**`` is ONE-or-more *by construction*, not by
+    rule — the separator is part of the pattern, so a zero-length tail on
+    ``agent.*.**`` would yield the malformed ``agent.foo.`` (trailing dot).
+    """
+    pat = pattern.split(".")
+    seg = key.split(".")
+    # ⚑ A key with an EMPTY segment is not a key (§0), and this is where the
+    # "one-or-more BY CONSTRUCTION" argument bites: without this guard
+    # ``agent.*.**`` would MATCH the malformed ``agent.claude.``.
+    if any(s == "" for s in seg):
+        return False
+    for i, token in enumerate(pat):
+        if token == "**":
+            # The tail: one-or-more remaining segments.
+            return len(seg) > i
+        if i >= len(seg):
+            return False
+        if token != "*" and token != seg[i]:
+            return False
+    return len(seg) == len(pat)
+
+
+def pref_allowlist_entry(
+    target: str, *, allowlist: Sequence[str] = PREF_ALLOWLIST,
+) -> str | None:
+    """The allowlist ENTRY *target* is a member of, or ``None`` (spec §2h).
+
+    ONE question with two consumers: :func:`key_class` asks it to bound the
+    ``pref.*`` family, and ``settings_prefs.allowlist_reason`` (filter 2) asks it
+    to learn WHICH entry matched, because the ``agent.*.**`` entry carries its own
+    agent-name validation.
+    """
+    for pattern in allowlist:
+        if glob_match(pattern, target):
+            return pattern
+    return None
+
+
+def _is_pref_interior(segments: Sequence[str]) -> bool:
+    """Whether *segments* could lie ABOVE an allowlisted target (``system``, ``agent.<a>``).
+
+    A proper prefix of an entry, read token by token: ``*`` takes any one segment,
+    and the ``**`` tail is where membership starts, so nothing at or past it is an
+    interior. Such a path is a NAMESPACE of the pref family when its target is one.
+    """
+    for pattern in PREF_ALLOWLIST:
+        tokens = pattern.split(".")
+        if len(segments) >= len(tokens):
+            continue
+        if all(
+            tok != "**" and (tok == "*" or tok == seg)
+            for tok, seg in zip(tokens, segments)
+        ):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # The validator
 # ---------------------------------------------------------------------------
 
@@ -1540,10 +1615,15 @@ def key_class(
         return _meta_reason(rest, valid_agents, leaves)
 
     if head == "pref":
-        # pref.<target-key> (spec §2h). The family is valid iff the TARGET is a
-        # valid key. Whether it may be REQUESTED is a separate question the
-        # allowlist + forbidden tiers answer (settings_prefs) — this is only
-        # "is it a key".
+        # pref.<target-key> (spec §2h). The family's members are the ALLOWLISTED
+        # targets that are themselves keys — spec §0 declares it as
+        # "pref.<target-key> for the allowlisted targets in §2h", and §2h says the
+        # closed keyspace applies to the allowlist. ⚑ So ``pref.box.image`` is NOT a
+        # key although ``box.image`` is. It was, until 2026-09-25, and the only thing
+        # that refused it was the REQUEST path (``settings_prefs`` filter 2), so a
+        # hand-written ``pref: {box: {image: …}}`` read back through ``box get`` as
+        # if it were declared. The FORBIDDEN TIERS stay a request-time question
+        # (``settings_prefs``): they depend on the requesting LEVEL, not the name.
         if not rest:
             return _namespace("'pref' is a namespace, not a key (spec §2h)")
         if rest[0] == "pref":
@@ -1551,9 +1631,32 @@ def key_class(
                 "'pref.pref.…' is not a key: a request-of-a-request has no "
                 "termination argument (spec §2h categorical tier)"
             )
-        # ⚑ THE TARGET'S CLASS IS INHERITED, all three of them: ``pref.box`` is the
-        # request-side spelling of a namespace, and a resolved store really does
-        # carry those nodes (``pref.agent.<a>`` above a requested leaf).
+        target = ".".join(rest)
+        if pref_allowlist_entry(target) is None:
+            # ⚑ THE ALLOWLIST IS ASKED BEFORE THE TARGET, and it is the cost order
+            # too: a non-member is refused without judging its target, so no plugin
+            # vocabulary is consulted for it.
+            if _is_pref_interior(rest):
+                interior = key_class(
+                    target, valid_agents=valid_agents, agent_leaf_map=agent_leaf_map,
+                )
+                if interior.cls is KeyClass.NAMESPACE:
+                    return _namespace(
+                        f"its target names a namespace — {interior.reason}"
+                    )
+                if interior.cls is KeyClass.UNDECLARED:
+                    return _undeclared(
+                        f"its target is not a declared key — {interior.reason}"
+                    )
+            return _undeclared(
+                f"'{key}' is not a key: 'pref.*' holds only the §2h ALLOWLISTED "
+                f"targets ({', '.join('pref.' + p for p in PREF_ALLOWLIST)}), and "
+                f"'{target}' is not one (spec §0, §2h)"
+            )
+        # ⚑ THE TARGET'S CLASS IS INHERITED, all three of them, here and above: an
+        # interior such as ``pref.agent.<a>`` is the request-side spelling of a
+        # namespace, and a resolved store really does carry those nodes above a
+        # requested leaf.
         # ⚑⚑ EVERY ORACLE PARAMETER RIDES ALONG. Dropping one makes the SAME key
         # answer differently by SPELLING — ``agent.goose.zippity`` conceded while
         # ``pref.agent.goose.zippity`` refused — which is not a stricter pref rule,
@@ -1562,7 +1665,7 @@ def key_class(
         # set. It is now UNDROPPABLE: the vocabulary and the concession are one
         # parameter, so there is no half of the pair left to forget.
         inner = key_class(
-            ".".join(rest),
+            target,
             valid_agents=valid_agents,
             agent_leaf_map=agent_leaf_map,
         )

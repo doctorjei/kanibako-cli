@@ -1257,7 +1257,7 @@ def test_the_prefix_corpus_is_not_vacuous():
     "agent.claude", "agent.default",
     "box.bindings", "box.env", "box.secret_path",
     "system.channels", "workset.channels",
-    "pref.box", "pref.agent.claude",
+    "pref.system", "pref.agent.claude",
     # The mirror spans TWO declared sources, so BOTH ends of it are interiors:
     # the ``meta.agent`` tier that owns the capability, and the box-side mirror of
     # it ([R141] as amended; spec :1081).
@@ -1279,6 +1279,9 @@ def test_a_declared_interior_is_a_NAMESPACE(path):
 @pytest.mark.parametrize("path", [
     "box.zippity", "box.zippity.deeper", "agent.claude.zippity",
     "meta.box.zippity", "meta.zippity", "zippity",
+    # A pref over a target OFF the §2h allowlist is no member of the family (spec §0),
+    # though ``box`` is a namespace and ``box.image`` a key.
+    "pref.box", "pref.box.image",
 ])
 def test_a_fabrication_is_UNDECLARED_not_a_NAMESPACE(path):
     """The half that must NOT widen: a namespace class is for what the SPEC declares,
@@ -1935,11 +1938,12 @@ def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
 # ``pref.<target>`` and its target answer with ONE voice
 # ---------------------------------------------------------------------------
 #
-# ⚑ The §2h family is valid iff its TARGET is a key, so the recursion has to hand
-# the inner call the WHOLE oracle. Dropping one parameter does not make the pref
-# rule stricter — it makes the same key answer differently by SPELLING, which is two
-# keyspaces wearing one name. ``agents_with_known_leaves`` was dropped, and it was
-# invisible because ``apply_prefs`` pre-filters on a set that happens to coincide.
+# ⚑ The §2h family is valid iff its target is ALLOWLISTED and is a key, so the
+# recursion has to hand the inner call the WHOLE oracle. Dropping one parameter
+# does not make the pref rule stricter — it makes the same key answer
+# differently by SPELLING, which is two keyspaces wearing one name.
+# ``agents_with_known_leaves`` was dropped, and it was invisible because
+# ``apply_prefs`` pre-filters on a set that happens to coincide.
 # ⚑⚑ THAT PARAMETER NO LONGER EXISTS TO DROP: the vocabulary and the concession are
 # one MAP, so the pair cannot come apart at a forwarding site. The rows below are
 # what still can — and the signature guard is what makes a THIRD parameter red here.

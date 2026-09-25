@@ -125,7 +125,10 @@ which is the only way a user creates one short of hand-editing.
 
 ## The §0 glob convention
 
-`glob_match` implements it, and `ALLOWLIST` is written in it: `*` matches exactly ONE segment, `**`
+`settings_keyspace.glob_match` implements it, and `settings_keyspace.PREF_ALLOWLIST` is written in it
+(both moved there 2026-09-25: the allowlist bounds the KEYSPACE — spec §0 declares the family as
+*"`pref.<target-key>` for the allowlisted targets"* — so `key_class` needs it, and this module
+imports it rather than keeping a second carrier): `*` matches exactly ONE segment, `**`
 matches the remaining tail at ANY depth. `**` is one-or-more *by construction*, not by rule — the
 separator is part of the pattern, so a zero-length tail on `agent.*.**` would yield the malformed
 `agent.foo.` with a trailing dot. (Ruled by Jei 2026-07-29.)
@@ -186,7 +189,10 @@ inside its value. The families that DO still carry a free `<name>` are `env.<VAR
 
 ### Filter 2 — `allowlist_reason`: is the target requestable IN PRINCIPLE?
 
-Membership alone is NOT sufficient; filter 3 still applies. The agent segment of `agent.*.**` is
+It asks `settings_keyspace.pref_allowlist_entry` which ENTRY the target belongs to — the same
+question `key_class` asks to bound the `pref.*` family, so a non-member is also not a KEY there
+(`pref.box.image` is refused by `box get` as well as by the request). Membership alone is NOT
+sufficient; filter 3 still applies. The agent segment of `agent.*.**` is
 INVALID unless it names a valid agent or `default` — and the test is *is it a VALID agent*, NOT *is
 it the ACTIVE agent*, so pre-configuring an agent you may switch to is legal.
 

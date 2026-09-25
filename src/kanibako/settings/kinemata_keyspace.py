@@ -9,14 +9,23 @@ none. It re-implements membership rather than calling
 the product would certify the product against itself, and that answer is
 three-valued where ``declared()`` is yes or no;
 ``tests/test_settings/test_kinemata_keyspace.py`` compares the two.
+
+An agent NODE is judged, never assumed: it must be a CORE-OWNED node (one the
+manifest's ``keys:`` spell concretely, today ``default`` and ``shell``) or an
+agent an IN-TREE plugin registers (:func:`in_tree_agents`). This is the gate's
+view of OUR source, not runtime recognition: a user's own agent is recognized by
+its installed plugin and never meets this module.
 """
 
 from __future__ import annotations
 
 import re
+import tomllib
 from functools import cached_property
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator
 
+from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.settings_resolve import SettingsError, match_ref
 
@@ -42,6 +51,39 @@ _SPEC_FIELD = "spec"
 _PARAMETRIC_FIELD = "parametric"
 _PARAMETRIC_KEYS_FIELD = "parametric_keys"
 _FALLBACK_FIELD = "fallback"
+_ALLOWLIST_FIELD = "allowlist"
+
+#: The manifest section that declares the ``pref`` family; the family's root is
+#: spelled by the section's own name, so no root literal lives here either.
+_PREF_SECTION = "pref"
+
+#: The source tree this module sits in: ``src/kanibako/settings/`` is three levels
+#: down. The adapter is dev tooling that runs from a checkout (``kinemata.toml``).
+_TREE = Path(__file__).resolve().parents[3]
+
+
+def in_tree_agents(tree: Path) -> frozenset[str]:
+  """The agent names the tree's own distributions register, read from their TOML.
+
+  The root ``pyproject.toml`` and every ``packages/*/pyproject.toml``, under
+  :data:`~kanibako.agent_ref.AGENT_ENTRY_POINT_GROUP`. Read rather than discovered,
+  because the conformance job installs no plugin. ⚑ PUBLIC for one outside reader:
+  ``kinemata.toml``'s ``reserved-agent-names`` parity calls it, so the two answer
+  from one walk.
+  ⚑ A tree with no root ``pyproject.toml`` RAISES: an empty set would refuse every
+  plugin node and a missing file would pass by looking at nothing.
+  """
+  root = tree / "pyproject.toml"
+  if not root.is_file():
+    raise RuntimeError(
+      f"the keyspace adapter reads agent names from a source tree, and {root} is "
+      f"not there: run it from a kanibako-cli checkout"
+    )
+  names: set[str] = set()
+  for manifest in [root, *sorted(tree.glob("packages/*/pyproject.toml"))]:
+    project = tomllib.loads(manifest.read_text(encoding="utf-8")).get("project", {})
+    names.update(project.get("entry-points", {}).get(AGENT_ENTRY_POINT_GROUP, {}))
+  return frozenset(names)
 
 
 def _clauses(row: Any) -> tuple[str, ...]:
@@ -118,25 +160,30 @@ class KeyspaceRegistry:
     keys: dict[str, Any] = doc["keys"]
     self._rows = dict(keys)
     self._concrete = set(keys)
-    self._roots = sorted({key.split(".", 1)[0] for key in keys})
+    pref: dict[str, Any] = doc[_PREF_SECTION]
+    self._pref_spec = _clauses(pref)
+    self._roots = sorted({key.split(".", 1)[0] for key in keys} | {_PREF_SECTION})
     roots, edge = "|".join(self._roots), self.boundary
     self._candidate_re = re.compile(
       r"(?<!" + edge + r")(" + roots + r")(?:\." + _SEG + r")+(?!" + edge + r")"
     )
-    self._interiors = self._build_interiors(keys, doc["not_keys"])
+    self._interiors = self._build_interiors(keys, doc["not_keys"]) | {_PREF_SECTION}
+    self._tier_prefix, self._tier_head = self._read_tier_rule(keys)
+    self._core_nodes = self._read_core_nodes(keys, self._tier_head)
+    self._nodes = self._core_nodes | in_tree_agents(_TREE)
+    self._node_alt = "(?:" + "|".join(re.escape(n) for n in sorted(self._nodes)) + ")"
     scopes, families, var_families = self._read_categories(doc["categories"])
-    self._scopes = scopes
-    self._one_seg_scopes = {s for s in scopes if "." not in s}
+    self._scopes = self._instantiate_scopes(scopes)
+    self._one_seg_scopes = {s for s in self._scopes if "." not in s}
     self._families = families
     self._var_families = var_families
-    self._tier_prefix, self._tier_head = self._read_tier_rule(keys)
-    self._tier_node = self._tier_prefix.rstrip(".").rsplit(".", 1)[-1] if self._tier_prefix else ""
     self._shapes: list[_Shape] = []
     self._build_key_shapes(keys)
     self._ns_shapes = self._build_ns_shapes(keys)
     self._known: set[str] = set()
     self._build_section_shapes(doc["not_keys"], doc["category_default_entries"], doc["plugin_contributed"])
     self._interiors |= self._cross_prefixes()
+    self._pref_members, self._pref_interiors = self._read_allowlist(pref)
 
   @staticmethod
   def _build_interiors(keys: dict[str, Any], not_keys: dict[str, Any]) -> set[str]:
@@ -176,6 +223,38 @@ class KeyspaceRegistry:
     return scopes, families, var_families
 
   @staticmethod
+  def _read_core_nodes(keys: dict[str, Any], tier_head: str) -> frozenset[str]:
+    """The agent nodes core owns: those the ``keys:`` rows spell concretely.
+
+    Plugin values are never enumerated in the core registry (the manifest's
+    ``agent.<agent>.<key>`` note), so a node a concrete row names is core's own --
+    ``default`` and the ``shell`` pseudo-agent today. The same pair is
+    ``agent_ref.PSEUDO_AGENT_NAMES``; the adapter test holds the two equal.
+    """
+    nodes = set()
+    for key in keys:
+      segs = key.split(".")
+      if len(segs) > 2 and segs[0] == tier_head and "<" not in segs[1]:
+        nodes.add(segs[1])
+    return frozenset(nodes)
+
+  def _instantiate_scopes(self, scopes: list[str]) -> list[str]:
+    """Category scopes, the manifest's active-agent token read as a placeholder.
+
+    An agent-headed scope token whose node core does not own is the spec's
+    ``agent.<active>`` (the manifest spells it ``agent.active``), so it stands for
+    every node the adapter knows, never for a node named ``active``.
+    """
+    out: dict[str, None] = {}
+    for scope in scopes:
+      head, _, node = scope.partition(".")
+      if head == self._tier_head and node and node not in self._core_nodes:
+        out.update((head + "." + n, None) for n in sorted(self._nodes))
+      else:
+        out[scope] = None
+    return list(out)
+
+  @staticmethod
   def _read_tier_rule(keys: dict[str, Any]) -> tuple[str, str]:
     """The default-tier prefix and node head from the universal row itself."""
     for key, row in keys.items():
@@ -195,20 +274,25 @@ class KeyspaceRegistry:
     tail = groups.get("tail")
     if tail is None:
       return True
-    return self._tail_ok(str(tail), at_tier=groups.get("agent") == self._tier_node)
+    node = groups.get("agent")
+    return self._tail_ok(str(tail), node=None if node is None else str(node))
 
-  def _tail_ok(self, tail: str, *, at_tier: bool) -> bool:
-    """A ``<key>`` tail names a default-tier leaf or a category, or is conceded.
+  def _tail_ok(self, tail: str, *, node: str | None) -> bool:
+    """A ``<key>`` tail names a default-tier leaf, the node's own row, or a
+    category -- or is conceded.
 
-    The default tier's vocabulary is the manifest's own, so a tail there is
-    judged. A one-segment tail under any other node is CONCEDED (spec §0): that
-    node's leaf vocabulary is plugin-declared and unreadable here.
+    A CORE-OWNED node's vocabulary is the manifest's own, so a tail there is
+    judged. A one-segment tail under a plugin's node, or under a node that is a
+    runtime fact (``node`` is ``None``: the mirror row), is CONCEDED (spec §0):
+    that vocabulary is plugin-declared and unreadable here.
     """
     if self._tier_prefix + tail in self._concrete:
       return True
+    if node is not None and self._tier_head + "." + node + "." + tail in self._concrete:
+      return True
     if self._category_tail(tail.split(".")):
       return True
-    return not at_tier and "." not in tail
+    return node not in self._core_nodes and "." not in tail
 
   def _category_tail(self, segs: list[str]) -> bool:
     """A tail under an agent node matches the categories cross-product."""
@@ -227,9 +311,10 @@ class KeyspaceRegistry:
       token = part.group(0)
       if token == "<scope>":
         out.append("(" + scope_alt + ")")
-      elif token == "<agent>" and tier:
-        out.append("(?P<agent>" + _SEG + ")")
-      elif token in ("<agent>", "<VAR>", "<name>"):
+      elif token == "<agent>":
+        # The node is JUDGED by construction: only a node the adapter knows matches.
+        out.append("(?P<agent>" + self._node_alt + ")" if tier else self._node_alt)
+      elif token in ("<VAR>", "<name>"):
         out.append("(" + _SEG + ")")
       elif token == "<key>":
         tail = _SEG + r"(?:\." + _SEG + r")*"
@@ -244,15 +329,21 @@ class KeyspaceRegistry:
     out.append(re.escape(template[pos:]))
     return re.compile("".join(out))
 
-  @staticmethod
-  def _build_ns_shapes(keys: dict[str, Any]) -> list[re.Pattern[str]]:
-    """Namespace shapes for heads taking ``<agent>`` next: node namespaces."""
-    heads: dict[str, None] = {}
+  def _build_ns_shapes(self, keys: dict[str, Any]) -> list[re.Pattern[str]]:
+    """Namespace shapes: every proper prefix of a parametric row that is itself
+    parametric -- ``agent.<agent>``, and ``meta.agent.<agent>.auth`` above
+    ``auth.share_support``. A static prefix is already an interior."""
+    scope_alt = self._scope_alt()
+    prefixes: dict[str, None] = {}
     for key in keys:
+      if "<" not in key and "*" not in key:
+        continue
       segs = key.split(".")
-      if "<agent>" in segs:
-        heads[".".join(segs[: segs.index("<agent>")])] = None
-    return [re.compile(re.escape(head) + r"\." + _SEG) for head in heads if head]
+      for i in range(1, len(segs)):
+        prefix = ".".join(segs[:i])
+        if "<" in prefix or "*" in prefix:
+          prefixes[prefix] = None
+    return [self._compile(prefix, scope_alt, tier=False) for prefix in prefixes]
 
   def _cross_prefixes(self) -> set[str]:
     """Proper prefixes of the finite scope-by-family terminal spellings."""
@@ -308,9 +399,10 @@ class KeyspaceRegistry:
   def _read_namespace_shapes(self, plugin: dict[str, Any]) -> list[_Shape]:
     """The plugin namespace's shape answer; the census is never consulted.
 
-    On the agent tier's own head the node and leaf are named, so the default
+    On the agent tier's own head the node and leaf are named, so a core-owned
     node is judged by :meth:`_shape_admits` like any ``<key>`` tail: a plugin
-    contributes nothing at the tier core owns (spec §0).
+    contributes nothing at a tier core owns (spec §0). Every arm's node is a
+    known one; the namespace names no leaf, so no other head concedes one.
     """
     namespace = plugin.get("namespace")
     spec = _clauses({_SPEC_FIELD: plugin.get("shape_spec")})
@@ -321,9 +413,9 @@ class KeyspaceRegistry:
         if not head:
           continue
         if head == self._tier_head:
-          node, leaf = "(?P<agent>" + _SEG + ")", "(?P<tail>" + _SEG + ")"
+          node, leaf = "(?P<agent>" + self._node_alt + ")", "(?P<tail>" + _SEG + ")"
         else:
-          node, leaf = _SEG, _SEG
+          node, leaf = self._node_alt, _SEG
         shapes.append(_Shape(re.compile(re.escape(head) + r"\." + node + r"\." + leaf), spec))
     return shapes
 
@@ -333,9 +425,32 @@ class KeyspaceRegistry:
       return 2
     if len(segs) >= 2 and segs[0] in self._one_seg_scopes:
       return 1
-    if self._tier_head and len(segs) >= 2 and segs[0] == self._tier_head:
-      return 1
     return 0
+
+  def _read_allowlist(self, pref: dict[str, Any]) -> tuple[list[re.Pattern[str]], list[re.Pattern[str]]]:
+    """The ``pref`` family from its own section: allowlist entries, and their interiors.
+
+    Spec §0 declares ``pref.<target-key>`` for the ALLOWLISTED targets only, so a
+    member's target must match an entry (§0 glob: ``*`` one segment, ``**`` the
+    tail) AND be declared. An interior is a proper prefix of an entry above its
+    ``**`` tail -- ``system``, ``agent``, ``agent.<node>``.
+    """
+    scope_alt = self._scope_alt()
+    members, interiors = [], []
+    for entry in pref.get(_ALLOWLIST_FIELD) or {}:
+      members.append(self._compile(entry, scope_alt, tier=False))
+      tokens = entry.split(".")
+      for i in range(1, len(tokens)):
+        if tokens[i - 1] == "**":
+          break
+        interiors.append(self._compile(".".join(tokens[:i]), scope_alt, tier=False))
+    return members, interiors
+
+  def _pref_declared(self, target: str) -> bool:
+    """Whether ``pref.<target>`` is declared: an allowlisted, declared target."""
+    if not self._declared_plain(target):
+      return False
+    return any(p.fullmatch(target) for p in self._pref_members + self._pref_interiors)
 
   def _cross_declared(self, identifier: str) -> bool:
     """The categories cross-product: terminal keys plus VAR-tailed families."""
@@ -376,6 +491,13 @@ class KeyspaceRegistry:
     """Whether any manifest section this adapter reads declares one identifier."""
     if not isinstance(identifier, str) or not identifier:
       return False
+    head, _, target = identifier.partition(".")
+    if head == _PREF_SECTION and target:
+      return self._pref_declared(target)
+    return self._declared_plain(identifier)
+
+  def _declared_plain(self, identifier: str) -> bool:
+    """:meth:`declared` for an identifier outside the ``pref`` family."""
     if identifier in self._concrete or identifier in self._known:
       return True
     if identifier in self._interiors:
@@ -395,6 +517,9 @@ class KeyspaceRegistry:
 
   def resolve(self, identifier: str) -> tuple[str, ...]:
     """A declared identifier's governing spec clauses, else empty."""
+    head, _, target = identifier.partition(".")
+    if head == _PREF_SECTION and target:
+      return self._pref_spec if self._pref_declared(target) else ()
     row = self._rows.get(identifier)
     if row is not None:
       return _clauses(row)

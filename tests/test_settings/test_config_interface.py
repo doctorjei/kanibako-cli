@@ -6475,6 +6475,19 @@ class TestClosedKeyspaceReadGate:
         assert f"'{key}'" in err
         assert "cannot be read" in err
 
+    @pytest.mark.parametrize("scope", [ConfigLevel.box, ConfigLevel.workset])
+    @pytest.mark.parametrize("key", ["pref.box.image", "pref.system.cache"])
+    def test_a_pref_off_the_allowlist_is_refused_and_NAMED(self, key, scope):
+        """spec §0 declares ``pref.<target-key>`` for the §2h ALLOWLISTED targets only,
+        so these are no keys though ``box.image`` and ``system.cache`` are. Until
+        2026-09-25 a hand-written request of either read back through ``get``."""
+        from kanibako.settings.config_keys import scope_read_key_error
+
+        err = scope_read_key_error(key, scope, active_agent="claude")
+        assert err is not None and err.startswith("Error:")
+        assert f"'{key}'" in err
+        assert "ALLOWLISTED" in err
+
     @pytest.mark.parametrize("scope_token", ["box", "workset"])
     def test_masks_takes_the_GENERIC_refusal(self, scope_token):
         """§0: ``masks`` never had entry names, so there is no retired spelling to
@@ -6631,6 +6644,20 @@ class TestStoredViewMarksUndeclaredEntries:
             capsys,
         )
         assert "undeclared" not in out
+
+    def test_a_pref_off_the_allowlist_is_listed_ONCE_as_undeclared(self, tmp_path, capsys):
+        """spec §0: ``pref.<target-key>`` holds the §2h ALLOWLISTED targets only, so a
+        hand-written ``pref.box.image`` is junk, not a request — marked undeclared and
+        NOT also listed as an override beside the real ``pref.system.agent``."""
+        out = self._show(
+            tmp_path,
+            "pref:\n  system:\n    agent: claude\n  box:\n    image: handwritten\n",
+            capsys,
+        )
+        overrides, marked = out.split("undeclared", 1)
+        assert "pref.system.agent = claude" in overrides
+        assert "pref.box.image" not in overrides
+        assert "pref.box.image = handwritten" in marked
 
     def test_an_undeclared_entry_is_not_counted_as_an_OVERRIDE(self, tmp_path, capsys):
         """"(no overrides)" stays true — junk in the file is not an override."""

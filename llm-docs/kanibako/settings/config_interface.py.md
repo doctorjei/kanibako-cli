@@ -1052,7 +1052,9 @@ It is a display of FILE CONTENT, not a §0 read of a key: nothing is resolved, n
 fabricated. It exists because `box get` / `workset get` now REFUSE such a name (§0) and the only
 cure is a hand edit — a cure nobody can follow for a line they cannot see. That nested block
 SUBTRACTS this set before printing: that flatten has no key semantics, so without the subtraction
-one line would appear twice, once called an override and once called junk. The agent-settings
+one line would appear twice, once called an override and once called junk. The `pref` block
+subtracts it too (2026-09-25): a request whose target is off the §2h allowlist is no key (spec §0,
+`settings_keyspace.PREF_ALLOWLIST`), so a hand-written `pref.box.image` is listed once, as junk. The agent-settings
 block does not subtract, because it renders a leaf FLAT (`bogus`, not `agent.default.bogus`) and
 matching the two would need this display to re-derive a key's spelling.
 

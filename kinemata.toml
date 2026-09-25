@@ -342,18 +342,24 @@ historical = [
 # 🛑 TWO AXES ARE NOT EXPRESSIBLE AND ARE REPORTED, NOT APPROXIMATED: the
 # plugin-contributed MEMBER leaf axis -- the manifest marks `member_census`
 # MUST NOT be used as a validation source, and CI installs no plugins, so a
-# one-segment leaf under any agent node but the default tier is CONCEDED
-# (spec §0), never judged; that reaches the `shell` pseudo-agent too, because
-# the manifest carries no pseudo-agent set -- and `env.<VAR>` /
-# `secret_path.<VAR>`, unbounded by construction. Neither is narrowed,
-# excluded, or shimmed into the declaration. The default tier IS judged: core
-# owns it, so a leaf there must be an `agent.default.*` row or a category.
-# `tests/test_settings/test_kinemata_keyspace.py` pins both answers against
-# the product's `key_class`. Two more gaps are EXPRESSIBLE, so they are defects
-# rather than axes -- `pref.<target-key>` is never seen (`pref` is not a
-# candidate root) and an agent NODE name is never judged (`agent.cluade.model`
-# passes) -- tracked by the conformance.md row "Four residual adapter↔product
-# keyspace disagreements".
+# one-segment leaf under a PLUGIN agent's node is CONCEDED (spec §0), never
+# judged -- and `env.<VAR>` / `secret_path.<VAR>`, unbounded by construction.
+# Neither is narrowed, excluded, or shimmed into the declaration.
+# The CORE-OWNED nodes ARE judged: `default` and the `shell` pseudo-agent, the
+# nodes the manifest's `keys:` spell concretely, so a leaf there must be one of
+# their rows, an `agent.default.*` row, or a category. The NODE is judged too
+# (2026-09-25): it must be core-owned or an agent an in-tree distribution
+# registers under the `kanibako.agents` entry points -- the tree the
+# `reserved-agent-names` parity below reads -- so `agent.cluade.model` is
+# undeclared. That is this gate's view of OUR source only; runtime agent
+# recognition never loads the adapter, so a user's own agent is untouched.
+# `pref.<target-key>` is declared for the manifest's `pref.allowlist` targets
+# only (spec §0), so `pref.box.image` is undeclared though `box.image` is a key.
+# `tests/test_settings/test_kinemata_keyspace.py` pins these answers against
+# the product's `key_class` over a manifest-derived corpus: every declared key,
+# every allowlisted pref, and, as refusals, typo'd leaves, off-allowlist prefs,
+# unknown and placeholder nodes, and categories with no node. The conceded
+# plugin leaves are the one place the two are pinned to DISAGREE.
 #
 # NO STRAY OF THIS REGISTRY IS ACCEPTED IN `.kinemata-baseline.json`. Measured
 # 2026-09-24 under kinemata `0.4.1`: `undeclared` is clean with no record behind
@@ -849,10 +855,13 @@ modules = [
 # runs `unused`.
 #
 # 🛑 NEGATIVE CONTROLS, run 2026-09-24 under `0.4.1` on `/tmp` copies of the
-# tree, never on it. With `defer_to` removed, `undeclared` goes rc=1 on the five
-# declaration lines. A planted `BOX_LOCK_NAME = "box.lock"` in `config.py` (a
-# filename outside the `_FILE$` selector) goes rc=1 naming `box.lock`. Renamed
-# to `BOX_LOCK_FILE`, the same constant is deferred and the run is rc=0. A typo
+# tree, never on it. With `defer_to` removed, `undeclared` goes rc=1 on the six
+# declaration lines (re-measured 2026-09-25: five until then, because the adapter
+# admitted `agent.yaml` as the node namespace `agent.<yaml>` before it judged the
+# node, so `AGENT_META_FILE`'s line was never a candidate for deferral). A
+# planted `BOX_LOCK_NAME = "box.lock"` in `config.py` (a filename outside the
+# `_FILE$` selector) goes rc=1 naming `box.lock`. Renamed to `BOX_LOCK_FILE`,
+# the same constant is deferred and the run is rc=0. A typo
 # planted in `SETUP_MARKER_KEY` goes rc=1: a key token is still judged. A stray
 # `"box.yaml"` planted in `utils.py` fails `check` ONCE, under `meta-files`, and
 # `undeclared` defers it, so a bypass OUTSIDE the four modules has exactly one
@@ -2309,16 +2318,24 @@ extract = '(?m)^ci-python: (\S+)$'
 # all: rc=1, `BLOCKED: claims no identifier is both declared and produced, and
 # its oracle produced no identifiers at all. Nothing can violate that, so the run
 # would pass by looking at nothing`.
+# ⚑ THE ENTRY-POINT HALF READS THROUGH `kinemata_keyspace.in_tree_agents`
+# (2026-09-25), the walk the keyspace adapter judges agent nodes by, under
+# `agent_ref.AGENT_ENTRY_POINT_GROUP` -- one walk and one group name, not a copy
+# of each here. Re-run under `0.4.1` on a `/tmp` copy: a `packages/agent-rogue`
+# declaring `Default = '...:RogueTarget'` gives rc=1, `default: declared and
+# produced, where neither may be`. A rogue `Shell` does NOT red there, and that
+# is the baseline, not the oracle: the `shell` overlap is an accepted record
+# (`parity:reserved-agent-names:overlapping`), so it masks a planted one.
 [[parity]]
 registry = "reserved-agent-names"
 relation = "disjoint"
 command = ["{python}", "-c", """
-import ast, pathlib, tomllib
-for manifest in [pathlib.Path("pyproject.toml"), *sorted(pathlib.Path("packages").glob("*/pyproject.toml"))]:
-    table = tomllib.loads(manifest.read_text()).get("project", {}).get("entry-points", {}).get("kanibako.agents", {})
-    for key in table:
-        # The reservation folds for comparison ([R172]), so the oracle folds what it produces.
-        print(f"agent-name: {key.casefold()}")
+import ast, pathlib
+from kanibako.settings.kinemata_keyspace import in_tree_agents
+# The tree's entry-point declarations, from the ONE walk the keyspace adapter uses too.
+for key in sorted(in_tree_agents(pathlib.Path("."))):
+    # The reservation folds for comparison ([R172]), so the oracle folds what it produces.
+    print(f"agent-name: {key.casefold()}")
 for source in [*sorted(pathlib.Path("src").rglob("*.py")), *sorted(pathlib.Path("packages").glob("*/src/**/*.py"))]:
     for node in ast.walk(ast.parse(source.read_text())):
         if not (isinstance(node, ast.ClassDef) and any("Target" in ast.unparse(base) for base in node.bases)):
