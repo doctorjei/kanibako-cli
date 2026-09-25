@@ -3131,6 +3131,22 @@ warning, and nothing in `box show` that marked the line as dead. The settings ke
 get` were the hole left in the reading case; §2.48 closes it, and gives `box show` the marked line
 this paragraph says it lacked.)
 
+**The top level of the file counts too** — in a box's settings file, a workset's, the system
+settings file and the site base file. An entry at the top level that names none of the keyspace's
+namespaces (`config`, `system`, `agent`, `workset`, `box`, `meta`, `pref`) is an undeclared key
+like `box.zippity`, and it gets the same refusal:
+
+```yaml
+template: my-template   # refused: 'template' is not a declared namespace
+box.env.X: "1"          # refused: a dotted name is never split into tables
+box:
+  env:
+    X: "1"              # this is how to write it
+```
+
+`meta:` and `binding_derivations:` are still dropped with a warning, not refused. v1.8.0-rc2 let
+the other top-level entries through unchecked: the box started and the entry was ignored.
+
 **Which commands.** The ones that build the resolved snapshot. They all build the same one, so they
 all stop at the same place. Measured on the shipped code: `kanibako` / `start`, `shell`, `box info`,
 `box show --effective`, `system show --effective`, `rig list`.

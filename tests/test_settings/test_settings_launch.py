@@ -1767,6 +1767,17 @@ def test_R147_a_leaf_the_keyspace_does_not_declare_is_never_swept():
         "box": {"canon": "rel"},
     })
     assert _path_key_leaves(store) == [("box.canon", "rel")]
+    # ⚑ Skipped by the sweep is not ACCEPTED: the bare top-level spellings are §0
+    # findings of the same oracle, so the refusal that follows the sweep names them.
+    from kanibako.settings.settings_keyspace import undeclared_store_paths
+    from kanibako.settings.settings_launch import keyspace_verdict
+
+    refused = {
+        segments for segments, _ in undeclared_store_paths(
+            store, oracle=keyspace_verdict,
+        )
+    }
+    assert {("template",), ("canon",)} <= refused
 
 
 _R147_UNDECLARED_REASON = (
@@ -1797,6 +1808,9 @@ _R147_UNDECLARED_REASON = (
         ),
         id="nested-persona-secret",
     ),
+    # The bare CLI spelling at a file's TOP LEVEL. No census marker: the census judges
+    # a single write, and a top-level write it cannot place is UNROOTED, not a finding.
+    pytest.param({"template": "foo"}, "template", id="bare-top-level-template"),
 ])
 def test_R147_an_undeclared_path_shape_gets_the_closed_keyspace_refusal(
     tmp_path, stored, named,
@@ -1810,7 +1824,7 @@ def test_R147_an_undeclared_path_shape_gets_the_closed_keyspace_refusal(
         _auth_snapshot("primary", tmp_path=tmp_path, system_file=stored)
     msg = str(exc.value)
     assert "BARE RELATIVE" not in msg
-    assert "not settings keys (spec §0" in msg
+    assert "(spec §0 — the keyspace is CLOSED):\n" in msg
     assert f"\n  - {named}: " in msg
 
 
@@ -4992,6 +5006,107 @@ def test_the_refusal_names_every_undeclared_entry_not_just_the_first(tmp_path):
         assert path in msg
     # The count is stated, so a truncated reading of the list is visible as one.
     assert "3 entries that are not settings keys" in msg
+
+
+@pytest.mark.parametrize("scope", ["system", "workset", "box"])
+@pytest.mark.parametrize("stray,named", [
+    ({"zzz": "foo"}, ("zzz",)),
+    ({"template": "foo"}, ("template",)),
+    ({"canon": "/foo"}, ("canon",)),
+    ({"zzz": {"a": 1}}, ("zzz", "zzz.a")),
+    ({"box.env.X": "1"}, ("box.env.X",)),
+    # A bare §2a CATEGORY token at the top level. ⚑ RED ON THIS SET ALONE: the merge
+    # drops these by name before §0 sees them; the standalone set's position-aware
+    # merge closes that, and it lands first.
+    ({"masks": None}, ("masks",)),
+    ({"seeded": None}, ("seeded",)),
+], ids=[
+    "leaf", "bare-template", "bare-canon", "table", "dotted-name", "bare-masks",
+    "bare-seeded",
+])
+def test_a_top_level_stray_in_a_settings_file_refuses_the_resolve(
+    tmp_path, scope, stray, named,
+):
+    """Spec §0: no bare top-level keys, and an undeclared key is an ERROR that NAMES it.
+
+    Every file tier merges its top level into the snapshot's top level, and before
+    this refusal existed a stray there was judged ``UNROOTED`` — a FRAGMENT verdict,
+    which is no finding — so ``zzz: foo`` built silently and rode the snapshot.
+    ⚑ The dotted name is the same subject: a file never splits ``box.env.X`` into
+    tables, so it is one top-level entry that names no root, not the key it spells.
+
+    MUTATION: judge the whole store with ``classify_store_path`` again (the root
+    gate back) and every case here builds.
+    """
+    with pytest.raises(_SettingsError) as e:
+        _auth_snapshot("primary", tmp_path=tmp_path, **{f"{scope}_file": stray})
+    msg = str(e.value)
+    assert "(spec §0 — the keyspace is CLOSED):\n" in msg
+    count = len(named)
+    assert (
+        "1 entry that is not a settings key" if count == 1
+        else f"{count} entries that are not settings keys"
+    ) in msg
+    for path in named:
+        assert f"\n  - {path}: " in msg
+
+
+#: The drop warning each dropped top-level table must leave (settings_assemble /
+#: settings_prefs), keyed by the table.
+_TOP_LEVEL_DROP_WARNING = {
+    "meta": "Dropping top-level 'meta' table",
+    "binding_derivations": "Dropping top-level 'binding_derivations' table",
+    "system": "Dropping upward-scope key 'system'",
+    "pref": "Dropping top-level 'pref' table",
+}
+
+
+@pytest.mark.parametrize("scope,tables,dropped", [
+    ("system", {
+        "system": {"env": {"X": "1"}}, "agent": {"claude": {"env": {"Y": "1"}}},
+        "workset": {"env": {"Z": "1"}}, "box": {"env": {"W": "1"}},
+    }, ()),
+    ("workset", {"workset": {"env": {"Z": "1"}}, "box": {"env": {"W": "1"}}}, ()),
+    ("workset", {
+        "workset": {"env": {"Z": "1"}},
+        "pref": {"agent": {"claude": {"env": {"V": "1"}}}},
+    }, ()),
+    ("box", {
+        "box": {"env": {"W": "1"}},
+        "pref": {"agent": {"claude": {"env": {"V": "1"}}}},
+    }, ()),
+    # Tables the cascade DROPS before the merge still build — with their warning.
+    ("box", {"box": {"env": {"W": "1"}}, "meta": {"box": {"name": "x"}}}, ("meta",)),
+    ("box", {"box": {"env": {"W": "1"}}, "binding_derivations": {"x": 1}},
+     ("binding_derivations",)),
+    ("box", {"box": {"env": {"W": "1"}}, "system": {"env": {"X": "1"}}}, ("system",)),
+    ("system", {
+        "system": {"env": {"X": "1"}},
+        "pref": {"agent": {"claude": {"env": {"V": "1"}}}},
+    }, ("pref",)),
+], ids=[
+    "system", "workset", "workset-with-pref", "box-with-pref", "box-meta-dropped",
+    "box-derivations-dropped", "box-upward-dropped", "system-pref-dropped",
+])
+def test_every_legal_top_level_table_still_builds(
+    tmp_path, caplog, scope, tables, dropped,
+):
+    """The control for the refusal above: it is the ROOT GATE that moved, not the roots.
+
+    Each file carries only the scope tables it may hold (spec §0 defaults-down, §2h
+    ``pref:`` in a workset or box file), plus the tables the cascade drops — each of
+    which must still say so.
+    """
+    with caplog.at_level("WARNING"):
+        snap = _auth_snapshot(
+            "primary", tmp_path=tmp_path, **{f"{scope}_file": tables},
+        )
+    assert set(dict.keys(snap)) <= {
+        "system", "agent", "workset", "box", "meta", "pref",
+    }
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    for table in dropped:
+        assert any(_TOP_LEVEL_DROP_WARNING[table] in w for w in warnings), warnings
 
 
 @pytest.mark.writes_undeclared(

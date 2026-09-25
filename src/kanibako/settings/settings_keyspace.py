@@ -1672,6 +1672,7 @@ def key_class(
 #: node — included so a ``binding_derivations`` path is recognised as the node the
 #: SPEC names (:data:`Verdict.RESERVED`) rather than dismissed as an unrooted
 #: fragment whose true path the walker cannot know.
+#: ⚑ Only :func:`classify_store_path` gates on it; see :func:`_classify_whole_store_path`.
 KEYSPACE_ROOTS: Final[frozenset[str]] = (
     frozenset(SCOPE_CONTAINMENT) | {"config", "meta", "pref", BINDING_DERIVATIONS_NODE}
 )
@@ -1705,7 +1706,8 @@ class Verdict:
     ``UNROOTED``     the root segment is not a keyspace root, so this is a
                      scope-LOCAL or fragment store whose key path cannot be known. A
                      fragment that reaches a real store is judged THERE, with its
-                     true path, so nothing is lost by declining to guess.
+                     true path, so nothing is lost by declining to guess. ⚑ A
+                     FRAGMENT answer only (:func:`_classify_whole_store_path`).
     ``RESERVED``     the RESERVED INTERNAL NODE the spec names in so many words:
                      *"The derivation is NOT a key — it is a RESERVED INTERNAL NODE
                      … rides inside the per-launch snapshot as an internal node named
@@ -1796,6 +1798,37 @@ def classify_store_path(
     The CONTAINER rule is NOT applied here: it needs what landed underneath a node
     and whether this path IS one, neither of which a single path shows. See
     :func:`container_notes`.
+
+    ⚑ FRAGMENT-TOLERANT, for the pytest census — see :func:`_classify_whole_store_path`.
+    """
+    if segments and segments[0] not in KEYSPACE_ROOTS:
+        return Judgement(
+            Verdict.UNROOTED, "", len(segments),
+            f"{segments[0]!r} is not a keyspace root: a scope-LOCAL or fragment "
+            f"store, whose key path this cannot know",
+        )
+    return _classify_whole_store_path(segments, oracle=oracle)
+
+
+def _classify_whole_store_path(
+    segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgement],
+) -> Judgement:
+    """:func:`classify_store_path` for a path in a WHOLE store — one whose ROOT is
+    the keyspace root, as the launch snapshot's is.
+
+    ⚑⚑ NO ROOT GATE, AND THAT IS THE WHOLE DIFFERENCE. :data:`Verdict.UNROOTED` is a
+    FRAGMENT answer: a scope-local store's top level holds scope CONTENTS, so a
+    top-level ``workspace`` there is not evidence of anything — and the pytest census,
+    judging one WRITE at a time, cannot tell such a fragment from a whole store, which
+    is why :func:`classify_store_path` keeps the gate. In a whole store the
+    top level IS the keyspace's, and spec §0 declares no bare top-level key
+    (*"Namespace = organizational only (no bare top-level keys …)"*). So a top-level
+    ``zzz`` here goes through the oracle like every other path, which is what names
+    it UNDECLARED and says why. Gating it as UNROOTED let a top-level stray in a
+    settings file build silently and ride the snapshot.
+
+    The empty path is the store's root node itself, which no walk yields; it keeps
+    the ``UNROOTED`` answer it has always had, since there is no path to judge.
     """
     if not segments:
         return Judgement(Verdict.UNROOTED, "", 0, "empty path")
@@ -1803,17 +1836,26 @@ def classify_store_path(
         return Judgement(
             Verdict.RESERVED, BINDING_DERIVATIONS_NODE, 1, RESERVED_NODE_REASON,
         )
-    if segments[0] not in KEYSPACE_ROOTS:
+    if "." in segments[0]:
+        # ⚑ A DOT AT THE TOP LEVEL names no namespace, whatever else it is — so it is
+        # judged here rather than left to the dotted-segment stop below. The oracle may
+        # not be asked: ``"box.env.X"`` as ONE segment joins to a declared key it is not.
         return Judgement(
-            Verdict.UNROOTED, "", len(segments),
-            f"{segments[0]!r} is not a keyspace root: a scope-LOCAL or fragment "
-            f"store, whose key path this cannot know",
+            Verdict.UNDECLARED, "", len(segments),
+            f"top-level entry {segments[0]!r} is not a keyspace root: a settings file "
+            f"nests a key as tables, and a dotted name is never split into one "
+            f"(spec §0)",
         )
     for cut in range(1, len(segments) + 1):
         if "." in segments[cut - 1]:
-            # ⚑ STOP. A dotted segment is DATA; asking the oracle past it would forge
-            # a key out of a destination (or an env VAR name — the open question
-            # ``ENV_KEY_RE`` forbids and the persona path never checks).
+            # ⚑ STOP, WITHOUT A FINDING. Reached only when NO proper prefix is a declared
+            # key: a destination under one returns VALUE at that key, before its dotted
+            # segment is seen. So this is a dotted segment in KEY position — a dotted
+            # ``env``/``secret_path`` <VAR> (``box.secret_path."A.B"``) or a dotted name
+            # inside a namespace table (``box: {"env.X": …}``). Asking the oracle would
+            # forge a key out of it. Both are LEFT OPEN, not ruled legal: the dotted VAR
+            # under his 2026-08-22 deferral (``tasks/deferred.md``), and the table case
+            # with it until it is ruled.
             return Judgement(
                 Verdict.DATA_SEGMENT, ".".join(segments[:cut - 1]), cut - 1,
                 f"segment {segments[cut - 1]!r} contains a dot, so this is not a "
@@ -1923,6 +1965,9 @@ def undeclared_store_paths(
     :class:`Judgement` alone cannot be rendered (an ``UNDECLARED`` one names no key,
     which is the point of it).
 
+    ⚑ *store* MUST BE A WHOLE STORE (:func:`_classify_whole_store_path`); a scope-local
+    fragment's contents would all be reported as undeclared.
+
     ⚑ It REPORTS; refusing is the CALLER's decision, and the two live callers take
     it oppositely off one list. ``settings_keyspace_probe.observe`` writes a row and
     returns; ``settings_launch._refuse_undeclared_snapshot`` raises naming every
@@ -1932,7 +1977,7 @@ def undeclared_store_paths(
     judged: dict[tuple[str, ...], Judgement] = {}
     nodes: dict[tuple[str, ...], StoreNode] = {}
     for segments, is_node in walk_store_paths(store):
-        judgement = classify_store_path(segments, oracle=oracle)
+        judgement = _classify_whole_store_path(segments, oracle=oracle)
         judged[segments] = judgement
         nodes[segments] = StoreNode(judgement.verdict, is_node)
     rescued = container_notes(nodes)

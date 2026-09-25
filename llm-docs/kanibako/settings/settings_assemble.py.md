@@ -500,8 +500,10 @@ Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec
    A hand-forged table in a settings file would otherwise ride into the snapshot beside the real
    materialisation: phantom `--effective` lines, and a non-`Bind` leaf crashes the `derived_bindings`
    lens with `ViewError`. Same profile as `meta` — EVERY file, TOP-LEVEL ONLY. SCOPE TIGHT: this ONE
-   name only; arbitrary unknown top-level tables still ride, because general unknown-table refusal is
-   the backlogged keyspace-ENFORCEMENT work, not this drop.
+   name only. Any other unknown top-level entry is not dropped here: it rides into the merge and is
+   REFUSED by name at the launch's §0 audit (`settings_launch._refuse_undeclared_snapshot`), which
+   judges the snapshot as a WHOLE store and so has no `UNROOTED` escape (spec §0: no bare top-level
+   keys) — except in the per-agent file, whose partial reads only `self:`.
 
 `base` is EXEMPT for SCOPE keys (its containing set is empty — it is the system-scope floor) but NOT
 for `meta`: a base-file top-level `meta:` table would clobber the floor's materialized identity

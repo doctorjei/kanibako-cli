@@ -109,6 +109,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An entry at a settings file's top level that names none of the keyspace's namespaces is now
+  refused like any other undeclared key.** v1.8.0-rc2 already stopped the command on an undeclared
+  key and named it, but only inside a namespace's table (`box:`, `workset:`, `system:` and the
+  rest). An entry at the top level of a `box.yaml`, a `workset.yaml`, the system settings file or
+  the site base file (`/etc/kanibako/settings_base.yaml`) was not checked: `zzz: foo`, a bare
+  `template: foo`, or a dotted `box.env.X: 1` — which kanibako never splits into tables — let the
+  box start, and the entry was carried along unread. It is now named in the same refusal, with the
+  same cure: delete the line by hand, or move the setting into the table it belongs to. `meta:` and
+  `binding_derivations:` are still dropped with a warning. See
+  `MIGRATION.md` § *2.47 An undeclared key in a settings file now stops the command, and the cure
+  is a hand-edit*.
+
 - **A bare relative path typed by hand into a settings file is now refused for every path key,
   not only some.** The v1.8.0-rc2 entry *"A path setting written as a bare relative path is now
   refused instead of being anchored somewhere"* promised this, but when kanibako read a settings

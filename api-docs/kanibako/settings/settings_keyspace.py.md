@@ -84,6 +84,7 @@ def _meta_reason(rest: list[str], valid_agents: Collection[str], leaves: Collect
 def _bad_agent_reason(name: str, valid_agents: Collection[str]) -> str
 def _leaves_are_known() -> bool
 def _agent_tail_reason(prefix: str, tail: list[str], leaves: Collection[str]=DECLARED_AGENT_LEAVES, *, leaves_known: Callable[[], bool]=_leaves_are_known) -> KeyJudgement
+def _classify_whole_store_path(segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgement]) -> Judgement
 ```
 
 ## Classes

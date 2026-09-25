@@ -119,6 +119,8 @@ KNOWN BLIND SPOTS, stated rather than papered over:
 - A fabricated key whose ROOT segment is itself invented lands in ``UNROOTED`` and
   is reported, not enforced -- the keyspace roots are a closed set and nothing in
   the tree writes a new one, but the collector cannot prove that from one write.
+  (The launch's §0 refusal CAN, and does: it judges a WHOLE store, whose top level
+  is the keyspace's -- ``undeclared_store_paths``.)
 """
 
 from __future__ import annotations
