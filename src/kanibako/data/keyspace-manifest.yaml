@@ -2505,16 +2505,14 @@ bind_default_entries:
       spec: "§2c (ALL WORKSETS / STANDALONE; R-29)"
     "~/.kanibako/state/helper.sock":
       user_key: true
-      default: "(@system.runtime/@{meta.box.name}-@{meta.workset.name}.sock, \"\")"
+      default: "(@system.runtime/<bounded name of \"@{meta.box.name}-@{meta.workset.name}\">, \"\")"
       note: "mount options MUST stay empty ('') — a LIVE unix socket; Z/U
              relabel/chown would break the shared socket topology (core-defaults
-             carries the empty 3rd slot). ⚑ THE BRACES ARE LOAD-BEARING (R-23 /
-             ruling 9a, 2026-08-02): a bare workset-name ref would greedily eat
-             the `.sock` suffix as one absent ref name (cf. helper_log)."
+             carries the empty 3rd slot). Name rule: companion § \"Box and
+             helper identity\"."
       see: "the note's 'empty 3rd slot' is the OLD arity — under bindmap_shape the
             options are the SECOND element, and this entry is the one place the
-            2-element form is exercised. `helper_log` is the retired NAME of the
-            ro arm's $XDG_STATE_HOME/kanibako/helpers.jsonl entry."
+            2-element form is exercised."
       spec: "§2c (ALL PROJECTS)"
     "~/channels/common":
       user_key: true

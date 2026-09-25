@@ -972,7 +972,7 @@ def helper_default_categories(
         # 2026-08-30 ``paths.helper_log_path`` resolves ``workset.logs`` in standalone too
         # (its ``@meta.box.path`` default is answered by the caller, which holds the
         # resolved ``workset.boxes``), closing migration M-14.  ⚑ ``helper_sock`` is NOT
-        # routed: its hashed, length-bounded socket name has no spec spelling (JC-B2b-3).
+        # routed: its bounded name is the companion's name rule, not an ``@``-formula (JC-B2b-3).
         host_src = entry.get("meta_ref", str(src_path))
         add_bind(binds, category, box_dest, host_src, str(entry["options"]))
     return binds

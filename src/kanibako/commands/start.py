@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import os
 import shlex
 import shutil
@@ -80,7 +81,7 @@ from kanibako.agent_ref import (
 )
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
-from kanibako.utils import container_name_for, project_hash, short_hash
+from kanibako.utils import container_name_for, short_hash
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
 # :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker
 # write-side hook command; IMPORTED rather than re-derived so this file's
@@ -2160,17 +2161,9 @@ def _start_helper_hub(
     # the single source of truth for the runtime base.
     _run_dir = std.runtime
     _run_dir.mkdir(parents=True, exist_ok=True)
-    # Socket name = ``<box>-<ws>`` (box name + workset-name token), so a
-    # project name reused across worksets gets a distinct socket.  The
-    # combined identity is bounded so a long name can't overflow
+    # Socket name = ``<box>-<ws>``, hashed only when the path would overflow
     # ``sun_path``; reattach recomputes the same deterministic name.
-    from kanibako.channels.channels import workset_name_token
-    _box_name = proj.name if proj.name else short_hash(proj.project_hash)
-    _ws_token = workset_name_token(proj)
-    socket_path = _run_dir / bounded_socket_name(
-        f"{_box_name}-{_ws_token}", _run_dir,
-    )
-    validate_socket_path(socket_path)
+    socket_path = helper_socket_path(proj, _run_dir)
     # Per-box, per-mode HOST helper log — the RESOLVED @workset.logs of that
     # box's workset root in EVERY mode (STANDALONE resolves it against the
     # degenerate workset at the project dir, default @meta.box.path =
@@ -9666,35 +9659,39 @@ def _rotate_file(path: Path) -> None:
     path.touch()
 
 
-# Length (hex chars) of the bounded hash fallback for an over-long box name.
-# 16 hex chars = 64 bits of a SHA-256 prefix: ample collision resistance for
-# the per-user set of boxes while keeping the basename tiny (``<16>.sock``).
+# Length (hex chars) of the hashed socket name (companion § "Box and helper
+# identity"): the first 16 hex characters of SHA-256 over the identity.
 _SOCKET_HASH_LEN = 16
 
 
 def bounded_socket_name(identity: str, run_dir: Path) -> str:
-    """Return a bounded, deterministic ``.sock`` basename for *identity*.
-
-    The host helper socket lives at ``run_dir / <name>``.  *identity* is the
-    combined ``<box>-<ws>`` string (box name + workset-name token, per
-    ``@system.runtime/<box>-<ws>.sock``) — the box name alone is NOT unique
-    across worksets that reuse a project name, so the ws token is required.
-    When ``<identity>.sock`` fits under the AF_UNIX limit at *run_dir* it is
-    used verbatim; otherwise the name is replaced by a fixed-width SHA-256
-    prefix of *identity* (deterministic per identity — so a later reattach
-    computes the same socket — and collision-safe across boxes).
-    """
+    """Return ``<identity>.sock`` if its path is under the byte limit, else the hashed name."""
     verbatim = f"{identity}.sock"
-    if len(str(run_dir / verbatim)) < _UNIX_SOCKET_PATH_LIMIT:
+    if len(os.fsencode(run_dir / verbatim)) < _UNIX_SOCKET_PATH_LIMIT:
         return verbatim
-    return f"{short_hash(project_hash(identity), _SOCKET_HASH_LEN)}.sock"
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return f"{digest[:_SOCKET_HASH_LEN]}.sock"
+
+
+def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path:
+    """Return *proj*'s host helper socket, named from ``<box name>-<workset name>``."""
+    from kanibako.channels.channels import workset_name_token
+
+    # ``meta.box.name`` is ``proj.name``; a nameless box has no identity to render.
+    if not proj.name:
+        raise ValueError("box has no name; cannot derive its helper socket name.")
+    socket_path = run_dir / bounded_socket_name(
+        f"{proj.name}-{workset_name_token(proj)}", run_dir,
+    )
+    validate_socket_path(socket_path)
+    return socket_path
 
 
 def validate_socket_path(socket_path: Path) -> None:
-    """Raise ValueError if *socket_path* exceeds the AF_UNIX length limit."""
-    path_len = len(str(socket_path))
+    """Raise ValueError if *socket_path* is not under the AF_UNIX byte limit."""
+    path_len = len(os.fsencode(socket_path))
     if path_len >= _UNIX_SOCKET_PATH_LIMIT:
         raise ValueError(
-            f"Socket path too long ({path_len} >= {_UNIX_SOCKET_PATH_LIMIT}): "
+            f"Socket path too long ({path_len} bytes >= {_UNIX_SOCKET_PATH_LIMIT}): "
             f"{socket_path}"
         )
