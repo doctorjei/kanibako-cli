@@ -1034,7 +1034,7 @@ class TestCanonSkeleton:
         """
         contents = (
             templates._packaged_base_template()
-            / "handbook" / "SYS_CONTENTS.md"
+            / templates.PACKAGED_HANDBOOK / "SYS_CONTENTS.md"
         ).read_text()
         book = f"{core_defaults.CANON_GUEST_ROOT}/{core_defaults.HANDBOOK_REL}"
         skeleton_files = [

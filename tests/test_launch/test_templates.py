@@ -16,6 +16,7 @@ from kanibako.settings.paths import (
     resolve_workset_project,
 )
 from kanibako.launch.templates import (
+    PACKAGED_HANDBOOK,
     _packaged_base_template,
     _packaged_manifest_entries,
     copy_resource_tree_if_absent,
@@ -1757,7 +1758,7 @@ class TestInstallPackagedTemplates:
         assert (
             std.canon / "handbook" / "general" / "SYS_GENERAL.md"
         ).is_file()
-        assert not (std.template / "handbook").exists()
+        assert not (std.template / PACKAGED_HANDBOOK).exists()
 
     def test_system_handbook_ships_no_scope_chapter_stubs(self, std):
         """The D2 cut: the system store supplies SYS_CONTENTS.md + ``general`` ONLY.
@@ -2995,5 +2996,5 @@ class TestPackagingGlobs:
         base = _packaged_base_template()
         assert base is not None
         assert {p.name for p in base.iterdir() if p.is_dir()} == {
-            "box", "workset", "agent_default", "handbook",
+            "box", "workset", "agent_default", "system_handbook",
         }

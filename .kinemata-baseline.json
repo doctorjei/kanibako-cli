@@ -6,24 +6,10 @@
   "findings": [
     {
       "registry": "canon-layout",
-      "entry": "HANDBOOK_REL",
-      "antipattern": "handbook",
-      "path": "src/kanibako/launch/templates.py",
-      "text": "PACKAGED_HANDBOOK = \"handbook\""
-    },
-    {
-      "registry": "canon-layout",
       "entry": "PACKAGED_AGENT_DEFAULT",
       "antipattern": "agent_default",
       "path": "src/kanibako/settings/core_defaults.py",
       "text": "for key, value in (_load_doc().get(\"agent_default\") or {}).items()"
-    },
-    {
-      "registry": "canon-layout",
-      "entry": "PACKAGED_HANDBOOK",
-      "antipattern": "handbook",
-      "path": "src/kanibako/settings/core_defaults.py",
-      "text": "HANDBOOK_REL = \"handbook\""
     },
     {
       "registry": "canonical",
@@ -295,7 +281,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "archives/",
-      "path": "src/kanibako/data/global/template/handbook/general/directives/LOWER_CANON.md",
+      "path": "src/kanibako/data/global/template/system_handbook/general/directives/LOWER_CANON.md",
       "text": "| `archives/` | Completed plans & historical devnotes, documents, & information (i.e., \"the archive\" or \"archives\"); **a"
     },
     {
@@ -1208,13 +1194,6 @@
       "antipattern": "canon/charter/general/ROM_GENERAL.md",
       "path": "llm-docs/kanibako/launch/templates.py.md",
       "text": "`canon/charter/general/ROM_GENERAL.md`). Each file contributes ONE"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "canon/handbook/SYS_CONTENTS.md",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "(`canon/handbook/SYS_CONTENTS.md` at the default leaf) says exactly that. Checking the wrong one"
     },
     {
       "registry": "claims",
@@ -3145,7 +3124,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "temp/",
-      "path": "src/kanibako/data/global/template/handbook/general/directives/LOWER_CANON.md",
+      "path": "src/kanibako/data/global/template/system_handbook/general/directives/LOWER_CANON.md",
       "text": "| `temp/` | Temporary storage (volatile between sessions) | No |"
     },
     {

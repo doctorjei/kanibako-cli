@@ -4539,7 +4539,7 @@ store binds that same directory read-only, so a new box, a recreated box, and an
 could do from inside a box all see the same stale file.
 
 **To take the fix, act on the store, host-side.** Either copy the corrected file out of the
-installed package — `kanibako/data/global/template/handbook/general/scripts/behavior/check-comms.sh`
+installed package — `kanibako/data/global/template/system_handbook/general/scripts/behavior/check-comms.sh`
 inside your site-packages — over the store copy, or delete the store copy and let the installer
 re-lay it, which it will because the file is then absent:
 

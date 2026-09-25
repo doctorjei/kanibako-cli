@@ -412,9 +412,9 @@ or a `WorksetStampScope`; the allow-list is computed here via `_scope_rules`, ne
 ⚑ *store_rel* is relative to the SCOPE STORE ROOT (`copy_tree`'s *dest_root*), NOT to the copy's
 source. The two coincide for a whole-store copy, but they DIVERGE the moment a copy targets a
 subdirectory of a store — the workset stamp's `canon_only` arm copies the mould's `canon/` into the
-resolved `workset.canon`, where the source-relative path (`handbook/SYS_CONTENTS.md`) says nothing
+resolved `workset.canon`, where the source-relative path (`handbook/SYS_WORKSET.md`) says nothing
 about which top-level store entry is being written and the store-relative path
-(`canon/handbook/SYS_CONTENTS.md` at the default leaf) says exactly that. Checking the wrong one
+(`canon/handbook/SYS_WORKSET.md` at the default leaf) says exactly that. Checking the wrong one
 would either refuse a legal copy or wave through an illegal one.
 
 ### `_is_contained` / `_assert_contained`
@@ -438,7 +438,7 @@ The content ships as STATIC files inside the installed packages (mirroring how
 
 ```
 core   -> kanibako.data resource global/template/, whose FOUR subtrees
-          (box, workset, agent_default, handbook) each have their OWN
+          (box, workset, agent_default, system_handbook) each have their OWN
           destination — the root is never copied wholesale (P-S2)
 plugin -> kanibako.plugins.<agent> resource data/base/ (D4), the agent
           STORE payload
@@ -463,9 +463,14 @@ does not yet have and never clobbers their edits (J-3 item 1).
 `PACKAGED_HANDBOOK` name subtrees of the packaged template root, by their role. ⚑ The install is an
 ENUMERATED set of (packaged subtree → host dest) pairs, NEVER a whole-tree copy (P-S2): copying the
 root wholesale would leave a SECOND, never-read copy of the handbook at
-`@system.template/handbook`, which is the duplicated-shared-data defect design principle 2 forbids
-— and §2a states the same rule ("SEED DESTINATIONS ARE ENUMERATED … AND THIS HOLDS AT EVERY LEVEL")
-for every level.
+`@system.template/system_handbook`, which is the duplicated-shared-data defect design principle 2
+forbids — and §2a states the same rule ("SEED DESTINATIONS ARE ENUMERATED … AND THIS HOLDS AT EVERY
+LEVEL") for every level.
+
+⚑ Each subtree is named for the scope it is for (`agent_default` = the `agent.default` node), so the
+system scope's handbook ships as `system_handbook` and lands at `@system.canon/handbook`. It must not
+share the chapter leaf's spelling (`_CANON_CHAPTER_LEAF`): the canon-layout duplicate-value check
+reads two constants with one value as one fact.
 
 `AGENT_MOULD_DIRNAME = "agent"` is the AGENT MOULD's dir name under `@system.template` — the host
 copy every agent install stamps from (J-5). ⚑ There is deliberately NO packaged `template/agent`
@@ -784,7 +789,7 @@ pairs, each named because each has a different OWNER and therefore a different c
 | `template/box` | `@system.template/box` (STAGING) |
 | `template/workset` | `@system.template/workset` (STAGING) |
 | *(none — ships empty, D5)* | `@system.template/agent` (STAGING) |
-| `template/handbook` | `@system.canon/handbook` (USER-OWNED) |
+| `template/system_handbook` | `@system.canon/handbook` (USER-OWNED) |
 | `template/agent_default` + plugins | `@config.agents/<name>` (USER-OWNED) |
 
 ⚑⚑ `refresh=True` (the `kanibako setup` TRUE-REFRESH) reaches the STAGING rows ONLY. The user-owned
