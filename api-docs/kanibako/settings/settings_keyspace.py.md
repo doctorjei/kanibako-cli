@@ -37,6 +37,7 @@ DECLARED_META_AGENT_LEAVES: Final[frozenset[str]] = frozenset({'name', 'path', '
 DECLARED_META_AGENT_AUTH_LEAVES: Final[frozenset[str]] = frozenset({'share_support'})
 RESERVED_LEAF_NAMES: Final[frozenset[str]] = KeyStore.RESERVED_KEY_NAMES
 RETIRING_KEYS: Final[frozenset[str]] = frozenset()
+PREF_ALLOWLIST: Final[tuple[str, ...]] = ('system.agent', 'agent.*.**')
 KEYSPACE_ROOTS: Final[frozenset[str]] = frozenset(SCOPE_CONTAINMENT) | {'config', 'meta', 'pref', BINDING_DERIVATIONS_NODE}
 FINDING_VERDICTS: Final[frozenset[str]] = frozenset({Verdict.UNDECLARED, Verdict.NAMESPACE})
 RESERVED_NODE_REASON: Final[str] = f'{BINDING_DERIVATIONS_NODE!r} is the RESERVED INTERNAL NODE the spec names in so many words (§0, ABSTRACT declarations): the materialised binding an abstract declaration derives is machinery output, not a settable surface. Its interior is declaration keys and box DESTINATIONS, which are data.'
@@ -58,6 +59,8 @@ AgentLeafMap = Mapping[str, Collection[str]]
 def access_default() -> str
 def is_terminal_category_tail(tail: Sequence[str]) -> bool
 def is_terminal_category_key(key: str) -> bool
+def glob_match(pattern: str, key: str) -> bool
+def pref_allowlist_entry(target: str, *, allowlist: Sequence[str]=PREF_ALLOWLIST) -> str | None
 def leaf_name_reason(leaf: str) -> str | None
 def is_valid_agent_segment(segment: str, valid_agents: Collection[str]) -> bool
 def valid_agent_segments(valid_agents: Collection[str]) -> list[str]
@@ -72,6 +75,7 @@ def classify_store_path(segments: tuple[str, ...], *, oracle: Callable[[str], Ke
 def container_notes(nodes: Mapping[tuple[str, ...], StoreNode]) -> dict[tuple[str, ...], str]
 def walk_store_paths(node: KeyStore[Any], prefix: tuple[str, ...]=()) -> Iterator[tuple[tuple[str, ...], bool]]
 def undeclared_store_paths(store: KeyStore[Any], *, oracle: Callable[[str], KeyJudgement]) -> list[tuple[tuple[str, ...], Judgement]]
+def _is_pref_interior(segments: Sequence[str]) -> bool
 def _namespace(reason: str) -> KeyJudgement
 def _undeclared(reason: str) -> KeyJudgement
 def _leaf(leaf: str) -> KeyJudgement

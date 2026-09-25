@@ -2016,8 +2016,13 @@ def show_config(
                 print(f"  {k} = {v}", file=out)
                 has_output = True
 
-        # ``pref`` REQUESTS stored at this noun (§2h) ARE overrides at this level.
+        # ``pref`` REQUESTS stored at this noun (§2h) ARE overrides at this level —
+        # the ones that are KEYS.  ⚑ SUBTRACTED like the nested block above: a request
+        # off the §2h allowlist (``pref.box.image``) is no member of the family (spec
+        # §0), so it is listed once, as undeclared, below.
         for k, v in sorted(_pref_overrides(config_path).items()):
+            if k in undeclared:
+                continue
             print(f"  {k} = {v}", file=out)
             has_output = True
 

@@ -3089,7 +3089,12 @@ not_keys:
 ## PLUGIN-declared … never hardcoded in core".
 ## ---------------------------------------------------------------------------
 plugin_contributed:
-  namespace: "agent.<agent>.*  and  meta.agent.<agent>.*"
+  # ⚑ ONE NAMESPACE (spec §2d: "the harness plugin can define new keys under its
+  # keyspace, agent.<agent>.*, unique among scopes"). Plugins add NO keys under
+  # meta.agent.<agent>: meta.agent.<agent>.{mode, exec, auth.share_support} are
+  # PLUGIN-SET VALUES of spec-declared rows (each carries `origin: plugin` in
+  # `keys:`), and no plugin extends that tier's key set.
+  namespace: "agent.<agent>.*"
   source: PluginDescriptor
   validated_against: policy
 

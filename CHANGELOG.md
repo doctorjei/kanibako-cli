@@ -121,6 +121,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MIGRATION.md` § *2.47 An undeclared key in a settings file now stops the command, and the cure
   is a hand-edit*.
 
+- **`box get` and `workset get` no longer read back a `pref.*` request that is not a key.** A pref
+  may target only `system.agent` or `agent.<agent>.<key>` (spec §2h), and the closed keyspace
+  holds only those requests, but the key check accepted `pref.<key>` for any key: a hand-written
+  `pref: {box: {image: …}}` read back through `box get pref.box.image` as if it were set, and
+  `box show` listed it as a request. `get` now refuses the name, and `show` lists the entry once,
+  among the undeclared entries it tells you to remove by hand. Launches are unchanged: they
+  already refused such a request by name. Nothing to migrate.
+
 - **A bare relative path typed by hand into a settings file is now refused for every path key,
   not only some.** The v1.8.0-rc2 entry *"A path setting written as a bare relative path is now
   refused instead of being anchored somewhere"* promised this, but when kanibako read a settings

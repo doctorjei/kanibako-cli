@@ -521,7 +521,7 @@ def _narrow_box_scalar_cascade(
     ``test_the_narrow_cascade_agrees_with_the_merged_loader`` pins the two answers equal so
     they cannot drift apart.
 
-    ⚑ NO PREF RUNGS, and that is MEASURED, not an omission: ``settings_prefs.ALLOWLIST`` is
+    ⚑ NO PREF RUNGS, and that is MEASURED, not an omission: ``settings_keyspace.PREF_ALLOWLIST`` is
     ``("system.agent", "agent.*.**")``, so no §2h request can name a ``box.*`` key at all.
     Splicing the overlays in would move no answer and would import ``apply_prefs``' raise —
     a resolve that refuses an unrelated bad pref, from inside PATH resolution.

@@ -10,9 +10,13 @@ the difference is a named predicate, asserted in both directions, never a skip:
   recognized in order to be refused with its cure -- and the product refuses
   it as a key. ``not_keys.code_residue`` is the opposite case: code-only names
   never spec-sanctioned, which both refuse, so a live use is a stray;
-* a leaf under an agent node whose vocabulary is plugin-declared is CONCEDED
-  (spec §0, *Universal vs agent-specific*) -- and the product, judging it
-  against core's table alone, refuses it.
+* a leaf under a PLUGIN agent's node, whose vocabulary is plugin-declared, is
+  CONCEDED (spec §0, *Universal vs agent-specific*) -- and the product, judging
+  it against core's table alone, refuses it. A CORE-OWNED node (``default``, the
+  ``shell`` pseudo-agent) is judged by both, and so is the node itself.
+
+Every key is also tried as a ``pref.<key>`` request: both sides hold the family
+to the §2h allowlist (spec §0), so ``pref.box.image`` is refused by both.
 
 kinemata is not imported here: the adapter must construct without it.
 """
@@ -24,9 +28,10 @@ from typing import Any
 
 import pytest
 
+from kanibako.agent_ref import GENERAL_SLOT, PSEUDO_AGENT_NAMES, parse_agent_address
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.kinemata_keyspace import KeyspaceRegistry
-from kanibako.settings.settings_keyspace import KeyClass, key_class
+from kanibako.settings.settings_keyspace import KeyClass, glob_match, key_class
 
 _DOC = manifest_doc()
 _KEYS: dict[str, Any] = _DOC["keys"]
@@ -47,8 +52,17 @@ def _tier_rule() -> tuple[str, str, str]:
 
 
 _TIER_HEAD, _TIER_NODE, _TIER_PREFIX = _tier_rule()
+#: The nodes a concrete ``keys:`` row names: core's own, since the core registry
+#: never enumerates a plugin's values.
+_CORE_NODES = frozenset(
+  k.split(".")[1] for k in _KEYS if k.startswith(_TIER_HEAD + ".") and "<" not in k.split(".")[1]
+)
 _VALID_AGENTS = (_PLUGIN_AGENT, _TIER_NODE)
-_AGENT_NODES = (_PLUGIN_AGENT, _TIER_NODE)
+_AGENT_NODES = (_PLUGIN_AGENT, *sorted(_CORE_NODES))
+#: A node no tree registers and core does not own: the plugin agent, two letters swapped.
+_TYPO_NODE = "cluade"
+#: The §2h allowlist, read from the manifest's own ``pref`` section.
+_ALLOWLIST = tuple(_DOC["pref"]["allowlist"])
 
 _FAMILIES = [f for f, block in _CATEGORIES.items() if isinstance(block, dict)]
 _VAR_FAMILIES = {f for f in _FAMILIES if "VAR" in map(str, _CATEGORIES[f].get("parametric", ()))}
@@ -71,10 +85,10 @@ def _scopes() -> list[str]:
   return out
 
 
-def _instantiate(template: str) -> list[str]:
+def _instantiate(template: str, nodes: tuple[str, ...] = _AGENT_NODES) -> list[str]:
   """Every sample spelling of one parametric ``keys:`` row."""
   samples = {
-    "<agent>": _AGENT_NODES,
+    "<agent>": nodes,
     "<key>": _TIER_LEAVES + _CATEGORY_TAILS,
     "<VAR>": (_SAMPLE_VAR,),
   }
@@ -97,14 +111,57 @@ def _declared_keys() -> list[str]:
 _CORPUS = _declared_keys()
 
 
+def _allowlisted(target: str) -> bool:
+  return any(glob_match(entry, target) for entry in _ALLOWLIST)
+
+
+#: Every corpus key a pref may name, requested: the declared ``pref`` members.
+_PREF_CORPUS = sorted("pref." + k for k in _CORPUS if _allowlisted(k))
+#: Every corpus key a pref may NOT name, requested: declared targets, not members.
+_PREF_REFUSED = sorted("pref." + k for k in _CORPUS if not _allowlisted(k))
+
+
+#: The manifest's spelling of the ACTIVE-agent placeholder (``agent.active`` in
+#: ``categories.scopes``, the spec's ``agent.<active>``), read as a literal node. It is
+#: no agent, so a key spelled through it is refused -- the reading the adapter once got
+#: wrong by taking the scope token as a real segment.
+_PLACEHOLDER_NODES = tuple(
+  node for scope in _CATEGORIES["scopes"]
+  for head, _, node in [scope.partition(".")]
+  if head == _TIER_HEAD and node and node not in _CORE_NODES
+)
+
+
+def _node_typos() -> list[str]:
+  """Every ``<agent>`` row, and every agent scope-by-category key, at a node that is no
+  agent: a typo'd plugin name, and the placeholder token spelled literally."""
+  out: set[str] = set()
+  for node in (_TYPO_NODE, *_PLACEHOLDER_NODES):
+    for key in _KEYS:
+      if "<agent>" in key:
+        out.update(_instantiate(key, (node,)))
+    out.update(f"{_TIER_HEAD}.{node}.{tail}" for tail in _CATEGORY_TAILS)
+  return sorted(out)
+
+
+def _undiscriminated() -> list[str]:
+  """Every category tail directly under the agent head, with NO node: ``agent.env.FOO``,
+  ``agent.caches`` -- and, one segment deeper, the relic ``agent.common.plugins``
+  spelling. The agent tier is discriminated (spec §2d), so none is a key."""
+  return sorted(
+    f"{_TIER_HEAD}.{tail}{extra}" for tail in _CATEGORY_TAILS for extra in ("", ".plugins")
+  )
+
+
 def _mutations() -> list[str]:
-  """Every corpus key with its leaf typo'd, and with a segment appended.
+  """Every corpus key -- and every pref member -- with its leaf typo'd, and with a
+  segment appended.
 
   A typo'd VAR under a VAR family is another VAR, so those keys take only the
   append.
   """
   out: set[str] = set()
-  for key in _CORPUS:
+  for key in [*_CORPUS, *_PREF_CORPUS]:
     head, _, leaf = key.rpartition(".")
     if head.rpartition(".")[2] not in _VAR_FAMILIES:
       out.add(head + "." + leaf + "_typo")
@@ -125,18 +182,19 @@ _CODE_RESIDUE = _not_key_members("code_residue")
 def _conceded(identifier: str) -> bool:
   """A one-segment leaf under a node whose vocabulary a plugin declares.
 
-  The plugin namespace arms (``plugin_contributed.namespace``) name the nodes, and
+  The plugin namespace arm (``plugin_contributed.namespace``) names the node, and
   the ``<key>`` mirror row with no ``<agent>`` names a node that is a runtime fact.
-  The agent tier's own default node is not conceded: core owns it (spec §0).
-  ⚑ This reaches the ``shell`` pseudo-agent too. The product judges shell against
-  core's table, but the manifest carries no pseudo-agent set to derive that from.
+  A CORE-OWNED node is not conceded: core owns it (spec §0). A ``pref`` request is
+  conceded when its target is and the allowlist admits it.
   """
+  head_, _, target = identifier.partition(".")
+  if head_ == "pref":
+    return _allowlisted(target) and _conceded(target)
   segs = identifier.split(".")
-  for arm in _DOC["plugin_contributed"]["namespace"].split(" and "):
-    head = arm.strip().split(".<")[0].split(".")
-    if len(segs) == len(head) + 2 and segs[: len(head)] == head:
-      if (head, segs[len(head)]) != ([_TIER_HEAD], _TIER_NODE):
-        return True
+  head = _DOC["plugin_contributed"]["namespace"].split(".<")[0].split(".")
+  if len(segs) == len(head) + 2 and segs[: len(head)] == head:
+    if not (head == [_TIER_HEAD] and segs[len(head)] in _CORE_NODES):
+      return True
   for key in _KEYS:
     if key.endswith(".<key>") and "<agent>" not in key:
       mirror = key[: -len("<key>")]
@@ -168,6 +226,17 @@ class TestTheCorpusIsDerived:
     assert _RENAMED
     assert _CODE_RESIDUE
 
+  def test_the_pref_corpus_is_populated_both_ways(self) -> None:
+    assert _PREF_CORPUS
+    assert _PREF_REFUSED
+    assert _node_typos()
+    assert _PLACEHOLDER_NODES
+    assert f"{_TIER_HEAD}.common.plugins" in _undiscriminated()
+
+  def test_the_core_owned_nodes_are_the_pseudo_agents(self) -> None:
+    """The nodes the manifest spells concretely are the ones ``agent_ref`` reserves."""
+    assert _CORE_NODES == PSEUDO_AGENT_NAMES
+
 
 class TestDeclaredAgreesWithTheProduct:
   """``declared()`` against :func:`key_class` over the manifest-derived corpus."""
@@ -194,6 +263,38 @@ class TestDeclaredAgreesWithTheProduct:
     assert not _product_accepts(identifier)
     assert registry.declared(identifier)
 
+  @pytest.mark.parametrize("key", _PREF_CORPUS)
+  def test_every_allowlisted_request_is_declared_by_both(
+    self, registry: KeyspaceRegistry, key: str
+  ) -> None:
+    assert _product_accepts(key), key_class(key, valid_agents=_VALID_AGENTS).reason
+    assert registry.declared(key)
+    assert registry.resolve(key) != ()
+
+  @pytest.mark.parametrize("identifier", _PREF_REFUSED)
+  def test_a_request_outside_the_allowlist_is_refused_by_both(
+    self, registry: KeyspaceRegistry, identifier: str
+  ) -> None:
+    assert not _product_accepts(identifier)
+    assert not registry.declared(identifier)
+    assert registry.resolve(identifier) == ()
+
+  @pytest.mark.parametrize("identifier", _node_typos())
+  def test_an_unknown_agent_node_is_refused_by_both(
+    self, registry: KeyspaceRegistry, identifier: str
+  ) -> None:
+    assert not _product_accepts(identifier)
+    assert not registry.declared(identifier)
+    assert not registry.declared("pref." + identifier)
+
+  @pytest.mark.parametrize("identifier", _undiscriminated())
+  def test_a_category_with_no_agent_node_is_refused_by_both(
+    self, registry: KeyspaceRegistry, identifier: str
+  ) -> None:
+    assert not _product_accepts(identifier)
+    assert not registry.declared(identifier)
+    assert registry.resolve(identifier) == ()
+
   @pytest.mark.parametrize("identifier", _RENAMED)
   def test_a_renamed_spelling_is_declared_and_still_not_a_key(
     self, registry: KeyspaceRegistry, identifier: str
@@ -216,13 +317,25 @@ class TestDeclaredAgreesWithTheProduct:
 
 
 class TestTheDefaultTierIsJudged:
-  """The tier core owns is never conceded; a two-segment family is a tail."""
+  """The tiers core owns are never conceded; a two-segment family is a tail."""
 
-  def test_an_undeclared_default_leaf_is_refused(self, registry: KeyspaceRegistry) -> None:
-    identifier = _TIER_PREFIX + "bogus"
+  @pytest.mark.parametrize("node", sorted(_CORE_NODES))
+  def test_an_undeclared_core_owned_leaf_is_refused(
+    self, registry: KeyspaceRegistry, node: str
+  ) -> None:
+    identifier = f"{_TIER_HEAD}.{node}.bogus"
     assert not _product_accepts(identifier)
     assert not registry.declared(identifier)
     assert registry.resolve(identifier) == ()
+
+  def test_the_addressable_shell_is_a_core_owned_node(self, registry: KeyspaceRegistry) -> None:
+    """``agent_ref.parse_agent_address`` lets a ref select the shell pseudo-agent;
+    the gate judges that node's leaves rather than conceding them."""
+    node, _harness = parse_agent_address(GENERAL_SLOT)
+    assert node in _CORE_NODES
+    own = sorted(k for k in _KEYS if k.startswith(f"{_TIER_HEAD}.{node}."))
+    assert own and all(registry.declared(k) for k in own)
+    assert not registry.declared(f"{_TIER_HEAD}.{node}.bogus")
 
   @pytest.mark.parametrize("family", [f for f in _FAMILIES if "." in f])
   def test_a_two_segment_family_is_declared_under_a_plugin_agent(

@@ -720,7 +720,7 @@ value, the category set path is source-only by contract, and `reset` REMOVES thi
 override — the opposite operation, since it re-exposes the inherited entry. The one CLI
 suppression channel, `set --null pref.<key>`, does not reach here either: a pref may be WRITTEN
 only at workset/box (`settings_prefs.PREF_LEGAL_LEVELS`, enforced by `refuse_pref_table`) and
-may TARGET only `system.agent` or `agent.*.**` (`settings_prefs.ALLOWLIST`), while the occupant
+may TARGET only `system.agent` or `agent.*.**` (`settings_keyspace.PREF_ALLOWLIST`), while the occupant
 named here can be any category key of any scope. So the remedy is a hand edit of the settings
 file that owns the key, and the message says so rather than naming a command that would not
 work. It also names the SCOPE, because a box file may not suppress a containing scope's key by

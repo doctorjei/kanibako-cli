@@ -14,8 +14,8 @@ import yaml
 
 from kanibako.settings.kb_store import Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
+from kanibako.settings.settings_keyspace import PREF_ALLOWLIST, glob_match
 from kanibako.settings.settings_prefs import (
-    ALLOWLIST,
     LOCATOR_CLOSURE,
     AgentNames,
     PrefRequest,
@@ -23,7 +23,6 @@ from kanibako.settings.settings_prefs import (
     apply_prefs,
     collect_prefs,
     forbidden_tier_reason,
-    glob_match,
     key_reason,
     pref_overlay,
     pref_request_for,
@@ -535,6 +534,12 @@ def test_a_pref_over_masks_is_ONE_request_too(tmp_path):
     assert dict.get(p.value, "/home/agent/x") is None
 
 
+@pytest.mark.writes_undeclared(
+    "pref.box", "pref.box.bindings", "pref.box.bindings.rw",
+    reason="the request under test is NOT a pref member (box.bindings.rw is off the "
+           "§2h allowlist, so spec §0 makes pref.box.* undeclared); the file partial "
+           "must carry it for the three filters to refuse it by name.",
+)
 def test_the_terminal_stop_makes_the_request_VALIDATE_instead_of_crashing(tmp_path):
     """The point of the fix, end to end: a pref over a bindings arm now reaches
     the THREE FILTERS and gets a real verdict.
@@ -648,7 +653,7 @@ def test_pref_value_last_wins():
 
 
 def test_allowlist_constant_is_the_specced_pair():
-    assert ALLOWLIST == ("system.agent", "agent.*.**")
+    assert PREF_ALLOWLIST == ("system.agent", "agent.*.**")
 
 
 # ---------------------------------------------------------------------------

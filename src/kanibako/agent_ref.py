@@ -44,6 +44,14 @@ _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear 
 # ⚑ WIDENING THIS SET obliges a matching entry in ``kinemata.toml``'s ``reserved-agent-names``.
 PSEUDO_AGENT_NAMES = frozenset({"default", "shell"})
 
+# The ENTRY-POINT GROUP a plugin registers its agent under — the one door a plugin's
+# NAME comes through, so it sits beside the reservation that name must pass.  Read by
+# ``targets.discover_targets`` (discovery) and by the dev-tooling keyspace adapter and
+# ``kinemata.toml``'s ``reserved-agent-names`` parity (the tree's own declarations).
+# ⚑ It names a REGISTRY OF AGENT ADAPTERS, not the ``settings.agent_config`` module;
+# a distribution's ``pyproject.toml`` spells the same string, as packaging requires.
+AGENT_ENTRY_POINT_GROUP = "kanibako.agents"
+
 # The AGENT-SLOT name a launch wears when NO true agent is involved — a
 # plain-shell box, & the agent-less resolves that stand in for one
 # (``kanibako init``'s agent file, the workset previews, the effective-settings

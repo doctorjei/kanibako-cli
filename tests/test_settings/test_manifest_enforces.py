@@ -51,7 +51,11 @@ from kanibako.errors import TemplateScopeError
 from kanibako.launch.templates import SCOPE_WHITELISTS, _check_whitelist
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.settings_categories import _DELIVERY
-from kanibako.settings.settings_keyspace import TERMINAL_CATEGORY_TAILS, key_validity
+from kanibako.settings.settings_keyspace import (
+    TERMINAL_CATEGORY_TAILS,
+    glob_match,
+    key_validity,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -497,14 +501,33 @@ def _cascade_prefixes() -> list[str]:
     return [s for token in scopes for s in _SCOPE_TOKEN_SPELLINGS[token]]
 
 
+def _pref_admits(prefix: str) -> bool:
+    """Whether the manifest's ``pref.allowlist`` admits a family under *prefix*.
+
+    ⚑ The ``pref.`` recursion reaches only ALLOWLISTED targets: spec §0 declares the
+    family as *"``pref.<target-key>`` for the allowlisted targets in §2h"*. Probed with a
+    token that is no family, so only the PREFIX decides.
+    """
+    probe = f"{prefix}.{_NOT_A_FAMILY}"
+    return any(glob_match(entry, probe) for entry in manifest_doc()["pref"]["allowlist"])
+
+
 def _surface_prefixes() -> list[str]:
     """Every prefix that may carry a category, per the composed rules.
 
-    ⚑ 16 = (5 tokens, ``agent.active`` expanding to 3 ⇒ 7 cascade prefixes) + the 1
-    mirror prefix, the whole DOUBLED by the ``pref.`` recursion.
+    ⚑ 12 = (5 tokens, ``agent.active`` expanding to 3 ⇒ 7 cascade prefixes) + the 1
+    mirror prefix, plus the ``pref.`` recursion over the 4 of them the allowlist
+    admits (``agent.default`` and the 3 ``agent.<a>``).
     """
     base = [*_cascade_prefixes(), _MIRROR_PREFIX]
-    return [*base, *(f"pref.{p}" for p in base)]
+    return [*base, *(f"pref.{p}" for p in base if _pref_admits(p))]
+
+
+def _refused_pref_prefixes() -> list[str]:
+    """The complement: the ``pref.`` spellings of the prefixes the allowlist refuses."""
+    return [
+        f"pref.{p}" for p in [*_cascade_prefixes(), _MIRROR_PREFIX] if not _pref_admits(p)
+    ]
 
 
 def _parametric_segments(family: str) -> list[str]:
@@ -792,15 +815,13 @@ class TestTheCompositionRulesAreClassified:
     def test_the_pref_recursion_is_declared_by_the_manifest(self):
         """The fourth rule, whose carrier is ``pref.filters`` rather than a bullet.
 
-        ⚑ ``valid_key`` is what makes ``pref.<target>`` a key whenever ``<target>`` is —
+        ⚑ ``valid_key`` is what makes ``pref.<target>`` a key when ``<target>`` is —
         the manifest spells it *"target matches a declared key or a declared PARAMETRIC
-        FAMILY"* — and it is why the surface below doubles.  🛑 VALIDITY IS NOT
-        REQUESTABILITY: the same block's ``allowlist`` and ``forbidden_tiers`` filters
-        answer whether a pref may actually be REQUESTED, and ``key_validity``'s own
-        docstring draws that line (*"Whether it may be REQUESTED is a separate question
-        the allowlist + forbidden tiers answer — this is only 'is it a key'"*).  Nothing
-        here claims ``pref.meta.box.agent.caches`` is requestable; the CATEGORICAL
-        forbidden tier says it is not.
+        FAMILY"* — and the same block's ``allowlist`` BOUNDS it: spec §0 declares the
+        family as *"``pref.<target-key>`` for the allowlisted targets in §2h"*, so the
+        surface below grows only by the prefixes the allowlist admits
+        (:func:`_pref_admits`).  🛑 The ``forbidden_tiers`` filter stays a REQUEST
+        question — it depends on the requesting level, not on the name.
         """
         assert "valid_key" in manifest_doc()["pref"]["filters"]
 
@@ -820,14 +841,27 @@ class TestTheComposedSurfaceIsAccepted:
     def test_the_surface_is_the_measured_size(self):
         """Anti-vacuity, and the case a DROPPED COMPOSITION ARM reds.
 
-        16 prefixes × 9 families.  ⚑ P13 says pin the rule, not the inventory — the
+        12 prefixes × 9 families.  ⚑ P13 says pin the rule, not the inventory — the
         pairs themselves are DERIVED, and this pins only that the derivation still
         produces a surface of the measured size.  An arm quietly removed from
         :func:`_surface_prefixes` leaves every remaining pair passing; this is what
         notices.
         """
-        assert len(_surface_prefixes()) == 16
-        assert len(_surface_pairs()) == 144
+        assert len(_surface_prefixes()) == 12
+        assert len(_surface_pairs()) == 108
+
+    @pytest.mark.parametrize(("prefix", "family"), [
+        (p, f) for p in _refused_pref_prefixes() for f in _families()
+    ])
+    def test_a_pref_off_the_allowlist_is_refused(self, prefix, family):
+        """The recursion's other edge: a family under a prefix the allowlist does not
+        admit is no ``pref`` member, though the same family unprefixed is a key."""
+        key = _spell(prefix, family)
+        assert key_validity(key, valid_agents=PROBE_AGENTS) is not None, key
+
+    def test_the_refused_pref_prefixes_are_the_measured_size(self):
+        """Anti-vacuity for the case above: ``system``, ``workset``, ``box`` and the mirror."""
+        assert len(_refused_pref_prefixes()) == 4
 
 
 class TestTheSurfaceBoundary:

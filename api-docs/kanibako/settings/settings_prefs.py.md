@@ -10,7 +10,6 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/settings_prefs.py.m
 ```
 PREF_ROOT: Final[str] = 'pref'
 PREF_LEGAL_LEVELS: Final[tuple[str, ...]] = ('workset', 'box')
-ALLOWLIST: Final[tuple[str, ...]] = ('system.agent', 'agent.*.**')
 LOCATOR_CLOSURE: Final[frozenset[str]] = frozenset({'workset.boxes', 'workset.kuid'})
 _log = logging.getLogger(__name__)
 _LEVEL_ORDER: Final[dict[str, int]] = {'config': 0, 'meta': 1, 'base': 2, 'system': 3, 'agent': 4, 'workset': 5, 'box': 6}
@@ -19,16 +18,15 @@ _DISCOVERY: 'dict[str, AgentNames]' = {}
 
 ## Functions
 ```
-def glob_match(pattern: str, key: str) -> bool
 def prefs_from_partial(partial: KeyStore, *, level: str, path: Path | None=None) -> list[PrefRequest]
 def collect_prefs(workset_path: Path | None, box_path: Path | None) -> list[PrefRequest]
 def refuse_pref_table(raw: Any, *, level: str, path: Path | None) -> Any
 def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None
-def allowlist_reason(target: str, *, valid_agents: Collection[str], allowlist: Sequence[str]=ALLOWLIST) -> str | None
+def allowlist_reason(target: str, *, valid_agents: Collection[str], allowlist: Sequence[str]=PREF_ALLOWLIST) -> str | None
 def forbidden_tier_reason(target: str, *, level: str) -> str | None
-def validate_pref(req: PrefRequest, *, valid_agents: Collection[str], allowlist: Sequence[str]=ALLOWLIST) -> str | None
+def validate_pref(req: PrefRequest, *, valid_agents: Collection[str], allowlist: Sequence[str]=PREF_ALLOWLIST) -> str | None
 def pref_overlay(requests: Iterable[PrefRequest]) -> KeyStore
-def apply_prefs(requests: Sequence[PrefRequest], *, valid_agents: 'Collection[str] | None'=None, allowlist: Sequence[str]=ALLOWLIST) -> tuple[KeyStore, KeyStore]
+def apply_prefs(requests: Sequence[PrefRequest], *, valid_agents: 'Collection[str] | None'=None, allowlist: Sequence[str]=PREF_ALLOWLIST) -> tuple[KeyStore, KeyStore]
 def reset_discovery_cache() -> None
 def default_valid_agents() -> AgentNames
 def pref_value(requests: Sequence[PrefRequest], target: str) -> StoreValue | None
