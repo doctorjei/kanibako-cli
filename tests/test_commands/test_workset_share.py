@@ -445,3 +445,157 @@ class TestShareList:
         rc = run_share_list(_list_args(effective=True))
         assert rc == 0
         assert "/abs/docs -> /srv/docs  [ro]" in capsys.readouterr().out
+
+
+def _run_show_effective(workset="myws"):
+    from kanibako.commands.workset_cmd import run_show
+
+    return run_show(argparse.Namespace(workset=workset, effective=True))
+
+
+def _run_share_list_effective(workset="myws"):
+    return run_share_list(_list_args(workset=workset, effective=True))
+
+
+#: Both listings that preview a working set through ``_workset_preview_entries``.
+_EFFECTIVE_LISTINGS = pytest.mark.parametrize(
+    "run_listing",
+    [_run_share_list_effective, _run_show_effective],
+    ids=["share-list--effective", "show--effective"],
+)
+
+
+#: A working set WITH a share and one WITHOUT. ⚑ The no-share arm is the one that
+#: matters: ``share list`` answers an empty working set early, and an early answer
+#: taken BEFORE the preview skipped every refusal below at rc 0.
+_WITH_AND_WITHOUT_A_SHARE = pytest.mark.parametrize(
+    "with_share", [True, False], ids=["with-a-share", "no-shares"],
+)
+
+
+class TestEffectiveListingsReadTimeRefusals:
+    """Both ``--effective`` listings run the LAUNCH's read-time refusals
+    (``settings_launch.refuse_read_time_faults``), so a working set a launch refuses
+    cannot preview cleanly at rc 0 — whether or not it declares a share.
+
+    ⚑ MUTATION: drop the ``refuse_read_time_faults`` call in
+    ``_workset_preview_entries`` → every case here goes rc 0. Move
+    ``run_share_list``'s ``--effective`` branch back below its empty-shares return →
+    the ``share-list--effective-no-shares`` cases go rc 0.
+    """
+
+    def _hand_edit(self, workset, extra: dict, *, with_share: bool = True) -> None:
+        from kanibako.settings.config_io import dump_doc
+
+        share = (
+            {"bindings": {"rw": {"/home/agent/data": ["/abs/host"]}}}
+            if with_share else {}
+        )
+        dump_doc(workset.root / "workset.yaml", {"workset": {**share, **extra}})
+
+    @_EFFECTIVE_LISTINGS
+    @_WITH_AND_WITHOUT_A_SHARE
+    def test_bare_relative_path_value_is_refused_naming_both_readings(
+        self, config_file, tmp_home, workset, capsys, run_listing, with_share
+    ):
+        """[R147] at read time: a bare relative stored path is refused, naming the key,
+        the file that carries it and BOTH directories it could mean."""
+        from pathlib import Path
+
+        self._hand_edit(workset, {"auth": {"path": "foo"}}, with_share=with_share)
+        assert run_listing() == 1
+        err = capsys.readouterr().err
+        assert "workset.auth.path" in err and "'foo'" in err
+        assert str(workset.root / "workset.yaml") in err
+        assert str(workset.root / "foo") in err
+        assert str(Path.cwd() / "foo") in err
+
+    @_EFFECTIVE_LISTINGS
+    @_WITH_AND_WITHOUT_A_SHARE
+    @pytest.mark.writes_undeclared(
+        "workset.zzz_not_a_key",
+        reason="the undeclared entry IS the input under test: the preview must "
+               "refuse it by name, as the launch does.",
+    )
+    def test_undeclared_entry_is_refused_by_name_for_the_working_set(
+        self, config_file, tmp_home, workset, capsys, run_listing, with_share
+    ):
+        """Spec §0: resolving an undeclared key is an ERROR that NAMES it — and the
+        message speaks of the WORKING SET, whose own verbs it cites."""
+        self._hand_edit(workset, {"zzz_not_a_key": 1}, with_share=with_share)
+        assert run_listing() == 1
+        err = capsys.readouterr().err
+        assert "workset.zzz_not_a_key" in err
+        assert str(workset.root / "workset.yaml") in err
+        assert "resolved for this working set" in err
+        assert "kanibako workset show --effective" in err
+        assert "this box" not in err and "kanibako box" not in err
+
+    @pytest.mark.writes_undeclared(
+        "workset.zzz_not_a_key",
+        reason="the undeclared entry IS the input under test: the preview must "
+               "refuse it by name, as the launch does.",
+    )
+    def test_a_site_base_file_the_preview_never_reads_is_neither_named_nor_scanned(
+        self, config_file, tmp_home, workset, capsys, monkeypatch
+    ):
+        """The preview folds no base file (its ``base_path`` is absent), so the §0
+        refusal names only the file it read. A retired spelling sitting in the site
+        base file must not speak in place of the working set's own entry.
+
+        ⚑ ``share list --effective`` ONLY, and deliberately: its whole resolve is the
+        preview. ``workset show --effective`` ALSO renders its display half through
+        ``load_merged_config`` — the launch resolve, which DOES read the base file —
+        so there the retirement refusal is the right answer, from a different resolve.
+
+        ⚑ MUTATION: let ``settings_launch._loaded_tiers`` append the base tier again
+        → the retirement message replaces this one and the base path is named.
+        """
+        from kanibako.settings import settings_assemble as _assemble
+        from kanibako.settings import settings_launch as _launch
+
+        base = tmp_home / "site-base.yaml"
+        base.write_text("box:\n  agent_name: claude\n", encoding="utf-8")
+        monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
+        monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+        self._hand_edit(workset, {"zzz_not_a_key": 1})
+        assert _run_share_list_effective() == 1
+        err = capsys.readouterr().err
+        assert "workset.zzz_not_a_key" in err
+        assert str(base) not in err and "RETIRED" not in err
+
+
+class TestEffectiveListingsWithNoShares:
+    """A working set with NO share still gets the preview, and a sane EMPTY answer.
+
+    ``share list --effective`` lists SHARES (``bindings.ro`` / ``bindings.rw``); the
+    binding an abstract declaration derives is ``workset show --effective``'s to print.
+    """
+
+    def test_an_empty_working_set_lists_no_bindings_at_rc_0(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        assert _run_share_list_effective() == 0
+        out = capsys.readouterr().out
+        assert out == "No bindings configured for working set 'myws'.\n"
+
+    def test_derivations_only_lists_no_shares_and_show_still_derives(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """A ``common`` declaration and no share: the share listing is empty, and
+        ``workset show --effective`` still prints the binding the declaration derives
+        — nothing in ``share list``'s empty answer hides it."""
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(
+            workset.root / "workset.yaml",
+            {"workset": {"common": {"~/shared/docs": ["teamdocs"]}}},
+        )
+        assert _run_share_list_effective() == 0
+        assert capsys.readouterr().out == (
+            "No bindings configured for working set 'myws'.\n"
+        )
+        assert _run_show_effective() == 0
+        out = capsys.readouterr().out
+        assert "Derived bindings for working set 'myws':" in out
+        assert "workset.common./home/agent/shared/docs" in out

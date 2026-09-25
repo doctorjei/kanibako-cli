@@ -5121,6 +5121,10 @@ def test_the_refusal_points_at_the_files_it_loaded_not_at_a_cli_verb(tmp_path):
     told to reach for either has no working move. The message names the settings
     files this resolve loaded instead. WHICH of them carried the entry is not
     knowable here: the snapshot is the merge of all of them.
+
+    ⚑ THE DISCLAIMER NAMES THE PER-KEY FORM: ``box reset --all --force`` DOES remove
+    ``box.zippity`` (it drops the whole ``box`` table — measured), so a bare
+    "'kanibako box reset' cannot remove" would be a false claim to the user.
     """
     box_path = _box_yaml(tmp_path, "box:\n  zippity: wibble\n")
     with pytest.raises(_SettingsError) as e:
@@ -5130,7 +5134,7 @@ def test_the_refusal_points_at_the_files_it_loaded_not_at_a_cli_verb(tmp_path):
     assert str(box_path) in msg
     # It says what the two obvious CLI moves will do, rather than leaving the user
     # to discover that both refuse.
-    assert "kanibako box reset" in msg
+    assert "'kanibako box reset <key>' cannot remove what is not a key" in msg
     assert "kanibako box show --effective" in msg
 
 
@@ -5593,9 +5597,9 @@ def test_the_base_tier_is_scanned_too(tmp_path, monkeypatch):
     ``agent_select`` has always scanned ``/etc/kanibako/settings_base.yaml`` for
     exactly that reason. Arming the resolve put THIS seam first, so leaving base out
     would have given the most widely-felt fault strictly LESS help than it got
-    before. The path is not threaded in — this seam reads the same
-    ``settings_base_path()`` default ``assemble_levels`` resolves internally, and
-    both bindings are patched here because both do the reading.
+    before. ``build_launch_snapshot`` reads ``settings_base_path()`` once and hands
+    the path to both ``assemble_levels`` and the refusal's tier list; both bindings
+    are patched here so the test does not depend on which module does the reading.
     """
     from kanibako.settings import settings_assemble as _assemble
     from kanibako.settings import settings_launch as _launch

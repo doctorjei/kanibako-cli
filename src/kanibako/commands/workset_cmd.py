@@ -1036,12 +1036,16 @@ def run_share_list(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    if not raw_shares:
-        print(f"No bindings configured for working set '{ws.name}'.")
-        return 0
-
+    # ⚑ ``--effective`` BRANCHES BEFORE THE EMPTY-SHARES RETURN, never after it. The
+    # preview runs the launch's refusals, and a working set with NO shares can still
+    # carry a value every box in it refuses (``workset: {frob: 1}``); returning "No
+    # bindings" first answered rc 0 for it.
     if getattr(args, "effective", False):
         return _print_effective_shares(ws, std, ws_config)
+
+    if not raw_shares:
+        _print_no_shares(ws)
+        return 0
 
     # Raw view: DEST, MODE, SOURCE (pre-resolution, from the workset file).
     rows: list[tuple[str, str, str]] = [
@@ -1055,6 +1059,11 @@ def run_share_list(args: argparse.Namespace) -> int:
     for dest, mode, source in rows:
         print(f"  {dest:<36} {mode:<4}  {source}")
     return 0
+
+
+def _print_no_shares(ws) -> None:
+    """The EMPTY answer both views of ``workset share list`` give — ONE line, one carrier."""
+    print(f"No bindings configured for working set '{ws.name}'.")
 
 
 def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
@@ -1139,14 +1148,20 @@ def _workset_preview_entries(ws, std, ws_config: Path) -> "list[CategoryEntry]":
     file would be two answers about it.
 
     Raises :class:`~kanibako.settings.settings_resolve.SettingsError` for a malformed
-    file; the ARBITRATION and its refusals are :func:`_workset_preview_collapse`'s.
+    file, and for any stored value the launch's read-time refusals reject ([R147]
+    bare-relative paths, §0 undeclared entries); the ARBITRATION and its refusals are
+    :func:`_workset_preview_collapse`'s.
     """
     from kanibako.agent_ref import GENERAL_SLOT
     from kanibako.settings.paths import (host_config_map, host_xdg_map,
                                          system_path_floor)
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_expand import expand
-    from kanibako.settings.settings_launch import snapshot_category_entries
+    from kanibako.settings.settings_launch import (
+        ResolveSubject,
+        refuse_read_time_faults,
+        snapshot_category_entries,
+    )
     from kanibako.settings.settings_merge import merge
     from kanibako.settings.settings_resolve import ResolveCtx
 
@@ -1206,6 +1221,17 @@ def _workset_preview_entries(ws, std, ws_config: Path) -> "list[CategoryEntry]":
     )
     snapshot = merge(levels)
     expanded = expand(snapshot, ctx)
+    # ⚑⚑ THE LAUNCH'S READ-TIME REFUSALS, through the launch's own entry point. This
+    # resolve is a parallel route to ``build_launch_snapshot``, and without them a
+    # working set a launch REFUSES — a bare-relative stored path ([R147]), an entry
+    # that is not a settings key (§0) — previewed cleanly at rc 0. The workset file is
+    # the ONLY file this resolve reads: the base level is the floor alone
+    # (``base_path`` is absent), so it is neither judged nor named.
+    refuse_read_time_faults(
+        [(levels[1], ws_config, None)], expanded, ctx=ctx,
+        files=(("workset", ws_config),),
+        subject=ResolveSubject.WORKSET,
+    )
     return snapshot_category_entries(
         expanded, active_agent=GENERAL_SLOT, box_ctx=ctx,
     )
@@ -1304,6 +1330,11 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
         for entry in entries
         if entry.category in ("bindings.ro", "bindings.rw")
     ]
+    if not shares:
+        # Reached only AFTER the resolve and the arbitration above, so an empty
+        # working set is answered as empty only once a launch would accept it.
+        _print_no_shares(ws)
+        return 0
     derivations = pair_declarations(
         [
             Declaration(entry.key, entry.box_dest, entry.host_src, entry.delivery)

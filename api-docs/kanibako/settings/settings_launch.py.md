@@ -40,6 +40,7 @@ def meta_agent_grammar_floor(agent_name: str, descriptor: 'PluginDescriptor | No
 def meta_identity_floor(*, box_name: str, project_path: str, inbox: str, share_global: str, share_workset: str | None, box_settings: str | None=None, agent_name: str | None=None, agent_real_name: str | None=None, agent_auth_share_support: bool=False) -> dict[str, object]
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
+def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[_TierFile], subject: ResolveSubject) -> None
 def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> KeyStore
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
 def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
@@ -54,7 +55,7 @@ def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
 def _materialize_auth_active(snapshot: KeyStore) -> None
 def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]
 def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None
-def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[_TierFile]) -> None
+def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[_TierFile], subject: ResolveSubject) -> None
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
@@ -87,6 +88,12 @@ class AuthSource:
 
     @property
     def creds_shared(self) -> bool
+
+class ResolveSubject(Enum):
+    BOX = ('this box', "'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.")
+    WORKSET = ('this working set', "'kanibako workset reset <workset> <key>' cannot remove what is not a key, and 'kanibako workset show --effective' and 'kanibako workset share list --effective' resolve through this same seam, so they refuse too.")
+
+    def __init__(self, what: str, cure_note: str) -> None
 
 class AgentGrammar(NamedTuple):
     mode: dict[str, list[str]]
