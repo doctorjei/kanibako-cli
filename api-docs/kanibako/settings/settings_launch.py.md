@@ -17,6 +17,7 @@ _BIND_FLOOR_TAILS: tuple[str, ...] = ('.bindings.ro', '.bindings.rw') + tuple((f
 _SYSTEM_SHARE_ALLOWED_KEY = 'system.auth.share_allowed'
 _BOX_MODES: frozenset[str] = frozenset({'primary', 'named', 'standalone'})
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset({'common', 'chat', 'broadcast', 'share', 'mailboxes', 'share_global'})
+_WORKSET_LOCAL_CHANNEL_LEAVES: frozenset[str] = _WORKSET_CHANNEL_LEAVES - {'mailboxes', 'share_global'}
 _SETTINGS_FILE_NAMES: Final[str] = "the box's box.yaml, the workset's workset.yaml, the agent's agent.yaml, or the system settings.yaml"
 _BOX_ROOT_KEY = 'meta.box.path'
 _BOX_STORE_KEY = 'workset.boxes'

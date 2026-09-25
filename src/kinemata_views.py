@@ -61,24 +61,45 @@ from __future__ import annotations
 from typing import Any
 
 
-def standalone_is_absent(entry: Any) -> bool:
-    """The row's `default:` map declares its `standalone` arm as NOTHING.
+def _standalone_arm(entry: Any) -> tuple[bool, Any]:
+    """`(has_arm, value)` for the `standalone` arm of the row's per-mode map.
 
-    Two spellings, because the manifest uses both: a YAML `null`, and a `<…>`
-    prose placeholder (`workset.kuid` reads `<generated at creation>`).
+    ⚑ THE MAP IS IN `default:` ON A SETTABLE ROW AND IN `value:` ON A DERIVED `meta.*`
+    ROW. No manifest row carries both, so reading one and falling back to the other
+    selects every per-mode row -- `meta.box.share_workset` and
+    `meta.box.auth.workset_path` declare `standalone: null` in `value:`.
 
     ⚑ THE `standalone` KEY MUST BE PRESENT, and that is the half a declarative
     guard cannot express. `at_path` returns MISSING for a row with no `default:`
     map at all, `_value` renders MISSING as `None`, and a `matches` guard would
     therefore sweep in every row that never had an arm to declare. Two questions
-    -- *is there an arm* and *is it empty* -- and a `where` guard claims one.
+    -- *is there an arm* and *what does it hold* -- and a `where` guard claims one.
     """
     arm = entry.extra.get("default")
+    if arm is None:
+        arm = entry.extra.get("value")
     if not isinstance(arm, dict) or "standalone" not in arm:
-        return False
-    value = arm["standalone"]
-    return value is None or (
-        isinstance(value, str) and value.startswith("<") and value.endswith(">")
+        return False, None
+    return True, arm["standalone"]
+
+
+def standalone_is_null(entry: Any) -> bool:
+    """The row's per-mode map declares its `standalone` arm as `<None>` -- a YAML
+    `null`, which is a VALUE the standalone floor must SUPPLY, never omit ([R177]).
+    """
+    has_arm, value = _standalone_arm(entry)
+    return has_arm and value is None
+
+
+def standalone_is_placeholder(entry: Any) -> bool:
+    """The row's per-mode map declares its `standalone` arm as a `<…>` PROSE
+    placeholder (`workset.kuid` reads `<generated at creation>`) -- not a value, so
+    no floor may emit one.
+    """
+    has_arm, value = _standalone_arm(entry)
+    return (
+        has_arm and isinstance(value, str)
+        and value.startswith("<") and value.endswith(">")
     )
 
 

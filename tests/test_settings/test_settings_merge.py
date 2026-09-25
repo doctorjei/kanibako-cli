@@ -356,6 +356,48 @@ def test_present_none_category_root_omitted() -> None:
     assert _probe(snap, "box", "bindings") is __MISSING__
 
 
+@pytest.mark.parametrize("scope", [("system",), ("workset",), ("box",), ("agent", "claude")])
+def test_present_none_common_root_reset_omits_the_category(scope) -> None:
+    # A GENUINE ``common`` category-root reset: the token sits where the SCOPE ends
+    # (one segment, or two for the discriminated ``agent.<node>`` tier). It OMITs the
+    # whole category and clears the lower level's entries.
+    def at(value):
+        node: object = {"common": value}
+        for seg in reversed(scope):
+            node = {seg: node}
+        return KeyStore(node)
+
+    snap = merge([at(None), at({"~/a": BindEntry("/w/a")})])
+    assert _probe(snap, *scope, "common") is __MISSING__
+
+
+@pytest.mark.parametrize("scope", ["system", "workset"])
+def test_present_none_at_a_channel_common_leaf_is_a_scalar_reset(scope) -> None:
+    # ``<scope>.channels.common`` ENDS in the ``common`` token but is an ordinary path
+    # SCALAR: spec §2a's discriminator is the ``channels.`` segment, and a category sits
+    # where the scope ends. A present ``None`` is KEPT and clears the lower value —
+    # spec §2c declares ``workset.channels.common | <None>`` for a standalone box.
+    # (Classified by its LAST segment, it was OMITTED as a ``common`` category reset.)
+    high = KeyStore({scope: {"channels": {"common": None, "chat": None}}})
+    low = KeyStore({scope: {"channels": {"common": "/c/common", "chat": "/c/chat"}}})
+    snap = merge([high, low])
+    assert _probe(snap, scope, "channels", "common") is None
+    assert _probe(snap, scope, "channels", "chat") is None
+
+
+@pytest.mark.parametrize("family, var", [("secret_path", "common"), ("env", "seeded")])
+def test_present_none_at_a_var_spelled_like_a_category_is_kept(family, var) -> None:
+    # ``<scope>.secret_path.<VAR>`` / ``<scope>.env.<VAR>`` are SCALAR families, and a
+    # VAR may be spelled like a category token. A present ``None`` there is a scalar
+    # reset — KEPT, clearing the lower value (spec §2a gives a ``secret_path`` null a
+    # meaning of its own) — not a ``common`` / ``seeded`` category reset. Classified by
+    # its LAST segment, it was OMITTED and the lower value vanished with it.
+    high = KeyStore({"box": {family: {var: None}}})
+    low = KeyStore({"box": {family: {var: "/lower"}}})
+    snap = merge([high, low])
+    assert _probe(snap, "box", family, var) is None
+
+
 def test_present_none_masks_root_omitted() -> None:
     # A masks-root reset (masks = None) OMITs the whole masks category.
     box = KeyStore({"box": {"masks": None}})

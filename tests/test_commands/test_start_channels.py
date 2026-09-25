@@ -338,13 +338,22 @@ class TestWorksetChannelFloorLeaf:
         name, and ``__STANDALONE__`` is a partition like any other.  This case asserted
         the whole family was absent for as long as no floor installed those two in ANY
         mode, so it read as a mode rule when it was really an outage.
+        The four LOCAL leaves and the channel ROOT carry the ``<None>`` §2c declares for
+        standalone — SUPPLIED as a present ``None``, not omitted ([R177]).
         """
         floor = _workset_anchor(std, standalone_proj)
-        assert {k for k in floor if k.startswith("workset.channels.")} == {
+        with_a_path = {
+            k for k, v in floor.items()
+            if k.startswith("workset.channels.") and v is not None
+        }
+        assert with_a_path == {
             "workset.channels.mailboxes", "workset.channels.share_global",
         }
-        # The channel ROOT is genuinely per-mode: standalone declares no value for it.
-        assert "workset.channelroot" not in floor
+        for key in (
+            "workset.channelroot", "workset.channels.common", "workset.channels.chat",
+            "workset.channels.broadcast", "workset.channels.share",
+        ):
+            assert key in floor and floor[key] is None, key
         assert floor["workset.channels.mailboxes"] == str(
             _ch.workset_partition_paths(standalone_proj, std).mailboxes
         )

@@ -3422,6 +3422,38 @@ def test_workset_anchor_floor_refuses_an_undeclared_channel_leaf():
     assert floor["workset.channels.share"] == "/ws/channels/share"
 
 
+@pytest.mark.parametrize("leaf", ["common", "chat", "broadcast", "share"])
+def test_workset_anchor_floor_refuses_a_standalone_local_channel_path(leaf):
+    """A standalone box has no workset-local channels (spec §2c declares ``<None>``).
+
+    The floor supplies that ``None`` itself, so a caller path for one of the four
+    LOCAL leaves would overwrite a declared value — it is REFUSED, naming the key.
+    The two ALL-PROJECTS leaves are still accepted in the same call shape.
+    """
+    from kanibako.settings.settings_launch import workset_anchor_floor
+
+    with pytest.raises(_SettingsError) as exc:
+        workset_anchor_floor(
+            mode="standalone", workset_channels={leaf: f"/ws/{leaf}"},
+        )
+    assert f"workset.channels.{leaf}" in str(exc.value)
+    floor = workset_anchor_floor(
+        mode="standalone", workset_channels={"mailboxes": "/sys/mailboxes/x"},
+    )
+    assert floor["workset.channels.mailboxes"] == "/sys/mailboxes/x"
+
+
+def test_workset_anchor_floor_refuses_a_standalone_channelroot():
+    """``workset.channelroot`` is ``<None>`` for standalone (spec §2c); the floor
+    supplies the ``None``, and a caller path is REFUSED rather than overwriting it."""
+    from kanibako.settings.settings_launch import workset_anchor_floor
+
+    with pytest.raises(_SettingsError) as exc:
+        workset_anchor_floor(mode="standalone", channelroot="/ws/channels")
+    assert "workset.channelroot" in str(exc.value)
+    assert workset_anchor_floor(mode="standalone")["workset.channelroot"] is None
+
+
 def test_workset_anchor_floor_allows_every_spec_declared_channel_leaf():
     """The allowlist is the SPEC's family, not the subset today's caller passes.
 

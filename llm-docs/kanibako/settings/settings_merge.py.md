@@ -72,8 +72,9 @@ level is treated specially anywhere in this module.**
   `level.keys()`, `dict.__getitem__` rather than subscripting, so a key named `keys` / `items` /
   `get` cannot shadow the protocol.
 * **S15** — the merge does NOT mutate its input partials; it builds a fresh tree.
-* **S16** — category-awareness keys off the SAME `BIND_CATEGORY_TOKENS` / `masks` segment rule
-  block 2a uses. Reused, single-source, not re-derived.
+* **S16** — category-awareness keys off `settings_keyspace.is_terminal_category_key`, the one
+  carrier of where a category sits, for a ROOT and an ENTRY alike. Reused, single-source, not
+  re-derived.
 
 ## The per-name rule, in full — `merge` / `_merge_nodes`
 
@@ -147,27 +148,49 @@ reset). Its `__repr__` is a debug aid only.
 
 ## `_resolve_present_none` — the classification
 
-Classifies a present-`None` leaf at *path* by CATEGORY: the §3 type-split, keyed by PATH per S16,
-using the SAME `BIND_CATEGORY_TOKENS` / `masks` segment rule block 2a uses. It returns `_OMIT` for a
+Classifies a present-`None` leaf at *path* by CATEGORY: the §3 type-split, keyed by PATH per S16. It returns `_OMIT` for a
 bind / category / masks leaf (drop it — no mount, or unmask) or `None` for a scalar leaf (keep it —
 the consumer's default). *path* is the full segment trail to the leaf.
 
 A leaf is a category leaf when EITHER:
 
-* an ANCESTOR segment is a bind category or `masks` — an ENTRY reset like `bindings.rw[/p] = None`,
-  `common[~/x] = None`, `masks./p = None`. This is the same "any ancestor is a category" test 2a's
-  `_insert_dotted` uses; OR
-* the leaf's OWN segment IS a category — a whole-CATEGORY-ROOT reset like `bindings = None`,
-  `caches = None`, `masks = None`.
+* a proper PREFIX of its path is a category (`_is_category_entry`) — an ENTRY reset like
+  `bindings.rw[/p] = None`, `common[~/x] = None`, `masks./p = None`; OR
+* the leaf IS a category ROOT (`_is_category_root`) — a whole-CATEGORY-ROOT reset like
+  `caches = None`, `masks = None`, and the long-standing `<scope>.bindings = None` node reset.
 
 A non-category scalar leaf keeps `None`.
+
+### ⚑ A category is found by POSITION, not by a segment's spelling
+
+Both tests ask `settings_keyspace.is_terminal_category_key`, the one carrier of the rule that a
+category sits where the SCOPE ends (one segment, two for the discriminated `agent.<node>` tier). A
+ROOT is a path that is such a key; an ENTRY is a path with a proper prefix that is one.
+⚑ The `<scope>.bindings = None` node reset is kept unchanged, though a bare `bindings` is not a key
+and spec §2a places a reset at the ARM; whether it should exist is an open question.
+
+Until 2026-09-24 both tests read category TOKENS wherever they fell. The root case read the leaf's
+LAST segment, so a present `None` was OMITTED as a category reset at:
+* `workset.channels.common` / `system.channels.common` — path scalars that merely END in the
+  `common` token (spec §2a: the `channels.` segment is the discriminator). That dropped a
+  standalone box's declared `<None>` for `workset.channels.common` (spec §2c) from the snapshot;
+* `<scope>.env.<VAR>` / `<scope>.secret_path.<VAR>` with a VAR spelled like a category
+  (`common`, `seeded`, `masks`, `bindings`) — scalar resets, now KEPT;
+* `meta.assembly.{bindings,seeded,synced}` — never reached: a settings file's `meta:` table is
+  dropped at assembly, and the collapse installs `meta.assembly.*` after the resolve.
+The entry case read ANY ancestor token. Measured over every declared key and every scope × category
+root and entry, the position rule changed no declared key's class; it changed four NON-keys
+(`agent.seeded.<dest>`, `box.bindings.<name>`, `meta.assembly.bindings.<dest>`,
+`workset.channels.common.<x>`) from OMIT to KEEP, so a `null` at one now reaches the closed-keyspace
+refusal instead of vanishing.
 
 ### ⚑ The `pref` subtree is EXEMPT — no classification at all
 
 A pref is a REQUEST, not a value (spec §2h), and the request's own path MIRRORS its TARGET's. So
-`pref.agent.claude.common.<box_dest>` carries `common` among its ancestors, and the category rule
-above would OMIT it — deleting the RECORD of a `null` request from the snapshot while the request
-itself was applied, so `config show` / `--effective` could not show it.
+`pref.agent.claude.common.<box_dest>` carries `common` among its ancestors, and the token rule this
+module used until 2026-09-24 would OMIT it — deleting the RECORD of a `null` request from the snapshot
+while the request itself was applied, so `config show` / `--effective` could not show it. (The
+position rule would not, since `pref` is not a scope; the guard stays so a pref is never classified.)
 
 It is also the literal implementation of §2h's *"the pref layer MUST NOT interpret emptiness AT
 ALL"*: three idioms already exist downstream (present-`None`, terminal `""`, and the COPY-disable
@@ -182,9 +205,8 @@ segment anywhere.
 
 ### ⚑ Both reset spellings survived the 2026-08-08c dest-key retool with NO edit here
 
-That is the frozenset doing its job: `BIND_CATEGORY_TOKENS` already held all five tokens, and the
-ancestor test never cared whether the segment below a category was a NAME or a DESTINATION. The path
-shape changed; the classification did not.
+The entry test never cared whether the segment below a category was a NAME or a DESTINATION, so the
+path shape changed and the classification did not.
 
 ### Why the ROOT case OMITs
 
@@ -197,12 +219,7 @@ silent on a whole-category reset, and that flag was raised in chat.
 
 ## Module-private constants
 
-* `_MASKS_SEGMENT = "masks"` — the scope-category segment whose present-`None` leaf means UNMASK,
-  not a scalar reset. S16: reuse 2a's category awareness. `masks` is the one keyed `bool|None`
-  category (S5); the bind-shaped categories are `BIND_CATEGORY_TOKENS`, imported from
-  `settings_assemble`. That name carries no leading underscore precisely BECAUSE of this import:
-  the module-private claim an underscore makes would be false across a module boundary.
 * `_PREF_ROOT = "pref"` — the top-level table holding `pref.*` REQUESTS (spec §2h). It is SPELLED
   here rather than imported from `settings_prefs` to keep this module's import surface at
-  `settings_assemble` plus `keystore` / `kb_store`: it is one fixed token, and `settings_prefs`
+  `settings_keyspace` plus `keystore` / `kb_store`: it is one fixed token, and `settings_prefs`
   imports the settings stack, which would cycle.
