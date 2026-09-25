@@ -979,7 +979,12 @@ and both of those positions are load-bearing.
 2. `_refuse_ambiguous_path_values` — [R147] at READ time, over EVERY path key a settings file
    stores. See the subsection below.
 3. `_refuse_undeclared_snapshot` — §0's RESOLVE clause. A SIBLING of the probe, never a mode of it;
-   the two share the ORACLE, so what is armed is exactly what was measured.
+   the two share the ORACLE, so what is armed is exactly what was measured. Both judge the snapshot
+   as a WHOLE store (`settings_keyspace.undeclared_store_paths`), whose top level IS the keyspace's,
+   so a top-level entry naming no root — `zzz: foo`, a bare `template:`, a dotted `box.env.X:`,
+   which no file splits into tables — is a finding named by the oracle (spec §0: no bare top-level
+   keys). `UNROOTED` is the census's FRAGMENT verdict and never arises here; before that split a
+   top-level stray in a system, workset or box file built silently and rode the snapshot.
 4. `_refuse_retired_spelling`, called BY the refusal once it has findings — the message CHOICE.
 
 (2) and (3) raise independently, so a file carrying BOTH a bare-relative path value and an

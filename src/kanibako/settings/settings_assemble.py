@@ -529,7 +529,9 @@ def _drop_upward_scopes(
         elif token == BINDING_DERIVATIONS_NODE:
             # Neither a containing scope nor meta — a THIRD rationale: the RESERVED INTERNAL
             # derivations node (R-8), machinery output, never file input. SCOPE TIGHT: this ONE
-            # name; arbitrary unknown top-level tables still ride (llm-docs).
+            # name; any other unknown top-level entry rides on, to be REFUSED by name at the
+            # launch's §0 audit (``settings_launch._refuse_undeclared_snapshot``; llm-docs) —
+            # except in the per-agent file, whose partial reads only ``self:``.
             _log.warning(
                 "Dropping top-level %r table from %s settings file %s: "
                 "'%s' is the RESERVED INTERNAL derivations node (R-8; manifest "

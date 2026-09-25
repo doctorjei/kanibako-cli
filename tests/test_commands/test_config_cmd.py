@@ -363,6 +363,29 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "undeclared" in out
         assert "box.zippity = wibble" in out
 
+    def test_box_show_marks_a_dotted_top_level_name_the_resolve_refuses(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """``box.env.X: 1`` at a file's TOP LEVEL is one entry, not the key it spells.
+
+        The launch's §0 audit refuses it, so the stored view must mark it; joining its
+        name into ``box.env.X`` and asking the keyspace forged a declared key, and the
+        line went unmarked. MUTATION: drop the dotted-name arm in
+        ``_undeclared_stored_entries`` and ``undeclared`` never prints.
+        """
+        from kanibako.commands.box._parser import run_show
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        project_dir, proj = self._box(config_file, tmp_home)
+        path = proj.metadata_path / "box.yaml"
+        doc = load_doc(path)
+        doc["box.env.X"] = "1"
+        dump_doc(path, doc)
+        assert run_show(argparse.Namespace(args=[project_dir], effective=False)) == 0
+        out = capsys.readouterr().out
+        assert "undeclared" in out, out
+        assert "    box.env.X = 1" in out, out
+
     def test_box_show_prints_no_such_block_for_a_clean_file(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):

@@ -559,10 +559,11 @@ def test_arbitrary_unknown_table_still_rides(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # SCOPE TIGHT (pins the drop to the ONE reserved name): an arbitrary unknown
-    # top-level table (zebra:) is NOT dropped and NOT warned about — general
-    # unknown-table refusal is the backlogged keyspace-ENFORCEMENT work, not
-    # this drop. If this test reddens because zebra: was dropped, the drop-set
-    # widened beyond its brief.
+    # top-level table (zebra:) is NOT dropped and NOT warned about here — it rides
+    # into the merge and the launch's §0 audit refuses it by name
+    # (test_settings_launch's test_a_top_level_stray_in_a_settings_file_refuses_the_resolve).
+    # If this test reddens because zebra: was dropped, the drop-set widened beyond
+    # its brief.
     box = _write(
         tmp_path / "box.yaml",
         {"box": {"image": "img"}, "zebra": {"stripes": 3}},

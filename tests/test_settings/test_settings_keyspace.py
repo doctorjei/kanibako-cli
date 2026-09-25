@@ -1344,6 +1344,30 @@ def test_undeclared_store_paths_REPORTS_a_scalar_at_a_namespace():
     assert _findings({"box": "a scalar"}) == {"box"}
 
 
+def test_a_WHOLE_store_judges_its_top_level_where_a_FRAGMENT_declines_to():
+    """Spec §0: no bare top-level keys — and only a WHOLE store can say so.
+
+    ``undeclared_store_paths`` is handed a whole store (the launch snapshot), whose
+    top level IS the keyspace's, so a non-root entry there is a finding the oracle
+    names. ``classify_store_path`` judges one WRITE for the census, which cannot tell
+    a scope-local fragment from a whole store, and must keep answering ``UNROOTED``:
+    reddening there would report every fragment's contents as fabricated.
+
+    MUTATION: route ``undeclared_store_paths`` through ``classify_store_path`` and
+    the first three assertions red (the top-level strays vanish); drop the root gate
+    from ``classify_store_path`` and the last two red.
+    """
+    from kanibako.settings.settings_keyspace import Verdict
+
+    assert _findings({"zzz": "foo"}) == {"zzz"}
+    assert _findings({"zzz": {"a": 1}}) == {"zzz", "zzz.a"}
+    assert _findings({"box.env.X": "1"}) == {"box.env.X"}
+    # The control: the roots themselves, carrying declared keys, stay clean.
+    assert _findings({"box": {"env": {"X": "1"}}, "meta": {}, "config": {}}) == set()
+    assert _verdict("zzz") == Verdict.UNROOTED
+    assert _verdict("box.env.X") == Verdict.UNROOTED
+
+
 def _rescued(*rows: tuple[tuple[str, ...], bool]) -> set[tuple[str, ...]]:
     """The paths ``container_notes`` rescues, given ``(segments, is_node)`` rows.
 

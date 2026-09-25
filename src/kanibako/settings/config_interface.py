@@ -1812,6 +1812,15 @@ def _undeclared_stored_entries(path: "Path | None") -> dict[str, str]:
     def _walk(node: dict, prefix: str) -> None:
         for k, v in node.items():
             dotted = f"{prefix}{k}"
+            if not prefix and "." in str(k):
+                # ⚑ A DOTTED TOP-LEVEL NAME IS NEVER JOINED: ``box.env.X: 1`` is ONE
+                # entry that names no namespace — the file never splits it into tables —
+                # and asking ``scope_key_reason`` would forge the declared key it spells.
+                # The launch's §0 audit refuses it (``settings_keyspace.
+                # _classify_whole_store_path``); this marks it, so the two agree. Kept in
+                # its stored spelling so the override subtraction still matches it.
+                out[dotted] = render_stored_scalar(v)
+                continue
             if scope_key_reason(dotted) is None:
                 continue  # declared — whatever is under it is DATA, not keys
             if isinstance(v, dict) and v:
