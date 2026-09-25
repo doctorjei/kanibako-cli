@@ -144,6 +144,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name. The socket is recreated at every launch, and the path inside the box, `~/.kanibako/state/helper.sock`, is unchanged; see MIGRATION.md ("The host
   helper socket name is measured in bytes").
 
+- **In a standalone box, a `seeded` entry naming `@workset.template` seeded from the host path
+  `/box/home`.** The keyspec declares `workset.template` `<None>` for a standalone box, and a
+  template layer whose source is `<None>` is skipped. But the box carried no `workset.template` at
+  all, and an unset key inside a path renders as an empty string, so `@workset.template/box/home`
+  became `/box/home` on the host. A standalone box now resolves `workset.template` to `None` and
+  skips the entry. `workset.registry`, `workset.channelroot` and the four channel keys
+  `workset.channels.{common,chat,broadcast,share}` were unset the same way and now resolve to
+  `None`, as declared.
+  ⚑ **One change against v1.8.0-rc2.** There, a `null` at `system.channels.common` or
+  `workset.channels.common` silently dropped that channel's mount (`~/channels/common` or
+  `~/channels/workset/common`). It now refuses the launch, as a `null` at `chat` or any other
+  channel key already did. To go without the mount, suppress the mount itself:
+  `box.bindings.rw: {"~/channels/common": null}`, or `{"~/channels/workset/common": null}` for the
+  workset channel.
+
 - **`kanibako-min` shipped without kanibako or the baseline tools.** Its base, droste-seed, has
   no pip, so the image build skipped the cli install in silence, and the baseline tool list it
   derives from `kanibako baseline list` came back empty (measured on the published

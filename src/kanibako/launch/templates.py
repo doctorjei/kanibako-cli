@@ -173,8 +173,8 @@ def template_seed_defaults(
         # here dropped the user's value at create.
         defs[f"agent.{agent_id}.seeded"] = _layer(f"@agent.{agent_id}.template")
     if has_workset_channels(proj):
-        # STANDALONE (no workset channels) omits the layer, exactly as the floor omits
-        # the source key: its workset tier is <None> (spec ``:936``).
+        # STANDALONE (no workset channels) omits the layer: its workset tier is <None>
+        # (spec §2c), which the floor SUPPLIES as the source key's present ``None``.
         defs["workset.seeded"] = _layer("@workset.template")
     return defs
 
@@ -489,8 +489,9 @@ _MOULD_CANON_ROOT = "canon"
 #: ``:962``: ``workset.canon`` is *"UNIFORM IN EVERY MODE — deliberately NOT a
 #: per-mode key"*, so a lone standalone box has this tier too.  Its sibling half — the
 #: ``template/`` skeleton above — does NOT transfer: ``workset.template`` is <None> in
-#: standalone (spec ``:936``; ``settings_launch.workset_anchor_floor`` omits the KEY
-#: there and :func:`template_seed_defaults` omits the LAYER, off the same mode test), and
+#: standalone (spec §2c; ``settings_launch.workset_anchor_floor`` supplies the KEY there
+#: as a present ``None`` and :func:`template_seed_defaults` omits the LAYER, off the same
+#: mode test), and
 #: a workset template seeds FUTURE boxes, of which a standalone root will never have
 #: one.
 #: ⚑ ``handbook`` and not ``canon/handbook``: the canon ROOT it hangs off is RESOLVED —

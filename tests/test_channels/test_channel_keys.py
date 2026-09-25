@@ -318,7 +318,9 @@ class TestTheFloorCarriesTheWholeFamily:
     def test_a_standalone_launch_still_installs_the_partition_leaves(
         self, standalone_proj, std,
     ):
-        """⚑ standalone: the four LOCAL leaves are ``<None>``, the two partition keys are not."""
+        """⚑ standalone: the root and the four LOCAL leaves are ``<None>``, the two
+        partition keys are not.  The ``<None>`` is SUPPLIED as a present ``None``, never
+        omitted ([R177]): an absent key renders ``""`` inside an embedded ``@``-ref."""
         from kanibako.commands.start import _workset_channel_floor_values
         from kanibako.settings.settings_launch import workset_anchor_floor
 
@@ -327,8 +329,11 @@ class TestTheFloorCarriesTheWholeFamily:
         floor = workset_anchor_floor(
             mode="standalone", channelroot=channelroot, workset_channels=leaves,
         )
-        assert "workset.channelroot" not in floor
+        assert "workset.channelroot" in floor
+        assert floor["workset.channelroot"] is None
         assert floor["workset.channels.mailboxes"] == str(
             channels.workset_partition_paths(standalone_proj, std).mailboxes
         )
-        assert "workset.channels.chat" not in floor
+        for leaf in ("common", "chat", "broadcast", "share"):
+            assert f"workset.channels.{leaf}" in floor, leaf
+            assert floor[f"workset.channels.{leaf}"] is None, leaf

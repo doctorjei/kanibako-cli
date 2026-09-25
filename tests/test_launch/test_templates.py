@@ -590,6 +590,61 @@ class TestLayeredHomeSeed:
         assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
         assert (home / ".claude.json").is_file()
 
+    def test_a_standalone_launch_carries_its_none_workset_leaves(
+        self, std, config, standalone_proj,
+    ):
+        """The MAIN launch resolve of a standalone box carries every §2c STANDALONE
+        ``<None>`` the anchor floor answers as a present ``None``: ``workset.template``,
+        ``workset.registry``, ``workset.channelroot`` and the four workset-LOCAL
+        ``workset.channels.*`` leaves.
+
+        A declared ``<None>`` is a SUPPLIED value ([R177]).  The floor used to OMIT them,
+        which is a different thing: an absent referent renders ``""`` inside an embedded
+        ``@``-ref without triggering the seeded-layer skip.  ``workset.channels.common``
+        is the one the MERGE also dropped — it ends in the ``common`` category token.
+        """
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.kb_store import __MISSING__
+
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=standalone_proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=None, agent_cfg=None,
+            deliver_creds=True,
+        )
+        workset = dict.get(snapshot, "workset")
+        for leaf in ("template", "registry", "channelroot"):
+            assert dict.get(workset, leaf, __MISSING__) is None, (leaf, workset)
+        channels = dict.get(workset, "channels")
+        for leaf in ("common", "chat", "broadcast", "share"):
+            assert dict.get(channels, leaf, __MISSING__) is None, (leaf, channels)
+
+    def test_a_standalone_seed_entry_naming_workset_template_takes_no_host_path(
+        self, std, config, standalone_proj,
+    ):
+        """A user's ``seeded`` entry ``@workset.template/box/home`` in a STANDALONE box is
+        SKIPPED — spec §2a: a layer whose source is ``<None>`` is skipped, and §2c declares
+        ``workset.template`` ``<None>`` for standalone.  With the key OMITTED the embedded
+        ref rendered ``""`` and the entry seeded from the HOST path ``/box/home``.  The seed
+        list is the observable; the base-layer file is the positive control.
+        """
+        from kanibako.commands.start import _launch_seed_list
+
+        install_packaged_templates(std, ["claude"])
+        (std.template / "box" / "home" / "base-only.txt").write_text("base")
+        _write_system_settings(
+            std, {"system": {"seeded": {"~/from-workset/": ["@workset.template/box/home"]}}},
+        )
+
+        snapshot = _seed(std, standalone_proj)
+        seeds = _launch_seed_list(snapshot)
+        srcs = [seed.src for seed in seeds]
+        assert "/box/home" not in srcs, srcs
+        assert not any(
+            seed.dest.rstrip("/").endswith("/from-workset") for seed in seeds
+        ), [seed.dest for seed in seeds]
+        assert (standalone_proj.shell_path / "base-only.txt").read_text() == "base"
+
     def test_shell_box_seeds_base_only(self, std, config, primary_proj):
         """A NO-AGENT box seeds the base layer but NOT the agent layer."""
         install_packaged_templates(std, ["claude"])

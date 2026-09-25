@@ -545,6 +545,14 @@ _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset(
     {"common", "chat", "broadcast", "share", "mailboxes", "share_global"}
 )
 
+#: The workset-LOCAL channel leaves: PRIMARY/NAMED carry a path, STANDALONE carries
+#: the ``<None>`` spec §2c declares (no workset-local channels, so no
+#: ``~/channels/workset`` mount).  The two leaves left over, ``mailboxes`` and
+#: ``share_global``, are ALL PROJECTS and carry a path in every mode.
+_WORKSET_LOCAL_CHANNEL_LEAVES: frozenset[str] = _WORKSET_CHANNEL_LEAVES - {
+    "mailboxes", "share_global",
+}
+
 #: The RO DERIVED box-home SOURCE (spec ``:1015``) — the pid-0 FOUNDATION bind's src.
 #: ⚑ NAMED, unlike its sibling floor keys, because it has readers OUTSIDE this module:
 #: the assembly seam (``commands/start.py._install_assembly_collapse``) and
@@ -587,10 +595,12 @@ def workset_anchor_floor(
     and a free-form passthrough would open the closed keyspace (§0) from inside the
     floor. ⚑ The four workset-LOCAL leaves are PRIMARY/NAMED only, but ``mailboxes`` and
     ``share_global`` are ALL PROJECTS (§2c) — so this argument is NOT ``None`` for a
-    standalone box, and the mode gate lives at the caller, per leaf.
+    standalone box. For STANDALONE the floor itself supplies the four local leaves as
+    ``None``, and a caller-supplied value for one of them is REFUSED.
 
-    *channelroot* is the resolved ``workset.channelroot`` (``None`` for STANDALONE,
-    which declares no value for it). ⚑ It is a LITERAL, not the spec's
+    *channelroot* is the resolved ``workset.channelroot`` — PRIMARY/NAMED only. For
+    STANDALONE the floor supplies the ``None`` §2c declares, and a caller-supplied value
+    is REFUSED. ⚑ It is a LITERAL, not the spec's
     ``@meta.workset.path/channels`` formula, and deliberately so: the key is read on the
     DETECTION side before any snapshot exists, and the floor must carry the answer that
     pass already reached or the two would resolve one key two ways.
@@ -614,8 +624,16 @@ def workset_anchor_floor(
     honors a ``workspaces`` repoint at primary — is RULED and the user's (manifest note,
     B2-Editor S-1: *"do NOT 'conform' the code to the null"*). Writing that resolved value
     into the keyspace here would conform the declared null to a code value, which is the
-    wrong direction; the absence is the primary arm's whole content, exactly as it is for
-    ``workset.registry``/``workset.template``/``workset.kuid`` at standalone.
+    wrong direction; the absence is the primary arm's whole content.
+
+    ⚑ STANDALONE's ``<None>`` arms are SUPPLIED as a present ``None``, never omitted:
+    ``workset.registry``, ``workset.template``, ``workset.channelroot`` and the four
+    workset-LOCAL ``workset.channels.*`` leaves. A supplied ``<None>`` is a value, and a
+    default is a fallback that applies only where nothing was supplied ([R177]); an
+    OMITTED key instead renders ``""`` inside an embedded ``@``-ref, so a user entry
+    ``@workset.template/box/home`` seeded from the HOST path ``/box/home``.
+    ``workset.kuid`` stays absent: its standalone arm is the PROSE
+    ``<generated at creation>``, not ``<None>``.
     """
     if mode not in _BOX_MODES:
         raise SettingsError(
@@ -667,19 +685,24 @@ def workset_anchor_floor(
         # conformance case pins the two equal so they cannot drift apart.
         "workset.skip_kuid_check": True,
     }
-    if not standalone:
-        # PRIMARY/NAMED ONLY, and the STANDALONE ABSENCE is the point in all three rows —
-        # each declares an arm no floor may answer:
-        #   workset.registry  standalone <None>  — a lone box has no registry tier.
-        #   workset.template  standalone <None>  — a lone box has no template tier; a
-        #     workset template seeds FUTURE boxes, of which a standalone root has none
-        #     (spec ``:936``; ``launch.templates`` omits the layer there for the same
-        #     reason, off the SAME predicate — ``channels.has_workset_channels`` IS
-        #     ``mode is not standalone``).
-        #   workset.kuid      standalone "<generated at creation>" — PROSE, not a
-        #     value: ``paths.establish_standalone`` MINTS the kuid into the box's own
-        #     ``workset.yaml`` at create, so a floor literal here would shadow nothing
-        #     on a real box and FABRICATE an id on a half-created one.
+    if standalone:
+        # STANDALONE declares ``<None>`` for all seven (spec §2c): a lone box has no
+        # registry tier, no template tier (a workset template seeds FUTURE boxes, of
+        # which a standalone root has none; ``launch.templates`` omits the layer off the
+        # SAME predicate — ``channels.has_workset_channels`` IS ``mode is not
+        # standalone``), and no workset-local channels. ⚑ SUPPLIED, not omitted — the
+        # docstring says why ([R177]).
+        floor["workset.registry"] = None
+        floor["workset.template"] = None
+        floor["workset.channelroot"] = None
+        for leaf in sorted(_WORKSET_LOCAL_CHANNEL_LEAVES):
+            floor[f"workset.channels.{leaf}"] = None
+    else:
+        # PRIMARY/NAMED ONLY. ``workset.kuid`` has NO standalone line above, and the
+        # absence is the point: its standalone arm "<generated at creation>" is PROSE,
+        # not a value — ``paths.establish_standalone`` MINTS the kuid into the box's
+        # own ``workset.yaml`` at create, so a floor literal would shadow nothing on a
+        # real box and FABRICATE an id on a half-created one.
         # ⚑ The registry is spelled as the spec's own @-ref FORMULA, like every anchor
         # above — not as the resolved literal ``project/workset_registry.py`` joins at
         # use, which would make this a second carrier of one path.
@@ -701,6 +724,12 @@ def workset_anchor_floor(
     # snapshot and a default primary box had no ``channelroot`` under its ``workset``
     # node — a key the manifest promises and the keyspace could not answer.
     if channelroot is not None:
+        if standalone:
+            raise SettingsError(
+                "workset_anchor_floor: workset.channelroot declares <None> for "
+                "standalone (the manifest default is {standalone: null}); the floor "
+                "supplies that None itself, so no caller may emit a path for it."
+            )
         floor["workset.channelroot"] = channelroot
     # ⚑ The MEMBER-WORKSPACE root, same defect and same fix: a manifest row with real
     # NAMED and STANDALONE arms that no floor emitted, so ``@workset.workspaces`` was
@@ -728,6 +757,13 @@ def workset_anchor_floor(
                     f"{', '.join(sorted(_WORKSET_CHANNEL_LEAVES))} (spec §2c). "
                     f"The keyspace is CLOSED (spec §0) — a floor may not "
                     f"manufacture a key from a caller-supplied name."
+                )
+            if standalone and leaf in _WORKSET_LOCAL_CHANNEL_LEAVES:
+                raise SettingsError(
+                    f"workset_anchor_floor: workset.channels.{leaf} declares <None> "
+                    "for standalone (spec §2c: a lone box has no workset-local "
+                    "channels); the floor supplies that None itself, so no caller "
+                    "may emit a path for it."
                 )
             floor[f"workset.channels.{leaf}"] = path
     return floor

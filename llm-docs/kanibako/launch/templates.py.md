@@ -124,8 +124,10 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   create-time seed resolve — the defect the reachability property names.
   ⚑ THE GATE STAYS HERE and it is the SAME condition the floor branches on:
   `channels.has_workset_channels(proj)` IS `proj.mode is not standalone`, which is the floor's
-  `standalone` arm. One condition, two spellings of the mode; the standalone `<None>` is pinned as
-  an ABSENCE on both carriers (`TestAnchorScalarDefaults.test_the_standalone_arm_is_an_absence_on_both_sides`).
+  `standalone` arm. One condition, two spellings of the mode. For standalone the floor SUPPLIES the
+  declared `<None>` as a present `None` and this table declares no layer
+  (`TestAnchorScalarDefaults.test_the_standalone_arm_is_what_the_floor_supplies`); the `None` is
+  what keeps a user's own `seeded` entry naming `@workset.template` off the host path `/box/home`.
 
 ## `agent_template_defaults` — the AGENT-tier SOURCE arms
 
@@ -184,8 +186,9 @@ category (2026-08-07g) did not make the box handbook any less repointable.
 Each layer's value is a DEST-KEYED map, not a named entry (2026-08-08c): the destination IS the
 identity and the value is the 1-element `(src,)` — `opts` is RESERVED on a COPY and no shipped
 layer sets it. The per-agent SOURCE key is `@config.agents/<a>/template`, a resolvable/settable
-keystore key. STANDALONE (no workset channels) omits BOTH the workset source and its layer, because
-its workset tier is `<None>`.
+keystore key. For STANDALONE (no workset channels) this table declares no workset layer, because
+its workset tier is `<None>`; the source key itself is the anchor floor's, supplied there as a
+present `None`.
 
 ### The persona's template is SHARED BY LINK, not by copy (ruled 2026-08-27)
 

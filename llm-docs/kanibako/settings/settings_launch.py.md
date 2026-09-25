@@ -633,6 +633,9 @@ declarations answer the SAME question ("is this a `workset.channels` leaf?") fro
 and R-35's bug was exactly their disagreement — `mailboxes` accepted here, refused there. A test
 pins the agreement so neither set can drift alone.
 
+`_WORKSET_LOCAL_CHANNEL_LEAVES` is that set minus the two ALL-PROJECTS leaves, derived from it rather
+than re-typed: the four leaves a STANDALONE box carries as a present `None`.
+
 *workset_channels* maps each declared leaf to its RESOLVED path, materialized as
 `workset.channels.*` so the workset-channel binds and the `meta.box.*` addresses (spec §2c) route
 through them. ⚑ **TWO MODE GATES, NOT ONE:** the four workset-LOCAL leaves come from
@@ -640,10 +643,12 @@ through them. ⚑ **TWO MODE GATES, NOT ONE:** the four workset-LOCAL leaves com
 `workset_partition_paths` (every mode, standalone included). So this argument is **not `None` for a
 standalone box** — the gate is per leaf and lives at the caller,
 `start.py::_workset_channel_floor_values`. Treating the whole family as one `None`-for-standalone
-group is how three of the six lost their floor.
+group is how three of the six lost their floor. For STANDALONE the builder itself supplies the four
+LOCAL leaves as a present `None` (`_WORKSET_LOCAL_CHANNEL_LEAVES`, below), and REFUSES a caller value
+for one of them.
 
-*channelroot* is the resolved `workset.channelroot` (`None` for STANDALONE, which declares no value
-for it). ⚑ A LITERAL, not the spec's `@meta.workset.path/channels` formula, and deliberately: the
+*channelroot* is the resolved `workset.channelroot` — PRIMARY/NAMED only. For STANDALONE the builder
+supplies the `None` §2c declares and REFUSES a caller value. ⚑ A LITERAL, not the spec's `@meta.workset.path/channels` formula, and deliberately: the
 key is read on the DETECTION side before any snapshot exists, so the floor must carry the answer
 that pass already reached or one key would resolve two ways. It was emitted by no floor at all
 until 2026-08-25 — a manifest row with a declared default that the keyspace could not answer, so
@@ -672,8 +677,7 @@ expand time would have produced `comms/common`. The same is true of a relative `
 `project.workset.default_workset` composes member workspaces off it — and that divergence is RULED
 and the user's (manifest note, B2-Editor S-1: *"do NOT 'conform' the code to the null"*). Publishing
 the resolved value as this KEY would conform the declared null to a code value, which is the wrong
-direction; the absence IS the primary arm's content, exactly as the standalone absences below are
-theirs. Refusing rather than ignoring keeps the per-mode rule in ONE carrier — a caller cannot
+direction; the absence IS the primary arm's content. Refusing rather than ignoring keeps the per-mode rule in ONE carrier — a caller cannot
 re-open the arm quietly.
 
 🛑 **`meta.box.workspace` IS NOT SPELLED AGAINST THIS KEY, AND MUST NOT BE.** The manifest note
@@ -699,21 +703,33 @@ the alternative is a second `workset.*` floor whose only distinction is that its
 ```
 workset.skip_kuid_check   ALL      True                              (uniform bool)
 workset.registry          p/n      @meta.workset.path/registry.yaml
-                          s'alone  NOT EMITTED  (declared <None>)
+                          s'alone  None  (declared <None>; SUPPLIED)
 workset.template          p/n      @meta.workset.path/template
-                          s'alone  NOT EMITTED  (declared <None>)
+                          s'alone  None  (declared <None>; SUPPLIED)
 workset.kuid              p/n      kuid.SENTINEL  ("00000")
                           s'alone  NOT EMITTED  ("<generated at creation>")
 ```
 
-⚑ **The three standalone ABSENCES are the load-bearing part.** `workset.registry`'s standalone arm is
-`<None>` — a lone box has no registry tier; `workset.template`'s is `<None>` too — a lone box has no
-template tier, and a workset template seeds FUTURE boxes, of which a standalone root will never have
-one (spec `:936`); and `workset.kuid`'s is the PROSE placeholder
+⚑ **A STANDALONE `<None>` IS SUPPLIED, AND THE KUID IS NOT — two different arms.**
+`workset.registry`'s standalone arm is `<None>` — a lone box has no registry tier; `workset.template`'s
+is `<None>` too — a lone box has no template tier, and a workset template seeds FUTURE boxes, of which
+a standalone root will never have one (spec §2c STANDALONE). A declared `<None>` is a VALUE, and a
+default is a fallback that applies only where nothing was supplied (`[R177]`), so the floor emits
+both as a present `None`, as it does `workset.channelroot` and the four workset-LOCAL
+`workset.channels.*` leaves. ⚑ An OMITTED key is not the same thing: an embedded `@`-ref coerces an
+absent referent to `""` exactly as it does a `None`, but the seeded-layer skip (`settings_expand`)
+fires only on a PRESENT `None` — so while these were omitted, a user seed entry
+`@workset.template/box/home` in a standalone box rendered the HOST path `/box/home`.
+`workset.kuid`'s standalone arm is different in kind: the PROSE placeholder
 `<generated at creation>`, because `paths.establish_standalone` MINTS a real kuid into the box's own
 `workset.yaml` at create time (`paths.py::establish_standalone`, via `box_identity.standalone_kuid`).
 A floor literal there would shadow nothing on a finished box and FABRICATE an identity on a
-half-created one. None of them is "a default we have not written yet".
+half-created one, so it stays NOT EMITTED.
+
+⚑ **`workset.channels.common` needed the MERGE fixed too.** It ends in the `common` category token,
+and `settings_merge` used to classify a present `None` by its last segment, so it OMITTED this one as
+a `common` category-root reset. It now asks `settings_keyspace.is_terminal_category_key`, which
+places a category where the scope ends.
 
 ⚑ **`workset.template` was reachable ONLY AT CREATE, which is not reachable.** Its value used to be
 spelled by `launch.templates.template_seed_defaults`, whose one consumer is the create-time seed

@@ -459,6 +459,7 @@ clause_field = "spec"
 # declaration: `where` makes the registry BE the subset, so membership keeps its
 # meaning ("and there is nothing else") over the group rather than over the file,
 # which is the whole reason the key sits on the registry and not on the check.
+# `standalone-nulls` joined them 2026-09-24, split out of `standalone-absences`.
 #
 # ⚑ A NARROWED VIEW DECLARES NO `clause_field`, and the omission is deliberate.
 # `clause_field = "spec"` links a row to the specification clause it is traced
@@ -550,23 +551,44 @@ kind = "yaml-mapping"
 source = "src/kanibako/data/keyspace-manifest.yaml"
 section = ["policy", "seed_whitelists", "workset", "deny"]
 
-# FACT: where the manifest declares a row's `standalone` arm as NOTHING, the
-# standalone anchor floor must emit NO KEY for it.
+# FACT: where the manifest declares a row's `standalone` arm as a `<…>` PROSE
+# placeholder, the standalone anchor floor must emit NO KEY for it.
 # AUTHORITY: `settings_launch.workset_anchor_floor(mode="standalone")` is the code
 # side; the `default:` map's `standalone` arm is the declared side.
-# CATCHES: a floor literal appearing for a row declared empty -- which would
+# CATCHES: a floor literal appearing for a row whose arm is prose -- which would
 # shadow nothing on a finished standalone box and FABRICATE an identity on a
 # half-created one, in the words of the test this mirrors.
 #
 # ⚑ THE PREDICATE IS REQUIRED AND THE REASON IS IN ITS DOCSTRING: "the arm is
 # declared empty" and "the row has no arm at all" collapse to the same value in a
 # declarative guard, so `matches` would sweep in every row that never had one.
+# ⚑ A `<None>` ARM IS NOT IN THIS VIEW: it is a VALUE the floor must supply
+# ([R177]), which is `standalone-nulls`', below.
 [[registry]]
 name = "standalone-absences"
 kind = "yaml-mapping"
 source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
-where = { holds = "kinemata_views:standalone_is_absent" }
+where = { holds = "kinemata_views:standalone_is_placeholder" }
+
+# FACT: where the manifest declares a row's `standalone` arm as `<None>` (a YAML
+# `null`), the standalone floors SUPPLY the key as a present `None`, never omit it.
+# AUTHORITY: the `standalone` arm of the row's per-mode map -- `default:` on a
+# settable row, `value:` on a derived `meta.*` row -- is the declared side;
+# `settings_launch.workset_anchor_floor(mode="standalone")`,
+# `settings_launch.auth_chain_floor(mode="standalone")` and
+# `settings_launch.meta_identity_floor` are the code on trial -- the three floors
+# a standalone launch folds its `<None>` rows from.
+# CATCHES: a `<None>` arm OMITTED by the floor -- an embedded `@`-ref then renders
+# the absent referent as `""` without the seeded-layer skip, so a user entry
+# `@workset.template/box/home` seeded from the HOST path `/box/home` -- AND a
+# floor `None` for a row the manifest does not declare `<None>`.
+[[registry]]
+name = "standalone-nulls"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { holds = "kinemata_views:standalone_is_null" }
 
 # FACT: a `type: path` row that is `set: never` is DERIVED, has no set route, and
 # must NOT be claimed by the set-time path predicate.
@@ -1858,20 +1880,21 @@ print(config.WORKSET_META_FILE)
 """]
 extract = '(?m)^(\S+)$'
 
-# Measured 2026-09-15, kinemata `0.1.0`:
-#   `# standalone-absences: 9 declared, 9 produced, no identifier is both
+# Measured 2026-09-15, kinemata `0.1.0`, as `9 declared, 9 produced` -- the view
+# then held every `<None>` arm too. RE-MEASURED 2026-09-25, kinemata `0.4.1`, after
+# those eight moved to `standalone-nulls`:
+#   `# standalone-absences: 1 declared, 16 produced, no identifier is both
 #   declared and produced.`  rc=0
-# NEGATIVE CONTROL, the oracle pointed at the PRIMARY floor instead: rc=1,
-# `FAIL: 3 disagreement(s)` naming `workset.kuid`, `workset.registry` and
-# `workset.template` as "declared and produced, where neither may be" -- the
-# three that floor really does emit, which reproduces upstream's control on our
-# data exactly.
+# NEGATIVE CONTROL, a scratch copy whose standalone floor also emits
+# `workset.kuid = "abcde"`: rc=1, `workset.kuid: declared and produced, where
+# neither may be`.
 # 🛑 THIS COVERS THE SECOND OF THE TEST'S TWO ASSERTIONS, NOT THE FIRST.
-# `test_the_standalone_arm_is_an_absence_on_both_sides` asserts (1) the arm is
-# `<None>` or a `<…>` placeholder and (2) the floor emits no key for it. The
+# `test_the_standalone_arm_is_what_the_floor_supplies` asserts (1) the arm is
+# `<None>` or a `<…>` placeholder and (2) the floor answers each as declared. The
 # predicate SELECTS on (1), so a row whose arm became a real value drops out of
 # the view rather than failing -- the selector limit stated at the head of the
-# narrowed views. (2) is what this table checks. The test keeps (1).
+# narrowed views. (2) is what this table and `standalone-nulls` check. The test
+# keeps (1).
 [[parity]]
 registry = "standalone-absences"
 relation = "disjoint"
@@ -1881,6 +1904,72 @@ for key in sorted(workset_anchor_floor(mode="standalone")):
     print(key)
 """]
 extract = '(?m)^(\S+)$'
+
+# ⚑ THE ORACLE PRINTS EVERY KEY THE THREE STANDALONE FLOORS SUPPLY AS A PRESENT
+# `None`, with no filter, so a stray `None` of ANY name reds as produced but not
+# declared. The registry reads the per-mode map from `default:` or, on a derived
+# `meta.*` row, `value:` -- no row carries both -- so the two `meta.*` rows
+# (`meta.box.share_workset`, `meta.box.auth.workset_path`) are in the view.
+# 🛑 WHAT THE ORACLE HANDS IN, SO THE GREEN IS NOT READ AS MORE: `meta_identity_floor`
+# carries whatever `share_workset` its caller passes, and the oracle passes the `None`
+# a standalone box's `channels.box_channel_addresses` returns. This view checks that
+# the floor carries it PRESENT, not that the address is `None`. The other arguments
+# are the non-`None` values every launch passes (`box_settings` is the box-tier file
+# path in every mode).
+# ⚑ MEMBERSHIP, NOT A VALUE COMPARISON, and deliberately: the predicate selects the
+# rows whose arm is `null` and the oracle prints only keys whose value is `None`,
+# so both sides are `null` by construction and `format = "json"` would compare
+# nothing. Every way to get the value wrong reds as a membership disagreement
+# (controls below).
+# ⚑ THIS IS THE FLOOR'S SIDE, NOT THE SNAPSHOT'S. A later stage that drops the
+# `None` is invisible here: `settings_merge` used to OMIT `workset.channels.common`'s,
+# reading its last segment `common` as a category-root reset, while this view read
+# green. The resolved-snapshot half is
+# `test_a_standalone_launch_carries_its_none_workset_leaves`.
+#
+# Measured 2026-09-25 on this tree, kinemata `0.4.1`, `PYTHONPATH=src`:
+#   `# standalone-nulls: 10 declared, 10 produced, in agreement.`  rc=0
+# Against `4e63ff63` (a git clone, same pin), `shape`, `undeclared` and `claims`
+# print byte-identical output, and `check` differs in its `silent:` tally (498/598 to
+# 500/600: the two views hold 11 rows together where `standalone-absences` held 9)
+# and its `unread:` f-string tally (1683 in 105 files to 1686 in 106).
+# NEGATIVE CONTROLS, each one edit in a fresh `mktemp` copy under /tmp run with
+# `PYTHONPATH=<copy>/src`, each rc=1:
+#   `settings_launch.py` at `4e63ff63` (every workset `<None>` OMITTED): seven
+#     findings, `workset.{channelroot,registry,template}` and
+#     `workset.channels.{broadcast,chat,common,share}`: `declared, produced by
+#     nothing`
+#   `workset.template` omitted:  `workset.template: declared, produced by nothing`
+#   `meta.box.share_workset` emitted only when not `None`:
+#     `meta.box.share_workset: declared, produced by nothing`
+#   the auth chain's standalone `meta.box.auth.workset_path = None` removed (the
+#     formula stays): `meta.box.auth.workset_path: declared, produced by nothing`
+#   manifest `meta.box.share_workset` cell `standalone: null` -> a formula:
+#     `meta.box.share_workset: produced, declared by nothing`
+#   a stray `workset.logs = None`:  `workset.logs: produced, declared by nothing`
+#   manifest `standalone: null` arm removed from `workset.registry`:
+#     `workset.registry: produced, declared by nothing`
+# VACUITY: `equal` reds a silent oracle as "declared, produced by nothing" on all
+# ten rows -- the first control is seven of them -- so it needs no guard of its
+# own.
+[[parity]]
+registry = "standalone-nulls"
+command = ["{python}", "-c", """
+from kanibako.settings.settings_launch import (
+    auth_chain_floor, meta_identity_floor, workset_anchor_floor,
+)
+floor = dict(workset_anchor_floor(mode="standalone"))
+floor.update(auth_chain_floor(mode="standalone", agent_name="claude"))
+floor.update(meta_identity_floor(
+    box_name="b", project_path="/p", inbox="/i", share_global="/g",
+    share_workset=None, box_settings="/s", agent_name="claude",
+    agent_real_name="claude", agent_auth_share_support=True,
+))
+for key, value in sorted(floor.items()):
+    if value is None:
+        print(f"kanibako-standalone-none: {key}")
+"""]
+extract = '(?m)^kanibako-standalone-none: (\S+)$'
 
 # Measured 2026-09-15 as `13 declared`; RE-MEASURED 2026-09-19, kinemata `0.2.0`:
 #   `# never-settable-paths: 15 declared, 36 produced, no identifier is both

@@ -253,11 +253,12 @@ _ANCHOR_KEYS = (
 #: pinning both to the manifest is what stops them drifting apart.
 _ANCHOR_SCALAR_KEYS = ("workset.skip_kuid_check",)
 
-#: (i-b3) PRIMARY/NAMED only — their standalone arms are pinned as ABSENCES, which is the
-#: whole content of those arms: ``workset.registry`` declares ``<None>`` (a lone box has
-#: no registry tier), ``workset.template`` declares ``<None>`` (a lone box has no template
-#: tier — a workset template seeds FUTURE boxes, of which a standalone root has none), and
-#: ``workset.kuid`` declares the PROSE ``<generated at creation>``
+#: (i-b3) A VALUE at PRIMARY/NAMED only — their standalone arms are not values:
+#: ``workset.registry`` declares ``<None>`` (a lone box has no registry tier) and
+#: ``workset.template`` declares ``<None>`` (a lone box has no template tier — a workset
+#: template seeds FUTURE boxes, of which a standalone root has none), and the floor SUPPLIES
+#: both as a present ``None`` ([R177]: a declared ``<None>`` is a value, not an absence);
+#: ``workset.kuid`` declares the PROSE ``<generated at creation>`` and is NOT emitted
 #: (``paths.establish_standalone`` mints a real id into the box's own file at create).
 #: ⚑ ``workset.template`` JOINED 2026-08-29 from the E1 "path join at use" exemption,
 #: which is now RETIRED ENTIRELY (see the tombstone at section 4). It was filed there as
@@ -455,22 +456,33 @@ class TestAnchorScalarDefaults:
             )
 
     @pytest.mark.parametrize("key", _ANCHOR_SCALAR_KEYS_PRIMARY_NAMED)
-    def test_the_standalone_arm_is_an_absence_on_both_sides(self, key):
-        """⚑ THE ARM IS "NOTHING", and both carriers must say so.
+    def test_the_standalone_arm_is_what_the_floor_supplies(self, key):
+        """⚑ TWO KINDS OF STANDALONE ARM, and the floor answers each as the manifest says.
 
-        The manifest arm is ``<None>`` or a ``<…>`` PROSE placeholder — never a value —
-        and the floor must emit NO KEY.  A floor literal here would shadow nothing on a
-        finished standalone box (create writes a real ``workset.kuid`` into its own file)
-        and FABRICATE an identity on a half-created one.
+        A ``<None>`` arm is a VALUE, and the floor SUPPLIES it as a present ``None``
+        ([R177]).  Omitting it is not the same thing: the seeded-layer skip fires only on a
+        present ``None``, so an absent ``workset.template`` rendered ``""`` inside
+        ``@workset.template/box/home`` and seeded from the HOST path ``/box/home``.
+        A ``<…>`` PROSE arm (``workset.kuid``'s ``<generated at creation>``) is not a
+        value, and the floor emits NO KEY: a literal would shadow nothing on a finished
+        standalone box and FABRICATE an identity on a half-created one.
         """
         arm = _per_mode(_default(key))["standalone"]
-        assert arm is None or (str(arm).startswith("<") and str(arm).endswith(">")), (
+        floor = self._floors()["standalone"]
+        if arm is None:
+            assert key in floor, (
+                f"{key}: the manifest declares standalone <None>, and the floor OMITS it — "
+                f"a supplied <None> is a value, not an absence"
+            )
+            assert floor[key] is None, f"{key}: floor supplies {floor[key]!r}, not None"
+            return
+        assert str(arm).startswith("<") and str(arm).endswith(">"), (
             f"{key}: the standalone arm is {arm!r}, which is a VALUE — if the manifest "
             f"now declares one, the floor must emit it"
         )
-        assert key not in self._floors()["standalone"], (
+        assert key not in floor, (
             f"{key}: workset_anchor_floor emits a standalone value for a row the "
-            f"manifest declares as {arm!r}"
+            f"manifest declares as the prose {arm!r}"
         )
 
     def test_the_kuid_floor_value_is_the_codec_sentinel(self):
@@ -1220,7 +1232,8 @@ class TestBindDefaults:
 #:   formula STRING out.  Pinned by :class:`TestAnchorScalarDefaults`.
 #: * ``workset.template`` (2026-08-29) — false twice over: ``launch/templates.py`` wrote
 #:   the literal out, and the row reached no terminus for a box that already existed.
-#:   Pinned by :class:`TestAnchorScalarDefaults`, arm for arm, standalone absence included.
+#:   Pinned by :class:`TestAnchorScalarDefaults`, arm for arm, the standalone ``<None>``
+#:   included (supplied as a present ``None`` since 2026-09-24).
 #: * ``workset.workspaces`` (2026-08-29) — THE LAST ONE, and the reason died the same way:
 #:   the launch now writes the RESOLVED dir out (``workset_anchor_floor``'s ``workspaces``
 #:   arm), so there is an artefact to compare to, and the row had dangled at every

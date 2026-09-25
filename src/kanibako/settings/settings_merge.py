@@ -19,11 +19,7 @@ from __future__ import annotations
 from kanibako.settings.kb_store import StoreValue
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_assemble import BIND_CATEGORY_TOKENS
-
-# The scope-category segment whose present-None leaf means UNMASK, not a scalar
-# reset (S16 — ``masks`` is the one keyed bool|None category, S5).
-_MASKS_SEGMENT = "masks"
+from kanibako.settings.settings_keyspace import is_terminal_category_key
 
 # The top-level table holding ``pref.*`` REQUESTS (spec §2h). Its subtree is EXEMPT
 # from the present-None type-split — see :func:`_resolve_present_none`. Spelled, not
@@ -146,10 +142,12 @@ _OMIT = _Omit()
 def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
     """Classify a present-``None`` leaf at *path* by CATEGORY (§3 type-split, S16).
 
-    Keyed by PATH, the SAME ``BIND_CATEGORY_TOKENS`` / ``masks`` rule block 2a uses.
-    :data:`_OMIT` for a bind / category / masks leaf; ``None`` for a scalar leaf. A
-    leaf is a category leaf when EITHER an ANCESTOR segment is a category (an ENTRY
-    reset) OR the leaf's OWN segment is one (a CATEGORY-ROOT reset).
+    Keyed by PATH, by POSITION: a category sits where the SCOPE ends (spec §2a), and
+    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` is the one
+    carrier of that rule.  :data:`_OMIT` for a bind / category / masks leaf; ``None``
+    for a scalar leaf.  A leaf is a category leaf when EITHER a proper PREFIX of its
+    path is a category (an ENTRY reset, :func:`_is_category_entry`) OR the leaf IS a
+    category root (a CATEGORY-ROOT reset, :func:`_is_category_root`).
 
     ⚑ **The ``pref`` subtree is EXEMPT — no classification at all.** A pref is a
     REQUEST, not a value (spec §2h) and its path MIRRORS its target's, so
@@ -158,12 +156,37 @@ def _resolve_present_none(*, path: tuple[str, ...]) -> StoreValue | _Omit:
     """
     if path and path[0] == _PREF_ROOT:
         return None  # a REQUEST record — kept verbatim, never classified (§2h).
-    own = path[-1] if path else ""
-    ancestors = path[:-1]
-    if own in BIND_CATEGORY_TOKENS or own == _MASKS_SEGMENT:
+    if path and _is_category_root(path):
         return _OMIT  # whole-category-root reset → drop the category.
-    if any(seg in BIND_CATEGORY_TOKENS for seg in ancestors):
-        return _OMIT  # an entry under a bind category (incl. bindings.ro/rw).
-    if _MASKS_SEGMENT in ancestors:
-        return _OMIT  # a masks path entry → unmask.
+    if _is_category_entry(path):
+        return _OMIT  # an entry under a category (a bind dest, or a masks path → unmask).
     return None
+
+
+def _is_category_root(path: tuple[str, ...]) -> bool:
+    """Is *path* a whole CATEGORY — a category token at the category POSITION? (spec §2a)
+
+    ⚑ BY POSITION, NOT BY ITS LAST SEGMENT. ``workset.channels.common`` ENDS in the
+    ``common`` token and is an ordinary path scalar: spec §2a's discriminator is the
+    ``channels.`` segment, and a category sits where the SCOPE ends.  Reading the last
+    segment alone OMITTED a present ``None`` there as a ``common`` category reset, so the
+    §2c standalone ``<None>`` never reached the snapshot.  So did ``box.env.common`` and
+    ``box.secret_path.seeded`` — a ``<VAR>`` spelled like a category.
+    ⚑ The second test keeps the long-standing ``<scope>.bindings = None`` whole-node
+    reset unchanged.  A bare ``bindings`` is not a key — spec §2a places a reset at the
+    ARM — and whether that node reset should exist at all is an open question.
+    """
+    key = ".".join(path)
+    return is_terminal_category_key(key) or is_terminal_category_key(f"{key}.ro")
+
+
+def _is_category_entry(path: tuple[str, ...]) -> bool:
+    """Is *path* an ENTRY of a category — does a proper prefix of it end at one?
+
+    ⚑ BY POSITION, like :func:`_is_category_root`: the prefix must be a terminal
+    category KEY (``box.masks``, ``box.bindings.rw``, ``agent.claude.seeded``, …), not
+    merely contain a category token somewhere above the leaf.
+    """
+    return any(
+        is_terminal_category_key(".".join(path[:i])) for i in range(1, len(path))
+    )
