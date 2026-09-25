@@ -26,6 +26,7 @@ per-mode anchor tables, the level-splice rungs, and the archived
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -1027,9 +1028,44 @@ _SETTINGS_FILE_NAMES: Final[str] = (
 _TierFile = tuple[str, Path | None]
 
 
+class ResolveSubject(Enum):
+    """WHAT a resolve is FOR — the words its §0 refusal speaks in.
+
+    :func:`refuse_read_time_faults` takes one. ⚑ A CLOSED CHOICE, NOT A STRING: each
+    member carries the whole wording, so a caller picks a subject and cannot compose a
+    cure line nobody measured. Both cure lines ARE measured — a per-key ``reset``
+    refuses an undeclared name (``unknown config key``), and every verb named as
+    refusing too resolves through this seam.
+    ⚑ THE DISCLAIMER IS THE PER-KEY FORM, AND ONLY THAT FORM. ``reset --all --force``
+    at either noun DOES remove an undeclared entry inside that noun's own table — it
+    drops the whole table — so an unqualified "``reset`` cannot remove it" is a false
+    claim printed to the user. MEASURED both ways on a scratch HOME.
+    ⚑ ``BOX``'s wording is the launch's; the pins that assert it live in
+    ``tests/test_settings/test_settings_launch.py``.
+    """
+
+    BOX = (
+        "this box",
+        "'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako "
+        "box show --effective' resolves through this same seam, so it refuses too.",
+    )
+    WORKSET = (
+        "this working set",
+        "'kanibako workset reset <workset> <key>' cannot remove what is not a key, "
+        "and 'kanibako workset show --effective' and 'kanibako workset share list "
+        "--effective' resolve through this same seam, so they refuse too.",
+    )
+
+    def __init__(self, what: str, cure_note: str) -> None:
+        #: The resolve's subject as the refusal's first line names it.
+        self.what = what
+        #: The last line: which verbs cannot help, and which refuse too.
+        self.cure_note = cure_note
+
+
 def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]:
-    """The settings files this resolve ACTUALLY read: *files* plus the machine-wide
-    ``base`` tier, minus every tier with nothing on disk.
+    """The settings files this resolve ACTUALLY read: *files*, minus every tier with
+    nothing on disk.
 
     ⚑⚑ ONE LIST, AND BOTH HALVES OF THE REFUSAL READ IT (P10). The two halves ask
     different questions of the same tiers — :func:`_refuse_retired_spelling` scans
@@ -1039,10 +1075,12 @@ def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]:
     box's ``box.yaml``, a file that does not carry it, while disclaiming ``box
     reset`` in the same breath — no working move for the user at all.
 
-    ⚑ THE BASE TIER IS APPENDED HERE, not passed in. ``build_launch_snapshot`` is
-    not handed that path — ``assemble_levels`` defaults it internally — so this
-    reads the SAME default, from the same function, rather than inventing a
-    parameter for a value nobody varies.
+    ⚑ THE CALLER PASSES THE ``base`` TIER, and only if it read it. It used to be
+    APPENDED HERE off ``settings_base_path()``, which held only while the launch was
+    the one caller: the workset preview (``commands/workset_cmd``) folds no base file,
+    so an appended base named — and had :func:`_refuse_retired_spelling` scan — a file
+    that resolve never read, and a retired spelling there would have replaced the
+    message about the workset's own entry.
 
     ⚑ AND A TIER WITH NO FILE IS NOT A TIER THAT WAS LOADED. Naming an absent
     ``/etc/kanibako/settings_base.yaml`` as a file to hand-edit sends a user to a
@@ -1052,7 +1090,7 @@ def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]:
     """
     return tuple(
         (level, path)
-        for level, path in (*files, ("base", settings_base_path()))
+        for level, path in files
         if path is not None and path.exists()
     )
 
@@ -1119,7 +1157,7 @@ def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None:
 
 
 def _refuse_undeclared_snapshot(
-    store: KeyStore, *, files: Sequence[_TierFile],
+    store: KeyStore, *, files: Sequence[_TierFile], subject: ResolveSubject,
 ) -> None:
     """RAISE naming EVERY resolved path the CLOSED keyspace does not declare (§0).
 
@@ -1134,10 +1172,12 @@ def _refuse_undeclared_snapshot(
     table of at most a handful of behaviour keys; a resolved snapshot is the whole
     cascade.)
 
-    ⚑ THE CURE IS A HAND-EDIT AND THE MESSAGE MUST SAY SO. ``box reset`` cannot
-    remove what is not a key, and ``box show --effective`` resolves through this
-    very seam, so it refuses too — leaving a user who is told "reset it" with no
-    working move. ⚑ BOTH SPELLINGS ARE MEASURED, and they have to be: an earlier
+    ⚑ THE CURE IS A HAND-EDIT AND THE MESSAGE MUST SAY SO. ``box reset <key>``
+    cannot remove what is not a key, and ``box show --effective`` resolves through
+    this very seam, so it refuses too — leaving a user who is told "reset it" with
+    no working move. *subject* picks the noun those verbs carry
+    (:class:`ResolveSubject`, which says why the per-key form is the one named).
+    ⚑ BOTH SPELLINGS ARE MEASURED, and they have to be: an earlier
     revision of this message named ``config unset`` / ``config show``, and there is
     no ``config`` noun at all (``config_keys._SCOPE_READ_COMMAND`` says so, off its
     own measurement). A cure a user cannot type is worse than no cure.
@@ -1172,13 +1212,13 @@ def _refuse_undeclared_snapshot(
         else f"    - {_SETTINGS_FILE_NAMES}"
     )
     count = len(findings)
-    subject = (
+    entries = (
         "1 entry that is not a settings key" if count == 1
         else f"{count} entries that are not settings keys"
     )
     them = "it" if count == 1 else "them"
     raise SettingsError(
-        f"the settings resolved for this box carry {subject} "
+        f"the settings resolved for {subject.what} carry {entries} "
         f"(spec §0 — the keyspace is CLOSED):\n"
         f"{named}\n"
         f"kanibako will not resolve settings that carry {them}: an undeclared key "
@@ -1186,8 +1226,7 @@ def _refuse_undeclared_snapshot(
         f"'anything goes' behavior the closed keyspace replaces.\n"
         f"  Fix: remove {them} BY HAND from the settings file that carries {them} — "
         f"this resolve loaded:\n{where}\n"
-        f"  'kanibako box reset' cannot remove what is not a key, and 'kanibako box "
-        f"show --effective' resolves through this same seam, so it refuses too."
+        f"  {subject.cure_note}"
     )
 
 
@@ -1298,6 +1337,32 @@ def _refuse_ambiguous_path_values(
             anchor_label=anchor_label,
         ))
     raise SettingsError("\n\n".join(refusals))
+
+
+def refuse_read_time_faults(
+    written: Sequence[_WrittenLevel],
+    expanded: KeyStore,
+    *,
+    ctx: ResolveCtx,
+    files: Sequence[_TierFile],
+    subject: ResolveSubject,
+) -> None:
+    """RAISE for any stored value a resolve may not proceed with.
+
+    The READ-TIME refusals, IN ORDER. Runs after ``expand``: [R147]'s bare-relative sweep
+    (:func:`_refuse_ambiguous_path_values`, over *written*), then §0's undeclared-key
+    refusal (:func:`_refuse_undeclared_snapshot`, over *expanded*). ⚑ ONE CARRIER OF
+    THE ORDER: the launch (:func:`build_launch_snapshot`) and the workset preview
+    (``commands/workset_cmd._workset_preview_entries``) both call this, so a resolve
+    route cannot run one refusal and skip the other.
+    *files* are the tiers the caller ACTUALLY read, most-specific first, the ``base``
+    tier included only if it was read (:func:`_loaded_tiers`); *subject* is who the
+    resolve is for (:class:`ResolveSubject`).
+    ⚑ Each raises on its own, so a file with both faults reports the path value first
+    and the undeclared entry on the next run.
+    """
+    _refuse_ambiguous_path_values(written, expanded, ctx=ctx)
+    _refuse_undeclared_snapshot(expanded, files=files, subject=subject)
 
 
 def build_launch_snapshot(
@@ -1569,18 +1634,20 @@ def build_launch_snapshot(
         if level is not None
     ]
     written.append((base_levels[5], base_path, dotted_partial(floor)))
-    _refuse_ambiguous_path_values(written, expanded, ctx=ctx)
-    # Spec §0's RESOLVE clause, enforced. ⚑ A SIBLING of the probe, never a mode of
-    # it: the probe is REPORT-ONLY by its own module contract, and the two share the
-    # ORACLE so the refusal arms exactly what was measured.
-    _refuse_undeclared_snapshot(
-        expanded,
+    # Then spec §0's RESOLVE clause, enforced. ⚑ A SIBLING of the probe, never a mode
+    # of it: the probe is REPORT-ONLY by its own module contract, and the two share
+    # the ORACLE so the refusal arms exactly what was measured. ``base`` is named
+    # LAST: this resolve read it, at the path ``assemble_levels`` was handed above.
+    refuse_read_time_faults(
+        written, expanded, ctx=ctx,
         files=(
             ("box", box_path),
             ("workset", workset_path),
             ("agent", agent_path),
             ("system", system_path),
+            ("base", base_path),
         ),
+        subject=ResolveSubject.BOX,
     )
     return expanded
 

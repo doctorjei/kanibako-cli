@@ -367,6 +367,20 @@ launch (P3).
   diverge from what a launch mounts, which it previously could — but see the floor below for the
   divergence that had nothing to do with root-joins.
 
+⚑⚑ **THE RESOLVE RUNS THE LAUNCH'S READ-TIME REFUSALS THROUGH THE LAUNCH'S OWN ENTRY** —
+`settings_launch.refuse_read_time_faults` ([R147] bare-relative sweep, then §0), right after
+`expand`. This route is parallel to the launch's, and without it a `workset.yaml` carrying
+`workset.auth.path: foo` or an undeclared `workset.zzz: 1` listed its shares at rc 0 while every box
+in the set refused to start (measured). Only the workset file is judged and named: it is the only
+file this resolve reads (the `base` level is the floor alone, so a site base file is neither named
+nor scanned). `ResolveSubject.WORKSET` gives the §0 message this noun's verbs. Both refusals raise
+`SettingsError`, so both listings report through `_preview_refusal` at rc 1.
+⚑ **`run_share_list` TAKES ITS `--effective` BRANCH BEFORE THE EMPTY-SHARES RETURN.** The raw
+view's early *"No bindings configured"* sat first once, so a working set with NO shares never
+reached the preview and a `workset: {frob: 1}` answered rc 0 while every box refused (measured).
+`_print_effective_shares` gives that same one-line empty answer (`_print_no_shares`, one carrier) —
+but only AFTER the resolve and the arbitration have run.
+
 `_print_effective_shares` builds its context from the **resolver SPLIT** (spec §1A / JC-2): Layer-1
 `config.*` becomes the `ctx.config` foundation, Layer-2 `system.*` becomes the snapshot floor (flat
 dotted keys, which `assemble_levels` explodes) so a share value's `@`-ref such as

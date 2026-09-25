@@ -972,7 +972,19 @@ the caller supplied the anchor.
 ### The tail of the seam: measure, then enforce, then choose the message
 
 Four calls close `build_launch_snapshot`. The probe goes FIRST and the message choice goes LAST,
-and both of those positions are load-bearing.
+and both of those positions are load-bearing. (2) and (3) are reached through ONE public entry,
+`refuse_read_time_faults(written, expanded, *, ctx, files, subject)`, which the workset preview
+(`commands/workset_cmd._workset_preview_entries`) calls too — so the order below has one carrier and
+a resolve route cannot run one refusal and skip the other. *files* are the tiers the caller ACTUALLY
+read (the launch passes `base` last, at the path it handed `assemble_levels`; the preview reads no
+base file and passes none). *subject* is a `ResolveSubject` — `BOX` for the launch and `WORKSET`
+for the preview, whose first line says "this working set" and whose cure line cites
+`workset reset <workset> <key>`, `workset show --effective` and `workset share list --effective`.
+It is an enum carrying the whole wording, not a string, so no caller can compose a cure line nobody
+measured. ⚑ **BOTH cure lines disclaim the PER-KEY `reset` only** (`box reset <key>`,
+`workset reset <workset> <key>`): `reset --all --force` at either noun DOES remove an undeclared
+entry inside that noun's own table, by dropping the whole table (measured), so the unqualified
+`'kanibako box reset' cannot remove what is not a key` that rc2 printed was a false claim.
 
 1. `observe_keyspace` — the REPORT-ONLY probe. It runs FIRST because a raise ahead of it would blind
    the instrument to precisely the resolves that matter, so any later re-measurement would see only
@@ -1029,9 +1041,11 @@ that REACHES this refusal is always the narrow, identity-free one, and a `meta.b
 would find nothing on the path that matters. `MIGRATION.md`'s "Settings keys renamed or retired"
 section states the placeholder rather than leaving a user to notice it.
 
-⚑ **THE `base` TIER IS SCANNED**, appended by `_refuse_retired_spelling` itself off
-`settings_base_path()` — the same default `assemble_levels` resolves internally, read rather than
-threaded through a parameter nobody varies. It was left out on the reasoning that
+⚑ **THE `base` TIER IS SCANNED** when the resolve read it: the launch passes `("base", base_path)`
+last in *files*, the same path it handed `assemble_levels`. `_loaded_tiers` used to append it
+unconditionally off `settings_base_path()`; that named — and had the retirement scan read — a file
+the workset preview never reads, so a retired spelling in the site base file would have replaced the
+message about the working set's own entry. It was once left out on the reasoning that
 `build_launch_snapshot` "is not handed its path", which was never a reason: `assemble_levels` takes
 `base_path: Path | None = None` and `settings_base_path` is patchable exactly like every other seam
 binding here. And the omission was worse than it read — `agent_select` has always scanned base

@@ -132,6 +132,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read. See `MIGRATION.md` § *2.37 An agent's settings file has ONE level: everything sits directly
   under `self:`*.
 
+- **`workset share list --effective` now refuses a working set file that carries an undeclared
+  key, as a launch does.** v1.8.0-rc2 already stopped a launch on an undeclared key and named it,
+  but this listing resolved the same `workset.yaml` without that check: a `workset: {frob: 1}`
+  listed its shares and exited 0 while every box in the working set refused to start. A working
+  set with no shares at all was not resolved by it either, and answered *No bindings configured*
+  at rc 0 whatever else its file carried. It now prints the launch's refusal, naming the entry and
+  the file, and exits 1, shares or none; `workset show --effective`, which resolves the same way,
+  does too. The message speaks of *this working set* and points at the `workset` verbs, not the
+  `box` ones. See `MIGRATION.md` § *2.47 An undeclared key in a settings file now stops the
+  command, and the cure is a hand-edit*.
+
+- **The undeclared-key refusal no longer says `box reset` cannot remove the entry.** Its last
+  line in v1.8.0-rc2 read *"'kanibako box reset' cannot remove what is not a key"*, and the rc2
+  entry *"BREAKING: an undeclared key in ANY settings file now stops the command"* repeated it. That holds for the
+  one-key form only: `kanibako box reset --all --force` removes the entry when it sits in the
+  `box:` table of the box's `box.yaml`, together with every other setting there. The line now
+  reads *"'kanibako box reset <key>' cannot remove what is not a key"*. Deleting the one line by
+  hand is still the cure that keeps your other settings.
+
 - **`box get` and `workset get` no longer read back a `pref.*` request that is not a key.** A pref
   may target only `system.agent` or `agent.<agent>.<key>` (spec §2h), and the closed keyspace
   holds only those requests, but the key check accepted `pref.<key>` for any key: a hand-written
@@ -153,8 +172,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings, with the same two-readings message `set` gives. This check names every offending key
   it finds in one refusal, each with the file that holds it. The earlier checks still run first
   and still stop at the first fault they find, so a file with several faults can take more than
-  one pass. ⚠️ **A hand-edited value that rc2 accepted can now stop the command** — respell it as
-  `MIGRATION.md`, *A bare relative path in a settings key is refused*, describes.
+  one pass. `workset share list --effective` and `workset show --effective`, which preview what a
+  box in the working set would get, run this check too. ⚠️ **A hand-edited value that rc2 accepted
+  can now stop the command** — respell it as `MIGRATION.md`, *A bare relative path in a settings
+  key is refused*, describes.
 
 - **A template set with `kanibako system set` or `kanibako agent set` was ignored at create.**
   Both verbs write `agent.<agent>.template` to the agent's settings file,

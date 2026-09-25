@@ -257,14 +257,14 @@ inside boxes. In order of likely impact:
     instead of resolving to nothing** (§2.47). It used to parse, merge, resolve — and then be read
     by nobody, with no error and no warning. Every command that resolves settings refuses now,
     naming every offending entry at once and the files the resolve loaded. The cure is a
-    hand-edit: `box reset` cannot remove what is not a key, and `box show --effective` resolves
-    through the same seam, so it refuses too. Most often this is a typo or a key retired by this
-    release, so the fix is one deleted line. **`box get` and `workset get` refuse such a name too
-    now — rc 1 where v1.7.2 said `(not set)` at rc 0 — and `show` lists the offending lines so you
-    know which ones to delete** (§2.48). **`kanibako setup` stops at Step 3 and exits 1** when
-    settings will not resolve, where it used to name a wrong cause and finish with `Setup Complete`
-    at rc 0; `system diagnose` and `rig diagnose` print the refusal instead of `cannot check`
-    (§2.49).
+    hand-edit: `box reset <key>` cannot remove what is not a key, and `box show --effective`
+    resolves through the same seam, so it refuses too. Most often this is a typo or a key retired
+    by this release, so the fix is one deleted line. **`box get` and `workset get` refuse such a
+    name too now — rc 1 where v1.7.2 said `(not set)` at rc 0 — and `show` lists the offending
+    lines so you know which ones to delete** (§2.48). **`kanibako setup` stops at Step 3 and exits
+    1** when settings will not resolve, where it used to name a wrong cause and finish with
+    `Setup Complete` at rc 0; `system diagnose` and `rig diagnose` print the refusal instead of
+    `cannot check` (§2.49).
 
 25. **An agent or persona name containing a `.` now hard-errors, and that node is stuck**
     (§2.52). `kimi.k3+claude` was legal in v1.7.2. A node name is a keyspace segment and `.` is
@@ -3157,7 +3157,10 @@ the other top-level entries through unchecked: the box started and the entry was
 
 **Which commands.** The ones that build the resolved snapshot. They all build the same one, so they
 all stop at the same place. Measured on the shipped code: `kanibako` / `start`, `shell`, `box info`,
-`box show --effective`, `system show --effective`, `rig list`.
+`box show --effective`, `system show --effective`, `rig list`. `workset share list --effective` and
+`workset show --effective` stop too, but they resolve only the working set's own settings file, so
+their message names that one file, says *this working set*, and points at `workset reset` and the
+two `workset` listings instead of the `box` verbs.
 
 ⚑ **A key kanibako RETIRED stops you here too, but with its own message.** Before printing the
 generic text below, the refusal asks whether the file carries a spelling it has a cure for; §2.1
@@ -3180,15 +3183,18 @@ kanibako will not resolve settings that carry them: an undeclared key has no mea
     - /home/you/.local/share/kanibako/worksets/demo/boxes/scratch/box.yaml
     - /home/you/.local/share/kanibako/worksets/demo/workset.yaml
     - /home/you/.local/share/kanibako/global/settings.yaml
-  'kanibako box reset' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
+  'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
 ```
 
 It names **every** offending entry, not the first one — the cure is an edit, and a message that
 revealed one line per attempt would turn one edit into several launches.
 
-**What you need to do.** Open the file and delete the line. There is no CLI cure, and the message
-says so rather than letting you find out: `box reset` cannot remove what is not a key, and
-`box show --effective` resolves through the same seam, so it refuses as well. The message lists
+**What you need to do.** Open the file and delete the line. There is no one-key CLI cure, and the
+message says so rather than letting you find out: `box reset <key>` cannot remove what is not a
+key, and `box show --effective` resolves through the same seam, so it refuses as well.
+`box reset --all --force` does remove an entry in the `box:` table of the box's own settings file,
+and `workset reset <workset> --all --force` one in the `workset:` table of the working set's — but
+each removes every other setting in that table with it. The message lists
 the files this resolve loaded; which of them carried the entry it cannot say, because the snapshot
 is the merge of all of them. By tier those are a box's `box.yaml`, a workset's `workset.yaml`, an
 agent's `agent.yaml`, the system's `<data>/global/settings.yaml` (§2.45) and the machine-wide
@@ -3355,7 +3361,7 @@ Error: the settings resolved for this box carry 1 entry that is not a settings k
 kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behaviour the closed keyspace replaces.
   Fix: remove it BY HAND from the settings file that carries it — this resolve loaded:
     - /home/you/.local/share/kanibako/global/settings.yaml
-  'kanibako box reset' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
+  'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
 ```
 
 **Nothing is written when it stops.** The abort precedes Step 4's system-agent write, Step 5's
@@ -3390,7 +3396,7 @@ Settings errors:
         kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behaviour the closed keyspace replaces.
           Fix: remove it BY HAND from the settings file that carries it — this resolve loaded:
             - /home/you/.local/share/kanibako/global/settings.yaml
-          'kanibako box reset' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
+          'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
 ```
 
 The `rig diagnose` row is `Configured image` and the baseline probe's row is `Baseline`; both read
@@ -4429,9 +4435,13 @@ Env:
   FOO = good
 ```
 
-There is no CLI cure and the message says so: `kanibako box reset` cannot remove what is not a key.
-`agent info` and `agent list` still read the file and still display the entry, which is deliberate —
-a poisoned file stays inspectable and repairable, and only *starting a box* on it refuses.
+There is no one-key CLI cure, and the message says so: `kanibako box reset <key>` cannot remove
+what is not a key, and neither can `kanibako agent reset <agent> <key>`. `kanibako agent reset
+<agent> --all --force` does remove the entry, but it clears every other setting in the agent's
+file with it — `FOO` above included — so deleting the one line by hand is the cure that keeps
+them. `agent info` and `agent list` still read the file and still display the entry, which is
+deliberate — a poisoned file stays inspectable and repairable, and only *starting a box* on it
+refuses.
 
 ### 2.70 The packaged canon book is `charter`, and the handbook lost a level
 
