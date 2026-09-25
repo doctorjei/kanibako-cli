@@ -11,11 +11,8 @@ from kanibako.agent_ref import (
     GENERAL_SLOT,
     display_agent_ref,
     harness_of,
-    parse_agent_address,
-    with_harness,
 )
 from kanibako.commands.flags import add_null_flag
-from kanibako.identifiers import agent_node_case
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -160,39 +157,6 @@ def _load_std() -> StandardPaths:
     return load_std_paths(load_config(_config_file()))
 
 
-def _agent_node(raw: str) -> str:
-    """The node the ``<agent>`` positional names, canonicalised to the ``℘`` KEY form.
-
-    ⚑⚑ THE ANY-AGENT TIER TOKEN IS NOT A REF, and passes through untouched. This is
-    the order ``settings.config_dest.check_agent_node`` already uses and it is the same
-    reason: ``default`` ADDRESSES the reserved tier rather than NAMING an agent, while
-    the ref grammar refuses a reserved pseudo-agent name (keyspec §2d). Canonicalizing
-    it would raise here and replace the engine's refusal — which names the CURE, the
-    bare-key spelling — with a bare reservation notice.
-    ⚑ ``shell`` IS ADDRESSED LIKE ANY OTHER AGENT, through
-    :func:`kanibako.agent_ref.parse_agent_address`: its §2d fence declares its own
-    settings file (``meta.agent.shell.settings``), and an ``agent`` verb edits the file
-    of the agent it names (keyspec §2a, ``config set`` at the command's scope).
-    Addressing the built-in claims nothing, so the reservation is untouched. Any other
-    illegal ref surfaces as an ordinary ``ConfigError`` — which ``cli.py`` flattens to
-    one ``Error: …`` line at rc 1, like any other.
-
-    ⚑ THE HARNESS SEGMENT FOLDS ([R173]): the launch writes ``agents/claude/``
-    from the declared name, so ``agent show Claude`` must read ``agents/claude/``
-    and not ``agents/Claude/``. Only the harness folds — a persona segment is the
-    user's and is not this ruling's to touch (the same cut
-    ``settings.config.resolve_agent`` makes). Through
-    :func:`kanibako.identifiers.agent_node_case` — the sanctioned seam, never a
-    hand fold.
-    """
-    from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
-
-    if raw == AGENT_DEFAULT_SUB:
-        return raw
-    node, harness = parse_agent_address(raw)
-    return with_harness(node, agent_node_case(harness))
-
-
 def run_list(args: argparse.Namespace) -> int:
     """List configured agents."""
     from kanibako.settings.agent_file import load
@@ -252,7 +216,9 @@ def run_info(args: argparse.Namespace) -> int:
     # The positional may arrive in either spelling; canonicalise to the ``℘`` node —
     # the form every KEY takes.  ``agent_settings_path`` maps it back to the ``+``
     # store dirname, so nothing here composes a path from the node itself.
-    agent_id = _agent_node(args.agent_id)
+    from kanibako.settings.config_keys import agent_key_node
+
+    agent_id = agent_key_node(args.agent_id)
     agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)
     if not path.exists():
@@ -375,7 +341,9 @@ def _run_agent_config(args: argparse.Namespace) -> int:
 
     # Canonicalise the (possibly ``+``) persona ref to the ``℘`` node — the KEY form.
     # ``agent_settings_path`` maps it back to the ``+`` store dirname.
-    agent_id = _agent_node(args.agent_id)
+    from kanibako.settings.config_keys import agent_key_node
+
+    agent_id = agent_key_node(args.agent_id)
     agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)
     if not path.exists():

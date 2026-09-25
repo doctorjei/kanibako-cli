@@ -9,7 +9,7 @@
 from __future__ import annotations
 import re
 from kanibako.errors import ConfigError
-from kanibako.identifiers import find_identifier
+from kanibako.identifiers import agent_node_case, find_identifier
 
 # Persona/harness separators.  ``+`` is the spelling wherever a human looks, the on-disk store
 # dirname included (:func:`kanibako.settings.agent_config.store_dirname`).  ``℘`` exists for ONE
@@ -191,6 +191,28 @@ def parse_agent_address(raw: str) -> tuple[str, str]:
   if isinstance(raw, str) and find_identifier(raw.strip(), {GENERAL_SLOT}) is not None:
     return GENERAL_SLOT, GENERAL_SLOT
   return parse_agent_ref(raw)
+
+
+def agent_address_node(raw: str) -> str:
+  """The NODE an agent ADDRESS reaches: :func:`parse_agent_address`, then the harness folded.
+
+  🛑 CANONICALIZING IS NOT FOLDING.  The parser normalises the separator & validates the
+  charset but changes no case, while a node is lowercase (keyspec §0 ``⚑ NAMING RULES``).
+  A user- or value-supplied spelling therefore folds at the hop that reaches for a node
+  ([R173]) — unfolded, ``Claude`` names ``agents/Claude/``, a store the launch never writes.
+  ⚑ THE HARNESS SEGMENT ONLY, which is exactly what the launch folds when it builds its
+  node from ``target.name``: a persona segment is the user's, & folding it would name a
+  DIFFERENT store than the one the launch wrote for every capitalized persona.
+  ⚑ The ONE carrier of this rule — the ``agent`` noun's positional, a ``KANIBAKO_AGENT``
+  stamp read back (``stop``, ``code``, the creds watcher, ``start``'s reattach) & a typed
+  ``agent.<node>.*`` key all reach a node through here.  ⚑ ONE EXCEPTION, and it is a
+  different question: ``settings.config.resolve_agent`` SELECTS an agent to launch, so it
+  substitutes the INSTALLED registry's spelling for the harness (and refuses one that is
+  not installed) rather than folding a spelling nobody checked.
+  Raises :class:`ConfigError` exactly as :func:`parse_agent_address`.
+  """
+  node, harness = parse_agent_address(raw)
+  return with_harness(node, agent_node_case(harness))
 
 
 def harness_of(node: str) -> str:

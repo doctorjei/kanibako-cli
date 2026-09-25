@@ -1803,8 +1803,9 @@ Contracts the signature cannot carry:
   carries the NODE identity (full persona), NOT the harness (`target.name`) — but in the OUTSIDE
   spelling (`+`, via `display_agent_ref`), because an env var is a place a HUMAN looks: the shipped
   ROM directive tells an in-box agent to read `$KANIBAKO_AGENT`. 🛑 **Readers CANONICALIZE, THEN
-  derive**, through `agent_ref.parse_agent_address` (a plain-shell box is stamped `shell`, which the
-  claimant grammar refuses) — `harness_of` splits on `℘` alone, so deriving from the raw stamp returns the whole
+  derive**, through `agent_ref.agent_address_node` (a plain-shell box is stamped `shell`, which the
+  claimant grammar refuses; the harness folds to node case, `[R173]`) — `harness_of` splits on `℘`
+  alone, so deriving from the raw stamp returns the whole
   string and `resolve_target` hunts a plugin that does not exist (in `stop.py`, under a blanket
   catch: writeback stops SILENTLY). Canonicalising on read is also what keeps a box stamped by an
   older version working, since both separators are accepted. For a bare agent every spelling here is

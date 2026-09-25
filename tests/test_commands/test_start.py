@@ -407,7 +407,7 @@ class TestBootstrapNoneInRunContainer:
         # Default tmux → not the none-guard → baseline probe ran.
         m.launch_check.assert_called_once()
 
-    def test_a_no_agent_persistent_launch_reads_the_box_agent(self, start_mocks):
+    def test_a_shell_node_persistent_launch_reads_the_box_agent(self, start_mocks):
         """``--entrypoint`` / ``kanibako shell`` resolve as the ``shell`` node, but their
         bootstrap is the BOX's agent's, as ``run_start``'s heuristic read it.
 
@@ -431,7 +431,7 @@ class TestBootstrapNoneInRunContainer:
         m.bootstrap_program.assert_not_called()
         m.launch_check.assert_called_once()
 
-    def test_a_no_agent_launch_on_a_selection_fallback_still_launches(
+    def test_a_shell_node_launch_on_a_selection_fallback_still_launches(
         self, start_mocks,
     ):
         """A no-agent persistent launch whose box agent could not be SELECTED runs.
@@ -463,8 +463,9 @@ class TestBootstrapNoneInRunContainer:
         assert rc == 0
         assert m.launch_check.call_args.kwargs["setting"] == "agent.shell.bootstrap"
 
-    def test_a_no_agent_ephemeral_launch_resolves_no_agent(self, start_mocks):
-        """Plain ``kanibako shell`` (ephemeral) resolves no bootstrap and so no agent."""
+    def test_a_plain_shell_ephemeral_launch_resolves_no_bootstrap(self, start_mocks):
+        """Plain ``kanibako shell`` (ephemeral) resolves no bootstrap — neither the box
+        agent's (``resolve_bootstrap_program``) nor the launch's own (``bootstrap_program``)."""
         with start_mocks() as m:
             rc = _run_container(**self._kwargs(box_shell_mode=True))
         assert rc == 0
@@ -3797,6 +3798,40 @@ class TestCacheRootReachesItsConsumers:
         # launcher dest (the in-helper binary path, solved WITH the declaration).
         assert patched_binary in {getattr(mt, "source", None) for mt in ctx.binary_mounts}
         fake_cache.release.assert_called_once_with(fake_entry)
+
+
+class TestRuntimeRootReachesTheHelperHub:
+    """The helper hub's socket lives under the launch's ``std.runtime``.
+
+    ⚑ NOTHING ELSE HOLDS THIS WIRING. The kinemata ``helper-socket-bind`` view takes
+    ``@system.runtime`` as an oracle INPUT and echoes it, and the ``helper_socket_path``
+    pins (``tests/test_safety_invariants.py``) are handed their run dir by the test, so
+    a launch that put the socket in any other directory would leave both green.
+    """
+
+    def test_the_hub_socket_is_under_std_runtime(self, start_mocks, tmp_path):
+        """(Mutation: ``_start_helper_hub``'s ``_run_dir`` = any dir but ``std.runtime``
+        → the socket's parent is not ``run_dir`` → RED.)"""
+        from kanibako.channels import helper_listener as helper_listener_mod
+
+        run_dir = tmp_path / "run"
+        with start_mocks() as m, patch.object(
+            helper_listener_mod, "HelperHub",
+        ) as m_hub_cls:
+            # The hub is agent-scope opt-in in the fixture's floor; turn it ON so
+            # the REAL ``_start_helper_hub`` runs.
+            m.agent_cfg.state["allow_helpers"] = "true"
+            m.load_std_paths.return_value.runtime = run_dir
+            assert _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            ) == 0
+
+        assert m_hub_cls.return_value.start.call_count == 1, "the hub must start"
+        socket_path = m_hub_cls.return_value.start.call_args.args[0]
+        assert socket_path.parent == run_dir, socket_path
+        assert run_dir.is_dir(), "the launch creates the runtime dir it binds in"
 
 
 class TestBinaryMountSafeFail:
@@ -11147,6 +11182,33 @@ class TestALiveShellBoxReattaches(_RunningBoxDriver):
             self._shell(m)
             with pytest.raises(KanibakoError, match="already running agent 'shell'"):
                 self._start(explicit_agent="claude")
+
+
+class TestReattachComparesNodesNotSpellings(_RunningBoxDriver):
+    """A live box's stamp and ``--agent`` are compared as NODES ([R173]).
+
+    The launch stamps the lowercase node (``agent_node_case(target.name)``), and
+    ``--agent Claude`` names that same agent, so it must reattach rather than be told
+    the box is "already running agent 'claude'".  Only the harness folds.
+    (Mutation: compare ``parse_agent_address(...)[0]`` spellings → RED.)
+    """
+
+    @pytest.mark.parametrize(("stamp", "flag"), [
+        ("claude", "Claude"), ("navigator+claude", "navigator+CLAUDE"),
+    ])
+    def test_a_differently_cased_flag_reattaches(self, stamp, flag, start_mocks):
+        with start_mocks() as m:
+            self._running(m, agent=stamp)
+            assert self._start(explicit_agent=flag) == 0
+            assert not m.runtime.run.called  # a REATTACH, not a new container
+
+    def test_a_different_agent_still_refuses(self, start_mocks):
+        from kanibako.errors import KanibakoError
+
+        with start_mocks() as m:
+            self._running(m, agent="claude")
+            with pytest.raises(KanibakoError, match="already running agent 'claude'"):
+                self._start(explicit_agent="Goose")
 
 
 # ---------------------------------------------------------------------------

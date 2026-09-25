@@ -1752,10 +1752,25 @@ class TestAgentResetRoutesThroughTheOneSetter:
         err = capsys.readouterr().err
         assert "reserved any-agent tier" in err
 
+    def test_the_reserved_tier_is_reached_in_any_case(self, agent_env, capsys):
+        """``Default`` is the same identifier as ``default`` (keyspec §0), so it reaches
+        the tier's own refusal and cure — not a bare reservation error from the ref
+        grammar.  (Mutation: ``config_keys.agent_key_node`` compares the tier token
+        exactly → the grammar raises instead → RED.)
+        """
+        from kanibako.commands.agent_cmd import run_reset
+
+        _write_sparse(agent_env, "default", {"self": {"model": "opus"}})
+        rc = run_reset(argparse.Namespace(
+            agent_id="Default", key="model", all_keys=False, force=False,
+        ))
+        assert rc == 1
+        assert "reserved any-agent tier" in capsys.readouterr().err
+
     def test_the_other_pseudo_agent_is_ADDRESSED_like_any_agent(self, agent_env):
         """``shell`` is reserved too (keyspec §2d), and this verb reaches its file.
 
-        The asymmetry with ``default`` above is what ``agent_cmd._agent_node`` encodes:
+        The asymmetry with ``default`` above is what ``config_keys.agent_key_node`` encodes:
         ``default`` is the any-agent tier, whose §2d fence declares no settings file, so
         it must reach the engine's refusal above — the one carrying the cure. ``shell``'s
         fence DOES declare one (``meta.agent.shell.settings``), and naming the built-in

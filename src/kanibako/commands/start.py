@@ -73,6 +73,7 @@ from kanibako.settings.paths import (
 )
 from kanibako.agent_ref import (
     GENERAL_SLOT,
+    agent_address_node,
     display_agent_ref,
     harness_of,
     parse_agent_address,
@@ -2782,7 +2783,10 @@ def _run_container(
             # ⚑ THE ADDRESS GRAMMAR, on both sides: a plain-shell box is stamped
             # ``shell`` (keyspec §2b — its agent IS the shell pseudo-agent), and
             # ``--agent shell`` selects it; the claimant grammar refused both.
-            stored_agent = parse_agent_address(stored_agent)[0]
+            # ⚑ AND BOTH FOLD TO THE NODE ([R173]): ``--agent Claude`` names the
+            # agent the box stamped ``claude``, so the comparison is between NODES
+            # — an exact compare of the typed spelling refused the same agent.
+            stored_agent = agent_address_node(stored_agent)
             # ⚑ ``is not None`` is the GIVEN predicate here as well, and the
             # canonicalize inside it is what refuses a given-but-BLANK ref at a
             # LIVE box — the very ``ConfigError`` a stopped box gets from
@@ -2790,7 +2794,7 @@ def _run_container(
             # two answers again: refused at a live box, silently resolved from
             # the cascade at a stopped one.
             if explicit_agent is not None and (
-                parse_agent_address(explicit_agent)[0] != stored_agent
+                agent_address_node(explicit_agent) != stored_agent
             ):
                 raise KanibakoError(
                     f"Box '{proj.name}' is already running agent "
@@ -9212,10 +9216,11 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     ``$KANIBAKO_AGENT`` in the box and the shipped ROM directive tells it to, so the
     value must be the one it can type.  ``℘`` exists only so a node is spellable
     inside a KEY path (``agent_ref``), and this is not one.
-    🛑 **READERS CANONICALIZE, THEN DERIVE** — ``parse_agent_address`` first (the
-    ADDRESS grammar: a plain-shell box is stamped ``shell``, the shell pseudo-agent,
-    which the claimant grammar refuses), and only then ``harness_of`` / a store path /
-    a settings value.  ``harness_of``
+    🛑 **READERS CANONICALIZE, THEN DERIVE** — ``agent_ref.agent_address_node`` first
+    (the ADDRESS grammar: a plain-shell box is stamped ``shell``, the shell
+    pseudo-agent, which the claimant grammar refuses; and the harness folded to node
+    case, ``[R173]``), and only then ``harness_of`` / a store path / a settings value.
+    ``harness_of``
     splits on ``℘`` ALONE: hand it ``navigator+claude`` and it returns the WHOLE
     string, so ``resolve_target`` looks up a plugin that does not exist.  In
     ``stop.py`` that sits under a blanket catch, i.e. credential writeback would

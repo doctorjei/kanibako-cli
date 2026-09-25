@@ -737,6 +737,14 @@ The guard keys on the key's TOP-LEVEL dotted token. A SCOPELESS key (the un-pref
 always permitted — it writes to the command scope's own file by construction. (The RETIRED bare
 ``env.*`` is scopeless in shape too but never arrives here: the verbs refuse it earlier — R-39.)
 
+```agent_key_node(raw: str) -> str```
+The NODE a user-typed ``agent.<HERE>`` segment — or the ``agent`` noun's positional — names. The
+any-agent tier token passes through, compared case-blind (``Default`` -> ``default``), so it reaches
+the tier's own refusal and its cure instead of a bare reservation notice; every other spelling goes
+through `agent_ref.agent_address_node`. ONE function for both surfaces, so a key and the noun cannot
+name different nodes for one spelling. Raises `ConfigError` for an illegal ref (`resolve_key` then
+leaves the key raw for the verb to refuse).
+
 ```resolve_key(raw: str) -> str```
 Return the canonical config key for a user-supplied key name.
 
@@ -749,7 +757,10 @@ The ONE canonicalization it performs (block B1): for a per-persona agent key ``a
 canonicalizes the ``<node>`` SEGMENT ``+`` -> ``℘`` (``agent.navigator+claude.endpoint`` ->
 ``agent.navigator℘claude.endpoint``), so the write/get/reset all target the canonical
 ``agents/<node>/`` slot the resolver reads. The node segment is canonicalized as a WHOLE via
-:func:`canonicalize_agent_ref` (agent_ref design law: never re-split a ref on the raw separator); the
+:func:`agent_key_node` (agent_ref design law: never re-split a ref on the raw separator), which also
+FOLDS its harness to node case (``agent.Shell.model`` -> ``agent.shell.model``,
+``agent.Claude.model`` -> ``agent.claude.model``, `[R173]`) — the spelling the §0 check already
+accepts, so the check and the write route name one node; the
 tail (``endpoint`` / ``env.<VAR>`` / ``secret_path.<VAR>``) is preserved verbatim. A malformed node is
 left RAW here — the set/reset persona branch surfaces the parse error (and a bad node never silently
 swaps). Applied ONLY to the ``agent.<node>.*`` node segment, never blindly to all keys.
@@ -773,8 +784,9 @@ FLAT state leaf (``endpoint`` / ``model`` / ``continue_mode`` / ``access`` / ``a
 sectioned ``env.<VAR>`` pointer. The SECRET pointer ``secret_path.<VAR>`` is NOT parsed here — it is
 matched EARLIER (`_is_agent_node_secret_key`) and stored DISCRIMINATED (spec §2a; it replaced the
 rc-only ``env_file.<VAR>``, which routed here). The node segment is returned VERBATIM (possibly a
-``+`` form, possibly itself dotted — a persona/harness segment may contain ``.``) for
-:func:`canonicalize_agent_ref` to canonicalize as a WHOLE.
+``+`` form; a dotted one is returned too, and :func:`agent_key_node` refuses it — ``.`` is the
+key-path separator and cannot appear in an agent name) for :func:`agent_key_node` to canonicalize
+as a WHOLE.
 
 Parsed from the RIGHT: the closed set of settable tails is unambiguous, so everything left of a
 recognised tail is the node. ``env`` is matched BEFORE the flat leaves so ``agent.<node>.env.MODEL``
@@ -847,7 +859,7 @@ Split ``agent.<node>.bindings.{ro,rw}.<name>`` into ``(node_raw, cat, name)``.
 
 Returns `None` when *key* is not a per-node descriptor bind key. ``cat`` is the ``bindings.ro`` /
 ``bindings.rw`` segment; ``node_raw`` is VERBATIM (possibly a ``+`` form) for
-:func:`canonicalize_agent_ref` to canonicalize as a WHOLE. Parsed BEFORE
+:func:`agent_key_node` to canonicalize as a WHOLE. Parsed BEFORE
 :func:`_parse_persona_agent_key` everywhere so a bind named after a persona state leaf
 (``agent.claude.bindings.ro.model``) is a BIND, never mis-split as the state key
 ``agent.claude.model``.
@@ -870,8 +882,8 @@ key out of the persona branch. Checked BEFORE :func:`_is_persona_agent_key` in e
 ```_parse_agent_node_secret_key(key: str) -> "tuple[str, str] | None"```
 Split ``agent.<node>.secret_path.<VAR>`` into ``(node_raw, var)``, or `None`.
 
-``node_raw`` is VERBATIM (possibly a ``+`` form) for :func:`canonicalize_agent_ref` to canonicalize as
-a WHOLE. Parsed BEFORE :func:`_parse_persona_agent_key` so a secret pointer never falls through to the
+``node_raw`` is VERBATIM (possibly a ``+`` form) for :func:`agent_key_node` to canonicalize as a
+WHOLE. Parsed BEFORE :func:`_parse_persona_agent_key` so a secret pointer never falls through to the
 (now env_file-less) persona branch.
 
 ```_is_agent_node_secret_key(key: str) -> bool```

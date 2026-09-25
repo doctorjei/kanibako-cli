@@ -20,8 +20,9 @@ from enum import Enum
 from pathlib import Path  # noqa: F401  (annotations)
 from typing import Collection, Final, Iterator, Mapping
 
-from kanibako.agent_ref import canonicalize_agent_ref, display_agent_ref
+from kanibako.agent_ref import agent_address_node, display_agent_ref
 from kanibako.errors import ConfigError
+from kanibako.identifiers import find_identifier
 from kanibako.settings.agent_config import (
     DECLARATION_ROOT_LABEL,
     DEFAULT_ROOT_LABEL,
@@ -560,15 +561,35 @@ def _scope_direction_error(
 # Canonical key resolution
 # ---------------------------------------------------------------------------
 
+def agent_key_node(raw: str) -> str:
+    """The NODE a user-typed ``agent.<HERE>`` segment — or the ``agent`` noun's
+    positional — names.  Raises :class:`~kanibako.errors.ConfigError` for an illegal ref.
+
+    ⚑ THE ANY-AGENT TIER TOKEN IS NOT A REF and passes through: ``default`` ADDRESSES
+    the reserved tier rather than naming an agent, and the ref grammar refuses a
+    reserved pseudo-agent name (keyspec §2d).  Canonicalizing it would raise and replace
+    the engine's refusal — which names the CURE — with a bare reservation notice.  It is
+    compared case-blind like any identifier (keyspec §0), so ``Default`` reaches the
+    same tier and the same cure.
+    ⚑ Every other spelling is an agent ADDRESS, and reaches its node through
+    :func:`kanibako.agent_ref.agent_address_node` — the one carrier of the fold, so
+    ``agent.Claude.model`` is the ``claude`` node's key and ``agent.Shell.model`` the
+    shell's ([R173]), exactly as the §0 check already reads them.
+    """
+    if find_identifier(raw, (AGENT_DEFAULT_SUB,)) is not None:
+        return AGENT_DEFAULT_SUB
+    return agent_address_node(raw)
+
+
 def resolve_key(raw: str) -> str:
     """Return the canonical config key for a user-supplied key name."""
-    # ⚑ The bind arm is matched BEFORE the persona form; both canonicalize the node
-    # segment as a WHOLE. Order and reasons: llm-docs.
+    # ⚑ The bind arm is matched BEFORE the persona form; each takes the node segment
+    # as a WHOLE through :func:`agent_key_node`. Order and reasons: llm-docs.
     bind = parse_agent_node_bind_key(raw)
     if bind is not None:
         node_raw, cat, name = bind
         try:
-            node = canonicalize_agent_ref(node_raw)
+            node = agent_key_node(node_raw)
         except ConfigError:
             return raw
         return f"agent.{node}.{cat}.{name}"
@@ -576,7 +597,7 @@ def resolve_key(raw: str) -> str:
     if secret is not None:
         node_raw, var = secret
         try:
-            node = canonicalize_agent_ref(node_raw)
+            node = agent_key_node(node_raw)
         except ConfigError:
             return raw
         return f"agent.{node}.secret_path.{var}"
@@ -585,7 +606,7 @@ def resolve_key(raw: str) -> str:
         return raw
     node_raw, tail = parsed
     try:
-        node = canonicalize_agent_ref(node_raw)
+        node = agent_key_node(node_raw)
     except ConfigError:
         return raw
     return f"agent.{node}.{tail}"

@@ -110,15 +110,30 @@ or harness segment inside a composite (`[R178]`).
 ⚑ **Only `shell`.** `default` is the any-agent fallback TIER — no spec line selects it as an agent,
 and its fence declares no settings file — so it refuses here as in `parse_agent_ref`.
 ⚑ **Which one to call:** a site that CREATES or DECLARES a name uses `parse_agent_ref`; a site that
-SELECTS or LOOKS UP an existing agent uses this. The KEY-SEGMENT normalizers —
-`config_keys.resolve_key`, `settings_keyspace.is_valid_agent_segment` /
-`settings_keyspace.agent_declared_leaves`, `settings_prefs.AgentNames.__contains__` — stay on
-`canonicalize_agent_ref` on purpose: they read the `<agent>` segment of a KEY, not a selection, and
-the keyspace answers the pseudo-agent tiers itself (`is_valid_agent_segment` admits
-`PSEUDO_AGENT_NAMES` before it canonicalizes). Before it existed, two sites carried their own
-`find_identifier(..., {"shell"})` arm (`config.resolve_agent`, `config_dest.check_agent_node`) and
+SELECTS or LOOKS UP an existing agent uses this. The KEY-SEGMENT RECOGNIZERS —
+`settings_keyspace.is_valid_agent_segment` / `settings_keyspace.agent_declared_leaves`,
+`settings_prefs.AgentNames.__contains__` — stay on `canonicalize_agent_ref` on purpose: they read
+the `<agent>` segment of a KEY, not a selection, and the keyspace answers the pseudo-agent tiers
+itself (`is_valid_agent_segment` admits `PSEUDO_AGENT_NAMES` before it canonicalizes).
+⚑ `config_keys.resolve_key` is NOT one of them: it REWRITES the segment to the node a write lands
+in, so it goes through `agent_address_node` (below, via `config_keys.agent_key_node`) — on the
+claimant form `agent.Shell.model` raised, was left raw, and wrote `agents/Shell/`.
+Before `parse_agent_address` existed, two sites carried their own `find_identifier(..., {"shell"})`
+arm (`config.resolve_agent`, `config_dest.check_agent_node`) and
 the rest had none (`box create`, `agent <verb>`, `start`'s reattach, the persona-store lookup) —
 which is how `start --agent shell` worked while `create --agent shell` refused.
+
+```def agent_address_node(raw: str) -> str```
+The NODE an agent ADDRESS reaches: `parse_agent_address`, then the HARNESS segment folded through
+`identifiers.agent_node_case` (`[R173]`: a node is lowercase; canonicalizing changes no case). The
+persona segment keeps the user's case — the same cut the launch makes when it builds its node from
+`target.name`, so both name one store. **The one carrier of this rule:** the `agent` noun's
+positional (via `config_keys.agent_key_node`), a typed `agent.<node>.*` key (`resolve_key`, same
+route), and a `KANIBAKO_AGENT` stamp read back (`stop`, `code`, the creds watcher, `start`'s
+reattach). ⚑ **One exception, a different question:** `config.resolve_agent` SELECTS an agent to
+launch, so it substitutes the installed registry's stored spelling for the harness
+(`find_identifier`) and refuses an uninstalled one, rather than folding an unchecked spelling.
+Raises as `parse_agent_address` does.
 
 ```def harness_of(node: str) -> str```
 Return harness (part right of `℘`) of a *node*-name.

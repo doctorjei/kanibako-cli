@@ -22,7 +22,6 @@ def run_show(args: argparse.Namespace) -> int
 def run_reauth(args: argparse.Namespace) -> int
 def _config_file() -> Path
 def _load_std() -> StandardPaths
-def _agent_node(raw: str) -> str
 def _run_agent_config(args: argparse.Namespace) -> int
 def _agent_key_gate(agent_id: str, key: str, *, path: 'Path', verb: str) -> str | None
 def _declared_label(agent_id: str) -> str

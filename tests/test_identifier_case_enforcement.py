@@ -6,7 +6,7 @@ cannot hold either one — the tree has already been through a cure that folded 
 (``[R171]``, retired) and through a half-folded lookup that folded the QUERY and not the
 stored key.  Both look correct in a diff.
 
-So the rule is asserted syntactically, in three directions:
+So the rule is asserted syntactically, in four directions:
 
 * **Nobody membership-tests an identifier registry directly.**  ``name in registry`` is
   the exact-match comparison ``find_identifier`` exists to replace, and it is the shape
@@ -20,6 +20,10 @@ So the rule is asserted syntactically, in three directions:
   name lowercased.  ``with_harness(node, target.name)`` builds a node segment out of
   the wrong one, and no amount of folding on the REGISTRY side reaches it — the value
   comes off the class, not off the key.
+* **Nobody takes an address's NODE by hand.**  ``parse_agent_address(ref)[0]`` is the
+  typed ref with its case untouched; the node of an address is ``agent_address_node``'s
+  (``agent_ref``), which folds the harness.  The hand shape compared ``--agent Claude``
+  against a box stamped ``claude`` and refused the same agent.
 
 🛑 **If a variable named ``name``/``value`` genuinely is NOT a kanibako identifier —
 an HTTP header field, say — RENAME IT.**  ``proxy/server.py`` was renamed to ``header``
@@ -103,6 +107,14 @@ _NODE_SEAM = "agent_node_case"
 #: outside the process — a ``KANIBAKO_AGENT`` container stamp, a settings VALUE — has
 #: therefore still to pass :data:`_NODE_SEAM` before it may spell a store path.
 _REF_PARSER = "canonicalize_agent_ref"
+
+#: The ADDRESS parser and the one home of address → node.  The parser's first element
+#: is a ref, not a node, for the same reason as :data:`_REF_PARSER`'s result; the node
+#: of an address is :data:`_ADDRESS_NODE`'s, which folds the harness through
+#: :data:`_NODE_SEAM`.  Either one FOLDS a value for the stamp rule below.
+_ADDRESS_PARSER = "parse_agent_address"
+_ADDRESS_NODE = "agent_address_node"
+_NODE_FOLDS = frozenset({_NODE_SEAM, _ADDRESS_NODE})
 
 #: Composers that turn a node into a STORE PATH.  Handed a ref that never folded, they
 #: name a directory the launch does not write.
@@ -371,9 +383,9 @@ def unfolded_stamp_derivations(tree: ast.Module) -> list[int]:
                 _called(sub) for sub in ast.walk(node.value)
                 if isinstance(sub, ast.Call)
             }
-            if _REF_PARSER in calls and _NODE_SEAM not in calls:
+            if _REF_PARSER in calls and not calls & _NODE_FOLDS:
                 unfolded.add(target.id)
-            elif _NODE_SEAM in calls:
+            elif calls & _NODE_FOLDS:
                 unfolded.discard(target.id)
 
         for node in ast.walk(scope):
@@ -385,6 +397,28 @@ def unfolded_stamp_derivations(tree: ast.Module) -> list[int]:
                 if isinstance(arg, ast.Name) and arg.id in unfolded:
                     hits.append(node.lineno)
     return sorted(set(hits))
+
+
+def address_nodes_by_hand(tree: ast.Module) -> list[int]:
+    """Lines taking an address's NODE as ``parse_agent_address(...)[0]``.
+
+    That element is the parsed ref with its case untouched, so every use of it as a
+    node — a comparison, a return value, a store path — names a node the launch never
+    built.  ``agent_address_node`` is the node of an address (``[R173]``: *any lookup
+    that takes a user-supplied or value-supplied agent spelling and reaches for a node
+    folds at that hop*).
+
+    🛑 **Its declared limit: the SUBSCRIPT shape.**  An unpacked ``node, harness =
+    parse_agent_address(...)`` is not flagged: its users compare the two halves (is
+    this a persona?) or replace the harness with the installed registry's spelling
+    (``config.resolve_agent``), and neither hands the typed node on.
+    """
+    return sorted({
+        node.lineno for node in ast.walk(tree)
+        if isinstance(node, ast.Subscript)
+        and _called(node.value) == _ADDRESS_PARSER
+        and isinstance(node.slice, ast.Constant) and node.slice.value == 0
+    })
 
 
 def hand_folds(tree: ast.Module) -> list[int]:
@@ -425,16 +459,19 @@ def hand_folds(tree: ast.Module) -> list[int]:
 
 @cache
 def _findings() -> dict[str, dict[str, list[int]]]:
-    """``{repo-relative path: {"in"/"fold"/"node"/"stamp": [lines]}}`` over shipped source."""
+    """``{repo-relative path: {"in"/"fold"/"node"/"stamp"/"address": [lines]}}`` over
+    shipped source."""
     found: dict[str, dict[str, list[int]]] = {}
     for rel, path in _shipped():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         tests, folds = membership_tests(tree), hand_folds(tree)
         nodes = unfolded_node_derivations(tree)
         stamps = unfolded_stamp_derivations(tree)
-        if tests or folds or nodes or stamps:
+        addresses = address_nodes_by_hand(tree)
+        if tests or folds or nodes or stamps or addresses:
             found[rel] = {
                 "in": tests, "fold": folds, "node": nodes, "stamp": stamps,
+                "address": addresses,
             }
     return found
 
@@ -633,6 +670,10 @@ class TestNobodyComposesANodeFromADeclaredName:
             "    return agent_settings_path(std.agents, agent)\n"
         )
         assert unfolded_stamp_derivations(ast.parse(rebound)) == []
+        through_the_home = rebound.replace(
+            "agent_node_case(agent)", "agent_address_node(agent)",
+        )
+        assert unfolded_stamp_derivations(ast.parse(through_the_home)) == []
 
     def test_the_seam_fold_detector_separates_an_agent_from_a_box(self):
         """The seam is a DERIVATION for an agent and a FOLD for anything else."""
@@ -690,6 +731,44 @@ class TestNobodyComposesANodeFromADeclaredName:
         assert f"def {_NODE_SEAM}(" in carrier, (
             f"{_CARRIER} no longer defines {_NODE_SEAM}; the node derivation moved"
         )
+
+
+class TestNobodyTakesAnAddressNodeByHand:
+    """The node of an agent ADDRESS comes from ``agent_ref.agent_address_node``."""
+
+    def test_no_address_node_is_taken_by_hand(self):
+        offenders = sorted(
+            rel for rel, hits in _findings().items() if hits["address"]
+        )
+        assert not offenders, (
+            "an address's node is taken as `parse_agent_address(...)[0]`:\n  "
+            + "\n  ".join(_cite(rel, "address") for rel in offenders)
+            + f"\n\nThat element is the typed ref, case untouched; a node is "
+            f"lowercase (spec §0, ⚑ NAMING RULES; [R173]). Use "
+            f"`kanibako.agent_ref.{_ADDRESS_NODE}`, which folds the harness and keeps "
+            f"a persona's case."
+        )
+
+    def test_the_detector_reds_on_the_shape_and_accepts_the_cure(self):
+        source = (
+            "def f(stamp, flag):\n"
+            "    a = parse_agent_address(stamp)[0]\n"
+            "    if agent_ref.parse_agent_address(flag)[0] != a:\n"
+            "        return agent_address_node(flag)\n"
+            "    node, harness = parse_agent_address(stamp)\n"
+            "    return parse_agent_address(stamp)[1]\n"
+        )
+        assert address_nodes_by_hand(ast.parse(source)) == [2, 3]
+
+    def test_the_parser_and_the_node_function_still_exist(self):
+        """A rename on either would empty this rule without failing it."""
+        agent_ref = (REPO_ROOT / "src" / "kanibako" / "agent_ref.py").read_text(
+            encoding="utf-8"
+        )
+        for name in (_ADDRESS_PARSER, _ADDRESS_NODE):
+            assert f"def {name}(" in agent_ref, (
+                f"agent_ref.py no longer defines {name}; re-derive the address rule"
+            )
 
 
 class TestNobodyFoldsAnIdentifierByHand:

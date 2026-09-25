@@ -99,6 +99,19 @@ class TestLocateEntry:
         assert entry is not None
         assert entry.node == "navigator℘codex"
 
+    def test_a_capitalized_harness_finds_the_node_dir_the_launch_looks_up(self, tmp_home):
+        """The ``<hid>`` dir is looked up by NODE ([R173]): the harness folds, the
+        persona keeps its case.  The launch builds its node from the lowercase
+        ``target.name``, so ``box create --agent Navigator+Claude`` must see the same
+        entry.  (Mutation: ``locate_entry`` back on ``parse_agent_address`` → it looks
+        in ``Navigator/Claude/`` → ``None`` → RED.)
+        """
+        persona_dir = _make_store_entry(tmp_home, persona="Navigator", harness="claude")
+        entry = locate_entry("Navigator+Claude")
+        assert entry is not None
+        assert entry.node == "Navigator℘claude"
+        assert entry.config_dir == persona_dir / "claude"
+
     def test_absent_store_dir_is_none(self, tmp_home):
         assert locate_entry("navigator+codex") is None
 

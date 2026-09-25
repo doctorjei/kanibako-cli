@@ -36,6 +36,7 @@ _SCOPE_SHOW_COMMAND = {'system': 'kanibako system show', 'workset': 'kanibako wo
 def is_path_valued_key(canonical: str) -> bool
 def path_key_anchor(canonical: str) -> 'tuple[str, str]'
 def agent_node_of(canonical: str) -> str
+def agent_key_node(raw: str) -> str
 def resolve_key(raw: str) -> str
 def plugin_declared_leaf_map() -> 'Mapping[str, Collection[str]]'
 def is_access_key(canonical: str) -> bool
