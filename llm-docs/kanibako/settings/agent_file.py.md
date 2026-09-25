@@ -670,12 +670,13 @@ never call `load`, so a poisoned file still LISTS, still DISPLAYS, and can still
 starting a box on it refuses, by name. (The persona precedent: a broken config is a hard launch
 error, never a last-known-good.)
 
-⚑ **The five `start.py` producers all route through here** — `_effective_agent_scalar` (its own
-`agent_path` load), `_effective_transform`, `_effective_behavior_for_display`,
-`_resolve_box_launch_decisions`, `_resolve_launch_snapshot` — each folding the call INSIDE its
-existing gate. `_agent_state_partial` now takes the `AgentFileLevel` alone and reads `level.node`;
-there is no parameter left to pass a wrong node in. ⚑ `_effective_behavior_for_display` builds its
-level AFTER the `active` node is resolved, not beside `behavior_floor`: the node is the point.
+⚑ **The five `start.py` producers all route through here** — `_agent_scalar_pick` (its own
+`agent_path` load, which RAISES on a file it cannot read), `_effective_transform`,
+`_effective_behavior_for_display`, `_resolve_box_launch_decisions`, `_resolve_launch_snapshot` —
+each folding the call INSIDE its existing gate. `_agent_state_partial` now takes the
+`AgentFileLevel` alone and reads `level.node`; there is no parameter left to pass a wrong node in.
+⚑ `_effective_behavior_for_display` builds its level AFTER the `active` node is resolved, not
+beside `behavior_floor`: the node is the point.
 Pinned in three places that do NOT substitute for one another: `TestStateLevel` on the boundary
 itself; `test_persona_loses_to_the_agent_file_flat_state` and
 `test_behavior_floor_and_per_agent_state`, which go red on a wrong node at the CONSUMER SEAM

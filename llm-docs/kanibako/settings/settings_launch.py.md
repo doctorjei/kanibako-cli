@@ -1266,6 +1266,17 @@ here: a box tweaks its agent's behavior with `pref.agent.<agent>.<key>` (§2h), 
 level, therefore ALREADY resolved into the active slot. Reading `meta.box.agent` here instead would
 be a cycle — that node is MATERIALIZED FROM this pick.
 
+**The pick — `behavior_pick`, and which slot answered — `behavior_slot`.** The §2d
+active-over-default pick lives in ONE public function, `behavior_pick(snapshot, *, active_agent,
+key)`, which returns `(slot, value)` RAW: the slot that held the key (`"active"`, `"default"`, or
+`None` with `__MISSING__` when neither did) and the value as stored, so ABSENT stays apart from
+PRESENT-`None`. It has three readers, and none of them re-spells the pick. `effective_behavior`
+reads the value and collapses a present-`None`. `behavior_slot` reads the slot: a value alone cannot
+tell `agent.default.bootstrap: none` from `agent.claude.bootstrap: none`, and a refusal that names
+the setting to change needs exactly that (`start._bootstrap_choice`). `start._persona_model_state`
+reads the `model` value raw, because the persona model gate must keep ABSENT and PRESENT-`None`
+apart — the distinction `effective_behavior`'s collapse erases.
+
 ## The category adapter — snapshot subtrees → the ONE list every delivery seam eats
 
 `snapshot_category_entries` walks the snapshot's category subtrees into the ONE

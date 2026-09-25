@@ -44,14 +44,17 @@ def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path
 def validate_socket_path(socket_path: Path) -> None
 def _agent_critical_dests() -> list[tuple[str, str]]
 def _link_persona_share(node_link: Path, harness_dir: Path, *, what: str, logger) -> None
+def _bootstrap_choice(proj, system_settings_path: 'Path | None', agent_id: str, *, agent_path: 'Path | None'=None) -> BootstrapChoice
+def _bootstrap_setting(choice: BootstrapChoice) -> str | None
+def _no_bootstrap_reason(choice: BootstrapChoice) -> str
 def _declared_behavior(key: str) -> str
 def _declared_behavior_bool(key: str) -> bool
 def _bootstrap_default() -> str
 def _is_no_bootstrap(program: str | None) -> bool
 def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, key: str, floor: str, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
-def _effective_bootstrap(proj, system_settings_path: 'Path | None', agent_id: str, *, agent_path: 'Path | None'=None) -> str
+def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, key: str, floor: str, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'tuple[str | None, str | None]'
 def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, agent_cfg, *, agent_cfg_path: 'Path | None'=None) -> 'str | None'
-def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> str
+def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> BootstrapChoice
 def _bootstrap_available(program: str | None=None) -> bool
 def _check_box_components(proj) -> str | None
 def _resolve_existing_box(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> ProjectPaths | None
@@ -59,7 +62,7 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
 def _no_box_error(project_dir: str | None, std: StandardPaths | None=None) -> str
 def _unbuilt_box_error(proj: ProjectPaths) -> str | None
 def _launch_issues_path(std, container_name: str) -> Path
-def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std)
+def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std, *, setting: str | None)
 def _print_launch_issues(std, container_name: str) -> None
 def _shadow_issues_path(std, container_name: str) -> Path
 def _persist_shadow_issues(std, container_name: str, shadowed: list[str]) -> None
@@ -168,6 +171,12 @@ def _rotate_file(path: Path) -> None
 ## Classes
 
 ```
+class BootstrapChoice(NamedTuple):
+    program: str | None
+    node: str | None
+    pref: PrefRequest | None = None
+    from_default: bool = False
+
 class LaunchRealization(NamedTuple):
     effective_state: dict[str, str]
     cascade_access: str

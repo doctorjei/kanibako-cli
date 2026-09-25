@@ -1985,7 +1985,8 @@ class TestConfigurableBootstrap:
 
     def test_default_bootstrap_is_tmux(self, start_mocks):
         with start_mocks() as m:
-            # effective_bootstrap defaults to "tmux" in the fixture.
+            # A persistent no-agent launch reads ``_resolve_bootstrap_program``,
+            # whose fixture stub answers ``tmux``.
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -2001,7 +2002,13 @@ class TestConfigurableBootstrap:
 
     def test_non_tmux_bootstrap_execs_program_directly(self, start_mocks):
         with start_mocks() as m:
-            m.effective_bootstrap.return_value = "zellij"
+            # A no-agent launch takes the BOX agent's bootstrap, the value
+            # ``run_start`` reads (``_resolve_bootstrap_program``), not the shell
+            # node's (``_bootstrap_choice``), so this is the stub it consults.
+            from kanibako.commands.start import BootstrapChoice
+            m.resolve_bootstrap_program.return_value = BootstrapChoice(
+                "zellij", "claude",
+            )
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
                 new_session=False, safe_mode=False, resume_mode=False,
@@ -2020,7 +2027,7 @@ class TestConfigurableBootstrap:
 
     def test_non_tmux_reattach_when_running(self, start_mocks):
         with start_mocks() as m:
-            m.effective_bootstrap.return_value = "zellij"
+            m.bootstrap_program.return_value = "zellij"
             m.runtime.is_running.return_value = True
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -2104,6 +2111,7 @@ class TestCheckLaunchBaselineUnit:
         ):
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+                setting=None,
             )
         assert result is start_mod._BOOTSTRAP_MISSING
         err = capsys.readouterr().err
@@ -2111,6 +2119,34 @@ class TestCheckLaunchBaselineUnit:
         # Shell-availability reminder so the user can investigate.
         assert "shell IS still available" in err
         assert "bash" in err
+        # No known setting: the install cure alone, and no key the user never wrote.
+        assert "Install it in the image." in err
+        assert "agent.default.bootstrap" not in err
+
+    def test_tier1_on_a_shell_box_names_the_shell_tier_key(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A plain-shell box's ``tmux`` is the shell tier's own value, which
+        ``agent.default.bootstrap`` cannot change: the cure names its real key."""
+        from kanibako.commands import start as start_mod
+
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+        setting = start_mod._bootstrap_setting(
+            start_mod.BootstrapChoice("tmux", "shell"),
+        )
+        with patch.object(
+            start_mod, "probe_missing_executables", return_value=["tmux"]
+        ):
+            result = start_mod._check_launch_baseline(
+                runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+                setting=setting,
+            )
+        assert result is start_mod._BOOTSTRAP_MISSING
+        err = capsys.readouterr().err
+        assert "or set agent.shell.bootstrap to an installed program." in err
+        assert "agent.default.bootstrap" not in err
 
     def test_tier2_missing_warns_and_persists(
         self, tmp_path, monkeypatch, capsys
@@ -2133,6 +2169,7 @@ class TestCheckLaunchBaselineUnit:
         ):
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+                setting=None,
             )
         assert result == [("ripgrep", "rg")]
         # Persisted to the state file.
@@ -2166,6 +2203,7 @@ class TestCheckLaunchBaselineUnit:
         ):
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+                setting=None,
             )
         assert result == []
         assert not issues.exists()
@@ -2248,6 +2286,7 @@ class TestCheckLaunchBaselineUnit:
         ) as mock_probe:
             start_mod._check_launch_baseline(
                 runtime, "img:latest", "tmux", "box1", self._std(tmp_path),
+                setting=None,
             )
         assert mock_probe.call_count == 1
         probed = mock_probe.call_args[0][2]
@@ -2277,6 +2316,7 @@ class TestCheckLaunchBaselineUnit:
         ) as mock_probe:
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "none", "box1", self._std(tmp_path),
+                setting=None,
             )
         # Not a tier-1 hard stop; tier-2 still surfaces the missing baseline exe.
         assert result == [("ripgrep", "rg")]
@@ -2302,6 +2342,7 @@ class TestCheckLaunchBaselineUnit:
         ):
             result = start_mod._check_launch_baseline(
                 runtime, "img:latest", "none", "box1", self._std(tmp_path),
+                setting=None,
             )
         assert result is not start_mod._BOOTSTRAP_MISSING
         assert result == []  # tier-2 clean

@@ -45,7 +45,7 @@ def packaged_data_dir(*parts: str) -> Traversable
 def vault_mask_default() -> list[str]
 def behavior_defaults() -> dict[str, str]
 def behavior_default(key: str) -> str
-def shell_tier_defaults() -> dict[str, str]
+def shell_tier_defaults() -> dict[str, str | None]
 def shell_tier_default(key: str) -> str
 def env_default_categories() -> dict[str, str]
 def add_bind(binds: dict[str, Any], category: str, box_dest: str, host_src: str, options: str | None=None, *, scope: str='box') -> None

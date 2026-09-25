@@ -466,13 +466,27 @@ agent_default:
 # answer for a box that already exists, whatever that box runs).  A dormant tier
 # for every other agent: the §2d pick reads `agent.<active>`, so these leaves
 # reach only a shell pick and never overlay a plugin agent's own tier.
-# ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above.  `canon` is NOT
-# here: its shell arm is dynamic (the store dir wins when it exists) and lives
-# in `core_defaults.canon_default_categories` beside the default arm.
+# ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above, with ONE
+# exception: a fence row declared `<None>` is written `null`, and the reader
+# keeps it a PRESENT `None`, never the string "None" and never an omission.
+# ⚑ EVERY ROW IS A SUPPLIED VALUE ([R177]), and a supplied value beats the
+# `agent.default.*` fallback, which applies only where nothing was supplied.
+# That is why `bootstrap: "tmux"` is written here although `agent_default:`
+# carries the same `tmux`: it is the shell tier's OWN value, so a user's
+# `agent.default.bootstrap` does not reach a plain-shell box (set
+# `agent.shell.bootstrap` for that).  An omitted `<None>` row would let a
+# default-tier value in the same way.  `template`, the fence's third `<None>`
+# row, is floored by its owner, `launch.templates.agent_template_defaults`.
+# `canon` is NOT here: its shell arm is dynamic (the store dir wins when it
+# exists) and lives in `core_defaults.canon_default_categories` beside the
+# default arm.
 agent_shell:
   label: "Box Shell"
   access: "full"
   allow_helpers: "true"
+  bootstrap: "tmux"
+  run_args: null
+  transform: null
 
 # ---------------------------------------------------------------------------
 # STATIC core `<scope>.env.<VAR>` defaults (spec §2d) — the file route for core

@@ -1105,6 +1105,35 @@ def test_effective_behavior_omits_present_none():
     assert eff == {}
 
 
+@pytest.mark.parametrize(("agent", "expected"), [
+    ({"default": {"model": "sonnet"}, "claude": {"model": "opus"}}, ("active", "opus")),
+    ({"default": {"model": "sonnet"}, "claude": {"model": None}}, ("active", None)),
+    ({"default": {"model": "sonnet"}, "claude": {}}, ("default", "sonnet")),
+    ({"default": {"model": None}}, ("default", None)),
+    ({"default": {}, "claude": {}}, (None, "MISSING")),
+    (None, (None, "MISSING")),
+])
+def test_behavior_pick_is_raw_and_names_its_slot(agent, expected):
+    # The ONE carrier of the §2d pick, RAW: a present-None comes back as ``None``
+    # (``effective_behavior`` collapses it; ``start._persona_model_state`` must
+    # not), ABSENT as ``__MISSING__``; ``behavior_slot`` is its slot half.
+    # (Mutation: fold a present-None into ``__MISSING__`` → the None rows go RED.)
+    from kanibako.settings.kb_store import __MISSING__
+    from kanibako.settings.settings_launch import behavior_pick, behavior_slot
+
+    snap = KeyStore({} if agent is None else {"agent": agent})
+    slot, value = behavior_pick(snap, active_agent="claude", key="model")
+    want_slot, want_value = expected
+    assert slot == want_slot
+    if want_value == "MISSING":
+        assert value is __MISSING__
+    elif want_value is None:
+        assert value is None
+    else:
+        assert value == want_value
+    assert behavior_slot(snap, active_agent="claude", key="model") == want_slot
+
+
 def test_effective_behavior_discovers_all_keys_when_keys_none():
     # keys=None (the LIVE default): DISCOVER every scalar behavior leaf across both
     # slots rather than reading a fixed list, skipping category subtrees. It has to

@@ -319,8 +319,9 @@ set-values by `system_path_set_values`.
 Resolve the box scalars (:data:`_BOX_SCALAR_FIELDS`) through the KEYSPACE.
 
 The ONE resolve behind `load_merged_config` (B6, option (b)). A focused, AGENT-LESS
-`build_launch_snapshot` — the `"general"` slot, the proven `_effective_bootstrap` shape, so
-`kanibako shell` and every box-less caller resolve without an agent — over the real cascade files:
+`build_launch_snapshot` — the `"general"` slot, the proven focused-bootstrap shape
+(`start._agent_scalar_pick`), so `kanibako shell` and every box-less caller resolve without an
+agent — over the real cascade files:
 
 ```
 floor(declared box-scalar defaults) < /etc settings_base.yaml < system

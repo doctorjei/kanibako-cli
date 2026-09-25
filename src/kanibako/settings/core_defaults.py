@@ -91,7 +91,7 @@ def behavior_default(key: str) -> str:
     return defaults[key]
 
 
-def shell_tier_defaults() -> dict[str, str]:
+def shell_tier_defaults() -> dict[str, str | None]:
     """Return the declared ``agent.shell.<key>`` tier floor (spec §2d fence).
 
     The shell pseudo-agent's OWN tier values, read off the ``agent_shell:`` table
@@ -99,20 +99,25 @@ def shell_tier_defaults() -> dict[str, str]:
     base floor UNCONDITIONALLY (every snapshot carries the tier; only a shell
     pick reads it), so the fence defaults ANSWER for a box that already exists
     (P) whatever that box runs.  ⚑ Values are STRINGS, same convention, same
-    reason.  ⚑ ``canon`` is NOT here — its arm is dynamic and lives in
+    reason — except a fence ``<None>`` row (``run_args``/``transform``), which
+    stays a PRESENT ``None`` (``str()`` would ship the text ``"None"``).  Why every
+    row must be supplied: the ``agent_shell:`` header in ``core-defaults.yaml``.
+    ⚑ ``canon`` is NOT here — its arm is dynamic and lives in
     :func:`canon_default_categories`.
     """
     return {
-        f"agent.shell.{key}": str(value)
+        f"agent.shell.{key}": None if value is None else str(value)
         for key, value in (_load_doc().get("agent_shell") or {}).items()
     }
 
 
 def shell_tier_default(key: str) -> str:
-    """ONE declared ``agent.shell.<key>`` value — the FAIL-CLOSED single-key read.
+    """ONE declared STRING ``agent.shell.<key>`` value — the FAIL-CLOSED single-key read.
 
     The shell-tier twin of :func:`behavior_default`: one spelling, re-read per
-    call, absent declaration RAISES as a packaging defect.
+    call, absent declaration RAISES as a packaging defect.  ⚑ A ``<None>`` row
+    RAISES too: this read serves a consumer that needs a string (``label``), and
+    handing it ``None`` would move the defect to wherever the string is used.
     """
     defaults = shell_tier_defaults()
     shell_key = f"agent.shell.{key}"
@@ -121,7 +126,13 @@ def shell_tier_default(key: str) -> str:
             f"{CORE_DEFAULTS_FILENAME} declares no 'agent_shell.{key}' — the shell "
             f"tier floor (spec §2d agent.shell.{key}) lives there and nowhere else."
         )
-    return defaults[shell_key]
+    value = defaults[shell_key]
+    if value is None:
+        raise RuntimeError(
+            f"{CORE_DEFAULTS_FILENAME} declares 'agent_shell.{key}' as <None>, "
+            f"but this read serves a string value."
+        )
+    return value
 
 
 def env_default_categories() -> dict[str, str]:

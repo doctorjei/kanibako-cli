@@ -131,8 +131,9 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
       auth_chain_floor(mode="primary", agent_name=_PROBE_AGENT))),
     ("core-defaults.yaml (agent_default:)", frozenset(
       f"agent.default.{leaf}" for leaf in core_defaults.behavior_defaults())),
-    # The shell tier's OWN values — the fence literals no other tier carries.
-    # Derived off the emitter exactly like the default arm above, so a fourth
+    # The shell tier's OWN values — the fence literals no other tier carries,
+    # its PRESENT-``None`` rows (``run_args``/``transform``) included.
+    # Derived off the emitter exactly like the default arm above, so a new
     # `agent_shell:` leaf arrives here on its own. `canon` is NOT in this set:
     # its shell arm is dynamic and is classified with its producer below.
     ("core-defaults.yaml (agent_shell:)", frozenset(
@@ -220,18 +221,13 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # below.  Its layer is declared and SKIPPED at resolve (spec §2a).
     ("launch/templates.py (shell fence, present None)",
      frozenset({"agent.shell.template"})),
-    # ``default: <None>`` rows with NO carrier.  ⚑ ``agent.shell.{bootstrap,run_args,
-    # transform}`` are declared ``<None>`` by the same fence as ``agent.shell.template``
-    # above, but NO floor builder installs them yet: they are ABSENT, not ``None``, so a
-    # fallback still reaches them.  For ``bootstrap`` it lands on a value —
-    # ``commands.start._effective_bootstrap`` answers the declared
-    # ``agent.default.bootstrap`` (``tmux``) where no scope sets one — an [R177] gap of
-    # its own, not fixed here.  ``run_args`` and ``transform`` fall back to default arms
-    # that are themselves unset.  The rest are true ABSENCES as well.
+    # ``default: <None>`` rows with NO carrier — true ABSENCES.  ⚑ The shell fence's
+    # other ``<None>`` rows, ``agent.shell.{run_args,transform}``, are NOT here:
+    # ``core-defaults.yaml``'s ``agent_shell:`` floors them as PRESENT ``None``, so
+    # they arrive in that group above, derived off its emitter.
     ("(nothing declares it — unset until you set it)", frozenset({
       "system.agent", "system.setup_completed", "box.shell", "agent.default.model",
-      "agent.default.endpoint", "agent.default.run_args", "agent.default.transform",
-      "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform"})),
+      "agent.default.endpoint", "agent.default.run_args", "agent.default.transform"})),
     # ``default: {}`` — the resolver's own initial state for a category arm.
     ("(empty — the category starts with no entries)", frozenset({
       "box.bindings.ro", "box.bindings.rw", "box.masks",

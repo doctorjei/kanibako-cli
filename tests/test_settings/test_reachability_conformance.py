@@ -235,31 +235,33 @@ def _termini(std, config_file, proj, target):
       for offset, snapshot in enumerate(built[start_at:]):
         collected.append((f"{label}#{offset}", snapshot))
 
-    # start.py:2424 — every launch loads the merged config before anything else,
+    # _run_container — every launch loads the merged config before anything else,
     # and its box-scalar resolve (config._resolve_box_scalars) is a real resolve.
     drive("load_merged_config", lambda: load_merged_config(
       config_file, box_path, workset_path=workset_path, cli_overrides=None,
     ))
-    # start.py:2749 / :3465 — the two focused agent-behavior resolves
-    # (_effective_agent_scalar) a launch runs ahead of the main snapshot.
-    drive("effective_bootstrap", lambda: start_cmd._effective_bootstrap(
+    # _run_container's _bootstrap_choice / _effective_transform — the two focused
+    # agent-behavior resolves (_agent_scalar_pick) a launch runs ahead of the main
+    # snapshot.
+    drive("bootstrap_choice", lambda: start_cmd._bootstrap_choice(
       proj, None, "claude", agent_path=None,
     ))
     drive("effective_transform", lambda: start_cmd._effective_transform(
       proj, None, "claude", target, None,
     ))
-    # start.py:2926, inside _run_container — the auth/decisions resolve.
+    # _run_container's _resolve_box_launch_decisions — the auth/decisions resolve.
     drive("box_launch_decisions", lambda: start_cmd._resolve_box_launch_decisions(
       std=std, proj=proj, target=target, agent_name="claude", agent_cfg=None,
       system_settings_path=None, agent_cfg_path=None, selection_level=selection,
     ))
-    # stop.py:107 / launch/creds_watcher.py:338 — the same build for the TARGET-LESS
-    # paths.  An existing box is what both of those act on, which is the whole test.
+    # stop.py / launch/creds_watcher.py's _resolve_box_auth_source — the same build for
+    # the TARGET-LESS paths.  An existing box is what both of those act on, which is
+    # the whole test.
     drive("box_auth_source", lambda: start_cmd._resolve_box_auth_source(
       std=std, proj=proj, agent_name="claude",
       system_settings_path=None, agent_cfg_path=None, selection_level=selection,
     ))
-    # start.py:3567, inside _run_container — the main launch resolve.
+    # _run_container's _resolve_launch_snapshot — the main launch resolve.
     drive("launch_snapshot", lambda: start_cmd._resolve_launch_snapshot(
       std=std, proj=proj, agent_name="claude",
       system_settings_path=None, agent_cfg_path=None,
@@ -286,7 +288,7 @@ def _probe(request, std, config_file, mode: str, target=None):
 
   ⚑ IT WAS FOUR UNDER THE SINGLE-TERMINUS PROBE, and the fourth is a result rather
   than a correction: ``agent.default.bootstrap`` now answers WITHOUT an agent target,
-  because the ``_effective_bootstrap`` terminus floors it from ``_bootstrap_default()``
+  because the ``_bootstrap_choice`` terminus floors it from ``_bootstrap_default()``
   — core's own declared value, not a plugin descriptor.  A key whose default comes
   from core was never really agent-dependent; the wider terminus set is what made that
   visible.
