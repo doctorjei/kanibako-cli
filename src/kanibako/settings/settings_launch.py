@@ -36,9 +36,11 @@ from typing import (
     Mapping,
     NamedTuple,
     Sequence,
+    TypedDict,
 )
 
 if TYPE_CHECKING:
+    from kanibako.channels.channels import BoxChannelAddresses
     from kanibako.targets.base import PluginDescriptor
 
 from kanibako import kuid
@@ -402,6 +404,32 @@ def meta_agent_grammar_floor(
     if exec_op is not None:
         floor[f"meta.agent.{agent_name}.exec"] = list(exec_op.fragment)
     return floor
+
+
+class BoxAddressArgs(TypedDict):
+    """The three channel-address arguments of :func:`meta_identity_floor`."""
+
+    inbox: str
+    share_global: str
+    share_workset: str | None
+
+
+def box_address_args(addr: "BoxChannelAddresses") -> BoxAddressArgs:
+    """:func:`meta_identity_floor`'s channel-address arguments from what
+    ``channels.box_channel_addresses`` derived — the ONE spelling of that wiring.
+
+    Each address goes in as the RESOLVED literal; a standalone box's ``share_workset``
+    stays ``None`` (no workset-local channels, §2c).  The launch unpacks this into the
+    floor call, and the kinemata ``box-*`` views unpack the same answer, so a slot
+    wired to the wrong address reds there.
+    """
+    return BoxAddressArgs(
+        inbox=str(addr.inbox),
+        share_global=str(addr.share_global),
+        share_workset=(
+            str(addr.share_workset) if addr.share_workset is not None else None
+        ),
+    )
 
 
 def meta_identity_floor(

@@ -1009,13 +1009,13 @@ def test_access_tier_vocabulary_is_declared_once():
     ACCESSOR (``access_default``) rather than ``ACCESS_DEFAULT``. The enum stays a
     constant — it is the closed vocabulary, not a default. What this pins is that
     the settable surface, the launch resolver and the plugin descriptors still
-    reach ONE list and ONE default read.
+    reach ONE list and ONE default read. The two VALUES are compared with the
+    manifest by the ``access-choices`` (in order) and ``access-default-reader``
+    kinemata views.
     """
     from kanibako.settings import settings_keyspace
     from kanibako.settings.settings_keyspace import ACCESS_TIERS, access_default
 
-    assert ACCESS_TIERS == ("restricted", "editing", "full")
-    assert access_default() == "full"
     assert access_default() in ACCESS_TIERS
     assert not hasattr(settings_keyspace, "ACCESS_DEFAULT"), (
         "the constant is retired — a restored one would be a SECOND spelling of a "

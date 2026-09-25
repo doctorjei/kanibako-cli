@@ -26,6 +26,9 @@ def bootstrap_path_row(entry: Any) -> bool
 def every_mode_cell(floors: Any) -> dict[str, Any]
 def ref_token_project(mode: str, *, workset_name: str, box_name: str) -> Any
 def ref_token_standard_paths(mode: str) -> Any
+def guest_bind_arm(binds: Any, arm: str) -> list[tuple[str, tuple[str, ...]]]
+def sentinel_helper_binds() -> Any
+def box_address_floor(mode: str) -> dict[str, Any]
 def _standalone_arm(entry: Any) -> tuple[bool, Any]
 def _root_or_decoy(mode: str, attribute: str) -> Any
 ```
