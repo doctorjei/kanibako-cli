@@ -3158,6 +3158,18 @@ the other top-level entries through unchecked, and a dotted name like `env.X` or
 `box:`, `workset:`, `system:`, `agent: claude:` or `box: auth:` too: the box started and the entry
 was ignored.
 
+**A `null` at a bare `bindings:` is refused too.** A bindings reset sits at the arm, and `bindings`
+alone names no key. v1.8.0-rc2 took `bindings: null` under `box:`, `workset:`, `system:` or
+`agent: <agent>:` as a silent reset of both arms; it is now refused, naming `box.bindings` (or `workset.bindings`, `system.bindings`, `agent.<agent>.bindings`). To
+clear both arms, reset each one:
+
+```yaml
+box:
+  bindings:
+    ro: null
+    rw: null
+```
+
 **A `config:` table is refused too, with a message of its own.** The `config.*` keys are the
 bootstrap paths and live only in the config file — `~/.config/kanibako.cfg` by default (site-wide,
 `/etc/kanibako/base.cfg`); a settings file cannot move the store. The message names the file, each

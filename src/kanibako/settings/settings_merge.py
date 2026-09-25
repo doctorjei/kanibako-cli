@@ -172,12 +172,13 @@ def _is_category_root(path: tuple[str, ...]) -> bool:
     segment alone OMITTED a present ``None`` there as a ``common`` category reset, so the
     §2c standalone ``<None>`` never reached the snapshot.  So did ``box.env.common`` and
     ``box.secret_path.seeded`` — a ``<VAR>`` spelled like a category.
-    ⚑ The second test keeps the long-standing ``<scope>.bindings = None`` whole-node
-    reset unchanged.  A bare ``bindings`` is not a key — spec §2a places a reset at the
-    ARM — and whether that node reset should exist at all is an open question.
+    ⚑ A bare ``<scope>.bindings`` is NOT a category root: it is the NAMESPACE the two
+    arms hang under (spec §0 — the key *"ENDS at the category (for bindings, at the
+    ro/rw ARM)"*; §2a — a present-``None`` resets *"at the CATEGORY (for bindings, at
+    the ARM)"*).  A ``None`` there is KEPT, so the §0 audit refuses it by name as a
+    scalar at a namespace, exactly as it does ``<scope>.env = None``.
     """
-    key = ".".join(path)
-    return is_terminal_category_key(key) or is_terminal_category_key(f"{key}.ro")
+    return is_terminal_category_key(".".join(path))
 
 
 def _is_category_entry(path: tuple[str, ...]) -> bool:
