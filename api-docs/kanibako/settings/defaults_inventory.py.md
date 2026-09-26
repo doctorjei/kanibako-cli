@@ -9,7 +9,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ```
 _PROBE_AGENT = 'default'
 _MODES: tuple[str, ...] = tuple((mode.value for mode in BoxMode))
-_BIND_SOURCES_OUTSIDE_THE_FILE: dict[str, str] = {'~/canon/COLLECTION.md': 'core_defaults.py (packaged rom tree)', '~/canon/charter/ROM_CONTENTS.md': 'core_defaults.py (packaged rom tree)', '~/canon/charter/general': 'core_defaults.py (packaged rom tree)', '~/canon/charter/workset': 'core_defaults.py (packaged rom tree)', '~/canon/charter/box': 'core_defaults.py (packaged rom tree)', '~/canon/charter/agent': 'core_defaults.py (plugin rom chapter)', '<box_image_dir>': 'core-defaults.yaml (images:, gated)'}
+_BIND_SOURCES_OUTSIDE_THE_FILE: dict[str, str] = {'~/canon/COLLECTION.md': 'core_defaults.py (packaged rom tree)', '~/canon/charter/ROM_CONTENTS.md': 'core_defaults.py (packaged rom tree)', '~/canon/charter/general': 'core_defaults.py (packaged rom tree)', '~/canon/charter/workset': 'core_defaults.py (packaged rom tree)', '~/canon/charter/box': 'core_defaults.py (packaged rom tree)', '~/canon/charter/agent': 'core_defaults.py (plugin rom chapter)'}
 _SEED_LAYER_SOURCE = 'launch/templates.py (seed layers)'
 _VALUE_COLUMN_CAP = 40
 ```
