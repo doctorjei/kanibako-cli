@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from unittest.mock import patch
@@ -639,3 +640,116 @@ class TestAutoSnapshot:
         assert result is not None
         assert result.is_dir()
         assert (result / "file1.txt").read_text() == "hello"
+
+
+# ---------------------------------------------------------------------------
+# Symlinks are copied verbatim (Q70/Q74)
+# ---------------------------------------------------------------------------
+
+
+def _populate_links(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
+    """share-rw holding every kind of link, beside an ``outside`` tree; returns the link texts."""
+    vault_rw = tmp_path / "vault" / "share-rw"
+    _populate_rw(vault_rw)
+    outside = tmp_path / "outside"
+    (outside / "deep").mkdir(parents=True)
+    (outside / "big.txt").write_text("outside data")
+    (outside / "deep" / "nested.txt").write_text("nested")
+    texts = {
+        "abs": str(outside / "big.txt"),
+        "in": "subdir/file2.txt",
+        "out": "../../outside/big.txt",
+        "subdir/out2": "../../../outside/big.txt",
+        "gone": "../../outside/no-such",
+        "dirlink": "../../outside",
+    }
+    for rel, text in texts.items():
+        (vault_rw / rel).symlink_to(text)
+    return vault_rw, outside, texts
+
+
+def _snapshot_via(strategy: str, vault_rw: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Snapshot through one of the three copiers: rsync, the copytree fallback, or ``cp -a``."""
+    import subprocess
+
+    real_run = subprocess.run
+
+    def fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if strategy == "fallback" and cmd and cmd[0] == "rsync":
+            raise FileNotFoundError("rsync not found")
+        if strategy == "cp" and cmd and cmd[0] == "cp":
+            # tmpfs has no reflink; the link handling is cp -a's, which is what is under test.
+            cmd = [c for c in cmd if c != "--reflink=always"]
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr("kanibako.snapshots.subprocess.run", fake_run)
+    snap = create_snapshot(vault_rw, strategy="reflink" if strategy == "cp" else "hardlink")
+    assert snap is not None
+    return snap
+
+
+class TestSnapshotSymlinks:
+    @pytest.mark.parametrize("strategy", ["rsync", "fallback", "cp"])
+    def test_snapshot_copies_links_verbatim(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, strategy: str,
+    ) -> None:
+        vault_rw, _outside, texts = _populate_links(tmp_path)
+        snap = _snapshot_via(strategy, vault_rw, monkeypatch)
+        for rel, text in texts.items():
+            assert (snap / rel).is_symlink(), rel
+            assert os.readlink(snap / rel) == text, rel
+        # The outside tree was not copied into the snapshot.
+        assert not [p for p in snap.rglob("*") if p.name in ("big.txt", "nested.txt")]
+
+    @pytest.mark.parametrize("strategy", ["rsync", "fallback", "cp"])
+    def test_restore_round_trips_link_texts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, strategy: str,
+    ) -> None:
+        vault_rw, outside, texts = _populate_links(tmp_path)
+        snap = _snapshot_via(strategy, vault_rw, monkeypatch)
+        for rel in texts:
+            (vault_rw / rel).unlink()
+        (vault_rw / "later.txt").write_text("after the snapshot")
+
+        restore_snapshot(vault_rw, snap.name)
+
+        for rel, text in texts.items():
+            assert (vault_rw / rel).is_symlink(), rel
+            assert os.readlink(vault_rw / rel) == text, rel
+        assert not (vault_rw / "later.txt").exists()
+        assert (vault_rw / "out").read_text() == "outside data"
+        # The outside tree is untouched and was never materialized in the vault.
+        assert (outside / "deep" / "nested.txt").read_text() == "nested"
+        assert not [
+            p for p in vault_rw.rglob("*")
+            if p.name in ("big.txt", "nested.txt") and not p.is_symlink()
+        ]
+
+    def test_rollback_unlinks_a_restored_directory_link(self, tmp_path: Path) -> None:
+        """A failed swap after a dir link landed must still put the live vault back."""
+        vault_rw, outside, _texts = _populate_links(tmp_path)
+        snap = create_snapshot(vault_rw, strategy="hardlink")
+        assert snap is not None
+        (vault_rw / "dirlink").unlink()
+        (vault_rw / "live_only.txt").write_text("must-survive")
+
+        real_move = shutil.move
+        state: dict[str, int] = {"n": 0, "total": 0}
+
+        def flaky_move(src: str, dst: str):  # type: ignore[no-untyped-def]
+            # Fail on the LAST staged entry, so every other one (dirlink included) is in.
+            if ".restore.tmp" in str(src):
+                if not state["total"]:
+                    state["total"] = len(os.listdir(os.path.dirname(src)))
+                state["n"] += 1
+                if state["n"] == state["total"]:
+                    raise OSError("write error mid-swap")
+            return real_move(src, dst)
+
+        with patch("kanibako.snapshots.shutil.move", side_effect=flaky_move):
+            with pytest.raises(OSError, match="write error mid-swap"):
+                restore_snapshot(vault_rw, snap.name)
+
+        assert (vault_rw / "live_only.txt").read_text() == "must-survive"
+        assert not (vault_rw / "dirlink").exists()
+        assert (outside / "deep" / "nested.txt").read_text() == "nested"

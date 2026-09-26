@@ -59,6 +59,7 @@ from kanibako.settings.paths import (
     unregister_primary_box_name,
     write_vault_gitignore,
 )
+from kanibako.tree_copy import copy_tree_keeping_links
 from kanibako.utils import write_project_gitignore
 from kanibako.project.workset import (
     Workset,
@@ -422,7 +423,7 @@ def copy_into_workset(
     # registered-but-incomplete project. Roll registration + partial dirs back, then re-raise.
     try:
         dst_project = ws.projects_dir / proj_name
-        shutil.copytree(
+        copy_tree_keeping_links(
             metadata_path, dst_project,
             ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
             dirs_exist_ok=True,
@@ -430,8 +431,8 @@ def copy_into_workset(
 
         if shell_path.is_dir():
             dst_shell = dst_project / "home"
-            shutil.copytree(shell_path, dst_shell, dirs_exist_ok=True)
-            # ⚑ copytree carries the canon skeleton's MODES but not its OWNERSHIP — re-assert.
+            copy_tree_keeping_links(shell_path, dst_shell, dirs_exist_ok=True)
+            # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP — re-assert.
             materialize_canon_skeleton(dst_shell)
 
         if copy_workspace:
@@ -439,7 +440,7 @@ def copy_into_workset(
             ignore = None
             if source_mode == BoxMode.standalone:
                 ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
-            shutil.copytree(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
+            copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
         try:
             remove_project(ws, proj_name, remove_files=True, std=std)
@@ -738,7 +739,7 @@ def _run_steps(
         new_workspace = dest
     elif relocating and dest is not None and not state.is_external:
         src = state.workspace_path
-        shutil.copytree(src, dest)
+        copy_tree_keeping_links(src, dest)
         unwind.push(lambda: shutil.rmtree(dest, ignore_errors=True))
         new_workspace = dest
     elif relocating and dest is not None and state.is_external:
@@ -868,7 +869,7 @@ def _copy_metadata(
     unwind: _Unwind,
 ) -> Path:
     """Copy metadata (minus lock+home) and shell into *dst_metadata*; return the dest shell."""
-    shutil.copytree(
+    copy_tree_keeping_links(
         src_metadata, dst_metadata,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
         dirs_exist_ok=True,
@@ -879,8 +880,8 @@ def _copy_metadata(
 
     dst_shell = dst_metadata / home_leaf
     if src_shell.is_dir():
-        shutil.copytree(src_shell, dst_shell, dirs_exist_ok=True)
-        # ⚑ copytree carries the canon skeleton's 555 MODES but never its OWNERSHIP —
+        copy_tree_keeping_links(src_shell, dst_shell, dirs_exist_ok=True)
+        # ⚑ The copy carries the canon skeleton's 555 MODES but never its OWNERSHIP —
         # re-assert (idempotent; J-7).
         materialize_canon_skeleton(dst_shell)
     return dst_shell
@@ -918,20 +919,21 @@ def _vault_leaf_has_contents(leaf: Path) -> bool:
 def _copy_vault_leaf_contents(src: Path, dst: Path) -> None:
     """Merge-copy the CONTENTS of vault leaf *src* into leaf *dst*.
 
-    ⚑ The counterpart ``snapshots.py`` uses a bare ``copytree`` for vault content;
-    this is the same operation pointed at the relocation destination instead of a
-    snapshot dir.  No-ops when *src* holds nothing (missing or not a dir) and when
+    ⚑ The counterpart ``snapshots.py`` copies vault content under the same symlink
+    rule; this is the same operation pointed at the relocation destination instead
+    of a snapshot dir.  No-ops when *src* holds nothing (missing or not a dir) and when
     *src* and *dst* are the same directory (a reuse-in-place edge, whose teardown
     is skipped — there is nothing to carry).  RAISES on a copy failure: callers
     run this BEFORE the source teardown (except leg 2 of the workset stash and its
     unwind, whose source is the stash), so a failure aborts the relocation with
     the source still whole (and the unwind drops the destination).
 
-    ⚑ ``copytree`` dereferences symlinks and copies every entry it can before it
-    raises one ``shutil.Error`` listing the rest, so a dangling symlink fails the
-    carry.  That failure is re-raised as a ``ProjectError`` naming the leaf and the
-    entries; the entries are NOT skipped, since skipping one would drop it from the
-    store without a word.
+    ⚑ Every symlink is copied VERBATIM and never followed
+    (:func:`kanibako.tree_copy.copy_tree_keeping_links`), so a dangling link carries
+    like any other.  The copy takes every entry it can before it raises one
+    ``shutil.Error`` listing the rest; that failure is re-raised as a
+    ``ProjectError`` naming the leaf and the entries — the entries are NOT skipped,
+    since skipping one would drop it from the store without a word.
     """
     if not src.is_dir():
         return
@@ -947,9 +949,14 @@ def _copy_vault_leaf_contents(src: Path, dst: Path) -> None:
         )
     dst.mkdir(parents=True, exist_ok=True)
     try:
-        shutil.copytree(src, dst, dirs_exist_ok=True)
+        copy_tree_keeping_links(src, dst, dirs_exist_ok=True)
     except shutil.Error as e:
         raise ProjectError(_vault_copy_failure_message(src, dst, e)) from e
+    except OSError as e:
+        raise ProjectError(
+            f"Could not carry the vault contents of {src} to {dst}: {e}\n"
+            f"The relocation was aborted."
+        ) from e
 
 
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str:
@@ -964,10 +971,7 @@ def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str:
     shown = 5
     lines = []
     for entry_src, _entry_dst, why in failures[:shown]:
-        entry = Path(entry_src)
-        if entry.is_symlink() and not entry.exists():
-            why = "dangling symlink"
-        lines.append(f"  {entry}: {why}")
+        lines.append(f"  {entry_src}: {why}")
     if len(failures) > shown:
         lines.append(f"  … and {len(failures) - shown} more")
     return (
@@ -1623,7 +1627,7 @@ def _to_workset(
         stash_boxes = stash / "boxes"
         try:
             if state.metadata_path.is_dir():
-                shutil.copytree(
+                copy_tree_keeping_links(
                     state.metadata_path, stash_boxes,
                     ignore=shutil.ignore_patterns(".kanibako.lock"),
                     dirs_exist_ok=True,
@@ -1650,7 +1654,7 @@ def _to_workset(
         def _restore_source() -> None:
             add_project(src_ws, src_name, src_source_path, std)
             if stash_boxes.is_dir():
-                shutil.copytree(
+                copy_tree_keeping_links(
                     stash_boxes, src_ws.projects_dir / src_name,
                     dirs_exist_ok=True,
                 )
@@ -1676,7 +1680,7 @@ def _to_workset(
 
     dst_project = target_ws.projects_dir / new_name
     # Copy metadata (minus lock+home) into the workset boxes dir.
-    shutil.copytree(
+    copy_tree_keeping_links(
         metadata_source, dst_project,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home"),
         dirs_exist_ok=True,
@@ -1686,8 +1690,8 @@ def _to_workset(
     _deliver_carried_box_settings(state, dst_project / BOX_META_FILE)
     dst_shell = dst_project / "home"
     if shell_source.is_dir():
-        shutil.copytree(shell_source, dst_shell, dirs_exist_ok=True)
-        # ⚑ copytree carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
+        copy_tree_keeping_links(shell_source, dst_shell, dirs_exist_ok=True)
+        # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
         materialize_canon_skeleton(dst_shell)
 
     if copy_workspace:
@@ -1695,7 +1699,9 @@ def _to_workset(
         ignore = None
         if state.mode == BoxMode.standalone:
             ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
-        shutil.copytree(state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
+        copy_tree_keeping_links(
+            state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True,
+        )
 
     # Determine the recorded workspace.
     if internal:
