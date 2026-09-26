@@ -1047,6 +1047,45 @@ class TestResetAll:
         msg2 = reset_all(config_path=f, force=True)
         assert "Reset 1 override(s)." in msg2, msg2
 
+    @pytest.mark.parametrize("scope", [ConfigLevel.box, ConfigLevel.workset])
+    def test_reset_all_clears_and_counts_the_pref_table(self, tmp_path, scope):
+        # Q86 = (a): a pref is written only at this noun's level (spec §2h), so --all
+        # clears the whole ``pref:`` table and counts each request it removed.
+        f = tmp_path / "settings.yaml"
+        dump_doc(f, {
+            "box": {"image": "img"},
+            "pref": {
+                "system": {"agent": "goose"},
+                "agent": {"claude": {"model": "opus"}},
+            },
+        })
+        msg = reset_all(config_path=f, force=True, command_scope=scope)
+        assert msg == "Reset 3 override(s).", msg
+        assert "pref" not in load_doc(f), load_doc(f)
+
+    @pytest.mark.parametrize("scope", [ConfigLevel.box, ConfigLevel.workset])
+    def test_reset_all_drops_a_pref_table_of_empty_leaves(self, tmp_path, scope):
+        # A table that counts 0 leaves is still dropped: the file is written whenever a
+        # table goes, not only when an override was counted.
+        f = tmp_path / "settings.yaml"
+        dump_doc(f, {"pref": {"system": {}, "agent": {"claude": {}}}})
+        msg = reset_all(config_path=f, force=True, command_scope=scope)
+        assert msg == "No overrides to reset.", msg
+        assert "pref" not in load_doc(f), load_doc(f)
+
+    def test_reset_all_at_system_leaves_a_pref_table(self, tmp_path):
+        # The SAME site rule as ``reset pref.<key>``, which the system scope refuses:
+        # a ``pref:`` table is not the system noun's to clear (spec §2h).
+        cf = tmp_path / "kanibako.cfg"
+        ssp = tmp_path / "system.yaml"
+        dump_doc(ssp, {"pref": {"system": {"agent": "goose"}}})
+        msg = reset_all(
+            config_path=cf, force=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert msg == "No overrides to reset.", msg
+        assert load_doc(ssp) == {"pref": {"system": {"agent": "goose"}}}
+
     def test_reset_all_without_scope_leaves_nested_tables(self, tmp_path):
         # Backward-compat: command_scope=None (no scope context) does NOT touch a
         # nested scope table (the guard can't be evaluated) — flat/agent/env

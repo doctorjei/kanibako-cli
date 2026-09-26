@@ -3227,7 +3227,9 @@ message says so rather than letting you find out: `box reset <key>` cannot remov
 key, and `box show --effective` resolves through the same seam, so it refuses as well.
 `box reset --all --force` does remove an entry in the `box:` table of the box's own settings file,
 and `workset reset <workset> --all --force` one in the `workset:` table of the working set's — but
-each removes every other setting in that table with it. The message lists
+each removes every other setting in that table with it, and every `pref.*` request in the same file,
+the agent choice `pref.system.agent` included. `--all` removes an undeclared entry under that
+file's `pref:` table the same way. The message lists
 the files this resolve loaded; which of them carried the entry it cannot say, because the snapshot
 is the merge of all of them. By tier those are a box's `box.yaml`, a workset's `workset.yaml`, an
 agent's `agent.yaml`, the system's `<data>/global/settings.yaml` (§2.45) and the machine-wide

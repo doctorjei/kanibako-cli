@@ -160,6 +160,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads *"'kanibako box reset <key>' cannot remove what is not a key"*. Deleting the one line by
   hand is still the cure that keeps your other settings.
 
+- **`kanibako box reset --all` and `kanibako workset reset --all` now clear the `pref:` table
+  too.** They asked *"Remove all config overrides?"* and then left every pref in place —
+  `pref.system.agent` and each `pref.agent.<agent>.<key>` — so the box kept its agent choice and
+  agent tweaks, and the printed *"Reset N override(s)."* did not count them. A pref is written only
+  at the box or workset level, and `show` already lists it as an override, so `--all` now removes
+  the whole table and counts each line `box show` lists for it (one per destination of a
+  bind-shaped request). An entry in the table that is not a pref, which `show` lists as
+  undeclared, is removed and counted too, as an undeclared entry in the `box:` table already was.
+  `kanibako box reset pref.<key>` still clears a single pref.
+  `kanibako system reset --all` is unchanged: a pref cannot be set at the system level.
+
 - **A `config:` table in a settings file now stops the command, and says where each entry
   belongs.** The `config.*` keys are the bootstrap paths, and they live only in `kanibako.cfg`
   (site-wide, `/etc/kanibako/base.cfg`). A declared one (`config.data: /elsewhere`), or an empty
