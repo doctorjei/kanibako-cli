@@ -64,6 +64,7 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         self, config_file, tmp_home, credentials_dir,
     ):
         from kanibako.commands.box._lifecycle import (
+            _Unwind,
             _default_state_from_meta,
             _remove_old_metadata,
         )
@@ -76,7 +77,7 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
 
         state = _default_state_from_meta(workspace, std)
         assert state is not None
-        _remove_old_metadata(state, std, config)
+        _remove_old_metadata(state, std, config, _Unwind())
 
         # The per-box LEAVES went with the box...
         assert not proj.vault_ro_path.exists()
@@ -90,6 +91,7 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
     ):
         """Anti-vacuity twin: the default layout must behave as it does today."""
         from kanibako.commands.box._lifecycle import (
+            _Unwind,
             _default_state_from_meta,
             _remove_old_metadata,
         )
@@ -101,7 +103,7 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         (proj.vault_ro_path / "keep.txt").write_text("box data")
 
         state = _default_state_from_meta(workspace, std)
-        _remove_old_metadata(state, std, config)
+        _remove_old_metadata(state, std, config, _Unwind())
 
         assert not proj.vault_ro_path.exists()
         assert not proj.vault_rw_path.exists()
@@ -113,6 +115,7 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         """🛑 STRICT containment.  A leafless vault path is the SHARED arm — deleting it
         would take every box's vault.  ``relative_to`` alone ACCEPTS an equal path."""
         from kanibako.commands.box._lifecycle import (
+            _Unwind,
             _default_state_from_meta,
             _remove_old_metadata,
         )
@@ -129,7 +132,7 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         # Degenerate state: the arm with no per-box leaf.
         state.vault_ro = std.primary_vault_ro
         state.vault_rw = std.primary_vault_rw
-        _remove_old_metadata(state, std, config)
+        _remove_old_metadata(state, std, config, _Unwind())
 
         assert std.primary_vault_ro.is_dir()
         assert (other / "keep.txt").read_text() == "another box's data"

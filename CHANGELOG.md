@@ -130,6 +130,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another mode, which printed the raw list of failures. See `MIGRATION.md` § *2.88 `box move`,
   `convert`, `duplicate` and `extract` copy a symlink as a symlink*.
 
+- **`box duplicate --to named` refuses an occupied destination without `--force`.** An existing
+  `workspaces/<name>` (unless `--bare`) or `boxes/<name>` in the working set now stops the
+  duplicate with `Error: destination already exists: <path>` and `Use --force to overwrite.`, as
+  `box duplicate` already did into a primary box. With `--force`, the duplicate merges
+  into it as before.
+
 ### Fixed
 
 - **`box move`, `box convert`, and `box remap` report a failed file operation as an `Error:`
@@ -163,6 +169,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prints `Note: left <path>; remap deletes nothing`. `box move` into a directory inside the
   project being moved is refused with `Destination is inside the project being moved: <path>`; it
   used to report success and delete both the project and its copy.
+
+- **A failed `box move` or `box convert` no longer destroys the box, and a failed
+  `box duplicate --to named` no longer deletes what was already there.** Moving a box from one
+  working set to another removed its box directory and vault before the move, and a removal that
+  failed part-way (a file it could not delete in the vault) discarded the only copy: the box, its
+  home, and its vault were gone and it was no longer listed. It is now restored, and the move
+  exits 1. Moving or converting a working-set box to primary or standalone mode had the same flaw;
+  its old box directory and vault are now removed only after the operation succeeded, and a
+  removal that fails there leaves the new box complete, exits 0, and prints
+  `Note: could not remove the old store of '<name>': <reason>; left <paths>`. The same Note, without
+  a reason, names an old box directory a move between working sets could not remove. A rollback
+  into a working set now removes only the directories the operation created: a duplicate, move, or
+  convert that failed used to delete a `workspaces/<name>`, `boxes/<name>`, or vault directory that
+  was there before it. Each restore step reports its own failure, with
+  `Note: could not restore <what> at <path>: <reason>`, and the others still run; the temporary copy
+  that a failed restore kept is named with `Note: kept <path>; it holds the box's store as it was
+  before the move (it may hold credentials)`. That temporary copy (`kanibako-unwind-*` in the
+  temporary directory) was left behind whenever the box home held a read-only directory; it is now
+  removed, and `Note: could not remove <path>; it may hold credentials` names one that could not
+  be. A directory the rollback created but could not remove is named with
+  `Note: could not remove <path>, which this operation created`.
 
 - **`box show --effective` and the `bootstrap` / `transform` reads resolve a behavior value the
   way the launch does.** These three reads built their own settings snapshot without the launch's

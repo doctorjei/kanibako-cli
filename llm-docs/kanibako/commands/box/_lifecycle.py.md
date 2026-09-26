@@ -159,7 +159,7 @@ about file safety.
 **Rule: no lifecycle step deletes a workspace before the whole op succeeded AND a copy of it landed
 elsewhere.** The releases (`release_project` in `_to_workset`'s leg 1 and `_remove_old_metadata`)
 drop records and the store, never the workspace leaf, so every failure path finds the source
-workspace whole. STEP 5 registers `_retire_old_workspace(old, dest, new_state.workspace_path)` with
+workspace whole. See **Rollbacks delete only what the op created** for the store. STEP 5 registers `_retire_old_workspace(old, dest, new_state.workspace_path)` with
 `unwind.on_success` for a real, INTERNAL move (`not records_only and relocating and dest and not state.is_external`). The
 retire itself skips an `old` that is or holds the workspace the box now records — a same-workset,
 same-name move to an in-tree non-canonical path lands back on its own leaf.
@@ -181,8 +181,44 @@ callable that reverses a forward step. On `run()` actions execute in REVERSE ord
 failures are swallowed — best-effort restore, so one bad unwind does not mask the rest.
 
 `on_success` is the second list: actions that run only when the WHOLE operation succeeds. It exists
-for work that must wait for completion: discarding the ws→ws stash, retiring the old workspace
+for work that must wait for completion: discarding the ws→ws stash (`_dispose_stash`), removing a
+workset source's old store (`_retire_old_store`), retiring the old workspace
 (`_retire_old_workspace`), writing a deferred discoverability link, and the `remap` Note.
+
+⚑ Both lists swallow what an action raises, so an action that can leave something behind prints its
+own `Note` naming it. None of them prints through the caller.
+
+### ⚑⚑ Rollbacks delete only what the op created
+
+**Rule: no failure path deletes a leaf that existed before the op, and a store is deleted only once
+nothing can still need it.**
+
+* **Target leaves.** Before `add_project` registers a workset target, `_existing_member_leaves`
+  records which of its four leaves (`_member_leaves`: `workspaces/<name>`, `boxes/<name>`, the two
+  vault leaves) are already on disk. `add_project` adopts an existing leaf, so the unwind
+  (`_unwind_target_member`) drops the record and removes only the others: a link is unlinked, the
+  box tree goes through `remove_box_tree`, and a leaf it cannot remove is named in a `Note`. The same
+  rule covers `copy_into_workset`'s rollback (`box duplicate --to named`).
+* **Leg 1 (ws→ws).** `_restore_source` is pushed BEFORE `release_project` +
+  `remove_member_store`: once the release starts, the stash holds the only copy of the store, and a
+  store removal that fails part-way (an undeletable file in a vault leaf) must restore from it.
+  Before, the leg-1 `except` dropped the stash, and the box, its home, and its record were gone.
+  A box tree `remove_box_tree` could not delete does not raise, so leg 1 then calls
+  `_report_store_leftovers`: the leftover may hold credentials, and a later `add_project` under the
+  same name would adopt it.
+  A failure while the stash is still being taken disposes of the partial stash; nothing is released
+  yet.
+* **`_restore_source`** runs its four steps (re-register, box-tree copy-back, the two vault
+  copy-backs) independently: each failure prints `Note: could not restore <what> at <where>: <err>`
+  and the rest still run, so a raising `add_project` never skips the copy-back. It disposes of the
+  stash only when every step succeeded; otherwise it prints `Note: kept <stash>; ...`.
+* **The stash** is disposed of through `remove_box_tree` (`_dispose_stash`), because it holds a copy
+  of the box home and its 0o555 canon dirs defeat a plain `rmtree`. A `False` prints
+  `Note: could not remove <stash>; it may hold credentials`.
+* **A workset source converted to primary or standalone** (`_remove_old_metadata`'s workset arm)
+  releases its record in-op and registers `_retire_old_store` on success. A store removal that fails
+  there lands after the new box is complete: rc stays 0 and `Note: could not remove the old store of
+  '<name>'[: <err>]; left <paths>` names every leaf still on disk.
 
 ⚑ **Reverse order is load-bearing, not incidental.** `_to_default`'s FIX1 restore relies on it: that
 unwind runs BEFORE any later one, so a failed re-register leaves the source's `name -> old path`
@@ -484,8 +520,11 @@ source-into-symlink `copytree` collision that registering the external *source* 
 ⚑ **Failure-consistency:** a crash AFTER `add_project` (which registers the project in the
 `meta.workset` identity and creates per-project dirs) but DURING the copies would strand a
 registered-but-incomplete project. The whole copy block therefore rolls the registration and partial
-dirs back on any failure, then re-raises. `remove_project(remove_files=True, std=...)` is idempotent
-and removes only workset-side dirs — never the user's external source.
+dirs back on any failure, then re-raises. The rollback is `_unwind_target_member` with the leaves
+that existed before `add_project`, so a `--bare` or `--force` duplicate that adopted an existing leaf
+never deletes it (see **Rollbacks delete only what the op created**). `run_duplicate` refuses an
+occupied `workspaces/<name>` (unless `--bare`) or `boxes/<name>` without `--force`, as its primary
+path does.
 
 ```class _Unwind```
 See **The unwind stack**, above.
@@ -592,7 +631,7 @@ derived from the ROOT, not from a `ProjectGroup` (which `ProjectState` does not 
 primary/named the workset tier is therefore `None` — no legacy underlay, so those modes stay
 byte-identical to pre-P2.
 
-```def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, *, preserve_name: str | None = None, preserve_root: Path | None = None) -> None```
+```def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, preserve_name: str | None = None, preserve_root: Path | None = None) -> None```
 Remove the source project's metadata/shell (+ PRIMARY vault).
 
 ⚑ **TWO reuse signals, because each mode's IDENTITY on disk is a different thing:**
@@ -621,8 +660,10 @@ out from under it.
   workspace). `preserve_name` (L2) suppresses both when the converted box reuses its own name in
   place.
 * **Workset source** — `release_project` (the registration, and an external member's
-  discoverability link) + `remove_member_store` (box tree, vault leaves). **The workspace leaf is
-  NEVER deleted here** — in-tree or external; a relocation retires an in-tree leaf in STEP 5.
+  discoverability link) in-op; the store (box tree, vault leaves) goes on success through
+  `_retire_old_store`. **The workspace leaf is NEVER deleted here** — in-tree or external; a
+  relocation retires an in-tree leaf in STEP 5. The primary and standalone arms do not use
+  *unwind*.
 
 ```def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str = "", force: bool = False) -> ProjectState```
 Convert/relocate the project so its owner becomes the default workset.
@@ -809,12 +850,13 @@ the user's external dir.
 ⚑ That release is `release_project` + `remove_member_store`: it DELETES the source's box tree and
 vault leaves — never its workspace leaf — so the forward copy would have nothing to read from. A
 `tempfile` STASH of the source metadata (including the shell) and vault is taken first, and both the
-forward copy and the unwind restore read the stash rather than the live paths. The stash is
-discarded via `unwind.on_success`, so it survives exactly as long as a rollback might need it. The
-source workspace stays in place until STEP 5's retire; `_restore_source`'s `add_project` re-adopts it.
+forward copy and the unwind restore read the stash rather than the live paths. `_restore_source` is
+pushed before the release starts, and the stash is discarded only on success or after a clean
+restore (see **Rollbacks delete only what the op created**). The source workspace stays in place
+until STEP 5's retire; `_restore_source`'s `add_project` re-adopts it.
 
-⚑ The target unwind (`_unwind_target_member`) deletes `workspaces/<new_name>` only when it did not
-exist before `add_project`: on a same-workset, same-name move that leaf is the source's own
+⚑ The target unwind (`_unwind_target_member`) deletes a target leaf only when it did not exist
+before `add_project`: on a same-workset, same-name move `workspaces/<new_name>` is the source's own
 workspace.
 
 `add_project` (std-aware) registers the project, creates the skeleton dirs, and — for an external
@@ -865,10 +907,30 @@ The failure-window restore for **FIX1**: it writes the RAW membership entry dire
 cross-kind/same-kind guard, so restoring the source box's OWN prior registration is unconditional.
 Errors are swallowed — the unwind stack is best-effort restore.
 
-```def _unwind_target_member(ws: Workset, name: str, leaf: Path, leaf_created: bool) -> None```
-Undo `_to_workset`'s target registration for the unwind stack: `release_project` +
-`remove_member_store`, then *leaf* only when *leaf_created* (see `_to_workset`). Errors are
-swallowed — best-effort restore.
+```def _member_leaves(ws: Workset, name: str) -> tuple[Path, Path, Path, Path]```
+Member *name*'s four leaves: `workspaces/<name>`, `boxes/<name>`, and the per-box leaves under the
+RESOLVED vault arms, as `add_project` creates them.
+
+```def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]```
+Those of `_member_leaves` already on disk; a dangling link counts.
+
+```def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None```
+Undo a target registration (`_to_workset`, `copy_into_workset`): `release_project`, then each leaf
+NOT in *existed*. See **Rollbacks delete only what the op created**. A failed release or a leaf it
+cannot remove is reported in a `Note`; the other leaves still go.
+
+```def _dispose_stash(stash: Path) -> None```
+Delete a ws→ws stash through `remove_box_tree`; a `False` prints a `Note` naming it, because the
+stash holds a copy of the box home and may hold credentials.
+
+```def _retire_old_store(ws: Workset, name: str) -> None```
+`remove_member_store` for a workset source that was converted out — an `on_success` action only.
+A raise does not propagate; `_report_store_leftovers` names what is left.
+
+```def _report_store_leftovers(ws: Workset, name: str, err: OSError | None = None) -> None```
+Print `Note: could not remove the old store of '<name>'[: <err>]; left <paths>` for each of the
+member's store leaves still on disk. `remove_box_tree` reports a failure by returning `False`, which
+`remove_member_store` does not pass on, so the disk is the only witness.
 
 ```def _ownership_from_args(args) -> str | _Sentinel```
 Map the uniform target flags (`--default` / `--standalone` / `--workset`) to an ownership value, or

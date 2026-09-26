@@ -1201,6 +1201,15 @@ kind = "code-patterns"
   ]
   note = "only run_connect journals a connect op; the move/convert path must not"
 
+  [[registry.entry]]
+  id = "remove_project"
+  antipatterns = ['\bremove_project\b']
+  home = [
+    "src/kanibako/project/workset.py",
+    "src/kanibako/commands/workset_cmd.py",
+  ]
+  note = "the workspace-leaf deleter; only workset disconnect may reach it"
+
   # The create-journal pair and the two seed entry points. A register-only
   # replay that reaches any of these re-seeds a box that already has a home
   # bind, which is the data-loss class `seed-and-create-model.md` exists for.

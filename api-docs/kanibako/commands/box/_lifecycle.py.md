@@ -46,7 +46,9 @@ def _copy_vault_leaf_contents(src: Path, dst: Path) -> None
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
 def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path, dst_rw: Path) -> list[tuple[Path, Path]]
 def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path, dst_rw: Path) -> None
-def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, *, preserve_name: str | None=None, preserve_root: Path | None=None) -> None
+def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, preserve_name: str | None=None, preserve_root: Path | None=None) -> None
+def _retire_old_store(ws: Workset, name: str) -> None
+def _report_store_leftovers(ws: Workset, name: str, err: OSError | None=None) -> None
 def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str='', force: bool=False) -> ProjectState
 def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None) -> Path
 def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]
@@ -61,7 +63,10 @@ def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path
 def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths) -> None
 def _safe_unregister(std: StandardPaths, name: str) -> None
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
-def _unwind_target_member(ws: Workset, name: str, leaf: Path, leaf_created: bool) -> None
+def _member_leaves(ws: Workset, name: str) -> tuple[Path, Path, Path, Path]
+def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]
+def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None
+def _dispose_stash(stash: Path) -> None
 def _ownership_from_args(args) -> str | _Sentinel
 def _validated_name(args) -> str | None
 def _make_confirm(force: bool, summary: str)
