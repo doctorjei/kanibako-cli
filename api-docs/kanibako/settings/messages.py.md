@@ -28,6 +28,7 @@ ERR_CONFIG_NO_FILE = '%s is missing. Run any kanibako command to initialize.'
 ERR_CONFIG_LAYER1_SETTINGS = '%s carries settings, which it cannot hold:\n  %s\n' + 'That file holds the config.* bootstrap paths and nothing else. ' + 'Delete those lines from it, then set what you meant with ' + "'kanibako system set <key>=<value>', which writes the settings file."
 ERR_CONFIG_LAYER1_UNDECLARED = '%s carries config keys that do not exist:\n  %s\n' + 'Layer 1 declares exactly these (spec §1): %s. Fix or delete ' + 'those lines; config.* keys are only ever set by editing that file.'
 ERR_CONFIG_LAYER1_TABLE = "%s has a 'config:' entry that is not a table: %s\n" + 'It carries the config.* bootstrap paths as keys under it, e.g.\n' + '  config:\n    data: /path/to/kanibako'
+ERR_CONFIG_NULL_PATH = '%s sets these path keys to null:\n  %s\n' + "kanibako gives a null path key no meaning. Delete those lines to use each key's " + 'default, or set the path you mean.'
 ERR_PROJECT_NO_PATH = "Project path '%s' does not exist."
 ERR_PROJECT_NEW_HOME = 'Refusing to create project rooted at $HOME: this would mount the ' + 'entire home directory as the workspace.\n If you really want a ' + 'project here, use:\nkanibako create --standalone ~ --allow-home'
 ERR_PROJECT_REG_HOME = 'Refusing to register $HOME as a project path: this would mount the ' + 'entire home directory as the workspace.'

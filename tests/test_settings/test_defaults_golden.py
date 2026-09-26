@@ -549,6 +549,26 @@ class TestCoreBehaviorDefaults:
         with pytest.raises(RuntimeError, match="agent_default.access"):
             core_defaults.behavior_default("access")
 
+    def test_a_none_behavior_row_stays_a_present_none(self, monkeypatch):
+        """A ``null`` row is a PRESENT ``None``, never the text ``"None"`` (spec §2d
+        ``agent.default.model | <None>``), as ``shell_tier_defaults`` keeps one.
+
+        MUTATION: restore ``str(value)`` in ``behavior_defaults`` and ``model`` reads
+        ``"None"``.
+        """
+        monkeypatch.setattr(core_defaults, "_load_doc", lambda: {
+            "agent_default": {"model": None, "access": "full"}})
+        assert core_defaults.behavior_defaults() == {"model": None, "access": "full"}
+
+    def test_the_single_key_read_refuses_a_none_row(self, monkeypatch):
+        """``behavior_default`` serves a string; a ``<None>`` row RAISES, naming it."""
+        import pytest
+
+        monkeypatch.setattr(core_defaults, "_load_doc", lambda: {
+            "agent_default": {"model": None}})
+        with pytest.raises(RuntimeError, match="agent_default.model"):
+            core_defaults.behavior_default("model")
+
     def test_a_descriptor_default_still_beats_the_core_behavior_floor(self, tmp_path):
         """A plugin's declared default WINS over the core floor at the merge sites.
 

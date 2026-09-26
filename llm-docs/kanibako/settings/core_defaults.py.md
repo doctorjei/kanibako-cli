@@ -45,6 +45,8 @@ Two reading traps in that pair:
   that read — `commands.start._declared_behavior` and
   :func:`kanibako.settings.settings_keyspace.access_default` both come here. `access` in particular
   has NO constant any more: the retired `ACCESS_DEFAULT` was a second spelling of `full`.
+  `behavior_defaults` keeps a `null` row a PRESENT `None` (as `shell_tier_defaults` does), and
+  `behavior_default` RAISES on one, because its consumers need a string.
 * `env_default_categories` is NOT `commands.start._core_env_default_categories`. That one emits the
   launch-DERIVED `KANIBAKO_*` stamps and its docstring forbids new entries; this one emits whatever
   the FILE can hold whole — a literal, or an EXPRESSION the shared engine resolves. The derived

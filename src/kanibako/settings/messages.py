@@ -80,6 +80,14 @@ ERR_CONFIG_LAYER1_TABLE = (
                         "It carries the config.* bootstrap paths as keys under it, e.g.\n" +
                         "  config:\n    data: /path/to/kanibako")
                                                     # the Layer-1 file path, the offending value
+# ⚑ A ``null`` path key was stringified to the four bytes ``None`` and then refused as a
+# bare relative path — a message about a directory the user never wrote. Both path
+# layers share this one: the ``config:`` read and the settings file's ``system:`` read.
+ERR_CONFIG_NULL_PATH = (
+                        "%s sets these path keys to null:\n  %s\n" +
+                        "kanibako gives a null path key no meaning. Delete those lines to use each key's " +
+                        "default, or set the path you mean.")
+                                                    # the file path, the offending keys
 ERR_PROJECT_NO_PATH =   "Project path '%s' does not exist." # the path that does not exist
 # ⚑ The two $HOME-guard messages take NO arguments (raised bare).
 ERR_PROJECT_NEW_HOME = ("Refusing to create project rooted at $HOME: this would mount the " +

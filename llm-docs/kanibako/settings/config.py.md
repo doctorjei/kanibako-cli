@@ -292,6 +292,9 @@ is the whole store back at its default location for a user whose one line meant 
 `config:` with NOTHING under it is not that case — `write_global_config` writes zero bytes, so
 absent, `config:` and `config: {}` must agree, and all three read as the empty foundation.
 
+⚑ A `null` leaf refuses by name (`_refuse_null_paths`, `ERR_CONFIG_NULL_PATH`). It used to become
+the text `None` and be refused as a bare relative path, a directory the user never wrote.
+
 ⚑ A stale `[system] templates_stamp` or `[system] setup_completed` is in neither band — it is a
 `system:` table, so it refuses as settings; see "The retired template-stamp gate" below.
 
@@ -304,7 +307,14 @@ LAYER-1 read used, over one field that held `config.*` and `system.*` together �
 answering two layers' questions is what let each layer's file speak for the other. Nested sub-keys
 (e.g. `system.channels.common`) become dotted keys. ⚑ NOT filtered to the path tier: that is
 `paths.load_system_config`'s own P13 job, and this file's `system:` table legitimately holds
-`system.agent` and the category families too.
+`system.agent` and the category families too. That is also why the `null` refusal
+(`_refuse_null_paths`) is scoped to `SYSTEM_PATH_DEFAULTS`: `system.agent: null` means "no default
+agent" (spec §2b).
+
+⚑ A NON-TABLE `system:` reads as `{}` here, where the Layer-1 read refuses a non-table `config:`.
+The tiers differ because this file is a keyspace tier: the launch resolve already refuses
+`system: /x` by name as a scalar at a namespace (spec §0), so a refusal here would be a second
+carrier. Layer 1 is outside the keyspace, and no later read would catch it.
 
 
 ```load_config(path: Path) -> BootstrapConfig```
@@ -960,6 +970,8 @@ keys. The scope categories
 live in `settings_categories` / `settings_keyspace`, and their keys are TERMINAL — a destination is
 DATA, not a key segment — so nothing here flattens one.
 
+⚑ A `null` leaf becomes the string `"None"`, so both path reads call `_refuse_null_paths` first.
+
 ⚑ **`str(k)` ON THE UNPREFIXED ARM (2026-09-09; the arm now lives in `_flatten_leaves`): a YAML
 key need not be a string.** Only the
 f-string arm stringified one, so a top-level `1:` / `true:` / `~:` handed an `int`/`bool`/`None`
@@ -972,3 +984,8 @@ primitive)". It was wrong three ways — `shared` is the RETIRED spelling of `co
 `<category>.<name>` key shape went terminal on 2026-08-08c, and the section contains no category
 code at all — so it was dropped rather than moved. The live set is
 `settings_keyspace.TERMINAL_CATEGORY_TAILS`.)*
+
+```_refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None```
+Refuse a `null` at any of *path_keys* in *table*, naming *path* and the keys
+(`ERR_CONFIG_NULL_PATH`). Callers: `bootstrap_config_paths` (`CONFIG_PATH_DEFAULTS`) and
+`system_path_set_values` (`SYSTEM_PATH_DEFAULTS`).
