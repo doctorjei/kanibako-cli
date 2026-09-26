@@ -931,15 +931,15 @@ all other content (read-modify-write via `write_nested_key`).
 
 
 ```_count_leaves(node: object) -> int```
-Count the scalar/leaf entries under a nested-dict *node* (a scope table).
+Count the scalar/leaf entries under a nested-dict *node* (a settings-file table).
 
 A `dict` recurses; anything else (scalar / list / `Bind`) is ONE leaf. Used so `reset_all`
 reports the real number of overrides it removed when it clears a whole nested scope table
 (residuals item 3).
 
 
-```_clear_writable_scope_tables(path: Path, command_scope: ConfigLevel | None) -> int```
-Drop the top-level SCOPE tables *command_scope* may write from *path*; count the leaves.
+```_clear_writable_tables(path: Path, command_scope: ConfigLevel | None) -> int```
+Drop the top-level tables *command_scope* may write from *path*; count the leaves.
 
 `reset --all` mirrors a per-key reset over the WHOLE file: a nested scope table (`box:` in a
 workset file, `system: auth:` / `workset: auth:` / `box: bindings:` …) is cleared IFF a single
@@ -948,6 +948,12 @@ table's top-level token is in `_SCOPE_WRITE_ALLOWED[command_scope]` (the command
 namespace + those it CONTAINS). ⚑ An UPWARD table (e.g. a hostile `system:` hand-edited into a
 box file) is LEFT INTACT — a single reset of such a key is refused, so `--all` must not clear it
 either.
+
+The `pref:` table follows the same mirror (Q86 = (a), 2026-09-25): it is cleared, and counted
+leaf by leaf (as `show` lists it, one per destination of a bind-shaped request; an undeclared entry
+under the table is removed and counted with it), IFF `_pref_level(command_scope)` names a level —
+workset or box, the site rule `reset pref.<key>` applies (spec §2h). At the system scope a `pref:` table is LEFT INTACT, as its
+per-key reset is refused there.
 
 NEVER touched here: `agent` (agent-keyed; cleared by the caller's dedicated pass, which holds the
 scopeless `model`/`continue_mode` settings), `meta` (RO identity, §0), and non-scope keys
@@ -972,7 +978,8 @@ SCOPE table is touched.
 
 It runs three clears in order: the project-level config overrides (always from `config_path`),
 the agent settings table (agent-keyed `{<agent>: {key: val}}`; every agent's subsection, the
-reserved `default` tier included), and the nested SCOPE tables.
+reserved `default` tier included), and the nested SCOPE tables plus, at workset/box, the `pref:`
+table.
 
 ⚑ **COUNT ONLY WHAT WAS ACTUALLY REMOVED (Editor F2).** `unset_project_config_key` returns
 `False` when the flat key names no real top-level entry, so an unconditional `count += 1`

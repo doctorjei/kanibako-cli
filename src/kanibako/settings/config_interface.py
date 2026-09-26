@@ -76,6 +76,7 @@ from kanibako.settings.config_keys import (
     _parse_persona_agent_key,
     _config_key_refusal,
     _node_secret_display_key,
+    _pref_level,
     _pref_sections_leaf,
     _pref_target_error,
     _pref_write_site_error,
@@ -1715,24 +1716,32 @@ def write_system_value(system_settings_path: Path, leaf: str, value: object) -> 
 
 
 def _count_leaves(node: object) -> int:
-    """Count the scalar/leaf entries under a nested-dict *node* (a scope table)."""
+    """Count the scalar/leaf entries under a nested-dict *node* (a settings-file table)."""
     if isinstance(node, dict):
         return sum(_count_leaves(v) for v in node.values())
     return 1
 
 
-def _clear_writable_scope_tables(
+def _clear_writable_tables(
     path: Path, command_scope: "ConfigLevel | None",
 ) -> int:
-    """Drop the top-level SCOPE tables *command_scope* may write from *path*; count the leaves."""
+    """Drop the top-level tables *command_scope* may write from *path*; count the leaves."""
     if command_scope is None or not path.exists():
         return 0
     allowed = _SCOPE_WRITE_ALLOWED.get(command_scope, frozenset())
+    # ⚑ The ``pref:`` table is cleared where ``reset pref.<key>`` may clear one entry — the
+    # SAME site rule (:func:`_pref_level`, spec §2h: workset and box only). Elsewhere a
+    # ``pref:`` table is not this noun's to clear, exactly as its per-key reset is refused.
+    if _pref_level(command_scope) is not None:
+        allowed = allowed | {PREF_ROOT}
     data = load_doc(path)
     if not isinstance(data, dict):
         return 0
     removed = 0
-    # ⚑ Only SCOPE tokens the command scope may WRITE are candidates; ``agent`` is handled
+    # ⚑ Written whenever a table is DROPPED, not only when a leaf was counted: a table of
+    # empty leaves (``pref: {system: {}}``) counts 0 and must still leave the file.
+    dropped = False
+    # ⚑ Only tokens the command scope may WRITE are candidates; ``agent`` is handled
     # elsewhere and ``meta`` is never in ``_SCOPE_WRITE_ALLOWED`` (it is not a containment scope).
     for token in list(data):
         if token not in allowed or token == "agent":
@@ -1742,7 +1751,8 @@ def _clear_writable_scope_tables(
             continue
         removed += _count_leaves(table)
         data.pop(token, None)
-    if removed:
+        dropped = True
+    if dropped:
         dump_doc(path, data)
     return removed
 
@@ -1785,9 +1795,9 @@ def reset_all(
                         remove_nested_key(settings_dest, ("agent", agent), k)
                         count += 1
 
-    # ⚑ The nested SCOPE tables need their own pass: the flat ``load_project_overrides`` one
-    # only reaches the ``KanibakoConfig`` dataclass fields and leaves them intact.
-    count += _clear_writable_scope_tables(settings_dest, command_scope)
+    # ⚑ The nested SCOPE tables and the ``pref:`` table need their own pass: the flat
+    # ``load_project_overrides`` one only reaches the ``KanibakoConfig`` dataclass fields.
+    count += _clear_writable_tables(settings_dest, command_scope)
 
     return f"Reset {count} override(s)." if count else "No overrides to reset."
 

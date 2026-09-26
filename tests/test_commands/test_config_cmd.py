@@ -12,7 +12,7 @@ from kanibako.settings.config import (
     write_project_config,
     write_project_config_key,
 )
-from kanibako.settings.config_io import load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 
 
 # ---------------------------------------------------------------------------
@@ -763,9 +763,14 @@ class TestBoxConfigReset:
         project_dir = str(tmp_home / "project")
         proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Set a value first
+        # Set a value first, plus two pref REQUESTS (Q86 = (a): --all clears them too).
         project_toml = proj.metadata_path / "box.yaml"
         write_project_config(project_toml, "override:v1")
+        doc = load_doc(project_toml)
+        doc["pref"] = {
+            "system": {"agent": "goose"}, "agent": {"claude": {"model": "opus"}},
+        }
+        dump_doc(project_toml, doc)
 
         # Reset all with --force (skip confirmation)
         args = argparse.Namespace(
@@ -774,7 +779,8 @@ class TestBoxConfigReset:
         rc = run_reset(args)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "Reset" in captured.out
+        assert captured.out.strip() == "Reset 3 override(s).", captured.out
+        assert "pref" not in load_doc(project_toml)
 
     def test_reset_nonexistent(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box._parser import run_reset

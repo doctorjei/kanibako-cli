@@ -898,7 +898,7 @@ class TestWorksetConfig:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        create_workset("resetall", tmp_home / "ws_resetall", std)
+        ws = create_workset("resetall", tmp_home / "ws_resetall", std)
 
         # Set a value first (workset.vault_ro = a real workset-scope key,
         # legal at the workset scope by construction).
@@ -908,6 +908,15 @@ class TestWorksetConfig:
         )
         run_set(set_args)
         capsys.readouterr()
+        # Two pref REQUESTS beside it (Q86 = (a): --all clears them too).
+        from kanibako.commands.workset_cmd import _workset_config_path
+        from kanibako.settings.config_io import dump_doc, load_doc
+        ws_config = _workset_config_path(ws)
+        doc = load_doc(ws_config)
+        doc["pref"] = {
+            "system": {"agent": "goose"}, "agent": {"claude": {"model": "opus"}},
+        }
+        dump_doc(ws_config, doc)
 
         # Reset all.
         reset_args = argparse.Namespace(
@@ -915,6 +924,8 @@ class TestWorksetConfig:
         )
         rc = run_reset(reset_args)
         assert rc == 0
+        assert capsys.readouterr().out.strip() == "Reset 3 override(s)."
+        assert "pref" not in load_doc(ws_config)
 
     def test_config_reset_requires_key(self, config_file, tmp_home, capsys):
         """reset without a key or --all is an error."""
