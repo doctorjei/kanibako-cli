@@ -151,8 +151,9 @@ agent a working set does not have. That is true of the LAUNCH's route and false 
 §0 leaves *"WHERE the derivation is materialised"* to the implementation and obliges only what the
 user SEES, and `_print_effective_shares` had already built a workset-only collapse with no box.
 The derived block feeds the same one. What it CANNOT answer without a box is stated at
-`_print_effective_derivations` and is narrower than "the pair": no box-tier declaration
-participates, and a `seeded` row names its guest destination but not the host store the copy
+`_print_effective_derivations` and is narrower than "the pair": no box's OWN settings file is read
+(the working set file's `box:` defaults-down table is, like the rest of that file, so a `box.masks`
+written there does apply), and a `seeded` row names its guest destination but not the host store the copy
 eventually lands in.
 
 🛑 **THE `binding_derivations` NODE IS NOT READ HERE AND MAY NOT BE.** It is materialised BEFORE
@@ -186,10 +187,15 @@ reach a working set with nothing to arbitrate. A refusal that does arrive is rep
 
 ⚑ **THE RENDERING IS THE BOX BLOCK'S** (`config_display._print_category_block`'s abstract half):
 declaration line, derivation indented beneath. One form at both nouns. The HEADING is this noun's
-own addition, because this view ALSO prints the declaration rows through the flatten, in the FILE's
-spelling — while a derivation is keyed by the RESOLVED destination, which is what the arbitration
-keyed on. That asymmetry is the box block's own and is inherited rather than papered over: a third
-spelling of one answer is the confusion Convention 0 is about.
+own addition, because this view ALSO prints the declaration rows through the flatten, and the block
+needs to say which working set it answers for. The flatten keys each row by the NORMALIZED
+destination (`normalize_bind_dest`, the spelling `parse_bind_map` files it under), so a declaration
+carries ONE key in both blocks; only the source differs — as written above, rooted here.
+
+⚑ **ONE LINE UNDER THE HEADING SAYS WHAT IT DOES NOT COVER.** The resolve reads this working set's
+settings file alone, so a `masks` entry in the base or system settings file, an agent file or a box's own file that
+would swallow a row at launch is not applied. The line names those four and points at
+`kanibako box show <box> --effective`, which answers for a real box.
 
 ### Why three guards sit in the GET arm and none in the others
 
@@ -679,10 +685,11 @@ the only file passed.
 ```python
 def _workset_preview_entries(ws, std, ws_config: Path) -> list[CategoryEntry]
 def _workset_preview_collapse(entries: list[CategoryEntry]) -> CollapsedStore
-def _preview_refusal(ws, exc: Exception) -> int
+def _preview_refusal(ws, exc: CategoryCollisionError | SettingsError) -> int
 ```
 The workset-only resolve, its arbitration, and the one refusal arm — shared by both `--effective`
-listings, because they describe ONE working set. See "Listing: single route, no second resolver".
+listings, because they describe ONE working set. *exc* is typed as the two refusals the preview
+raises, so an unrelated exception cannot be framed as a listing refusal (P3). See "Listing: single route, no second resolver".
 
 ```python
 def _print_effective_shares(ws, std, ws_config: Path) -> int

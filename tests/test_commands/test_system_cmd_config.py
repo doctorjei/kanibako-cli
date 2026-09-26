@@ -1279,6 +1279,32 @@ def _argv_leaves() -> list[str]:
     return sorted(_LIST_VALUED_KEYS)
 
 
+@pytest.mark.parametrize("effective", [False, True])
+def test_show_names_a_dropped_pref_table_ONCE(
+    config_file, tmp_home, capsys, caplog, effective,
+):
+    """A ``pref:`` table in the SYSTEM settings file is dropped (spec §2h), and §0 says a dropped
+    table is announced *"with a warning naming the file and key"*.  The plain view printed
+    nothing; ``--effective`` reads the file through several resolves.  Both name it once, in
+    ``refuse_pref_table``'s own words.
+    MUTATION: make ``settings_prefs.refuse_pref_table`` warn without asking
+    ``announce_drop_once`` and the ``--effective`` case reds; drop the ``refuse_pref_table``
+    call from ``settings_assemble.cascade_view`` and the plain case reds."""
+    std = _std(config_file)
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    write_nested_key(std.settings, ("pref", "agent", "default"), "model", "opus")
+    with caplog.at_level("WARNING"):
+        assert _show(effective=effective) == 0
+    drops = [
+        m for m in caplog.messages
+        if m.startswith(
+            f"Dropping top-level 'pref' table from system settings file {std.settings}: "
+            "a pref is a REQUEST"
+        )
+    ]
+    assert len(drops) == 1, caplog.messages
+
+
 class TestAListValuedLeafReadsBackAsItsCommandLine:
     """A stored leaf whose shape is a LIST comes back as the command line it was split
     from — never as the Python repr ``['--a', '--b']``, a spelling no user can type back.

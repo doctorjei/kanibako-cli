@@ -445,6 +445,33 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "foo.bar" not in out, out
         assert "    box.zippity = wibble" in out, out
 
+    @pytest.mark.parametrize("effective", [False, True])
+    def test_box_show_names_a_dropped_table_ONCE(
+        self, config_file, tmp_home, credentials_dir, capsys, caplog, effective,
+    ):
+        """spec §0: a containing scope's table is dropped *"with a warning naming the file
+        and key"* — one key in one file is one fact.  ``box show --effective`` resolves the
+        box file several times over and printed the warning once per resolve (four).
+        MUTATION: skip the ``_DROP_WARNED`` membership check in
+        ``settings_assemble._warn_upward_drops`` and this reds."""
+        from kanibako.commands.box._parser import run_show
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        project_dir, proj = self._box(config_file, tmp_home)
+        path = proj.metadata_path / "box.yaml"
+        doc = load_doc(path)
+        doc["workset"] = {"auth": {"share_allowed": False}}
+        dump_doc(path, doc)
+        with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
+            assert run_show(
+                argparse.Namespace(args=[project_dir], effective=effective),
+            ) == 0
+        drops = [
+            m for m in caplog.messages
+            if m.startswith(f"Dropping upward-scope key 'workset' from box settings file {path}")
+        ]
+        assert len(drops) == 1, caplog.messages
+
     def test_box_show_marks_a_config_table_with_its_own_cure(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):

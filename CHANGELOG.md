@@ -117,6 +117,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An empty file, or one holding only comments, is still read as empty. See `MIGRATION.md` § *2.87
   A config file that is one value or a list is refused instead of read as empty*.
 
+- **`kanibako workset show` and `kanibako system show` printed a declaration's sources as a Python
+  list, under the destination as the file spelled it.** A `caches: {~/.cache/uv/: [uv]}` entry in a
+  working set's file printed `workset.caches.~/.cache/uv/ = ['uv']`. It now prints
+  `workset.caches./home/agent/.cache/uv = uv`: the source as written, followed by its mount options
+  in brackets when it has any (`uv  [Z,U]`), under the destination kanibako resolves it to — `~`
+  is the box's home and a trailing `/` is dropped — which is the key the `--effective` blocks name
+  it by, so one declaration no longer carries two spellings in one command's output. This applies
+  to `bindings.ro`, `bindings.rw`, `caches`, `common`, `seeded` and `synced`, plain and
+  `--effective` alike, and to a `pref` request that carries one of those maps; `masks` rows are
+  unchanged. The agent rows of `kanibako system show` printed such a map as a Python dict
+  (`caches = {'~/c/': ['uv']}` for `agent.default.caches`) and now print it the same way
+  (`caches./home/agent/c = uv`); any other table there, such as `env:`, prints one row per entry
+  (`env.X = 1`) instead of a dict. Display only; nothing to do on upgrade.
+
+- **Plain `kanibako workset show` and `kanibako system show` said nothing about a table kanibako
+  drops, and other views repeated the warning.** A settings file may not set a containing scope's
+  keys — a `system:` table in a working set's file is ignored — and the keyspace spec says such a
+  table is dropped "with a warning naming the file and key". A `pref:` table in the system settings
+  file is ignored the same way. The plain views printed no warning for either; they now print it. A
+  view that reads the file more than once printed the warning each time (four times for one key in
+  `kanibako box show --effective`); each dropped key in a file is now named once per command.
+
 - **A `config.*` or `system.*` path key set to `null` is now refused by name.** A `null` under the
   Layer-1 `config:` table (`config.data: null`), or at a `system.*` path key in the system
   settings file (`system.backup: null`), became the text `None`. The command then stopped with a message about
@@ -458,14 +480,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `config show` lists them — but the plain view at the box noun could not see a category table
   at all. A `box.yaml` carrying nothing but a `caches:` declaration was answered `(no overrides)`,
   so the one view that reports what you wrote at this noun denied you had written anything. The
-  plain view now lists them under their real keys (`box.caches.~/.cache/uv`), from the same key
-  listing the workset and system nouns already print, and nothing else in the file changed: the
+  plain view now lists them under their real keys (`box.caches./home/agent/.cache/uv = uv`), from
+  the same key listing the workset and system nouns print, and nothing else in the file changed: the
   scalars and the `pref` requests still appear exactly once each, and a declaration written for a
   *containing* scope — a `workset:` table in a box's file, which kanibako drops with a warning — is
-  not listed as an override, because it is not one. ⚑ Values in these rows print in Python's list
-  spelling, `box.caches.~/.cache/uv = ['uv']`; that is how the workset and system nouns already
-  render a declaration's sources, and the box noun rendered no category row at all before this, so
-  the spelling reaches box users here for the first time. `bindings`, `masks`, `synced`, `env` and
+  not listed as an override, because it is not one. `bindings`, `masks`, `synced`, `env` and
   `secret_path` stored at a box are unchanged and stay unlisted in this view.
 
 - **`kanibako workset show --effective` never showed the binding a working set's `common`, `caches`
@@ -478,7 +497,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declaration that a `masks` entry swallows is printed as the loss it is and names the mask that
   took the destination, instead of being reported as a live mount. What the block answers is what
   **this working set's** declarations derive among themselves; a working set names no box, so a
-  box's own declarations are not part of the picture.
+  box's own declarations are not part of the picture. A line under the heading says so: masks from
+  the base or system settings file, an agent file or a box's own file are not applied there, and
+  `kanibako box show <box> --effective` shows what a box receives.
 
 - **`kanibako workset share list --effective` printed the wrong source for any share written
   against the working set's own root.** `@meta.workset.path` was missing from the resolve this

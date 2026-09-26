@@ -237,6 +237,95 @@ def test_upward_drop_warns_once_per_agent_file(
     assert len(sys_warns) == 1, [r.getMessage() for r in sys_warns]
 
 
+def test_one_file_read_twice_names_each_dropped_key_once(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # spec §0: dropped "with a warning naming the file and key". One command reads one file
+    # through several resolves; each dropped key in it is ONE warning for the process, across
+    # assembly AND cascade_view (the shared guard), and each of the file's keys gets its own.
+    # MUTATION: skip the ``_DROP_WARNED`` membership check in ``_warn_upward_drops`` → reds.
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.settings_assemble import cascade_view
+
+    box = _write(
+        tmp_path / "box.yaml",
+        {"box": {"image": "img"}, "system": {"canon": "/s"}, "meta": {"x": 1}},
+    )
+    with caplog.at_level("WARNING"):
+        assemble_levels(agent_name="claude", box_path=box)
+        assemble_levels(agent_name="claude", box_path=box)
+        view = cascade_view(load_doc(box), level="box", path=box)
+    assert set(view) == {"box"}
+    msgs = [r.getMessage() for r in caplog.records if str(box) in r.getMessage()]
+    assert len([m for m in msgs if "'system'" in m]) == 1, msgs
+    assert len([m for m in msgs if "'meta'" in m]) == 1, msgs
+
+
+def test_cascade_view_warns_only_when_named_the_file(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A verb that shows a file without assembling it passes *path* and is warned for; a
+    # path-less caller (the retirement scans) gets the same VIEW silently.
+    # MUTATION: drop the ``_warn_upward_drops`` call from ``cascade_view`` → the second half reds.
+    from kanibako.settings.settings_assemble import cascade_view
+
+    raw = {"box": {"image": "img"}, "workset": {"canon": "/w"}}
+    with caplog.at_level("WARNING"):
+        silent = cascade_view(raw, level="box", path=None)
+    assert set(silent) == {"box"}
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
+    named = tmp_path / "box.yaml"
+    with caplog.at_level("WARNING"):
+        assert cascade_view(raw, level="box", path=named) == silent
+    msgs = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert len(msgs) == 1, msgs
+    assert msgs[0].startswith(
+        f"Dropping upward-scope key 'workset' from box settings file {named}"
+    ), msgs
+
+
+def test_a_dropped_pref_table_is_named_once_by_every_reader(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # spec §2h drops a ``pref:`` table outside a workset/box file; its warning shares the §0
+    # guard, so assembly twice plus a path-named cascade_view name it ONCE, text unchanged.
+    # MUTATION: make ``refuse_pref_table`` warn without asking ``announce_drop_once`` → reds.
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.settings_assemble import cascade_view
+
+    sysf = _write(
+        tmp_path / "settings.yaml",
+        {"system": {"canon": "/s"}, "pref": {"agent": {"default": {"model": "x"}}}},
+    )
+    with caplog.at_level("WARNING"):
+        assemble_levels(agent_name="claude", system_path=sysf)
+        assemble_levels(agent_name="claude", system_path=sysf)
+        view = cascade_view(load_doc(sysf), level="system", path=sysf)
+    assert set(view) == {"system"}
+    msgs = [r.getMessage() for r in caplog.records if str(sysf) in r.getMessage()]
+    assert msgs == [
+        f"Dropping top-level 'pref' table from system settings file {sysf}: a pref is a "
+        "REQUEST and may be written ONLY in a workset or box settings file (spec §2h) — "
+        "that restriction is what bounds the resolution recursion. The requests are ignored."
+    ], msgs
+
+
+def test_reset_drop_warnings_announces_again(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The memo lives for the process and no longer: the reset seam stands in for the next
+    # command, which must warn again until the file is fixed.
+    from kanibako.settings.settings_assemble import reset_drop_warnings
+
+    box = _write(tmp_path / "box.yaml", {"box": {"image": "img"}, "system": {"canon": "/s"}})
+    with caplog.at_level("WARNING"):
+        assemble_levels(agent_name="claude", box_path=box)
+        reset_drop_warnings()
+        assemble_levels(agent_name="claude", box_path=box)
+    msgs = [r.getMessage() for r in caplog.records if str(box) in r.getMessage()]
+    assert len(msgs) == 2, msgs
+
+
 def test_base_floor_is_exempt_from_upward_drop(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

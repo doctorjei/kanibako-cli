@@ -536,16 +536,34 @@ raise — an unknown/base scope takes an empty containing set.
 
 Returns a shallow copy with the dropped keys removed (never mutates *raw*); a non-dict *raw* is
 returned unchanged. Warning-only side effect, no raise — a mis-scoped key is a config mistake, not a
-hard error.
+hard error. The warnings themselves are `_warn_upward_drops`'s (below).
+
+```_warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None```
+Emit the three warnings above, each only when `announce_drop_once` says it is the first.
+
+```announce_drop_once(path: Path | None, token: str) -> bool```
+⚑ **THE ONE GUARD for every dropped-table warning** (spec §0: dropped *"with a warning naming the
+file and key"*) — the three §0 ones and `settings_prefs.refuse_pref_table`'s §2h `pref:` one.
+Returns `True` (and records the pair) the first time this process drops *token* from the file at
+*path*; the caller warns only then. One command reads one settings file through several resolves, and each used to
+announce the drop again — `box show --effective` printed one dropped key four times. The memo is
+`_DROP_WARNED`, a module-level set of `(file, key)` pairs; it changes no resolution outcome (the drop
+runs on every read), which is why it may be module-level — the same footing as
+`commands.start._COLLISION_WARNED`. It lives for the process and never beyond it, so the next command
+warns again until the file is fixed. `_drop_upward_scopes`, `refuse_pref_table` and `cascade_view`
+(when handed *path*) all warn through it, so a file read by several in one command still names each
+key once.
+
+```reset_drop_warnings() -> None```
+Clear `_DROP_WARNED` — the test seam that stands in for a fresh process.
 
 ```_upward_scope_drop_set(file_scope: str) -> frozenset[str]```
 The tokens rule 1-3 above remove, WITHOUT the warnings.
 
-Split out of `_drop_upward_scopes` so `cascade_view` can read the rule and stay silent. One
-declaration, two readers — the alternative was a `warn=` flag, which is a lever a caller can pull
-the wrong way (P3).
+One declaration, three readers: `_drop_upward_scopes` (the drop), `_warn_upward_drops` (what to
+announce) and `cascade_view` (the view).
 
-```cascade_view(raw: Any, *, level: str) -> Any```
+```cascade_view(raw: Any, *, level: str, path: Path | None) -> Any```
 The part of a raw settings doc at *level* that `assemble_levels` actually MERGES.
 
 ⛑ **WHY IT EXISTS.** A consumer judging a settings file has to judge what the file CONTRIBUTES,
@@ -557,8 +575,15 @@ a cure for an entry the cascade had already dropped — MEASURED: a `box.yaml` c
 earlier — while `box.zippity` was never mentioned. `MIGRATION.md` §2.1 already said of that table
 *"deleting it changes nothing"*; the record was right and the code was wrong.
 
-⛑ **SILENT.** `assemble_levels` WARNS as it drops; a second caller re-emitting those warnings
-would double every one. The rules are READ from their one declaration each, never restated.
+⛑ **IT WARNS ONLY WHEN HANDED *path*, THE FILE IT NAMES.** A verb that shows a file WITHOUT
+assembling it passes *path* — `config_interface._noun_stored_view`, so plain `workset show` /
+`system show` announce a dropped table as spec §0 requires (they printed nothing before) — a
+containing scope's table through `_warn_upward_drops`, an illegal `pref:` table through
+`refuse_pref_table` (the call `assemble_levels` drops it with, so the text is the same). Both ask
+`announce_drop_once`, the guard `assemble_levels` warns through, so a command that does both still
+names each key once. *path* is required, never defaulted — a default would be a lever a
+caller can pull the wrong way (P3); the retirement scans (`agent_select`, `settings_launch`,
+`commands.start`) pass it too, and the guard keeps their file named once. The rules are READ from their one declaration each, never restated.
 
 **THREE filters, one per rule.**
 

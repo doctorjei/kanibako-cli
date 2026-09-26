@@ -116,6 +116,10 @@ only REQUESTING it from a lower level is barred.
 naming the file. A pref at those scopes has NO equivalent: it is FLAGGED, never silently relocated
 to a legal level and never read as a value.
 
+The warning is spoken ONCE per `(file, key)` for the process — it asks
+`settings_assemble.announce_drop_once`, the guard every dropped-table warning shares — because one
+command reads one file through several resolves. The DROP itself runs every time.
+
 That is the SAME treatment `_drop_upward_scopes` gives the sibling fault — a containing scope's
 table in a lower file — because two behaviours for one fault class is exactly the confusion §0's
 convention 0 forbids. Dropping preserves the recursion bound at least as strongly as erroring would.

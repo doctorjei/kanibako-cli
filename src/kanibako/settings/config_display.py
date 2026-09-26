@@ -22,7 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
-from kanibako.settings.agent_file import stored_leaf_text
+from kanibako.settings.agent_file import stored_leaf_display
 from kanibako.settings.config_io import load_doc, render_stored_scalar
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
 from kanibako.settings.settings_prefs import PREF_ROOT
@@ -37,10 +37,12 @@ def _flatten_table(node: dict, prefix: str, out: dict[str, str]) -> None:
     present-``None`` stored in a scope table printed Python's ``None`` in ``system show``
     while the identical value under ``pref:`` printed ``null``.  One copy cannot disagree
     with itself.
-    ⚑ RENDERING IS NOT DECIDED HERE — it is ``agent_file.stored_leaf_text`` for a shape this
-    module does not own, else the ONE scalar convention ``get`` answers with
+    ⚑ RENDERING IS NOT DECIDED HERE — it is ``agent_file.stored_leaf_display``: the shape rule
+    for a leaf that module owns, else the ONE scalar convention ``get`` answers with
     (``config_io.render_stored_scalar``), which is what makes the blocks BELOW agree with
     ``get`` about a stored value by construction rather than by two walks being kept in step.
+    ⚑ A DEST-KEYED BIND MAP is the one table this walk does not descend as a table — see
+    :func:`_flatten_bind_map`.
     ⚑ THAT IS A CLAIM ABOUT THIS WALK, NOT ABOUT THE VERB.  ``show --effective`` opens with a
     merged-config listing that never comes through here: it prints ``KanibakoConfig``'s own
     FIELD names by ``str()``, so ``box_share_images = False`` sits a few lines above this
@@ -50,10 +52,78 @@ def _flatten_table(node: dict, prefix: str, out: dict[str, str]) -> None:
     """
     for k, v in node.items():
         if isinstance(v, dict):
-            _flatten_table(v, f"{prefix}{k}.", out)
+            if _is_bind_map_key(f"{prefix}{k}"):
+                _flatten_bind_map(v, f"{prefix}{k}", out)
+            else:
+                _flatten_table(v, f"{prefix}{k}.", out)
         else:
-            text = stored_leaf_text(k, v)
-            out[f"{prefix}{k}"] = render_stored_scalar(v) if text is None else text
+            out[f"{prefix}{k}"] = stored_leaf_display(k, v)
+
+
+def flatten_under(prefix: str, table: dict) -> dict[str, str]:
+    """*table*, stored at key *prefix*, as ``dotted.tail → rendered value`` rows — *prefix* stripped.
+
+    ⚑ :func:`_flatten_table` for a caller that prints rows RELATIVE to a table (the agent tier's
+    ``model = …`` rows): the walk still sees the WHOLE key, so a category map under the table is
+    recognised and rendered as :func:`_flatten_bind_map` renders it, never as a Python repr.
+    """
+    out: dict[str, str] = {}
+    _flatten_table(table, prefix, out)
+    return {dotted[len(prefix):]: value for dotted, value in out.items()}
+
+
+def _is_bind_map_key(key: str) -> bool:
+    """Is *key* a terminal category whose map ``parse_bind_map`` reads (spec §2a)?
+
+    ⚑ BOTH HALVES ARE THE KEYSPACE'S, never listed here: WHERE a category key may end
+    (``is_terminal_category_key``) and WHICH categories hold ``[src[, options]]`` entries
+    (``BIND_CATEGORIES``).  ``masks`` is terminal but holds a bool, and the resolve carries
+    its destination as written, so it stays on the plain walk.
+    """
+    from kanibako.settings.settings_keyspace import (
+        BIND_CATEGORIES,
+        is_terminal_category_key,
+    )
+
+    if key.startswith(f"{PREF_ROOT}."):
+        # A pref REQUEST on a category carries the whole map (spec §2h); its target is the key.
+        key = key[len(PREF_ROOT) + 1:]
+    if not is_terminal_category_key(key):
+        return False
+    parts = key.split(".")
+    return parts[-1] in BIND_CATEGORIES or ".".join(parts[-2:]) in BIND_CATEGORIES
+
+
+def _flatten_bind_map(table: dict, key: str, out: dict[str, str]) -> None:
+    """Flatten one DEST-KEYED bind map as the resolve reads it: one row per destination.
+
+    ⚑ THE DESTINATION IS PRINTED IN THE SPELLING THE RESOLVE KEYS IT BY —
+    ``normalize_bind_dest``, the one canonicalizer ``settings_assemble.parse_bind_map``
+    applies (R-11) — so a ``show`` row and the ``--effective`` block beneath it name one
+    declaration with ONE key.  The file's ``~/shared/docs`` prints as the guest path it is.
+    ⚑ THE ENTRY IS PRINTED AS ``src`` or ``src  [options]``, the spelling the ``--effective``
+    blocks give a ``BindEntry``, off ``unpack_bind_entry`` (the one entry parser).  An entry
+    that parser refuses — a present-``None``, a malformed arity — falls back to the scalar
+    convention; the launch is what refuses it, never a display.  A SUB-TABLE (the retired
+    name-keyed shape) is walked as before, under the key as written.
+    """
+    from kanibako.settings.settings_resolve import (
+        SettingsError,
+        normalize_bind_dest,
+        unpack_bind_entry,
+    )
+
+    for dest, entry in table.items():
+        if isinstance(entry, dict):
+            _flatten_table(entry, f"{key}.{dest}.", out)
+            continue
+        row = f"{key}.{normalize_bind_dest(str(dest))}"
+        try:
+            src, opts = unpack_bind_entry(entry)
+        except SettingsError:
+            out[row] = render_stored_scalar(entry)
+            continue
+        out[row] = f"{src}  [{opts}]" if opts else src
 
 
 def _nested_settings_overrides(data: dict) -> dict[str, str]:
@@ -69,7 +139,7 @@ def _nested_settings_overrides(data: dict) -> dict[str, str]:
     (rendered by the agent-settings view).  Values render through
     :func:`_flatten_table`, so one stored value has one spelling at every verb.
 
-    ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER (``agent_file.stored_leaf_text``),
+    ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER (``agent_file.stored_leaf_display``),
     exactly as in :func:`_pref_overrides`.  Skipping ``agent`` does NOT put the argv list
     out of reach: a ``pref:`` table is not a scope table but is not skipped either, so
     ``pref.agent.default.run_args`` walks through here and printed the Python repr
@@ -107,7 +177,7 @@ def _pref_overrides(path: Path | None) -> dict[str, str]:
     express look like nothing at all.
 
     ⚑ A request whose TARGET holds a non-scalar shape renders through the module that
-    owns that shape (``agent_file.stored_leaf_text``): ``pref.agent.default.run_args``
+    owns that shape (``agent_file.stored_leaf_display``): ``pref.agent.default.run_args``
     carries the same argv LIST the target key does, and a bare ``str()`` put the Python
     repr ``['--p', '--q']`` in every ``show`` block.
     """
@@ -185,8 +255,7 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
         # cannot collide anyway — a dest-keyed arm's target tail is a category name and its
         # entries arrive as ``BindEntry``/``Bind``, both matched above — but keying on the
         # target is what makes that true BY CONSTRUCTION rather than by coincidence.
-        text = stored_leaf_text(leaf, value)
-        return render_stored_scalar(value) if text is None else text
+        return stored_leaf_display(leaf, value)
 
     def _at(target: str) -> Any:
         """The RESULT node at *target*, read in the same snapshot; ``__MISSING__`` if absent."""

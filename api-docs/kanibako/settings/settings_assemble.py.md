@@ -22,6 +22,7 @@ _SELECTION_STORY = "The RULE CHANGED in kanibako 1.8.0: a box no longer names it
 _MIRROR_STORY = "The RULE CHANGED in kanibako 1.8.0: a box no longer carries a SETTABLE mirror of its agent's settings — it REQUESTS a tweak with `pref.agent.<agent>.<key>` (spec §2h) and reads the effective value back at the read-only `meta.box.agent.<key>` (§2b). Refusing rather than running: an undeclared key is not read at all, so this box would come up on the agent's UNTWEAKED settings and every override in this table would silently vanish."
 _RETIRED_BEHAVIOR_VALUE_MAP: 'dict[str, dict[bool, str]]' = {'auto_approve': {True: 'full', False: 'restricted'}}
 _BEHAVIOR_TABLE_SHAPES: 'tuple[tuple[tuple[str, ...], int], ...]' = ((('agent',), 1), (('pref', 'agent'), 1), (ROOT_SECTIONS, 0))
+_DROP_WARNED: 'set[tuple[str, str]]' = set()
 _AGENT_FILE_LEVEL: str = 'agent'
 ```
 
@@ -32,7 +33,9 @@ def refuse_retired_behavior_keys(raw: Any, *, level: str, path: Path | None, sub
 def stored_config_entries(raw: Any) -> dict[str, object]
 def config_entry_groups(keys: Iterable[str]) -> list[tuple[str, list[str]]]
 def refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None
-def cascade_view(raw: Any, *, level: str) -> Any
+def reset_drop_warnings() -> None
+def announce_drop_once(path: Path | None, token: str) -> bool
+def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any
 def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None) -> KeyStore
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
 def assemble_levels(*, agent_name: str, base_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, floor: dict[str, object] | None=None) -> list[KeyStore]
@@ -47,6 +50,7 @@ def _behavior_leaf_sites(raw: Any, leaf: str) -> 'list[tuple[tuple[str, ...], An
 def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None) -> str
 def _containing_scopes(file_scope: str) -> frozenset[str]
 def _upward_scope_drop_set(file_scope: str) -> frozenset[str]
+def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
 def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict
 def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=()) -> Any
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str
