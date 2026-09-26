@@ -1043,6 +1043,150 @@ class TestUnwind:
         assert resolve_lifecycle_target(str(pdir), std, config).mode == BoxMode.primary
 
 
+class TestNoWorkspaceLossBeforeSuccess:
+    """A relocation deletes the old workspace only after it succeeded, with a copy landed.
+
+    Every test here seeds a file in the source workspace and asserts it survives a
+    failure (or is carried on success) — ``release_project`` never deletes a leaf.
+    """
+
+    def _member(self, env, ws, name="alpha", contents="keep"):
+        config, std, tmp_home = env
+        leaf = ws.workspaces_dir / name
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text(contents)
+        add_project(ws, name, leaf, std)
+        return leaf, resolve_lifecycle_target(str(leaf), std, config)
+
+    def _fail_late(self, monkeypatch):
+        def boom(*a, **kw):
+            raise RuntimeError("injected late failure")
+        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
+
+    def test_in_place_rename_carries_then_retires(self, env):
+        """S17: ``convert --name beta`` in its own workset copies, then retires ``alpha``."""
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        leaf, state = self._member(env, ws)
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="ws", name="beta"), std, config,
+            confirm=_conf_yes(),
+        )
+        assert (ws.workspaces_dir / "beta" / "file.txt").read_text() == "keep"
+        assert new.workspace_path == ws.workspaces_dir / "beta"
+        assert not leaf.exists()
+
+    def test_in_place_rename_failure_keeps_the_source(self, env, monkeypatch):
+        """S17 fault arm: the source leaf is untouched and the created ``beta`` is gone."""
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        leaf, state = self._member(env, ws)
+        self._fail_late(monkeypatch)
+        with pytest.raises(RuntimeError, match="injected"):
+            execute_lifecycle(
+                state, TargetSpec(ownership="ws", name="beta"), std, config,
+                confirm=_conf_yes(),
+            )
+        assert (leaf / "file.txt").read_text() == "keep"
+        assert not (ws.workspaces_dir / "beta").exists()
+        assert [p.name for p in load_workset(ws.root, ws.name).projects] == ["alpha"]
+
+    @pytest.mark.parametrize("shape", ["ws_to_ws_bare", "same_ws_external", "ws_to_ws_external"])
+    def test_late_failure_keeps_the_source_workspace(self, env, monkeypatch, shape):
+        """A″ (F1–F3): any failure after the release leaves the source leaf whole."""
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        spec = {
+            "ws_to_ws_bare": TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+            "same_ws_external": TargetSpec(location=tmp_home / "ext" / "alpha"),
+            "ws_to_ws_external": TargetSpec(
+                location=tmp_home / "ext" / "alpha", ownership="ws2"),
+        }[shape]
+        self._fail_late(monkeypatch)
+        with pytest.raises(RuntimeError, match="injected"):
+            execute_lifecycle(state, spec, std, config, confirm=_conf_yes())
+        assert (leaf / "file.txt").read_text() == "keep"
+        assert not (tmp_home / "ext" / "alpha").exists()
+        assert [p.name for p in load_workset(ws1.root, ws1.name).projects] == ["alpha"]
+
+    def test_same_workset_external_move_links_after_the_retire(self, env):
+        """F2 control: the retired in-tree leaf becomes the discoverability link."""
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        leaf, state = self._member(env, ws)
+        dest = tmp_home / "ext" / "alpha"
+        new = execute_lifecycle(state, TargetSpec(location=dest), std, config,
+                                confirm=_conf_yes())
+        assert new.is_external
+        assert (dest / "file.txt").read_text() == "keep"
+        assert leaf.is_symlink() and leaf.resolve() == dest.resolve()
+
+    def test_remap_deletes_nothing_and_says_so(self, env, capsys):
+        """M1: remapping a named box to a copy leaves the old in-tree leaf and names it."""
+        import shutil
+
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        leaf, state = self._member(env, ws)
+        copy = tmp_home / "extc"
+        shutil.copytree(leaf, copy)
+        execute_lifecycle(
+            state, TargetSpec(location=copy, records_only=True), std, config,
+            confirm=_conf_yes(),
+        )
+        assert not leaf.is_symlink()
+        assert (leaf / "file.txt").read_text() == "keep"
+        assert f"Note: left {leaf}; remap deletes nothing" in capsys.readouterr().err
+
+    def test_move_into_its_own_subtree_is_refused(self, env):
+        """X1: the copy would land inside the tree the retire deletes."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, contents="x1")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        with pytest.raises(ProjectError, match="inside the project being moved"):
+            execute_lifecycle(
+                state, TargetSpec(location=pdir / "sub"), std, config,
+                confirm=_conf_yes(),
+            )
+        assert (pdir / "file.txt").read_text() == "x1"
+        assert not (pdir / "sub").exists()
+
+
+class TestRetireOldWorkspace:
+    """``_retire_old_workspace``: unlink a link, skip a landing under the old tree."""
+
+    def test_a_symlink_is_unlinked_never_followed(self, tmp_path, capsys):
+        real = tmp_path / "real"
+        real.mkdir()
+        (real / "f.txt").write_text("mine")
+        old = tmp_path / "old"
+        old.symlink_to(real)
+        lc._retire_old_workspace(old, tmp_path / "landed", tmp_path / "landed")
+        assert not old.is_symlink()
+        assert (real / "f.txt").read_text() == "mine"
+        assert f"Note: left {real.resolve()}; it is yours" in capsys.readouterr().err
+
+    def test_a_landing_under_the_old_tree_is_skipped(self, tmp_path):
+        old = tmp_path / "old"
+        (old / "sub").mkdir(parents=True)
+        lc._retire_old_workspace(old, old / "sub", old / "sub")
+        assert (old / "sub").is_dir()
+
+    @pytest.mark.parametrize("where", ["is_old", "under_old"])
+    def test_the_recorded_workspace_is_never_retired(self, tmp_path, where):
+        """The box's recorded workspace survives even when the landing is elsewhere —
+        e.g. a ``workspaces`` dir repointed inside the moving box's own tree."""
+        old = tmp_path / "old"
+        (old / "wsd" / "alpha").mkdir(parents=True)
+        (old / "f.txt").write_text("mine")
+        recorded = old if where == "is_old" else old / "wsd" / "alpha"
+        lc._retire_old_workspace(old, tmp_path / "landed", recorded)
+        assert (old / "f.txt").read_text() == "mine"
+        assert recorded.is_dir()
+
+
 # ---------------------------------------------------------------------------
 # _default_state_from_meta — the remap fallback when the workspace dir is gone.
 # P8b: existence is REGISTRY membership (not on-disk project.mode); enable_vault

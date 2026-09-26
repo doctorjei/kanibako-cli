@@ -722,7 +722,8 @@ Forward effects go on an `_Unwind`; success behavior is identical to the pre-`_U
   read for both — not from `ws.vault_dir / "ro"`, which would answer a repointable key with a
   composed literal. ⚑ The unwind removes the per-box LEAVES only — **never** the shared arms,
   which hold every box's vault.
-* **External arm** — symlink, then the `boxes:` registration (idempotent; overwrites a moved box).
+* **External arm** — `ensure_discoverability_link`, then the `boxes:` registration (idempotent;
+  overwrites a moved box).
 * **`--force` absorbing a self-declared standalone box** — the registration is **MOVED**, not
   duplicated: a box lives in EXACTLY ONE registry. The global `standalone:` entry is dropped so the
   box becomes SOLELY a workset box.
@@ -751,17 +752,45 @@ def _detach_project(ws: Workset, name: str) -> None
 Drop *name* from the in-memory project list (compensating action).
 
 ```python
+def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> bool
+```
+Create `workspaces/<name>` → *target* for an external member; True iff it created the link. An
+occupied leaf (dir, file or link) is left alone. `add_project`'s external arm calls it, and so does a
+relocation after it retires the old in-tree leaf that held the spot (`commands/box/_lifecycle.py`,
+STEP 5) — one writer of the link.
+
+## Removing a member — three functions, one rule
+
+⚑⚑ **A relocation never reaches a workspace deleter.** The lifecycle engine
+(`commands/box/_lifecycle.py`) composes `release_project` + `remove_member_store`; neither touches
+`workspaces/<name>`. The old workspace goes only after the whole op succeeded, through the engine's
+own success-only retire. `remove_project(remove_files=True)` is the one deleter of a workspace leaf,
+for `workset disconnect --remove-files`. Before the split, the relocation releases called
+`remove_project(remove_files=True)` and deleted the source workspace before the copy that read it.
+
+```python
+def release_project(ws: Workset, name: str) -> WorksetProject
+```
+Drop *name*'s `boxes:` membership row (D10) and in-memory member. Raises `WorksetError` if no
+project with *name* exists. Deletes no directory: it unlinks `workspaces/<name>` only when that leaf
+is a symlink AND the member is EXTERNAL — its recorded path differs from the leaf, compared with the
+parent resolved and the leaf not followed. An in-tree leaf is left as it is, including a symlink the
+user put there: unlinking that would orphan the workspace the box records. ⚑ **Unlinking removes
+ONLY the link — never the user's external source directory.**
+
+```python
+def remove_member_store(ws: Workset, name: str) -> None
+```
+Delete *name*'s box tree (`remove_box_tree`) and per-box vault leaves under the resolved arms
+(symlinks unlinked, real dirs `rmtree`'d). Never the workspace leaf.
+
+```python
 def remove_project(ws: Workset, name: str, *, remove_files: bool = False, std: StandardPaths | None = None) -> WorksetProject
 ```
-Remove a project from a workset. Raises `WorksetError` if no project with *name* exists.
+`release_project`, then with *remove_files* `remove_member_store` and the workspace leaf (a symlink
+unlinked, never followed; a dir `rmtree`'d). The external source is always left intact.
 
-The external-connect markers written by `add_project` are undone **regardless of *remove_files***:
-the box's per-workset `boxes:` membership row (D10) is dropped, and the `workspaces/{name}` symlink
-is unlinked. ⚑ **Unlinking a symlink removes ONLY the link — never the user's external source
-directory.** With *remove_files* the workset-side per-project directories go too (symlinks unlinked,
-real dirs `rmtree`'d); the external source is still left intact.
-
-### ⚑⚑ Failure-consistency ORDERING — the reverse of `add_project`
+### ⚑⚑ Failure-consistency ORDERING (`release_project`) — the reverse of `add_project`
 
 Unlink the discoverability symlink **BEFORE** the durable `boxes:` removal from `registry.yaml`, so
 the membership drop — the step that makes the project "gone" — is the LAST durable one. A crash
@@ -774,19 +803,19 @@ do.
 EXTERNAL rows orphaned an in-tree disconnect's row, and that orphan then tripped the
 workspace-uniqueness refusal — locking that workspace out of its own workset under any name.
 
-⚑ The `workspaces/{name}` symlink is unlinked regardless of *remove_files* so a discoverability
-symlink never dangles.
+⚑ An external member's discoverability symlink is unlinked regardless of *remove_files*, so it
+never dangles.
 
 ### ⚑ THE BOX TREE NEEDS THE UNSHARE ESCALATION (J-7)
 
 `projects_dir/<name>` holds the box HOME, and every R1b box home carries the canon skeleton:
 root-owned and 555. `shutil.rmtree` raises `PermissionError` on a tree containing 555 directories
 **EVEN WHEN THE CALLER OWNS THEM**, so this breaks in BOTH the protected and the degraded state. It
-therefore goes through `remove_box_tree`. The workspace and vault dirs are ordinary user content and
+therefore goes through `remove_box_tree` (in `remove_member_store`). The workspace and vault dirs are ordinary user content and
 stay on the plain path — **the escalation is scoped to what actually needs it.**
 
 ⚑ Vault nests `ro`/`rw` ABOVE the box name, so only the per-box leaves are removed — never the
-shared arms. ⚑⚑ `remove_project` resolves those arms through `resolve_workset_vault_pair` FOR THE
+shared arms. ⚑⚑ `remove_member_store` resolves those arms through `resolve_workset_vault_pair` FOR THE
 SAME REASON `add_project` does, and the two must never diverge: deleting the composed default while
 the box's real vault sits at a repoint would orphan the user's data AND remove a directory the box
 never used.

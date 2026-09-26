@@ -237,7 +237,7 @@ class TestVaultCarry:
         )
         assert new.mode == BoxMode.primary
         _assert_carried(new, seed)
-        # The workset source leaves are gone (remove_project ran).
+        # The workset source leaves are gone (remove_member_store ran).
         assert not (ws.root / "vault" / "ro" / "ep").exists()
         assert not (ws.root / "vault" / "rw" / "ep").exists()
 
@@ -269,6 +269,7 @@ class TestVaultCarry:
         ws_b = create_workset("wsb", tmp_home / "wsb_root", std)
         internal = ws_a.workspaces_dir / "b1"
         internal.mkdir(parents=True)
+        (internal / "ws-note.txt").write_text("workspace")
         add_project(ws_a, "b1", internal, std)
         state = resolve_lifecycle_target(str(internal), std, config)
         seed = _seed_vault(state)
@@ -291,8 +292,9 @@ class TestVaultCarry:
                 state, TargetSpec(location=dest, ownership="wsb"),
                 std, config, confirm=_conf_yes(),
             )
-        # Membership is restored ...
+        # Membership is restored, and the workspace was never deleted ...
         assert any(p.name == "b1" for p in load_workset(ws_a.root, ws_a.name).projects)
+        assert (internal / "ws-note.txt").read_text() == "workspace"
         # ... and the source vault is restored whole, byte for byte.
         assert (src_ro / "ro-note.txt").read_text() == seed["ro-note.txt"]
         assert (src_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]

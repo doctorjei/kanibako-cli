@@ -10,8 +10,9 @@ Public surface: :class:`ProjectState` · :func:`resolve_lifecycle_target` · :cl
 :func:`execute_lifecycle` · the ``run_remap``/``run_move``/``run_convert`` CLI entry points ·
 :func:`copy_into_workset` (the std-aware copy path for ``box duplicate``).
 
-⚑ Destructive: steps 2 and 5 copy then ``rmtree``. The step ORDER and the unwind pushes are
-load-bearing; see ``llm-docs/kanibako/commands/box/_lifecycle.py.md``.
+⚑ Destructive: step 2 copies; the old workspace is deleted only by
+:func:`_retire_old_workspace`, after the whole op succeeded. The step ORDER and the unwind
+pushes are load-bearing; see ``llm-docs/kanibako/commands/box/_lifecycle.py.md``.
 """
 
 from __future__ import annotations
@@ -64,9 +65,12 @@ from kanibako.utils import write_project_gitignore
 from kanibako.project.workset import (
     Workset,
     add_project,
+    ensure_discoverability_link,
     list_worksets,
     load_workset,
     load_workset_settings_doc,
+    release_project,
+    remove_member_store,
     remove_project,
     resolve_workset_canon,
     resolve_workset_vault_pair,
@@ -464,7 +468,10 @@ class _Unwind:
         self.actions.append(action)
 
     def on_success(self, action: Callable[[], None]) -> None:
-        """Register an action to run only when the whole op succeeds (scratch disposal)."""
+        """Register an action to run only when the whole op succeeds.
+
+        ⚑ Includes DESTRUCTIVE work — ``_retire_old_workspace`` — not just scratch disposal.
+        """
         self.cleanups.append(action)
 
     def run(self) -> None:
@@ -581,6 +588,10 @@ def _validate(
         if dest.resolve() == state.workspace_path.resolve():
             raise ProjectError(
                 f"Destination is the project's current location: {dest}"
+            )
+        if state.workspace_path.resolve() in dest.resolve().parents:
+            raise ProjectError(
+                f"Destination is inside the project being moved: {dest}"
             )
         if dest.exists():
             raise ProjectError(f"Destination already exists: {dest}")
@@ -737,6 +748,11 @@ def _run_steps(
     if records_only and dest is not None:
         # ``remap``: files presumed already at *dest*; copy and remove nothing.
         new_workspace = dest
+        old = state.workspace_path
+        if (state.mode is BoxMode.named and not state.is_external and old.is_dir()
+                and old.resolve() != dest.resolve()):
+            unwind.on_success(lambda: print(
+                f"Note: left {old}; remap deletes nothing", file=sys.stderr))
     elif relocating and dest is not None and not state.is_external:
         src = state.workspace_path
         copy_tree_keeping_links(src, dest)
@@ -801,14 +817,50 @@ def _run_steps(
     #   box name, so the new address is only readable off ``new_state``. ---
     _relocate_channel_partition(state, new_state, std)
 
-    # --- STEP 5 — Clean up the old workspace (real, internal moves only).
-    # ⚑ NEVER delete a user's EXTERNAL source directory, and never before step 2's copy. ---
+    # --- STEP 5 — Retire the old workspace step 2 copied, ON SUCCESS ONLY.
+    # ⚑ Never a user's EXTERNAL source. ---
     if not records_only and relocating and dest is not None and not state.is_external:
         old_ws = state.workspace_path
-        if old_ws.resolve() != dest.resolve() and old_ws.is_dir():
-            shutil.rmtree(old_ws, ignore_errors=True)
+        recorded = new_state.workspace_path
+        unwind.on_success(lambda: _retire_old_workspace(old_ws, dest, recorded))
+    # ⚑ An external landing whose ``workspaces/<name>`` was held by the leaf just retired
+    #   gets its discoverability link now, after the retire (registration order).
+    if target_mode is BoxMode.named and target_ws is not None and new_state.is_external:
+        link_ws = target_ws
+
+        def _link() -> None:
+            ensure_discoverability_link(link_ws, new_name, new_state.workspace_path)
+
+        unwind.on_success(_link)
 
     return new_state
+
+
+def _retire_old_workspace(old: Path, landed: Path, recorded: Path) -> None:
+    """Delete the relocated-from workspace *old*, whose copy landed at *landed*.
+
+    ⚑⚑ An ``_Unwind.on_success`` action ONLY — a failed op never reaches it.  Skips an
+    absent *old*, and an *old* that is or holds *landed* (a move into its own subtree;
+    ``_validate`` refuses that first) or *recorded*, the workspace the box now records.
+    A symlink is unlinked, never followed.  A failed delete prints a Note and stops: no
+    second deleter, rc unchanged.
+    """
+    import sys
+
+    if not old.exists() and not old.is_symlink():
+        return
+    old_r = old.resolve()
+    for kept in (landed.resolve(), recorded.resolve()):
+        if old_r == kept or old_r in kept.parents:
+            return
+    try:
+        if old.is_symlink():
+            old.unlink()
+            print(f"Note: left {old_r}; it is yours", file=sys.stderr)
+        else:
+            shutil.rmtree(old)
+    except OSError as err:
+        print(f"Note: could not remove the old workspace {old}: {err}", file=sys.stderr)
 
 
 def _apply_ownership_and_markers(
@@ -1174,9 +1226,11 @@ def _remove_old_metadata(
                 remove_box_tree(state.shell_path)
         return
 
-    # Workset source: drop the registration; the external source dir is NEVER deleted.
+    # Workset source: drop the registration and the store.  ⚑ The workspace leaf is NOT
+    # deleted here — a relocation retires it on success (``_retire_old_workspace``).
     if state.ws is not None:
-        remove_project(state.ws, state.name, remove_files=True, std=std)
+        release_project(state.ws, state.name)
+        remove_member_store(state.ws, state.name)
 
 
 def _to_default(
@@ -1608,8 +1662,8 @@ def _to_workset(
         src_name = state.name
         src_source_path = state.workspace_path
         # ⚑⚑ ws->ws: the SOURCE must release BEFORE the target registers (the connection
-        # record is 1:1). Release DELETES the source dirs, so stash them first — the
-        # forward copy below and the unwind both read the stash, not the live paths.
+        # record is 1:1). Release DELETES the source STORE (never its workspace leaf), so
+        # stash it first — the forward copy below and the unwind both read the stash.
         import tempfile
         stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
         stash_boxes = stash / "boxes"
@@ -1620,7 +1674,7 @@ def _to_workset(
                     ignore=shutil.ignore_patterns(".kanibako.lock"),
                     dirs_exist_ok=True,
                 )
-            # ⚑ THE VAULT CARRY, leg 1 of 2 (P1 data loss): ``remove_project`` below
+            # ⚑ THE VAULT CARRY, leg 1 of 2 (P1 data loss): ``remove_member_store`` below
             # deletes the source vault leaves, while the destination leaves only exist
             # after ``add_project`` — so the contents wait out the swap in the stash
             # beside the metadata.  Guarded by the same risk model as the teardown.
@@ -1630,7 +1684,8 @@ def _to_workset(
                 state, std, stash_vault_ro, stash_vault_rw,
             ):
                 _copy_vault_leaf_contents(_src, _tmp)
-            remove_project(src_ws, src_name, remove_files=True, std=std)
+            release_project(src_ws, src_name)
+            remove_member_store(src_ws, src_name)
         except BaseException:
             # ⚑ Leg 1 runs BEFORE the unwind push below, so a failure here owns
             # no compensating action yet — drop the stash here, not in the unwind.
@@ -1661,9 +1716,13 @@ def _to_workset(
     # ⚑ ``force=True``: an absorb INTO a workset must override the standalone-marker
     # connect guard (B2a) — a standalone source still carries its ``box_data/`` marker
     # here, since the marker is removed LATER in the convert. No-op for other modes.
+    # ⚑ The unwind deletes the target's workspace leaf only when THIS op created it — on a
+    # same-workset, same-name relocation that leaf is the source's own, intact workspace.
+    target_leaf = target_ws.workspaces_dir / new_name
+    leaf_created = not (target_leaf.exists() or target_leaf.is_symlink())
     add_project(target_ws, new_name, source_for_add, std, force=True)
     unwind.push(
-        lambda: _safe_remove_project(target_ws, new_name, std)
+        lambda: _unwind_target_member(target_ws, new_name, target_leaf, leaf_created)
     )
 
     dst_project = target_ws.projects_dir / new_name
@@ -1682,14 +1741,22 @@ def _to_workset(
         # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
         materialize_canon_skeleton(dst_shell)
 
-    if copy_workspace:
-        dst_workspace = target_ws.workspaces_dir / new_name
+    dst_workspace = target_ws.workspaces_dir / new_name
+    # ⚑ A source leaf that IS the landing leaf (same workset, same name) needs no copy.
+    if copy_workspace and state.workspace_path.resolve() != dst_workspace.resolve():
         ignore = None
         if state.mode == BoxMode.standalone:
             ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
         copy_tree_keeping_links(
             state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True,
         )
+        # ⚑ An in-tree workset source's leaf is retired on success, like step 2's copy;
+        # other sources keep their tree (an in-place convert deletes nothing).
+        if source_is_workset and not state.is_external:
+            old_leaf = state.workspace_path
+            # An in-tree landing: the box records ``dst_workspace`` itself.
+            unwind.on_success(lambda: _retire_old_workspace(
+                old_leaf, dst_workspace, dst_workspace))
 
     # Determine the recorded workspace.
     if internal:
@@ -1878,11 +1945,20 @@ def _safe_register_membership(
         pass
 
 
-def _safe_remove_project(ws: Workset, name: str, std: StandardPaths) -> None:
+def _unwind_target_member(
+    ws: Workset, name: str, leaf: Path, leaf_created: bool,
+) -> None:
+    """Undo a target registration: record + store, and *leaf* only if this op created it."""
     try:
-        remove_project(ws, name, remove_files=True, std=std)
-    except Exception:  # noqa: BLE001
+        release_project(ws, name)
+        remove_member_store(ws, name)
+    except Exception:  # noqa: BLE001 - best-effort unwind
         pass
+    if leaf_created:
+        if leaf.is_symlink():
+            leaf.unlink()
+        elif leaf.is_dir():
+            shutil.rmtree(leaf, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

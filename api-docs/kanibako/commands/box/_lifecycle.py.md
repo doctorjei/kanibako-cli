@@ -36,6 +36,7 @@ def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> ProjectState
+def _retire_old_workspace(old: Path, landed: Path, recorded: Path) -> None
 def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str='', force: bool=False) -> ProjectState
 def _unwind_box_tree(path: Path) -> None
 def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str='home', unwind: _Unwind) -> Path
@@ -60,7 +61,7 @@ def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path
 def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths) -> None
 def _safe_unregister(std: StandardPaths, name: str) -> None
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
-def _safe_remove_project(ws: Workset, name: str, std: StandardPaths) -> None
+def _unwind_target_member(ws: Workset, name: str, leaf: Path, leaf_created: bool) -> None
 def _ownership_from_args(args) -> str | _Sentinel
 def _validated_name(args) -> str | None
 def _make_confirm(force: bool, summary: str)
