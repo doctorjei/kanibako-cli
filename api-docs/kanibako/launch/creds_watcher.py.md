@@ -49,4 +49,9 @@ class CredsWatcher:
     def run(self) -> int
 
     def _safe_writeback(self) -> None
+
+class _DropRepeats(logging.Filter):
+    def __init__(self) -> None
+
+    def filter(self, record: logging.LogRecord) -> bool
 ```

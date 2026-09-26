@@ -170,8 +170,9 @@ not enough. No marker → `None`, nothing to import.
 
 **Name composition is kuid-first** (P8b — the box no longer self-describes its `project.name` on
 disk). The stored `workset.kuid`, sparse-persisted at create, prefixes the **LIVE dir leaf**:
-`<kuid>_<leaf>`. This mirrors `launch.box_resolve.resolve_box_identity`'s standalone branch, and it
-is what lets a MOVED box keep its stable kuid identity while the leaf tracks the new directory. A
+`<kuid>_<leaf>`. The rule is `launch.box_resolve.standalone_box_name`, the one
+`resolve_box_identity` also calls; import passes no registry name, the box being unregistered. It is
+what lets a MOVED box keep its stable kuid identity while the leaf tracks the new directory. A
 pre-kuid box (the `kuid.SENTINEL` value) falls back to the plain dir leaf.
 
 Order of operations: already-registered check by `standalone_name_for_root` (plus stale-entry clear)

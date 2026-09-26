@@ -726,6 +726,64 @@ class TestWorksetDisconnect:
         assert rc == 0
         assert not (ws.projects_dir / "rmfproj").is_dir()
 
+    @pytest.mark.parametrize("remove_files", [True, False])
+    def test_disconnect_remove_files_deletes_the_box_logs(
+        self, config_file, tmp_home, remove_files,
+    ):
+        """``--remove-files`` deletes every per-box log file from the RESOLVED
+        ``workset.logs`` (where the helper-log mount is bound from); a plain disconnect
+        keeps them."""
+        from kanibako.commands.workset_cmd import run_disconnect
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import box_log_files
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_logs").resolve()
+        ws = create_workset("logsws", root, std)
+        elsewhere = tmp_home / "log-store"
+        dump_doc(root / "workset.yaml", {"workset": {"logs": str(elsewhere)}})
+        src = tmp_home / "logs_src"
+        src.mkdir()
+        add_project(ws, "logsproj", src)
+        logs = box_log_files(elsewhere, "logsproj")
+        elsewhere.mkdir()
+        for log in logs:
+            log.write_text("x")
+
+        args = argparse.Namespace(
+            workset="logsws", project="logsproj",
+            remove_files=remove_files, force=True,
+        )
+        assert run_disconnect(args) == 0
+        assert [log.exists() for log in logs] == [not remove_files] * len(logs)
+
+    def test_disconnect_unresolvable_logs_refuses_before_deleting(
+        self, config_file, tmp_home,
+    ):
+        """A ``workset.logs`` that does not resolve refuses ``--remove-files`` WHOLE:
+        the box tree and its membership are still there after the refusal."""
+        from kanibako.commands.workset_cmd import run_disconnect
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.settings_resolve import SettingsError
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_badlogs").resolve()
+        ws = create_workset("badlogsws", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"logs": "@workset.nosuchkey/x"}})
+        src = tmp_home / "badlogs_src"
+        src.mkdir()
+        add_project(ws, "badlogsproj", src)
+
+        args = argparse.Namespace(
+            workset="badlogsws", project="badlogsproj", remove_files=True, force=True,
+        )
+        with pytest.raises(SettingsError):
+            run_disconnect(args)
+        assert (ws.projects_dir / "badlogsproj").is_dir()
+        assert "badlogsproj" in _workset_boxes(ws)
+
     def test_disconnect_unknown_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_disconnect
 

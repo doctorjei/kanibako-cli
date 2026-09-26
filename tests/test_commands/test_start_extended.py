@@ -1302,8 +1302,12 @@ class TestCredsWatcherSpawnAndFlagHygiene:
         proj = MagicMock()
         proj.project_path = tmp_path / "proj"
 
-        with patch.object(start_mod.subprocess, "Popen") as popen:
-            start_mod._spawn_creds_watcher(proj)
+        with (
+            patch.object(start_mod.subprocess, "Popen") as popen,
+            patch.object(start_mod, "creds_watcher_log_path",
+                         return_value=tmp_path / "logs" / "b.creds-watcher.log"),
+        ):
+            start_mod._spawn_creds_watcher(MagicMock(), proj)
 
         popen.assert_called_once()
         argv = popen.call_args.args[0]
@@ -1319,8 +1323,57 @@ class TestCredsWatcherSpawnAndFlagHygiene:
 
         proj = MagicMock()
         proj.project_path = tmp_path / "proj"
-        with patch.object(start_mod.subprocess, "Popen", side_effect=OSError("nope")):
-            start_mod._spawn_creds_watcher(proj)  # no raise
+        with (
+            patch.object(start_mod.subprocess, "Popen", side_effect=OSError("nope")),
+            patch.object(start_mod, "creds_watcher_log_path",
+                         return_value=tmp_path / "b.creds-watcher.log"),
+        ):
+            start_mod._spawn_creds_watcher(MagicMock(), proj)  # no raise
+
+    def test_spawn_creds_watcher_appends_stderr_to_its_log(self, tmp_path):
+        """🛑 The watcher runs detached, so its stderr is the ONLY place its WARNING (a
+        settings refusal) or ERROR can reach the user: it is APPENDED to the box's
+        watcher log, whose missing parent is created, and never sent to DEVNULL."""
+        import kanibako.commands.start as start_mod
+
+        std, proj = MagicMock(), MagicMock()
+        log_path = tmp_path / "logs" / "b.creds-watcher.log"
+        with (
+            patch.object(start_mod.subprocess, "Popen") as popen,
+            patch.object(start_mod, "creds_watcher_log_path",
+                         return_value=log_path) as m_path,
+        ):
+            start_mod._spawn_creds_watcher(std, proj)
+
+        m_path.assert_called_once_with(std, proj)
+        sink = popen.call_args.kwargs["stderr"]
+        assert sink is not start_mod.subprocess.DEVNULL
+        assert Path(sink.name) == log_path
+        assert sink.mode == "a"
+        assert sink.closed  # the child holds its own descriptor
+
+    def test_spawn_creds_watcher_runs_without_a_log(self, tmp_path, caplog):
+        """A log that cannot be opened loses only the log: the watcher still spawns,
+        its stderr to DEVNULL, and the launch says its warnings will be discarded."""
+        import logging
+
+        import kanibako.commands.start as start_mod
+
+        blocker = tmp_path / "not-a-dir"
+        blocker.write_text("")
+        with (
+            patch.object(start_mod.subprocess, "Popen") as popen,
+            patch.object(start_mod, "creds_watcher_log_path",
+                         return_value=blocker / "b.creds-watcher.log"),
+            caplog.at_level(logging.WARNING, logger="kanibako.start"),
+        ):
+            start_mod._spawn_creds_watcher(MagicMock(), MagicMock())
+
+        popen.assert_called_once()
+        assert popen.call_args.kwargs["stderr"] == start_mod.subprocess.DEVNULL
+        [record] = [r for r in caplog.records if r.name == "kanibako.start"]
+        assert record.levelno == logging.WARNING
+        assert "its warnings will be discarded" in record.getMessage()
 
     def test_detached_shared_box_spawns_the_watcher(self, start_mocks):
         """A DETACHED shared-tier launch spawns the creds watcher."""

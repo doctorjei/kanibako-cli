@@ -891,15 +891,19 @@ class TestBoxRm:
         project_dir = str(tmp_home / "project")
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
-        # Create a fake per-box helper log (PRIMARY → primary_workset/logs/<box>.jsonl).
+        # Every per-box log file (PRIMARY → primary_workset/logs/<box>.*), the helper
+        # log and the creds watcher's log alike.
+        from kanibako.settings.paths import box_log_files
+
         std.primary_logs.mkdir(parents=True, exist_ok=True)
-        log_file = std.primary_logs / "project.jsonl"
-        log_file.write_text("test")
+        logs = box_log_files(std.primary_logs, "project")
+        for log_file in logs:
+            log_file.write_text("test")
 
         args = argparse.Namespace(target="project", purge=True, force=True)
         rc = run_rm(args)
         assert rc == 0
-        assert not log_file.exists()
+        assert [log_file for log_file in logs if log_file.exists()] == []
 
     def test_rm_preserves_workspace(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box._parser import run_rm
@@ -1168,6 +1172,107 @@ class TestStandaloneDeregisterPurge:
         assert root.is_dir()
         assert (root / "keep.txt").read_text() == "workspace file"
         assert registry_store.lookup_deregistered(std.registry, "k_box") is None
+
+
+class TestRmPurgeDeletesTheBoxLogsByName:
+    """``box rm --purge`` deletes a box's log files BY NAME, wherever ``workset.logs``
+    resolves — the same files ``box purge`` deletes."""
+
+    @pytest.mark.parametrize("deregister_first", [False, True])
+    def test_standalone_logs_outside_box_data_are_deleted(
+        self, config_file, tmp_home, credentials_dir, deregister_first,
+    ):
+        """A standalone box whose ``workset.logs`` points outside ``box_data/``: removing
+        ``box_data/`` whole does not reach its logs, so they are deleted by name — on
+        the direct purge and on the deregistered-box purge alike."""
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.paths import (
+            box_log_files, box_logs_location, load_std_paths, resolve_standalone_project,
+        )
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa_logs"
+        root.mkdir()
+        resolve_standalone_project(std, config, str(root), initialize=True, name="sa_logs")
+        elsewhere = tmp_home / "sa-log-store"
+        write_nested_key(root / "workset.yaml", ("workset",), "logs", str(elsewhere))
+        proj = resolve_standalone_project(std, config, str(root))
+        logs_dir, box = box_logs_location(std, proj)
+        assert logs_dir == elsewhere
+        logs = box_log_files(logs_dir, box)
+        elsewhere.mkdir()
+        for log in logs:
+            log.write_text("x")
+
+        if deregister_first:
+            assert run_rm(argparse.Namespace(target=box, purge=False, force=True)) == 0
+            assert [log for log in logs if not log.exists()] == []
+        assert run_rm(argparse.Namespace(target=box, purge=True, force=True)) == 0
+        assert [log for log in logs if log.exists()] == []
+
+    @pytest.mark.parametrize("deregister_first", [False, True])
+    def test_a_moved_kuid_box_purges_its_live_names_logs(
+        self, config_file, tmp_home, credentials_dir, deregister_first,
+    ):
+        """A MOVED kuid standalone box keeps its old registry KEY while its logs are
+        named for the LIVE ``<kuid>_<leaf>`` name, so the purge must delete by the live
+        name, never by the key."""
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.project import registry_store
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.paths import (
+            box_log_files, box_logs_location, load_std_paths, resolve_standalone_project,
+        )
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = tmp_home / "sa_before"
+        root.mkdir()
+        resolve_standalone_project(std, config, str(root), initialize=True)
+        (key,) = registry_store.standalone_box_names(std.registry)
+        moved = tmp_home / "sa_after"
+        root.rename(moved)
+        registry_store.register_standalone(std.registry, key, moved)
+        elsewhere = tmp_home / "sa-moved-log-store"
+        write_nested_key(moved / "workset.yaml", ("workset",), "logs", str(elsewhere))
+        logs_dir, box = box_logs_location(std, resolve_standalone_project(std, config, str(moved)))
+        assert logs_dir == elsewhere
+        assert box != key
+        logs = box_log_files(logs_dir, box)
+        elsewhere.mkdir()
+        for log in logs:
+            log.write_text("x")
+
+        if deregister_first:
+            assert run_rm(argparse.Namespace(target=key, purge=False, force=True)) == 0
+            assert [log for log in logs if not log.exists()] == []
+        assert run_rm(argparse.Namespace(target=key, purge=True, force=True)) == 0
+        assert [log for log in logs if log.exists()] == []
+
+    def test_a_case_variant_purges_the_stored_names_logs(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Spec §0: a deregistered box is found case-blind, and its logs are named by the
+        STORED spelling — so ``rm PROJECT --purge`` must delete ``project.*``."""
+        from kanibako.commands.box._parser import run_rm
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import box_log_files, load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        resolve_project(std, config, project_dir=str(tmp_home / "project"), initialize=True)
+        assert run_rm(argparse.Namespace(target="project", purge=False, force=True)) == 0
+        std.primary_logs.mkdir(parents=True, exist_ok=True)
+        logs = box_log_files(std.primary_logs, "project")
+        for log in logs:
+            log.write_text("x")
+
+        assert run_rm(argparse.Namespace(target="PROJECT", purge=True, force=True)) == 0
+        assert [log for log in logs if log.exists()] == []
 
 
 # ---------------------------------------------------------------------------

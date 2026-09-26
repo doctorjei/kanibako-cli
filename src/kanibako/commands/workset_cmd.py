@@ -19,6 +19,7 @@ from kanibako.settings.config import user_config_file, load_config
 from kanibako.errors import WorksetError
 from kanibako.settings.paths import (
     load_std_paths,
+    remove_box_logs,
     workset_settings_path,
 )
 from kanibako.utils import confirm_prompt
@@ -149,7 +150,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     disconnect_p.add_argument("project", help="Name of the project to remove")
     disconnect_p.add_argument(
         "--remove-files", action="store_true",
-        help="Also remove per-project directories",
+        help="Also remove per-project directories and the box's log files",
     )
     disconnect_p.add_argument(
         "--force", action="store_true", help="Skip confirmation prompt",
@@ -604,6 +605,9 @@ def run_disconnect(args: argparse.Namespace) -> int:
         except Exception:
             member = project_token
 
+    # ⚑ RESOLVED BEFORE ANYTHING IS DELETED: a ``workset.logs`` that does not resolve
+    # refuses the disconnect whole, rather than after the box tree is already gone.
+    logs_dir = ws.logs_dir if args.remove_files else None
     if not args.force:
         label = "and remove files " if args.remove_files else ""
         confirm_prompt(
@@ -627,6 +631,10 @@ def run_disconnect(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    if logs_dir is not None:
+        # ⚑ HERE, not in ``remove_project``: the lifecycle engine calls that too, to
+        # release a box it is MOVING, and the logs must survive a move.
+        remove_box_logs(logs_dir, proj.name)
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")
     return 0
 

@@ -4,7 +4,20 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from kanibako.log import get_logger, setup_logging
+
+
+@pytest.fixture(autouse=True)
+def _restore_kanibako_logger():
+    """Every test here reconfigures the shared ``kanibako`` logger; put it back so no
+    later test inherits a handler from this module."""
+    logger = logging.getLogger("kanibako")
+    handlers, level = logger.handlers[:], logger.level
+    yield
+    logger.handlers[:] = handlers
+    logger.setLevel(level)  # setLevel, not assignment: it clears the level cache
 
 
 class TestSetupLogging:
@@ -42,6 +55,17 @@ class TestSetupLogging:
         handler = logger.handlers[0]
         # Default handler has no explicit formatter set by us
         assert handler.formatter is None or "kanibako" not in handler.formatter._fmt
+
+    def test_timestamps_prefix_time_and_level(self):
+        """The detached creds watcher's stderr is a file read later, so each record
+        carries its time and level; the message itself is unchanged."""
+        setup_logging(timestamps=True)
+        handler = logging.getLogger("kanibako").handlers[0]
+        record = logging.LogRecord("kanibako.x", logging.WARNING, "", 0, "hi", None, None)
+        record.created = 0.0
+        line = handler.format(record)
+        assert line.endswith(" WARNING hi")
+        assert line.startswith(handler.formatter.formatTime(record))
 
 
 class TestGetLogger:

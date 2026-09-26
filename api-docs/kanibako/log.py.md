@@ -6,6 +6,6 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ## Functions
 ```
-def setup_logging(verbose: bool=False) -> None
+def setup_logging(verbose: bool=False, *, timestamps: bool=False) -> None
 def get_logger(name: str) -> logging.Logger
 ```

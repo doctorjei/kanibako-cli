@@ -8,8 +8,10 @@ import pytest
 
 from kanibako.project import registry_store
 from kanibako.errors import ProjectError
+from kanibako.settings.bootstrap import CREDS_WATCHER_LOG_SUFFIX
 from kanibako.settings.paths import (
     BoxMode,
+    creds_watcher_log_path,
     detect_project_mode,
     helper_log_path,
     resolve_standalone_project,
@@ -322,6 +324,21 @@ class TestStandaloneFixedPaths:
         self._set_workset_key(resolved, "logs", str(elsewhere))
         assert helper_log_path(std, proj) == elsewhere / f"{proj.name}.jsonl"
 
+    def test_creds_watcher_log_sits_beside_the_helper_log(
+        self, std, config, project_dir, credentials_dir, tmp_path,
+    ):
+        """The watcher's log is resolved through the same ``workset.logs`` as the helper
+        log, so it follows a repoint of that key rather than a directory of its own."""
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        elsewhere = tmp_path / "log-store"
+        self._set_workset_key(project_dir.resolve(), "logs", str(elsewhere))
+        assert creds_watcher_log_path(std, proj) == (
+            elsewhere / f"{proj.name}{CREDS_WATCHER_LOG_SUFFIX}"
+        )
+        assert creds_watcher_log_path(std, proj).parent == helper_log_path(std, proj).parent
+
     def test_helper_log_resolves_a_logs_value_written_as_the_box_ref(
         self, std, config, project_dir, credentials_dir,
     ):
@@ -343,7 +360,7 @@ class TestStandaloneFixedPaths:
         """With ``workset.logs`` UNSET the default is ``@meta.box.path``, which for a
         lone box is ``@workset.boxes`` — so moving the box store moves the log with it.
         🛑 This does NOT make the standalone box store repointable end to end: home,
-        the vault teardown, ``clean --purge`` and detection still compose ``box_data``.
+        the vault teardown, ``box purge`` and detection still compose ``box_data``.
         """
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,

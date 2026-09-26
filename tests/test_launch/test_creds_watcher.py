@@ -8,9 +8,12 @@ helpers are driven over a real tmp dir (they are tiny + tolerant).
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import os
+import sys
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -25,6 +28,19 @@ from kanibako.launch.creds_watcher import (
     decide_watch,
     read_creds_dirty,
 )
+
+
+@pytest.fixture(autouse=True)
+def _restore_kanibako_logger():
+    """``main`` calls ``setup_logging``, which reconfigures the shared ``kanibako``
+    logger; put it back so no later test inherits this module's handler."""
+    import logging
+
+    logger = logging.getLogger("kanibako")
+    handlers, level = logger.handlers[:], logger.level
+    yield
+    logger.handlers[:] = handlers
+    logger.setLevel(level)  # setLevel, not assignment: it clears the level cache
 
 
 # --------------------------------------------------------------------------- #
@@ -332,6 +348,59 @@ def test_main_does_not_call_a_malformed_stamp_a_settings_refusal(caplog):
     assert record.levelno == logging.ERROR
     assert record.exc_info is not None
     assert "credential writeback skipped" not in record.getMessage()
+
+
+@contextlib.contextmanager
+def _stderr_to(path: Path) -> Iterator[None]:
+    """Point ``sys.stderr`` at *path*, as the spawner does for the detached watcher.
+
+    ⚑ Entered in the test BODY, not a fixture: pytest's capture reinstalls its own
+    ``sys.stderr`` between fixture setup and the call.
+    """
+    real = sys.stderr
+    with open(path, "a") as sink:
+        sys.stderr = sink
+        try:
+            yield
+        finally:
+            sys.stderr = real
+
+
+def test_main_writes_a_settings_refusal_to_its_stderr_log(tmp_path):
+    """🛑 The watcher runs DETACHED, so the stderr file the spawner opened is the only
+    place its WARNING reaches the user. ``main`` configures logging for that file: the
+    refusal lands there whole, stamped with its time and level."""
+    import re
+
+    from kanibako.settings.settings_resolve import SettingsError
+
+    text = "`model` at the top level of /cfg/agents/claude/agent.yaml is not a settings key"
+    log_file = tmp_path / "box.creds-watcher.log"
+    with _stderr_to(log_file):
+        assert _main_with_failing_auth_resolve(SettingsError(text)) == 0
+    logged = log_file.read_text()
+    assert re.match(
+        r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} WARNING creds watcher for box "
+        r"kanibako-x: credential writeback skipped", logged,
+    ), logged
+    assert text in logged
+
+
+def test_main_logs_a_repeated_record_once(tmp_path):
+    """A writeback that keeps failing logs the same WARNING every tick; the watcher's
+    log records it once, so the file does not grow for as long as the box runs."""
+    from kanibako.log import get_logger
+
+    log_file = tmp_path / "box.creds-watcher.log"
+    with _stderr_to(log_file):
+        _main_with_failing_auth_resolve(RuntimeError("unresolvable"))
+        log = get_logger("start")
+        for _ in range(3):
+            log.warning("Credential writeback failed: %s", "disk full")
+        log.warning("Credential writeback failed: %s", "store locked")
+    logged = log_file.read_text()
+    assert logged.count("disk full") == 1
+    assert logged.count("store locked") == 1
 
 
 def _held_exclusively(directory: Path) -> bool:
