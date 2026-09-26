@@ -367,11 +367,11 @@ class TestPersonaGuards:
 # ---------------------------------------------------------------------------
 
 class TestTypedAgentCaseReachesTheLowercaseNode:
-    """``agent.Shell.model`` is the ``shell`` node's key, and lands where a launch reads.
+    """``agent.Shell.label`` is the ``shell`` node's key, and lands where a launch reads.
 
     Keyspec §0: an agent's NODE (``agent.<agent>``) and its store directory are always
     lowercase, and identifiers compare case-blind. The §0 check already accepted
-    ``agent.Shell.model`` as a KEY while the write route kept the typed spelling, so
+    ``agent.Shell.label`` as a KEY while the write route kept the typed spelling, so
     ``set`` reported success into ``agents/Shell/`` — a store nothing reads.
     (Mutation: ``resolve_key`` back on ``canonicalize_agent_ref``, or
     ``agent_address_node`` without its fold → RED.)
@@ -383,14 +383,15 @@ class TestTypedAgentCaseReachesTheLowercaseNode:
     def test_set_lands_in_the_lowercase_node_and_reads_back_there(
         self, tmp_path, agents_root, typed, node,
     ):
+        # ``label`` is a leaf of both the shell fence and a true agent (§2d).
         msg = set_config_value(
-            f"agent.{typed}.model", "x", config_path=_cfg_path(tmp_path),
+            f"agent.{typed}.label", "x", config_path=_cfg_path(tmp_path),
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
-        assert msg == f"Set agent.{node}.model=x"
+        assert msg == f"Set agent.{node}.label=x"
         assert [p.name for p in agents_root.iterdir()] == [store_dirname(node)]
         assert get_config_value(
-            f"agent.{node}.model",
+            f"agent.{node}.label",
             global_config_path=tmp_path / CONFIG_FILENAME, agents_root=agents_root,
         ) == "x"
 

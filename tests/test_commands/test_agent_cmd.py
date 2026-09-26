@@ -1781,12 +1781,13 @@ class TestAgentResetRoutesThroughTheOneSetter:
         from kanibako.commands.agent_cmd import run_reset
         from kanibako.settings.config_io import load_doc
 
-        path = _write_sparse(agent_env, "shell", {"self": {"model": "opus"}})
+        # ``label``: a leaf of the shell fence (§2d).
+        path = _write_sparse(agent_env, "shell", {"self": {"label": "Mine"}})
         rc = run_reset(argparse.Namespace(
-            agent_id="shell", key="model", all_keys=False, force=False,
+            agent_id="shell", key="label", all_keys=False, force=False,
         ))
         assert rc == 0
-        assert "model" not in (load_doc(path).get("self") or {})
+        assert "label" not in (load_doc(path).get("self") or {})
 
     def test_the_refusal_is_the_one_the_shared_resetter_produces(
         self, agent_env, capsys, tmp_path,

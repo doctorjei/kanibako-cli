@@ -758,7 +758,7 @@ canonicalizes the ``<node>`` SEGMENT ``+`` -> ``℘`` (``agent.navigator+claude.
 ``agent.navigator℘claude.endpoint``), so the write/get/reset all target the canonical
 ``agents/<node>/`` slot the resolver reads. The node segment is canonicalized as a WHOLE via
 :func:`agent_key_node` (agent_ref design law: never re-split a ref on the raw separator), which also
-FOLDS its harness to node case (``agent.Shell.model`` -> ``agent.shell.model``,
+FOLDS its harness to node case (``agent.Shell.label`` -> ``agent.shell.label``,
 ``agent.Claude.model`` -> ``agent.claude.model``, `[R173]`) — the spelling the §0 check already
 accepts, so the check and the write route name one node; the
 tail (``endpoint`` / ``env.<VAR>`` / ``secret_path.<VAR>``) is preserved verbatim. A malformed node is

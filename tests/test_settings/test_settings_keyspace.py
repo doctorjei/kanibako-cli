@@ -18,6 +18,7 @@ from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
     DECLARED_META_ASSEMBLY_LEAVES,
     DECLARED_META_RUNTIME_LEAVES,
+    PSEUDO_AGENT_FENCES,
     RESERVED_LEAF_NAMES,
     RETIRING_KEYS,
     is_valid_agent_segment,
@@ -515,17 +516,74 @@ def test_is_valid_agent_segment_accepts_members_and_refuses_the_rest():
 def test_a_pseudo_agent_tier_judges_like_a_real_one(name):
     """⚑ THE STEP-1 FALSIFIER, both halves: the tier resolves, and it stays CLOSED.
 
-    A pseudo-agent's leaves are CORE's universal §2d table and nothing else — there is
-    no plugin whose absence could excuse an unknown one — so an invented leaf must be
-    refused at ``agent.shell.*`` exactly as it is at ``agent.default.*``.  Admitting
-    the discriminator without that second half would open the tier rather than declare
-    it.
+    A pseudo-agent's leaves are its own §2d block and nothing else — there is no plugin
+    whose absence could excuse an unknown one — so an invented leaf must be refused at
+    ``agent.shell.*`` exactly as it is at ``agent.default.*``.  Admitting the
+    discriminator without that second half would open the tier rather than declare it.
     """
     assert valid(f"agent.{name}.label")
     assert valid(f"agent.{name}.access")
     assert valid(f"agent.{name}.env.TERM")
     assert valid(f"meta.agent.{name}.name")
     assert not valid(f"agent.{name}.zippity")
+
+
+def test_every_pseudo_agent_has_a_fence():
+    """The fence table and the reservation name ONE set of pseudo-agents."""
+    assert set(PSEUDO_AGENT_FENCES) == PSEUDO_AGENT_NAMES
+
+
+@pytest.mark.parametrize("key", [
+    "agent.Shell.frobnicate",
+    "meta.agent.default.settings", "meta.agent.default.mode",
+    "meta.agent.default.exec", "meta.agent.default.auth",
+    "meta.agent.default.auth.share_support",
+])
+def test_a_true_agent_leaf_is_refused_at_a_pseudo_agent(key):
+    """Each ``meta.agent.default`` spelling was a KEY while the true-agent rows reached
+    the pseudo-agents; the folded node is judged against the shell fence, which lists
+    no ``frobnicate``.
+
+    The agent-tier fences themselves are compared with the manifest by the kinemata
+    view ``pseudo-agent-leaves``; these pin the spellings it does not print — the
+    folded node and the ``meta.agent`` tier.
+    """
+    assert "not a declared" in reason(key)
+
+
+@pytest.mark.parametrize("key", [
+    "agent.shell.model", "agent.shell.endpoint", "agent.shell.continue_mode",
+    "pref.agent.shell.model",
+])
+def test_the_shell_fence_declares_the_universal_leaves(key):
+    """§2d's shell block gives every universal key a value (``<None>`` for these)."""
+    assert valid(key)
+
+
+@pytest.mark.parametrize("name", sorted(PSEUDO_AGENT_NAMES))
+def test_a_pseudo_agent_keeps_its_meta_rows_and_the_categories(name):
+    """Every ``meta.agent.<name>.*`` row the manifest spells stays a key, and the §2a
+    categories — declared at every agent scope by §2a, not by a §2d block — stay too."""
+    meta = _manifest_leaves(f"meta.agent.{name}.")
+    assert meta, name
+    for leaf in sorted(meta):
+        assert valid(f"meta.agent.{name}.{leaf}"), leaf
+    for tail in ("env.FOO", "secret_path.FOO", "caches", "bindings.ro", "masks"):
+        assert valid(f"agent.{name}.{tail}"), tail
+
+
+def test_the_default_fence_declares_its_path():
+    """§2d ``meta.agent.default.path | "@config.agents/default"`` — a fence row."""
+    assert valid("meta.agent.default.path")
+
+
+def test_a_true_agent_keeps_the_generic_rows():
+    """The fix narrows the pseudo-agents only."""
+    for leaf in ("model", "endpoint", "continue_mode"):
+        assert valid(f"agent.claude.{leaf}")
+        assert valid(f"agent.navigator℘claude.{leaf}")
+    for leaf in ("settings", "mode", "exec", "auth.share_support"):
+        assert valid(f"meta.agent.claude.{leaf}")
 
 
 def test_the_refusal_message_offers_every_pseudo_agent():

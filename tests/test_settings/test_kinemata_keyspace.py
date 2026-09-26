@@ -12,8 +12,12 @@ the difference is a named predicate, asserted in both directions, never a skip:
   never spec-sanctioned, which both refuse, so a live use is a stray;
 * a leaf under a PLUGIN agent's node, whose vocabulary is plugin-declared, is
   CONCEDED (spec §0, *Universal vs agent-specific*) -- and the product, judging
-  it against core's table alone, refuses it. A CORE-OWNED node (``default``, the
-  ``shell`` pseudo-agent) is judged by both, and so is the node itself.
+  it against core's table alone, refuses it.
+
+A CORE-OWNED node (``default``, the ``shell`` pseudo-agent) is no true agent, so the
+``<agent>`` rows -- §2d *"True agent(s)"* rows -- do not reach it: both sides judge it
+against its own concrete rows plus the categories, and both refuse a template row
+spelled there (``meta.agent.default.mode``).
 
 Every key is also tried as a ``pref.<key>`` request: both sides hold the family
 to the §2h allowlist (spec §0), so ``pref.box.image`` is refused by both.
@@ -99,16 +103,44 @@ def _instantiate(template: str, nodes: tuple[str, ...] = _AGENT_NODES) -> list[s
   return out
 
 
-def _declared_keys() -> list[str]:
-  """The manifest's keys: concrete rows, parametric rows, scope-by-category."""
-  corpus: set[str] = set()
+#: Every scope-by-category key: declared at every agent node, pseudo-agents included.
+_CATEGORY_KEYS = frozenset(scope + "." + tail for scope in _scopes() for tail in _CATEGORY_TAILS)
+
+
+def _spellings() -> set[str]:
+  """Every ``keys:`` row at every node, concrete rows and scope-by-category too."""
+  out: set[str] = set(_CATEGORY_KEYS)
   for key in _KEYS:
-    corpus.update(_instantiate(key) if "<" in key else [key])
-  corpus.update(scope + "." + tail for scope in _scopes() for tail in _CATEGORY_TAILS)
-  return sorted(corpus)
+    out.update(_instantiate(key) if "<" in key else [key])
+  return out
 
 
-_CORPUS = _declared_keys()
+def _pseudo_agent_spellings() -> list[str]:
+  """An ``<agent>`` row spelled at a core-owned node with no concrete row there.
+
+  Those rows are §2d *"True agent(s)"* rows and a pseudo-agent is not one: its leaves
+  are its own concrete rows plus the categories, so ``meta.agent.default.mode`` is not
+  a key.
+  """
+  out: set[str] = set()
+  for key in _KEYS:
+    if "<agent>" in key:
+      out.update(_instantiate(key, tuple(sorted(_CORE_NODES))))
+  return sorted(k for k in out - set(_KEYS) if not _names_a_category(k))
+
+
+def _names_a_category(key: str) -> bool:
+  """Whether *key* is an agent-node category spelling: a family, or ``<family>.<VAR>``."""
+  head, _, rest = key.partition(".")
+  tail = rest.partition(".")[2]
+  if head != _TIER_HEAD or not tail:
+    return False
+  family, _, var = tail.partition(".")
+  return tail in _FAMILIES or (family in _VAR_FAMILIES and bool(var) and "." not in var)
+
+
+_PSEUDO_REFUSED = _pseudo_agent_spellings()
+_CORPUS = sorted(_spellings() - set(_PSEUDO_REFUSED))
 
 
 def _allowlisted(target: str) -> bool:
@@ -218,8 +250,13 @@ class TestTheCorpusIsDerived:
   def test_the_corpus_covers_every_keys_row(self) -> None:
     concrete = [k for k in _KEYS if "<" not in k]
     templates = [k for k in _KEYS if "<" in k]
-    assert len(_CORPUS) >= len(concrete) + len(templates) * len(_AGENT_NODES)
+    assert len(_CORPUS) + len(_PSEUDO_REFUSED) >= len(concrete) + len(templates) * len(
+      _AGENT_NODES
+    )
     assert set(concrete) <= set(_CORPUS)
+
+  def test_the_pseudo_agent_spellings_are_populated(self) -> None:
+    assert "meta." + _TIER_HEAD + "." + _TIER_NODE + ".mode" in _PSEUDO_REFUSED
 
   def test_both_exemptions_are_populated(self) -> None:
     assert [m for m in _mutations() if _conceded(m)]
@@ -285,6 +322,15 @@ class TestDeclaredAgreesWithTheProduct:
   ) -> None:
     assert not _product_accepts(identifier)
     assert not registry.declared(identifier)
+    assert not registry.declared("pref." + identifier)
+
+  @pytest.mark.parametrize("identifier", _PSEUDO_REFUSED)
+  def test_a_true_agent_row_at_a_pseudo_agent_is_refused_by_both(
+    self, registry: KeyspaceRegistry, identifier: str
+  ) -> None:
+    assert not _product_accepts(identifier)
+    assert not registry.declared(identifier)
+    assert not _product_accepts("pref." + identifier)
     assert not registry.declared("pref." + identifier)
 
   @pytest.mark.parametrize("identifier", _undiscriminated())

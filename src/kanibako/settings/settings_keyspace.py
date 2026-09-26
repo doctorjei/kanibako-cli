@@ -101,6 +101,7 @@ from __future__ import annotations
 
 import enum
 import re
+from types import MappingProxyType
 from typing import (
     Any,
     Callable,
@@ -518,6 +519,67 @@ DECLARED_META_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
     "name", "path", "settings", "mode", "exec",
 })
 DECLARED_META_AGENT_AUTH_LEAVES: Final[frozenset[str]] = frozenset({"share_support"})
+
+
+class PseudoAgentFence(NamedTuple):
+    """One pseudo-agent's §2d block: every leaf it declares, and so every leaf it has.
+
+    ⚑⚑ THE TRUE-AGENT ROWS DO NOT REACH A PSEUDO-AGENT. §2d's generic
+    ``agent.<agent>.<key> | agent.default.<key>`` and every ``meta.agent.<agent>.*`` row sit
+    under *"True agent(s)"*, and a pseudo-agent is not one, so its own block is COMPLETE: a
+    leaf it does not list is not a key at that node (§0). The sets above are the TRUE-agent
+    vocabulary; this is what a pseudo-agent node is judged against instead.
+    ⚑ The §2a categories are not listed here: they are declared at every agent scope by
+    §2a, not by a §2d block.
+    """
+
+    #: ``agent.<name>.<leaf>``.
+    leaves: frozenset[str]
+    #: ``meta.agent.<name>.<leaf>``.
+    meta_leaves: frozenset[str]
+    #: ``meta.agent.<name>.auth.<leaf>`` — empty means ``auth`` is no namespace here.
+    meta_auth_leaves: frozenset[str]
+
+
+#: Every pseudo-agent's fence, keyed by the name ``agent_ref`` reserves for it.
+#: ⚑ THE NAMES ARE ``agent_ref.PSEUDO_AGENT_NAMES``' (see :func:`is_valid_agent_segment`);
+#: ``tests/test_settings/test_settings_keyspace.py`` holds the two key sets equal.
+PSEUDO_AGENT_FENCES: Final[Mapping[str, PseudoAgentFence]] = MappingProxyType({
+    # §2d **default** — the all-agents tier. Its agent leaves ARE the true-agent universal
+    # set, which §2d's generic row derives from this block.
+    "default": PseudoAgentFence(
+        leaves=DECLARED_AGENT_LEAVES,
+        meta_leaves=frozenset({"name", "path"}),
+        meta_auth_leaves=frozenset(),
+    ),
+    # §2d **shell** — the plain shell. A pseudo-agent defines a value for every universal
+    # key, so its leaves are the same set as ``default``'s (``continue_mode``, ``model`` and
+    # ``endpoint`` are ``<None>`` there).
+    "shell": PseudoAgentFence(
+        leaves=frozenset({
+            "label", "access", "continue_mode", "model", "endpoint", "allow_helpers",
+            "bootstrap", "run_args", "transform", "transform_settings", "template", "canon",
+        }),
+        meta_leaves=frozenset({"name", "path", "settings", "mode", "exec"}),
+        # ``meta.agent.shell.auth.share_support | false`` — the target of §2c's
+        # ``meta.box.agent.auth.share_support`` mirror for a plain-shell box.
+        meta_auth_leaves=frozenset({"share_support"}),
+    ),
+})
+
+
+def pseudo_agent_fence(name: str) -> PseudoAgentFence | None:
+    """The §2d fence of pseudo-agent *name*, or ``None`` for any other node.
+
+    Folds for comparison ([R173]), as :func:`is_valid_agent_segment` does, so
+    ``agent.Shell.model`` is judged against the shell fence rather than the true-agent set.
+    """
+    fence = PSEUDO_AGENT_FENCES.get(name)
+    if fence is not None:
+        return fence
+    match = find_identifier(name, PSEUDO_AGENT_FENCES)
+    return None if match is None else PSEUDO_AGENT_FENCES[match]
+
 
 # ---------------------------------------------------------------------------
 # Reserved leaf names (spec §0)
@@ -1146,22 +1208,30 @@ def _meta_reason(
             # ANCHOR group; ``meta.box.agent`` above is the RO mirror of the settable
             # contract. Two namespaces, one word apart — say which, never both.
             return _namespace(f"'meta.agent.{name}' is a namespace, not a key")
-        if len(sub) == 1 and sub[0] in DECLARED_META_AGENT_LEAVES:
+        # A pseudo-agent is judged against its own §2d block, never the true-agent rows.
+        fence = pseudo_agent_fence(name)
+        meta_leaves = (
+            DECLARED_META_AGENT_LEAVES if fence is None else fence.meta_leaves
+        )
+        auth_leaves = (
+            DECLARED_META_AGENT_AUTH_LEAVES if fence is None else fence.meta_auth_leaves
+        )
+        if len(sub) == 1 and sub[0] in meta_leaves:
             return _KEY
-        if len(sub) == 1 and sub[0] == "auth":
+        if len(sub) == 1 and sub[0] == "auth" and auth_leaves:
             # The tier the ``meta.box.agent.auth`` mirror points AT (spec :1081).
             return _namespace(f"'meta.agent.{name}.auth' is a namespace, not a key")
-        if len(sub) == 2 and sub[0] == "auth":
-            if sub[1] in DECLARED_META_AGENT_AUTH_LEAVES:
+        if len(sub) == 2 and sub[0] == "auth" and auth_leaves:
+            if sub[1] in auth_leaves:
                 return _KEY
             return _undeclared(
                 f"'meta.agent.{name}.auth.{sub[1]}' is not a declared key "
-                f"(declared: {', '.join(sorted(DECLARED_META_AGENT_AUTH_LEAVES))})"
+                f"(declared: {', '.join(sorted(auth_leaves))})"
             )
+        declared = [*sorted(meta_leaves), *(f"auth.{a}" for a in sorted(auth_leaves))]
         return _undeclared(
             f"'meta.agent.{name}.{'.'.join(sub)}' is not a declared key "
-            f"(declared: {', '.join(sorted(DECLARED_META_AGENT_LEAVES))}, "
-            f"auth.share_support)"
+            f"(declared: {', '.join(declared)})"
         )
 
     return _undeclared(
@@ -1290,10 +1360,12 @@ def agent_declared_leaves(
     while the canonical ``agent.nav℘claude.zippity`` classified UNDECLARED — one key,
     two answers by spelling.
 
-    TWO KINDS of segment get core's table and NO concession — a §2a category token,
-    and a PSEUDO-AGENT name (``default``, ``shell``). Neither is withheld from the
-    concession by policy: their standing is the KEYSPACE's own, so it is knowable on
-    every machine and there is nothing a missing plugin could make unreadable
+    TWO KINDS of segment get NO plugin leaves and NO concession — a §2a category
+    token, and a PSEUDO-AGENT name (``default``, ``shell``), which
+    :class:`AgentVocabulary` then judges against its own §2d fence
+    (:class:`PseudoAgentFence`). Neither is withheld from the concession by policy:
+    their standing is the KEYSPACE's own, so it is knowable on every machine and
+    there is nothing a missing plugin could make unreadable
     (:func:`_could_name_an_agent`). ⚑ A ref that will not canonicalise joins them, for
     the same reason pointing the other way — it names no agent, so there is no plugin
     whose absence could excuse it.
@@ -1327,6 +1399,10 @@ def agent_declared_leaves(
 class AgentVocabulary(Collection[str]):
     """Every leaf legal on ONE agent: core's universal table, plus that agent's own.
 
+    ⚑ A PSEUDO-AGENT HAS NO UNIVERSAL TABLE: its core half is its own §2d fence
+    (:class:`PseudoAgentFence`), because the true-agent rows do not reach it, and it has
+    no plugin half.
+
     ⚑⚑ THE TIER IS THE PARTITION LINE (``[R150]``). A leaf established at
     ``agent.default`` is UNIVERSAL — a key on every real agent; every OTHER leaf is
     legal only on the agent (or harness) whose plugin declared it. So the core §2d
@@ -1347,12 +1423,17 @@ class AgentVocabulary(Collection[str]):
     would offer the user a leaf that is not a key here.
     """
 
-    __slots__ = ("_name", "_map", "_own")
+    __slots__ = ("_name", "_map", "_own", "_core")
 
     def __init__(self, name: str, agent_leaf_map: "AgentLeafMap | None") -> None:
         self._name = name
         self._map = agent_leaf_map
         self._own: Any = _NOT_ASKED
+        # A pseudo-agent's core table is its own §2d fence (:class:`PseudoAgentFence`).
+        fence = pseudo_agent_fence(name)
+        self._core: frozenset[str] = (
+            DECLARED_AGENT_LEAVES if fence is None else fence.leaves
+        )
 
     def _declared(self) -> "Collection[str] | None":
         """The agent's own leaves, asked ONCE — ``None`` = conceded."""
@@ -1365,14 +1446,14 @@ class AgentVocabulary(Collection[str]):
         return self._declared() is not None
 
     def __contains__(self, item: object) -> bool:
-        if item in DECLARED_AGENT_LEAVES:
+        if item in self._core:
             return True
         own = self._declared()
         return own is not None and item in own
 
     def __iter__(self) -> Iterator[str]:
         own = self._declared() or ()
-        return iter(frozenset(DECLARED_AGENT_LEAVES) | frozenset(own))
+        return iter(self._core | frozenset(own))
 
     def __len__(self) -> int:
         return len(frozenset(self))
@@ -1585,9 +1666,9 @@ def key_class(
     judged — ``config.*``, ``box.*``, a bare namespace — for a vocabulary only an
     agent LEAF can consult. :class:`AgentVocabulary` carries the measurement.
     🛑 It does NOT reach ``meta.agent.<agent>.*``. That tier's vocabulary is
-    core-declared (:data:`DECLARED_META_AGENT_LEAVES` + ``auth.share_support``) and
-    no plugin extends it, so it is knowable whether or not the plugin is here —
-    there is nothing to concede.
+    core-declared (:data:`DECLARED_META_AGENT_LEAVES` + ``auth.share_support``, or a
+    pseudo-agent's :class:`PseudoAgentFence`) and no plugin extends it, so it is
+    knowable whether or not the plugin is here — there is nothing to concede.
 
     The dispatch is on the FIRST segment; every branch reports against the
     spec section that declares the family.
@@ -1736,7 +1817,7 @@ def key_class(
         # twice (``not_keys.code_residue``; ``provider_disposition``, R-37).
         # :func:`agent_declared_leaves` reaches the same answer from the general rule:
         # ``_could_name_an_agent`` is False for every PSEUDO-AGENT name, so ``default``
-        # and ``shell`` get core's table and NO concession — which is also what a §2a
+        # and ``shell`` get their own §2d fence and NO concession — which is also what a §2a
         # category token gets, and for the same reason. Their standing is the
         # KEYSPACE's own, so it is knowable on every machine and there is nothing to
         # concede.

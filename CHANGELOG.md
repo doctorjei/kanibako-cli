@@ -24,11 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slot.** `agents/general/agent.yaml` is now `agents/shell/agent.yaml`, and `$AGENT` inside a
   plain-shell box is `shell`. The old slot was never a declared key — `agent.general.*` was
   refused by the closed keyspace — while `agent.shell.*` is (spec §2d, "Pseudo-agent(s)"), so
-  the `agent.default` backstop reaches a plain-shell launch through a real node rather than
-  around an undeclared one. Clean break, documentation-only migration: nothing renames the
-  directory for you, and there is no fallback read of the old one — see MIGRATION.md ("The
-  plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`")
-  for the hand move.
+  a plain-shell launch resolves a real node rather than an undeclared one. Clean break,
+  documentation-only migration: nothing renames the directory for you, and there is no fallback
+  read of the old one — see MIGRATION.md ("The plain-shell store is `<data>/agents/shell/`, and
+  `$AGENT` in a plain-shell box is `shell`") for the hand move.
 
 - **The built-in plain-shell target is named `shell`, not `no_agent`.** `--agent no_agent`
   is now `--agent shell`, and the `kanibako.agents` entry point is gone — the target is

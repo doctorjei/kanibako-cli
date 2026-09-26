@@ -346,8 +346,10 @@ historical = [
 # judged -- and `env.<VAR>` / `secret_path.<VAR>`, unbounded by construction.
 # Neither is narrowed, excluded, or shimmed into the declaration.
 # The CORE-OWNED nodes ARE judged: `default` and the `shell` pseudo-agent, the
-# nodes the manifest's `keys:` spell concretely, so a leaf there must be one of
-# their rows, an `agent.default.*` row, or a category. The NODE is judged too
+# nodes the manifest's `keys:` spell concretely. They are no true agents, so the
+# parametric `<agent>` rows (§2d "True agent(s)") do not reach them: a leaf there
+# must be one of their own rows or a category, and `meta.agent.default.mode` is
+# undeclared. The NODE is judged too
 # (2026-09-25): it must be core-owned or an agent an in-tree distribution
 # registers under the `kanibako.agents` entry points -- the tree the
 # `reserved-agent-names` parity below reads -- so `agent.cluade.model` is
@@ -358,7 +360,8 @@ historical = [
 # `tests/test_settings/test_kinemata_keyspace.py` pins these answers against
 # the product's `key_class` over a manifest-derived corpus: every declared row (parametric rows
 # sampled), every allowlisted pref, and, as refusals, typo'd leaves, off-allowlist prefs, unknown
-# and placeholder nodes, and categories with no node. The two are pinned to DISAGREE in exactly
+# and placeholder nodes, categories with no node, and each `<agent>` row spelled at a
+# pseudo-agent without a concrete row there. The two are pinned to DISAGREE in exactly
 # two places: the conceded plugin leaves, and the not_keys.renamed spellings, which the adapter
 # recognizes so they can be refused with their cure.
 #
@@ -2007,9 +2010,10 @@ source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.kuid$' }
 
-# FACT: the agent-identity LITERAL rows -- `meta.agent.default.name` and the shell
-# fence's `meta.agent.shell.{path,name,settings,mode}` -- carry the values the
-# identity and grammar floors emit when that node is the active one. `mode = {}` is
+# FACT: the agent-identity LITERAL rows -- the default fence's
+# `meta.agent.default.{name,path}` and the shell fence's
+# `meta.agent.shell.{path,name,settings,mode,auth.share_support}` -- carry the values
+# the identity and grammar floors emit when that node is the active one. `mode = {}` is
 # a map and needs `json`. (`TestValueAgentIdentity` keeps the spellings, the
 # parametric relation, the set-time path floor and the negative discriminators.)
 [[registry]]
@@ -2017,7 +2021,7 @@ name = "agent-identity-literals"
 kind = "yaml-mapping"
 source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^meta\.agent\.(default\.name|shell\.(path|name|settings|mode))$' }
+where = { id_matches = '^meta\.agent\.(default\.(name|path)|shell\.(path|name|settings|mode|auth\.share_support))$' }
 
 # FACT: the rows whose `value:` is the `<computed>` placeholder are exactly the keys
 # `settings_launch._materialize_auth_active` writes, each a bool, on a bare store.
@@ -3050,6 +3054,25 @@ field = "default"
 format = "json"
 authority = "declared"
 
+# FACT: a pseudo-agent node holds exactly the leaves its own §2d block lists --
+# the manifest's concrete `agent.<node>.<leaf>`, `meta.agent.<node>.<leaf>` and
+# `meta.agent.<node>.auth.<leaf>` rows -- and no leaf of the "True agent(s)" rows
+# (`agent.<agent>.<key> | agent.default.<key>`, `meta.agent.<agent>.*`), which do
+# not reach a pseudo-agent. `meta.agent.default.mode` is no key.
+# AUTHORITY: membership. The manifest rows, transcribed from the fences, against
+# `settings_keyspace.key_class` -- the production judge, not the fence table it
+# reads -- asked of every leaf a true agent or a fence knows.
+# ⚑ THE SELECTOR IS THE CONCRETE ROWS UNDER `agent.` AND `meta.agent.`, less the
+# categories (`agent.default.env.TERM`): today exactly the pseudo-agents', since
+# the core registry spells no plugin agent's rows. A concrete row for a true agent
+# would red here as produced by nothing.
+[[registry]]
+name = "pseudo-agent-leaves"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^(meta\.)?agent\.[a-z_]+\.(auth\.)?[a-z_]+$' }
+
 # FACT: the §2d shell fence's `agent.shell.bootstrap` (`tmux`), `agent.shell.run_args`
 # (`<None>`) and `agent.shell.transform` (`<None>`) are SUPPLIED by the shell tier's
 # own floor, with the values the manifest declares -- never omitted, never
@@ -3120,6 +3143,43 @@ extract = '(?m)^kanibako-shell-tier: ([^\s=]+)=(.+)$'
 field = "default"
 format = "json"
 authority = "declared"
+
+# ⚑ MEMBERSHIP, judged by the product: the oracle prints each key `key_class`
+# accepts at each pseudo-agent, over every leaf the true-agent sets or any fence
+# knows, at the three tiers the selector reads.
+#   `# pseudo-agent-leaves: 32 declared, 32 produced, in agreement.`  rc=0
+# NEGATIVE CONTROLS, each one edit in a copy under /tmp run with
+# `PYTHONPATH=<copy>/src`, each rc=1:
+#   code, `frob` added to the shell fence: `agent.shell.frob: produced,
+#     declared by nothing`
+#   code, `mode` added to the default fence's meta leaves:
+#     `meta.agent.default.mode: produced, declared by nothing`
+#   manifest, the `meta.agent.shell.auth.share_support` row removed: the same
+#     line for that key
+[[parity]]
+registry = "pseudo-agent-leaves"
+command = ["{python}", "-c", """
+from kanibako.agent_ref import PSEUDO_AGENT_NAMES
+from kanibako.settings.settings_keyspace import (
+    DECLARED_AGENT_LEAVES, DECLARED_META_AGENT_AUTH_LEAVES, DECLARED_META_AGENT_LEAVES,
+    PSEUDO_AGENT_FENCES, KeyClass, key_class,
+)
+fences = PSEUDO_AGENT_FENCES.values()
+tiers = {
+    "agent.{}.": DECLARED_AGENT_LEAVES.union(*(f.leaves for f in fences)),
+    "meta.agent.{}.": DECLARED_META_AGENT_LEAVES.union(*(f.meta_leaves for f in fences)),
+    "meta.agent.{}.auth.": DECLARED_META_AGENT_AUTH_LEAVES.union(
+        *(f.meta_auth_leaves for f in fences)
+    ),
+}
+for name in sorted(PSEUDO_AGENT_NAMES):
+    for prefix, known in tiers.items():
+        for leaf in sorted(known):
+            key = prefix.format(name) + leaf
+            if key_class(key, valid_agents=()).cls is KeyClass.KEY:
+                print(f"kanibako-pseudo-agent-leaf: {key}")
+"""]
+extract = '(?m)^kanibako-pseudo-agent-leaf: (\S+)$'
 
 # ---------------------------------------------------------------------------
 # THE §4.3 TEN, THEIR ORACLES. Registries and the FACT each one states are
@@ -3829,26 +3889,27 @@ field = ["default", "named"]
 authority = "declared"
 
 # ⚑ THE FILTER IS AN EXCLUSION, so a key the two floors start emitting reds here
-# as `produced, declared by nothing`. It drops exactly ten of the fifteen keys the
+# as `produced, declared by nothing`. It drops exactly eight of the fifteen keys the
 # two nodes' identity and grammar floors return: the six `meta.box.*` keys
 # (`inbox`, `share_global`, `share_workset`, `settings`, `workspace`, `name`) --
 # the caller's inputs echoed back, whose rows are the box-address `value:` family
-# (not declared here); `meta.agent.default.{path,settings}` -- values of the
-# PARAMETRIC rows `meta.agent.<agent>.{path,settings}` for node `default`, which
-# hold no literal; and `meta.agent.{default,shell}.auth.share_support` -- the
-# plugin-set capability, the parametric neither-cell row.
-# 🛑 THE COST, IN PLACE: a new key under `meta.box.*`, a changed
-# `meta.agent.default.{path,settings}`, or a changed `auth.share_support` from
-# these floors is not seen by this table.
+# (not declared here); and `meta.agent.default.{settings,auth.share_support}` --
+# NOT KEYS (the default fence lists neither), emitted only because this oracle runs
+# the floors for node `default`, which no launch selects.
+# 🛑 THE COST, IN PLACE: a new key under `meta.box.*` from these floors is not seen
+# by this table.
 # `meta.agent.shell.mode = {}` compares as data under `json` (in `text` it is
 # `BLOCKED: declares meta.agent.shell.mode with a 'value' holding dict`).
-#   `# agent-identity-literals: 5 declared, 5 produced, in agreement, agreeing on
-#   value.`  rc=0
+#   `# agent-identity-literals: 7 declared, 7 produced, in agreement, agreeing on
+#   value.`  rc=0 (5 of 5 before the fences' `meta.agent.default.path` and
+#   `meta.agent.shell.auth.share_support` rows joined, 2026-09-25)
 # NEGATIVE CONTROLS:
 #   code, the shell grammar `{}` -> `{"interactive": []}`: `meta.agent.shell.mode:
 #     value declared '{}', code produces '{"interactive":[]}'`
 #   manifest, `meta.agent.shell.name` `shell` -> `sh`: `value declared '"sh"', code
 #     produces '"shell"'`
+#   manifest, `meta.agent.shell.auth.share_support` `false` -> `true`: `value
+#     declared 'true', code produces 'false'`
 #   code, `config.AGENT_META_FILE` -> `"ag.yaml"`: `meta.agent.shell.settings: value
 #     declared '"@meta.agent.shell.path/agent.yaml"', code produces
 #     '"@meta.agent.shell.path/ag.yaml"'`
@@ -3870,8 +3931,7 @@ for node in ("default", "shell"):
     floor.update(meta_agent_grammar_floor(node, None))
 DROPPED = re.compile(
     r"meta\\.box\\..*"
-    r"|meta\\.agent\\.default\\.(path|settings)"
-    r"|meta\\.agent\\.[^.]+\\.auth\\.share_support"
+    r"|meta\\.agent\\.default\\.(settings|auth\\.share_support)"
 )
 for key, value in sorted(floor.items()):
     if not DROPPED.fullmatch(key):
