@@ -122,6 +122,8 @@ RUN_USER_UID_PATH = "/run/user/%d"
 # The detached creds watcher's log, ``@workset.logs/<box><suffix>`` — beside the box's
 # helper log in the same resolved ``workset.logs`` dir (``paths.creds_watcher_log_path``).
 CREDS_WATCHER_LOG_SUFFIX = ".creds-watcher.log"
+# The watcher's single-instance flock file, in the box's host-only ``proj.metadata_path``.
+CREDS_WATCHER_LOCK_FILE = ".kanibako-creds-watcher.lock"
 
 # The STANDALONE box-store dir name — ``@meta.box.path`` and half the detection
 # marker (``system-design-1.8.0.md`` § "Detection & import").

@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.settings.agent_config import store_dirname
 
 if TYPE_CHECKING:
@@ -693,9 +694,9 @@ def canon_default_categories(
         # canon dir, so the store branch would never fire for it anyway, and the
         # literal is what the manifest row pins.  The store branch is KEPT for
         # honesty — a user who creates the dir gets it bound, like any node.
-        shell_store = std.agents / store_dirname("shell") / "canon"
+        shell_store = std.agents / store_dirname(GENERAL_SLOT) / "canon"
         out["agent.shell.canon"] = (
-            f"@config.agents/{store_dirname('shell')}/canon"
+            f"@config.agents/{store_dirname(GENERAL_SLOT)}/canon"
             if shell_store.is_dir() else "@config.agents/default/canon"
         )
 
