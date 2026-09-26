@@ -1801,6 +1801,56 @@ class TestBoxDuplicateToWorkset:
         assert (project_dir / "code.py").read_text() == "print('hello')"
         assert (proj.metadata_path / "marker.txt").read_text() == "ac-marker"
 
+    @pytest.mark.parametrize("leaf", ["workspace", "box_tree"])
+    def test_occupied_landing_needs_force(
+        self, config_file, tmp_home, credentials_dir, capsys, leaf,
+    ):
+        """An existing ``workspaces/<name>`` or ``boxes/<name>`` is refused without --force."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        _proj, project_dir = _make_local_project(tmp_home, std, config, "occ_src")
+        ws, _ = _make_workset(tmp_home, std, "occ-ws")
+        occupied = {"workspace": ws.workspaces_dir, "box_tree": ws.projects_dir}[leaf]
+        occupied = occupied / "occ_src"
+        occupied.mkdir(parents=True)
+        (occupied / "keep.txt").write_text("mine")
+
+        args = self._make_args(project_dir, tmp_home / "unused", workset="occ-ws",
+                               force=False)
+        assert run_duplicate(args) == 1
+        err = capsys.readouterr().err
+        assert f"Error: destination already exists: {occupied}" in err
+        assert (occupied / "keep.txt").read_text() == "mine"
+        assert load_workset(ws.root, ws.name).projects == []
+
+    @pytest.mark.parametrize("bare", [False, True])
+    def test_failed_forced_duplicate_keeps_a_pre_existing_leaf(
+        self, config_file, tmp_home, credentials_dir, bare,
+    ):
+        """N2: the rollback deletes only the leaves the duplicate created."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        _proj, project_dir = _make_local_project(tmp_home, std, config, "n2_src")
+        ws, _ = _make_workset(tmp_home, std, "n2-ws")
+        leaf = ws.workspaces_dir / "n2_src"
+        leaf.mkdir(parents=True)
+        (leaf / "keep.txt").write_text("mine")
+
+        args = self._make_args(project_dir, tmp_home / "unused", workset="n2-ws",
+                               bare=bare)
+        with patch(
+            "kanibako.commands.box._lifecycle.materialize_canon_skeleton",
+            side_effect=RuntimeError("injected"),
+        ), pytest.raises(RuntimeError, match="injected"):
+            run_duplicate(args)
+        assert (leaf / "keep.txt").read_text() == "mine"
+        assert not (ws.projects_dir / "n2_src").exists()
+        assert load_workset(ws.root, ws.name).projects == []
+
 
 # ---------------------------------------------------------------------------
 # TestBoxDuplicateExternal — std-aware copy + refuse-bare-external (Phase 3)
@@ -1870,9 +1920,9 @@ class TestBoxDuplicateExternal:
 
         Failure-injection (Tier B): ``copy_into_workset`` calls ``add_project``
         (registers in workset.yaml + creates per-project dirs) before the
-        metadata/shell/workspace copytrees.  A copy failure must call
-        ``remove_project`` to undo the registration + partial dirs, then re-raise
-        — no registered-but-incomplete project is left behind.
+        metadata/shell/workspace copytrees.  A copy failure must undo the
+        registration and the dirs it created, then re-raise — no
+        registered-but-incomplete project is left behind.
         """
         from kanibako.commands.box._lifecycle import copy_into_workset
         from kanibako.settings.paths import BoxMode

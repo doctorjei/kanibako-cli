@@ -6,6 +6,7 @@ remap / move / convert commands (Phase 1 — no CLI wiring yet).
 
 from __future__ import annotations
 
+import os
 
 import pytest
 
@@ -1185,6 +1186,217 @@ class TestRetireOldWorkspace:
         lc._retire_old_workspace(old, tmp_path / "landed", recorded)
         assert (old / "f.txt").read_text() == "mine"
         assert recorded.is_dir()
+
+
+class TestRollbacksDeleteOnlyWhatTheOpCreated:
+    """A failed relocation restores the source store; nothing that existed is deleted.
+
+    Covers the ws→ws stash (restore once the release started, independent restore
+    steps, disposal through the box-tree deleter), the success-only store removal of a
+    workset source, and the target unwind's created-leaves rule.
+    """
+
+    def _member(self, env, ws, name="alpha"):
+        config, std, tmp_home = env
+        leaf = ws.workspaces_dir / name
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("keep")
+        add_project(ws, name, leaf, std)
+        state = resolve_lifecycle_target(str(leaf), std, config)
+        state.shell_path.mkdir(parents=True, exist_ok=True)
+        (state.shell_path / "h.txt").write_text("home")
+        state.vault_rw.mkdir(parents=True, exist_ok=True)
+        (state.vault_rw / "v.txt").write_text("vault")
+        return leaf, state
+
+    def _stash_dir(self, tmp_path, monkeypatch):
+        import tempfile
+
+        stash_root = tmp_path / "stash-root"
+        stash_root.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(stash_root))
+        return stash_root
+
+    def _assert_source_whole(self, ws, leaf, state):
+        assert (leaf / "file.txt").read_text() == "keep"
+        assert (state.shell_path / "h.txt").read_text() == "home"
+        assert (state.vault_rw / "v.txt").read_text() == "vault"
+
+    def test_leg1_failure_restores_the_box_from_the_stash(
+        self, env, monkeypatch, tmp_path,
+    ):
+        """L1: the store removal fails part-way; the box comes back whole, rc via raise."""
+        from kanibako.runtime.container import remove_box_tree
+
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+
+        def part_way(ws, name):
+            remove_box_tree(ws.projects_dir / name)
+            raise OSError("injected leg-1 failure")
+
+        monkeypatch.setattr(lc, "remove_member_store", part_way)
+        with pytest.raises(OSError, match="injected leg-1"):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_source_whole(ws1, leaf, state)
+        assert [p.name for p in load_workset(ws1.root, ws1.name).projects] == ["alpha"]
+        assert list(stash_root.iterdir()) == []
+
+    def test_restore_steps_run_independently(self, env, monkeypatch, tmp_path, capsys):
+        """A failed re-register still lets the store copy-back run, and keeps the stash."""
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+        real_add = lc.add_project
+
+        def add_fails_for_source(ws, *a, **kw):
+            if ws.name == "ws1":
+                raise RuntimeError("injected re-register failure")
+            return real_add(ws, *a, **kw)
+
+        def boom(*a, **kw):
+            raise RuntimeError("injected late failure")
+
+        monkeypatch.setattr(lc, "add_project", add_fails_for_source)
+        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
+        with pytest.raises(RuntimeError, match="injected late"):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_source_whole(ws1, leaf, state)
+        err = capsys.readouterr().err
+        assert "Note: could not restore the record of 'alpha' in workset 'ws1'" in err
+        [stash] = list(stash_root.iterdir())
+        assert f"Note: kept {stash}" in err
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root removes a 0o555 dir anyway")
+    def test_a_read_only_stash_is_removed_after_success(
+        self, env, monkeypatch, tmp_path,
+    ):
+        """C: a 0o555 dir in the stashed home no longer strands the stash."""
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        locked = state.shell_path / "locked"
+        locked.mkdir()
+        (locked / "book.md").write_text("book")
+        locked.chmod(0o555)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+        try:
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                std, config, confirm=_conf_yes(),
+            )
+            assert list(stash_root.iterdir()) == []
+        finally:
+            for p in stash_root.rglob("*"):
+                if p.is_dir() and not p.is_symlink():
+                    p.chmod(0o755)
+
+    def test_a_stash_left_behind_is_reported(self, env, monkeypatch, tmp_path, capsys):
+        """C: a False from the box-tree deleter names the stash (it may hold credentials)."""
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+        real_remove = lc.remove_box_tree
+        monkeypatch.setattr(
+            lc, "remove_box_tree",
+            lambda p: False if p.parent == stash_root else real_remove(p),
+        )
+        execute_lifecycle(
+            state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+            std, config, confirm=_conf_yes(),
+        )
+        [stash] = list(stash_root.iterdir())
+        assert f"Note: could not remove {stash}; it may hold credentials" in (
+            capsys.readouterr().err)
+
+    def test_a_source_box_tree_left_by_the_release_is_reported(
+        self, env, monkeypatch, capsys,
+    ):
+        """ws→ws: a False from the box-tree deleter in leg 1 names the leftover tree."""
+        import kanibako.runtime.container as container
+
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        src_tree = ws1.projects_dir / "alpha"
+        real_remove = container.remove_box_tree
+        monkeypatch.setattr(
+            container, "remove_box_tree",
+            lambda p: False if p == src_tree else real_remove(p),
+        )
+        execute_lifecycle(
+            state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert (f"Note: could not remove the old store of 'alpha'; left {src_tree}"
+                in capsys.readouterr().err)
+
+    def test_store_removal_failure_after_success_is_a_note(
+        self, env, monkeypatch, capsys,
+    ):
+        """L2: named → default completes; a failed old-store removal is reported."""
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        leaf, state = self._member(env, ws1)
+
+        def fails(ws, name):
+            raise OSError("injected store failure")
+
+        monkeypatch.setattr(lc, "remove_member_store", fails)
+        dest = tmp_home / "projects" / "alpha2"
+        new = execute_lifecycle(
+            state, TargetSpec(location=dest, ownership="default"), std, config,
+            confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.primary
+        assert (dest / "file.txt").read_text() == "keep"
+        assert (new.shell_path / "h.txt").read_text() == "home"
+        assert load_workset(ws1.root, ws1.name).projects == []
+        err = capsys.readouterr().err
+        assert ("Note: could not remove the old store of 'alpha': injected store "
+                f"failure; left {ws1.projects_dir / 'alpha'}") in err
+
+    def test_target_unwind_keeps_pre_existing_store_leaves(self, env, monkeypatch):
+        """N1b fault arm: leaves that existed stay; the one this op created goes."""
+        from kanibako.project.workset import resolve_workset_vault_pair
+
+        config, std, tmp_home = env
+        ws = _make_workset(env)
+        pdir = _make_default(env, contents="n1b")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
+        kept = [ws.projects_dir / "proj", vault_rw_base / "proj"]
+        for p in kept:
+            p.mkdir(parents=True)
+            (p / "keep.txt").write_text("mine")
+
+        def boom(*a, **kw):
+            raise RuntimeError("injected late failure")
+
+        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
+        with pytest.raises(RuntimeError, match="injected"):
+            execute_lifecycle(
+                state, TargetSpec(ownership="ws"), std, config, confirm=_conf_yes(),
+            )
+        for p in kept:
+            assert (p / "keep.txt").read_text() == "mine"
+        assert not (vault_ro_base / "proj").exists()
+        assert load_workset(ws.root, ws.name).projects == []
 
 
 # ---------------------------------------------------------------------------

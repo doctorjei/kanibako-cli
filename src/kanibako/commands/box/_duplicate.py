@@ -512,6 +512,18 @@ def _duplicate_to_workset(args, std, config) -> int:
         print(f"Error: project '{held}' already exists in workset '{ws_name}'.", file=sys.stderr)
         return 1
 
+    # An occupied landing needs --force, as on the primary path (``run_duplicate``).
+    # ⚑ ``--bare`` adopts an existing workspace leaf on purpose; either way, a failed
+    # duplicate never deletes a leaf that was there before it (``copy_into_workset``).
+    occupied = [ws.projects_dir / proj_name]
+    if not args.bare:
+        occupied.insert(0, ws.workspaces_dir / proj_name)
+    for leaf in occupied:
+        if (leaf.exists() or leaf.is_symlink()) and not args.force:
+            print(f"Error: destination already exists: {leaf}", file=sys.stderr)
+            print("  Use --force to overwrite.", file=sys.stderr)
+            return 1
+
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if source_mode == BoxMode.primary:
         src_proj = resolve_project(std, config, project_dir=str(source_path), initialize=False)

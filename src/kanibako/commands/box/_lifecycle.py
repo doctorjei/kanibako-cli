@@ -71,7 +71,6 @@ from kanibako.project.workset import (
     load_workset_settings_doc,
     release_project,
     remove_member_store,
-    remove_project,
     resolve_workset_canon,
     resolve_workset_vault_pair,
     resolve_workset_vault_ro,
@@ -419,12 +418,15 @@ def copy_into_workset(
     std: StandardPaths,
 ) -> None:
     """Re-root a project into *ws* — the std-aware copy path for ``duplicate``."""
+    # ⚑ Taken BEFORE add_project, which adopts an existing leaf: the rollback deletes only
+    # the leaves this call created (a ``--bare`` or ``--force`` duplicate adopts on purpose).
+    existed = _existing_member_leaves(ws, proj_name)
     # ⚑ Register the IN-TREE workspace dir: a duplicate is always INTERNAL, so add_project
     # makes a real directory instead of symlinking back at the source.
     add_project(ws, proj_name, ws.workspaces_dir / proj_name, std)
 
     # ⚑ Failure-consistency: a crash after add_project but during the copies would strand a
-    # registered-but-incomplete project. Roll registration + partial dirs back, then re-raise.
+    # registered-but-incomplete project. Roll registration + created dirs back, then re-raise.
     try:
         dst_project = ws.projects_dir / proj_name
         copy_tree_keeping_links(
@@ -446,10 +448,7 @@ def copy_into_workset(
                 ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
             copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
-        try:
-            remove_project(ws, proj_name, remove_files=True, std=std)
-        except Exception:  # noqa: BLE001 - best-effort rollback
-            pass
+        _unwind_target_member(ws, proj_name, existed)
         raise
 
 
@@ -1124,6 +1123,7 @@ def _remove_old_metadata(
     state: ProjectState,
     std: StandardPaths,
     config: BootstrapConfig,
+    unwind: _Unwind,
     *,
     preserve_name: str | None = None,
     preserve_root: Path | None = None,
@@ -1226,11 +1226,41 @@ def _remove_old_metadata(
                 remove_box_tree(state.shell_path)
         return
 
-    # Workset source: drop the registration and the store.  ⚑ The workspace leaf is NOT
-    # deleted here — a relocation retires it on success (``_retire_old_workspace``).
+    # Workset source: drop the registration now; the store goes only once the op succeeded
+    # (a failed removal part-way would otherwise take the box with it).  ⚑ The workspace
+    # leaf is NOT deleted here — a relocation retires it on success (``_retire_old_workspace``).
     if state.ws is not None:
-        release_project(state.ws, state.name)
-        remove_member_store(state.ws, state.name)
+        src_ws, src_name = state.ws, state.name
+        release_project(src_ws, src_name)
+        unwind.on_success(lambda: _retire_old_store(src_ws, src_name))
+
+
+def _retire_old_store(ws: Workset, name: str) -> None:
+    """Delete relocated-from member *name*'s store; an ``_Unwind.on_success`` action ONLY.
+
+    A failed removal prints a Note naming every leaf left behind; rc is unchanged.
+    """
+    try:
+        remove_member_store(ws, name)
+    except OSError as err:
+        _report_store_leftovers(ws, name, err)
+    else:
+        _report_store_leftovers(ws, name)
+
+
+def _report_store_leftovers(ws: Workset, name: str, err: OSError | None = None) -> None:
+    """Print a Note naming each of member *name*'s store leaves still on disk.
+
+    ⚑ ``remove_member_store`` does not pass on a ``False`` from ``remove_box_tree``, so
+    only the disk says whether the box tree (which may hold credentials) is gone.
+    """
+    import sys
+
+    left = [p for p in _member_leaves(ws, name)[1:] if p.exists() or p.is_symlink()]
+    if left:
+        why = f": {err}" if err is not None else ""
+        print(f"Note: could not remove the old store of '{name}'{why}; left "
+              f"{', '.join(map(str, left))}", file=sys.stderr)
 
 
 def _to_default(
@@ -1317,7 +1347,7 @@ def _to_default(
     # ``_remove_old_metadata`` below deletes the source — contents move first.
     _carry_vault_contents(state, std, vault_ro, vault_rw)
 
-    _remove_old_metadata(state, std, config, preserve_name=preserved_name)
+    _remove_old_metadata(state, std, config, unwind, preserve_name=preserved_name)
 
     return ProjectState(
         owner="primary", mode=BoxMode.primary, name=project_name,
@@ -1603,7 +1633,7 @@ def _to_standalone(
     _carry_vault_contents(state, std, vault_ro, vault_rw)
 
     _remove_old_metadata(
-        state, std, config, preserve_root=root if reused_in_place else None,
+        state, std, config, unwind, preserve_root=root if reused_in_place else None,
     )
 
     return ProjectState(
@@ -1667,6 +1697,12 @@ def _to_workset(
         import tempfile
         stash = Path(tempfile.mkdtemp(prefix="kanibako-unwind-"))
         stash_boxes = stash / "boxes"
+        # ⚑ THE VAULT CARRY, leg 1 of 2 (P1 data loss): ``remove_member_store`` below
+        # deletes the source vault leaves, while the destination leaves only exist
+        # after ``add_project`` — so the contents wait out the swap in the stash
+        # beside the metadata.  Guarded by the same risk model as the teardown.
+        stash_vault_ro = stash / "vault_ro"
+        stash_vault_rw = stash / "vault_rw"
         try:
             if state.metadata_path.is_dir():
                 copy_tree_keeping_links(
@@ -1674,56 +1710,71 @@ def _to_workset(
                     ignore=shutil.ignore_patterns(".kanibako.lock"),
                     dirs_exist_ok=True,
                 )
-            # ⚑ THE VAULT CARRY, leg 1 of 2 (P1 data loss): ``remove_member_store`` below
-            # deletes the source vault leaves, while the destination leaves only exist
-            # after ``add_project`` — so the contents wait out the swap in the stash
-            # beside the metadata.  Guarded by the same risk model as the teardown.
-            stash_vault_ro = stash / "vault_ro"
-            stash_vault_rw = stash / "vault_rw"
             for _src, _tmp in _vault_carry_pairs(
                 state, std, stash_vault_ro, stash_vault_rw,
             ):
                 _copy_vault_leaf_contents(_src, _tmp)
-            release_project(src_ws, src_name)
-            remove_member_store(src_ws, src_name)
         except BaseException:
-            # ⚑ Leg 1 runs BEFORE the unwind push below, so a failure here owns
-            # no compensating action yet — drop the stash here, not in the unwind.
-            shutil.rmtree(stash, ignore_errors=True)
+            # Nothing is released yet: the source is whole and the stash a partial copy.
+            _dispose_stash(stash)
             raise
         metadata_source = stash_boxes
         shell_source = stash_boxes / "home"
 
         def _restore_source() -> None:
-            add_project(src_ws, src_name, src_source_path, std)
-            if stash_boxes.is_dir():
-                copy_tree_keeping_links(
-                    stash_boxes, src_ws.projects_dir / src_name,
-                    dirs_exist_ok=True,
-                )
-            # ⚑ THE VAULT CARRY, unwind leg (P1 data loss): leg 1 released the
-            # source leaves into the stash, so membership alone would hand back
-            # an emptied store — land the stashed contents back first.  No-ops
-            # when leg 1 carried nothing; runs BEFORE the stash is removed.
-            _copy_vault_leaf_contents(stash_vault_ro, state.vault_ro)
-            _copy_vault_leaf_contents(stash_vault_rw, state.vault_rw)
-            shutil.rmtree(stash, ignore_errors=True)
+            # ⚑ Each step runs even when an earlier one failed, and reports its own
+            # failure: ``_Unwind.run`` swallows whatever an action raises.
+            import sys
 
+            def _box_tree() -> None:
+                if stash_boxes.is_dir():
+                    copy_tree_keeping_links(
+                        stash_boxes, src_ws.projects_dir / src_name, dirs_exist_ok=True)
+
+            steps: list[tuple[str, Path, Callable[[], object]]] = [
+                (f"the record of '{src_name}' in workset '{src_ws.name}'",
+                 src_source_path,
+                 lambda: add_project(src_ws, src_name, src_source_path, std)),
+                ("the box tree", src_ws.projects_dir / src_name, _box_tree),
+                # ⚑ THE VAULT CARRY, unwind leg (P1 data loss): leg 1 released the source
+                # leaves into the stash; no-ops when leg 1 carried nothing.
+                ("the read-only vault", state.vault_ro,
+                 lambda: _copy_vault_leaf_contents(stash_vault_ro, state.vault_ro)),
+                ("the read-write vault", state.vault_rw,
+                 lambda: _copy_vault_leaf_contents(stash_vault_rw, state.vault_rw)),
+            ]
+            clean = True
+            for what, where, step in steps:
+                try:
+                    step()
+                except Exception as err:  # noqa: BLE001 - reported, and the rest still run
+                    clean = False
+                    print(f"Note: could not restore {what} at {where}: {err}",
+                          file=sys.stderr)
+            if clean:
+                _dispose_stash(stash)
+            else:
+                print(f"Note: kept {stash}; it holds the box's store as it was before "
+                      f"the move (it may hold credentials)", file=sys.stderr)
+
+        # ⚑⚑ Pushed BEFORE the release (L1): once it starts, the stash holds the only copy
+        # of the store, so a failure part-way through must restore from it, never drop it.
         unwind.push(_restore_source)
+        release_project(src_ws, src_name)
+        remove_member_store(src_ws, src_name)
+        _report_store_leftovers(src_ws, src_name)
         # Discard the stash on success (kept intact while unwind may need it).
-        unwind.on_success(lambda: shutil.rmtree(stash, ignore_errors=True))
+        unwind.on_success(lambda: _dispose_stash(stash))
 
     # ⚑ ``force=True``: an absorb INTO a workset must override the standalone-marker
     # connect guard (B2a) — a standalone source still carries its ``box_data/`` marker
     # here, since the marker is removed LATER in the convert. No-op for other modes.
-    # ⚑ The unwind deletes the target's workspace leaf only when THIS op created it — on a
-    # same-workset, same-name relocation that leaf is the source's own, intact workspace.
-    target_leaf = target_ws.workspaces_dir / new_name
-    leaf_created = not (target_leaf.exists() or target_leaf.is_symlink())
+    # ⚑ The unwind deletes a target leaf only when THIS op created it — ``add_project``
+    # adopts an existing one, and on a same-workset, same-name relocation the workspace
+    # leaf is the source's own, intact workspace.
+    existed = _existing_member_leaves(target_ws, new_name)
     add_project(target_ws, new_name, source_for_add, std, force=True)
-    unwind.push(
-        lambda: _unwind_target_member(target_ws, new_name, target_leaf, leaf_created)
-    )
+    unwind.push(lambda: _unwind_target_member(target_ws, new_name, existed))
 
     dst_project = target_ws.projects_dir / new_name
     # Copy metadata (minus lock+home) into the workset boxes dir.
@@ -1804,7 +1855,7 @@ def _to_workset(
         # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: contents move
         # before the teardown below deletes the source.
         _carry_vault_contents(state, std, vault_ro, vault_rw)
-        _remove_old_metadata(state, std, config)
+        _remove_old_metadata(state, std, config, unwind)
 
     return ProjectState(
         owner=owner_token(BoxMode.named, target_ws.name),
@@ -1945,20 +1996,64 @@ def _safe_register_membership(
         pass
 
 
-def _unwind_target_member(
-    ws: Workset, name: str, leaf: Path, leaf_created: bool,
-) -> None:
-    """Undo a target registration: record + store, and *leaf* only if this op created it."""
+def _member_leaves(ws: Workset, name: str) -> tuple[Path, Path, Path, Path]:
+    """Member *name*'s four leaves: workspace, box tree, read-only and read-write vault.
+
+    ⚑ The vault arms are RESOLVED, as :func:`add_project` creates them.
+    """
+    vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
+    return (ws.workspaces_dir / name, ws.projects_dir / name,
+            vault_ro_base / name, vault_rw_base / name)
+
+
+def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]:
+    """Those of :func:`_member_leaves` already on disk (a dangling link counts)."""
+    return frozenset(
+        p for p in _member_leaves(ws, name) if p.exists() or p.is_symlink()
+    )
+
+
+def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None:
+    """Undo a target registration: the record, plus each leaf NOT in *existed*.
+
+    ⚑⚑ A leaf that existed before the op is the user's and is never touched.  A link is
+    unlinked, never followed; the box tree goes through ``remove_box_tree``.  Whatever
+    cannot be removed is reported here, because ``_Unwind.run`` swallows errors.
+    """
+    import sys
+
     try:
         release_project(ws, name)
-        remove_member_store(ws, name)
-    except Exception:  # noqa: BLE001 - best-effort unwind
-        pass
-    if leaf_created:
-        if leaf.is_symlink():
-            leaf.unlink()
-        elif leaf.is_dir():
-            shutil.rmtree(leaf, ignore_errors=True)
+    except Exception as err:  # noqa: BLE001 - reported; the leaves below still go
+        print(f"Note: could not drop the record of '{name}' from workset "
+              f"'{ws.name}': {err}", file=sys.stderr)
+    workspace, box_tree, vault_ro, vault_rw = _member_leaves(ws, name)
+    for leaf in (workspace, box_tree, vault_ro, vault_rw):
+        if leaf in existed:
+            continue
+        try:
+            if leaf.is_symlink():
+                leaf.unlink()
+            elif leaf == box_tree and leaf.is_dir():
+                remove_box_tree(leaf)
+            elif leaf.is_dir():
+                shutil.rmtree(leaf)
+        except OSError:
+            pass  # reported just below
+        if leaf.exists() or leaf.is_symlink():
+            print(f"Note: could not remove {leaf}, which this operation created",
+                  file=sys.stderr)
+
+
+def _dispose_stash(stash: Path) -> None:
+    """Delete relocation stash *stash* through the box-tree deleter; report a leftover.
+
+    ⚑ The stash holds a copy of the box home, so a leftover may hold credentials.
+    """
+    import sys
+
+    if (stash.exists() or stash.is_symlink()) and not remove_box_tree(stash):
+        print(f"Note: could not remove {stash}; it may hold credentials", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
