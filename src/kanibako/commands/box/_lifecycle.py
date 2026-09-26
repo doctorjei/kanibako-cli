@@ -603,7 +603,7 @@ def _validate(
         raise ProjectError(
             f"Refusing to land the project inside workset '{ws_name}' "
             f"({ws_root}) — it is not (being made) a member of that workset. "
-            "Use `--workset {ws_name}` to make it a member, or choose a "
+            f"Use `--workset {ws_name}` to make it a member, or choose a "
             "destination outside that workset."
         )
 
@@ -1957,6 +1957,18 @@ def _abort_if_locked(state: ProjectState, force: bool) -> bool:
     return False
 
 
+def _relocation_failure(err: OSError) -> str:
+    """The ``Error:`` line for an ``OSError`` (``shutil.Error`` included) that escaped a relocation.
+
+    A ``shutil.Error`` from a tree copy names each entry it could not copy, as ``_duplicate`` does.
+    """
+    if isinstance(err, shutil.Error):
+        listing = failed_entries(err)
+        if listing is not None:
+            return f"Error: the relocation failed; {listing}"
+    return f"Error: the relocation failed: {err}"
+
+
 def run_remap(args) -> int:
     """``box remap <old> [<new>]`` — records-only relocation; moves no files."""
     import sys
@@ -1972,6 +1984,9 @@ def run_remap(args) -> int:
         state = resolve_lifecycle_target(old, std, config)
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except OSError as e:
+        print(_relocation_failure(e), file=sys.stderr)
         return 1
 
     spec = TargetSpec(location=new_path, ownership=UNCHANGED, records_only=True)
@@ -1989,6 +2004,9 @@ def run_remap(args) -> int:
         )
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except OSError as e:
+        print(_relocation_failure(e), file=sys.stderr)
         return 1
 
     print(f"Remapped '{new_state.name}' to {new_state.workspace_path}")
@@ -2014,6 +2032,9 @@ def run_move(args) -> int:
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    except OSError as e:
+        print(_relocation_failure(e), file=sys.stderr)
+        return 1
 
     if state.is_external:
         print(
@@ -2029,9 +2050,6 @@ def run_move(args) -> int:
         return 2
 
     ownership = _ownership_from_args(args)
-    spec = TargetSpec(
-        location=new_path, ownership=ownership, name=_validated_name(args),
-    )
     summary = (
         "Move project workspace:\n"
         f"  project: {state.name}\n"
@@ -2039,6 +2057,9 @@ def run_move(args) -> int:
         f"       to: {new_path}"
     )
     try:
+        spec = TargetSpec(
+            location=new_path, ownership=ownership, name=_validated_name(args),
+        )
         new_state = execute_lifecycle(
             state, spec, std, config,
             force=getattr(args, "force", False),
@@ -2046,6 +2067,9 @@ def run_move(args) -> int:
         )
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except OSError as e:
+        print(_relocation_failure(e), file=sys.stderr)
         return 1
 
     print(f"Moved '{new_state.name}' to {new_state.workspace_path}")
@@ -2093,14 +2117,14 @@ def run_convert(args) -> int:
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    except OSError as e:
+        print(_relocation_failure(e), file=sys.stderr)
+        return 1
 
     # Lock pre-flight: convert re-roots by copy-then-rmtree (mirrors move / duplicate).
     if _abort_if_locked(state, getattr(args, "force", False)):
         return 2
 
-    spec = TargetSpec(
-        location=location, ownership=ownership, name=_validated_name(args),
-    )
     if location is INPLACE:
         loc_desc = "in place"
     elif location is BARE_INTO_WS:
@@ -2114,6 +2138,9 @@ def run_convert(args) -> int:
         f" location: {loc_desc}"
     )
     try:
+        spec = TargetSpec(
+            location=location, ownership=ownership, name=_validated_name(args),
+        )
         new_state = execute_lifecycle(
             state, spec, std, config,
             force=getattr(args, "force", False),
@@ -2121,6 +2148,9 @@ def run_convert(args) -> int:
         )
     except (ProjectError, WorksetError) as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except OSError as e:
+        print(_relocation_failure(e), file=sys.stderr)
         return 1
 
     print(

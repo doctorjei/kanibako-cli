@@ -7,10 +7,12 @@ These exercise the thin ``run_remap`` / ``run_move`` / ``run_convert`` wrappers
 from __future__ import annotations
 
 import argparse
+import shutil
 
 import pytest
 
 from kanibako.cli import build_parser
+from kanibako.commands.box import _lifecycle
 from kanibako.commands.box._lifecycle import (
     _BARE_MOVE,
     run_convert,
@@ -218,6 +220,19 @@ class TestMove:
         config, std, tmp_home = env
         rc = run_move(_move_args(str(tmp_home / "x"), None))
         assert rc == 1
+
+    def test_move_into_foreign_workset_refusal_names_the_workset(self, env, capsys):
+        """The membership refusal renders the workset's name, not a literal ``{ws_name}``."""
+        config, std, tmp_home = env
+        create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _default(env)
+        rc = run_move(_move_args(pdir, tmp_home / "ws_root" / "inside"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Refusing to land the project inside workset 'ws'" in err
+        assert "Use `--workset ws` to make it a member" in err
+        assert "{ws_name}" not in err
+        assert pdir.is_dir()
 
     def test_mv_alias_parses(self):
         parser = build_parser()
@@ -878,3 +893,90 @@ class TestLifecycleCarriesBoxSettings:
         assert "image" not in (load_doc(pdir / "workset.yaml").get("box") or {})
         # ...and it is untouched for the boxes that stayed.
         assert load_doc(ws_file)["box"]["image"] == "wsdefault/img:14"
+
+
+# ---------------------------------------------------------------------------
+# an OSError escaping a relocation is reported, not raised
+# ---------------------------------------------------------------------------
+
+def _remap_case(env):
+    config, std, tmp_home = env
+    pdir = _default(env)
+    new = tmp_home / "moved_here"
+    pdir.rename(new)
+    return run_remap, _remap_args(pdir, new)
+
+
+def _move_case(env):
+    config, std, tmp_home = env
+    return run_move, _move_args(_default(env), tmp_home / "dest")
+
+
+def _convert_case(env):
+    return run_convert, _convert_args(_default(env), to_standalone=True)
+
+
+class TestRelocationOSErrorReported:
+    """``run_remap`` / ``run_move`` / ``run_convert`` print a named ``Error:`` line and return 1."""
+
+    @pytest.mark.parametrize("seam", ["resolve_lifecycle_target", "_run_steps"])
+    @pytest.mark.parametrize("case", [_remap_case, _move_case, _convert_case])
+    def test_oserror_is_an_error_line(self, env, capsys, monkeypatch, case, seam):
+        run, args = case(env)
+        capsys.readouterr()
+
+        def boom(*_a, **_k):
+            raise PermissionError(13, "Permission denied", "/nowhere/blocked")
+
+        monkeypatch.setattr(_lifecycle, seam, boom)
+        rc = run(args)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert (
+            "Error: the relocation failed: [Errno 13] Permission denied: '/nowhere/blocked'"
+            in err
+        )
+        assert "Traceback" not in err
+
+    @pytest.mark.parametrize("case", [_remap_case, _move_case, _convert_case])
+    def test_shutil_error_names_each_failed_entry(self, env, capsys, monkeypatch, case):
+        run, args = case(env)
+        capsys.readouterr()
+
+        def boom(*_a, **_k):
+            raise shutil.Error([("/src/a.txt", "/dst/a.txt", "[Errno 28] No space left")])
+
+        monkeypatch.setattr(_lifecycle, "_run_steps", boom)
+        rc = run(args)
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert (
+            "Error: the relocation failed; 1 entry failed:\n  /src/a.txt: [Errno 28] No space left"
+            in err
+        )
+        assert "Traceback" not in err
+
+
+class TestInvalidNameReported:
+    """An invalid ``--name`` is a named ``Error:`` line and rc 1, never a traceback."""
+
+    def test_move_invalid_name(self, env, capsys):
+        config, std, tmp_home = env
+        pdir = _default(env)
+        capsys.readouterr()
+        rc = run_move(_move_args(pdir, tmp_home / "dest", name="bad/name"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Error: Invalid box name 'bad/name':" in err
+        assert "Traceback" not in err
+        assert pdir.is_dir() and not (tmp_home / "dest").exists()
+
+    def test_convert_invalid_name(self, env, capsys):
+        pdir = _default(env)
+        capsys.readouterr()
+        rc = run_convert(_convert_args(pdir, to_standalone=True, name="bad/name"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Error: Invalid box name 'bad/name':" in err
+        assert "Traceback" not in err
+        assert not (pdir / "box_data").exists()
