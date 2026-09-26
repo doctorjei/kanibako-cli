@@ -224,10 +224,12 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # ``default: <None>`` rows with NO carrier — true ABSENCES.  ⚑ The shell fence's
     # other ``<None>`` rows, ``agent.shell.{run_args,transform}``, are NOT here:
     # ``core-defaults.yaml``'s ``agent_shell:`` floors them as PRESENT ``None``, so
-    # they arrive in that group above, derived off its emitter.
+    # they arrive in that group above, derived off its emitter.  Its
+    # ``agent.shell.{continue_mode,model,endpoint}`` rows ARE here: no floor installs them.
     ("(nothing declares it — unset until you set it)", frozenset({
       "system.agent", "system.setup_completed", "box.shell", "agent.default.model",
-      "agent.default.endpoint", "agent.default.run_args", "agent.default.transform"})),
+      "agent.default.endpoint", "agent.default.run_args", "agent.default.transform",
+      "agent.shell.continue_mode", "agent.shell.model", "agent.shell.endpoint"})),
     # ``default: {}`` — the resolver's own initial state for a category arm.
     ("(empty — the category starts with no entries)", frozenset({
       "box.bindings.ro", "box.bindings.rw", "box.masks",

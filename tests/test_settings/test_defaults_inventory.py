@@ -156,8 +156,8 @@ class TestSourcePartition:
             f"registry defaults with no source: {sorted(declared - covered)}; "
             f"sources for rows the registry no longer defaults: {sorted(covered - declared)}"
         )
-        assert len(declared) == 79, (
-            f"the manifest gives {len(declared)} rows a default, not the 79 measured"
+        assert len(declared) == 82, (
+            f"the manifest gives {len(declared)} rows a default, not the 82 measured"
         )
 
     def test_the_partition_agrees_with_the_conformance_classification(self):
