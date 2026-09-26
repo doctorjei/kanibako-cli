@@ -67,6 +67,7 @@ from kanibako.settings.settings_cli_level import build_cli_level
 from kanibako.settings.paths import (
     _upgrade_shell,
     box_workset_settings_paths,
+    creds_watcher_log_path,
     load_std_paths,
     resolve_box_target,
     system_path_floor,
@@ -4856,7 +4857,7 @@ def _run_container(
             # HOST watcher — but ONLY for a SHARED-tier box (a private box never
             # propagates creds, so there is nothing to watch).
             if auth_src.creds_shared:
-                _spawn_creds_watcher(proj)
+                _spawn_creds_watcher(std, proj)
             _print_launch_issues(std, container_name)
             _print_shadow_issues(std, container_name)
             # --print-container: the resolved container name as the FINAL stdout
@@ -5072,7 +5073,7 @@ def _print_setup_did_not_take(target) -> None:
     )
 
 
-def _spawn_creds_watcher(proj) -> None:
+def _spawn_creds_watcher(std, proj) -> None:
     """Spawn the per-box HOST credential-writeback watcher, DETACHED (D Part 2).
 
     On a DETACHED launch (``kanibako code`` warm-up / ``kanibako start --detach``) the
@@ -5081,26 +5082,43 @@ def _spawn_creds_watcher(proj) -> None:
     trusted :mod:`kanibako.launch.creds_watcher` daemon to do it: it watches the box's
     creds-dirty flag and does the privileged store writeback promptly.
 
-    DETACHED via ``start_new_session=True`` (its own session / no controlling tty) +
-    detached std streams, so it survives this command returning — like the box itself.
+    DETACHED via ``start_new_session=True`` (its own session / no controlling tty), with
+    no terminal on any std stream, so it survives this command returning — like the box itself.
     It re-resolves the host config from the box SUBJECT (``proj.project_path``), the
     same way ``kanibako stop`` does, so cwd is irrelevant.  The watcher itself skips a
     private box + holds a single-instance lock, but the caller ALSO gates on
     ``auth_src.creds_shared`` (don't even spawn for a private box — cheaper).  Best-effort:
     a spawn failure is logged, never crashes the launch (the flag's lazy fallback on
     the next host op still covers the writeback).
+
+    Its stderr is APPENDED to :func:`~kanibako.settings.paths.creds_watcher_log_path` —
+    the one place a detached process's WARNING (a settings refusal) or ERROR can reach
+    the user.  A log that cannot be opened falls back to DEVNULL; the watcher still runs.
     """
+    sink = None
+    try:
+        log_path = creds_watcher_log_path(std, proj)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        sink = open(log_path, "a")
+    except Exception as exc:
+        get_logger("start").warning(
+            "creds watcher log unavailable (%s); its warnings will be discarded", exc,
+        )
     try:
         subprocess.Popen(
             [sys.executable, "-m", "kanibako.launch.creds_watcher",
              "--box", str(proj.project_path)],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=sink if sink is not None else subprocess.DEVNULL,
             start_new_session=True,
         )
     except Exception as exc:
         get_logger("start").debug("could not spawn creds watcher: %s", exc)
+    finally:
+        # The child holds its own descriptor; this one is only the handoff.
+        if sink is not None:
+            sink.close()
 
 
 def writeback_session_credentials(

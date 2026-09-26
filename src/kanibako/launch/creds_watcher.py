@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import fcntl
+import logging
 import os
 import sys
 import time
@@ -36,7 +37,7 @@ from collections.abc import Callable, Iterator
 from enum import Enum
 from pathlib import Path
 
-from kanibako.log import get_logger
+from kanibako.log import get_logger, setup_logging
 
 log = get_logger("creds_watcher")
 
@@ -386,6 +387,27 @@ def _resolve_watch_context(box: str | None):
     return runtime, proj, container_name, target, auth_src
 
 
+class _DropRepeats(logging.Filter):
+    """Pass a record only when it differs from the last record passed.
+
+    The loop retries a failing writeback every tick, and each failure logs the same
+    WARNING (``writeback_session_credentials``), so an unfiltered log file would grow
+    by one line per poll for as long as the box runs.  ⚑ The cost: a failure that
+    stops and later recurs with the same text is not logged a second time.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._last: tuple[str, int, str] | None = None
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        key = (record.name, record.levelno, record.getMessage())
+        if key == self._last:
+            return False
+        self._last = key
+        return True
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI: resolve the box, take the single-instance lock, run the watch loop.
 
@@ -395,8 +417,15 @@ def main(argv: list[str] | None = None) -> int:
     watcher no-ops and exits immediately (the host spawner also skips spawning one).
     Best-effort throughout: a resolution failure logs and exits 0 (a watcher that
     can't resolve its box is simply not needed — never a crash that surfaces to a
-    user, since it runs detached).
+    user, since it runs detached).  WARNING and above go to stderr, which the spawner
+    points at the box's watcher log (:func:`kanibako.settings.paths.creds_watcher_log_path`).
     """
+    # A detached process has no terminal: its stderr is a file the user reads later, so
+    # each record carries its time.  (Unconfigured, logging's last-resort handler would
+    # still write WARNING+ there, but with no time and no repeat filter.)
+    setup_logging(timestamps=True)
+    for handler in logging.getLogger("kanibako").handlers:
+        handler.addFilter(_DropRepeats())
     args = _build_parser().parse_args(sys.argv[1:] if argv is None else argv)
 
     try:

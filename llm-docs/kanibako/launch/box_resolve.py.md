@@ -152,6 +152,11 @@ identity while its leaf follows the new directory. The kuid is read from the box
 A pre-kuid box has no stored `workset.kuid` and reads back as `kuid.SENTINEL`. It falls back to the
 registered `standalone:` registry KEY, and if that is absent too, to the directory leaf.
 
+That rule is `standalone_box_name(box_root, registered_name)`, which `resolve_box_identity` calls.
+It is public because a box's log files are named for this name: the standalone `box rm --purge`
+teardown calls it BEFORE deleting the root settings file that carries the kuid, passing the stored
+registry name, since by then the box's registry entry is already gone.
+
 ⚑ The standalone branch sources everything from the DETECTED box root (`result.project_root`), NOT
 from the passed-in *project_dir*. The two diverge when standalone is detected by the treewalk from
 a SUBDIRECTORY — case 3 finds the marker at an ancestor. Using *project_dir* would anchor the name,

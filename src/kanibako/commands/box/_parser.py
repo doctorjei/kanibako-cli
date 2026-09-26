@@ -38,6 +38,7 @@ from kanibako.settings.paths import (
     load_primary_boxes,
     load_std_paths,
     primary_box_name_for_workspace,
+    remove_box_logs,
     resolve_any_project,
     resolve_box_target,
     resolve_project,
@@ -1231,7 +1232,7 @@ def _assert_deletable(path, *, must_be_under: Path | None = None) -> Path:
 
 
 def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
-    """Delete a PRIMARY box's metadata: box dir + vault ro/rw + helper log."""
+    """Delete a PRIMARY box's metadata: box dir + vault ro/rw + per-box logs."""
     removed = _purge_dir(metadata_dir)
     if removed:
         print(f"Removed metadata: {metadata_dir}")
@@ -1246,18 +1247,21 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
             f"Try: podman unshare rm -rf {metadata_dir}",
             file=sys.stderr,
         )
-    # The per-box helper log, keyed by the registry name.
-    log_file = std.primary_logs / f"{name}.jsonl"
-    if log_file.is_file():
-        log_file.unlink()
+    # The per-box logs, keyed by the registry name.
+    for log_file in remove_box_logs(std.primary_logs, name):
         print(f"Removed log: {log_file}")
     return removed
 
 
-def _teardown_standalone_box(root: Path) -> bool:
-    """Delete a STANDALONE box's in-tree metadata; the workspace and *root* are never touched."""
+def _teardown_standalone_box(root: Path, registered_name: str) -> bool:
+    """Delete a STANDALONE box's in-tree metadata + its logs; the workspace and *root* stay.
+
+    *registered_name* is the box's STORED registry name — the name a pre-kuid box's
+    logs were written under (:func:`~kanibako.launch.box_resolve.standalone_box_name`).
+    """
+    from kanibako.launch.box_resolve import standalone_box_name
     from kanibako.project.workset import standalone_vault_teardown
-    from kanibako.settings.paths import STANDALONE_META_DIR
+    from kanibako.settings.paths import STANDALONE_META_DIR, standalone_logs_dir
 
     metadata_dir = root / STANDALONE_META_DIR
     # ⚑⚑ RESOLVE THE VAULT BEFORE ANYTHING IS DELETED.  Two reasons, and both bite:
@@ -1266,6 +1270,13 @@ def _teardown_standalone_box(root: Path) -> bool:
     # which must happen while the box is still whole.  Resolving after the metadata purge
     # left a half-removed box behind the traceback.
     removable_vault, retained_vault = standalone_vault_teardown(root)
+    # ⚑ THE LOGS TOO, for the same two reasons: ``workset.logs`` and the kuid the box's
+    # name is composed from both live in that workset.yaml.  Deleted by NAME, so a log
+    # under a ``workset.logs`` pointed outside ``box_data/`` goes too.
+    for log_file in remove_box_logs(
+        standalone_logs_dir(root), standalone_box_name(root, registered_name),
+    ):
+        print(f"Removed log: {log_file}")
     if _purge_dir(metadata_dir):
         print(f"Removed metadata: {metadata_dir}")
         # ⚑ The ROOT workset.yaml is the WORKSET tier AND half the §5 detection marker —
@@ -1381,7 +1392,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
             return 2
 
     if kind == "standalone":
-        _teardown_standalone_box(root)
+        _teardown_standalone_box(root, name)
     else:
         _teardown_primary_box(std, name, metadata_dir)
 
@@ -1450,7 +1461,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
                 except UserCancelled:
                     print("Aborted (box was already unregistered).")
                     return 2
-            _teardown_standalone_box(root_path)
+            _teardown_standalone_box(root_path, box_name)
         else:
             print(f"No metadata directory found at {metadata_dir}")
     elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
@@ -1532,9 +1543,14 @@ def run_rm(args: argparse.Namespace) -> int:
     if name is None:
         # ⚑ Not active anywhere — a re-`rm` after a plain `rm` must resolve the retained
         # metadata HERE rather than erroring "not registered".
-        dereg = registry_store.lookup_deregistered(std.registry, target)
-        if dereg is not None:
-            return _purge_deregistered(std, target, dereg, args)
+        # ⚑ Case-blind (spec §0), and the purge takes the STORED spelling: it names the
+        # box's log files, which a typed case-variant would miss.
+        deregistered = registry_store.load_deregistered(std.registry)
+        dereg_name = find_identifier(target, deregistered)
+        if dereg_name is not None:
+            return _purge_deregistered(
+                std, dereg_name, dict(deregistered[dereg_name]), args,
+            )
 
     if name is None or section is None:
         print(f"Error: '{target}' is not a registered project or workset.", file=sys.stderr)

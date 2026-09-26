@@ -135,11 +135,11 @@ default TABLE is the source, never a second literal at a consumer site.
   host-side writer (`settings/paths.py::helper_log_path`) and the `helpers.jsonl` MOUNT name one
   file in standalone too — the last arm of **migration M-14**, closed 2026-08-30. 🛑 The `boxes`
   flag does NOT make the standalone box STORE repointable end to end: home, the vault teardown,
-  `clean --purge` and standalone DETECTION all still compose the literal `box_data`, which
+  `box purge` and standalone DETECTION all still compose the literal `box_data`, which
   `system-design-1.8.0.md` makes a spec clause. It selects a default leaf so the logs default can
   chain through it, and nothing more. A repointed
-  standalone log lands outside `box_data/` and therefore survives `box rm --purge`, which removes
-  `box_data/` wholesale; that is a retained path, documented in MIGRATION.md, not a wider rmtree.
+  standalone log lands outside the `box_data` directory; `box rm --purge` deletes it by name
+  before it removes that directory wholesale.
   🛑 STILL OPEN: box trees under a `workset.boxes` the user pointed OUTSIDE the root survive
   `workset rm --purge`, deliberately — `delete_workset`'s loop is a pre-pass for `rmtree(root)`, so
   it is owed only to what that call reaches. Closing it needs a retained-path report, not a wider

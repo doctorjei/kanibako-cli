@@ -187,6 +187,26 @@ def detect_box_mode(
     return result
 
 
+def standalone_box_name(box_root: Path, registered_name: str | None) -> str:
+    """The name a standalone box at *box_root* goes by — its log files are named for it.
+
+    LIVE name (P6d) ``<stored workset.kuid>_<current leaf>``, so a MOVED standalone
+    keeps its identity.  The kuid comes from the box's own workset.yaml (the workset
+    tier for a standalone); a pre-kuid box reads back SENTINEL and falls back to its
+    ``standalone:`` registry KEY (*registered_name*), else the leaf.
+    """
+    from kanibako import kuid
+    from kanibako.launch import box_identity
+    from kanibako.settings.config import read_workset_kuid
+
+    stored_kuid = read_workset_kuid(box_root / WORKSET_META_FILE)
+    if stored_kuid != kuid.SENTINEL:
+        return box_identity.compose_standalone_name(stored_kuid, box_root)
+    if registered_name is not None:
+        return registered_name
+    return box_root.name
+
+
 def resolve_box_identity(
     project_dir: Path,
     std: StandardPaths,
@@ -210,24 +230,9 @@ def resolve_box_identity(
         registered_name = registry_store.standalone_name_for_root(
             std.registry, box_root
         )
-        # LIVE name (P6d) ``<stored workset.kuid>_<current leaf>``, so a MOVED
-        # standalone keeps its identity.  The kuid comes from the box's own
-        # workset.yaml (the workset tier for a standalone); a pre-kuid box reads
-        # back SENTINEL and falls back to the ``standalone:`` KEY, else the leaf.
-        from kanibako import kuid
-        from kanibako.launch import box_identity
-        from kanibako.settings.config import read_workset_kuid
-
-        stored_kuid = read_workset_kuid(box_root / WORKSET_META_FILE)
-        if stored_kuid != kuid.SENTINEL:
-            name = box_identity.compose_standalone_name(stored_kuid, box_root)
-        elif registered_name is not None:
-            name = registered_name
-        else:
-            name = box_root.name
         return {
             "mode": result.mode,
-            "name": name,
+            "name": standalone_box_name(box_root, registered_name),
             "workspace": box_root,
             "registered": registered_name is not None,
         }

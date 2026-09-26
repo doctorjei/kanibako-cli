@@ -806,11 +806,10 @@ resolver — it is that in standalone, and only there, the caller already HOLDS 
 resolves `workset.boxes` once and passes it as `extra_refs`. In primary/named the same ref would
 need the construct-time `@meta.box.name` and keeps refusing.
 
-🛑 A repointed standalone `workset.logs` puts the log OUTSIDE `box_data/`, and `box rm --purge`
-tears a standalone box down by removing `box_data/` wholesale — so the log file survives it, the
-same way a repointed vault arm does (`standalone_vault_teardown`). `kanibako clean --purge` unlinks
-the log explicitly through this function and is unaffected. Documented as a retained path in
-MIGRATION.md; do not widen the purge to chase it.
+🛑 A repointed standalone `workset.logs` puts the log OUTSIDE the `box_data` directory, which
+`box rm --purge` removes wholesale. So that teardown
+(`commands/box/_parser.py::_teardown_standalone_box`) first deletes the box's log files BY NAME
+through `remove_box_logs`, as `box purge` does; the directory the user nominated is left standing.
 
 The caller is responsible for guarantee-creating the parent dir before the bind (L7). The box-side
 dest is the PINNED `~/.kanibako/state/helpers.jsonl` (declared in `core-defaults.yaml`), NOT a
@@ -825,6 +824,33 @@ is carried on the project
 group (`root=ws.root`); the `metadata_path.parent.parent` fallback beside it still assumes the
 DEFAULT box layout and is unreachable from `resolve_workset_project`, which always supplies the
 group.
+
+```python
+def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path
+```
+Per-box HOST log of the detached creds watcher: `<resolved workset.logs>/<box>.creds-watcher.log`
+(suffix `bootstrap.CREDS_WATCHER_LOG_SUFFIX`), beside the helper log and resolved per mode the same
+way. `commands.start._spawn_creds_watcher` appends the watcher's stderr to it, so it is where the
+watcher's WARNING and ERROR records reach the user. Nothing is bound into the box from it.
+
+```python
+class BoxLogFiles(NamedTuple)          # helper: Path, creds_watcher: Path
+def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles
+def remove_box_logs(logs_dir: Path, box: str) -> list[Path]
+def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path, str]
+def standalone_logs_dir(root: Path) -> Path
+```
+`box_log_files` is THE one place a box's files under `workset.logs` are named; both path functions
+above derive from it, and `remove_box_logs` deletes whatever it lists (returning the files that
+existed). Every path that deletes a box's logs calls `remove_box_logs` — `box purge` and
+`box purge --all` (`commands/clean.py`); both teardowns behind `box rm --purge` and the
+deregistered-box purge, primary and standalone (`commands/box/_parser.py`); and
+`workset disconnect --remove-files` (`commands/workset_cmd.py`, NOT `project.workset.remove_project`,
+which also releases a box the lifecycle engine is MOVING) — so a new per-box log file is added to
+`box_log_files` and nowhere else. `standalone_logs_dir(root)` is the standalone arm of
+`box_logs_location`, for callers holding only the root. `box_logs_location`
+resolves `(logs dir, box name)` for a `ProjectPaths` in any mode; the removal paths that hold no
+`ProjectPaths` pass the dir and name they already resolved.
 
 ```python
 _SHELL_D_SOURCE_LINE: str

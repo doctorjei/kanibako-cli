@@ -720,6 +720,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failure.) `stop` now prints a warning to stderr, followed by the refusal itself, which names the
   file. The box is still stopped. Any other writeback failure is still silent.
 
+- **The background credential watcher now writes its warnings and errors to a log file.** A box
+  started in the background (`kanibako start --detach`, or the warm-up `kanibako code` runs) with
+  shared credentials gets a host-side watcher that writes the box's refreshed credentials back to
+  the host. The watcher has no terminal, and everything it printed was discarded — including the
+  warning that the credential writeback was skipped because a settings file no longer resolves, so
+  refreshed credentials silently stopped reaching the host. (1.7.2 discarded the same output.) Its
+  warnings and errors are now appended, each with a timestamp, to `<box>.creds-watcher.log` beside
+  the box's helper log in the workset's `logs/` directory (`workset.logs`; for a standalone box,
+  `box_data/`). A message that repeats unchanged, such as a writeback that fails on every retry, is
+  written once. Three commands delete a box's log files (its helper log and this one), by name, from
+  wherever `workset.logs` points: `kanibako box purge` (with or without `--all`),
+  `kanibako box rm --purge` (on an active or a deregistered box), and
+  `kanibako workset disconnect --remove-files`. Three cases used to leave a log behind:
+  `workset disconnect --remove-files` never deleted a named box's helper log; `box rm --purge` on a
+  standalone box kept its helper log when `workset.logs` pointed outside `box_data/`; and
+  `box rm --purge` on a deregistered box typed in a different case (`FOO` for `foo`) missed its log.
+  Moving a box (`kanibako box move`) keeps both files.
+
 ### Added
 
 - **Every box now gets the host's terminal type, and `$TERM` resolves in a settings value.** Two
@@ -1916,7 +1934,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ⚑ **The verbs that DELETE a vault follow the key too, and they are careful about it.** A key
   that is honoured everywhere except where a directory is removed is worse than one that was never
   honoured: your real vault would be orphaned while a directory the box never used was the thing
-  taken. `box rm --purge`, `kanibako clean --purge`, `box move` and `box convert` now resolve the
+  taken. `box rm --purge`, `kanibako box purge`, `box move` and `box convert` now resolve the
   vault before they delete anything, and they draw a line the earlier code had no reason to. For a
   primary or named box only the per-box `<box-name>` directory is ever removed, under whichever arm
   it actually lives — never the shared arm above it. For a standalone box the arm IS the vault,

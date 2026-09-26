@@ -82,7 +82,7 @@ def _start_helper_hub(*, runtime, image, container_name, proj, target, install, 
 def _persist_or_announce_flags(proj, box_settings_path: Path, *, image_override: str | None, share_images: bool) -> None
 def _run_container(*, project_dir: str | None, entrypoint: str | None, image_override: str | None, new_session: bool, continue_override: bool=False, safe_mode: bool, autonomous: bool=False, resume_mode: bool, extra_args: list[str], no_helpers: bool=False, no_auto_auth: bool=False, browser: bool=False, share_images: bool=False, persistent: bool=False, explicit_persistent: bool=False, explicit_ephemeral: bool=False, detach: bool=False, restart: bool=False, model_override: str | None=None, cli_env: list[str] | None=None, box_shell_mode: bool=False, explicit_agent: str | None=None, setup_only: bool=False, print_container: bool=False, warm_only: bool=False) -> int
 def _print_setup_did_not_take(target) -> None
-def _spawn_creds_watcher(proj) -> None
+def _spawn_creds_watcher(std, proj) -> None
 def _teardown_persistent_box(runtime: ContainerRuntime, container_name: str) -> None
 def _build_config_env(env_slots: 'CollapsedEnvs') -> dict[str, str]
 def _emit_secret_mounts(secrets, logger) -> 'tuple[list, list[str]]'

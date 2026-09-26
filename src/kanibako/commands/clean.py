@@ -12,8 +12,9 @@ from kanibako.errors import UserCancelled
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
-    helper_log_path,
+    box_logs_location,
     load_std_paths,
+    remove_box_logs,
     resolve_any_project,
 )
 from kanibako.utils import confirm_prompt
@@ -160,10 +161,9 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             return 2
 
     print("Removing session data... ", end="", flush=True)
-    # Remove the per-box helper log first (its path is derived from the box's
+    # Remove the per-box logs first (their paths are derived from the box's
     # tree, which the rmtree below may take with it for standalone).
-    log_file = helper_log_path(std, proj)
-    log_file.unlink(missing_ok=True)
+    remove_box_logs(*box_logs_location(std, proj))
 
     if proj.mode is BoxMode.standalone:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako
@@ -259,9 +259,9 @@ def _purge_all(std, config, *, force: bool) -> int:
             if vault_dir.is_dir():
                 shutil.rmtree(vault_dir, ignore_errors=True)
 
-        # Remove the per-box helper log if it exists.  PRIMARY logs live at
-        # @config.primary_workset/logs/<box>.jsonl (box == metadata dir name).
-        (std.primary_logs / f"{metadata_path.name}.jsonl").unlink(missing_ok=True)
+        # The per-box logs, under the PRIMARY workset's resolved ``workset.logs``
+        # (box == metadata dir name).
+        remove_box_logs(std.primary_logs, metadata_path.name)
 
         # M2: drop the now-dangling registry entry for this PRIMARY box.
         _unregister_purged_primary(std, metadata_path, project_path)
@@ -283,11 +283,11 @@ def _purge_all(std, config, *, force: bool) -> int:
                 print(f"Removing {label}... ", end="", flush=True)
                 if not remove_box_tree(project_dir):
                     _warn_undeleted(project_dir)
-                # ⚑ NAMED helper log — the RESOLVED ``workset.logs``, which is what the
+                # ⚑ NAMED logs — the RESOLVED ``workset.logs``, which is what the
                 # box's helpers.jsonl mount is bound from; the default leaf is
                 # ``<root>/logs``, and purging that while the log lives at a repoint
                 # left the file behind AND removed one the box never wrote.
-                (logs_dir / f"{proj_name}.jsonl").unlink(missing_ok=True)
+                remove_box_logs(logs_dir, proj_name)
                 print("done.")
                 removed += 1
 

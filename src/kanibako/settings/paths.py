@@ -44,7 +44,8 @@ from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsE
 
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.utils import project_hash, short_hash
-from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS, HOME_PATH,
+from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
+                                         CREDS_WATCHER_LOG_SUFFIX, HOME_PATH,
                                          IGNORE_FILE, KANIBAKO_PATH, KIND_PROJECT, KIND_WORKSET,
                                          PROFILE_FILE, RUN_USER_UID_PATH, SHELL_D_FILE,
                                          STANDALONE_META_DIR, SYSTEM_PATH_DEFAULTS,
@@ -1037,27 +1038,78 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
     whose declared default is ``@meta.box.path`` = ``box_data/`` — the same directory
     the composed form named, now reached through the key that may move it.
     """
+    return box_log_files(*box_logs_location(std, proj)).helper
+
+
+def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
+    """Per-box HOST log of the detached creds watcher — its stderr, beside the helper log.
+
+    The watcher runs detached with no terminal, so this file is the only place its
+    WARNING and ERROR records reach (:func:`kanibako.commands.start._spawn_creds_watcher`).
+    """
+    return box_log_files(*box_logs_location(std, proj)).creds_watcher
+
+
+class BoxLogFiles(NamedTuple):
+    """Every per-box file kanibako writes into a resolved ``workset.logs`` dir."""
+
+    helper: Path
+    creds_watcher: Path
+
+
+def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles:
+    """The per-box log files of box *box* in *logs_dir* — THE one place they are named.
+
+    ⚑ A new per-box file under ``workset.logs`` is added HERE, so every removal path
+    (:func:`remove_box_logs`) deletes it without being edited.
+    """
+    return BoxLogFiles(
+        helper=logs_dir / f"{box}.jsonl",
+        creds_watcher=logs_dir / f"{box}{CREDS_WATCHER_LOG_SUFFIX}",
+    )
+
+
+def remove_box_logs(logs_dir: Path, box: str) -> list[Path]:
+    """Delete box *box*'s log files from *logs_dir*; returns the ones that existed."""
+    removed = []
+    for log_file in box_log_files(logs_dir, box):
+        if log_file.is_file():
+            log_file.unlink()
+            removed.append(log_file)
+    return removed
+
+
+def standalone_logs_dir(root: Path) -> Path:
+    """The resolved ``workset.logs`` of the standalone box rooted at *root*.
+
+    *root* is the workset root of the degenerate workset, so the key is read from the
+    root ``workset.yaml``; its default is ``@meta.box.path`` = ``box_data/``.
+    """
+    # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
+    from kanibako.project.workset import load_workset_settings_doc, resolve_workset_logs
+
+    return resolve_workset_logs(root, load_workset_settings_doc(root), standalone=True)
+
+
+def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path, str]:
+    """``(resolved workset.logs dir, box name)`` for *proj*'s mode."""
     box = proj.name if proj.name else short_hash(proj.project_hash)
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_logs
 
     if proj.mode is BoxMode.standalone:
-        # ``metadata_path`` IS the standalone root (drift I), i.e. the workset root of
-        # the degenerate workset — so the key is read from the root ``workset.yaml``.
-        root = proj.metadata_path
-        return resolve_workset_logs(
-            root, load_workset_settings_doc(root), standalone=True) / f"{box}.jsonl"
+        # ``metadata_path`` IS the standalone root (drift I).
+        return standalone_logs_dir(proj.metadata_path), box
 
     if proj.mode is BoxMode.named:
         # The workset root is carried on the project group (root=ws.root).  ⚑ The
         # fallback still assumes the DEFAULT box layout; it is unreachable from
         # ``resolve_workset_project``, which always supplies the group.
         ws_root = proj.group.root if proj.group else proj.metadata_path.parent.parent
-        return resolve_workset_logs(
-            ws_root, load_workset_settings_doc(ws_root)) / f"{box}.jsonl"
+        return resolve_workset_logs(ws_root, load_workset_settings_doc(ws_root)), box
     # PRIMARY: the PRIMARY workset's logs dir — ``std.primary_logs`` is already the
     # RESOLVED ``workset.logs`` of the primary root (:func:`resolve_system_paths`).
-    return std.primary_logs / f"{box}.jsonl"
+    return std.primary_logs, box
 
 
 def _bootstrap_shell(shell_path: Path) -> None:

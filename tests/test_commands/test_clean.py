@@ -30,6 +30,25 @@ class TestClean:
         assert rc == 0
         assert not proj.metadata_path.exists()
 
+    def test_force_removes_the_box_logs(self, config_file, tmp_home, credentials_dir):
+        """Both per-box logs in ``workset.logs`` go with the session data — the helper log
+        and the creds watcher's log, which sit outside the box dir the rmtree takes."""
+        from kanibako.commands.clean import run
+        from kanibako.settings.paths import creds_watcher_log_path, helper_log_path
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        logs = [helper_log_path(std, proj), creds_watcher_log_path(std, proj)]
+        for log in logs:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text("x")
+
+        args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
+        assert run(args) == 0
+        assert [log for log in logs if log.exists()] == []
+
     def test_purge_unregisters_primary(self, config_file, tmp_home, credentials_dir):
         """M2: purging a primary box drops its PRIMARY-membership entry."""
         from kanibako.commands.clean import run
@@ -256,6 +275,35 @@ class TestCleanWorkset:
         assert not ac_proj.metadata_path.exists()
         # Workset settings should be gone
         assert not (ws.projects_dir / "purge-proj" / "data.txt").exists()
+
+    def test_purge_all_removes_every_box_log(self, config_file, tmp_home, credentials_dir):
+        """``--all`` deletes each box's log files — helper log and creds watcher log —
+        for PRIMARY boxes and for NAMED members alike."""
+        from kanibako.commands.clean import run
+        from kanibako.settings.paths import box_log_files
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        primary_dir = tmp_home / "all_logs"
+        primary_dir.mkdir()
+        primary = resolve_project(std, config, project_dir=str(primary_dir), initialize=True)
+        ws = create_workset("logs-ws", tmp_home / "worksets" / "logs-ws", std)
+        source = tmp_home / "logs_src"
+        source.mkdir()
+        add_project(ws, "logs-proj", source)
+        resolve_workset_project(
+            WorksetSpec.from_workset(ws), "logs-proj", std, config, initialize=True,
+        )
+        logs = [
+            *box_log_files(std.primary_logs, primary.metadata_path.name),
+            *box_log_files(ws.logs_dir, "logs-proj"),
+        ]
+        for log in logs:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text("x")
+
+        assert run(argparse.Namespace(all_projects=True, force=True)) == 0
+        assert [log for log in logs if log.exists()] == []
 
     def test_purge_workset_project_single(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.clean import run

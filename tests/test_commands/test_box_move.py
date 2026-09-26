@@ -111,6 +111,33 @@ class TestBoxMove:
         assert any(p.name == "movable" for p in ws2.projects)
 
 
+    def test_move_keeps_a_named_box_logs(self, config_file, tmp_home, credentials_dir):
+        """🛑 A move RELEASES the box from its old place through ``remove_project``, and
+        must not take its logs with it: both files survive a same-workset move."""
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.paths import (
+            WorksetSpec, box_log_files, resolve_workset_project,
+        )
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        source = tmp_home / "boxa_src"
+        source.mkdir()
+        add_project(ws, "boxa", source)
+        resolve_workset_project(
+            WorksetSpec.from_workset(ws), "boxa", std, config, initialize=True,
+        )
+        logs = box_log_files(ws.logs_dir, "boxa")
+        ws.logs_dir.mkdir(parents=True, exist_ok=True)
+        for log in logs:
+            log.write_text("x")
+
+        rc = run_move(_move_args(ws.workspaces_dir / "boxa", tmp_home / "boxa_moved"))
+        assert rc == 0
+        assert [log for log in logs if not log.exists()] == []
+
+
 class TestTargetWorksetResolutionIsCaseBlind:
     """``_resolve_target_workset`` backs ``box move --to-workset`` and convert-to-workset.
 

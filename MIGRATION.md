@@ -982,7 +982,7 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   or `workset.logs` now takes effect* (§2.58) before you next start a box, because it means data
   you already have may be in the other place.
   ⚑ **`workset.{vault_ro,vault_rw}` now also steer the verbs that DELETE.** `box rm --purge`,
-  `kanibako clean --purge`, `box move` and `box convert` remove the vault at the resolved
+  `kanibako box purge`, `box move` and `box convert` remove the vault at the resolved
   location, not the old composed one — check the value before you purge a box you set it on.
   Two safeguards limit what that can take. For a primary or named box only the per-box
   `<box-name>` directory under the arm is ever removed, never the arm itself. For a **standalone**
@@ -3852,7 +3852,7 @@ So the box trees were created, moved, duplicated, converted, purged and deleted 
 `<workset root>/boxes/`, and each box's helper log was written under the default
 `<workset root>/logs/`, whatever you had written in the settings file. Both are now resolved
 everywhere: the box store used by `create`, `box move`, `box duplicate`, `box convert`,
-`workset connect`, `workset disconnect`, `clean --purge` and `workset rm --purge`; the primary
+`workset connect`, `workset disconnect`, `box purge` and `workset rm --purge`; the primary
 workset's own box and log roots; and the host-side writer for every box's helper log, in all three
 modes — primary, named and standalone.
 
@@ -3883,18 +3883,21 @@ A standalone project is a workset too — a degenerate one rooted at the project
 `workset.yaml` sits at the root. Its `workset.logs` default is the box's own `box_data/`, so if you
 have repointed the key there, your existing log is the `<box-name>.jsonl` file inside `box_data/`.
 
-⚑ **Two limits are stated rather than fixed, so you can plan around them.** They are the same
-shape: a purge clears the tree it owns and will not follow a path you pointed outside it.
+⚑ **One limit is stated rather than fixed, so you can plan around it:** a purge clears the tree
+it owns and will not follow a directory you pointed outside it.
 
-- **`kanibako workset rm --purge` does not delete box trees under a `workset.boxes` you pointed
-  OUTSIDE the workset root.** The purge deletes the workset root and nothing beyond it, by design —
-  it will not remove a directory you nominated elsewhere. Those trees survive the purge and are
-  yours to delete by hand.
-- **A standalone box's helper log survives `kanibako box rm --purge` when `workset.logs` points
+- **`kanibako workset rm --purge` does not delete box trees under a `workset.boxes`, or box logs
+  under a `workset.logs`, you pointed OUTSIDE the workset root.** The purge deletes the workset
+  root and nothing beyond it, by design — it will not remove a directory you nominated elsewhere.
+  Those trees and logs survive the purge and are yours to delete by hand.
+
+`kanibako box rm --purge` is the exception for a box's log files, because it deletes them by name
+rather than with a tree:
+
+- **`kanibako box rm --purge` deletes a standalone box's log files even when `workset.logs` points
   outside the box.** That purge removes the box's `box_data/` directory whole, and a log you sent
-  elsewhere is not inside it, so the file is retained and is yours to delete. Nothing is lost by
-  deleting it — a helper log is a message record, not state. (`kanibako clean --purge` removes the
-  log file itself in either case; only the directory you nominated is left standing.)
+  elsewhere is not inside it, so it deletes the box's log files by name first — as
+  `kanibako box purge` does. The directory you nominated is left standing.
 
 ---
 

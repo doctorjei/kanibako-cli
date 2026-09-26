@@ -513,7 +513,7 @@ $XDG_DATA_HOME/kanibako/primary_workset/
 ├── workset.yaml
 ├── boxes/{name}/{home/ → ~/ , box.yaml}
 ├── vault/{ro,rw}/{name}/                        → ~/vault/{ro,rw}
-└── logs/{name}.jsonl
+└── logs/{name}.{jsonl,creds-watcher.log}
 # the box WORKSPACE stays external: your real project dir → ~/workspace
 ```
 
@@ -538,7 +538,7 @@ kanibako
 ├── boxes/{name}/{home/ → ~/ , box.yaml}
 ├── workspaces/{name}/                  → ~/workspace
 ├── vault/{ro,rw}/{name}/               → ~/vault/{ro,rw}
-└── logs/{name}.jsonl
+└── logs/{name}.{jsonl,creds-watcher.log}
 ```
 
 ### Standalone
@@ -566,7 +566,7 @@ kanibako box register ~/myproj         # or opt in afterwards
 {project}/                       ← project root
 ├── workset.yaml                 ← workset tier (degenerate workset at the root)
 ├── workspace/                   → ~/workspace  (a subdir, not the root)
-├── box_data/{home/ → ~/ , box.yaml, {name}.jsonl}
+├── box_data/{home/ → ~/ , box.yaml, {name}.{jsonl,creds-watcher.log}}
 └── vault/{ro,rw}/               → ~/vault/{ro,rw}
 ```
 

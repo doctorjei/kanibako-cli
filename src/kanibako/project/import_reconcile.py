@@ -41,7 +41,6 @@ from pathlib import Path
 from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.project.names import cross_kind_shadow_hatch, register_name
-from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.settings.bootstrap import STANDALONE_META_DIR
@@ -159,21 +158,14 @@ def import_standalone(
 
     # ⚑ Gate on the standalone MARKER (design D4): the box's own settings FILE is
     # the signal — NOT ``project.mode``.  No marker → nothing to import.
-    from kanibako import kuid
-    from kanibako.launch import box_identity, box_resolve
-    from kanibako.settings.config import read_workset_kuid
+    from kanibako.launch import box_resolve
 
     if not box_resolve.standalone_settings_present(root):
         return None
 
-    # ⚑ Compose the LIVE name kuid-first (mirrors box_resolve's standalone
-    # branch): the stored ``workset.kuid`` prefixes the CURRENT dir leaf, so a
-    # MOVED box keeps its stable identity.  A pre-kuid box (SENTINEL) → the leaf.
-    stored_kuid = read_workset_kuid(root / WORKSET_META_FILE)
-    if stored_kuid != kuid.SENTINEL:
-        name = box_identity.compose_standalone_name(stored_kuid, root)
-    else:
-        name = root.name
+    # ⚑ The LIVE name, by THE one naming rule; an unregistered box has no stored
+    # registry name, so a pre-kuid box falls back to its leaf.
+    name = box_resolve.standalone_box_name(root, None)
 
     # Collision check against a DIFFERENT root.
     other_root = registry_store.standalone_root(registry, name)  # ⚑ case-blind (§0)

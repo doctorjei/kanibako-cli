@@ -33,7 +33,7 @@ def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
 def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool
-def _teardown_standalone_box(root: Path) -> bool
+def _teardown_standalone_box(root: Path, registered_name: str) -> bool
 def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int

@@ -168,7 +168,7 @@ def resolve_workset_boxes(
     ``resolve_workset_workspaces``: spec §2c gives standalone
     ``@meta.workset.path/box_data`` where primary/named get ``.../boxes``.
     🛑 It does NOT make the standalone box store repointable end to end: home, the
-    vault teardown, ``clean --purge`` and DETECTION still compose the literal
+    vault teardown, ``box purge`` and DETECTION still compose the literal
     ``box_data`` (``system-design`` makes that locator a spec clause).  Today the one
     caller that passes it is ``resolve_workset_logs(..., standalone=True)``, which
     needs the value to answer ``@meta.box.path``.
@@ -452,7 +452,7 @@ class Workset:
         """The resolved ``workset.boxes`` dir — ⚑ RESOLVED, not composed.
 
         ⚑⚑ This is where box trees are CREATED, MOVED and REMOVED (``add_project``,
-        ``remove_project``, ``box move``/``duplicate``/``convert``, ``clean --purge``),
+        ``remove_project``, ``box move``/``duplicate``/``convert``, ``box purge``),
         so composing ``<root>/boxes`` here while detection resolved the key left a
         repointed root DETECTED BUT MISLOCATED — found by the walk, then written to
         somewhere it does not live.  The launch seam has always resolved the same key
