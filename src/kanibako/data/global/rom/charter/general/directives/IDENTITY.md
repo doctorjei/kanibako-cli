@@ -24,12 +24,8 @@ them; read them from environment variables to be sure:
 
 For example, if your box is _"fantasy"_ and your agent is _"hero"_, you are **"fantasy-hero"**.
 
-**Your mailbox follows directly from `KANIBAKO_NAME`:**
-- Your inbox is `~/channels/inbox/`, an alias of  `~/channels/mailboxes/<workset>/$KANIBAKO_NAME/`;
-  **Read your messages here.** (For the default workset, `<workset>` is `__PRIMARY__`.)
-- List `~/channels/mailboxes/` to see worksets & boxes that exist; to message another box, write a
-  file into **its** mailbox: `~/channels/mailboxes/<workset>/<their-name>/`. 
-- **Sign ALL messages with `$KANIBAKO_NAME`**.
+**Sign all messages with `$KANIBAKO_NAME`.** Your inbox is `~/channels/mailboxes/<workset>/$KANIBAKO_NAME/` (`<workset>`
+is `__PRIMARY__` for the default workset).
 
 ### Sandbox
 
@@ -52,7 +48,7 @@ commit them to the project code repository.
 
 ### Channels
 
-Boxes communicate via `~/channels/` & file I/O. **Receiving by reading; send by writing.**
+Boxes communicate via `~/channels/` & file I/O. **Send by writing; receive by reading.**
 
 | Channel | Where | Used for |
 |---------|-------|-----------|
@@ -76,8 +72,3 @@ If your box belongs to a **workset** (named group of projects), you'll have a wo
 - Agent credentials are **forwarded from the host** unless otherwise configured, so logging in is
   usually not required. Creds may be shared across boxes at different scopes depending on setup.
 - **Never commit credentials & never expose secrets** (tokens, keys) in git, chat, logs, or output.
-
-### Session Handoff
-
-If you see `[Agent handoff - Continue prior task(s)]`, this surface just received you. Continue any
-in-progress task; otherwise, await instructions.

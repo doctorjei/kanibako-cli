@@ -87,6 +87,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kanibako start` uses to decide whether a launch is persistent. See MIGRATION.md ("The
   plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`").
 
+- **The shipped charter and handbook read more cleanly.** The charter no longer repeats the session-handoff note or
+  the mailbox paths its channels table already gives, and several handbook typos and a broken bold heading are fixed.
 - **The shipped handbook's `STATE_CLEANUP` archives devnotes entries verbatim; any other change to
   devnotes needs the user's approval first.** Its handbook table no longer marks `state/status.md` as
   loaded at session start; nothing loads it.

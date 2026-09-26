@@ -12,8 +12,8 @@ instructions and information should go in the box's notebook (not here).
 
 ## System-Wide Information
 
-When saving memories, notes, or other persistent files, remind yourself to review your directives
-to ensure alignment with the elements of the handbook (playbook, notebook, and workbook).
+When saving memories, notes, or other persistent files, review your directives to ensure what you save aligns
+with the canon.
 
 ### Starting a New Session
 
@@ -21,8 +21,6 @@ to ensure alignment with the elements of the handbook (playbook, notebook, and w
 
 1. Check your mailbox for messages from others; monitor for mid-session messages via hook handles
 2. If workspace or its subdirectories are git repositories, check status for uncommitted changes
-
---
 
 ### Directives
 __IMPORTSECTION__("directives/*")
