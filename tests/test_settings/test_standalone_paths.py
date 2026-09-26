@@ -270,7 +270,7 @@ class TestStandaloneFixedPaths:
         assert not (resolved / "box_data" / "box.yaml").exists()
 
     @staticmethod
-    def _set_workset_key(root, leaf: str, value: str) -> None:
+    def _set_workset_key(root, leaf: str, value: str | None) -> None:
         """Merge ONE ``workset.<leaf>`` into the root workset.yaml, keeping the rest.
 
         ⚑ Merge, never overwrite: that file is the standalone box's WORKSET tier AND
@@ -323,6 +323,22 @@ class TestStandaloneFixedPaths:
         elsewhere = tmp_path / "log-store"
         self._set_workset_key(resolved, "logs", str(elsewhere))
         assert helper_log_path(std, proj) == elsewhere / f"{proj.name}.jsonl"
+
+    def test_a_null_standalone_logs_names_no_log(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        """A present ``<None>`` ``workset.logs`` is a value ([R177]): the standalone
+        default ``@meta.box.path`` must NOT stand in for it — there is no log."""
+        from kanibako.settings.paths import standalone_logs_dir
+
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        resolved = project_dir.resolve()
+        self._set_workset_key(resolved, "logs", None)
+        assert standalone_logs_dir(resolved) is None
+        assert helper_log_path(std, proj) is None
+        assert creds_watcher_log_path(std, proj) is None
 
     def test_creds_watcher_log_sits_beside_the_helper_log(
         self, std, config, project_dir, credentials_dir, tmp_path,

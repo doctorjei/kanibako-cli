@@ -110,7 +110,8 @@ class StandardPaths:
     # PRIMARY-workset vault + logs roots under ``@config.primary_workset``.
     primary_vault_ro: Path
     primary_vault_rw: Path
-    primary_logs: Path
+    # ``None`` when the PRIMARY ``workset.logs`` is a present ``<None>``: no logs dir.
+    primary_logs: Path | None
 
 
 @dataclass(frozen=True)
@@ -210,7 +211,7 @@ class _WorksetLike(Protocol):
     @property
     def vault_rw_dir(self) -> Path: ...
     @property
-    def logs_dir(self) -> Path: ...
+    def logs_dir(self) -> Path | None: ...
     @property
     def projects(self) -> Sequence[_WorksetProjectLike]: ...
 
@@ -503,7 +504,11 @@ def resolve_system_paths(set_values: Mapping[str, str],
     resolved["_primary_boxes"] = resolve_workset_boxes(pw, pw_settings)
     resolved["_primary_vault_ro"] = resolve_workset_vault_ro(pw, pw_settings)
     resolved["_primary_vault_rw"] = resolve_workset_vault_rw(pw, pw_settings)
-    resolved["_primary_logs"] = resolve_workset_logs(pw, pw_settings)
+    # ⚑ ``_primary_logs`` is OMITTED when ``workset.logs`` is a present ``<None>`` — the
+    # table holds paths only; :func:`load_std_paths` reads the omission as ``None``.
+    primary_logs = resolve_workset_logs(pw, pw_settings)
+    if primary_logs is not None:
+        resolved["_primary_logs"] = primary_logs
     return resolved
 
 
@@ -836,7 +841,7 @@ def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
                      boxes=resolved["_primary_boxes"],
                      primary_vault_ro=resolved["_primary_vault_ro"],
                      primary_vault_rw=resolved["_primary_vault_rw"],
-                     primary_logs=resolved["_primary_logs"])
+                     primary_logs=resolved.get("_primary_logs"))
 
 
 def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None, *,
@@ -1026,8 +1031,11 @@ def _standalone_box_paths(root: Path) -> tuple[Path, Path, Path]:
     return home, vault_ro, vault_rw
 
 
-def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
+def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None:
     """Per-box, per-mode HOST path for the helper message log (the ``helpers.jsonl`` bind source).
+
+    ``None`` when the box's ``workset.logs`` is a present ``<None>``: the hub keeps no log
+    and the helper-log bind is omitted (companion, "The helper-log bind").
 
     ⚑⚑ THIS IS THE HUB'S WRITER, and the MOUNT it must agree with is the spec's own
     spelling ``@workset.logs/@{meta.box.name}.jsonl`` (``data/core-defaults.yaml``,
@@ -1038,16 +1046,19 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
     whose declared default is ``@meta.box.path`` = ``box_data/`` — the same directory
     the composed form named, now reached through the key that may move it.
     """
-    return box_log_files(*box_logs_location(std, proj)).helper
+    logs_dir, box = box_logs_location(std, proj)
+    return None if logs_dir is None else box_log_files(logs_dir, box).helper
 
 
-def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path:
+def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None:
     """Per-box HOST log of the detached creds watcher — its stderr, beside the helper log.
 
     The watcher runs detached with no terminal, so this file is the only place its
     WARNING and ERROR records reach (:func:`kanibako.commands.start._spawn_creds_watcher`).
+    ``None`` when the box's ``workset.logs`` is a present ``<None>``.
     """
-    return box_log_files(*box_logs_location(std, proj)).creds_watcher
+    logs_dir, box = box_logs_location(std, proj)
+    return None if logs_dir is None else box_log_files(logs_dir, box).creds_watcher
 
 
 class BoxLogFiles(NamedTuple):
@@ -1069,9 +1080,14 @@ def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles:
     )
 
 
-def remove_box_logs(logs_dir: Path, box: str) -> list[Path]:
-    """Delete box *box*'s log files from *logs_dir*; returns the ones that existed."""
-    removed = []
+def remove_box_logs(logs_dir: Path | None, box: str) -> list[Path]:
+    """Delete box *box*'s log files from *logs_dir*; returns the ones that existed.
+
+    A ``None`` *logs_dir* (``workset.logs`` is ``<None>``) holds no logs: nothing to delete.
+    """
+    removed: list[Path] = []
+    if logs_dir is None:
+        return removed
     for log_file in box_log_files(logs_dir, box):
         if log_file.is_file():
             log_file.unlink()
@@ -1079,11 +1095,12 @@ def remove_box_logs(logs_dir: Path, box: str) -> list[Path]:
     return removed
 
 
-def standalone_logs_dir(root: Path) -> Path:
+def standalone_logs_dir(root: Path) -> Path | None:
     """The resolved ``workset.logs`` of the standalone box rooted at *root*.
 
     *root* is the workset root of the degenerate workset, so the key is read from the
-    root ``workset.yaml``; its default is ``@meta.box.path`` = ``box_data/``.
+    root ``workset.yaml``; its default is ``@meta.box.path`` = ``box_data/``.  ``None``
+    when the key is a present ``<None>``.
     """
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_logs
@@ -1091,8 +1108,8 @@ def standalone_logs_dir(root: Path) -> Path:
     return resolve_workset_logs(root, load_workset_settings_doc(root), standalone=True)
 
 
-def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path, str]:
-    """``(resolved workset.logs dir, box name)`` for *proj*'s mode."""
+def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]:
+    """``(resolved workset.logs dir, box name)`` for *proj*'s mode; the dir is ``None`` under ``<None>``."""
     box = proj.name if proj.name else short_hash(proj.project_hash)
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_logs

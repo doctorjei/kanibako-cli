@@ -52,6 +52,7 @@ from kanibako.errors import LegacyWorksetIdentityError, WorksetError
 from kanibako.identifiers import find_identifier
 from kanibako.project.names import register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
+from kanibako.settings.settings_resolve import UNSET, _Unset
 from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
@@ -133,15 +134,31 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
 
 def _workset_path_repoint(
     workset_settings: Mapping[str, Any] | None, leaf: str,
-) -> str | None:
-    """Return the RAW ``workset.<leaf>`` repoint from the routed ``workset: {<leaf>: …}`` slot."""
+) -> str | None | _Unset:
+    """Return the RAW ``workset.<leaf>`` repoint from the routed ``workset: {<leaf>: …}`` slot.
+
+    THREE states: a string repoint; ``None`` for a PRESENT ``<None>`` (``<leaf>: null``);
+    :data:`UNSET` when there is no repoint, so the key takes its default.  An empty or
+    other falsy value is UNSET too, as it always was — ``""`` is not yet distinguished.
+    """
     if isinstance(workset_settings, Mapping):
         workset_table = workset_settings.get("workset")
-        if isinstance(workset_table, Mapping):
-            repoint = workset_table.get(leaf)
+        if isinstance(workset_table, Mapping) and leaf in workset_table:
+            repoint = workset_table[leaf]
+            if repoint is None:
+                return None
             if repoint:
                 return str(repoint)
-    return None
+    return UNSET
+
+
+def _repoint_or_default(repoint: str | None | _Unset) -> str | None:
+    """COLLAPSE a present ``<None>`` into "take the default" — keys whose S3 pass is still owed.
+
+    Only ``workset.logs`` carries ``<None>`` through (:func:`resolve_workset_logs`); every
+    other dir key still reads a present ``<None>`` as unset, which [R177] does not allow.
+    """
+    return repoint if isinstance(repoint, str) else None
 
 
 def resolve_workset_workspaces(
@@ -151,7 +168,7 @@ def resolve_workset_workspaces(
     """Return the resolved ``workset.workspaces`` dir (*standalone* selects the singular default)."""
     return resolve_workset_dir_key(
         workset_root,
-        _workset_path_repoint(workset_settings, _WORKSPACES_LEAF),
+        _repoint_or_default(_workset_path_repoint(workset_settings, _WORKSPACES_LEAF)),
         _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF,
         key=_WORKSPACES_LEAF,
     )
@@ -174,7 +191,7 @@ def resolve_workset_boxes(
     """
     return resolve_workset_dir_key(
         workset_root,
-        _workset_path_repoint(workset_settings, BOXES_DIR_NAME),
+        _repoint_or_default(_workset_path_repoint(workset_settings, BOXES_DIR_NAME)),
         _STANDALONE_BOXES_LEAF if standalone else BOXES_DIR_NAME,
         key=BOXES_DIR_NAME,
     )
@@ -183,8 +200,11 @@ def resolve_workset_boxes(
 def resolve_workset_logs(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
     *, standalone: bool = False,
-) -> Path:
+) -> Path | None:
     """Return the resolved ``workset.logs`` dir (*standalone* takes the box-anchored default).
+
+    ``None`` when ``workset.logs`` is a present ``<None>``: there is no logs dir, so nothing
+    writes a box log and the helper-log bind is omitted (companion, "The helper-log bind").
 
     ⚑ STANDALONE's declared default is ``@meta.box.path`` (spec §2c), a ref the
     no-snapshot route refuses BY NAME — in primary/named it chains through
@@ -195,14 +215,16 @@ def resolve_workset_logs(
     than a leaf, so a set and an unset value take one grammar and one answer.
     """
     repoint = _workset_path_repoint(workset_settings, _LOGS_LEAF)
+    if repoint is None:
+        return None
     if not standalone:
         return resolve_workset_dir_key(
-            workset_root, repoint, _LOGS_LEAF, key=_LOGS_LEAF,
+            workset_root, _repoint_or_default(repoint), _LOGS_LEAF, key=_LOGS_LEAF,
         )
     boxes = str(resolve_workset_boxes(workset_root, workset_settings, standalone=True))
     return resolve_workset_dir_key(
         workset_root,
-        repoint or f"@{_BOX_PATH_REF}",
+        repoint if isinstance(repoint, str) else f"@{_BOX_PATH_REF}",
         "",  # unreachable: the standalone default above is a ref, never a leaf
         key=_LOGS_LEAF,
         extra_refs={_BOX_PATH_REF: boxes, _BOXES_REF: boxes},
@@ -215,7 +237,7 @@ def resolve_workset_channelroot(
     """Return the resolved ``workset.channelroot`` — ⚑ primary/named ONLY; callers gate on mode."""
     return resolve_workset_dir_key(
         workset_root,
-        _workset_path_repoint(workset_settings, "channelroot"),
+        _repoint_or_default(_workset_path_repoint(workset_settings, "channelroot")),
         _CHANNELROOT_LEAF,
         key="channelroot",
     )
@@ -227,7 +249,7 @@ def resolve_workset_canon(
     """Return the resolved ``workset.canon`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included."""
     return resolve_workset_dir_key(
         workset_root,
-        _workset_path_repoint(workset_settings, _CANON_LEAF),
+        _repoint_or_default(_workset_path_repoint(workset_settings, _CANON_LEAF)),
         _CANON_LEAF,
         key=_CANON_LEAF,
     )
@@ -239,7 +261,7 @@ def resolve_workset_template(
     """Return the resolved ``workset.template`` dir — ⚑ primary/named ONLY; <None> in standalone."""
     return resolve_workset_dir_key(
         workset_root,
-        _workset_path_repoint(workset_settings, _TEMPLATE_LEAF),
+        _repoint_or_default(_workset_path_repoint(workset_settings, _TEMPLATE_LEAF)),
         _TEMPLATE_LEAF,
         key=_TEMPLATE_LEAF,
     )
@@ -251,7 +273,7 @@ def resolve_workset_vault_ro(
     """Return the resolved ``workset.vault_ro`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included."""
     return resolve_workset_dir_key(
         workset_root,
-        _workset_path_repoint(workset_settings, _VAULT_RO_KEY),
+        _repoint_or_default(_workset_path_repoint(workset_settings, _VAULT_RO_KEY)),
         _VAULT_RO_LEAF,
         key=_VAULT_RO_KEY,
     )
@@ -263,7 +285,7 @@ def resolve_workset_vault_rw(
     """Return the resolved ``workset.vault_rw`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included."""
     return resolve_workset_dir_key(
         workset_root,
-        _workset_path_repoint(workset_settings, _VAULT_RW_KEY),
+        _repoint_or_default(_workset_path_repoint(workset_settings, _VAULT_RW_KEY)),
         _VAULT_RW_LEAF,
         key=_VAULT_RW_KEY,
     )
@@ -487,8 +509,10 @@ class Workset:
         return resolve_workset_vault_rw(self.root, load_workset_settings_doc(self.root))
 
     @property
-    def logs_dir(self) -> Path:
+    def logs_dir(self) -> Path | None:
         """The resolved ``workset.logs`` dir — ⚑ RESOLVED, not composed; primary/named ONLY.
+
+        ``None`` when ``workset.logs`` is a present ``<None>`` (no logs dir).
 
         ⚑ The helper-log MOUNT has always been the spec spelling
         (``@workset.logs/@{meta.box.name}.jsonl``, ``data/core-defaults.yaml``), so a
@@ -537,7 +561,9 @@ def _load_workset(root: Path, name: str) -> Workset:
     ]
     return Workset(
         name=name, root=root, projects=projects,
-        workspaces_repoint=_workset_path_repoint(settings_doc, _WORKSPACES_LEAF),
+        workspaces_repoint=_repoint_or_default(
+            _workset_path_repoint(settings_doc, _WORKSPACES_LEAF),
+        ),
     )
 
 
@@ -630,7 +656,10 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 # ---------------------------------------------------------------------------
 
 def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]:
-    """The four dirs a workset root is made of — ⚑ three RESOLVED, ``vault`` alone literal."""
+    """The four dirs a workset root is made of — ⚑ three RESOLVED, ``vault`` alone literal.
+
+    Three when ``workset.logs`` is a present ``<None>``: that key then names no dir.
+    """
     # ⚑⚑ THE RESOLVED DIRS ARE THE LOCATOR (system-design, NAMED arm of "Detect =
     # ancestor-walk").  ``boxes``, ``workspaces`` and ``logs`` are all declared,
     # repointable workset keys, so the locator must be what each one RESOLVES to.
@@ -643,12 +672,16 @@ def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]:
     # workset.yaml yet, so the read yields None and every leaf is its default — the same
     # four dirs the pre-refactor literals made.
     settings_doc = load_workset_settings_doc(root)
-    return (
+    dirs = [
         resolve_workset_boxes(root, settings_doc),
         resolve_workset_workspaces(root, settings_doc),
         root / _VAULT_LEAF,
-        resolve_workset_logs(root, settings_doc),
-    )
+    ]
+    # A present-``<None>`` ``workset.logs`` has no dir, so the skeleton is the other three.
+    logs = resolve_workset_logs(root, settings_doc)
+    if logs is not None:
+        dirs.append(logs)
+    return tuple(dirs)
 
 
 def is_workset_skeleton(root: Path) -> bool:
@@ -659,7 +692,8 @@ def is_workset_skeleton(root: Path) -> bool:
     *"is a workset here"* — [R139]: detection and naming are two questions, and
     answering one does not answer the other.  ``_is_standalone_meta_dir`` is the same
     shape for the same reason.
-    ⚑ ALL FOUR are required: any one of them alone is an ordinary directory name.
+    ⚑ ALL are required (four, or three under a ``<None>`` ``workset.logs``): any one of
+    them alone is an ordinary directory name.
     ⚑ Three of the four are RESOLVED through their workset keys, so this finds a root
     that has repointed ``workset.boxes``, ``workset.workspaces`` or ``workset.logs``.
     """
@@ -793,9 +827,9 @@ def default_workset(std: StandardPaths) -> Workset:
         projects=projects,
         is_default=True,
         # PRIMARY honors a repoint from its own workset.yaml, like a named workset.
-        workspaces_repoint=_workset_path_repoint(
+        workspaces_repoint=_repoint_or_default(_workset_path_repoint(
             load_workset_settings_doc(std.primary_workset), _WORKSPACES_LEAF,
-        ),
+        )),
     )
 
 

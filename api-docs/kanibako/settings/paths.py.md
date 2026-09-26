@@ -44,12 +44,12 @@ def resolve_state_path(*, config_home: Path | None=None, data_home: Path | None=
 def resolve_cache_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def load_std_paths(config: BootstrapConfig | None=None) -> StandardPaths
 def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name_override: str | None=None, register: bool=True) -> ProjectPaths
-def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path
-def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path
+def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
+def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles
-def remove_box_logs(logs_dir: Path, box: str) -> list[Path]
-def standalone_logs_dir(root: Path) -> Path
-def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path, str]
+def remove_box_logs(logs_dir: Path | None, box: str) -> list[Path]
+def standalone_logs_dir(root: Path) -> Path | None
+def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]
 def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def load_primary_boxes(primary_workset: Path) -> dict[str, str]
@@ -143,7 +143,7 @@ class StandardPaths:
     boxes: Path
     primary_vault_ro: Path
     primary_vault_rw: Path
-    primary_logs: Path
+    primary_logs: Path | None
 
 @dataclass(frozen=True)
 class ProjectGroup:
@@ -202,7 +202,7 @@ class _WorksetLike(Protocol):
     @property
     def vault_rw_dir(self) -> Path
     @property
-    def logs_dir(self) -> Path
+    def logs_dir(self) -> Path | None
     @property
     def projects(self) -> Sequence[_WorksetProjectLike]
 

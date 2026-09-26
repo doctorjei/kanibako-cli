@@ -5449,6 +5449,23 @@ archive`; a hard link leading out of the archive is still refused.
   names the entries it could not copy, and exits `1`. Clear what is in the way at the destination
   and run it again.
 
+### 2.89 A `workset.logs` of `null` means no logs
+
+**Read this if a `workset.yaml` sets `workset.logs` to `null`** — the primary workset's, a named
+workset's, or a standalone box's root file. A `null` written by `--null` counts.
+
+**What changed.** In v1.8.0-rc2 a `null` `workset.logs` was read as if the key were not set: the
+logs went to the default directory (`<workset>/logs/`, or `box_data/` for a standalone box) and
+the box got its `~/.kanibako/state/helpers.jsonl` mount. `null` is now a value that names no
+directory. The helper hub keeps no message log, the box gets no `helpers.jsonl` mount, the
+credentials watcher's output is discarded, and `box rm --purge`, `box purge` and
+`workset disconnect --remove-files` have no box logs to delete. The helper socket is still
+mounted. An empty `workset.logs` (`""`) still takes the default directory, as before.
+
+**What to do.** If you want the logs, delete the `logs:` line (the default directory answers
+again) or give it a path. Logs already written to the default directory stay there; delete them
+yourself if you no longer want them.
+
 ---
 
 ## 3. For plugin authors

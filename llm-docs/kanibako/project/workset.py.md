@@ -144,6 +144,15 @@ default TABLE is the source, never a second literal at a consumer site.
   `workset rm --purge`, deliberately — `delete_workset`'s loop is a pre-pass for `rmtree(root)`, so
   it is owed only to what that call reaches. Closing it needs a retained-path report, not a wider
   rmtree (the line `standalone_vault_teardown` already draws).
+* **A present-`<None>` `workset.logs` names NO dir** (companion, "The helper-log bind": a `null`
+  one makes the bind's source `<None>` and the bind is omitted). `resolve_workset_logs` returns
+  `None` in every mode — the standalone `@meta.box.path` default does not stand in for it — and so
+  do `Workset.logs_dir`, `StandardPaths.primary_logs`, `settings/paths.py`'s `helper_log_path`,
+  `creds_watcher_log_path` and `standalone_logs_dir`. `_workset_skeleton_dirs` then holds three
+  dirs, so such a root is still detected; `remove_box_logs(None, …)` deletes nothing; the hub keeps
+  no message log; and `core_defaults.helper_default_categories` omits the log bind while keeping
+  the socket's. The loud warning [R185] owes when only one of the bind's entry and source is
+  `<None>` is not here yet — it belongs to the standard-bind warning pass.
 
 ⚑ **The repoint SLOT is the same key in every mode** — only the default FORMULA varies. A mode flag
 selects a default, never a different storage location.
@@ -352,7 +361,7 @@ def vault_ro_dir(self) -> Path      # the RESOLVED workset.vault_ro
 @property
 def vault_rw_dir(self) -> Path      # the RESOLVED workset.vault_rw
 @property
-def logs_dir(self) -> Path          # the RESOLVED workset.logs
+def logs_dir(self) -> Path | None   # the RESOLVED workset.logs; None under a <None> value
 @property
 def settings_path(self) -> Path     # {root}/workset.yaml — may NOT exist
 @property
@@ -386,12 +395,22 @@ file degrades a repoint to the default composition instead of crashing the detec
 that call it.
 
 ```python
-def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None
+def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None | _Unset
+def _repoint_or_default(repoint: str | None | _Unset) -> str | None
 ```
 Return the RAW `workset.<leaf>` repoint from a workset settings doc.
 
-Reads the routed nested slot `workset: {<leaf>: …}`. `None` — or a non-mapping table, or an empty
-value — means unset, and the caller falls back to the default formula.
+Reads the routed nested slot `workset: {<leaf>: …}`. THREE states, because `<None>` is a value
+([R177]) and not an absence: a string repoint; `None` for a present `<None>` (`<leaf>: null`); and
+`settings_resolve.UNSET` when there is no repoint — no doc, a non-mapping table, a missing leaf,
+or an empty value — so the caller takes the default formula. `""` is still UNSET, as it was before
+the split: the spec's `""` ≠ unset (§2h) is not yet carried for these keys.
+
+`_repoint_or_default` COLLAPSES the three states back to the old two for every dir key whose S3
+pass is still owed (workspaces, boxes, channelroot, canon, template, vault_ro, vault_rw): a present
+`<None>` still takes the default there, which [R177] does not allow. Only `resolve_workset_logs`
+carries `None` through. `launch/templates.py::_assert_stamp_leaf_in_root` reads the result with
+`isinstance(repoint, str)` for the same reason.
 
 ```python
 def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool = False) -> Path

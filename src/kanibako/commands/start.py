@@ -2282,9 +2282,11 @@ def _start_helper_hub(
     # ⚑⚑ THE RESOLVED KEY IS WHAT MAKES THIS AGREE WITH THE MOUNT, which is
     # emitted as the spec spelling @workset.logs/@{meta.box.name}.jsonl —
     # writer, .exists() gate and mount all name one file (migration M-14).
+    # ``None`` when ``workset.logs`` is a present ``<None>``: no hub log, no log bind.
     from kanibako.settings.paths import helper_log_path
     log_path = helper_log_path(std, proj)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Ensure helpers/ dir exists in shell_path
     helpers_dir = proj.shell_path / "helpers"
@@ -2325,7 +2327,7 @@ def _start_helper_hub(
         primary_workset=std.primary_workset,
     )
 
-    msg_log = MessageLog(log_path)
+    msg_log = MessageLog(log_path) if log_path is not None else None
     hub = HelperHub()
     hub.start(socket_path, helper_ctx, log=msg_log)
 
@@ -5067,8 +5069,10 @@ def _spawn_creds_watcher(std, proj) -> None:
     sink = None
     try:
         log_path = creds_watcher_log_path(std, proj)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        sink = open(log_path, "a")
+        # ``None``: ``workset.logs`` is a present ``<None>``, so there is no log to keep.
+        if log_path is not None:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            sink = open(log_path, "a")
     except Exception as exc:
         get_logger("start").warning(
             "creds watcher log unavailable (%s); its warnings will be discarded", exc,
@@ -6969,7 +6973,9 @@ def _resolve_launch_snapshot(
             default_categories, extra_default_categories,
             family="narrow injection", origins=cat_origins,
         )
-    if socket_path is not None and log_path is not None:
+    # ⚑ *socket_path* alone gates the helper table; a ``None`` *log_path* (``workset.logs``
+    # is ``<None>``) omits only the log bind, inside the table builder.
+    if socket_path is not None:
         _merge_default_categories(
             default_categories, core_defaults.helper_default_categories(
                 socket_path=socket_path,

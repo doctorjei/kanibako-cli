@@ -1183,6 +1183,90 @@ class TestWorksetBoxesAndLogsResolved:
                 )
 
 
+class TestWorksetLogsPresentNone:
+    """A present ``<None>`` ``workset.logs`` is a VALUE, not an absence ([R177]).
+
+    The companion ("The helper-log bind"): a ``null`` ``workset.logs`` makes the bind's
+    source ``<None>`` and the bind is omitted.  So the key resolves to NO dir — never to
+    its default — and every log reader, writer and remover sees that one answer.
+    """
+
+    def test_the_repoint_read_keeps_three_states(self):
+        from kanibako.project.workset import _workset_path_repoint
+        from kanibako.settings.settings_resolve import UNSET
+
+        assert _workset_path_repoint(None, "logs") is UNSET
+        assert _workset_path_repoint({"workset": {}}, "logs") is UNSET
+        assert _workset_path_repoint({"workset": {"logs": None}}, "logs") is None
+        assert _workset_path_repoint({"workset": {"logs": "/x"}}, "logs") == "/x"
+        # ``""`` is not yet distinguished from unset; it keeps its old answer.
+        assert _workset_path_repoint({"workset": {"logs": ""}}, "logs") is UNSET
+
+    def test_a_null_logs_resolves_to_no_dir_in_every_mode(self, tmp_path):
+        from kanibako.project.workset import resolve_workset_logs
+
+        doc = {"workset": {"logs": None}}
+        assert resolve_workset_logs(tmp_path, doc) is None
+        assert resolve_workset_logs(tmp_path, doc, standalone=True) is None
+
+    def test_a_named_workset_has_no_logs_dir_and_still_detects(self, std, tmp_home):
+        from kanibako.project.workset import is_workset_skeleton
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "nolog").resolve()
+        ws = create_workset("nolog", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"logs": None}})
+        assert ws.logs_dir is None
+        # The skeleton is the other three dirs; the default ``logs/`` is irrelevant.
+        (root / "logs").rmdir()
+        assert is_workset_skeleton(root)
+
+    def test_named_box_log_paths_are_none_and_removal_is_a_no_op(self, std, tmp_home):
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import (
+            ProjectGroup, ProjectPaths, creds_watcher_log_path, helper_log_path,
+            remove_box_logs,
+        )
+
+        root = (tmp_home / "worksets" / "nolog2").resolve()
+        ws = create_workset("nolog2", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"logs": None}})
+        proj = ProjectPaths(
+            project_path=ws.workspaces_dir / "b", project_hash="h" * 12,
+            metadata_path=ws.projects_dir / "b",
+            shell_path=ws.projects_dir / "b" / "home",
+            vault_ro_path=ws.vault_ro_dir / "b", vault_rw_path=ws.vault_rw_dir / "b",
+            is_new=False, mode=BoxMode.named, enable_vault=False, name="b",
+            group=ProjectGroup(name="nolog2", root=root, is_default=False,
+                               local_shared_base=root),
+        )
+        assert helper_log_path(std, proj) is None
+        assert creds_watcher_log_path(std, proj) is None
+        assert remove_box_logs(None, "b") == []
+
+    def test_a_null_primary_logs_is_none_on_std(self, tmp_home, config_file):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        std.primary_workset.mkdir(parents=True, exist_ok=True)
+        dump_doc(std.primary_workset / "workset.yaml", {"workset": {"logs": None}})
+        assert load_std_paths(load_config(config_file)).primary_logs is None
+
+    def test_the_helper_table_omits_only_the_log_bind(self, tmp_path):
+        from kanibako.settings import core_defaults
+
+        sock = tmp_path / "helper.sock"
+        sock.touch()
+        table = core_defaults.helper_default_categories(socket_path=sock, log_path=None)
+        dests = {dest for arm in table.values() for dest in arm}
+        assert dests == {
+            dest for dest in core_defaults.helper_bind_dests() if not dest.endswith(".jsonl")
+        }
+        assert len(dests) == 1
+
+
 class TestWorksetIdentityIsTheGlobalRegistry:
     """⚑⚑ A workset's identity is its ``worksets:`` entry in the GLOBAL registry, and
     nothing else.  Neither file under the root records a name: ``registry.yaml`` holds

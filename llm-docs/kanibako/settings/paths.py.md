@@ -99,6 +99,10 @@ does. `resolve_system_paths` reads that `workset.yaml` ONCE and routes all four 
 `std.primary_vault_*` (box create, `box rm`, `clean`, purge, the helper hub) then sees the ONE
 answer, with no edit at any of those sites.
 
+`primary_logs` is `Path | None`: `None` when the PRIMARY `workset.logs` is a present `<None>`. The
+path-tier table holds paths only, so `resolve_system_paths` OMITS `_primary_logs` in that case and
+`load_std_paths` reads the omission as `None`.
+
 ⚑ `boxes` and `primary_logs` joined the resolved set on 2026-08-29, with `Workset.projects_dir` /
 `logs_dir` and the named arm of `helper_log_path`. Before that they composed `pw / BOXES_PATH` and
 `pw / LOGS_PATH`, which is why the tripwire on those joins bans the CONSTANT and not just the
@@ -782,9 +786,10 @@ USER authored: a repointed arm may be an absolute path outside the root, which m
 longer drop-in portable. That is the user's own choice, expressed through a declared key.
 
 ```python
-def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path
+def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 ```
-Per-box, per-mode HOST path for the helper message log.
+Per-box, per-mode HOST path for the helper message log; `None` when the box's `workset.logs` is a
+present `<None>` (no logs dir, so no log and no `helpers.jsonl` bind).
 
 The log is the host source of the read-only `helpers.jsonl` bind into the box; it lives inside the
 box's own workset/box tree (never the old shared `@config.data/logs/<id>/` location):
@@ -827,20 +832,24 @@ DEFAULT box layout and is unreachable from `resolve_workset_project`, which alwa
 group.
 
 ```python
-def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path
+def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 ```
 Per-box HOST log of the detached creds watcher: `<resolved workset.logs>/<box>.creds-watcher.log`
 (suffix `bootstrap.CREDS_WATCHER_LOG_SUFFIX`), beside the helper log and resolved per mode the same
 way. `commands.start._spawn_creds_watcher` appends the watcher's stderr to it, so it is where the
 watcher's WARNING and ERROR records reach the user. Nothing is bound into the box from it.
+`None` under a `<None>` `workset.logs`; the watcher's stderr then goes to `DEVNULL`.
 
 ```python
 class BoxLogFiles(NamedTuple)          # helper: Path, creds_watcher: Path
 def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles
-def remove_box_logs(logs_dir: Path, box: str) -> list[Path]
-def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path, str]
-def standalone_logs_dir(root: Path) -> Path
+def remove_box_logs(logs_dir: Path | None, box: str) -> list[Path]
+def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]
+def standalone_logs_dir(root: Path) -> Path | None
 ```
+The `None` logs dir is a present-`<None>` `workset.logs`: it holds no logs, so
+`remove_box_logs(None, …)` returns `[]` and every delete path needs no guard of its own.
+
 `box_log_files` is THE one place a box's files under `workset.logs` are named; both path functions
 above derive from it, and `remove_box_logs` deletes whatever it lists (returning the files that
 existed). Every path that deletes a box's logs calls `remove_box_logs` — `box purge` and

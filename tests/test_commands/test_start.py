@@ -3868,6 +3868,35 @@ class TestRuntimeRootReachesTheHelperHub:
         assert run_dir.is_dir(), "the launch creates the runtime dir it binds in"
 
 
+    def test_a_null_logs_starts_the_hub_without_a_log(self, start_mocks, tmp_path):
+        """A present-``<None>`` ``workset.logs`` names no log ([R177], companion "The
+        helper-log bind"): the hub starts with NO message log and the helper table
+        still carries the socket bind, minus the log bind."""
+        from kanibako.channels import helper_listener as helper_listener_mod
+        from kanibako.settings import core_defaults
+
+        with start_mocks() as m, patch.object(
+            helper_listener_mod, "HelperHub",
+        ) as m_hub_cls, patch(
+            "kanibako.settings.paths.helper_log_path", return_value=None,
+        ), patch.object(
+            core_defaults, "helper_default_categories",
+            wraps=core_defaults.helper_default_categories,
+        ) as m_table:
+            m.agent_cfg.state["allow_helpers"] = "true"
+            m.load_std_paths.return_value.runtime = tmp_path / "run"
+            assert _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            ) == 0
+
+        assert m_hub_cls.return_value.start.call_count == 1, "the hub must start"
+        assert m_hub_cls.return_value.start.call_args.kwargs["log"] is None
+        assert m_table.call_count >= 1, "the socket alone must gate the helper table"
+        assert all(c.kwargs["log_path"] is None for c in m_table.call_args_list)
+
+
 class TestBinaryMountSafeFail:
     """A binary mount source missing at mount time -> clean kanibako error."""
 
