@@ -1838,15 +1838,39 @@ def _workset_floors(
     return meta_runtime, workset_anchor, auth_chain_floor(mode=mode, agent_name=agent_name)
 
 
+def _box_workset_floors(
+    std, proj, agent_name: str,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    """:func:`_workset_floors` for the box *proj*: the working set it is in, read off it.
+
+    ``channels.workset_root`` is the root the anchors hang off (``proj.metadata_path``
+    for standalone, NOT ``project_path``, the ``<root>/workspace`` subdir — spec §2c,
+    §4 example). The kinemata ``workset-channels-*`` / ``workset-partition`` views
+    call this, so they compare the launch's own per-mode root choice.
+    """
+    from kanibako.channels import channels as _channels
+    from kanibako.settings.paths import ProjectError
+
+    mode = proj.mode.value
+    if mode == "named" and proj.group is None:
+        raise ProjectError(
+            "named-mode project has no workset group (meta.runtime.ws_root)"
+        )
+    return _workset_floors(
+        std,
+        mode=mode,
+        ws_token=_channels.workset_name_token(proj),
+        ws_root=_channels.workset_root(proj, std),
+        local_channels=_channels.workset_channel_paths(proj, std),
+        agent_name=agent_name,
+    )
+
+
 def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs:
     """:func:`resolve_inputs` for the ``BOX`` subject: the box *proj*."""
     from kanibako.channels import channels as _channels
     from kanibako.settings.agent_select import launch_resolve_ctx
-    from kanibako.settings.paths import (
-        ProjectError,
-        box_workset_settings_paths,
-        system_path_floor,
-    )
+    from kanibako.settings.paths import box_workset_settings_paths, system_path_floor
 
     # ONE ctx builder (P7): the SELECTION pre-pass resolves against the identical
     # host-side namespace, so the two passes cannot disagree about what
@@ -1862,21 +1886,8 @@ def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> Laun
     # STANDALONE → the project ROOT (``proj.metadata_path``, NOT ``project_path``,
     # which is the ``<root>/workspace`` subdir — spec §2c and the §4 worked example).
     mode = proj.mode.value
-    if mode == "named" and proj.group is None:
-        raise ProjectError(
-            "named-mode project has no workset group (meta.runtime.ws_root)"
-        )
-    # The runtime, layout and auth floors: the per-mode work lives in ONE helper
-    # the WORKSET subject shares. ``channels.workset_root`` is the root those
-    # anchors hang off (``proj.metadata_path`` for standalone, NOT
-    # ``project_path``, the ``<root>/workspace`` subdir — spec §2c, §4 example).
-    meta_runtime, workset_anchor, auth_chain = _workset_floors(
-        std,
-        mode=mode,
-        ws_token=_channels.workset_name_token(proj),
-        ws_root=_channels.workset_root(proj, std),
-        local_channels=_channels.workset_channel_paths(proj, std),
-        agent_name=agent_name,
+    meta_runtime, workset_anchor, auth_chain = _box_workset_floors(
+        std, proj, agent_name,
     )
 
     # ``meta.*`` IDENTITY anchors (spec §2c/§2d): the resolved literals the launch

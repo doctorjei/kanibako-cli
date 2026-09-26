@@ -78,6 +78,7 @@ def _box_less_omits(key: str, *, in_workset: bool) -> bool
 def _omit_derived(ctx: ResolveCtx, is_seed: Callable[[str], bool], *floors: dict[str, object]) -> None
 def _agent_identity(agent_name: str, project_path: Path | None) -> dict[str, object]
 def _workset_floors(std, *, mode: str, ws_token: str, ws_root: Path, local_channels: 'WorksetChannels | None', agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
+def _box_workset_floors(std, proj, agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
