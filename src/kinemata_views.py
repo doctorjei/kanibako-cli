@@ -269,8 +269,9 @@ def every_mode_cell(floors: Any) -> dict[str, Any]:
     differ yields the `{mode: value}` map. That is how the manifest writes a
     `default:` or `value:` cell -- a uniform row is a scalar, a mode-keyed row a
     map, and a `null` arm is a value -- so the oracle's JSON and the declared cell
-    are compared as data, with no translation. (`format = "json"` refuses a
-    `translate`, so this notation step cannot be declared on the manifest side.)
+    are compared as data, with no translation. (Before kinemata 0.5.0, `format = "json"`
+    refused a `translate`, so this step could not be declared on the manifest side;
+    the per-mode map and its scalar collapse still need this function.)
     It fails closed: a manifest map whose three arms are equal reds as a scalar.
 
     🛑 A KEY SOME MODE OMITS IS LEFT OUT, because no cell can spell an omitted

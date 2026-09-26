@@ -1613,7 +1613,7 @@ kind = "code-patterns"
 # declaration records no default, and the code produces 'None'` -- and `produces
 # ''` with the `None` printed as nothing (0.3.0; unchanged under 0.4.0).
 # kinemata `0.4.0`'s `format = "json"` compares a declared `null` with a printed
-# `null`, but this table cannot take it: json REFUSES `translate` at load (rc 2),
+# `null`, but this table cannot take it: json REFUSED `translate` at load (rc 2) before 0.5.0,
 # and the `translate` hop below is load-bearing (its HOP CONTROL). So the shell
 # row is `shell-template-none`'s, a `json` table of its own, below.
 [[registry]]
@@ -1773,7 +1773,7 @@ where = { holds = "kinemata_views:bootstrap_path_row" }
 #     declaration records no default`); `json` meets a declared `null` with a
 #     printed `null`, and a row with no such field stays `records no default`.
 # So a view mixing scalars, per-mode maps and `null` arms is `json`, and one that
-# needs a `translate` -- which `json` refuses at load -- is `text` and holds no
+# needs a `translate` -- which `json` refused at load before 0.5.0 -- is `text` and holds no
 # map and no `null`.
 # ⚑ THE VIEWS SELECT BY `id_matches`, as `shell-tier-fence` does: no manifest
 # field names the rows one floor answers for. Each oracle prints its carrier's
@@ -3359,8 +3359,8 @@ authority = "declared"
 
 # ⚑ THE AGENT ARGUMENT IS THE SENTINEL `<@system.agent>`, the manifest's own
 # node-selector notation: the floor interpolates whatever node it is handed, so
-# handed the selector it composes the declared formula. (`json` refuses the
-# `translate` that would otherwise carry this hop.)
+# handed the selector it composes the declared formula. (`json` refused, before 0.5.0,
+# the `translate` that would otherwise carry this hop.)
 #   `# auth-chain-meta: 2 declared, 2 produced, in agreement, agreeing on value.`
 #   rc=0
 # NEGATIVE CONTROLS:
@@ -4353,7 +4353,7 @@ authority = "declared"
 translate = { pattern = '^\(.*, ("[^"]*")\)$', replacement = '\1' }
 
 # ⚑ `json`, BECAUSE THE VAULT CELLS ARE PER-MODE MAPS, and so the manifest's `(…)`
-# notation is written ORACLE-side: `json` refuses `translate`, the `every_mode_cell`
+# notation is written ORACLE-side: `json` refused `translate` before 0.5.0, the `every_mode_cell`
 # reason. The per-mode split is compared too, as on `workset-anchor-floor`: a uniform
 # row prints bare, a mode-varying one as its map. No row is dropped: with
 # `enable_vault=True` every mode emits all three; a row a future emitter adds in SOME

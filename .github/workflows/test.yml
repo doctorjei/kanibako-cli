@@ -137,6 +137,12 @@ jobs:
       # four commands printed output byte-identical to 0.4.0's. It is also what
       # lets `kinemata.toml`'s `keyspace` defer filenames to `filenames`
       # without losing a respelling inside a home module.
+      # ⚑ THE 0.5.0 BUMP MOVED NO VERDICT AND NO LINE A STEP HERE PRINTS.
+      # Measured 2026-09-26 on this tree: all five commands below printed output
+      # byte-identical to 0.4.1's, plain and under `-v`, every one rc 0. Its
+      # coverage lock is inert until the baseline is re-recorded; from then on a
+      # step whose own declaration is edited to cover less FAILS, and accepting
+      # the narrower claim means recording again (upstream's 0.5.0 changelog).
       # ⚑ DO NOT CARRY A FIGURE OUT OF UPSTREAM'S RELEASE LETTER. It measured a
       # pinned clone of this tree and reported a smaller number; the tree has
       # moved since, and upstream withdrew its own companion figure as a weak
@@ -158,7 +164,7 @@ jobs:
       # `0.4.0` loads it and stays GREEN while exempting a constant's whole home
       # module from `check`, so a respelling there is reported by nothing. The
       # measurement is in the `filenames` registry's note.
-      - run: pip install "kinemata[yaml]==0.4.1"
+      - run: pip install "kinemata[yaml]==0.5.0"
       # ⚑ THE PROJECT ITSELF IS INSTALLED HERE BECAUSE THE PARITY ORACLE IMPORTS
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
