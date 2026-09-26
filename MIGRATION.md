@@ -340,13 +340,17 @@ inside boxes. In order of likely impact:
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44);
     `workset show --effective` exits 1 on a working set file it cannot resolve, where it used to
-    print what it could read and exit 0 (§2.77); `box duplicate --to default` is now
-    `--to primary` and `--to workset` is now `--to named`, with no alias — see *2.84 `box duplicate
-    --to` takes the mode names: `primary`, `named`, `standalone`*; a `bootstrap` of `null` or `""`
-    no longer falls back to `tmux` but means no program — see *2.86 A `bootstrap` of `null` or `""`
-    means no bootstrap program*; and a plain-shell box takes its multiplexer from
+    print what it could read and exit 0 (§2.77); a plain-shell box takes its multiplexer from
     `agent.shell.bootstrap`, not `agent.default.bootstrap` — see *2.82 The plain-shell store is
-    `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`*.
+    `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`*; `box duplicate
+    --to default` is now `--to primary` and `--to workset` is now `--to named`, with no alias —
+    see *2.84 `box duplicate --to` takes the mode names: `primary`, `named`, `standalone`*; a
+    `bootstrap` of `null` or `""` no longer falls back to `tmux` but means no program — see *2.86
+    A `bootstrap` of `null` or `""` means no bootstrap program*; a config file that is one value
+    or a list stops the command, naming the file — see *2.87 A config file that is one value or a
+    list is refused instead of read as empty*; and `box move`, `convert`, `duplicate` and
+    `extract` copy a symlink as a symlink, not the file or directory it points at — see *2.88
+    `box move`, `convert`, `duplicate` and `extract` copy a symlink as a symlink*.
 
 ---
 
@@ -5415,6 +5419,35 @@ An empty file, or one holding only comments, is still read as empty.
 
 **What to do.** Open the named file. Write what you meant as keys in their tables, or delete the
 file if it holds nothing you need.
+
+### 2.88 `box move`, `convert`, `duplicate` and `extract` copy a symlink as a symlink
+
+**Read this if a box's workspace, home, vault or data holds symlinks and you move, convert,
+duplicate, archive and extract it, or restore a vault snapshot.**
+
+**What changed.** In v1.7.2 these copies followed each link: the copy got the linked file's or
+directory's contents in place of the link. Now the link itself is copied, with exactly the text it
+had, and a linked directory is never entered. That holds for `box move`, `box convert`,
+`box duplicate`, `box extract` and `box vault restore`, and for a vault snapshot that falls back to
+a plain copy because `rsync` is missing or failed. A dangling link is copied like any other, so it
+no longer aborts a move or convert. `box extract` now accepts an archive holding an absolute link
+or one leading out of the archive, which it used to refuse whole with `Error: Failed to extract
+archive`; a hard link leading out of the archive is still refused.
+
+**What to check.**
+
+- **A link you relied on being copied as its target's contents is now a link.** If the box needs
+  the contents, copy them in yourself (`cp -rL <link> <dest>` copies what a link points at).
+- **A relative link that leads out of the copied tree keeps its text**, so it is read from the new
+  location. Check that it still points where you mean after a move or convert.
+- **A duplicate shares what an absolute link points at with its source.** Editing through the link
+  in either box changes the same file.
+- **`box duplicate --force` onto an existing directory no longer writes through a link already
+  there, or copies a file into a directory of the same name.** A link from the source now
+  replaces an existing file or link of its name, but never an existing directory. The duplicate
+  copies everything else, then stops with `Error: Could not copy the workspace <src> to <dst>; …`,
+  names the entries it could not copy, and exits `1`. Clear what is in the way at the destination
+  and run it again.
 
 ---
 
