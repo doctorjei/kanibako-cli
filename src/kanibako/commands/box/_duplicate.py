@@ -18,6 +18,7 @@ from kanibako.identifiers import find_identifier
 from kanibako.settings.config_io import dump_doc
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
+from kanibako.tree_copy import copy_tree_keeping_links, failed_entries
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
@@ -169,13 +170,13 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
                 load_workset_settings_doc,
                 resolve_workset_workspaces,
             )
-            shutil.copytree(
+            _merge_workspace(
                 workspace_src,
                 resolve_workset_workspaces(
                     new_path, load_workset_settings_doc(new_path),
                     standalone=True,
                 ),
-                dirs_exist_ok=args.force,
+                args.force,
             )
         _duplicate_to_standalone(src_proj, new_path, std, args.force)
     else:
@@ -189,7 +190,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         from kanibako.errors import ProjectError
         try:
             if not args.bare and workspace_src.is_dir():
-                shutil.copytree(workspace_src, new_path, dirs_exist_ok=args.force)
+                _merge_workspace(workspace_src, new_path, args.force)
             _duplicate_to_local(src_proj, new_path, std, config, args.force)
         except FileExistsError:
             # F-3 (NIT): a no-force copy onto a pre-existing (unregistered) dir
@@ -218,6 +219,21 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     print(f"  from: {source_path}")
     print(f"    to: {new_path}")
     return 0
+
+
+def _merge_workspace(src: Path, dst: Path, force: bool) -> None:
+    """Copy the workspace *src* to *dst*, merging into an existing *dst* under *force*.
+
+    Raises ``ProjectError`` naming each entry the merge could not copy.
+    """
+    from kanibako.errors import ProjectError
+
+    try:
+        copy_tree_keeping_links(src, dst, dirs_exist_ok=force, replace_existing=force)
+    except shutil.Error as e:
+        listing = failed_entries(e)
+        detail = f"; {listing}" if listing is not None else f": {e}"
+        raise ProjectError(f"Could not copy the workspace {src} to {dst}{detail}") from e
 
 
 def _duplicate_to_standalone(src_proj, new_path, std, force):
@@ -272,7 +288,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     # then carry BOTH ``box_data/`` and a ``workset.yaml``, i.e. the standalone
     # MARKER (``box_resolve.standalone_settings_present``), under the SOURCE's kuid.
     src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path)
-    shutil.copytree(
+    copy_tree_keeping_links(
         src_meta_dir, dst_metadata,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home", BOX_META_FILE),
         dirs_exist_ok=True,
@@ -283,7 +299,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
             # The home carries the root-owned canon skeleton (J-7); a bare rmtree
             # fails with EACCES and strands a half-removed destination.
             remove_box_tree(dst_shell)
-        shutil.copytree(src_proj.shell_path, dst_shell)
+        copy_tree_keeping_links(src_proj.shell_path, dst_shell)
         # copytree carries the skeleton's modes but not its ownership — re-assert.
         materialize_canon_skeleton(dst_shell)
 
@@ -430,7 +446,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     try:
         if force and dst_project.is_dir():
             remove_box_tree(dst_project)
-        shutil.copytree(
+        copy_tree_keeping_links(
             src_meta_dir, dst_project,
             ignore=shutil.ignore_patterns(".kanibako.lock"),
         )
@@ -446,7 +462,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
         if src_proj.shell_path.is_dir():
             dst_home = dst_project / "home"
             if not dst_home.is_dir():
-                shutil.copytree(src_proj.shell_path, dst_home)
+                copy_tree_keeping_links(src_proj.shell_path, dst_home)
             materialize_canon_skeleton(dst_home)
     except BaseException:
         _unwind_local_name(std, project_name, dst_project)
@@ -594,7 +610,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     if not args.bare:
         ws_workspace = src_proj.project_path
         if ws_workspace.is_dir():
-            shutil.copytree(ws_workspace, new_path, dirs_exist_ok=args.force)
+            _merge_workspace(ws_workspace, new_path, args.force)
 
     # Copy metadata into target layout.
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
@@ -744,7 +760,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
 
     # Copy workspace (unless --bare).
     if not args.bare:
-        shutil.copytree(source_path, new_path, dirs_exist_ok=args.force)
+        _merge_workspace(source_path, new_path, args.force)
 
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
@@ -779,7 +795,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
         # Copy metadata (entire project dir including home/).
         if args.force and new_project_dir.is_dir():
             remove_box_tree(new_project_dir)
-        shutil.copytree(
+        copy_tree_keeping_links(
             source_project_dir, new_project_dir,
             ignore=shutil.ignore_patterns(".kanibako.lock"),
         )

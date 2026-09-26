@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import tarfile
+from pathlib import Path
 from unittest.mock import patch
 
 
@@ -60,6 +62,106 @@ class TestExtract:
         assert (proj.metadata_path / "mydata.txt").read_text() == "important"
         # Info file should be cleaned up
         assert not (proj.metadata_path / "kanibako-archive-info.txt").exists()
+
+    def test_round_trip_keeps_every_link_verbatim(self, config_file, tmp_home, credentials_dir):
+        """Q70: an archived box comes back with every link as it was — absolute ones included.
+
+        The "data" extraction filter refuses an absolute link, so the restore failed on one.
+        """
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        workspace = tmp_home / "linkws"
+        workspace.mkdir()
+        outside = tmp_home / "outside"
+        outside.mkdir()
+        (outside / "big.txt").write_text("outside data")
+        texts = {
+            "in": "mydata.txt",
+            "out": "../../../outside/big.txt",
+            "abs": str(outside / "big.txt"),
+            "gone": "no-such",
+            "dirlink": str(outside),
+        }
+        proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        for tree in (proj.metadata_path, proj.shell_path):
+            for name, text in texts.items():
+                (tree / name).symlink_to(text)
+        archive_path, proj = self._archive_of(std, config, tmp_home, workspace)
+        shutil.rmtree(proj.metadata_path)
+
+        assert self._extract(file=archive_path, path=str(workspace)) == 0
+
+        for tree in (proj.metadata_path, proj.shell_path):
+            for name, text in texts.items():
+                assert os.readlink(tree / name) == text, tree / name
+        assert (outside / "big.txt").read_text() == "outside data"
+
+    def test_peek_reads_an_archive_holding_an_absolute_link(self, config_file, tmp_home, credentials_dir):
+        from kanibako.commands.restore import _peek_archive_info
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        workspace = tmp_home / "peekws"
+        workspace.mkdir()
+        proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        (proj.metadata_path / "abs").symlink_to("/usr/bin/env")
+        archive_path, _ = self._archive_of(std, config, tmp_home, workspace)
+
+        info = _peek_archive_info(Path(archive_path))
+        assert info is not None
+        assert info["_archive_hash"]
+
+    def test_extract_removes_its_temp_tree_despite_read_only_dirs(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """A read-only directory in the archive does not strand the temp tree."""
+        import tempfile
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        workspace = tmp_home / "rows"
+        workspace.mkdir()
+        proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        locked = proj.metadata_path / "locked"
+        locked.mkdir()
+        (locked / "f.txt").write_text("x")
+        locked.chmod(0o555)
+        archive_path, proj = self._archive_of(std, config, tmp_home, workspace)
+        locked.chmod(0o755)
+        shutil.rmtree(proj.metadata_path)
+        temps = tmp_home / "temps"
+        temps.mkdir()
+        real_mkdtemp = tempfile.mkdtemp
+        monkeypatch.setattr(
+            "kanibako.commands.restore.tempfile.mkdtemp", lambda: real_mkdtemp(dir=temps),
+        )
+
+        assert self._extract(file=archive_path, path=str(workspace)) == 0
+
+        assert (proj.metadata_path / "locked" / "f.txt").read_text() == "x"
+        assert list(temps.iterdir()) == []
+        (proj.metadata_path / "locked").chmod(0o755)
+
+    def test_a_hard_link_out_of_the_archive_is_refused(self, tmp_home):
+        """Only a SYMLINK is exempt from the "data" filter: a hard link cannot reach a host file."""
+        import io
+
+        from kanibako.commands.restore import _peek_archive_info
+
+        victim = tmp_home / "victim.txt"
+        victim.write_text("host data")
+        archive_path = tmp_home / "evil.txz"
+        with tarfile.open(str(archive_path), "w:xz") as tar:
+            link = tarfile.TarInfo("abc123/h")
+            link.type = tarfile.LNKTYPE
+            link.linkname = str(victim)
+            tar.addfile(link)
+            payload = tarfile.TarInfo("abc123/h")
+            payload.size = 4
+            tar.addfile(payload, io.BytesIO(b"EVIL"))
+
+        assert _peek_archive_info(archive_path) is None
+        assert victim.read_text() == "host data"
 
     def _archive_of(self, std, config, tmp_home, workspace, payload="payload"):
         """Create+archive a box for *workspace*; return the archive path."""

@@ -734,17 +734,14 @@ class TestSnapshotSymlinks:
         (vault_rw / "live_only.txt").write_text("must-survive")
 
         real_move = shutil.move
-        state: dict[str, int] = {"n": 0, "total": 0}
 
         def flaky_move(src: str, dst: str):  # type: ignore[no-untyped-def]
-            # Fail on the LAST staged entry, so every other one (dirlink included) is in.
-            if ".restore.tmp" in str(src):
-                if not state["total"]:
-                    state["total"] = len(os.listdir(os.path.dirname(src)))
-                state["n"] += 1
-                if state["n"] == state["total"]:
-                    raise OSError("write error mid-swap")
-            return real_move(src, dst)
+            # Fail the swap the moment dirlink has landed as a link — whatever the directory
+            # order — so the rollback always meets it and the pin can never pass vacuously.
+            moved = real_move(src, dst)
+            if ".restore.tmp" in str(src) and (vault_rw / "dirlink").is_symlink():
+                raise OSError("write error mid-swap")
+            return moved
 
         with patch("kanibako.snapshots.shutil.move", side_effect=flaky_move):
             with pytest.raises(OSError, match="write error mid-swap"):
