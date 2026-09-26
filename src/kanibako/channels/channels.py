@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # avoid an import cycle (paths.py would import this later)
-    from kanibako.settings.paths import ProjectPaths, StandardPaths
+    from kanibako.settings.paths import BoxMode, ProjectPaths, StandardPaths
 
 
 # Reserved workset-name tokens for the system-scope partition key (a named
@@ -123,20 +123,32 @@ def workset_name_token(proj: ProjectPaths) -> str:
 
     Derived from ``proj.mode`` + ``proj.group`` (A8), not read off a dedicated field.
     """
+    return workset_token(
+        proj.mode, proj.group.name if proj.group is not None else None,
+    )
+
+
+def workset_token(mode: BoxMode, group_name: str | None) -> str:
+    """The workset-name token for a box of *mode* in the workset named *group_name*.
+
+    The ONE carrier of the token rule; :func:`workset_name_token` is its
+    ``ProjectPaths`` adapter, and a box-less resolve (a working set with no box)
+    calls it directly.  *group_name* is read only for ``named``.
+    """
     # Lazy import keeps this module free of an import cycle with paths.py.
     from kanibako.settings.paths import BoxMode
 
-    if proj.mode is BoxMode.primary:
+    if mode is BoxMode.primary:
         return WS_TOKEN_PRIMARY
-    if proj.mode is BoxMode.standalone:
+    if mode is BoxMode.standalone:
         return WS_TOKEN_STANDALONE
     # NAMED: the partition key is the named workset's name.
-    if proj.group is None or not proj.group.name:
+    if not group_name:
         raise ValueError(
             "NAMED box is missing its workset group/name; cannot derive the "
             "channel partition token."
         )
-    return proj.group.name
+    return group_name
 
 
 def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path:
@@ -256,12 +268,21 @@ def workset_channel_paths(
     """
     if not has_workset_channels(proj):
         return None
+    return workset_channels_at(workset_root(proj, std))
+
+
+def workset_channels_at(ws_root: Path) -> WorksetChannels:
+    """Derive the WORKSET-local channel roots of the working set rooted at *ws_root*.
+
+    The ONE carrier of the derivation; :func:`workset_channel_paths` is its
+    ``ProjectPaths`` adapter and adds the standalone gate.  A box-less resolve (a
+    working set, which is never standalone) calls it directly.
+    """
     from kanibako.project.workset import (
         load_workset_settings_doc,
         resolve_workset_channelroot,
     )
 
-    ws_root = workset_root(proj, std)
     doc = load_workset_settings_doc(ws_root)
     root = resolve_workset_channelroot(ws_root, doc)
     chat = _channel_key(ws_root, doc, "chat", root / "chat")

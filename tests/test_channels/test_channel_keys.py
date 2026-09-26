@@ -305,7 +305,10 @@ class TestTheFloorCarriesTheWholeFamily:
         from kanibako.settings.settings_launch import _workset_channel_floor_values
         from kanibako.settings.settings_launch import workset_anchor_floor
 
-        channelroot, leaves = _workset_channel_floor_values(std, named_proj)
+        channelroot, leaves = _workset_channel_floor_values(
+            channels.workset_partition_paths(named_proj, std),
+            channels.workset_channel_paths(named_proj, std),
+        )
         floor = workset_anchor_floor(
             mode="named", channelroot=channelroot, workset_channels=leaves,
         )
@@ -324,7 +327,10 @@ class TestTheFloorCarriesTheWholeFamily:
         from kanibako.settings.settings_launch import _workset_channel_floor_values
         from kanibako.settings.settings_launch import workset_anchor_floor
 
-        channelroot, leaves = _workset_channel_floor_values(std, standalone_proj)
+        channelroot, leaves = _workset_channel_floor_values(
+            channels.workset_partition_paths(standalone_proj, std),
+            channels.workset_channel_paths(standalone_proj, std),
+        )
         assert channelroot is None
         floor = workset_anchor_floor(
             mode="standalone", channelroot=channelroot, workset_channels=leaves,

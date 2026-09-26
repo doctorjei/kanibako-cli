@@ -173,6 +173,11 @@ Builds the host-side `kanibako.settings.settings_resolve.ResolveCtx`. It is the 
 every snapshot resolve — `settings_launch.resolve_inputs` calls this too, so the selection
 pre-pass and the launch snapshot cannot drift in what `@config.*` / `$XDG_*` / `~` mean.
 
+Its body is `host_resolve_ctx(std, group, agent_name)`, keyed on the working set rather than the
+box, which the box-less `resolve_inputs` subjects call directly: *group* is a `ProjectGroup` or a
+`Workset` (anything with `name` and `is_default`), or `None` for the system scope. The primary
+working set is spelled like `None`, because `ResolveCtx.workset_name` names a NAMED working set only.
+
 **Resolver SPLIT (spec §1A / JC-2):** the Layer-1 `config.*` foundation goes into `ctx.config` (so
 `@config.*` category refs route THERE, not the snapshot); the Layer-2 `system.*` path settings stay
 folded into the snapshot floor so `@system.*` resolves from it.

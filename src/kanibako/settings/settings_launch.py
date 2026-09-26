@@ -30,6 +30,7 @@ from enum import Enum
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
+    Callable,
     Collection,
     Final,
     Literal,
@@ -37,10 +38,14 @@ from typing import (
     NamedTuple,
     Sequence,
     TypedDict,
+    overload,
 )
 
 if TYPE_CHECKING:
-    from kanibako.channels.channels import BoxChannelAddresses
+    from kanibako.channels.channels import (
+        BoxChannelAddresses, WorksetChannels, WorksetPartition,
+    )
+    from kanibako.project.workset import Workset
     from kanibako.targets.base import PluginDescriptor
 
 from kanibako import kuid
@@ -173,7 +178,7 @@ SYSTEM_SCALAR_FLOOR: dict[str, object] = {
 
 def auth_chain_floor(
     *,
-    mode: str,
+    mode: str | None,
     agent_name: str,
 ) -> dict[str, object]:
     """Build the auth 3-tier SHARING chain floor keys for *mode*.
@@ -182,7 +187,8 @@ def auth_chain_floor(
     chain (§2a/§2b/§2c/§2d), folded into ``build_launch_snapshot``'s floor so
     ``expand`` resolves the chain ONCE (single-route). *mode* is the box's
     :class:`~kanibako.settings.paths.BoxMode` value, passed as a plain string to
-    avoid a paths import.
+    avoid a paths import; ``None`` is a resolve in NO working set (the SYSTEM
+    subject), which gets no ``workset.auth.*`` key at all rather than a mode's.
 
     ⚑ The ``meta.agent.<agent>.auth.share_support`` CAPABILITY is PLUGIN-set and
     rides the meta identity floor, NOT this one. Key-by-key notes: the llm-doc.
@@ -228,7 +234,7 @@ def auth_chain_floor(
         # the host ROOT.
         floor["workset.auth.path"] = None
         floor["meta.box.auth.workset_path"] = None
-    else:
+    elif mode is not None:
         # PRIMARY / NAMED (ALL WORKSETS): workset allow defaults to the system
         # gate; the workset dir syncs UP to global by default.
         floor["workset.auth.share_allowed"] = "@system.auth.share_allowed"
@@ -489,47 +495,62 @@ def meta_identity_floor(
     # The agent identity key (spec §2d) — REQUIRED when an agent exists, under
     # the agent's discriminated slot. A NO-AGENT box omits it.
     if agent_name is not None:
-        # ⚑ THE KEY DISCRIMINATOR AND THE VALUE ARE SPELLED DIFFERENTLY, and §2d's
-        # own formula is why: ``meta.agent.<a>.path`` IS
-        # ``@config.agents/%tolower(@meta.agent.<a>.name)%``, so this VALUE is what
-        # the store DIRECTORY is spelled FROM and must be the ``+`` spelling
-        # ``store_dirname`` produces. The discriminator segment stays CANONICAL
-        # (``℘``) because it is a key path. Spell the value with ``℘`` and the
-        # spec's formula stops composing.
-        # ⚑ A BARE AGENT IS UNAFFECTED BY CONSTRUCTION — ``store_dirname`` is
-        # identity on a name with no separator, so only personas move.
-        #
-        # 🛑🛑 THE HARNESS SEGMENT CARRIES THE PLUGIN'S DECLARED CASE, AND THAT IS
-        # THE WHOLE POINT OF THE KEY ([R173], [R176]). An agent's canonical case
-        # lives in its NAME; the node is the fold OF that name. Substituting the
-        # already-folded discriminator here would leave the declared spelling in no
-        # stored carrier at all, and would satisfy §2d's ``%tolower(…)%`` — his own
-        # adjustment, written precisely to keep the name case-carrying — with a
-        # NO-OP. That is [R171]'s retired fold-to-store cure, re-spelled.
-        # ⚑ ``with_harness``, so only the HARNESS moves: a persona segment is the
-        # user's and neither ruling reaches it.
-        # ⚑ ``harness_of`` on the real name too, so the splice is IDEMPOTENT: a
-        # caller handing over a whole ref (the node, or ``persona℘Kirobo``) gets the
-        # same answer as one handing over the bare declared name. Without it,
-        # ``with_harness(nav℘claude, nav℘claude)`` would compose ``nav℘nav℘claude``.
-        floor[f"meta.agent.{agent_name}.name"] = store_dirname(
-            with_harness(agent_name, harness_of(agent_real_name))
-            if agent_real_name is not None else agent_name
-        )
-        # The agent's STORE ROOT — see :func:`meta_agent_path_floor`.
-        floor.update(meta_agent_path_floor(agent_name))
-        # The agent-tier SETTINGS cascade FILE anchor (spec §2d): the spec's own
-        # formula, resolved transitively through the sibling ``path`` anchor — the
-        # SAME file ``agent_settings_path`` composes.
-        floor[f"meta.agent.{agent_name}.settings"] = (
-            f"@meta.agent.{agent_name}.path/{AGENT_META_FILE}"
-        )
-        # ⚑ The agent's credential-SHARING CAPABILITY: plugin-set, RO — the hard
-        # floor a user can't fake. The auth chain's mirror views UP to this key, so
-        # it must be present whenever an agent exists.
-        floor[f"meta.agent.{agent_name}.auth.share_support"] = bool(
-            agent_auth_share_support
-        )
+        floor.update(meta_agent_identity_floor(
+            agent_name, agent_real_name, agent_auth_share_support,
+        ))
+    return floor
+
+
+def meta_agent_identity_floor(
+    agent_name: str, agent_real_name: str | None, agent_auth_share_support: bool,
+) -> dict[str, object]:
+    """The ``meta.agent.<agent_name>.*`` half of :func:`meta_identity_floor`.
+
+    Separate because it names no box: a resolve with no box (a working set, the
+    system scope) floors these and nothing else of the identity set.
+    """
+    floor: dict[str, object] = {}
+    # ⚑ THE KEY DISCRIMINATOR AND THE VALUE ARE SPELLED DIFFERENTLY, and §2d's
+    # own formula is why: ``meta.agent.<a>.path`` IS
+    # ``@config.agents/%tolower(@meta.agent.<a>.name)%``, so this VALUE is what
+    # the store DIRECTORY is spelled FROM and must be the ``+`` spelling
+    # ``store_dirname`` produces. The discriminator segment stays CANONICAL
+    # (``℘``) because it is a key path. Spell the value with ``℘`` and the
+    # spec's formula stops composing.
+    # ⚑ A BARE AGENT IS UNAFFECTED BY CONSTRUCTION — ``store_dirname`` is
+    # identity on a name with no separator, so only personas move.
+    #
+    # 🛑🛑 THE HARNESS SEGMENT CARRIES THE PLUGIN'S DECLARED CASE, AND THAT IS
+    # THE WHOLE POINT OF THE KEY ([R173], [R176]). An agent's canonical case
+    # lives in its NAME; the node is the fold OF that name. Substituting the
+    # already-folded discriminator here would leave the declared spelling in no
+    # stored carrier at all, and would satisfy §2d's ``%tolower(…)%`` — his own
+    # adjustment, written precisely to keep the name case-carrying — with a
+    # NO-OP. That is [R171]'s retired fold-to-store cure, re-spelled.
+    # ⚑ ``with_harness``, so only the HARNESS moves: a persona segment is the
+    # user's and neither ruling reaches it.
+    # ⚑ ``harness_of`` on the real name too, so the splice is IDEMPOTENT: a
+    # caller handing over a whole ref (the node, or ``persona℘Kirobo``) gets the
+    # same answer as one handing over the bare declared name. Without it,
+    # ``with_harness(nav℘claude, nav℘claude)`` would compose ``nav℘nav℘claude``.
+    floor[f"meta.agent.{agent_name}.name"] = store_dirname(
+        with_harness(agent_name, harness_of(agent_real_name))
+        if agent_real_name is not None else agent_name
+    )
+    # The agent's STORE ROOT — see :func:`meta_agent_path_floor`.
+    floor.update(meta_agent_path_floor(agent_name))
+    # The agent-tier SETTINGS cascade FILE anchor (spec §2d): the spec's own
+    # formula, resolved transitively through the sibling ``path`` anchor — the
+    # SAME file ``agent_settings_path`` composes.
+    floor[f"meta.agent.{agent_name}.settings"] = (
+        f"@meta.agent.{agent_name}.path/{AGENT_META_FILE}"
+    )
+    # ⚑ The agent's credential-SHARING CAPABILITY: plugin-set, RO — the hard
+    # floor a user can't fake. The auth chain's mirror views UP to this key, so
+    # it must be present whenever an agent exists.
+    floor[f"meta.agent.{agent_name}.auth.share_support"] = bool(
+        agent_auth_share_support
+    )
     return floor
 
 
@@ -1084,6 +1105,12 @@ class ResolveSubject(Enum):
         "and 'kanibako workset show --effective' and 'kanibako workset share list "
         "--effective' resolve through this same seam, so they refuse too.",
     )
+    SYSTEM = (
+        "the system scope",
+        "'kanibako system reset <key>' cannot remove what is not a key, and "
+        "'kanibako system show --effective' resolves through this same seam, so it "
+        "refuses too.",
+    )
 
     def __init__(self, what: str, cure_note: str) -> None:
         #: The resolve's subject as the refusal's first line names it.
@@ -1426,24 +1453,23 @@ def refuse_read_time_faults(
     _refuse_undeclared_snapshot(expanded, files=files, subject=subject)
 
 
-def _workset_channel_floor_values(std, proj) -> "tuple[str | None, dict[str, str]]":
-    """The resolved ``(workset.channelroot, workset.channels.*)`` the launch floor installs.
+def _workset_channel_floor_values(
+    part: "WorksetPartition", wch: "WorksetChannels | None",
+) -> "tuple[str | None, dict[str, str]]":
+    """The ``(workset.channelroot, workset.channels.*)`` floor values from the two
+    resolved channel sets.
 
-    ⚑ TWO DIFFERENT MODE GATES, which is why this is one function and not one call.
-    The four workset-LOCAL leaves and the channel root are PRIMARY/NAMED only; the two
-    partition leaves (``mailboxes`` / ``share_global``) are ALL PROJECTS (§2c) and a
-    standalone box installs them like anyone else.  Reading the whole family off a
-    single ``None``-for-standalone helper is how three of the six ended up installed by
-    no floor in any mode.
+    ⚑ TWO DIFFERENT MODE GATES, which is why this takes two sets and not one.
+    The four workset-LOCAL leaves and the channel root are PRIMARY/NAMED only (*wch*
+    is ``None`` for standalone); the two partition leaves (``mailboxes`` /
+    ``share_global``) are ALL PROJECTS (§2c) and a standalone box installs them like
+    anyone else.  Reading the whole family off a single ``None``-for-standalone
+    helper is how three of the six ended up installed by no floor in any mode.
     """
-    from kanibako.channels import channels as _ch
-
-    part = _ch.workset_partition_paths(proj, std)
     leaves: "dict[str, str]" = {
         "mailboxes": str(part.mailboxes),
         "share_global": str(part.share_global),
     }
-    wch = _ch.workset_channel_paths(proj, std)
     if wch is None:
         return None, leaves
     leaves.update({
@@ -1497,6 +1523,7 @@ def _workset_workspaces_floor_value(
 class _LaunchInputKwargs(TypedDict):
     """The :func:`build_launch_snapshot` keywords :meth:`LaunchInputs.as_kwargs` supplies."""
 
+    subject: ResolveSubject
     ctx: ResolveCtx
     system_path: Path | None
     box_path: Path | None
@@ -1510,20 +1537,25 @@ class _LaunchInputKwargs(TypedDict):
 
 @dataclass(frozen=True)
 class LaunchInputs:
-    """The inputs every box-scoped :func:`build_launch_snapshot` call shares.
+    """The inputs every :func:`build_launch_snapshot` call of one resolve shares.
 
     Built by :func:`resolve_inputs`, the ONE builder; a resolver passes
-    :meth:`as_kwargs` plus its own extras, so no two resolves of one box can spell
-    the context, the floors or the file pair differently.
+    :meth:`as_kwargs` plus its own extras, so no two resolves of one target can
+    spell the context, the floors or the file pair differently.
 
-    ⚑ BUILT PER AGENT: every field but the file pair and *prefs* depends on
-    *agent_name*, so an instance is never reused across an agent change.
+    ⚑ BUILT PER AGENT: every field but *subject*, the file pair and *prefs* depends
+    on *agent_name*, so an instance is never reused across an agent change.
+
+    *subject* is the resolve's target, and the builder's §0 refusal speaks in its
+    words. *cascade_box_path* is ``None`` for a resolve with no box, and
+    *cascade_workset_path* for one in no working set.
 
     *system_floor* is the resolved ``system.*`` path tier
     (``paths.system_path_floor``); it is not a :func:`build_launch_snapshot`
     keyword, so each caller folds it into its own ``default_categories``.
     """
 
+    subject: ResolveSubject
     ctx: ResolveCtx
     system_path: Path | None
     system_floor: Mapping[str, str]
@@ -1531,13 +1563,14 @@ class LaunchInputs:
     meta_identity: Mapping[str, object]
     workset_anchor: Mapping[str, object]
     auth_chain: Mapping[str, object]
-    cascade_box_path: Path
+    cascade_box_path: Path | None
     cascade_workset_path: Path | None
     prefs: tuple[PrefRequest, ...]
 
     def as_kwargs(self) -> _LaunchInputKwargs:
         """The :func:`build_launch_snapshot` keywords these inputs supply."""
         return {
+            "subject": self.subject,
             "ctx": self.ctx,
             "system_path": self.system_path,
             "box_path": self.cascade_box_path,
@@ -1555,20 +1588,48 @@ _BOX_NAME_KEYS: Final = (
     "meta.box.name", "meta.box.inbox", "meta.box.share_global", "meta.box.share_workset",
 )
 
+#: The key prefixes only a BOX gives a value to (the box's own identity anchors).
+_BOX_ONLY_PREFIXES: Final = ("meta.box.",)
 
-def _omit_name_derived(ctx: ResolveCtx, *floors: dict[str, object]) -> None:
-    """Drop from *floors* every key the box NAME decides, for a box that has none yet.
+#: The key prefixes only a WORKING SET (or a box in one) gives a value to.
+_WORKSET_ONLY_PREFIXES: Final = ("meta.workset.", "workset.")
 
-    Spec §0, *"never a fabricated default"*: the :data:`_BOX_NAME_KEYS`, then — to a
-    fixed point — every key whose value ``@``-refers to a dropped one (primary /
-    named ``meta.box.path`` = ``@workset.boxes/@meta.box.name``, and through it
+#: The spec §1A ``meta.runtime.*`` keys resolved PER WORKING SET. The rest of that
+#: block (``meta.runtime.{user,admin}.*``) names HOST files, which a resolve with
+#: no working set still has.
+_WORKSET_RUNTIME_KEYS: Final = frozenset({
+    "meta.runtime.ws_root", "meta.runtime.ws_name", "meta.runtime.project_type",
+})
+
+
+def _box_less_omits(key: str, *, in_workset: bool) -> bool:
+    """True if a resolve with no box (in a working set, or not) has no value for *key*."""
+    if key.startswith(_BOX_ONLY_PREFIXES):
+        return True
+    return not in_workset and (
+        key.startswith(_WORKSET_ONLY_PREFIXES) or key in _WORKSET_RUNTIME_KEYS
+    )
+
+
+def _omit_derived(
+    ctx: ResolveCtx, is_seed: Callable[[str], bool], *floors: dict[str, object],
+) -> None:
+    """Drop from *floors* every key *is_seed* names, and every key derived from one.
+
+    Spec §0, *"never a fabricated default"*: a resolve whose target lacks what a key
+    names (a box with no name yet, a working set with no box, the system scope)
+    OMITS that key rather than guess it. Derived = the value ``@``-refers to a seed
+    or to a key already dropped, followed to a fixed point (primary / named
+    ``meta.box.path`` = ``@workset.boxes/@meta.box.name``, and through it
     ``meta.box.home``, ``box.canon``, …). A reader that needs one sees it ABSENT.
     The refs are read by the one parser, ``expand_expr``, with a recording lookup.
     """
-    dropped: set[str] = set(_BOX_NAME_KEYS)
+    dropped: set[str] = set()
     for floor in floors:
-        for key in _BOX_NAME_KEYS:
-            floor.pop(key, None)
+        for key in list(floor):
+            if is_seed(key):
+                del floor[key]
+                dropped.add(key)
 
     def refs(value: str) -> set[str]:
         names: set[str] = set()
@@ -1585,40 +1646,207 @@ def _omit_name_derived(ctx: ResolveCtx, *floors: dict[str, object]) -> None:
         changed = False
         for floor in floors:
             for key, value in list(floor.items()):
-                if isinstance(value, str) and refs(value) & dropped:
+                if isinstance(value, str) and any(
+                    name in dropped or is_seed(name) for name in refs(value)
+                ):
                     del floor[key]
                     dropped.add(key)
                     changed = True
 
 
+def _agent_identity(agent_name: str, project_path: Path | None) -> dict[str, object]:
+    """The active agent's ``meta.agent.<a>.*`` identity + launch-grammar floor, off
+    its plugin descriptor; EMPTY for a no-agent resolve.
+
+    The credential-SHARING capability comes off the same descriptor: absent / no
+    agent → non-capable.
+    """
+    if not agent_name:
+        return {}
+    from kanibako.log import get_logger
+    from kanibako.targets import resolve_target
+
+    agent_desc = None
+    # The plugin's DECLARED harness name, in its own case ([R173]); *agent_name* is
+    # the NODE, already folded, so it cannot supply this.
+    agent_declared_name: str | None = None
+    agent_auth_support = False
+    try:
+        agent_target = resolve_target(harness_of(agent_name), project_path)
+        agent_declared_name = agent_target.name
+        agent_desc = agent_target.descriptor
+        agent_auth_support = bool(
+            agent_desc.auth_share_support if agent_desc is not None else False
+        )
+    except (KeyError, ValueError):
+        # GENUINELY ABSENT: no matching target (KeyError) or one lacking a
+        # ``meta.agent.<agent>.name`` (ValueError) — non-capable. Nothing else is
+        # swallowed: a transient error must not silently disable sharing.
+        get_logger("start").debug(
+            "auth capability: no descriptor for agent %r → non-capable",
+            agent_name,
+        )
+        agent_desc = None
+        agent_declared_name = None
+        agent_auth_support = False
+    # ⚑ THE DISCRIMINATOR AND THE VALUE ARE TWO SPELLINGS OF ONE AGENT ([R173]):
+    # the key's segment is the NODE, the value keeps the DECLARED case.
+    floor = meta_agent_identity_floor(
+        agent_name, agent_declared_name, agent_auth_support,
+    )
+    # B5: the plugin-set LAUNCH GRAMMAR ``meta.agent.<a>.{mode,exec}`` (spec §2d),
+    # from the SAME descriptor — the single descriptor→keyspace seam.
+    floor.update(meta_agent_grammar_floor(agent_name, agent_desc))
+    return floor
+
+
+@overload
+def resolve_inputs(
+    *, subject: Literal[ResolveSubject.BOX], std, agent_name: str,
+    system_path: Path | None, proj, ws: None = None,
+) -> LaunchInputs: ...
+@overload
+def resolve_inputs(
+    *, subject: Literal[ResolveSubject.WORKSET], std, agent_name: str,
+    system_path: Path | None, proj: None = None, ws: Workset,
+) -> LaunchInputs: ...
+@overload
+def resolve_inputs(
+    *, subject: Literal[ResolveSubject.SYSTEM], std, agent_name: str,
+    system_path: Path | None, proj: None = None, ws: None = None,
+) -> LaunchInputs: ...
 def resolve_inputs(
     *,
     subject: ResolveSubject,
     std,
-    proj,
     agent_name: str,
     system_path: Path | None,
+    proj=None,
+    ws: Workset | None = None,
 ) -> LaunchInputs:
-    """Build the :class:`LaunchInputs` for one resolve of *proj* under *agent_name*.
+    """Build the :class:`LaunchInputs` for one resolve of *subject* under *agent_name*.
 
-    Only :attr:`ResolveSubject.BOX` is built; any other *subject* raises
-    ``ValueError``. *system_path* is the system SETTINGS file the resolve reads.
-    A *proj* with no name yet gets NO name-derived key (:func:`_omit_name_derived`).
+    The subject is the resolve's TARGET: ``BOX`` takes the box's *proj*,
+    ``WORKSET`` a working set *ws* and no box, ``SYSTEM`` neither; any other pairing
+    raises ``ValueError``. *system_path* is the system SETTINGS file the resolve
+    reads. A key the target has no value for is OMITTED, never fabricated
+    (:func:`_omit_derived`): a box with no name yet loses its name-derived keys, a
+    working set every ``meta.box.*`` anchor, the system scope every box and
+    working-set anchor.
 
     See ``llm-docs/kanibako/settings/settings_launch.py.md``, "``resolve_inputs``",
     for what each floor carries and why it is built here.
     """
+    from kanibako.settings.agent_select import host_resolve_ctx
+    from kanibako.settings.paths import system_path_floor
+
+    takes = {
+        ResolveSubject.BOX: (True, False),
+        ResolveSubject.WORKSET: (False, True),
+        ResolveSubject.SYSTEM: (False, False),
+    }[subject]
+    if (proj is not None, ws is not None) != takes:
+        raise ValueError(
+            f"resolve_inputs: subject {subject.name} takes "
+            + ("a box (proj)" if takes[0] else "a working set (ws)" if takes[1]
+               else "neither a box nor a working set")
+        )
+    if subject is ResolveSubject.BOX:
+        return _box_inputs(
+            std=std, proj=proj, agent_name=agent_name, system_path=system_path,
+        )
+
+    # ONE ctx builder (P7), the box-less arm of the one the BOX subject uses.
+    ctx = host_resolve_ctx(std, ws, agent_name)
+    meta_identity = _agent_identity(agent_name, None)
+    meta_runtime: dict[str, object] = {}
+    workset_anchor: dict[str, object] = {}
+    cascade_workset_path: Path | None = None
+    if ws is None:
+        auth_chain = auth_chain_floor(mode=None, agent_name=agent_name)
+    else:
+        from kanibako.channels import channels as _channels
+        from kanibako.settings.paths import BoxMode, workset_settings_path
+
+        # A working set is PRIMARY or NAMED; ``workset create --standalone`` is
+        # refused, so no working set is standalone.
+        mode = BoxMode.primary if ws.is_default else BoxMode.named
+        meta_runtime, workset_anchor, auth_chain = _workset_floors(
+            std,
+            mode=mode.value,
+            ws_token=_channels.workset_token(mode, ws.name),
+            ws_root=ws.root,
+            local_channels=_channels.workset_channels_at(ws.root),
+            agent_name=agent_name,
+        )
+        cascade_workset_path = workset_settings_path(ws)
+    _omit_derived(
+        ctx, lambda key: _box_less_omits(key, in_workset=ws is not None),
+        meta_runtime, meta_identity, workset_anchor, auth_chain,
+    )
+    return LaunchInputs(
+        subject=subject,
+        ctx=ctx,
+        system_path=system_path,
+        system_floor=system_path_floor(std),
+        meta_runtime=meta_runtime,
+        meta_identity=meta_identity,
+        workset_anchor=workset_anchor,
+        auth_chain=auth_chain,
+        cascade_box_path=None,
+        cascade_workset_path=cascade_workset_path,
+        prefs=tuple(collect_prefs(cascade_workset_path, None)),
+    )
+
+
+def _workset_floors(
+    std,
+    *,
+    mode: str,
+    ws_token: str,
+    ws_root: Path,
+    local_channels: "WorksetChannels | None",
+    agent_name: str,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    """The ``(meta_runtime, workset_anchor, auth_chain)`` floors of a resolve in the
+    working set rooted at *ws_root* — the BOX and WORKSET subjects' ONE sequence.
+
+    *mode* is the box mode a member box has; *ws_token* the partition token
+    (``channels.workset_token``); *local_channels* the workset-local channel set,
+    ``None`` for standalone (the caller's gate). ``meta.runtime.ws_root`` is the
+    ``@config.primary_workset`` ref for primary and *ws_root* otherwise, and
+    ``workset.workspaces`` is resolved off that same root.
+    """
     from kanibako.channels import channels as _channels
-    from kanibako.log import get_logger
+
+    ws_root_literal = None if mode == "primary" else str(ws_root)
+    meta_runtime = meta_runtime_floor(
+        mode=mode, ws_name=ws_token, ws_root_literal=ws_root_literal,
+    )
+    # LAYOUT anchors (spec §2c/§2g): the per-mode variation lives in
+    # ``workset_anchor_floor``; only the channel roots and ``workset.workspaces``
+    # are resolved here.
+    channelroot, ws_channels = _workset_channel_floor_values(
+        _channels.partition_key_paths(std, ws_token, ws_root), local_channels,
+    )
+    workset_anchor = workset_anchor_floor(
+        mode=mode,
+        channelroot=channelroot,
+        workspaces=_workset_workspaces_floor_value(mode, ws_root_literal),
+        workset_channels=ws_channels,
+    )
+    return meta_runtime, workset_anchor, auth_chain_floor(mode=mode, agent_name=agent_name)
+
+
+def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs:
+    """:func:`resolve_inputs` for the ``BOX`` subject: the box *proj*."""
+    from kanibako.channels import channels as _channels
     from kanibako.settings.agent_select import launch_resolve_ctx
     from kanibako.settings.paths import (
         ProjectError,
         box_workset_settings_paths,
         system_path_floor,
     )
-
-    if subject is not ResolveSubject.BOX:
-        raise ValueError(f"resolve_inputs: subject {subject.name} is not built")
 
     # ONE ctx builder (P7): the SELECTION pre-pass resolves against the identical
     # host-side namespace, so the two passes cannot disagree about what
@@ -1634,22 +1862,21 @@ def resolve_inputs(
     # STANDALONE → the project ROOT (``proj.metadata_path``, NOT ``project_path``,
     # which is the ``<root>/workspace`` subdir — spec §2c and the §4 worked example).
     mode = proj.mode.value
-    if mode == "named":
-        if proj.group is None:
-            raise ProjectError(
-                "named-mode project has no workset group (meta.runtime.ws_root)"
-            )
-        ws_root_literal: str | None = str(proj.group.root)
-    elif mode == "standalone":
-        ws_root_literal = str(proj.metadata_path)
-    else:
-        ws_root_literal = None
-    # The workset partition TOKEN (spec §1A ``meta.runtime.ws_name``), single-sourced
-    # on ``channels.workset_name_token`` — the SAME token drives the channel
-    # partition, so the two cannot drift.
-    meta_runtime = meta_runtime_floor(
-        mode=mode, ws_name=_channels.workset_name_token(proj),
-        ws_root_literal=ws_root_literal,
+    if mode == "named" and proj.group is None:
+        raise ProjectError(
+            "named-mode project has no workset group (meta.runtime.ws_root)"
+        )
+    # The runtime, layout and auth floors: the per-mode work lives in ONE helper
+    # the WORKSET subject shares. ``channels.workset_root`` is the root those
+    # anchors hang off (``proj.metadata_path`` for standalone, NOT
+    # ``project_path``, the ``<root>/workspace`` subdir — spec §2c, §4 example).
+    meta_runtime, workset_anchor, auth_chain = _workset_floors(
+        std,
+        mode=mode,
+        ws_token=_channels.workset_name_token(proj),
+        ws_root=_channels.workset_root(proj, std),
+        local_channels=_channels.workset_channel_paths(proj, std),
+        agent_name=agent_name,
     )
 
     # ``meta.*`` IDENTITY anchors (spec §2c/§2d): the resolved literals the launch
@@ -1658,37 +1885,11 @@ def resolve_inputs(
     # name come off the ACTIVE agent's descriptor; absent / no agent → non-capable.
     # ⚑ A box whose name is not decided yet (the ``run_start`` pre-flight, before
     # create) has no channel addresses; the blanks below are dropped with every
-    # name-derived key before anything reads them (:func:`_omit_name_derived`).
+    # name-derived key before anything reads them (:func:`_omit_derived`).
     address: BoxAddressArgs = (
         box_address_args(_channels.box_channel_addresses(proj, std)) if proj.name
         else BoxAddressArgs(inbox="", share_global="", share_workset=None)
     )
-    agent_auth_support = False
-    agent_desc = None
-    # The plugin's DECLARED harness name, in its own case ([R173]); *agent_name* is
-    # the NODE, already folded, so it cannot supply this.
-    agent_declared_name: str | None = None
-    if agent_name:
-        from kanibako.targets import resolve_target
-
-        try:
-            agent_target = resolve_target(harness_of(agent_name), proj.project_path)
-            agent_declared_name = agent_target.name
-            agent_desc = agent_target.descriptor
-            agent_auth_support = bool(
-                agent_desc.auth_share_support if agent_desc is not None else False
-            )
-        except (KeyError, ValueError):
-            # GENUINELY ABSENT: no matching target (KeyError) or one lacking a
-            # ``meta.agent.<agent>.name`` (ValueError) — non-capable. Nothing else is
-            # swallowed: a transient error must not silently disable sharing.
-            get_logger("start").debug(
-                "auth capability: no descriptor for agent %r → non-capable",
-                agent_name,
-            )
-            agent_desc = None
-            agent_declared_name = None
-            agent_auth_support = False
     # The SINGLE-SOURCE (box tier, workset tier) settings-file pair (M-8): it feeds
     # BOTH the ``meta.box.settings`` anchor and the cascade the resolvers read, so
     # the anchor and the cascade cannot drift.
@@ -1698,38 +1899,22 @@ def resolve_inputs(
         project_path=str(proj.project_path),
         **address,
         box_settings=str(cascade_box_path),
-        # ⚑ THE DISCRIMINATOR AND THE VALUE ARE TWO SPELLINGS OF ONE AGENT ([R173]):
-        # the key's segment is the NODE, the value keeps the DECLARED case. Omitted
-        # for a NO-AGENT box.
-        agent_name=agent_name if agent_name else None,
-        agent_real_name=agent_declared_name,
-        agent_auth_share_support=agent_auth_support,
     )
-    # B5: the plugin-set LAUNCH GRAMMAR ``meta.agent.<a>.{mode,exec}`` (spec §2d),
-    # from the SAME descriptor — the single descriptor→keyspace seam.
-    if agent_name:
-        meta_identity.update(meta_agent_grammar_floor(agent_name, agent_desc))
+    # The agent half (identity + launch grammar); omitted for a NO-AGENT box.
+    meta_identity.update(_agent_identity(agent_name, proj.project_path))
 
-    # LAYOUT anchors (spec §2c/§2g): the per-mode variation lives in
-    # ``workset_anchor_floor``; only the workset-local channel roots and the resolved
-    # ``workset.workspaces`` come off *proj* — the latter off the SAME
-    # *ws_root_literal* ``meta.runtime.ws_root`` is built from.
-    channelroot, ws_channels = _workset_channel_floor_values(std, proj)
-    workset_anchor = workset_anchor_floor(
-        mode=mode,
-        channelroot=channelroot,
-        workspaces=_workset_workspaces_floor_value(mode, ws_root_literal),
-        workset_channels=ws_channels,
-    )
-    auth_chain = auth_chain_floor(mode=mode, agent_name=agent_name)
     if not proj.name:
         # Primary / named ``meta.box.settings`` is ``@meta.box.path/box.yaml`` (§2c): name-derived,
         # but passed here as a LITERAL (``<boxes>/__unregistered__/box.yaml`` before create), so the
         # ref walk cannot see it. Standalone's hangs off ``@workset.boxes`` and stays.
         if mode != "standalone":
             meta_identity.pop("meta.box.settings", None)
-        _omit_name_derived(ctx, meta_runtime, meta_identity, workset_anchor, auth_chain)
+        _omit_derived(
+            ctx, _BOX_NAME_KEYS.__contains__,
+            meta_runtime, meta_identity, workset_anchor, auth_chain,
+        )
     return LaunchInputs(
+        subject=ResolveSubject.BOX,
         ctx=ctx,
         system_path=system_path,
         system_floor=system_floor,
@@ -1767,8 +1952,13 @@ def build_launch_snapshot(
     prefs: "Sequence[PrefRequest] | None" = None,
     valid_agents: "Collection[str] | None" = None,
     cli_level: Mapping[str, object] | None = None,
+    subject: ResolveSubject = ResolveSubject.BOX,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
+
+    *subject* names the resolve's target in the §0 refusal's words;
+    :meth:`LaunchInputs.as_kwargs` supplies it, and a caller without inputs
+    resolves a box.
 
     Folds the behavior floor (mapped to ``agent.default.<key>`` for a CORE-declared
     leaf and ``agent.<active>.<key>`` for a plugin-only one — OS1) and every
@@ -2041,7 +2231,7 @@ def build_launch_snapshot(
     # of it: the probe is REPORT-ONLY by its own module contract, and the two share
     # the ORACLE so the refusal arms exactly what was measured.
     refuse_read_time_faults(
-        written, expanded, ctx=ctx, files=files, subject=ResolveSubject.BOX,
+        written, expanded, ctx=ctx, files=files, subject=subject,
     )
     return expanded
 

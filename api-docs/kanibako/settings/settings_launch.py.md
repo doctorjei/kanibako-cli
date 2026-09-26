@@ -20,6 +20,9 @@ _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset({'common', 'chat', 'broadcas
 _WORKSET_LOCAL_CHANNEL_LEAVES: frozenset[str] = _WORKSET_CHANNEL_LEAVES - {'mailboxes', 'share_global'}
 _SETTINGS_FILE_NAMES: Final[str] = "the box's box.yaml, the workset's workset.yaml, the agent's agent.yaml, or the system settings.yaml"
 _BOX_NAME_KEYS: Final = ('meta.box.name', 'meta.box.inbox', 'meta.box.share_global', 'meta.box.share_workset')
+_BOX_ONLY_PREFIXES: Final = ('meta.box.',)
+_WORKSET_ONLY_PREFIXES: Final = ('meta.workset.', 'workset.')
+_WORKSET_RUNTIME_KEYS: Final = frozenset({'meta.runtime.ws_root', 'meta.runtime.ws_name', 'meta.runtime.project_type'})
 _BOX_ROOT_KEY = 'meta.box.path'
 _BOX_STORE_KEY = 'workset.boxes'
 ```
@@ -34,17 +37,24 @@ _WrittenLevel = tuple[KeyStore, Path | None, KeyStore | None]
 
 ## Functions
 ```
-def auth_chain_floor(*, mode: str, agent_name: str) -> dict[str, object]
+def auth_chain_floor(*, mode: str | None, agent_name: str) -> dict[str, object]
 def meta_runtime_floor(*, mode: str, ws_name: str, ws_root_literal: str | None=None) -> dict[str, object]
 def meta_agent_path_floor(agent_name: str) -> dict[str, object]
 def meta_agent_grammar_floor(agent_name: str, descriptor: 'PluginDescriptor | None') -> dict[str, object]
 def box_address_args(addr: 'BoxChannelAddresses') -> BoxAddressArgs
 def meta_identity_floor(*, box_name: str, project_path: str, inbox: str, share_global: str, share_workset: str | None, box_settings: str | None=None, agent_name: str | None=None, agent_real_name: str | None=None, agent_auth_share_support: bool=False) -> dict[str, object]
+def meta_agent_identity_floor(agent_name: str, agent_real_name: str | None, agent_auth_share_support: bool) -> dict[str, object]
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
 def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[_TierFile], subject: ResolveSubject) -> None
-def resolve_inputs(*, subject: ResolveSubject, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs
-def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> KeyStore
+@overload
+def resolve_inputs(*, subject: Literal[ResolveSubject.BOX], std, agent_name: str, system_path: Path | None, proj, ws: None=None) -> LaunchInputs
+@overload
+def resolve_inputs(*, subject: Literal[ResolveSubject.WORKSET], std, agent_name: str, system_path: Path | None, proj: None=None, ws: Workset) -> LaunchInputs
+@overload
+def resolve_inputs(*, subject: Literal[ResolveSubject.SYSTEM], std, agent_name: str, system_path: Path | None, proj: None=None, ws: None=None) -> LaunchInputs
+def resolve_inputs(*, subject: ResolveSubject, std, agent_name: str, system_path: Path | None, proj=None, ws: Workset | None=None) -> LaunchInputs
+def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None, subject: ResolveSubject=ResolveSubject.BOX) -> KeyStore
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
 def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
 def behavior_pick(snapshot: KeyStore, *, active_agent: str, key: str) -> 'tuple[str | None, object]'
@@ -62,9 +72,13 @@ def _refuse_retired_behavior(files: Sequence[_TierFile], *, agent_name: str, box
 def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[_TierFile], subject: ResolveSubject) -> None
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
-def _workset_channel_floor_values(std, proj) -> 'tuple[str | None, dict[str, str]]'
+def _workset_channel_floor_values(part: 'WorksetPartition', wch: 'WorksetChannels | None') -> 'tuple[str | None, dict[str, str]]'
 def _workset_workspaces_floor_value(mode: str, ws_root_literal: 'str | None') -> 'str | None'
-def _omit_name_derived(ctx: ResolveCtx, *floors: dict[str, object]) -> None
+def _box_less_omits(key: str, *, in_workset: bool) -> bool
+def _omit_derived(ctx: ResolveCtx, is_seed: Callable[[str], bool], *floors: dict[str, object]) -> None
+def _agent_identity(agent_name: str, project_path: Path | None) -> dict[str, object]
+def _workset_floors(std, *, mode: str, ws_token: str, ws_root: Path, local_channels: 'WorksetChannels | None', agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
+def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None
@@ -104,11 +118,13 @@ class AuthSource:
 class ResolveSubject(Enum):
     BOX = ('this box', "'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.")
     WORKSET = ('this working set', "'kanibako workset reset <workset> <key>' cannot remove what is not a key, and 'kanibako workset show --effective' and 'kanibako workset share list --effective' resolve through this same seam, so they refuse too.")
+    SYSTEM = ('the system scope', "'kanibako system reset <key>' cannot remove what is not a key, and 'kanibako system show --effective' resolves through this same seam, so it refuses too.")
 
     def __init__(self, what: str, cure_note: str) -> None
 
 @dataclass(frozen=True)
 class LaunchInputs:
+    subject: ResolveSubject
     ctx: ResolveCtx
     system_path: Path | None
     system_floor: Mapping[str, str]
@@ -116,7 +132,7 @@ class LaunchInputs:
     meta_identity: Mapping[str, object]
     workset_anchor: Mapping[str, object]
     auth_chain: Mapping[str, object]
-    cascade_box_path: Path
+    cascade_box_path: Path | None
     cascade_workset_path: Path | None
     prefs: tuple[PrefRequest, ...]
 
@@ -136,6 +152,7 @@ class _AuthInputs:
     workset_knob: bool
 
 class _LaunchInputKwargs(TypedDict):
+    subject: ResolveSubject
     ctx: ResolveCtx
     system_path: Path | None
     box_path: Path | None
