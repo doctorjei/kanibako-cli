@@ -3641,8 +3641,9 @@ authority = "declared"
 translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/gemma+claude/" }
 translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
 
-# ⚑ THE LAUNCH'S OWN WIRING, FED `@`-REFS. `settings_launch._workset_channel_floor_values`
-# is what the launch hands `workset_anchor_floor`, and the oracle calls both with
+# ⚑ THE LAUNCH'S OWN WIRING, FED `@`-REFS. `settings_launch._box_workset_floors` is
+# the launch's box-to-floor sequence (channel sets, `workset_anchor_floor`), and the
+# oracle calls it with
 # the MODE'S workset root spelled `@meta.workset.path` -- `std.primary_workset` for
 # a primary box, the group's `root` for a named one -- and every other root
 # candidate a decoy (or, for the group outside NAMED, absent, so a read BLOCKs),
@@ -3695,16 +3696,15 @@ translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gem
 registry = "workset-channels-primary"
 command = ["{python}", "-c", """
 import os, tempfile
-from kanibako.settings.settings_launch import _workset_channel_floor_values
-from kanibako.settings.settings_launch import workset_anchor_floor
+from kanibako.settings.settings_launch import _box_workset_floors
 from kinemata_views import ref_token_project, ref_token_standard_paths
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
-    root, leaves = _workset_channel_floor_values(
+    _, floor, _ = _box_workset_floors(
         ref_token_standard_paths("primary"),
         ref_token_project("primary", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+        "",
     )
-    floor = workset_anchor_floor(mode="primary", channelroot=root, workset_channels=leaves)
 for key, value in sorted(floor.items()):
     if key.startswith("workset.channel") and key.rsplit(".", 1)[-1] not in ("mailboxes", "share_global"):
         print(f"kanibako-channel: {key}={value}")
@@ -3718,16 +3718,15 @@ translate = { pattern = '^@workset\.channel(?:root/|s\.)', replacement = "@meta.
 registry = "workset-channels-named"
 command = ["{python}", "-c", """
 import os, tempfile
-from kanibako.settings.settings_launch import _workset_channel_floor_values
-from kanibako.settings.settings_launch import workset_anchor_floor
+from kanibako.settings.settings_launch import _box_workset_floors
 from kinemata_views import ref_token_project, ref_token_standard_paths
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
-    root, leaves = _workset_channel_floor_values(
+    _, floor, _ = _box_workset_floors(
         ref_token_standard_paths("named"),
         ref_token_project("named", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+        "",
     )
-    floor = workset_anchor_floor(mode="named", channelroot=root, workset_channels=leaves)
 for key, value in sorted(floor.items()):
     if key.startswith("workset.channel") and key.rsplit(".", 1)[-1] not in ("mailboxes", "share_global"):
         print(f"kanibako-channel: {key}={value}")
@@ -3757,16 +3756,17 @@ translate = { pattern = '^@workset\.channel(?:root/|s\.)', replacement = "@meta.
 registry = "workset-partition"
 command = ["{python}", "-c", """
 import os, tempfile
-from kanibako.settings.settings_launch import _workset_channel_floor_values
+from kanibako.settings.settings_launch import _box_workset_floors
 from kinemata_views import ref_token_project, ref_token_standard_paths
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
-    _, leaves = _workset_channel_floor_values(
+    _, floor, _ = _box_workset_floors(
         ref_token_standard_paths("named"),
         ref_token_project("named", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+        "",
     )
 for leaf in ("mailboxes", "share_global"):
-    print(f"kanibako-partition: workset.channels.{leaf}={leaves[leaf]}")
+    print(f"kanibako-partition: workset.channels.{leaf}={floor[f'workset.channels.{leaf}']}")
 """]
 extract = '(?m)^kanibako-partition: ([^\s=]+)=(\S+)$'
 field = "default"
