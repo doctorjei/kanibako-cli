@@ -19,6 +19,7 @@ from kanibako.settings.config_interface import (
 )
 from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
+from kanibako.settings.settings_resolve import normalize_bind_dest
 
 from tests.support.filenames import CONFIG_FILENAME
 
@@ -867,7 +868,7 @@ class TestShowConfig:
 
         ⚑ EVERY DESTINATION HERE CARRIES A DOT, and that is the whole point of the
         fixture: a destination is DATA and the key stops at the category, so a plain
-        ``.``-split cuts ``box.caches.~/.cache/uv`` into a key that does not exist.  With
+        ``.``-split cuts ``box.caches./home/agent/.cache/uv`` into a key that does not exist.  With
         dotless destinations the two splits agree, and a "simplification" to the wrong
         one would pass while dropping every real cache declaration from the view.
         """
@@ -886,7 +887,7 @@ class TestShowConfig:
 
         out = capsys.readouterr().out
         for cat in ABSTRACT_CATEGORIES:
-            assert f"box.{cat}.~/.{cat}/dest" in out, (cat, out)
+            assert f"box.{cat}.{normalize_bind_dest(f'~/.{cat}/dest')}" in out, (cat, out)
         assert "no overrides" not in out, out
 
     def test_the_box_declaration_block_prints_each_row_once(self, tmp_path, capsys):
@@ -909,7 +910,7 @@ class TestShowConfig:
         out = capsys.readouterr().out
         assert out.count("custom") == 1, out
         assert out.count("pref.system.agent") == 1, out
-        assert out.count("box.caches.~/c") == 1, out
+        assert out.count(f"box.caches.{normalize_bind_dest('~/c')}") == 1, out
 
     def test_an_undeclared_table_named_after_a_category_is_not_a_declaration(
         self, tmp_path, capsys,
@@ -955,7 +956,7 @@ class TestShowConfig:
         )
 
         out = capsys.readouterr().out
-        assert "box.caches.~/ok" in out, out
+        assert f"box.caches.{normalize_bind_dest('~/ok')}" in out, out
         assert "workset.caches" not in out, out
         assert "system.common" not in out, out
 
@@ -5575,7 +5576,7 @@ class TestPrefShow:
             "pref": {"system": {"agent": "goose"},
                      "agent": {"claude": {"common": {
                          "/home/agent/.claude/plugins": None,
-                     }}}},
+                     }, "caches": {"~/c/": ["uv"]}}}},
         }))
         show_config(
             command_scope=ConfigLevel.box,
@@ -5587,6 +5588,11 @@ class TestPrefShow:
         assert (
             "pref.agent.claude.common./home/agent/.claude/plugins = null" in out
         )
+        # A request on a category carries the whole map and renders as the map's rows do
+        # (spec §2h). MUTATION: drop the ``pref.`` strip in
+        # ``config_display._is_bind_map_key`` and this reds on the Python repr.
+        assert "pref.agent.claude.caches./home/agent/c = uv" in out, out
+        assert "['" not in out, out
 
     def test_effective_shows_request_and_result(self, tmp_path, capsys):
         """§2h — '--effective shows BOTH the request and the resulting value'."""
@@ -6822,7 +6828,7 @@ class TestStoredViewMarksUndeclaredEntries:
             noun.value: {"zippity": "KEPT"},
         }
         dump_doc(settings, doc)
-        assert table not in cascade_view(doc, level=noun.value)  # the case IS a drop
+        assert table not in cascade_view(doc, level=noun.value, path=None)  # the case IS a drop
         if noun is ConfigLevel.box:
             show_config(
                 command_scope=noun, global_config_path=global_cfg, config_path=settings,

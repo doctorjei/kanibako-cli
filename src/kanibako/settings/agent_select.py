@@ -193,7 +193,7 @@ def select_agent(
     ):
         if path is not None and Path(path).exists():
             refuse_retired_keys(
-                cascade_view(load_doc(Path(path)), level=level),
+                cascade_view(load_doc(Path(path)), level=level, path=Path(path)),
                 level=level, path=Path(path),
                 box_name=proj.name if level == "box" else None,
             )

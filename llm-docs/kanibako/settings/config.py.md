@@ -719,6 +719,11 @@ case (absent file, or absent/empty `agent` table) still returns `{}` unchanged.
 (`settings_assemble.cascade_view`): re-reading the path would see an `agent:` table that
 directional enforcement drops (a box or workset file), and print its leaves as overrides.
 
+Every row is produced by `config_display.flatten_under`, the ONE show walk, relative to
+`agent.<node>.`: a scalar leaf is its bare row (`model = opus`), and a table-valued leaf is walked,
+so a category map prints `caches./home/agent/c = uv` — destination normalized, entry `src` /
+`src  [options]` — never the dict repr `caches = {'~/c/': ['uv']}`.
+
 
 ```read_system_agent(system_path: Path | None) -> str | None```
 The stored `system.agent` SETTING from the system settings tier; `None` when unset or empty.

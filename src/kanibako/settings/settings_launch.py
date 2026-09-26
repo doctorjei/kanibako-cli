@@ -1180,7 +1180,7 @@ def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None:
     """
     # LEAST specific LAST, matching *tiers*' most-specific-first order.
     for level, path in tiers:
-        raw = cascade_view(load_doc(path), level=level)
+        raw = cascade_view(load_doc(path), level=level, path=path)
         refuse_retired_keys(raw, level=level, path=path)
         refuse_retired_behavior_keys(raw, level=level, path=path)
 

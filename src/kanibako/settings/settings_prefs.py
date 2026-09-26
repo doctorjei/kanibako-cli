@@ -272,16 +272,25 @@ def refuse_pref_table(raw: Any, *, level: str, path: Path | None) -> Any:
     (``config set pref.*`` at these scopes RAISES).
 
     Returns a shallow copy without the table; never mutates *raw*.
+
+    ⚑ The warning is spoken ONCE per ``(file, key)`` for the process, through the guard every
+    dropped-table warning shares (``settings_assemble.announce_drop_once``): one command reads
+    one file through several resolves, and each used to repeat it. The DROP runs every time.
     """
+    # ⚑ FUNCTION-SCOPE: ``settings_assemble`` imports THIS module at module scope, so a
+    # module-scope import back would close a cycle.
+    from kanibako.settings.settings_assemble import announce_drop_once
+
     if not isinstance(raw, dict) or PREF_ROOT not in raw:
         return raw
-    _log.warning(
-        "Dropping top-level 'pref' table from %s settings file %s: a pref is a "
-        "REQUEST and may be written ONLY in a workset or box settings file "
-        "(spec §2h) — that restriction is what bounds the resolution recursion. "
-        "The requests are ignored.",
-        level, str(path) if path is not None else "<settings>",
-    )
+    if announce_drop_once(path, PREF_ROOT):
+        _log.warning(
+            "Dropping top-level 'pref' table from %s settings file %s: a pref is a "
+            "REQUEST and may be written ONLY in a workset or box settings file "
+            "(spec §2h) — that restriction is what bounds the resolution recursion. "
+            "The requests are ignored.",
+            level, str(path) if path is not None else "<settings>",
+        )
     return {k: v for k, v in raw.items() if k != PREF_ROOT}
 
 

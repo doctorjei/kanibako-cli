@@ -12,7 +12,7 @@ from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (CONFIG_FILE, CONFIG_PATH_DEFAULTS, SITE_CONFIG_DIR,
                                          SITE_CONFIG_FILE, SITE_SETTINGS_FILE,
                                          SYSTEM_PATH_DEFAULTS)
-from kanibako.settings.config_io import dump_doc, load_doc, render_stored_scalar
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
                                         ERR_CONFIG_LAYER1_UNDECLARED, ERR_CONFIG_NULL_PATH)
 
@@ -793,7 +793,7 @@ def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]:
     per-agent dicts are honored, and that is deliberate (no pass-1 migration).
 
     ⚑ A LEAF WHOSE STORED SHAPE IS NOT A SCALAR IS STRINGIFIED BY THE MODULE THAT
-    OWNS THE SHAPE (``agent_file.stored_leaf_text``), not by ``str()``; a bare
+    OWNS THE SHAPE (``agent_file.stored_leaf_display``), not by ``str()``; a bare
     ``str()`` printed the Python repr ``['--a', '--b']`` at every reader of
     ``system get run_args`` and ``system show``.
 
@@ -819,22 +819,19 @@ def agent_settings_of(data: dict, agent_name: str) -> dict[str, str]:
     # ``agent_config``, which imports THIS module for ``AGENT_META_FILE``, so a
     # module-scope import here closes ``config → agent_file → agent_config → config``.
     # The idiom is this file's own (see the other deferred imports below).
-    from kanibako.settings.agent_file import stored_leaf_text
-
-    def _text(leaf: str, v: object) -> str:
-        rendered = stored_leaf_text(leaf, v)
-        return render_stored_scalar(v) if rendered is None else rendered
+    # ⚑ AND A TABLE-VALUED LEAF IS FLATTENED BY THE ONE SHOW WALK (``config_display.flatten_under``),
+    # so an agent-tier category map prints ``caches./home/agent/c = uv`` like every other noun's
+    # rows, never the dict repr ``caches = {'~/c/': ['uv']}``.
+    from kanibako.settings.config_display import flatten_under
 
     agent = data.get("agent", {})
     if not isinstance(agent, dict):
         return {}
     out: dict[str, str] = {}
-    default_sec = agent.get("default")
-    if isinstance(default_sec, dict):
-        out.update({k: _text(k, v) for k, v in default_sec.items()})
-    agent_sec = agent.get(agent_name)
-    if isinstance(agent_sec, dict):
-        out.update({k: _text(k, v) for k, v in agent_sec.items()})
+    for node in ("default", agent_name):
+        sec = agent.get(node)
+        if isinstance(sec, dict):
+            out.update(flatten_under(f"agent.{node}.", sec))
     return out
 
 

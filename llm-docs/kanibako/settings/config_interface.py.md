@@ -1029,10 +1029,12 @@ what the launch's own seams judge a file by,
 so a table the launch drops — an `agent:` table in a box's settings file, a `system:` table in a
 workset's file, a `pref:` table in the system settings file — gets no row here either. Read raw,
 the box case printed the table's leaves as overrides and a dotted entry in it as undeclared, under the
-launch's own warning that the table is ignored: one file, two readers, two answers. The view is
-SILENT, like `cascade_view`; the drop warning is the launch's. `box show` prints it (every box
-verb's path resolve assembles the file), as do `workset show --effective` and
-`system show --effective`; plain `workset show` and `system show` print nothing for such a table.
+launch's own warning that the table is ignored: one file, two readers, two answers. The view NAMES
+THE FILE (`cascade_view(..., path=path)`), so the dropped table is announced here as spec §0 requires
+(*"with a warning naming the file and key"*) — plain `workset show` and `system show` assemble
+nothing else and printed nothing for such a table before. The warning shares `assemble_levels`'s
+once-per-`(file, key)` guard (`settings_assemble._warn_upward_drops`), so a verb that also assembles
+the file — every box verb, every `--effective` view — still names each dropped key once.
 
 ### What each view prints
 

@@ -1377,6 +1377,25 @@ class TestTargetSettings:
         # A different agent still gets the default tier.
         assert read_agent_settings(p, "goose") == {"model": "sonnet"}
 
+    def test_an_agent_tier_category_map_renders_as_rows_not_a_repr(self):
+        """A category map at the agent tier renders through the one show walk: destination
+        normalized, entry ``src`` / ``src  [options]`` — never the dict repr
+        ``caches = {'~/c/': ['uv']}``.  Scalars keep their bare row.
+        MUTATION: render each leaf as a scalar again in ``config.agent_settings_of`` (the
+        pre-fix per-leaf map, which stringified a table) and this reds."""
+        from kanibako.settings.config import agent_settings_of
+
+        rows = agent_settings_of(
+            {"agent": {"default": {"model": "opus", "caches": {"~/c/": ["uv"]}},
+                       "claude": {"common": {"~/p": ["q", "ro"]}}}},
+            "claude",
+        )
+        assert rows == {
+            "model": "opus",
+            "caches./home/agent/c": "uv",
+            "common./home/agent/p": "q  [ro]",
+        }, rows
+
     def test_no_bleed_across_agents(self, tmp_path):
         """An override set for one agent does NOT bleed onto another (B3 bug)."""
         p = tmp_path / BOX_META_FILE

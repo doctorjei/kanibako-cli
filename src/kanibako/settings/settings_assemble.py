@@ -585,22 +585,53 @@ def _upward_scope_drop_set(file_scope: str) -> frozenset[str]:
     return containing | frozenset({"meta", BINDING_DERIVATIONS_NODE})
 
 
-def _drop_upward_scopes(
-    raw: dict, *, file_scope: str, path: Path | None
-) -> dict:
-    """Return *raw* without any CONTAINING-scope top-level table, top-level ``meta:`` or top-level
-    ``binding_derivations:`` (spec §0) — a shallow copy, warning-only, never a raise.
+#: Process-scoped DISPLAY state for :func:`_warn_upward_drops`: the ``(file, key)`` pairs
+#: already announced.  It changes no resolution outcome — the drop itself runs on every read —
+#: which is why it may be module-level at all, the same footing as
+#: ``commands.start._COLLISION_WARNED``.
+#: ⚑ WHY IT EXISTS: one command reads one settings file through several resolves, and each
+#: announced the drop again — ``box show --effective`` printed one dropped key four times.  One dropped key in one
+#: file is ONE fact (spec §0: *"with a warning naming the file and key"*), and it lives for the
+#: process, never beyond it: the next command warns again until the file is fixed.
+_DROP_WARNED: "set[tuple[str, str]]" = set()
 
-    THREE dropped tokens, THREE distinct rationales, one warning each (llm-docs).
+
+def reset_drop_warnings() -> None:
+    """Clear the per-process drop-warning memo (test seam)."""
+    _DROP_WARNED.clear()
+
+
+def announce_drop_once(path: Path | None, token: str) -> bool:
+    """Is this the FIRST time this process drops top-level *token* from the file at *path*?
+
+    ⚑ THE ONE GUARD every dropped-table warning asks before it speaks — the three §0 ones
+    here (:func:`_warn_upward_drops`) and the §2h ``pref:`` one
+    (:func:`~kanibako.settings.settings_prefs.refuse_pref_table`) — so one dropped table in one
+    file is named once per command whichever filter, and however many resolves, meet it.
+    Records the pair; the caller warns only on ``True``.
+    """
+    memo = (str(path) if path is not None else "<settings>", token)
+    if memo in _DROP_WARNED:
+        return False
+    _DROP_WARNED.add(memo)
+    return True
+
+
+def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None:
+    """Warn ONCE per ``(file, key)`` for each top-level table *raw* loses to spec §0.
+
+    ⚑ THE ONE GUARD for every §0 drop announcement: :func:`_drop_upward_scopes` (assembly) and
+    :func:`cascade_view` (a verb judging a file) both warn through here, so a file read by both
+    in one command still names each dropped key once.  THREE dropped tokens, THREE distinct
+    rationales, one warning each (llm-docs).
     """
     if not isinstance(raw, dict):
-        return raw
+        return
     drop_set = _upward_scope_drop_set(file_scope)
-    dropped = [str(k) for k in raw if str(k) in drop_set]
-    if not dropped:
-        return raw
     where = str(path) if path is not None else "<settings>"
-    for token in dropped:
+    for token in (str(k) for k in raw if str(k) in drop_set):
+        if not announce_drop_once(path, token):
+            continue
         if token == "meta":
             # meta is NOT a containing scope — a DISTINCT rationale, hence its own warning.
             # ⚑ TOP-LEVEL ONLY: this loop never descends, so a nested ``<scope>.meta`` table
@@ -644,6 +675,21 @@ def _drop_upward_scopes(
                 "directional enforcement); the key is ignored.",
                 token, file_scope, where, file_scope, token,
             )
+
+
+def _drop_upward_scopes(
+    raw: dict, *, file_scope: str, path: Path | None
+) -> dict:
+    """Return *raw* without any CONTAINING-scope top-level table, top-level ``meta:`` or top-level
+    ``binding_derivations:`` (spec §0) — a shallow copy, warning-only (:func:`_warn_upward_drops`),
+    never a raise.
+    """
+    if not isinstance(raw, dict):
+        return raw
+    drop_set = _upward_scope_drop_set(file_scope)
+    if not any(str(k) in drop_set for k in raw):
+        return raw
+    _warn_upward_drops(raw, file_scope=file_scope, path=path)
     return {k: v for k, v in raw.items() if str(k) not in drop_set}
 
 
@@ -652,7 +698,7 @@ def _drop_upward_scopes(
 _AGENT_FILE_LEVEL: str = "agent"
 
 
-def cascade_view(raw: Any, *, level: str) -> Any:
+def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any:
     """The part of a RAW settings doc at *level* that :func:`assemble_levels` actually MERGES.
 
     ⚑ WHY IT EXISTS. A consumer that judges a settings file has to judge what the file
@@ -663,9 +709,15 @@ def cascade_view(raw: Any, *, level: str) -> Any:
     directional enforcement never read — while the key that actually stopped the resolve went
     unnamed. A cure for a no-op is worse than no cure.
 
-    ⚑ SILENT, and that is the whole difference from the filters above it: ``assemble_levels``
-    WARNS as it drops, and a second caller re-emitting those warnings would double every one of
-    them. The RULES are read from their one declaration each, never restated.
+    ⚑ *path* NAMES THE FILE, AND ONLY A CALLER THAT PASSES IT IS WARNED FOR. A verb that shows a
+    file WITHOUT assembling it (``config_interface._noun_stored_view``, plain ``workset show`` /
+    ``system show``) passes it, so a dropped table is announced there too (spec §0: *"with a
+    warning naming the file and key"*), and so is an illegal ``pref:`` table (§2h). Both warnings
+    go through :func:`announce_drop_once`, the SAME once-per-``(file, key)`` guard
+    ``assemble_levels`` warns through, so a command that does both still names each key once. *path* is REQUIRED, never defaulted (P3): every caller names its
+    file, and the shared guard is what keeps a file read by several of them from being announced
+    twice. The RULES are read from their one
+    declaration each, never restated.
 
     THREE, one per rule:
 
@@ -683,6 +735,12 @@ def cascade_view(raw: Any, *, level: str) -> Any:
     """
     if not isinstance(raw, dict):
         return raw
+    if path is not None:
+        _warn_upward_drops(raw, file_scope=level, path=path)
+        if level not in _PREF_LEGAL_LEVELS:
+            # The SAME call ``assemble_levels`` drops an illegal ``pref:`` table with, so the
+            # warning is its text, through the same guard.
+            raw = refuse_pref_table(raw, level=level, path=path)
     if level == _AGENT_FILE_LEVEL:
         return {k: v for k, v in raw.items() if str(k) in ROOT_SECTIONS}
     drop_set = _upward_scope_drop_set(level)

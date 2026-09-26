@@ -8,6 +8,7 @@ import pytest
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths
+from kanibako.settings.settings_resolve import normalize_bind_dest
 from kanibako.project.workset import (
     add_project,
     create_workset,
@@ -1781,21 +1782,43 @@ class TestWorksetShowListsTheAbstractTrio:
         ws = self._ws(config_file, tmp_home, "trio")
         self._merge(ws, self.TRIO)
         out = self._show("trio", capsys, effective=effective)
-        assert "workset.common.~/shared/docs" in out
-        assert "workset.caches.~/.cache/uv" in out
-        assert "workset.seeded.~/.bashrc" in out
+        for cat, table in self.TRIO.items():
+            for dest in table:
+                assert f"workset.{cat}.{normalize_bind_dest(dest)}" in out, out
 
     def test_a_declaration_is_listed_ONCE(self, config_file, tmp_home, capsys):
         """One carrier, one row: the flatten is the only reader of this file."""
         ws = self._ws(config_file, tmp_home, "trioonce")
         self._merge(ws, self.TRIO)
         out = self._show("trioonce", capsys, effective=False)
-        for dotted in (
-            "workset.common.~/shared/docs",
-            "workset.caches.~/.cache/uv",
-            "workset.seeded.~/.bashrc",
-        ):
-            assert out.count(dotted) == 1, dotted
+        for cat, table in self.TRIO.items():
+            for dest in table:
+                dotted = f"workset.{cat}.{normalize_bind_dest(dest)}"
+                assert out.count(dotted) == 1, dotted
+
+    def test_a_row_prints_the_key_the_resolve_uses_and_its_source_as_written(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The destination prints NORMALIZED — the spelling ``parse_bind_map`` keys it by
+        (R-11), so this row and the ``--effective`` derived block name one declaration with
+        one key — and the entry prints ``src`` / ``src  [options]``, never the Python repr
+        ``['uv']``.  A ``masks`` destination is carried as written by the resolve, so it
+        prints as written here too.
+        MUTATION: route bind maps back through the plain walk in
+        ``config_display._flatten_table`` and every assertion below but the ``masks`` one
+        reds."""
+        ws = self._ws(config_file, tmp_home, "triospell")
+        self._merge(ws, {
+            "common": {"~/shared/docs/": ["teamdocs"]},
+            "caches": {"~/.cache/uv": ["uv", "Z,U"]},
+            "masks": {"~/.ssh": True},
+        })
+        out = self._show("triospell", capsys, effective=False)
+        assert f"workset.common.{normalize_bind_dest('~/shared/docs')} = teamdocs\n" in out
+        assert f"workset.caches.{normalize_bind_dest('~/.cache/uv')} = uv  [Z,U]\n" in out
+        assert "workset.masks.~/.ssh = true\n" in out
+        assert "['" not in out, out
+        assert "workset.common.~/" not in out, out
 
     def test_a_pref_request_is_not_doubled_by_the_flatten(
         self, config_file, tmp_home, capsys,
@@ -1819,6 +1842,34 @@ class TestWorksetShowListsTheAbstractTrio:
         """The flatten must not manufacture a row out of a create-written file."""
         self._ws(config_file, tmp_home, "trioclean")
         assert "no overrides" in self._show("trioclean", capsys, effective=False)
+
+    @pytest.mark.parametrize("effective", [False, True])
+    def test_a_dropped_upward_table_is_announced_ONCE(
+        self, config_file, tmp_home, capsys, caplog, effective,
+    ):
+        """spec §0: a containing scope's table is dropped *"with a warning naming the file
+        and key"*.  The PLAIN view assembled nothing, so it printed no warning at all; both
+        views now name the file and key, once.
+        MUTATION: drop ``path=path`` from ``config_interface._noun_stored_view``'s
+        ``cascade_view`` call and the plain case reds; skip the ``_DROP_WARNED`` check in
+        ``settings_assemble._warn_upward_drops`` and the ``--effective`` case reds."""
+        from kanibako.commands.workset_cmd import _workset_config_path
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        ws = self._ws(config_file, tmp_home, f"triodrop{int(effective)}")
+        path = _workset_config_path(ws)
+        doc = load_doc(path)
+        doc["system"] = {"auth": {"share_allowed": False}}
+        dump_doc(path, doc)
+        with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
+            self._show(ws.name, capsys, effective=effective)
+        drops = [
+            m for m in caplog.messages
+            if m.startswith(
+                f"Dropping upward-scope key 'system' from workset settings file {path}"
+            )
+        ]
+        assert len(drops) == 1, caplog.messages
 
 
 class TestWorksetShowDerivesTheAbstractTrio:
@@ -1930,6 +1981,23 @@ class TestWorksetShowDerivesTheAbstractTrio:
         assert "no mount" in out
         assert "workset.masks.~/shared/docs" in out
         assert "teamdocs -> " not in out
+
+    def test_the_block_names_the_masks_it_does_not_apply(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The heading answers for this working set's file alone, so the line beneath it
+        says which masks that leaves out and where the box's own answer is.
+        MUTATION: delete the note's ``print`` in ``_print_effective_derivations`` and
+        this reds."""
+        ws = self._ws(config_file, tmp_home, "derivnote")
+        self._merge(ws, self.TRIO)
+        lines = self._show("derivnote", capsys).out.splitlines()
+        heading = lines.index("Derived bindings for working set 'derivnote':")
+        note = lines[heading + 1]
+        assert note.startswith(
+            "  (Masks from the base or system settings file, an agent file or a box's own file"
+        ), note
+        assert "'kanibako box show <box> --effective'" in note, note
 
     def test_the_PLAIN_view_derives_nothing(self, config_file, tmp_home, capsys):
         """The derived half is an ``--effective`` obligation; the plain view shows

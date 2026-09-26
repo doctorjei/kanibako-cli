@@ -1808,14 +1808,15 @@ def _noun_stored_view(path: "Path | None", command_scope: ConfigLevel) -> dict:
     restating them.  Re-reading the raw file here gave a table directional enforcement drops a
     second verdict: an ``agent:`` table in a ``box.yaml`` printed as overrides and, for a
     dotted entry inside it, as undeclared — under the launch's warning that it is ignored.
-    ⚑ SILENT, like ``cascade_view``: the drop warning is the launch's.  ``box show`` prints it,
-    because every box verb's path resolve assembles the file (``config.resolve_box_enable_vault``),
-    as do ``workset show --effective`` and ``system show --effective``; plain ``workset show``
-    and ``system show`` print nothing for such a table.
+    ⚑ IT NAMES THE FILE, so the dropped table is ANNOUNCED here (spec §0: *"with a warning naming
+    the file and key"*) — plain ``workset show`` and ``system show`` assemble nothing else, and
+    printed nothing for such a table until this passed *path*.  The warning shares
+    ``assemble_levels``'s once-per-``(file, key)`` guard, so a verb that also assembles the file
+    (every box verb, and every ``--effective`` view) still names each dropped key once.
     """
     from kanibako.settings.settings_assemble import cascade_view
 
-    return cascade_view(load_doc(path), level=command_scope.value)
+    return cascade_view(load_doc(path), level=command_scope.value, path=path)
 
 
 def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]:
@@ -1935,7 +1936,7 @@ def _abstract_declarations(data: dict, scope: str) -> dict[str, str]:
 
     ⚑ The key ends at the CATEGORY and the destination is one whole segment after it, so the
     split is ``config_dest._category_segments`` rather than a ``.``-split: a destination
-    carries dots (``box.caches.~/.cache/uv``).  A row only counts when that split really
+    carries dots (``box.caches./home/agent/.cache/uv``).  A row only counts when that split really
     STOPPED at a terminal category key, which is what keeps an undeclared table that merely
     happens to be named after one (``box.bogus.common.x``) out of the list.
     """

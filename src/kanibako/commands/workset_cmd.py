@@ -39,7 +39,9 @@ from kanibako.project.workset import (
 if TYPE_CHECKING:
     # ⚑ TYPE-ONLY, deliberately: every ``settings`` import in this module is deferred
     # into a function body, and a runtime one here would undo that.
+    from kanibako.errors import CategoryCollisionError
     from kanibako.settings.settings_categories import CategoryEntry
+    from kanibako.settings.settings_resolve import SettingsError
     from kanibako.settings.store_collapse import CollapsedStore
 
 
@@ -1282,8 +1284,12 @@ def _workset_preview_collapse(entries: "list[CategoryEntry]") -> "CollapsedStore
     )
 
 
-def _preview_refusal(ws, exc: Exception) -> int:
-    """Report a refusal the preview raised, and the rc — ONE arm for both listings."""
+def _preview_refusal(ws, exc: CategoryCollisionError | SettingsError) -> int:
+    """Report a refusal the preview raised, and the rc — ONE arm for both listings.
+
+    ⚑ *exc* is NARROWED to the two refusals the preview raises (P3), so an unrelated
+    exception cannot reach the ``Error:`` frame below and be reported as one.
+    """
     from kanibako.errors import CategoryCollisionError
 
     if isinstance(exc, CategoryCollisionError):
@@ -1384,10 +1390,12 @@ def _print_effective_derivations(ws, std, ws_config: Path) -> int:
     (``store_collapse.pair_declarations``), fed off the SAME entry list and the SAME
     fold ``workset share list --effective`` reads.  Nothing is re-derived.
 
-    ⚑ **WHAT THIS CLAIMS, EXACTLY: what THIS WORKING SET's declarations derive among
-    themselves** — not what a named box receives.  A working set names no box, so the
-    box tier is absent and a box-scope ``masks`` entry that would swallow one of these
-    at launch cannot be seen from here.  The pid-0 foundation is spelled
+    ⚑ **WHAT THIS CLAIMS, EXACTLY: what the declarations in THIS WORKING SET's settings
+    file derive among themselves** — not what a named box receives.  That file's ``box:``
+    defaults-down table is read like the rest of it, so a ``box.masks`` written there
+    does apply here.  A working set names no box, so no box's OWN settings file is read
+    (nor an agent file, nor the system or base settings file), and a ``masks`` entry in one of those that
+    would swallow one of these at launch cannot be seen from here.  The pid-0 foundation is spelled
     :data:`_PREVIEW_HOME_SRC` for the same reason, and a ``seeded`` row prints its
     GUEST destination only: §0's tuple direction resolves a seed to the host store
     when the copy runs, and that store is the box's home.
@@ -1442,10 +1450,18 @@ def _print_effective_derivations(ws, std, ws_config: Path) -> int:
     # abstract half): declaration line, then the derivation indented beneath it. One
     # form at both nouns — a third spelling of one answer is the confusion Convention
     # 0 is about. The HEADING is this noun's own addition, and it is needed here: this
-    # view ALSO prints the declaration rows in the FILE's spelling, so the block needs
-    # to say which working set it is answering for.
+    # view ALSO prints the declaration rows through the flatten, so the block needs to
+    # say which working set it is answering for.
     print("")
     print(f"Derived bindings for working set '{ws.name}':")
+    # ⚑ WHAT THE HEADING DOES NOT COVER, said where the user reads it: the resolve
+    # above reads this working set's settings file alone, so a mask in any other
+    # settings file that would swallow one of these rows at launch is not applied.
+    print(
+        "  (Masks from the base or system settings file, an agent file or a box's "
+        "own file are not applied here; 'kanibako box show <box> --effective' "
+        "shows what a box receives.)"
+    )
     for row in derivations:
         print(f"  {row.declaration.key} = {row.declaration.src}")
         print(
