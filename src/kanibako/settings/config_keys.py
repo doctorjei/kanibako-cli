@@ -573,7 +573,7 @@ def agent_key_node(raw: str) -> str:
     same tier and the same cure.
     ⚑ Every other spelling is an agent ADDRESS, and reaches its node through
     :func:`kanibako.agent_ref.agent_address_node` — the one carrier of the fold, so
-    ``agent.Claude.model`` is the ``claude`` node's key and ``agent.Shell.model`` the
+    ``agent.Claude.model`` is the ``claude`` node's key and ``agent.Shell.label`` the
     shell's ([R173]), exactly as the §0 check already reads them.
     """
     if find_identifier(raw, (AGENT_DEFAULT_SUB,)) is not None:

@@ -12,7 +12,9 @@ three-valued where ``declared()`` is yes or no;
 
 An agent NODE is judged, never assumed: it must be a CORE-OWNED node (one the
 manifest's ``keys:`` spell concretely, today ``default`` and ``shell``) or an
-agent an IN-TREE plugin registers (:func:`in_tree_agents`). This is the gate's
+agent an IN-TREE plugin registers (:func:`in_tree_agents`). A core-owned node is a
+pseudo-agent, and its leaves are its own concrete rows plus the §2a categories: a
+parametric ``<agent>`` row is a §2d "True agent(s)" row and does not reach it. This is the gate's
 view of OUR source, not runtime recognition: a user's own agent is recognized by
 its installed plugin and never meets this module.
 """
@@ -172,6 +174,11 @@ class KeyspaceRegistry:
     self._core_nodes = self._read_core_nodes(keys, self._tier_head)
     self._nodes = self._core_nodes | in_tree_agents(_TREE)
     self._node_alt = "(?:" + "|".join(re.escape(n) for n in sorted(self._nodes)) + ")"
+    # What a ``keys:`` row's ``<agent>`` reaches: those rows are §2d "True agent(s)"
+    # rows, so a core-owned pseudo-agent node holds only its own concrete rows.
+    self._true_node_alt = (
+      "(?:" + "|".join(re.escape(n) for n in sorted(self._nodes - self._core_nodes)) + ")"
+    )
     scopes, families, var_families = self._read_categories(doc["categories"])
     self._scopes = self._instantiate_scopes(scopes)
     self._one_seg_scopes = {s for s in self._scopes if "." not in s}
@@ -274,25 +281,21 @@ class KeyspaceRegistry:
     tail = groups.get("tail")
     if tail is None:
       return True
-    node = groups.get("agent")
-    return self._tail_ok(str(tail), node=None if node is None else str(node))
+    return self._tail_ok(str(tail))
 
-  def _tail_ok(self, tail: str, *, node: str | None) -> bool:
-    """A ``<key>`` tail names a default-tier leaf, the node's own row, or a
-    category -- or is conceded.
+  def _tail_ok(self, tail: str) -> bool:
+    """A ``<key>`` tail names a default-tier leaf or a category -- or is conceded.
 
-    A CORE-OWNED node's vocabulary is the manifest's own, so a tail there is
-    judged. A one-segment tail under a plugin's node, or under a node that is a
-    runtime fact (``node`` is ``None``: the mirror row), is CONCEDED (spec §0):
-    that vocabulary is plugin-declared and unreadable here.
+    Only a TRUE agent's node reaches here (``_true_node_alt``), or a node that is a
+    runtime fact (the mirror row). A one-segment tail under either is CONCEDED
+    (spec §0): that vocabulary is plugin-declared and unreadable here. A core-owned
+    pseudo-agent node never matches a template, so its leaves are its concrete rows.
     """
     if self._tier_prefix + tail in self._concrete:
       return True
-    if node is not None and self._tier_head + "." + node + "." + tail in self._concrete:
-      return True
     if self._category_tail(tail.split(".")):
       return True
-    return node not in self._core_nodes and "." not in tail
+    return "." not in tail
 
   def _category_tail(self, segs: list[str]) -> bool:
     """A tail under an agent node matches the categories cross-product."""
@@ -302,8 +305,16 @@ class KeyspaceRegistry:
       return ".".join(segs) in self._families or segs[0] in self._var_families
     return False
 
-  def _compile(self, template: str, scope_alt: str, tier: bool) -> re.Pattern[str]:
-    """A template into a full-match pattern; ``tier`` names ``<agent>`` and ``<key>``."""
+  def _compile(
+    self, template: str, scope_alt: str, tier: bool, *, true_agents: bool = False
+  ) -> re.Pattern[str]:
+    """A template into a full-match pattern; ``tier`` names ``<agent>`` and ``<key>``.
+
+    ``true_agents`` (implied by ``tier``) limits ``<agent>`` to the true agents: a
+    ``keys:`` row does not reach a pseudo-agent. A ``not_keys`` spelling keeps every
+    node, since it is recognized only to be refused.
+    """
+    node_alt = self._true_node_alt if tier or true_agents else self._node_alt
     out: list[str] = []
     pos = 0
     for part in re.finditer(r"<[A-Za-z_][A-Za-z0-9_]*>|\*\*?", template):
@@ -313,7 +324,7 @@ class KeyspaceRegistry:
         out.append("(" + scope_alt + ")")
       elif token == "<agent>":
         # The node is JUDGED by construction: only a node the adapter knows matches.
-        out.append("(?P<agent>" + self._node_alt + ")" if tier else self._node_alt)
+        out.append("(?P<agent>" + node_alt + ")" if tier else node_alt)
       elif token in ("<VAR>", "<name>"):
         out.append("(" + _SEG + ")")
       elif token == "<key>":
@@ -343,7 +354,9 @@ class KeyspaceRegistry:
         prefix = ".".join(segs[:i])
         if "<" in prefix or "*" in prefix:
           prefixes[prefix] = None
-    return [self._compile(prefix, scope_alt, tier=False) for prefix in prefixes]
+    return [
+      self._compile(prefix, scope_alt, tier=False, true_agents=True) for prefix in prefixes
+    ]
 
   def _cross_prefixes(self) -> set[str]:
     """Proper prefixes of the finite scope-by-family terminal spellings."""
@@ -399,10 +412,10 @@ class KeyspaceRegistry:
   def _read_namespace_shapes(self, plugin: dict[str, Any]) -> list[_Shape]:
     """The plugin namespace's shape answer; the census is never consulted.
 
-    On the agent tier's own head the node and leaf are named, so a core-owned
-    node is judged by :meth:`_shape_admits` like any ``<key>`` tail: a plugin
-    contributes nothing at a tier core owns (spec §0). Every arm's node is a
-    known one; the namespace names no leaf, so no other head concedes one.
+    A plugin namespace is a TRUE agent's (spec §2d): a pseudo-agent has no plugin, so
+    its node is not matched here at all. On the agent tier's own head the leaf is
+    judged by :meth:`_shape_admits` like any ``<key>`` tail; the namespace names no
+    leaf, so no other head concedes one.
     """
     namespace = plugin.get("namespace")
     spec = _clauses({_SPEC_FIELD: plugin.get("shape_spec")})
@@ -413,9 +426,9 @@ class KeyspaceRegistry:
         if not head:
           continue
         if head == self._tier_head:
-          node, leaf = "(?P<agent>" + self._node_alt + ")", "(?P<tail>" + _SEG + ")"
+          node, leaf = "(?P<agent>" + self._true_node_alt + ")", "(?P<tail>" + _SEG + ")"
         else:
-          node, leaf = self._node_alt, _SEG
+          node, leaf = self._true_node_alt, _SEG
         shapes.append(_Shape(re.compile(re.escape(head) + r"\." + node + r"\." + leaf), spec))
     return shapes
 

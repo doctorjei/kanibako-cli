@@ -1632,10 +1632,10 @@ keys:
   ## agent.default twin per row; the VALUE column is the fence's tier value.
   ## `agent.shell.bindings.{ro,rw}` mints NO row — bindings are declared by the
   ## CATEGORY FAMILY (the agent.default fence's identical line carries no row
-  ## either; a second one would be the two-carriers defect). `continue_mode`,
-  ## `model` and `endpoint` are NOT rows: the fence omits them DELIBERATELY and
-  ## the §2d per-node fallback supplies them — do not add them, do not propose
-  ## a spec edit for them.
+  ## either; a second one would be the two-carriers defect). The fence is the shell
+  ## tier's COMPLETE list, because the §2d "True agent(s)" rows do not reach a
+  ## pseudo-agent; it gives every universal key a value, so `continue_mode`, `model`
+  ## and `endpoint` are rows here with the fence value `<None>`.
   agent.shell.label:
     scope: agent
     type: str
@@ -1653,6 +1653,27 @@ keys:
     default: full
     note: "permission TIER for a plain-shell box (fence literal). The VALUES stay
            the universal enum — same realization rule as the twin."
+    spec: "§2d (shell fence)"
+  agent.shell.continue_mode:
+    scope: agent
+    type: bool
+    set: cli+file
+    default: null
+    note: "continue vs fresh for a plain-shell box; null = none (fence <None>)."
+    spec: "§2d (shell fence)"
+  agent.shell.model:
+    scope: agent
+    type: str
+    set: cli+file
+    default: null
+    note: "model for a plain-shell box; null = none (fence <None>)."
+    spec: "§2d (shell fence)"
+  agent.shell.endpoint:
+    scope: agent
+    type: str
+    set: cli+file
+    default: null
+    note: "backend endpoint URL for a plain-shell box; null = none (fence <None>)."
     spec: "§2d (shell fence)"
   agent.shell.allow_helpers:
     scope: agent
@@ -2129,10 +2150,17 @@ keys:
     note: "CORE-owned: there is NO default PLUGIN PACKAGE (§0 'the base system owns
            agent.default.*'), so this fixed literal cannot have a plugin origin"
     spec: "§2d"
+  meta.agent.default.path:
+    namespace: meta
+    set: never
+    origin: construct_time
+    type: path
+    value: "@config.agents/default"
+    spec: "§2d"
   ## ---- meta.agent.shell.* — the plain-shell identity anchors (§2d fence) ----
-  ## Concrete literals beside the parametric meta.agent.<agent>.* rows below: the
-  ## fence declares all five, and the parametric rows cannot carry shell's FIXED
-  ## values. `exec` carries NO value cell — the fence reads <None> and the
+  ## Concrete literals, because the parametric meta.agent.<agent>.* rows below are
+  ## §2d "True agent(s)" rows and do not reach a pseudo-agent: the fence's own six
+  ## rows are shell's whole meta tier. `exec` carries NO value cell — the fence reads <None> and the
   ## snapshot carries no such key (the parametric row's plugin origin already
   ## says who would set it: nobody, the built-in ships no descriptor).
   meta.agent.shell.name:
@@ -2177,6 +2205,13 @@ keys:
     type: str
     note: "never set for shell — no STANDALONE op, no descriptor to carry one.
            The fence reads <None> and the snapshot carries no such key."
+    spec: "§2d (shell fence)"
+  meta.agent.shell.auth.share_support:
+    namespace: meta
+    set: never
+    origin: construct_time
+    type: bool
+    value: false
     spec: "§2d (shell fence)"
   meta.agent.<agent>.name:
     namespace: meta

@@ -36,6 +36,7 @@ DECLARED_META_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset({'workset_path'
 DECLARED_META_WORKSET_AUTH_LEAVES: Final[frozenset[str]] = frozenset({'global_active'})
 DECLARED_META_AGENT_LEAVES: Final[frozenset[str]] = frozenset({'name', 'path', 'settings', 'mode', 'exec'})
 DECLARED_META_AGENT_AUTH_LEAVES: Final[frozenset[str]] = frozenset({'share_support'})
+PSEUDO_AGENT_FENCES: Final[Mapping[str, PseudoAgentFence]] = MappingProxyType({'default': PseudoAgentFence(leaves=DECLARED_AGENT_LEAVES, meta_leaves=frozenset({'name', 'path'}), meta_auth_leaves=frozenset()), 'shell': PseudoAgentFence(leaves=frozenset({'label', 'access', 'continue_mode', 'model', 'endpoint', 'allow_helpers', 'bootstrap', 'run_args', 'transform', 'transform_settings', 'template', 'canon'}), meta_leaves=frozenset({'name', 'path', 'settings', 'mode', 'exec'}), meta_auth_leaves=frozenset({'share_support'}))})
 RESERVED_LEAF_NAMES: Final[frozenset[str]] = KeyStore.RESERVED_KEY_NAMES
 RETIRING_KEYS: Final[frozenset[str]] = frozenset()
 PREF_ALLOWLIST: Final[tuple[str, ...]] = ('system.agent', 'agent.*.**')
@@ -60,6 +61,7 @@ AgentLeafMap = Mapping[str, Collection[str]]
 def access_default() -> str
 def is_terminal_category_tail(tail: Sequence[str]) -> bool
 def is_terminal_category_key(key: str) -> bool
+def pseudo_agent_fence(name: str) -> PseudoAgentFence | None
 def glob_match(pattern: str, key: str) -> bool
 def pref_allowlist_entry(target: str, *, allowlist: Sequence[str]=PREF_ALLOWLIST) -> str | None
 def leaf_name_reason(leaf: str) -> str | None
@@ -97,6 +99,11 @@ def _classify_whole_store_path(segments: tuple[str, ...], *, oracle: Callable[[s
 ## Classes
 
 ```
+class PseudoAgentFence(NamedTuple):
+    leaves: frozenset[str]
+    meta_leaves: frozenset[str]
+    meta_auth_leaves: frozenset[str]
+
 class KeyClass(enum.Enum):
     KEY = 'KEY'
     NAMESPACE = 'NAMESPACE'
@@ -116,7 +123,7 @@ class ConcedingLeafMap(Mapping[str, 'Collection[str]']):
     def __len__(self) -> int
 
 class AgentVocabulary(Collection[str]):
-    __slots__ = ('_name', '_map', '_own')
+    __slots__ = ('_name', '_map', '_own', '_core')
 
     def __init__(self, name: str, agent_leaf_map: 'AgentLeafMap | None') -> None
 

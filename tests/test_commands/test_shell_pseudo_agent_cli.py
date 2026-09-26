@@ -141,6 +141,33 @@ class TestAgentVerbsAddressTheShellTier:
         assert path.parent.name == "shell"
         assert load_doc(path)["self"]["label"] == "My Shell"
 
+    @pytest.mark.parametrize(("leaf", "given", "stored"), [
+        ("model", "x", "x"),
+        ("endpoint", "http://localhost:1", "http://localhost:1"),
+        ("continue_mode", "false", "false"),
+    ])
+    def test_a_universal_leaf_the_shell_fence_lists_is_set(self, leaf, given, stored, capsys):
+        """§2d's shell fence gives every universal key a value (``<None>`` for these
+        three), so each is a key at ``agent.shell.*``: set, stored and read back."""
+        from kanibako.settings.agent_config import agent_settings_path
+
+        assert _kb("agent", "set", "shell", f"{leaf}={given}") == 0, (
+            capsys.readouterr().err
+        )
+        capsys.readouterr()
+        assert load_doc(agent_settings_path(_std().agents, "shell"))["self"][leaf] == stored
+        assert _kb("agent", "get", "shell", leaf) == 0
+        assert capsys.readouterr().out.strip().lower() == given
+
+    def test_a_leaf_the_shell_fence_does_not_list_is_refused(self, capsys):
+        """§2d's shell fence is COMPLETE: a leaf it does not list is not a key there."""
+        from kanibako.settings.agent_config import agent_settings_path
+
+        before = load_doc(agent_settings_path(_std().agents, "shell"))
+        assert _kb("agent", "set", "shell", "frobnicate=x") == 1
+        assert "frobnicate" in capsys.readouterr().err
+        assert load_doc(agent_settings_path(_std().agents, "shell")) == before
+
     def test_show_effective_reads_the_shell_tier_floor(self, capsys):
         """Nothing set: the display verb reports the fence's own ``label``."""
         assert _kb("agent", "show", "shell", "--effective") == 0

@@ -107,6 +107,7 @@ from kanibako.settings.settings_keyspace import (
     DECLARED_WORKSET_AUTH_LEAVES,
     DECLARED_WORKSET_CHANNEL_LEAVES,
     DECLARED_WORKSET_LEAVES,
+    PSEUDO_AGENT_FENCES,
     key_validity,
 )
 from kanibako.settings.settings_launch import (
@@ -199,8 +200,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 123, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 123 this "
+        assert len(doc["keys"]) == 128, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 128 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -860,6 +861,7 @@ NO_ORACLE_ABSENT: frozenset[str] = frozenset({
     "system.agent", "system.setup_completed", "box.shell",
     "agent.default.model", "agent.default.endpoint", "agent.default.run_args",
     "agent.default.transform",
+    "agent.shell.continue_mode", "agent.shell.model", "agent.shell.endpoint",
 })
 
 #: (E4) ``default: {}`` — the EMPTY CONTAINER a category arm starts at.  That emptiness
@@ -1112,6 +1114,8 @@ class TestValueAgentIdentity:
             "@meta.agent.<agent>.path/agent.yaml"
         )
         assert _value("meta.agent.default.name") == "default"
+        assert _value("meta.agent.default.path") == "@config.agents/default"
+        assert _value("meta.agent.shell.auth.share_support") is False
         assert _value("meta.agent.shell.path") == "@config.agents/shell"
         assert _value("meta.agent.shell.name") == "shell"
         assert _value("meta.agent.shell.settings") == (
@@ -1802,8 +1806,8 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 79, (
-            f"the manifest gives {len(declared)} rows a default, not the 79 measured — "
+        assert len(declared) == 82, (
+            f"the manifest gives {len(declared)} rows a default, not the 82 measured — "
             f"re-classify, do not adjust the count"
         )
 
@@ -1857,10 +1861,12 @@ class TestDefaultsCoverage:
         hop, left the exemption table — the class is gone.  An exempt row that a view
         starts comparing reds on the last assertion: it has a carrier, so its exemption
         reason has stopped being true.
+        ⚑ 1+65/13 → 1+65/16: the §2d shell block's ``agent.shell.{continue_mode,model,
+        endpoint}`` rows (fence ``<None>``) joined E3 — no floor installs them.
         """
         assert len(PINNED_DEFAULT_KEYS) == 1
         assert len(CARRIED_DEFAULT_KEYS) == 65
-        assert len(EXEMPT_DEFAULT_KEYS) == 13
+        assert len(EXEMPT_DEFAULT_KEYS) == 16
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
         assert not (PINNED_DEFAULT_KEYS & CARRIED_DEFAULT_KEYS), (
             f"pinned here AND compared by a kinemata view: "
@@ -1895,13 +1901,13 @@ class TestDefaultsCoverage:
             f"section 4b classifies rows the manifest no longer declares a value for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 34, (
-            f"the manifest gives {len(declared)} rows a value, not the 34 measured — "
+        assert len(declared) == 36, (
+            f"the manifest gives {len(declared)} rows a value, not the 36 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_value_split_is_the_measured_split(self):
-        """6 pinned, 18 carried, 10 exempted — stated so a silent migration between them reds.
+        """6 pinned, 20 carried, 10 exempted — stated so a silent migration between them reds.
 
         ⚑ 24/10 → 11 pinned + 13 carried / 10 (2026-09-25), with the default side: the
         anchor, auth and re-root rows and the agent-identity literals are compared by
@@ -1910,9 +1916,11 @@ class TestDefaultsCoverage:
         ``meta.agent.<agent>.{path,settings}`` pair and the box's three channel addresses
         joined the views.  Left pinned: the three box caller literals and the three
         ``<computed>`` rows.
+        18 → 20 carried when the fences' own ``meta.agent.default.path`` and
+        ``meta.agent.shell.auth.share_support`` rows joined ``agent-identity-literals``.
         """
         assert len(PINNED_VALUE_KEYS) == 6
-        assert len(CARRIED_VALUE_KEYS) == 18
+        assert len(CARRIED_VALUE_KEYS) == 20
         assert len(EXEMPT_VALUE_KEYS) == 10
         assert not (PINNED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
         assert not (CARRIED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
@@ -1944,8 +1952,8 @@ class TestDefaultsCoverage:
         )
 
     def test_the_default_value_neither_cells_partition_the_registry(self):
-        """79 + 34 + 10 == 123, disjoint — no row carries both cells, none carries
-        neither unnoticed.  The 123 is the loader's own count, re-stated here as the
+        """82 + 36 + 10 == 128, disjoint — no row carries both cells, none carries
+        neither unnoticed.  The 128 is the loader's own count, re-stated here as the
         arithmetic the three coverage cases must sum to."""
         keys = _keys()
         defaulted = {
@@ -1962,7 +1970,7 @@ class TestDefaultsCoverage:
             f"rows carrying BOTH cells: {sorted(defaulted & valued)}"
         )
         assert defaulted | valued | neither == {str(k) for k in keys}
-        assert (len(defaulted), len(valued), len(neither)) == (79, 34, 10)
+        assert (len(defaulted), len(valued), len(neither)) == (82, 36, 10)
 
 
 # --------------------------------------------------------------------------- #
@@ -1975,23 +1983,21 @@ SHAPE_ROWS: frozenset[str] = frozenset({
     "agent.<agent>.<key>", "meta.box.agent.<key>",
 })
 
-#: The transcribed shell-tier fence rows (D1 Step 2 on D2's node): concrete rows the
-#: scalar declarations cannot cover — ``agent.shell.*`` is neither the default tier
-#: nor the parametric per-node arm, and ``meta.agent.shell.*`` is neither the
-#: default literal nor the parametric arm.  Enumerated (a sixth kind, with the
-#: anti-vacuity pin below asserting exactly these members), because a derivation
-#: off the leaf sets would ALSO cover the three leaves the fence deliberately
-#: omits (continue_mode/model/endpoint) and the bindings arms the category
-#: family owns — the fence's shape, not the vocabulary's, is what is pinned.
-SHELL_TIER_ROWS: frozenset[str] = frozenset({
-    "agent.shell.label", "agent.shell.access", "agent.shell.allow_helpers",
-    "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform",
-    "agent.shell.transform_settings", "agent.shell.template",
-    "agent.shell.canon",
-    "meta.agent.shell.name", "meta.agent.shell.path",
-    "meta.agent.shell.settings", "meta.agent.shell.mode",
-    "meta.agent.shell.exec",
-})
+#: Every pseudo-agent's §2d fence, spelled as rows — derived from
+#: :data:`~kanibako.settings.settings_keyspace.PSEUDO_AGENT_FENCES`, the code's one carrier
+#: of the fences.  The ``<agent>`` rows are true-agent rows and do not reach a
+#: pseudo-agent, so these concrete rows are its whole vocabulary (the §2a categories
+#: aside, which the category family declares).
+PSEUDO_AGENT_ROWS: frozenset[str] = frozenset(
+    prefix.format(name) + leaf
+    for name, fence in PSEUDO_AGENT_FENCES.items()
+    for prefix, leaves in (
+        ("agent.{}.", fence.leaves),
+        ("meta.agent.{}.", fence.meta_leaves),
+        ("meta.agent.{}.auth.", fence.meta_auth_leaves),
+    )
+    for leaf in leaves
+)
 
 #: ⚑ FINDING 4 IS CLOSED (2026-08-21) and its exemption is GONE, which is what the
 #: exemption's own anti-vacuity case demanded happen on a fix.  ``key_validity`` used to
@@ -2121,9 +2127,9 @@ class TestKeySetConformance:
     def test_no_manifest_row_is_missing_from_the_declarations(self):
         """The other side of direction 2, with the derivations spelled out.
 
-        What is left over after the scalar sets is exactly four kinds of row, and each
+        What is left over after the scalar sets is exactly five kinds of row, and each
         kind is a DECLARED SHAPE rather than an omission — which is why this is an
-        enumerated assertion and not an exemption list: if a FIFTH kind appears, it is a
+        enumerated assertion and not an exemption list: if a SIXTH kind appears, it is a
         real drift and it lands here.
         """
         leftover = {str(k) for k in _keys()} - _code_scalar_keys()
@@ -2172,9 +2178,8 @@ class TestKeySetConformance:
             SHAPE_ROWS                                   # `<key>` placeholders
             | (leftover & category_rows)                 # declared under `categories:`
             | (leftover & parametric_agent)              # the per-node agent arm
-            | {"meta.agent.default.name"}                # the always-legal `default` node
             | {"meta.box.agent.auth.share_support"}      # the agent-mirror sub-namespace
-            | (leftover & SHELL_TIER_ROWS)               # the transcribed shell fence (D2)
+            | (leftover & PSEUDO_AGENT_ROWS)             # the pseudo-agents' own fences
         )
         assert leftover == expected, (
             f"manifest rows the scalar declarations do not account for: "
@@ -2189,9 +2194,10 @@ class TestKeySetConformance:
         assert leftover & parametric_agent == {
             "agent.<agent>.access", "agent.<agent>.template", "agent.<agent>.canon",
         }
-        assert leftover & SHELL_TIER_ROWS == SHELL_TIER_ROWS, (
-            f"shell-tier rows missing from the manifest: "
-            f"{sorted(SHELL_TIER_ROWS - leftover)}"
+        # Every fence row the scalar sets do not already cover is a manifest row.
+        assert PSEUDO_AGENT_ROWS - _code_scalar_keys() == leftover & PSEUDO_AGENT_ROWS, (
+            f"pseudo-agent fence rows missing from the manifest: "
+            f"{sorted(PSEUDO_AGENT_ROWS - _code_scalar_keys() - leftover)}"
         )
 
     def test_no_declaration_family_is_empty(self):

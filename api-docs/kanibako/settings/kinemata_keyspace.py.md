@@ -54,9 +54,9 @@ class KeyspaceRegistry:
     @staticmethod
     def _read_tier_rule(keys: dict[str, Any]) -> tuple[str, str]
     def _shape_admits(self, match: re.Match[str]) -> bool
-    def _tail_ok(self, tail: str, *, node: str | None) -> bool
+    def _tail_ok(self, tail: str) -> bool
     def _category_tail(self, segs: list[str]) -> bool
-    def _compile(self, template: str, scope_alt: str, tier: bool) -> re.Pattern[str]
+    def _compile(self, template: str, scope_alt: str, tier: bool, *, true_agents: bool=False) -> re.Pattern[str]
     def _build_ns_shapes(self, keys: dict[str, Any]) -> list[re.Pattern[str]]
     def _cross_prefixes(self) -> set[str]
     def _scope_alt(self) -> str
