@@ -38,6 +38,7 @@ from enum import Enum
 from pathlib import Path
 
 from kanibako.log import get_logger, setup_logging
+from kanibako.settings.bootstrap import CREDS_WATCHER_LOCK_FILE
 
 log = get_logger("creds_watcher")
 
@@ -443,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
         log.info("box %s is private (no shared creds); watcher exiting", container_name)
         return 0
 
-    lock = _single_instance_lock(proj.metadata_path / ".kanibako-creds-watcher.lock")
+    lock = _single_instance_lock(proj.metadata_path / CREDS_WATCHER_LOCK_FILE)
     if lock is None:
         log.info("another creds watcher already holds the lock for %s; exiting", container_name)
         return 0

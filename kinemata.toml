@@ -959,6 +959,32 @@ kind = "code-patterns"
   home = ["src/kanibako/settings/paths.py"]
   note = "the box.mode tokens; the enum is the home"
 
+  # FACT: an agent slot is never a string literal in code; the built-in slot is
+  # `agent_ref.GENERAL_SLOT`, and every other slot comes from a ref at runtime.
+  # AUTHORITY: `agent_ref.py` declares the slot grammar and `GENERAL_SLOT`.
+  # CATCHES: a literal reaching an agent-slot POSITION -- assigned to, defaulted
+  # into or compared with `agent_name` / `active_agent` (either operand order),
+  # or passed as `store_dirname`'s first argument. The patterns pin the
+  # position, never the word, so the canon-chapter tuples and the docstrings
+  # that describe the slot are out of scope by construction; the `\w` lead
+  # leaves the deliberate blank `""` short-circuit alone. The annotated arm
+  # stops at `,` `(` `)` so it cannot run across a parameter list into the next
+  # parameter's default.
+  # ⚑ `[[:alnum:]_]` (the first draft) is POSIX; Python `re` reads it as a set
+  # and matches nothing, so it is spelled `\w`.
+  # NEGATIVE CONTROLS, 2026-09-26 on a /tmp copy: each pattern flagged a
+  # planted line, and restoring `store_dirname("shell")` in `core_defaults.py`
+  # made `check` rc=1.
+  [[registry.entry]]
+  id = "AGENT_SLOT_LITERAL"
+  antipatterns = [
+    '''\b(agent_name|active_agent)\s*(?:[!=]=|=|:[^=\n,()]*=)\s*["']\w[^"']*["']''',
+    '''["']\w[^"']*["']\s*[!=]=\s*(agent_name|active_agent)\b''',
+    '''\bstore_dirname\(\s*["']''',
+  ]
+  home = ["src/kanibako/agent_ref.py"]
+  note = "an agent slot is GENERAL_SLOT or a parsed ref, never a literal"
+
   # The canon chapter leaf. `core-defaults.yaml` spells `@<scope>.canon/handbook`
   # for all four scopes, so the destination is a CHAPTER fact.
   #
