@@ -459,6 +459,7 @@ class TestKickoffLaunchWiring:
             target=target,
             agent_cfg=None,
             deliver_creds=True,
+            cli_level=None,
         )
         critical = frozenset(
             normalize_bind_dest(b.box_dest) for b in (desc.bindings if desc else ())

@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.settings.agent_select import AgentSelection
 from kanibako.commands.start import (
     _apply_tweakcc,
     _check_box_components,
@@ -2056,6 +2057,7 @@ class TestPluginsAndCacheShares:
             extra_default_categories=_table,
             deliver_creds=True,
             narrow_bind_dests=table_bind_dests(_table),
+            cli_level=None,
         )
         return _emit_category_mounts(
             deliveries.narrow_bindings, label="share",
@@ -4506,6 +4508,7 @@ class TestApplyInitSeeds:
             agent_config_path=agent_config_path,
             logger=self._logger(),
             deliver_creds=deliver_creds,
+            selection_level=AgentSelection(node="claude", source="settings").selection_level,
         )
 
     def test_empty_no_config_no_target_copies_nothing(self, tmp_path):
@@ -8493,6 +8496,7 @@ class TestPersonaLiveTierWiring:
             agent_cfg=None,
             persona_values=persona_values,
             include_base_families=False,
+            cli_level=None,
         )
 
     def _snapshot(self, std, *, target, persona_values):
@@ -8531,6 +8535,7 @@ class TestPersonaLiveTierWiring:
                 desc=target.descriptor, agent_id=self._NODE,
                 safe_mode=False, autonomous=False,
             ),
+            cli_level=None,
         )
         return snap
 
@@ -9152,6 +9157,7 @@ class TestPersonaLiveTierWiring:
                 desc=None, install=None, target=target,
                 agent_cfg=agent_cfg, persona_values=persona_values,
                 include_base_families=False,
+                cli_level=None,
             )
         except Exception as exc:
             return ("raised", type(exc).__name__, str(exc))

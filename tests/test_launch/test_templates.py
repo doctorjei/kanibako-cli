@@ -9,6 +9,7 @@ import shutil
 import pytest
 import yaml
 
+from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings.paths import (
     WorksetSpec,
     resolve_project,
@@ -438,6 +439,7 @@ def _seed(std, proj, *, agent="claude", deliver_creds=True, agent_cfg_path=None)
         ),
         logger=logging.getLogger("test-seed"),
         deliver_creds=deliver_creds,
+        selection_level=AgentSelection(node=agent, source="settings").selection_level,
     )
 
 
@@ -575,6 +577,7 @@ class TestLayeredHomeSeed:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=None, agent_cfg=None,
             deliver_creds=True,
+            cli_level=None,
         )
         workset = dict.get(snapshot, "workset")
         for leaf in ("template", "registry", "channelroot"):
@@ -649,6 +652,7 @@ class TestLayeredHomeSeed:
             global_config_path=std.settings,
             agent_config_path=std.agents / "shell" / "agent.yaml",
             logger=logging.getLogger("test-seed"),
+            selection_level=AgentSelection(node="shell", source="settings").selection_level,
         )
         srcs = [seed.src for seed in _launch_seed_list(snapshot)]
         assert "/box/home" not in srcs, srcs
@@ -681,6 +685,7 @@ class TestLayeredHomeSeed:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=ShellTarget(), agent_cfg=None,
             deliver_creds=True,
+            cli_level=None,
         )
         agent = dict.get(snapshot, "agent")
         shell = dict.get(agent, "shell", {})
@@ -724,6 +729,7 @@ class TestLayeredHomeSeed:
             std=std, proj=primary_proj, agent_name="shell", target=ShellTarget(),
             global_config_path=std.settings, agent_config_path=agent_file,
             logger=logging.getLogger("test-seed"),
+            selection_level=AgentSelection(node="shell", source="settings").selection_level,
         )
         home = primary_proj.shell_path
         assert (home / "base-only.txt").read_text() == "base"
@@ -771,6 +777,7 @@ class TestLayeredHomeSeed:
             target=ShellTarget() if node == "shell" else _FakeTarget(),
             global_config_path=std.settings, agent_config_path=agent_file,
             logger=logging.getLogger("test-seed"),
+            selection_level=AgentSelection(node=node, source="settings").selection_level,
         )
         home = primary_proj.shell_path
         assert (home / "base-only.txt").read_text() == "base"
@@ -927,6 +934,7 @@ class TestLayeredHomeSeed:
             global_config_path=std.settings,
             agent_config_path=std.agents / "shell" / "agent.yaml",
             logger=logging.getLogger("test-seed"),
+            selection_level=AgentSelection(node="shell", source="settings").selection_level,
         )
         srcs = [seed.src for seed in _launch_seed_list(snapshot)]
         assert str(user_home) not in srcs, srcs
@@ -957,6 +965,7 @@ class TestLayeredHomeSeed:
             global_config_path=std.settings,
             agent_config_path=std.agents / "shell" / "agent.yaml",
             logger=logging.getLogger("test-seed"),
+            selection_level=AgentSelection(node="shell", source="settings").selection_level,
         )
         dests = [seed.dest for seed in _launch_seed_list(snapshot)]
         assert not any(dest.rstrip("/").endswith("/x") for dest in dests), dests
@@ -1054,6 +1063,7 @@ def _seed_snapshot(std, proj, *, agent="claude"):
         # The node's OWN file, as ``seed_new_box`` passes it (``agents/<node>/``).
         agent_config_path=std.agents / (agent or "claude") / "agent.yaml",
         logger=logging.getLogger("test-seed"),
+        selection_level=AgentSelection(node=agent, source="settings").selection_level,
     )
 
 
@@ -1085,6 +1095,7 @@ def _seed_box(std, proj, *, agent="claude", deliver_creds=True):
         system_settings_path=std.settings,
         auth_src=SimpleNamespace(creds_shared=deliver_creds),
         logger=logging.getLogger("test-seed"),
+        selection_level=AgentSelection(node=agent, source="settings").selection_level,
     )
 
 

@@ -648,6 +648,7 @@ class TestCoreBehaviorDefaults:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_CollidingTarget(),
             agent_cfg=None, deliver_creds=True,
+            cli_level=None,
         )
         effective = effective_behavior(snapshot, active_agent=node)
 
@@ -728,6 +729,7 @@ class TestCoreStaticEnvDefaults:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=self._target(),
             agent_cfg=None, deliver_creds=True,
+            cli_level=None,
         )
         return _launch_env_map(snapshot)
 

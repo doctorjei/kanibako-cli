@@ -261,11 +261,13 @@ def _termini(std, config_file, proj, target):
       std=std, proj=proj, agent_name="claude",
       system_settings_path=None, agent_cfg_path=None, selection_level=selection,
     ))
-    # _run_container's _resolve_launch_snapshot — the main launch resolve.
+    # _run_container's _resolve_launch_snapshot — the main launch resolve, carrying
+    # the selection the launch installs (no flag is set, so the level is that alone).
     drive("launch_snapshot", lambda: start_cmd._resolve_launch_snapshot(
       std=std, proj=proj, agent_name="claude",
       system_settings_path=None, agent_cfg_path=None,
       desc=None, install=None, target=target, agent_cfg=None,
+      cli_level=selection,
     ))
   return collected
 

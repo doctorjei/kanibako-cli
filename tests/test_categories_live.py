@@ -2328,6 +2328,7 @@ class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
                 "box.bindings.ro": {"/opt/arb": (str(src),)},
                 "box.masks": ["/opt/arb"],
             },
+            cli_level=None,
         )
         assert deliveries.declared_by["/opt/arb"] == "box.masks./opt/arb", (
             deliveries.declared_by

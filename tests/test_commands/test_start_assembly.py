@@ -29,6 +29,7 @@ from unittest.mock import patch
 
 import pytest
 
+from kanibako.settings.agent_select import AgentSelection
 from kanibako.commands.start import (
     _bind_map_from_mounts,
     _bind_map_masks,
@@ -69,6 +70,8 @@ def _resolve(std, proj, **kw):
     # ⚑ DEFAULTED for the same reason: a case whose subject is the per-agent FILE
     # (``self.env`` re-rooted into the cascade) must hand the seam a real path.
     kw.setdefault("agent_cfg_path", None)
+    # ⚑ No selection unless a case passes one: the seam's keyword is REQUIRED.
+    kw.setdefault("cli_level", None)
     return _resolve_launch_snapshot(
         std=std,
         proj=proj,
@@ -215,6 +218,7 @@ class TestTheCollapseIsProduced:
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
             include_base_families=False,
             extra_default_categories={"box.seeded": {"~/seedme": (str(src),)}},
+            cli_level=None,
         )
 
         assert sorted(_assembly(snapshot)) == ["seeded"]
@@ -235,6 +239,7 @@ class TestTheCollapseIsProduced:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
             include_base_families=False,
+            cli_level=None,
         )
 
         assert _assembly(snapshot) == {"seeded": []}
@@ -891,6 +896,7 @@ class TestTheLaunchAgentFileStateMergesUnderTheLaunchNode:
             desc=None, install=None, target=_WiringTarget(),
             agent_cfg=AgentConfig(state={"model": value}),
             include_base_families=True,
+            cli_level=None,
         )
         return snapshot
 
@@ -1113,6 +1119,7 @@ class TestTheEmitterConsumesTheShape:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
             include_base_families=False,
+            cli_level=None,
         )
 
         assert _snapshot_assembly_bindings(narrow) is None
@@ -1157,6 +1164,7 @@ class TestTheEmitterConsumesTheShape:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
             include_base_families=False,
+            cli_level=None,
         )
 
         with pytest.raises(SettingsError, match="meta.assembly.bindings"):
@@ -1702,6 +1710,7 @@ class TestTheSeedApplierConsumesTheLeaf:
             global_config_path=std.settings,
             agent_config_path=std.agents / "claude" / "agent.yaml",
             logger=logging.getLogger("seed-consumer"), deliver_creds=True,
+            selection_level=AgentSelection(node="claude", source="settings").selection_level,
         )
 
     def _two_layers_at_one_dest(self, tmp_path):
@@ -1869,6 +1878,9 @@ class TestTheSeedApplierConsumesTheLeaf:
             global_config_path=std.settings,
             agent_config_path=std.agents / "claude" / "agent.yaml",
             logger=logger, deliver_creds=True,
+            selection_level=AgentSelection(
+                node="claude", source="settings",
+            ).selection_level,
         )
 
     def test_a_SEED_at_a_SYNCED_dest_IS_OVERWRITTEN_BY_THE_CREATE_TIME_SYNC(
@@ -1993,6 +2005,7 @@ class TestTheSeedApplierConsumesTheLeaf:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=_WiringTarget(), agent_cfg=None,
             include_base_families=False,
+            cli_level=None,
         )
         whole_box, _deliveries = _resolve(std, proj)
 

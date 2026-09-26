@@ -1722,6 +1722,7 @@ class TestThePrefOriginReachesTheLIVEPATH:
         extra_default_categories={
           "agent.claude.bindings.rw": {self.DEST: (str(src),)},
         },
+        cli_level=None,
       )
 
     text = str(exc.value)

@@ -843,8 +843,9 @@ the snapshot is byte-identical to a pre-persona build.
 
 *auth_chain* / *meta_runtime* / *meta_identity* / *workset_anchor* are the four floor fragments
 described above, each folded into the SAME floor so `expand` resolves its `@`-ref chain ONCE
-(single-route). Each is `None` for a NARROW resolve that does not need it — the seed / synced /
-image / helper sub-resolves — so those snapshots simply lack those keys. The `meta.*` fragments are
+(single-route). All four are built by ONE builder, `commands/start._launch_snapshot_inputs`.
+*auth_chain* is `None` only for the image / helper resolves, which emit nothing but their injected
+table; every resolve that delivers a user row folds it (see the *cli_level* list below). The `meta.*` fragments are
 construct-set RO (§0): NO scope FILE may override them, since `meta.*` is not in the config-set
 settable known-key list, so the floor is their sole source. A scope FILE MAY legitimately override a
 `workset.*` key (it is a settable settings tier), so those sit at the floor (base) and a workset/box
@@ -892,18 +893,17 @@ re-pointed §2c anchors depend on. P8 added the ephemeral flag values beside it 
 ⚑ **WHO MUST PASS IT, precisely** — "the narrow resolves can skip it" is NOT the rule, and reading it
 that way is what cost the credential path once already:
 
-* **REQUIRED** by every resolve that carries the `auth_chain` floor (`_resolve_box_auth_source` /
-  `_resolve_box_launch_decisions`, on the launch AND on stop / creds-watch / reauth / the
-  `--effective` display), because `meta.box.auth.workset_path` = `@workset.auth.path/@system.agent`
-  — omit it and the per-agent credential dir collapses to the workset auth ROOT. Those two functions
-  take it as a REQUIRED keyword for that reason.
-* **Not needed** by the seed / synced / image / helper narrow resolves: they carry no auth chain and
-  no shipped declaration references `@system.agent`. ⚑ "Carries no auth chain" is a property of
-  those four, **not a definition of narrowness**: `_resolve_launch_snapshot` — the MAIN launch
-  resolve — passes no `auth_chain` either and still needs the level. Read a missing `auth_chain=` as
-  "this caller resolves no `meta.box.auth.*`", never as "this caller is narrow".
-* `None` for a NO-AGENT box — `system.agent` must stay absent / `None` there, not be pinned to the
-  `"general"` template slot.
+* **REQUIRED** by every resolve that carries the `auth_chain` floor, because
+  `meta.box.auth.workset_path` = `@workset.auth.path/@system.agent` — omit it and the per-agent
+  credential dir names the agent the STORED settings select, not the one running — or, with none
+  stored, collapses to the workset auth ROOT. That is the two auth resolves
+  (`_resolve_box_auth_source` / `_resolve_box_launch_decisions`, on the launch AND on stop /
+  creds-watch / reauth / the `--effective` display) and every `_resolve_launch_snapshot` that
+  delivers a user row: the main launch, `box show --effective`, the create-time seed
+  (`_apply_init_seeds`) and sync (`_sync_box_at_create`). The auth resolves and the two create-time
+  resolves take it as a REQUIRED keyword for that reason.
+* **Not needed** by the image / helper resolves, which carry no auth chain.
+* `None` for a NO-AGENT box (`kanibako shell`, `--entrypoint`): no level is installed — never one pinned to the `"general"` template slot — so `@system.agent` answers the STORED default. ⚑ A known gap, not a design: keyspec §2b makes that box's effective `@system.agent` `shell`, so `meta.box.auth.workset_path` names the stored agent's directory there.
 
 ⚑ **WHICH RESOLVES SEE THE EPHEMERAL FLAGS** (P8, spec §1A *"EPHEMERAL, always … a flag NEVER mutates
 a stored value"*): the SELECTION rides every resolve that needs it (the list above); the FLAGS ride

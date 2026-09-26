@@ -111,7 +111,7 @@ def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, agent_c
 def _persona_model_state(snapshot: 'KeyStore', active_agent: str) -> object
 def _launch_snapshot_inputs(*, std, proj, agent_name: str)
 def _merge_default_categories(table: dict[str, object], incoming: 'Mapping[str, object]', *, family: str, origins: dict[tuple[str, str], str]) -> None
-def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, target=None, agent_cfg=None, persona_values: 'Mapping[str, str] | None'=None, socket_path=None, log_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None'=None, cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None)
+def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, target=None, agent_cfg=None, persona_values: 'Mapping[str, str] | None'=None, socket_path=None, log_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None', cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None)
 def _annotate_pref_origin(exc, prefs)
 def _install_derived_bindings(snapshot, derived: 'Mapping[tuple[str, ...], object]') -> None
 def _install_assembly_collapse(snapshot, entries, *, whole_box: bool, cli_env: 'Mapping[str, str] | None'=None) -> 'dict[str, str]'
@@ -123,8 +123,8 @@ def _is_agent_delivery(entry) -> bool
 def _agent_delivered_dests(entries: list) -> 'frozenset[str]'
 def _narrow_bind_map(entries: list, dests: 'frozenset[str]') -> 'dict[str, object]'
 def _emit_category_mounts(bindings, *, label: str, must_exist: frozenset[str]=frozenset(), skip_if_absent: frozenset[str]=frozenset()) -> list
-def _seed_box_home(*, std, proj, target, desc, agent_id: str, agent_cfg_path, system_settings_path, auth_src, logger, suppress_oauth: bool=False) -> None
-def _sync_box_at_create(*, std, proj, agent_name: str, target=None, desc=None, install=None, agent_cfg=None, global_config_path, agent_config_path, persona_values: 'Mapping[str, str] | None'=None, logger, deliver_creds: bool=True) -> None
+def _seed_box_home(*, std, proj, target, desc, agent_id: str, agent_cfg_path, system_settings_path, auth_src, logger, suppress_oauth: bool=False, selection_level: 'Mapping[str, object] | None') -> None
+def _sync_box_at_create(*, std, proj, agent_name: str, target=None, desc=None, install=None, agent_cfg=None, global_config_path, agent_config_path, persona_values: 'Mapping[str, str] | None'=None, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None') -> None
 def _snapshot_scalar(snapshot: 'KeyStore', dotted: str) -> str | None
 def _snapshot_assembly_bindings(snapshot: 'KeyStore') -> 'dict[str, object] | None'
 def _snapshot_assembly_seeded(snapshot: 'KeyStore') -> 'list[CollapsedCopy] | None'
@@ -141,7 +141,7 @@ def _register_new_box(std, proj, *, force: bool=False) -> None
 def _synced_uptodate(src: Path, dest: Path) -> bool
 def _apply_shell_copy(src: Path, dest: Path, *, label: str, name: str, host_src: str, logger, if_absent: bool, skip_if: 'Callable[[Path, Path], bool] | None'=None) -> None
 def _host_copy_dest(box_dest: str, box_root: Path, *, label: str, name: str, logger) -> Path | None
-def _apply_init_seeds(*, std, proj, agent_name: str, target=None, global_config_path, agent_config_path, logger, deliver_creds: bool=True) -> 'KeyStore'
+def _apply_init_seeds(*, std, proj, agent_name: str, target=None, global_config_path, agent_config_path, logger, deliver_creds: bool=True, selection_level: 'Mapping[str, object] | None') -> 'KeyStore'
 def _synced_cover(box_dest: str, bindings) -> 'str | None'
 def _refuse_synced_under_mask(copies: 'list[CollapsedCopy]', bindings) -> None
 def _synced_host_dest(box_dest: str, bindings, *, logger) -> 'Path | None'
