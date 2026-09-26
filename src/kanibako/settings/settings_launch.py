@@ -1128,9 +1128,10 @@ def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None:
     """RAISE the TAILORED refusal when one of *tiers* still carries a RETIRED spelling.
 
     ⚑ WHY THIS IS HERE AT ALL. Every retired spelling is ALSO an undeclared key, so
-    §0's refusal below fires on it first — and the seams that own the tailored
-    messages sit DOWNSTREAM of the resolve (``agent_select.select_agent`` for the
-    agent-selection keys, ``start.py`` for the behaviour key). Left alone, a
+    §0's refusal below fires on it first — and the seam that owns the tailored
+    selection message sits DOWNSTREAM of the resolve (``agent_select.select_agent``;
+    the behaviour key's own seam, :func:`_refuse_retired_behavior`, runs before the
+    resolve, but only for :func:`build_launch_snapshot` callers). Left alone, a
     ``box.yaml`` carrying ``box: {agent_name: claude}`` got the generic "not a
     settings key" text and the documented cure — ``kanibako box set <box>
     pref.system.agent=claude`` — never reached the user at all.
@@ -1183,6 +1184,37 @@ def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None:
         raw = cascade_view(load_doc(path), level=level, path=path)
         refuse_retired_keys(raw, level=level, path=path)
         refuse_retired_behavior_keys(raw, level=level, path=path)
+
+
+def _refuse_retired_behavior(
+    files: Sequence[_TierFile], *, agent_name: str, box_name: object,
+) -> None:
+    """RAISE when a file this resolve reads carries a RETIRED behavior spelling (R-41/RQ-2).
+
+    Runs BEFORE the resolve, beside the ``config:``-table refusal, so every
+    :func:`build_launch_snapshot` caller refuses a stored ``auto_approve`` by name
+    rather than coming up at the ``full`` default. EVERY tier the resolve reads is
+    scanned, the ACTIVE AGENT's own file included (where ``agent set <agent>
+    auto_approve=…`` used to write), most-specific first like the refusals around it.
+
+    ⚑⚑ IT JUDGES WHAT THE CASCADE SEES, NOT WHAT THE FILE SAYS (``cascade_view``): an
+    ``agent:`` table in a ``box.yaml`` is dropped by directional enforcement and a
+    ``pref:`` outside a workset or box file by §2h, so an ``auto_approve`` found in one
+    does nothing, and a cure for it would tell a user their permission tier is about
+    to change when deleting the line changes nothing.
+
+    The cure names the agent (*agent_name*, unless it is the ``shell`` slot) and, at
+    the box tier, the box (*box_name*, the ``meta.box.name`` the caller's identity
+    floor carries); a resolve with neither leaves the ``<agent>`` / ``<box>``
+    placeholders (:func:`_refuse_retired_spelling` says why they are never guessed).
+    """
+    subject = agent_name if agent_name and agent_name != GENERAL_SLOT else None
+    for level, path in _loaded_tiers(files):
+        refuse_retired_behavior_keys(
+            cascade_view(load_doc(path), level=level, path=path),
+            level=level, path=path, subject=subject,
+            box_name=box_name if level == "box" and isinstance(box_name, str) else None,
+        )
 
 
 def _refuse_undeclared_snapshot(
@@ -1394,6 +1426,327 @@ def refuse_read_time_faults(
     _refuse_undeclared_snapshot(expanded, files=files, subject=subject)
 
 
+def _workset_channel_floor_values(std, proj) -> "tuple[str | None, dict[str, str]]":
+    """The resolved ``(workset.channelroot, workset.channels.*)`` the launch floor installs.
+
+    ⚑ TWO DIFFERENT MODE GATES, which is why this is one function and not one call.
+    The four workset-LOCAL leaves and the channel root are PRIMARY/NAMED only; the two
+    partition leaves (``mailboxes`` / ``share_global``) are ALL PROJECTS (§2c) and a
+    standalone box installs them like anyone else.  Reading the whole family off a
+    single ``None``-for-standalone helper is how three of the six ended up installed by
+    no floor in any mode.
+    """
+    from kanibako.channels import channels as _ch
+
+    part = _ch.workset_partition_paths(proj, std)
+    leaves: "dict[str, str]" = {
+        "mailboxes": str(part.mailboxes),
+        "share_global": str(part.share_global),
+    }
+    wch = _ch.workset_channel_paths(proj, std)
+    if wch is None:
+        return None, leaves
+    leaves.update({
+        "common": str(wch.common),
+        "chat": str(wch.chat),
+        "broadcast": str(wch.chat_broadcast),
+        "share": str(wch.share),
+    })
+    return str(wch.root), leaves
+
+
+def _workset_workspaces_floor_value(
+    mode: str, ws_root_literal: "str | None",
+) -> "str | None":
+    """The resolved ``workset.workspaces`` the launch floor installs — ⚑ NOT primary.
+
+    ⚑ THIS IS THE VALUE THE PRE-SNAPSHOT PASS ALREADY REACHED, not a second answer to
+    the same question.  It is the same ``project.workset.resolve_workset_workspaces``
+    call, on the same root, that ``paths.resolve_standalone_project`` makes for
+    standalone and that ``WorksetSpec.workspaces_dir`` (via ``Workset.workspaces_dir``)
+    makes for named — one function, one repoint read, one grammar
+    (``settings/workset_dirkeys.py``).  Composing ``<root>/workspaces`` here instead
+    would be a second carrier and would lose every repoint.
+
+    ⚑ PRIMARY RETURNS ``None``: the manifest declares ``{primary: null, …}``.  The code
+    does honor a primary ``workspaces`` repoint (``project.workset.default_workset``),
+    and that divergence is RULED and the user's — it is not this seam's to publish as a
+    key.  ``workset_anchor_floor`` REFUSES a primary value rather than dropping one, so
+    the rule has one carrier and a caller cannot quietly re-open the arm.
+
+    *ws_root_literal* is the SAME string ``meta.runtime.ws_root`` is built from
+    (``proj.group.root`` named / ``proj.metadata_path`` standalone), so the workspaces
+    dir and the workset root cannot be resolved against two different roots.
+    """
+    if mode == "primary":
+        return None
+    from kanibako.project.workset import (
+        load_workset_settings_doc, resolve_workset_workspaces,
+    )
+
+    if ws_root_literal is None:  # pragma: no cover - guarded by the caller's mode split
+        raise ValueError(
+            f"workset.workspaces floor: mode {mode!r} has no workset root literal"
+        )
+    root = Path(ws_root_literal)
+    return str(resolve_workset_workspaces(
+        root, load_workset_settings_doc(root), standalone=(mode == "standalone"),
+    ))
+
+
+class _LaunchInputKwargs(TypedDict):
+    """The :func:`build_launch_snapshot` keywords :meth:`LaunchInputs.as_kwargs` supplies."""
+
+    ctx: ResolveCtx
+    system_path: Path | None
+    box_path: Path | None
+    workset_path: Path | None
+    auth_chain: Mapping[str, object] | None
+    meta_runtime: Mapping[str, object] | None
+    meta_identity: Mapping[str, object] | None
+    workset_anchor: Mapping[str, object] | None
+    prefs: Sequence[PrefRequest] | None
+
+
+@dataclass(frozen=True)
+class LaunchInputs:
+    """The inputs every box-scoped :func:`build_launch_snapshot` call shares.
+
+    Built by :func:`resolve_inputs`, the ONE builder; a resolver passes
+    :meth:`as_kwargs` plus its own extras, so no two resolves of one box can spell
+    the context, the floors or the file pair differently.
+
+    ⚑ BUILT PER AGENT: every field but the file pair and *prefs* depends on
+    *agent_name*, so an instance is never reused across an agent change.
+
+    *system_floor* is the resolved ``system.*`` path tier
+    (``paths.system_path_floor``); it is not a :func:`build_launch_snapshot`
+    keyword, so each caller folds it into its own ``default_categories``.
+    """
+
+    ctx: ResolveCtx
+    system_path: Path | None
+    system_floor: Mapping[str, str]
+    meta_runtime: Mapping[str, object]
+    meta_identity: Mapping[str, object]
+    workset_anchor: Mapping[str, object]
+    auth_chain: Mapping[str, object]
+    cascade_box_path: Path
+    cascade_workset_path: Path | None
+    prefs: tuple[PrefRequest, ...]
+
+    def as_kwargs(self) -> _LaunchInputKwargs:
+        """The :func:`build_launch_snapshot` keywords these inputs supply."""
+        return {
+            "ctx": self.ctx,
+            "system_path": self.system_path,
+            "box_path": self.cascade_box_path,
+            "workset_path": self.cascade_workset_path,
+            "auth_chain": self.auth_chain,
+            "meta_runtime": self.meta_runtime,
+            "meta_identity": self.meta_identity,
+            "workset_anchor": self.workset_anchor,
+            "prefs": self.prefs,
+        }
+
+
+#: The identity keys whose value IS the box name or a channel address spelled from it.
+_BOX_NAME_KEYS: Final = (
+    "meta.box.name", "meta.box.inbox", "meta.box.share_global", "meta.box.share_workset",
+)
+
+
+def _omit_name_derived(ctx: ResolveCtx, *floors: dict[str, object]) -> None:
+    """Drop from *floors* every key the box NAME decides, for a box that has none yet.
+
+    Spec §0, *"never a fabricated default"*: the :data:`_BOX_NAME_KEYS`, then — to a
+    fixed point — every key whose value ``@``-refers to a dropped one (primary /
+    named ``meta.box.path`` = ``@workset.boxes/@meta.box.name``, and through it
+    ``meta.box.home``, ``box.canon``, …). A reader that needs one sees it ABSENT.
+    The refs are read by the one parser, ``expand_expr``, with a recording lookup.
+    """
+    dropped: set[str] = set(_BOX_NAME_KEYS)
+    for floor in floors:
+        for key in _BOX_NAME_KEYS:
+            floor.pop(key, None)
+
+    def refs(value: str) -> set[str]:
+        names: set[str] = set()
+
+        def record(name: str, _chain: tuple[str, ...]) -> str:
+            names.add(name)
+            return ""
+
+        expand_expr(value, space="host", ctx=ctx, lookup=record, defer_env=True)
+        return names
+
+    changed = True
+    while changed:
+        changed = False
+        for floor in floors:
+            for key, value in list(floor.items()):
+                if isinstance(value, str) and refs(value) & dropped:
+                    del floor[key]
+                    dropped.add(key)
+                    changed = True
+
+
+def resolve_inputs(
+    *,
+    subject: ResolveSubject,
+    std,
+    proj,
+    agent_name: str,
+    system_path: Path | None,
+) -> LaunchInputs:
+    """Build the :class:`LaunchInputs` for one resolve of *proj* under *agent_name*.
+
+    Only :attr:`ResolveSubject.BOX` is built; any other *subject* raises
+    ``ValueError``. *system_path* is the system SETTINGS file the resolve reads.
+    A *proj* with no name yet gets NO name-derived key (:func:`_omit_name_derived`).
+
+    See ``llm-docs/kanibako/settings/settings_launch.py.md``, "``resolve_inputs``",
+    for what each floor carries and why it is built here.
+    """
+    from kanibako.channels import channels as _channels
+    from kanibako.log import get_logger
+    from kanibako.settings.agent_select import launch_resolve_ctx
+    from kanibako.settings.paths import (
+        ProjectError,
+        box_workset_settings_paths,
+        system_path_floor,
+    )
+
+    if subject is not ResolveSubject.BOX:
+        raise ValueError(f"resolve_inputs: subject {subject.name} is not built")
+
+    # ONE ctx builder (P7): the SELECTION pre-pass resolves against the identical
+    # host-side namespace, so the two passes cannot disagree about what
+    # ``@config.*`` / ``$XDG_*`` / ``~`` mean.
+    ctx = launch_resolve_ctx(std, proj, agent_name)
+    # The Layer-2 ``system.*`` path tier the category @-refs resolve against — ONE
+    # map (``paths.system_path_floor``), shared with the workset preview, so "both
+    # carry the same keys" is structural rather than a promise two hand lists made.
+    system_floor = system_path_floor(std)
+
+    # ``meta.runtime.*`` identity anchors (spec §1A). PRIMARY → the
+    # ``@config.primary_workset`` @-ref; NAMED → the detected workset root literal;
+    # STANDALONE → the project ROOT (``proj.metadata_path``, NOT ``project_path``,
+    # which is the ``<root>/workspace`` subdir — spec §2c and the §4 worked example).
+    mode = proj.mode.value
+    if mode == "named":
+        if proj.group is None:
+            raise ProjectError(
+                "named-mode project has no workset group (meta.runtime.ws_root)"
+            )
+        ws_root_literal: str | None = str(proj.group.root)
+    elif mode == "standalone":
+        ws_root_literal = str(proj.metadata_path)
+    else:
+        ws_root_literal = None
+    # The workset partition TOKEN (spec §1A ``meta.runtime.ws_name``), single-sourced
+    # on ``channels.workset_name_token`` — the SAME token drives the channel
+    # partition, so the two cannot drift.
+    meta_runtime = meta_runtime_floor(
+        mode=mode, ws_name=_channels.workset_name_token(proj),
+        ws_root_literal=ws_root_literal,
+    )
+
+    # ``meta.*`` IDENTITY anchors (spec §2c/§2d): the resolved literals the launch
+    # already computes, so an @meta.box.workspace / @meta.box.inbox bind expands
+    # byte-identically. The agent's credential-SHARING capability and its declared
+    # name come off the ACTIVE agent's descriptor; absent / no agent → non-capable.
+    # ⚑ A box whose name is not decided yet (the ``run_start`` pre-flight, before
+    # create) has no channel addresses; the blanks below are dropped with every
+    # name-derived key before anything reads them (:func:`_omit_name_derived`).
+    address: BoxAddressArgs = (
+        box_address_args(_channels.box_channel_addresses(proj, std)) if proj.name
+        else BoxAddressArgs(inbox="", share_global="", share_workset=None)
+    )
+    agent_auth_support = False
+    agent_desc = None
+    # The plugin's DECLARED harness name, in its own case ([R173]); *agent_name* is
+    # the NODE, already folded, so it cannot supply this.
+    agent_declared_name: str | None = None
+    if agent_name:
+        from kanibako.targets import resolve_target
+
+        try:
+            agent_target = resolve_target(harness_of(agent_name), proj.project_path)
+            agent_declared_name = agent_target.name
+            agent_desc = agent_target.descriptor
+            agent_auth_support = bool(
+                agent_desc.auth_share_support if agent_desc is not None else False
+            )
+        except (KeyError, ValueError):
+            # GENUINELY ABSENT: no matching target (KeyError) or one lacking a
+            # ``meta.agent.<agent>.name`` (ValueError) — non-capable. Nothing else is
+            # swallowed: a transient error must not silently disable sharing.
+            get_logger("start").debug(
+                "auth capability: no descriptor for agent %r → non-capable",
+                agent_name,
+            )
+            agent_desc = None
+            agent_declared_name = None
+            agent_auth_support = False
+    # The SINGLE-SOURCE (box tier, workset tier) settings-file pair (M-8): it feeds
+    # BOTH the ``meta.box.settings`` anchor and the cascade the resolvers read, so
+    # the anchor and the cascade cannot drift.
+    cascade_box_path, cascade_workset_path = box_workset_settings_paths(proj)
+    meta_identity = meta_identity_floor(
+        box_name=proj.name or "",
+        project_path=str(proj.project_path),
+        **address,
+        box_settings=str(cascade_box_path),
+        # ⚑ THE DISCRIMINATOR AND THE VALUE ARE TWO SPELLINGS OF ONE AGENT ([R173]):
+        # the key's segment is the NODE, the value keeps the DECLARED case. Omitted
+        # for a NO-AGENT box.
+        agent_name=agent_name if agent_name else None,
+        agent_real_name=agent_declared_name,
+        agent_auth_share_support=agent_auth_support,
+    )
+    # B5: the plugin-set LAUNCH GRAMMAR ``meta.agent.<a>.{mode,exec}`` (spec §2d),
+    # from the SAME descriptor — the single descriptor→keyspace seam.
+    if agent_name:
+        meta_identity.update(meta_agent_grammar_floor(agent_name, agent_desc))
+
+    # LAYOUT anchors (spec §2c/§2g): the per-mode variation lives in
+    # ``workset_anchor_floor``; only the workset-local channel roots and the resolved
+    # ``workset.workspaces`` come off *proj* — the latter off the SAME
+    # *ws_root_literal* ``meta.runtime.ws_root`` is built from.
+    channelroot, ws_channels = _workset_channel_floor_values(std, proj)
+    workset_anchor = workset_anchor_floor(
+        mode=mode,
+        channelroot=channelroot,
+        workspaces=_workset_workspaces_floor_value(mode, ws_root_literal),
+        workset_channels=ws_channels,
+    )
+    auth_chain = auth_chain_floor(mode=mode, agent_name=agent_name)
+    if not proj.name:
+        # Primary / named ``meta.box.settings`` is ``@meta.box.path/box.yaml`` (§2c): name-derived,
+        # but passed here as a LITERAL (``<boxes>/__unregistered__/box.yaml`` before create), so the
+        # ref walk cannot see it. Standalone's hangs off ``@workset.boxes`` and stays.
+        if mode != "standalone":
+            meta_identity.pop("meta.box.settings", None)
+        _omit_name_derived(ctx, meta_runtime, meta_identity, workset_anchor, auth_chain)
+    return LaunchInputs(
+        ctx=ctx,
+        system_path=system_path,
+        system_floor=system_floor,
+        meta_runtime=meta_runtime,
+        meta_identity=meta_identity,
+        workset_anchor=workset_anchor,
+        # The auth 3-tier SHARING chain (spec §2a–§2c), per mode. Every resolve
+        # folds it, so every caller must pass the §1A selection it has.
+        auth_chain=auth_chain,
+        cascade_box_path=cascade_box_path,
+        cascade_workset_path=cascade_workset_path,
+        # ``pref.*`` REQUESTS (spec §2h), collected ONCE per inputs, so the resolves
+        # sharing them cannot disagree about what was requested.
+        prefs=tuple(collect_prefs(cascade_workset_path, cascade_box_path)),
+    )
+
+
 def build_launch_snapshot(
     *,
     agent_name: str,
@@ -1572,6 +1925,10 @@ def build_launch_snapshot(
     for level, path in _loaded_tiers(files):
         if level != "agent":
             refuse_config_table(load_doc(path), level=level, path=path)
+    _refuse_retired_behavior(
+        files, agent_name=agent_name,
+        box_name=(meta_identity or {}).get("meta.box.name"),
+    )
 
     base_levels = assemble_levels(
         agent_name=agent_name,

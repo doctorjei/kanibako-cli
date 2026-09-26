@@ -19,6 +19,7 @@ _BOX_MODES: frozenset[str] = frozenset({'primary', 'named', 'standalone'})
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset({'common', 'chat', 'broadcast', 'share', 'mailboxes', 'share_global'})
 _WORKSET_LOCAL_CHANNEL_LEAVES: frozenset[str] = _WORKSET_CHANNEL_LEAVES - {'mailboxes', 'share_global'}
 _SETTINGS_FILE_NAMES: Final[str] = "the box's box.yaml, the workset's workset.yaml, the agent's agent.yaml, or the system settings.yaml"
+_BOX_NAME_KEYS: Final = ('meta.box.name', 'meta.box.inbox', 'meta.box.share_global', 'meta.box.share_workset')
 _BOX_ROOT_KEY = 'meta.box.path'
 _BOX_STORE_KEY = 'workset.boxes'
 ```
@@ -42,6 +43,7 @@ def meta_identity_floor(*, box_name: str, project_path: str, inbox: str, share_g
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
 def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[_TierFile], subject: ResolveSubject) -> None
+def resolve_inputs(*, subject: ResolveSubject, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs
 def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> KeyStore
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
 def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
@@ -56,9 +58,13 @@ def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
 def _materialize_auth_active(snapshot: KeyStore) -> None
 def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]
 def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None
+def _refuse_retired_behavior(files: Sequence[_TierFile], *, agent_name: str, box_name: object) -> None
 def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[_TierFile], subject: ResolveSubject) -> None
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
+def _workset_channel_floor_values(std, proj) -> 'tuple[str | None, dict[str, str]]'
+def _workset_workspaces_floor_value(mode: str, ws_root_literal: 'str | None') -> 'str | None'
+def _omit_name_derived(ctx: ResolveCtx, *floors: dict[str, object]) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None
@@ -101,6 +107,21 @@ class ResolveSubject(Enum):
 
     def __init__(self, what: str, cure_note: str) -> None
 
+@dataclass(frozen=True)
+class LaunchInputs:
+    ctx: ResolveCtx
+    system_path: Path | None
+    system_floor: Mapping[str, str]
+    meta_runtime: Mapping[str, object]
+    meta_identity: Mapping[str, object]
+    workset_anchor: Mapping[str, object]
+    auth_chain: Mapping[str, object]
+    cascade_box_path: Path
+    cascade_workset_path: Path | None
+    prefs: tuple[PrefRequest, ...]
+
+    def as_kwargs(self) -> _LaunchInputKwargs
+
 class AgentGrammar(NamedTuple):
     mode: dict[str, list[str]]
     exec_fragment: 'list[str] | None'
@@ -113,4 +134,15 @@ class _AuthInputs:
     global_sync: bool
     global_knob: bool
     workset_knob: bool
+
+class _LaunchInputKwargs(TypedDict):
+    ctx: ResolveCtx
+    system_path: Path | None
+    box_path: Path | None
+    workset_path: Path | None
+    auth_chain: Mapping[str, object] | None
+    meta_runtime: Mapping[str, object] | None
+    meta_identity: Mapping[str, object] | None
+    workset_anchor: Mapping[str, object] | None
+    prefs: Sequence[PrefRequest] | None
 ```

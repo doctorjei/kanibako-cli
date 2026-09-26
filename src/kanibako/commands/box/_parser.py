@@ -2144,9 +2144,14 @@ def _run_box_config(args: argparse.Namespace) -> int:
                 agent_cfg = None
             if target is not None and agent_cfg is not None:
                 agent_state = _effective_behavior_for_display(
-                    target, agent_cfg, project_toml,
+                    target, agent_cfg,
+                    std=std, proj=proj,
                     system_settings_path=std.settings,
-                    workset_config_path=workset_path,
+                    selection_level=(
+                        effective_selection.selection_level
+                        if effective_selection is not None
+                        else None
+                    ),
                     node_name=agent_id,
                     agent_cfg_path=(
                         agent_cfg_path if agent_cfg_path.exists() else None

@@ -1956,7 +1956,7 @@ from kanibako.settings.settings_resolve import SettingsError as _SettingsError  
 
 def _ctx_with_config(primary_workset: str = "/data/primary_workset") -> ResolveCtx:
     """A ctx carrying the Layer-1 config foundation so @config.primary_workset
-    resolves (mirrors start.py _launch_snapshot_inputs, #3a)."""
+    resolves (mirrors settings_launch.resolve_inputs, #3a)."""
     return ResolveCtx(
         agent_name="claude",
         workset_name=None,
@@ -2479,7 +2479,7 @@ class TestMetaAgentPath:
         """It RESOLVES (the whole point): the @config.agents chain expands to the
         real per-agent store dir in the built snapshot.  The ctx carries the
         Layer-1 ``config.agents`` foundation, as every live caller's does
-        (``_launch_snapshot_inputs`` / ``_print_effective_shares``)."""
+        (``resolve_inputs`` / ``_print_effective_shares``)."""
         snap = _identity_snapshot(agent_name="claude", ctx=_ctx_with_config())
         ma = _meta_node(snap, "meta", "agent", "claude")
         assert dict.get(ma, "path") == "/data/agents/claude"
@@ -2574,7 +2574,7 @@ class TestMetaAgentGrammarFloor:
 
 def _grammar_snapshot(agent_name="claude", *, with_grammar=True):
     """An identity snapshot that ALSO carries the B5 grammar floor, folded in
-    exactly as ``_launch_snapshot_inputs`` does (identity dict + grammar dict →
+    exactly as ``resolve_inputs`` does (identity dict + grammar dict →
     one ``meta_identity``)."""
     from kanibako.plugins.claude.target import ClaudeTarget
 
@@ -5594,18 +5594,15 @@ def test_the_retired_mirror_table_gets_the_mirror_story_not_the_generic_one(tmp_
     assert "is not a settings key" not in msg
 
 
-@pytest.mark.writes_undeclared(
-    "agent.claude.auto_approve", "meta.box.agent.auto_approve",
-    reason="the retired BEHAVIOR key is undeclared too, so the resolve writes it; "
-           "the mirror row follows it for the ACTIVE agent.",
-)
 def test_the_retired_behaviour_key_gets_its_own_refusal(tmp_path):
     """⚑ THE SECOND INSTANCE OF THE DEFECT CLASS, not a second defect.
 
-    ``auto_approve`` (R-41 / M-22) is preempted exactly as the selection keys were,
+    ``auto_approve`` (R-41 / M-22) was preempted exactly as the selection keys were,
     and on a PERMISSION axis: the generic text does not say that the box would come
     up at the DEFAULT tier, which is the whole reason that refusal was written.
     Repairing one instance and walking past this one is how a class survives.
+    The builder now refuses it BEFORE the resolve (``_refuse_retired_behavior``), so
+    nothing undeclared reaches the snapshot.
     """
     system_path = tmp_path / "settings.yaml"
     system_path.write_text(
@@ -5734,11 +5731,6 @@ def test_a_dropped_table_cannot_produce_a_cure(tmp_path, tier, filename, text):
     assert "zippity" in msg
 
 
-@pytest.mark.writes_undeclared(
-    "agent.claude.auto_approve", "meta.box.agent.auto_approve",
-    reason="the control: the SAME retired spelling in a table the cascade DOES "
-           "read, which the resolve then writes into the snapshot.",
-)
 def test_a_table_the_cascade_reads_still_produces_its_cure(tmp_path):
     """The other direction, and it is what keeps the fix a NARROWING.
 
@@ -6077,3 +6069,47 @@ def test_a_hand_written_run_args_STRING_in_a_settings_file_is_split_not_rewritte
         "--a", "--b",
     ]
     assert (tmp_path / "system.yaml").read_text().count("--a --b") == 1
+
+
+class TestANamelessBoxGetsNoNameDerivedKey:
+    """``resolve_inputs`` for a box whose name is not decided yet (the pre-create read)."""
+
+    _DERIVED = ("meta.box.path", "meta.box.home", "box.canon", "meta.box.settings")
+
+    def _floors(self, std, proj):
+        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
+
+        inputs = resolve_inputs(
+            subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="shell",
+            system_path=std.settings,
+        )
+        return {
+            **inputs.meta_runtime, **inputs.meta_identity,
+            **inputs.workset_anchor, **inputs.auth_chain,
+        }
+
+    def test_every_name_derived_key_is_absent(self, std, config, project_dir):
+        """§0: never a fabricated default — ABSENT, and nothing left refers to one."""
+        from kanibako.settings.paths import resolve_box_target
+        from kanibako.settings.settings_launch import _BOX_NAME_KEYS
+
+        proj = resolve_box_target(
+            std, config, str(project_dir), initialize=False, register=False, warn=False,
+        )
+        assert not proj.name
+        floors = self._floors(std, proj)
+        omitted = (*_BOX_NAME_KEYS, *self._DERIVED)
+        assert not [k for k in omitted if k in floors]
+        assert not [
+            (k, v) for k, v in floors.items()
+            if isinstance(v, str) and any(f"@{o}" in v for o in omitted)
+        ]
+
+    def test_a_named_box_keeps_them(self, std, config, project_dir):
+        """The control: the omission is keyed on the missing name, nothing else."""
+        from kanibako.settings.paths import resolve_project
+        from kanibako.settings.settings_launch import _BOX_NAME_KEYS
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        floors = self._floors(std, proj)
+        assert {*_BOX_NAME_KEYS, *self._DERIVED} <= set(floors)

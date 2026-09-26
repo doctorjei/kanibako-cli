@@ -1639,11 +1639,11 @@ tables cannot come from two different files. The image and helper resolves pass 
 validated inside `build_launch_snapshot`. This is the ONE resolve that may carry the EPHEMERAL flag
 values (`-M` / `-N`-`-C`-`-R`) as well as the resolved selection, because its output is this launch's
 argv / env / mounts and nothing here is written back to a settings file. The create-time seed and
-sync, the persona-endpoint and the `--effective` resolves take a selection-ONLY level. ⚑ Every
-resolve that delivers a user row (no *narrow_bind_dests*) folds the auth chain, so it must carry the
-selection: `meta.box.auth.workset_path` is `@workset.auth.path/@system.agent`. Only the image and
-helper resolves take none — they emit nothing but their injected table — and they pass `None`
-explicitly: the keyword is REQUIRED, so no resolve omits the selection by accident.
+sync, the persona-endpoint, the image / helper and the `--effective` resolves take a selection-ONLY
+level. ⚑ Every resolve folds the auth chain — it rides the `settings_launch.resolve_inputs` inputs,
+with no caller-kind conditional — so every one must carry the selection:
+`meta.box.auth.workset_path` is `@workset.auth.path/@system.agent`. The keyword is REQUIRED, so no
+resolve omits the selection by accident.
 
 **`cli_env`** is the parsed per-run `-e` map (P4c-1) and is forwarded UNTOUCHED to the collapse, which
 applies it as the CLI level over the key owning each variable. ⚑ SAME RULE AS *cli_level* AND FOR THE

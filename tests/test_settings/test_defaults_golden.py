@@ -569,7 +569,9 @@ class TestCoreBehaviorDefaults:
         with pytest.raises(RuntimeError, match="agent_default.model"):
             core_defaults.behavior_default("model")
 
-    def test_a_descriptor_default_still_beats_the_core_behavior_floor(self, tmp_path):
+    def test_a_descriptor_default_still_beats_the_core_behavior_floor(
+        self, std, config, project_dir,
+    ):
         """A plugin's declared default WINS over the core floor at the merge sites.
 
         Both floor build sites in ``start.py`` spell the merge with the DESCRIPTOR
@@ -583,6 +585,7 @@ class TestCoreBehaviorDefaults:
         from kanibako.commands.start import _effective_behavior_for_display
         from kanibako.settings.agent_config import AgentConfig
         from kanibako.settings.config import write_project_config
+        from kanibako.settings.paths import box_workset_settings_paths, resolve_project
         from kanibako.targets.base import TargetSetting
 
         target = MagicMock()
@@ -591,11 +594,12 @@ class TestCoreBehaviorDefaults:
             # A descriptor that COLLIDES with a core floor key — the whole contest.
             TargetSetting(key="bootstrap", description="Multiplexer", default="screen"),
         ]
-        project_toml = tmp_path / "box.yaml"
-        write_project_config(project_toml, "base:image")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        write_project_config(box_workset_settings_paths(proj)[0], "base:image")
 
         effective = _effective_behavior_for_display(
-            target, AgentConfig(), project_toml, system_settings_path=None,
+            target, AgentConfig(), std=std, proj=proj,
+            system_settings_path=None, selection_level=None,
         )
         assert effective["bootstrap"] == "screen", (
             "the DESCRIPTOR default must beat the core floor — a flipped merge "

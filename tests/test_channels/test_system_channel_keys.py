@@ -13,8 +13,9 @@ family, which ``config_keys.py`` declares in the same breath (*"the SYSTEM twins
   entry whose source is that key collapsed to ``None`` and the bind was DROPPED, with
   no message and no non-zero exit.  Its four siblings mounted.
 * ``commands/workset_cmd._print_effective_shares`` — the SECOND carrier of the same
-  tier, named as such by the comment above ``commands/start._launch_snapshot_inputs``'s
-  ``resolved_sys`` — carried NONE of the five.  So a workset binding sourcing
+  tier, named as such by the comment above the launch's own copy of the map (then in
+  ``commands/start``; the builder is now ``settings_launch.resolve_inputs``) — carried
+  NONE of the five.  So a workset binding sourcing
   ``@system.channels.chat`` mounted correctly at launch and VANISHED from
   ``workset share list --effective``: the display lying about what a launch does, which
   is the exact divergence the two comments warned each other about.
@@ -96,7 +97,7 @@ class TestTheTierBuilderIsDerivedNotListed:
 
         ⚑ THE OLD CASE IS NOT DELETED, IT IS TURNED OVER: the widening is loud in the
         same place the omission was.  Consumers checked in that same change, both of
-        them and both taking the whole map — ``commands/start._launch_snapshot_inputs``
+        them and both taking the whole map — ``settings_launch.resolve_inputs``
         (the three are SCALARS, so they take the last-wins arm of
         ``_merge_default_categories``, claim no category destination and provoke no
         origin refusal; being declared, ``_refuse_undeclared_snapshot`` stays silent)
@@ -125,11 +126,12 @@ class TestTheLaunchFloorCarriesTheWholeFamily:
     """A key no floor installs is not resolvable, so ``@system.channels.x`` dangles."""
 
     def test_the_launch_inputs_install_every_declared_leaf(self, primary_proj, std):
-        from kanibako.commands.start import _launch_snapshot_inputs
+        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
-        resolved_sys = _launch_snapshot_inputs(
-            std=std, proj=primary_proj, agent_name="claude",
-        )[1]
+        resolved_sys = resolve_inputs(
+            subject=ResolveSubject.BOX, std=std, proj=primary_proj,
+            agent_name="claude", system_path=std.settings,
+        ).system_floor
         for leaf in DECLARED_SYSTEM_CHANNEL_LEAVES:
             assert f"system.channels.{leaf}" in resolved_sys, leaf
 

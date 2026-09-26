@@ -520,8 +520,8 @@ what `resolve_system_paths` produced. Consumers fold it into a settings floor so
 `@`-ref-routed bind is byte-identical to a runtime-probed literal.
 
 ⚑⚑ **IT IS ONE FUNCTION BECAUSE IT USED TO BE TWO HAND-WRITTEN MAPS, AND BOTH WERE WRONG.**
-`commands/start._launch_snapshot_inputs` (the launch snapshot) and
-`commands/workset_cmd._print_effective_shares` (`workset share list --effective`) each wrote the
+`commands/start._launch_snapshot_inputs` (the launch snapshot; now `settings_launch.resolve_inputs`)
+and `commands/workset_cmd._print_effective_shares` (`workset share list --effective`) each wrote the
 tier out inline, under paired comments saying they had to agree. The launch map omitted
 `system.channels.broadcast` — a declared key with a manifest default, resolved into
 `StandardPaths.channels_broadcast`, reaching no floor — so `@system.channels.broadcast` was
@@ -553,7 +553,8 @@ without a matching field raises `AttributeError` at the next floor build — a m
 by silence, this fails by crash, the same trade `host_config_map` makes one layer down.
 
 ⚑ **CONSUMERS, BOTH OF THEM, CHECKED IN THE SAME CHANGE.**
-`commands/start._launch_snapshot_inputs` folds the map into `default_categories` through
+`settings_launch.resolve_inputs` carries the map (`system_floor`); the launch folds it into
+`default_categories` through
 `_merge_default_categories` as a deliberate late-injection override; the three additions are
 scalars, so they take the last-wins arm, claim no category destination and trigger no origin
 refusal, and being declared they pass `_refuse_undeclared_snapshot` — the snapshot gains three

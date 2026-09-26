@@ -446,7 +446,9 @@ def test_higher_scope_present_none_suppresses_floor(tmp_path):
     assert eff.get("model") == "sonnet"
 
 
-def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
+def test_box_config_effective_display_matches_launch_behavior_read(
+    tmp_path, std, config, project_dir,
+):
     """`box config --effective` (the DISPLAY, via
     ``start._effective_behavior_for_display``) reads behavior off the SAME
     KeyStore snapshot the LIVE launch does — so the displayed effective state
@@ -471,15 +473,18 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
 
     from kanibako.commands.start import _effective_behavior_for_display
     from kanibako.settings import core_defaults
+    from kanibako.settings.paths import box_workset_settings_paths, resolve_project
 
     agent = "claude"
     # agent.default.model rides the floor ("haiku") — the all-agents default the
     # §2d active-over-default pick must be beaten by the active "opus".
     floor = {"model": "haiku", "allow_helpers": "true"}
     state = {"model": "opus", "access": "editing"}
-    # A box settings file with only a legal box.* key (no upward agent.* table).
+    # A box settings file with only a legal box.* key (no upward agent.* table), at
+    # a real box's tier: the display resolves with the launch's own inputs.
+    proj = resolve_project(std, config, str(project_dir), initialize=True)
     box = _write_yaml(
-        tmp_path / "box.yaml", {"box": {"image": "img"}},
+        box_workset_settings_paths(proj)[0], {"box": {"image": "img"}},
     )
 
     # LAUNCH behavior read: the snapshot + effective_behavior, as start.py does —
@@ -502,7 +507,8 @@ def test_box_config_effective_display_matches_launch_behavior_read(tmp_path):
     # missing it describes an agent file that cannot exist.
     agent_cfg = AgentConfig(state=dict(state))
     display = _effective_behavior_for_display(
-        target, agent_cfg, box, system_settings_path=None, workset_config_path=None,
+        target, agent_cfg, std=std, proj=proj,
+        system_settings_path=None, selection_level=None,
     )
 
     # The display equals an INDEPENDENT spec-correct expected dict (NOT merely

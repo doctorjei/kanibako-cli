@@ -778,10 +778,13 @@ class TestLaunchWiring:
         including the ``optional_keys`` the seam passes — the flag is a declaration
         fact and no delivery seam carries it.
         """
-        from kanibako.commands.start import _launch_snapshot_inputs
+        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
         snapshot, _deliveries = self._launch_resolve(std, proj, target)
-        ctx = _launch_snapshot_inputs(std=std, proj=proj, agent_name="claude")[0]
+        ctx = resolve_inputs(
+            subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="claude",
+            system_path=std.settings,
+        ).ctx
         return snapshot_category_entries(
             snapshot, active_agent="claude", box_ctx=ctx,
             optional_keys=core_defaults.canon_optional_bind_keys(),

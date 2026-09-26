@@ -569,7 +569,7 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     literal.
 
     ⚑⚑ ONE CARRIER, AND IT IS ONE BECAUSE TWO HAD ALREADY DRIFTED — in BOTH directions.
-    ``commands/start._launch_snapshot_inputs`` (the launch snapshot) and
+    ``settings_launch.resolve_inputs`` (the launch snapshot) and
     ``commands/workset_cmd._print_effective_shares`` (``workset share list
     --effective``) each built this map by hand, under paired comments telling each other
     they must agree.  They did not: the launch map omitted
@@ -597,7 +597,7 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     question was never asked.
 
     ⚑ CONSUMERS CHECKED IN THE SAME CHANGE — both, and both take the whole map:
-    ``commands/start._launch_snapshot_inputs`` (three more scalars in the snapshot floor,
+    ``settings_launch.resolve_inputs`` (three more scalars in the snapshot floor,
     folded by the last-wins arm of ``_merge_default_categories`` — no category key, no
     origin claim, no refusal, and the keys are declared so ``_refuse_undeclared_snapshot``
     is silent) and ``commands/workset_cmd._print_effective_shares`` (``workset share list

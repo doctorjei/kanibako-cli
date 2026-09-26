@@ -128,6 +128,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box show --effective` and the `bootstrap` / `transform` reads resolve a behavior value the
+  way the launch does.** These three reads built their own settings snapshot without the launch's
+  workset, box and credential-sharing anchors, so a behavior value written against one of them —
+  `agent.claude.template: @meta.workset.path/tpl`, say — did not resolve there as it does at
+  launch. They now take the launch's own inputs. The `kanibako start` refusal of a stored
+  `auto_approve` also fills its cure with the box's agent and, for a box that already exists, the
+  box's name, where v1.8.0-rc2 printed the `<agent>` / `<box>` placeholders.
+
 - **A config file that is one value or a list, not keys, is now refused, naming the file.** A
   `box.yaml`, `workset.yaml`, agent `agent.yaml`, system settings file or `kanibako.cfg` whose whole
   content is a single value (`hello`) or a list (lines starting `- `) was read as empty, in v1.7.2

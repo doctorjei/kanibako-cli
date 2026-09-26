@@ -70,7 +70,6 @@ from kanibako.settings.paths import (
     creds_watcher_log_path,
     load_std_paths,
     resolve_box_target,
-    system_path_floor,
 )
 from kanibako.agent_ref import (
     GENERAL_SLOT,
@@ -900,6 +899,8 @@ def _bootstrap_choice(
     system_settings_path: "Path | None",
     agent_id: str,
     *,
+    std,
+    selection_level: "Mapping[str, object] | None",
     agent_path: "Path | None" = None,
 ) -> BootstrapChoice:
     """Resolve the AGENT-scope ``bootstrap`` for *agent_id*, with where it came from.
@@ -923,16 +924,18 @@ def _bootstrap_choice(
     ``none`` opt-out.
 
     The pref: ⚑ THE TEST IS EXACT, not a guess.  Within the answering slot a box or
-    workset pref is the ONLY source above the files of this focused snapshot (it
-    carries no CLI level, and a box or workset file's own ``agent.*`` is an upward
-    write, dropped), and a pref lands only at its literal target, so a request whose
-    target is the answering slot's key is the value the §2d pick read.  Last request
-    wins (box after workset), the overlay's order.
+    workset pref is the ONLY source above the files of this focused snapshot (its CLI
+    level is the selection alone, which sets ``system.agent`` and no behavior key, and
+    a box or workset file's own ``agent.*`` is an upward write, dropped), and a pref
+    lands only at its literal target, so a request whose target is the answering
+    slot's key is the value the §2d pick read.  Last request wins (box after
+    workset), the overlay's order.
     """
     from kanibako.settings.settings_prefs import collect_prefs, pref_request_for
 
     program, slot = _agent_scalar_pick(
-        proj, system_settings_path, agent_id,
+        proj, system_settings_path, agent_id, std=std,
+        selection_level=selection_level,
         key="bootstrap", floor=_bootstrap_default(), agent_path=agent_path,
     )
     from_default = slot == "default"
@@ -1046,6 +1049,8 @@ def _effective_agent_scalar(
     system_settings_path: "Path | None",
     agent_id: str,
     *,
+    std,
+    selection_level: "Mapping[str, object] | None",
     key: str,
     floor: str,
     agent_state: "agent_file.AgentFileLevel | None" = None,
@@ -1053,7 +1058,8 @@ def _effective_agent_scalar(
 ) -> "str | None":
     """The value half of :func:`_agent_scalar_pick` (see there)."""
     return _agent_scalar_pick(
-        proj, system_settings_path, agent_id, key=key, floor=floor,
+        proj, system_settings_path, agent_id, std=std,
+        selection_level=selection_level, key=key, floor=floor,
         agent_state=agent_state, agent_path=agent_path,
     )[0]
 
@@ -1063,6 +1069,8 @@ def _agent_scalar_pick(
     system_settings_path: "Path | None",
     agent_id: str,
     *,
+    std,
+    selection_level: "Mapping[str, object] | None",
     key: str,
     floor: str,
     agent_state: "agent_file.AgentFileLevel | None" = None,
@@ -1099,16 +1107,16 @@ def _agent_scalar_pick(
     the ``or None`` below folds the second.
     ⚑ An agent file that cannot be read RAISES (a ``ConfigError`` for bad YAML): a
     swallowed error would resolve the value as if the file said nothing.
+    The box's files, context and floors come off
+    :func:`~kanibako.settings.settings_launch.resolve_inputs`, the launch's own, so
+    a value spelled ``@meta.workset.path/…`` answers here as it does there;
+    *selection_level* is the §1A selection their auth chain needs (REQUIRED, P7).
     """
     from kanibako.settings import settings_launch
-    from kanibako.settings.paths import host_xdg_map
-    from kanibako.settings.settings_resolve import ResolveCtx
 
-    ctx = ResolveCtx(
-        agent_name=agent_id,
-        workset_name=None,
-        host_home=str(Path.home()),
-        xdg=host_xdg_map(),
+    inputs = settings_launch.resolve_inputs(
+        subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
+        agent_name=agent_id, system_path=system_settings_path,
     )
     # The per-agent file's behavior (agent.<active>.* slot) — the shape
     # ``effective_behavior`` reads for a per-agent override.  Absent file → empty.
@@ -1116,14 +1124,10 @@ def _agent_scalar_pick(
         agent_state = agent_file.state_level(
             agent_file.load(agent_path), node=agent_id, path=agent_path,
         )
-    _scalar_box_path, _scalar_ws_path = box_workset_settings_paths(proj)
     snapshot = settings_launch.build_launch_snapshot(
+        **inputs.as_kwargs(),
         agent_name=agent_id,
-        ctx=ctx,
-        system_path=system_settings_path,
         agent_path=None,
-        workset_path=_scalar_ws_path,
-        box_path=_scalar_box_path,
         # Seed the behavior FLOOR with just *key* (→ agent.default.<key>) so the
         # snapshot's ``agent`` node ALWAYS exists.  Without it, a box whose SOLE
         # agent-scope setting is its ``pref.agent.<agent>.<key>`` request (§2h; e.g.
@@ -1141,7 +1145,10 @@ def _agent_scalar_pick(
         # above — and with it any user ``agent.default.<key>`` (why that is wrong:
         # ``core-defaults.yaml`` ``agent_shell:``).  Dormant for every other agent —
         # only a shell pick reads ``agent.shell``.
-        default_categories=core_defaults.shell_tier_defaults(),
+        # The resolved ``system.*`` tier rides beside it, as in every box resolve.
+        default_categories={
+            **core_defaults.shell_tier_defaults(), **inputs.system_floor,
+        },
         agent_state=agent_state,
         # ⚑ NO PERSONA TIER, deliberately (the six-call-site audit). Not an
         # oversight and not an ordering accident: this resolve extracts EXACTLY
@@ -1154,6 +1161,8 @@ def _agent_scalar_pick(
         # runs ahead of the baseline probe, and again from the host-side persistence
         # heuristic in ``_resolve_bootstrap_program``, which holds no target) for a
         # value that could not change.
+        # The SELECTION only (P8): no ephemeral flag reaches this read.
+        cli_level=selection_level,
     )
     value = settings_launch.effective_behavior(
         snapshot, active_agent=agent_id, keys=[key],
@@ -1170,6 +1179,8 @@ def _effective_transform(
     target,
     agent_cfg,
     *,
+    std,
+    selection_level: "Mapping[str, object] | None",
     agent_cfg_path: "Path | None" = None,
 ) -> "str | None":
     """Resolve the AGENT-scope ``transform`` key — WHICH binary transform this launch runs.
@@ -1195,7 +1206,8 @@ def _effective_transform(
             if descriptor.key == "transform":
                 floor = descriptor.default or ""
     return _effective_agent_scalar(
-        proj, system_settings_path, agent_id,
+        proj, system_settings_path, agent_id, std=std,
+        selection_level=selection_level,
         key="transform", floor=floor,
         agent_state=(
             agent_file.state_level(agent_cfg, node=agent_id, path=agent_cfg_path)
@@ -1264,7 +1276,8 @@ def _resolve_bootstrap_program(
     except Exception:
         return BootstrapChoice(_bootstrap_default(), None)
     return _bootstrap_choice(
-        proj, system_settings_path, agent_id, agent_path=agent_path,
+        proj, system_settings_path, agent_id, std=std,
+        selection_level=_sel.selection_level, agent_path=agent_path,
     )
 
 
@@ -1989,70 +2002,6 @@ def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]:
     return env
 
 
-def _refuse_retired_behavior(
-    *, proj, agent_id, system_settings_path, agent_cfg_path,
-) -> None:
-    """Refuse a RETIRED behavior spelling found in ANY cascade file (R-41/RQ-2).
-
-    The BEHAVIOR-tier twin of the selection-seam refusal in
-    :func:`kanibako.settings.agent_select.select_agent`: same shape, same
-    "refuse rather than run" rule, different key set
-    (:data:`~kanibako.settings.settings_assemble.RETIRED_BEHAVIOR_KEYS` —
-    today just ``auto_approve`` → ``access``).
-
-    EVERY tier the cascade reads is checked, in cascade order so the OUTERMOST
-    stale value is reported first (fix-one-then-see-the-next, like every other
-    config error here):
-
-    * ``base`` / ``system`` / ``workset`` / ``box`` — the scope settings files,
-      where the key sits under ``agent.<sub>`` or a ``pref.agent.<node>``
-      request;
-    * ``agent`` — the ACTIVE agent's own file, where it sits FLAT under
-      ``self``. This tier is NOT in the selection refusal's list (agent
-      SELECTION cannot live in an agent file) and it is exactly where
-      ``agent set <agent> auto_approve=…`` used to write, so omitting it would
-      leave the commonest stale spelling silent.
-
-    ⚑⚑ IT JUDGES WHAT THE CASCADE SEES, NOT WHAT THE FILE SAYS
-    (:func:`~kanibako.settings.settings_assemble.cascade_view`) — the same rule the
-    resolve seam's retirement scan follows, for the same reason. An ``agent:``
-    table in a ``box.yaml`` is dropped by directional enforcement and a ``pref:``
-    outside a workset or box file by §2h, so an ``auto_approve`` found in one was
-    doing NOTHING; refusing on it tells a user their box is about to come up at the
-    default permission tier when deleting the line changes nothing at all. Measured
-    before this: a ``box.yaml`` holding only ``agent: claude: auto_approve: true``
-    carried no undeclared key into the snapshot at all, so the resolve seam stayed
-    silent and this was the ENTIRE user experience of that file — not a redundant
-    second copy of a refusal, the only one.
-
-    Raises :class:`~kanibako.settings.settings_resolve.SettingsError`; the
-    launch stops.
-    """
-    from kanibako.settings.config import settings_base_path
-    from kanibako.settings.config_io import load_doc
-    from kanibako.settings.paths import box_workset_settings_paths
-    from kanibako.settings.settings_assemble import (
-        cascade_view,
-        refuse_retired_behavior_keys,
-    )
-
-    box_path, workset_path = box_workset_settings_paths(proj)
-    subject = agent_id if agent_id and agent_id != GENERAL_SLOT else None
-    for level, path in (
-        ("base", settings_base_path()),
-        ("system", system_settings_path),
-        ("agent", agent_cfg_path),
-        ("workset", workset_path),
-        ("box", box_path),
-    ):
-        if path is not None and Path(path).exists():
-            refuse_retired_behavior_keys(
-                cascade_view(load_doc(Path(path)), level=level, path=Path(path)),
-                level=level, path=Path(path), subject=subject,
-                box_name=proj.name if level == "box" else None,
-            )
-
-
 def _deliver_panel_permissions(
     *,
     target,
@@ -2148,6 +2097,7 @@ def _assemble_image_sharing_mounts(
     auth_src,
     extra_mounts,
     logger,
+    selection_level,
 ):
     """Append host image-storage share mounts to ``extra_mounts`` (conditional).
 
@@ -2192,7 +2142,8 @@ def _assemble_image_sharing_mounts(
             storage_conf_path=storage_conf_path,
             deliver_creds=auth_src.creds_shared,
             include_base_families=False,
-            cli_level=None,  # no auth chain to fold (narrow)
+            # The SELECTION only: every resolve folds the auth chain (P8 — no flag).
+            cli_level=selection_level,
             narrow_bind_dests=core_defaults.image_bind_dests(),
             # No persona tier (audit): the IMAGE table only, whose box_dests are
             # disjoint from anything a persona bundle can name.
@@ -2305,6 +2256,7 @@ def _start_helper_hub(
     agent_cfg_path,
     auth_src,
     extra_mounts,
+    selection_level,
 ):
     """Start the helper hub + append its mounts; return the started ``HelperHub``.
 
@@ -2412,7 +2364,8 @@ def _start_helper_hub(
         log_path=log_path,
         deliver_creds=auth_src.creds_shared,
         include_base_families=False,
-        cli_level=None,  # no auth chain to fold (narrow)
+        # The SELECTION only: every resolve folds the auth chain (P8 — no flag).
+        cli_level=selection_level,
         narrow_bind_dests=core_defaults.helper_bind_dests(),
         # No persona tier (audit): the HELPER table only, whose pinned
         # box_dests are disjoint from anything a persona bundle can name.
@@ -3036,7 +2989,12 @@ def _run_container(
     # nothing (``kanibako shell``'s default stays agent-free).
     if is_agent_mode:
         bootstrap = _bootstrap_choice(
-            proj, system_settings_path, agent_id, agent_path=agent_cfg_path,
+            proj, system_settings_path, agent_id, std=std,
+            selection_level=(
+                agent_selection.selection_level
+                if agent_selection is not None else None
+            ),
+            agent_path=agent_cfg_path,
         )
     elif persistent:
         bootstrap = _resolve_bootstrap_program(project_dir, explicit_agent)
@@ -3824,6 +3782,11 @@ def _run_container(
         active_transform = (
             _effective_transform(
                 proj, system_settings_path, agent_id, target, agent_cfg,
+                std=std,
+                selection_level=(
+                    agent_selection.selection_level
+                    if agent_selection is not None else None
+                ),
                 agent_cfg_path=agent_cfg_path,
             )
             if target and install
@@ -3888,20 +3851,6 @@ def _run_container(
             # the merged-config resolve above, which carried the same level).
             image=image_override,
             share_images=share_images,
-        )
-        # RETIRED BEHAVIOR spellings (R-41 / RQ-2): refuse a stored
-        # ``auto_approve`` by name, at the BEHAVIOR tier, BEFORE anything reads a
-        # permission value. ``access`` superseded it, so the old key is now
-        # UNDECLARED — and an undeclared stored key is SILENT, which on this axis
-        # means a box deliberately set ``auto_approve: false`` would come up at
-        # the ``full`` default with nothing printed. Every cascade tier is
-        # checked, BASE included (a site-admin default reaches every box on the
-        # machine), plus the ACTIVE AGENT's own file — the one tier the selection
-        # refusal above does not read, and the very file ``agent set`` writes.
-        _refuse_retired_behavior(
-            proj=proj, agent_id=agent_id,
-            system_settings_path=system_settings_path,
-            agent_cfg_path=agent_cfg_path,
         )
         # THE REALIZATION (MBR-1 P4c-2): everything this launch DERIVES from its
         # resolved settings — the behavior read, the two access tiers, and the
@@ -4069,7 +4018,7 @@ def _run_container(
                 effective_new_session = not continue_default
                 # B5 (spec §2d, the §3.3 rulings): the launch GRAMMAR comes off
                 # the ONE snapshot — ``meta.agent.<a>.mode`` / ``.exec``,
-                # materialized from the descriptor in ``_launch_snapshot_inputs``
+                # materialized from the descriptor in ``settings_launch.resolve_inputs``
                 # (``meta_agent_grammar_floor``). The descriptor is NOT read for
                 # argv fragments here or below: the keyspace is the single
                 # source, and a descriptor-direct read beside it would be the
@@ -4347,6 +4296,10 @@ def _run_container(
             auth_src=auth_src,
             extra_mounts=extra_mounts,
             logger=logger,
+            selection_level=(
+                agent_selection.selection_level
+                if agent_selection is not None else None
+            ),
         )
 
         container_env, secret_export_vars = _assemble_launch_env(
@@ -4421,6 +4374,10 @@ def _run_container(
                 agent_cfg_path=agent_cfg_path,
                 auth_src=auth_src,
                 extra_mounts=extra_mounts,
+                selection_level=(
+                    agent_selection.selection_level
+                    if agent_selection is not None else None
+                ),
             )
 
         # Pre-launch validation: warn about missing mount sources.
@@ -6344,10 +6301,11 @@ def _codex_persona_token_error(
 def _effective_behavior_for_display(
     target,
     agent_cfg,
-    project_toml,
     *,
+    std,
+    proj,
     system_settings_path,
-    workset_config_path=None,
+    selection_level: "Mapping[str, object] | None",
     node_name=None,
     agent_cfg_path=None,
 ) -> dict[str, str]:
@@ -6376,10 +6334,13 @@ def _effective_behavior_for_display(
     early-return). Values are scalars, used verbatim (behavior has no @-ref tier).
     *agent_cfg_path* is the file *agent_cfg* was read from (``None`` when it was
     generated), so a read-time refusal of one of its values can name it.
+    The box's files, context and floors come off
+    :func:`~kanibako.settings.settings_launch.resolve_inputs` for *proj*, the same
+    inputs the launch resolves with; *selection_level* is the §1A selection the
+    auth chain those inputs carry needs (REQUIRED, P7 — ``None`` only for a box with
+    no selection).
     """
     from kanibako.settings import settings_launch
-    from kanibako.settings.paths import host_xdg_map
-    from kanibako.settings.settings_resolve import ResolveCtx
 
     descriptors = target.setting_descriptors()
     if not descriptors:
@@ -6421,38 +6382,24 @@ def _effective_behavior_for_display(
     # plugin, and every one of those declares descriptors, so it cannot reach it.)
     persona_values = _persona_values_for(active, target)
 
-    # Canonical host XDG map (never a partial one): stored settings-file values
-    # (e.g. a 1.6.0-era ``$XDG_CACHE_HOME/...`` cache entry) expand through this
-    # ctx too, and the resolver reads ONLY the map — an empty map raised
-    # "Variable $XDG_CACHE_HOME is not set in this context" here.
-    ctx = ResolveCtx(
-        agent_name=active,
-        workset_name=None,
-        host_home=str(Path.home()),
-        xdg=host_xdg_map(),
+    # DISPLAY == LAUNCH: the box's files, ctx and floors from the ONE input builder
+    # (so a behavior value spelled ``@meta.workset.path/…`` or ``@workset.auth.path/…``
+    # answers here as it does at launch); the floor folds in as ``agent.default.*``
+    # and the per-agent file state as the ``agent.<active>`` slot. No category
+    # tables beyond the resolved ``system.*`` tier (display reads behavior only).
+    inputs = settings_launch.resolve_inputs(
+        subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
+        agent_name=active, system_path=system_settings_path,
     )
-    # Behavior-only snapshot: the scope settings files (box/workset/system) feed
-    # their discriminated agent tables; the floor folds in as agent.default.* and
-    # the per-agent file state as the agent.<active> slot. No category tables /
-    # agent-binding inputs (display reads behavior only). The machine tier is CUT
-    # (S14) — assemble_levels never consults /etc machine, matching the launch.
     snapshot = settings_launch.build_launch_snapshot(
+        **inputs.as_kwargs(),
         agent_name=active,
-        ctx=ctx,
-        # The system SETTINGS file (@config.settings = global/settings.yaml) —
-        # the SAME system-tier file derivation the launch snapshot uses
-        # (std.settings, see _run_container), NEVER the kanibako.cfg
-        # CONFIG file: a system-level settings value that is live at launch
-        # must be equally visible to `show --effective` (F2/F3 sibling; the
-        # parameter was formerly named global_config_path, which invited
-        # exactly that wrong-file confusion).
-        system_path=system_settings_path,
         agent_path=None,
-        workset_path=workset_config_path,
-        box_path=project_toml,
         behavior_floor=behavior_floor,
+        default_categories=dict(inputs.system_floor),
         agent_state=agent_state,
         persona_values=persona_values,
+        cli_level=selection_level,
     )
     return settings_launch.effective_behavior(snapshot, active_agent=active)
 
@@ -6470,8 +6417,8 @@ def _resolve_box_auth_source(
 
     The SINGLE source of the launch's sharing decision (auth-level redesign):
     builds a FOCUSED launch snapshot — the scope settings files and the four floor
-    fragments of :func:`_launch_snapshot_inputs` (the auth chain, ``meta.runtime.*``,
-    the meta identity floor carrying the agent capability
+    fragments of :func:`~kanibako.settings.settings_launch.resolve_inputs` (the auth
+    chain, ``meta.runtime.*``, the meta identity floor carrying the agent capability
     ``meta.agent.<agent>.auth.share_support`` the mirror views up, and the workset
     anchors), but NO category family — expands it
     ONCE, and reads the :class:`~kanibako.settings.settings_launch.AuthSource` off it
@@ -6507,10 +6454,10 @@ def _resolve_box_auth_source(
     """
     from kanibako.settings import settings_launch
 
-    (
-        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, chain,
-        cascade_box_path, cascade_workset_path,
-    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
+    inputs = settings_launch.resolve_inputs(
+        subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
+        agent_name=agent_name, system_path=system_settings_path,
+    )
     # The persona store's LIVE tier (:func:`_persona_values_for`). This resolve
     # takes no *target* and its callers (``stop`` writeback, the creds watcher)
     # hold no bundle, so the plugin is resolved HERE off the node-name — the same
@@ -6549,18 +6496,11 @@ def _resolve_box_auth_source(
     # mode-aware single source (P6c) — standalone reads <root>/workset.yaml as the
     # WORKSET tier, box tier empty.
     snapshot = settings_launch.build_launch_snapshot(
+        **inputs.as_kwargs(),
         agent_name=agent_name,
-        ctx=ctx,
-        system_path=system_settings_path,
         agent_path=agent_cfg_path,
-        workset_path=cascade_workset_path,
-        box_path=cascade_box_path,
-        default_categories=dict(resolved_sys),
+        default_categories=dict(inputs.system_floor),
         persona_values=_auth_persona_values,
-        auth_chain=chain,
-        meta_runtime=meta_runtime,
-        meta_identity=meta_identity,
-        workset_anchor=workset_anchor,
         # ⚑ REQUIRED (P7) — see the *selection_level* note in the docstring for what
         # omitting it silently collapses.
         cli_level=selection_level,
@@ -6600,10 +6540,10 @@ def _resolve_box_launch_decisions(
     """
     from kanibako.settings import settings_launch
 
-    (
-        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, chain,
-        cascade_box_path, cascade_workset_path,
-    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
+    inputs = settings_launch.resolve_inputs(
+        subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
+        agent_name=agent_name, system_path=system_settings_path,
+    )
     descriptors = target.setting_descriptors() if target is not None else []
     # A real target returns a list of TargetSetting; guard against a non-list (e.g.
     # a MagicMock target in unit tests) so the behavior floor / endpoint read is
@@ -6622,12 +6562,9 @@ def _resolve_box_launch_decisions(
         else {}
     )
     snapshot = settings_launch.build_launch_snapshot(
+        **inputs.as_kwargs(),
         agent_name=agent_name,
-        ctx=ctx,
-        system_path=system_settings_path,
         agent_path=agent_cfg_path,
-        workset_path=cascade_workset_path,
-        box_path=cascade_box_path,
         behavior_floor=behavior_floor or None,
         # agent_state (the active-node slot) is only needed when we actually read
         # behavior; gated on behavior_floor so a no-descriptor / mock target never
@@ -6638,11 +6575,7 @@ def _resolve_box_launch_decisions(
             else None
         ),
         persona_values=persona_values,
-        default_categories=dict(resolved_sys),
-        auth_chain=chain,
-        meta_runtime=meta_runtime,
-        meta_identity=meta_identity,
-        workset_anchor=workset_anchor,
+        default_categories=dict(inputs.system_floor),
         # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
         # ``@workset.auth.path/@system.agent`` (spec §2c), so this snapshot
         # must carry the RESOLVED selection or, for any launch whose agent came
@@ -6695,241 +6628,6 @@ def _persona_model_state(snapshot: "KeyStore", active_agent: str) -> object:
     return behavior_pick(snapshot, active_agent=active_agent, key="model")[1]
 
 
-def _launch_snapshot_inputs(
-    *,
-    std,
-    proj,
-    agent_name: str,
-):
-    """Build the eight-tuple of inputs the launch SNAPSHOT path needs.
-
-    ``(ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, auth_chain,
-    cascade_box_path, cascade_workset_path)``.
-
-    *auth_chain* is ``settings_launch.auth_chain_floor`` for *proj*'s mode — built
-    HERE, the one place, for every resolve that folds it, so none of them can spell
-    the chain differently.
-
-    Constructs the host_home / xdg / workset name / resolved ``system.*`` map the
-    ONE-resolve snapshot path (block 7b) feeds to ``build_launch_snapshot`` so
-    every @-ref resolves. There is NO per-scope source-root table: a stored source
-    resolves on its own (spec §2a) and the abstract categories are rooted
-    at DECLARATION, so nothing is prefixed on the way to a mount. This is
-    now the SOLE category-resolution input builder — the old per-family
-    ``_category_resolution_inputs`` (a second LevelView-cascade route) was retired
-    in block 7c; the snapshot pipeline is the single route for both reads and the
-    seed/synced/channel/share resolves.
-
-    *meta_runtime* (block B1) is the ``meta.runtime.*`` identity-anchor floor for
-    *proj*'s mode (spec §1A) — built HERE because the per-mode treewalk
-    values (``proj.mode`` / ``proj.group.root`` / the project dir) are known on
-    *proj*. PRIMARY uses the ``@config.primary_workset`` @-ref; NAMED uses the
-    detected workset root literal (``str(proj.group.root)``); STANDALONE uses the
-    runtime project dir literal (``str(proj.project_path)``). Folded into the
-    snapshot floor so ``expand`` resolves the @-ref chain ONCE (single-route).
-
-    *cascade_box_path* / *cascade_workset_path* are the mode-aware box-tier /
-    workset-tier settings-file paths the cascade mounts (``box_workset_settings_
-    paths``): the SINGLE SOURCE the snapshot resolvers pass as
-    ``build_launch_snapshot(box_path=…, workset_path=…)``, and the SAME box-tier path
-    that materializes ``meta.box.settings`` — so the anchor and the cascade cannot
-    drift. STANDALONE = ``(<root>/box_data/box.yaml, <root>/workset.yaml)``:
-    a real box tier (absent by default) over the ROOT file that plays the workset
-    tier; primary/named unchanged.
-    """
-    from kanibako.settings import settings_launch as settings_launch_module
-    from kanibako.settings.agent_select import launch_resolve_ctx
-    from kanibako.settings.paths import ProjectError
-
-    # ONE ctx builder (P7): the SELECTION pre-pass resolves against the identical
-    # host-side namespace, so the two passes cannot disagree about what
-    # ``@config.*`` / ``$XDG_*`` / ``~`` mean. See ``agent_select.launch_resolve_ctx``
-    # for the resolver-SPLIT rationale this call carries.
-    ctx = launch_resolve_ctx(std, proj, agent_name)
-
-    # The Layer-2 system.* path tier the category @-refs resolve against.  These
-    # are present IN the snapshot (folded into the floor as ``system.<leaf>``
-    # keys) so ``expand`` resolves them — replicating the old ``_lookup``'s
-    # ``resolved_sys`` map.
-    # ⚑⚑ IT IS BUILT BY ``paths.system_path_floor`` AND SO IS THE SECOND CONSUMER,
-    # ``commands/workset_cmd._print_effective_shares`` (``workset share list
-    # --effective``).  This map used to be written out by hand here and again there,
-    # under paired comments saying the two must agree — and they did not: this one had
-    # no ``system.channels.broadcast`` (a declared key, so a binding sourcing it was
-    # dropped from the collapse silently) and that one had none of the five channel
-    # leaves at all (so a workset binding sourcing ``@system.channels.chat`` mounted
-    # here and vanished from the display).  There is one map now, so "both carry the
-    # same keys" is structural rather than a promise two hand lists made each other.
-    resolved_sys = system_path_floor(std)
-
-    # meta.runtime.* identity anchors (block B1, spec §1A). The per-mode
-    # treewalk values are known on ``proj``; surface them as the snapshot's RO
-    # ``meta.runtime.*`` keys + the single-source re-root of meta.workset.path /
-    # meta.workset.settings / meta.box.mode. PRIMARY → the @config.primary_workset
-    # @-ref (live-propagates from the foundation); NAMED → the detected workset
-    # root literal; STANDALONE → the project ROOT.
-    mode = proj.mode.value
-    if mode == "named":
-        if proj.group is None:
-            raise ProjectError(
-                "named-mode project has no workset group (meta.runtime.ws_root)"
-            )
-        ws_root_literal = str(proj.group.root)
-    elif mode == "standalone":
-        # B2b FIX (was the B1 defect): standalone meta.runtime.ws_root must be the
-        # project ROOT (<root>), NOT proj.project_path (= <root>/workspace, the
-        # workspace SUBDIR).  Spec §2c + the §4 worked example require the
-        # degenerate workset to root at the project dir itself.  ``resolve_standalone
-        # _project`` sets ``metadata_path = root`` (the resolved project dir) and
-        # ``project_path = root/"workspace"`` — so ``proj.metadata_path`` IS <root>
-        # exactly (verified: it equals ``Path(raw).resolve()``).  Every standalone
-        # layout anchor hangs off this: workset.boxes = @meta.workset.path/box_data
-        # (hence meta.box.path, hence the home bind) and workset.vault_* =
-        # @meta.workset.path/vault/*, all byte-identical to proj.shell_path /
-        # proj.vault_*_path.
-        ws_root_literal = str(proj.metadata_path)
-    else:
-        ws_root_literal = None  # primary uses the @config.primary_workset @-ref
-    # The workset partition TOKEN (spec §1A meta.runtime.ws_name, 2026-07-04) —
-    # SINGLE-SOURCED on channels.workset_name_token (primary=__PRIMARY__ ·
-    # named=<detected name> · standalone=__STANDALONE__). Threaded into
-    # meta_runtime_floor so the snapshot's meta.runtime.ws_name holds it and
-    # meta.workset.name anchors into it (§2c); the SAME token drives the channel
-    # partition (channels.box_channel_addresses below), so the two cannot drift.
-    from kanibako.channels import channels as _channels
-
-    ws_token = _channels.workset_name_token(proj)
-    meta_runtime = settings_launch_module.meta_runtime_floor(
-        mode=mode, ws_name=ws_token, ws_root_literal=ws_root_literal,
-    )
-
-    # meta.* IDENTITY-anchor materialization (block B2, spec §2c/§2d). The remaining
-    # construct-time identity keys the @meta.*-routed core binds (workspace / inbox)
-    # reference. Every value is the RESOLVED LITERAL the launch already computes —
-    # the box name (proj.name; JC-B2-2 reuse), the workspace source
-    # (str(proj.project_path)), the channel partition ADDRESSES
-    # (channels.box_channel_addresses), and the plugin-set agent name — so an
-    # @meta.box.workspace / @meta.box.inbox bind expands byte-identically (JC-B2-4).
-    # (The workset partition token now lives on meta.runtime.ws_name — set above.)
-    addr = _channels.box_channel_addresses(proj, std)
-    # The agent's credential-SHARING CAPABILITY (spec §2d; auth-level design step 2):
-    # the plugin-set RO ``meta.agent.<agent>.auth.share_support`` the box's mirror
-    # views up. Read off the descriptor for the ACTIVE agent (single-source: the
-    # plugin declares it in its *-defaults.yaml). Absent / NO-AGENT → False (the
-    # box enables degenerate false). Best-effort: an unresolvable target is treated
-    # as non-capable rather than crashing the snapshot build.
-    agent_auth_support = False
-    # The HARNESS descriptor, resolved ONCE here for BOTH plugin-set key families:
-    # the auth capability below AND the B5 launch-grammar materialization
-    # (meta.agent.<a>.{mode,exec} via meta_agent_grammar_floor — the single
-    # descriptor→keyspace seam). None when no descriptor resolves.
-    agent_desc = None
-    # The plugin's DECLARED harness name, in its own case ([R173]): the case-carrying
-    # half of ``meta.agent.<a>.name``. ``agent_name`` is the NODE and has already been
-    # folded, so it cannot supply this. ``None`` when no target resolves — the floor
-    # then falls back to the node, which is the best spelling available.
-    agent_declared_name: str | None = None
-    if agent_name:
-        from kanibako.targets import resolve_target
-
-        try:
-            agent_target = resolve_target(harness_of(agent_name), proj.project_path)
-            agent_declared_name = agent_target.name
-            agent_desc = agent_target.descriptor
-            agent_auth_support = bool(
-                agent_desc.auth_share_support if agent_desc is not None else False
-            )
-        except (KeyError, ValueError):
-            # GENUINELY ABSENT: no matching target (KeyError) or the target lacks a
-            # meta.agent.<agent>.name (ValueError). Treat as non-capable (no
-            # sharing). We do NOT swallow arbitrary exceptions — a transient
-            # resolution error should NOT silently disable sharing for a capable
-            # agent; it surfaces to the caller.
-            get_logger("start").debug(
-                "auth capability: no descriptor for agent %r → non-capable",
-                agent_name,
-            )
-            agent_desc = None
-            agent_declared_name = None
-            agent_auth_support = False
-    # The SINGLE-SOURCE (box_tier, workset_tier) settings-file pair (M-8). It is
-    # UNIFORM now: primary/named = (the box's own box.yaml, the workset root's);
-    # standalone = (<root>/box_data/box.yaml, <root>/workset.yaml) — the box
-    # tier is a real path in EVERY mode, merely ABSENT BY DEFAULT for standalone
-    # (``settings-keyspace-1.8.0.md`` §2c ALL PROJECTS + ``system-design-1.8.0.md``
-    # § "Detection & import"). The SAME pair feeds BOTH the
-    # meta.box.settings anchor (box tier path, below) AND the cascade box_path/
-    # workset_path the snapshot resolvers pass to build_launch_snapshot (returned
-    # last) — so the anchor and the cascade cannot drift.
-    cascade_box_path, cascade_workset_path = box_workset_settings_paths(proj)
-    meta_identity = settings_launch_module.meta_identity_floor(
-        box_name=proj.name,
-        project_path=str(proj.project_path),
-        **settings_launch_module.box_address_args(addr),
-        # meta.box.settings — the box-TIER file path (str), in EVERY mode. The SAME
-        # value as cascade_box_path, so the anchor names exactly the file the cascade
-        # reads and `config set` writes (M-8). No per-mode branch: the box tier is
-        # non-optional by TYPE (`box_workset_settings_paths` -> tuple[Path, ...]).
-        box_settings=str(cascade_box_path),
-        # The agent identity key (spec §2d). ⚑ THE DISCRIMINATOR AND THE VALUE ARE
-        # TWO SPELLINGS OF ONE AGENT ([R173]): the key's segment is the NODE, which
-        # is lowercase; the value keeps the case the plugin DECLARED. Passing the
-        # node for both would fold the name on the way to storage. Omitted for a
-        # NO-AGENT box (empty name) — it has no agent identity.
-        agent_name=agent_name if agent_name else None,
-        agent_real_name=agent_declared_name,
-        agent_auth_share_support=agent_auth_support,
-    )
-    # B5: the plugin-set LAUNCH GRAMMAR ``meta.agent.<a>.{mode,exec}`` (spec §2d;
-    # the §3.3 "it should exist and be used" / "we should be using this" rulings).
-    # Materialized from the SAME harness descriptor resolved above — the single
-    # descriptor→keyspace seam; the launch then COMPOSES its argv from these
-    # snapshot keys (meta_agent_grammar), never from the descriptor directly.
-    if agent_name:
-        meta_identity.update(
-            settings_launch_module.meta_agent_grammar_floor(agent_name, agent_desc)
-        )
-
-    # LAYOUT-anchor materialization (spec §2c/§2g): the workset-scope path anchors
-    # AND the RO per-mode box root ``meta.box.path`` that the @-ref-routed core
-    # home/vault/helper_log/workset-channel binds reference. The anchor VALUES are
-    # the spec's own self-resolving @-ref formulas and are built ENTIRELY from
-    # *mode* inside ``workset_anchor_floor`` — the per-mode variation lives THERE
-    # and nowhere downstream (spec §2c), so this seam no longer derives any
-    # per-mode root literal off ``proj``. The only proj-derived values still needed
-    # are the workset-local channel roots — the helper-log path is no longer among
-    # them: its bind is now the spec's own ``@workset.logs/@{meta.box.name}.jsonl``
-    # @-ref chain (PHASE R), which resolves from the anchors below.
-    # The resolved channel family (spec §2c). ⚑ ALL SIX DECLARED LEAVES plus the channel
-    # ROOT, not the three the floor used to be handed: ``broadcast``, ``mailboxes`` and
-    # ``share_global`` were declared keys that no floor installed in any mode, so
-    # ``config set`` took them, ``config get`` read them back, and nothing changed.
-    # The per-mode gating lives inside the helper — the four workset-LOCAL leaves are
-    # PRIMARY/NAMED, the two partition leaves are ALL PROJECTS.
-    # The resolved ``workset.workspaces`` (§3.3) — NAMED/STANDALONE only; PRIMARY
-    # declares no arm. ⚑ It is fed the SAME ``ws_root_literal`` that becomes
-    # ``meta.runtime.ws_root`` above, so the dir the floor publishes and the root the
-    # snapshot anchors at cannot disagree about which workset was resolved.
-    _workspaces = _workset_workspaces_floor_value(mode, ws_root_literal)
-    _channelroot, _ws_channels = _workset_channel_floor_values(std, proj)
-    workset_anchor = settings_launch_module.workset_anchor_floor(
-        mode=mode,
-        channelroot=_channelroot,
-        workspaces=_workspaces,
-        workset_channels=_ws_channels,
-    )
-    # The auth 3-tier SHARING chain (spec §2a–§2c): ``workset.auth.*``,
-    # ``box.auth.*``, ``system.auth.share_allowed`` and the two ``meta.box.*auth*``
-    # anchors, per mode.
-    auth_chain = settings_launch_module.auth_chain_floor(
-        mode=mode, agent_name=agent_name,
-    )
-    return (
-        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, auth_chain,
-        cascade_box_path, cascade_workset_path,
-    )
-
-
 def _merge_default_categories(
     table: dict[str, object],
     incoming: "Mapping[str, object]",
@@ -6949,7 +6647,7 @@ def _merge_default_categories(
     whole-key predicate — never a private copy of it.
 
     ⚑⚑ Do NOT generalize the merge branch into a deep merge for every value. Two call
-    sites — ``extra_default_categories`` and ``resolved_sys`` — are LATE INJECTIONS
+    sites — ``extra_default_categories`` and ``inputs.system_floor`` — are LATE INJECTIONS
     that are supposed to override, and a deep merge would quietly stop them.  The
     ``dict`` test is also what keeps the LIST-valued ``<scope>.masks`` on the
     last-wins branch where it belongs — **masks hold whole.**
@@ -7026,8 +6724,9 @@ def _resolve_launch_snapshot(
     ⚑ *cli_env*, *realize* and a *cli_level* carrying FLAG values belong to ONE
     launch, so only the main launch call may pass them — a resolve whose product is a
     stored map or a display takes at most the selection-only level.  *cli_level* is
-    a REQUIRED keyword (P3): a whole-box resolve folds the auth chain and must pass
-    the selection it has; the image / helper resolves pass ``None`` explicitly.
+    a REQUIRED keyword (P3): every resolve folds the auth chain (it rides the
+    :func:`~kanibako.settings.settings_launch.resolve_inputs` inputs), so each passes
+    the selection it has — the image / helper resolves included.
 
     *narrow_bind_dests* is a NARROW caller's own table: omitted, a
     whole-box resolve emits from ``meta.assembly.bindings`` and has no second map to
@@ -7049,13 +6748,13 @@ def _resolve_launch_snapshot(
         gate_credential_delivery,
         launch_deliveries,
     )
-    from kanibako.settings.settings_prefs import collect_prefs
     from kanibako.settings.settings_resolve import SettingsError
 
-    (
-        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, auth_chain,
-        cascade_box_path, cascade_workset_path,
-    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
+    inputs = settings_launch.resolve_inputs(
+        subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
+        agent_name=agent_name, system_path=system_settings_path,
+    )
+    ctx = inputs.ctx
 
     # Aggregate every runtime default-categories table into ONE dict.
     #
@@ -7233,7 +6932,7 @@ def _resolve_launch_snapshot(
             # PLUGIN-declared @-ref-sourced agent binds (spec §2d): a generic
             # AGENT-scope category-bind extension point.  Unioned like a share; the
             # plugin builds each key DISCRIMINATED (``agent.<agent>.bindings.*``) and
-            # its ``@``-ref source is resolved by ``expand`` from the ``resolved_sys``
+            # its ``@``-ref source is resolved by ``expand`` from the ``system_floor``
             # floor.  Currently empty for all first-party plugins (the former
             # ``@system.instructions`` instructions bind was retired — the guide now
             # ships via the RO bundle + launch-flatten).
@@ -7256,7 +6955,7 @@ def _resolve_launch_snapshot(
     # narrow ``_resolve_launch_categories`` agent-level ``defaults=`` injection.
     # ⚑ A DELIBERATE LATE INJECTION — it must keep LAST-WINS for every SCALAR it
     # carries. ⚑⚑ Do NOT "simplify" :func:`_merge_default_categories` into a deep
-    # merge for every value: this site and ``resolved_sys`` below are overrides BY
+    # merge for every value: this site and ``system_floor`` below are overrides BY
     # DESIGN, and deep-merging them would silently stop them from overriding.
     # ⚑ It DOES carry terminal category keys (``_apply_init_seeds`` passes
     # ``seeded``), so those fold entry by entry like any other family — which costs
@@ -7292,7 +6991,7 @@ def _resolve_launch_snapshot(
     # ⚑ The SECOND deliberate last-wins injection (see ``extra_default_categories``
     # above): resolved ``system.*`` SCALARS, no ``bindings`` arm among them.
     _merge_default_categories(
-        default_categories, resolved_sys,
+        default_categories, inputs.system_floor,
         family="resolved system tier", origins=cat_origins,
     )
 
@@ -7328,41 +7027,24 @@ def _resolve_launch_snapshot(
     if target is not None and agent_cfg is not None:
         agent_state = agent_file.state_level(agent_cfg, node=agent_name)
 
-    # ``pref.*`` REQUESTS (spec §2h) — collected ONCE here, at the single launch
-    # aggregation point, and threaded into the snapshot build. This function runs
-    # up to five times per ``kanibako start``, so collecting inside each build
-    # would re-read the same two files five times over; more importantly, ONE
-    # list means the five resolves cannot disagree about what was requested.
-    # (P7's agent selection collects the same way, BEFORE the agent is known — a
-    # SEPARATE read, since there is no launch-side list to share at that point. The
-    # two cannot disagree: the file pair is a runtime treewalk and nothing writes
-    # between them. See settings_prefs.collect_prefs.)
-    prefs = collect_prefs(cascade_workset_path, cascade_box_path)
+    # ``pref.*`` REQUESTS (spec §2h) — collected ONCE, with the inputs, so the
+    # enrichment below names the same list the build applied.
+    prefs = inputs.prefs
 
     snapshot = settings_launch.build_launch_snapshot(
+        **inputs.as_kwargs(),
         agent_name=agent_name,
-        ctx=ctx,
-        system_path=system_settings_path,
         agent_path=agent_cfg_path,
-        workset_path=cascade_workset_path,
-        box_path=cascade_box_path,
         behavior_floor=behavior_floor,
         default_categories=default_categories,
         agent_partial=agent_partial,
         agent_state=agent_state,
         persona_values=persona_values,
-        # ⚑ EVERY RESOLVE THAT DELIVERS A USER ROW folds the chain, and it must carry
-        # the §1A selection too: the chain's ``meta.box.auth.workset_path`` is
-        # ``@workset.auth.path/@system.agent`` (spec §2c). Every such caller passes
-        # the selection it has. A no-agent box has none, so there ``@system.agent``
-        # answers the STORED default — a known gap: keyspec §2b makes it ``shell``.
-        # The image / helper resolves emit ONLY their injected table
-        # (*narrow_bind_dests*), deliver no user row, and fold none.
-        auth_chain=auth_chain if narrow_bind_dests is None else None,
-        meta_runtime=meta_runtime,
-        meta_identity=meta_identity,
-        workset_anchor=workset_anchor,
-        prefs=prefs,
+        # ⚑ EVERY RESOLVE folds the auth chain (it rides *inputs*), so every caller
+        # carries the §1A selection it has: the chain's ``meta.box.auth.workset_path``
+        # is ``@workset.auth.path/@system.agent`` (spec §2c). A no-agent box has
+        # none, so there ``@system.agent`` answers the STORED default — a known gap:
+        # keyspec §2b makes it ``shell``.
         cli_level=cli_level,
     )
     try:
@@ -9600,74 +9282,6 @@ def _seed_channel_files(std, proj) -> None:
         except OSError:
             # Best-effort: a genuinely unwritable source surfaces at launch.
             pass
-
-
-def _workset_channel_floor_values(std, proj) -> "tuple[str | None, dict[str, str]]":
-    """The resolved ``(workset.channelroot, workset.channels.*)`` the launch floor installs.
-
-    ⚑ TWO DIFFERENT MODE GATES, which is why this is one function and not one call.
-    The four workset-LOCAL leaves and the channel root are PRIMARY/NAMED only; the two
-    partition leaves (``mailboxes`` / ``share_global``) are ALL PROJECTS (§2c) and a
-    standalone box installs them like anyone else.  Reading the whole family off a
-    single ``None``-for-standalone helper is how three of the six ended up installed by
-    no floor in any mode.
-    """
-    from kanibako.channels import channels as _ch
-
-    part = _ch.workset_partition_paths(proj, std)
-    leaves: "dict[str, str]" = {
-        "mailboxes": str(part.mailboxes),
-        "share_global": str(part.share_global),
-    }
-    wch = _ch.workset_channel_paths(proj, std)
-    if wch is None:
-        return None, leaves
-    leaves.update({
-        "common": str(wch.common),
-        "chat": str(wch.chat),
-        "broadcast": str(wch.chat_broadcast),
-        "share": str(wch.share),
-    })
-    return str(wch.root), leaves
-
-
-def _workset_workspaces_floor_value(
-    mode: str, ws_root_literal: "str | None",
-) -> "str | None":
-    """The resolved ``workset.workspaces`` the launch floor installs — ⚑ NOT primary.
-
-    ⚑ THIS IS THE VALUE THE PRE-SNAPSHOT PASS ALREADY REACHED, not a second answer to
-    the same question.  It is the same ``project.workset.resolve_workset_workspaces``
-    call, on the same root, that ``paths.resolve_standalone_project`` makes for
-    standalone and that ``WorksetSpec.workspaces_dir`` (via ``Workset.workspaces_dir``)
-    makes for named — one function, one repoint read, one grammar
-    (``settings/workset_dirkeys.py``).  Composing ``<root>/workspaces`` here instead
-    would be a second carrier and would lose every repoint.
-
-    ⚑ PRIMARY RETURNS ``None``: the manifest declares ``{primary: null, …}``.  The code
-    does honor a primary ``workspaces`` repoint (``project.workset.default_workset``),
-    and that divergence is RULED and the user's — it is not this seam's to publish as a
-    key.  ``workset_anchor_floor`` REFUSES a primary value rather than dropping one, so
-    the rule has one carrier and a caller cannot quietly re-open the arm.
-
-    *ws_root_literal* is the SAME string ``meta.runtime.ws_root`` is built from
-    (``proj.group.root`` named / ``proj.metadata_path`` standalone), so the workspaces
-    dir and the workset root cannot be resolved against two different roots.
-    """
-    if mode == "primary":
-        return None
-    from kanibako.project.workset import (
-        load_workset_settings_doc, resolve_workset_workspaces,
-    )
-
-    if ws_root_literal is None:  # pragma: no cover - guarded by the caller's mode split
-        raise ValueError(
-            f"workset.workspaces floor: mode {mode!r} has no workset root literal"
-        )
-    root = Path(ws_root_literal)
-    return str(resolve_workset_workspaces(
-        root, load_workset_settings_doc(root), standalone=(mode == "standalone"),
-    ))
 
 
 def _core_default_categories(

@@ -127,11 +127,17 @@ def _entries(std, proj, snapshot):
     The oracle this file uses since 6-R3 retired the second route: built by the SAME
     call the seam makes, so it is what was declared and never a second fold.
     """
-    from kanibako.commands.start import _launch_snapshot_inputs
     from kanibako.settings.core_defaults import canon_optional_bind_keys
-    from kanibako.settings.settings_launch import snapshot_category_entries
+    from kanibako.settings.settings_launch import (
+        ResolveSubject,
+        resolve_inputs,
+        snapshot_category_entries,
+    )
 
-    ctx = _launch_snapshot_inputs(std=std, proj=proj, agent_name="claude")[0]
+    ctx = resolve_inputs(
+        subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="claude",
+        system_path=std.settings,
+    ).ctx
     return snapshot_category_entries(
         snapshot, active_agent="claude", box_ctx=ctx,
         optional_keys=canon_optional_bind_keys(),

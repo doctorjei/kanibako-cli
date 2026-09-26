@@ -484,14 +484,44 @@ class TestBootstrapNoneInRunContainer:
         m.launch_check.assert_not_called()
 
 
+def _focused_box(tmp_path):
+    """A real PRIMARY box under the ``tmp_home`` tree, for a focused behavior read.
+
+    Those reads take the launch's own inputs (``settings_launch.resolve_inputs``),
+    which need a resolved box and the standard paths. PRIMARY, so the box tier is
+    ``<metadata_path>/box.yaml``.
+    """
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import resolve_project
+
+    config = load_config(user_config_file())
+    return resolve_project(
+        _focused_std(), config, str(tmp_path / "project"), initialize=True,
+    )
+
+
+def _focused_std():
+    """The ``tmp_home`` tree's standard paths, as the launch loads them."""
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import load_std_paths
+
+    return load_std_paths(load_config(user_config_file()))
+
+
+def _focused():
+    """The keywords a focused behavior read takes beyond the box: std, no selection."""
+    return {"std": _focused_std(), "selection_level": None}
+
+
 def _resolved_program(proj, system_settings_path, agent_id, *, agent_path=None):
     """The program :func:`~kanibako.commands.start._bootstrap_choice` resolves."""
     from kanibako.commands.start import _bootstrap_choice
     return _bootstrap_choice(
-        proj, system_settings_path, agent_id, agent_path=agent_path,
+        proj, system_settings_path, agent_id, **_focused(), agent_path=agent_path,
     ).program
 
 
+@pytest.mark.usefixtures("config_file")
 class TestEffectiveBootstrapResolution:
     """`_bootstrap_choice` resolves the AGENT-scope ``bootstrap`` behavior key
     (spec §2d) off the settings snapshot, the declared ``agent.default.bootstrap``
@@ -503,18 +533,7 @@ class TestEffectiveBootstrapResolution:
     tweak via the box's ``pref.agent.<agent>.bootstrap`` request (§2h)."""
 
     def _proj(self, tmp_path):
-        from types import SimpleNamespace
-        from kanibako.settings.paths import BoxMode
-        box_dir = tmp_path / "box"
-        box_dir.mkdir()
-        # PRIMARY with no group → the tier pair is (box_dir/box.yaml, None):
-        # a box tier and NO workset-tier file, which keeps the test focused on the
-        # system/agent cascade.  ``mode`` is required because the tier pair is
-        # mode-aware (``box_workset_settings_paths``); it is NOT standalone — that
-        # mode's box tier would be box_dir/box_data/box.yaml.
-        return SimpleNamespace(
-            metadata_path=box_dir, group=None, mode=BoxMode.primary,
-        )
+        return _focused_box(tmp_path)
 
     def test_default_is_tmux_when_unset(self, tmp_path):
         proj = self._proj(tmp_path)
@@ -625,10 +644,11 @@ class TestEffectiveBootstrapResolution:
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"canon": "rel"}})
         with pytest.raises(SettingsError) as exc:
-            _bootstrap_choice(proj, None, "claude", agent_path=agent_file)
+            _bootstrap_choice(proj, None, "claude", **_focused(), agent_path=agent_file)
         assert f"agent.claude.canon is set to 'rel' in {agent_file}" in str(exc.value)
 
 
+@pytest.mark.usefixtures("config_file")
 class TestShellBootstrapIsTheTiersOwn:
     """A plain-shell box's ``bootstrap`` is the shell tier's OWN ``tmux`` (§2d fence).
 
@@ -680,6 +700,7 @@ class TestShellBootstrapIsTheTiersOwn:
         assert _resolved_program(proj, sys_file, "shell") is None
 
 
+@pytest.mark.usefixtures("config_file")
 class TestBootstrapOrigin:
     """The no-program refusal names the setting that ANSWERED, and a cure that works.
 
@@ -699,7 +720,7 @@ class TestBootstrapOrigin:
         agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"bootstrap": "tmux"}})
-        choice = _bootstrap_choice(proj, None, "claude", agent_path=agent_file)
+        choice = _bootstrap_choice(proj, None, "claude", **_focused(), agent_path=agent_file)
         assert choice.program == "none"
         assert choice.pref is not None and choice.pref.level == "box"
         reason = _no_bootstrap_reason(choice)
@@ -718,7 +739,7 @@ class TestBootstrapOrigin:
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"claude": {"bootstrap": None}}})
-        choice = _bootstrap_choice(proj, sys_file, "claude")
+        choice = _bootstrap_choice(proj, sys_file, "claude", **_focused())
         assert choice.program is None
         assert choice.pref is None
         reason = _no_bootstrap_reason(choice)
@@ -733,7 +754,7 @@ class TestBootstrapOrigin:
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": "none"}}})
-        choice = _bootstrap_choice(proj, sys_file, "claude")
+        choice = _bootstrap_choice(proj, sys_file, "claude", **_focused())
         assert (choice.program, choice.from_default, choice.pref) == (
             "none", True, None,
         )
@@ -749,7 +770,7 @@ class TestBootstrapOrigin:
         proj = self._proj(tmp_path)
         sys_file = tmp_path / "system.yaml"
         dump_doc(sys_file, {"agent": {"default": {"bootstrap": None}}})
-        choice = _bootstrap_choice(proj, sys_file, "claude")
+        choice = _bootstrap_choice(proj, sys_file, "claude", **_focused())
         assert (choice.program, choice.from_default) == (None, True)
         reason = _no_bootstrap_reason(choice)
         assert reason.startswith("agent.default.bootstrap resolves to no value")
@@ -763,7 +784,7 @@ class TestBootstrapOrigin:
         proj = self._proj(tmp_path)
         box_file = proj.metadata_path / "box.yaml"
         dump_doc(box_file, {"pref": {"agent": {"default": {"bootstrap": "none"}}}})
-        choice = _bootstrap_choice(proj, None, "claude")
+        choice = _bootstrap_choice(proj, None, "claude", **_focused())
         assert choice.program == "none" and choice.from_default
         assert choice.pref is not None and choice.pref.level == "box"
         reason = _no_bootstrap_reason(choice)
@@ -778,7 +799,7 @@ class TestBootstrapOrigin:
         agent_file = tmp_path / "agents" / "claude" / "agent.yaml"
         agent_file.parent.mkdir(parents=True)
         dump_doc(agent_file, {"self": {"bootstrap": "tmux"}})
-        cured = _bootstrap_choice(proj, None, "claude", agent_path=agent_file)
+        cured = _bootstrap_choice(proj, None, "claude", **_focused(), agent_path=agent_file)
         assert (cured.program, cured.from_default, cured.pref) == ("tmux", False, None)
 
     def test_no_node_names_no_key(self):
@@ -826,6 +847,19 @@ class TestResolveBootstrapProgramFailSoft:
         with pytest.raises(ConfigError, match="not valid YAML"):
             _resolve_bootstrap_program(str(project_dir), "shell")
 
+    def test_a_box_not_created_yet_resolves_its_bootstrap(self, config_file, project_dir):
+        """The ``run_start`` pre-flight runs BEFORE create, so the box has no name yet.
+
+        Its focused read takes the launch's inputs, which omit every name-derived key
+        for such a box (spec §0, never a fabricated default) instead of raising on
+        the missing channel addresses.  INVERT: derive the channel addresses for a
+        nameless box too and this raises ``box has no name`` (measured before the fix).
+        """
+        from kanibako.commands.start import BootstrapChoice, _resolve_bootstrap_program
+        assert _resolve_bootstrap_program(str(project_dir), "shell") == BootstrapChoice(
+            "tmux", "shell",
+        )
+
     def test_a_resolution_failure_falls_back_to_the_declared_default(self):
         from kanibako.commands.start import BootstrapChoice, _resolve_bootstrap_program
         from kanibako.errors import ProjectError
@@ -838,6 +872,7 @@ class TestResolveBootstrapProgramFailSoft:
             )
 
 
+@pytest.mark.usefixtures("config_file")
 class TestEffectiveTransformResolution:
     """`_effective_transform` resolves the AGENT-scope ``transform`` key (spec §2d
     ``agent.default.transform | <None>`` / ``agent.claude.transform | tweakcc``) —
@@ -849,13 +884,7 @@ class TestEffectiveTransformResolution:
     """
 
     def _proj(self, tmp_path):
-        from types import SimpleNamespace
-        from kanibako.settings.paths import BoxMode
-        box_dir = tmp_path / "box"
-        box_dir.mkdir()
-        return SimpleNamespace(
-            metadata_path=box_dir, group=None, mode=BoxMode.primary,
-        )
+        return _focused_box(tmp_path)
 
     def _cfg(self, **kw):
         from kanibako.settings.agent_config import AgentConfig
@@ -875,7 +904,7 @@ class TestEffectiveTransformResolution:
         from kanibako.tweakcc import TRANSFORM_NAME
         proj = self._proj(tmp_path)
         assert _effective_transform(
-            proj, None, "claude", ClaudeTarget(), self._cfg(),
+            proj, None, "claude", ClaudeTarget(), self._cfg(), **_focused(),
         ) == TRANSFORM_NAME
 
     def test_missing_plugin_declaration_yields_no_transform(self, tmp_path, monkeypatch):
@@ -895,14 +924,16 @@ class TestEffectiveTransformResolution:
             lambda self: [d for d in real(self) if d.key != "transform"],
         )
         assert _effective_transform(
-            proj, None, "claude", ClaudeTarget(), self._cfg(),
+            proj, None, "claude", ClaudeTarget(), self._cfg(), **_focused(),
         ) is None
 
     def test_no_target_names_no_transform(self, tmp_path):
         """A no-agent / shell launch has no plugin, so no transform is named."""
         from kanibako.commands.start import _effective_transform
         proj = self._proj(tmp_path)
-        assert _effective_transform(proj, None, "general", None, self._cfg()) is None
+        assert _effective_transform(
+            proj, None, "general", None, self._cfg(), **_focused(),
+        ) is None
 
     def test_target_declaring_no_transform(self, tmp_path):
         """A plugin that declares no ``transform`` (goose/codex) names none — the
@@ -914,7 +945,7 @@ class TestEffectiveTransformResolution:
         target = SimpleNamespace(setting_descriptors=lambda: [])
         assert _effective_transform(
             proj, None, "goose", target,
-            self._cfg(state={}),
+            self._cfg(state={}), **_focused(),
         ) is None
 
     def test_agent_file_state_overrides_the_floor(self, tmp_path):
@@ -926,6 +957,7 @@ class TestEffectiveTransformResolution:
         proj = self._proj(tmp_path)
         assert _effective_transform(
             proj, None, "claude", ClaudeTarget(), self._cfg(state={"transform": ""}),
+            **_focused(),
         ) is None
 
     def test_box_pref_override(self, tmp_path):
@@ -939,7 +971,7 @@ class TestEffectiveTransformResolution:
             {"pref": {"agent": {"claude": {"transform": ""}}}},
         )
         assert _effective_transform(
-            proj, None, "claude", ClaudeTarget(), self._cfg(),
+            proj, None, "claude", ClaudeTarget(), self._cfg(), **_focused(),
         ) is None
 
     def test_system_agent_default_tier(self, tmp_path):
@@ -953,7 +985,7 @@ class TestEffectiveTransformResolution:
         dump_doc(sys_file, {"agent": {"default": {"transform": "tweakcc"}}})
         target = SimpleNamespace(setting_descriptors=lambda: [])
         assert _effective_transform(
-            proj, sys_file, "goose", target, self._cfg(),
+            proj, sys_file, "goose", target, self._cfg(), **_focused(),
         ) == "tweakcc"
 
 
@@ -8191,7 +8223,7 @@ class TestSuppressedBoxLaunchesShell:
             # ⚑ THE DEFECT, precisely: an EMPTY name makes ``resolve_target``
             # AUTO-DETECT (its documented contract for other callers), so a
             # suppressed box gets whatever agent is installed. A resolve for a
-            # NAMED target is fine — ``_launch_snapshot_inputs`` legitimately asks
+            # NAMED target is fine — ``settings_launch.resolve_inputs`` legitimately asks
             # about ``"shell"`` — so guard on the EMPTINESS, not on the call.
             if not name:
                 raise AssertionError(
@@ -8273,32 +8305,22 @@ class TestSuppressedBoxLaunchesShell:
 
 
 class TestRetiredBehaviorRefusalWiring:
-    """``_refuse_retired_behavior`` — the LAUNCH seam for R-41/RQ-2.
+    """The retired-behavior refusal (R-41/RQ-2) BEFORE ``build_launch_snapshot``'s resolve.
 
     The unit semantics of the refusal itself live in
     ``tests/test_settings/test_settings_assemble.py``; what is proven HERE is the
-    WIRING: which files the launch actually hands it, in which order, with which
-    level labels.  A refusal that reads the wrong file is a refusal that never
-    fires.
+    WIRING: which files the builder hands it, in which order, with which level
+    labels and subjects.  A refusal that reads the wrong file is a refusal that
+    never fires.  Driven through the BUILDER, so every resolve (the launch's, the
+    focused behavior reads', ``load_merged_config``'s) is covered by one pin.
     """
 
-    def _proj(self, root):
-        from types import SimpleNamespace
-
-        from kanibako.settings.paths import BoxMode
-
-        return SimpleNamespace(
-            mode=BoxMode.standalone,
-            metadata_path=root,
-            group=None,
-            name="myproj",
-        )
-
     def _call(self, tmp_path, *, box_doc=None, agent_doc=None, system_doc=None):
-        from kanibako.commands.start import _refuse_retired_behavior
         from kanibako.settings.config import BOX_META_FILE
         from kanibako.settings.config_io import dump_doc
-        from kanibako.settings.paths import STANDALONE_META_DIR
+        from kanibako.settings.paths import STANDALONE_META_DIR, host_xdg_map
+        from kanibako.settings.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_resolve import ResolveCtx
 
         # ⚑ The box doc goes at the STANDALONE BOX TIER — ``box_data/box.yaml``,
         # not the root.  The root file is that box's WORKSET tier; while both
@@ -8317,11 +8339,18 @@ class TestRetiredBehaviorRefusalWiring:
         system_file.parent.mkdir(parents=True, exist_ok=True)
         if system_doc is not None:
             dump_doc(system_file, system_doc)
-        return _refuse_retired_behavior(
-            proj=self._proj(root),
-            agent_id="claude",
-            system_settings_path=system_file,
-            agent_cfg_path=agent_file,
+        return build_launch_snapshot(
+            agent_name="claude",
+            ctx=ResolveCtx(
+                agent_name="claude", workset_name=None,
+                host_home=str(tmp_path), xdg=host_xdg_map(),
+            ),
+            system_path=system_file,
+            agent_path=agent_file,
+            workset_path=root / "workset.yaml",
+            box_path=box_file,
+            # The box's name rides the caller's identity floor, as the launch's does.
+            meta_identity={"meta.box.name": "myproj"},
         )
 
     def test_a_clean_set_of_files_passes(self, tmp_path):
@@ -8366,13 +8395,13 @@ class TestRetiredBehaviorRefusalWiring:
         assert "pref.agent.claude.auto_approve" in str(exc.value)
 
     def test_the_BOX_cure_names_the_box_this_launch_is_for(self, tmp_path):
-        """WIRING, and this seam is the only caller that can supply it: the box
-        being launched is right there in *proj*, so the ``box set`` positional
-        is the real name rather than the ``<box>`` placeholder a caller with no
-        identity emits.  Pasted from another directory, the placeholder line
-        writes to whatever box the cwd resolves to.
+        """WIRING: a resolve whose identity floor names the box (every
+        ``resolve_inputs`` caller) puts the real name in the ``box set``
+        positional rather than the ``<box>`` placeholder a caller with no identity
+        emits.  Pasted from another directory, the placeholder line writes to
+        whatever box the cwd resolves to.
 
-        INVERT: drop ``box_name=`` from the call and this reddens.
+        INVERT: drop ``box_name=`` from the builder's call and this reddens.
         """
         from kanibako.settings.settings_resolve import SettingsError
 
@@ -8386,9 +8415,10 @@ class TestRetiredBehaviorRefusalWiring:
             in str(exc.value)
         )
 
-    def test_outermost_offender_is_reported_first(self, tmp_path):
-        """Cascade order, so fixing one then re-running walks outward→inward
-        rather than bouncing between files."""
+    def test_the_most_specific_offender_is_reported_first(self, tmp_path):
+        """The builder's file order, most-specific first — the order its
+        ``config:``-table and §0 refusals report in — so fixing one then
+        re-running walks one direction rather than bouncing between files."""
         from kanibako.settings.settings_resolve import SettingsError
 
         with pytest.raises(SettingsError) as exc:
@@ -8397,7 +8427,7 @@ class TestRetiredBehaviorRefusalWiring:
                 system_doc={"agent": {"default": {"auto_approve": True}}},
                 agent_doc={"self": {"auto_approve": False}},
             )
-        assert "the system settings file" in str(exc.value)
+        assert "the agent settings file" in str(exc.value)
 
     def test_a_dropped_agent_table_in_the_BOX_file_produces_no_cure(self, tmp_path):
         """🛑 A CURE FOR A NO-OP IS WORSE THAN NO CURE — at THIS seam too.
@@ -8409,11 +8439,10 @@ class TestRetiredBehaviorRefusalWiring:
         it hands the user a ``pref.agent.<agent>.access`` write to fix a line
         whose deletion changes nothing.
 
-        ⚑ MEASURED, and this is why the pin is here and not only at the resolve
-        seam: a ``box.yaml`` holding just this table carries NOTHING undeclared
-        into the snapshot, so ``settings_launch``'s §0 refusal never fires and
-        never runs its own retirement scan.  This seam was the entire user
-        experience of that file.
+        ⚑ MEASURED: a ``box.yaml`` holding just this table carries NOTHING
+        undeclared into the snapshot, so the §0 refusal never fires and never runs
+        its own retirement scan — this pre-resolve scan is the entire user
+        experience of that file, and it judges what the cascade sees.
 
         ⚑ The narrowing cannot be over-read into "the box tier is unchecked":
         ``test_a_stale_pref_request_in_the_BOX_file_refuses`` above is the other
@@ -8709,10 +8738,8 @@ class TestPersonaLiveTierWiring:
         MagicMock box), and that leaf rides the whole-box gate.  The fold is the
         one the launch runs, over the entry list the launch hands it.
         """
-        from kanibako.commands.start import (
-            _launch_snapshot_inputs,
-            _persona_values_for,
-        )
+        from kanibako.commands.start import _persona_values_for
+        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
         from kanibako.settings.settings_launch import snapshot_category_entries
         from kanibako.settings.store_collapse import CollapsedEnv, collapse_env
 
@@ -8722,9 +8749,10 @@ class TestPersonaLiveTierWiring:
             std, target=target,
             persona_values=_persona_values_for(self._NODE, target),
         )
-        ctx = _launch_snapshot_inputs(
-            std=std, proj=self._proj(std), agent_name=self._NODE,
-        )[0]
+        ctx = resolve_inputs(
+            subject=ResolveSubject.BOX, std=std, proj=self._proj(std),
+            agent_name=self._NODE, system_path=std.settings,
+        ).ctx
         slots = collapse_env(snapshot_category_entries(
             snap, active_agent=self._NODE, box_ctx=ctx,
         ))
@@ -8755,10 +8783,8 @@ class TestPersonaLiveTierWiring:
         reads and the slot is what the box receives, and this defect lived in the
         gap between them.
         """
-        from kanibako.commands.start import (
-            _launch_snapshot_inputs,
-            _persona_values_for,
-        )
+        from kanibako.commands.start import _persona_values_for
+        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
         from kanibako.settings.agent_config import (
             AgentConfig,
             agent_settings_path,
@@ -8780,9 +8806,10 @@ class TestPersonaLiveTierWiring:
             "from-the-file"
         )
 
-        ctx = _launch_snapshot_inputs(
-            std=std, proj=self._proj(std), agent_name=self._NODE,
-        )[0]
+        ctx = resolve_inputs(
+            subject=ResolveSubject.BOX, std=std, proj=self._proj(std),
+            agent_name=self._NODE, system_path=std.settings,
+        ).ctx
         slots = collapse_env(snapshot_category_entries(
             snap, active_agent=self._NODE, box_ctx=ctx,
         ))
@@ -8826,8 +8853,9 @@ class TestPersonaLiveTierWiring:
             persona_values=_persona_values_for(self._NODE, target),
         )
         display = _effective_behavior_for_display(
-            target, agent_cfg, None,
-            system_settings_path=None,
+            target, agent_cfg,
+            std=std, proj=self._proj(std),
+            system_settings_path=None, selection_level=None,
             node_name=self._NODE,
         )
 
@@ -8845,8 +8873,9 @@ class TestPersonaLiveTierWiring:
         target = self._target()
         floor = {d.key: d.default for d in target.setting_descriptors()}
         display = _effective_behavior_for_display(
-            target, target.generate_agent_config(), None,
-            system_settings_path=None,
+            target, target.generate_agent_config(),
+            std=std, proj=self._proj(std),
+            system_settings_path=None, selection_level=None,
             node_name=self._NODE,
         )
         assert display["model"] == floor["model"]
@@ -8984,8 +9013,9 @@ class TestPersonaLiveTierWiring:
         # The lower rungs still resolve — emptiness never overrode them.
         floor = {d.key: d.default for d in target.setting_descriptors()}
         display = _effective_behavior_for_display(
-            target, target.generate_agent_config(), None,
-            system_settings_path=None,
+            target, target.generate_agent_config(),
+            std=std, proj=self._proj(std),
+            system_settings_path=None, selection_level=None,
             node_name=self._NODE,
         )
         assert display["model"] == floor["model"]
