@@ -87,6 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kanibako start` uses to decide whether a launch is persistent. See MIGRATION.md ("The
   plain-shell store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`").
 
+- **The shipped handbook's `STATE_CLEANUP` archives devnotes entries verbatim; any other change to
+  devnotes needs the user's approval first.** Its handbook table no longer marks `state/status.md` as
+  loaded at session start; nothing loads it.
 - **The shipped `STATE_CLEANUP` procedure gains a step: correct references in other documents before
   archiving an element.** Every box receives this procedure in its handbook, and until now it checked
   only what a departing element itself owed — nothing told the reader to fix the documents that restate

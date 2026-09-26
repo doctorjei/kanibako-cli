@@ -10,7 +10,7 @@ planned development. These may be stored in a list, board, issue set, or similar
 
 Status ("status") includes any other documents tracking the current projects state.
 
-The devnotes, tasks, and status are part of the development state and are typically loaded
+The devnotes, tasks, and status are part of the development state and are often read
 at the beginning of each session. As such, it is important that the state contains only relevant
 data. The cleaup (or "archiving") process removes unnecessary context burden by moving no-longer-
 relevant elements and/or sections to the archives so that they are not loaded at session start but
@@ -18,7 +18,8 @@ still available if needed in the future.
 
 ## Steps
 
-1. Archive elements in devnotes that aren't relevant to current or future development.
+1. Archive elements in devnotes that aren't relevant to current or future development. Move them
+   verbatim; any other change to devnotes needs the user's approval first.
 
 2. Update other status documents (if any); archive information that is no longer relevant.
 
