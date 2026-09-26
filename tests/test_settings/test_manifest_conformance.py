@@ -600,12 +600,13 @@ class TestWorksetChannelDefaults:
 #: The one ``bind_default_entries`` row with no carrier to compare to.
 #: NAMED, with the reason, because a silent skip here would hide a real regression.
 BIND_EXEMPTIONS: dict[str, str] = {
-    "<box_image_dir>": (
-        "a PLACEHOLDER dest, not a dest: the manifest writes the whole row as the "
-        "conditional `%if @box.share_images: (@box.images_store) else None%`, while the "
-        "code row is the unconditional `images` entry at /var/lib/shared-images whose "
-        "GATE lives at the injection site (core_defaults.image_default_categories). "
-        "Two different shapes; comparing them would compare a formula to a value"
+    "/var/lib/shared-images": (
+        "NOT EXPRESSIBLE as a kinemata view: the manifest default is the conditional "
+        "`%if @box.share_images: (@box.images_store) else None%`, while the code's "
+        "`images` row is unconditional and its GATE is the launch caller's "
+        "(`start._assemble_image_sharing_mounts` reads box.share_images). A parity "
+        "compares a cell with a value an oracle prints and has no conditional form, so "
+        "a view could compare only the source by translating the gate away"
     ),
 }
 
@@ -760,38 +761,24 @@ class TestBindDefaults:
         The direction the views do not cover: a view reds a stray row only in the
         emitter it reads, and three of the seven tables (``kani``, ``kickoff``,
         ``images``) have no view, so a bind added there with no manifest row would
-        otherwise pass everything.  ⚑ ONE CODE DEST HAS NO DEST OF ITS OWN, and it is
-        derived, never spelled: the ``images`` table's ``images`` row is the code side
-        of the ``<box_image_dir>`` placeholder (see :data:`BIND_EXEMPTIONS`).
-        ⚑ NOT A KINEMATA VIEW: a registry reads ONE arm, the ``channels`` table carries no
-        ``category`` (its arm is hard-coded in the emitter), and pairing the placeholder
-        with its dest would put ``/var/lib/shared-images`` in ``kinemata.toml`` as a
-        second carrier — the reason the verdict file records that row NOT EXPRESSIBLE.
+        otherwise pass everything.
+        ⚑ NOT A KINEMATA VIEW: a registry reads ONE arm, and the ``channels`` table
+        carries no ``category`` (its arm is hard-coded in the emitter).
         """
         from kanibako.settings.core_defaults import bind_dest_families
 
         arms = manifest_doc()["bind_default_entries"]
         declared = {dest for arm in arms.values() for dest in arm}
-        placeholder = {
-            str(e["box_dest"]) for e in (_core_defaults_doc().get("images") or [])
-            if str(e["key"]) == "images"
-        }
-        assert len(placeholder) == 1, f"expected one `images` bind, got {placeholder}"
-        assert "<box_image_dir>" in BIND_EXEMPTIONS
-        undeclared = set(bind_dest_families()) - declared - placeholder
+        undeclared = set(bind_dest_families()) - declared
         assert not undeclared, (
             f"core-defaults.yaml binds dests no bind_default_entries row declares: "
             f"{sorted(undeclared)}"
-        )
-        assert not (placeholder & declared), (
-            f"{sorted(placeholder)} is now a manifest dest — the `<box_image_dir>` "
-            f"placeholder no longer stands for it"
         )
         doc = _core_defaults_doc()
         for table in set(bind_dest_families().values()):
             for entry in doc.get(table) or []:
                 dest, category = str(entry["box_dest"]), entry.get("category")
-                if category is None or dest in placeholder:
+                if category is None:
                     continue
                 assert dest in (arms.get(f"box.{category}") or {}), (
                     f"core-defaults.yaml `{table}` binds {dest} into box.{category}, but "
