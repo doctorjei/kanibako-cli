@@ -49,7 +49,7 @@ The project-specific `~/canon/workbook` uses these conventions:
 | `specs/` | Project specification(s) | No; _Authoritative_. |
 | `state/` | All files regarding the project's current state | No; _Authoritative_. |
 | `state/devnotes.md` | Detailed changelog; should reflect relevant actions/updates | No |
-| `state/status.md` | Detailed current status; should reflect relevant actions/updates | Yes |
+| `state/status.md` | Detailed current status; should reflect relevant actions/updates | No |
 | `tasks/` | Task boards (kanban or simple list) | No; _Authoritative_. |
 | `temp/` | Temporary storage (volatile between sessions) | No |
 | `temp/scripts` | one-off scripts (used once or a few times at most) | No |
