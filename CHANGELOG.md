@@ -142,6 +142,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not joining also names that working set in its `--workset <name>` cure, where v1.7.0 and
   v1.8.0-rc2 printed the literal `{ws_name}`.
 
+- **A `workset.logs` of `null` means no logs, not the default logs directory.** v1.8.0-rc2 read
+  a `null` `workset.logs` as unset, so the helper hub still wrote its message log to the default
+  directory and the box still got its `helpers.jsonl` mount. `null` is a value (spec §2a,
+  standard binds): the hub now keeps no log, the helper-log mount is left out, the credentials
+  watcher's output is discarded, and the purge commands have no box logs to delete. The helper
+  socket is still mounted, and `""` still takes the default directory. See `MIGRATION.md` §
+  *2.89 A `workset.logs` of `null` means no logs*.
+
 - **`box show --effective` and the `bootstrap` / `transform` reads resolve a behavior value the
   way the launch does.** These three reads built their own settings snapshot without the launch's
   workset, box and credential-sharing anchors, so a behavior value written against one of them —

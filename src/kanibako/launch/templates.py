@@ -646,12 +646,13 @@ def _assert_stamp_leaf_in_root(
 
     if _is_contained(resolved, workset_path):
         return
-    # ⚑ A None repoint still reaches here when the DEFAULT leaf is itself a symlink out
-    # of the root, so the message has to be able to say that instead of printing 'None'.
+    # ⚑ A non-string repoint (unset, or a ``<None>`` these keys still read as unset) reaches
+    # here when the DEFAULT leaf is itself a symlink out of the root, so the message has to
+    # be able to say that instead of printing the sentinel.
     repoint = _workset_path_repoint(doc, leaf)
     origin = (
         f"is set to {repoint!r} in {workset_path / WORKSET_META_FILE}"
-        if repoint is not None
+        if isinstance(repoint, str)
         else f"takes its default {leaf!r} leaf under this root"
     )
     raise TemplateScopeError(

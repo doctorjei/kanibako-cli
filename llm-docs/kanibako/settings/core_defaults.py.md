@@ -833,8 +833,10 @@ owed.
 
 ## The helper hub binds
 
-```helper_default_categories(*, socket_path: Path, log_path: Path) -> BindArmTable```
-Build the helper hub binds as `default_categories` (Phase B).
+```helper_default_categories(*, socket_path: Path, log_path: Path | None) -> BindArmTable```
+Build the helper hub binds as `default_categories` (Phase B). A `None` *log_path* — the box's
+`workset.logs` is a present `<None>` — omits the `helper_log` bind (companion, "The helper-log
+bind"); the socket bind is unaffected.
 
 Fills the TERMINAL `box.bindings.rw` / `box.bindings.ro` arms with one
 `box_dest -> (host_src, options)` entry for the live helper unix SOCKET and the per-box helper

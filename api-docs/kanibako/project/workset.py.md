@@ -35,7 +35,7 @@ _VAULT_RW_LEAF = f'{_VAULT_LEAF}/{bootstrap.RW_PATH}'
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
 def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
 def resolve_workset_boxes(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
-def resolve_workset_logs(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
+def resolve_workset_logs(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path | None
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
 def resolve_workset_canon(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
 def resolve_workset_template(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
@@ -54,7 +54,8 @@ def resolve_workset_name(name: str, std: StandardPaths) -> Workset
 def delete_workset(name: str, std: StandardPaths, *, remove_files: bool=False) -> Path
 def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False) -> WorksetProject
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
-def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None
+def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None | _Unset
+def _repoint_or_default(repoint: str | None | _Unset) -> str | None
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)
 def _load_workset(root: Path, name: str) -> Workset
@@ -90,7 +91,7 @@ class Workset:
     @property
     def vault_rw_dir(self) -> Path
     @property
-    def logs_dir(self) -> Path
+    def logs_dir(self) -> Path | None
     @property
     def settings_path(self) -> Path
     @property

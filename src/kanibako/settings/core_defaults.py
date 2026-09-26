@@ -972,16 +972,18 @@ def image_bind_dests() -> frozenset[str]:
 def helper_default_categories(
     *,
     socket_path: Path,
-    log_path: Path,
+    log_path: Path | None,
 ) -> BindArmTable:
     """Build the helper hub binds — the live unix SOCKET + the per-box message LOG (Phase B).
+
+    A ``None`` *log_path* (``workset.logs`` is ``<None>``) omits the ``helper_log`` bind.
 
     ⚠ ``helper_sock`` options MUST be ``""``: a ``Z``/``U`` relabel/chown would break the
     shared socket topology of a LIVE unix socket the hub listens on.
     ⚑ The dests carry no ``$XDG_STATE_HOME`` token — they are written into the runtime's
     arguments BEFORE the box is live; ``box_supervisor.project_pinned_xdg`` restores XDG later.
     """
-    sources: dict[str, Path] = {
+    sources: dict[str, Path | None] = {
         # symbolic source name -> probed host source (the DEST is in the file)
         "helper_sock": socket_path,
         "helper_log": log_path,
@@ -990,8 +992,9 @@ def helper_default_categories(
     binds: BindArmTable = {}
     for entry in _load_doc().get("helpers", []):
         src_path = sources[entry["source"]]
-        # Skip-if-missing gate (parity with the old `.exists()`-guarded appends).
-        if not src_path.exists():
+        # A ``<None>`` source omits its bind; otherwise skip-if-missing (parity with the
+        # old `.exists()`-guarded appends).
+        if src_path is None or not src_path.exists():
             continue
         box_dest = str(entry["box_dest"])
         category = entry["category"]
