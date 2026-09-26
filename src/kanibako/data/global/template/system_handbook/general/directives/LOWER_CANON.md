@@ -20,8 +20,8 @@ Non-draft specification and design documents are also considered _Law_.
 
 #### Notebook
 
-The notebook is agent-editable and can included Law and Lore. Directories are used for primary
-organization, with `directives` & `procedures` (and `specs` if applicable) holding and Local Law
+The notebook is agent-editable and can include Law and Lore. Directories are used for primary
+organization, with `directives` & `procedures` (and `specs` if applicable) holding Local Law
 texts. These are the standard, recognized Kanibako canon paths:
 
 | Path (`~/canon/notebook/`) | Description | Loaded at start by default? |
@@ -31,7 +31,7 @@ texts. These are the standard, recognized Kanibako canon paths:
 | `directives/CONVENTIONS.md` | Technical expectations (coding, architecture, commands, etc) | Typically (requires reference) |
 | `directives/` | Local directive files, as needed | Typically (requires reference) |
 | `procedures/` | Information about specific procedures / actions and how to do them | No |
-| `references/` | Canon Lore; Reference material & information consulted to address ambiguity in Law — e.g. rulings history & evidence, | No |
+| `references/` | Canon Lore; Reference material & information consulted to address ambiguity in Law — e.g. rulings history & evidence | No |
 | `resources/` | Raw resource files (captures, fixtures, data) — not prose, which belongs in `references` | No |
 | `scripts/` | Reusable helper scripts | No |
 
@@ -59,6 +59,4 @@ The project-specific `~/canon/workbook` uses these conventions:
 legacy behavior / decisions). It is useful when necessary but rarely needed.
 
 _All scripts, plans, documents, & other resources that have become historical_ (i.e., not related
-to current or future design, planning, and/or development) should move to the archives. Current /
-active documents and/or logs (e.g., `devnotes.md` & `tasks`) should truncate old entries, moving
-those old entries _verbatim_ into the archives and named appropriately.
+to current or future design, planning, and/or development) should move to the archives.

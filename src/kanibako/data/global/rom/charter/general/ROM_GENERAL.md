@@ -33,7 +33,7 @@ in-progress task; otherwise, await instructions.
 __IMPORTSECTION__("directives/*")
 
 ## Procedures
-**Procedures** are Law loaded on-demand to serve specific needs. If are doing a task covered by a
+**Procedures** are Law loaded on-demand to serve specific needs. If you are doing a task covered by a
   procedure, you **must** read the procedure first. If unsure, **read the document** to be safe.
 
 __IMPORTSECTION__("procedures/*")
