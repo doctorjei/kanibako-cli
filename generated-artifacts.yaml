@@ -176,6 +176,7 @@ artifacts:
   api-docs/kanibako/targets/base.py.md:
   api-docs/kanibako/targets/credsync.py.md:
   api-docs/kanibako/targets/shell.py.md:
+  api-docs/kanibako/tree_copy.py.md:
   api-docs/kanibako/tweakcc.py.md:
   api-docs/kanibako/tweakcc_cache.py.md:
   api-docs/kanibako/utils.py.md:

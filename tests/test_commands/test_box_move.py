@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 from kanibako.commands.box._lifecycle import run_move
 from kanibako.settings.config import load_config
@@ -136,6 +137,79 @@ class TestBoxMove:
         rc = run_move(_move_args(ws.workspaces_dir / "boxa", tmp_home / "boxa_moved"))
         assert rc == 0
         assert [log for log in logs if not log.exists()] == []
+
+
+def _seed_links(tree, outside):
+    """Put inside, escaping, directory, absolute and dangling links in *tree*."""
+    (outside / "deep").mkdir(parents=True)
+    (outside / "big.txt").write_text("outside data")
+    (outside / "deep" / "nested.txt").write_text("nested")
+    (tree / "f.txt").write_text("data")
+    texts = {
+        "q70_in": "f.txt",
+        "q70_out": os.path.relpath(outside / "big.txt", os.path.realpath(tree)),
+        "q70_dir": os.path.relpath(outside, os.path.realpath(tree)),
+        "q70_abs": str(outside / "big.txt"),
+        "q70_gone": str(outside / "no-such"),
+    }
+    for name, text in texts.items():
+        (tree / name).symlink_to(text)
+    assert (tree / "q70_out").read_text() == "outside data"
+    return texts
+
+
+def _assert_links_verbatim(tree, texts):
+    """Each seeded link is a link with its exact text; the outside tree never materialized."""
+    for name, text in texts.items():
+        assert (tree / name).is_symlink(), name
+        assert os.readlink(tree / name) == text, name
+    assert not [p for p in tree.rglob("*") if p.name == "nested.txt" and not p.is_symlink()]
+
+
+class TestBoxMoveKeepsLinks:
+    """Q70/Q74: every tree a move copies carries its symlinks verbatim."""
+
+    def test_workspace_links_are_copied_verbatim(self, config_file, tmp_home, credentials_dir):
+        """A dangling link no longer aborts the move; an escaping one is not rewritten."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "linked"
+        project_dir.mkdir()
+        texts = _seed_links(project_dir, tmp_home / "outside")
+        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+
+        dest = tmp_home / "deeper" / "linked_moved"
+        dest.parent.mkdir()
+        rc = run_move(_move_args(project_dir, dest))
+        assert rc == 0
+        assert not project_dir.exists()
+        assert (dest / "f.txt").read_text() == "data"
+        _assert_links_verbatim(dest, texts)
+
+    def test_workset_to_workset_move_keeps_links_through_the_stash(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The home rides the stash (two copies) and the workspace one copy: all verbatim."""
+        from kanibako.project.workset import add_project, create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
+        ws_b = create_workset("wsb", tmp_home / "elsewhere" / "wsb_root", std)
+        internal = ws_a.workspaces_dir / "b1"
+        internal.mkdir(parents=True)
+        add_project(ws_a, "b1", internal, std)
+        ws_texts = _seed_links(internal, tmp_home / "outside_ws")
+        home = ws_a.projects_dir / "b1" / "home"
+        home.mkdir(parents=True, exist_ok=True)
+        home_texts = _seed_links(home, tmp_home / "outside_home")
+
+        dest = ws_b.workspaces_dir / "b1"
+        rc = run_move(_move_args(internal, dest, to_workset="wsb"))
+        assert rc == 0
+        assert not internal.exists()
+        _assert_links_verbatim(dest, ws_texts)
+        _assert_links_verbatim(ws_b.projects_dir / "b1" / "home", home_texts)
 
 
 class TestTargetWorksetResolutionIsCaseBlind:

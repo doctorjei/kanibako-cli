@@ -334,9 +334,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so on stderr: `Warning: not carrying vault contents from <src> …` for a primary or named box
   whose leaf is not a per-box directory under its vault directory, and `Note: the new vault starts
   empty …` for a standalone box's retained vault; both name where the contents remain. A disabled
-  vault (`box.enable_vault: false`) is unchanged. A vault entry that cannot be copied — a dangling
-  symlink, an unreadable file — aborts the move or convert with an error naming the source and
-  destination and the entries that failed, and the relocation is unwound.
+  vault (`box.enable_vault: false`) is unchanged. Every symlink in the vault is carried as a
+  symlink with exactly the text it had, never followed, so a dangling one carries like any other.
+  A vault entry that cannot be copied, such as an unreadable file, aborts the move or convert with
+  an error naming the source and destination and the entries that failed, and the relocation is
+  unwound.
 
 - **A list or a map written at `<scope>.env.<VAR>` or `<scope>.secret_path.<VAR>` was coerced with
   Python's `str()` instead of being refused.** Both families hold one scalar, and the coercion was

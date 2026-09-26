@@ -12,6 +12,10 @@ snapshots:
 ``detect_snapshot_strategy`` probes the filesystem and picks the best option
 automatically.  Automatic snapshots can be triggered before each container
 launch.
+
+⚑ SYMLINKS ARE COPIED VERBATIM, both ways, under the rule in
+:mod:`kanibako.tree_copy` (``cp -a`` and ``rsync -a`` already keep them), so a
+restore puts back every link with exactly the text it had.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.log import get_logger
+from kanibako.tree_copy import copy_tree_keeping_links
 
 logger = get_logger("snapshots")
 
@@ -148,7 +153,7 @@ def _snapshot_hardlink(vault_rw_path: Path, versions: Path, ts: str) -> Path:
         subprocess.run(cmd, check=True, capture_output=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
         # rsync not available or failed -- fall back to regular copy.
-        shutil.copytree(vault_rw_path, dest)
+        copy_tree_keeping_links(vault_rw_path, dest)
     return dest
 
 
@@ -249,12 +254,10 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
 
     try:
         # Build the new contents in the staging directory.
-        for item in snapshot.iterdir():
-            dest = staging / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest)
-            else:
-                shutil.copy2(item, dest)
+        copy_tree_keeping_links(snapshot, staging, dirs_exist_ok=True)
+        # The copy gave staging the snapshot root's mode; the swap below moves
+        # entries OUT of it, which needs write on staging whatever that mode was.
+        staging.chmod(0o700)
 
         # Move the live contents aside (preserves the mount point itself).
         backup.mkdir(parents=True)
@@ -272,8 +275,10 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
             # ⚑ _rmtree_force, not rmtree: this is the DATA-PRESERVING arm, and a
             # read-only directory among the staged contents must not be what
             # stops the live vault from being put back.
+            # ⚑ A restored symlink to a directory is unlinked, never rmtree'd:
+            # ``rmtree`` refuses a symlink, which would stop this rollback.
             for item in list(vault_rw_path.iterdir()):
-                if item.is_dir():
+                if item.is_dir() and not item.is_symlink():
                     _rmtree_force(item)
                 else:
                     item.unlink()

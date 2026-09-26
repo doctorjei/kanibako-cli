@@ -11,6 +11,8 @@ and never delete foreign ground).
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from kanibako.commands.box._lifecycle import (
@@ -95,6 +97,35 @@ def _assert_carried(new_state, seed):
     assert (new_state.vault_ro / "ro-note.txt").read_text() == seed["ro-note.txt"]
     assert (new_state.vault_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
     assert (new_state.vault_rw / "sub" / "deep.txt").read_text() == seed["sub/deep.txt"]
+
+
+def _seed_links(vault_rw, tmp_home):
+    """Put an absolute, an internal, an outside-relative and a directory link in *vault_rw*."""
+    outside = tmp_home / "outside"
+    (outside / "deep").mkdir(parents=True)
+    (outside / "big.txt").write_text("outside data")
+    (outside / "deep" / "nested.txt").write_text("nested")
+    texts = {
+        "abs": str(outside / "big.txt"),
+        "in": "sub/deep.txt",
+        "out": os.path.relpath(outside / "big.txt", os.path.realpath(vault_rw)),
+        "dirlink": os.path.relpath(outside, os.path.realpath(vault_rw)),
+    }
+    for rel, text in texts.items():
+        (vault_rw / rel).symlink_to(text)
+    assert (vault_rw / "out").read_text() == "outside data"
+    return texts
+
+
+def _assert_links_carried(vault_rw, texts):
+    """Every seeded link is still a link with its exact text; nothing outside materialized."""
+    for rel, text in texts.items():
+        assert (vault_rw / rel).is_symlink(), rel
+        assert os.readlink(vault_rw / rel) == text, rel
+    assert not [
+        p for p in vault_rw.rglob("*")
+        if p.name in ("big.txt", "nested.txt") and not p.is_symlink()
+    ]
 
 
 def _repoint(root, key, value):
@@ -267,32 +298,55 @@ class TestVaultCarry:
         assert (src_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
         assert (src_rw / "sub" / "deep.txt").read_text() == seed["sub/deep.txt"]
 
-    def test_dangling_symlink_aborts_move_with_source_intact(self, env):
-        """A dangling link fails the carry by NAME; the source survives, the dest unwinds."""
+    def test_dangling_symlink_carries_as_a_link(self, env):
+        """Q70: a dangling link is a link like any other — carried, never followed."""
         config, std, tmp_home = env
         pdir = _make_default(env)
         state = resolve_lifecycle_target(str(pdir), std, config)
         seed = _seed_vault(state)
-        link = state.vault_rw / "gone"
-        link.symlink_to(tmp_home / "no-such-target")
-        boxes_before = sorted(p.name for p in std.boxes.iterdir())
-        with pytest.raises(ProjectError) as exc:
-            execute_lifecycle(
-                state, TargetSpec(location=tmp_home / "newhome", ownership=UNCHANGED),
-                std, config, confirm=_conf_yes(),
-            )
-        msg = str(exc.value)
-        assert str(state.vault_rw) in msg
-        assert f"{link}: dangling symlink" in msg
-        # Source vault intact, byte for byte, link included.
-        assert (state.vault_ro / "ro-note.txt").read_text() == seed["ro-note.txt"]
-        assert (state.vault_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
-        assert (state.vault_rw / "sub" / "deep.txt").read_text() == seed["sub/deep.txt"]
-        assert link.is_symlink()
-        # Destination unwound: no new box dir, no new vault leaves.
-        assert sorted(p.name for p in std.boxes.iterdir()) == boxes_before
-        assert sorted(p.name for p in std.primary_vault_ro.iterdir()) == [state.vault_ro.name]
-        assert sorted(p.name for p in std.primary_vault_rw.iterdir()) == [state.vault_rw.name]
+        (state.vault_rw / "gone").symlink_to(tmp_home / "no-such-target")
+        new = execute_lifecycle(
+            state, TargetSpec(location=tmp_home / "newhome", ownership=UNCHANGED),
+            std, config, confirm=_conf_yes(),
+        )
+        _assert_carried(new, seed)
+        assert (new.vault_rw / "gone").is_symlink()
+        assert os.readlink(new.vault_rw / "gone") == str(tmp_home / "no-such-target")
+
+    def test_primary_to_standalone_convert_keeps_symlinks(self, env):
+        """Q70/Q74 on the real relocation path: every link lands with its exact text."""
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        seed = _seed_vault(state)
+        texts = _seed_links(state.vault_rw, tmp_home)
+        dest = tmp_home / "combo_dest"
+        new = execute_lifecycle(
+            state, TargetSpec(location=dest, ownership="standalone"),
+            std, config, confirm=_conf_yes(),
+        )
+        _assert_carried(new, seed)
+        _assert_links_carried(new.vault_rw, texts)
+        assert not state.vault_rw.exists()
+
+    def test_workset_to_workset_move_keeps_symlinks_through_the_stash(self, env):
+        """Both stash legs copy every link verbatim, escaping relative links included."""
+        config, std, tmp_home = env
+        ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
+        ws_b = create_workset("wsb", tmp_home / "elsewhere" / "wsb_root", std)
+        internal = ws_a.workspaces_dir / "b1"
+        internal.mkdir(parents=True)
+        add_project(ws_a, "b1", internal, std)
+        state = resolve_lifecycle_target(str(internal), std, config)
+        seed = _seed_vault(state)
+        texts = _seed_links(state.vault_rw, tmp_home)
+        new = execute_lifecycle(
+            state, TargetSpec(location=ws_b.workspaces_dir / "b1", ownership="wsb"),
+            std, config, confirm=_conf_yes(),
+        )
+        _assert_carried(new, seed)
+        # wsb sits one level deeper than wsa: the escaping links are STILL verbatim (Q74).
+        _assert_links_carried(new.vault_rw, texts)
 
     def test_disabled_vault_move_completes_without_vault(self, env):
         """No destination vault exists when disabled — the carry stays hands-off."""
@@ -373,22 +427,34 @@ class TestCopyVaultLeafContents:
         # Nothing was created inside the source.
         assert not (src / "child").exists()
 
-    def test_dangling_symlink_raises_named_project_error(self, tmp_path):
+    def test_dangling_symlink_is_copied_as_a_link(self, tmp_path):
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "gone").symlink_to(tmp_path / "no-such-target")
+        dst = tmp_path / "dst"
+        _copy_vault_leaf_contents(src, dst)
+        assert os.readlink(dst / "gone") == str(tmp_path / "no-such-target")
+
+    def test_uncopyable_entry_raises_named_project_error(self, tmp_path):
+        """An entry that cannot land (a link already at that name) fails the carry by NAME."""
         src = tmp_path / "src"
         src.mkdir()
         (src / "a.txt").write_text("a")
-        link = src / "gone"
-        link.symlink_to(tmp_path / "no-such-target")
+        link = src / "l"
+        link.symlink_to("somewhere")
         dst = tmp_path / "dst"
+        dst.mkdir()
+        (dst / "l").symlink_to("prior")
         with pytest.raises(ProjectError) as exc:
             _copy_vault_leaf_contents(src, dst)
         msg = str(exc.value)
         assert f"vault contents of {src} to {dst}" in msg
-        assert f"{link}: dangling symlink" in msg
+        assert f"  {link}: " in msg
         assert "The relocation was aborted." in msg
-        # The source is untouched.
+        # Neither side is overwritten.
         assert (src / "a.txt").read_text() == "a"
-        assert link.is_symlink()
+        assert os.readlink(link) == "somewhere"
+        assert os.readlink(dst / "l") == "prior"
 
 
 class TestCarryGuardContract:

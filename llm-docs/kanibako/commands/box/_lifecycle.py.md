@@ -345,6 +345,11 @@ destination in place.
   ⚑ **Containment is STRICT** (`arm not in vault_dir.parents`, the `_assert_deletable` spelling):
   `relative_to` ACCEPTS an equal path, so a leafless `vault_dir` would take every box's vault. A
   path that fails the guard is REPORTED on stderr, never silently skipped.
+* **Every tree copy here keeps symlinks VERBATIM** (Q70/Q74): the vault carry, the workspace, the
+  box data and home, and both workset-to-workset stash legs go through `copy_tree_keeping_links`
+  in `src/kanibako/tree_copy.py`, never a bare `copytree`, which materialized a linked outside
+  tree and failed the move on a dangling link. Relative text is never rewritten, even when it
+  leaves the tree: the tree lands at the same box path, and the box view is what a link means.
 * **Phase 5 / A7:** layouts are gone and the vault is never "hidden" inside the workspace, so the
   human-vault / project-vault discovery symlinks were deleted. There is nothing left to clean up.
 * **B2b (Option A, Jei-ruled):** the per-box `meta["shell"]` / `meta["vault_*"]` custom-path
