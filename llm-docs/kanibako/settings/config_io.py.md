@@ -66,10 +66,12 @@ the file; this supplies the problem and its line/column.
 ```python
 def load_doc(path: Path | None) -> dict
 ```
-Load a config document → dict. Missing/empty/non-mapping → `{}`.
+Load a config document → dict. Missing/empty → `{}`; any other non-mapping raises.
 
 A file that is not parseable YAML raises `~kanibako.errors.ConfigError` naming the FILE and the
-parse problem.
+parse problem. A file that parses to one value or a list raises `ConfigError` naming the FILE and
+which of the two it is (spec §0: never a silent accept) — it holds no keys to read, and reading it
+as empty would drop whatever the user meant by it without a word.
 
 ⚑ **THE NORMALIZATION BELONGS HERE and nowhere else:** this is the one seam that knows WHICH file is
 being read — `yaml` is handed a string, so its own mark says `"<unicode string>"` — and a raw
@@ -81,14 +83,15 @@ traceback on any verb that touches the cascade, including the BOX-LESS ones (`ri
 `errors.py` carries a `⚑` saying exactly that. `commands/image.py` (`rig list`),
 `commands/setup_cmd.py` and `commands/baseline_cmd.py` all call `load_merged_config`.*
 
-⚑ **MEASURED PyYAML behaviour the `Missing/empty/non-mapping → {}` contract rests on** — keep, do
-not "simplify":
+⚑ **MEASURED PyYAML behaviour the `Missing/empty → {}` contract and the non-mapping refusal rest
+on** — keep, do not "simplify":
 
 | input | `yaml.safe_load` returns | `load_doc` returns |
 |---|---|---|
 | `""` (empty file) | `None` | `{}` |
 | `"\n\n  \n"` (whitespace only) | `None` | `{}` |
-| `"hello"` (bare scalar) | `'hello'` — a `str`, NOT a dict | `{}` |
+| `"hello"` (bare scalar) | `'hello'` — a `str`, NOT a dict | `ConfigError` (a single value) |
+| `"- a\n"` (list) | `['a']` — a `list`, NOT a dict | `ConfigError` (a list) |
 | `"a: 1\na: 2\n"` (duplicate key) | `{'a': 2}` — **last wins, no error** | `{'a': 2}` |
 | `"﻿a: 1\n"` (BOM) | `{'a': 1}` — BOM is stripped, no error | `{'a': 1}` |
 | a leading TAB | raises `ScannerError` | `ConfigError` |

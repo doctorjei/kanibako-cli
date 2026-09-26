@@ -126,10 +126,9 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        data = load_doc(path)
+        return load_doc(path)
     except Exception:
         return None
-    return data if isinstance(data, dict) else None
 
 
 def _workset_path_repoint(

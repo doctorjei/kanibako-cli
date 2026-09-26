@@ -1735,8 +1735,6 @@ def _clear_writable_tables(
     if _pref_level(command_scope) is not None:
         allowed = allowed | {PREF_ROOT}
     data = load_doc(path)
-    if not isinstance(data, dict):
-        return 0
     removed = 0
     # ⚑ Written whenever a table is DROPPED, not only when a leaf was counted: a table of
     # empty leaves (``pref: {system: {}}``) counts 0 and must still leave the file.

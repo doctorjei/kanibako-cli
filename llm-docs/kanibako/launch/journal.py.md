@@ -21,8 +21,9 @@ in-progress entry is a transient signal, and mixing them would put half-created 
 registry.
 
 At rest the journal is normally EMPTY. An entry is the rare in-flight or crashed op, which is why
-`read_journal` treats an absent, empty or malformed file as `{}` rather than as an error: that is
-the ordinary state, not a fault.
+`read_journal` treats an absent or empty file, or a non-mapping `entries`, as `{}` rather than as an
+error: that is the ordinary state, not a fault. A file that is not valid YAML, or whose top level is
+not a mapping, raises `ConfigError` naming it (`config_io.load_doc`).
 
 ## Why the entry is written before the seed — the B3 window
 

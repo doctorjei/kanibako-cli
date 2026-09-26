@@ -25,7 +25,7 @@ def plugin_agent_leaf_map() -> 'Mapping[str, frozenset[str]]'
 def declared_keyspace_oracle(path: str) -> KeyJudgement
 def keyspace_verdict(path: str) -> KeyJudgement
 def probe_enabled() -> bool
-def observe(store: KeyStore[Any], *, origin: str) -> None
+def observe(store: Mapping[str, Any], *, origin: str) -> None
 def _discover() -> 'Mapping[str, frozenset[str]]'
 def _note_error(exc: BaseException) -> None
 def _probe_file() -> str

@@ -1177,8 +1177,8 @@ def _probe_store(tree: dict) -> "object":
     return store
 
 
-def _findings(tree: dict) -> set[str]:
-    """The dotted paths ``undeclared_store_paths`` reports for *tree*."""
+def _paths(store: dict, prefix: tuple[str, ...] = ()) -> set[str]:
+    """The dotted paths ``undeclared_store_paths`` reports for *store*, as given."""
     from kanibako.settings.settings_keyspace import (
         key_class,
         render_store_path,
@@ -1191,9 +1191,14 @@ def _findings(tree: dict) -> set[str]:
     return {
         render_store_path(segments, judgement.key_len)
         for segments, judgement in undeclared_store_paths(
-            _probe_store(tree), oracle=oracle,
+            store, oracle=oracle, prefix=prefix,
         )
     }
+
+
+def _findings(tree: dict) -> set[str]:
+    """The dotted paths ``undeclared_store_paths`` reports for *tree*, built as a KeyStore."""
+    return _paths(_probe_store(tree))
 
 
 def _manifest_prefix_cases() -> list[tuple[str, str]]:
@@ -1321,12 +1326,6 @@ def test_an_empty_declared_interior_is_not_a_finding():
     assert _findings({"box": {}, "meta": {}, "agent": {}, "config": {}}) == set()
 
 
-@pytest.mark.writes_undeclared(
-    "box",
-    reason="the SCALAR at a scope root is the subject: this is the one case that "
-           "proves undeclared_store_paths still REPORTS, so it has to make the "
-           "write the keyspace refuses.",
-)
 def test_undeclared_store_paths_REPORTS_a_scalar_at_a_namespace():
     """⚑⚑ THE LIVENESS PIN FOR :func:`undeclared_store_paths` ITSELF.
 
@@ -1343,8 +1342,34 @@ def test_undeclared_store_paths_REPORTS_a_scalar_at_a_namespace():
 
     MUTATION: narrow the filter at ``undeclared_store_paths`` and this reddens,
     ``{'box'} != set()``.
+
+    A PLAIN DICT, not a KeyStore: a store holding the scalar is the write the
+    census refuses, and the audit reads any mapping.
     """
-    assert _findings({"box": "a scalar"}) == {"box"}
+    assert _paths({"box": "a scalar"}) == {"box"}
+
+
+def test_a_PLAIN_mapping_is_walked_like_a_store():
+    """A nested plain dict is a NODE, exactly as a nested KeyStore is.
+
+    MUTATION: test a value for ``KeyStore`` instead of ``Mapping`` in
+    ``walk_store_paths`` and both red — each ``box`` table reads as a scalar at a
+    namespace, and ``box.zippity`` is never reached.
+    """
+    assert _paths({"box": {"env": {"X": "1"}}}) == set()
+    assert _paths({"box": {"zippity": "wibble"}}) == {"box.zippity"}
+
+
+def test_a_PREFIX_judges_a_subtree_where_it_would_sit():
+    """*prefix* leads every returned path, so a scope's table is judged under its
+    scope without first being written there.
+
+    MUTATION: drop *prefix* from the walk in ``undeclared_store_paths`` and both
+    entries are judged at the top level — ``{'image', 'zippity'}``.
+    """
+    assert _paths({"image": "x", "zippity": "wibble"}, prefix=("box",)) == {
+        "box.zippity",
+    }
 
 
 def test_a_WHOLE_store_judges_its_top_level_where_a_FRAGMENT_declines_to():

@@ -117,9 +117,8 @@ authoritative name → workspace store, and a member registered under an OLD com
 before a `workset.workspaces` repoint) is invisible to the workspaces walk. It has to resolve HERE,
 by its REGISTERED path. The root-wide skip stranded exactly those members — bifrost A0, 2026-08-02.
 
-`resolve_workset_workspaces` guards non-mapping settings documents itself, and it consumes the same
-`settings` value the registry-path resolver above it consumes, so the scan does not need its own
-mapping check.
+The scan does not need its own mapping check: `settings` comes from `config_io.load_doc`, which
+returns a mapping or refuses the file by name.
 
 ## The identity dict
 

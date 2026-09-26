@@ -76,8 +76,8 @@ def dotted_entry_reason(parent: Sequence[str], name: str) -> str
 def is_var_table(parent: Sequence[str], *, oracle: Callable[[str], KeyJudgement]) -> bool
 def classify_store_path(segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgement]) -> Judgement
 def container_notes(nodes: Mapping[tuple[str, ...], StoreNode]) -> dict[tuple[str, ...], str]
-def walk_store_paths(node: KeyStore[Any], prefix: tuple[str, ...]=()) -> Iterator[tuple[tuple[str, ...], bool]]
-def undeclared_store_paths(store: KeyStore[Any], *, oracle: Callable[[str], KeyJudgement]) -> list[tuple[tuple[str, ...], Judgement]]
+def walk_store_paths(node: Mapping[str, Any], prefix: tuple[str, ...]=()) -> Iterator[tuple[tuple[str, ...], bool]]
+def undeclared_store_paths(store: Mapping[str, Any], *, oracle: Callable[[str], KeyJudgement], prefix: tuple[str, ...]=()) -> list[tuple[tuple[str, ...], Judgement]]
 def _is_pref_interior(segments: Sequence[str]) -> bool
 def _namespace(reason: str) -> KeyJudgement
 def _undeclared(reason: str) -> KeyJudgement

@@ -87,7 +87,6 @@ import json
 import os
 from typing import Any, Collection, Final, Iterator, Mapping
 
-from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
   ConcedingLeafMap,
   KeyClass,
@@ -327,7 +326,7 @@ def _probe_file() -> str:
   return os.environ.get(ENV_FILE) or DEFAULT_PROBE_FILE
 
 
-def observe(store: KeyStore[Any], *, origin: str) -> None:
+def observe(store: Mapping[str, Any], *, origin: str) -> None:
   """Record the undeclared paths in *store*. NO-OP when disarmed; never raises.
 
   *origin* names the seam that produced *store*, so a row can be attributed without
