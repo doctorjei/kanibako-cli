@@ -101,6 +101,7 @@ def _build(std, proj):
         extra_default_categories=_table,
         deliver_creds=True,
         narrow_bind_dests=table_bind_dests(_table),
+        cli_level=None,
     )
     mounts = _emit_category_mounts(
         deliveries.narrow_bindings, label="channel",
@@ -261,13 +262,13 @@ def _workset_anchor(std, proj):
 
     ⚑ Unpacked BY NAME, not by index. This was ``[5]`` and silently started
     returning ``cascade_box_path`` when P3 dropped an element from the tuple —
-    a positional index into a 7-tuple fails as a confusing ``TypeError`` three
-    frames away (or, worse, could pick a same-typed neighbour and pass). The full
+    a positional index into the tuple fails as a confusing ``TypeError`` three
+    frames away (or, worse, could pick a same-typed neighbor and pass). The full
     unpack fails loudly AT THIS LINE on any arity change.
     """
     (
         _ctx, _resolved_sys, _meta_runtime, _meta_identity, workset_anchor,
-        _cascade_box_path, _cascade_workset_path,
+        _auth_chain, _cascade_box_path, _cascade_workset_path,
     ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name="shell")
     return workset_anchor
 

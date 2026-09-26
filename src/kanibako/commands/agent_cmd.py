@@ -924,7 +924,8 @@ def run_reauth(args: argparse.Namespace) -> int:
         persona_values=_persona_values_for(agent_name, target),
         # ⚑ REQUIRED (P7): reauth must resolve the SAME per-agent credential dir the
         # launch delivers from (``@workset.auth.path/@system.agent``); without the
-        # §1A selection level it would collapse to the workset auth ROOT.
+        # §1A selection level it would name the agent the STORED settings select, or
+        # the workset auth ROOT when none is stored.
         selection_level=selection.selection_level,
     )
     suppress_oauth = active_endpoint is not None

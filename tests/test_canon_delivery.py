@@ -34,6 +34,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings import core_defaults
 from kanibako.launch import templates
 from kanibako.settings.core_defaults import (
@@ -767,6 +768,7 @@ class TestLaunchWiring:
             target=target,
             agent_cfg=None,
             deliver_creds=True,
+            cli_level=None,
         )
 
     def _launch_entries(self, std, proj, target):
@@ -1254,6 +1256,7 @@ class TestBaseTemplateSeedsTheNotebook:
             agent_config_path=std.agents / "claude" / "agent.yaml",
             logger=logging.getLogger("test-canon-seed"),
             deliver_creds=True,
+            selection_level=AgentSelection(node="claude", source="settings").selection_level,
         )
         assert (
             proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"

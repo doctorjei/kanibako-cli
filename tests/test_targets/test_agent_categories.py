@@ -32,6 +32,7 @@ import logging
 
 import pytest
 
+from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings.agent_representation import agent_categories_for_node
 from kanibako.settings.settings_launch import (
     build_launch_snapshot,
@@ -220,6 +221,7 @@ class TestTheLaunchSeamCarriesTheDeclarations:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=DeclaringTarget(),
             agent_cfg=None, deliver_creds=True,
+            cli_level=None,
         )
         return _launch_bind_map(snapshot), _launch_seed_list(snapshot)
 
@@ -283,6 +285,7 @@ class TestTheCreatePathCarriesTheSeed:
             std=std, proj=proj, agent_name=node, target=target,
             global_config_path=None, agent_config_path=None,
             logger=logging.getLogger("test.seed"),
+            selection_level=AgentSelection(node=node, source="settings").selection_level,
         )
         return proj.shell_path / "kani_seed" / "declared.md"
 
@@ -345,5 +348,6 @@ class TestTheCreatePathCarriesTheSeed:
             std=std, proj=proj, agent_name=NODE, target=DeclaringTarget(),
             global_config_path=None, agent_config_path=None,
             logger=logging.getLogger("test.seed"),
+            selection_level=AgentSelection(node=NODE, source="settings").selection_level,
         )
         assert not (proj.shell_path / "kani_seed").exists()

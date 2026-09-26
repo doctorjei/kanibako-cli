@@ -446,6 +446,7 @@ class TestTheLaunchWireCarriesTheDeclaration:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=self._DeclaringTarget(),
             agent_cfg=None, deliver_creds=True,
+            cli_level=None,
         )
         return _launch_env_map(snapshot)
 
@@ -493,6 +494,7 @@ class TestTheLaunchWireCarriesTheDeclaration:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=target, agent_cfg=None,
             deliver_creds=True,
+            cli_level=None,
         )
         slots = _launch_env_map(snapshot)
         for var, value in DECLARED[harness].items():
@@ -553,6 +555,7 @@ class TestTheCoreStampsRideTheSameWire:
             system_settings_path=None, agent_cfg_path=None,
             desc=None, install=None, target=target,
             agent_cfg=None, deliver_creds=True,
+            cli_level=None,
         )
         return _launch_env_map(snapshot)
 
@@ -615,6 +618,7 @@ class TestTheCoreStampsRideTheSameWire:
             system_settings_path=system_file, agent_cfg_path=None,
             desc=None, install=None, target=self._CoreTarget(),
             agent_cfg=None, deliver_creds=True,
+            cli_level=None,
         )
         slots = _launch_env_map(snapshot)
         assert slots[var].value == "/tmp/mine"
@@ -641,6 +645,7 @@ class TestTheCoreStampsRideTheSameWire:
                 desc=None, install=None, target=self._CoreTarget(),
                 agent_cfg=None, deliver_creds=True,
                 extra_default_categories={"box.env.KANIBAKO_NAME": "mine"},
+                cli_level=None,
             )
         message = str(excinfo.value)
         assert "system.env.KANIBAKO_NAME" in message

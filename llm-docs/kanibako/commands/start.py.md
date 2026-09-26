@@ -1123,8 +1123,9 @@ establishes the invariant, and the launch-time gate then correctly no-ops.
 * **The launch RE-DETECTS after `prepare_host()`** (the auto-updater), so the create-time and
   launch-time bind maps are not guaranteed identical. The later gated pass covers the difference.
 
-⚑ **No CLI level (§1A)** on the create-side resolve: the create path's flags are not the launch's, and
-the ephemeral ones (`-M`/`-N`/`-C`/`-R`) carry no bind. The image keys ride their own conditional
+⚑ **The SELECTION only, never the full CLI level (§1A)** on the create-side resolve: the create path's
+flags are not the launch's, and the ephemeral ones (`-M`/`-N`/`-C`/`-R`) carry no bind. The selection
+is REQUIRED because this resolve folds the auth chain (`@workset.auth.path/@system.agent`). The image keys ride their own conditional
 resolve, which this map does not carry either.
 
 ---
@@ -1637,8 +1638,12 @@ tables cannot come from two different files. The image and helper resolves pass 
 **`cli_level`** is the §1A CLI LEVEL (P8), built by `settings.settings_cli_level.build_cli_level` and
 validated inside `build_launch_snapshot`. This is the ONE resolve that may carry the EPHEMERAL flag
 values (`-M` / `-N`-`-C`-`-R`) as well as the resolved selection, because its output is this launch's
-argv / env / mounts and nothing here is written back to a settings file. The seed, persona-endpoint
-and `--effective` resolves take a selection-ONLY level.
+argv / env / mounts and nothing here is written back to a settings file. The create-time seed and
+sync, the persona-endpoint and the `--effective` resolves take a selection-ONLY level. ⚑ Every
+resolve that delivers a user row (no *narrow_bind_dests*) folds the auth chain, so it must carry the
+selection: `meta.box.auth.workset_path` is `@workset.auth.path/@system.agent`. Only the image and
+helper resolves take none — they emit nothing but their injected table — and they pass `None`
+explicitly: the keyword is REQUIRED, so no resolve omits the selection by accident.
 
 **`cli_env`** is the parsed per-run `-e` map (P4c-1) and is forwarded UNTOUCHED to the collapse, which
 applies it as the CLI level over the key owning each variable. ⚑ SAME RULE AS *cli_level* AND FOR THE

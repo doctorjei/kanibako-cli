@@ -2192,6 +2192,7 @@ def _assemble_image_sharing_mounts(
             storage_conf_path=storage_conf_path,
             deliver_creds=auth_src.creds_shared,
             include_base_families=False,
+            cli_level=None,  # no auth chain to fold (narrow)
             narrow_bind_dests=core_defaults.image_bind_dests(),
             # No persona tier (audit): the IMAGE table only, whose box_dests are
             # disjoint from anything a persona bundle can name.
@@ -2411,6 +2412,7 @@ def _start_helper_hub(
         log_path=log_path,
         deliver_creds=auth_src.creds_shared,
         include_base_families=False,
+        cli_level=None,  # no auth chain to fold (narrow)
         narrow_bind_dests=core_defaults.helper_bind_dests(),
         # No persona tier (audit): the HELPER table only, whose pinned
         # box_dests are disjoint from anything a persona bundle can name.
@@ -3688,6 +3690,11 @@ def _run_container(
                 system_settings_path=system_settings_path,
                 auth_src=auth_src, logger=logger,
                 suppress_oauth=suppress_oauth,
+                selection_level=(
+                    agent_selection.selection_level
+                    if agent_selection is not None
+                    else None
+                ),
             )
             # The create-time ``synced`` write — the seed's SIBLING, immediately
             # after it and BEFORE the canon skeleton (which makes that region 555).
@@ -3703,6 +3710,11 @@ def _run_container(
                 agent_config_path=agent_cfg_path,
                 persona_values=persona_values,
                 logger=logger, deliver_creds=auth_src.creds_shared,
+                selection_level=(
+                    agent_selection.selection_level
+                    if agent_selection is not None
+                    else None
+                ),
             )
             # The canon skeleton (J-7), in the SAME position as ``run_create``'s:
             # after the seed, inside the journal window.  See that call site for why
@@ -6457,10 +6469,11 @@ def _resolve_box_auth_source(
     """Resolve the box's credential-SHARING SOURCE through the auth 3-tier chain.
 
     The SINGLE source of the launch's sharing decision (auth-level redesign):
-    builds a FOCUSED launch snapshot carrying ONLY the auth ``auth.*`` chain floor
-    (``settings_launch.auth_chain_floor`` for the box mode) plus the scope settings
-    files + the meta identity floor (which carries the agent capability
-    ``meta.agent.<agent>.auth.share_support`` the mirror views up), expands it
+    builds a FOCUSED launch snapshot — the scope settings files and the four floor
+    fragments of :func:`_launch_snapshot_inputs` (the auth chain, ``meta.runtime.*``,
+    the meta identity floor carrying the agent capability
+    ``meta.agent.<agent>.auth.share_support`` the mirror views up, and the workset
+    anchors), but NO category family — expands it
     ONCE, and reads the :class:`~kanibako.settings.settings_launch.AuthSource` off it
     (``resolve_auth_source`` — the per-box tier/source resolver, precedence
     workset>global). Same ``build_launch_snapshot`` → ``expand`` pipeline the
@@ -6478,10 +6491,11 @@ def _resolve_box_auth_source(
 
     ⚑ *selection_level* is a REQUIRED keyword — deliberately NOT defaulted (P7).
     ``meta.box.auth.workset_path`` resolves ``@workset.auth.path/@system.agent``
-    (spec §2c), so a caller that omits it silently collapses the per-agent
-    credential dir to the workset auth ROOT: the launch would deliver from
-    ``<auth>/<agent>`` while stop/watch/reauth read and WRITE ``<auth>/``, and two
-    agents in one workset would share a directory. Pass ``None`` ONLY for a
+    (spec §2c), so a caller that omits it silently points the per-agent credential
+    dir at the agent the STORED settings select — or the workset auth ROOT when none
+    is stored: the launch would deliver from ``<auth>/<agent>`` while
+    stop/watch/reauth read and WRITE another directory, and two agents in one
+    workset could share one. Pass ``None`` ONLY for a
     genuinely agent-less box; for a running box the ``KANIBAKO_AGENT`` stamp IS the
     resolved selection.
 
@@ -6494,13 +6508,9 @@ def _resolve_box_auth_source(
     from kanibako.settings import settings_launch
 
     (
-        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, chain,
         cascade_box_path, cascade_workset_path,
     ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
-    chain = settings_launch.auth_chain_floor(
-        mode=proj.mode.value,
-        agent_name=agent_name,
-    )
     # The persona store's LIVE tier (:func:`_persona_values_for`). This resolve
     # takes no *target* and its callers (``stop`` writeback, the creds watcher)
     # hold no bundle, so the plugin is resolved HERE off the node-name — the same
@@ -6591,13 +6601,9 @@ def _resolve_box_launch_decisions(
     from kanibako.settings import settings_launch
 
     (
-        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, chain,
         cascade_box_path, cascade_workset_path,
     ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
-    chain = settings_launch.auth_chain_floor(
-        mode=proj.mode.value,
-        agent_name=agent_name,
-    )
     descriptors = target.setting_descriptors() if target is not None else []
     # A real target returns a list of TargetSetting; guard against a non-list (e.g.
     # a MagicMock target in unit tests) so the behavior floor / endpoint read is
@@ -6639,9 +6645,10 @@ def _resolve_box_launch_decisions(
         workset_anchor=workset_anchor,
         # ⚑ REQUIRED here (P7): ``meta.box.auth.workset_path`` is now spelled
         # ``@workset.auth.path/@system.agent`` (spec §2c), so this snapshot
-        # must carry the RESOLVED selection or the per-agent credential source
-        # would degenerate to the workset auth ROOT for any launch whose agent
-        # came from ``--agent`` rather than from the stored key.
+        # must carry the RESOLVED selection or, for any launch whose agent came
+        # from ``--agent`` rather than from the stored key, the per-agent credential
+        # source would name the STORED agent's dir (the workset auth ROOT when none
+        # is stored).
         cli_level=selection_level,
     )
     auth_src = settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
@@ -6694,10 +6701,14 @@ def _launch_snapshot_inputs(
     proj,
     agent_name: str,
 ):
-    """Build the seven-tuple of inputs the launch SNAPSHOT path needs.
+    """Build the eight-tuple of inputs the launch SNAPSHOT path needs.
 
-    ``(ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+    ``(ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, auth_chain,
     cascade_box_path, cascade_workset_path)``.
+
+    *auth_chain* is ``settings_launch.auth_chain_floor`` for *proj*'s mode — built
+    HERE, the one place, for every resolve that folds it, so none of them can spell
+    the chain differently.
 
     Constructs the host_home / xdg / workset name / resolved ``system.*`` map the
     ONE-resolve snapshot path (block 7b) feeds to ``build_launch_snapshot`` so
@@ -6907,8 +6918,14 @@ def _launch_snapshot_inputs(
         workspaces=_workspaces,
         workset_channels=_ws_channels,
     )
+    # The auth 3-tier SHARING chain (spec §2a–§2c): ``workset.auth.*``,
+    # ``box.auth.*``, ``system.auth.share_allowed`` and the two ``meta.box.*auth*``
+    # anchors, per mode.
+    auth_chain = settings_launch_module.auth_chain_floor(
+        mode=mode, agent_name=agent_name,
+    )
     return (
-        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, auth_chain,
         cascade_box_path, cascade_workset_path,
     )
 
@@ -6991,7 +7008,7 @@ def _resolve_launch_snapshot(
     include_base_families: bool = True,
     extra_default_categories: "Mapping[str, object] | None" = None,
     guarantee_create: bool = True,
-    cli_level: "Mapping[str, object] | None" = None,
+    cli_level: "Mapping[str, object] | None",
     cli_env: "Mapping[str, str] | None" = None,
     realize: "Callable[[KeyStore], LaunchRealization] | None" = None,
     narrow_bind_dests: "frozenset[str] | None" = None,
@@ -7006,9 +7023,13 @@ def _resolve_launch_snapshot(
 
     ⚑ THERE IS NO SECOND, CROSS-SCOPE ``reconcile`` PASS ANY MORE (cutover 6-R3).
 
-    ⚑ *cli_level*, *cli_env* and *realize* belong to ONE launch, so ONLY this resolve
-    may take them — a resolve whose product is a stored map or a display must not see
-    one.  *narrow_bind_dests* is likewise a NARROW caller's own table: omitted, a
+    ⚑ *cli_env*, *realize* and a *cli_level* carrying FLAG values belong to ONE
+    launch, so only the main launch call may pass them — a resolve whose product is a
+    stored map or a display takes at most the selection-only level.  *cli_level* is
+    a REQUIRED keyword (P3): a whole-box resolve folds the auth chain and must pass
+    the selection it has; the image / helper resolves pass ``None`` explicitly.
+
+    *narrow_bind_dests* is a NARROW caller's own table: omitted, a
     whole-box resolve emits from ``meta.assembly.bindings`` and has no second map to
     reach for.
 
@@ -7032,7 +7053,7 @@ def _resolve_launch_snapshot(
     from kanibako.settings.settings_resolve import SettingsError
 
     (
-        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor,
+        ctx, resolved_sys, meta_runtime, meta_identity, workset_anchor, auth_chain,
         cascade_box_path, cascade_workset_path,
     ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name=agent_name)
 
@@ -7330,6 +7351,14 @@ def _resolve_launch_snapshot(
         agent_partial=agent_partial,
         agent_state=agent_state,
         persona_values=persona_values,
+        # ⚑ EVERY RESOLVE THAT DELIVERS A USER ROW folds the chain, and it must carry
+        # the §1A selection too: the chain's ``meta.box.auth.workset_path`` is
+        # ``@workset.auth.path/@system.agent`` (spec §2c). Every such caller passes
+        # the selection it has. A no-agent box has none, so there ``@system.agent``
+        # answers the STORED default — a known gap: keyspec §2b makes it ``shell``.
+        # The image / helper resolves emit ONLY their injected table
+        # (*narrow_bind_dests*), deliver no user row, and fold none.
+        auth_chain=auth_chain if narrow_bind_dests is None else None,
         meta_runtime=meta_runtime,
         meta_identity=meta_identity,
         workset_anchor=workset_anchor,
@@ -7979,6 +8008,7 @@ def _seed_box_home(
     auth_src,
     logger,
     suppress_oauth: bool = False,
+    selection_level: "Mapping[str, object] | None",
 ) -> None:
     """Apply the one-time home seed for a freshly-created box (seed-at-create).
 
@@ -8006,6 +8036,9 @@ def _seed_box_home(
     The per-launch credsync REFRESH and the channel guarantee-create are SEPARATE
     per-launch mechanisms and are NOT part of this one-time seed.
 
+    *selection_level* is the §1A SELECTION, a REQUIRED keyword (P7): the seed resolve
+    folds the auth chain — see :func:`_apply_init_seeds`.
+
     ⚑⚑ See ``llm-docs/kanibako/commands/start.py.md``, "``_seed_box_home`` /
     ``_apply_init_seeds`` — the ONE-TIME home seed, at CREATE", before changing
     anything here: it carries the three steps in full and the seed model this path
@@ -8021,6 +8054,7 @@ def _seed_box_home(
         std=std, proj=proj, agent_name=agent_id, target=target,
         global_config_path=system_settings_path, agent_config_path=agent_cfg_path,
         logger=logger, deliver_creds=auth_src.creds_shared,
+        selection_level=selection_level,
     )
     _install_box_handbook(
         proj=proj, snapshot=snapshot, agent_id=agent_id, logger=logger,
@@ -8041,6 +8075,7 @@ def _sync_box_at_create(
     persona_values: "Mapping[str, str] | None" = None,
     logger,
     deliver_creds: bool = True,
+    selection_level: "Mapping[str, object] | None",
 ) -> None:
     """Write every ``synced`` copy ONCE at create, UNGATED — the SIBLING of the seed.
 
@@ -8063,7 +8098,13 @@ def _sync_box_at_create(
     does: the skeleton makes the canon region 555, and a copy into it afterwards dies
     ``EACCES``.  Both create call sites keep that order.
 
-    ⚑ NO CLI LEVEL (§1A): the create-side flags are not the launch's.
+    ⚑ THE SELECTION ONLY, never the full §1A CLI level: the create-side flags are
+    not the launch's.  *selection_level* is a REQUIRED keyword (P7) because this
+    whole-box resolve folds the auth chain, whose ``meta.box.auth.workset_path`` is
+    ``@workset.auth.path/@system.agent`` (spec §2c) — omit it and a ``synced`` row
+    sourced there reads the directory of the agent the STORED settings select, not
+    the one running, or the workset auth ROOT when none is stored.  ``None`` only
+    for a no-agent box.
 
     See ``llm-docs/kanibako/commands/start.py.md``, "``_sync_box_at_create``", for the
     ruling in full, the *install* probe and the launch-time re-detect.
@@ -8082,6 +8123,7 @@ def _sync_box_at_create(
         agent_cfg=agent_cfg,
         persona_values=persona_values,
         deliver_creds=deliver_creds,
+        cli_level=selection_level,
     )
     _apply_synced_copies(
         snapshot=snapshot,
@@ -8503,6 +8545,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         system_settings_path=system_settings_path,
         auth_src=auth_src, logger=logger,
         suppress_oauth=suppress_oauth,
+        selection_level=selection.selection_level if selection else None,
     )
     # The create-time ``synced`` write, the seed's SIBLING (see
     # :func:`_sync_box_at_create`).  It is INSIDE this function, not beside the
@@ -8518,6 +8561,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
         agent_config_path=agent_cfg_path,
         persona_values=persona_values,
         logger=logger, deliver_creds=auth_src.creds_shared,
+        selection_level=selection.selection_level if selection else None,
     )
 
 
@@ -8746,6 +8790,7 @@ def _apply_init_seeds(
     agent_config_path,
     logger,
     deliver_creds: bool = True,
+    selection_level: "Mapping[str, object] | None",
 ) -> "KeyStore":
     """Copy configured copy-once-at-init seeds into the new project's shell dir.
 
@@ -8769,6 +8814,11 @@ def _apply_init_seeds(
     ⚑ THE BOX HANDBOOK CHAPTER IS NOT SEEDED HERE, and looking for it in this
     function is the wrong place: ``@box.canon/handbook`` is filled by the SIBLING
     step 3, :func:`_install_box_handbook`, off the snapshot returned above.
+
+    ⚑ *selection_level* is the §1A SELECTION only (never a launch flag), REQUIRED (P7):
+    a user ``seeded`` row resolves here, and one sourced under ``@workset.auth.path``
+    or ``@meta.box.auth.workset_path`` needs the auth chain AND the selection, or it
+    copies from the wrong host path.  ``None`` only for a no-agent box.
 
     See ``llm-docs/kanibako/commands/start.py.md``, "``_seed_box_home`` /
     ``_apply_init_seeds`` — the ONE-TIME home seed, at CREATE", for the layered
@@ -8848,6 +8898,7 @@ def _apply_init_seeds(
         include_base_families=False,
         extra_default_categories=seed_categories,
         deliver_creds=deliver_creds,
+        cli_level=selection_level,
         # No persona tier (audit): SEEDING is file delivery — this resolve reads
         # ``seeded`` COPY winners and their SOURCE keys, nothing else.  A token pointer
         # has no meaning here, and a seed must not vary with a store.  The agent FILE

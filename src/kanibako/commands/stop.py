@@ -122,8 +122,9 @@ def _writeback_on_stop(
         # the resolver (P6c) — standalone reads its file as the WORKSET tier.
         # ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
         # resolves ``@workset.auth.path/@system.agent``, so without it the per-agent
-        # credential dir collapses to the workset auth ROOT and this writeback would
-        # land in ``<auth>/`` while the LAUNCH delivered from ``<auth>/<agent>``.
+        # credential dir names the agent the STORED settings select (the workset auth
+        # ROOT when none is stored) and this writeback would land in that directory
+        # while the LAUNCH delivered from ``<auth>/<agent>``.
         # The ``KANIBAKO_AGENT`` stamp IS the resolved selection for a running box.
         agent_cfg_path = agent_settings_path(std.agents, agent)
         # 🛑 NOT SILENT: a settings file that turned invalid after the box started (a

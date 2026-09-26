@@ -359,7 +359,8 @@ def _resolve_watch_context(box: str | None):
     target = resolve_target(harness_of(agent), proj.project_path)
     # ⚑ The §1A SELECTION LEVEL is REQUIRED (P7): ``meta.box.auth.workset_path``
     # resolves ``@workset.auth.path/@system.agent``, so without it the per-agent
-    # credential SOURCE collapses to the workset auth ROOT — the watcher would sync
+    # credential SOURCE names the agent the STORED settings select (the workset auth
+    # ROOT when none is stored) — the watcher would sync
     # a different directory than the launch delivered from, and in a multi-agent
     # workset two agents would share one dir. The ``KANIBAKO_AGENT`` stamp IS the
     # resolved selection for a running box.

@@ -54,6 +54,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings import core_defaults
 from kanibako.settings.settings_categories import CategoryEntry
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
@@ -193,6 +194,7 @@ class TestSeedRoutesThroughTheOneGuestTranslator:
             global_config_path=std.settings,
             agent_config_path=std.agents / "claude" / "agent.yaml",
             logger=logging.getLogger("t"), deliver_creds=True,
+            selection_level=AgentSelection(node="claude", source="settings").selection_level,
         )
 
         # (1) The seed dest reached the ONE translator, guest-spelled as the bare

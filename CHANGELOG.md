@@ -738,6 +738,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box rm --purge` on a deregistered box typed in a different case (`FOO` for `foo`) missed its log.
   Moving a box (`kanibako box move`) keeps both files.
 
+- **A reference to one of the credential-sharing keys now resolves when a box is created or
+  started.** The keys are `workset.auth.path`, `meta.box.auth.workset_path`,
+  `workset.auth.share_allowed`, `workset.auth.global_sync`, `box.auth.global_enabled`,
+  `box.auth.workset_enabled`, `system.auth.share_allowed` and `meta.box.agent.auth.share_support`.
+  Credential sharing itself read them correctly, but the settings a box is created and launched
+  from did not have them, so a value that
+  referred to one resolved against nothing: `box.env.AUTHDIR: "@meta.box.auth.workset_path"`
+  started the box without `AUTHDIR`, and a reference inside a longer path lost its root, so a
+  binding sourced at `@workset.auth.path/notes` mounted the host's `/notes`, and a `seeded` entry
+  sourced there copied the host's `/notes` when the box was created. None of these gave a message.
+  Such a reference now resolves to the same value credential sharing uses — here
+  `<working set>/auth/<agent>` for a primary or named box. A standalone box has no working-set
+  credential store, so `workset.auth.path` and `meta.box.auth.workset_path` are `null` there: the
+  `AUTHDIR` example still sets nothing, but a binding whose whole source is one of them now stops
+  the launch with an error rather than being dropped without a message. A reference inside a
+  longer path is not fixed there yet: in a standalone box, `@workset.auth.path/notes` still mounts
+  the host's `/notes`.
+
 ### Added
 
 - **Every box now gets the host's terminal type, and `$TERM` resolves in a settings value.** Two
