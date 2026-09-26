@@ -143,11 +143,11 @@ def _workset_path_repoint(
     """
     if isinstance(workset_settings, Mapping):
         workset_table = workset_settings.get("workset")
-        if isinstance(workset_table, Mapping) and leaf in workset_table:
-            repoint = workset_table[leaf]
+        if isinstance(workset_table, Mapping):
+            repoint = workset_table.get(leaf, UNSET)
             if repoint is None:
                 return None
-            if repoint:
+            if repoint and repoint is not UNSET:
                 return str(repoint)
     return UNSET
 
