@@ -127,8 +127,7 @@ def find_connected_external_box(
         registry_path = workset_registry.resolve_workset_registry_path(
             root, settings
         )
-        # No mapping check needed: ``resolve_workset_workspaces`` guards
-        # non-mapping docs itself.
+        # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
         workspaces_resolved = resolve_workset_workspaces(root, settings).resolve()
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():

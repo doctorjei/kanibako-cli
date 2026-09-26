@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from kanibako.launch import journal
 
 
@@ -21,6 +23,19 @@ class TestReadJournal:
         jp = tmp_path / "journal.yaml"
         jp.write_text("")
         assert journal.read_journal(jp) == {}
+
+    def test_a_journal_that_is_not_a_mapping_is_refused(self, tmp_path: Path) -> None:
+        """Only ``entries`` is read softly: a whole file that is a list raises, naming it.
+
+        MUTATION: read a non-mapping top level as ``{}`` in ``load_doc`` and this reds.
+        """
+        from kanibako.errors import ConfigError
+
+        jp = tmp_path / "journal.yaml"
+        jp.write_text("- entries\n")
+        with pytest.raises(ConfigError) as exc:
+            journal.read_journal(jp)
+        assert str(jp) in str(exc.value)
 
     def test_malformed_entries_is_empty(self, tmp_path: Path) -> None:
         """A non-mapping ``entries`` value yields an empty dict (defensive)."""

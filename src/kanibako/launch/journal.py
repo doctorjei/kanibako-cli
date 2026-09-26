@@ -40,7 +40,10 @@ def _key(box_path: str | Path) -> str:
 
 
 def read_journal(journal_path: Path) -> dict[str, dict]:
-    """Return the journal's ``entries`` mapping; absent/empty/malformed yields ``{}``."""
+    """Return the ``entries`` mapping; an absent/empty file or non-mapping ``entries`` is ``{}``.
+
+    A file that is not a YAML mapping raises ``ConfigError`` naming it (``load_doc``).
+    """
     doc = load_doc(journal_path)
     entries = doc.get(_ENTRIES)
     return entries if isinstance(entries, dict) else {}

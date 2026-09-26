@@ -2095,7 +2095,7 @@ MAX_STORE_DEPTH: Final[int] = 64
 
 
 def walk_store_paths(
-    node: KeyStore[Any], prefix: tuple[str, ...] = (),
+    node: Mapping[str, Any], prefix: tuple[str, ...] = (),
 ) -> Iterator[tuple[tuple[str, ...], bool]]:
     """Every path in *node*, depth-first: its SEGMENTS and whether it is a NODE.
 
@@ -2103,22 +2103,28 @@ def walk_store_paths(
     a filesystem path with dots in it and a dotted string loses the very segment
     boundaries :func:`classify_store_path` turns on.
 
+    *node* is a :class:`KeyStore` or a plain mapping; any mapping value is a NODE.
+
     ⚑ UNBOUND ``dict.items`` (S3): a resolved snapshot is exactly where a
     user-named leaf lives, and one spelled ``items`` would shadow the bound method
     into a crash.
     """
     if len(prefix) >= MAX_STORE_DEPTH:
         return
-    for key, value in dict.items(node):
+    items = dict.items(node) if isinstance(node, dict) else node.items()
+    for key, value in items:
         segments = prefix + (key,)
-        is_node = isinstance(value, KeyStore)
+        is_node = isinstance(value, Mapping)
         yield segments, is_node
         if is_node:
             yield from walk_store_paths(value, segments)
 
 
 def undeclared_store_paths(
-    store: KeyStore[Any], *, oracle: Callable[[str], KeyJudgement],
+    store: Mapping[str, Any],
+    *,
+    oracle: Callable[[str], KeyJudgement],
+    prefix: tuple[str, ...] = (),
 ) -> list[tuple[tuple[str, ...], Judgement]]:
     """Every path in *store* the CLOSED keyspace does not declare (spec §0).
 
@@ -2129,7 +2135,9 @@ def undeclared_store_paths(
     which is the point of it).
 
     ⚑ *store* MUST BE A WHOLE STORE (:func:`_classify_whole_store_path`); a scope-local
-    fragment's contents would all be reported as undeclared.
+    fragment's contents would all be reported as undeclared. A subtree is judged
+    where it WOULD sit by passing that path as *prefix*, which then leads every
+    returned path — judging it without first writing it there.
 
     ⚑ It REPORTS; refusing is the CALLER's decision, and the two live callers take
     it oppositely off one list. ``settings_keyspace_probe.observe`` writes a row and
@@ -2139,7 +2147,7 @@ def undeclared_store_paths(
     """
     judged: dict[tuple[str, ...], Judgement] = {}
     nodes: dict[tuple[str, ...], StoreNode] = {}
-    for segments, is_node in walk_store_paths(store):
+    for segments, is_node in walk_store_paths(store, prefix):
         judgement = _classify_whole_store_path(segments, oracle=oracle)
         judged[segments] = judgement
         nodes[segments] = StoreNode(judgement.verdict, is_node)

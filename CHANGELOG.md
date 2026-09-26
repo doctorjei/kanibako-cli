@@ -109,6 +109,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A config file that is one value or a list, not keys, is now refused, naming the file.** A
+  `box.yaml`, `workset.yaml`, agent `agent.yaml`, system settings file or `kanibako.cfg` whose whole
+  content is a single value (`hello`) or a list (lines starting `- `) was read as empty, in v1.7.2
+  and v1.8.0-rc2 alike: whatever it said was ignored, with no message. The command now stops, exit
+  code 1, with `the config file <path> is a single value, not a mapping of keys` (or `is a list`).
+  An empty file, or one holding only comments, is still read as empty. See `MIGRATION.md` § *2.87
+  A config file that is one value or a list is refused instead of read as empty*.
+
 - **A `config.*` or `system.*` path key set to `null` is now refused by name.** A `null` under the
   Layer-1 `config:` table (`config.data: null`), or at a `system.*` path key in the system
   settings file (`system.backup: null`), became the text `None`. The command then stopped with a message about

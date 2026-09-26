@@ -32,7 +32,7 @@ def _yaml_problem(exc: yaml.YAMLError) -> str:
 
 
 def load_doc(path: Path | None) -> dict:
-    """Load a config document → dict. Missing/empty/non-mapping → {}."""
+    """Load a config document → dict. Missing/empty → {}; any other non-mapping raises."""
     if path is None or not path.exists():
         return {}
     text = path.read_text()
@@ -47,7 +47,17 @@ def load_doc(path: Path | None) -> dict:
             f"the config file {path} is not valid YAML: {_yaml_problem(exc)}. "
             "Fix or remove the file, then retry."
         ) from exc
-    return data if isinstance(data, dict) else {}
+    if data is None:
+        return {}
+    # ⚑ Spec §0: a document that is one value or a list holds no keys to read, and reading it
+    # as empty would silently drop whatever the user meant by it.
+    if not isinstance(data, dict):
+        shape = "a list" if isinstance(data, list) else "a single value"
+        raise ConfigError(
+            f"the config file {path} is {shape}, not a mapping of keys. "
+            "Fix or remove the file, then retry."
+        )
+    return data
 
 
 def dump_doc(path: Path, data: dict) -> None:

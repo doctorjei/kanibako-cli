@@ -1582,6 +1582,38 @@ class TestMalformedSettingsFileIsNamed:
         assert "not valid YAML" in msg               # the CLASS of failure
         assert "line " in msg and "column " in msg   # the parse problem, located
 
+    @pytest.mark.parametrize("text, shape", [
+        ("hello\n", "a single value"),
+        ("42\n", "a single value"),
+        ("- box\n- image\n", "a list"),
+    ])
+    def test_load_doc_refuses_a_document_that_is_not_a_mapping(self, tmp_path, text, shape):
+        """Spec §0: a file that is one value or a list is refused naming the file, never
+        read as empty.
+
+        MUTATION: restore ``else {}`` for a non-mapping top level and every case reds.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.settings.config_io import load_doc
+
+        bad = tmp_path / BOX_META_FILE
+        bad.write_text(text)
+
+        with pytest.raises(ConfigError) as exc:
+            load_doc(bad)
+        msg = str(exc.value)
+        assert str(bad) in msg
+        assert f"is {shape}, not a mapping of keys" in msg
+
+    @pytest.mark.parametrize("text", ["", "\n  \n", "# only a comment\n"])
+    def test_load_doc_reads_an_empty_document_as_empty(self, tmp_path, text):
+        """The control: a document with nothing in it (YAML ``None``) is ``{}``."""
+        from kanibako.settings.config_io import load_doc
+
+        empty = tmp_path / BOX_META_FILE
+        empty.write_text(text)
+        assert load_doc(empty) == {}
+
     def test_valid_yaml_is_untouched(self, tmp_path):
         """The guard is a normalization, not a new refusal."""
         from kanibako.settings.config_io import load_doc

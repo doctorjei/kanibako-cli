@@ -644,11 +644,6 @@ def test_a_row_names_its_ORIGIN_and_the_RUNNING_TEST(clean_probe, monkeypatch, t
   assert row["test"] == "a::sentinel::value (call)"
 
 
-@pytest.mark.writes_undeclared(
-  "box.zippity",
-  reason="a FINDING row only exists where the store carries an undeclared path, so "
-         "the case that pins the row's contents has to write one.",
-)
 def test_a_FINDING_row_carries_the_path_and_the_REASON(clean_probe, monkeypatch, tmp_path):
   """⚑ PROPERTY 3: it reports PATHS, never a verdict about them. The classification
   is ``settings_keyspace``'s — one carrier — and what this module supplies is the
@@ -657,9 +652,12 @@ def test_a_FINDING_row_carries_the_path_and_the_REASON(clean_probe, monkeypatch,
   ⚑ The scope NODE above the finding is NOT reported: ``box`` is a declared
   NAMESPACE carrying a node, which the container rule rescues. A row naming it would
   mean the rescue had stopped being applied.
+
+  A PLAIN DICT, not a KeyStore: a store holding the finding is the write the census
+  refuses, and ``observe`` reads any mapping.
   """
   rows = _armed(monkeypatch, tmp_path)
-  probe.observe(KeyStore({"box": {"zippity": "wibble"}}), origin="test")
+  probe.observe({"box": {"zippity": "wibble"}}, origin="test")
   row = _rows(rows)[-1]
   assert row["count"] == 1
   assert [finding["path"] for finding in row["undeclared"]] == ["box.zippity"]

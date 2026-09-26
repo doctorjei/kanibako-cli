@@ -5402,6 +5402,20 @@ kanibako system set agent.<agent>.bootstrap=tmux
 
 If you meant foreground-only on purpose, `none` says so and behaves the same.
 
+### 2.87 A config file that is one value or a list is refused instead of read as empty
+
+**Read this if a command stops with `the config file <path> is a single value, not a mapping of
+keys` or `… is a list, not a mapping of keys`.** kanibako never writes such a file, so it only
+reaches you through a hand edit.
+
+**What changed.** Every kanibako config file holds keys at its top level. v1.7.2 and v1.8.0-rc2
+read a file whose whole content was one value (`hello`) or a list (lines starting `- `) as if it
+were empty, so nothing in it took effect and nothing said so. It is now refused, naming the file.
+An empty file, or one holding only comments, is still read as empty.
+
+**What to do.** Open the named file. Write what you meant as keys in their tables, or delete the
+file if it holds nothing you need.
+
 ---
 
 ## 3. For plugin authors
