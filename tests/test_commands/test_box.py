@@ -6,7 +6,9 @@ Lifecycle commands (remap / move / convert) are covered in
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -403,6 +405,31 @@ class TestBoxListOrphan:
         assert "orphaned project" not in out
 
 
+def _plant_links(tree: Path, outside: Path) -> dict[str, str]:
+    """Plant one link of every kind in *tree*; returns name -> text.
+
+    Q70/Q74: a copy carries each one VERBATIM — inside, escaping, absolute, dangling, directory.
+    """
+    outside.mkdir(exist_ok=True)
+    (outside / "big.txt").write_text("outside data")
+    (tree / "q70_target.txt").write_text("inner")
+    texts = {
+        "q70_in": "q70_target.txt",
+        "q70_out": os.path.relpath(outside / "big.txt", tree),
+        "q70_abs": str(outside / "big.txt"),
+        "q70_gone": "q70-no-such",
+        "q70_dir": os.path.relpath(outside, tree),
+    }
+    for name, text in texts.items():
+        (tree / name).symlink_to(text)
+    return texts
+
+
+def _assert_links_verbatim(tree: Path, texts: dict[str, str]) -> None:
+    for name, text in texts.items():
+        assert os.readlink(tree / name) == text, f"{tree / name} is not the verbatim link"
+
+
 class TestBoxDuplicate:
     def _make_args(self, source, dest, bare=False, force=False):
         return argparse.Namespace(
@@ -712,6 +739,72 @@ class TestBoxDuplicate:
         # Existing file preserved (dirs_exist_ok merges).
         assert (dst_dir / "existing.txt").read_text() == "keep"
 
+    def test_duplicate_keeps_every_link_verbatim(self, config_file, tmp_home, credentials_dir):
+        """Workspace, box data and home: each link lands with the text it had, none followed."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src_dir = tmp_home / "links_src"
+        src_dir.mkdir()
+        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+        outside = tmp_home / "q70_outside"
+        trees = {"workspace": src_dir, "data": proj.metadata_path, "home": proj.shell_path}
+        texts = {key: _plant_links(tree, outside) for key, tree in trees.items()}
+
+        dst_dir = tmp_home / "links_dst"
+        assert run_duplicate(self._make_args(src_dir, dst_dir, force=True)) == 0
+
+        new_project = std.boxes / "links_dst"
+        _assert_links_verbatim(dst_dir, texts["workspace"])
+        _assert_links_verbatim(new_project, texts["data"])
+        _assert_links_verbatim(new_project / "home", texts["home"])
+
+    def test_force_link_replaces_a_file_or_link(self, config_file, tmp_home, credentials_dir):
+        """--force: a link overwrites a same-named file or link, as the file copy always did."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src_dir = tmp_home / "rl_src"
+        src_dir.mkdir()
+        (src_dir / "f").symlink_to("../elsewhere/f")
+        (src_dir / "l").symlink_to("/abs/l")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+        dst_dir = tmp_home / "rl_dst"
+        dst_dir.mkdir()
+        (dst_dir / "f").write_text("old")
+        (dst_dir / "l").symlink_to("prior")
+
+        assert run_duplicate(self._make_args(src_dir, dst_dir, force=True)) == 0
+
+        assert os.readlink(dst_dir / "f") == "../elsewhere/f"
+        assert os.readlink(dst_dir / "l") == "/abs/l"
+
+    def test_force_link_never_removes_a_directory(self, config_file, tmp_home, credentials_dir):
+        """--force: a directory where a link goes is reported, never removed."""
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src_dir = tmp_home / "rd_src"
+        src_dir.mkdir()
+        (src_dir / "d").symlink_to("../elsewhere")
+        resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+        dst_dir = tmp_home / "rd_dst"
+        (dst_dir / "d").mkdir(parents=True)
+        (dst_dir / "d" / "keep.txt").write_text("keep")
+
+        # Reported by name as a ProjectError (the CLI prints it), never a traceback.
+        from kanibako.errors import ProjectError
+        with pytest.raises(ProjectError) as exc:
+            run_duplicate(self._make_args(src_dir, dst_dir, force=True))
+        assert f"Could not copy the workspace {src_dir} to {dst_dir}; 1 entry failed:" in str(exc.value)
+        assert f"  {src_dir / 'd'}: " in str(exc.value)
+
+        assert not (dst_dir / "d").is_symlink()
+        assert (dst_dir / "d" / "keep.txt").read_text() == "keep"
+
     def test_duplicate_metadata_copy_failure_leaves_no_orphan(
         self, config_file, tmp_home, credentials_dir,
     ):
@@ -1017,6 +1110,54 @@ class TestBoxDuplicateCrossMode:
         assert (ac_project / "marker.txt").read_text() == "dec-data"
         assert not (ac_project / "project-path.txt").exists()
         assert (dst_dir / "code.py").read_text() == "print('dec')"
+
+    def test_duplicate_to_standalone_keeps_every_link_verbatim(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src_dir = tmp_home / "xl_src"
+        src_dir.mkdir()
+        proj = resolve_project(std, config, project_dir=str(src_dir), initialize=True)
+        outside = tmp_home / "q70_outside"
+        trees = {"workspace": src_dir, "data": proj.metadata_path, "home": proj.shell_path}
+        texts = {key: _plant_links(tree, outside) for key, tree in trees.items()}
+
+        dst_dir = tmp_home / "xl_dst"
+        assert run_duplicate(self._make_args(src_dir, dst_dir, "standalone")) == 0
+
+        _assert_links_verbatim(dst_dir / "workspace", texts["workspace"])
+        _assert_links_verbatim(dst_dir / "box_data", texts["data"])
+        _assert_links_verbatim(dst_dir / "box_data" / "home", texts["home"])
+
+    def test_duplicate_standalone_to_local_keeps_every_link_verbatim(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src_dir = tmp_home / "sl_src"
+        src_dir.mkdir()
+        proj = resolve_standalone_project(
+            std, config, project_dir=str(src_dir), initialize=True,
+        )
+        outside = tmp_home / "q70_outside"
+        trees = {
+            "workspace": proj.project_path, "data": proj.shell_path.parent,
+            "home": proj.shell_path,
+        }
+        texts = {key: _plant_links(tree, outside) for key, tree in trees.items()}
+
+        dst_dir = tmp_home / "sl_dst"
+        assert run_duplicate(self._make_args(src_dir, dst_dir, "primary")) == 0
+
+        new_project = std.boxes / "sl_dst"
+        _assert_links_verbatim(dst_dir, texts["workspace"])
+        _assert_links_verbatim(new_project, texts["data"])
+        _assert_links_verbatim(new_project / "home", texts["home"])
 
     def test_duplicate_to_local_copy_failure_leaves_no_orphan(
         self, config_file, tmp_home, credentials_dir,
@@ -2033,6 +2174,22 @@ class TestBoxDuplicateFromWorkset:
         assert ac_project.is_dir()
         assert (ac_project / "marker.txt").read_text() == "ws-dup-marker"
         assert (dest / "code.py").read_text() == "print('ws-dup')"
+
+    def test_duplicate_workset_keeps_every_workspace_link_verbatim(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.commands.box import run_duplicate
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws, _proj = self._make_workset_proj(tmp_home, std, config)
+        workspace_path = ws.workspaces_dir / "ws-proj"
+        texts = _plant_links(workspace_path, tmp_home / "q70_outside")
+        dest = tmp_home / "dup_ws_links_dst"
+
+        assert run_duplicate(self._make_args(workspace_path, dest, "primary")) == 0
+
+        _assert_links_verbatim(dest, texts)
 
     def test_duplicate_workset_to_standalone(self, config_file, tmp_home, credentials_dir):
         from kanibako.commands.box import run_duplicate

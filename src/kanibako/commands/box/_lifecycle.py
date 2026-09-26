@@ -59,7 +59,7 @@ from kanibako.settings.paths import (
     unregister_primary_box_name,
     write_vault_gitignore,
 )
-from kanibako.tree_copy import copy_tree_keeping_links
+from kanibako.tree_copy import copy_tree_keeping_links, failed_entries
 from kanibako.utils import write_project_gitignore
 from kanibako.project.workset import (
     Workset,
@@ -960,25 +960,13 @@ def _copy_vault_leaf_contents(src: Path, dst: Path) -> None:
 
 
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str:
-    """Name the vault leaf and each entry ``copytree`` could not copy.
-
-    ``copytree`` raises with ``args[0]`` a list of ``(source, destination, reason)``;
-    any other shape falls back to the error's own text.
-    """
-    failures = err.args[0] if err.args else None
-    if not isinstance(failures, list):
+    """Name the vault leaf and each entry ``copytree`` could not copy."""
+    listing = failed_entries(err)
+    if listing is None:
         return f"Could not carry the vault contents of {src} to {dst}: {err}"
-    shown = 5
-    lines = []
-    for entry_src, _entry_dst, why in failures[:shown]:
-        lines.append(f"  {entry_src}: {why}")
-    if len(failures) > shown:
-        lines.append(f"  … and {len(failures) - shown} more")
     return (
-        f"Could not carry the vault contents of {src} to {dst}; "
-        f"{len(failures)} entr{'y' if len(failures) == 1 else 'ies'} failed:\n"
-        + "\n".join(lines)
-        + "\nThe relocation was aborted."
+        f"Could not carry the vault contents of {src} to {dst}; {listing}\n"
+        f"The relocation was aborted."
     )
 
 

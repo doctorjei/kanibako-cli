@@ -22,7 +22,23 @@ from kanibako.settings.paths import (
     primary_box_name_for_workspace,
     resolve_any_project,
 )
+from kanibako.tree_copy import copy_tree_keeping_links
 from kanibako.utils import confirm_prompt
+
+
+def _keep_links_filter(member: tarfile.TarInfo, dest_path: str) -> tarfile.TarInfo:
+    """The "data" extraction filter, except that a symlink keeps its text (Q70).
+
+    The "data" filter refuses an absolute or escaping symlink, which kanibako copies verbatim.
+    Every other member, a hard link included, still meets its checks: a hard link to a host
+    file would let a later member write through it.
+    """
+    if member.issym():
+        # None = "do not set", as ``data_filter`` itself does; typeshed types these as int/str.
+        return tarfile.tar_filter(member, dest_path).replace(
+            uid=None, gid=None, uname=None, gname=None, deep=False,  # type: ignore[arg-type]
+        )
+    return tarfile.data_filter(member, dest_path)
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -149,7 +165,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
     try:
         try:
             with tarfile.open(str(archive_file), "r:xz") as tar:
-                tar.extractall(temp_dir, filter="data")
+                tar.extractall(temp_dir, filter=_keep_links_filter)
         except (tarfile.TarError, OSError) as e:
             print(f"Error: Failed to extract archive: {e}", file=sys.stderr)
             return 1
@@ -256,16 +272,17 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             )
             return 1
 
-        shutil.copytree(str(archive_hash_dir), str(proj.metadata_path))
+        copy_tree_keeping_links(archive_hash_dir, proj.metadata_path)
 
         # Remove info file from restored data
         restored_info = proj.metadata_path / "kanibako-archive-info.txt"
         restored_info.unlink(missing_ok=True)
 
         # ⚑ Re-assert the canon skeleton on the RESTORED home.  ``tar.extractall``
-        # runs with filter="data", which STRIPS ownership AND NORMALISES directory
-        # modes (to 0755) — so the extracted skeleton is host-user-owned (= the
-        # agent, in-box) and plainly writable.  This call RESTORES both the ownership
+        # runs ``_keep_links_filter`` ("data" for every member but a symlink), which
+        # STRIPS ownership AND NORMALISES directory modes (to 0755) — so the
+        # extracted skeleton is host-user-owned (= the agent, in-box) and plainly
+        # writable.  This call RESTORES both the ownership
         # and the declared 555/444 modes; it is not merely an ownership top-up.
         if proj.shell_path.is_dir():
             materialize_canon_skeleton(proj.shell_path)
@@ -300,7 +317,7 @@ def _peek_archive_info(archive_file: Path) -> dict[str, str] | None:
     try:
         try:
             with tarfile.open(str(archive_file), "r:xz") as tar:
-                tar.extractall(temp_dir, filter="data")
+                tar.extractall(temp_dir, filter=_keep_links_filter)
         except (tarfile.TarError, OSError):
             return None
         entries = list(Path(temp_dir).iterdir())
