@@ -902,7 +902,7 @@ class TestSuppressedAuthPathIsUnreachable:
     def _auth(self, *, agent_name, selection_level, support):
         """*support* mirrors what the REAL floor computes.
 
-        ``_launch_snapshot_inputs`` derives ``meta.agent.<a>.auth.share_support``
+        ``settings_launch.resolve_inputs`` derives ``meta.agent.<a>.auth.share_support``
         from the resolved target's DESCRIPTOR, and for a no-agent box (``"shell"``
         / blank) there is no target — ``resolve_target("shell")`` raises KeyError
         and the floor records ``False``. Passing ``True`` there would be the test

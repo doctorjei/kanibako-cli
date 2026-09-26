@@ -163,3 +163,24 @@ class TestTheSelectionCannotBeOmitted:
         system_settings_path=None, agent_cfg_path=None,
         desc=None, install=None, target=None, agent_cfg=None,
       )
+
+
+class TestEveryResolveFoldsTheChain:
+  """The image / helper resolves fold the chain too — no caller-kind conditional."""
+
+  @pytest.mark.parametrize("mode", ("primary", "named"))
+  def test_a_narrow_resolve_names_the_same_per_agent_dir(self, mode, request, std):
+    """A NARROW resolve (the image / helper shape) carries the SELECTED node's dir.
+
+    INVERT: key the chain on ``narrow_bind_dests is None`` again and the leaf is
+    absent here.
+    """
+    proj = request.getfixturevalue(f"{mode}_proj")
+    snapshot, _deliveries = start_cmd._resolve_launch_snapshot(
+      std=std, proj=proj, agent_name=NODE,
+      system_settings_path=None, agent_cfg_path=None,
+      desc=None, install=None, target=None,
+      include_base_families=False, narrow_bind_dests=frozenset(),
+      cli_level=_selection(),
+    )
+    assert snapshot_leaf(snapshot, BOX_AUTH_PATH) == _credential_source(std, proj)

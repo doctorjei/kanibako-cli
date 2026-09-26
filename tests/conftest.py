@@ -482,7 +482,8 @@ def start_mocks():
             from kanibako.commands.start import BootstrapChoice
             m_bootstrap_program = MagicMock(return_value="tmux")
             m_launch_mount_stubs["_bootstrap_choice"].side_effect = (
-                lambda proj, system_settings_path, agent_id, *, agent_path=None:
+                lambda proj, system_settings_path, agent_id, *, std,
+                selection_level, agent_path=None:
                 BootstrapChoice(m_bootstrap_program(), agent_id)
             )
             m_launch_mount_stubs["_resolve_bootstrap_program"].return_value = (

@@ -28,10 +28,10 @@ from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
 from kanibako.commands.start import (
     _channel_default_categories,
     _emit_category_mounts,
-    _launch_snapshot_inputs,
     _resolve_launch_snapshot,
     _seed_channel_files,
 )
+from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 from tests.support.narrow_resolve import table_bind_dests
 from kanibako.settings.paths import (
     WorksetSpec,
@@ -260,17 +260,13 @@ class TestChannelDefaultCategories:
 def _workset_anchor(std, proj):
     """The ``workset_anchor`` floor fragment the LIVE launch path produces.
 
-    ⚑ Unpacked BY NAME, not by index. This was ``[5]`` and silently started
-    returning ``cascade_box_path`` when P3 dropped an element from the tuple —
-    a positional index into the tuple fails as a confusing ``TypeError`` three
-    frames away (or, worse, could pick a same-typed neighbor and pass). The full
-    unpack fails loudly AT THIS LINE on any arity change.
+    Read BY NAME off :class:`~kanibako.settings.settings_launch.LaunchInputs`, so an
+    added or removed field cannot shift which fragment this returns.
     """
-    (
-        _ctx, _resolved_sys, _meta_runtime, _meta_identity, workset_anchor,
-        _auth_chain, _cascade_box_path, _cascade_workset_path,
-    ) = _launch_snapshot_inputs(std=std, proj=proj, agent_name="shell")
-    return workset_anchor
+    return resolve_inputs(
+        subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="shell",
+        system_path=std.settings,
+    ).workset_anchor
 
 
 class TestWorksetChannelFloorLeaf:
@@ -287,7 +283,7 @@ class TestWorksetChannelFloorLeaf:
     Tests that pass their own ``workset_channels=`` dict into
     ``workset_anchor_floor`` (e.g. ``test_categories_live``) CANNOT catch this —
     they assert what the f-string does with a leaf they supplied themselves.  This
-    drives ``_launch_snapshot_inputs``, so the leaf comes from the real
+    drives ``settings_launch.resolve_inputs``, so the leaf comes from the real
     ``workset_channel_paths`` production site.
     """
 

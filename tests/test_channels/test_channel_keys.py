@@ -302,7 +302,7 @@ class TestTheFloorCarriesTheWholeFamily:
     def test_the_launch_floor_installs_channelroot_and_all_six_leaves(
         self, named_proj, std,
     ):
-        from kanibako.commands.start import _workset_channel_floor_values
+        from kanibako.settings.settings_launch import _workset_channel_floor_values
         from kanibako.settings.settings_launch import workset_anchor_floor
 
         channelroot, leaves = _workset_channel_floor_values(std, named_proj)
@@ -321,7 +321,7 @@ class TestTheFloorCarriesTheWholeFamily:
         """⚑ standalone: the root and the four LOCAL leaves are ``<None>``, the two
         partition keys are not.  The ``<None>`` is SUPPLIED as a present ``None``, never
         omitted ([R177]): an absent key renders ``""`` inside an embedded ``@``-ref."""
-        from kanibako.commands.start import _workset_channel_floor_values
+        from kanibako.settings.settings_launch import _workset_channel_floor_values
         from kanibako.settings.settings_launch import workset_anchor_floor
 
         channelroot, leaves = _workset_channel_floor_values(std, standalone_proj)

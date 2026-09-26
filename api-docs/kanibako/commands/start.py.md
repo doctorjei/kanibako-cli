@@ -44,16 +44,16 @@ def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path
 def validate_socket_path(socket_path: Path) -> None
 def _agent_critical_dests() -> list[tuple[str, str]]
 def _link_persona_share(node_link: Path, harness_dir: Path, *, what: str, logger) -> None
-def _bootstrap_choice(proj, system_settings_path: 'Path | None', agent_id: str, *, agent_path: 'Path | None'=None) -> BootstrapChoice
+def _bootstrap_choice(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', agent_path: 'Path | None'=None) -> BootstrapChoice
 def _bootstrap_setting(choice: BootstrapChoice) -> str | None
 def _no_bootstrap_reason(choice: BootstrapChoice) -> str
 def _declared_behavior(key: str) -> str
 def _declared_behavior_bool(key: str) -> bool
 def _bootstrap_default() -> str
 def _is_no_bootstrap(program: str | None) -> bool
-def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, key: str, floor: str, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
-def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, key: str, floor: str, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'tuple[str | None, str | None]'
-def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, agent_cfg, *, agent_cfg_path: 'Path | None'=None) -> 'str | None'
+def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
+def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'tuple[str | None, str | None]'
+def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, agent_cfg, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> 'str | None'
 def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> BootstrapChoice
 def _bootstrap_available(program: str | None=None) -> bool
 def _check_box_components(proj) -> str | None
@@ -74,11 +74,10 @@ def _bootstrap_attach(program: str) -> list[str]
 def _tweakcc_cache_dir(std, agent_id: str) -> Path
 def _apply_tweakcc(install, agent_cfg, cache_dir, image, runtime_cmd, logger)
 def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]
-def _refuse_retired_behavior(*, proj, agent_id, system_settings_path, agent_cfg_path) -> None
 def _deliver_panel_permissions(*, target, proj, access, provider, logger)
-def _assemble_image_sharing_mounts(*, merged, proj, runtime, std, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, logger)
+def _assemble_image_sharing_mounts(*, merged, proj, runtime, std, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, logger, selection_level)
 def _assemble_launch_env(*, std, proj, deliveries, env_slots, extra_mounts, logger)
-def _start_helper_hub(*, runtime, image, container_name, proj, target, install, binary_mnts, std, container_env, entrypoint, box_shell, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts)
+def _start_helper_hub(*, runtime, image, container_name, proj, target, install, binary_mnts, std, container_env, entrypoint, box_shell, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, selection_level)
 def _persist_or_announce_flags(proj, box_settings_path: Path, *, image_override: str | None, share_images: bool) -> None
 def _run_container(*, project_dir: str | None, entrypoint: str | None, image_override: str | None, new_session: bool, continue_override: bool=False, safe_mode: bool, autonomous: bool=False, resume_mode: bool, extra_args: list[str], no_helpers: bool=False, no_auto_auth: bool=False, browser: bool=False, share_images: bool=False, persistent: bool=False, explicit_persistent: bool=False, explicit_ephemeral: bool=False, detach: bool=False, restart: bool=False, model_override: str | None=None, cli_env: list[str] | None=None, box_shell_mode: bool=False, explicit_agent: str | None=None, setup_only: bool=False, print_container: bool=False, warm_only: bool=False) -> int
 def _print_setup_did_not_take(target) -> None
@@ -105,11 +104,10 @@ def _preflight_env_persona(agent_cfg, endpoint: str, keyspace_model: object, wir
 def _persona_no_endpoint_error(agent_id: str, wiring) -> str
 def _preflight_config_file_persona(agent_id: str, agent_cfg, endpoint: str, keyspace_model: object, wiring, display: str, *, bundle=None, target=None, probe: bool=False, logger=None) -> 'tuple[str | None, str | None, CodexModelProvider | None]'
 def _codex_persona_token_error(agent_cfg, wiring, endpoint: str, display: str, bundle=None) -> 'str | None'
-def _effective_behavior_for_display(target, agent_cfg, project_toml, *, system_settings_path, workset_config_path=None, node_name=None, agent_cfg_path=None) -> dict[str, str]
+def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None) -> dict[str, str]
 def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None')
 def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, agent_cfg, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object]'
 def _persona_model_state(snapshot: 'KeyStore', active_agent: str) -> object
-def _launch_snapshot_inputs(*, std, proj, agent_name: str)
 def _merge_default_categories(table: dict[str, object], incoming: 'Mapping[str, object]', *, family: str, origins: dict[tuple[str, str], str]) -> None
 def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, target=None, agent_cfg=None, persona_values: 'Mapping[str, str] | None'=None, socket_path=None, log_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None', cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None)
 def _annotate_pref_origin(exc, prefs)
@@ -154,8 +152,6 @@ def _declared_agent_env_key(snapshot, agent_id: str, var: str) -> 'str | None'
 def _refuse_realized_twin(var: str, declared_key: str, *, agent_id: str, driving_key: str, is_access: bool) -> None
 def _channel_default_categories(std, proj) -> 'core_defaults.BindArmTable'
 def _seed_channel_files(std, proj) -> None
-def _workset_channel_floor_values(std, proj) -> 'tuple[str | None, dict[str, str]]'
-def _workset_workspaces_floor_value(mode: str, ws_root_literal: 'str | None') -> 'str | None'
 def _core_default_categories(std, proj, *, guarantee_create: bool=True) -> 'core_defaults.BindArmTable'
 def _canon_reprotect_hook(proj, logger)
 def _kanibako_mounts()

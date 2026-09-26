@@ -244,10 +244,10 @@ def _termini(std, config_file, proj, target):
     # agent-behavior resolves (_agent_scalar_pick) a launch runs ahead of the main
     # snapshot.
     drive("bootstrap_choice", lambda: start_cmd._bootstrap_choice(
-      proj, None, "claude", agent_path=None,
+      proj, None, "claude", std=std, selection_level=selection, agent_path=None,
     ))
     drive("effective_transform", lambda: start_cmd._effective_transform(
-      proj, None, "claude", target, None,
+      proj, None, "claude", target, None, std=std, selection_level=selection,
     ))
     # _run_container's _resolve_box_launch_decisions — the auth/decisions resolve.
     drive("box_launch_decisions", lambda: start_cmd._resolve_box_launch_decisions(

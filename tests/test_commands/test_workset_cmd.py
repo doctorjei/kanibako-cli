@@ -1527,13 +1527,14 @@ class TestWorksetCmdSystemFloor:
         A key present in one carrier and absent in the other reds here whatever it is
         called, which is exactly what naming the keys could not do.
         """
-        from kanibako.commands.start import _launch_snapshot_inputs
         from kanibako.settings.paths import resolve_project
+        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        resolved_sys = _launch_snapshot_inputs(
-            std=std, proj=proj, agent_name="claude",
-        )[1]
+        resolved_sys = resolve_inputs(
+            subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="claude",
+            system_path=std.settings,
+        ).system_floor
         assert resolved_sys, "the launch floor is empty; this oracle would be vacuous"
 
         name, ws_root = self._workset(std, tmp_home)
@@ -1552,27 +1553,22 @@ class TestWorksetCmdSystemFloor:
 
         Two hand-written maps would each keep their own copy and neither would notice.
         """
-        from kanibako.commands.start import _launch_snapshot_inputs
         from kanibako.settings import paths as paths_mod
         from kanibako.settings.paths import resolve_project, system_path_floor
+        from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
         dropped = "system.channelroot"
         monkeypatch.setattr(
             paths_mod, "system_path_floor",
             lambda s: {k: v for k, v in system_path_floor(s).items() if k != dropped},
         )
-        # ⚑ ``start`` binds the name at import, so the launch side needs its own patch;
-        # ``workset_cmd`` imports it lazily and picks the module attribute up.
-        from kanibako.commands import start as start_mod
-
-        monkeypatch.setattr(
-            start_mod, "system_path_floor", paths_mod.system_path_floor,
-        )
-
+        # Both sides import it lazily (``settings_launch.resolve_inputs`` and
+        # ``workset_cmd``), so the one module patch reaches them both.
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        resolved_sys = _launch_snapshot_inputs(
-            std=std, proj=proj, agent_name="claude",
-        )[1]
+        resolved_sys = resolve_inputs(
+            subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="claude",
+            system_path=std.settings,
+        ).system_floor
         assert dropped not in resolved_sys
 
         name, ws_root = self._workset(std, tmp_home)

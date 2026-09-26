@@ -1195,7 +1195,7 @@ def _workset_preview_entries(ws, std, ws_config: Path) -> "list[CategoryEntry]":
 
     # Fold the resolved Layer-2 system.* tier into the floor so a value's @-ref (e.g.
     # @system.channelroot) resolves from the snapshot. Keys are flat dotted; assemble explodes.
-    # ⚑⚑ THE SAME BUILDER THE LAUNCH USES (``commands/start._launch_snapshot_inputs``),
+    # ⚑⚑ THE SAME BUILDER THE LAUNCH USES (``settings_launch.resolve_inputs``),
     # because this display's whole job is to say what a launch would mount. Written out
     # by hand, it carried three of the eight keys — so a workset binding sourcing
     # ``@system.channels.chat`` mounted at launch and was SILENTLY OMITTED from this

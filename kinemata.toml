@@ -3555,7 +3555,7 @@ authority = "declared"
 translate = { pattern = '^@meta\.agent\.<agent>\.path/', replacement = "@config.agents/gemma+claude/" }
 translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gemma℘claude." }
 
-# ⚑ THE LAUNCH'S OWN WIRING, FED `@`-REFS. `commands.start._workset_channel_floor_values`
+# ⚑ THE LAUNCH'S OWN WIRING, FED `@`-REFS. `settings_launch._workset_channel_floor_values`
 # is what the launch hands `workset_anchor_floor`, and the oracle calls both with
 # the MODE'S workset root spelled `@meta.workset.path` -- `std.primary_workset` for
 # a primary box, the group's `root` for a named one -- and every other root
@@ -3609,7 +3609,7 @@ translate_identifier = { pattern = '^agent\.<agent>\.', replacement = "agent.gem
 registry = "workset-channels-primary"
 command = ["{python}", "-c", """
 import os, tempfile
-from kanibako.commands.start import _workset_channel_floor_values
+from kanibako.settings.settings_launch import _workset_channel_floor_values
 from kanibako.settings.settings_launch import workset_anchor_floor
 from kinemata_views import ref_token_project, ref_token_standard_paths
 with tempfile.TemporaryDirectory() as scratch:
@@ -3632,7 +3632,7 @@ translate = { pattern = '^@workset\.channel(?:root/|s\.)', replacement = "@meta.
 registry = "workset-channels-named"
 command = ["{python}", "-c", """
 import os, tempfile
-from kanibako.commands.start import _workset_channel_floor_values
+from kanibako.settings.settings_launch import _workset_channel_floor_values
 from kanibako.settings.settings_launch import workset_anchor_floor
 from kinemata_views import ref_token_project, ref_token_standard_paths
 with tempfile.TemporaryDirectory() as scratch:
@@ -3671,7 +3671,7 @@ translate = { pattern = '^@workset\.channel(?:root/|s\.)', replacement = "@meta.
 registry = "workset-partition"
 command = ["{python}", "-c", """
 import os, tempfile
-from kanibako.commands.start import _workset_channel_floor_values
+from kanibako.settings.settings_launch import _workset_channel_floor_values
 from kinemata_views import ref_token_project, ref_token_standard_paths
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
@@ -4054,9 +4054,9 @@ translate_identifier = { pattern = '^meta\.agent\.<agent>\.', replacement = "met
 
 # ⚑ THE LAUNCH'S WIRING, FED `@`-REFS (`kinemata_views.box_address_floor`): the
 # derivation on the mode-aware sentinel stubs, handed to `meta_identity_floor` through
-# `settings_launch.box_address_args` -- the function `commands.start` unpacks into the
+# `settings_launch.box_address_args` -- the function `settings_launch.resolve_inputs` unpacks into the
 # same call, so the slot each address fills is the launch's own. What is not proved:
-# that the launch keeps calling it (one call site, `_launch_snapshot_inputs`).
+# that the launch keeps calling it (one call site, `settings_launch.resolve_inputs`).
 # `translate` is the manifest's intra-family hop, one per row -- `@workset.channels.<leaf>`
 # unrolled to that leaf's own declared default: `mailboxes` and `share_global` as
 # `workset-partition` compares them, `share` (`@workset.channelroot/share`, with

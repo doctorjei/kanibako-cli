@@ -415,8 +415,8 @@ It still cannot simply BE the `@meta.box.path/box.yaml` `@`-ref: a bootstrap anc
 derive from a key at the scope it bootstraps, and this one resolves BEFORE the cascade exists —
 unlike the launch-time home bind, which is why THAT one may root at `@meta.box.path`. It is
 materialized as the RESOLVED LITERAL the launch computes, the SAME value the cascade uses as its
-box-tier file path (single-sourced through `paths.box_workset_settings_paths` in `start.py`'s
-`_launch_snapshot_inputs`), so the anchor and the cascade cannot drift. The parameter stays optional
+box-tier file path (single-sourced through `paths.box_workset_settings_paths` in
+`resolve_inputs`), so the anchor and the cascade cannot drift. The parameter stays optional
 for narrow/partial resolves that materialize no box tier; the launch always passes a real path.
 
 `meta.box.{workspace(named),container_name,helper_num}` per the spec are non-bind RENDER targets
@@ -529,7 +529,7 @@ the no-agent path.
 `targets.assembly.resolve_mode` / `assemble_argv`) takes its argv fragments from HERE — the keyspace
 is the single source, and the descriptor only ever feeds it. There is deliberately NO fallback to
 the descriptor: a descriptor-bearing launch whose snapshot lacks the grammar is a BUILD BUG (the
-materialization and the launch resolve share `_launch_snapshot_inputs`), and falling back would
+materialization and the launch resolve share `resolve_inputs`), and falling back would
 silently reintroduce the second source. It raises `SettingsError` naming the key instead, and type-
 checks each fragment as a list of strings.
 
@@ -646,7 +646,7 @@ through them. ⚑ **TWO MODE GATES, NOT ONE:** the four workset-LOCAL leaves com
 `workset_channel_paths` (PRIMARY/NAMED only), the two ALL-PROJECTS leaves from
 `workset_partition_paths` (every mode, standalone included). So this argument is **not `None` for a
 standalone box** — the gate is per leaf and lives at the caller,
-`start.py::_workset_channel_floor_values`. Treating the whole family as one `None`-for-standalone
+`_workset_channel_floor_values` (this module, called by `resolve_inputs`). Treating the whole family as one `None`-for-standalone
 group is how three of the six lost their floor. For STANDALONE the builder itself supplies the four
 LOCAL leaves as a present `None` (`_WORKSET_LOCAL_CHANNEL_LEAVES`, below), and REFUSES a caller value
 for one of them.
@@ -816,6 +816,45 @@ validated ALONGSIDE the root because a broken source does not always produce a b
 (`commands/start.py._install_assembly_collapse`). One reader, so a dotted read off a resolved
 snapshot cannot acquire a second spelling with its own idea of what absence looks like.
 
+## `resolve_inputs` — the ONE box input builder (`LaunchInputs`)
+
+`resolve_inputs(*, subject, std, proj, agent_name, system_path)` builds everything a box resolve
+hands `build_launch_snapshot` besides its own extras, as a frozen `LaunchInputs`: the ctx
+(`agent_select.launch_resolve_ctx`, the same builder the selection pre-pass uses), the system
+settings file, the resolved `system.*` path tier (`paths.system_path_floor` → `system_floor`), the
+`meta.runtime.*`, `meta.*` identity and layout-anchor floors, the auth chain, the mode-aware
+(box, workset) settings-file pair (`paths.box_workset_settings_paths`, the same pair the
+`meta.box.settings` anchor names), and the `pref.*` requests of that pair. A resolver passes
+`**inputs.as_kwargs()` plus its own extras; `system_floor` is not a builder keyword, so each caller
+folds it into its own `default_categories`.
+
+Callers: `commands/start._resolve_launch_snapshot` (the main launch, the image / helper resolves,
+`box show --effective`, the create-time seed and sync), `_resolve_box_auth_source`,
+`_resolve_box_launch_decisions`, `_agent_scalar_pick` and `_effective_behavior_for_display`. It
+replaced `commands/start._launch_snapshot_inputs` and the hand-built ctx the two focused behavior
+reads carried, so a behavior value spelled `@meta.workset.path/…` or `@workset.auth.path/…` answers
+in `bootstrap` / `transform` / `--effective` as it does at launch.
+
+* ⚑ **Built PER AGENT.** Every field but the file pair and the prefs depends on *agent_name*
+  (the ctx's `$AGENT`, the identity floor, the per-agent auth dir), so an instance is never reused
+  across an agent change — nothing caches one.
+* **Only `ResolveSubject.BOX` is built.** The workset preview and the box-less `load_merged_config`
+  are later subjects; any other subject raises `ValueError`.
+* **The descriptor lookup is TOLERANT only of absence.** No matching target (`KeyError`) or one
+  lacking a `meta.agent.<a>.name` (`ValueError`) is non-capable; any other error propagates, since a
+  transient failure must not silently disable credential sharing.
+* **STANDALONE `meta.runtime.ws_root` is `proj.metadata_path`** (the project ROOT), not
+  `proj.project_path` (its `workspace` subdir) — spec §2c and the §4 worked example.
+* **A box with no name yet gets no name-derived key** (`_omit_name_derived`). The `run_start`
+  pre-flight reads `bootstrap` before create, when `proj.name` is unset and no channel address can
+  be derived. Spec §0 forbids a fabricated default, so the four `meta.box.*` name and address keys
+  are dropped, then every key whose value `@`-refers to a dropped one, to a fixed point
+  (`meta.box.path` in primary / named, and through it `meta.box.home` and `box.canon`; primary /
+  named `meta.box.settings` is dropped by name, since it arrives as a literal). A reader that needs
+  one sees it absent. The refs are read by `expand_expr`, the one parser.
+* **The selection is the caller's.** The main launch's *cli_level* carries flags as well, so the
+  inputs do not hold it; every caller passes the level it has (see *cli_level* below).
+
 ## `build_launch_snapshot` — the level splice
 
 `build_launch_snapshot` folds the behavior floor (mapped to `agent.default.<key>` — OS1, the
@@ -843,9 +882,8 @@ the snapshot is byte-identical to a pre-persona build.
 
 *auth_chain* / *meta_runtime* / *meta_identity* / *workset_anchor* are the four floor fragments
 described above, each folded into the SAME floor so `expand` resolves its `@`-ref chain ONCE
-(single-route). All four are built by ONE builder, `commands/start._launch_snapshot_inputs`.
-*auth_chain* is `None` only for the image / helper resolves, which emit nothing but their injected
-table; every resolve that delivers a user row folds it (see the *cli_level* list below). The `meta.*` fragments are
+(single-route). All four are built by ONE builder, `resolve_inputs` (below), and every box resolve
+folds all four — the image / helper resolves included (see the *cli_level* list below). The `meta.*` fragments are
 construct-set RO (§0): NO scope FILE may override them, since `meta.*` is not in the config-set
 settable known-key list, so the floor is their sole source. A scope FILE MAY legitimately override a
 `workset.*` key (it is a settable settings tier), so those sit at the floor (base) and a workset/box
@@ -898,11 +936,12 @@ that way is what cost the credential path once already:
   credential dir names the agent the STORED settings select, not the one running — or, with none
   stored, collapses to the workset auth ROOT. That is the two auth resolves
   (`_resolve_box_auth_source` / `_resolve_box_launch_decisions`, on the launch AND on stop /
-  creds-watch / reauth / the `--effective` display) and every `_resolve_launch_snapshot` that
-  delivers a user row: the main launch, `box show --effective`, the create-time seed
-  (`_apply_init_seeds`) and sync (`_sync_box_at_create`). The auth resolves and the two create-time
-  resolves take it as a REQUIRED keyword for that reason.
-* **Not needed** by the image / helper resolves, which carry no auth chain.
+  creds-watch / reauth / the `--effective` display), every `_resolve_launch_snapshot` — the main
+  launch, `box show --effective`, the create-time seed (`_apply_init_seeds`) and sync
+  (`_sync_box_at_create`), and the image / helper resolves — and the focused behavior reads
+  (`_agent_scalar_pick` behind `bootstrap` / `transform`, `_effective_behavior_for_display`). Every
+  box resolve takes its inputs from `resolve_inputs`, so every one folds the chain, and each takes
+  the selection as a REQUIRED keyword.
 * `None` for a NO-AGENT box (`kanibako shell`, `--entrypoint`): no level is installed — never one pinned to the `"general"` template slot — so `@system.agent` answers the STORED default. ⚑ A known gap, not a design: keyspec §2b makes that box's effective `@system.agent` `shell`, so `meta.box.auth.workset_path` names the stored agent's directory there.
 
 ⚑ **WHICH RESOLVES SEE THE EPHEMERAL FLAGS** (P8, spec §1A *"EPHEMERAL, always … a flag NEVER mutates
@@ -1004,12 +1043,22 @@ entry inside that noun's own table, by dropping the whole table (measured), so t
    top-level stray in a system, workset or box file built silently and rode the snapshot.
 4. `_refuse_retired_spelling`, called BY the refusal once it has findings — the message CHOICE.
 
+⚑ **Before the resolve, beside the `config:`-table refusal, `_refuse_retired_behavior` scans the same
+files** (`cascade_view` of each, most-specific first) for a RETIRED behavior spelling (R-41/RQ-2:
+`auto_approve` → `access`) and refuses by name. It used to be `commands/start._refuse_retired_behavior`,
+a launch-only seam with its own file list; it now runs in EVERY builder caller, and its cure names the
+agent (*agent_name*, unless it is the `shell` slot) and, at the box tier, the box — the
+`meta.box.name` in the caller's *meta_identity*. A resolve with no identity floor
+(`config.load_merged_config`) gets the `<box>` / `<agent>` placeholders, as (4) does. (4)'s behavior
+half stays for the workset preview, which does not run this builder yet.
+
 (2) and (3) raise independently, so a file carrying BOTH a bare-relative path value and an
 undeclared key reports the path value first and the undeclared key on the next run.
 
 ⚑ **WHY (4) EXISTS.** Every retired spelling is also an undeclared key, so (3) reaches it first —
-and the seams that own the tailored retirement messages (`agent_select` for the selection keys,
-`commands/start.py` for the behavior key) both sit DOWNSTREAM of the resolve. Arming (3) therefore
+and the seam that owns the tailored selection message (`agent_select`) sits DOWNSTREAM of the
+resolve; the behavior key's own seam (`_refuse_retired_behavior`, above) runs before it, but only for
+`build_launch_snapshot` callers. Arming (3) therefore
 took those messages away from the users they were written for: a `box.yaml` carrying
 `box: {agent_name: claude}` got "not a settings key", and the ~40 lines `MIGRATION.md`'s "Settings
 keys renamed or retired" section spends on the cure reached nobody. Measured, and mutation-proved

@@ -112,9 +112,9 @@ class AgentSelection:
 def launch_resolve_ctx(std, proj, agent_name: "str | None"):
     """Build the host-side :class:`~kanibako.settings.settings_resolve.ResolveCtx`.
 
-    The ONE ctx builder for every snapshot resolve — ``start.py``'s
-    ``_launch_snapshot_inputs`` calls this too, so the selection pre-pass and the
-    launch snapshot cannot drift in what ``@config.*`` / ``$XDG_*`` / ``~`` mean.
+    The ONE ctx builder for every snapshot resolve —
+    ``settings_launch.resolve_inputs`` calls this too, so the selection pre-pass and
+    the launch snapshot cannot drift in what ``@config.*`` / ``$XDG_*`` / ``~`` mean.
     The llm-doc carries the §1A resolver SPLIT and the xdg map's shape.
 
     ⚑ *agent_name* is ``None`` for the SELECTION pass — no agent is known yet, so a

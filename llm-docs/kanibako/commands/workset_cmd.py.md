@@ -314,9 +314,10 @@ the root. The command says so when it happens. *(Verified: `share add <ws> reldi
 …)".)*
 
 The DEFAULT workset REFUSES a relative source instead, because it has no bindings root. The old
-root-join lived in TWO places — `_launch_snapshot_inputs` in `start.py` and `_print_effective_shares`
-here — and NEITHER applied to the default workset, so a relative source there never joined and went
-to the mount spec as a relative string, resolved against whatever the process CWD happened to be.
+root-join lived in TWO places — `_launch_snapshot_inputs` in `start.py` (since replaced by
+`settings_launch.resolve_inputs`) and `_print_effective_shares` here — and NEITHER applied to the
+default workset, so a relative source there never joined and went to the mount spec as a relative
+string, resolved against whatever the process CWD happened to be.
 There is no defensible root to pick at write time either: `@config.primary_workset` is kanibako's
 own internal store, not a user project dir, so rooting there would swap a visible failure for a
 silent wrong path. Refusing names the mistake at the moment it is made. *(Verified: refused, with
@@ -325,8 +326,8 @@ the "an absolute path, '~/…', '$VAR' or an '@'-reference" cure.)*
 > ⚑ **A STALE PARENTHETICAL WAS DROPPED HERE.** The old `run_share_add` docstring said the two root
 > tables *"deliberately excluded it (`_launch_snapshot_inputs` and `_print_effective_shares` set the
 > workset arms only `if not is_default`)"* — present tense. Neither root table exists any more:
-> `_print_effective_shares` has no root-join at all (see below), and `_launch_snapshot_inputs` at
-> HEAD has no `is_default` workset-bindings arm. The correct, PAST-tense statement of the same fact
+> `_print_effective_shares` has no root-join at all (see below), and the launch's input builder
+> (`settings_launch.resolve_inputs`) has no `is_default` workset-bindings arm. The correct, PAST-tense statement of the same fact
 > is the one carried above, which is how `_print_effective_shares`' own docstring already phrased it.
 
 ### The bind grammar
@@ -404,7 +405,7 @@ neither this display nor the launch: `_lookup_raw` answered `_ABSENT` and the ro
 reaches both call sites without an edit.
 
 ⚑⚑ **THE FLOOR IS `settings/paths.system_path_floor`, AND IT IS SHARED WITH THE LAUNCH** — the
-`resolved_sys` map in `commands/start._launch_snapshot_inputs` is the same call. It was written out
+`system_floor` of `settings_launch.resolve_inputs` is the same call. It was written out
 by hand in both places, under paired comments telling each other they had to agree, and they did
 not: this one carried three keys and none of the five `system.channels.*` leaves. So a workset
 binding sourcing `@system.channels.chat` mounted correctly at launch and was **silently omitted

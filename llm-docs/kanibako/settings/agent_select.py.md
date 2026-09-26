@@ -170,7 +170,7 @@ the agent-scope discriminator for a shell box — that is a template fallback, n
 ## `launch_resolve_ctx` — the ONE ctx builder, and the resolver split
 
 Builds the host-side `kanibako.settings.settings_resolve.ResolveCtx`. It is the one ctx builder for
-every snapshot resolve — `start.py`'s `_launch_snapshot_inputs` calls this too, so the selection
+every snapshot resolve — `settings_launch.resolve_inputs` calls this too, so the selection
 pre-pass and the launch snapshot cannot drift in what `@config.*` / `$XDG_*` / `~` mean.
 
 **Resolver SPLIT (spec §1A / JC-2):** the Layer-1 `config.*` foundation goes into `ctx.config` (so
