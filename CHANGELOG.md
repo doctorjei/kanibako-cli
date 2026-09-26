@@ -133,6 +133,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box move`, `box convert`, and `box remap` report a failed file operation as an `Error:`
+  line, not a Python traceback.** A permission, disk-full, or other file-system error during the
+  relocation, or a copy that could not copy some entries, escaped all three commands as a
+  traceback. They now print `Error: the relocation failed: <reason>` (for a copy,
+  `Error: the relocation failed; N entries failed:` and a `source: reason` line for each of the
+  first five entries, as `box duplicate` does) and exit with code 1. What the relocation does, and
+  what it undoes on failure, is unchanged. The refusal to land a box inside a working set it is
+  not joining also names that working set in its `--workset <name>` cure, where v1.7.0 and
+  v1.8.0-rc2 printed the literal `{ws_name}`.
+
 - **`box show --effective` and the `bootstrap` / `transform` reads resolve a behavior value the
   way the launch does.** These three reads built their own settings snapshot without the launch's
   workset, box and credential-sharing anchors, so a behavior value written against one of them —
