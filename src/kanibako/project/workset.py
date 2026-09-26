@@ -991,10 +991,8 @@ def add_project(
             # ⚑ workspaces/{name} is a discoverability SYMLINK — never mounted.
             # is_external implies std is not None, but mypy can't track that.
             assert std is not None
-            ws.workspaces_dir.mkdir(parents=True, exist_ok=True)
             link = ws.workspaces_dir / name
-            if not link.exists() and not link.is_symlink():
-                link.symlink_to(resolved_source)
+            if ensure_discoverability_link(ws, name, resolved_source):
                 unwind.push(
                     lambda: link.unlink() if link.is_symlink() else None
                 )
@@ -1061,39 +1059,52 @@ def add_project(
     return proj
 
 
+def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> bool:
+    """Link ``workspaces/<name>`` → an external member's *target*; True iff created.
+
+    ⚑ An occupied leaf (dir, file or link) is left alone — a relocation re-runs this after
+    it retires the old in-tree leaf that held the spot.
+    """
+    ws.workspaces_dir.mkdir(parents=True, exist_ok=True)
+    link = ws.workspaces_dir / name
+    if link.exists() or link.is_symlink():
+        return False
+    link.symlink_to(target)
+    return True
+
+
 def _detach_project(ws: Workset, name: str) -> None:
     """Drop *name* from the in-memory project list (compensating action)."""
     ws.projects[:] = [p for p in ws.projects if p.name != name]
 
 
-def remove_project(
-    ws: Workset, name: str, *, remove_files: bool = False,
-    std: StandardPaths | None = None,  # noqa: ARG001 - caller parity with add_project
-) -> WorksetProject:
-    """Remove a project from a workset — ⚑ NEVER touches the user's external source dir.
-
-    ⚑ *std* is accepted and unused: the membership drop is now unconditional, so it no
-    longer needs the global registry to tell an external record from an in-tree one.
-    """
-    target = None
+def _find_member(ws: Workset, name: str) -> WorksetProject:
     for p in ws.projects:
         if p.name == name:
-            target = p
-            break
-    if target is None:
-        raise WorksetError(
-            f"Project '{name}' not found in workset '{ws.name}'."
-        )
+            return p
+    raise WorksetError(f"Project '{name}' not found in workset '{ws.name}'.")
 
-    # ⚑⚑ ORDER IS THE REVERSE OF add_project: clean the symlink BEFORE the durable
-    # write, so the registry removal is the LAST durable step and a crash mid-cleanup
-    # leaves a RE-RUNNABLE state, not a locked-out external path.
-    import shutil
 
-    # ⚑ Unlink regardless of remove_files so the discoverability symlink never dangles
-    # (removes only the LINK, never the external target).
+def _unfollowed(path: Path) -> Path:
+    """*path* with its PARENT resolved and the leaf NOT followed (a link stays a link)."""
+    return path.parent.resolve() / path.name
+
+
+def release_project(ws: Workset, name: str) -> WorksetProject:
+    """Drop *name*'s membership RECORD; ⚑ never deletes a directory.
+
+    ⚑⚑ The ONE path a relocation may take out of a workset: the member's workspace leaf is
+    left exactly as it is — a real dir, or an in-tree symlink the user placed there.  Only
+    an EXTERNAL member's discoverability link (recorded path ≠ ``workspaces/<name>``) is
+    unlinked, and only the link.  Its store is :func:`remove_member_store`.
+    """
+    target = _find_member(ws, name)
+
+    # ⚑⚑ ORDER IS THE REVERSE OF add_project: clean the link BEFORE the durable write, so
+    # the registry removal is the LAST durable step and a crash mid-cleanup leaves a
+    # RE-RUNNABLE state, not a locked-out external path.
     link = ws.workspaces_dir / name
-    if link.is_symlink():
+    if link.is_symlink() and _unfollowed(target.source_path) != _unfollowed(link):
         link.unlink()
 
     # ⚑⚑ Durable registry removal LAST, and UNCONDITIONAL: the ``boxes:`` row is the
@@ -1105,35 +1116,55 @@ def remove_project(
 
     _unregister_workset_box_membership(ws.root, name)
     ws.projects.remove(target)
+    return target
 
+
+def remove_member_store(ws: Workset, name: str) -> None:
+    """Delete *name*'s box tree and per-box vault leaves; ⚑ NEVER its workspace leaf."""
+    import shutil
+
+    # ⚑ Per-box vault LEAVES only — never the shared ro/rw parents.
+    # ⚑⚑ RESOLVED, and it MUST match ``add_project``: deleting the composed default
+    # while the box's real vault sits at the repoint leaves the user's data orphaned
+    # AND removes a directory the box never used.
+    vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
+    # ⚑ THE BOX TREE NEEDS THE UNSHARE ESCALATION (J-7): rmtree raises on the 555
+    # canon skeleton EVEN WHEN THE CALLER OWNS IT.  Vault leaves are ordinary user
+    # content and stay on the plain path.
+    from kanibako.runtime.container import remove_box_tree
+
+    box_tree = ws.projects_dir / name
+    if box_tree.is_symlink():
+        box_tree.unlink()
+    elif box_tree.is_dir():
+        remove_box_tree(box_tree)
+    for leaf in (vault_ro_base / name, vault_rw_base / name):
+        if leaf.is_symlink():
+            # Defensive: only the link is removed, never its target.
+            leaf.unlink()
+        elif leaf.is_dir():
+            shutil.rmtree(leaf)
+
+
+def remove_project(
+    ws: Workset, name: str, *, remove_files: bool = False,
+    std: StandardPaths | None = None,  # noqa: ARG001 - caller parity with add_project
+) -> WorksetProject:
+    """Disconnect *name*; with *remove_files*, also delete its store AND workspace leaf.
+
+    ⚑⚑ The one deleter of a workspace leaf, for ``workset disconnect --remove-files`` —
+    a relocation composes :func:`release_project` + :func:`remove_member_store` instead.
+    An external source dir is NEVER touched: its leaf is a link, and a link is unlinked.
+    ⚑ *std* is accepted and unused.
+    """
+    target = release_project(ws, name)
     if remove_files:
-        # ⚑ Per-box vault LEAVES only — never the shared ro/rw parents.
-        # ⚑⚑ RESOLVED, and it MUST match ``add_project``: deleting the composed default
-        # while the box's real vault sits at the repoint leaves the user's data orphaned
-        # AND removes a directory the box never used.
-        vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
-        # ⚑ ONE resolution, then compared by identity below — reading ``projects_dir``
-        # twice would resolve ``workset.boxes`` twice and could name two different dirs.
-        box_tree = ws.projects_dir / name
-        targets = (
-            box_tree,
-            ws.workspaces_dir / name,
-            vault_ro_base / name,
-            vault_rw_base / name,
-        )
-        # ⚑ THE BOX TREE NEEDS THE UNSHARE ESCALATION (J-7): rmtree raises on the 555
-        # canon skeleton EVEN WHEN THE CALLER OWNS IT.  Workspace/vault are ordinary
-        # user content and stay on the plain path.
-        from kanibako.runtime.container import remove_box_tree
+        import shutil
 
-        for proj_dir in targets:
-            if proj_dir.is_symlink():
-                # Defensive: only the link is removed, never its target.
-                proj_dir.unlink()
-            elif proj_dir.is_dir():
-                if proj_dir == box_tree:
-                    remove_box_tree(proj_dir)
-                else:
-                    shutil.rmtree(proj_dir)
-
+        remove_member_store(ws, name)
+        leaf = ws.workspaces_dir / name
+        if leaf.is_symlink():
+            leaf.unlink()
+        elif leaf.is_dir():
+            shutil.rmtree(leaf)
     return target

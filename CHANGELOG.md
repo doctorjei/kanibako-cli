@@ -150,6 +150,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   socket is still mounted, and `""` still takes the default directory. See `MIGRATION.md` §
   *2.89 A `workset.logs` of `null` means no logs*.
 
+- **`box move`, `box convert`, and `box remap` no longer delete a working-set box's workspace
+  before the operation succeeds.** Moving or converting a box out of a working set released it by
+  deleting `workspaces/<name>` first. The copy that should have read it then found it empty — a
+  rename in place with `box convert --name` failed and left an empty workspace — and any later
+  failure restored the box without its files. In v1.7.0 and v1.8.0-rc2 alike, the workspace was
+  lost. The old workspace is now deleted only after the whole operation succeeded and its copy
+  landed. If that delete fails, the operation still succeeds (exit code 0) and prints
+  `Note: could not remove the old workspace <path>: <reason>`. An old workspace that is a symlink is
+  unlinked, never deleted through, with `Note: left <target>; it is yours`. `box remap` of a
+  working-set box deletes nothing: where the old `workspaces/<name>` directory is still there, it
+  prints `Note: left <path>; remap deletes nothing`. `box move` into a directory inside the
+  project being moved is refused with `Destination is inside the project being moved: <path>`; it
+  used to report success and delete both the project and its copy.
+
 - **`box show --effective` and the `bootstrap` / `transform` reads resolve a behavior value the
   way the launch does.** These three reads built their own settings snapshot without the launch's
   workset, box and credential-sharing anchors, so a behavior value written against one of them —

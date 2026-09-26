@@ -4,7 +4,8 @@
 below carried nothing worth displacing — never "does not exist". The source keeps one-line
 descriptors and `⚑` markers; the reasons live here.
 
-🛑 **This module is DESTRUCTIVE.** It `copytree`s and then `rmtree`s a user's project directory, and
+🛑 **This module is DESTRUCTIVE.** It `copytree`s a user's project directory and, once the whole op
+has succeeded, `rmtree`s the old one, and
 it removes registry entries that are the only record of where a box lives. Almost every note below
 exists because a step's ORDER, or the exact path it was handed, is what keeps a deletion from
 taking the wrong tree. Read the step order before changing anything.
@@ -52,7 +53,9 @@ exemption is a real invariant rather than a convenience:
   requiring `dest` to be empty would refuse every correct `remap` (and a no-op same-path remap is
   fine);
 * the **CWD-inside-old** guard — `remap` removes nothing, so it cannot strand the user's shell;
-* **STEP 5** — there is no old workspace to clean up.
+* **STEP 5** — there is no old workspace to clean up. ⚑ A `remap` of an in-tree workset member
+  whose old leaf is still a directory prints `Note: left <old>; remap deletes nothing` on success:
+  the release keeps that leaf, so a user who copied rather than moved learns the old tree is theirs.
 
 ## `ProjectState` — the uniform descriptor
 
@@ -80,7 +83,7 @@ From the redesign DESIGN. `execute_lifecycle` runs it; `_run_steps` is the body.
 3. **Update location records / markers.**
 4. **Apply the ownership / mode change** — re-root metadata/shell/vault, registry, names, write the
    destination `box.yaml` (sparse — see the drifted-claim note below for what it does NOT carry).
-5. **Clean up the old** side — never the user's external source dir.
+5. **Retire the old workspace, on success only** — never the user's external source dir.
 
 Steps 2–5 push compensating actions onto an unwind stack; on ANY exception the stack runs in
 reverse to restore a consistent state, then re-raises. `confirm`, if given, is called AFTER
@@ -101,7 +104,8 @@ when the source is EXTERNAL; for an INTERNAL ws→ws the move IS required, and `
 already enforced that (`STUBBORN_INPLACE_MSG`). A standard move `copytree`s the workspace to `dest`.
 
 * **`records_only`** — files presumed already at `dest`; copy and remove nothing.
-* **internal relocate** — `copytree` the workspace to `dest`, push an `rmtree(dest)` unwind.
+* **internal relocate** — `copytree` the workspace to `dest`, push an `rmtree(dest)` unwind. The old
+  tree is deleted only by STEP 5's success-only retire.
 * **external relocate** — the "workspace" is the USER'S OWN directory. It is NEVER moved, only
   re-recorded; `dest` becomes the new recorded location when it is the destination of an
   internalizing move. Re-pointing an external project to some other external location is out of
@@ -150,15 +154,25 @@ convert REGENERATES the box name**. Run before identity is finalized, it would m
 an address that is about to change. This is the one ordering constraint in the file that is not
 about file safety.
 
-### ⚑ STEP 5 is irreversible and NOT compensated
+### ⚑⚑ STEP 5 retires the old workspace ON SUCCESS ONLY
 
-The final `rmtree(old_ws)` has no unwind push, and that is why it is last: everything has been
-copied and recorded by the time it runs, so there is nothing left that a rollback would need it to
-undo. It fires only for a real, INTERNAL move (`not records_only and relocating and dest and not
-state.is_external`) and only when `old_ws` resolves differently from `dest`.
+**Rule: no lifecycle step deletes a workspace before the whole op succeeded AND a copy of it landed
+elsewhere.** The releases (`release_project` in `_to_workset`'s leg 1 and `_remove_old_metadata`)
+drop records and the store, never the workspace leaf, so every failure path finds the source
+workspace whole. STEP 5 registers `_retire_old_workspace(old, dest, new_state.workspace_path)` with
+`unwind.on_success` for a real, INTERNAL move (`not records_only and relocating and dest and not state.is_external`). The
+retire itself skips an `old` that is or holds the workspace the box now records — a same-workset,
+same-name move to an in-tree non-canonical path lands back on its own leaf.
 
-*(A pre-relocation comment here claimed the code "keep[s] a backup move for unwind safety". It does
-not — there is no backup and no unwind push. The claim was DROPPED rather than relocated.)*
+It used to be an in-op `rmtree(old_ws, ignore_errors=True)`, and the named release deleted the leaf
+even earlier, before the copy that read it — so a rename in place, or any failure after the
+release, lost the workspace. An in-place rename (`convert --name`) never passes STEP 2, so `_to_workset` registers the
+same retire after its own copy.
+
+⚑ An EXTERNAL landing in the source's own workset (same name) finds `workspaces/<name>` held by the
+old leaf, so `add_project` writes no discoverability link. STEP 5 therefore registers
+`ensure_discoverability_link` AFTER the retire (success actions run in registration order); on an
+occupied leaf it is a no-op.
 
 ## The unwind stack (`_Unwind`)
 
@@ -167,7 +181,8 @@ callable that reverses a forward step. On `run()` actions execute in REVERSE ord
 failures are swallowed — best-effort restore, so one bad unwind does not mask the rest.
 
 `on_success` is the second list: actions that run only when the WHOLE operation succeeds. It exists
-for scratch that must survive until completion but be discarded on success — today, the ws→ws stash.
+for work that must wait for completion: discarding the ws→ws stash, retiring the old workspace
+(`_retire_old_workspace`), writing a deferred discoverability link, and the `remap` Note.
 
 ⚑ **Reverse order is load-bearing, not incidental.** `_to_default`'s FIX1 restore relies on it: that
 unwind runs BEFORE any later one, so a failed re-register leaves the source's `name -> old path`
@@ -497,11 +512,14 @@ The guards, in order, and what each protects:
 * **ws→ws with an INTERNAL workspace requires relocation** — refused with
   `STUBBORN_INPLACE_MSG`, which is a module-level constant because it is user-facing text several
   paths could reach.
-* **destination not already occupied** — `records_only` exempt, see above.
+* **destination not already occupied** — `records_only` exempt, see above. Beside it (same
+  exemption): **a destination inside the source workspace** is refused ("Destination is inside the
+  project being moved") — STEP 2 would copy into a child of the tree the retire deletes (shape X1).
+  `_retire_old_workspace` also skips that shape, as a second guard.
 * **membership guard** — refuse landing the project inside a workset it is not (becoming) a member
   of. `relocating` is exactly `dest is not None`; the code tests `dest` directly so mypy narrows
   away the `None` for the `.resolve()`.
-* **CWD-inside-old guard** — a move is copytree+rmtree, NOT a rename, so a shell sitting inside the
+* **CWD-inside-old guard** — a move is copytree+retire, NOT a rename, so a shell sitting inside the
   source would be stranded on a removed directory. Refused unless `--force`; `records_only` exempt.
 * **name not taken in the target workset.**
 * **cross-kind name policy** on a DEFAULT-mode `--name` rename edge — F-7, above.
@@ -521,6 +539,19 @@ The step body of `execute_lifecycle`.
 
 Steps 2, 3+4, 4b and 5 in order; see the step-order section for each arm and each ordering
 constraint.
+
+```def _retire_old_workspace(old: Path, landed: Path, recorded: Path) -> None```
+Delete the relocated-from workspace *old*, whose copy landed at *landed* — an `on_success` action
+only; see **STEP 5**.
+
+It skips an absent *old*, and an *old* that is or holds *landed* or *recorded* — the workspace the
+box now records. The *recorded* guard covers a same-workset, same-name move that lands back on its
+own leaf, and a `workspaces` dir repointed inside the moving box's own tree. A symlink is unlinked, never followed, and `Note: left <target>; it is yours` names what
+stays. A directory goes through a plain `shutil.rmtree` — it is user content, not a box tree, so
+`remove_box_tree`'s escalation does not apply. A failure prints `Note: could not remove the old
+workspace <old>: <err>` and stops: the op already succeeded, so the exit code stays 0, and falling
+back to another deleter would widen what a relocation may delete. It prints its own Notes because
+`_Unwind.finish` swallows exceptions.
 
 ```def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str = "", force: bool = False) -> ProjectState```
 Re-root metadata/shell/vault into the target owner + rewrite markers.
@@ -589,8 +620,9 @@ out from under it.
   per-box leaf under the primary workset's resolved vault arms (Phase 5 moved it out of the
   workspace). `preserve_name` (L2) suppresses both when the converted box reuses its own name in
   place.
-* **Workset source** — removes the workset registration (std-aware) so external markers and the
-  per-workset connection record are cleaned. **The external source dir is NEVER deleted.**
+* **Workset source** — `release_project` (the registration, and an external member's
+  discoverability link) + `remove_member_store` (box tree, vault leaves). **The workspace leaf is
+  NEVER deleted here** — in-tree or external; a relocation retires an in-tree leaf in STEP 5.
 
 ```def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str = "", force: bool = False) -> ProjectState```
 Convert/relocate the project so its owner becomes the default workset.
@@ -720,7 +752,7 @@ that entry is the same thing: the source workset's own `boxes:` row.
 
 ⚑ **The two arms reach it by different doors and land on ONE carrier.** A `primary` source goes
 `unregister_primary_box_name` → `settings/paths.py::_unregister_workset_box_membership`; a workset
-member goes `remove_project`, which unlinks the discoverability symlink and then calls that SAME
+member goes `release_project`, which unlinks an external member's discoverability link and then calls that SAME
 helper as its last durable step. The helper resolves the per-workset registry FILE
 (`resolve_workset_registry_path` — a `workset.registry` repoint wins, else
 `<workset_root>/registry.yaml`) and calls `workset_registry.unregister_workset_box`. So the thing
@@ -760,8 +792,13 @@ workspace dir for an internal landing, the live external workspace path for an e
 
 * internal landing where the workspace is NOT already the in-tree dir ⇒ copy. When relocating into
   the ws via STEP 2 the tree was already moved to `dest == workspaces/<name>`, so it must not be
-  copied again;
+  copied again; nor when the SOURCE leaf is that dir (same workset, same name) — a copy onto itself;
 * external ⇒ never copy.
+
+⚑ After the copy, an in-tree WORKSET source registers `_retire_old_workspace(source leaf, landing, landing)`
+on success — the `convert --name` in-place rename (shape S17), which STEP 2 never sees. Other sources
+keep their tree: an in-place convert out of primary or standalone deleted nothing before, and still
+does not.
 
 ⚑⚑ **ws→ws re-root: the SOURCE workset must RELEASE the project BEFORE the target registers it.**
 The connection record is 1:1, so an external source still mapped to the OLD workset would collide
@@ -769,12 +806,16 @@ with `add_project`'s "already connected" guard. The source registration is there
 which clears the per-workset connection record and the discoverability symlink, and NEVER touches
 the user's external dir.
 
-⚑ That release DELETES the source's metadata dirs, so the forward copy would have nothing to read
-from. A `tempfile` STASH of the source metadata (including the shell) is taken first, and both the
+⚑ That release is `release_project` + `remove_member_store`: it DELETES the source's box tree and
+vault leaves — never its workspace leaf — so the forward copy would have nothing to read from. A
+`tempfile` STASH of the source metadata (including the shell) and vault is taken first, and both the
 forward copy and the unwind restore read the stash rather than the live paths. The stash is
-discarded via `unwind.on_success`, so it survives exactly as long as a rollback might need it. For
-an INTERNAL ws→ws move the workspace tree was already relocated in STEP 2, so `remove_project`'s
-`remove_files` only sweeps the leftover skeleton dirs.
+discarded via `unwind.on_success`, so it survives exactly as long as a rollback might need it. The
+source workspace stays in place until STEP 5's retire; `_restore_source`'s `add_project` re-adopts it.
+
+⚑ The target unwind (`_unwind_target_member`) deletes `workspaces/<new_name>` only when it did not
+exist before `add_project`: on a same-workset, same-name move that leaf is the source's own
+workspace.
 
 `add_project` (std-aware) registers the project, creates the skeleton dirs, and — for an external
 landing — writes the markers.
@@ -824,8 +865,10 @@ The failure-window restore for **FIX1**: it writes the RAW membership entry dire
 cross-kind/same-kind guard, so restoring the source box's OWN prior registration is unconditional.
 Errors are swallowed — the unwind stack is best-effort restore.
 
-```def _safe_remove_project(ws: Workset, name: str, std: StandardPaths) -> None```
-Swallowing wrapper around `remove_project` for the unwind stack.
+```def _unwind_target_member(ws: Workset, name: str, leaf: Path, leaf_created: bool) -> None```
+Undo `_to_workset`'s target registration for the unwind stack: `release_project` +
+`remove_member_store`, then *leaf* only when *leaf_created* (see `_to_workset`). Errors are
+swallowed — best-effort restore.
 
 ```def _ownership_from_args(args) -> str | _Sentinel```
 Map the uniform target flags (`--default` / `--standalone` / `--workset`) to an ownership value, or

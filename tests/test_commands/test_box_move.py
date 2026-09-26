@@ -139,6 +139,34 @@ class TestBoxMove:
         assert [log for log in logs if not log.exists()] == []
 
 
+    def test_a_failed_retire_is_a_note_and_the_move_succeeds(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        """The old workspace's delete failing leaves it, names it, and keeps rc 0."""
+        import shutil
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = tmp_home / "stuck"
+        project_dir.mkdir()
+        (project_dir / "f.txt").write_text("data")
+        resolve_project(std, config, project_dir=str(project_dir), initialize=True)
+        real_rmtree = shutil.rmtree
+
+        def rmtree(path, *a, **kw):
+            if os.fspath(path) == os.fspath(project_dir):
+                raise PermissionError(13, "Permission denied", os.fspath(path))
+            return real_rmtree(path, *a, **kw)
+
+        monkeypatch.setattr(shutil, "rmtree", rmtree)
+        dest = tmp_home / "unstuck"
+        assert run_move(_move_args(project_dir, dest)) == 0
+        assert (dest / "f.txt").read_text() == "data"
+        assert (project_dir / "f.txt").read_text() == "data"
+        err = capsys.readouterr().err
+        assert f"Note: could not remove the old workspace {project_dir}" in err
+
+
 def _seed_links(tree, outside):
     """Put inside, escaping, directory, absolute and dangling links in *tree*."""
     (outside / "deep").mkdir(parents=True)

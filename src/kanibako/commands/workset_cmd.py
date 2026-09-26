@@ -634,8 +634,8 @@ def run_disconnect(args: argparse.Namespace) -> int:
         )
         return 1
     if logs_dir is not None:
-        # ⚑ HERE, not in ``remove_project``: the lifecycle engine calls that too, to
-        # release a box it is MOVING, and the logs must survive a move.
+        # ⚑ HERE, not in ``remove_project``/``release_project``: a move releases the box
+        # through ``release_project``, and its logs must survive the move.
         remove_box_logs(logs_dir, proj.name)
     print(f"Removed project '{proj.name}' from working set '{ws.name}'")
     return 0

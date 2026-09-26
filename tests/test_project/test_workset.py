@@ -732,6 +732,35 @@ class TestRemoveProject:
             remove_project(ws, "nonexistent")
 
 
+class TestReleaseKeepsTheWorkspaceLeaf:
+    """The relocation deleters: ``release_project`` + ``remove_member_store`` never touch
+    ``workspaces/<name>``, whether it is a real dir or a link the user put there."""
+
+    @pytest.mark.parametrize("linked", [False, True], ids=["dir", "symlink"])
+    def test_leaf_survives_release_and_store_removal(self, std, tmp_home, linked):
+        from kanibako.project.workset import release_project, remove_member_store
+
+        ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+        leaf = ws.workspaces_dir / "proj"
+        add_project(ws, "proj", leaf)
+        content = leaf
+        if linked:
+            content = tmp_home / "real"
+            content.mkdir()
+            leaf.rmdir()
+            leaf.symlink_to(content)
+        (content / "f.txt").write_text("mine")
+
+        release_project(ws, "proj")
+        remove_member_store(ws, "proj")
+
+        assert leaf.is_symlink() is linked
+        assert (leaf / "f.txt").read_text() == "mine"
+        assert not (ws.projects_dir / "proj").exists()
+        assert not (ws.vault_dir / "ro" / "proj").exists()
+        assert _workset_boxes(ws) == {}
+
+
 def _workset_boxes(ws):
     """Read *ws*'s per-workset ``boxes:`` membership (the D10 connection index)."""
     from kanibako.project import workset_registry
