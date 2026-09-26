@@ -40,6 +40,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from kanibako.settings.kb_store import __MISSING__
 
@@ -120,13 +121,30 @@ def launch_resolve_ctx(std, proj, agent_name: "str | None"):
     ⚑ *agent_name* is ``None`` for the SELECTION pass — no agent is known yet, so a
     ``$AGENT`` resolves to a recorded refusal rather than to a silent ``""``.
     """
+    return host_resolve_ctx(std, proj.group, agent_name)
+
+
+class _WorksetGroup(Protocol):
+    """What :func:`host_resolve_ctx` reads off a working set (a ``ProjectGroup`` or a ``Workset``)."""
+
+    @property
+    def name(self) -> str: ...
+    @property
+    def is_default(self) -> bool: ...
+
+
+def host_resolve_ctx(std, group: "_WorksetGroup | None", agent_name: "str | None"):
+    """The :func:`launch_resolve_ctx` builder for a resolve with NO box.
+
+    *group* is the working set the resolve is in, or ``None`` for a resolve in none
+    (the system scope).  The primary working set is spelled like ``None``:
+    ``ResolveCtx.workset_name`` names a NAMED working set only.
+    """
     from kanibako.settings.paths import host_config_map, host_xdg_map
     from kanibako.settings.settings_resolve import ResolveCtx
 
     workset_name = (
-        proj.group.name
-        if (proj.group is not None and not proj.group.is_default)
-        else None
+        group.name if (group is not None and not group.is_default) else None
     )
     return ResolveCtx(
         agent_name=agent_name,

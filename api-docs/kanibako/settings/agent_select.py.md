@@ -14,6 +14,7 @@ SELECTION_KEY = 'system.agent'
 ## Functions
 ```
 def launch_resolve_ctx(std, proj, agent_name: 'str | None')
+def host_resolve_ctx(std, group: '_WorksetGroup | None', agent_name: 'str | None')
 def select_agent(*, std, proj, explicit_agent: 'str | None'=None, project_path: 'Path | None'=None) -> AgentSelection
 ```
 
@@ -29,4 +30,10 @@ class AgentSelection:
     def has_agent(self) -> bool
     @property
     def selection_level(self) -> 'dict[str, object] | None'
+
+class _WorksetGroup(Protocol):
+    @property
+    def name(self) -> str
+    @property
+    def is_default(self) -> bool
 ```

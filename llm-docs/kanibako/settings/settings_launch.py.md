@@ -645,8 +645,9 @@ than re-typed: the four leaves a STANDALONE box carries as a present `None`.
 through them. ⚑ **TWO MODE GATES, NOT ONE:** the four workset-LOCAL leaves come from
 `workset_channel_paths` (PRIMARY/NAMED only), the two ALL-PROJECTS leaves from
 `workset_partition_paths` (every mode, standalone included). So this argument is **not `None` for a
-standalone box** — the gate is per leaf and lives at the caller,
-`_workset_channel_floor_values` (this module, called by `resolve_inputs`). Treating the whole family as one `None`-for-standalone
+standalone box** — the gate is per leaf and lives at the caller:
+`_workset_channel_floor_values` (this module, called by `resolve_inputs`) takes the two resolved
+sets, the local one `None` for standalone. Treating the whole family as one `None`-for-standalone
 group is how three of the six lost their floor. For STANDALONE the builder itself supplies the four
 LOCAL leaves as a present `None` (`_WORKSET_LOCAL_CHANNEL_LEAVES`, below), and REFUSES a caller value
 for one of them.
@@ -816,10 +817,13 @@ validated ALONGSIDE the root because a broken source does not always produce a b
 (`commands/start.py._install_assembly_collapse`). One reader, so a dotted read off a resolved
 snapshot cannot acquire a second spelling with its own idea of what absence looks like.
 
-## `resolve_inputs` — the ONE box input builder (`LaunchInputs`)
+## `resolve_inputs` — the ONE input builder (`LaunchInputs`)
 
-`resolve_inputs(*, subject, std, proj, agent_name, system_path)` builds everything a box resolve
-hands `build_launch_snapshot` besides its own extras, as a frozen `LaunchInputs`: the ctx
+`resolve_inputs(*, subject, std, agent_name, system_path, proj=None, ws=None)` builds everything a
+resolve hands `build_launch_snapshot` besides its own extras, as a frozen `LaunchInputs`. The
+*subject* is the resolve's TARGET: `BOX` takes the box *proj*, `WORKSET` a working set *ws* and no
+box, `SYSTEM` neither; any other pairing raises `ValueError` (the overloads say the same to mypy).
+For a box it holds the resolve's subject, the ctx
 (`agent_select.launch_resolve_ctx`, the same builder the selection pre-pass uses), the system
 settings file, the resolved `system.*` path tier (`paths.system_path_floor` → `system_floor`), the
 `meta.runtime.*`, `meta.*` identity and layout-anchor floors, the auth chain, the mode-aware
@@ -835,17 +839,33 @@ replaced `commands/start._launch_snapshot_inputs` and the hand-built ctx the two
 reads carried, so a behavior value spelled `@meta.workset.path/…` or `@workset.auth.path/…` answers
 in `bootstrap` / `transform` / `--effective` as it does at launch.
 
-* ⚑ **Built PER AGENT.** Every field but the file pair and the prefs depends on *agent_name*
+* ⚑ **Built PER AGENT.** Every field but the subject, the file pair and the prefs depends on *agent_name*
   (the ctx's `$AGENT`, the identity floor, the per-agent auth dir), so an instance is never reused
   across an agent change — nothing caches one.
-* **Only `ResolveSubject.BOX` is built.** The workset preview and the box-less `load_merged_config`
-  are later subjects; any other subject raises `ValueError`.
+* **A box-less subject OMITS what its target does not have** (spec §0, "never a fabricated
+  default"; S1 fork F3). `WORKSET` builds the same floors from the working set
+  (`channels.workset_token`, `partition_key_paths`, `workset_channels_at`,
+  `agent_select.host_resolve_ctx`), then drops every `meta.box.*` key and every key derived from one
+  (`meta.box.path`, `meta.box.home`, `meta.box.mode`, `box.canon`, `meta.box.auth.workset_path`, …).
+  Its floors equal a member box's with those keys removed, pinned by
+  `tests/test_settings/test_resolve_inputs_subjects.py`. `SYSTEM` builds no runtime or layout floor
+  and the auth chain with `mode=None`, then drops every `meta.box.*`, `meta.workset.*` and
+  `workset.*` key, the three per-working-set `meta.runtime.*` keys of spec §1A (`ws_root`,
+  `ws_name`, `project_type`; the host-file `meta.runtime.{user,admin}.*` stay), and anything derived
+  from one (`_box_less_omits`). Both subjects' floors come from `_workset_floors`, the one
+  runtime/layout/auth sequence the BOX subject also calls. The agent identity floor stays
+  in both. Its descriptor lookup passes no project path, so a project-local plugin tier is not
+  consulted.
+* **The subject travels to the refusal.** `as_kwargs` hands `subject` to `build_launch_snapshot`,
+  whose §0 refusal speaks in its words (`ResolveSubject.SYSTEM`: "the system scope", cure line
+  `system reset <key>` / `system show --effective`, both measured). A builder caller without inputs
+  resolves a box.
 * **The descriptor lookup is TOLERANT only of absence.** No matching target (`KeyError`) or one
   lacking a `meta.agent.<a>.name` (`ValueError`) is non-capable; any other error propagates, since a
   transient failure must not silently disable credential sharing.
 * **STANDALONE `meta.runtime.ws_root` is `proj.metadata_path`** (the project ROOT), not
   `proj.project_path` (its `workspace` subdir) — spec §2c and the §4 worked example.
-* **A box with no name yet gets no name-derived key** (`_omit_name_derived`). The `run_start`
+* **A box with no name yet gets no name-derived key** (`_omit_derived`, seeded by `_BOX_NAME_KEYS`). The `run_start`
   pre-flight reads `bootstrap` before create, when `proj.name` is unset and no channel address can
   be derived. Spec §0 forbids a fabricated default, so the four `meta.box.*` name and address keys
   are dropped, then every key whose value `@`-refers to a dropped one, to a fixed point
@@ -1020,7 +1040,8 @@ and both of those positions are load-bearing. (2) and (3) are reached through ON
 (`commands/workset_cmd._workset_preview_entries`) calls too — so the order below has one carrier and
 a resolve route cannot run one refusal and skip the other. *files* are the tiers the caller ACTUALLY
 read (the launch passes `base` last, at the path it handed `assemble_levels`; the preview reads no
-base file and passes none). *subject* is a `ResolveSubject` — `BOX` for the launch and `WORKSET`
+base file and passes none). *subject* is a `ResolveSubject` — `BOX` for the launch, `SYSTEM` for a resolve with no box and
+no working set, and `WORKSET`
 for the preview, whose first line says "this working set" and whose cure line cites
 `workset reset <workset> <key>`, `workset show --effective` and `workset share list --effective`.
 It is an enum carrying the whole wording, not a string, so no caller can compose a cure line nobody

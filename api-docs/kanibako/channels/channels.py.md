@@ -17,10 +17,12 @@ CHAT_GENERAL_LEAF = 'general.md'
 ```
 def own_partition_dirs(std: StandardPaths, ws_token: str, box_name: str, *, ws_root: Path) -> OwnPartition
 def workset_name_token(proj: ProjectPaths) -> str
+def workset_token(mode: BoxMode, group_name: str | None) -> str
 def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path
 def has_workset_channels(proj: ProjectPaths) -> bool
 def system_partition(std: StandardPaths, ws_token: str) -> SystemPartition
 def workset_channel_paths(proj: ProjectPaths, std: StandardPaths) -> WorksetChannels | None
+def workset_channels_at(ws_root: Path) -> WorksetChannels
 def partition_key_paths(std: StandardPaths, ws_token: str, ws_root: Path) -> WorksetPartition
 def workset_partition_paths(proj: ProjectPaths, std: StandardPaths) -> WorksetPartition
 def box_channel_addresses(proj: ProjectPaths, std: StandardPaths) -> BoxChannelAddresses

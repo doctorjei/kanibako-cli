@@ -153,7 +153,13 @@ and stale cross-box references to the old address may break, with no forwarding 
 
 ## `workset.channelroot` is resolved, never hard-coded (§3.3)
 
-`workset_channel_paths` does not join `@meta.workset.path/channels` itself. It calls
+`workset_channel_paths` is the `ProjectPaths` adapter over `workset_channels_at(ws_root)`, adding
+only the standalone gate; a working set with no box (`settings_launch.resolve_inputs`' `WORKSET`
+subject) calls `workset_channels_at` directly. Likewise `workset_name_token(proj)` is the adapter over
+`workset_token(mode, group_name)`, the one carrier of the token rule. Neither derivation has a second
+copy.
+
+`workset_channels_at` does not join `@meta.workset.path/channels` itself. It calls
 `resolve_workset_channelroot(ws_root, load_workset_settings_doc(ws_root))` from
 `project/workset.py`, so a repoint of `workset.channelroot` in the workset's own `workset.yaml`
 is honored — the spec rules that key must be *"real and USED — not hard-coded"*. The default is
@@ -172,7 +178,8 @@ imports inside the functions also keeps this pure-derivation module import-light
 * `commands/start.py` — the launch path takes `workset_name_token`, `box_channel_addresses` and
   `workset_channel_paths`. Its comments state that the token is SINGLE-SOURCED here precisely so
   the token used for the runtime metadata and the token used for the partition cannot drift.
-* `settings/settings_launch.py` — documents the same single-sourcing at the launch seam.
+* `settings/settings_launch.py` — documents the same single-sourcing at the launch seam; its
+  `WORKSET` subject takes `workset_token`, `partition_key_paths` and `workset_channels_at`.
 * `commands/box/_lifecycle.py` — `own_partition_dirs` plus both reserved tokens, for move/convert.
 * `launch/templates.py` — `has_workset_channels`, to gate the workset-local template layer.
 
