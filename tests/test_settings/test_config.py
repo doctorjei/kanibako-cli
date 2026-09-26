@@ -355,6 +355,21 @@ class TestLayer1UndeclaredConfigKeys:
             bootstrap_config_paths(cf)
         assert "/x" in str(exc.value)
 
+    @pytest.mark.parametrize("key", sorted(CONFIG_PATH_DEFAULTS))
+    def test_a_null_config_leaf_refuses_by_name(self, tmp_path, key):
+        """A ``null`` path used to read as the text ``None`` and be refused as a bare
+        relative path — a directory the user never wrote.
+
+        MUTATION: drop the ``_refuse_null_paths`` call in ``bootstrap_config_paths`` and
+        this returns ``{key: "None"}``.
+        """
+        cf = tmp_path / CONFIG_FILENAME
+        cf.write_text(f'config:\n  {key.split(".", 1)[1]}: null\n')
+        with pytest.raises(ConfigError) as exc:
+            bootstrap_config_paths(cf)
+        assert str(cf) in str(exc.value)
+        assert key in str(exc.value)
+
     @pytest.mark.parametrize("text", ["", "config:\n", "config: {}\n"])
     def test_the_empty_spellings_all_read_as_an_empty_foundation(self, tmp_path, text):
         """🛑 THE COUNTERWEIGHT to the refusal above: ``write_global_config`` writes ZERO

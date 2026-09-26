@@ -43,7 +43,7 @@ BindArmTable = dict[str, dict[str, tuple[str, ...]]]
 ```
 def packaged_data_dir(*parts: str) -> Traversable
 def vault_mask_default() -> list[str]
-def behavior_defaults() -> dict[str, str]
+def behavior_defaults() -> dict[str, str | None]
 def behavior_default(key: str) -> str
 def shell_tier_defaults() -> dict[str, str | None]
 def shell_tier_default(key: str) -> str

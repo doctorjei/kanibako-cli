@@ -268,6 +268,49 @@ class TestLoadConfigPaths:
         settings.write_text('system:\n  channels:\n    common: "/c"\n')
         assert system_path_set_values(settings) == {"system.channels.common": "/c"}
 
+    @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
+    def test_a_null_system_path_key_refuses_by_name(self, tmp_path, key):
+        """A ``null`` path key used to read as the text ``None`` (bare-relative refusal).
+
+        MUTATION: drop the ``_refuse_null_paths`` call in ``system_path_set_values`` and
+        this returns ``{key: "None"}``.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.settings.config import system_path_set_values
+        from kanibako.settings.config_io import dump_doc
+
+        table: dict = {}
+        node = table
+        *parents, leaf = key.split(".")[1:]
+        for part in parents:
+            node = node.setdefault(part, {})
+        node[leaf] = None
+        settings = tmp_path / "settings.yaml"
+        dump_doc(settings, {"system": table})
+        with pytest.raises(ConfigError) as exc:
+            system_path_set_values(settings)
+        assert str(settings) in str(exc.value)
+        assert key in str(exc.value)
+
+    def test_a_null_non_path_system_key_is_not_refused(self, tmp_path):
+        """``system.agent: null`` means "no default agent" (spec §2b) — not a path."""
+        from kanibako.settings.config import system_path_set_values
+
+        settings = tmp_path / "settings.yaml"
+        settings.write_text("system:\n  agent: null\n")
+        assert "system.agent" in system_path_set_values(settings)
+
+    def test_a_non_table_system_entry_reads_as_empty(self, tmp_path):
+        """The tier difference the reader documents: the launch resolve refuses ``system: /x``
+        as a scalar at a namespace (pinned by ``test_settings_keyspace``'s
+        ``test_undeclared_store_paths_REPORTS_a_scalar_at_a_namespace``), so this read does
+        not carry a second refusal."""
+        from kanibako.settings.config import system_path_set_values
+
+        settings = tmp_path / "settings.yaml"
+        settings.write_text("system: /x\n")
+        assert system_path_set_values(settings) == {}
+
     def test_empty_config_has_no_config_paths(self, tmp_path):
         cfg = load_config(tmp_path / "absent.yaml")
         assert cfg.config_paths == {}

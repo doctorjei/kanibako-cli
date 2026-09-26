@@ -327,8 +327,11 @@ ERR_CONFIG_NO_FILE          # (config file path)
 ERR_CONFIG_LAYER1_SETTINGS  # (the Layer-1 file path, the offending keys)
 ERR_CONFIG_LAYER1_UNDECLARED # (the Layer-1 file path, the offending keys, the declared set)
 ERR_CONFIG_LAYER1_TABLE     # (the Layer-1 file path, the offending value)
+ERR_CONFIG_NULL_PATH        # (the file path, the offending keys)
 ```
 Unresolvable path-tier keys and refs, plus the Layer-1 file's own contract.
+`ERR_CONFIG_NULL_PATH` serves both path layers (`config.*` and the `system.*` path tier): a `null`
+path key used to become the text `None` and be refused as a bare relative path.
 
 ⚑⚑ **THE THREE LAYER-1 REFUSALS ARE ONE RULE FROM THREE SIDES** (spec §1: *"The Layer-1 set is
 exactly the config keys in the table below"*). `…_SETTINGS` catches a table OUTSIDE `config:`;

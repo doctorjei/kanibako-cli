@@ -109,6 +109,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `config.*` or `system.*` path key set to `null` is now refused by name.** A `null` under the
+  Layer-1 `config:` table (`config.data: null`), or at a `system.*` path key in the system
+  settings file (`system.backup: null`), became the text `None`. The command then stopped with a message about
+  `None` as a bare relative path, a directory the user never wrote. The command still stops, exit
+  code 1 as before, but the message now names the file and each key set to `null`. The cure is to
+  delete the line to use the key's default, or set the path you mean. For a `system.*` key,
+  `kanibako system reset <key>` also works. `system.agent: null` is not a path key and is
+  unaffected.
+
 - **An entry at a settings file's top level that names none of the keyspace's namespaces is now
   refused like any other undeclared key.** v1.8.0-rc2 already stopped the command on an undeclared
   key and named it, but only inside a namespace's table (`box:`, `workset:`, `system:` and the

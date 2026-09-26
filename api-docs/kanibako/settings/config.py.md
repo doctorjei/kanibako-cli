@@ -62,6 +62,7 @@ def _narrow_box_scalar_cascade(global_path: Path, *, workset_path: Path | None, 
 def _split_config_key(flat_key: str) -> tuple[str, str]
 def _flatten_leaves(data: dict, prefix: str='') -> dict[str, object]
 def _flatten_dotted(data: dict, prefix: str='') -> dict[str, str]
+def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None
 ```
 
 ## Classes

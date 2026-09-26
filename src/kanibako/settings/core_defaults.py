@@ -57,16 +57,18 @@ def vault_mask_default() -> list[str]:
     return [str(m) for m in masks]
 
 
-def behavior_defaults() -> dict[str, str]:
+def behavior_defaults() -> dict[str, str | None]:
     """Return the declared ``agent.default.<key>`` BEHAVIOR floor (spec §2d).
 
     The all-agents backstop, merged UNDER a plugin's descriptor floor at the launch
     sites (descriptor last ⇒ a plugin's declared default still wins).  ⚑ Values are
     STRINGS: the consumers run them through ``coerce_bool`` and
     ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
+    ⚑ Except a ``<None>`` row, which stays a PRESENT ``None``, as in
+    :func:`shell_tier_defaults`: ``str()`` would ship the text ``"None"``.
     """
     return {
-        str(key): str(value)
+        str(key): None if value is None else str(value)
         for key, value in (_load_doc().get("agent_default") or {}).items()
     }
 
@@ -81,6 +83,8 @@ def behavior_default(key: str) -> str:
     call, so a module-level read would bind the value at IMPORT time.
     ⚑ An absent declaration RAISES — it is a PACKAGING defect, and re-materializing a
     literal here would be exactly the consumer-side default this read replaced.
+    ⚑ A ``<None>`` row RAISES too, as in :func:`shell_tier_default`: its consumers
+    need a string.
     """
     defaults = behavior_defaults()
     if key not in defaults:
@@ -88,7 +92,13 @@ def behavior_default(key: str) -> str:
             f"{CORE_DEFAULTS_FILENAME} declares no 'agent_default.{key}' — the core "
             f"behavior floor (spec §2d agent.default.{key}) lives there and nowhere else."
         )
-    return defaults[key]
+    value = defaults[key]
+    if value is None:
+        raise RuntimeError(
+            f"{CORE_DEFAULTS_FILENAME} declares 'agent_default.{key}' as <None>, "
+            f"but this read serves a string value."
+        )
+    return value
 
 
 def shell_tier_defaults() -> dict[str, str | None]:

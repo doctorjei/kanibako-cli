@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -9,10 +10,11 @@ from typing import TYPE_CHECKING
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (CONFIG_FILE, CONFIG_PATH_DEFAULTS, SITE_CONFIG_DIR,
-                                         SITE_CONFIG_FILE, SITE_SETTINGS_FILE)
+                                         SITE_CONFIG_FILE, SITE_SETTINGS_FILE,
+                                         SYSTEM_PATH_DEFAULTS)
 from kanibako.settings.config_io import dump_doc, load_doc, render_stored_scalar
 from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
-                                        ERR_CONFIG_LAYER1_UNDECLARED)
+                                        ERR_CONFIG_LAYER1_UNDECLARED, ERR_CONFIG_NULL_PATH)
 
 if TYPE_CHECKING:
     # ⚑ TYPE-ONLY: ``keystore`` imports this module transitively, so a runtime import
@@ -196,6 +198,7 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
     if undeclared:
         raise ConfigError(ERR_CONFIG_LAYER1_UNDECLARED % (
             path, "\n  ".join(undeclared), ", ".join(sorted(CONFIG_PATH_DEFAULTS))))
+    _refuse_null_paths(path, table, _LAYER1_TABLE, CONFIG_PATH_DEFAULTS)
     return paths
 
 
@@ -209,10 +212,19 @@ def system_path_set_values(settings_path: Path) -> dict[str, str]:
     the only prefix it can produce.
     ⚑ NOT filtered to the path tier — that is :func:`~kanibako.settings.paths.load_system_config`'s
     own P13 job, and this file's ``system:`` table legitimately holds ``system.agent`` and
-    the category families too.
+    the category families too.  That is also why the ``null`` refusal is scoped to
+    :data:`SYSTEM_PATH_DEFAULTS`: ``system.agent: null`` means "no default agent" (spec §2b).
+    ⚑ A NON-TABLE ``system:`` READS AS EMPTY HERE, where Layer 1 refuses its non-table
+    ``config:`` (``ERR_CONFIG_LAYER1_TABLE``).  The tiers differ because this file is a
+    keyspace tier: the launch resolve already refuses ``system: /x`` by name as a key that
+    is not a key (spec §0), so a refusal here would be a second carrier.  Layer 1 is
+    outside the keyspace, and no later read would catch it.
     """
     table = load_doc(settings_path).get("system")
-    return _flatten_dotted(table, "system") if isinstance(table, dict) else {}
+    if not isinstance(table, dict):
+        return {}
+    _refuse_null_paths(settings_path, table, "system", SYSTEM_PATH_DEFAULTS)
+    return _flatten_dotted(table, "system")
 
 
 def config_base_path() -> Path:
@@ -1124,5 +1136,15 @@ def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
 
     ⚑ NOT a scope-category helper — its callers are the Layer-1 ``config:`` read, the
     Layer-2 ``system:`` path-tier read, and the Layer-1 refusal that names its keys.
+    ⚑ A ``null`` leaf becomes the string ``"None"``: both path reads call
+    :func:`_refuse_null_paths` first.
     """
     return {key: str(v) for key, v in _flatten_leaves(data, prefix).items()}
+
+
+def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None:
+    """Refuse a ``null`` at any of *path_keys* in *table*, naming *path* and the keys."""
+    leaves = _flatten_leaves(table, prefix)
+    nulls = sorted(key for key in path_keys if key in leaves and leaves[key] is None)
+    if nulls:
+        raise ConfigError(ERR_CONFIG_NULL_PATH % (path, "\n  ".join(nulls)))
