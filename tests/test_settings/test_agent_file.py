@@ -1014,16 +1014,10 @@ class TestTheStrayRuleOnTheProductionPath:
         # ⚑ DERIVED FROM THE DROP RULES, never listed (P13): the agent file's directional
         # drop-set, plus ``pref:`` exactly when §2h's legal levels exclude this file. Each
         # must build, and warn naming itself.
-        from kanibako.settings.settings_assemble import (
-            _PREF_LEGAL_LEVELS,
-            _upward_scope_drop_set,
-        )
-        from kanibako.settings.settings_prefs import PREF_ROOT
+        from kanibako.settings.settings_drops import cascade_drop_set
 
-        directional = _upward_scope_drop_set("agent")
-        assert directional, "an empty drop-set would pass this vacuously"
-        pref = set() if "agent" in _PREF_LEGAL_LEVELS else {PREF_ROOT}
-        dropped = sorted(directional | pref)
+        dropped = sorted(cascade_drop_set("agent"))
+        assert dropped, "an empty drop-set would pass this vacuously"
         text = "self:\n  env:\n    A: b\n" + "".join(f"{t}:\n  x: 1\n" for t in dropped)
         with caplog.at_level("WARNING"):
             self._assemble(tmp_path, text)

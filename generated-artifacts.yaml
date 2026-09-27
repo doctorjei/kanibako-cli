@@ -159,6 +159,7 @@ artifacts:
   api-docs/kanibako/settings/settings_categories.py.md:
   api-docs/kanibako/settings/settings_cli_level.py.md:
   api-docs/kanibako/settings/settings_configset.py.md:
+  api-docs/kanibako/settings/settings_drops.py.md:
   api-docs/kanibako/settings/settings_expand.py.md:
   api-docs/kanibako/settings/settings_keyspace.py.md:
   api-docs/kanibako/settings/settings_keyspace_probe.py.md:

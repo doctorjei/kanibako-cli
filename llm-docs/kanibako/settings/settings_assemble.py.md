@@ -112,7 +112,8 @@ relocated. The same false claim was dropped from `commands/workset_cmd.py` by it
 ⚑⚑ **The agent file's SHAPE is not this module's** — `settings/agent_file.py` owns it (the root
 table, the flat-category splice, the nested refusal, the address a leaf writes to). What is left
 here is the STORE COERCION and the §2d wrap: `_agent_partial` takes an `AgentFileLevel` from
-`agent_file.level_table` and turns its raw table into a `KeyStore` under `agent.<sub_key>`. The
+`agent_file.level_table` — which owns both refusals that precede it, the nested `self:` and the
+stray top-level key — and turns its raw table into a `KeyStore` under `agent.<sub_key>`. The
 seam is cut at the SHAPE so the boundary never imports `KeyStore` and the import edge stays
 one-way. See `agent_file.py.md`.
 
@@ -283,11 +284,6 @@ retired KEY name (M-4).
 THREE rows: `box.agent`, `box.agent_name`, `system.default_agent`. ⚑ The ROW count is not the
 RETIREMENT count — `("box", "agent")` is one path carrying TWO retired spellings, told apart by the
 value's SHAPE. See "Retired spellings" above.
-
-```_PREF_LEGAL_LEVELS: frozenset[str]```
-The levels where a `pref` REQUEST may be WRITTEN (spec §2h) — `{"workset", "box"}`.
-
-The single fact that decides which cure a retired `box.agent_name` gets.
 
 ```_NO_LEAF: Any = object()```
 The "no such leaf" sentinel for `_nested_present`.
@@ -463,15 +459,6 @@ it runs before agent selection, so naming one would be a guess), not inside `ass
 ⚑ The value line only ever states a translation the RULING makes. An unparseable stored value gets
 the legal tiers instead of a guess.
 
-```_containing_scopes(file_scope: str) -> frozenset[str]```
-The scope tokens that CONTAIN *file_scope* (spec §0, the drop-set).
-
-A settings file contributes keys of its OWN scope and of scopes it CONTAINS (defaults-down); a
-top-level key naming a CONTAINING scope is an UPWARD write that `_drop_upward_scopes` drops at
-assembly. Containment is `system ⊃ agent ⊃ workset ⊃ box` (`kb_store.SCOPE_CONTAINMENT`, single
-source), so the containing set is the HEAD-slice strictly BEFORE *file_scope*. The outermost scope
-(`system`) has an empty set — nothing contains it.
-
 ```refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None```
 REFUSE (never drop) a top-level `config:` table in the base, system, workset or box settings file,
 naming the file, each entry and its cure. `stored_config_entries` reads the table exactly as the
@@ -557,11 +544,10 @@ key once.
 ```reset_drop_warnings() -> None```
 Clear `_DROP_WARNED` — the test seam that stands in for a fresh process.
 
-```_upward_scope_drop_set(file_scope: str) -> frozenset[str]```
-The tokens rule 1-3 above remove, WITHOUT the warnings.
-
-One declaration, three readers: `_drop_upward_scopes` (the drop), `_warn_upward_drops` (what to
-announce) and `cascade_view` (the view).
+The tokens rules 1-3 above remove, WITHOUT the warnings, are
+`settings_drops.upward_scope_drop_set` — one declaration, three readers here: `_drop_upward_scopes`
+(the drop), `_warn_upward_drops` (what to announce) and `cascade_view` (the view, through
+`settings_drops.cascade_drop_set`). See `settings_drops.py.md`.
 
 ```cascade_view(raw: Any, *, level: str, path: Path | None) -> Any```
 The part of a raw settings doc at *level* that `assemble_levels` actually MERGES.
@@ -587,9 +573,10 @@ caller can pull the wrong way (P3); the retirement scans (`agent_select`, `setti
 
 **THREE filters, one per rule.**
 
-1. Directional enforcement — `_upward_scope_drop_set`.
-2. A `pref:` table survives only at a level §2h lets one be WRITTEN (`_PREF_LEGAL_LEVELS`),
-   matching `assemble_levels`'s three `refuse_pref_table` calls.
+1. Directional enforcement — `settings_drops.upward_scope_drop_set`.
+2. A `pref:` table survives only at a level §2h lets one be WRITTEN
+   (`settings_prefs.PREF_LEGAL_LEVELS`), matching `assemble_levels`'s three `refuse_pref_table`
+   calls. Rules 1 and 2 together are `settings_drops.cascade_drop_set`.
 3. The per-agent file contributes `ROOT_SECTIONS` (`self:`) and nothing else — `level_table` reads
    that table alone — so a top-level `agent:` in an `agent.yaml` is not a DROP; it was never an
    input.

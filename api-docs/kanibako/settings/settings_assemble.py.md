@@ -16,7 +16,6 @@ _DEST_KEYED_CATEGORY = 'bindings'
 _BIND_ARMS: tuple[str, str] = ('ro', 'rw')
 _DEST_KEYED_LEAF_CATEGORIES: frozenset[str] = frozenset({'caches', 'seeded', 'common', 'synced'})
 _AGENT_DEFAULT_SUB = 'default'
-_PREF_LEGAL_LEVELS: 'frozenset[str]' = frozenset({'workset', 'box'})
 _NO_LEAF: Any = object()
 _SELECTION_STORY = "The RULE CHANGED in kanibako 1.8.0: a box no longer names its agent with a key of its own — it REQUESTS one at the key that resolves earlier (`pref.system.agent`, spec §2h), and the system default is now `system.agent` (§2g). Refusing rather than running: kanibako cannot tell which agent you meant, and guessing would launch a DIFFERENT agent and seed that agent's credentials into this box."
 _MIRROR_STORY = "The RULE CHANGED in kanibako 1.8.0: a box no longer carries a SETTABLE mirror of its agent's settings — it REQUESTS a tweak with `pref.agent.<agent>.<key>` (spec §2h) and reads the effective value back at the read-only `meta.box.agent.<key>` (§2b). Refusing rather than running: an undeclared key is not read at all, so this box would come up on the agent's UNTWEAKED settings and every override in this table would silently vanish."
@@ -48,8 +47,6 @@ def _retired_key_cure(key: str, *, level: str, value: str, box_name: str | None=
 def _nested_present(raw: Any, parts: 'tuple[str, ...]') -> Any
 def _behavior_leaf_sites(raw: Any, leaf: str) -> 'list[tuple[tuple[str, ...], Any]]'
 def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None) -> str
-def _containing_scopes(file_scope: str) -> frozenset[str]
-def _upward_scope_drop_set(file_scope: str) -> frozenset[str]
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
 def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict
 def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=()) -> Any

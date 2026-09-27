@@ -519,9 +519,10 @@ is the module-local alias.
 `_SCOPE_WRITE_ALLOWED` is which key-scope namespaces a COMMAND scope is allowed to WRITE (spec §0 +
 §2a "Scope-direction guard": command-scope ≥ key-scope). A scope writes its OWN namespace AND that of
 every scope it CONTAINS — the write lands in the COMMAND scope's file as an overridable default (the
-contained scope always wins per the cascade); writing UPWARD is refused. Derived as each scope's
-TAIL-SLICE of the containment order (one source, no per-scope hand list). ``meta.*`` is RO
-everywhere. ``config.*`` is NOT writable from ANY command scope (block B2 — it is bootstrap/file-only
+contained scope always wins per the cascade); writing UPWARD is refused. Derived per scope from
+`settings_drops.writable_scopes(level)` — the scope's own token plus the scopes it contains, the
+same containment rule the cascade's upward drop-set reads (one source, no per-scope hand list).
+``meta.*`` is RO everywhere. ``config.*`` is NOT writable from ANY command scope (block B2 — it is bootstrap/file-only
 and is refused BEFORE this guard, so it appears in no allow-set; the older JC-B4-1 "system owns
 config.*" rule is superseded). ``box.agent.*`` (the §2b B5 downward-tweak mirror) is the BOX
 namespace — the guard keys on the TOP-LEVEL token (``box``), so ``box set box.agent.X`` is a legal
