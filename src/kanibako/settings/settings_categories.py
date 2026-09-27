@@ -281,8 +281,15 @@ class CategoryEntry:
 
     @property
     def key(self) -> str:
-        """The DOTTED spelling of :attr:`key_segments` — for display and matching."""
+        """The DOTTED spelling of :attr:`key_segments`; messages use :attr:`label`."""
         return ".".join(self.key_segments)
+
+    @property
+    def label(self) -> str:
+        """How a message names this entry: ``<declaration>[<dest>]`` or ``….<VAR>``."""
+        from kanibako.settings.settings_keyspace import entry_label
+
+        return entry_label(".".join(self.key_segments[:-1]), self.key_segments[-1])
 
 
 def _bind_options(category: str) -> str:
@@ -693,7 +700,7 @@ def raise_binding_vs_binding(
         + _suppress_then_add(concrete[0].key_segments, ambiguous=True),
         kind="binding_vs_binding",
         box_dest=box_dest,
-        entries=tuple((e.key, e.host_src) for e in concrete),
+        entries=tuple((e.label, e.host_src) for e in concrete),
     )
 
 
@@ -709,8 +716,8 @@ def raise_extension_onto_occupied(
     from kanibako.errors import CategoryCollisionError
 
     raise CategoryCollisionError(
-        f"'{extension.key}' extends onto '{box_dest}', which\n"
-        f"'{base.key}' already binds.\n"
+        f"'{extension.label}' extends onto '{box_dest}', which\n"
+        f"'{base.label}' already binds.\n"
         "'common', 'caches' and 'seeded' are ABSTRACT declarations: each "
         "derives a\nbindings.rw entry. The explicit binding is the BASE and "
         "survives; the derived\nextension is refused.\n\n"
@@ -723,7 +730,7 @@ def raise_extension_onto_occupied(
         + _suppress_then_add(base.key_segments),
         kind="extension_onto_occupied",
         box_dest=box_dest,
-        entries=tuple((e.key, e.host_src) for e in (extension, base)),
+        entries=tuple((e.label, e.host_src) for e in (extension, base)),
     )
 
 
@@ -741,10 +748,10 @@ def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry:
 
 
 def _entry_lines(entries: list[CategoryEntry]) -> str:
-    """``    <key>  ->  <host_src>`` lines, key-column aligned."""
-    width = max((len(e.key) for e in entries), default=0)
+    """``    <label>  ->  <host_src>`` lines, label-column aligned."""
+    width = max((len(e.label) for e in entries), default=0)
     return "".join(
-        f"    {e.key.ljust(width)}  ->  {e.host_src}\n" for e in entries
+        f"    {e.label.ljust(width)}  ->  {e.host_src}\n" for e in entries
     )
 
 
@@ -814,7 +821,9 @@ def _suppress_then_add(
     prescription; the extension-onto-occupied refusal passes False.
     """
     # ⚑ SEGMENTS, NEVER A DOTTED SPLIT — a split block is not a declaration at all.
-    occupant_key = ".".join(occupant_segments)
+    from kanibako.settings.settings_keyspace import entry_label
+
+    occupant_key = entry_label(".".join(occupant_segments[:-1]), occupant_segments[-1])
     scope = occupant_segments[0]
     last = len(occupant_segments) - 1
     indent = "  "
@@ -937,17 +946,21 @@ def effective_bindings_and_template_sources(
     from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_launch import snapshot_leaf
-    from kanibako.settings.settings_views import derived_bindings
+    from kanibako.settings.settings_keyspace import entry_label
+    from kanibako.settings.settings_views import derived_binding_rows
     from kanibako.settings.store_collapse import Declaration, pair_declarations
 
     node = dict.get(snapshot, BINDING_DERIVATIONS_NODE)
-    derived = derived_bindings(node) if isinstance(node, KeyStore) else {}
+    derived = derived_binding_rows(node) if isinstance(node, KeyStore) else {}
+    # ⚑ ``key`` is DISPLAY (``pair_declarations`` never reads it), so it is the entry's
+    # label; the delivery is read off the dotted declaration key.
     declarations = [
         Declaration(
-            key=key, dest=bind.box, src=bind.host,
-            delivery=declaration_delivery(key),
+            key=entry_label(".".join(segments[:-1]), segments[-1]),
+            dest=bind.box, src=bind.host,
+            delivery=declaration_delivery(".".join(segments)),
         )
-        for key, bind in sorted(derived.items())
+        for segments, bind in sorted(derived.items())
     ]
     bindings = snapshot_leaf(snapshot, "meta.assembly.bindings")
     return pair_declarations(

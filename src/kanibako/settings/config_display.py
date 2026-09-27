@@ -25,6 +25,7 @@ from typing import Any, Mapping
 from kanibako.settings.agent_file import stored_leaf_display
 from kanibako.settings.config_io import load_doc, render_stored_scalar
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
+from kanibako.settings.settings_keyspace import entry_label
 from kanibako.settings.settings_prefs import PREF_ROOT
 
 
@@ -57,7 +58,9 @@ def _flatten_table(node: dict, prefix: str, out: dict[str, str]) -> None:
             else:
                 _flatten_table(v, f"{prefix}{k}.", out)
         else:
-            out[f"{prefix}{k}"] = stored_leaf_display(k, v)
+            # A ``masks`` entry is a leaf here; its dest is an INDEX, never a segment.
+            row = entry_label(prefix[:-1], k) if prefix.endswith(".") else f"{prefix}{k}"
+            out[row] = stored_leaf_display(k, v)
 
 
 def flatten_under(prefix: str, table: dict) -> dict[str, str]:
@@ -117,7 +120,7 @@ def _flatten_bind_map(table: dict, key: str, out: dict[str, str]) -> None:
         if isinstance(entry, dict):
             _flatten_table(entry, f"{key}.{dest}.", out)
             continue
-        row = f"{key}.{normalize_bind_dest(str(dest))}"
+        row = entry_label(key, normalize_bind_dest(str(dest)))
         try:
             src, opts = unpack_bind_entry(entry)
         except SettingsError:
@@ -284,7 +287,7 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
             # gets read as an entry key.
             for entry_dest in dict.keys(req.value):
                 rows.append((
-                    f"{req.target}.{entry_dest}",
+                    entry_label(req.target, entry_dest),
                     _render(
                         dict.__getitem__(req.value, entry_dest), entry_dest, target_leaf,
                     ),
@@ -438,7 +441,7 @@ def _print_category_block(
                     entry = dict.__getitem__(mode_node, dest)
                     if isinstance(entry, BindEntry):
                         rows.append(
-                            (f"{prefix}.bindings.{mode}.{dest}", dest, entry),
+                            (entry_label(f"{prefix}.bindings.{mode}", dest), dest, entry),
                         )
 
     # 🛑🛑 A CONCRETE ROW IS NOT SELF-EVIDENTLY A MOUNT, and printing it as one was

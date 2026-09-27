@@ -306,13 +306,13 @@ not-yet-installed agent name is legal there.
 
 ## Entry keys and origins — `pref_entry_keys` / `pref_origin`
 
-A settings ENTRY is identified downstream (collision errors, `binding_derivations.*`) by
-`<decl-scope>.<category>.<dest>`. For most targets that string IS the pref target —
+A settings ENTRY is named in launch messages (collision errors, the adapter's leaf refusal) by
+`settings_keyspace.entry_label`. For most targets that label IS the pref target —
 `pref.agent.claude.env.FOO` requests exactly the key `agent.claude.env.FOO`, because `<VAR>` is a
 key SEGMENT. For the SEVEN terminal dest-keyed categories (the six bind-shaped ones plus `masks`) it
 is not: the target stops at the category — `key_reason` REFUSES `agent.claude.common.<name>` — and
-the destinations live INSIDE the value. One request there accounts for one entry key PER DESTINATION
-IT DECLARES.
+the destinations live INSIDE the value, so the label is `<target>[<dest>]` (spec §2c: the bracket is
+a dict index). One request there accounts for one entry PER DESTINATION IT DECLARES.
 
 ⚑⚑ **THE DESTINATIONS ARE READ FROM THE REQUEST'S OWN VALUE, not derived by trimming the entry
 key.** A bare prefix test (`key.startswith(target + ".")`) is the tempting one-liner and it
@@ -339,7 +339,7 @@ ending in a category token would have been expanded into per-destination entry k
 keys.
 
 `pref_origin` answers the enrichment question. A collision error identifies an entry by the
-DECLARATION KEY plus that entry's DEST (`agent.claude.common.~/newthing`) — an identifier a user who
+DECLARATION KEY plus that entry's DEST (`agent.claude.common[~/newthing]`) — an identifier a user who
 wrote `pref.agent.claude.common` never wrote and cannot write, because the dest lives INSIDE the
 value that pref carries. This lets the one CLI seam that renders such an error say where the entry
 actually came from.

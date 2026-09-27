@@ -102,11 +102,13 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
   node (`agent_ref.GENERAL_SLOT`) has a present-`None` arm (a supplied value, which beats the default
   arm — `[R177]`; §2d's shell fence declares `agent.shell.template | <None>`, and §2b says the
   pseudo-agent installs no layer-2 template), so by default its layer is SKIPPED — and a USER-set
-  `agent.shell.template` seeds through the same layer. The skip is `settings_expand`'s: §2a says a
-  layer whose source is `<None>` is SKIPPED, and the layer EMBEDS its root, so a `seeded` entry whose
-  embedded `@`-ref resolves to a present `None` is DROPPED at expansion rather than rendered as `""`
-  (which would be the HOST path `/box/home`). One rule for every layer and every scope: a user's
-  `agent.<a>.template: null` or `workset.template: null` skips its layer the same way.
+  `agent.shell.template` seeds through the same layer. §2a says a layer whose source is `<None>` is
+  SKIPPED, and the layer EMBEDS its root: an embedded `@`-ref to a present `None` makes the entry
+  `None` at expansion (spec §0 — `settings_expand`, one rule for every value) rather than rendering
+  `""` (which would be the HOST path `/box/home`), and the collapse
+  (`settings_launch._emit_bind_map`) skips a `None` `seeded` entry. One rule for every layer and
+  every scope: a user's `agent.<a>.template: null` or `workset.template: null` skips its layer the
+  same way.
   ⚑ Until 2026-09-24 this table gated the layer on the DEFAULT arm's value. That dropped a user-set
   `agent.shell.template` at create, and left a user's null rendering as `/box/home`.
   ⚑ The KEY segment is the CANONICAL node (`persona℘harness`); the VALUE is a store DIRECTORY, so

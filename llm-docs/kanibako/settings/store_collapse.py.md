@@ -558,7 +558,7 @@ two copies of — two carriers of one shape is the defect class this whole secti
 and each branch reads only the half its own outcome guarantees.
 
 ⚑ **The second argument is the fold's `declared_by`, and BOTH loss phrases take it** — the mask
-("the mask **declared by `'box.masks./opt/x'`** at …") and the superseding binding alike. It is
+("the mask **declared by `'box.masks[/opt/x]'`** at …") and the superseding binding alike. It is
 OPTIONAL because a caller must be HANDED the map: it cannot be recovered from the collapsed leaf,
 which carries no key. Omitted, every phrase is byte-identical to what it was. The COPY-loss branch
 is the one genuine exception and says why in place — the taker there is another copy row, and the
@@ -575,7 +575,10 @@ The pairing is asked in ONE direction, declaration → delivery, and containment
 
 The REVERSE question — given a collapsed dest, name the declaration that put a mount there — is
 answered by **`CollapsedStore.declared_by`**, a dest-keyed SIDE MAP built off the ENTRY LIST and
-recorded AT THE FOLD. `collapse_store_shapes` takes that list as an OPTIONAL third argument; a
+recorded AT THE FOLD. ⚑ Its values are `CategoryEntry.label`s (`box.masks[/opt/x]`), the spelling
+`settings_prefs.pref_entry_keys` yields, so `commands.start._annotate_pref_origin` can match a
+refusal here against the `pref` that installed the entry; a dotted `.key` would never match.
+`collapse_store_shapes` takes that list as an OPTIONAL third argument; a
 caller that omits it collapses byte-identically and files nothing, which is why every message here
 still has a bare spelling. The launch seam passes it (`commands.start._install_assembly_collapse`),
 and so does `workset share list --effective`; both displays then print from it.

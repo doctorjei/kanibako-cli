@@ -1348,8 +1348,8 @@ class TestEffectiveBlockAgainstARealAgentPlugin:
         for entry in entries:
             if entry.category not in ("common", "caches", "seeded"):
                 continue
-            assert f"  {entry.key} = " in text, entry.key
-            assert f"    binding_derivations.{entry.key} = " in text, entry.key
+            assert f"  {entry.label} = " in text, entry.label
+            assert f"    binding_derivations.{entry.label} = " in text, entry.label
         # The bare agent form never appears (it is not a key).
         assert "agent.common" not in text
         assert "agent.caches" not in text
@@ -1460,10 +1460,10 @@ class TestTheEffectiveBlockShowsThePidZeroFoundation:
         assert "(foundation) meta.box.home = /data/pw/boxes/mybox/home -> /home/agent" \
             in text, text
         # The ordinary scope declaration still renders beneath it, unchanged.
-        assert "box.bindings.rw./home/agent/workspace = /code/x -> " in text, text
+        assert "box.bindings.rw[/home/agent/workspace] = /code/x -> " in text, text
 
     def test_the_foundation_is_not_spelled_as_a_settable_binding_key(self):
-        """It is NOT ``box.bindings.rw.~`` and must never read as one: that key does
+        """It is NOT ``box.bindings.rw[~]`` and must never read as one: that key does
         not exist, and a user copying it into a settings file would declare a second
         bind at pid 0's point — which the collapse refuses."""
         import io
@@ -1475,8 +1475,8 @@ class TestTheEffectiveBlockShowsThePidZeroFoundation:
         _print_category_block(snap, None, buf, ctx)
         text = buf.getvalue()
 
-        assert "bindings.rw./home/agent =" not in text, text
-        assert "bindings.rw.~" not in text, text
+        assert "bindings.rw[/home/agent] =" not in text, text
+        assert "bindings.rw[~]" not in text, text
 
 
 class TestForgedDerivationsTableNeverEntersTheMerge:
@@ -1801,7 +1801,7 @@ class TestADeclarationThatLosesIsNotShownAsAMount:
             "agent.claude.common": {"~/x": ("/h/agent",)},
             "box.masks": ["~/x"],
         }))
-        got = paired["agent.claude.common./home/agent/x"]
+        got = paired["agent.claude.common[/home/agent/x]"]
         assert got.outcome == DERIVED_MASKED
         assert got.at == "/home/agent/x"
         assert got.bind is not None and got.bind.src is None
@@ -1815,7 +1815,7 @@ class TestADeclarationThatLosesIsNotShownAsAMount:
         })
         # The swept dest is not in the collapsed map at all — the whole point.
         assert "/home/agent/x/y" not in _leaf(snap, "meta", "assembly", "bindings")
-        got = _paired(snap)["agent.claude.common./home/agent/x/y"]
+        got = _paired(snap)["agent.claude.common[/home/agent/x/y]"]
         assert got.outcome == DERIVED_MASKED
         # ⚑ NAMED: the dest that actually swallowed it, not the declaration's own.
         assert got.at == "/home/agent/x"
@@ -1830,8 +1830,8 @@ class TestADeclarationThatLosesIsNotShownAsAMount:
             "box.common": {"~/x": ("/h/common",)},
             "box.caches": {"~/x": ("/h/caches",)},
         }))
-        loser = paired["box.caches./home/agent/x"]
-        winner = paired["box.common./home/agent/x"]
+        loser = paired["box.caches[/home/agent/x]"]
+        winner = paired["box.common[/home/agent/x]"]
         assert loser.outcome == DERIVED_SUPERSEDED
         assert winner.outcome == DERIVED_MOUNT
         # The loser is paired with the binding that OCCUPIES its dest — the
@@ -1844,7 +1844,7 @@ class TestADeclarationThatLosesIsNotShownAsAMount:
 
         got = _paired(_assembled({
             "agent.claude.common": {"~/x": ("/h/agent",)},
-        }))["agent.claude.common./home/agent/x"]
+        }))["agent.claude.common[/home/agent/x]"]
         assert got.outcome == DERIVED_MOUNT
         assert got.at == "/home/agent/x"
         assert got.bind is not None and got.bind.src == "/h/agent"
@@ -1857,7 +1857,7 @@ class TestADeclarationThatLosesIsNotShownAsAMount:
 
         got = _paired(_assembled({
             "box.seeded": {"~/s": ("/h/s",)},
-        }))["box.seeded./home/agent/s"]
+        }))["box.seeded[/home/agent/s]"]
         assert got.outcome == DERIVED_COPY
         assert got.copy is not None
         assert (got.copy.src, got.copy.dest) == ("/h/s", "/home/agent/s")
@@ -1876,8 +1876,8 @@ class TestADeclarationThatLosesIsNotShownAsAMount:
             "box.common": {"~/x": ("/h/same",)},
             "box.caches": {"~/x": ("/h/same",)},
         }))
-        assert paired["box.common./home/agent/x"].outcome == DERIVED_AMBIGUOUS
-        assert paired["box.caches./home/agent/x"].outcome == DERIVED_AMBIGUOUS
+        assert paired["box.common[/home/agent/x]"].outcome == DERIVED_AMBIGUOUS
+        assert paired["box.caches[/home/agent/x]"].outcome == DERIVED_AMBIGUOUS
 
     def test_an_absent_assembly_is_reported_as_UNCOVERED_not_as_no_mount(self):
         """A NARROW resolve writes no bindings leaf; "no map" is not "no mount"."""
@@ -1889,7 +1889,7 @@ class TestADeclarationThatLosesIsNotShownAsAMount:
         assert dict.get(snap, "binding_derivations") is not None, (
             "the declarations half went too — this would prove nothing"
         )
-        got = _paired(snap)["agent.claude.common./home/agent/x"]
+        got = _paired(snap)["agent.claude.common[/home/agent/x]"]
         assert got.outcome == DERIVED_UNCOVERED
         assert got.at is None and got.bind is None
 
@@ -1968,9 +1968,9 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
             "the binding is printed with the delivery arrow, so the block claims a "
             "mount at a destination the box sees nothing at"
         )
-        assert "box.bindings.ro./opt/arb = /opt/arb  (declared: /src)" in text, text
+        assert "box.bindings.ro[/opt/arb] = /opt/arb  (declared: /src)" in text, text
         assert (
-            f"{self._MASK_PHRASE}'box.masks./opt/arb' at /opt/arb covers this destination"
+            f"{self._MASK_PHRASE}'box.masks[/opt/arb]' at /opt/arb covers this destination"
             in text
         ), text
 
@@ -1999,7 +1999,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         text = _block(categories)
         assert "/src -> /opt/arb/inner" not in text, text
         assert (
-            f"{self._MASK_PHRASE}'box.masks./opt/arb' at /opt/arb covers this destination"
+            f"{self._MASK_PHRASE}'box.masks[/opt/arb]' at /opt/arb covers this destination"
             in text
         ), text
 
@@ -2013,9 +2013,9 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
 
         text = _block(categories)
         assert "/src -> /opt/arb" not in text, text
-        assert "system.bindings.ro./opt/arb = /opt/arb  (declared: /src)" in text, text
+        assert "system.bindings.ro[/opt/arb] = /opt/arb  (declared: /src)" in text, text
         assert (
-            f"{self._MASK_PHRASE}'box.masks./opt/arb' at /opt/arb covers this destination"
+            f"{self._MASK_PHRASE}'box.masks[/opt/arb]' at /opt/arb covers this destination"
             in text
         ), text
 
@@ -2034,7 +2034,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         assert _collapsed(categories)["/opt/arb"].src == "/src"
 
         text = _block(categories)
-        assert "box.bindings.ro./opt/arb = /src -> /opt/arb" in text, text
+        assert "box.bindings.ro[/opt/arb] = /src -> /opt/arb" in text, text
         assert "no mount" not in text, text
 
     def test_a_binding_nested_inside_another_binding_still_prints_as_a_mount(self):
@@ -2046,8 +2046,8 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
             "box.bindings.ro": {"/opt/n": ("/src",), "/opt/n/in": ("/src2",)},
         }
         text = _block(categories)
-        assert "box.bindings.ro./opt/n = /src -> /opt/n" in text, text
-        assert "box.bindings.ro./opt/n/in = /src2 -> /opt/n/in" in text, text
+        assert "box.bindings.ro[/opt/n] = /src -> /opt/n" in text, text
+        assert "box.bindings.ro[/opt/n/in] = /src2 -> /opt/n/in" in text, text
         assert "no mount" not in text, text
 
     def test_a_binding_whose_CHILD_is_a_mask_still_prints_as_a_mount(self):
@@ -2063,7 +2063,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         assert _collapsed(categories)["/opt/arb"].src == "/src"
 
         text = _block(categories)
-        assert "box.bindings.ro./opt/arb = /src -> /opt/arb" in text, text
+        assert "box.bindings.ro[/opt/arb] = /src -> /opt/arb" in text, text
         assert "no mount" not in text, text
 
     def test_a_dest_spelled_with_an_XDG_var_arbitrates_like_any_other(self):
@@ -2084,7 +2084,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         assert _collapsed(categories)["/data/z"].src == "/src"
 
         text = _block(categories)
-        assert "box.bindings.ro.$XDG_DATA_HOME/z = /src -> $XDG_DATA_HOME/z" in text, text
+        assert "box.bindings.ro[$XDG_DATA_HOME/z] = /src -> $XDG_DATA_HOME/z" in text, text
         assert "no mount" not in text, text
 
     def test_a_MASKED_XDG_spelled_dest_prints_the_mask_not_a_mount(self):
@@ -2109,14 +2109,14 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
             "mount at a destination the box sees nothing at"
         )
         assert (
-            "box.bindings.ro.$XDG_DATA_HOME/z = $XDG_DATA_HOME/z  (declared: /src)"
+            "box.bindings.ro[$XDG_DATA_HOME/z] = $XDG_DATA_HOME/z  (declared: /src)"
             in text
         ), text
         # ⚑ THE KEY KEEPS THE SPELLING THE USER WROTE while the destination is the
         # RESOLVED one — the two halves of the same row, and the key is the half they
         # can go and edit.
         assert (
-            f"{self._MASK_PHRASE}'box.masks.$XDG_DATA_HOME/z' at /data/z covers this "
+            f"{self._MASK_PHRASE}'box.masks[$XDG_DATA_HOME/z]' at /data/z covers this "
             "destination" in text
         ), text
 
@@ -2137,7 +2137,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         text = _block(categories)
         assert "/src -> $XDG_DATA_HOME/z" not in text, text
         assert (
-            f"{self._MASK_PHRASE}'box.masks./data/z' at /data/z covers this destination"
+            f"{self._MASK_PHRASE}'box.masks[/data/z]' at /data/z covers this destination"
             in text
         ), text
 
@@ -2165,7 +2165,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         text = _block(categories)
         assert "/src -> \\$XDG_DATA_HOME/z" not in text, text
         assert (
-            f"{self._MASK_PHRASE}'box.masks.\\$XDG_DATA_HOME/z' at $XDG_DATA_HOME/z "
+            f"{self._MASK_PHRASE}'box.masks[\\$XDG_DATA_HOME/z]' at $XDG_DATA_HOME/z "
             "covers this destination" in text
         ), text
 
@@ -2180,7 +2180,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
             "box.masks": ["/opt/arb"],
             "box.bindings.ro": {"/opt/arb-x": ("/src",)},
         })
-        assert "box.bindings.ro./opt/arb-x = /src -> /opt/arb-x" in text, text
+        assert "box.bindings.ro[/opt/arb-x] = /src -> /opt/arb-x" in text, text
         assert "no mount" not in text, text
 
 
@@ -2218,8 +2218,8 @@ class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
 
         text = _block(categories)
         assert (
-            "binding_derivations.agent.claude.common./home/agent/x = (no mount — the "
-            "mask declared by 'box.masks.~/x' at /home/agent/x covers this destination"
+            "binding_derivations.agent.claude.common[/home/agent/x] = (no mount — the "
+            "mask declared by 'box.masks[~/x]' at /home/agent/x covers this destination"
             in text
         ), text
 
@@ -2238,7 +2238,7 @@ class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
 
         text = _block(categories)
         assert (
-            "the mask declared by 'box.masks.~/x' at /home/agent/x covers this "
+            "the mask declared by 'box.masks[~/x]' at /home/agent/x covers this "
             "destination" in text
         ), text
 
@@ -2258,13 +2258,13 @@ class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
 
         text = _block(categories)
         assert (
-            "binding_derivations.box.caches./home/agent/x = (no mount — the binding "
-            "declared by 'box.common./home/agent/x' of /h/common at /home/agent/x "
+            "binding_derivations.box.caches[/home/agent/x] = (no mount — the binding "
+            "declared by 'box.common[/home/agent/x]' of /h/common at /home/agent/x "
             "occupies this destination)" in text
         ), text
         # The positive control: the WINNER is still printed as the mount it is.
         assert (
-            "binding_derivations.box.common./home/agent/x = /h/common -> "
+            "binding_derivations.box.common[/home/agent/x] = /h/common -> "
             "/home/agent/x  [Z,U,rw]  (mount)" in text
         ), text
 
@@ -2285,7 +2285,7 @@ class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
             "box.masks": ["/opt/arb"],
         }
         snapshot, declared_by = _assembled_pair(categories)
-        assert declared_by["/opt/arb"] == "box.masks./opt/arb", declared_by
+        assert declared_by["/opt/arb"] == "box.masks[/opt/arb]", declared_by
 
         buf = io.StringIO()
         _print_category_block(snapshot, None, buf, make_ctx())
@@ -2330,7 +2330,7 @@ class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
             },
             cli_level=None,
         )
-        assert deliveries.declared_by["/opt/arb"] == "box.masks./opt/arb", (
+        assert deliveries.declared_by["/opt/arb"] == "box.masks[/opt/arb]", (
             deliveries.declared_by
         )
 
@@ -2355,6 +2355,6 @@ class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
         text = buf.getvalue()
         assert rc == 0, text
         assert (
-            "no mount — the mask declared by 'box.masks./opt/arb' at /opt/arb "
+            "no mount — the mask declared by 'box.masks[/opt/arb]' at /opt/arb "
             "covers this destination" in text
         ), text

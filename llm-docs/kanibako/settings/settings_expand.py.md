@@ -10,8 +10,10 @@ snapshot (S19). It builds and returns a FRESH `KeyStore`.
 
 ⚑ **A reference resolves to a DECLARED key or it does not resolve at all.** The keyspace is closed:
 this pass never fabricates a default for a name it cannot find. An absent referent propagates
-ABSENCE — the holder key is DROPPED (whole-value, §6b) or substitutes the empty string (embedded) —
-and every other unresolvable case is an ERROR that NAMES the key: a cycle, a depth-cap breach, an
+ABSENCE — the holder key is DROPPED (whole-value, §6b) or substitutes the empty string (embedded).
+A PRESENT-`None` referent makes the WHOLE value `None`, whole-value or embedded alike (spec §0:
+*"An embedded reference to a present `<None>` makes the whole value `<None>`."*, [R186]) — and every
+other unresolvable case is an ERROR that NAMES the key: a cycle, a depth-cap breach, an
 unknown `$VAR`, a `@pref.*` reference, or a binding destination that would resolve to no path.
 
 ⚑ **ABSENCE HAS A SECOND SOURCE, and it is not a failure.** A PASSTHROUGH variable — `$COLORTERM`,
@@ -36,8 +38,9 @@ What this module adds are the three things the single-expression engine lacks (b
    (decided by PARSE — S18, never guessed) inherits the referent's 3-state through every link:
    referent absent → this key ABSENT (dropped from the snapshot); referent present-`None` → `None`
    (kept, the §3 terminal a bind/category consumer then OMITs); else the terminal value. An EMBEDDED
-   token (`@x` inside a larger string) is pure SUBSTITUTION via `expand_expr` (absent/None → empty
-   string; never deletes the key).
+   token (`@x` inside a larger string) is SUBSTITUTION via `expand_expr`: an absent referent → empty
+   string (never deletes the key); a present-`None` referent → the WHOLE value is `None` (see
+   *Embedded `None`* below).
 3. **CONFIG-vs-ENV deferral (§6a / B6 — S17).** For a `Bind`: `host_src` expands FULLY host-side
    (`@`-refs plus `$XDG` / `~`). `box_dest` expands its `@`-refs (CONFIG, the same on both sides) but
    leaves `$XDG` / `~` (ENVIRONMENT, host ≠ box) RAW — a DEFERRED token resolved box-side at mount.
@@ -52,11 +55,12 @@ What this module adds are the three things the single-expression engine lacks (b
 
 * **scalar str** → expanded host-side (`space="host"`); a whole-value `@`-ref inherits the referent's
   3-state (absent → the key is DROPPED; present-None → `None`); a whole-value `$VAR` answers its
-  value or ABSENCE (host space only); an embedded token substitutes per `expand_expr`.
+  value or ABSENCE (host space only); an embedded token substitutes per `expand_expr`, and any
+  embedded ref to a present-`None` key makes the leaf `None`.
 * **`Bind`** → `host_src` expanded FULLY host-side; `box_dest` expands its `@`-refs but leaves
-  `$XDG` / `~` RAW (deferred box-side, S17). If a whole-value `host_src` `@`-ref resolves
-  absent/None, the WHOLE Bind is dropped, or carried as that terminal (§3 — a bind/category consumer
-  OMITs it). `opts` is carried verbatim; it never holds tokens.
+  `$XDG` / `~` RAW (deferred box-side, S17). If a whole-value `host_src` `@`-ref resolves absent, or
+  any `host_src` ref resolves present-`None`, the WHOLE Bind is dropped, or carried as that terminal
+  (§3 — a bind/category consumer OMITs it). `opts` is carried verbatim; it never holds tokens.
 * **`BindEntry`** (the dest-keyed shape, R-5 / R-6) → `src` expanded exactly as `Bind.host_src`, with
   the SAME 3-state rule; the destination is the node KEY, so it is expanded on the walk
   (`_expand_dest_key`) in the same `$XDG` / `~`-deferred space `box_dest` uses. Two stored dests that
@@ -86,10 +90,11 @@ below — and `~` has none, because it carries no 3-state to inherit.
 ⚑ **THE BRACED FORM MUST LAND HERE, NOT ON THE EMBEDDED PATH.** This predicate is the ONLY thing
 that decides the shape, and the two paths differ in a way that is invisible until it bites: a
 whole-value ref inherits the referent's full 3-state VERBATIM (absent → the key is dropped;
-present-`None` → `None`), while an embedded token is pure string substitution and `_lookup_str`
-coerces absent/`None` to `""`. So a braced whole-value ref misrouted to the embedded path would
-silently turn a `None` (the §3 "omit this bind" terminal) into an empty-string terminal — a real
-value where the spec means absence. `@{a.b}` and `@a.b` therefore resolve through the SAME call.
+present-`None` → `None`), while an embedded token is string substitution and `_lookup_str`
+coerces an absent referent to `""`. So a braced whole-value ref misrouted to the embedded path
+would silently turn an ABSENT referent (the §6b "drop this key" signal) into an empty-string
+terminal — a real value where the spec means absence. `@{a.b}` and `@a.b` therefore resolve through
+the SAME call.
 
 **It NEVER RAISES — a total predicate.** A malformed reference (`"@{a.b"`, `"@{"`) answers `None` so
 it falls through to `_Expander._expand_embedded`, where `expand_expr` raises it with the same message
@@ -189,8 +194,8 @@ resolved cleanly.
 
 An embedded dangling ref is a set-time DEFECT rather than the strict `""` coercion, per the
 director's 2026-06-29 ruling, and it is attributed to the owning edited leaf. A present-`None`
-referent is still a legitimate `""` and is NOT a defect. So the strict embedded-`""` behaviour is
-unchanged; only the absent case diverges, and only when `collect_errors=True`.
+referent is NOT a defect: it makes the leaf `None`, in lenient mode as in strict. Lenient differs
+from strict only for an absent referent, and only when `collect_errors=True`.
 
 ## The `pref` subtree — carried through verbatim, never referenceable
 
@@ -240,15 +245,19 @@ KEY — so the key, not the value, is the box-side path EXPRESSION, and it expan
 value's arity — a legacy `Bind` and a `BindEntry` are both 2-element-legal with opposite meanings.
 
 **Refusal 1 — a destination that resolves to no path.** A whole-value `@`-ref destination that
-resolves absent or present-`None` RAISES, in `_expand_dest_key` and, for the name-keyed shape, in
-`_expand_bind`. A destination cannot resolve to no path, and an empty dest is a mount foot-gun rather
-than a legitimate omission. On the `Bind` side there is a further reason it is a raise and not a
-propagation: a `box_dest` is a path EXPRESSION, not a key whose absence deletes the bind, so it never
-returns `_ABSENT` / `None` from the EMBEDDED path (an embedded token coerces to `""`). The ONLY way
-`box` is `_ABSENT` / `None` there is a WHOLE-VALUE `box_dest` `@`-ref to an absent or present-`None`
-config key — and the spec has NO whole-value `box_dest` (every `box_dest` is `~/…` or `$XDG…` or an
-embedded `@`-path). It is therefore an unreachable-on-spec-forms config error, and it raises loudly
-with the bind in the message rather than silently emitting an empty dest.
+resolves absent, or ANY destination `@`-ref (whole-value or embedded) to a present-`None` key,
+RAISES, in `_expand_dest_key` and, for the name-keyed shape, in `_expand_bind`. A destination cannot
+resolve to no path, and an empty or root-relative dest is a mount foot-gun rather than a legitimate
+omission. A `box_dest` is a path EXPRESSION, not a key whose absence deletes the bind, so it is a
+raise and not a propagation; the message names the destination expression. An embedded ref to an
+ABSENT key still substitutes `""` (§6b) — that case is unchanged.
+
+⚑ **THE ONE EXCEPTION IS A `seeded` LAYER (spec §2a: "any layer whose source/dest is `<None>` is
+SKIPPED").** `_expand_node` flags every entry of a `<scope>.seeded` map (the `_SEEDED` token at the
+entry's parent path) and passes `seed=True`; there a present-`None` destination, whole-value or
+embedded, answers `None` and the walk SKIPS the entry. An ABSENT whole-value destination still
+raises there — absence is not `<None>`. The source side needs no flag: a `None` source is a `None`
+entry in every category, and the collapse skips it.
 
 **Refusal 2 — two dests colliding on one destination.** Files store UNRESOLVED, so
 `@meta.box.path/home` and a literal spelling of that same path are two DISTINCT keys that resolve to
@@ -260,35 +269,41 @@ attribute it to.
 ## Bind and BindEntry — the two bind shapes
 
 `_expand_bind` handles the name-keyed `Bind`: `host_src` fully host-side, `box_dest` `@`-refs only.
-If the `host_src` is a whole-value `@`-ref that resolves absent/None, the WHOLE Bind takes that
-3-state — the binding cannot point anywhere: an absent host → `_ABSENT` (drop the bind); a
-present-None host → `None` (the §3 bind/category OMIT terminal). Otherwise both halves are strings
-and `opts` is carried verbatim, since it never holds tokens.
+If the `host_src` is a whole-value `@`-ref that resolves absent, or any `host_src` ref resolves
+present-`None`, the WHOLE Bind takes that state — the binding cannot point anywhere: an absent host
+→ `_ABSENT` (drop the bind); a `None` host → `None` (the §3 bind/category OMIT terminal). Otherwise
+both halves are strings and `opts` is carried verbatim, since it never holds tokens.
 
 `_expand_bind_entry` is the dest-keyed counterpart. It expands ONE half, because the other half — the
 destination — is the mapping KEY and is expanded by `_expand_dest_key` on the node walk (R-5 / R-6).
 The 3-state rule is unchanged from the name-keyed shape: a whole-value `src` ref that resolves absent
-makes the WHOLE entry `_ABSENT` (drop it — the binding cannot point anywhere); a present-`None` `src`
-yields `None` (the §3 bind/category OMIT terminal). `opts` is carried verbatim.
+makes the WHOLE entry `_ABSENT` (drop it — the binding cannot point anywhere); a `src` that resolves
+`None` — any ref to a present-`None` key — yields a PRESENT `None` entry. `opts` is carried
+verbatim. The collapse (`settings_launch._emit_bind_map`) SKIPS a `None` entry in every category —
+a `seeded` LAYER (§2a) and a bind alike ([Q80] (a): skip, not refuse).
+⚑ **The E2 side table.** For each bind entry the node walk turns `None` this way, the expander
+records the refs that did it, keyed by the entry's path (segments, raw destination last), in
+`null_sources`; `expand(…, null_sources=…)` copies it out. `settings_launch` names those keys in
+the [R185] warning for a STANDARD bind. Only an entry reached by the walk is recorded, never a
+transitive read of the same value.
+⚑ `None`, not `_ABSENT`: a supplied `<None>` is a value, and a default is a fallback that applies
+only where nothing was supplied (`[R177]`) — an `_ABSENT` seeded entry let the §2d pick
+(`settings_launch._agent_pick_node`) refill a shell box's `~/` from a user's `agent.default.seeded`.
 
-⚑ **A `seeded` ENTRY IS A LAYER, AND A LAYER WITH A `<None>` SOURCE IS SKIPPED (spec §2a).** The node
-walk flags every entry of a `<scope>.seeded` map (`seed=True`, matched by the `_SEEDED` token at the
-entry's parent path). For such an entry, an EMBEDDED `@`-ref whose referent is a present `None` makes
-the source `<None>`, and the entry becomes a PRESENT `None` — not `_ABSENT`. A supplied `<None>` is a
-value and a default is a fallback that applies only where nothing was supplied (`[R177]`): an `_ABSENT`
-entry let the §2d pick (`settings_launch._agent_pick_node`) refill a shell box's `~/` from a user's
-`agent.default.seeded`. The collapse (`settings_launch._emit_bind_map`) then SKIPS a `None` `seeded`
-entry — this one and a whole-value source ref to a present `None` alike (§2a: a layer whose source is
-`<None>` is skipped). The rule is SOURCE-side only; a `None` on the destination side keeps its
-pre-existing handling in `_expand_dest_key` (a whole-value ref raises, an embedded one substitutes `""`).
-Every shipped layer embeds its root —
-`@agent.<a>.template/box/home` — and the embedded rule below renders a `None` as `""`, so without this
-the shell fence's `agent.shell.template: <None>` (or a user's `agent.<a>.template: null` /
-`workset.template: null`) became the HOST path `/box/home` rather than a skipped layer. This is the one
-place the referent is still visible: after expansion the `""` is indistinguishable from a real path.
-The substitution itself is unchanged — `_lookup_str` only RECORDS the `None` (its `none_refs` list)
-before coercing it. Scope: `seeded` entries only, present-`None` only. An ABSENT referent keeps the
-§6b embedded `""`, and every other category keeps the embedded rule as is.
+## Embedded `None` — the WHOLE value is `None` (spec §0, [R186])
+
+*"An embedded reference to a present `<None>` makes the whole value `<None>`."* `_expand_str` hands
+`_expand_embedded` a fresh `none_refs` list; `_lookup_str` RECORDS each present-`None` referent in
+it before coercing it to a placeholder `""`, and `_expand_str` returns `None` if the list is
+non-empty. The ordinary present-`None` rules then apply to the leaf (§2h): an env value is left out,
+a scalar leaf keeps `None` (consumer default), a bind entry is `None` (above), and a destination
+raises — except in a `seeded` map, where it skips the layer (Refusal 1).
+⚑ **Why not `""`:** after substitution a `""` is indistinguishable from a real path, so
+`@workset.auth.path/x` with `workset.auth.path: null` became the HOST path `/x`, and a primary
+`workset.vault_ro: null` mounted host `/<box>` (both measured on the launch path, shipped in
+v1.8.0-rc2). This was once a `seeded`-only rule (the shipped layers embed their root,
+`@agent.<a>.template/box/home`); it is now the one rule for every leaf, so no category carries a
+second copy of it. An ABSENT referent keeps the §6b embedded `""`.
 
 ## The host-source refusal — POST-expansion, and deliberately not [R147]'s test
 
@@ -327,11 +342,10 @@ the engine's additive `defer_env` flag, proposed in chat and held pending the di
 
 `_lookup_str` is the callback `expand_expr` calls. It resolves the dotted path through the transitive
 resolver — so embedded refs are also fixpoint- and cycle-guarded (B7) — and coerces the result to a
-SUBSTITUTION string per the embedded-token rule (§6b). STRICT: an absent or present-None referent →
-`""`, an empty substitution that never deletes the host key; a resolved scalar → its string form. The
-`chain` it receives is `expand_expr`'s already-extended trail. When handed a `none_refs` list (the
-`seeded` arm above) it appends each present-`None` referent before the coercion, and the substitution
-is unchanged.
+SUBSTITUTION string per the embedded-token rule (§6b). STRICT: an absent referent → `""`, an empty
+substitution that never deletes the host key; a resolved scalar → its string form. The `chain` it
+receives is `expand_expr`'s already-extended trail. A present-`None` referent is appended to
+`none_refs` before its placeholder `""` (see *Embedded `None`* above).
 
 Two degenerate shapes are handled to keep the function total. An embedded ref to a whole `Bind` has
 no single string form, so it substitutes the Bind's `host` (the source path). The dest-keyed shape

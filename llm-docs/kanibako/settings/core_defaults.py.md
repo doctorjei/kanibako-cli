@@ -835,8 +835,10 @@ owed.
 
 ```helper_default_categories(*, socket_path: Path, log_path: Path | None) -> BindArmTable```
 Build the helper hub binds as `default_categories` (Phase B). A `None` *log_path* — the box's
-`workset.logs` is a present `<None>` — omits the `helper_log` bind (companion, "The helper-log
-bind"); the socket bind is unaffected.
+`workset.logs` is a present `<None>` — still emits the `helper_log` formula, whose `<None>` source
+makes the entry `None` at expand; the collapse omits it (companion, "The helper-log bind") and
+`settings_launch` warns when only the source is `<None>` ([R185]). Omitting it here was a silent
+second route. The socket bind is unaffected.
 
 Fills the TERMINAL `box.bindings.rw` / `box.bindings.ro` arms with one
 `box_dest -> (host_src, options)` entry for the live helper unix SOCKET and the per-box helper

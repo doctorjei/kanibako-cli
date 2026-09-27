@@ -295,7 +295,7 @@ class TestWithinScopeRows:
     assert err.kind == "binding_vs_binding"
     assert err.box_dest == DEST
     assert {key for key, _ in err.entries} == {
-      f"box.bindings.ro.{DEST}", f"box.bindings.rw.{DEST}",
+      f"box.bindings.ro[{DEST}]", f"box.bindings.rw[{DEST}]",
     }
 
   def test_row1_uses_the_one_spec_mandated_remedy_text(self):
@@ -332,8 +332,8 @@ class TestWithinScopeRows:
     assert err.kind == "extension_onto_occupied"
     # The BASE survives and the EXTENSION is refused — the message must say which
     # is which, so the two keys are not interchangeable here.
-    assert f"'box.common.{DEST}' extends onto" in str(err)
-    assert f"'box.bindings.rw.{DEST}' already binds" in str(err)
+    assert f"'box.common[{DEST}]' extends onto" in str(err)
+    assert f"'box.bindings.rw[{DEST}]' already binds" in str(err)
 
   def test_row3_fires_for_a_read_only_base_too(self):
     with pytest.raises(CategoryCollisionError) as excinfo:
@@ -355,8 +355,8 @@ class TestWithinScopeRows:
     warning = produced.warnings[0]
     assert warning.box_dest == DEST
     assert warning.scope == "box"
-    assert warning.winner_key == f"box.common.{DEST}"
-    assert warning.loser_keys == (f"box.caches.{DEST}",)
+    assert warning.winner_key == f"box.common[{DEST}]"
+    assert warning.loser_keys == (f"box.caches[{DEST}]",)
 
   def test_row5_warns_every_launch_and_never_raises(self):
     # §0's exempt pair is PROCEED + WARN, not refuse and not silent. The warning is
@@ -474,3 +474,14 @@ class TestCategoriesWithNoArm:
     )
     with pytest.raises(SettingsError, match="not one of the declared scopes"):
       build_store_shape_set([bogus])
+
+  def test_a_sourceless_bind_is_REFUSED_naming_its_entry_by_index(self):
+    # Spec §2c: the dest is a dict INDEX of the arm, never a key segment.
+    bogus = CategoryEntry(
+      category="bindings.rw", scope="box", box_dest=DEST, host_src=None,
+      delivery="MOUNT", options="Z,U", name=DEST,
+      key_segments=("box", "bindings", "rw", DEST),
+    )
+    with pytest.raises(SettingsError) as caught:
+      build_store_shape_set([bogus])
+    assert f"category entry 'box.bindings.rw[{DEST}]' folds into" in str(caught.value)

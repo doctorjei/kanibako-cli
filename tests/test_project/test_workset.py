@@ -1283,17 +1283,20 @@ class TestWorksetLogsPresentNone:
         dump_doc(std.primary_workset / "workset.yaml", {"workset": {"logs": None}})
         assert load_std_paths(load_config(config_file)).primary_logs is None
 
-    def test_the_helper_table_omits_only_the_log_bind(self, tmp_path):
+    def test_the_helper_table_keeps_the_log_formula_for_the_collapse(self, tmp_path):
+        """A ``<None>`` log keeps the FORMULA: the collapse omits it and [R185] warns.
+
+        Omitting it in the table builder was a silent second route (C5).
+        """
         from kanibako.settings import core_defaults
 
         sock = tmp_path / "helper.sock"
         sock.touch()
         table = core_defaults.helper_default_categories(socket_path=sock, log_path=None)
-        dests = {dest for arm in table.values() for dest in arm}
-        assert dests == {
-            dest for dest in core_defaults.helper_bind_dests() if not dest.endswith(".jsonl")
-        }
-        assert len(dests) == 1
+        sources = {dest: entry[0] for arm in table.values() for dest, entry in arm.items()}
+        assert set(sources) == set(core_defaults.helper_bind_dests())
+        log_dest = next(d for d in sources if d.endswith(".jsonl"))
+        assert sources[log_dest].startswith("@workset.logs/")
 
 
 class TestWorksetIdentityIsTheGlobalRegistry:

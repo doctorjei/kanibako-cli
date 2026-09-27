@@ -61,7 +61,8 @@ CollapsedBindings = dict[str, CollapsedBind]
 #: A collapsed copy list, SCOPE-ORDERED. ⚑ A dest MAY repeat - that IS the overlay.
 CollapsedCopies = list[CollapsedCopy]
 
-#: The DECLARATION KEY that put the mount at each collapsed dest, dest-keyed.
+#: The declaration that put the mount at each collapsed dest, dest-keyed, as a message
+#: names it (``CategoryEntry.label``).
 #: 🛑🛑 A SIDE MAP, AND IT MAY NEVER BECOME A TUPLE SLOT. ``meta.assembly.bindings``
 #: is spec'd ``dict[guest_dest -> (host_src, opts)]`` and every bind-shaped entry as
 #: a 1-or-2 element tuple (keyspec ``:434``/``:440``/``:450``/``:603-605``); those
@@ -186,9 +187,9 @@ def _mount_declaration_keys(
       dest = normalize_bind_dest(entry.box_dest)
       if entry.host_src is None:
         if dest in mask_dests:
-          keys[scope, _KIND_MASK, dest] = entry.key
+          keys[scope, _KIND_MASK, dest] = entry.label
       elif bind_rows.get(dest) == BindEntry(entry.host_src, entry.options):
-        keys[scope, _KIND_BIND, dest] = entry.key
+        keys[scope, _KIND_BIND, dest] = entry.label
   return keys
 
 
@@ -817,7 +818,8 @@ class Declaration(NamedTuple):
 
   *dest* is the RESOLVED guest destination and *src* the host source, both as the
   declaration's own materialised derivation spells them. *src* is ``None`` for a
-  declaration that asks for no source - a mask.
+  declaration that asks for no source - a mask. *key* is DISPLAY only - the pairing
+  never reads it - so every builder passes the entry's label (``box.caches[~/x]``).
   """
 
   key: str

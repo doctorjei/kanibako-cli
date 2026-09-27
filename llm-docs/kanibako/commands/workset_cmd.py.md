@@ -162,7 +162,8 @@ arbitration, for winners and losers alike (R-8), so every row in it reads as a l
 answer comes from PAIRING the declarations against the collapse — `store_collapse.pair_declarations`,
 the one decision function, and `store_collapse.derivation_result` for the phrase — exactly as the
 share half above does and as `box show --effective` does. The `Declaration` is built from the
-CategoryEntry's own `key` / `box_dest` / `host_src` / `delivery`; `delivery` is READ rather than
+CategoryEntry's own `label` (the display name, `workset.common[<dest>]`; the pairing never reads
+it) / `box_dest` / `host_src` / `delivery`; `delivery` is READ rather than
 re-derived from the key spelling, which is what keeps `seeded`'s `(copy)` distinct from the other
 two's `(mount)`.
 
@@ -491,8 +492,8 @@ stderr, above the refusal:
 
 ```
 Cannot say what working set 'myws' would mount: its declarations collide at '/opt/arb', so no box in it can launch. The refusal a launch gives follows.
-Error: 'workset.common./opt/arb' extends onto '/opt/arb', which
-'workset.bindings.ro./opt/arb' already binds.
+Error: 'workset.common[/opt/arb]' extends onto '/opt/arb', which
+'workset.bindings.ro[/opt/arb]' already binds.
 …
 ```
 

@@ -6,7 +6,8 @@ Covers the brief §5 checklist for the pure ``expand(snapshot, ctx) -> KeyStore`
   (fixpoint / topological);
 * WHOLE-VALUE ``@``-ref inherits the referent's 3-state the FULL chain length —
   absent → the key is DROPPED; present-None → ``None``;
-* EMBEDDED token → substitution (absent/None → empty), never deletes the key;
+* EMBEDDED token → substitution (absent → empty), never deletes the key; an
+  embedded ref to a present-None key makes the WHOLE value None (spec §0);
 * CYCLE (whole-value AND embedded) → hard ``SettingsError`` with the chain;
   KEPT DISTINCT from a legitimately absent/None referent (NOT an error);
 * ``host_src`` ``$XDG``/``~`` expand host-side; ``box_dest`` ``$XDG``/``~`` left
@@ -350,15 +351,49 @@ def test_embedded_absent_token_to_empty_keeps_key() -> None:
     assert _probe(out, "name") == "kanibako-"  # key present, token empty.
 
 
-def test_embedded_present_none_token_to_empty() -> None:
+def test_embedded_present_none_makes_the_whole_value_none() -> None:
+    # Spec §0 ([R186]): "An embedded reference to a present <None> makes the whole
+    # value <None>." — the key SURVIVES as a present None, never as "x--z".
     # ⚑ The ref is BRACED because ``-`` is a ref-name character (a persona
     # node-name may contain one — ``settings_resolve._REF_SEG``); bare ``@y-z``
-    # would be the single name ``y-z``.  The braced form is the sanctioned
-    # spelling for a LITERAL suffix after a ref, and is what is under test here:
-    # a present-but-None key substitutes to "" without deleting the key.
+    # would be the single name ``y-z``.
     snap = KeyStore({"name": "x-@{y}-z", "y": None})
     out = expand(snap, _ctx())
-    assert out["name"] == "x--z"
+    assert _probe(out, "name") is None
+
+
+def test_embedded_present_none_propagates_through_a_chain() -> None:
+    # A ``None`` two hops up still reaches the leaf: ``b`` becomes None, and ``a``
+    # embeds ``b``.  Neither may render a root-relative path.
+    snap = KeyStore({"a": "@b/x", "b": "@c/y", "c": None})
+    out = expand(snap, _ctx())
+    assert _probe(out, "a") is None
+    assert _probe(out, "b") is None
+
+
+def test_embedded_absent_and_present_none_in_one_value_is_none() -> None:
+    # The present None wins over the absent ref's "" — the value is None.
+    snap = KeyStore({"a": "@nope/@y/x", "y": None})
+    out = expand(snap, _ctx())
+    assert _probe(out, "a") is None
+
+
+def test_embedded_present_none_in_an_env_value_is_none() -> None:
+    # The scalar ``env`` family: a present None is the tri-state OMIT (§2h), so the
+    # variable is left out rather than delivered as the root-relative "/y".
+    snap = KeyStore({
+        "workset": {"auth": {"path": None}},
+        "box": {"env": {"PROBE": "@workset.auth.path/y"}},
+    })
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "env", "PROBE") is None
+
+
+def test_lenient_embedded_present_none_is_none_not_a_defect() -> None:
+    snap = KeyStore({"a": "@y/x", "y": None})
+    out, errors = expand(snap, _ctx(), collect_errors=True)
+    assert errors == {}
+    assert _probe(out, "a") is None
 
 
 def test_embedded_ref_substitutes_value() -> None:
@@ -1111,6 +1146,138 @@ def test_bind_entry_whole_value_src_present_none_yields_none() -> None:
     )
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "~/a") is None
+
+
+@pytest.mark.parametrize("category", ["bindings.rw", "seeded", "caches", "synced"])
+def test_bind_entry_embedded_present_none_src_is_a_none_entry(category: str) -> None:
+    """An embedded source ref to a present None makes the ENTRY None (spec §0).
+
+    ⚑ The hazard, measured on the launch path before the fix: standalone
+    ``workset.auth.path`` is ``<None>``, so ``@workset.auth.path/x`` rendered the
+    HOST path ``/x`` and mounted it.  ONE rule for every bind-shaped category —
+    ``seeded`` is no longer special in the expander.
+    """
+    node: dict = {"~/probe": BindEntry("@workset.auth.path/x", "ro")}
+    for seg in reversed(category.split(".")):
+        node = {seg: node}
+    snap = KeyStore({"workset": {"auth": {"path": None}}, "box": node})
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", *category.split("."), "~/probe") is None
+
+
+def test_bind_embedded_present_none_host_is_a_none_bind() -> None:
+    snap = KeyStore({
+        "k": None,
+        "box": {"bindings": {"rw": {"x": Bind("@k/x", "~/x")}}},
+    })
+    out = expand(snap, _ctx())
+    assert _probe(out, "box", "bindings", "rw", "x") is None
+
+
+@pytest.mark.parametrize("src", ["@workset.auth.path/x", "@{workset.auth.path}"])
+def test_a_none_bind_source_is_skipped_not_mounted_at_the_collapse(src: str) -> None:
+    """End to end through the collapse: the entry is SKIPPED, never mounted at ``/x``.
+
+    [Q80] (a): a ``<None>`` source omits the bind in every category, embedded and
+    whole-value alike — skipped, not refused.  The sibling entry still mounts.
+    """
+    snap = KeyStore({
+        "workset": {"auth": {"path": None}},
+        "box": {"bindings": {"ro": {
+            "~/probe": BindEntry(src), "~/kept": BindEntry("/h/kept"),
+        }}},
+    })
+    host_ctx = _simulated_host_ctx()
+    entries = snapshot_category_entries(
+        expand(snap, host_ctx), active_agent="claude", box_ctx=host_ctx,
+    )
+    assert [(e.box_dest, e.host_src) for e in entries] == [
+        (f"{GUEST_HOME}/kept", "/h/kept"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("src", "refs"),
+    [
+        ("@workset.auth.path/x", ("workset.auth.path",)),
+        ("@{workset.auth.path}", ("workset.auth.path",)),
+        ("@nope/@workset.auth.path/@y", ("workset.auth.path", "y")),
+    ],
+)
+def test_the_side_table_names_the_null_refs_of_a_none_entry(src, refs) -> None:
+    """E2: the refs that made an entry ``None`` are KEPT, keyed by the entry's path.
+
+    ``settings_launch`` names them in the [R185] warning.  An absent ref is not one.
+    """
+    snap = KeyStore({
+        "y": None,
+        "workset": {"auth": {"path": None}},
+        "box": {"bindings": {"ro": {"~/probe": BindEntry(src), "~/ok": BindEntry("/h")}}},
+    })
+    table: dict = {}
+    expand(snap, _ctx(), null_sources=table)
+    assert table == {("box", "bindings", "ro", "~/probe"): refs}
+
+
+def test_the_side_table_ignores_a_scalar_and_a_transitive_read() -> None:
+    # Only a bind ENTRY reached by the node walk is recorded; ``b``'s value is read
+    # through ``a`` too, and neither scalar is an entry.
+    snap = KeyStore({"a": "@b/x", "b": "@c/y", "c": None})
+    table: dict = {}
+    expand(snap, _ctx(), null_sources=table)
+    assert table == {}
+
+
+@pytest.mark.parametrize("dest", ["@k/x", "@{k}"])
+def test_a_seeded_layer_with_a_present_none_dest_is_skipped(dest: str) -> None:
+    """Spec §2a: "any layer whose source/dest is <None> is SKIPPED".
+
+    A ``seeded`` entry is a LAYER, so a destination that resolves ``None`` —
+    embedded or whole-value — drops the layer instead of raising; the sibling
+    layer is untouched.  (Every other category raises: see the pins above.)
+    """
+    snap = KeyStore({
+        "k": None,
+        "box": {"seeded": {dest: BindEntry("/h/a"), "~/b": BindEntry("/h/b")}},
+    })
+    out = expand(snap, _ctx())
+    assert dict(_probe(out, "box", "seeded")) == {"~/b": BindEntry("/h/b")}
+
+
+def test_a_seeded_layer_with_a_present_none_dest_is_skipped_in_lenient_mode() -> None:
+    snap = KeyStore({"k": None, "box": {"seeded": {"@k/x": BindEntry("/h/a")}}})
+    out, errors = expand(snap, _ctx(), collect_errors=True)
+    assert errors == {}
+    assert dict(_probe(out, "box", "seeded")) == {}
+
+
+def test_a_seeded_layer_with_an_absent_whole_value_dest_still_raises() -> None:
+    # Absence is not <None>: the §2a skip does not reach a dangling destination.
+    snap = KeyStore({"box": {"seeded": {"@nope": BindEntry("/h/a")}}})
+    with pytest.raises(SettingsError, match="an absent config key"):
+        expand(snap, _ctx())
+
+
+@pytest.mark.parametrize("dest", ["@k/x", "@{k}"])
+def test_bind_entry_present_none_dest_key_raises(dest: str) -> None:
+    # Outside ``seeded`` a destination has no omit: ``@k/x`` with ``k`` null must
+    # not become the guest path ``/x``.  Raised, embedded and whole-value alike,
+    # naming the dest.
+    snap = _arm({dest: BindEntry("/h/a")})
+    snap["k"] = None
+    with pytest.raises(SettingsError) as exc:
+        expand(snap, _ctx())
+    assert f"{dest!r} references a present-None config key" in str(exc.value)
+
+
+def test_bind_embedded_present_none_box_dest_raises() -> None:
+    snap = KeyStore({
+        "k": None,
+        "box": {"bindings": {"rw": {"x": Bind("/h/a", "@k/x")}}},
+    })
+    with pytest.raises(SettingsError) as exc:
+        expand(snap, _ctx())
+    assert "'@k/x' references a present-None config key" in str(exc.value)
 
 
 def test_bind_entry_whole_value_dest_key_to_absent_raises() -> None:

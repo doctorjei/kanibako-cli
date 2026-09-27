@@ -57,6 +57,7 @@ from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
     PREF_ALLOWLIST,
     ConcedingLeafMap,
+    entry_label,
     is_terminal_category_key,
     is_terminal_category_tail,
     is_valid_agent_segment,
@@ -745,12 +746,12 @@ def pref_request_for(
 def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]:
     """Every DECLARATION-ENTRY key *req* can account for.
 
-    A settings ENTRY is identified downstream (collision errors,
-    ``binding_derivations.*``) by ``<decl-scope>.<category>.<dest>``. For most
-    targets that string IS the pref target, because ``<VAR>`` is a key SEGMENT. For
-    the SEVEN terminal dest-keyed categories (the six bind-shaped ones plus
-    ``masks``) it is not: the target stops at the category and the destinations
-    live INSIDE the value, so one request accounts for one entry key PER
+    A settings ENTRY is named in a launch message by
+    :func:`~kanibako.settings.settings_keyspace.entry_label`. For most targets that
+    label IS the pref target, because ``<VAR>`` is a key SEGMENT. For the SEVEN
+    terminal dest-keyed categories (the six bind-shaped ones plus ``masks``) it is
+    not: the target stops at the category and the destinations live INSIDE the
+    value (``<target>[<dest>]``), so one request accounts for one entry PER
     DESTINATION IT DECLARES.
 
     ⚑⚑ **THE DESTINATIONS ARE READ FROM THE REQUEST'S OWN VALUE, not derived by
@@ -776,7 +777,7 @@ def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]:
     if not isinstance(value, dict):
         return (req.target,)
     return tuple(
-        f"{req.target}.{dest}"
+        entry_label(req.target, dest)
         for dest in dict.keys(value)
         if dict.__getitem__(value, dest) is not None
     )
@@ -788,7 +789,7 @@ def pref_origin(
     """The request that INSTALLED *target_key*, for error enrichment.
 
     A collision error identifies an entry by the DECLARATION KEY plus that entry's
-    DEST (``agent.claude.common.~/newthing``) — an identifier a user who wrote
+    DEST (``agent.claude.common[~/newthing]``) — an identifier a user who wrote
     ``pref.agent.claude.common`` never wrote and cannot write. Matching is
     therefore containment in :func:`pref_entry_keys`; last request wins, matching
     the overlay precedence (box after workset).

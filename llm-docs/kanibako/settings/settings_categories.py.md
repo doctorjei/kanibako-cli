@@ -404,7 +404,17 @@ key-path separator: the materialisation used to hand the joined form to a splitt
 and the dest shattered into extra tree levels, and two dests whose shattered paths nest
 (`~/.claude` under `~/.claude.json`) silently overwrote one another. Carrying segments makes
 the split unnecessary rather than careful. The `key` property is the DOTTED spelling, DERIVED
-— for messages and for matching, never for structure.
+— for matching, never for structure. The `label` property is how a message names the entry
+(`settings_keyspace.entry_label`: `box.bindings.rw[~/w]`, `box.env.FOO`), because a dest is a dict
+index, not a key segment (spec §2c). The two §0 refusals, their `entries` pairs (which
+`commands.start._annotate_pref_origin` matches against `settings_prefs.pref_entry_keys`), the
+SUPPRESS-THEN-ADD remedy, `store_shape`'s same-scope `CategoryCollision` and its invariant
+refusals, `store_collapse`'s "declared by" clause, and every `Declaration` a display builds
+(`workset_cmd`, and `effective_bindings_and_template_sources` here, from
+`settings_views.derived_binding_rows`' segments) use `label`; `pair_declarations` never reads
+`Declaration.key`. `config_display` labels its show rows and effective blocks through the same
+function. Only matching stays dotted: `optional_keys`, `binding_derivations` placement,
+`declaration_delivery`.
 
 ### `is_credential` and `optional`
 

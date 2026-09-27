@@ -9,10 +9,11 @@ NEVER mutates the input snapshot (S19): it builds a fresh ``KeyStore``.
 
 ⚑ A reference resolves to a DECLARED key or it does not resolve at all — this pass
 NEVER fabricates a default for a name it cannot find. An absent referent propagates
-ABSENCE (§6b: whole-value → the holder key is DROPPED, embedded → ``""``), and
-every other unresolvable case is an ERROR that NAMES the key: a cycle, a depth-cap
-breach, an unknown ``$VAR``, a ``@pref.*`` ref, or a binding destination that would
-resolve to no path.
+ABSENCE (§6b: whole-value → the holder key is DROPPED, embedded → ``""``). A
+present-``None`` referent makes the WHOLE value ``None``, whole-value or embedded
+alike (spec §0, [R186]). Every other unresolvable case is an ERROR that NAMES the
+key: a cycle, a depth-cap breach, an unknown ``$VAR``, a ``@pref.*`` ref, or a
+binding destination that would resolve to no path.
 
 ⚑ ABSENCE HAS A SECOND SOURCE, and it is not a failure: a PASSTHROUGH variable
 (``$COLORTERM``) whose host signal is unset answers absence too, and a whole-value
@@ -85,10 +86,12 @@ _ABSENT: _Absent = _Absent()
 #: a ``settings_prefs`` import would cycle through the settings stack.
 _PREF_ROOT = "pref"
 
-#: The ``seeded`` CATEGORY token (spec §2a) — the one category whose entries are
-#: SKIPPED when their source is ``<None>`` (see :meth:`_Expander._expand_bind_entry`).
-#: Spelled here for the same reason as ``_PREF_ROOT``: it names a TOKEN of the tree
-#: this pass walks, and the walk matches it by position.
+#: The ``seeded`` CATEGORY token (spec §2a): a seeded entry is a LAYER, and "any layer
+#: whose source/dest is ``<None>`` is SKIPPED" — so a present-``None`` DESTINATION
+#: skips the layer instead of raising (:meth:`_Expander._expand_dest_key`).  Its
+#: source side needs no token: a ``None`` source is a ``None`` entry in every category,
+#: and the collapse skips it.  Spelled here for the same reason as
+#: ``_PREF_ROOT``: it names a TOKEN of the tree this pass walks, matched by position.
 _SEEDED = "seeded"
 
 
@@ -116,8 +119,8 @@ def _is_whole_value_ref(value: str) -> str | None:
 
     ⚑ THE BRACED FORM MUST LAND HERE, NOT ON THE EMBEDDED PATH. This predicate is
     the ONLY thing that decides the shape, and a braced whole-value ref misrouted
-    to the embedded path silently turns a present-``None`` (the §3 "omit this bind"
-    terminal) into an empty-string terminal — a real value where the spec means
+    to the embedded path silently turns an ABSENT referent (the §6b "drop this key"
+    signal) into an empty-string terminal — a real value where the spec means
     absence. See the llm-doc.
 
     NEVER RAISES — a total predicate; a malformed reference answers ``None`` and
@@ -159,16 +162,26 @@ def _is_whole_value_var(value: str) -> str | None:
     return name if end == len(value) else None
 
 
-@overload
-def expand(snapshot: KeyStore, ctx: ResolveCtx) -> KeyStore: ...
+#: The E2 side table :func:`expand` fills on request: a bind ENTRY's path (its segments,
+#: the raw destination last) → the ``@``-refs in its source that resolved to a present
+#: ``None`` and made the entry ``None`` (spec §0).
+NullSources = dict[tuple[str, ...], tuple[str, ...]]
+
+
 @overload
 def expand(
-    snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool
+    snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None = None,
+) -> KeyStore: ...
+@overload
+def expand(
+    snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool,
+    null_sources: NullSources | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]: ...
 
 
 def expand(
-    snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False
+    snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False,
+    null_sources: NullSources | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]:
     """Expand *snapshot*'s tokens to terminals, returning a FRESH KeyStore (S19).
 
@@ -189,10 +202,16 @@ def expand(
     path (path → human reason) and OMITTED, while every clean leaf still resolves.
     Returns ``(snapshot, errors)``.
 
+    *null_sources*, when given, is filled with the side table
+    (:data:`NullSources`): which bind entries came out ``None`` and the refs that made
+    them so.  ``settings_launch`` names those keys in the [R185] warning.
+
     The input snapshot is never mutated (S19).
     """
     expander = _Expander(snapshot, ctx, collect_errors=collect_errors)
     expanded = expander.run()
+    if null_sources is not None:
+        null_sources.update(expander.null_sources)
     if collect_errors:
         return expanded, expander.errors
     return expanded
@@ -219,6 +238,8 @@ class _Expander:
         # by the OWNING leaf's dotted path → human reason.
         self._collect_errors = collect_errors
         self.errors: dict[str, str] = {}
+        # E2: a bind entry made ``None`` by its source → the refs that did it.
+        self.null_sources: NullSources = {}
 
     # ------------------------------------------------------------------ #
     # Tree walk — build the fresh expanded snapshot                      #
@@ -237,8 +258,6 @@ class _Expander:
         cannot shadow it.
         """
         out = KeyStore()
-        # A ``<scope>.seeded`` map (spec §2a): its entries are LAYERS, and a layer
-        # whose source is ``<None>`` is SKIPPED rather than rendered.
         seed_map = bool(path) and path[-1] == _SEEDED
         for key in dict.keys(node):
             child_path = (*path, key)
@@ -262,17 +281,23 @@ class _Expander:
                 # surfaces here. Record it against the OWNING leaf path and OMIT
                 # the leaf; every clean leaf still resolves. STRICT never enters.
                 try:
-                    out_key = self._expand_dest_key(key, value, chain=child_path)
-                    resolved = self._expand_leaf(
-                        value, path=child_path, seed=seed_map,
+                    out_key = self._expand_dest_key(
+                        key, value, chain=child_path, seed=seed_map,
                     )
+                    if out_key is None:
+                        continue  # a seeded layer with a <None> dest is SKIPPED (§2a).
+                    resolved = self._expand_leaf(value, path=child_path)
                 except (_LenientDefect, SettingsError) as exc:
                     reason = exc.reason if isinstance(exc, _LenientDefect) else str(exc)
                     self.errors[".".join(child_path)] = reason
                     continue
             else:
-                out_key = self._expand_dest_key(key, value, chain=child_path)
-                resolved = self._expand_leaf(value, path=child_path, seed=seed_map)
+                out_key = self._expand_dest_key(
+                    key, value, chain=child_path, seed=seed_map,
+                )
+                if out_key is None:
+                    continue  # a seeded layer with a <None> dest is SKIPPED (§2a).
+                resolved = self._expand_leaf(value, path=child_path)
             if resolved is _ABSENT:
                 continue  # whole-value ref to an absent key → drop this key (§6b).
             if isinstance(value, BindEntry) and dict.__contains__(out, out_key):
@@ -290,8 +315,8 @@ class _Expander:
         return out
 
     def _expand_dest_key(
-        self, key: str, value: StoreValue, *, chain: tuple[str, ...]
-    ) -> str:
+        self, key: str, value: StoreValue, *, chain: tuple[str, ...], seed: bool = False
+    ) -> str | None:
         """The OUTPUT key for *value* — identity, EXCEPT under a dest-keyed arm.
 
         A :class:`BindEntry` lives in a DEST-KEYED bindings arm (R-5/R-6) where the
@@ -302,27 +327,34 @@ class _Expander:
         ⚑ Discrimination is by TYPE (``isinstance(value, BindEntry)``), never by
         the key's spelling or the value's arity — a legacy :class:`Bind` and a
         :class:`BindEntry` are both 2-element-legal with opposite meanings.
+
+        A destination that resolves to no path RAISES — except under a ``seeded``
+        map (*seed*), where a present-``None`` destination answers ``None`` and the
+        caller SKIPS the layer (spec §2a: "any layer whose source/dest is ``<None>``
+        is SKIPPED").  An ABSENT whole-value destination raises there too: absence
+        is not ``<None>``.
         """
         if not isinstance(value, BindEntry):
             return key
         dest = self._expand_str(key, space="defer", chain=(".".join(chain),))
+        if dest is None and seed:
+            return None
         if dest is _ABSENT or dest is None:
-            state = "absent" if dest is _ABSENT else "present-None"
+            state = "an absent" if dest is _ABSENT else "a present-None"
             raise SettingsError(
-                f"Binding destination is a whole-value @-reference to an "
-                f"{state} config key ({key!r}); a box destination cannot "
-                f"resolve to no path."
+                f"Binding destination {key!r} references {state} config key; "
+                f"a box destination cannot resolve to no path."
             )
         assert isinstance(dest, str)
         return dest
 
     def _expand_leaf(
-        self, value: StoreValue, *, path: tuple[str, ...], seed: bool = False
+        self, value: StoreValue, *, path: tuple[str, ...]
     ) -> StoreValue | _Absent:
         """Expand a single non-KeyStore leaf (scalar / Bind / BindEntry / list / None).
 
         Returns the expanded terminal, ``None`` (present-None inherited from a
-        whole-value ref), or :data:`_ABSENT` (the caller DROPS the key). The
+        referenced key), or :data:`_ABSENT` (the caller DROPS the key). The
         ``chain`` starts at this leaf's own dotted path so a self-referential
         whole-value ``@`` is a cycle, not an infinite recurse.
         """
@@ -330,7 +362,11 @@ class _Expander:
         if isinstance(value, Bind):
             return self._expand_bind(value, chain=chain)
         if isinstance(value, BindEntry):
-            return self._expand_bind_entry(value, chain=chain, seed=seed)
+            null_refs: list[str] = []
+            entry = self._expand_bind_entry(value, chain=chain, null_refs=null_refs)
+            if entry is None and null_refs:
+                self.null_sources[path] = tuple(null_refs)
+            return entry
         if isinstance(value, str):
             return self._expand_str(value, space="host", chain=chain)
         # No token to expand. (A present-None leaf is a terminal, not _ABSENT.)
@@ -365,25 +401,24 @@ class _Expander:
         """Expand a :class:`Bind`: ``host_src`` fully host-side; ``box_dest``
         ``@``-refs only (``$XDG``/``~`` left RAW, deferred box-side — S17).
 
-        A whole-value ``host_src`` ref that resolves absent/None gives the WHOLE
-        Bind that 3-state — the binding cannot point anywhere. ``opts`` is carried
-        verbatim; it never holds tokens.
+        A whole-value ``host_src`` ref that resolves absent, or any ``host_src`` ref
+        to a present-None key, gives the WHOLE Bind that state — the binding cannot
+        point anywhere. ``opts`` is carried verbatim; it never holds tokens.
         """
         host = self._expand_str(bind.host, space="host", chain=chain)
         if host is _ABSENT or host is None:
-            # Whole-value host ref absent/None → the bind inherits that 3-state.
+            # Host src ref absent (whole-value) or None → the bind inherits it.
             return host
         box = self._expand_str(bind.box, space="defer", chain=chain)
-        # ⚑ Reads as dead code and is not: a box_dest is a path EXPRESSION, not a
-        # key whose absence deletes the bind, and the spec has NO whole-value
-        # box_dest — so this arm is unreachable on spec forms. Raise loudly rather
-        # than silently emit an empty dest, which is a mount foot-gun.
+        # A box_dest is a path EXPRESSION, not a key whose absence deletes the
+        # bind: a ref in it to an absent (whole-value) or present-None key leaves
+        # no destination. Raise loudly rather than emit an empty or root-relative
+        # dest, which is a mount foot-gun.
         if box is _ABSENT or box is None:
-            state = "absent" if box is _ABSENT else "present-None"
+            state = "an absent" if box is _ABSENT else "a present-None"
             raise SettingsError(
-                f"Bind box_dest is a whole-value @-reference to an "
-                f"{state} config key ({bind.box!r}); a box destination cannot "
-                f"resolve to no path."
+                f"Bind box_dest {bind.box!r} references {state} config key; "
+                f"a box destination cannot resolve to no path."
             )
         assert isinstance(host, str)
         assert isinstance(box, str)
@@ -391,79 +426,67 @@ class _Expander:
         return Bind(host, box, bind.opts)
 
     def _expand_bind_entry(
-        self, entry: BindEntry, *, chain: tuple[str, ...], seed: bool = False
+        self, entry: BindEntry, *, chain: tuple[str, ...],
+        null_refs: list[str] | None = None,
     ) -> StoreValue | _Absent:
         """Expand a :class:`BindEntry`: ``src`` fully host-side; ``opts`` verbatim.
 
         The dest-keyed counterpart of :meth:`_expand_bind`. It expands ONE half,
         because the other half — the destination — is the mapping KEY and is
-        expanded by :meth:`_expand_dest_key` on the node walk (R-5/R-6). The
-        3-state rule is unchanged from the name-keyed shape.
-
-        *seed* marks an entry of a ``<scope>.seeded`` map — a LAYER (spec §2a), and
-        "any layer whose source/dest is ``<None>`` is SKIPPED".  ⚑ Every shipped layer
-        EMBEDS its root (``@agent.<a>.template/box/home``), and the embedded rule
-        renders a ``None`` referent as ``""``: the source would become the HOST path
-        ``/box/home``, not ``<None>``.  So a seeded source with an embedded ``@``-ref
-        that resolves to a present ``None`` is ``<None>``, and the entry becomes a
-        PRESENT ``None`` here, the one place the referent is still visible.  ⚑ ``None``,
-        not ``_ABSENT``: a supplied ``<None>`` is a value, and a default is a fallback
-        that applies only where nothing was supplied ([R177]) — dropping the entry
-        let the ``agent.default.seeded`` arm's ``~/`` refill it in the §2d pick
-        (``_agent_pick_node``) and seed a SHELL box.  The collapse
-        (``settings_launch._emit_bind_map``) SKIPS a ``None`` seeded entry — this one
-        and a whole-value source ref to a present ``None`` alike.  ONE rule for every
-        layer and every scope; an ABSENT referent keeps the embedded ``""`` (§6b), and
-        every other category keeps the embedded rule unchanged.
-        ⚑ SOURCE-side only.  A ``None`` on the DESTINATION side is untouched,
-        pre-existing behavior: :meth:`_expand_dest_key` raises on a whole-value dest
-        ref to a present ``None``, and an embedded one substitutes ``""``.
+        expanded by :meth:`_expand_dest_key` on the node walk (R-5/R-6). A ``src``
+        that resolves ``None`` (any ref to a present-None key, spec §0) or
+        ``_ABSENT`` (a whole-value ref to an absent key) makes the ENTRY that state;
+        the collapse (``settings_launch._emit_bind_map``) decides what a ``None``
+        entry means for its category.  *null_refs* collects the refs behind a
+        ``None`` (see :meth:`_expand_str`).
         """
-        none_refs: list[str] | None = [] if seed else None
         src = self._expand_str(
-            entry.src, space="host", chain=chain, none_refs=none_refs,
+            entry.src, space="host", chain=chain, null_refs=null_refs,
         )
-        if none_refs:
-            return None
         if src is _ABSENT or src is None:
-            # Whole-value src ref absent/None → the entry inherits that 3-state.
             return src
         assert isinstance(src, str)
         self._refuse_relative_host_src(entry.src, src, chain=chain)
         return BindEntry(src, entry.opts)
 
     def _expand_str(
-        self,
-        value: str,
-        *,
-        space: str,
-        chain: tuple[str, ...],
-        none_refs: list[str] | None = None,
+        self, value: str, *, space: str, chain: tuple[str, ...],
+        null_refs: list[str] | None = None,
     ) -> StoreValue | _Absent:
         """Expand a single string leaf in *space* (``"host"`` or ``"defer"``).
 
         WHOLE-VALUE ``@``-ref (S18) → INHERIT the referent's full 3-state
         (``_ABSENT`` / ``None`` / the terminal). WHOLE-VALUE ``$VAR``, host space only
         → the value or ``_ABSENT`` (:meth:`_resolve_whole_value_var`). EMBEDDED token
-        or plain literal → ``expand_expr`` substitution (absent/None token → empty
-        string).
+        or plain literal → ``expand_expr`` substitution, where an absent ``@``-ref
+        substitutes ``""`` — but ANY embedded ``@``-ref to a present-``None`` key makes
+        the whole value ``None`` (spec §0, [R186]).  ⚑ Never ``""`` for that case:
+        ``@key/x`` with ``key`` null would otherwise become the host path ``/x``.
 
         *space*: ``"host"`` expands ``~``/``$VAR`` host-side; ``"defer"`` leaves
         them RAW for the box side (S17). ``@``-refs expand in BOTH spaces.
 
-        *none_refs*, when given, collects every EMBEDDED ``@``-ref whose referent is a
-        present ``None`` (see :meth:`_lookup_str`); the substitution is unchanged.
+        *null_refs*, when given, receives the refs that made the result ``None``.
         """
         ref_name = _is_whole_value_ref(value)
         if ref_name is not None:
-            return self._resolve_ref(ref_name, chain=(*chain, ref_name))
+            resolved = self._resolve_ref(ref_name, chain=(*chain, ref_name))
+            if resolved is None and null_refs is not None:
+                null_refs.append(ref_name)
+            return resolved
         if space == "host":
             var_name = _is_whole_value_var(value)
             if var_name is not None:
                 return self._resolve_whole_value_var(var_name)
-        return self._expand_embedded(
+        none_refs: list[str] = []
+        expanded = self._expand_embedded(
             value, space=space, chain=chain, none_refs=none_refs,
         )
+        if not none_refs:
+            return expanded
+        if null_refs is not None:
+            null_refs.extend(none_refs)
+        return None
 
     def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent:
         """A whole-value ``$VAR`` host-side: the value, or :data:`_ABSENT` (§6b).
@@ -602,15 +625,16 @@ class _Expander:
         *,
         space: str,
         chain: tuple[str, ...],
-        none_refs: list[str] | None = None,
+        none_refs: list[str],
     ) -> str:
         """Substitute embedded tokens in *value* via ``expand_expr`` (§6b).
 
         An ``@``-ref token resolves through :meth:`_lookup_str` (absent/None →
-        ``""``); ``~``/``$VAR`` expand host-side for ``space="host"`` and are left
-        RAW (``defer_env=True``) for ``space="defer"`` (S17). A cycle reached
-        through an embedded token still raises (B7). ONE scanner serves both
-        spaces — no fork; the deferral is the engine's additive ``defer_env`` flag.
+        ``""``, a None also RECORDED in *none_refs*); ``~``/``$VAR`` expand
+        host-side for ``space="host"`` and are left RAW (``defer_env=True``) for
+        ``space="defer"`` (S17). A cycle reached through an embedded token still
+        raises (B7). ONE scanner serves both spaces — no fork; the deferral is the
+        engine's additive ``defer_env`` flag.
         """
         return expand_expr(
             value,
@@ -625,26 +649,26 @@ class _Expander:
         self,
         dotted: str,
         chain: tuple[str, ...],
-        none_refs: list[str] | None = None,
+        none_refs: list[str],
     ) -> str:
         """``expand_expr`` lookup: resolve *dotted* and coerce to a SUBSTITUTION
         string (the embedded-token rule, §6b).
 
         Reuses the transitive resolver, so embedded refs are fixpoint- and
-        cycle-guarded too (B7). STRICT: an absent or present-None referent → ``""``,
-        an empty substitution that never deletes the host key. *chain* is
-        ``expand_expr``'s already-extended trail.
+        cycle-guarded too (B7). STRICT: an absent referent → ``""``, an empty
+        substitution that never deletes the host key. *chain* is ``expand_expr``'s
+        already-extended trail.
 
         LENIENT (Q9): an ABSENT referent never reaches that coercion —
-        ``_resolve_ref`` raises ``_LenientDefect`` first. A present-None referent is
-        still a legitimate ``""``. Only the absent case diverges.
+        ``_resolve_ref`` raises ``_LenientDefect`` first. Only the absent case
+        diverges.
 
-        *none_refs*, when given, RECORDS a present-``None`` referent before the
-        coercion — the seeded-layer skip (:meth:`_expand_bind_entry`) needs to know the
-        ``""`` stood for a ``None``; the substitution itself is unchanged.
+        A present-``None`` referent is RECORDED in *none_refs* before the coercion:
+        its ``""`` is a placeholder the caller (:meth:`_expand_str`) discards, since
+        the whole value is then ``None`` (spec §0, [R186]).
         """
         resolved = self._resolve_ref(dotted, chain=chain)
-        if resolved is None and none_refs is not None:
+        if resolved is None:
             none_refs.append(dotted)
         if resolved is _ABSENT or resolved is None:
             return ""

@@ -14,6 +14,7 @@ SELECTION_KEY = 'system.agent'
 _BIND_LEAF_CATEGORIES: frozenset[str] = frozenset({'caches', 'seeded', 'common', 'synced'})
 _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
 _BIND_FLOOR_TAILS: tuple[str, ...] = ('.bindings.ro', '.bindings.rw') + tuple((f'.{c}' for c in sorted(_BIND_LEAF_CATEGORIES)))
+_log = logging.getLogger(__name__)
 _SYSTEM_SHARE_ALLOWED_KEY = 'system.auth.share_allowed'
 _BOX_MODES: frozenset[str] = frozenset({'primary', 'named', 'standalone'})
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset({'common', 'chat', 'broadcast', 'share', 'mailboxes', 'share_global'})
@@ -23,6 +24,8 @@ _BOX_NAME_KEYS: Final = ('meta.box.name', 'meta.box.inbox', 'meta.box.share_glob
 _BOX_ONLY_PREFIXES: Final = ('meta.box.',)
 _WORKSET_ONLY_PREFIXES: Final = ('meta.workset.', 'workset.')
 _WORKSET_RUNTIME_KEYS: Final = frozenset({'meta.runtime.ws_root', 'meta.runtime.ws_name', 'meta.runtime.project_type'})
+_NONE_WARNED: 'set[str]' = set()
+_FLOOR_WHERE = "kanibako's defaults for this box"
 _BOX_ROOT_KEY = 'meta.box.path'
 _BOX_STORE_KEY = 'workset.boxes'
 _MIRROR_SEGMENTS: tuple[str, ...] = ('meta', 'box', 'agent')
@@ -56,6 +59,7 @@ def resolve_inputs(*, subject: Literal[ResolveSubject.WORKSET], std, agent_name:
 def resolve_inputs(*, subject: Literal[ResolveSubject.SYSTEM], std, agent_name: str, system_path: Path | None, proj: None=None, ws: None=None) -> LaunchInputs
 def resolve_inputs(*, subject: ResolveSubject, std, agent_name: str, system_path: Path | None, proj=None, ws: Workset | None=None) -> LaunchInputs
 def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None, subject: ResolveSubject=ResolveSubject.BOX) -> KeyStore
+def reset_none_warnings() -> None
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
 def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
 def behavior_pick(snapshot: KeyStore, *, active_agent: str, key: str) -> 'tuple[str | None, object]'
@@ -81,6 +85,11 @@ def _agent_identity(agent_name: str, project_path: Path | None) -> dict[str, obj
 def _workset_floors(std, *, mode: str, ws_token: str, ws_root: Path, local_channels: 'WorksetChannels | None', agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_workset_floors(std, proj, agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs
+def _warn_once(message: str) -> None
+def _none_setter(written: Sequence[_WrittenLevel], key: str, dest: str | None) -> str | None
+def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]
+def _warn_lone_none_standard_binds(floor: Mapping[str, object], merged: KeyStore, expanded: KeyStore, *, null_sources: NullSources, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
+def _warn_null_ref_secrets(merged: KeyStore, expanded: KeyStore, *, active_agent: str, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
 def _drop_non_mirror_keys(effective: KeyStore) -> None

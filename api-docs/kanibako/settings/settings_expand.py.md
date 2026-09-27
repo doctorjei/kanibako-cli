@@ -13,13 +13,19 @@ _PREF_ROOT = 'pref'
 _SEEDED = 'seeded'
 ```
 
+## Types
+```
+NullSources = dict[tuple[str, ...], tuple[str, ...]]
+
+```
+
 ## Functions
 ```
 @overload
-def expand(snapshot: KeyStore, ctx: ResolveCtx) -> KeyStore
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None=None) -> KeyStore
 @overload
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool) -> KeyStore | tuple[KeyStore, dict[str, str]]
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False) -> KeyStore | tuple[KeyStore, dict[str, str]]
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool, null_sources: NullSources | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, null_sources: NullSources | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
 def _is_whole_value_ref(value: str) -> str | None
 def _is_whole_value_var(value: str) -> str | None
 ```
@@ -42,15 +48,15 @@ class _Expander:
     def run(self) -> KeyStore
 
     def _expand_node(self, node: KeyStore, *, path: tuple[str, ...]) -> KeyStore
-    def _expand_dest_key(self, key: str, value: StoreValue, *, chain: tuple[str, ...]) -> str
-    def _expand_leaf(self, value: StoreValue, *, path: tuple[str, ...], seed: bool=False) -> StoreValue | _Absent
+    def _expand_dest_key(self, key: str, value: StoreValue, *, chain: tuple[str, ...], seed: bool=False) -> str | None
+    def _expand_leaf(self, value: StoreValue, *, path: tuple[str, ...]) -> StoreValue | _Absent
     def _refuse_relative_host_src(self, raw: str, expanded: str, *, chain: tuple[str, ...]) -> None
     def _expand_bind(self, bind: Bind, *, chain: tuple[str, ...]) -> StoreValue | _Absent
-    def _expand_bind_entry(self, entry: BindEntry, *, chain: tuple[str, ...], seed: bool=False) -> StoreValue | _Absent
-    def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...], none_refs: list[str] | None=None) -> StoreValue | _Absent
+    def _expand_bind_entry(self, entry: BindEntry, *, chain: tuple[str, ...], null_refs: list[str] | None=None) -> StoreValue | _Absent
+    def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...], null_refs: list[str] | None=None) -> StoreValue | _Absent
     def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent
     def _resolve_ref(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _lookup_raw(self, dotted: str) -> StoreValue | _Absent
-    def _expand_embedded(self, value: str, *, space: str, chain: tuple[str, ...], none_refs: list[str] | None=None) -> str
-    def _lookup_str(self, dotted: str, chain: tuple[str, ...], none_refs: list[str] | None=None) -> str
+    def _expand_embedded(self, value: str, *, space: str, chain: tuple[str, ...], none_refs: list[str]) -> str
+    def _lookup_str(self, dotted: str, chain: tuple[str, ...], none_refs: list[str]) -> str
 ```

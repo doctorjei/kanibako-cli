@@ -205,24 +205,39 @@ def derived_bindings(
     :func:`kanibako.settings.settings_categories.derive_binding_keys`,
     deliberately named differently.
     """
-    _require_node(node, label)
-    out: dict[str, Bind] = {}
+    return {
+        ".".join(segments): bind
+        for segments, bind in derived_binding_rows(node, label=label).items()
+    }
 
-    def _walk(sub: KeyStore, prefix: str) -> None:
+
+def derived_binding_rows(
+    node: KeyStore, *, label: str = BINDING_DERIVATIONS_NODE,
+) -> dict[tuple[str, ...], Bind]:
+    """The ``binding_derivations`` subtree as ``{segments: Bind}``, the DEST last.
+
+    The one walk behind :func:`derived_bindings`.  A caller that NAMES a declaration to
+    a user needs the segments: the dest is a dict index (spec §2c), and a dotted key
+    cannot be split back into declaration and dest.
+    """
+    _require_node(node, label)
+    out: dict[tuple[str, ...], Bind] = {}
+
+    def _walk(sub: KeyStore, prefix: tuple[str, ...]) -> None:
         for key in dict.keys(sub):
             value = dict.__getitem__(sub, key)
-            dotted = f"{prefix}.{key}" if prefix else str(key)
+            segments = (*prefix, str(key))
             if isinstance(value, Bind):
-                out[dotted] = value
+                out[segments] = value
             elif isinstance(value, KeyStore):
-                _walk(value, dotted)
+                _walk(value, segments)
             else:
                 raise ViewError(
-                    f"{label}.{dotted} is {type(value).__name__}, expected a "
-                    f"Bind (the materialised derivation of a declaration)"
+                    f"{label}.{'.'.join(segments)} is {type(value).__name__}, "
+                    f"expected a Bind (the materialised derivation of a declaration)"
                 )
 
-    _walk(node, "")
+    _walk(node, ())
     return out
 
 
