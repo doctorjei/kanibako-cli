@@ -838,11 +838,13 @@ class TestCoreStaticEnvDefaults:
     #: 24-bit display; the retired literal ``truecolor`` claimed it for them.
     _SHIPPED_ENV = {
         "agent.default": {"TERM": "$TERM"},
+        # A pseudo-agent does not inherit agent.default (§2d shell fence).
+        "agent.shell": {"TERM": "$TERM"},
         "box": {"COLORTERM": "$COLORTERM"},
     }
 
     def test_the_shipped_env_section_is_exactly_the_declared_content(self):
-        """The section IS those two entries, as strings, and nothing else.
+        """The section IS those three entries, as strings, and nothing else.
 
         ``COLORTERM`` is at BOX scope deliberately (it describes the terminal a box
         runs, not the host install) and a WRONG scope here is not cosmetic: a
@@ -853,6 +855,8 @@ class TestCoreStaticEnvDefaults:
         overlaid PER NAME, so one agent can be given a different terminal type
         without the others restating it — which a box-scope declaration could not
         offer, and which a per-node declaration would force on every plugin.
+        The ``agent.shell`` row is the one per-node restatement, because the shell is a
+        pseudo-agent and reads no ``agent.default`` value (§2d).
         """
         doc = _load_yaml("kanibako.data", "core-defaults.yaml")
         assert doc.get("env") == self._SHIPPED_ENV, (
@@ -869,6 +873,7 @@ class TestCoreStaticEnvDefaults:
                 )
         assert core_defaults.env_default_categories() == {
             "agent.default.env.TERM": "$TERM",
+            "agent.shell.env.TERM": "$TERM",
             "box.env.COLORTERM": "$COLORTERM",
         }, "the emitter must hand back the file's declaration under its dotted key"
 

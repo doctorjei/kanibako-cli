@@ -1729,6 +1729,17 @@ keys:
     note: "the shell tier's CANON CONTRIBUTION ROOT is the all-agents fallback arm
            itself (fence literal) — the pseudo-agent ships no canon of its own."
     spec: "§2d (shell fence)"
+  agent.shell.env.TERM:
+    scope: agent
+    type: str
+    set: cli+file
+    default: "$TERM"
+    note: "the HOST's terminal type for a plain-shell box (fence row; `xterm`
+           when unset) — shipped in core-defaults.yaml's `env: agent.shell:`
+           table. Stated at the shell tier because a pseudo-agent does not
+           inherit agent.default.env.TERM (§2d). Same family contract as its
+           agent.default twin."
+    spec: "§2d (shell fence)"
 
   ## ---- meta.* — TOP-LEVEL protected RO namespace (§0) ---------------------
   ## Materialized ONLY by construct-time / plugin / runtime derivation.

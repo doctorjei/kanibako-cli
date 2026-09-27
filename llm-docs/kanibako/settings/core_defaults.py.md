@@ -37,7 +37,7 @@ keyed by setting name, not dest-keyed category tables, and they are why the sent
 | block | producer | emits |
 |---|---|---|
 | `agent_default` | `behavior_defaults` / `behavior_default` | the `agent.default.<key>` BEHAVIOR floor (spec §2d) — `access` · `allow_helpers` · `continue_mode` · `bootstrap` · `label`, and the `<None>` rows `model` · `endpoint` · `run_args` · `transform` as a present `None` |
-| `env` | `env_default_categories` | STATIC `<scope>.env.<VAR>` floor keys; ships exactly two — `box.env.COLORTERM` and `agent.default.env.TERM` |
+| `env` | `env_default_categories` | STATIC `<scope>.env.<VAR>` floor keys; ships exactly three — `box.env.COLORTERM`, `agent.default.env.TERM` and `agent.shell.env.TERM` |
 
 Two reading traps in that pair:
 
@@ -61,7 +61,7 @@ this module's MODULE scope free of the settings stack.
 
 ⚑ **EVERY ENTRY'S SCOPE IS LOAD-BEARING.** A variable declared here at one scope and written by a
 user at ANOTHER refuses the launch (`store_collapse.collapse_env`), so a scope slip breaks exactly
-the users who had already stored their own. Two entries, two scopes, each for a stated reason:
+the users who had already stored their own. Three entries, each at its scope for a stated reason:
 
 * `box.env.COLORTERM` was the section's first. It replaced a first-run WRITE in `cli.py`; the write
   seam is now guarded by `tests/test_settings/test_defaults_enforcement.py`. BOX scope because it
@@ -72,6 +72,10 @@ the users who had already stored their own. Two entries, two scopes, each for a 
   tier on Jei's 2026-09-19 ruling that a terminal type belongs to every agent, not to the
   plain-shell box: the agent tier's two cascade levels are overlaid PER NAME (spec §2a), so a
   plugin descriptor or a settings file overrides it for ONE agent while the rest keep inheriting.
+* `agent.shell.env.TERM` restates it for the plain shell (keyspec §2d shell fence,
+  `agent.shell.env.TERM | $TERM`): a pseudo-agent inherits nothing from `agent.default`
+  (`settings_launch._fallback_node`), so without its own row a plain-shell box would get no `TERM`.
+  Dormant for every true agent — only a shell pick reads `agent.shell`.
 
 Two things in the module are NOT table producers and should not be read as such:
 

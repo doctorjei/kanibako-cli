@@ -5035,6 +5035,11 @@ cascade, not a contest:
 kanibako system set agent.default.env.TERM=xterm-256color
 ```
 
+A plain-shell box is the exception: the `shell` pseudo-agent inherits nothing from `agent.default`
+(spec §2d), so it carries its own `agent.shell.env.TERM`, also `$TERM`, and
+`agent.default.env.TERM` does not reach it. Set `agent.shell.env.TERM` to change it there; on a
+plain-shell box the refusal below names `agent.shell.env.TERM` as kanibako's key.
+
 **⚑ A `TERM` key at any OTHER scope now refuses the launch.** Because kanibako's declaration sits at
 agent scope, `box.env.TERM`, `workset.env.TERM` and `system.env.TERM` are each a *second* scope
 naming one variable, which is the contested slot §2.33 refuses — and the message names kanibako's
@@ -5308,6 +5313,39 @@ kanibako system set agent.shell.bootstrap=zellij   # or =none for foreground-onl
 If you had set `agent.default.bootstrap`, restart (`kanibako --restart`) any plain-shell box that is
 running when you upgrade: it was started under your value, and it is reattached with `tmux`
 afterward, unless you set `agent.shell.bootstrap` to that value above.
+
+**A plain-shell box reads no `agent.default` value.** A plain-shell box used to inherit every
+declared `agent.default` value wherever its slot set nothing itself. In v1.7.2 that was `model`,
+`endpoint`, `continue_mode`, `auto_approve` and `allow_helpers`; in v1.8.0-rc2, `model`,
+`endpoint`, `continue_mode`, `access`, `allow_helpers`, `run_args`, `transform`,
+`transform_settings` and `canon`. (`bootstrap` and `template` have their own paragraphs in this
+section: "A plain-shell box's multiplexer is `agent.shell.bootstrap`" and "Template files for a
+plain-shell box".) In both it also inherited every `agent.default` category entry: `bindings`,
+`caches`, `seeded`, `synced`, `masks`, `env` and `secret_path`, plus `shared` in v1.7.2 and
+`common` in v1.8.0-rc2.
+
+One of these moved a bind. In v1.8.0-rc2, repointing `agent.default.canon` also moved a
+plain-shell box's handbook chapter, because the slot's canon was `@agent.default.canon`. It no
+longer does: `agent.shell.canon` is `@config.agents/default/canon` whatever `agent.default.canon`
+says. To move it for plain-shell boxes, set their own key:
+`kanibako system set agent.shell.canon=<path>`. The `shell`
+pseudo-agent is not a true agent, and only true agents inherit from `agent.default` (spec §2d):
+the shell tier supplies every key its block lists (`model`, `endpoint` and `continue_mode` are
+`<None>`; `TERM` is the host's, as for every agent), and every other key is unset for it. A
+value or entry you wrote under `agent.default` therefore still reaches every true agent, but no
+longer reaches a plain-shell box.
+
+If you want a plain-shell box to have it too, write it for the shell as well — a behavior key or
+an `env`/`secret_path` entry on the shell tier, a bind on a scope every box reads:
+
+```bash
+kanibako system set agent.shell.model=<value>        # any key the spec's shell block lists
+kanibako system set agent.shell.env.FOO=bar          # an env entry for plain-shell boxes only
+```
+
+For a bind (`bindings`, `caches`, `seeded`, `common`, `synced`, `masks`), write it under `system:`,
+a workset's `workset:` or a box's `box:` table instead, which every box in that scope reads,
+whatever it runs.
 
 **`kanibako shell --persistent` and `kanibako start --entrypoint` follow the box's own agent.**
 These launches run no agent program. In v1.7.2 they read the plain-shell slot's settings and then

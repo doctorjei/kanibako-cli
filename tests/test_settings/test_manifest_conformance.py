@@ -200,8 +200,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 128, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 128 this "
+        assert len(doc["keys"]) == 129, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 129 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -246,7 +246,8 @@ _BEHAVIOR_KEYS = (
 #: them.  Kept for the ``type:`` column case below.
 _SHELL_TIER_KEYS = (
     "agent.shell.label", "agent.shell.access", "agent.shell.allow_helpers",
-    "agent.shell.bootstrap", "agent.shell.run_args", "agent.shell.transform",
+    "agent.shell.bootstrap", "agent.shell.continue_mode", "agent.shell.model",
+    "agent.shell.endpoint", "agent.shell.run_args", "agent.shell.transform",
 )
 
 #: (i-f) The workset CHANNEL family — ``workset.channelroot`` plus the six declared
@@ -376,13 +377,13 @@ class TestShellTierDefaults:
 
     The shell-tier twin of :class:`TestBehaviorDefaults`.  The VALUES are the
     ``shell-tier-behavior`` (``label``/``access``/``allow_helpers``) and
-    ``shell-tier-fence`` (``bootstrap``/``run_args``/``transform``) views'.  (The shell
+    ``shell-tier-fence`` (``bootstrap`` and the ``<None>`` rows) views'.  (The shell
     ``canon`` arm is the ``canon-defaults`` view's, and ``access``'s ``choices:`` the
     ``access-choices`` view's.)
     """
 
     def test_the_manifest_types_the_shell_floor(self):
-        """The ``type:`` cell of each shell-tier row — the ONLY carrier of these six, as
+        """The ``type:`` cell of each shell-tier row — the ONLY carrier of these nine, as
         the behavior twin's docstring measures: ``key-types`` selects no ``agent.*`` row."""
         types = {k: _keys()[k].get("type") for k in _SHELL_TIER_KEYS}
         assert types == {
@@ -390,6 +391,9 @@ class TestShellTierDefaults:
             "agent.shell.access": "enum",
             "agent.shell.allow_helpers": "bool",
             "agent.shell.bootstrap": "str",
+            "agent.shell.continue_mode": "bool",
+            "agent.shell.model": "str",
+            "agent.shell.endpoint": "str",
             "agent.shell.run_args": "list",
             "agent.shell.transform": "str",
         }, types
@@ -797,6 +801,9 @@ NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
 #: tier's own ``tmux``, the other two as a present ``None`` — compared by ``shell-tier-fence``.
 #: ``agent.default.{model,endpoint,run_args,transform}`` left likewise: ``agent_default:``
 #: floors them as a present ``None``, compared by ``default-tier-none``.
+#: ``agent.shell.{continue_mode,model,endpoint}`` left 2026-09-27: a shell pick has no
+#: ``agent.default`` fallback (§2d), so ``agent_shell:`` floors them as a present
+#: ``None``, compared by ``shell-tier-fence``.
 #: ⚑ THE WEAKER CLAIM IS HELD, BY THE ``no-floor-fabricates`` KINEMATA VIEW: every
 #: ``default: <None>`` row, these included, resolves NO value at any existing-box
 #: terminus, in every mode, for every discovered agent node (a leaf the launch's CLI
@@ -805,7 +812,6 @@ NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
 #: :data:`CARRIED_DEFAULT_KEYS`.
 NO_ORACLE_ABSENT: frozenset[str] = frozenset({
     "system.agent", "system.setup_completed",
-    "agent.shell.continue_mode", "agent.shell.model", "agent.shell.endpoint",
 })
 
 #: (E4) ``default: {}`` — the EMPTY CONTAINER a category arm starts at.  That emptiness
@@ -1737,13 +1743,13 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 82, (
-            f"the manifest gives {len(declared)} rows a default, not the 82 measured — "
+        assert len(declared) == 83, (
+            f"the manifest gives {len(declared)} rows a default, not the 83 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_split_is_the_measured_split(self):
-        """0 pinned, 71 carried, 11 exempted — stated so a silent migration between them reds.
+        """0 pinned, 75 carried, 8 exempted — stated so a silent migration between them reds.
 
         ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
         (2026-08-25), then 48/17 until ``workset.registry`` followed it out of E1
@@ -1799,10 +1805,14 @@ class TestDefaultsCoverage:
         ⚑ 1+69/12 → 0+71/11 (2026-09-27): ``workset.workspaces`` left the pinned set for
         the ``workset-workspaces`` view, and ``box.shell`` left E3 for the
         ``box-scalar-floor`` view (its ``<None>`` is floored as a present ``None``).
+        ⚑ 0+71/11 → 0+75/8 (2026-09-27): ``agent.shell.{continue_mode,model,endpoint}``
+        left E3 for the ``shell-tier-fence`` view (a shell pick has no ``agent.default``
+        fallback, so the floor supplies their ``<None>``), and the new
+        ``agent.shell.env.TERM`` row arrived carried by ``env-defaults``.
         """
         assert len(PINNED_DEFAULT_KEYS) == 0
-        assert len(CARRIED_DEFAULT_KEYS) == 71
-        assert len(EXEMPT_DEFAULT_KEYS) == 11
+        assert len(CARRIED_DEFAULT_KEYS) == 75
+        assert len(EXEMPT_DEFAULT_KEYS) == 8
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
         assert not (PINNED_DEFAULT_KEYS & CARRIED_DEFAULT_KEYS), (
             f"pinned here AND compared by a kinemata view: "
@@ -1890,8 +1900,8 @@ class TestDefaultsCoverage:
         )
 
     def test_the_default_value_neither_cells_partition_the_registry(self):
-        """82 + 36 + 10 == 128, disjoint — no row carries both cells, none carries
-        neither unnoticed.  The 128 is the loader's own count, re-stated here as the
+        """83 + 36 + 10 == 129, disjoint — no row carries both cells, none carries
+        neither unnoticed.  The 129 is the loader's own count, re-stated here as the
         arithmetic the three coverage cases must sum to."""
         keys = _keys()
         defaulted = {
@@ -1908,7 +1918,7 @@ class TestDefaultsCoverage:
             f"rows carrying BOTH cells: {sorted(defaulted & valued)}"
         )
         assert defaulted | valued | neither == {str(k) for k in keys}
-        assert (len(defaulted), len(valued), len(neither)) == (82, 36, 10)
+        assert (len(defaulted), len(valued), len(neither)) == (83, 36, 10)
 
 
 # --------------------------------------------------------------------------- #
@@ -2127,7 +2137,7 @@ class TestKeySetConformance:
         # And the derivations are not vacuous: each class actually has members.
         assert leftover & category_rows == {
             "box.bindings.ro", "box.bindings.rw", "box.masks", "box.env.COLORTERM",
-            "agent.default.env.TERM",
+            "agent.default.env.TERM", "agent.shell.env.TERM",
         }
         assert leftover & parametric_agent == {
             "agent.<agent>.access", "agent.<agent>.template", "agent.<agent>.canon",

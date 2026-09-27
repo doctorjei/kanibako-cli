@@ -914,9 +914,10 @@ def _bootstrap_choice(
 
     The program: where no tier supplies ``bootstrap`` the DECLARED
     ``agent.default.bootstrap`` floor (:func:`_bootstrap_default`) answers, through
-    the snapshot like any other value.  ⚑ The SHELL tier supplies its own
-    (``agent.shell.bootstrap``), so a plain-shell box never reaches that fallback —
-    see ``core-defaults.yaml`` ``agent_shell:``.
+    the snapshot like any other value.  ⚑ A plain-shell box has NO such fallback (a
+    pseudo-agent reads its own tier only, ``settings_launch._fallback_node``): the
+    SHELL tier supplies its own ``agent.shell.bootstrap`` — see
+    ``core-defaults.yaml`` ``agent_shell:``.
     ⚑ ``None`` MEANS NO PROGRAM, NEVER "USE THE DEFAULT".  The floor always supplies
     ``agent.default.bootstrap``, so an empty answer is never "unset": the §2d pick
     landed on a supplied ``<None>``, a user ``null``, or a terminal ``""`` (§2h keeps
@@ -1097,8 +1098,9 @@ def _agent_scalar_pick(
     the sole intermediary ([[settings-must-map-to-keystore-key]]).
 
     *agent_id* is the launch-resolved active node-name (``"shell"`` for a
-    no-agent / shell box, whose own tier answers first — the ``agent.default``
-    backstop reaches only a key that tier leaves unsupplied).
+    no-agent / shell box, whose own tier is the ONLY one it reads — a pseudo-agent
+    has no ``agent.default`` fallback,
+    :func:`~kanibako.settings.settings_launch._fallback_node`).
     *floor* is core's ``agent.default.<key>`` value; *agent_floor* the active
     plugin's declared row for *key*, if any (``agent.<active>.<key>``, [Q91]).
     *agent_state* is the per-agent file's flat behavior state as an
@@ -1146,10 +1148,10 @@ def _agent_scalar_pick(
         behavior_floor={key: floor},
         agent_behavior_floor=agent_floor,
         # The SHELL TIER's own values (spec §2d fence), the same producer the main
-        # launch folds (``_resolve_launch_snapshot``).  ⚑ WITHOUT IT A SHELL PICK
-        # FINDS ``agent.shell.<key>`` ABSENT and reads the ``agent.default`` floor
-        # above — and with it any user ``agent.default.<key>`` (why that is wrong:
-        # ``core-defaults.yaml`` ``agent_shell:``).  Dormant for every other agent —
+        # launch folds (``_resolve_launch_snapshot``).  ⚑ LOAD-BEARING: a shell pick
+        # has no ``agent.default`` fallback (``settings_launch._fallback_node``), so
+        # WITHOUT IT the pick finds NOTHING for *key* — the ``agent.default`` floor
+        # above is never read for a shell box.  Dormant for every other agent —
         # only a shell pick reads ``agent.shell``.
         # The resolved ``system.*`` tier rides beside it, as in every box resolve.
         default_categories={
@@ -2980,8 +2982,9 @@ def _run_container(
     # ``access`` (single-route, [[settings-must-map-to-keystore-key]]) — via the
     # active agent + its ``agent.default.bootstrap`` / ``agent.<agent>.bootstrap``
     # cascade, the declared ``agent.default.bootstrap`` (``tmux``) answering where no
-    # tier supplies one.  The shell tier supplies its own (``tmux``, the fence), so
-    # a plain-shell box never reads the default tier.  ``None`` = no program (see
+    # tier supplies one.  A plain-shell box never reads the default tier (a
+    # pseudo-agent has no fallback, ``settings_launch._fallback_node``); the shell
+    # tier supplies its own (``tmux``, the fence).  ``None`` = no program (see
     # :func:`_bootstrap_choice`).  Resolved HERE (before the baseline probe /
     # bootstrap-wrap / reattach that consume it), NOT pre-agent up top.
     # ⚑ ONLY AN AGENT-MODE LAUNCH READS IT OFF ``agent_id``.  A launch that runs no
@@ -6855,7 +6858,8 @@ def _resolve_launch_snapshot(
             family="canon", origins=cat_origins,
         )
         # The SHELL TIER's own values (spec §2d fence: label/access/allow_helpers/
-        # bootstrap, and the present-``None`` run_args/transform).  ``template``
+        # bootstrap, and the present-``None`` continue_mode/model/endpoint/run_args/
+        # transform).  ``template``
         # rides ``agent_template_defaults`` below.
         # Folded UNCONDITIONALLY beside the default arm above, for the same reason
         # the template arms below are: a declared default must ANSWER for a box

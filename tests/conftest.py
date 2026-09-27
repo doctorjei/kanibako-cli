@@ -822,6 +822,11 @@ def start_mocks():
                 # False`` seam) — a test exercising the hub sets
                 # ``start_mocks.agent_cfg.state["allow_helpers"] = "true"`` (the
                 # active-over-default pick makes the per-agent slot WIN).
+                # ⚑ A PSEUDO-AGENT (the plain shell) reads no ``agent.default`` value
+                # (keyspec §2d), so its OWN tier carries the same ``false`` seed.
+                from kanibako.settings.settings_keyspace import pseudo_agent_fence
+                if pseudo_agent_fence(_node) is not None:
+                    _default_cats[f"agent.{_node}.allow_helpers"] = "false"
                 snap = build_launch_snapshot(
                     agent_name=_node, ctx=ctx,
                     system_path=None, agent_path=None,

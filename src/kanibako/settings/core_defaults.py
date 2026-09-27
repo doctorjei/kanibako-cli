@@ -111,7 +111,7 @@ def shell_tier_defaults() -> dict[str, str | None]:
     base floor UNCONDITIONALLY (every snapshot carries the tier; only a shell
     pick reads it), so the fence defaults ANSWER for a box that already exists
     (P) whatever that box runs.  ⚑ Values are STRINGS, same convention, same
-    reason — except a fence ``<None>`` row (``run_args``/``transform``), which
+    reason — except a fence ``<None>`` row (``model``, ``run_args``, …), which
     stays a PRESENT ``None`` (``str()`` would ship the text ``"None"``).  Why every
     row must be supplied: the ``agent_shell:`` header in ``core-defaults.yaml``.
     ⚑ ``canon`` is NOT here — its arm is dynamic and lives in
@@ -707,8 +707,8 @@ def canon_default_categories(
             if not agent_name:
                 continue  # BLANK agent (an agent-less narrow resolve): no agent
                 # tier at all, so no chapter bind.  A ``shell`` box TAKES the
-                # tier — the pseudo-agent's canon falls back to the default's
-                # by the ordinary §2d pick (``agent.shell.canon`` above).
+                # tier — its canon root is its own ``agent.shell.canon`` above
+                # (the fence literal), never a fallback to ``agent.default``.
             ref = ref.replace(CANON_ACTIVE_AGENT_TOKEN, agent_name)
         add_bind(
             out, str(entry["category"]), str(entry["box_dest"]), ref,

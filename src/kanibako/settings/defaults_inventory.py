@@ -209,14 +209,13 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     ("launch/templates.py (shell fence, present None)",
      frozenset({"agent.shell.template"})),
     # ``default: <None>`` rows with NO carrier — true ABSENCES.  ⚑ The shell fence's
-    # other ``<None>`` rows, ``agent.shell.{run_args,transform}``, are NOT here:
-    # ``core-defaults.yaml``'s ``agent_shell:`` floors them as PRESENT ``None``, so
-    # they arrive in that group above, derived off its emitter; so do
-    # ``agent.default.{model,endpoint,run_args,transform}``, off ``agent_default:``.  Its
-    # ``agent.shell.{continue_mode,model,endpoint}`` rows ARE here: no floor installs them.
+    # other ``<None>`` rows, ``agent.shell.{continue_mode,model,endpoint,run_args,
+    # transform}``, are NOT here: ``core-defaults.yaml``'s ``agent_shell:`` floors them as
+    # PRESENT ``None``, so they arrive in that group above, derived off its emitter; so do
+    # ``agent.default.{model,endpoint,run_args,transform}``, off ``agent_default:``.
     ("(nothing declares it — unset until you set it)", frozenset({
       "system.agent", "system.setup_completed",
-      "agent.shell.continue_mode", "agent.shell.model", "agent.shell.endpoint"})),
+    })),
     # ``default: {}`` — the resolver's own initial state for a category arm.
     ("(empty — the category starts with no entries)", frozenset({
       "box.bindings.ro", "box.bindings.rw", "box.masks",
@@ -413,9 +412,10 @@ def bind_rows() -> list[DefaultRow]:
 # ⚑ THIS SECTION IS A REPORT ON THE LIVE ENV FLOOR, NOT A REGISTRY CLAIM.  The values
 # are read from the same two emitters the launch reads, so it lists what a box actually
 # gets — which is why it lists EVERY var, including the one the registry also carries.
-# ⚑⚑ THE REGISTRY ENUMERATES TWO env INSTANCES and no longer "deliberately lacks" them:
-# spec §2b declares ``box.env.COLORTERM`` and §2d declares ``agent.default.env.TERM``
-# (both core-shipped defaults), so each is a section-1 DECLARED KEY as well, printed
+# ⚑⚑ THE REGISTRY ENUMERATES THREE env INSTANCES and no longer "deliberately lacks" them:
+# spec §2b declares ``box.env.COLORTERM`` and §2d ``agent.default.env.TERM`` and its
+# shell-fence twin ``agent.shell.env.TERM`` (all core-shipped defaults), so each is a
+# section-1 DECLARED KEY as well, printed
 # there with the SAME source label.  That overlap is the point — the two sections answer
 # different questions about one value, and dropping them from here would make "the
 # environment variables a box gets" omit the only ones kanibako itself ships.  Every

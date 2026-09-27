@@ -3147,32 +3147,140 @@ def test_a_blank_active_agent_has_no_meta_box_agent_mirror():
     assert "agent" not in box
 
 
-def test_the_shell_LAUNCH_shape_mirrors_the_default_backstop():
-    """⚑ THE MEASURED LAUNCH SHAPE, not the docstring's.
+def test_the_shell_LAUNCH_shape_mirrors_the_shell_tier_alone():
+    """⚑ THE MEASURED LAUNCH SHAPE: a shell mirror holds NO ``agent.default`` value.
 
     A no-agent/shell launch passes ``agent_name="shell"`` (start.py:
     ``agent_id = with_harness(...) if target else GENERAL_SLOT``), NOT a blank — so the
-    blank short-circuit above does NOT fire and the mirror holds the
-    ``agent.default`` backstop. This is the shape a reader of ``meta.box.agent`` on
-    a real shell box will find; pinning it stops the module note from drifting back
-    to the (false) "empty for a no-agent box" claim.
+    blank short-circuit above does NOT fire and the mirror is the §2d pick. The shell is
+    a pseudo-agent, and keyspec §2d says *"Only true agents inherit from agent.default"*,
+    so the pick is the shell tier alone: the shell floor's own leaves, never the
+    default floor's ``model: opus`` (rc2's ``"general"`` box mirrored it).
 
     The auth capability key is materialized by the FLOOR (pre-expand) and must
     survive the copy either way.
     """
+    from kanibako.settings.core_defaults import shell_tier_defaults
+
     snap = build_launch_snapshot(
         agent_name="shell",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
-        behavior_floor={"model": "opus", "allow_helpers": "true"},
+        behavior_floor={"model": "opus", "allow_helpers": "true", "endpoint": "e"},
+        default_categories=shell_tier_defaults(),
         auth_chain=auth_chain_floor(mode="primary", agent_name=""),
     )
     mirror = snap.meta.box.agent
-    assert sorted(dict.keys(mirror)) == ["allow_helpers", "auth", "model"]
-    assert mirror.model == "opus"          # the agent.default backstop
+    assert "auth" in mirror
+    assert dict.get(mirror, "model") is None     # never the agent.default "opus"
+    assert dict.get(mirror, "endpoint") is None
+    assert mirror.label == "Box Shell"           # the shell tier's own leaf
+    assert mirror.allow_helpers == "true"
     # NOTHING consumes these leaves: the only runtime reader under
     # meta.box.agent is auth.share_support, which the FLOOR supplies.
     assert "share_support" in snap.meta.box.agent.auth
+
+
+# --------------------------------------------------------------------------- #
+# A pseudo-agent reads its OWN tier only (keyspec §2d, Q89/Q93)               #
+# --------------------------------------------------------------------------- #
+
+
+def _shell_and_default_snap():
+    """One RAW snapshot holding a default tier and a sparse shell tier."""
+    return KeyStore({"agent": {
+        "default": {
+            "model": "sonnet", "continue_mode": "true", "endpoint": "https://d",
+            "env": {"TERM": "xterm-default"},
+            "bindings": {"ro": {"/box/d": BindEntry("/host/d", None)}},
+        },
+        "shell": {"label": "Box Shell", "env": {"FOO": "shell"}},
+        "claude": {"label": "Claude"},
+    }})
+
+
+@pytest.mark.parametrize("key", ["model", "continue_mode", "endpoint"])
+def test_a_shell_pick_never_reads_agent_default(key):
+    """``behavior_pick`` for ``shell`` finds nothing where only ``agent.default`` holds
+    the key; a TRUE agent on the same snapshot still falls back (the regression half).
+    (Mutation: ``_fallback_node`` returning the default node for ``shell`` → RED.)"""
+    from kanibako.settings.kb_store import __MISSING__
+    from kanibako.settings.settings_launch import behavior_pick
+
+    snap = _shell_and_default_snap()
+    assert behavior_pick(snap, active_agent="shell", key=key) == (None, __MISSING__)
+    assert behavior_pick(snap, active_agent="Shell", key=key) == (None, __MISSING__)
+    slot, _ = behavior_pick(snap, active_agent="claude", key=key)
+    assert slot == "default"
+
+
+def test_shell_discovery_omits_default_only_leaves():
+    """``effective_behavior``'s discovery unions the shell tier ALONE."""
+    snap = _shell_and_default_snap()
+    assert effective_behavior(snap, active_agent="shell") == {"label": "Box Shell"}
+    claude = effective_behavior(snap, active_agent="claude")
+    assert claude["model"] == "sonnet" and claude["label"] == "Claude"
+
+
+def test_shell_category_entries_carry_no_agent_default_entry():
+    """No ``agent.default`` bind or env entry reaches a plain-shell box, and every
+    emitted entry is declared at ``agent.shell`` (``_agent_decl_scope_fn``); a true
+    agent still receives the default tier's entries, declared at ``agent.default``."""
+    snap = _shell_and_default_snap()
+    shell = snapshot_category_entries(snap, active_agent="shell", box_ctx=_ctx())
+    assert [(e.category, e.name) for e in shell] == [("env", "FOO")]
+    assert shell[0].key.startswith("agent.shell.")
+    claude = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    claude_keys = {e.key for e in claude}
+    assert "agent.default.env.TERM" in claude_keys
+    assert any(k.startswith("agent.default.bindings.ro") for k in claude_keys)
+
+
+def test_the_shell_floor_supplies_every_universal_row():
+    """§2d: *"all pseudo-agents must explicitly define values for any universal keys"*
+    — with no fallback, a fence row missing from the floor would answer nothing."""
+    from kanibako.settings.core_defaults import env_default_categories, shell_tier_defaults
+    from kanibako.settings.settings_keyspace import pseudo_agent_fence
+
+    fence = pseudo_agent_fence("shell")
+    assert fence is not None
+    floored = {k.removeprefix("agent.shell.") for k in shell_tier_defaults()}
+    # ``transform_settings`` is ``{}`` (an empty category start); ``template`` and
+    # ``canon`` have their own producers (``launch.templates``, the canon arm).
+    assert fence.leaves - floored == {"transform_settings", "template", "canon"}
+    for key in ("continue_mode", "model", "endpoint"):
+        assert shell_tier_defaults()[f"agent.shell.{key}"] is None
+    assert env_default_categories()["agent.shell.env.TERM"] == "$TERM"
+
+
+def test_a_users_agent_default_values_reach_no_shell_launch(tmp_path: Path):
+    """End to end through ``build_launch_snapshot``: a system file's ``agent.default``
+    scalars and env entry reach neither the shell pick nor its category list."""
+    from kanibako.settings.core_defaults import (
+        behavior_defaults,
+        env_default_categories,
+        shell_tier_defaults,
+    )
+
+    system_file = tmp_path / "settings.yaml"
+    system_file.write_text(
+        "agent:\n  default:\n    model: mine\n    env:\n      FOO: bar\n"
+    )
+    snap = _snap(
+        agent_name="shell",
+        system_path=system_file,
+        behavior_floor=behavior_defaults(),
+        default_categories={**shell_tier_defaults(), **env_default_categories()},
+    )
+    assert "model" not in effective_behavior(snap, active_agent="shell")
+    envs = {
+        e.name: e for e in snapshot_category_entries(
+            snap, active_agent="shell", box_ctx=_ctx())
+        if e.category == "env"
+    }
+    assert "FOO" not in envs
+    assert envs["TERM"].key == "agent.shell.env.TERM"
+    assert effective_behavior(snap, active_agent="other")["model"] == "mine"
 
 
 # --------------------------------------------------------------------------- #

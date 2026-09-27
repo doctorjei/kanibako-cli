@@ -3235,23 +3235,22 @@ source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^(meta\.)?agent\.[a-z_]+\.(auth\.)?[a-z_]+$' }
 
-# FACT: the §2d shell fence's `agent.shell.bootstrap` (`tmux`), `agent.shell.run_args`
-# (`<None>`) and `agent.shell.transform` (`<None>`) are SUPPLIED by the shell tier's
-# own floor, with the values the manifest declares -- never omitted, never
+# FACT: the §2d shell fence's `agent.shell.bootstrap` (`tmux`) and its `<None>` rows
+# `agent.shell.{continue_mode,model,endpoint,run_args,transform}` are SUPPLIED by the
+# shell tier's own floor, with the values the manifest declares -- never omitted, never
 # stringified.
 # AUTHORITY: `declared`. The manifest rows, sourced from the §2d fence, are the
 # expected values; `core-defaults.yaml`'s `agent_shell:` table, read by
 # `core_defaults.shell_tier_defaults`, is the code on trial.
-# CATCHES: a row OMITTED from `agent_shell:` -- the shape [R177] rejects, which
-# lets the §2d pick read `agent.default.<key>` back into a plain-shell box (for
-# `bootstrap`, a user's `agent.default.bootstrap` instead of the tier's `tmux`);
+# CATCHES: a row OMITTED from `agent_shell:` -- the shape [R177] rejects: a shell
+# pick has no `agent.default` fallback (§2d), so the fence row would answer nothing;
 # a `<None>` row stringified to `"None"`; a value that drifted from the fence; AND
 # the manifest cell itself changed or removed.
 # ⚑ A VALUE COMPARISON in kinemata `0.4.0`'s `format = "json"`: a declared `null`
 # must meet a printed `null`, which the `text` form cannot carry (measured for
 # `agent-template-source`, above). The oracle prints with `json.dumps`, for the
 # reason `shell-template-none`'s parity gives, above.
-# ⚑ SCOPE: these three rows, not the whole `agent_shell:` table. Its other rows
+# ⚑ SCOPE: these rows, not the whole `agent_shell:` table. Its other rows
 # (`label`, `access`, `allow_helpers`) are `shell-tier-behavior`'s, below, which
 # compares them in `text` form through a `translate` -- the floor ships
 # `allow_helpers` as the string `"true"` where the manifest writes the bool `true`,
@@ -3262,7 +3261,7 @@ name = "shell-tier-fence"
 kind = "yaml-mapping"
 source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^agent\.shell\.(bootstrap|run_args|transform)$' }
+where = { id_matches = '^agent\.shell\.(bootstrap|continue_mode|model|endpoint|run_args|transform)$' }
 
 # Measured 2026-09-25, kinemata `0.4.1` (CI's pin), on `5c38aea4` plus the
 # shell-bootstrap working tree, run with `PYTHONPATH=<tree>/src`:
@@ -3298,7 +3297,9 @@ command = ["{python}", "-c", """
 import json
 from kanibako.settings.core_defaults import shell_tier_defaults
 for key, value in sorted(shell_tier_defaults().items()):
-    if key.rsplit(".", 1)[-1] in ("bootstrap", "run_args", "transform"):
+    if key.rsplit(".", 1)[-1] in (
+        "bootstrap", "continue_mode", "model", "endpoint", "run_args", "transform",
+    ):
         print(f"kanibako-shell-tier: {key}={json.dumps(value)}")
 """]
 extract = '(?m)^kanibako-shell-tier: ([^\s=]+)=(.+)$'
@@ -3801,7 +3802,9 @@ registry = "shell-tier-behavior"
 command = ["{python}", "-c", """
 from kanibako.settings.core_defaults import shell_tier_defaults
 for key, value in sorted(shell_tier_defaults().items()):
-    if key.rsplit(".", 1)[-1] not in ("bootstrap", "run_args", "transform"):
+    if key.rsplit(".", 1)[-1] not in (
+        "bootstrap", "continue_mode", "model", "endpoint", "run_args", "transform",
+    ):
         print(f"kanibako-shell-behavior: {key}={value}")
 """]
 extract = '(?m)^kanibako-shell-behavior: ([^\s=]+)=(.+)$'

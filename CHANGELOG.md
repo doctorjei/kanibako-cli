@@ -99,6 +99,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that same setting, not `agent.default.bootstrap`. See MIGRATION.md ("A `bootstrap` of `null` or
   `""` means no bootstrap program").
 
+- **A plain-shell box no longer reads `agent.default` values.** A plain-shell box inherited
+  every declared `agent.default` value it did not set itself: in 1.7.2, `model`, `endpoint`,
+  `continue_mode`, `auto_approve` and `allow_helpers`; in 1.8.0-rc2, `model`, `endpoint`,
+  `continue_mode`, `access`, `allow_helpers`, `run_args`, `transform`, `transform_settings` and
+  `canon` (for `bootstrap` and `template`, see "A plain-shell box takes its multiplexer from
+  `agent.shell.bootstrap`, not `agent.default.bootstrap`" and "A plain-shell box no longer takes a
+  per-agent template seed by default" above). In both it also inherited every `agent.default`
+  category entry: `bindings`, `caches`, `seeded`, `synced`, `masks`, `env` and `secret_path`, plus
+  `shared` in 1.7.2 and `common` in 1.8.0-rc2. The `shell` pseudo-agent now reads only its own
+  tier (spec §2d: only true agents inherit from `agent.default`). In 1.8.0-rc2, repointing
+  `agent.default.canon` also moved a plain-shell box's handbook chapter; it no longer does, because
+  `agent.shell.canon` is `@config.agents/default/canon` (set `agent.shell.canon` to move it). The shell tier supplies `model`, `endpoint`
+  and `continue_mode` itself, as `<None>`, and its own `env.TERM`, the host's `$TERM` as for every
+  agent. `agent.default` values still reach every true agent. See MIGRATION.md ("The plain-shell
+  store is `<data>/agents/shell/`, and `$AGENT` in a plain-shell box is `shell`").
+
 - **`kanibako shell --persistent` and `kanibako start --entrypoint` use the bootstrap of the
   box's own agent.** In 1.7.2 these launches, which run no agent program, read the plain-shell
   slot's settings and then `agent.default.bootstrap`, so a value set for the box's agent

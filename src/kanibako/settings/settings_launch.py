@@ -555,7 +555,8 @@ def meta_agent_identity_floor(
     )
     # ⚑ The agent's credential-SHARING CAPABILITY: plugin-set, RO — the hard
     # floor a user can't fake. The auth chain's mirror views UP to this key, so
-    # it must be present whenever an agent exists.
+    # it must be present whenever an agent exists — except for a pseudo-agent
+    # whose fence does not declare it (``default``), filtered out below.
     floor[f"meta.agent.{agent_name}.auth.share_support"] = bool(
         agent_auth_share_support
     )
@@ -2625,9 +2626,9 @@ def _assert_box_root_resolved(snapshot: KeyStore) -> None:
 # read-back cannot escape into the shared agent subtree.
 #
 # ⚑ The NO-AGENT box does NOT take the blank short-circuit — the launch passes
-# ``"shell"``, so the mirror holds the ``agent.default`` backstop. That is measured,
-# harmless, and PINNED (tests/test_settings/test_settings_launch.py); the llm-doc has
-# the shape and why the inherited comment here was wrong twice over.
+# ``"shell"``, so the mirror holds the shell tier's own leaves and no ``agent.default``
+# value (§2d: only true agents inherit from ``agent.default``; :func:`_fallback_node`).
+# PINNED in tests/test_settings/test_settings_launch.py; the llm-doc has the shape.
 
 
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None:
@@ -2646,8 +2647,9 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
         # ⚑ Leave meta.box.agent.* absent; do NOT fall back to agent.default — that is
         # the all-agents backstop, not an ACTIVE agent the box runs.
         return
-    # The PURE pick (agent.default ⊕ agent.<active>), which already carries any
-    # ``pref.agent.<agent>.*`` the box requested (a pref is a cascade INPUT).
+    # The PURE pick (agent.default ⊕ agent.<active>; the active tier alone for a
+    # pseudo-agent), which already carries any ``pref.agent.<agent>.*`` the box
+    # requested (a pref is a cascade INPUT).
     effective = _agent_pick_node(snapshot, active_agent)
     _drop_non_mirror_keys(effective)
     if not dict.__len__(effective):
@@ -2819,6 +2821,8 @@ def behavior_pick(
     that must keep the two states apart (``start._persona_model_state``) reads it
     raw. The subtree counterpart is :func:`_agent_pick_node`, which deep-overlays
     the default slot, then the active slot, and materializes ``meta.box.agent.*``.
+    A pseudo-agent (``shell``) has no default slot, so its pick is ``"active"`` or
+    ``None`` (:func:`_fallback_node`).
     """
     agent_node = dict.get(snapshot, "agent", __MISSING__)
     if not isinstance(agent_node, KeyStore):
@@ -2828,7 +2832,7 @@ def behavior_pick(
         val = dict.get(active_node, key, __MISSING__)
         if val is not __MISSING__:
             return "active", val
-    default_node = dict.get(agent_node, "default", __MISSING__)
+    default_node = _fallback_node(agent_node, active_agent)
     if isinstance(default_node, KeyStore):
         val = dict.get(default_node, key, __MISSING__)
         if val is not __MISSING__:
@@ -2864,7 +2868,8 @@ def effective_behavior(
     covered by a behavior-equivalence test, NOT silent.
 
     *keys*: when given, read exactly those; when ``None``, DISCOVER every scalar
-    behavior leaf under ``agent.<active>`` ∪ ``agent.default``. ⚑ DISCOVERY EXISTS
+    behavior leaf under ``agent.<active>`` ∪ ``agent.default`` (``agent.<active>``
+    alone for a pseudo-agent, :func:`_fallback_node`). ⚑ DISCOVERY EXISTS
     BECAUSE THE AGENT-LEAF SET IS PLUGIN-DECLARED (spec §0, "Agent specifics are
     PLUGIN-declared") — a leaf a shipped plugin declares and this reader has never
     heard of must still surface. It is NOT a pass-through for UNDECLARED keys: the
@@ -2890,7 +2895,7 @@ def effective_behavior(
     if not isinstance(agent_node, KeyStore):
         return out
     active_node = dict.get(agent_node, active_agent, __MISSING__)
-    default_node = dict.get(agent_node, "default", __MISSING__)
+    default_node = _fallback_node(agent_node, active_agent)
     # ⚑ NO ``box.agent.*`` OVERLAY (P7). The settable box-scoped mirror is RETIRED
     # (§2b), so there is no box-scope behavior source to overlay: a box's
     # ``pref.agent.<agent>.<key>`` (§2h) is an ordinary cascade level and is ALREADY
@@ -3134,12 +3139,15 @@ def _agent_decl_scope_fn(agent_node: object, active_agent: str):
     leaf declared by the ACTIVE slot came from ``agent.<active>``; otherwise from
     ``agent.default``, the only other tier that can have contributed it. No per-leaf
     provenance is threaded through :func:`_overlay_into` — the pick's own rule answers
-    it.
+    it. A pseudo-agent's pick reads no default tier (:func:`_fallback_node`), so every
+    leaf it emits is ``agent.<active>``'s.
     """
     active_tier = (
         dict.get(agent_node, active_agent, __MISSING__)
         if isinstance(agent_node, KeyStore) else __MISSING__
     )
+    if pseudo_agent_fence(active_agent) is not None:
+        return _fixed_decl_scope_fn(f"agent.{active_agent}")
 
     def decl(category: str, name: str) -> str:
         node: object = active_tier
@@ -3157,7 +3165,7 @@ def _agent_decl_scope_fn(agent_node: object, active_agent: str):
 def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
     """The PURE active-over-default agent pick = ``agent.default`` overlaid by
     ``agent.<active_agent>`` (the §2d value-pick), WITHOUT the box.agent.*
-    overlay.
+    overlay. A pseudo-agent's pick is its own tier alone (:func:`_fallback_node`).
 
     Returns a FRESH ``KeyStore`` shaped like a single (bare) agent scope node, each
     name holding the active slot's leaf where it set that name, else the
@@ -3172,7 +3180,7 @@ def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
     agent_node = dict.get(snapshot, "agent", __MISSING__)
     if not isinstance(agent_node, KeyStore):
         return KeyStore()
-    default_node = dict.get(agent_node, "default", __MISSING__)
+    default_node = _fallback_node(agent_node, active_agent)
     active_node = dict.get(agent_node, active_agent, __MISSING__)
     out = KeyStore()
     if isinstance(default_node, KeyStore):
@@ -3180,6 +3188,21 @@ def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore:
     if isinstance(active_node, KeyStore):
         _overlay_into(out, active_node)
     return out
+
+
+def _fallback_node(agent_node: KeyStore, active_agent: str) -> object:
+    """The tier the §2d pick falls back to for *active_agent*: ``agent.default``, or none.
+
+    ⚑ ONLY TRUE AGENTS INHERIT FROM ``agent.default`` (keyspec §2d, *"Pseudo-agent(s)"*).
+    A pseudo-agent's block declares a value for every universal key and its other keys are
+    unset, so for ``shell`` this answers ``__MISSING__`` and the pick reads the shell tier
+    alone — no ``agent.default`` value, scalar or category entry, reaches a plain-shell box.
+    The one carrier of that rule for :func:`behavior_pick`, :func:`effective_behavior` and
+    :func:`_agent_pick_node`; the pseudo-agent set is ``settings_keyspace``'s fence table.
+    """
+    if pseudo_agent_fence(active_agent) is not None:
+        return __MISSING__
+    return dict.get(agent_node, "default", __MISSING__)
 
 
 def _overlay_into(base: KeyStore, top: KeyStore) -> None:
