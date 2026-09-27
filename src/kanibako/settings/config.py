@@ -313,8 +313,10 @@ def box_scalar_defaults_floor() -> dict[str, object]:
     than deleted.  🛑 Do not delete the floor itself: ``@box.image`` resolves through it,
     and without it a stored ``@box.image`` dangles at launch AND at set time.
 
-    Two consumers, deliberately one recipe: :func:`_resolve_box_scalars` (the launch-side
-    merged resolve) and ``config_interface._category_set_lookups`` (the set-time E3 probe).
+    Three consumers, deliberately one recipe: ``settings_launch.build_launch_snapshot``
+    (every BOX resolve, :func:`_resolve_box_scalars` included),
+    :func:`_narrow_box_scalar_cascade`, and ``config_interface._category_set_lookups``
+    (the set-time E3 probe).
     """
     defaults = KanibakoConfig()
     floor: dict[str, object] = {}
@@ -322,8 +324,8 @@ def box_scalar_defaults_floor() -> dict[str, object]:
         value = getattr(defaults, field_name)
         # ⚑ A ``str`` field spells the declared ``<None>`` as ``""`` (``box.shell``, spec
         # §2b ``box.shell | <None>``), and the floor SUPPLIES it as a present ``None``
-        # ([R177]) — never ``""``, which ``build_launch_snapshot`` drops as a
-        # suppression, so ``@box.shell`` would dangle.  A present ``None`` does not
+        # ([R177]) — never ``""``, which is a value, and which a ``default_categories``
+        # fold drops as a suppression, so ``@box.shell`` would dangle.  A present ``None`` does not
         # reach the flat field: :func:`_resolve_box_scalars` skips it, leaving ``""``
         # (auto-detect).  ⚑ ``False`` is a VALUE and survives — ``False == ""`` is False.
         floor[dotted] = None if value == "" else value
@@ -362,8 +364,8 @@ def _resolve_box_scalars(
     # ⚑ THE DECLARED-DEFAULT FLOOR, not the Layer-1 file's ``box:`` table.  That table
     # WAS this floor ("risk 1": values the settings cascade does not read would be
     # STRANDED) until 2026-08-26, when Jei ruled the file cannot carry settings at all.
-    # With nothing settings-shaped stored there, there is nothing to strand.
-    floor = box_scalar_defaults_floor()
+    # With nothing settings-shaped stored there, there is nothing to strand.  It is
+    # folded by ``build_launch_snapshot`` itself, as for every BOX resolve.
 
     overrides = cli_overrides or {}
     image_val = overrides.get("box_image")
@@ -382,7 +384,6 @@ def _resolve_box_scalars(
         agent_path=None,
         workset_path=workset_path,
         box_path=box_path,
-        default_categories=floor,
         cli_level=cli_level,
         # ⚑ NO PERSONA TIER, deliberately — this resolve is AGENT-LESS.
     )

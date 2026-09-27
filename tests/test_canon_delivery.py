@@ -825,6 +825,78 @@ class TestLaunchWiring:
         assert f"{GUEST_HOME}/canon" not in by_dest
         assert f"{GUEST_HOME}/canon/charter" not in by_dest
 
+    def _write_box_settings(self, proj, box_table: dict) -> Path:
+        """Write *box_table* as the box file's ``box:`` table; return the file."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import box_workset_settings_paths
+
+        box_path, _ = box_workset_settings_paths(proj)
+        doc = load_doc(box_path) if box_path.exists() else {}
+        doc.setdefault("box", {}).update(box_table)
+        dump_doc(box_path, doc)
+        return box_path
+
+    def test_a_fresh_box_launch_snapshot_carries_every_box_scalar(
+        self, std, config, project_dir,
+    ):
+        """Spec §0/§2b: every declared box scalar resolves in the MAIN launch snapshot,
+        ``box.shell``'s ``<None>`` as a PRESENT ``None`` ([R177]). RED if
+        ``build_launch_snapshot`` stops folding ``config.box_scalar_defaults_floor``."""
+        from kanibako.settings.config import box_scalar_defaults_floor
+        from kanibako.settings.kb_store import __MISSING__
+        from kanibako.settings.settings_launch import snapshot_leaf
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, _ = self._launch_resolve(std, proj, _WiringTarget())
+        floor = box_scalar_defaults_floor()
+        assert set(floor) == {
+            "box.image", "box.share_images", "box.enable_vault", "box.shell",
+        }
+        for key, value in floor.items():
+            assert snapshot_leaf(snapshot, key) is not __MISSING__, key
+            assert snapshot_leaf(snapshot, key) == value, key
+        assert snapshot_leaf(snapshot, "box.shell") is None
+
+    def test_an_embedded_ref_to_the_floored_box_shell_drops_the_box_canon_bind(
+        self, std, config, project_dir, caplog,
+    ):
+        """``box.canon=@box.shell/sub`` on a box with no ``box.shell`` set: the floored
+        present ``None`` makes the whole value ``None`` (embedded ref), so the box's
+        handbook bind is skipped and the warning names the file that set ``box.canon``.
+        Before the floor, ``box.shell`` was ABSENT and the source rendered ``/sub``."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        dest = f"{GUEST_HOME}/canon/handbook/box"
+        assert dest in {e.box_dest for e in self._launch_entries(
+            std, proj, _WiringTarget())}
+        box_path = self._write_box_settings(proj, {"canon": "@box.shell/sub"})
+
+        with caplog.at_level(logging.WARNING, logger="kanibako"):
+            entries = self._launch_entries(std, proj, _WiringTarget())
+        assert dest not in {e.box_dest for e in entries}
+        assert not any(str(e.host_src).startswith("/sub") for e in entries)
+        assert f"references box.canon (in {box_path})" in caplog.text
+
+    def test_a_user_set_box_shell_still_beats_the_floor(
+        self, std, config, project_dir,
+    ):
+        """A box file's ``box.shell`` / ``box.image`` outrank the floor by merge level,
+        and the embedded ref then renders the user's value."""
+        from kanibako.settings.settings_launch import snapshot_leaf
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        self._write_box_settings(proj, {
+            "shell": "/bin/zsh", "image": "example.org/rig:1",
+            "canon": "@box.shell/sub",
+        })
+        snapshot, _ = self._launch_resolve(std, proj, _WiringTarget())
+        assert snapshot_leaf(snapshot, "box.shell") == "/bin/zsh"
+        assert snapshot_leaf(snapshot, "box.image") == "example.org/rig:1"
+        by_dest = {e.box_dest: e for e in self._launch_entries(
+            std, proj, _WiringTarget())}
+        assert by_dest[f"{GUEST_HOME}/canon/handbook/box"].host_src == (
+            "/bin/zsh/sub/handbook"
+        )
+
     def test_plugin_chapter_bind_reaches_a_real_launch(
         self, std, config, project_dir, tmp_path,
     ):

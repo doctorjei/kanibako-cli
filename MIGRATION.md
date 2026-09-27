@@ -5513,7 +5513,7 @@ read as before, so your `agent.default.model` still reaches it.
 **Read this if a settings file embeds a reference inside a longer path** (`@<key>/<more>`, or
 `@{<key>}` followed by more text) and the key it names is `null`: set with `--null`, written as
 `null`, or `<None>` by declaration, as a standalone box's `workset.auth.path` and
-`workset.template` are.
+`workset.template` are, and as `box.shell` is when unset.
 
 **What changed.** In v1.8.0-rc2 the `null` rendered as an empty string, so the path became one
 under the host's root: `@workset.auth.path/x` in a standalone box was the host directory `/x`, and
@@ -5535,6 +5535,9 @@ is now `null` as a whole:
 - An `env` variable whose value embeds one is left out of the box.
 
 A reference to a key that has no value at all is unchanged: it still renders as an empty string.
+In v1.8.0-rc2, `@box.image`, `@box.share_images`, `@box.enable_vault` and `@box.shell` rendered as
+an empty string at launch unless a settings file set them; they now resolve to their declared
+defaults, so `@box.shell/<path>` is `null` and its bind is left out.
 
 **What to do.** Decide what you meant for each bind:
 
