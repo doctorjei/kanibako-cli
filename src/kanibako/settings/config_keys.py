@@ -14,13 +14,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path  # noqa: F401  (annotations)
 from typing import Collection, Final, Iterator, Mapping
 
-from kanibako.agent_ref import agent_address_node, display_agent_ref
+from kanibako.agent_ref import agent_address_node, agent_segment_case, display_agent_ref
 from kanibako.errors import ConfigError
 from kanibako.identifiers import find_identifier
 from kanibako.settings.agent_config import (
@@ -45,6 +46,8 @@ from kanibako.settings.settings_keyspace import (
 )
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.settings.bootstrap import CONFIG_FILE, CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
+
+_log = logging.getLogger(__name__)
 
 
 class ConfigLevel(Enum):
@@ -581,15 +584,47 @@ def agent_key_node(raw: str) -> str:
     return agent_address_node(raw)
 
 
+def _typed_key_node(node_raw: str, *, prefix: str) -> str:
+    """:func:`agent_key_node` for the node segment of a TYPED key, warning when it folds case.
+
+    Q87: the command line gets the relief a settings file gets — the capital node is
+    accepted, loudly, once per spelling per command (``settings_assemble.announce_drop_once``).
+    *prefix* is what the user typed before the node (``agent`` or ``pref.agent``), so the
+    warning names their key. The ``agent`` noun's positional is a NAME and folds silently
+    ([R173]); it does not come here.
+    """
+    node = agent_key_node(node_raw)
+    if agent_segment_case(node_raw) != node_raw:
+        from kanibako.settings.settings_assemble import announce_drop_once
+
+        if announce_drop_once(None, f"<command line> {prefix}.{node_raw}"):
+            _log.warning(
+                "The command line spells '%s.%s', but an agent's node is lowercase "
+                "(spec §0): it is read as '%s.%s'. Type the lowercase spelling; kanibako "
+                "accepts this one only with this warning.",
+                prefix, node_raw, prefix, node,
+            )
+    return node
+
+
 def resolve_key(raw: str) -> str:
     """Return the canonical config key for a user-supplied key name."""
+    # A §2h request for an agent key names its node exactly as the key does, and folds with it.
+    pref_agent = f"{PREF_ROOT}.agent."
+    if raw.startswith(pref_agent):
+        return f"{PREF_ROOT}.{_resolve_agent_key(raw[len(PREF_ROOT) + 1:], prefix=pref_agent[:-1])}"
+    return _resolve_agent_key(raw, prefix="agent")
+
+
+def _resolve_agent_key(raw: str, *, prefix: str) -> str:
+    """:func:`resolve_key` for a key that is not a ``pref.``; *prefix* is for the warning only."""
     # ⚑ The bind arm is matched BEFORE the persona form; each takes the node segment
     # as a WHOLE through :func:`agent_key_node`. Order and reasons: llm-docs.
     bind = parse_agent_node_bind_key(raw)
     if bind is not None:
         node_raw, cat, name = bind
         try:
-            node = agent_key_node(node_raw)
+            node = _typed_key_node(node_raw, prefix=prefix)
         except ConfigError:
             return raw
         return f"agent.{node}.{cat}.{name}"
@@ -597,7 +632,7 @@ def resolve_key(raw: str) -> str:
     if secret is not None:
         node_raw, var = secret
         try:
-            node = agent_key_node(node_raw)
+            node = _typed_key_node(node_raw, prefix=prefix)
         except ConfigError:
             return raw
         return f"agent.{node}.secret_path.{var}"
@@ -606,7 +641,7 @@ def resolve_key(raw: str) -> str:
         return raw
     node_raw, tail = parsed
     try:
-        node = agent_key_node(node_raw)
+        node = _typed_key_node(node_raw, prefix=prefix)
     except ConfigError:
         return raw
     return f"agent.{node}.{tail}"

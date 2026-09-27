@@ -135,6 +135,15 @@ launch, so it substitutes the installed registry's stored spelling for the harne
 (`find_identifier`) and refuses an uninstalled one, rather than folding an unchecked spelling.
 Raises as `parse_agent_address` does.
 
+```def agent_segment_case(segment: str) -> str```
+An `agent.<HERE>` segment a user wrote, with only its CASE folded to the node's: a pseudo-agent
+name whole (`Shell` -> `shell`), otherwise the harness, as `agent_address_node` folds it — but the
+separator stays as written (`Nav+Claude` -> `Nav+claude`), so a changed result is always a case
+change and the caller may warn about it. A segment that is no ref comes back unchanged, for the
+keyspace verdict to refuse. The Q87 boundary fold's one derivation: `settings_assemble.
+fold_agent_nodes` (files), `config_keys._typed_key_node` (typed keys) and the verdict's
+lowercase cure (`settings_keyspace._bad_agent_reason`) all read it.
+
 ```def harness_of(node: str) -> str```
 Return harness (part right of `℘`) of a *node*-name.
 

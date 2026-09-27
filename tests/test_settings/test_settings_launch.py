@@ -3209,7 +3209,6 @@ def test_a_shell_pick_never_reads_agent_default(key):
 
     snap = _shell_and_default_snap()
     assert behavior_pick(snap, active_agent="shell", key=key) == (None, __MISSING__)
-    assert behavior_pick(snap, active_agent="Shell", key=key) == (None, __MISSING__)
     slot, _ = behavior_pick(snap, active_agent="claude", key=key)
     assert slot == "default"
 
@@ -3244,7 +3243,6 @@ def test_a_shell_boxs_declared_bool_floor_is_its_own_tier(monkeypatch):
     monkeypatch.setattr(core_defaults, "shell_tier_default", lambda key: "false")
     monkeypatch.setattr(core_defaults, "behavior_default", lambda key: "true")
     assert _declared_behavior_bool("allow_helpers", "shell") is False
-    assert _declared_behavior_bool("allow_helpers", "Shell") is False  # folds, [R173]
     assert _declared_behavior_bool("allow_helpers", "claude") is True
 
 

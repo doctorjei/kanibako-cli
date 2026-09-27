@@ -802,6 +802,83 @@ def test_another_agents_keys_ride_a_containing_scope_file(tmp_path: Path) -> Non
 
 
 # --------------------------------------------------------------------------- #
+# A capital agent node in a file: folded + warned once, two spellings refused  #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_capital_node_in_a_file_is_read_as_its_node_with_one_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Q87: a stored ``agent.Claude`` reaches ``agent.claude`` — it was silently never read —
+    # and every reader of the file shares ONE warning naming the file and both spellings.
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.settings_assemble import cascade_view
+
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {"Claude": {"model": "opus"}}})
+    with caplog.at_level("WARNING"):
+        levels = assemble_levels(agent_name="claude", system_path=sysf)
+        assemble_levels(agent_name="claude", system_path=sysf)
+        view = cascade_view(load_doc(sysf), level="system", path=sysf)
+    assert list(levels[SYSTEM]["agent"]) == ["claude"]
+    assert dict.get(levels[SYSTEM]["agent"]["claude"], "model") == "opus"
+    assert view == {"agent": {"claude": {"model": "opus"}}}
+    msgs = [r.getMessage() for r in caplog.records if str(sysf) in r.getMessage()]
+    assert len(msgs) == 1, msgs
+    assert "'agent.Claude'" in msgs[0] and "'agent.claude'" in msgs[0], msgs
+
+
+def test_a_capital_node_in_a_pref_table_is_folded_too(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # ``pref.agent.<Node>`` names a node exactly as ``agent.<Node>`` does (spec §2h).
+    from kanibako.settings.settings_prefs import collect_prefs
+
+    ws = _write(tmp_path / "workset.yaml", {"pref": {"agent": {"Claude": {"model": "o"}}}})
+    with caplog.at_level("WARNING"):
+        requests = collect_prefs(ws, None)
+    assert [r.target for r in requests] == ["agent.claude.model"]
+    assert any("'pref.agent.Claude'" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize("spellings", [
+    ("Claude", "claude"), ("claude", "CLAUDE"), ("nav+Claude", "nav℘claude"),
+    ("nav+claude", "nav℘claude"),
+])
+def test_one_node_spelled_twice_in_one_file_is_refused_naming_both(
+    tmp_path: Path, spellings: tuple[str, str]
+) -> None:
+    # Q103: neither spelling may silently win; the refusal names the file and both.
+    first, second = spellings
+    sysf = _write(
+        tmp_path / "settings.yaml",
+        {"agent": {first: {"model": "a"}, second: {"model": "b"}}},
+    )
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels(agent_name="claude", system_path=sysf)
+    msg = str(exc.value)
+    assert f"'agent.{first}'" in msg and f"'agent.{second}'" in msg and str(sysf) in msg
+
+
+def test_a_dropped_table_is_not_folded_or_judged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A box file's ``agent:`` table is dropped (spec §0), so its spellings are no fact about
+    # what merges: the drop is announced, the fold is not, and two spellings do not refuse.
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.settings_assemble import cascade_view
+
+    box = _write(
+        tmp_path / "box.yaml",
+        {"box": {"image": "i"}, "agent": {"Claude": {"model": "a"}, "claude": {"model": "b"}}},
+    )
+    with caplog.at_level("WARNING"):
+        assemble_levels(agent_name="claude", box_path=box)
+        view = cascade_view(load_doc(box), level="box", path=box)
+    assert set(view) == {"box"}
+    assert not [r for r in caplog.records if "lowercase" in r.getMessage()]
+
+
+# --------------------------------------------------------------------------- #
 # Binds → BindEntry, dest-keyed in EVERY category, refs RAW (S9 / spec §0)     #
 # --------------------------------------------------------------------------- #
 

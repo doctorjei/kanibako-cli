@@ -529,8 +529,10 @@ hard error. The warnings themselves are `_warn_upward_drops`'s (below).
 Emit the three warnings above, each only when `announce_drop_once` says it is the first.
 
 ```announce_drop_once(path: Path | None, token: str) -> bool```
-⚑ **THE ONE GUARD for every dropped-table warning** (spec §0: dropped *"with a warning naming the
-file and key"*) — the three §0 ones and `settings_prefs.refuse_pref_table`'s §2h `pref:` one.
+⚑ **THE ONE GUARD for every settings-file read warning** (spec §0: dropped *"with a warning naming
+the file and key"*) — the three §0 drops, `settings_prefs.refuse_pref_table`'s §2h `pref:` one, and
+`fold_agent_nodes`'s capital-node fold (plus `config_keys._typed_key_node`'s, keyed by the typed
+spelling with no file).
 Returns `True` (and records the pair) the first time this process drops *token* from the file at
 *path*; the caller warns only then. One command reads one settings file through several resolves, and each used to
 announce the drop again — `box show --effective` printed one dropped key four times. The memo is
@@ -540,6 +542,21 @@ runs on every read), which is why it may be module-level — the same footing as
 warns again until the file is fixed. `_drop_upward_scopes`, `refuse_pref_table` and `cascade_view`
 (when handed *path*) all warn through it, so a file read by several in one command still names each
 key once.
+
+```fold_agent_nodes(raw: Any, *, path: Path | None) -> Any```
+*raw* with every `agent.<Node>` and `pref.agent.<Node>` segment folded to its node's case
+(`agent_ref.agent_segment_case`: a pseudo-agent name whole, otherwise the harness, separator kept).
+Q87, his words: *"in our code, we refuse; if the key comes from a file or commandline, we should warn
+loudly and accept."* So a user's capital is ACCEPTED here, with one warning per `(file, key)` naming
+the file and both spellings, and the keyspace verdict does not fold — a capital built by code is
+refused there. MEASURED before this: a system file's `agent: {Claude: {model: opus}}` passed the §0
+check (the verdict folded) while the launch built `agent.claude` and never read `agent.Claude` —
+neither refused nor delivered. Two spellings of ONE node in one file (`Claude:` beside `claude:`)
+are REFUSED naming both (FA = Q103: neither may silently win); "one node" is judged on the
+CANONICAL node (`_canonical_node`, via `agent_ref.agent_address_node`: separator and case), so
+`nav+Claude:` beside `nav℘claude:` is refused too. Called by `_file_partial` (every
+file level, and `settings_prefs.collect_prefs`'s pref parse) and by `cascade_view` AFTER its drops,
+so a table the cascade drops is neither folded nor judged. Copies only what it changes.
 
 ```reset_drop_warnings() -> None```
 Clear `_DROP_WARNED` — the test seam that stands in for a fresh process.
@@ -580,6 +597,9 @@ caller can pull the wrong way (P3); the retirement scans (`agent_select`, `setti
 3. The per-agent file contributes `ROOT_SECTIONS` (`self:`) and nothing else — `level_table` reads
    that table alone — so a top-level `agent:` in an `agent.yaml` is not a DROP; it was never an
    input.
+
+What survives is then folded by `fold_agent_nodes`, as `_file_partial` folds it, so a capital
+node reads here as it merges.
 
 🛑 **TOP-LEVEL ONLY**, exactly like the filters it mirrors: which TABLES reach the merge, never
 which leaves inside one survive.
@@ -657,7 +677,7 @@ bind-shaped category is read as a DEST-KEYED `BindMap` of `BindEntry` leaves (R-
 get wrong.
 
 An empty / non-dict file yields an empty `KeyStore`. This is the rule for every NON-agent level
-(`base` / `system` / `workset` / `box`); the agent tier uses `_agent_partial`.
+(`base` / `system` / `workset` / `box`); the agent tier uses `_agent_partial`. The node segments are folded first (`fold_agent_nodes`).
 
 ```_agent_partial(raw: dict, *, sub_key: str, path: Path | None = None, node: str | None = None) -> KeyStore```
 Build an AGENT-tier level partial (`agent.default` or `agent.<active>`) — the STORE half of the

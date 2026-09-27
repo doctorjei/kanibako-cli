@@ -407,6 +407,34 @@ class TestTypedAgentCaseReachesTheLowercaseNode:
         # Only the HARNESS folds — a persona segment keeps the user's case ([R173]).
         assert resolve_key("agent.Nav+Claude.model") == "agent.Nav℘claude.model"
 
+    @pytest.mark.parametrize(("typed", "canonical"), [
+        ("agent.Claude.model", "agent.claude.model"),
+        ("agent.Nav+Claude.model", "agent.Nav℘claude.model"),
+        ("pref.agent.Claude.model", "pref.agent.claude.model"),
+    ])
+    def test_a_typed_capital_node_folds_with_one_loud_warning(self, caplog, typed, canonical):
+        # Q87: the command line gets the file's relief — accepted, and said so, once per
+        # spelling per command.
+        from kanibako.settings.settings_assemble import reset_drop_warnings
+
+        reset_drop_warnings()
+        with caplog.at_level("WARNING"):
+            assert resolve_key(typed) == canonical
+            assert resolve_key(typed) == canonical
+        msgs = [r.getMessage() for r in caplog.records if "lowercase" in r.getMessage()]
+        assert len(msgs) == 1, msgs
+        assert f"'{typed.split('.model')[0]}'" in msgs[0], msgs
+
+    @pytest.mark.parametrize("typed", ["agent.claude.model", "agent.nav+claude.model"])
+    def test_a_lowercase_node_is_not_warned_about(self, caplog, typed):
+        # A separator change is canonicalization, not a case fold, and earns no warning.
+        from kanibako.settings.settings_assemble import reset_drop_warnings
+
+        reset_drop_warnings()
+        with caplog.at_level("WARNING"):
+            resolve_key(typed)
+        assert not [r for r in caplog.records if "lowercase" in r.getMessage()]
+
     @pytest.mark.parametrize("typed", ["Default", "DEFAULT"])
     def test_the_any_agent_tier_is_refused_with_its_own_cure_in_any_case(
         self, tmp_path, agents_root, typed,

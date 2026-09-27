@@ -18,6 +18,8 @@ import logging
 from pathlib import Path
 from typing import Any, Iterable
 
+from kanibako.agent_ref import agent_address_node, agent_segment_case
+from kanibako.errors import ConfigError
 from kanibako.settings.agent_config import (
     category_root_ref,
     is_self_resolving,
@@ -576,10 +578,11 @@ def reset_drop_warnings() -> None:
 def announce_drop_once(path: Path | None, token: str) -> bool:
     """Is this the FIRST time this process drops top-level *token* from the file at *path*?
 
-    ⚑ THE ONE GUARD every dropped-table warning asks before it speaks — the three §0 ones
-    here (:func:`_warn_upward_drops`) and the §2h ``pref:`` one
-    (:func:`~kanibako.settings.settings_prefs.refuse_pref_table`) — so one dropped table in one
-    file is named once per command whichever filter, and however many resolves, meet it.
+    ⚑ THE ONE GUARD every settings-file read warning asks before it speaks — the three §0 drops
+    here (:func:`_warn_upward_drops`), the §2h ``pref:`` one
+    (:func:`~kanibako.settings.settings_prefs.refuse_pref_table`) and the capital-node fold
+    (:func:`fold_agent_nodes`) — so one fact about one file is named once per command whichever
+    reader, and however many resolves, meet it.
     Records the pair; the caller warns only on ``True``.
     """
     memo = (str(path) if path is not None else "<settings>", token)
@@ -649,6 +652,81 @@ def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None:
             )
 
 
+#: The ``agent`` node table's two addresses in a settings file: the scope table itself, and
+#: the §2h request table ``pref.agent`` (a workset or box file).
+_AGENT_NODE_TABLES: tuple[tuple[str, ...], ...] = (("agent",), (PREF_ROOT, "agent"))
+
+
+def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any:
+    """*raw* with every ``agent.<Node>`` (and ``pref.agent.<Node>``) segment folded to its node's case.
+
+    Q87: a user-written capital node is ACCEPTED with a loud warning naming the file and both
+    spellings, once per ``(file, key)`` (:func:`announce_drop_once`); code gets no such relief,
+    because the keyspace verdict does not fold. Two spellings of ONE node in one file are
+    REFUSED, naming both: neither may silently win. Copies only what it changes.
+    """
+    if not isinstance(raw, dict):
+        return raw
+    out = raw
+    for address in _AGENT_NODE_TABLES:
+        parent: Any = out
+        for token in address[:-1]:
+            parent = parent.get(token) if isinstance(parent, dict) else None
+        table = parent.get(address[-1]) if isinstance(parent, dict) else None
+        if not isinstance(table, dict):
+            continue
+        folded = _fold_node_table(table, prefix=".".join(address), path=path)
+        if folded is table:
+            continue
+        if len(address) == 1:
+            out = {**out, address[0]: folded}
+        else:
+            out = {**out, address[0]: {**out[address[0]], address[1]: folded}}
+    return out
+
+
+def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict:
+    """One node table's keys folded (:func:`fold_agent_nodes`); *table* itself when none changes."""
+    where = str(path) if path is not None else "<settings>"
+    spelled: dict[Any, Any] = {}
+    identity: dict[Any, Any] = {}
+    for seg in table:
+        node = agent_segment_case(seg) if isinstance(seg, str) else seg
+        # Two spellings are ONE node when the CANONICAL node agrees — separator AND case
+        # (``nav+Claude`` beside ``nav℘claude``), not only the case-folded spelling.
+        ident = _canonical_node(node)
+        if ident in identity:
+            raise SettingsError(
+                f"'{prefix}.{identity[ident]}' and '{prefix}.{seg}' in settings file {where} "
+                f"are ONE agent node ('{ident}') spelled twice; neither may silently win. "
+                f"Keep one spelling and remove the other (spec §0: an agent's node is "
+                f"lowercase)."
+            )
+        identity[ident] = seg
+        spelled[node] = seg
+    if all(node == seg for node, seg in spelled.items()):
+        return table
+    for node, seg in spelled.items():
+        if node != seg and announce_drop_once(path, f"{prefix}.{seg}"):
+            _log.warning(
+                "Settings file %s spells '%s.%s', but an agent's node is lowercase (spec "
+                "§0): it is read as '%s.%s' for now. Rename it in the file; kanibako "
+                "accepts this spelling only with this warning.",
+                where, prefix, seg, prefix, node,
+            )
+    return {node: table[seg] for node, seg in spelled.items()}
+
+
+def _canonical_node(segment: Any) -> Any:
+    """The node *segment* names (separator and case canonical), or *segment* when it names none."""
+    if not isinstance(segment, str):
+        return segment
+    try:
+        return agent_address_node(segment)
+    except ConfigError:
+        return segment
+
+
 def _drop_upward_scopes(
     raw: dict, *, file_scope: str, path: Path | None
 ) -> dict:
@@ -702,6 +780,9 @@ def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any:
       (:func:`~kanibako.settings.agent_file.level_table`), so a top-level ``agent:`` there is
       not a DROP — it was never an input.
 
+    What survives is then case-folded by :func:`fold_agent_nodes`, the fold :func:`_file_partial`
+    applies, so a capital node reads here as it merges.
+
     🛑 A TOP-LEVEL FILTER, exactly like the filters it mirrors. Nothing here descends, so it says
     which TABLES reach the merge and never which leaves inside one survive.
     """
@@ -716,7 +797,10 @@ def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any:
     if level == _AGENT_FILE_LEVEL:
         return {k: v for k, v in raw.items() if str(k) in ROOT_SECTIONS}
     drop_set = cascade_drop_set(level)
-    return {k: v for k, v in raw.items() if str(k) not in drop_set}
+    # Folded AFTER the drops, as the cascade folds only what it merges (:func:`_file_partial`).
+    return fold_agent_nodes(
+        {k: v for k, v in raw.items() if str(k) not in drop_set}, path=path,
+    )
 
 
 def _parse_node(
@@ -907,7 +991,7 @@ def _file_partial(raw: dict, *, path: Path | None = None) -> KeyStore:
     """
     if not isinstance(raw, dict):
         return KeyStore()
-    return _parse_naming_file(raw, file_path=path)
+    return _parse_naming_file(fold_agent_nodes(raw, path=path), file_path=path)
 
 
 def _agent_partial(

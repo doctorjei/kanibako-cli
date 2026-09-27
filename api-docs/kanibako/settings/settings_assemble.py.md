@@ -22,6 +22,7 @@ _MIRROR_STORY = "The RULE CHANGED in kanibako 1.8.0: a box no longer carries a S
 _RETIRED_BEHAVIOR_VALUE_MAP: 'dict[str, dict[bool, str]]' = {'auto_approve': {True: 'full', False: 'restricted'}}
 _BEHAVIOR_TABLE_SHAPES: 'tuple[tuple[tuple[str, ...], int], ...]' = ((('agent',), 1), (('pref', 'agent'), 1), (ROOT_SECTIONS, 0))
 _DROP_WARNED: 'set[tuple[str, str]]' = set()
+_AGENT_NODE_TABLES: tuple[tuple[str, ...], ...] = (('agent',), (PREF_ROOT, 'agent'))
 _AGENT_FILE_LEVEL: str = 'agent'
 ```
 
@@ -34,6 +35,7 @@ def config_entry_groups(keys: Iterable[str]) -> list[tuple[str, list[str]]]
 def refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None
 def reset_drop_warnings() -> None
 def announce_drop_once(path: Path | None, token: str) -> bool
+def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any
 def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any
 def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None) -> KeyStore
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
@@ -48,6 +50,8 @@ def _nested_present(raw: Any, parts: 'tuple[str, ...]') -> Any
 def _behavior_leaf_sites(raw: Any, leaf: str) -> 'list[tuple[tuple[str, ...], Any]]'
 def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None) -> str
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
+def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict
+def _canonical_node(segment: Any) -> Any
 def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict
 def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=()) -> Any
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str

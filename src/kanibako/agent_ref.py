@@ -215,6 +215,27 @@ def agent_address_node(raw: str) -> str:
   return with_harness(node, agent_node_case(harness))
 
 
+def agent_segment_case(segment: str) -> str:
+  """*segment* (an ``agent.<HERE>`` key segment a user wrote) with only its CASE folded to the node's.
+
+  The Q87 boundary fold: a file or command line may spell ``agent.Claude``, and the key is
+  ``agent.claude``.  A pseudo-agent name folds whole; any other ref folds its HARNESS, as
+  :func:`agent_address_node` does, but the separator is kept as written, so a change here is
+  always a case change and a caller may say so.  A segment that is not a ref comes back
+  unchanged, for the keyspace verdict to refuse.
+  """
+  pseudo = find_identifier(segment, PSEUDO_AGENT_NAMES)
+  if pseudo is not None:
+    return pseudo
+  try:
+    _, harness = parse_agent_ref(segment)
+  except ConfigError:
+    return segment
+  if not segment.endswith(harness):
+    return segment
+  return segment[: len(segment) - len(harness)] + agent_node_case(harness)
+
+
 def harness_of(node: str) -> str:
   """Return the harness (part right of ``℘``) of a *node*-name."""
   _, _, harness = node.rpartition(CANONICAL_SEP)
