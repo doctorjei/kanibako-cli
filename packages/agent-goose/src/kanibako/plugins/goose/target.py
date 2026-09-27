@@ -296,9 +296,10 @@ class GooseTarget(Target):
 
         ⚑ The keys and their FLOOR values live in ``goose-defaults.yaml``'s
         ``behavior:`` section, not here: a default written in plugin code is a second
-        declaration site for what the shipped file already owns.  All three floors are
-        ``None`` (``<None>``), and that file states why.  What each key does, and why a
-        ``<None>`` floor is load-bearing for provider/model: llm-doc.
+        declaration site for what the shipped file already owns.  None of the three sets a
+        value (``provider`` is ``<None>``; ``model``/``endpoint`` inherit ``agent.default``),
+        and that file states why.  What each key does, and why no value is load-bearing
+        for provider/model: llm-doc.
         """
         return list(_GOOSE_BEHAVIOR)
 

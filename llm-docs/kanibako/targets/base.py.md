@@ -57,13 +57,20 @@ v1.8.0 being a clean break. There is no shim.
 class TargetSetting:
     key: str
     description: str
-    default: str | None = ""
+    default: str | None | _Unset = ""
     choices: tuple[str, ...] = ()
+
+def descriptor_floor(descriptors: Iterable[TargetSetting]) -> dict[str, str | None]
 ```
 A runtime setting a target advertises through `setting_descriptors`. *key* is the setting key in
 the agent state dict (`"model"`); empty *choices* means freeform. *default* is the floor the launch
 places at `agent.<active>.<key>`; `None` is a present `<None>`, which beats a user's
-`agent.default.<key>` exactly as a string floor does.
+`agent.default.<key>` exactly as a string floor does. `UNSET`
+(`settings_resolve.UNSET`, Q105) is NO floor: the key inherits `agent.default.<key>`.
+
+`descriptor_floor` is the ONE reader of *default* for a floor — every launch, display and label
+floor goes through it — and it leaves the `UNSET` rows out. A comprehension over `d.default` would
+put the sentinel itself into the snapshot.
 
 ```python
 @dataclass(frozen=True)

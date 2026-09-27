@@ -21,6 +21,7 @@ from kanibako.targets.base import (
     TargetSetting,
 )
 from kanibako.plugins.claude import ClaudeTarget
+from kanibako.settings.settings_resolve import UNSET
 
 
 class TestClaudeTargetProperties:
@@ -600,16 +601,14 @@ class TestSettingDescriptors:
         assert all(isinstance(d, TargetSetting) for d in descriptors)
 
     def test_model_setting(self):
-        # DECLARED but with NO opinionated floor: spec §2d ships
-        # ``agent.claude.model | default <None> (use claude's built-in default)``,
-        # and a ``null`` floor is how a plugin spells <None>: a PRESENT ``None``
-        # at ``agent.<agent>.model``, which the launch omits, so a box the user has
-        # set no model on launches with no ``--model`` at all.  The ALL-AGENTS form of this rule
-        # is pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
+        # DECLARED with NO default of its own: spec §2d ``agent.claude.model`` has
+        # no plugin default and inherits ``agent.default.model`` (<None> = claude's
+        # built-in default), so the row loads as ``UNSET``.  The ALL-AGENTS form of
+        # this rule is pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
         t = ClaudeTarget()
         descriptors = {d.key: d for d in t.setting_descriptors()}
         assert "model" in descriptors
-        assert descriptors["model"].default is None
+        assert descriptors["model"].default is UNSET
         assert descriptors["model"].choices == ()  # freeform
 
     def test_access_is_not_a_declared_setting(self):
@@ -623,12 +622,12 @@ class TestSettingDescriptors:
         assert "auto_approve" not in descriptors
 
     def test_endpoint_setting(self):
-        # Block B: endpoint declared with a ``null`` (<None>) default → unset by
-        # default (bare/harness-default), freeform URL (no choices).
+        # Block B: endpoint declared with no default of its own → inherits
+        # ``agent.default.endpoint`` (<None> = bare/harness-default), freeform URL.
         t = ClaudeTarget()
         descriptors = {d.key: d for d in t.setting_descriptors()}
         assert "endpoint" in descriptors
-        assert descriptors["endpoint"].default is None
+        assert descriptors["endpoint"].default is UNSET
         assert descriptors["endpoint"].choices == ()
 
 
@@ -667,11 +666,11 @@ class TestGenerateAgentConfig:
         assert label.default == "Claude Code"
 
     def test_model_default_comes_from_the_descriptor_floor(self):
-        # ... and that floor imposes nothing (spec §2d ``<None>``).
+        # ... and the plugin floor sets none: ``model`` inherits ``agent.default``.
         t = ClaudeTarget()
         assert "model" not in t.generate_agent_config().state
         model = next(d for d in t.setting_descriptors() if d.key == "model")
-        assert model.default is None
+        assert model.default is UNSET
 
     def test_is_crab_config_instance(self):
         from kanibako.settings.agent_config import AgentConfig

@@ -351,8 +351,9 @@ inside boxes. In order of likely impact:
     list is refused instead of read as empty*; and `box move`, `convert`, `duplicate` and
     `extract` copy a symlink as a symlink, not the file or directory it points at — see *2.88
     `box move`, `convert`, `duplicate` and `extract` copy a symlink as a symlink*; and a
-    plugin's own default for `model`, `endpoint`, `label` or `transform` now beats your
-    `agent.default.<key>`, so set those per agent — see *An agent plugin's own default beats
+    plugin's own default now beats your `agent.default.<key>` — for the shipped agents, from
+    v1.8.0-rc2 only, claude's `transform` (and each agent's new `label`), so set those per agent;
+    from v1.7.2 no shipped agent's key changes — see *An agent plugin's own default beats
     `agent.default`*.
 
 ---
@@ -4173,8 +4174,8 @@ so you will be told rather than left wondering why the setting had no effect.
 
 **What stays a key.** The leaves kanibako itself declares are still keys at `agent.default` —
 `model`, `endpoint`, `transform`, `access`, `allow_helpers`, `bootstrap`, `continue_mode`,
-`run_args`, `template`, `canon`, `transform_settings`. Where a plugin declares one too, the
-plugin's own default now answers before `agent.default` (see *An agent plugin's own default beats
+`run_args`, `template`, `canon`, `transform_settings`. Where a plugin sets its own default for
+one, that default now answers before `agent.default` (see *An agent plugin's own default beats
 `agent.default`*); set it per agent.
 
 ⚑ **A second, invisible half of the same change.** A plugin's own declared defaults were being
@@ -5491,23 +5492,22 @@ box:
 
 ### 2.90 An agent plugin's own default beats `agent.default`
 
-**Read this if a settings file sets `agent.default.model`, `agent.default.endpoint`,
-`agent.default.label` or `agent.default.transform`** and you expect it to reach claude, codex or
-goose.
+**Read this if a settings file sets `agent.default.transform` or `agent.default.label`** and you
+expect it to reach claude, codex or goose.
 
-**What changed.** In v1.7.2 and v1.8.0-rc2 a plugin's declared default for one of these keys sat
-at the `agent.default` tier, under your settings, so your `agent.default.<key>` replaced it
-(`label` is new since v1.8.0-rc2). The plugin's default now sits at its own agent's tier,
-`agent.<agent>.<key>`, and that tier answers before `agent.default` does. So a key the plugin
-declares ignores your `agent.default.<key>` for that agent: `model`, `endpoint` and `label` for all
-three shipped agents, and `transform` for claude. The order,
-lowest first: kanibako's `agent.default` default, your `agent.default` setting, the plugin's
-default, your `agent.<agent>` setting. `agent.default.<key>` still reaches every agent whose plugin
-declares no default for that key. A persona box is the exception for `model`: its model is still
-read as before, so your `agent.default.model` still reaches it.
+**What changed.** In v1.8.0-rc2 a plugin's declared default sat at the `agent.default` tier, under
+your settings, so your `agent.default.transform` replaced claude's `tweakcc`. The plugin's default
+now sits at its own agent's tier, `agent.<agent>.<key>`, and that tier answers before
+`agent.default` does. So a key the plugin sets a default for ignores your `agent.default.<key>` for
+that agent: `transform` for claude, and `label`, which is new since v1.8.0-rc2, for all three
+shipped agents. Upgrading from v1.7.2 changes nothing here for the shipped agents, which declared
+neither key then; only a third-party plugin's own defaults move above `agent.default`. The order, lowest first: kanibako's `agent.default` default, your `agent.default` setting,
+the plugin's default, your `agent.<agent>` setting. `agent.default.<key>` still reaches every agent
+whose plugin sets no default for that key, which for the shipped agents includes `model` and
+`endpoint`.
 
-**What to do.** Set the value per agent: `kanibako agent set claude model=<id>` (and the same for
-`codex` and `goose`), or `agent.<agent>.<key>` in the system settings file.
+**What to do.** Set the value per agent: `kanibako agent set claude transform=<name>`, or
+`agent.<agent>.<key>` in the system settings file.
 
 ### 2.91 A `null` setting inside a bind's source leaves the bind out instead of mounting a host path
 
@@ -5678,13 +5678,18 @@ and still yours; it is the harness's own name, not a settings value. **Users of 
 affected too** — see *An agent's description is a settings key, and the agent file's `name:` is
 gone* above for the one-line edit they owe each agent file.
 
-A `behavior:` row for a key with no default is written `default: null`, and `TargetSetting.default`
-is `str | None`. Any row you declare sits at `agent.<agent>.<key>`, which answers before a user's
-`agent.default.<key>` — a `null` row included (see *An agent plugin's own default beats
-`agent.default`*). So choose per key: declare `null` to say "this harness picks its own" and have
-users name the value per agent, as the shipped plugins do for `model` and `endpoint`, or declare no
-row and let `agent.default.<key>` reach your agent. A persona's `model` is the exception: it is still
-read as before, so a user's `agent.default.model` reaches a persona whatever your row says.
+A `behavior:` row's `default:` sits at `agent.<agent>.<key>`, which answers before a user's
+`agent.default.<key>` (see *An agent plugin's own default beats `agent.default`*), so write one
+only for a value your harness really needs. For a key core's `agent.default` declares (`model`,
+`endpoint`, `transform` and the rest), omit `default:` and the key inherits `agent.default.<key>`,
+as the shipped plugins do for `model` and `endpoint`. `default: null` on such a key is refused
+when `agent.default` already declares `<None>` for it, naming your defaults file and the key. A key
+only your plugin declares still needs its `default:`, a string or `null` (`<None>`), as goose's
+`provider` is. `TargetSetting.default` is `str | None | UNSET`, where `UNSET`
+(`kanibako.settings.settings_resolve.UNSET`) means no default; read the floor through
+`kanibako.targets.base.descriptor_floor()`, which leaves `UNSET` rows out. A plugin that builds its
+rows in Python and gives `model` any default — a string, `""` or `None` — now shadows a user's
+`agent.default.model` with it; write `default=UNSET` to let the user's value through.
 
 The three agent plugins (`kanibako-agent-claude`, `-codex`, `-goose`) version and publish
 independently of the base and depend on **`kanibako-cli`** with **no version pin**; only the

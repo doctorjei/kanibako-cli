@@ -1,9 +1,9 @@
 """Plugin-declared BEHAVIOR defaults live in the shipped YAML, not in plugin code.
 
 DEFAULTS-1 D1-7 (the owner's ruling, *"nothing declared in plugin CODE"*): the floor
-value of every ``agent.<agent>.<key>`` behavior key — claude's model, goose's three
-deliberately-``<None>`` ones, codex's model, the endpoints, claude's transform — used to be a
-``default=`` literal inside each plugin's ``setting_descriptors()``.  It is a
+value of every ``agent.<agent>.<key>`` behavior key — the models, goose's provider, the
+endpoints, claude's transform — used to be a ``default=`` literal inside each plugin's
+``setting_descriptors()``.  It is a
 ``behavior:`` row in ``<agent>-defaults.yaml`` now, and ``setting_descriptors()``
 returns what the loader read.
 
@@ -13,9 +13,9 @@ The RULE (what the loader accepts and refuses) is pinned over synthetic files in
 the SHIPPED tables and the absence of a second declaration site.
 
 ⚑ These are the values the launch floors on: ``start.py`` places
-``{d.key: d.default for d in target.setting_descriptors()}`` at ``agent.<active>`` (above
-the core §2d backstop at ``agent.default``), so a wrong row here is a wrong floor for
-every box of that agent.
+``descriptor_floor(target.setting_descriptors())`` at ``agent.<active>`` (above the core
+§2d backstop at ``agent.default``), so a wrong row here is a wrong floor for every box of
+that agent.  A row that sets no value (``UNSET``, Q105) is left out of that floor.
 """
 
 from __future__ import annotations
@@ -25,11 +25,15 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.commands.start import _LaunchRealizer
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.plugins.codex import CodexTarget
 from kanibako.plugins.goose import GooseTarget
+from kanibako.settings import core_defaults
 from kanibako.settings.settings_launch import build_launch_snapshot, effective_behavior
-from kanibako.settings.settings_resolve import ResolveCtx
+from kanibako.settings.settings_resolve import UNSET, ResolveCtx
+from kanibako.targets.assembly import assemble_argv
+from kanibako.targets.base import descriptor_floor
 
 _TARGETS = {
     "claude": ClaudeTarget,
@@ -44,15 +48,16 @@ _TARGETS = {
 #: it is what ``kanibako agent info`` prints.  Drop a plugin's row and that agent reads the
 #: all-agents backstop, ``Agent Description (None)``, which is the display regression
 #: shipping these three rows exists to prevent.
-_SHIPPED: dict[str, list[tuple[str, str | None]]] = {
+#: ⚑ ``UNSET`` = the row sets no value and the key inherits ``agent.default`` (Q105).
+_SHIPPED: dict[str, list[tuple[str, object]]] = {
     "claude": [
-        ("label", "Claude Code"), ("model", None), ("endpoint", None),
+        ("label", "Claude Code"), ("model", UNSET), ("endpoint", UNSET),
         ("transform", "tweakcc"),
     ],
-    "codex": [("label", "Codex CLI"), ("model", None), ("endpoint", None)],
+    "codex": [("label", "Codex CLI"), ("model", UNSET), ("endpoint", UNSET)],
     "goose": [
-        ("label", "Goose Harness"), ("provider", None), ("model", None),
-        ("endpoint", None),
+        ("label", "Goose Harness"), ("provider", None), ("model", UNSET),
+        ("endpoint", UNSET),
     ],
 }
 
@@ -127,40 +132,37 @@ def test_every_shipped_behavior_row_describes_itself(agent: str) -> None:
 
 @pytest.mark.parametrize("agent", sorted(_TARGETS))
 def test_no_shipped_plugin_imposes_a_model(agent: str) -> None:
-    """KANIBAKO IMPOSES NO MODEL — every plugin's ``model`` floor is ``<None>``.
+    """KANIBAKO IMPOSES NO MODEL — every plugin's ``model`` row sets no value.
 
-    Spec §2d ships ``agent.default.model | <None>`` and each per-agent row as
-    *"default <None> (use <agent>'s built-in default)"*.  A ``null`` floor is a
-    PRESENT ``None`` at ``agent.<agent>.model``, which the launch omits, so kanibako
-    puts nothing on the argv and the harness picks for itself.
+    Spec §2d: ``agent.<agent>.model`` has *"no plugin default — inherits
+    agent.default.model"*, whose ``<None>`` means the harness's built-in default.  So
+    the row is ``UNSET``: it stays out of the plugin floor, and a user's
+    ``agent.default.model`` reaches the agent.
 
     ⚑ THIS IS THE RULE, NOT A VALUE.  ``_SHIPPED`` above is an inventory: it reds
     when a listed row changes, but it can say nothing about a plugin nobody added to
-    it.  This one reds for ANY opinionated model default on ANY shipped plugin,
-    which is the property the ruling actually asserts — so it is the test that
-    catches the reintroduction, and ``_SHIPPED`` only records what the tables hold.
+    it.  This one reds for ANY model default, ``<None>`` included, on ANY shipped
+    plugin.
 
     ⚑ The corpus is ``_TARGETS`` — three classes imported BY NAME at module scope —
     and not the plugin discovery registry, on purpose: a discovery-derived corpus
     can come back empty (nothing installed) and pass vacuously, whereas a missing
     import here reds at collection (P15).
 
-    ⚑ The key must stay DECLARED, which is why this asserts a ``None`` value and not
-    an ABSENT key: deleting the row would take ``model`` off ``setting_descriptors``
-    and ``config set agent.<node>.model`` would refuse a real key.
+    ⚑ The key must stay DECLARED, which is why this asserts an ``UNSET`` value and
+    not an ABSENT row: the row carries the key's description for ``config``.
 
     (Mutation: put ``default: opus`` back on claude's ``behavior:`` model row → RED
     here by name; delete the row entirely → RED here on the declared-key assert.)
     """
     floors = {d.key: d.default for d in _TARGETS[agent]().setting_descriptors()}
     assert "model" in floors, (
-        f"{agent} declares no 'model' behavior row; the key stays DECLARED with an "
-        f"<None> floor so an explicit agent.<node>.model still resolves"
+        f"{agent} declares no 'model' behavior row; the key stays DECLARED so "
+        f"'config' can describe it"
     )
-    assert floors["model"] is None, (
-        f"{agent} ships an opinionated model floor {floors['model']!r}; kanibako "
-        f"imposes no model (spec §2d agent.<agent>.model | <None>) — each harness "
-        f"uses its own built-in default until the user sets one"
+    assert floors["model"] is UNSET, (
+        f"{agent} ships a model default {floors['model']!r}; spec §2d gives "
+        f"agent.<agent>.model no plugin default — it inherits agent.default.model"
     )
 
 
@@ -197,15 +199,15 @@ def test_a_behavior_key_with_no_realization_row_is_still_declared() -> None:
     assert "endpoint" not in {s.setting_key for s in codex.descriptor.settings}
 
 
-#: The keys each shipped plugin floors at ``<None>`` (spec §2d ``default <None>``).
-_NONE_ROWS = {
-    agent: [key for key, value in rows if value is None]
+#: The keys each shipped plugin leaves to ``agent.default`` (Q105).
+_INHERITED = {
+    agent: [key for key, value in rows if value is UNSET]
     for agent, rows in _SHIPPED.items()
 }
 
 
 def _snapshot(agent: str, system_file: Path):
-    """The launch's behavior snapshot for *agent* over its REAL descriptor floor."""
+    """The launch's behavior snapshot for *agent* over its REAL floors, both tiers."""
     return build_launch_snapshot(
         agent_name=agent,
         ctx=ResolveCtx(
@@ -216,69 +218,100 @@ def _snapshot(agent: str, system_file: Path):
         agent_path=None,
         workset_path=None,
         box_path=None,
-        agent_behavior_floor={
-            d.key: d.default for d in _TARGETS[agent]().setting_descriptors()
-        },
+        behavior_floor=core_defaults.behavior_defaults(),
+        agent_behavior_floor=descriptor_floor(_TARGETS[agent]().setting_descriptors()),
     )
 
 
 @pytest.mark.parametrize("agent", sorted(_TARGETS))
-def test_a_shipped_none_row_reaches_the_snapshot_and_beats_agent_default(
+def test_an_inherited_row_lets_a_users_agent_default_through(
     agent: str, tmp_path: Path,
 ) -> None:
-    """[Q95] (a): a plugin's ``<None>`` row is a PRESENT ``None`` at ``agent.<agent>``.
+    """Q105: a row with no ``default:`` puts nothing at ``agent.<agent>``.
 
-    It reaches the snapshot as ``None`` (not ``""``, not absent), and the §2d pick
-    reads it before a user's ``agent.default.<key>``, so the launch emits nothing for
-    that key — a user names a model per agent.
+    The §2d pick then falls through to ``agent.default``, so a user's
+    ``agent.default.<key>`` answers for every inherited key.
 
-    (Negative control: ship ``default: ""`` on a row → the slot holds ``""`` and RED
-    on the ``is None``; drop the row → the user's ``agent.default`` value answers and
-    RED on the ``not in``.)
+    (Negative control: ship ``default: ""`` on the model row → the slot holds ``""``
+    and RED on the ``not in slot``.)
     """
-    keys = _NONE_ROWS[agent]
+    keys = _INHERITED[agent]
+    assert keys, f"{agent} inherits nothing; the corpus is empty"
     system_file = tmp_path / "settings.yaml"
-    # Only the §2d all-agents keys exist at ``agent.default`` (goose's ``provider``
-    # is plugin-only, and the closed keyspace refuses it there).
     system_file.write_text(
-        "agent:\n  default:\n"
-        + "".join(f"    {k}: mine\n" for k in keys if k in ("model", "endpoint"))
+        "agent:\n  default:\n" + "".join(f"    {k}: mine\n" for k in keys)
     )
     snap = _snapshot(agent, system_file)
-    slot = snap.agent[agent]
+    slot = snap.agent.get(agent, {})
     eff = effective_behavior(snap, active_agent=agent)
     for key in keys:
-        assert key in slot and slot[key] is None, (agent, key, slot)
-        assert key not in eff, (agent, key, eff)
+        assert key not in slot, (agent, key, slot)
+        assert eff[key] == "mine", (agent, key, eff)
 
 
 @pytest.mark.parametrize("agent", sorted(_TARGETS))
-def test_a_users_per_agent_setting_still_beats_the_none_row(
+def test_a_users_agent_default_model_is_delivered(agent: str, tmp_path: Path) -> None:
+    """A user's ``agent.default.model`` reaches the harness: claude/codex ``--model``,
+    goose ``GOOSE_MODEL`` — the realization the plugin's descriptor declares."""
+    system_file = tmp_path / "settings.yaml"
+    system_file.write_text("agent:\n  default:\n    model: m-default\n")
+    target = _TARGETS[agent]()
+    realized = _LaunchRealizer(
+        desc=target.descriptor, agent_id=agent, safe_mode=False, autonomous=False,
+    )(_snapshot(agent, system_file))
+    if agent == "goose":
+        assert realized.env.get("GOOSE_MODEL") == "m-default", realized.env
+        return
+    argv = assemble_argv(
+        target.descriptor, mode_fragment=None, access="full",
+        setting_values=realized.effective_state, extra_args=[],
+    )
+    assert argv[argv.index("--model") + 1] == "m-default", argv
+
+
+@pytest.mark.parametrize("agent", sorted(_TARGETS))
+def test_nothing_set_delivers_no_model(agent: str, tmp_path: Path) -> None:
+    """With no model set anywhere, ``agent.default.model``'s ``<None>`` answers and the
+    harness gets no model at all (its built-in default)."""
+    system_file = tmp_path / "settings.yaml"
+    system_file.write_text("{}\n")
+    target = _TARGETS[agent]()
+    realized = _LaunchRealizer(
+        desc=target.descriptor, agent_id=agent, safe_mode=False, autonomous=False,
+    )(_snapshot(agent, system_file))
+    assert "model" not in realized.effective_state
+    assert "GOOSE_MODEL" not in realized.env
+    argv = assemble_argv(
+        target.descriptor, mode_fragment=None, access="full",
+        setting_values=realized.effective_state, extra_args=[],
+    )
+    assert "--model" not in argv, argv
+
+
+@pytest.mark.parametrize("agent", sorted(_TARGETS))
+def test_a_users_per_agent_setting_beats_their_agent_default(
     agent: str, tmp_path: Path,
 ) -> None:
-    """A user's ``agent.<agent>.model`` wins over the plugin's ``<None>`` row."""
+    """A user's ``agent.<agent>.model`` wins over their ``agent.default.model``."""
     system_file = tmp_path / "settings.yaml"
-    system_file.write_text(f"agent:\n  {agent}:\n    model: picked\n")
+    system_file.write_text(
+        f"agent:\n  default:\n    model: general\n  {agent}:\n    model: picked\n"
+    )
     eff = effective_behavior(_snapshot(agent, system_file), active_agent=agent)
     assert eff["model"] == "picked"
 
 
 @pytest.mark.parametrize("agent", ["claude", "goose"])
-@pytest.mark.parametrize(
-    "scope,expected",
-    [("default", None), ("own", "https://elsewhere.example")],
-)
-def test_the_none_endpoint_row_keeps_suppress_and_delivery_in_step(
-    agent: str, scope: str, expected: "str | None", std, config, project_dir,
-    tmp_path: Path,
+@pytest.mark.parametrize("scope", ["default", "own"])
+def test_the_inherited_endpoint_keeps_suppress_and_delivery_in_step(
+    agent: str, scope: str, std, config, project_dir, tmp_path: Path,
 ) -> None:
     """The endpoint ⇒ suppress-sync read and the endpoint env delivery pick alike.
 
     ``_resolve_box_launch_decisions`` answers the endpoint that suppresses the host
     OAuth sync; the main launch snapshot answers the one ``assemble_env`` delivers
-    (``ANTHROPIC_BASE_URL`` / ``OPENAI_HOST``).  With the plugin's ``<None>`` row a
-    user's ``agent.default.endpoint`` reaches NEITHER (no suppress, nothing sent), and
-    a user's ``agent.<agent>.endpoint`` reaches BOTH.  A split would send the host
+    (``ANTHROPIC_BASE_URL`` / ``OPENAI_HOST``).  The plugin row sets no endpoint, so a
+    user's ``agent.default.endpoint`` and ``agent.<agent>.endpoint`` each reach BOTH.  A split would send the host
     token to a third-party endpoint, or suppress the login for a box that uses none.
     """
     from kanibako.commands import start as start_cmd
@@ -304,5 +337,5 @@ def test_the_none_endpoint_row_keeps_suppress_and_delivery_in_step(
         agent_cfg=None, cli_level=selection,
     )
     delivered = effective_behavior(snapshot, active_agent=agent).get("endpoint")
-    assert suppressing == expected
-    assert delivered == expected
+    assert suppressing == "https://elsewhere.example"
+    assert delivered == "https://elsewhere.example"

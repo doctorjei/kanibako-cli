@@ -2054,8 +2054,9 @@ def build_launch_snapshot(
     # setting). Core's floor is the all-agents backstop at ``agent.default.<key>``; a
     # plugin's declared row is ``agent.<a>`` builtin, so it lands at
     # ``agent.<active>.<key>``, where the §2d pick in :func:`effective_behavior` reads
-    # it before any ``agent.default`` value, a user's included. A plugin's ``<None>``
-    # row wins the same way ([Q95] (a)): a user sets ``agent.<a>.model`` per agent.
+    # it before any ``agent.default`` value, a user's included. A plugin row that
+    # inherits (``UNSET``, Q105) is not in *agent_behavior_floor* at all, so the pick
+    # falls through to ``agent.default``.
     # A plugin-only leaf (goose's ``provider``) lands at the only tier declaring it.
     # A non-core leaf in *behavior_floor* would write an undeclared
     # ``agent.default.<leaf>``, which the §0 audit below refuses by name.

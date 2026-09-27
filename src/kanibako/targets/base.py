@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -18,6 +18,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from kanibako.settings.settings_keyspace import ACCESS_TIERS
+from kanibako.settings.settings_resolve import _Unset
 
 if TYPE_CHECKING:
     from kanibako.settings.agent_config import AgentConfig
@@ -37,8 +38,15 @@ class TargetSetting:
 
     key: str                     # Setting key in agent state dict (e.g. "model")
     description: str             # Human-readable description
-    default: str | None = ""     # Floor value when not overridden; None = <None>
+    # Floor value when not overridden; None = <None>; UNSET = no floor, the key
+    # inherits `agent.default.<key>`.  Read it through `descriptor_floor`.
+    default: str | None | _Unset = ""
     choices: tuple[str, ...] = ()  # Valid values; empty = freeform
+
+
+def descriptor_floor(descriptors: Iterable[TargetSetting]) -> dict[str, str | None]:
+    """The plugin's ``agent.<active>`` floor: each row's default, minus the rows that inherit."""
+    return {d.key: d.default for d in descriptors if not isinstance(d.default, _Unset)}
 
 
 @dataclass(frozen=True)

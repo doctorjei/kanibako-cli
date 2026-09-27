@@ -283,8 +283,8 @@ may have been resolved at all.
 `codex-defaults.yaml`'s `behavior:` section, not in this module: a default written in plugin code
 would be a second declaration site for something the shipped file already owns.
 
-* `model` — freeform, because OpenAI adds models regularly (floor: `null`, a present `<None>` that
-  beats a user's `agent.default.model`, so a model is named per agent).
+* `model` — freeform, because OpenAI adds models regularly (no floor of its own: the row inherits
+  `agent.default.model`, whose `<None>` means codex's built-in default; Q105).
 * `endpoint` — the alternate model-provider base-URL (persona); unset means bare/harness-default.
   Unlike claude, a codex endpoint is delivered via the `~/.codex/config.toml`
   `[model_providers.<id>]` block (descriptor `persona.endpoint_delivery: config_file`), NOT an env

@@ -18,6 +18,7 @@ def _build_access_row(tier: str, raw: dict[str, Any] | None, *, channel: Channel
 def _build_access_realization(raw: dict[str, Any] | None, *, source: str='') -> AccessRealization | None
 def _build_setting_arg(entry: dict[str, Any], *, source: str='') -> SettingArg
 def _build_behavior(entry: dict[str, Any], *, source: str='') -> TargetSetting
+def _behavior_choices(entry: dict[str, Any], named: str, where: str) -> tuple[str, ...]
 def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None
 def _build_cred_file(entry: dict[str, Any]) -> CredFileSpec
 def _env_values(doc: dict[str, Any], filename: str) -> dict[str, str]

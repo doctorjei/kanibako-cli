@@ -701,6 +701,7 @@ def start_mocks():
                     snapshot_category_entries,
                 )
                 from kanibako.settings.settings_resolve import ResolveCtx
+                from kanibako.targets.base import descriptor_floor
 
                 ctx = ResolveCtx(
                     agent_name="claude", workset_name=None,
@@ -731,7 +732,7 @@ def start_mocks():
                 if _target is not None:
                     _descriptors = _target.setting_descriptors()
                     if _descriptors:
-                        _agent_floor = {d.key: d.default for d in _descriptors}
+                        _agent_floor = descriptor_floor(_descriptors)
                 if _agent_cfg is not None:
                     # The DISCRIMINATED level the real producers build (C-2): the
                     # node is the ACTIVE one, exactly as ``start.py`` folds it.

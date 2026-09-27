@@ -59,11 +59,13 @@ overrides by name — precedence-equivalent to the old AGENT-level `defaults=`, 
 
 * **OS1** — the two bare behavior floors are mapped to SCOPE-QUALIFIED keys before folding, by
   SOURCE: core's (`core_defaults.behavior_defaults`, the ALL-AGENTS backstop spec §2d lists under
-  `agent.default.*`) to `agent.default.<key>`, and the active plugin's (`{d.key: d.default}`) to
-  `agent.<active>.<key>`. That is [Q91]'s order — `agent.default` builtin < `agent.default` setting
-  < `agent.<a>` builtin < `agent.<a>` setting — because the §2d active-over-default READ takes any
-  present `agent.<active>.<key>` over the default slot. A plugin's `<None>` row therefore wins over a
-  user's `agent.default.<key>` ([Q95] (a)); a user sets `agent.<a>.<key>`. There is NO bare
+  `agent.default.*`) to `agent.default.<key>`, and the active plugin's
+  (`targets.base.descriptor_floor`) to `agent.<active>.<key>`. That is [Q91]'s order —
+  `agent.default` builtin < `agent.default` setting < `agent.<a>` builtin < `agent.<a>` setting —
+  because the §2d active-over-default READ takes any present `agent.<active>.<key>` over the default
+  slot. A plugin row that sets no default (`UNSET`, Q105) is not in that floor, so a user's
+  `agent.default.<key>` reaches the agent for it; the shipped `model` and `endpoint` rows are such
+  rows. There is NO bare
   `agent.<key>` (spec §0), and a plugin-only leaf in the core floor would write an undeclared
   `agent.default.<leaf>`, which the §0 audit refuses by name.
 * **7a** — `agent_representation.agent_default_partial` is an ADDITIONAL agent-level partial (S27):
@@ -907,7 +909,7 @@ source (S27), merges (S15), and expands (S17/S19) with *ctx*. There is NO bare `
 snapshot (spec §2d / §0) — the agent tier is DISCRIMINATED throughout.
 
 *behavior_floor* is core's BARE behavior-default dict; *agent_behavior_floor* the active plugin's
-(`{d.key: d.default}`). *default_categories* are
+(`targets.base.descriptor_floor`). *default_categories* are
 the already-scope-qualified category default tables, unioned across every mount family: each KEY is
 a whole category ARM and each VALUE the whole DEST-KEYED map under it —
 `{"box.bindings.rw": {box_dest: (host_src, opts)}, ...}`, the shape `core_defaults.add_bind` builds
