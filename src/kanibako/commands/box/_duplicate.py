@@ -133,6 +133,13 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             )
             return 1
 
+    # A standalone target copies the workspace into the destination root's
+    # ``workset.workspaces``; a pre-existing root that nulls it has none (Q96).
+    if target_mode == BoxMode.standalone and not args.bare:
+        from kanibako.project.workset import refuse_null_workspaces
+
+        refuse_null_workspaces(new_path, f"a workspace for '{new_path.name}'", standalone=True)
+
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
         print(f"Duplicate project ({mode}) to {target_mode.value} mode:")
@@ -490,6 +497,13 @@ def _duplicate_to_workset(args, std, config) -> int:
     ws = load_workset(registry[ws_name], ws_name)
 
     source_path = Path(args.source_path).resolve()
+    # ⚑ A duplicate is always an IN-TREE member (``copy_into_workset``), even ``--bare``:
+    # a null ``workset.workspaces`` refuses before the prompt, not inside ``add_project``.
+    from kanibako.project.workset import refuse_null_workspaces
+
+    refuse_null_workspaces(
+        ws.root, f"a workspace for '{getattr(args, 'project_name', None) or source_path.name}'",
+    )
     if not source_path.is_dir():
         print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
         return 1

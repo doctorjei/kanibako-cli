@@ -32,8 +32,10 @@ from kanibako.project.workset import (
     delete_workset,
     list_worksets,
     load_workset,
+    refuse_null_workspaces,
     remove_project,
     resolve_workset_name,
+    source_in_tree,
 )
 
 if TYPE_CHECKING:
@@ -544,6 +546,16 @@ def run_connect(args: argparse.Namespace) -> int:
 
     source = Path(args.source) if args.source else Path(os.getcwd())
     project_name = args.project_name or source.resolve().name
+
+    # ⚑ Refused BEFORE the journal bracket below, so a null ``workset.workspaces`` leaves no
+    # pending ``connect`` entry behind (``add_project`` refuses the same case for its other
+    # callers).
+    if source_in_tree(ws, source):
+        try:
+            refuse_null_workspaces(ws.root, f"a workspace for '{project_name}'")
+        except WorksetError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
 
     # ⚑ THE J2 WRITE-AHEAD BRACKET, AND IT BELONGS HERE, NOT IN ``add_project``: entry
     # BEFORE the membership write, cleared immediately after (HARD INVARIANT: registered

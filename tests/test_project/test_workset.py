@@ -1370,6 +1370,54 @@ class TestWorksetBoxesPresentNone:
         assert (root / "boxes" / "m").is_dir()
 
 
+class TestWorksetWorkspacesPresentNone:
+    """A present ``<None>`` ``workset.workspaces`` = no workspace dir (Q96, [R177]).
+
+    An in-tree member IS a workspace there, so creating one refuses by name; an external
+    member keeps its own dir and still connects, without a discoverability link.
+    """
+
+    def _null_workspaces(self, std, tmp_home, ws_name):
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / ws_name).resolve()
+        ws = create_workset(ws_name, root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
+        return ws, root
+
+    def test_an_in_tree_member_refuses_naming_the_key_and_file(self, std, tmp_home):
+        from kanibako.errors import WorksetError
+
+        ws, root = self._null_workspaces(std, tmp_home, "nows")
+        source = root / "intree"
+        source.mkdir()
+        with pytest.raises(WorksetError) as exc:
+            add_project(ws, "app", source, std)
+        assert "workset.workspaces" in str(exc.value)
+        assert str(root / "workset.yaml") in str(exc.value)
+        assert not (root / "workspaces" / "app").exists()
+        assert not (root / "boxes" / "app").exists()
+        assert load_workset(root, "nows").projects == []
+
+    def test_an_external_member_connects_without_a_link(self, std, tmp_home):
+        ws, root = self._null_workspaces(std, tmp_home, "extws")
+        source = (tmp_home / "ext-src").resolve()
+        source.mkdir()
+        add_project(ws, "ext", source, std)
+        [member] = load_workset(root, "extws").projects
+        assert (member.name, member.source_path) == ("ext", source)
+        assert not (root / "workspaces" / "ext").exists()
+        assert not (root / "workspaces" / "ext").is_symlink()
+
+    def test_an_unset_workspaces_still_holds_in_tree_members(self, std, tmp_home):
+        root = (tmp_home / "worksets" / "plainws").resolve()
+        ws = create_workset("plainws", root, std)
+        source = root / "intree"
+        source.mkdir()
+        add_project(ws, "app", source, std)
+        assert (root / "workspaces" / "app").is_dir()
+
+
 class TestWorksetIdentityIsTheGlobalRegistry:
     """⚑⚑ A workset's identity is its ``worksets:`` entry in the GLOBAL registry, and
     nothing else.  Neither file under the root records a name: ``registry.yaml`` holds

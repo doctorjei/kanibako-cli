@@ -558,6 +558,10 @@ The guards, in order, and what each protects:
 * **membership guard** — refuse landing the project inside a workset it is not (becoming) a member
   of. `relocating` is exactly `dest is not None`; the code tests `dest` directly so mypy narrows
   away the `None` for the `.resolve()`.
+* **null `workset.workspaces`** (Q96) — a named target whose landing is in-tree (`BARE_INTO_WS`,
+  or a landing under the target root) refuses via `refuse_null_workspaces`, before STEP 2 moves a
+  tree or a ws→ws source releases; an in-place convert to standalone refuses the same way when the
+  root's workset.yaml nulls the key (`_consolidate_workspace_subdir` would fill it).
 * **CWD-inside-old guard** — a move is copytree+retire, NOT a rename, so a shell sitting inside the
   source would be stranded on a removed directory. Refused unless `--force`; `records_only` exempt.
 * **name not taken in the target workset.**

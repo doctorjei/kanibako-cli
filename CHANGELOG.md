@@ -303,6 +303,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exit 1 and say which `workset.yaml` sets `workset.boxes` to `null`. See `MIGRATION.md`
   § *2.93 A `workset.boxes` of `null` is refused*.
 
+- **A `workset.workspaces` of `null` refuses to create a workspace, naming the key and the file.**
+  v1.8.0-rc2 read a `null` `workset.workspaces` as unset, so these commands created the workspace
+  under the default directory: `workset connect` of a directory inside the working set;
+  `box convert --workset <ws> --move`, and a `box move` or `box convert` (a `--name` rename
+  included) that lands inside the working set; `box duplicate --to named`, with or without
+  `--bare`; and, where the directory's own `workset.yaml` already has the `null`,
+  `box create --standalone`, `box duplicate --to standalone` without `--bare`, and
+  `box convert --standalone`.
+  They now stop with exit 1 before changing anything. A directory outside the working set still
+  connects, now without the `workspaces/<name>` link. See `MIGRATION.md`
+  § *2.94 A `workset.workspaces` of `null` refuses to create a workspace*.
+
 - **`box move`, `box convert`, and `box remap` no longer delete a working-set box's workspace
   before the operation succeeds.** Moving or converting a box out of a working set released it by
   deleting `workspaces/<name>` first. The copy that should have read it then found it empty — a

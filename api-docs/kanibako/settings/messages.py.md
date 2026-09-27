@@ -38,6 +38,8 @@ ERR_WORKSET_NO_PROJECT = "Project '%s' not found in workset '%s'"
 ERR_WORKSET_NO_WORKSET = 'No workset found for path: %s'
 ERR_WORKSET_WS_NOT_BOX = '%s is a workset, not a single project box. Name a project inside it ' + "(e.g. '%s/<project>') or run the command from a project workspace " + 'under that workset.'
 ERR_WORKSET_NOT_IN_BOX = "Inside workset '%s' but not in a specific project workspace. Change " + 'to a project directory under %s/.'
+ERR_WORKSET_NULL_WORKSPACES = '%s sets workset.workspaces to null, so it has no workspace ' + 'directory and cannot hold %s.\nConnect a directory outside ' + 'it instead, delete that line to use the default, or set the ' + 'path you mean.'
+ERR_STANDALONE_NULL_WORKSPACES = '%s sets workset.workspaces to null, so this standalone box has ' + 'no workspace directory and cannot hold %s.\nDelete that line ' + 'to use the default, or set the path you mean.'
 BASHRC_CONTENTS = '# kanibako shell environment\n' + '[ -f /etc/bashrc ] && . /etc/bashrc\n' + 'export PS1="${KANIBAKO_PS1:-(kanibako) \\u@\\h:\\w\\$ }"\n' + '# Source user init scripts\n%s\n' % _SHELL_D_SOURCE_LINE
 SHELL_D_CONTENTS = '# Source user init scripts\n%s\n' % _SHELL_D_SOURCE_LINE
 PROFILE_CONTENTS = '# kanibako login profile\n' + '[ -f ~/.bashrc ] && . ~/.bashrc\n'

@@ -542,6 +542,31 @@ class TestWorksetConnect:
         out = capsys.readouterr().out
         assert "custom-name" in out
 
+    def test_connect_in_tree_under_null_workspaces_refuses_before_the_journal(
+        self, config_file, tmp_home, capsys,
+    ):
+        """Q96: the refusal names the key and leaves no pending ``connect`` entry."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+        from kanibako.settings.config_io import dump_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_nows").resolve()
+        create_workset("nows", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
+        src = root / "intree"
+        src.mkdir()
+
+        args = argparse.Namespace(
+            workset="nows", source=str(src), project_name="app", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "workset.workspaces" in err and str(root / "workset.yaml") in err
+        assert journal.read_journal(std.journal) == {}
+        assert not (root / "workspaces" / "app").exists()
+
     def test_connect_duplicate_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_connect
 

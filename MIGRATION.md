@@ -5644,6 +5644,33 @@ includes `box create` and `box list`.
 the directory you want. A box that v1.8.0-rc2 connected while the `null` was set lives under
 `<workset>/boxes/`, so deleting the line finds it again.
 
+### 2.94 A `workset.workspaces` of `null` refuses to create a workspace
+
+**Read this if a `<workset>/workset.yaml` sets `workset.workspaces` to `null`** — a named
+workset's, or a standalone box's root file. A `null` written by `--null` counts.
+
+**What changed.** In v1.8.0-rc2 a `null` `workset.workspaces` was read as if the key were not
+set, so every command that creates a workspace put it under the default directory
+(`<workset>/workspaces/`, or `<root>/workspace/` for a standalone box). A `null` means the working
+set has no workspace directory, so those commands now stop with exit 1, before changing anything,
+and name the key and the file:
+
+- `workset connect` of a directory inside the working set;
+- `box convert --workset <ws> --move`, and a `box move` or `box convert` (a `--name` rename
+  included) that lands inside the working set;
+- `box duplicate --to named`, with or without `--bare`;
+- where the directory's own `<dir>/workset.yaml` already has the `null`: `box create
+  --standalone`, `box duplicate --to standalone` without `--bare`, and `box convert --standalone`.
+
+`workset connect` of a directory outside the working set still works; it no longer creates the
+`workspaces/<name>` link.
+
+**What to do.** To create the workspace, delete the `workspaces:` line to use the default
+directory, or set `workset.workspaces` to the directory you want. To keep the `null` in a named
+working set, connect a directory outside it instead. A workspace that v1.8.0-rc2 created while the `null`
+was set is under `<workset>/workspaces/`, and kanibako still uses it: until a later release, a box
+still starts with the default workspace directory when the key is `null`.
+
 ---
 
 ## 3. For plugin authors
