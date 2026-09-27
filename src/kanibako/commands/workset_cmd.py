@@ -392,7 +392,7 @@ def run_create(args: argparse.Namespace) -> int:
     path = Path(path).resolve()
     name = args.name or path.name
 
-    # ⚑ PRE-FLIGHT the workset mould BEFORE anything is registered or created — a
+    # ⚑ PRE-FLIGHT the workset mold BEFORE anything is registered or created — a
     # mid-stamp whitelist refusal would be loud but NOT atomic. Do not reorder.
     from kanibako.errors import TemplateScopeError
     from kanibako.launch.templates import check_workset_template, install_workset_template
@@ -409,7 +409,7 @@ def run_create(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # J-6 A-action (INSTANTIATION): stamp the new workset store from the host mould.
+    # J-6 A-action (INSTANTIATION): stamp the new workset store from the host mold.
     install_workset_template(std, ws.root)
 
     # ⚑ These flags set BOX-SCOPE keys at the WORKSET tier — ``box.image`` and

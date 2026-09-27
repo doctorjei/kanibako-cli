@@ -4083,8 +4083,9 @@ migration code.** Four released config surfaces are removed outright
     declares is refused with the discriminated tier named, instead of being silently
     dropped.
 - **BREAKING: `system.base_template` → `system.template`, and it names a template ROOT.**
-  The packaged template tree takes its canon shape — per-scope moulds under
-  `data/templates/{box,workset,agent}` plus the system handbook —
+  The packaged template tree takes its canon shape — per-scope templates under
+  `data/templates/{box,workset}`, the default agent's content under
+  `data/templates/agent`, plus the system handbook —
   replacing the flat `playbook/notebook/workbook` layout, and the box-home seed now lives
   at `global/template/box/home/`. Agent-level and workset-level template dirs restructure
   the same way (`<data>/agents/<agent>/template/box/home/`,

@@ -143,7 +143,7 @@ class SeedFile:
 
 # --- SEED layer: every file a claude PRIMARY box must have seeded at create. ---
 #
-# base layer  = data/templates/box        (the packaged BOX mould)
+# base layer  = data/templates/box        (the packaged BOX mold)
 # agent layer = plugins/claude/data/base   (the claude AGENT-STORE payload)
 #
 # ⚑ TWO DESTINATIONS, both HOST paths under the box store, filled by two different

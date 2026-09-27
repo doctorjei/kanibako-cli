@@ -413,7 +413,7 @@ or a `WorksetStampScope`; the allow-list is computed here via `_scope_rules`, ne
 
 ⚑ *store_rel* is relative to the SCOPE STORE ROOT (`copy_tree`'s *dest_root*), NOT to the copy's
 source. The two coincide for a whole-store copy, but they DIVERGE the moment a copy targets a
-subdirectory of a store — the workset stamp's `canon_only` arm copies the mould's `canon/` into the
+subdirectory of a store — the workset stamp's `canon_only` arm copies the mold's `canon/` into the
 resolved `workset.canon`, where the source-relative path (`handbook/SYS_WORKSET.md`) says nothing
 about which top-level store entry is being written and the store-relative path
 (`canon/handbook/SYS_WORKSET.md` at the default leaf) says exactly that. Checking the wrong one
@@ -466,7 +466,7 @@ does not yet have and never clobbers their edits (J-3 item 1).
 `PACKAGED_HANDBOOK` name subtrees of that root, by their role. ⚑ The install is an
 ENUMERATED set of (packaged subtree → host dest) pairs, NEVER a whole-tree copy (P-S2): copying the
 root wholesale would leave a SECOND, never-read copy of the handbook at
-`@system.template/system`, and would stamp the `agent.default` content into the agent MOULD at
+`@system.template/system`, and would stamp the `agent.default` content into the agent MOLD at
 `@system.template/agent` — the duplicated-shared-data defect design principle 2 forbids — and §2a
 states the same rule ("SEED DESTINATIONS ARE ENUMERATED … AND THIS HOLDS AT EVERY
 LEVEL") for every level.
@@ -477,13 +477,13 @@ ships at `system/canon/handbook` and lands at `@system.canon/handbook`. The hand
 equal the chapter leaf's spelling (`_CANON_CHAPTER_LEAF`): the canon-layout duplicate-value check
 reads two constants with one value as one fact.
 
-`AGENT_MOULD_DIRNAME = "agent"` is the AGENT MOULD's dir name under `@system.template` — the host
-copy every agent install stamps from (J-5). ⚑ The mould ships EMPTY (D5): nothing packaged is copied
+`AGENT_MOLD_DIRNAME = "agent"` is the AGENT MOLD's dir name under `@system.template` — the host
+copy every agent install stamps from (J-5). ⚑ The mold ships EMPTY (D5): nothing packaged is copied
 into it, and a wheel cannot ship an empty dir, so the host dir is GUARANTEE-CREATED by the install
 action (D7). The packaged `templates/agent` subtree (`PACKAGED_AGENT_DEFAULT`) shares the name but
 NOT the role — it is the `agent.default` content, stamped only into `@config.agents/default`, never
-into this mould. Shipping the mould structure-only is also what keeps it OVERLAP-FREE with that
-content: both are stamped create-if-absent into the same store, so an overlapping mould file would
+into this mold. Shipping the mold structure-only is also what keeps it OVERLAP-FREE with that
+content: both are stamped create-if-absent into the same store, so an overlapping mold file would
 win over the default agent's own content.
 
 `_BOX_TEMPLATE_SKELETON` is the box-template SKELETON a scope store gets guarantee-created (D7) so
@@ -559,23 +559,23 @@ unread — a loud absence beats a silent misplacement.
 ## `ensure_agent_stores` — the J-6 A-action
 
 Materialises each agent's STORE. An A-action is INSTANTIATION: stamp a new store from the current
-host mould at the moment of the action, then the store is the user's. J-6's "two paths, one action"
+host mold at the moment of the action, then the store is the user's. J-6's "two paths, one action"
 pair share this one implementation — the deliberate trigger at `kanibako setup` (which reports) and
 the lazy backstop in `cli._ensure_initialized` (silent, first run only). Both must run the SAME
 full per-file stamp; the bare `mkdir` the lazy path used to do is what this replaces.
 
 Per name, in order:
 
-1. the MOULD — `@system.template/agent` → `agents/<name>`. Uniform for every agent, `default`
-   included (J-5), and read AS IT STANDS so a user's mould customisation reaches FUTURE stores only.
+1. the MOLD — `@system.template/agent` → `agents/<name>`. Uniform for every agent, `default`
+   included (J-5), and read AS IT STANDS so a user's mold customisation reaches FUTURE stores only.
 2. the SPECIFIC payload — `agents/default` gets the packaged `templates/agent` DIRECTLY from
    the package (no host staging: with exactly one default agent, a staged copy would be read once
    and never again — the principle-2 dead-copy class); every other name gets its plugin's
    `data/base`.
 3. the box-template SKELETON, guarantee-created (D7).
 
-⚑ MOULD FIRST IS SAFE ONLY BECAUSE THE MOULD IS OVERLAP-FREE. Every stamp is create-if-absent, so
-on an overlapping path the EARLIER copy wins — the mould would beat the specific content. The mould
+⚑ MOLD FIRST IS SAFE ONLY BECAUSE THE MOLD IS OVERLAP-FREE. Every stamp is create-if-absent, so
+on an overlapping path the EARLIER copy wins — the mold would beat the specific content. The mold
 therefore ships STRUCTURE ONLY (D5); if it ever gains content, this order must flip to
 specific-first.
 
@@ -586,7 +586,7 @@ names whose store was touched, for the caller's report.
 
 ## The workset host template
 
-`install_workset_template` stamps a NEW workset store from the host workset mould — the J-6
+`install_workset_template` stamps a NEW workset store from the host workset mold — the J-6
 A-action. `@system.template/workset` → `<workset_path>`, called from `workset create`, under the
 WORKSET whitelist, whose DEFAULT leaves are `template/` and `canon/handbook/`. It is
 create-if-absent, so re-running over an existing workset adds only what is missing.
@@ -601,8 +601,8 @@ did. The REACHABLE repoint is the STANDALONE one: that destination is a director
 had, so it may already carry a `workset.yaml`. Stamping the literal `canon/` there seeds a tier
 nothing reads, because the chapter bind asks the key.
 
-⚑ The SOURCE stays a mould-side literal (`_MOULD_CANON_ROOT`) while the DEST follows the key: the
-mould is one SYSTEM tree every workset stamps from, so a per-workset repoint moves where content
+⚑ The SOURCE stays a mold-side literal (`_MOLD_CANON_ROOT`) while the DEST follows the key: the
+mold is one SYSTEM tree every workset stamps from, so a per-workset repoint moves where content
 lands, never where it is read from. `_workset_stamp_copy` — the ONE definition of the (source, dest)
 pair, shared by the stamp and its pre-flight so the two cannot narrow differently — therefore takes
 the resolved canon root as a parameter. Both callers still pass `dest_root=workset_path`, NOT that
@@ -652,7 +652,7 @@ The skeleton loop and the canon-chapter `mkdir` run AFTER `copy_tree` and reach 
 guards. Once both leaves became RESOLVED keys that stopped being cosmetic: MEASURED, a
 `workset.template` of `../elsewhere` planted all three skeleton dirs (seven directories) outside the
 workset root with nothing refusing, and on the standalone path an out-of-root `workset.canon` was
-refused only INCIDENTALLY — by the copy that happened to share its destination. Empty the mould's
+refused only INCIDENTALLY — by the copy that happened to share its destination. Empty the mold's
 `canon/` half and `copy_tree` returns on its first line, and the chapter `mkdir` then landed outside
 the root unremarked. Each target is `_assert_contained`-checked now.
 
@@ -669,7 +669,7 @@ than the table's. ⚑ It would not even be inert: a leaf repointed to the ROOT I
 entry `'.'`, which is every relative path's prefix in fact and matches none of them as a STRING, so
 the check would refuse a stamp that works today.
 
-`check_workset_template` PRE-FLIGHTS that mould against the workset whitelist and writes nothing.
+`check_workset_template` PRE-FLIGHTS that mold against the workset whitelist and writes nothing.
 `workset create` must be ATOMIC in the way that matters to a user: either the workset exists and is
 well-formed, or nothing happened. Refusing part-way through `install_workset_template` satisfied
 "loud and leak-free" but left a REGISTERED workset with a root, its own `workset.yaml` and a
@@ -683,7 +683,7 @@ it matches how this command already handles the class.
 ⚑⚑⚑ **DO NOT COPY THIS SHAPE.** `handbook_layer_source_keys` and `install_box_handbook_template`
 are the BOX HANDBOOK host-template copy, and it is a DELIBERATE, RULED EXCEPTION to the live model.
 
-THE LIVE MODEL for a host template is the SINGLE-SOURCE copy `install_workset_template`: one mould,
+THE LIVE MODEL for a host template is the SINGLE-SOURCE copy `install_workset_template`: one mold,
 one `copy_tree`, one whitelist. A new host template follows THAT.
 
 THIS ONE stages THREE ordered layers. Jei, 2026-08-07g, ruling on the handbook specifically:
@@ -775,7 +775,7 @@ top-level entry of the box store no matter what a template ships. Two checks on 
 disagreeing about severity (raise vs skip), is worse than one.
 
 ⚑ This is where it differs from `install_workset_template`, whose whitelist guards something real:
-that mould lands at `<workset_path>`, a directory the user already had, where template CONTENT could
+that mold lands at `<workset_path>`, a directory the user already had, where template CONTENT could
 plant a `workset.yaml` or a `registry.yaml`. Its whitelist is not an oversight missing here; the two
 copies simply have different attack surfaces.
 
@@ -813,7 +813,7 @@ LIVE from the read-only packaged canon (bound at `~/canon/charter/general` + fla
 agent's native instruction slot at launch), so it has no host runtime-install target.
 
 ⚑ The two staging copies are SCOPED, and this is where J-2's box whitelist actually BITES. The
-mould MIRRORS the store it stamps, so it is subject to that store's whitelist at the moment it is
+mold MIRRORS the store it stamps, so it is subject to that store's whitelist at the moment it is
 staged — which is the earliest point a planted `box.yaml` (= `meta.box.settings`, the LAST
 cascade level) can be REFUSED rather than carried forward. Unscoped, the deny-list would only be
 dead prose: nothing downstream re-checks it, because the two downstream copies (the box-home seed
@@ -821,7 +821,7 @@ and the box-handbook host template) read `box/home` and `box/canon/handbook` dir
 
 ⚑ The system handbook copy is UNSCOPED on purpose: the dest is INSIDE the canon root, not a scope
 store root, so there is no store whitelist to apply (the equivalent guarantee is that the dest is
-key-fixed). The agent MOULD dir is created even though nothing packages it (D5/D7).
+key-fixed). The agent MOLD dir is created even though nothing packages it (D5/D7).
 
 ## The shipped-file walk and the content digest
 

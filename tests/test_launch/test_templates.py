@@ -1021,7 +1021,7 @@ class TestLayeredHomeSeed:
 # ---------------------------------------------------------------------------
 # The BOX HANDBOOK HOST-TEMPLATE copy — Jei's 2026-08-07g ruling: the handbook
 # templates are HOST templates, not GUEST templates, so they are copied beside the
-# workset mould rather than delivered through the ``seeded`` category.
+# workset mold rather than delivered through the ``seeded`` category.
 #
 # ⚑ THE TWIN IS GONE (phase H2).  The three ``<scope>.seeded.handbook`` layers are
 # no longer declared and ``_apply_init_seeds`` no longer touches
@@ -1699,7 +1699,7 @@ class TestInstallPackagedTemplates:
     """The ENUMERATED install (P-S2): four (packaged subtree → host dest) pairs, each
     with its own owner and therefore its own copy rule."""
 
-    def test_box_and_workset_moulds_staged(self, std):
+    def test_box_and_workset_molds_staged(self, std):
         """``template/{box,workset}`` → ``@system.template/{box,workset}`` (STAGING)."""
         install_packaged_templates(std, ["claude", "goose", "codex"])
         assert (
@@ -1746,13 +1746,13 @@ class TestInstallPackagedTemplates:
         assert not (hb / "workset").exists()
         assert not (hb / "box").exists()
 
-    def test_agent_mould_dir_is_guarantee_created_empty(self, std):
-        """J-5/D5: the agent MOULD ships EMPTY (a wheel cannot ship an empty dir), so
+    def test_agent_mold_dir_is_guarantee_created_empty(self, std):
+        """J-5/D5: the agent MOLD ships EMPTY (a wheel cannot ship an empty dir), so
         the host dir is guarantee-created by the install action (D7)."""
         install_packaged_templates(std, ["claude"])
-        mould = std.template / "agent"
-        assert mould.is_dir()
-        assert list(mould.rglob("*")) == []
+        mold = std.template / "agent"
+        assert mold.is_dir()
+        assert list(mold.rglob("*")) == []
 
     def test_agent_default_store_stamped_from_the_package(self, std):
         """``agents/default`` gets the packaged ``templates/agent`` DIRECTLY from the
@@ -1792,7 +1792,7 @@ class TestInstallPackagedTemplates:
 
     def test_unknown_agent_gets_a_store_but_no_payload(self, std):
         """An agent with no packaged payload (e.g. shell) still gets its store
-        skeleton (the mould stamp + D7 dirs) but no content."""
+        skeleton (the mold stamp + D7 dirs) but no content."""
         install_packaged_templates(std, ["shell"])
         store = std.agents / "shell"
         assert (store / "template" / "box" / "home").is_dir()
@@ -1838,22 +1838,22 @@ class TestEnsureAgentStores:
         ensure_agent_stores(std, ["claude"])
         assert chapter.read_text() == "MY CHAPTER"
 
-    def test_host_mould_reaches_every_store(self, std):
-        """The mould is read AS IT STANDS at action time, so a user's customisation
+    def test_host_mold_reaches_every_store(self, std):
+        """The mold is read AS IT STANDS at action time, so a user's customisation
         reaches FUTURE stores (and this one, on its next self-heal)."""
         from kanibako.launch.templates import ensure_agent_stores
 
         install_packaged_templates(std, ["claude"])
-        mould_file = std.template / "agent" / "common" / "MOULD.md"
-        mould_file.parent.mkdir(parents=True, exist_ok=True)
-        mould_file.write_text("from the mould")
+        mold_file = std.template / "agent" / "common" / "MOLD.md"
+        mold_file.parent.mkdir(parents=True, exist_ok=True)
+        mold_file.write_text("from the mold")
         ensure_agent_stores(std, ["claude"])
         assert (
-            std.agents / "claude" / "common" / "MOULD.md"
-        ).read_text() == "from the mould"
+            std.agents / "claude" / "common" / "MOLD.md"
+        ).read_text() == "from the mold"
 
-    def test_mould_content_outside_the_whitelist_is_refused(self, std):
-        """Deny-by-default at AGENT scope: a mould that would plant
+    def test_mold_content_outside_the_whitelist_is_refused(self, std):
+        """Deny-by-default at AGENT scope: a mold that would plant
         ``agent.yaml`` (= ``meta.agent.<a>.settings``) is REFUSED."""
         from kanibako.errors import TemplateScopeError
         from kanibako.launch.templates import ensure_agent_stores
@@ -1867,7 +1867,7 @@ class TestEnsureAgentStores:
 
 
 class TestInstallWorksetTemplate:
-    def test_stamps_the_workset_mould(self, std, tmp_path):
+    def test_stamps_the_workset_mold(self, std, tmp_path):
         from kanibako.launch.templates import install_workset_template
 
         install_packaged_templates(std, ["claude"])
@@ -1879,7 +1879,7 @@ class TestInstallWorksetTemplate:
         ).is_file()
         assert (ws / "template" / "box" / "home").is_dir()
 
-    def test_refuses_a_registry_planted_by_the_mould(self, std, tmp_path):
+    def test_refuses_a_registry_planted_by_the_mold(self, std, tmp_path):
         """⚑ The severity case: ``registry.yaml`` is ``workset.registry``, the
         AUTHORITATIVE box membership — a templated one could ORPHAN boxes. And a
         STANDALONE ``<workset_path>`` is a directory the USER already had, which
@@ -2107,12 +2107,12 @@ class TestWorksetStampFollowsTheKeys:
         ws = tmp_path / "ws-template-repoint"
         ws.mkdir()
         (ws / "workset.yaml").write_text(
-            yaml.safe_dump({"workset": {"template": "@meta.workset.path/moulds"}})
+            yaml.safe_dump({"workset": {"template": "@meta.workset.path/molds"}})
         )
         install_workset_template(std, ws)
-        assert (ws / "moulds" / "box" / "home" / "canon" / "notebook").is_dir()
-        assert (ws / "moulds" / "box" / "home" / "canon" / "workbook").is_dir()
-        assert (ws / "moulds" / "box" / "canon" / "handbook").is_dir()
+        assert (ws / "molds" / "box" / "home" / "canon" / "notebook").is_dir()
+        assert (ws / "molds" / "box" / "home" / "canon" / "workbook").is_dir()
+        assert (ws / "molds" / "box" / "canon" / "handbook").is_dir()
         assert not (ws / "template").exists()
 
     def test_the_respelling_degenerates_to_the_declared_table(self, tmp_path):
@@ -2159,7 +2159,7 @@ class TestWorksetStampFollowsTheKeys:
         root = tmp_path / "ws"
         root.mkdir()
         allowed = _workset_scope_allowed(
-            root, root / ".." / "up", root / ".." / "moulds",
+            root, root / ".." / "up", root / ".." / "molds",
         )
         assert allowed == SCOPE_WHITELISTS["workset"]
         assert not any(".." in entry for entry in allowed)
@@ -2226,7 +2226,7 @@ class TestTheRespellingCannotWiden:
         declared = SCOPE_WHITELISTS["workset"]
         cases = [
             (root / "canon", root / "template"),          # unrepointed
-            (root / "my_canon", root / "moulds"),         # both moved, in-root
+            (root / "my_canon", root / "molds"),         # both moved, in-root
             (root / "deep" / "canon", root / "template"),  # nested
             (tmp_path / "far", root / "template"),        # canon out of root
             (root / ".." / "up", root / ".." / "away"),   # lexical escape
@@ -2261,7 +2261,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
 
     ⚑ These ``mkdir``\\ s run AFTER ``copy_tree`` and reach none of its guards, so
     before this they were refused only INCIDENTALLY — by a copy that happened to share
-    the destination. Take the mould's content away and the escape was silent.
+    the destination. Take the mold's content away and the escape was silent.
     """
 
     def _root(self, tmp_path, name, **repoints):
@@ -2334,11 +2334,11 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         assert "workset.template" in str(exc.value)
         assert not (tmp_path / "escaped").exists()
 
-    def test_a_standalone_canon_escape_is_refused_with_an_EMPTY_mould(
+    def test_a_standalone_canon_escape_is_refused_with_an_EMPTY_mold(
         self, std, tmp_path
     ):
         """⚑⚑ THE REACHABLE ONE, and the reason the incidental refusal was not enough.
-        With the mould's ``canon/`` half absent ``copy_tree`` returns on its first line,
+        With the mold's ``canon/`` half absent ``copy_tree`` returns on its first line,
         so its ``_assert_contained`` never runs — and the chapter ``mkdir`` then created
         the directory outside the root, silently."""
         from kanibako.errors import TemplateScopeError
@@ -2347,7 +2347,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         install_packaged_templates(std, ["claude"])
         shutil.rmtree(std.template / "workset" / "canon")
         outside = tmp_path / "OUTSIDE"
-        root = self._root(tmp_path, "solo-empty-mould", canon=str(outside))
+        root = self._root(tmp_path, "solo-empty-mold", canon=str(outside))
         with pytest.raises(TemplateScopeError):
             install_workset_template(std, root, canon_only=True)
         assert not outside.exists()
@@ -2374,7 +2374,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
 
     def test_a_symlinked_chapter_leaf_writes_nothing_outside(self, std, tmp_path):
         """⚑ The chapter's own twin of the case above, on the arm where the copy is
-        silent: the mould's ``canon/`` half is gone, ``workset.canon`` is the plain
+        silent: the mold's ``canon/`` half is gone, ``workset.canon`` is the plain
         in-root default, and only ``canon/handbook`` is the link out."""
         from kanibako.errors import TemplateScopeError
         from kanibako.launch.templates import install_workset_template
@@ -2969,9 +2969,9 @@ class TestPackagingGlobs:
         """The four ENUMERATED subtrees, and nothing else, under the template root.
 
         ⚑ The packaged ``agent/`` is the ``agent.default`` CONTENT, stamped into
-        ``agents/default`` only; it is NOT the agent MOULD, which ships EMPTY (D5) and
+        ``agents/default`` only; it is NOT the agent MOLD, which ships EMPTY (D5) and
         whose host dir is guarantee-created by the install action (D7) — see
-        ``test_agent_mould_dir_is_guarantee_created_empty``.
+        ``test_agent_mold_dir_is_guarantee_created_empty``.
         """
         base = _packaged_base_template()
         assert base is not None

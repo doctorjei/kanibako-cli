@@ -908,7 +908,7 @@ modules = [
 # ---------------------------------------------------------------------------
 # FACT: the canon skeleton and the template store -- the guest-side canon tree
 # (bible/handbook/directives layout, the ROM guide path, skeleton modes) and the
-# names of the packaged template moulds.
+# names of the packaged template molds.
 # AUTHORITY: `core_defaults.py` declares the canon layout that the defaults files
 # and the seeding path both read; `launch/templates.py` declares the template
 # store's own directory names. Both sides of one subject: what gets laid into a

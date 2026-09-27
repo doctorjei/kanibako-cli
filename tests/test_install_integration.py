@@ -39,7 +39,7 @@ class TestInstallFilesystem:
         """
         from kanibako.cli import _ensure_initialized
         from kanibako.launch.templates import (
-            AGENT_MOULD_DIRNAME,
+            AGENT_MOLD_DIRNAME,
             PACKAGED_BOX_TEMPLATE,
             PACKAGED_WORKSET_TEMPLATE,
         )
@@ -57,9 +57,9 @@ class TestInstallFilesystem:
         std = load_std_paths(load_config(cf))
         # The paths come from the resolved keys, not from hard-coded leaves, so
         # this follows the directories the user's config actually names.
-        for mould in (PACKAGED_BOX_TEMPLATE, PACKAGED_WORKSET_TEMPLATE,
-                      AGENT_MOULD_DIRNAME):
-            assert (std.template / mould).is_dir(), mould
+        for mold in (PACKAGED_BOX_TEMPLATE, PACKAGED_WORKSET_TEMPLATE,
+                     AGENT_MOLD_DIRNAME):
+            assert (std.template / mold).is_dir(), mold
         assert (std.agents / "default").is_dir()
         assert (std.canon / "handbook").is_dir()
         # The stamp copies files, not just directories: a copy that silently

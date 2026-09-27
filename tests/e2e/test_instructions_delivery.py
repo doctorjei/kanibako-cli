@@ -162,7 +162,7 @@ HANDBOOK_SYSTEM_DESTS = (
 # The chapters a freshly created PRIMARY box in this harness actually has content for:
 #   agent   — the agent store's chapter, stamped from the plugin's ``data/base`` at
 #             install (every first-party plugin ships one).
-#   box     — the box's own chapter, seeded at create from the packaged box mould.
+#   box     — the box's own chapter, seeded at create from the packaged box mold.
 #   workset — ABSENT: the default workset ships no chapter, which is the NORMAL case
 #             and precisely what skip-if-absent exists for (no warning, no mount).
 HANDBOOK_CHAPTERS_EXPECTED = (
