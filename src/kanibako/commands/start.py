@@ -61,6 +61,7 @@ from kanibako.settings.settings_categories import (
 from kanibako.settings.settings_keyspace import (
     is_terminal_category_key,
     leaf_name_reason,
+    pseudo_agent_fence,
 )
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 from kanibako.settings.settings_cli_level import build_cli_level
@@ -1013,19 +1014,29 @@ def _declared_behavior(key: str) -> str:
     return core_defaults.behavior_default(key)
 
 
-def _declared_behavior_bool(key: str) -> bool:
-    """:func:`_declared_behavior` for a BOOLEAN key, through the shared truth table.
+def _declared_behavior_bool(key: str, agent_id: str) -> bool:
+    """*agent_id*'s DECLARED BOOLEAN ``<key>`` floor, through the shared truth table.
 
+    ⚑ A plain-shell box's floor is its OWN tier's (``agent.shell.<key>``,
+    :func:`core_defaults.shell_tier_default`), never ``agent.default.<key>``: only true
+    agents inherit from ``agent.default`` (keyspec §2d; ``settings_launch._fallback_node``).
     ⚑ Fail-closed on an uncoercible value too: letting ``coerce_bool``'s ``None``
     through would read as FALSE at every consumer, i.e. a typo in the shipped file
     would silently disable a feature instead of naming itself.
     """
-    value = coerce_bool(_declared_behavior(key))
+    # ``pseudo_agent_fence``, the predicate ``settings_launch._fallback_node`` uses, so
+    # ``Shell`` folds as it does there ([R173]).  ``shell`` is the only pseudo-agent a
+    # launch can run: ``default`` is reserved and refused as an agent name (§2d).
+    tier = "shell" if pseudo_agent_fence(agent_id) is not None else "default"
+    raw = (
+        core_defaults.shell_tier_default(key) if tier == "shell"
+        else _declared_behavior(key)
+    )
+    value = coerce_bool(raw)
     if value is None:
         raise RuntimeError(
             f"{core_defaults.CORE_DEFAULTS_FILENAME} declares "
-            f"'agent_default.{key}' as {_declared_behavior(key)!r}, which is not a "
-            "boolean literal."
+            f"'agent_{tier}.{key}' as {raw!r}, which is not a boolean literal."
         )
     return value
 
@@ -3926,7 +3937,8 @@ def _run_container(
         # snapshot floor at all, and a user's present-``None`` reset-to-default in
         # the winning slot is OMITTED by ``effective_behavior`` by contract (it
         # shadows the agent.default rung below, leaving the consumer to apply its
-        # own default — settings_launch.effective_behavior's docstring).
+        # own default — settings_launch.effective_behavior's docstring).  A shell
+        # box's declared value is ``agent.shell.allow_helpers``, not the default's.
         from kanibako.settings import settings_launch as _settings_launch
         _ah = coerce_bool(
             _settings_launch.effective_behavior(
@@ -3934,7 +3946,8 @@ def _run_container(
             ).get("allow_helpers")
         )
         helpers_allowed = (
-            _declared_behavior_bool("allow_helpers") if _ah is None else _ah
+            _declared_behavior_bool("allow_helpers", agent_id)
+            if _ah is None else _ah
         )
 
         # E2b: the CONTINUE-mode agent grammar for a detached box's always-on
@@ -4027,7 +4040,8 @@ def _run_container(
                 # otherwise turn ``-R`` into a fresh start.)
                 _cm = coerce_bool(effective_state.get("continue_mode"))
                 continue_default = (
-                    _declared_behavior_bool("continue_mode") if _cm is None else _cm
+                    _declared_behavior_bool("continue_mode", agent_id)
+                    if _cm is None else _cm
                 )
                 effective_new_session = not continue_default
                 # B5 (spec §2d, the §3.3 rulings): the launch GRAMMAR comes off
@@ -9172,7 +9186,8 @@ def _install_realized_env(snapshot, env, *, agent_id: str, desc) -> None:
     realization of the same variable are both the agent scope's, and one would
     silently overwrite the other in the node below.  Checked against BOTH agent tiers
     — ``agent.<node>`` and ``agent.default`` — because the §2d pick merges them into
-    one effective node, so a value in either would be the one that vanished.
+    one effective node, so a value in either would be the one that vanished.  (A
+    pseudo-agent's pick has no ``agent.default`` tier, so none is checked for one.)
     """
     if not env:
         return
@@ -9200,15 +9215,21 @@ def _declared_agent_env_key(snapshot, agent_id: str, var: str) -> "str | None":
     """The DISCRIMINATED key already declaring ``env.<var>`` at the agent scope, or ``None``.
 
     Both tiers, ACTIVE first: the §2d pick would let ``agent.<node>`` win, so that is
-    the key to name when both are present.  Reads via the UNBOUND ``dict`` protocol
-    (S3) — a snapshot node answers attribute lookups with its own members.
+    the key to name when both are present.  A pseudo-agent's pick reads its own tier
+    alone (``settings_launch._fallback_node``), so for one only that tier is checked.
+    Reads via the UNBOUND ``dict`` protocol (S3) — a snapshot node answers attribute
+    lookups with its own members.
     """
     from kanibako.settings.keystore import KeyStore
 
     agent_node = dict.get(snapshot, "agent", None)
     if not isinstance(agent_node, KeyStore):
         return None
-    for tier in (agent_id, "default"):
+    tiers = (
+        (agent_id,) if pseudo_agent_fence(agent_id) is not None
+        else (agent_id, "default")
+    )
+    for tier in tiers:
         tier_node = dict.get(agent_node, tier, None)
         if not isinstance(tier_node, KeyStore):
             continue

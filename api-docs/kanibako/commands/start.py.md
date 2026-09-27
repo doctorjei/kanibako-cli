@@ -48,7 +48,7 @@ def _bootstrap_choice(proj, system_settings_path: 'Path | None', agent_id: str, 
 def _bootstrap_setting(choice: BootstrapChoice) -> str | None
 def _no_bootstrap_reason(choice: BootstrapChoice) -> str
 def _declared_behavior(key: str) -> str
-def _declared_behavior_bool(key: str) -> bool
+def _declared_behavior_bool(key: str, agent_id: str) -> bool
 def _bootstrap_default() -> str
 def _is_no_bootstrap(program: str | None) -> bool
 def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'str | None'

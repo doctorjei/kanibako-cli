@@ -769,6 +769,8 @@ class TestAgentConfigFirstUse:
         """The built-in shell target's name is used as agent_id."""
         with start_mocks() as m:
             m.target.name = "shell"
+            # Production's shell target has no descriptor (conftest's note).
+            m.target.descriptor = None
             m.target.has_binary = False
             m.target.detect.return_value = None
             _run_container(
