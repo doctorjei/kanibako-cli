@@ -1623,6 +1623,9 @@ always exists — it is the runtime dir). The requested `--name` is PRE-FLIGHTED
 mutation so a doomed create (a verbatim-canonical name already taken) refuses up front rather than
 leaving an orphaned half-created `box_data/` + `vault/` tree (BUG-A). `establish_standalone`
 re-resolves the name authoritatively; the pre-flight only surfaces the refusable collision early.
+A null `workset.workspaces` in a pre-existing `<root>/workset.yaml` is pre-flighted the same way
+(`project.workset.refuse_null_workspaces(..., standalone=True)`, Q96): there is no workspace dir to
+create, so `box create --standalone` refuses before the first write.
 The init block is only reached when no meta exists, so the identity is resolved fresh from the
 user-supplied `--name` (empty → fresh canonical).
 

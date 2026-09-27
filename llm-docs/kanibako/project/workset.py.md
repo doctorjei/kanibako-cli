@@ -439,6 +439,26 @@ Honors a set `workset: {workspaces: …}`; else the spec default `@meta.workset.
 == `<root>/workspace`. ⚑ The repoint SLOT is the same `workset: {workspaces: …}` key either way —
 only the default formula varies by mode.
 
+🛑 A present `<None>` still COLLAPSES to the default here (`_repoint_or_default`): the launch
+half of Q96 (no workspace bind) is not landed, because a standalone box's `project_path` IS this
+value and is typed `Path`. What refuses today is CREATION under a null, below.
+
+```python
+def workset_workspaces_nulled(workset_root: Path) -> bool
+def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool = False) -> None
+```
+`workset_workspaces_nulled` is True when the root's workset.yaml carries `workspaces: null`.
+`refuse_null_workspaces` raises `WorksetError` with `messages.ERR_WORKSET_NULL_WORKSPACES`, naming
+the key and `<root>/workset.yaml` ([R177], Q96): a null means there is no workspace dir, so every
+operation that would CREATE or COPY a workspace under the root refuses instead of taking the
+default. Callers: `add_project` (in-tree member), `workset_cmd.run_connect` (before its J2
+bracket), `box/_lifecycle._validate` (an in-tree landing, and an in-place convert to standalone),
+`box/_duplicate` (`--to named`, bare or not, before the prompt; `--to standalone` without `--bare`
+into a root that already nulls it), and `settings/paths.resolve_standalone_project`'s create
+pre-flight (`box create --standalone`), before its first write. *standalone* selects
+`messages.ERR_STANDALONE_NULL_WORKSPACES`, whose cure omits "connect a directory outside it" — a
+lone box's root has no outside member.
+
 ```python
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
 ```
@@ -686,7 +706,7 @@ unrecoverable by re-running. Clearing each box tree through `runtime.container.r
 Symlinked entries under `boxes/` are skipped so the escalation never follows a link out of the tree.
 
 ```python
-def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None = None, force: bool = False) -> WorksetProject
+def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None = None, force: bool = False, *, restoring: bool = False) -> WorksetProject
 ```
 Add a project to a workset; creates the per-project subdirectories.
 
@@ -696,7 +716,11 @@ provided, the project is CONNECTED to that external directory, which becomes the
 never mounted** — and the box is registered in the workset's per-workset registry
 (`boxes: {name → external path}`, the D10 connection record) so launches from the external path
 resolve back to this workset. Sources inside the workset tree keep the normal behavior: a real
-`workspaces/{name}` directory.
+`workspaces/{name}` directory — and REFUSE (`refuse_null_workspaces`) when `workset.workspaces` is
+null, before anything is created. An external member still connects under a null, without the
+link. `source_in_tree(ws, source_path)` is the in-tree test, shared with `run_connect`.
+*restoring* (keyword-only) skips that refusal: `box/_lifecycle`'s `_restore_source` unwind
+re-registers a member it just released and creates no workspace, so a null must not strand it.
 
 ⚑ **No `workset.yaml` is written on either path.** See **Connected (external) boxes** for the
 sparse-create ruling; the pre-relocation docstring claimed a `workspace` override file here and it
@@ -769,7 +793,8 @@ Drop *name* from the in-memory project list (compensating action).
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> bool
 ```
 Create `workspaces/<name>` → *target* for an external member; True iff it created the link. An
-occupied leaf (dir, file or link) is left alone. `add_project`'s external arm calls it, and so does a
+occupied leaf (dir, file or link) is left alone, and a null `workset.workspaces` creates nothing
+(there is no dir to link in). `add_project`'s external arm calls it, and so does a
 relocation after it retires the old in-tree leaf that held the spot (`commands/box/_lifecycle.py`,
 STEP 5) — one writer of the link.
 

@@ -69,6 +69,7 @@ from kanibako.project.workset import (
     list_worksets,
     load_workset,
     load_workset_settings_doc,
+    refuse_null_workspaces,
     release_project,
     remove_member_store,
     resolve_workset_canon,
@@ -616,6 +617,26 @@ def _validate(
             f"Use `--workset {ws_name}` to make it a member, or choose a "
             "destination outside that workset."
         )
+
+    # --- an in-tree landing needs a workspace dir: a null ``workset.workspaces`` has none
+    #     (Q96).  Refused HERE, before step 2 moves a tree or a ws->ws source releases. ---
+    if target_mode == BoxMode.named and target_ws is not None:
+        in_tree = spec.location is BARE_INTO_WS
+        if not in_tree:
+            try:
+                landing.resolve().relative_to(target_ws.root.resolve())
+                in_tree = True
+            except ValueError:
+                pass
+        if in_tree:
+            refuse_null_workspaces(target_ws.root, f"a workspace for '{new_name}'")
+    # An in-place convert TO standalone sweeps the project's files into the root's
+    # ``workset.workspaces`` (``_consolidate_workspace_subdir``); a relocation's *dest* is
+    # new, so it carries no null.
+    if (target_mode == BoxMode.standalone and dest is None
+            and state.mode != BoxMode.standalone):
+        refuse_null_workspaces(state.workspace_path, f"a workspace for '{new_name}'",
+                               standalone=True)
 
     # --- CWD-inside-<old> guard (move is copytree+rmtree, not rename) ---
     # ⚑ ``records_only`` exempt: ``remap`` removes nothing, so it cannot strand the shell.
@@ -1734,7 +1755,7 @@ def _to_workset(
             steps: list[tuple[str, Path, Callable[[], object]]] = [
                 (f"the record of '{src_name}' in workset '{src_ws.name}'",
                  src_source_path,
-                 lambda: add_project(src_ws, src_name, src_source_path, std)),
+                 lambda: add_project(src_ws, src_name, src_source_path, std, restoring=True)),
                 ("the box tree", src_ws.projects_dir / src_name, _box_tree),
                 # ⚑ THE VAULT CARRY, unwind leg (P1 data loss): leg 1 released the source
                 # leaves into the stash; no-ops when leg 1 carried nothing.

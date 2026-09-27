@@ -1772,6 +1772,53 @@ class TestBoxDuplicateToWorkset:
         # Workspace NOT copied (skeleton dir exists from add_project but no code.py)
         assert not (ws.workspaces_dir / "dup_bare_src" / "code.py").exists()
 
+    @pytest.mark.parametrize("bare", [False, True])
+    def test_duplicate_to_workset_with_null_workspaces_refuses(
+        self, config_file, tmp_home, credentials_dir, bare,
+    ):
+        """Q96: a duplicate is always an in-tree member, so it refuses before the prompt."""
+        from kanibako.commands.box import run_duplicate
+        from kanibako.errors import WorksetError
+        from kanibako.settings.config_io import dump_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        _proj, project_dir = _make_local_project(tmp_home, std, config, "dup_null_src")
+        ws, _ = _make_workset(tmp_home, std, "null-ws")
+        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": None}})
+
+        # ⚑ force=False: a refusal that fired after the prompt would read stdin instead.
+        args = self._make_args(project_dir, tmp_home / "unused", workset="null-ws",
+                               bare=bare, force=False)
+        with pytest.raises(WorksetError, match="workset.workspaces"):
+            run_duplicate(args)
+        assert not (ws.root / "workspaces" / "dup_null_src").exists()
+        assert not (ws.projects_dir / "dup_null_src").exists()
+
+    def test_duplicate_to_standalone_root_with_null_workspaces_refuses(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Q96: the copy lands in the destination's ``workset.workspaces``; a null has none."""
+        from kanibako.commands.box import run_duplicate
+        from kanibako.errors import WorksetError
+        from kanibako.settings.config_io import dump_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        _proj, project_dir = _make_local_project(tmp_home, std, config, "sa_null_src")
+        dest = tmp_home / "sa_null_dest"
+        dest.mkdir()
+        dump_doc(dest / "workset.yaml", {"workset": {"workspaces": None}})
+
+        args = argparse.Namespace(
+            source_path=str(project_dir), new_path=str(dest), to_mode="standalone",
+            bare=False, force=True, box=None, workset=None, project_name=None,
+        )
+        with pytest.raises(WorksetError, match="workset.workspaces") as exc_info:
+            run_duplicate(args)
+        assert "Connect a directory" not in str(exc_info.value)
+        assert sorted(p.name for p in dest.iterdir()) == ["workset.yaml"]
+
     def test_duplicate_to_workset_requires_workset_flag(self, config_file, tmp_home, credentials_dir, capsys):
         from kanibako.commands.box import run_duplicate
 

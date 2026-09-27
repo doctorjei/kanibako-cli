@@ -649,6 +649,138 @@ class TestCombo:
         assert "project" not in load_doc(ws.projects_dir / "proj" / "box.yaml")
 
 
+class TestNullWorkspacesTarget:
+    """Q96: an in-tree landing under a null ``workset.workspaces`` refuses in ``_validate``.
+
+    Refused before step 2 moves a tree, so the source box is left exactly as it was.
+    """
+
+    def _null_ws(self, env):
+        from kanibako.settings.config_io import dump_doc
+
+        ws = _make_workset(env)
+        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": None}})
+        return ws
+
+    def _assert_untouched(self, env, pdir):
+        _config, std, _tmp_home = env
+        assert (pdir / "file.txt").read_text() == "hello"
+        assert load_primary_boxes(std.primary_workset)["proj"] == str(pdir)
+
+    def test_bare_into_workset_refuses(self, env):
+        config, std, _tmp_home = env
+        ws = self._null_ws(env)
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        with pytest.raises(WorksetError, match="workset.workspaces"):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_untouched(env, pdir)
+        assert not (ws.root / "workspaces" / "proj").exists()
+        assert not (ws.root / "boxes" / "proj").exists()
+
+    def test_a_path_landing_inside_the_workset_refuses(self, env):
+        config, std, _tmp_home = env
+        ws = self._null_ws(env)
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        with pytest.raises(WorksetError, match="workset.workspaces"):
+            execute_lifecycle(
+                state, TargetSpec(location=ws.root / "landing", ownership="ws"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_untouched(env, pdir)
+        assert not (ws.root / "landing").exists()
+
+    def test_an_external_convert_still_connects(self, env):
+        config, std, _tmp_home = env
+        ws = self._null_ws(env)
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=INPLACE, ownership="ws"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.named and new.is_external
+        assert not (ws.root / "workspaces" / "proj").is_symlink()
+
+    def test_an_in_place_convert_to_standalone_refuses(self, env):
+        from kanibako.settings.config_io import dump_doc
+
+        config, std, _tmp_home = env
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        dump_doc(pdir / "workset.yaml", {"workset": {"workspaces": None}})
+        with pytest.raises(WorksetError, match="workset.workspaces") as exc_info:
+            execute_lifecycle(
+                state, TargetSpec(location=INPLACE, ownership="standalone"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_untouched(env, pdir)
+        assert not (pdir / "workspace").exists()
+        assert not (pdir / "box_data").exists()
+        # ⚑ The standalone cure: no "connect a directory outside it" for a lone box.
+        assert "Connect a directory" not in str(exc_info.value)
+
+    def _in_tree_member_then_null(self, env, ws_name, root_name):
+        from kanibako.settings.config_io import dump_doc
+
+        config, std, _tmp_home = env
+        ws = _make_workset(env, ws_name, root_name)
+        leaf = ws.workspaces_dir / "b1"
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("hello")
+        add_project(ws, "b1", leaf, std)
+        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": None}})
+        return ws, leaf, resolve_lifecycle_target(str(leaf), std, config)
+
+    def test_a_failed_move_out_restores_the_source_membership(self, env, monkeypatch):
+        """The unwind RE-REGISTERS the released member; a creation refusal must not block it."""
+        config, std, _tmp_home = env
+        ws1, leaf, state = self._in_tree_member_then_null(env, "ws1", "ws1_root")
+        _make_workset(env, "ws2", "ws2_root")
+
+        def boom(*a, **kw):
+            raise RuntimeError("injected late failure")
+
+        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
+        with pytest.raises(RuntimeError, match="injected late"):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                std, config, confirm=_conf_yes(),
+            )
+        members = load_workset(ws1.root, "ws1").projects
+        assert [(p.name, p.source_path) for p in members] == [("b1", leaf)]
+        assert (leaf / "file.txt").read_text() == "hello"
+
+    def test_a_rename_of_an_in_tree_member_refuses(self, env):
+        """A rename lands a NEW leaf, ``workspaces/<new name>`` — a workspace the null forbids."""
+        config, std, _tmp_home = env
+        ws, leaf, state = self._in_tree_member_then_null(env, "ws", "ws_root")
+        with pytest.raises(WorksetError, match="workset.workspaces"):
+            execute_lifecycle(
+                state, TargetSpec(location=INPLACE, ownership=UNCHANGED, name="b2"),
+                std, config, confirm=_conf_yes(),
+            )
+        assert [p.name for p in load_workset(ws.root, "ws").projects] == ["b1"]
+        assert (leaf / "file.txt").read_text() == "hello"
+        assert not (ws.root / "workspaces" / "b2").exists()
+
+    def test_a_standalone_create_in_a_nulled_root_refuses_before_writing(self, env):
+        from kanibako.settings.config_io import dump_doc
+
+        config, std, tmp_home = env
+        root = tmp_home / "sa"
+        root.mkdir()
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
+        with pytest.raises(WorksetError, match="workset.workspaces") as exc_info:
+            resolve_standalone_project(std, config, project_dir=str(root), initialize=True)
+        assert "Connect a directory" not in str(exc_info.value)
+        assert sorted(p.name for p in root.iterdir()) == ["workset.yaml"]
+
+
 # ---------------------------------------------------------------------------
 # channel-partition relocation on convert/move (6d, D-M10, §6)
 # ---------------------------------------------------------------------------

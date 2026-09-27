@@ -52,7 +52,9 @@ from kanibako.errors import LegacyWorksetIdentityError, WorksetError
 from kanibako.identifiers import find_identifier
 from kanibako.project.names import register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
-from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
+from kanibako.settings.messages import (
+    ERR_CONFIG_NULL_PATH, ERR_STANDALONE_NULL_WORKSPACES, ERR_WORKSET_NULL_WORKSPACES,
+)
 from kanibako.settings.settings_resolve import UNSET, SettingsError, _Unset
 from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
@@ -174,6 +176,28 @@ def resolve_workset_workspaces(
         _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF,
         key=_WORKSPACES_LEAF,
     )
+
+
+def workset_workspaces_nulled(workset_root: Path) -> bool:
+    """True when *workset_root*'s ``workset.workspaces`` is a present ``<None>`` — no workspace dir.
+
+    ⚑ Read off the root's workset.yaml, like every face here.  The PRIMARY workset's <None> is
+    the launch floor's (spec §2c), not a file value, so a primary root answers from its file.
+    """
+    return _workset_path_repoint(load_workset_settings_doc(workset_root), _WORKSPACES_LEAF) is None
+
+
+def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool = False) -> None:
+    """RAISE, naming ``workset.workspaces`` and the file, when *workset_root* nulls it ([R177], Q96).
+
+    For every operation that would CREATE or COPY a workspace under the root: a null means the
+    user said there is no workspace dir, and taking the default instead is the defect.  *what*
+    completes "cannot hold …" (e.g. ``"a new workspace for 'app'"``).  *standalone* selects
+    the lone-box cure: a standalone root has no outside member to connect instead.
+    """
+    if workset_workspaces_nulled(workset_root):
+        message = ERR_STANDALONE_NULL_WORKSPACES if standalone else ERR_WORKSET_NULL_WORKSPACES
+        raise WorksetError(message % (workset_root / WORKSET_META_FILE, what))
 
 
 def resolve_workset_boxes(
@@ -901,14 +925,29 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
     return root
 
 
+def source_in_tree(ws: Workset, source_path: Path) -> bool:
+    """True when *source_path* lies under *ws*'s root — an IN-TREE member, not an external one."""
+    try:
+        source_path.resolve().relative_to(ws.root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def add_project(
     ws: Workset,
     name: str,
     source_path: Path,
     std: StandardPaths | None = None,
     force: bool = False,
+    *,
+    restoring: bool = False,
 ) -> WorksetProject:
-    """Add a project to a workset; an EXTERNAL *source_path* (with *std*) is CONNECTED instead."""
+    """Add a project to a workset; an EXTERNAL *source_path* (with *std*) is CONNECTED instead.
+
+    *restoring* marks an unwind re-registering a member it just released: that creates no
+    workspace, so a null ``workset.workspaces`` must not block it.
+    """
     for p in ws.projects:
         if p.name == name:
             raise WorksetError(
@@ -918,12 +957,11 @@ def add_project(
     resolved_source = source_path.resolve()
 
     # Determine whether the source is external (outside the workset root).
-    is_external = False
-    if std is not None:
-        try:
-            resolved_source.relative_to(ws.root.resolve())
-        except ValueError:
-            is_external = True
+    is_external = std is not None and not source_in_tree(ws, resolved_source)
+    # ⚑ An in-tree member IS a workspace under ``workset.workspaces``; a null there refuses
+    # before anything is created.  An external member keeps its own dir and still connects.
+    if not is_external and not restoring:
+        refuse_null_workspaces(ws.root, f"a workspace for '{name}'")
 
     # ⚑ Validate up front: every EXTERNAL refusal fires BEFORE any directory is created.
     # Internal sources and std-less callers (e.g. migrate) skip this block entirely.
@@ -1077,8 +1115,11 @@ def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> bool:
     """Link ``workspaces/<name>`` → an external member's *target*; True iff created.
 
     ⚑ An occupied leaf (dir, file or link) is left alone — a relocation re-runs this after
-    it retires the old in-tree leaf that held the spot.
+    it retires the old in-tree leaf that held the spot.  A null ``workset.workspaces`` has no
+    dir to link in, so the member connects without one (Q96).
     """
+    if workset_workspaces_nulled(ws.root):
+        return False
     ws.workspaces_dir.mkdir(parents=True, exist_ok=True)
     link = ws.workspaces_dir / name
     if link.exists() or link.is_symlink():

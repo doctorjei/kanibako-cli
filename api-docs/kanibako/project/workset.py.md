@@ -34,6 +34,8 @@ _VAULT_RW_LEAF = f'{_VAULT_LEAF}/{bootstrap.RW_PATH}'
 ```
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
 def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
+def workset_workspaces_nulled(workset_root: Path) -> bool
+def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool=False) -> None
 def resolve_workset_boxes(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
 def resolve_workset_logs(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path | None
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
@@ -52,7 +54,8 @@ def list_worksets(std: StandardPaths) -> dict[str, Path]
 def default_workset(std: StandardPaths) -> Workset
 def resolve_workset_name(name: str, std: StandardPaths) -> Workset
 def delete_workset(name: str, std: StandardPaths, *, remove_files: bool=False) -> Path
-def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False) -> WorksetProject
+def source_in_tree(ws: Workset, source_path: Path) -> bool
+def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False) -> WorksetProject
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> bool
 def release_project(ws: Workset, name: str) -> WorksetProject
 def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, Path, Path] | None=None) -> None

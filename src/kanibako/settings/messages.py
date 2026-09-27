@@ -109,6 +109,18 @@ ERR_WORKSET_WS_NOT_BOX = ("%s is a workset, not a single project box. Name a pro
                           "under that workset.") # ⚑ the name TWICE — two args, one value
 ERR_WORKSET_NOT_IN_BOX = ("Inside workset '%s' but not in a specific project workspace. Change " +
                           "to a project directory under %s/.") # workset name, workspaces dir
+# ⚑ A null ``workset.workspaces`` HAS a meaning (no workspace dir, spec §2c), unlike the
+# null path keys ERR_CONFIG_NULL_PATH refuses — so this names what cannot be created there.
+ERR_WORKSET_NULL_WORKSPACES = ("%s sets workset.workspaces to null, so it has no workspace " +
+                               "directory and cannot hold %s.\nConnect a directory outside " +
+                               "it instead, delete that line to use the default, or set the " +
+                               "path you mean.") # the workset.yaml path, what was refused
+# ⚑ The STANDALONE face: a lone box's root has no "outside" member to connect, so the cure
+# is the key alone (``refuse_null_workspaces(..., standalone=True)``).
+ERR_STANDALONE_NULL_WORKSPACES = ("%s sets workset.workspaces to null, so this standalone box has " +
+                                  "no workspace directory and cannot hold %s.\nDelete that line " +
+                                  "to use the default, or set the path you mean.")
+                                                    # the workset.yaml path, what was refused
 
 # The `~/.shell.d/*.sh` user/template extension point for a box's INTERACTIVE shell.
 # ⚑ INTERACTIVE ONLY — it never reaches the agent; use `env.<VAR>` / `secret_path` for that.

@@ -1956,6 +1956,10 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         from kanibako.launch import box_identity
         box_identity.validate_standalone_name(requested_name,
                                               registry_store.standalone_box_names(std.registry))
+        # ⚑ A null ``workset.workspaces`` in a pre-existing root file: no workspace dir to
+        # create (Q96), refused here, before the first write, not at the later mkdir.
+        from kanibako.project.workset import refuse_null_workspaces
+        refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True)
         # ⚑ The WORKSET CANON tier, stamped CANON-ONLY.  ``workset.canon`` is UNIFORM
         # IN EVERY MODE (spec ``:962``) so a lone box has one; ``workset.template`` is
         # <None> in standalone (spec ``:936``), so the template half is NOT stamped —

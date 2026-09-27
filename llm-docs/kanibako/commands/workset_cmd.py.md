@@ -620,7 +620,8 @@ Unregister a workset (never the default); refuses a workset with members unless 
 def run_connect(args: argparse.Namespace) -> int
 ```
 Register an externally-existing project dir as a member, inside the J2 write-ahead bracket. See
-"`connect`: the J2 write-ahead journal".
+"`connect`: the J2 write-ahead journal". An in-tree source under a null `workset.workspaces` is
+refused BEFORE the bracket (`refuse_null_workspaces`), so the refusal leaves no pending entry.
 
 ```python
 def run_disconnect(args: argparse.Namespace) -> int
