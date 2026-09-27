@@ -2865,20 +2865,19 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
         )
         assert not msg.startswith("Error:"), msg
 
-    def test_box_shell_still_refuses_by_name(self, tmp_path):
-        """``box.shell``'s default is ``""`` — a SUPPRESSION, so it stays unset.
+    def test_box_shell_resolves_as_a_present_none(self, tmp_path):
+        """``box.shell``'s declared ``<None>`` is floored PRESENT, so ``@box.shell`` resolves.
 
-        The ``""`` drop is ``build_launch_snapshot``'s own rule and
-        ``box_scalar_defaults_floor`` applies it, so an unset ``@box.shell`` refuses BY
-        NAME rather than resolving to blank (spec §2b: ``box.shell | <None>``).
+        Spec §2b ``box.shell | <None>`` and §0: a whole-value ref to a present ``<None>``
+        is ``<None>``, not a dangling ref.  ``box_scalar_defaults_floor`` supplies it.
         """
         f = tmp_path / "box.yaml"
         msg = set_config_value(
             "box.env.SH", "@box.shell", config_path=f,
             command_scope=ConfigLevel.box,
         )
-        assert msg.startswith("Error:"), msg
-        assert "box.shell" in msg
+        assert not msg.startswith("Error:"), msg
+        assert load_doc(f)["box"]["env"]["SH"] == "@box.shell"
 
     def test_config_data_still_resolves_through_the_foundation(
         self, config_file, tmp_path,

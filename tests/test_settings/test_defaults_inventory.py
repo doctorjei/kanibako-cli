@@ -85,13 +85,10 @@ LABEL_TO_CONFORMANCE_CLASS: dict[str, str] = {
     # ⚑ MOVED OUT of "path join at use" (2026-08-25) when the family stopped being a
     # join and started being seven resolved keys; the conformance file pins it now.
     "channels/channels.py (channel key derivation)": "pinned",
-    # ⚑⚑ THE ``built-in (path join at use)`` LABEL IS GONE (2026-08-29) and its
-    # ``"exempt"`` line with it. Its last member, ``workset.workspaces``, moved to the
-    # label below when ``settings_launch.workset_anchor_floor`` gained the named/standalone
-    # arm and ``commands/start.py`` started handing it the resolved dir — so "no literal
-    # anywhere to compare the manifest to", the label's whole reason, stopped being true
-    # of the last row that claimed it. **No "exempt" survives that label.**
-    "project/workset.py (workspaces key resolution)": "pinned",
+    # ⚑⚑ THE ``built-in (path join at use)`` AND ``project/workset.py (workspaces key
+    # resolution)`` LABELS ARE GONE. ``workset.workspaces`` left the second 2026-09-27,
+    # when the anchor floor started supplying its PRIMARY ``<None>`` (Q82), so the
+    # derived anchor-floor group holds it. **No "exempt" survives either label.**
     # The helper-hub SPAWN BUDGET pair (2026-09-19) — PINNED: the floor installs a real
     # literal and the in-box spawn fallback derives from the same table, so there are two
     # values to compare and a reason to assert they are one.
@@ -221,15 +218,11 @@ class TestSourcePartition:
         # existing box can resolve it" is.**
         # ⚑ Its standalone arm is ``<None>`` and stays an ABSENCE, so this ``mode="primary"``
         # probe sees it while standalone does not.
-        # ⚑⚑ STILL 10 AFTER ``workset.workspaces`` JOINED THE FLOOR (2026-08-29), AND THE
-        # NUMBER NOT MOVING IS THE EVIDENCE. That key is the MIRROR of the three above —
-        # real NAMED and STANDALONE arms, ``null`` at PRIMARY — so a ``mode="primary"``
-        # probe must not see it, and ``workset_anchor_floor`` REFUSES a primary value
-        # rather than dropping one. It is classified under its DERIVER
-        # (``project/workset.py (workspaces key resolution)``), the way the channel family
-        # is; if it ever appears here, the primary arm has been conformed to the code and
-        # the manifest's ruled ``null`` has been overwritten.
-        assert sizes["settings_launch.py (anchor floor)"] == 10
+        # ⚑ 10 → 11 (2026-09-27): ``workset.workspaces`` joined, because the anchor floor
+        # now supplies its PRIMARY ``<None>`` as a present ``None`` (Q82) and this probe
+        # runs at ``mode="primary"``. Its NAMED/STANDALONE arms are still the resolved dir
+        # the launch hands the floor.
+        assert sizes["settings_launch.py (anchor floor)"] == 11
         assert sizes["settings_launch.py (auth floor)"] == 6
         # ⚑ WIDENED 4 → 5 (2026-09-08): ``agent.default.label``, the spec §2d description
         # leaf, declared in ``agent_default:`` beside the other four behavior scalars.

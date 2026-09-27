@@ -165,6 +165,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box set` and the other `set` verbs accept a reference to `@box.shell` instead of refusing it as
+  dangling.**
+  `box.shell` declares `<None>` as its default (spec §2b), but nothing supplied it, so a setting
+  such as `box.env.SH=@box.shell` stopped `set` with `dangling @-reference '@box.shell' (no such
+  config key in the keyspace)`. The default is now supplied, and `set` resolves the reference to
+  `<None>`. A `box.shell` you set still wins, and an unset `box.shell` still auto-detects the
+  login shell.
+
 - **A setting set to `null` inside a path no longer turns the path into one under the host's
   root.** A reference embedded in a longer value rendered a `null` key as an empty string, so
   `@workset.auth.path/x` became `/x`, and the shared-workset vault source

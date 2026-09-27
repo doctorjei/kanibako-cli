@@ -1881,15 +1881,28 @@ where = { id_matches = '^meta\.box\.(auth\.workset_path|agent\.auth\.share_suppo
 
 # FACT: the box scalars' defaults are `config.box_scalar_defaults_floor`'s, the
 # one recipe both the launch resolve and the set-time probe fold -- `box.image`,
-# `box.share_images`, `box.enable_vault`.
-# ⚑ `box.shell` is not here: the floor suppresses its `""` by design, and its row
-# is the E3 `<None>` exemption. `workset.skip_kuid_check` is `workset-anchor-floor`'s.
+# `box.share_images`, `box.enable_vault`, and `box.shell`'s `<None>` as a present
+# `None`. `workset.skip_kuid_check` is `workset-anchor-floor`'s.
 [[registry]]
 name = "box-scalar-floor"
 kind = "yaml-mapping"
 source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
-where = { id_matches = '^box\.(image|share_images|enable_vault)$' }
+where = { id_matches = '^box\.(image|share_images|enable_vault|shell)$' }
+
+# FACT: `workset.workspaces`' three arms are what the launch hands and the anchor
+# floor supplies -- PRIMARY the present `None` the floor installs itself, NAMED and
+# STANDALONE the dir `settings_launch._workset_workspaces_floor_value` resolves.
+# AUTHORITY: `declared`; the cell is the spec §2c per-mode map, the floor is on trial.
+# CATCHES: the primary `None` omitted or replaced by a path; a named/standalone leaf
+# respelled (`workspaces` plural vs `workspace` singular); the resolved dir composed
+# off the wrong root.
+[[registry]]
+name = "workset-workspaces"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^workset\.workspaces$' }
 
 # FACT: the `agent.default.*` BEHAVIOR rows are `core-defaults.yaml`'s
 # `agent_default:` table, read by `core_defaults.behavior_defaults`.
@@ -3622,6 +3635,32 @@ for key, value in sorted(box_scalar_defaults_floor().items()):
     print(f"kanibako-box-scalar: {key}={json.dumps(value)}")
 """]
 extract = '(?m)^kanibako-box-scalar: ([^\s=]+)=(.+)$'
+field = "default"
+format = "json"
+authority = "declared"
+
+# ⚑ THE ROOT IS `kinemata_views.REF_WORKSET_PATH`, so the deriver joins its leaf onto
+# the manifest's own `@meta.workset.path` and prints the declared formula when it
+# composes the declared dir. PRIMARY passes no root: the floor supplies its arm.
+[[parity]]
+registry = "workset-workspaces"
+command = ["{python}", "-c", """
+import json
+from kanibako.settings.settings_launch import (
+    _BOX_MODES, _workset_workspaces_floor_value, workset_anchor_floor,
+)
+from kinemata_views import REF_WORKSET_PATH, every_mode_cell
+floors = {}
+for mode in _BOX_MODES:
+    root = None if mode == "primary" else REF_WORKSET_PATH
+    floor = workset_anchor_floor(
+        mode=mode, workspaces=_workset_workspaces_floor_value(mode, root),
+    )
+    floors[mode] = {"workset.workspaces": floor["workset.workspaces"]}
+for key, cell in sorted(every_mode_cell(floors).items()):
+    print(f"kanibako-workspaces: {key}={json.dumps(cell)}")
+"""]
+extract = '(?m)^kanibako-workspaces: ([^\s=]+)=(.+)$'
 field = "default"
 format = "json"
 authority = "declared"
