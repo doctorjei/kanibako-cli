@@ -229,18 +229,17 @@ A workset spans multiple boxes and agents, so there is no single agent to config
 
 ### Cascade threading
 
-Both the RESET and the SET arms pass `cascade_system_path=std.settings` and
-`cascade_workset_path=ws_config`, and neither passes a box scope — there is no box at the workset
-command level.
+Both arms pass `cascade_system_path=std.settings`, and neither passes a box scope — there is no box
+at the workset command level.
 
-* **RESET** needs it so the cleared-message can honestly name the now-effective value and its
-  source tier.
-* **SET** needs it for a CATEGORY set's set-time E3 probe (Jei (b), 2026-06-29): an `@system.*` or
-  lower-scope ref in the new value must resolve here exactly as it will at launch.
-
-The workset is the COMMAND SCOPE, so `ws_config` lands in the cascade's workset slot and is passed
-twice — once as the write target (`config_path`) and once as that cascade rung
-(`cascade_workset_path`).
+* **RESET** also passes `cascade_workset_path=ws_config`, so the cleared-message can honestly name
+  the now-effective value and its source tier.
+* **SET** names the WORKING SET as its target (`std=std, ws=ws`, spec §2a, "Build the full cascade
+  snapshot for the COMMAND's target"): `set_config_value` builds its `resolve_inputs(WORKSET)`, so
+  the system file, the workset settings file and every workset anchor (`meta.workset.path`,
+  `meta.runtime.ws_root`, the auth chain) resolve here as at launch, and every `@meta.box.*` anchor
+  is OMITTED — a value that needs one is refused as a dangling reference, never judged against a
+  fabricated box.
 
 ## Shares (`workset.bindings.{ro,rw}`)
 
@@ -452,8 +451,8 @@ named both land on `ws.root` here; standalone cannot reach this noun at all (`wo
 
 ⚑ **This listing no longer floors the anchor itself.** It comes from `resolve_inputs`' WORKSET
 floors (`_workset_floors`), the sequence a member box's launch also runs, with
-`meta.runtime.ws_root` and every `workset.*` layout anchor beside it. `config_interface._meta_scope_anchor_floor` is the
-one remaining separate carrier, at set time (S1 row k, a later pass).
+`meta.runtime.ws_root` and every `workset.*` layout anchor beside it. `workset set` takes the same
+floors at set time (`config_interface._set_time_target`), so there is no separate carrier left.
 
 `tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor` pins it, and pins it by
 DERIVATION now: it drives this display with a binding sourced at every key the launch floor answers

@@ -380,13 +380,16 @@ the positional by `resolve_subject_value` (same → warn, differ → error).
 `box_workset_settings_paths` pair, so a box-scope write and the read that follows it CANNOT
 disagree. The box's docker `env` FILE tier is GONE (R-39/RQ-1); the env family is the settings key
 `box.env.<VAR>`, which lives in that same pair's file. The `reset` arm takes both halves from that
-one pair so it clears exactly the file `set`/`get` address, and the `set` arm reuses
-`workset_path` rather than deriving a second one.
+one pair so it clears exactly the file `set`/`get` address.
 
-`reset` and `set` both thread the FULL launch cascade — every scope's settings file plus the active
-agent name — so a cross-scope `@`-ref in a new value resolves at set time exactly as it would at
-launch, and so `reset`'s cleared-message can honestly name the now-effective value and its source
-tier. The active agent name is resolved best-effort: it selects the `agent.<active>.*` sub-table
+`set` names the BOX as its target (`std=std, proj=proj`, spec §2a): `set_config_value` builds the
+box's own `resolve_inputs`, so its settings files, its real `@meta.box.path` and its workset anchors
+come from the resolve the launch runs, never from the file positions. The caller still threads its
+tier files (`cascade_workset_path`, `cascade_box_path`), so the target-less fallback reads the same
+files as the target and differs only by the floors. `reset` threads the same pair so its
+cleared-message can honestly name the now-effective value and its source tier. The create-time
+`--private` and `--agent` writes name the box being created the same way, tier pair included, with no
+agent selected yet. The active agent name is resolved best-effort: it selects the `agent.<active>.*` sub-table
 the OTHER cascade files may carry, and a resolution failure just leaves it empty, degrading the
 message to the cleared-only form. Neither call passes `cascade_agent_path`, so it defaults to
 `None`; the per-agent file stores behavior FLAT, so `assemble_levels` reads no category subtree

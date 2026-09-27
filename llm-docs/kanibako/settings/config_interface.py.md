@@ -257,8 +257,29 @@ into one would be a behavior change on one of them, and which one is correct is 
 not a refactor's call.
 
 
-```_category_set_lookups(config_path, *, canonical, command_scope=None, system_settings_path=None, system_path=None, agent_path=None, workset_path=None, box_path=None, agent_name="") -> tuple[Callable, Callable]```
-The set-time lookups over ONE merged cascade snapshot: `(resolves, raw_bind)`.
+```_set_time_target(*, std, proj, ws, agent_name, system_path) -> LaunchInputs | None```
+The COMMAND's target as `settings_launch.resolve_inputs` builds it (spec §2a, "Build the full
+cascade snapshot for the COMMAND's target"): *proj* ⇒ `BOX`, *ws* ⇒ `WORKSET`, neither ⇒
+`SYSTEM`. The caller passes the objects it holds; nothing is re-loaded here. `None` without *std*.
+
+```_set_time_snapshot(*, target, agent_name, agent_path, config_path=None, command_scope=None, system_settings_path=None, system_path=None, workset_path=None, box_path=None) -> tuple[KeyStore, ResolveCtx]```
+The set-time cascade, merged and not expanded, with the `ResolveCtx` to expand it. With a *target*
+its tier files (`system_path`, `cascade_workset_path`, `cascade_box_path`), its `ctx` and its four
+floor fragments (`auth_chain`, `meta_runtime`, `meta_identity`, `workset_anchor`) are what the
+snapshot reads. ⚑ The fold restates `settings_launch.build_launch_snapshot`'s floor order — a second
+carrier, kept because that builder expands strictly and runs `refuse_read_time_faults`, while set
+time needs the merged UNEXPANDED snapshot to splice the candidate in and expand leniently, and the file arguments after *agent_path* are unused.
+Without one, the command's own file is backfilled into its slot (below) and no box or working-set
+anchor exists.
+
+```_target_scope_anchors(target, *, agent_path, agent_name) -> dict[str, object]```
+The `@meta.{workset,box}.path` directories *target*'s own snapshot resolves, read from the same
+snapshot the E3 probe judges, so a scope file that moves a root (`workset.boxes`) moves the anchor
+the [R147] refusal names. A root the target lacks, or that does not resolve, is absent; a cascade
+that cannot be assembled yields `{}` (the refusal is issued either way, naming the ref spelling).
+
+```_category_set_lookups(config_path, *, canonical, command_scope=None, system_settings_path=None, system_path=None, agent_path=None, workset_path=None, box_path=None, agent_name="", target=None) -> tuple[Callable, Callable]```
+The set-time lookups over ONE merged cascade snapshot (`_set_time_snapshot`): `(resolves, raw_bind)`.
 
 Built for a `config set` at *config_path* (the COMMAND-scope file): the E3 RESOLUTION probe (Q9,
 spec §2a) AND the raw-cascade `Bind` lookup (F10 — the must-exist-in-the-CASCADE check), both
@@ -489,7 +510,7 @@ site the write side uses is what makes `_read_dest`'s one documented divergence 
 docstring nothing exercised.
 
 
-```set_config_value(key, value, *, config_path, env_path=None, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None) -> str```
+```set_config_value(key, value, *, config_path, env_path=None, system_settings_path=None, cascade_system_path=None, cascade_agent_path=None, cascade_workset_path=None, cascade_box_path=None, cascade_agent_name="", command_scope=None, agents_root=None, std=None, proj=None, ws=None, target_error=None) -> str```
 Write a config value to the appropriate store; returns a message or an error, NEVER raises.
 
 *config_path* is the `box.yaml`/`workset.yaml` (for box/workset) or `kanibako.cfg` (for system).
@@ -505,6 +526,21 @@ here so a cross-scope `@`-ref resolves at set-time exactly as it would at launch
 additive; absent, the command-scope file is still placed in its true slot. (The older wording
 said they are "only consulted on the category path" — that has not been true since DS-BL1 = (a)
 retired the category set route; `_probes_at_set_time` decides which keys reach the probe now.)
+
+*std* with *proj* (a box), *ws* (a working set) or neither (the system scope) names the COMMAND's
+TARGET (spec §2a): `_set_time_target` builds its `resolve_inputs` once, before the value checks, and
+the [R147] anchor and the E3 probe both read that target's snapshot and its tier files. `box set` and the two create-time writes pass the box,
+`workset set` the working set, `system set` and `agent set` the system scope. A `--null` builds no
+target (there is no value to resolve). A target that cannot be built (`KanibakoError`, e.g. a
+dotted `pref:` entry in the box's own file) does NOT refuse the write — spec §2a keeps `config set`
+usable to fix a broken config — so the value is judged against the TARGET-LESS snapshot, which can
+only refuse more, never accept more; a refusal then ends with the build error, naming why an anchor
+was missing. ⚑ That holds because the caller still threads its tier files, so the target-less
+fallback reads the same files as the target and differs only by the floors — a box caller that
+dropped its workset tier let a system-level value show through a dangling workset one, and the
+fallback accepted what the box refuses. `system set`, which does not hold `std`, passes the error from loading it as
+*target_error* and gets the same rule. ⚑ `reset_config_value` runs no set-time value
+validation, so it takes no target.
 
 *command_scope* is the scope the `config set` was issued at (block B4). It drives the §0
 directional-write guard (`_scope_direction_error`): a write is permitted for a key of the command
@@ -573,19 +609,20 @@ The order is deliberate at every step.
 
 ### The `@meta.{workset,box}.path` anchors, and why the refusal needed them
 
-`_meta_scope_anchor_floor` is folded into the set-time snapshot beside `meta_agent_path_floor`,
-one scope out, and for the identical reason: a value spelled against a declared root DANGLES at
+The command's target supplies them (`_set_time_target` → `resolve_inputs`), for the reason
+`meta_agent_path_floor` is in the snapshot: a value spelled against a declared root DANGLES at
 set time unless the root is floored. It went in with [R147]'s set-time half because the refusal
 OFFERS `@meta.workset.path/<value>` as the cure — `MIGRATION.md` § *A bare relative path in a
 settings key is refused* names it as the first row of the replacement table — and the E3 probe
 was answering "dangling @-reference" to it. A rule that bans a form and then refuses its own
 replacement has not removed the guess, it has removed the key.
 
-⚑ **It is not a second derivation of either root.** Both tiers' settings files are DECLARED as
-`<that root>/<filename>` (`paths.workset_settings_path`, `paths._box_settings_files`), so a
-threaded tier file NAMES its root by its parent. A tier the command did not thread yields
-nothing — `system set box.canon=x` names no box — and the refusal message then falls back to the
-ref SPELLING, dropping its `, spelled '…'` clause so the line does not say the same thing twice.
+⚑ **Never read off a settings file's parent.** Spec §2a builds the snapshot for the COMMAND's
+target, so the roots come from that target's own resolve. A root the target lacks is OMITTED —
+`system set box.canon=x` names no box, `workset set` no box either — and the refusal message then
+falls back to the ref SPELLING, dropping its `, spelled '…'` clause so the line does not say the
+same thing twice. A write that names no target (a programmatic call without *std*) has no box or
+working-set anchor at all.
 
 ### `--null` route coverage
 

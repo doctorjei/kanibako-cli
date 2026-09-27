@@ -481,6 +481,22 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # ``@meta.agent.*.path``.
         # ⚑ CANONICAL FIRST: the node segment is spelled ``+`` on the command line and
         # ``℘`` in the keyspace, and the setter parses the CANONICAL form.
+        # ⚑ THE SYSTEM SCOPE IS THE TARGET (spec §2a), and its resolve needs ``std``,
+        # which this verb deliberately does not hold (the foundation note above). It is
+        # loaded HERE for the set-time resolve alone. A stored value that stops it
+        # loading is handed over as *target_error*, and the setter applies its one rule
+        # for a target that cannot be built: validate without it, so the ``set`` that
+        # REPAIRS that value still runs.
+        from kanibako.errors import KanibakoError
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        set_std = None
+        set_std_error: str | None = None
+        try:
+            set_std = load_std_paths(load_config(cf))
+        except KanibakoError as exc:
+            set_std_error = str(exc)
         msg = set_config_value(
             key, value, config_path=cf,
             system_settings_path=ssp,
@@ -488,6 +504,8 @@ def _run_system_config(args: argparse.Namespace) -> int:
             cascade_agent_name=agent_node_of(resolve_key(key)),
             command_scope=ConfigLevel.system,
             agents_root=agents_root,
+            std=set_std,
+            target_error=set_std_error,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

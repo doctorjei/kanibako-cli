@@ -159,6 +159,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings file and the agent file are still not read, since a working set names neither. See
   MIGRATION.md, *`workset show --effective` exits 1 on a working set file it cannot resolve*.
 
+- **`set` validates a new value against the settings its command's box, working set, or system
+  scope resolves at launch.** `box set`, `workset set`, `system set`, and `agent set` refused a value
+  spelled against an anchor the launch resolves, such as `box set box.canon=@meta.box.home/canon`
+  or `workset set <ws> workset.canon=@meta.runtime.ws_root/canon`, as a dangling reference. The
+  check now resolves the value through the box's, the working set's, or the system scope's own
+  launch resolve, so those values are accepted and the bare-relative refusal names the root that
+  resolve gives. A working set names no box, so `workset set` still refuses a value that needs a
+  `@meta.box.*` anchor. The `--private` and `--agent` settings that `box create` writes are
+  checked the same way.
+
 - **`box move`, `box convert`, and `box remap` report a failed file operation as an `Error:`
   line, not a Python traceback.** A permission, disk-full, or other file-system error during the
   relocation, or a copy that could not copy some entries, escaped all three commands as a

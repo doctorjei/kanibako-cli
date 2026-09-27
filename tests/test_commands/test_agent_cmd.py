@@ -397,6 +397,23 @@ class TestRunConfig:
         cfg = load_agent_config(path)
         assert cfg.state["model"] == "sonnet"
 
+    def test_config_set_resolves_against_the_system_scope(self, agent_env, monkeypatch):
+        """``agent set`` writes the global per-node store, so its set-time target is
+        the SYSTEM scope (spec §2a): it hands over ``std`` and names no box or working set."""
+        from kanibako.commands.agent_cmd import run_set
+        from kanibako.settings import config_interface
+
+        seen: dict = {}
+
+        def spy(*args, **kwargs):
+            seen.update(kwargs)
+            return "Set spied"
+
+        monkeypatch.setattr(config_interface, "set_config_value", spy)
+        assert run_set(argparse.Namespace(agent_id="claude", key_value="model=sonnet")) == 0
+        assert seen["std"] is not None
+        assert seen.get("proj") is None and seen.get("ws") is None
+
     def test_config_set_access_accepts_every_tier(self, agent_env, capsys):
         """AUTH-CRITICAL parity: ``agent set <agent> access=<tier>`` is accepted
         and written VERBATIM to the flat agent leaf — the SAME happy path the

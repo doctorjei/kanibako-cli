@@ -838,15 +838,15 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # ⚑ Full launch cascade for a CATEGORY set's set-time E3 probe: the system file
-        # must be threaded or an @system.* ref in the new value resolves differently here
-        # than it will at launch. There is no box scope at the workset command level.
+        # ⚑ The WORKING SET is the target (spec §2a): ``resolve_inputs`` builds its full
+        # cascade — the system file, ``workset.yaml`` and the workset anchors. It names
+        # no box, so every ``@meta.box.*`` anchor is OMITTED, never fabricated.
         msg = set_config_value(
             key, value,
             config_path=ws_config,
             cascade_system_path=std.settings,
-            cascade_workset_path=ws_config,
             command_scope=ConfigLevel.workset,
+            std=std, ws=ws,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
