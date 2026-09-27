@@ -13,13 +13,6 @@
     },
     {
       "registry": "canonical",
-      "entry": "BoxMode",
-      "antipattern": "\"primary\",\\s*\"named\",\\s*\"standalone\"",
-      "path": "src/kanibako/settings/settings_launch.py",
-      "text": "_BOX_MODES: frozenset[str] = frozenset({\"primary\", \"named\", \"standalone\"})"
-    },
-    {
-      "registry": "canonical",
       "entry": "CANON_CHAPTER_LEAF",
       "antipattern": "\"canon/handbook\"",
       "path": "src/kanibako/launch/templates.py",

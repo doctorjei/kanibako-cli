@@ -949,13 +949,8 @@ kind = "code-patterns"
   clauses = ["§2"]
   note = "containment order; one declared sequence, not a literal per site"
 
-  # The box.mode tokens. The enum at paths.py:55 is the home.
-  #
-  # ⚑ Two sites match and they are NOT the same finding.
-  # `defaults_inventory.py:65` is a plain copy. `settings_launch.py:459` is a
-  # deliberate exception -- a floor module with no module-level kanibako
-  # imports -- and belongs in the baseline with that reason, not in an
-  # `exclude` line that would also hide the next real one.
+  # The box.mode tokens. The `BoxMode` enum in paths.py is the home;
+  # `settings_launch._BOX_MODES` is derived from it, not spelled again.
   [[registry.entry]]
   id = "BoxMode"
   antipatterns = ['"primary",\s*"named",\s*"standalone"']
@@ -2387,8 +2382,8 @@ where = { id_matches = '^(system|agent\.<agent>)\.seeded$' }
 
 # FACT: `meta.runtime.project_type`'s `choices:` are the box modes the code knows,
 # `paths.BoxMode`, and (`-launch`) the set the launch floor guards on,
-# `settings_launch._BOX_MODES` -- one view per carrier, so a mode added to or removed
-# from either one reds.
+# `settings_launch._BOX_MODES`, which is derived from `BoxMode` -- one view per set, so
+# a mode added to or removed from the enum, or a derivation that drops one, reds.
 # UNORDERED: the spec spells the set in two orders (keyspec §1A and §2b).
 [[registry]]
 name = "mode-choices"
@@ -5013,15 +5008,15 @@ extract = '(?m)^kanibako-seed-layer: (\S+)$'
 translate = { pattern = '^agent\.<agent>\.', replacement = 'agent.gemma℘claude.' }
 
 # ⚑ UNORDERED (`access-choices` is the ordered one): the spec spells the set in two
-# orders, so the order is not part of the claim. ONE VIEW PER CODE CARRIER of the set
-# -- `paths.BoxMode` (`mode-choices`), `settings_launch._BOX_MODES` (`-launch`) -- so a
-# mode added to, or removed from, either one reds on its own view.
+# orders, so the order is not part of the claim. ONE VIEW PER SET: `paths.BoxMode` is
+# the one carrier (`mode-choices`); `settings_launch._BOX_MODES` (`-launch`) is derived
+# from it, and its view reds if the derivation drops or invents a mode.
 #   `# mode-choices[-launch]: 1 declared, 1 produced, in agreement, agreeing on
 #   choices.`  `set-valued: 1 declared cell(s) hold a list, compared as sets`  each rc=0
 # NEGATIVE CONTROLS:
 #   code, `BoxMode` gains `foo = "foo"`: `mode-choices` `meta.runtime.project_type:
-#     choices produced 'foo', declared by nothing`; `_BOX_MODES` gaining `"foo"`: the
-#     same finding on `-launch`
+#     choices produced 'foo', declared by nothing`, and `-launch` reds the same way
+#     through the derivation
 #   code, `_BOX_MODES = frozenset({"primary", "standalone"})`: `-launch` reds on the
 #     missing `named`; `mode-choices` rc=0
 #   manifest, the choices lose `named`: `choices produced 'named', declared by nothing`
