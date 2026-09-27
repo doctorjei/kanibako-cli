@@ -1377,9 +1377,10 @@ keys:
   # agent.codex.label | "Codex CLI" and agent.goose.label | "Goose Harness", and each
   # belongs in that plugin's `behavior:` floor, reaching the keyspace through
   # agent.<agent>.<key>. ⚑ ALL THREE SHIP since 2026-09-15 (D8b); an agent whose plugin
-  # declares none reads this fallback. The pseudo-agent `agent.shell.label | "Box Shell"`
-  # has no plugin; its carrier is the `agent.shell.*` block below (D2: a `shell`
-  # node the code now materializes — store dir, cascade slot, tier floor).
+  # declares none reads this fallback. The pseudo-agent
+  # `agent.shell.label | "Command Line Shell (shell)"` has no plugin and does not read
+  # this fallback; its carrier is the `agent.shell.*` block below (D2: a `shell` node
+  # the code now materializes — store dir, cascade slot, tier floor).
   # ⚑ NOT `meta.agent.<agent>.name`, which is the STORE DIR (a machine identity, RO).
   # ⚑ The agent FILE's non-key `name` field is GONE (D8b): `label` is the ONLY carrier of
   # an agent's description now, and a stored `name:` refuses the launch by name.
@@ -1637,7 +1638,7 @@ keys:
     scope: agent
     type: str
     set: cli+file
-    default: "Box Shell"
+    default: "Command Line Shell (shell)"
     note: "the plain-shell box's description (fence literal, NOT the all-agents
            fallback). Installed by the shell tier floor
            (`core-defaults.yaml agent_shell:`), so a shell pick reads it."

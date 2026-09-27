@@ -171,7 +171,7 @@ class TestAgentVerbsAddressTheShellTier:
     def test_show_effective_reads_the_shell_tier_floor(self, capsys):
         """Nothing set: the display verb reports the fence's own ``label``."""
         assert _kb("agent", "show", "shell", "--effective") == 0
-        assert "label = Box Shell" in capsys.readouterr().out
+        assert "label = Command Line Shell (shell)" in capsys.readouterr().out
 
 
 

@@ -158,7 +158,7 @@ def test_the_SHELL_label_ignores_a_users_agent_default_label(tmp_path: Path):
         behavior_floor=behavior_defaults(),
         default_categories=shell_tier_defaults(),
     )
-    assert effective_behavior(snap, active_agent="shell")["label"] == "Box Shell"
+    assert effective_behavior(snap, active_agent="shell")["label"] == "Command Line Shell (shell)"
     assert effective_behavior(snap, active_agent="other")["label"] == "Mine"
 
 
@@ -3174,7 +3174,7 @@ def test_the_shell_LAUNCH_shape_mirrors_the_shell_tier_alone():
     assert "auth" in mirror
     assert dict.get(mirror, "model") is None     # never the agent.default "opus"
     assert dict.get(mirror, "endpoint") is None
-    assert mirror.label == "Box Shell"           # the shell tier's own leaf
+    assert mirror.label == "Command Line Shell (shell)"           # the shell tier's own leaf
     assert mirror.allow_helpers == "true"
     # NOTHING consumes these leaves: the only runtime reader under
     # meta.box.agent is auth.share_support, which the FLOOR supplies.
@@ -3194,7 +3194,7 @@ def _shell_and_default_snap():
             "env": {"TERM": "xterm-default"},
             "bindings": {"ro": {"/box/d": BindEntry("/host/d", None)}},
         },
-        "shell": {"label": "Box Shell", "env": {"FOO": "shell"}},
+        "shell": {"label": "Command Line Shell (shell)", "env": {"FOO": "shell"}},
         "claude": {"label": "Claude"},
     }})
 
@@ -3217,9 +3217,35 @@ def test_a_shell_pick_never_reads_agent_default(key):
 def test_shell_discovery_omits_default_only_leaves():
     """``effective_behavior``'s discovery unions the shell tier ALONE."""
     snap = _shell_and_default_snap()
-    assert effective_behavior(snap, active_agent="shell") == {"label": "Box Shell"}
+    assert effective_behavior(snap, active_agent="shell") == {"label": "Command Line Shell (shell)"}
     claude = effective_behavior(snap, active_agent="claude")
     assert claude["model"] == "sonnet" and claude["label"] == "Claude"
+
+
+def test_the_env_twin_check_reads_only_the_tiers_the_pick_reads():
+    """``start._declared_agent_env_key`` names an ``agent.default.env`` entry only for a
+    TRUE agent: a shell box's pick never reads it, so it cannot be a twin there.
+    (Mutation: check ``("shell", "default")`` for ``shell`` → the first assert REDs.)"""
+    from kanibako.commands.start import _declared_agent_env_key
+
+    snap = _shell_and_default_snap()
+    assert _declared_agent_env_key(snap, "shell", "TERM") is None
+    assert _declared_agent_env_key(snap, "shell", "FOO") == "agent.shell.env.FOO"
+    assert _declared_agent_env_key(snap, "claude", "TERM") == "agent.default.env.TERM"
+
+
+def test_a_shell_boxs_declared_bool_floor_is_its_own_tier(monkeypatch):
+    """The launch's None-guard floor for a shell box is ``agent.shell.<key>``, never
+    ``agent.default.<key>`` (§2d); a true agent keeps the default's.  The two tables are
+    given DIFFERENT values so the read is told apart (they ship equal)."""
+    from kanibako.commands.start import _declared_behavior_bool
+    from kanibako.settings import core_defaults
+
+    monkeypatch.setattr(core_defaults, "shell_tier_default", lambda key: "false")
+    monkeypatch.setattr(core_defaults, "behavior_default", lambda key: "true")
+    assert _declared_behavior_bool("allow_helpers", "shell") is False
+    assert _declared_behavior_bool("allow_helpers", "Shell") is False  # folds, [R173]
+    assert _declared_behavior_bool("allow_helpers", "claude") is True
 
 
 def test_shell_category_entries_carry_no_agent_default_entry():

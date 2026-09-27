@@ -195,7 +195,33 @@ class TestRunInfo:
         capsys.readouterr()
         assert run_info(argparse.Namespace(agent_id="shell")) == 0
         out = capsys.readouterr().out
-        assert "Box Shell" in out, out
+        assert "Command Line Shell (shell)" in out, out
+        assert "Mine" not in out, out
+
+    @pytest.mark.parametrize("cleared", ["", None])
+    def test_a_cleared_shell_label_falls_to_the_shell_floor_not_agent_default(
+        self, agent_env, config_file, capsys, cleared,
+    ):
+        """🛑 §2d: the shell has no ``agent.default`` door.  A system-file
+        ``agent.shell.label`` of ``""`` or ``null`` names no value, and the label falls
+        to the shell's own floor — never to a user's ``agent.default.label``.
+        (Mutation: keep the ``agent.default`` door for ``shell`` → ``Mine`` prints.)"""
+        from kanibako.commands.agent_cmd import run_info
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        dump_doc(std.settings, {"agent": {
+            "default": {"label": "Mine"}, "shell": {"label": cleared},
+        }})
+        write_agent_config(
+            agent_settings_path(agents_dir(agent_env), "shell"), AgentConfig(state={}),
+        )
+        capsys.readouterr()
+        assert run_info(argparse.Namespace(agent_id="shell")) == 0
+        out = capsys.readouterr().out
+        assert "Command Line Shell (shell)" in out, out
         assert "Mine" not in out, out
 
     def test_a_label_stored_EMPTY_still_falls_through_to_the_declaration(

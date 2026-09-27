@@ -195,6 +195,8 @@ class TestTargetWarnings:
             m.target.detect.return_value = None
             m.target.has_binary = False
             m.target.name = "shell"
+            # Production's shell target has no descriptor (conftest's note).
+            m.target.descriptor = None
             _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -268,6 +270,8 @@ class TestTargetWarnings:
             m.target.detect.return_value = None
             m.target.has_binary = False
             m.target.name = "shell"
+            # Production's shell target has no descriptor (conftest's note).
+            m.target.descriptor = None
             rc = _run_container(
                 project_dir=None,
                 entrypoint=None,
@@ -11250,6 +11254,7 @@ class TestALiveShellBoxReattaches(_RunningBoxDriver):
         self._running(m, agent="shell")
         m.resolve_agent.return_value = _sel("shell")
         m.target.name = "shell"
+        m.target.descriptor = None
 
     @pytest.mark.parametrize("flag", [None, "shell", "Shell"])
     def test_a_live_shell_box_reattaches(self, flag, start_mocks):

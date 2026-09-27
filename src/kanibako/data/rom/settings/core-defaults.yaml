@@ -488,7 +488,7 @@ agent_default:
 # exists) and lives in `core_defaults.canon_default_categories` beside the
 # default arm.
 agent_shell:
-  label: "Box Shell"
+  label: "Command Line Shell (shell)"
   access: "full"
   allow_helpers: "true"
   bootstrap: "tmux"

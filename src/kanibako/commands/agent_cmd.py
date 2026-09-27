@@ -623,15 +623,15 @@ def _label_floor(agent_id: str) -> dict[str, object]:
     from kanibako.targets import get_target
     from kanibako.targets.base import descriptor_floor
 
-    floor: dict[str, object] = {
-        f"agent.{AGENT_DEFAULT_SUB}.label": core_defaults.behavior_default("label"),
-    }
     if agent_id == GENERAL_SLOT:
         # ⚑ The built-in's tier declaration (D2): no descriptor to read, so the
         # shell floor's own label IS the declaration — the same artefact the
-        # launch folds, keeping `agent show` and the box in agreement.
-        floor[f"agent.{agent_id}.label"] = core_defaults.shell_tier_default("label")
-        return floor
+        # launch folds, keeping `agent show` and the box in agreement.  No
+        # ``agent.default.label`` floor: only true agents inherit from it (§2d).
+        return {f"agent.{agent_id}.label": core_defaults.shell_tier_default("label")}
+    floor: dict[str, object] = {
+        f"agent.{AGENT_DEFAULT_SUB}.label": core_defaults.behavior_default("label"),
+    }
     try:
         descriptors = get_target(harness_of(agent_id))().setting_descriptors()
     except Exception:  # pragma: no cover - a plugin must not break a display verb
@@ -662,6 +662,8 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
 
     Steps 2 and 3 are §2d's active-over-default pick, cascade first, exactly as
     ``settings_launch.effective_behavior`` makes it, each FLOORED by :func:`_label_floor`.
+    ⚑ The ``shell`` pseudo-agent has no step 3: only true agents inherit from
+    ``agent.default`` (§2d), so its label falls to its own ``agent.shell.label`` floor.
 
     ⚑ THE FLOOR IS PASSED IN, never baked into ``effective_value`` — its other caller (``reset``)
     must name NO built-in default, and that function's docstring says why.
@@ -670,8 +672,8 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     not a box, so there is no workset or box file to read.  A value set at either scope shows
     where it applies — in ``box show``.
 
-    ALWAYS RETURNS A STRING: ``core-defaults.yaml``'s ``agent_default.label`` is declared, so
-    there is always a floor to fall to.  The final floor return covers only the arms
+    ALWAYS RETURNS A STRING: ``core-defaults.yaml``'s ``agent_default.label`` (``agent_shell.label``
+    for the shell) is declared, so there is always a floor to fall to.  The final floor return covers only the arms
     where ``effective_value`` declines to name a value at all — an unreadable path tier, or a
     ``label`` explicitly set to the empty string.
     """
@@ -700,7 +702,10 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
         return stored_leaf_display("label", stored)
 
     floor = _label_floor(agent_id)
-    for sections in (("agent", agent_id), ("agent", AGENT_DEFAULT_SUB)):
+    doors: tuple[tuple[str, str], ...] = (("agent", agent_id),)
+    if agent_id != GENERAL_SLOT:
+        doors += (("agent", AGENT_DEFAULT_SUB),)
+    for sections in doors:
         resolved = effective_value(
             ".".join((*sections, "label")), sections, "label",
             agent_name=agent_id,
@@ -712,9 +717,8 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
         )
         if resolved is not None:
             return resolved[0]
-    return str(floor.get(
-        f"agent.{agent_id}.label", floor[f"agent.{AGENT_DEFAULT_SUB}.label"],
-    ))
+    own = f"agent.{agent_id}.label"
+    return str(floor[own] if own in floor else floor[f"agent.{AGENT_DEFAULT_SUB}.label"])
 
 
 def _stored_rows(

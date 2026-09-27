@@ -4719,7 +4719,10 @@ keep working on a file the launch will not start, so you can see the line before
 - **`kanibako agent info` prints `Label:` where it printed `Name:`**, and `agent show` lists
   `label = …` where it listed `name = …`. Both now show the **resolved** value, in cascade order:
   the agent's own file, then the system file's `agent.<agent>.label`, then its `agent.default.label`,
-  then the plugin's declaration — so the line names a key you can set. ⚑ `kanibako agent get <agent>
+  then the plugin's declaration — so the line names a key you can set. The plain-shell box
+  (`agent info shell`) skips `agent.default.label`, as it skips every `agent.default` value: it
+  reads its own file, then the system file's `agent.shell.label`, then the shipped
+  `Command Line Shell (shell)` (spec §2d). ⚑ `kanibako agent get <agent>
   label` still reads the **stored** value and answers `(not set)` when you have set none; that is
   what `get` means at every noun.
 - **`kanibako agent reset --all <agent>` clears the whole file.** It used to preserve `name`.
@@ -5232,8 +5235,9 @@ be deleted once you have moved your edits.
 that the keyspace never declared, with a second spelling — the `no_agent` target — beside it
 for the same condition. Both were words for one role, and neither was a real settings node.
 The slot is now the `shell` pseudo-agent (spec §2d, "Pseudo-agent(s)"): a declared node, so
-`agent.shell.*` resolves. It holds only the keys the spec's `shell` block lists, and the shell
-tier supplies its own `bootstrap` and `template` (both below). Concretely: the per-agent
+`agent.shell.*` resolves. It holds only the keys the spec's `shell` block lists and reads only
+that block: a pseudo-agent has no `agent.default` backstop, so the shell tier supplies its own
+`bootstrap` and `template` (both below) and every other value it has. Concretely: the per-agent
 settings file for a plain-shell box lives at `<data>/agents/shell/agent.yaml` (`<data>` is
 `$XDG_DATA_HOME/kanibako`, or whatever `config.data` points at), and `$AGENT` inside a
 plain-shell box is now `shell`, not `general`.
