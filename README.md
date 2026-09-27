@@ -760,7 +760,7 @@ self:
   label: "My Claude"        # the agent's description; unset reads the plugin's own
   run_args: ["--verbose"]   # extra CLI args prepended on every launch (omit if none)
   model: "opus"             # agent-specific state knobs (e.g. --model for Claude)
-  access: "permissive"
+  access: "editing"         # permission tier: restricted | editing | full (default)
   env:
     # KEY: "value"          # raw env vars injected into the box
   transform_settings:

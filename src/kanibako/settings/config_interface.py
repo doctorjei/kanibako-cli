@@ -106,6 +106,7 @@ from kanibako.settings.config_keys import (
     ConfigLevel,
 )
 from kanibako.settings.config_io import (
+    count_leaves,
     dump_doc,
     load_doc,
     read_stored_leaf,
@@ -1875,13 +1876,6 @@ def write_system_value(system_settings_path: Path, leaf: str, value: object) -> 
     write_nested_key(system_settings_path, ("system",), leaf, value)
 
 
-def _count_leaves(node: object) -> int:
-    """Count the scalar/leaf entries under a nested-dict *node* (a settings-file table)."""
-    if isinstance(node, dict):
-        return sum(_count_leaves(v) for v in node.values())
-    return 1
-
-
 def _clear_writable_tables(
     path: Path, command_scope: "ConfigLevel | None",
 ) -> int:
@@ -1907,7 +1901,7 @@ def _clear_writable_tables(
         table = data.get(token)
         if not isinstance(table, dict):
             continue
-        removed += _count_leaves(table)
+        removed += count_leaves(table)
         data.pop(token, None)
         dropped = True
     if dropped:
@@ -1951,7 +1945,7 @@ def reset_all(
                 if isinstance(sec, dict):
                     for k in list(sec):
                         remove_nested_key(settings_dest, ("agent", agent), k)
-                        count += 1
+                        count += count_leaves(sec[k])
 
     # ⚑ The nested SCOPE tables and the ``pref:`` table need their own pass: the flat
     # ``load_project_overrides`` one only reaches the ``KanibakoConfig`` dataclass fields.

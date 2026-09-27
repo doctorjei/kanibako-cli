@@ -103,7 +103,8 @@ shape, over a different file. Dropped, not relocated.)* Inside `self:`:
   tier at all**, which is
   written in the SYSTEM file as `agent: default: <category>:`.
 
-**Beside `self:`, nothing is read** — and a non-scope key there REFUSES BY NAME
+**Beside `self:`, nothing is read yet** — the contributed set is ONE constant, `_CONTRIBUTED`, and
+holds `self` alone — and a key there that the cascade neither reads nor drops REFUSES BY NAME
 (`_refuse_stray_roots`, below), because no other audit can see it.
 
 ⚑ **THE FLATTEN (S2) IS WHY THIS IS ONE LIST AND NOT THREE.** `secret_path` flattened at
@@ -415,39 +416,41 @@ Drop every user override from the file at *path*; return the count.
 This was `agent reset --all`'s hand-rolled read-modify-write on the raw document, in a command
 module — the sixth shape site. "Remove all user overrides" is the `self:` root table deleted
 outright — `run_args`, all state keys and every category table go with it — and the file is left
-SPARSE, no default key re-materialized in their place. The COUNT is part of the contract, not a
-detail: **each removed ROOT key counts once**, whatever it holds (a category table counts as the
-one override it is), which is what makes the printed number agree with the other scopes'
-`reset_all`.
+SPARSE, no default key re-materialized in their place. WHICH tables go is `contributed_tables`
+(today the root alone), so the reset clears exactly what the cascade reads. The COUNT is part of the
+contract, not a detail: **each removed LEAF counts once** (`config_io.count_leaves`) — a category
+table counts its entries, a list counts once — the unit every scope's `reset --all` prints.
+
+⚑⚑ **IT IS THE REPAIR DOOR, SO IT REFUSES NOTHING.** It reads `contributed_tables`, never
+`_contribution`: a file carrying a stray top-level key, or an undeclared leaf under `self:`, stops
+`load` and the launch, and `agent reset <node> --all` must still clear it. A stray is not an
+override, so it survives the reset and the next start still names it; the reset's job is the
+overrides. Pinned in `test_agent_cmd.py`.
 
 ⚑ **NOTHING IS EXEMPT, AND THAT IS D8b (2026-09-15).** The one key it used to hold back — `name`,
 the file's non-key identity field, spared from the deletion and left out of the count — is retired,
 and a verb whose whole promise is that it clears the user's settings may not keep one of them. A
 file still carrying a `name:` line loses it here, and the printed number counts it: the count is
-the root table's whole length. The widening is user-visible and recorded in `MIGRATION.md`.
+every leaf of the root table. The widening is user-visible and recorded in `MIGRATION.md`.
 
-⚑ **THE COUNT MOVED AT S2, DELIBERATELY.** The per-VAR arm (each `secret_path` entry counting
-individually, parity with the old flat `env_file` count) only ever fired for entries found INSIDE
-the `<node>` sub-table — a shape the flatten refuses, so it is unreachable. The fixture that used
-to report 5 reports 4, with the reasoning written into the test rather than left as a number that
-changed. ✅ **The `node` branch and the `node` PARAMETER are GONE at S3**, with the write side —
-keeping them at S2 would have made the removal a rider on the read flatten. Deletion behaviour is
-unchanged; only the count for a legacy nested file (a shape the flatten refuses anyway) could differ.
+⚑ **THE COUNT UNIT MOVED TWICE.** S2's flatten left it counting each ROOT key once (a category
+table was one override), while `config_interface.reset_all` counted a scope table's leaves — one
+`env:` table of two variables was 1 here and 2 under a workset file's `box:`. It counts leaves now,
+and the helper moved to `config_io` so both import one counter.
 
 ```load(path: Path) -> AgentConfig``` · ```save(path: Path, cfg: AgentConfig) -> None```
 The WHOLE-FILE round trip — the `agent` verbs' own reads (`info` / `show` / `get`) and the
 first-use generate.
 
-⚑ **`load` RUNS THE SAME REFUSAL THE CASCADE DOES** (S2, call (b)): two readers of ONE file must
-not disagree about what the file means. Before it, `load` accepted a nested sub-table the launch
-refused, so `agent show` described a shape that could not start a box. The escape hatch is intact
-and was checked: `agent reset --all` reaches `clear_overrides` only, never `load`, so a file in the
-refused shape can still be cleared. The loudest surface is `start.py`'s per-launch load, which is
-why the message quality matters more here than anywhere.
-⚑ **EXCEPT the top-level stray check (`_refuse_stray_roots`), which is CASCADE-ONLY** — it needs
-the drop-set, which lives in `settings_assemble` (importing it here closes a cycle), and without it
-`load` would refuse a `pref:` table the spec drops with a warning. So on a file carrying a stray,
-`agent info` / `list` read silently while the launch refuses: the two readers DO disagree there.
+⚑ **`load` RUNS THE SAME REFUSALS THE CASCADE DOES** — the top-level stray check and the nested
+one — through `_contribution`, the one verdict `level_table` also takes: two readers of ONE file
+must not disagree about what the file means. Before it, `load` accepted shapes the launch refused,
+so `agent show` described a file that could not start a box. The escape hatch is intact: `agent
+reset --all` reaches `clear_overrides` only, never `load`. The loudest surface is `start.py`'s
+per-launch load, which is why the message quality matters more here than anywhere.
+⚑ The stray check used to be CASCADE-ONLY because its drop-set lived in `settings_assemble`
+(importing it here closes a cycle); `settings_drops` now sits below both, so `load` passes the
+tables the cascade drops (`pref:`, `meta:` …) instead of refusing them.
 
 ⚑ **Sparse on the way out**: an EMPTY category is not materialized, or `agent reset --all` would
 count a phantom `{}` as an override. ⚑ **`category_tables` is an OPAQUE carry** — RENAMED from
@@ -647,8 +650,17 @@ _refuse_env_twin`, the sole twin raise site). That one arbitrates two DECLARED k
 slot at COLLAPSE time; this one rejects a FILE SPELLING at ASSEMBLY time, before any key exists.
 Neither weakens the other and neither test may stand in for the other's.
 
+```contributed_tables(raw: Any) -> dict``` · ```_contribution(raw, *, node, path) -> dict```
+`contributed_tables` answers WHICH top-level tables the cascade reads (`_CONTRIBUTED`) and judges
+nothing; `_contribution` is the same answer after `_refuse_stray_roots`. Every reader that JUDGES
+the file (`level_table`, `load`) takes `_contribution`; the reset takes `contributed_tables`. ⚑
+`_CONTRIBUTED` is the ONE constant the later passes grow: `agent:` joins it when Q92's read lands,
+`workset:` / `box:` when Q85's defaults-down merge does. 🛑 `settings_assemble.cascade_view` still
+filters the agent file by `ROOT_SECTIONS`, a second statement of the same set that agrees only while
+it is `self` alone; it moves to `contributed_tables` with the first table that joins.
+
 ```_refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None```
-RAISE on a key at the FILE's top level that is neither `self` nor a scope token (spec §0).
+RAISE on a key at the FILE's top level that the file neither contributes nor drops (spec §0).
 
 ⚑ **WHY IT HAS TO BE HERE.** In the other settings files an unknown top-level entry rides into the
 launch snapshot, where `settings_launch._refuse_undeclared_snapshot` can refuse it by name. This file
@@ -656,19 +668,18 @@ contributes only its root table, so a stray beside `self:` never reached that au
 written one level too high set nothing and said nothing (a `v1.7.2` behaviour too — its reader also
 took `self` alone).
 
-⚑⚑ **A SCOPE TOKEN IS NOT THIS RULE'S TO JUDGE.** `system:` (like `meta:`, `binding_derivations:`
-and `pref:`) is dropped WITH A WARNING by `assemble_levels` before `level_table` runs, so it never
-arrives. `agent:` / `workset:` / `box:` do arrive and are passed over unread, as before — whether
-spec §0's defaults-down clause (*"a settings file contributes keys of its OWN scope and of scopes it
-CONTAINS"*) makes a contained scope's table an INPUT here, or the `self:` root makes it a non-input to
-refuse, is an OPEN spec question (`Q85`). Passing them over is correct under NEITHER reading — (a)
-wants them merged, (b) wants them refused — and stands only while `Q85` is pending; refusing them
-now would decide it by accident. Pinned both ways in
+⚑⚑ **THE TABLES THE CASCADE DROPS ARE NOT STRAYS.** `system:`, `meta:`, `binding_derivations:`
+and `pref:` (`settings_drops.cascade_drop_set("agent")`) are dropped WITH A WARNING by
+`assemble_levels` before `level_table` runs; `load` sees them undropped, so the rule passes them by
+the same derivation. 🛑 `agent:` / `workset:` / `box:` are passed over UNREAD, and that is a GAP,
+not a rule: spec §0 (*"a settings file contributes keys of its OWN scope and of scopes it
+CONTAINS"*), `Q85` and `Q92` make them inputs, merged defaults-down. Each stops being passed over
+when it joins `_CONTRIBUTED`; refusing them meanwhile would refuse a table the spec reads. Pinned in
 `test_agent_file.py`: `TestLevelTable` (the refusal, and the scope-token control) and
 `TestTheStrayRuleOnTheProductionPath` (every upstream drop, DERIVED from the drop rules, still warns
 and builds).
 
-⚑ It runs in `level_table` only, NOT in `load` — why is under `load` above.
+⚑ It runs in `level_table` AND `load`, through `_contribution`; never in `clear_overrides`.
 
 ```state_level(cfg, *, node, path=None) -> AgentFileLevel | None```
 The file's BEHAVIOR as a DISCRIMINATED level, or `None` if it sets none. *path*, the file *cfg* was

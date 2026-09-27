@@ -8,8 +8,8 @@ scopes a command may write. It holds no state and reads no file.
 ## Why it is its own module
 
 The containment rule has readers on opposite sides of import edges: `settings_assemble` (the
-cascade, which drops and warns), `config_keys` (the `config set` direction guard) and, next,
-`agent_file` (the per-agent file's shape). The assembler imports `agent_file`, so the rule cannot
+cascade, which drops and warns), `config_keys` (the `config set` direction guard) and
+`agent_file` (the per-agent file's stray-root refusal). The assembler imports `agent_file`, so the rule cannot
 live in the assembler. Here, below all of them — it imports only `kb_store` and `settings_prefs` —
 it has one derivation, and every reader imports it. Before this module, `config_keys` sliced the
 containment order itself and `settings_assemble` kept a private copy of the same rule: two

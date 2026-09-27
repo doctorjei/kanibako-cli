@@ -2625,8 +2625,11 @@ answer with the same vocabulary the settings engine uses everywhere else:
   serves that same read, and two verbs must not disagree about one file.
 - **`agent reset <agent> <table>`** (a whole category, or `transform_settings`) **refuses** —
   `set` cannot create those, so any such table is hand-authored and the hand-edit is the honest
-  cure. `agent reset --all <agent>` still clears everything and remains the recovery for any file
-  the gates refuse.
+  cure. `agent reset --all <agent>` still clears every setting under `self:`, and remains the
+  recovery for a file the gates refuse over what is under `self:`. A key *beside* `self:` is not a
+  setting, so the reset leaves it: move it under `self:` if it is one of this agent's settings,
+  otherwise delete the line by hand (see *"2.37 An agent's settings file has ONE level: everything
+  sits directly under `self:`"*).
 - **The launch snapshot's "forward-compat" passthrough is closed.** An undeclared scalar already
   sitting in an agent file used to ride into the box unread; it now refuses the LAUNCH by name.
   `agent list` and `agent info` still display such a file, so you can see what to fix without
@@ -4725,8 +4728,9 @@ keep working on a file the launch will not start, so you can see the line before
   `Command Line Shell (shell)` (spec §2d). ⚑ `kanibako agent get <agent>
   label` still reads the **stored** value and answers `(not set)` when you have set none; that is
   what `get` means at every noun.
-- **`kanibako agent reset --all <agent>` clears the whole file.** It used to preserve `name`.
-  Nothing is exempt now, because nothing left in the file is anything but an override.
+- **`kanibako agent reset --all <agent>` clears every setting under `self:`.** It used to preserve
+  `name`. Nothing there is exempt now, because nothing left under `self:` is anything but an
+  override. A key beside `self:` is not a setting and is left for you to move or delete by hand.
 - **A freshly generated agent file is empty** (`self: {}`). The one line it used to arrive with was
   `name`, and the file holds what you set and nothing else.
 

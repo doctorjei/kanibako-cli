@@ -26,6 +26,7 @@ from kanibako.settings.agent_file import (
     stored_leaf_text,
     write_leaf,
 )
+from kanibako.settings.config_io import dump_doc
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_resolve import SettingsError
 
@@ -277,7 +278,7 @@ class TestSave:
         """THE END-TO-END RULE the sparse write is FOR, pinned in its own case.
 
         A freshly seeded file holds nothing the user wrote, so ``agent reset --all`` — which
-        counts each ROOT KEY once (:func:`clear_overrides`) — must count ZERO on it.  The
+        counts each removed leaf (:func:`clear_overrides`) — must count ZERO on it.  The
         unconditional ``run_args`` emission made every seeded file count 1, and the command
         reported an override nobody had set.
         ⚑ SEPARATE FROM THE CASE ABOVE ON PURPOSE: :func:`clear_overrides` REWRITES the file,
@@ -832,7 +833,7 @@ class TestLoadSurvivesAMalformedTable:
 class TestClearOverrides:
     """``agent reset --all``'s read-modify-write, now owned by the boundary."""
 
-    def test_clears_every_root_key_and_counts(self, tmp_path):
+    def test_clears_every_root_key_and_counts_its_leaves(self, tmp_path):
         from kanibako.settings.config_io import load_doc
 
         path = tmp_path / "agent.yaml"
@@ -847,16 +848,12 @@ class TestClearOverrides:
             "    ro:\n"
             "      /box/share: [/h/share]\n"
         )
-        # ⚑ FOUR, NOT FIVE, AND THE CHANGE IS DELIBERATE. The old fixture nested these
-        # under a ``nav℘codex`` sub-table, which the flatten (S2) refuses; flattened, the
-        # per-VAR arm of the count is unreachable, because it only ever counted VARs found
-        # inside that sub-table. So: model + access + secret_path + bindings = 4 ROOT keys,
-        # each counting once — the rule the docstring states, with nothing special-cased.
-        # ⚑ AND THE ``node`` ARGUMENT IS GONE WITH THAT ARM (S3): the count no longer has
-        # anything to ask about which node's file this is.
+        # FIVE LEAVES, the unit every scope's ``reset --all`` counts in
+        # (``config_io.count_leaves``): model + access + TOK_A + TOK_B + one ``ro`` bind.
+        # (Mutation: count ``len`` of the root again → 4 → RED.)
         # ⚑ NOTHING IS PRESERVED (D8b). ``name`` was the one exempt key and it was not a key
         # at all; with it retired the root goes whole, and the root table goes with it.
-        assert clear_overrides(path) == 4
+        assert clear_overrides(path) == 5
         assert load_doc(path) == {}
 
     def test_prunes_the_root_when_nothing_survives(self, tmp_path):
@@ -866,6 +863,21 @@ class TestClearOverrides:
         path.write_text("self:\n  model: opus\n")
         assert clear_overrides(path) == 1
         assert load_doc(path) == {}
+
+    @pytest.mark.parametrize("stray", ("model", "Self"))
+    def test_a_stray_does_not_refuse_the_reset(self, stray, tmp_path):
+        # ⚑ THE REPAIR DOOR: the reset clears what the file contributes and judges nothing,
+        # so a stray that stops ``load`` and the launch cannot also stop its own cure. The
+        # stray is not an override: it stays, uncounted, for the user to move or delete.
+        # (Mutation: read through ``_contribution`` here → SettingsError → RED.)
+        from kanibako.settings.config_io import load_doc
+
+        path = tmp_path / "agent.yaml"
+        path.write_text(f"self:\n  model: opus\n{stray}: x\n")
+        with pytest.raises(SettingsError):
+            load(path)
+        assert clear_overrides(path) == 1
+        assert load_doc(path) == {stray: "x"}
 
     def test_no_overrides_is_zero(self, tmp_path):
         # ⚑ THE SHAPE :func:`save` WRITES FOR A FRESH AGENT since D8b — an empty root table.
@@ -972,14 +984,39 @@ class TestLevelTable:
             assert "agent.claude" in message
 
     @pytest.mark.parametrize("scope", SCOPE_CONTAINMENT)
-    def test_a_scope_table_is_not_this_refusals_to_judge(self, scope):
-        # ⚑ The CONTROL: a scope token at the top level is §0 directional enforcement's
-        # question, not the stray rule's — ``system:`` is dropped upstream, and whether a
-        # contained scope's table is an input of this file is an open spec question.
-        # The stray refusal must not decide it by accident.
+    def test_a_scope_table_is_not_this_refusals_to_judge(self, scope, tmp_path):
+        # ⚑ The CONTROL: a scope token at the top level is not a stray — ``system:`` is
+        # dropped upstream (§0 directional enforcement), and the file's own-scope and
+        # contained-scope tables are inputs (§0 defaults-down) whose read has not landed.
+        # The stray refusal must not decide either by accident, in EITHER reader.
         raw = {"self": {"env": {"A": "b"}}, scope: {"env": {"X": "1"}}}
         level = level_table(raw, sub_key="claude", node="claude")
         assert level.table == {"env": {"A": "b"}}
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, raw)
+        assert load(path).env == {"A": "b"}
+
+    @pytest.mark.parametrize("stray", ("model", "stray", "env", "config", "Self"))
+    def test_load_refuses_the_stray_the_launch_refuses(self, stray, tmp_path):
+        # ONE VERDICT for one file (``_contribution``): ``agent show`` / ``info`` / ``list``
+        # read through ``load``, and used to display a file every launch refused.
+        # (Mutation: read ``data.get(_ROOT)`` in ``load`` again → no raise → RED.)
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": {"env": {"A": "b"}}, stray: "foo"})
+        with pytest.raises(SettingsError) as exc:
+            load(path)
+        assert f"`{stray}` at the top level of {path}" in str(exc.value)
+
+    def test_load_passes_every_table_the_cascade_drops(self, tmp_path):
+        # ⚑ DERIVED FROM THE DROP RULE, never listed (P13): ``load`` sees the file BEFORE any
+        # drop, so a table the launch drops with a warning must not refuse here.
+        from kanibako.settings.settings_drops import cascade_drop_set
+
+        dropped = sorted(cascade_drop_set("agent"))
+        assert dropped, "an empty drop-set would pass this vacuously"
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": {"env": {"A": "b"}}, **{t: {"x": 1} for t in dropped}})
+        assert load(path).env == {"A": "b"}
 
     def test_a_bare_sub_key_leaf_is_not_a_table(self):
         # ``claude:`` with nothing under it parses to None. It carries nothing and

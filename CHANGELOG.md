@@ -420,6 +420,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read. See `MIGRATION.md` § *2.37 An agent's settings file has ONE level: everything sits directly
   under `self:`*.
 
+- **`agent show`, `agent info` and `agent list` refuse that stray key beside `self:` too.** In
+  v1.8.0-rc2 they read an `agent.yaml` carrying one without a word, as a launch did. They now stop
+  with the launch's message, naming the key and the file. `agent reset <agent> --all` does
+  not refuse: it clears the settings under `self:` and leaves the stray line, which is not a
+  setting, for you to move or delete. See `MIGRATION.md` § *2.37 An agent's settings file has ONE
+  level: everything sits directly under `self:`*.
+
 - **`workset share list --effective` now refuses a working set file that carries an undeclared
   key, as a launch does.** v1.8.0-rc2 already stopped a launch on an undeclared key and named it,
   but this listing resolved the same `workset.yaml` without that check: a `workset: {frob: 1}`
@@ -438,6 +445,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box:` table of the box's `box.yaml`, together with every other setting there. The line now
   reads *"'kanibako box reset <key>' cannot remove what is not a key"*. Deleting the one line by
   hand is still the cure that keeps your other settings.
+
+- **`reset --all` counts every setting it removes, in the same unit at every scope.** The
+  printed *"Reset N override(s)."* counted each entry of a table as one in some places and each
+  setting inside it in others. In v1.7.2 and v1.8.0-rc2, `kanibako agent reset --all` counted each
+  key under `self:` once, and `kanibako system reset --all` counted each key under an agent's table
+  in the system settings file once, so an `env:` table of three variables was 1; a table for a
+  contained scope (`box:` in a `workset.yaml`) was counted setting by setting. All of them now
+  count setting by setting: that `env:` table is 3. What is removed is unchanged.
 
 - **`kanibako box reset --all` and `kanibako workset reset --all` now clear the `pref:` table
   too.** They asked *"Remove all config overrides?"* and then left every pref in place —
@@ -1703,7 +1718,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `generate_agent_config()` that still passes one raises `TypeError`. Two more user-visible
   consequences: `agent info` prints `Label:` where it printed `Name:` (and `agent show` lists
   `label = …`), showing the **resolved** value rather than a raw file field; and
-  `agent reset --all <agent>` clears the whole file, where it used to preserve `name`.
+  `agent reset --all <agent>` clears every setting under `self:`, where it used to preserve `name`.
 
 - **`Target.apply_state()`, the last of the per-method launch hooks.** A target used to translate
   its agent-state values into `(cli_args, env_vars)` in Python: claude's turned `model` into

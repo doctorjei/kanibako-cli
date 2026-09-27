@@ -2,7 +2,7 @@
 
 ⚑ WHY THIS IS ITS OWN MODULE. The containment rule has readers on opposite sides of import edges:
 ``settings_assemble`` (the cascade, which drops and WARNS), ``config_keys`` (the write-direction
-guard) and, next, ``agent_file`` (the per-agent file's shape). The assembler imports the agent
+guard) and ``agent_file`` (the per-agent file's stray-root refusal). The assembler imports the agent
 file, so the rule cannot live in the assembler; here, below all of them, it has one derivation and
 every reader imports it.
 """
