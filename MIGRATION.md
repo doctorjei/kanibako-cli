@@ -3193,11 +3193,12 @@ their own, with the same cures.
 **Which commands.** The ones that build the resolved snapshot. They all build the same one, so they
 all stop at the same place. Measured on the shipped code: `kanibako` / `start`, `shell`, `box info`,
 `box show --effective`, `system show --effective`, `rig list`. `workset share list --effective` and
-`workset show --effective` stop too, but they resolve only the working set's own settings file, so
-their message names that one file, says *this working set*, and points at `workset reset` and the
-two `workset` listings instead of the `box` verbs. They do not yet run the `config:` check above: a
-`config:` table holding a declared key, or nothing, lists at exit code 0 there while every launch in
-the working set refuses it; any other entry stops it with the generic refusal above.
+`workset show --effective` stop too. They resolve every settings file a box in the working set reads
+except the box's own and the agent file, and run the `config:` check above as well. For an entry in
+the working set's own file, their message names that file, says *this working set*, and points at
+`workset reset` and the two `workset` listings instead of the `box` verbs. For an entry in the base
+or system settings file, only `workset share list --effective` gives that message; `workset show
+--effective` stops earlier, with the message a box gives (*this box*, `box reset`).
 
 ⚑ **A key kanibako RETIRED stops you here too, but with its own message.** Before printing the
 generic text below, the refusal asks whether the file carries a spelling it has a cure for; §2.1
@@ -4936,6 +4937,16 @@ read and exited **0**. It now prints `Error: Unknown variable: $NOPE` and exits 
 
 It is not limited to working sets that use the abstract categories: the file is resolved before
 kanibako knows whether there is anything to derive.
+
+`kanibako workset share list <ws> --effective` resolves the same way. Both views read the base and
+system settings files as well as the working set's, apply its `pref:` requests, and resolve its
+`@workset.*`, `@meta.workset.*` and `@meta.runtime.*` references as a launch does. So they also exit
+**1** on a `config:` table in the working set's settings file and on a `pref:` request a launch
+refuses (a bare relative path, for one). `share list --effective` also exits **1** on an undeclared
+key in the base or system file, which it used to list past; `show --effective` already stopped on
+one, with the message a box gives. A share sourced at `@workset.auth.path/notes` now lists
+`<working set>/auth/notes`, where it listed `/notes`, and one sourced at `@meta.runtime.ws_root/r`
+lists `<working set>/r`, where it listed `/r`.
 
 **What to do.** Nothing, if your working set files resolve — and if one of them does not, this is
 the view telling you a launch in that working set would fail too. Fix the value it names.

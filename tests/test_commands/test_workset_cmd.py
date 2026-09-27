@@ -1981,8 +1981,8 @@ class TestWorksetShowDerivesTheAbstractTrio:
     def test_the_block_names_the_masks_it_does_not_apply(
         self, config_file, tmp_home, capsys,
     ):
-        """The heading answers for this working set's file alone, so the line beneath it
-        says which masks that leaves out and where the box's own answer is.
+        """The heading answers without a box or an agent, so the line beneath it says
+        which masks that leaves out and where the box's own answer is.
         MUTATION: delete the note's ``print`` in ``_print_effective_derivations`` and
         this reds."""
         ws = self._ws(config_file, tmp_home, "derivnote")
@@ -1991,7 +1991,7 @@ class TestWorksetShowDerivesTheAbstractTrio:
         heading = lines.index("Derived bindings for working set 'derivnote':")
         note = lines[heading + 1]
         assert note.startswith(
-            "  (Masks from the base or system settings file, an agent file or a box's own file"
+            "  (Masks from an agent file or a box's own file are not applied here;"
         ), note
         assert "'kanibako box show <box> --effective'" in note, note
 

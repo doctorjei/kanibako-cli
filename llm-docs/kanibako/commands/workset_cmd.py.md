@@ -151,10 +151,10 @@ agent a working set does not have. That is true of the LAUNCH's route and false 
 §0 leaves *"WHERE the derivation is materialised"* to the implementation and obliges only what the
 user SEES, and `_print_effective_shares` had already built a workset-only collapse with no box.
 The derived block feeds the same one. What it CANNOT answer without a box is stated at
-`_print_effective_derivations` and is narrower than "the pair": no box's OWN settings file is read
-(the working set file's `box:` defaults-down table is, like the rest of that file, so a `box.masks`
-written there does apply), and a `seeded` row names its guest destination but not the host store the copy
-eventually lands in.
+`_print_effective_derivations` and is narrower than "the pair": no box's OWN settings file and no
+agent file is read (the base, system and working-set files are, and the working set file's `box:`
+defaults-down table with them, so a `box.masks` written there does apply), and a `seeded` row names
+its guest destination but not the host store the copy eventually lands in.
 
 🛑 **THE `binding_derivations` NODE IS NOT READ HERE AND MAY NOT BE.** It is materialised BEFORE
 arbitration, for winners and losers alike (R-8), so every row in it reads as a live mount: a
@@ -356,9 +356,10 @@ launch (P3).
   There is no second `read_bindings` path. The raw value is the structured `Bind`, with `@`-refs /
   `$XDG` / `~` UNRESOLVED (§0). Missing file → `{}`. Each `BindEntry` is rendered back to its
   on-disk list shape (`[src, opts]` or `[src]`) for display.
-* **`--effective`** (`_print_effective_shares`): resolves through the committed KeyStore snapshot
-  pipeline (`assemble_levels → merge → expand → snapshot_category_entries`) scoped to the workset
-  file — the SAME resolver the launch uses. ⚑ **The pipeline itself now lives in
+* **`--effective`** (`_print_effective_shares`): resolves through the LAUNCH's own builder —
+  `settings_launch.resolve_inputs(subject=WORKSET)` then `build_launch_snapshot`, then
+  `snapshot_category_entries` — with the `GENERAL_SLOT` placeholder agent and no agent file.
+  ⚑ **The pipeline itself now lives in
   `_workset_preview_entries`, the arbitration in `_workset_preview_collapse` and the refusal arm in
   `_preview_refusal`**, because the derived-binding block of `workset show --effective` describes
   the same working set: two resolves of one file would be two answers about it. Everything the rest
@@ -373,26 +374,33 @@ launch (P3).
   diverge from what a launch mounts, which it previously could — but see the floor below for the
   divergence that had nothing to do with root-joins.
 
-⚑⚑ **THE RESOLVE RUNS THE LAUNCH'S READ-TIME REFUSALS THROUGH THE LAUNCH'S OWN ENTRY** —
-`settings_launch.refuse_read_time_faults` ([R147] bare-relative sweep, then §0), right after
-`expand`. This route is parallel to the launch's, and without it a `workset.yaml` carrying
-`workset.auth.path: foo` or an undeclared `workset.zzz: 1` listed its shares at rc 0 while every box
-in the set refused to start (measured). Only the workset file is judged and named: it is the only
-file this resolve reads (the `base` level is the floor alone, so a site base file is neither named
-nor scanned). `ResolveSubject.WORKSET` gives the §0 message this noun's verbs. Both refusals raise
-`SettingsError`, so both listings report through `_preview_refusal` at rc 1.
+⚑⚑ **THE RESOLVE IS THE LAUNCH'S, SO ITS FILES, FLOORS AND REFUSALS ARE TOO** (S1 Pass 2a). The
+preview used to assemble the workset file alone by hand: no system or base file, no `pref:`
+requests, no §2c auth chain, one anchor floored, and no `config:`-table refusal. So a working set
+the launch refuses — a `config:` table in the workset file, a bare-relative `pref.agent.<a>.canon`
+request, an undeclared key in the system file — previewed at rc 0, and a share sourced at
+`@workset.auth.path/notes` listed `/notes` while a launch mounts `<ws_root>/auth/notes` (all
+measured). Now every file a box in the set reads, except the box's own and the agent file, is read,
+judged and named, and `refuse_config_table`, the retired-spelling refusal and
+`refuse_read_time_faults` run inside `build_launch_snapshot` as they do at launch.
+`ResolveSubject.WORKSET` (from `as_kwargs`) gives the §0 message this noun's verbs. The refusals
+raise `SettingsError`, so both listings report through `_preview_refusal` at rc 1.
+⚑ **A box-scope anchor is OMITTED, never fabricated** (`resolve_inputs`): a working set names no
+box, so a source spelled `@meta.box.path/x` or `@box.canon/y` expands its missing anchor to `""`
+and lists as `/x` / `/y`, as it did before this route. Rendering such a row is S1 fork F3, a later
+pass.
 ⚑ **`run_share_list` TAKES ITS `--effective` BRANCH BEFORE THE EMPTY-SHARES RETURN.** The raw
 view's early *"No bindings configured"* sat first once, so a working set with NO shares never
 reached the preview and a `workset: {frob: 1}` answered rc 0 while every box refused (measured).
 `_print_effective_shares` gives that same one-line empty answer (`_print_no_shares`, one carrier) —
 but only AFTER the resolve and the arbitration have run.
 
-`_print_effective_shares` builds its context from the **resolver SPLIT** (spec §1A / JC-2): Layer-1
-`config.*` becomes the `ctx.config` foundation, Layer-2 `system.*` becomes the snapshot floor (flat
-dotted keys, which `assemble_levels` explodes) so a share value's `@`-ref such as
-`@system.channelroot` resolves from the snapshot itself, replicating the old `_lookup` map. The xdg
-map must be the canonical FULL host map anchored on the resolved `std.data_home` — a data-home-only
-partial map RAISES on a stored `$XDG_CACHE_HOME/…` value.
+The context and floors come from `resolve_inputs`, which keeps the **resolver SPLIT** (spec §1A /
+JC-2): Layer-1 `config.*` is the `ctx.config` foundation (`agent_select.host_resolve_ctx`), and
+Layer-2 `system.*` (`inputs.system_floor`) rides into the snapshot as a default category table, so a
+share value's `@`-ref such as `@system.channelroot` resolves from the snapshot itself. The xdg map
+is the canonical FULL host map anchored on the resolved `std.data_home` — a data-home-only partial
+map RAISES on a stored `$XDG_CACHE_HOME/…` value.
 
 ⚑⚑ **THE `ctx.config` FOUNDATION IS `settings/paths.host_config_map`, AND IT IS SHARED WITH THE
 LAUNCH TOO** — the identical repair, one layer down, made 2026-08-28 for the identical reason. The
@@ -442,10 +450,10 @@ per-mode choice lives (§1A) — one rung below this key, and not a variation at
 named both land on `ws.root` here; standalone cannot reach this noun at all (`workset create
 --standalone` is refused, and `resolve_workset_name` reads the registry).
 
-⚑ **`config_interface._meta_scope_anchor_floor(ws_config, None)` would return exactly this value** —
-its `workset_path.parent` is `ws.root`. It is not called because it is private to a module under
-concurrent edit; the consolidation is boarded rather than declined, and this is the third carrier of
-one fact until it lands.
+⚑ **This listing no longer floors the anchor itself.** It comes from `resolve_inputs`' WORKSET
+floors (`_workset_floors`), the sequence a member box's launch also runs, with
+`meta.runtime.ws_root` and every `workset.*` layout anchor beside it. `config_interface._meta_scope_anchor_floor` is the
+one remaining separate carrier, at set time (S1 row k, a later pass).
 
 `tests/test_commands/test_workset_cmd.py::TestWorksetCmdSystemFloor` pins it, and pins it by
 DERIVATION now: it drives this display with a binding sourced at every key the launch floor answers
@@ -684,22 +692,22 @@ name-keyed refusal" and "The arity trap". `assemble_levels` returns
 the only file passed.
 
 ```python
-def _workset_preview_entries(ws, std, ws_config: Path) -> list[CategoryEntry]
+def _workset_preview_entries(ws, std) -> list[CategoryEntry]
 def _workset_preview_collapse(entries: list[CategoryEntry]) -> CollapsedStore
 def _preview_refusal(ws, exc: CategoryCollisionError | SettingsError) -> int
 ```
-The workset-only resolve, its arbitration, and the one refusal arm — shared by both `--effective`
-listings, because they describe ONE working set. *exc* is typed as the two refusals the preview
+The working set's launch resolve (WORKSET subject), its arbitration, and the one refusal arm —
+shared by both `--effective` listings, because they describe ONE working set. *exc* is typed as the two refusals the preview
 raises, so an unrelated exception cannot be framed as a listing refusal (P3). See "Listing: single route, no second resolver".
 
 ```python
-def _print_effective_shares(ws, std, ws_config: Path) -> int
+def _print_effective_shares(ws, std) -> int
 ```
 Resolve and print the workset's bindings as launch-time mounts. See "Listing: single route, no
 second resolver".
 
 ```python
-def _print_effective_derivations(ws, std, ws_config: Path) -> int
+def _print_effective_derivations(ws, std) -> int
 ```
 The DERIVED half of §0 at this noun: every `common` / `caches` / `seeded` declaration with the
 binding it produces, paired against the same collapse. Runs only under `--effective`; the COLLAPSE
