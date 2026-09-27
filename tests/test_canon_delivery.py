@@ -1309,7 +1309,7 @@ class TestBaseTemplateSeedsTheNotebook:
         assert not (base / "notebook").exists()
         assert not (base / "workbook").exists()
 
-    def test_install_stages_the_box_mould(self, std):
+    def test_install_stages_the_box_mold(self, std):
         install_packaged_templates(std, ["claude"])
         assert (
             std.template / "box" / "home" / "canon" / "notebook" / "MY_CONTENTS.md"

@@ -342,16 +342,16 @@ def _ensure_initialized() -> None:
 
     # Packaged content → the host stores.  The content ships as static package data
     # and is installed here into its ENUMERATED destinations (@system.template's box
-    # + workset moulds, @system.canon/handbook, and every agent store under
+    # + workset molds, @system.canon/handbook, and every agent store under
     # @config.agents), create-if-absent so user edits survive an upgrade.  The
     # layered seed-once apply (the three ``<scope>.seeded[~/]`` keystore keys, staged by
     # ``commands.start._apply_init_seeds`` via ``templates.stage_layers``) then copies
-    # the box HOME moulds into each new box store at creation; the box handbook chapter
+    # the box HOME molds into each new box store at creation; the box handbook chapter
     # is a SEPARATE host-side copy (``templates.install_box_handbook_template``) and is
     # not a ``seeded`` entry.
     #
     # ⚑ THIS IS THE LAZY BACKSTOP of J-6's agent-store A-action (the "two paths, one
-    # action" pair), and it runs the SAME full per-file mould stamp the deliberate
+    # action" pair), and it runs the SAME full per-file mold stamp the deliberate
     # SETUP trigger does — ``install_packaged_templates`` calls
     # ``ensure_agent_stores``, which is the one implementation.  The bare per-agent
     # mkdir this used to be is gone.

@@ -454,7 +454,7 @@ PACKAGED_TEMPLATES_PARTS = ("templates",)
 #: ENUMERATED set of (packaged subtree → host dest) pairs, NEVER a whole-tree copy
 #: (P-S2): copying the root wholesale would leave a SECOND, never-read copy of the
 #: handbook at ``@system.template/system``, and would stamp the agent.default content
-#: into the agent MOULD at ``@system.template/agent``.
+#: into the agent MOLD at ``@system.template/agent``.
 #: ⚑ Each is named for the scope it is for: ``agent`` holds the ``agent.default`` node's
 #: content, which lands at ``@system.agents/default``; ``system/canon/handbook`` lands at
 #: ``@system.canon/handbook``.  The handbook path must not equal the chapter leaf's
@@ -465,14 +465,14 @@ PACKAGED_WORKSET_TEMPLATE = "workset"
 PACKAGED_AGENT_DEFAULT = "agent"
 PACKAGED_HANDBOOK = "system/canon/handbook"
 
-#: The AGENT MOULD's dir name under ``@system.template`` — the host copy every agent
-#: install stamps from (J-5).  ⚑ The mould ships EMPTY (D5): nothing packaged is copied
+#: The AGENT MOLD's dir name under ``@system.template`` — the host copy every agent
+#: install stamps from (J-5).  ⚑ The mold ships EMPTY (D5): nothing packaged is copied
 #: into it, so the host dir is GUARANTEE-CREATED by the install action (D7).  The packaged
 #: ``templates/agent`` subtree (:data:`PACKAGED_AGENT_DEFAULT`) shares the name but NOT the
 #: role — it is the ``agent.default`` content, stamped only into ``@system.agents/default``,
-#: never into this mould.  Shipping the mould structure-only is what keeps it OVERLAP-FREE
+#: never into this mold.  Shipping the mold structure-only is what keeps it OVERLAP-FREE
 #: with that content — see :func:`ensure_agent_stores`.
-AGENT_MOULD_DIRNAME = "agent"
+AGENT_MOLD_DIRNAME = "agent"
 
 #: The box-template SKELETON a scope store gets guarantee-created (D7) so the shape
 #: is discoverable.  ⚑ Spelled to the SPEC shape — ``home/canon/{notebook,workbook}``,
@@ -489,11 +489,11 @@ _BOX_TEMPLATE_SKELETON = (
     "box/canon/handbook",
 )
 
-#: The CANON HALF of the workset stamp ON THE MOULD SIDE — the subtree of
-#: ``@system.template/workset`` the canon-only stamp reads.  ⚑ A MOULD-LAYOUT literal,
-#: and it stays one: the mould is a SYSTEM-tier tree that every workset stamps from, so
+#: The CANON HALF of the workset stamp ON THE MOLD SIDE — the subtree of
+#: ``@system.template/workset`` the canon-only stamp reads.  ⚑ A MOLD-LAYOUT literal,
+#: and it stays one: the mold is a SYSTEM-tier tree that every workset stamps from, so
 #: one workset's ``workset.canon`` repoint moves the DESTINATION and never the source.
-_MOULD_CANON_ROOT = "canon"
+_MOLD_CANON_ROOT = "canon"
 
 #: The chapter leaf under a canon root, guarantee-created (D7) in EVERY mode.  ⚑ Spec
 #: ``:962``: ``workset.canon`` is *"UNIFORM IN EVERY MODE — deliberately NOT a
@@ -593,23 +593,23 @@ def ensure_agent_stores(
 ) -> list[str]:
     """Materialise each agent's STORE — the J-6 **A-action**, one implementation.
 
-    Per name: the MOULD, then the SPECIFIC payload, then the box-template SKELETON.
+    Per name: the MOLD, then the SPECIFIC payload, then the box-template SKELETON.
     Every stamp is create-if-absent, which makes the whole thing IDEMPOTENT and
     SELF-HEALING.  Returns the names whose store was touched, for the caller's report.
 
-    ⚑ MOULD FIRST IS SAFE ONLY BECAUSE THE MOULD IS OVERLAP-FREE.  On an overlapping
-    path the EARLIER copy wins, so the mould would beat the specific content; it
+    ⚑ MOLD FIRST IS SAFE ONLY BECAUSE THE MOLD IS OVERLAP-FREE.  On an overlapping
+    path the EARLIER copy wins, so the mold would beat the specific content; it
     therefore ships STRUCTURE ONLY (D5).  If it ever gains content, this order must
     flip to specific-first.
     """
-    mould = std.template / AGENT_MOULD_DIRNAME
+    mold = std.template / AGENT_MOLD_DIRNAME
     base = _packaged_base_template()
     touched: list[str] = []
     for name in agent_names:
         store = std.agents / name
         store.mkdir(parents=True, exist_ok=True)
-        # (1) the host mould — user-customizable, read at EVERY agent install.
-        copy_tree(mould, store, scope="agent")
+        # (1) the host mold — user-customizable, read at EVERY agent install.
+        copy_tree(mold, store, scope="agent")
         # (2) the specific payload.
         if name == "default":
             if base is not None:
@@ -720,7 +720,7 @@ def _workset_scope_allowed(workset_path: Path,
     substitute a wider one.
 
     ⚑ A repoint MOVES the tier; it does not widen it.  ``SCOPE_WHITELISTS["workset"]``
-    is the set of top-level store entries the mould may write, spelled for the DEFAULT
+    is the set of top-level store entries the mold may write, spelled for the DEFAULT
     leaves — so once the dest follows ``workset.canon`` the frame it is judged in has
     to follow too, or the deny-by-default predicate refuses the copy it was written to
     permit.  Only the two spellings change; ``canon/`` is still seedable at
@@ -772,19 +772,19 @@ def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool
     narrowing the copy to the canon tier must not narrow the frame it is judged in — do
     that and every entry looks top-level and the deny-by-default predicate goes blind.
 
-    ⚑ The SOURCE stays :data:`_MOULD_CANON_ROOT` while the DEST is the resolved
-    ``workset.canon``: the mould is one SYSTEM tree shared by every workset, so a
+    ⚑ The SOURCE stays :data:`_MOLD_CANON_ROOT` while the DEST is the resolved
+    ``workset.canon``: the mold is one SYSTEM tree shared by every workset, so a
     per-workset repoint moves where content lands, never where it is read from.
     """
-    mould = std.template / PACKAGED_WORKSET_TEMPLATE
+    mold = std.template / PACKAGED_WORKSET_TEMPLATE
     if canon_only:
-        return mould / _MOULD_CANON_ROOT, canon_root
-    return mould, workset_path
+        return mold / _MOLD_CANON_ROOT, canon_root
+    return mold, workset_path
 
 
 def check_workset_template(std: StandardPaths, workset_path: Path, *,
                            canon_only: bool = False) -> None:
-    """PRE-FLIGHT the workset mould against the workset whitelist; write nothing.
+    """PRE-FLIGHT the workset mold against the workset whitelist; write nothing.
 
     ⚑ Runs FIRST, before anything is registered or created: a refusal part-way
     through :func:`install_workset_template` would leave a REGISTERED workset with a
@@ -806,9 +806,9 @@ def check_workset_template(std: StandardPaths, workset_path: Path, *,
 
 def install_workset_template(std: StandardPaths, workset_path: Path, *,
                              canon_only: bool = False) -> None:
-    """Stamp a NEW workset store from the host workset mould — the J-6 A-action.
+    """Stamp a NEW workset store from the host workset mold — the J-6 A-action.
 
-    This is the LIVE single-source shape for a host template: one mould, one
+    This is the LIVE single-source shape for a host template: one mold, one
     ``copy_tree``, one whitelist.  Create-if-absent, so re-running adds only what is
     missing.
 
@@ -839,7 +839,7 @@ def install_workset_template(std: StandardPaths, workset_path: Path, *,
     escape: a ``workset.template`` of ``../elsewhere`` planted seven directories outside
     the root with nothing refusing, and on the standalone path an out-of-root
     ``workset.canon`` was refused only INCIDENTALLY — by the copy that happened to share
-    its destination, so emptying the mould's ``canon/`` half (``copy_tree`` returns early
+    its destination, so emptying the mold's ``canon/`` half (``copy_tree`` returns early
     on an absent source) let the chapter ``mkdir`` land outside the root unremarked.
     :func:`_assert_contained` is what closes that, and it also catches the escape the
     leaf check above cannot see: a SYMLINKED intermediate under an in-root leaf.
@@ -962,7 +962,7 @@ def install_packaged_templates(
     """
     base_src = _packaged_base_template()
     if base_src is not None:
-        # STAGING (system-owned): the box + workset moulds, refreshable.
+        # STAGING (system-owned): the box + workset molds, refreshable.
         #
         # ⚑ SCOPED, and this is where J-2's box whitelist actually BITES: staging is
         # the earliest — and only — point a planted settings file can be REFUSED.
@@ -984,8 +984,8 @@ def install_packaged_templates(
         copy_tree(
             base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF,
         )
-    # The agent MOULD dir exists even though nothing packaged is copied into it (D5/D7).
-    (std.template / AGENT_MOULD_DIRNAME).mkdir(parents=True, exist_ok=True)
+    # The agent MOLD dir exists even though nothing packaged is copied into it (D5/D7).
+    (std.template / AGENT_MOLD_DIRNAME).mkdir(parents=True, exist_ok=True)
     # USER-OWNED: the agent stores — the A-action, default included.
     ensure_agent_stores(std, ["default", *agent_names])
 

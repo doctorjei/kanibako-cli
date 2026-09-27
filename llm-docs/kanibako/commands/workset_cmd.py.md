@@ -23,7 +23,7 @@ and R-39; the J2 lifecycle journal.
 
 | Verb | Aliases | What it does |
 |------|---------|--------------|
-| `create` | — | Make a workset dir, register it, stamp it from the host mould |
+| `create` | — | Make a workset dir, register it, stamp it from the host mold |
 | `list` | `ls` | Every registered workset + project count; the DEFAULT when `workset` is given no verb |
 | `rm` | `delete` | Unregister; with `--purge` also delete the directory tree |
 | `connect` | — | Add an externally-existing project dir to a workset (REGISTERS, never seeds) |
@@ -62,9 +62,9 @@ guards (reserved-name, same-kind uniqueness, and the cross-kind primary-box guar
 BEFORE any on-disk side effect).
 
 `install_workset_template` is the **J-6 A-action (INSTANTIATION)**: it stamps the new workset store
-from the host workset mould (`@system.template/workset`) under the WORKSET whitelist. This is what
+from the host workset mold (`@system.template/workset`) under the WORKSET whitelist. This is what
 gives a workset its own handbook chapter dir and its own box template; before this step existed,
-neither did. The pre-flight above already proved the mould passes that whitelist, so this call
+neither did. The pre-flight above already proved the mold passes that whitelist, so this call
 cannot refuse half-way.
 
 Credential SHARING is a settable cascade key (`workset.auth.share_allowed`, via the config verbs),
@@ -603,7 +603,7 @@ The workset-tier settings file — ONE derivation for every mode (spec §2c). Se
 ```python
 def run_create(args: argparse.Namespace) -> int
 ```
-Pre-flight the mould, create + register the workset, stamp it, then MERGE the create-time cascade
+Pre-flight the mold, create + register the workset, stamp it, then MERGE the create-time cascade
 settings into its file. See "`create`: pre-flight, then stamp".
 
 ```python

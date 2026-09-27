@@ -1021,7 +1021,7 @@ is `.yaml`.
 - **Per-agent settings**: `$XDG_DATA_HOME/kanibako/agents/{agent}/agent.yaml`
 - **Per-box settings**: `boxes/{name}/box.yaml` (standalone: `<root>/box_data/box.yaml`)
 - **Template root**: `$XDG_DATA_HOME/kanibako/global/template/` (the `box`,
-  `workset` and `agent` moulds new stores are stamped from)
+  `workset` and `agent` molds new stores are stamped from)
 - **System handbook**: `$XDG_DATA_HOME/kanibako/global/canon/handbook/` -- your
   own system-wide directives, delivered read-only into every box
 

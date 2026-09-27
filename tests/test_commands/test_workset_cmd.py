@@ -258,7 +258,7 @@ class TestWorksetCreate:
         def _install_and_stamp_settings(std, workset_path, **kwargs):
             real_install(std, workset_path, **kwargs)
             (workset_path / "workset.yaml").write_text(
-                "box:\n  shell: /bin/zsh\n  image: mould:stamped\n"
+                "box:\n  shell: /bin/zsh\n  image: mold:stamped\n"
             )
 
         monkeypatch.setattr(
@@ -1614,7 +1614,7 @@ class TestWorksetCreateIsAtomicOnRefusal:
     """F2: a whitelist refusal must leave NOTHING behind.
 
     ⚑ "Loud and leak-free" is not the same as "clean". Refusing part-way through the
-    mould stamp satisfied both of those and still left a REGISTERED workset with a
+    mold stamp satisfied both of those and still left a REGISTERED workset with a
     root, its own ``workset.yaml`` and a PARTIAL chapter copy — recoverable only by
     ``workset rm``. The check therefore runs BEFORE anything is registered or
     created, matching the order ``create_workset`` already uses for its name guards.
@@ -1647,7 +1647,7 @@ class TestWorksetCreateIsAtomicOnRefusal:
         assert not root.exists(), sorted(root.rglob("*")) if root.exists() else None
         assert "refused" not in list_worksets(std)
 
-    def test_a_clean_mould_still_creates_normally(self, std, config, tmp_path):
+    def test_a_clean_mold_still_creates_normally(self, std, config, tmp_path):
         import argparse
 
         from kanibako.commands import workset_cmd
