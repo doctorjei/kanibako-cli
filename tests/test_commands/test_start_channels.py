@@ -246,15 +246,10 @@ class TestChannelDefaultCategories:
         }
 
     def test_standalone_keys_omit_workset(self, standalone_proj, std):
+        """The one terminal key.  The standalone DEST set (no ``~/channels/workset/*``)
+        is the ``channel-binds-standalone`` kinemata view's."""
         cats = _channel_default_categories(std, standalone_proj)
         assert set(cats) == {"box.bindings.rw"}
-        assert set(cats["box.bindings.rw"]) == {
-            "/home/agent/channels/common",
-            "/home/agent/channels/chat",
-            "/home/agent/channels/share",
-            "/home/agent/channels/mailboxes",
-            "/home/agent/channels/inbox",
-        }
 
 
 def _workset_anchor(std, proj):

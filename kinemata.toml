@@ -2094,6 +2094,9 @@ where = { id_matches = '^workset\.channels\.' }
 # `check`'s `silent:` tally goes 574/682 to 617/725 -- the 43 rows of the twenty
 # views below -- and its `unread:` tally 1719 f-strings to 1720 (`kinemata_views`);
 # `claims`, `shape` and `undeclared` print byte-identical output.
+# The twelve views from `channel-binds-standalone` on, measured 2026-09-27 against
+# `64b2df92`: `silent:` 658/770 to 680/792 (their 22 rows), `unread:` unchanged;
+# `claims`, `shape` and `undeclared` byte-identical.
 
 # FACT: the `access` rows' `choices:` column is `settings_keyspace.ACCESS_TIERS`,
 # IN ORDER -- the default tier, the shell fence and the per-agent row alike. The
@@ -2272,6 +2275,110 @@ kind = "yaml-mapping"
 source = "src/kanibako/data/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.rw"]
 where = { id_matches = '^~/channels/' }
+
+# FACT: a STANDALONE box's channel binds are exactly the five non-workset rows. The
+# spec settles the omission (keyspec §2c: "no workset-local channels -> no
+# ~/channels/workset mount"), and the rows are selected by NAME, so a workset row the
+# standalone emitter produces reads `produced, declared by nothing`.
+[[registry]]
+name = "channel-binds-standalone"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.rw"]
+where = { id_matches = '^~/channels/(?!workset/)' }
+
+# FACT: the helper LOG's WRITER (`paths.box_log_files`, the hub's file) names the
+# file the `helper-log-bind` MOUNT row declares, `@workset.logs/@{meta.box.name}.jsonl`.
+# `helper-log-bind` compares the mount's source; this compares the writer's path.
+[[registry]]
+name = "helper-log-writer"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["bind_default_entries", "box.bindings.ro"]
+where = { id_matches = '^~/\.kanibako/state/' }
+
+# FACT: the CREATE-time seed table's layer-1 and layer-3 `seeded` entries are the
+# ones the manifest declares, `~/` from `(@system.template/box/home)` and from
+# `(@workset.template/box/home)`. (Layer 2 is `agent-seeded-layer`'s.) One view per
+# mode -- NAMED, and PRIMARY in `-primary` -- so a layer lost in one mode reds even
+# while the other still produces it (`kinemata` takes one oracle per registry).
+[[registry]]
+name = "system-seeded-layer"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["category_default_entries", "system.seeded"]
+
+[[registry]]
+name = "workset-seeded-layer"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["category_default_entries", "workset.seeded"]
+
+[[registry]]
+name = "system-seeded-layer-primary"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["category_default_entries", "system.seeded"]
+
+[[registry]]
+name = "workset-seeded-layer-primary"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = ["category_default_entries", "workset.seeded"]
+
+# FACT: the seed LAYER KEY SET is the manifest's three `*.seeded` layers (spec §2a),
+# no more and no fewer, for a NAMED box and (`-primary`) a PRIMARY one -- and a
+# STANDALONE box's (`-standalone`) is the system and agent layers only, having no
+# workset tier (keyspec §2c `workset.template <None>`). One view per mode.
+[[registry]]
+name = "seed-layer-keys"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "category_default_entries"
+where = { id_matches = '\.seeded$' }
+
+[[registry]]
+name = "seed-layer-keys-primary"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "category_default_entries"
+where = { id_matches = '\.seeded$' }
+
+[[registry]]
+name = "seed-layer-keys-standalone"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "category_default_entries"
+where = { id_matches = '^(system|agent\.<agent>)\.seeded$' }
+
+# FACT: `meta.runtime.project_type`'s `choices:` are the box modes the code knows,
+# `paths.BoxMode`, and (`-launch`) the set the launch floor guards on,
+# `settings_launch._BOX_MODES` -- one view per carrier, so a mode added to or removed
+# from either one reds.
+# UNORDERED: the spec spells the set in two orders (keyspec §1A and §2b).
+[[registry]]
+name = "mode-choices"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.runtime\.project_type$' }
+
+[[registry]]
+name = "mode-choices-launch"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.runtime\.project_type$' }
+
+# FACT: the SITE pair `meta.runtime.admin.{config,settings}` is what
+# `config.config_base_path()` / `settings_base_path()` answer -- the production join of
+# `bootstrap.SITE_CONFIG_DIR` and the two file names.
+[[registry]]
+name = "site-base-files"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^meta\.runtime\.admin\.(config|settings)$' }
 
 # ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
@@ -4520,7 +4627,7 @@ authority = "declared"
 # ⚑ NAMED MODE, and PRIMARY in `channel-binds-primary`: both bind all eight rows from
 # the same `meta_ref`s. A standalone box omits the three workset-local rows, having no
 # workset tier -- an omission the rows' `default:` cells do not spell (only their `note:`
-# prose does), so no view here claims it (`test_start_channels.py` holds it). The
+# prose does), so `channel-binds-standalone` below selects its five rows by name. The
 # arm is hard-coded in `channel_default_categories`, and the views read the emitter,
 # not the table.
 #   `# channel-binds: 8 declared, 8 produced, in agreement, agreeing on default.`
@@ -4570,6 +4677,253 @@ extract = '(?m)^kanibako-channel-bind: ([^\s=]+)=(\S+)$'
 field = "default"
 authority = "declared"
 translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+# ⚑ `channel-binds`' oracle in STANDALONE mode, over the five rows selected by name.
+# Every dest the emitter produces is printed, so a workset-local row -- or any other
+# extra dest -- reads `produced, declared by nothing`.
+#   `# channel-binds-standalone: 5 declared, 5 produced, in agreement, agreeing on
+#   default.`  rc=0  (measured 2026-09-27 on `64b2df92`, kinemata `0.5.0`, this
+#   banner's method; the same holds for every view down to the `[[shape]]` banner)
+# NEGATIVE CONTROLS:
+#   code, the oracle's emitter run for `"named"`: rc=1, `FAIL: 3 disagreement(s)`,
+#     each `~/channels/workset/{chat,common,share}: produced, declared by nothing`
+#   manifest, `~/channels/inbox`'s cell -> `(@meta.box.inbox2)`: `~/channels/inbox:
+#     default declared '@meta.box.inbox2', code produces '@meta.box.inbox'`
+[[parity]]
+registry = "channel-binds-standalone"
+command = ["{python}", "-c", """
+import os, tempfile
+from kanibako.settings.core_defaults import channel_default_categories
+from kinemata_views import guest_bind_arm, ref_token_project, ref_token_standard_paths
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    binds = channel_default_categories(
+        ref_token_standard_paths("standalone"),
+        ref_token_project("standalone", workset_name="@meta.workset.name", box_name="@meta.box.name"),
+    )
+for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
+    print(f"kanibako-channel-bind: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-channel-bind: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+# ⚑ THE WRITER, NOT THE MOUNT: the dest comes from `helper-log-bind`'s emitter
+# (`kinemata_views.sentinel_helper_binds`), the path from `box_log_files` fed the
+# manifest's own sentinel refs. `sentinel_helper_binds` passes the emitter a `log_path`
+# its `meta_ref` ignores, so `helper-log-bind` cannot see the writer's suffix.
+#   `# helper-log-writer: 1 declared, 1 produced, in agreement, agreeing on default.`
+#   rc=0
+# NEGATIVE CONTROL, code, `box_log_files`' helper `f"{box}.jsonl"` -> `f"{box}.json"`:
+# `~/.kanibako/state/helpers.jsonl: default declared
+# '@workset.logs/@{meta.box.name}.jsonl', code produces
+# '@workset.logs/@{meta.box.name}.json'` (`helper-log-bind` stays rc=0).
+[[parity]]
+registry = "helper-log-writer"
+command = ["{python}", "-c", """
+import os, pathlib, tempfile
+from kanibako.settings.paths import box_log_files
+from kinemata_views import guest_bind_arm, sentinel_helper_binds
+with tempfile.TemporaryDirectory() as scratch:
+    os.chdir(scratch)
+    binds = sentinel_helper_binds()
+log = box_log_files(pathlib.Path("@workset.logs"), "@{meta.box.name}").helper
+for dest, _ in guest_bind_arm(binds, "bindings.ro"):
+    print(f"kanibako-helper-log-writer: {dest}={log}")
+"""]
+extract = '(?m)^kanibako-helper-log-writer: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+# ⚑ LAYERS 1 AND 3 OF THE CREATE-TIME TABLE, `agent-seeded-layer`'s tuple unpack. ONE
+# VIEW PER MODE -- `-primary`, and the bare name for NAMED -- so a layer dropped or
+# respelled in either mode reds on its own view (a union over the two modes would let
+# the other mode answer for it; `kinemata` refuses a second `[[parity]]` on one
+# registry). `.get` keeps a missing layer a finding, `declared, produced by nothing`,
+# not a traceback.
+#   `# system-seeded-layer[-primary]: 1 declared, 1 produced, in agreement, agreeing
+#   on default.`  `# workset-seeded-layer[-primary]:` the same.  each rc=0
+# NEGATIVE CONTROLS:
+#   code, layer 1's source `@system.template` -> `@system.tmpl`: both
+#     `system-seeded-layer` views `~/: default declared '@system.template/box/home',
+#     code produces '@system.tmpl/box/home'`; layer 3's likewise
+#   code, the layer-3 gate -> `has_workset_channels(proj) and proj.mode.value ==
+#     "primary"` (NAMED loses the layer): `workset-seeded-layer` `~/: declared,
+#     produced by nothing`; `-primary` rc=0
+#   manifest, `system.seeded`'s cell -> `(@system.template/home)`: `~/: default
+#     declared '@system.template/home', code produces '@system.template/box/home'`
+[[parity]]
+registry = "system-seeded-layer-primary"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.primary), "gemma℘claude")
+for dest, (host_src, *_) in sorted(seeds.get("system.seeded", {}).items()):
+    print(f"kanibako-system-seed: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-system-seed: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+[[parity]]
+registry = "system-seeded-layer"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.named), "gemma℘claude")
+for dest, (host_src, *_) in sorted(seeds.get("system.seeded", {}).items()):
+    print(f"kanibako-system-seed: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-system-seed: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+[[parity]]
+registry = "workset-seeded-layer-primary"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.primary), "gemma℘claude")
+for dest, (host_src, *_) in sorted(seeds.get("workset.seeded", {}).items()):
+    print(f"kanibako-workset-seed: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-workset-seed: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+[[parity]]
+registry = "workset-seeded-layer"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.named), "gemma℘claude")
+for dest, (host_src, *_) in sorted(seeds.get("workset.seeded", {}).items()):
+    print(f"kanibako-workset-seed: {dest}={host_src}")
+"""]
+extract = '(?m)^kanibako-workset-seed: ([^\s=]+)=(\S+)$'
+field = "default"
+authority = "declared"
+translate = { pattern = '^\((.*)\)$', replacement = '\1' }
+
+# ⚑ MEMBERSHIP, NO FIELD, ONE VIEW PER MODE: every `*.seeded` key the table holds for a
+# NAMED (`seed-layer-keys`), a PRIMARY (`-primary`) and a STANDALONE (`-standalone`)
+# box is printed, so a fourth layer reds as `produced, declared by nothing` and a layer
+# dropped in any one mode as `declared, produced by nothing` on that mode's view. A
+# membership parity takes `translate` (declared ids only), not `translate_identifier`:
+# the manifest's `<agent>` placeholder becomes the persona.
+#   `# seed-layer-keys[-primary]: 3 declared, 3 produced, in agreement.`
+#   `# seed-layer-keys-standalone: 2 declared, 2 produced, in agreement.`  each rc=0
+# NEGATIVE CONTROLS:
+#   code, a fourth `defs["x.seeded"]` layer: `x.seeded: produced, declared by nothing`
+#   code, the layer-3 gate -> `... and proj.mode.value == "primary"`: `seed-layer-keys`
+#     `workset.seeded: declared, produced by nothing`; `-primary` rc=0
+#   code, the layer-3 gate -> `True` (standalone view): `workset.seeded: produced,
+#     declared by nothing`; the standalone oracle run for `BoxMode.named`: the same
+[[parity]]
+registry = "seed-layer-keys-primary"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.primary), "gemma℘claude")
+for key in sorted(seeds):
+    if key.endswith(".seeded"):
+        print(f"kanibako-seed-layer: {key}")
+"""]
+extract = '(?m)^kanibako-seed-layer: (\S+)$'
+translate = { pattern = '^agent\.<agent>\.', replacement = 'agent.gemma℘claude.' }
+
+[[parity]]
+registry = "seed-layer-keys"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.named), "gemma℘claude")
+for key in sorted(seeds):
+    if key.endswith(".seeded"):
+        print(f"kanibako-seed-layer: {key}")
+"""]
+extract = '(?m)^kanibako-seed-layer: (\S+)$'
+translate = { pattern = '^agent\.<agent>\.', replacement = 'agent.gemma℘claude.' }
+
+[[parity]]
+registry = "seed-layer-keys-standalone"
+command = ["{python}", "-c", """
+import types
+from kanibako.launch.templates import template_seed_defaults
+from kanibako.settings.paths import BoxMode
+seeds = template_seed_defaults(types.SimpleNamespace(mode=BoxMode.standalone), "gemma℘claude")
+for key in sorted(seeds):
+    if key.endswith(".seeded"):
+        print(f"kanibako-seed-layer: {key}")
+"""]
+extract = '(?m)^kanibako-seed-layer: (\S+)$'
+translate = { pattern = '^agent\.<agent>\.', replacement = 'agent.gemma℘claude.' }
+
+# ⚑ UNORDERED (`access-choices` is the ordered one): the spec spells the set in two
+# orders, so the order is not part of the claim. ONE VIEW PER CODE CARRIER of the set
+# -- `paths.BoxMode` (`mode-choices`), `settings_launch._BOX_MODES` (`-launch`) -- so a
+# mode added to, or removed from, either one reds on its own view.
+#   `# mode-choices[-launch]: 1 declared, 1 produced, in agreement, agreeing on
+#   choices.`  `set-valued: 1 declared cell(s) hold a list, compared as sets`  each rc=0
+# NEGATIVE CONTROLS:
+#   code, `BoxMode` gains `foo = "foo"`: `mode-choices` `meta.runtime.project_type:
+#     choices produced 'foo', declared by nothing`; `_BOX_MODES` gaining `"foo"`: the
+#     same finding on `-launch`
+#   code, `_BOX_MODES = frozenset({"primary", "standalone"})`: `-launch` reds on the
+#     missing `named`; `mode-choices` rc=0
+#   manifest, the choices lose `named`: `choices produced 'named', declared by nothing`
+[[parity]]
+registry = "mode-choices"
+command = ["{python}", "-c", """
+from kanibako.settings.paths import BoxMode
+for mode in BoxMode:
+    print(f"kanibako-box-mode: meta.runtime.project_type={mode.value}")
+"""]
+extract = '(?m)^kanibako-box-mode: ([^\s=]+)=(\S+)$'
+field = "choices"
+authority = "declared"
+
+[[parity]]
+registry = "mode-choices-launch"
+command = ["{python}", "-c", """
+from kanibako.settings.settings_launch import _BOX_MODES
+for mode in sorted(_BOX_MODES):
+    print(f"kanibako-box-mode: meta.runtime.project_type={mode}")
+"""]
+extract = '(?m)^kanibako-box-mode: ([^\s=]+)=(\S+)$'
+field = "choices"
+authority = "declared"
+
+# ⚑ THE PRODUCTION JOIN, so no second carrier of the site layout: the view reads the
+# functions every caller of the site pair goes through.
+#   `# site-base-files: 2 declared, 2 produced, in agreement, agreeing on value.`
+#   rc=0
+# NEGATIVE CONTROLS:
+#   code, `bootstrap.SITE_CONFIG_FILE` -> `"x.cfg"`: `meta.runtime.admin.config: value
+#     declared '/etc/kanibako/base.cfg', code produces '/etc/kanibako/x.cfg'`
+#   manifest, `admin.settings`' value -> `/etc/kanibako/settings.yaml`: the mirror
+#     finding
+[[parity]]
+registry = "site-base-files"
+command = ["{python}", "-c", """
+from kanibako.settings.config import config_base_path, settings_base_path
+print(f"kanibako-site-base: meta.runtime.admin.config={config_base_path()}")
+print(f"kanibako-site-base: meta.runtime.admin.settings={settings_base_path()}")
+"""]
+extract = '(?m)^kanibako-site-base: ([^\s=]+)=(\S+)$'
+field = "value"
+authority = "declared"
 
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
