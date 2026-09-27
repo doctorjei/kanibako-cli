@@ -7,7 +7,7 @@ through TWO delivery layers, and each is covered PIECEMEAL elsewhere
 (``test_templates.py``, ``test_canon_delivery.py``, ``test_instructions_bind.py``).
 Piecemeal coverage spot-checks ONE file per mechanism, so a delivery regression
 that drops / misplaces / mis-sources a *different* file (e.g. a data-layout
-rename that moves ``data/global/template`` or a plugin's ``data/KICKOFF.md``)
+rename that moves ``data/templates`` or a plugin's ``data/KICKOFF.md``)
 can slip through the standard gate and only surface in the podman-gated e2e —
 or, worse, in a real box on a user's machine.
 
@@ -29,7 +29,7 @@ COMPLEMENTS that e2e; it does not replace it.
 THE TWO DELIVERY LAYERS
 -----------------------
 1. SEEDED (materialized at ``kanibako create``, host-side, create-if-absent):
-   the base template tree (``data/global/template`` → ``~/canon/{notebook,workbook}``)
+   the base template tree (``data/templates`` → ``~/canon/{notebook,workbook}``)
    plus the per-agent template tree (``plugins/<agent>/data/base`` → e.g. claude's
    ``~/.claude.json`` + ``~/.claude/settings.json``). Driven here through the SAME
    keystore-routed seed entrypoint the create command uses,
@@ -47,7 +47,7 @@ THE TWO DELIVERY LAYERS
      ``data/rom/ROM_AGENT.md`` — which, since C-CANON R2, all three
      first-party plugins DO, so this manifest requires it of each; and
    * the KICKOFF loader → ``~/.config/kanibako/kickoff.md``. ⚑ TWO SOURCES COEXIST
-     this release: core's packaged ``data/global/KICKOFF.md``
+     this release: core's packaged ``data/rom/KICKOFF.md``
      (``box.bindings.ro[~/.config/kanibako/kickoff.md]``, spec §2c / P-5) and each plugin's
      ``data/KICKOFF.md`` descriptor ``managed_pointer`` bind, whose deletion is
      deferred one release. Core YIELDS while a plugin supplies one, so exactly one
@@ -143,7 +143,7 @@ class SeedFile:
 
 # --- SEED layer: every file a claude PRIMARY box must have seeded at create. ---
 #
-# base layer  = data/global/template/box   (the packaged BOX mould)
+# base layer  = data/templates/box        (the packaged BOX mould)
 # agent layer = plugins/claude/data/base   (the claude AGENT-STORE payload)
 #
 # ⚑ TWO DESTINATIONS, both HOST paths under the box store, filled by two different
@@ -232,17 +232,17 @@ SEED_MANIFEST: tuple[SeedFile, ...] = (
 # Listed here because a delivery manifest that stopped at the box home would miss
 # the whole HANDBOOK book — bound, never seeded.
 STORE_MANIFEST: tuple[tuple[str, str], ...] = (
-    # packaged rel under data/global/template  ->  host path rel to the store root
-    ("system_handbook/SYS_CONTENTS.md", "canon:handbook/SYS_CONTENTS.md"),
-    ("system_handbook/general/SYS_GENERAL.md",
+    # packaged rel under data/templates  ->  host path rel to the store root
+    ("system/canon/handbook/SYS_CONTENTS.md", "canon:handbook/SYS_CONTENTS.md"),
+    ("system/canon/handbook/general/SYS_GENERAL.md",
      "canon:handbook/general/SYS_GENERAL.md"),
-    ("system_handbook/general/directives/LOWER_CANON.md",
+    ("system/canon/handbook/general/directives/LOWER_CANON.md",
      "canon:handbook/general/directives/LOWER_CANON.md"),
-    ("system_handbook/general/directives/DATAPOLICY.md",
+    ("system/canon/handbook/general/directives/DATAPOLICY.md",
      "canon:handbook/general/directives/DATAPOLICY.md"),
-    ("system_handbook/general/directives/INTERACTION.md",
+    ("system/canon/handbook/general/directives/INTERACTION.md",
      "canon:handbook/general/directives/INTERACTION.md"),
-    ("agent_default/canon/handbook/SYS_AGENT.md",
+    ("agent/canon/handbook/SYS_AGENT.md",
      "agents:default/canon/handbook/SYS_AGENT.md"),
     ("box/home/canon/notebook/MY_CONTENTS.md",
      "template:box/home/canon/notebook/MY_CONTENTS.md"),
@@ -622,7 +622,7 @@ class TestKickoffLoaderManifest:
     first-party harness (their KICKOFF.md sources + shared kickoff slot).
 
     ⚑ Plus the CORE row (P-5 / C-CANON R2): the base now ships the kickoff CONTENT
-    at ``data/global/KICKOFF.md`` and emits its ``box.bindings.ro`` entry at that dest, YIELDING
+    at ``data/rom/KICKOFF.md`` and emits its ``box.bindings.ro`` entry at that dest, YIELDING
     while a plugin still supplies one. Both sources are manifest rows for as long as
     both exist — a delivery manifest that tracked only the live one would go silent
     exactly when the follow-up release flips which one that is.

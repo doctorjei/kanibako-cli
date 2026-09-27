@@ -1038,7 +1038,7 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None:
     and the helper-log bind is omitted (companion, "The helper-log bind").
 
     ⚑⚑ THIS IS THE HUB'S WRITER, and the MOUNT it must agree with is the spec's own
-    spelling ``@workset.logs/@{meta.box.name}.jsonl`` (``data/core-defaults.yaml``,
+    spelling ``@workset.logs/@{meta.box.name}.jsonl`` (``data/rom/settings/core-defaults.yaml``,
     ``helpers``).  While an arm COMPOSED its directory the two disagreed the moment a
     user repointed ``workset.logs`` — the mount moved and the writer did not (migration
     M-14).  ⚑ ALL THREE arms now RESOLVE the key, so there is one answer in every mode.

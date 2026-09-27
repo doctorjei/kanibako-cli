@@ -37,7 +37,7 @@ on:
   #       - 'images/**'
   #       - 'src/kanibako/containers/tmux.conf'
   #       # `kanibako baseline list` inputs: the Containerfile installs its output
-  #       - 'src/kanibako/data/image-baseline.yaml'
+  #       - 'src/kanibako/data/rom/settings/image-baseline.yaml'
   #       - 'src/kanibako/runtime/baseline.py'
   #       - 'src/kanibako/commands/baseline_cmd.py'
   #       - 'pyproject.toml'
@@ -47,7 +47,7 @@ on:
   #       - 'images/**'
   #       - 'src/kanibako/containers/tmux.conf'
   #       # `kanibako baseline list` inputs: the Containerfile installs its output
-  #       - 'src/kanibako/data/image-baseline.yaml'
+  #       - 'src/kanibako/data/rom/settings/image-baseline.yaml'
   #       - 'src/kanibako/runtime/baseline.py'
   #       - 'src/kanibako/commands/baseline_cmd.py'
   #       - 'pyproject.toml'

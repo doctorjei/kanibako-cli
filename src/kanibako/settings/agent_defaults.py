@@ -6,7 +6,7 @@ agent's complete DEFAULT-SET — its :class:`~kanibako.targets.base.PluginDescri
 data (bindings, launch grammar, settings, container env, cred files, …) plus its
 AGENT-scope ``default_common`` — in the specced structured form.  This mirrors how
 the system/core defaults ship (:mod:`kanibako.settings.core_defaults` /
-``kanibako/data/core-defaults.yaml``) and how containerfiles/templates ship via
+``kanibako/data/rom/settings/core-defaults.yaml``) and how containerfiles/templates ship via
 :mod:`importlib.resources`.
 
 This module is the THIN reader those plugins call from their ``descriptor`` /

@@ -228,7 +228,7 @@ class of bug in the first place.
 the model they implemented is retired: home never enters the entry list at all now.**
 
 `collapse_store_shapes` seeds `combined_bindings` with home BEFORE any scope folds, and takes it as
-its own parameter. Until 6-H, home was ALSO a `bindings.rw` row in `data/core-defaults.yaml`, so the
+its own parameter. Until 6-H, home was ALSO a `bindings.rw` row in `data/rom/settings/core-defaults.yaml`, so the
 same fact arrived twice and the seam had to pull one copy back out before the producer could fold
 the rest. Deleting the row removes the duplication at its source: home does **not** route through
 `bindings.rw` (spec `:1015`, amendment 2026-08-08a / A9), and `_install_assembly_collapse` builds the
@@ -332,7 +332,7 @@ outright. A fold that refuses now raises out of `_resolve_launch_snapshot`.
 That is deliberate: it is the same pure concatenation over the same shapes, so it cannot differ, and
 one implementation of the seed rule is worth more than one saved traversal.
 
-⚑ The home bind row in `data/core-defaults.yaml` is **DELETED** (cutover 6-H) — see the section
+⚑ The home bind row in `data/rom/settings/core-defaults.yaml` is **DELETED** (cutover 6-H) — see the section
 above. `core_defaults.add_bind`'s "home arm", which older drafts of this file and the manifest both
 named as a second follow-up, was a PHANTOM: the function has been generic since its introducing
 commit and the home behaviour lived in the YAML row alone, so deleting the row discharged both.

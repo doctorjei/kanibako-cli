@@ -2,7 +2,7 @@
 
 The property, stated once:
 
-  For every row in ``src/kanibako/data/keyspace-manifest.yaml``'s ``keys:`` table that
+  For every row in ``src/kanibako/data/rom/settings/keyspace-manifest.yaml``'s ``keys:`` table that
   (i) spells ONE CONCRETE key (no ``<placeholder>``) and (ii) declares a REAL-VALUED
   ``default:`` for box mode *m* — the arm for *m* being neither ``null``, nor ``{}``,
   nor a ``<prose placeholder>`` — the key ANSWERS in mode *m*: FOR ANY BOX THAT EXISTS

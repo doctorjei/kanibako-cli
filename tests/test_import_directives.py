@@ -1035,7 +1035,7 @@ class TestLinkedIncludeDepth:
         assert re.search(r"^# \d", out, re.M) is None
 
     def test_sys_general_shape(self, home):
-        """``template/system_handbook/general/SYS_GENERAL.md``: ``### Rules``
+        """``templates/system/canon/handbook/general/SYS_GENERAL.md``: ``### Rules``
         + ``1.`` -> ``###``."""
         out = _body(_run(home, {
             "root.md": "### Rules\n\n1. [Canon Sections](@c.md)\n2. [Project Work](@d.md)\n",
@@ -1492,7 +1492,7 @@ class TestCanonicalExample:
 
 def _canon_data(rel: str) -> str:
     """A shipped canon file's real path, under ``kanibako.data``."""
-    return str(importlib.resources.files("kanibako.data").joinpath(f"global/{rel}"))
+    return str(importlib.resources.files("kanibako.data").joinpath(rel))
 
 
 def _scope(fl=None, **extra):
@@ -1736,12 +1736,13 @@ class TestPreplink:
     # opens with a multi-line ``[STOCK]`` authoring comment, and COLLECTION.md's
     # runs sixteen lines with ``# Entrypoint to Canon`` inside it.
     SHIPPED_TITLES = [
-        ("rom/COLLECTION.md", "# Canon Law - Introduction"),
-        ("rom/charter/ROM_CONTENTS.md", "# Charter (Core Tome, Read-Only)"),
-        ("template/system_handbook/SYS_CONTENTS.md", "# Handbook (System Tome)"),
-        ("template/system_handbook/general/SYS_GENERAL.md", "## System-Wide Information"),
-        ("template/box/home/canon/notebook/MY_CONTENTS.md", "# Notebook"),
-        ("rom/charter/general/ROM_GENERAL.md", "## The Canon"),
+        ("rom/canon/COLLECTION.md", "# Canon Law - Introduction"),
+        ("rom/canon/charter/ROM_CONTENTS.md", "# Charter (Core Tome, Read-Only)"),
+        ("templates/system/canon/handbook/SYS_CONTENTS.md", "# Handbook (System Tome)"),
+        ("templates/system/canon/handbook/general/SYS_GENERAL.md",
+         "## System-Wide Information"),
+        ("templates/box/home/canon/notebook/MY_CONTENTS.md", "# Notebook"),
+        ("rom/canon/charter/general/ROM_GENERAL.md", "## The Canon"),
     ]
 
     @pytest.mark.parametrize("rel,expected", SHIPPED_TITLES)

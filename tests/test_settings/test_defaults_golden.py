@@ -4,7 +4,7 @@ The representation flip (P1-P5) made keyspace category VALUES structured
 tuple/dict end-to-end, and the P6 coalesce pulled the ~87 scattered defaults +
 guest-path literals into a HANDFUL of shipped declarative data files:
 
-* ``kanibako/data/core-defaults.yaml``      — the ONE system/core file (everything
+* ``kanibako/data/rom/settings/core-defaults.yaml``      — the ONE system/core file (everything
   NOT agent-specific: the ``box.masks`` vault default + the per-mode channel bind
   table), read by the thin loader :mod:`kanibako.settings.core_defaults`.
 * ``<plugin>/<agent>-defaults.yaml``        — ONE file PER AGENT inside its plugin
@@ -173,7 +173,7 @@ class TestCoreDefaultsShape:
         hand documents the wrong thing.  Spec §2a: ``dict[box_dest -> bool|None]``,
         *"NOT a bare list"*.
         """
-        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        doc = _load_yaml("kanibako.data", "rom/settings/core-defaults.yaml")
         masks = doc["masks"]
         assert isinstance(masks, dict), (
             f"core masks must be a dest-keyed map, got {type(masks).__name__}: "
@@ -202,7 +202,7 @@ class TestCoreDefaultsShape:
         so the file names them symbolically; what must be structured here is each
         entry's shape (key/source/box_dest/scope) and its box-side destination.
         """
-        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        doc = _load_yaml("kanibako.data", "rom/settings/core-defaults.yaml")
         channels = doc["channels"]
         assert isinstance(channels, list) and channels
         for entry in channels:
@@ -228,7 +228,7 @@ class TestCoreDefaultsShape:
         options/scope) and its box-side destination + options (the per-entry mount
         OPTIONS being the binding tuple's 3rd slot, spec §2a).
         """
-        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        doc = _load_yaml("kanibako.data", "rom/settings/core-defaults.yaml")
         core = doc["core"]
         assert isinstance(core, list) and core
         for entry in core:
@@ -263,7 +263,7 @@ class TestCoreDefaultsShape:
           (``meta_ref``), so the mount follows the USER KEY (spec §2b/D-M8) —
           a bare probed literal here would disconnect the key from its bind.
         """
-        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        doc = _load_yaml("kanibako.data", "rom/settings/core-defaults.yaml")
         images = doc["images"]
         assert isinstance(images, list) and images
         for entry in images:
@@ -499,7 +499,7 @@ class TestCoreBehaviorDefaults:
         .resolve_access_tier`` at LAUNCH — and both reach it through
         ``settings_keyspace.access_default()``, pinned below.
         """
-        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        doc = _load_yaml("kanibako.data", "rom/settings/core-defaults.yaml")
         declared = doc["agent_default"]
         assert declared == self._SPEC_2D, (
             f"core-defaults.yaml agent_default must be the spec §2d values "
@@ -524,7 +524,7 @@ class TestCoreBehaviorDefaults:
         """
         from kanibako.settings.settings_keyspace import ACCESS_TIERS, access_default
 
-        declared = _load_yaml("kanibako.data", "core-defaults.yaml")["agent_default"]
+        declared = _load_yaml("kanibako.data", "rom/settings/core-defaults.yaml")["agent_default"]
         assert access_default() == declared["access"]
         assert access_default() in ACCESS_TIERS
 
@@ -858,7 +858,7 @@ class TestCoreStaticEnvDefaults:
         The ``agent.shell`` row is the one per-node restatement, because the shell is a
         pseudo-agent and reads no ``agent.default`` value (§2d).
         """
-        doc = _load_yaml("kanibako.data", "core-defaults.yaml")
+        doc = _load_yaml("kanibako.data", "rom/settings/core-defaults.yaml")
         assert doc.get("env") == self._SHIPPED_ENV, (
             f"core-defaults.yaml ships env: {doc.get('env')!r}, expected "
             f"{self._SHIPPED_ENV} — a value moving in or out of this section is "
@@ -976,11 +976,11 @@ class TestNoHardcodedGuestHome:
         are ``$GUEST_HOME`` expressions.)
         """
         data_files = [
-            _data_file_path("kanibako.data", "core-defaults.yaml"),
+            _data_file_path("kanibako.data", "rom/settings/core-defaults.yaml"),
             # The keyspace REGISTRY ships in the same wheel and spells every
             # in-box destination as a ``~``-expression, so it is under the same
             # rule as the defaults files it is asserted against.
-            _data_file_path("kanibako.data", "keyspace-manifest.yaml"),
+            _data_file_path("kanibako.data", "rom/settings/keyspace-manifest.yaml"),
         ]
         for package, filename in _AGENT_DEFAULTS:
             data_files.append(_data_file_path(package, filename))

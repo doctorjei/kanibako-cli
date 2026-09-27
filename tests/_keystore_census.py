@@ -187,7 +187,7 @@ _MAX_TAG_DEPTH = 64
 #: The swap would make the census MORE PERMISSIVE, and ⚑ THE FAILURE IS SILENT: a
 #: too-permissive oracle reports "0 undeclared" instead of going red.  Two reasons
 #: carry it.  (a) ``policy.parametric_expansion`` in
-#: ``src/kanibako/data/keyspace-manifest.yaml`` is THREE ENGLISH SENTENCES in a YAML
+#: ``src/kanibako/data/rom/settings/keyspace-manifest.yaml`` is THREE ENGLISH SENTENCES in a YAML
 #: list, so a manifest oracle is a hand-written interpreter of prose -- a paraphrase
 #: of ``key_validity``, not an independent source.  (b) the generic
 #: ``agent.<agent>.<key>`` row read as a literal wildcard accepts EVERY agent leaf,

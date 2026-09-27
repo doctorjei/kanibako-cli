@@ -1734,6 +1734,7 @@ class TestInstallPackagedTemplates:
             std.canon / "handbook" / "general" / "SYS_GENERAL.md"
         ).is_file()
         assert not (std.template / PACKAGED_HANDBOOK).exists()
+        assert not (std.template / "system").exists()
 
     def test_system_handbook_ships_no_scope_chapter_stubs(self, std):
         """The D2 cut: the system store supplies SYS_CONTENTS.md + ``general`` ONLY.
@@ -1754,7 +1755,7 @@ class TestInstallPackagedTemplates:
         assert list(mould.rglob("*")) == []
 
     def test_agent_default_store_stamped_from_the_package(self, std):
-        """``agents/default`` gets ``template/agent_default`` DIRECTLY from the
+        """``agents/default`` gets the packaged ``templates/agent`` DIRECTLY from the
         package — no host staging, because one default agent means a staged copy
         would be read once and never again."""
         install_packaged_templates(std, ["claude"])
@@ -2918,11 +2919,11 @@ class TestRefreshHonoursTheClassifier:
 
 
 class TestPackagingGlobs:
-    """The wheel must carry HIDDEN entries under ``data/global``.
+    """The wheel must carry HIDDEN entries under ``data/templates``.
 
     ⚑ setuptools' ``**/*`` does NOT recurse into hidden directories. There are no
-    dotfiles under ``data/global`` TODAY, so this is not yet a live bug — and that is
-    precisely the trap: ``template/box/home/`` is a BOX HOME seed, so the first
+    dotfiles under ``data/templates`` TODAY, so this is not yet a live bug — and that is
+    precisely the trap: ``templates/box/home/`` is a BOX HOME seed, so the first
     ``.claude/`` or ``.config/`` dropped there would ship EMPTY and seed nothing,
     with no build error and no launch warning. The patterns were added ahead of the
     first such file; this pins them so a tidy-up cannot quietly remove them.
@@ -2946,30 +2947,34 @@ class TestPackagingGlobs:
     def test_dot_dir_and_dot_file_patterns_present(self):
         pats = set(self._patterns())
         required = {
-            "global/**/.*",        # a dotfile at any depth
-            "global/.*/**/*",      # content under a top-level dot-dir
-            "global/.*/*",
-            "global/**/.*/**/*",   # content under a NESTED dot-dir (.claude/, .config/)
-            "global/**/.*/*",
+            "templates/**/.*",        # a dotfile at any depth
+            "templates/.*/**/*",      # content under a top-level dot-dir
+            "templates/.*/*",
+            "templates/**/.*/**/*",   # content under a NESTED dot-dir (.claude/, .config/)
+            "templates/**/.*/*",
+            "rom/**/.*",
+            "rom/.*/**/*",
+            "rom/.*/*",
+            "rom/**/.*/**/*",
+            "rom/**/.*/*",
         }
         missing = required - pats
         assert not missing, (
             f"the hidden-entry globs for kanibako.data are missing {sorted(missing)} "
-            "— a dotfile under data/global/template/box/home would ship EMPTY and "
+            "— a dotfile under data/templates/ or data/rom/ would ship EMPTY and "
             "the box seed would deliver nothing, silently"
         )
 
     def test_packaged_template_tree_is_the_declared_shape(self):
         """The four ENUMERATED subtrees, and nothing else, under the template root.
 
-        ⚑ ``agent/`` is deliberately ABSENT: the agent MOULD ships EMPTY (D5) and a
-        wheel cannot ship an empty directory, so its host dir is guarantee-created by
-        the install action instead (D7). A packaged ``agent/`` appearing here would
-        mean someone put content in the mould, which would then WIN over
-        ``agent_default`` on every overlapping path (create-if-absent, mould first).
+        ⚑ The packaged ``agent/`` is the ``agent.default`` CONTENT, stamped into
+        ``agents/default`` only; it is NOT the agent MOULD, which ships EMPTY (D5) and
+        whose host dir is guarantee-created by the install action (D7) — see
+        ``test_agent_mould_dir_is_guarantee_created_empty``.
         """
         base = _packaged_base_template()
         assert base is not None
         assert {p.name for p in base.iterdir() if p.is_dir()} == {
-            "box", "workset", "agent_default", "system_handbook",
+            "box", "workset", "agent", "system",
         }

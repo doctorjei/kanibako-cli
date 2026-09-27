@@ -1,7 +1,7 @@
 """Image-baseline manifest: the universal in-box runtime tool contract.
 
 The baseline is a mapping of ``apt-package-name -> [executables]``.  The shipped
-default lives in :mod:`kanibako.data` (``image-baseline.yaml``); site and user
+default lives in :mod:`kanibako.data` (``rom/settings/image-baseline.yaml``); site and user
 overlays are merged on top **additively** (the scoped-category spirit in
 :mod:`kanibako.settings.settings_categories`): later layers add new packages or override an
 existing package's executable list.  Precedence, least- to most-specific:
@@ -15,7 +15,6 @@ package-manager-agnostic).  They differ on purpose (e.g. ``ripgrep`` -> ``rg``).
 
 from __future__ import annotations
 
-import importlib.resources
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -23,9 +22,10 @@ from pathlib import Path
 import yaml
 
 from kanibako.settings.bootstrap import SITE_CONFIG_DIR
+from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_data_dir
 from kanibako.settings.paths import user_config_home
 
-# Filename used both for the shipped default (in kanibako.data) and the overlays.
+# Filename used both for the shipped default (under ``PACKAGED_SETTINGS_PARTS``) and the overlays.
 BASELINE_FILENAME = "image-baseline.yaml"
 
 
@@ -53,7 +53,7 @@ def _read_doc(path: Path) -> dict[str, list[str]]:
 
 def _shipped_default() -> dict[str, list[str]]:
     """Read the bundled default baseline shipped as package data."""
-    ref = importlib.resources.files("kanibako.data").joinpath(BASELINE_FILENAME)
+    ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, BASELINE_FILENAME)
     return _read_doc(Path(str(ref)))
 
 

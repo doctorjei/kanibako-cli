@@ -800,7 +800,7 @@ box's own workset/box tree (never the old shared `@config.data/logs/<id>/` locat
   `box_data/`), read from the root `workset.yaml`
 
 ⚑⚑ **This function is the hub's WRITER, and the MOUNT it must agree with is the spec's own
-spelling** `@workset.logs/@{meta.box.name}.jsonl` (`data/core-defaults.yaml`, the `helpers` table).
+spelling** `@workset.logs/@{meta.box.name}.jsonl` (`data/rom/settings/core-defaults.yaml`, the `helpers` table).
 While an arm COMPOSED its directory the two disagreed the instant a user repointed `workset.logs`:
 the mount moved and the writer did not, so the box read an empty file forever. That is the split
 **migration M-14** records, and it is CLOSED in ALL THREE modes — PRIMARY and NAMED as of

@@ -5,13 +5,6 @@
   "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains.",
   "findings": [
     {
-      "registry": "canon-layout",
-      "entry": "PACKAGED_AGENT_DEFAULT",
-      "antipattern": "agent_default",
-      "path": "src/kanibako/settings/core_defaults.py",
-      "text": "for key, value in (_load_doc().get(\"agent_default\") or {}).items()"
-    },
-    {
       "registry": "canonical",
       "entry": "CANON_CHAPTER_LEAF",
       "antipattern": "\"canon/handbook\"",
@@ -203,20 +196,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "agent/",
-      "path": "MIGRATION.md",
-      "text": "`general/`, `workset/`, `box/`, plus the `agent/` chapter your agent plugin contributes \u2014 and the"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "agent/",
-      "path": "MIGRATION.md",
-      "text": "| handbook | `~/canon/handbook/` | host-side guidance, assembled from per-scope chapters: `general/` from the system sto"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "agent/SYS_AGENT.md",
       "path": "MIGRATION.md",
       "text": "stamped normally \u2014 but `SYS_CONTENTS.md` names `agent/SYS_AGENT.md` and names nothing under"
@@ -274,7 +253,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "archives/",
-      "path": "src/kanibako/data/global/template/system_handbook/general/directives/LOWER_CANON.md",
+      "path": "src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md",
       "text": "| `archives/` | Completed plans & historical devnotes, documents, & information (i.e., \"the archive\" or \"archives\"); **a"
     },
     {
@@ -1157,7 +1136,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "broadcast.md",
-      "path": "src/kanibako/data/global/rom/charter/general/directives/IDENTITY.md",
+      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
       "text": "| **Chat** | `~/channels/chat/*.md` | Append-style logs. `general.md` is the default; `broadcast.md` reaches everyone in"
     },
     {
@@ -1170,27 +1149,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "canon/COLLECTION.md",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "`kanibako.data/global/rom` \u2014 the `canon/COLLECTION.md` index plus the whole `canon/charter/` book,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "canon/charter/",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "`kanibako.data/global/rom` \u2014 the `canon/COLLECTION.md` index plus the whole `canon/charter/` book,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "canon/charter/general/ROM_GENERAL.md",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "`canon/charter/general/ROM_GENERAL.md`). Each file contributes ONE"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "chat/",
       "path": "MIGRATION.md",
       "text": "the `chat/` dir) and a **format** change (`.log` \u2192 `.md`). Move the old"
@@ -1199,7 +1157,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "chat/",
-      "path": "src/kanibako/data/global/rom/charter/general/directives/IDENTITY.md",
+      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
       "text": "If your box belongs to a **workset** (named group of projects), you'll have a workset-local tree at `~/channels/workset/"
     },
     {
@@ -1227,7 +1185,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "chat/broadcast.md",
-      "path": "src/kanibako/data/global/rom/charter/general/directives/IDENTITY.md",
+      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
       "text": "If your box belongs to a **workset** (named group of projects), you'll have a workset-local tree at `~/channels/workset/"
     },
     {
@@ -1297,7 +1255,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "common/",
-      "path": "src/kanibako/data/global/rom/charter/general/directives/IDENTITY.md",
+      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
       "text": "If your box belongs to a **workset** (named group of projects), you'll have a workset-local tree at `~/channels/workset/"
     },
     {
@@ -1472,7 +1430,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "general.md",
-      "path": "src/kanibako/data/global/rom/charter/general/directives/IDENTITY.md",
+      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
       "text": "| **Chat** | `~/channels/chat/*.md` | Append-style logs. `general.md` is the default; `broadcast.md` reaches everyone in"
     },
     {
@@ -1884,9 +1842,9 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "kanibako.data/core-defaults.yaml",
+      "antipattern": "kanibako.data/rom/settings/core-defaults.yaml",
       "path": "llm-docs/kanibako/settings/core_defaults.py.md",
-      "text": "_thin reader of `kanibako.data/core-defaults.yaml`, plus the `~/canon` skeleton J-7 specifies_"
+      "text": "_thin reader of `kanibako.data/rom/settings/core-defaults.yaml`, plus the `~/canon` skeleton J-7 specifies_"
     },
     {
       "registry": "claims",
@@ -2872,7 +2830,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "share/",
-      "path": "src/kanibako/data/global/rom/charter/general/directives/IDENTITY.md",
+      "path": "src/kanibako/data/rom/canon/charter/general/directives/IDENTITY.md",
       "text": "If your box belongs to a **workset** (named group of projects), you'll have a workset-local tree at `~/channels/workset/"
     },
     {
@@ -3117,7 +3075,7 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "temp/",
-      "path": "src/kanibako/data/global/template/system_handbook/general/directives/LOWER_CANON.md",
+      "path": "src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md",
       "text": "| `temp/` | Temporary storage (volatile between sessions) | No |"
     },
     {
@@ -4270,6 +4228,55 @@
       "antipattern": "XDG_STATE_HOME",
       "path": "src/kanibako/box_supervisor.py",
       "text": "(\"XDG_STATE_HOME\", \".local/state\", \"state\"),"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/template/box/home/",
+      "path": "MIGRATION.md",
+      "text": "`global/template/box/home/`). Existing boxes are untouched (seeded once, long ago). The"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/template/box/home/",
+      "path": "MIGRATION.md",
+      "text": "and the box-home seed lives two levels down (`global/template/box/home/`). What actually"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/template/box/home/",
+      "path": "MIGRATION.md",
+      "text": "exfiltrate e.g. an SSH key into a box home). If your `global/template/box/home/`,"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/",
+      "path": "MIGRATION.md",
+      "text": "files are. This lists every candidate under a store, and deliberately skips `global/`, which must"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/",
+      "path": "llm-docs/kanibako/settings/messages.py.md",
+      "text": "\u2691 There is no `config.global` key. Its children inline `@config.data/global/...`, and the `global/`"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/",
+      "path": "llm-docs/kanibako/settings/paths.py.md",
+      "text": "`global` is ELIMINATED as a key \u2014 its children inline `@config.data/global/...`, and the `global/`"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/",
+      "path": "llm-docs/kanibako/settings/paths.py.md",
+      "text": "`@config.data/global/...` (the `global/` dir is created on demand by the atomic writer when those"
     }
   ]
 }
