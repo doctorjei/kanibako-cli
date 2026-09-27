@@ -140,6 +140,20 @@ default TABLE is the source, never a second literal at a consumer site.
   chain through it, and nothing more. A repointed
   standalone log lands outside the `box_data` directory; `box rm --purge` deletes it by name
   before it removes that directory wholesale.
+  🛑 **A present `<None>` `workset.boxes` REFUSES** (Q96): `resolve_workset_boxes` raises
+  `SettingsError` with `messages.ERR_CONFIG_NULL_PATH`, naming the key and `<root>/workset.yaml`,
+  in every mode — a box store is not optional, and the old collapse to the default put a connected
+  box under `<root>/boxes`. Because `paths` resolves the primary store when it loads the path
+  table, a null at primary stops any command that loads the standard paths until the line is removed.
+  In standalone the refusal is PER PATH, because the literal `box_data` sites above never read
+  the key: `box rm --purge` refuses through the logs default (`@meta.box.path` =
+  `@workset.boxes`), and `box info`/`start`/`shell` run from inside the box's workspace refuse
+  with this same message; `box info <name>` (by name, or from the box root) does not read the key
+  and does not refuse.
+  ⚑ The three destructive paths RESOLVE BEFORE THEY UNREGISTER, so the refusal lands while the
+  box is still registered: `delete_workset` (purge) resolves the store before `unregister_name`,
+  `remove_project` resolves `_member_store_bases` before `release_project`, and `box rm --purge`
+  of a standalone box takes `_standalone_teardown_plan` before `unregister_standalone`.
   🛑 STILL OPEN: box trees under a `workset.boxes` the user pointed OUTSIDE the root survive
   `workset rm --purge`, deliberately — `delete_workset`'s loop is a pre-pass for `rmtree(root)`, so
   it is owed only to what that call reaches. Closing it needs a retained-path report, not a wider
@@ -407,9 +421,9 @@ or an empty value — so the caller takes the default formula. `""` is still UNS
 the split: the spec's `""` ≠ unset (§2h) is not yet carried for these keys.
 
 `_repoint_or_default` COLLAPSES the three states back to the old two for every dir key whose S3
-pass is still owed (workspaces, boxes, channelroot, canon, template, vault_ro, vault_rw): a present
-`<None>` still takes the default there, which [R177] does not allow. Only `resolve_workset_logs`
-carries `None` through. `launch/templates.py::_assert_stamp_leaf_in_root` reads the result with
+pass is still owed (workspaces, channelroot, canon, template, vault_ro, vault_rw): a present
+`<None>` still takes the default there, which [R177] does not allow. `resolve_workset_logs`
+carries `None` through, and `resolve_workset_boxes` refuses it. `launch/templates.py::_assert_stamp_leaf_in_root` reads the result with
 `isinstance(repoint, str)` for the same reason.
 
 ```python
@@ -779,16 +793,21 @@ user put there: unlinking that would orphan the workspace the box records. ⚑ *
 ONLY the link — never the user's external source directory.**
 
 ```python
-def remove_member_store(ws: Workset, name: str) -> None
+def _member_store_bases(ws: Workset) -> tuple[Path, Path, Path]
+def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, Path, Path] | None = None) -> None
 ```
 Delete *name*'s box tree (`remove_box_tree`) and per-box vault leaves under the resolved arms
-(symlinks unlinked, real dirs `rmtree`'d). Never the workspace leaf.
+(symlinks unlinked, real dirs `rmtree`'d). Never the workspace leaf. *bases* is
+`_member_store_bases` (the resolved `boxes`, `vault_ro`, `vault_rw`), passed by a caller that must
+resolve before an irreversible step of its own; without it the store resolves here.
 
 ```python
 def remove_project(ws: Workset, name: str, *, remove_files: bool = False, std: StandardPaths | None = None) -> WorksetProject
 ```
 `release_project`, then with *remove_files* `remove_member_store` and the workspace leaf (a symlink
-unlinked, never followed; a dir `rmtree`'d). The external source is always left intact.
+unlinked, never followed; a dir `rmtree`'d). The external source is always left intact. With
+*remove_files* the store bases resolve BEFORE the release, so a refusal (a null `workset.boxes`)
+leaves the member registered.
 
 ### ⚑⚑ Failure-consistency ORDERING (`release_project`) — the reverse of `add_project`
 

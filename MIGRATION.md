@@ -5591,6 +5591,21 @@ box:
 
 If you meant to keep the bind, remove the `null` instead.
 
+### 2.93 A `workset.boxes` of `null` is refused
+
+**Read this if a `<workset>/workset.yaml` sets `workset.boxes` to `null`** — the primary
+workset's, a named workset's, or a standalone box's root file. A `null` written by `--null` counts.
+
+**What changed.** In v1.8.0-rc2 a `null` `workset.boxes` was read as if the key were not set, so
+`workset connect` put the box under the default directory (`<workset>/boxes/`), while starting
+the box refused. A box store is not optional, so `null` now stops every command that resolves
+it, with exit 1 and a message that names the key and the file. For the primary workset that
+includes `box create` and `box list`.
+
+**What to do.** Delete the `boxes:` line to use the default directory, or set `workset.boxes` to
+the directory you want. A box that v1.8.0-rc2 connected while the `null` was set lives under
+`<workset>/boxes/`, so deleting the line finds it again.
+
 ---
 
 ## 3. For plugin authors

@@ -55,7 +55,7 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool=False) -
 def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False) -> WorksetProject
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> bool
 def release_project(ws: Workset, name: str) -> WorksetProject
-def remove_member_store(ws: Workset, name: str) -> None
+def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, Path, Path] | None=None) -> None
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
 def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None | _Unset
 def _repoint_or_default(repoint: str | None | _Unset) -> str | None
@@ -67,6 +67,7 @@ def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]
 def _detach_project(ws: Workset, name: str) -> None
 def _find_member(ws: Workset, name: str) -> WorksetProject
 def _unfollowed(path: Path) -> Path
+def _member_store_bases(ws: Workset) -> tuple[Path, Path, Path]
 ```
 
 ## Classes

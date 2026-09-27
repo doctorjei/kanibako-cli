@@ -52,7 +52,8 @@ from kanibako.errors import LegacyWorksetIdentityError, WorksetError
 from kanibako.identifiers import find_identifier
 from kanibako.project.names import register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
-from kanibako.settings.settings_resolve import UNSET, _Unset
+from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
+from kanibako.settings.settings_resolve import UNSET, SettingsError, _Unset
 from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
@@ -155,8 +156,9 @@ def _workset_path_repoint(
 def _repoint_or_default(repoint: str | None | _Unset) -> str | None:
     """COLLAPSE a present ``<None>`` into "take the default" — keys whose S3 pass is still owed.
 
-    Only ``workset.logs`` carries ``<None>`` through (:func:`resolve_workset_logs`); every
-    other dir key still reads a present ``<None>`` as unset, which [R177] does not allow.
+    ``workset.logs`` carries ``<None>`` through (:func:`resolve_workset_logs`) and
+    ``workset.boxes`` refuses it (:func:`resolve_workset_boxes`); every other dir key still
+    reads a present ``<None>`` as unset, which [R177] does not allow.
     """
     return repoint if isinstance(repoint, str) else None
 
@@ -188,11 +190,20 @@ def resolve_workset_boxes(
     ``box_data`` (``system-design`` makes that locator a spec clause).  Today the one
     caller that passes it is ``resolve_workset_logs(..., standalone=True)``, which
     needs the value to answer ``@meta.box.path``.
+
+    🛑 A present ``<None>`` REFUSES, naming the key and the file ([R177], Q96): every box's
+    home and settings live under this dir, so there is no box without it, and taking the
+    default instead would put boxes where the user said there is no store.
     """
+    default_leaf = _STANDALONE_BOXES_LEAF if standalone else BOXES_DIR_NAME
+    repoint = _workset_path_repoint(workset_settings, BOXES_DIR_NAME)
+    if repoint is None:
+        # ⚑ The config/system path keys' own null refusal text (``config._refuse_null_paths``).
+        raise SettingsError(ERR_CONFIG_NULL_PATH % (
+            workset_root / WORKSET_META_FILE, f"workset.{BOXES_DIR_NAME}",
+        ))
     return resolve_workset_dir_key(
-        workset_root,
-        _repoint_or_default(_workset_path_repoint(workset_settings, BOXES_DIR_NAME)),
-        _STANDALONE_BOXES_LEAF if standalone else BOXES_DIR_NAME,
+        workset_root, repoint if isinstance(repoint, str) else None, default_leaf,
         key=BOXES_DIR_NAME,
     )
 
@@ -854,13 +865,17 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         raise WorksetError(f"Workset '{name}' is not registered.")
 
     root = registry[stored]
+    purge = remove_files and root.is_dir()
+    # ⚑ RESOLVED BEFORE THE UNREGISTER: a store that refuses (a null ``workset.boxes``)
+    # must stop the purge while the workset is still registered, not after.
+    boxes_dir = resolve_workset_boxes(root, load_workset_settings_doc(root)) if purge else None
 
     # Drop the ONE ``worksets`` entry, by the STORED spelling.  Idempotent: a missing
     # entry is a no-op.
     unregister_name(std.registry, stored, section="worksets")
 
     # ⚑ Irreversible step LAST: only after the registry is clean.
-    if remove_files and root.is_dir():
+    if boxes_dir is not None:
         import shutil
 
         # ⚑⚑ BOX TREES FIRST (J-7): a whole-root rmtree hits the root-owned 555 canon
@@ -877,7 +892,6 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         # the same line for the same reason.  KNOWN AND UNCLOSED: those trees outlive
         # ``workset rm --purge``; closing that needs a retained-path report, not a wider
         # rmtree.
-        boxes_dir = resolve_workset_boxes(root, load_workset_settings_doc(root))
         if root in boxes_dir.parents and boxes_dir.is_dir():
             for box_tree in sorted(boxes_dir.iterdir()):
                 if box_tree.is_dir() and not box_tree.is_symlink():
@@ -1119,21 +1133,32 @@ def release_project(ws: Workset, name: str) -> WorksetProject:
     return target
 
 
-def remove_member_store(ws: Workset, name: str) -> None:
-    """Delete *name*'s box tree and per-box vault leaves; ⚑ NEVER its workspace leaf."""
+def _member_store_bases(ws: Workset) -> tuple[Path, Path, Path]:
+    """*ws*'s resolved ``(boxes, vault_ro, vault_rw)`` — what :func:`remove_member_store` deletes under."""
+    return (ws.projects_dir, *resolve_workset_vault_pair(ws.root))
+
+
+def remove_member_store(
+    ws: Workset, name: str, *, bases: tuple[Path, Path, Path] | None = None,
+) -> None:
+    """Delete *name*'s box tree and per-box vault leaves; ⚑ NEVER its workspace leaf.
+
+    *bases* is :func:`_member_store_bases`, resolved by a caller that must refuse BEFORE an
+    irreversible step (:func:`remove_project` releases the member first).
+    """
     import shutil
 
     # ⚑ Per-box vault LEAVES only — never the shared ro/rw parents.
     # ⚑⚑ RESOLVED, and it MUST match ``add_project``: deleting the composed default
     # while the box's real vault sits at the repoint leaves the user's data orphaned
     # AND removes a directory the box never used.
-    vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
+    boxes_dir, vault_ro_base, vault_rw_base = bases or _member_store_bases(ws)
     # ⚑ THE BOX TREE NEEDS THE UNSHARE ESCALATION (J-7): rmtree raises on the 555
     # canon skeleton EVEN WHEN THE CALLER OWNS IT.  Vault leaves are ordinary user
     # content and stay on the plain path.
     from kanibako.runtime.container import remove_box_tree
 
-    box_tree = ws.projects_dir / name
+    box_tree = boxes_dir / name
     if box_tree.is_symlink():
         box_tree.unlink()
     elif box_tree.is_dir():
@@ -1157,11 +1182,14 @@ def remove_project(
     An external source dir is NEVER touched: its leaf is a link, and a link is unlinked.
     ⚑ *std* is accepted and unused.
     """
+    # ⚑ Resolved BEFORE the release, so a store that refuses (a null ``workset.boxes``)
+    # stops the disconnect while the member is still registered.
+    bases = _member_store_bases(ws) if remove_files else None
     target = release_project(ws, name)
-    if remove_files:
+    if bases is not None:
         import shutil
 
-        remove_member_store(ws, name)
+        remove_member_store(ws, name, bases=bases)
         leaf = ws.workspaces_dir / name
         if leaf.is_symlink():
             leaf.unlink()

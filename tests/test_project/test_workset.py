@@ -1299,6 +1299,77 @@ class TestWorksetLogsPresentNone:
         assert sources[log_dest].startswith("@workset.logs/")
 
 
+class TestWorksetBoxesPresentNone:
+    """A present ``<None>`` ``workset.boxes`` REFUSES, naming the key and the file (Q96).
+
+    Every box's home and settings live under the box store, so a ``null`` store is not
+    "take the default" ([R177]) — that collapse put a connected box under ``<root>/boxes``.
+    """
+
+    def test_a_null_boxes_refuses_by_name_in_every_mode(self, tmp_path):
+        from kanibako.project.workset import resolve_workset_boxes, resolve_workset_logs
+        from kanibako.settings.settings_resolve import SettingsError
+
+        doc = {"workset": {"boxes": None}}
+        for call in (
+            lambda: resolve_workset_boxes(tmp_path, doc),
+            lambda: resolve_workset_boxes(tmp_path, doc, standalone=True),
+            # A lone box's default logs dir is ``@meta.box.path`` = ``@workset.boxes``.
+            lambda: resolve_workset_logs(tmp_path, doc, standalone=True),
+        ):
+            with pytest.raises(SettingsError) as exc:
+                call()
+            assert "workset.boxes" in str(exc.value)
+            assert str(tmp_path / "workset.yaml") in str(exc.value)
+
+    def test_a_named_workset_with_a_null_store_creates_no_box_tree(self, std, tmp_home):
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.settings_resolve import SettingsError
+
+        root = (tmp_home / "worksets" / "nobox").resolve()
+        ws = create_workset("nobox", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": None}})
+        source = tmp_home / "src"
+        source.mkdir()
+        with pytest.raises(SettingsError, match="workset.boxes"):
+            add_project(ws, "ex", source, std)
+        assert not (root / "boxes" / "ex").exists()
+        assert load_workset(root, "nobox").projects == []
+
+    def _member_then_null_store(self, std, tmp_home, ws_name):
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / ws_name).resolve()
+        ws = create_workset(ws_name, root, std)
+        source = tmp_home / f"{ws_name}-src"
+        source.mkdir()
+        add_project(ws, "m", source, std)
+        assert (root / "boxes" / "m").is_dir()
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": None}})
+        return root
+
+    def test_purging_a_workset_refuses_while_it_is_still_registered(self, std, tmp_home):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        root = self._member_then_null_store(std, tmp_home, "purgeme")
+        with pytest.raises(SettingsError, match="workset.boxes"):
+            delete_workset("purgeme", std, remove_files=True)
+        assert "purgeme" in list_worksets(std)
+        assert (root / "boxes" / "m").is_dir()
+
+    def test_disconnecting_with_files_refuses_while_the_member_is_registered(
+        self, std, tmp_home,
+    ):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        root = self._member_then_null_store(std, tmp_home, "keepme")
+        ws = load_workset(root, "keepme")
+        with pytest.raises(SettingsError, match="workset.boxes"):
+            remove_project(ws, "m", remove_files=True)
+        assert [p.name for p in load_workset(root, "keepme").projects] == ["m"]
+        assert (root / "boxes" / "m").is_dir()
+
+
 class TestWorksetIdentityIsTheGlobalRegistry:
     """⚑⚑ A workset's identity is its ``worksets:`` entry in the GLOBAL registry, and
     nothing else.  Neither file under the root records a name: ``registry.yaml`` holds

@@ -584,8 +584,15 @@ Returns True if the box dir was removed. ⚑ The CALLER is responsible for conta
 *metadata_dir* first when it comes from an untrusted `deregistered` entry — see
 `_assert_deletable`.
 
-```_teardown_standalone_box(root: Path) -> bool```
-Delete a STANDALONE box's in-tree metadata; the workspace and *root* are never touched.
+```_standalone_teardown_plan(root: Path, registered_name: str) -> _StandaloneTeardown```
+Resolve what the teardown deletes — the vault split, the logs dir and the box's log name — before
+anything is deleted or unregistered. An unresolvable value (a bare-relative repoint, or a null
+`workset.boxes`, which the standalone logs default chains through) raises here, while the box is
+whole.
+
+```_teardown_standalone_box(root: Path, registered_name: str, *, plan: _StandaloneTeardown | None = None) -> bool```
+Delete a STANDALONE box's in-tree metadata; the workspace and *root* are never touched. *plan*
+comes from a caller that resolved it before an irreversible step of its own.
 
 Removes the in-tree `box_data/` marker, the root `workset.yaml` and the box's RESOLVED vault — the
 same set the active standalone purge and the `purge` command delete. Returns True if the
@@ -641,7 +648,8 @@ Standalone state lives in-tree under `<root>/box_data` (plus `<root>/vault`) and
 in `registry.standalone`. With `--purge` the in-tree metadata is deleted (on confirmation, with the
 `vault/` tree); without it, a deregistered entry is parked so a later `rm --purge` or `register`
 can find the retained metadata BY NAME, since the index was just dropped. The user's workspace
-files are never touched.
+files are never touched. With `--purge` the teardown plan resolves BEFORE the registry entry is
+dropped, so a refusal leaves the box registered and whole.
 
 ```run_rm(args: argparse.Namespace) -> int```
 Unregister a project/workset from the registry, optionally purging metadata.
