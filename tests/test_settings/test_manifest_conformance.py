@@ -228,17 +228,8 @@ class TestManifestLoader:
 #: ``bootstrap-path-defaults`` view's; the corpus size stays here.
 _PATH_ORACLE: dict[str, str] = {**CONFIG_PATH_DEFAULTS, **SYSTEM_PATH_DEFAULTS}
 
-#: (i-b4) ``workset.workspaces`` — real NAMED and STANDALONE arms, ``null`` at PRIMARY, and
-#: the ONE default row no kinemata view carries.  The floor carries it as a RESOLVED
-#: LITERAL rather than the spec formula (``settings/workset_dirkeys.py`` names it first
-#: among the keys read on the DETECTION side, before any snapshot exists, so a formula
-#: would let detection and the keyspace answer "what kind of box is this" two ways).  A
-#: literal cannot be compared to a manifest formula by string equality, so the oracle
-#: FOLLOWS the formula one hop against the deriver — the :class:`TestWorksetChannelDefaults`
-#: shape, for the same reason.
-#: 🛑 The PRIMARY arm is an ABSENCE and stays one: the code honors a primary ``workspaces``
-#: repoint (``project.workset.default_workset``), but that divergence is RULED and the
-#: user's (manifest note, B2-Editor S-1 — *"do NOT 'conform' the code to the null"*).
+#: (i-b4) ``workset.workspaces`` — its three arms are the ``workset-workspaces`` kinemata
+#: view's, the PRIMARY present ``None`` included (Q82).  What no view states is below.
 _WORKSPACES_KEY = "workset.workspaces"
 
 #: The ``agent.default.*`` BEHAVIOR floor (spec §2d).  Values: the ``behavior-floor`` view.
@@ -272,7 +263,8 @@ _CHANNEL_KEYS = (
 #: Every manifest ``keys:`` row whose ``default:`` VALUE this file is the carrier for — a
 #: row a kinemata view also compares belongs in :data:`CARRIED_DEFAULT_KEYS` instead, and
 #: :meth:`TestDefaultsCoverage.test_the_split_is_the_measured_split` reds on a row in both.
-PINNED_DEFAULT_KEYS: frozenset[str] = frozenset({_WORKSPACES_KEY})
+#: EMPTY since ``workset.workspaces``, its last member, got the ``workset-workspaces`` view.
+PINNED_DEFAULT_KEYS: frozenset[str] = frozenset()
 
 
 class TestPathDefaults:
@@ -315,81 +307,39 @@ class TestWorksetKuidDefault:
 
 
 class TestWorksetWorkspacesDefault:
-    """(i-b4) ``workset.workspaces`` — the resolved dir, and the PRIMARY absence.
+    """(i-b4) ``workset.workspaces`` — the halves of the row the kinemata view cannot print.
 
-    ⚑⚑ A VALUE ORACLE, NOT A SECOND RESOLVER, and NOT a string compare against the
-    manifest formula.  The floor carries this key as a RESOLVED LITERAL (the docstring on
-    ``workset_anchor_floor`` says why: it is read on the DETECTION side before a snapshot
-    exists, harder than ``channelroot`` is), so the manifest formula is followed ONE HOP —
-    its ``@meta.workset.path`` answered by the root the caller already holds — and
-    compared to what ``project.workset.resolve_workset_workspaces`` returns.  Nothing here
-    re-implements the resolution rule; what is under test is WHICH LEAF the manifest
-    claims per mode, which is exactly what a hand-copied arm gets wrong (``workspaces``
-    plural for named, ``workspace`` singular for standalone — one character apart).
-
-    ⚑ ANTI-VACUITY: the row answered at NO terminus until 2026-08-29 while
-    ``meta.box.workspace`` ``@``-referenced it, so this class reds by ``KeyError`` if the
-    floor stops emitting the key rather than passing on an absent one.
+    The ``workset-workspaces`` view compares all three arms with the manifest: PRIMARY's
+    present ``None`` and the NAMED/STANDALONE dirs the launch resolves.  What is left is
+    the refusal of a caller's PRIMARY value and the repoint the resolved dir must carry.
     """
 
-    #: The two modes the manifest gives a real arm.
-    _REAL_ARM_MODES = ("named", "standalone")
+    def test_a_caller_value_at_primary_is_refused(self):
+        """🛑 The floor supplies the primary ``None`` itself, so a caller cannot replace it.
 
-    @staticmethod
-    def _derived(root: Path, mode: str) -> Path:
-        """The deriver's answer for *root* — the value the launch hands the floor."""
-        from kanibako.project.workset import (
-            load_workset_settings_doc, resolve_workset_workspaces,
-        )
-
-        return resolve_workset_workspaces(
-            root, load_workset_settings_doc(root), standalone=(mode == "standalone"),
-        )
-
-    @pytest.mark.parametrize("mode", _REAL_ARM_MODES)
-    def test_the_manifest_arm_is_the_derived_dir(self, mode, tmp_path):
-        arm = _per_mode(_default(_WORKSPACES_KEY))[mode]
-        head, sep, leaf = str(arm).partition("/")
-        assert sep and head == "@meta.workset.path", (
-            f"{_WORKSPACES_KEY} [{mode}]: unfollowable manifest formula {arm!r}"
-        )
-        assert self._derived(tmp_path, mode) == tmp_path / leaf, (
-            f"{_WORKSPACES_KEY} [{mode}]: manifest says {arm!r} (= {tmp_path / leaf}), "
-            f"resolve_workset_workspaces derived {self._derived(tmp_path, mode)}"
-        )
-
-    @pytest.mark.parametrize("mode", _REAL_ARM_MODES)
-    def test_the_floor_publishes_the_derived_dir(self, mode, tmp_path):
-        """The launch seam's half: what the deriver answers is what the keyspace gets."""
-        derived = self._derived(tmp_path, mode)
-        floor = workset_anchor_floor(mode=mode, workspaces=str(derived))
-        assert floor[_WORKSPACES_KEY] == str(derived)
-
-    def test_the_primary_arm_is_an_absence_on_both_sides(self):
-        """🛑 THE ARM IS "NOTHING", and both carriers must say so.
-
-        The manifest declares ``primary: null``.  The CODE does honor a primary
-        ``workspaces`` repoint (``project.workset.default_workset``) and that divergence
-        is ruled and the user's — but publishing the resolved value as this KEY would
-        conform the declared null to a code value, which is the wrong direction.  The
-        floor emits nothing at primary, and REFUSES a value rather than dropping one, so
-        a caller cannot re-open the arm quietly.
+        A value the USER sets arrives through the settings cascade, which outranks the
+        floor; a caller-supplied path would be a second carrier of the primary arm.
         """
-        assert _per_mode(_default(_WORKSPACES_KEY))["primary"] is None
-        assert _WORKSPACES_KEY not in workset_anchor_floor(mode="primary")
-        with pytest.raises(SettingsError, match="NO primary arm"):
+        assert workset_anchor_floor(mode="primary")[_WORKSPACES_KEY] is None
+        with pytest.raises(SettingsError, match="declares <None> for primary"):
             workset_anchor_floor(mode="primary", workspaces="/anywhere/workspaces")
 
     def test_a_repoint_reaches_the_derived_dir(self, tmp_path):
         """⚑ Why the value is RESOLVED and never composed: a repoint must survive it.
 
-        A ``<root>/workspaces`` join would pass every case above and silently drop this
-        one, which is the whole distinction between the deriver and a second carrier.
+        A ``<root>/workspaces`` join would pass the view and silently drop this case,
+        which is the whole distinction between the deriver and a second carrier.
         """
+        from kanibako.project.workset import (
+            load_workset_settings_doc, resolve_workset_workspaces,
+        )
+
         (tmp_path / "workset.yaml").write_text(
             "workset:\n  workspaces: '@meta.workset.path/pods'\n"
         )
-        assert self._derived(tmp_path, "named") == tmp_path / "pods"
+        assert resolve_workset_workspaces(
+            tmp_path, load_workset_settings_doc(tmp_path),
+        ) == tmp_path / "pods"
 
 
 class TestBehaviorDefaults:
@@ -821,9 +771,8 @@ class TestBindDefaults:
 #: * ``workset.workspaces`` (2026-08-29) — THE LAST ONE, and the reason died the same way:
 #:   the launch now writes the RESOLVED dir out (``workset_anchor_floor``'s ``workspaces``
 #:   arm), so there is an artefact to compare to, and the row had dangled at every
-#:   terminus while its dependent ``meta.box.workspace`` demanded it.  Pinned by
-#:   :class:`TestWorksetWorkspacesDefault` — the named/standalone values against the
-#:   manifest formulas, and the PRIMARY ABSENCE on both sides.
+#:   terminus while its dependent ``meta.box.workspace`` demanded it.  Compared by
+#:   the ``workset-workspaces`` kinemata view, all three arms.
 #:
 #: 🛑 DO NOT RE-CREATE THIS CLASS TO PARK A ROW IN.  A join FACE is not an absence of a
 #: carrier; treating it as one is what let four declared rows resolve to ``__MISSING__``
@@ -839,6 +788,8 @@ NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
 #: so the property is "no builder emits it", which is a different (and much weaker)
 #: claim than a value oracle; a floor that is silent about a key is indistinguishable
 #: from a floor that has not been written yet.
+#: ⚑ ``box.shell`` LEFT this class 2026-09-27: ``config.box_scalar_defaults_floor`` floors
+#: its ``<None>`` as a PRESENT ``None``, compared by the ``box-scalar-floor`` view.
 #: ⚑ ``agent.shell.template`` LEFT this class 2026-09-24: its ``<None>`` is floored as a
 #: PRESENT ``None`` (a supplied value, [R177]), so it has a carrier — compared by the
 #: ``shell-template-none`` kinemata view.  ``agent.shell.{bootstrap,run_args,transform}``
@@ -847,7 +798,7 @@ NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
 #: ``agent.default.{model,endpoint,run_args,transform}`` left likewise: ``agent_default:``
 #: floors them as a present ``None``, compared by ``default-tier-none``.
 NO_ORACLE_ABSENT: frozenset[str] = frozenset({
-    "system.agent", "system.setup_completed", "box.shell",
+    "system.agent", "system.setup_completed",
     "agent.shell.continue_mode", "agent.shell.model", "agent.shell.endpoint",
 })
 
@@ -1786,7 +1737,7 @@ class TestDefaultsCoverage:
         )
 
     def test_the_split_is_the_measured_split(self):
-        """1 pinned, 65 carried, 13 exempted — stated so a silent migration between them reds.
+        """0 pinned, 71 carried, 11 exempted — stated so a silent migration between them reds.
 
         ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
         (2026-08-25), then 48/17 until ``workset.registry`` followed it out of E1
@@ -1839,10 +1790,13 @@ class TestDefaultsCoverage:
         endpoint}`` rows (fence ``<None>``) joined E3 — no floor installs them.
         ⚑ 1+65/16 → 1+69/12: ``agent.default.{model,endpoint,run_args,transform}`` left E3
         for the ``default-tier-none`` view.
+        ⚑ 1+69/12 → 0+71/11 (2026-09-27): ``workset.workspaces`` left the pinned set for
+        the ``workset-workspaces`` view, and ``box.shell`` left E3 for the
+        ``box-scalar-floor`` view (its ``<None>`` is floored as a present ``None``).
         """
-        assert len(PINNED_DEFAULT_KEYS) == 1
-        assert len(CARRIED_DEFAULT_KEYS) == 69
-        assert len(EXEMPT_DEFAULT_KEYS) == 12
+        assert len(PINNED_DEFAULT_KEYS) == 0
+        assert len(CARRIED_DEFAULT_KEYS) == 71
+        assert len(EXEMPT_DEFAULT_KEYS) == 11
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
         assert not (PINNED_DEFAULT_KEYS & CARRIED_DEFAULT_KEYS), (
             f"pinned here AND compared by a kinemata view: "

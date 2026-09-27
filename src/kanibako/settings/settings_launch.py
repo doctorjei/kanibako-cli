@@ -667,8 +667,9 @@ def workset_anchor_floor(
     DETECTION side before any snapshot exists, and the floor must carry the answer that
     pass already reached or the two would resolve one key two ways.
 
-    *workspaces* is the resolved ``workset.workspaces`` — NAMED/STANDALONE only, and
-    ``None`` at PRIMARY, whose manifest arm is ``null``. ⚑⚑ IT IS A LITERAL FOR THE SAME
+    *workspaces* is the resolved ``workset.workspaces`` — NAMED/STANDALONE only. For
+    PRIMARY the floor supplies the ``None`` §2c declares, and a caller-supplied value is
+    REFUSED. ⚑⚑ IT IS A LITERAL FOR THE SAME
     REASON AS ``channelroot``, ONLY MORE SO. ``settings/workset_dirkeys.py`` names this
     key FIRST among the ones read on the detection side, and four readers run before any
     snapshot exists — ``paths._check_workset``, ``project.workset._workset_skeleton_dirs``,
@@ -681,16 +682,12 @@ def workset_anchor_floor(
     root a relative workset-tier value; only ``resolve_workset_dir_key`` does, and only
     pre-snapshot. A formula composed at expand time would have produced ``comms/common``.
 
-    🛑 A *workspaces* value at PRIMARY is REFUSED, not dropped. The manifest declares
-    ``{primary: null, …}``, and the CODE's divergence — ``project.workset.default_workset``
-    honors a ``workspaces`` repoint at primary — is RULED and the user's (manifest note,
-    B2-Editor S-1: *"do NOT 'conform' the code to the null"*). Writing that resolved value
-    into the keyspace here would conform the declared null to a code value, which is the
-    wrong direction; the absence is the primary arm's whole content.
-
-    ⚑ STANDALONE's ``<None>`` arms are SUPPLIED as a present ``None``, never omitted:
-    ``workset.registry``, ``workset.template``, ``workset.channelroot`` and the four
-    workset-LOCAL ``workset.channels.*`` leaves. A supplied ``<None>`` is a value, and a
+    ⚑ Every ``<None>`` arm is SUPPLIED as a present ``None``, never omitted: PRIMARY's
+    ``workset.workspaces``, and STANDALONE's ``workset.registry``, ``workset.template``,
+    ``workset.channelroot`` and the four workset-LOCAL ``workset.channels.*`` leaves.
+    A value the user sets reaches the key through the settings cascade, which outranks
+    this floor by merge level — so a primary ``workspaces`` in the primary workset's
+    ``workset.yaml`` is honored there, as ``project.workset.default_workset`` honors it. A supplied ``<None>`` is a value, and a
     default is a fallback that applies only where nothing was supplied ([R177]); an
     OMITTED key instead renders ``""`` inside an embedded ``@``-ref (a present ``None``
     makes the whole value ``None``, spec §0), so a user entry
@@ -799,16 +796,16 @@ def workset_anchor_floor(
     # ``__MISSING__`` in every launch snapshot and its dependent ``meta.box.workspace``
     # demanded a key that answered nowhere. The value is the RESOLVED literal — see the
     # docstring for why the formula would be wrong here more sharply than anywhere else.
+    # PRIMARY declares ``<None>`` (spec §2c), supplied like standalone's arms above.
+    if mode == "primary":
+        floor["workset.workspaces"] = None
     if workspaces is not None:
         if mode == "primary":
             raise SettingsError(
-                "workset_anchor_floor: workset.workspaces declares NO primary arm "
-                "(the manifest default is {primary: null}), so no floor may emit one. "
-                "The code DOES honor a primary `workspaces` repoint — "
-                "project/workset.py::default_workset — and that divergence is ruled and "
-                "stays there; writing the resolved value into the keyspace here would "
-                "conform the declared null to a code value, which is the wrong "
-                "direction."
+                "workset_anchor_floor: workset.workspaces declares <None> for primary "
+                "(the manifest default is {primary: null}); the floor supplies that "
+                "None itself, so no caller may emit a path for it. A user's value "
+                "reaches the key through the settings cascade."
             )
         floor["workset.workspaces"] = workspaces
     if workset_channels is not None:
@@ -1496,7 +1493,7 @@ def _workset_channel_floor_values(
 def _workset_workspaces_floor_value(
     mode: str, ws_root_literal: "str | None",
 ) -> "str | None":
-    """The resolved ``workset.workspaces`` the launch floor installs — ⚑ NOT primary.
+    """The resolved ``workset.workspaces`` the caller hands the launch floor — ⚑ NOT primary.
 
     ⚑ THIS IS THE VALUE THE PRE-SNAPSHOT PASS ALREADY REACHED, not a second answer to
     the same question.  It is the same ``project.workset.resolve_workset_workspaces``
@@ -1506,11 +1503,9 @@ def _workset_workspaces_floor_value(
     (``settings/workset_dirkeys.py``).  Composing ``<root>/workspaces`` here instead
     would be a second carrier and would lose every repoint.
 
-    ⚑ PRIMARY RETURNS ``None``: the manifest declares ``{primary: null, …}``.  The code
-    does honor a primary ``workspaces`` repoint (``project.workset.default_workset``),
-    and that divergence is RULED and the user's — it is not this seam's to publish as a
-    key.  ``workset_anchor_floor`` REFUSES a primary value rather than dropping one, so
-    the rule has one carrier and a caller cannot quietly re-open the arm.
+    ⚑ PRIMARY RETURNS ``None`` — nothing to hand over: the manifest declares
+    ``{primary: null, …}``, and :func:`workset_anchor_floor` supplies that present
+    ``None`` itself and REFUSES a caller's primary value, so the arm has one carrier.
 
     *ws_root_literal* is the SAME string ``meta.runtime.ws_root`` is built from
     (``proj.group.root`` named / ``proj.metadata_path`` standalone), so the workspaces

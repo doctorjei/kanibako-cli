@@ -320,15 +320,13 @@ def box_scalar_defaults_floor() -> dict[str, object]:
     floor: dict[str, object] = {}
     for dotted, field_name in _BOX_SCALAR_FIELDS.items():
         value = getattr(defaults, field_name)
-        # ⚑ ``build_launch_snapshot``'s OWN rule, applied here so the two floors agree:
-        # a ``""`` is a SUPPRESSION — "absent ≡ no default" (verified in that function:
-        # ``if val == "": continue``).  It is what keeps ``box.shell`` out (spec §2b:
-        # ``box.shell | <None>``), so a genuinely unset ``@box.shell`` still refuses BY
-        # NAME rather than resolving to blank.  ⚑ ``False`` is a VALUE and survives —
-        # ``False == ""`` is False.
-        if value == "":
-            continue
-        floor[dotted] = value
+        # ⚑ A ``str`` field spells the declared ``<None>`` as ``""`` (``box.shell``, spec
+        # §2b ``box.shell | <None>``), and the floor SUPPLIES it as a present ``None``
+        # ([R177]) — never ``""``, which ``build_launch_snapshot`` drops as a
+        # suppression, so ``@box.shell`` would dangle.  A present ``None`` does not
+        # reach the flat field: :func:`_resolve_box_scalars` skips it, leaving ``""``
+        # (auto-detect).  ⚑ ``False`` is a VALUE and survives — ``False == ""`` is False.
+        floor[dotted] = None if value == "" else value
     return floor
 
 

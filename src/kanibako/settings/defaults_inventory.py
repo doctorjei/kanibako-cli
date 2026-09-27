@@ -152,8 +152,10 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # ⚑ WIDENED 2026-08-29, 2 keys to 3: ``box.enable_vault`` is a field now, and its
     # field default is what ``config.box_scalar_defaults_floor`` publishes into every
     # box-scalar resolve — the same route ``box.image`` and ``box.share_images`` take.
+    # ``box.shell`` joined 2026-09-27: its ``""`` field default is floored as the declared
+    # ``<None>``, a PRESENT ``None`` ([R177]), so it has a carrier to name.
     ("config.py (KanibakoConfig field)",
-     frozenset({"box.image", "box.share_images", "box.enable_vault"})),
+     frozenset({"box.image", "box.share_images", "box.enable_vault", "box.shell"})),
     # ⚑⚑ THE ``config.py (read-with-default)`` LABEL IS GONE (2026-08-29), and it was the
     # LAST of the "pre-cascade reader owns the default" group. Two keys had already left
     # it — ``workset.skip_kuid_check`` and ``workset.kuid``, to the anchor floor — and its
@@ -184,28 +186,12 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
       "workset.channelroot", "workset.channels.common", "workset.channels.chat",
       "workset.channels.broadcast", "workset.channels.share",
       "workset.channels.mailboxes", "workset.channels.share_global"})),
-    # ⚑⚑ THE ``built-in (path join at use)`` LABEL IS GONE (2026-08-29), and with it the
-    # LAST row that claimed a declared default had no artefact behind it. Its sole member
-    # was ``workset.workspaces``, now carried below. Two keys had already left it —
-    # ``workset.registry`` and ``workset.template``, both to the anchor floor — and its
-    # stated reason ("the manifest states the formula and no literal exists anywhere to
-    # point at") went false for the last one when the launch started writing the resolved
-    # value out. Do NOT re-add the label: a join FACE is not an absence of a carrier, and
-    # that conflation is what let three rows dangle at launch while looking ordinary here.
-    #
-    # The RESOLVED workset dir key ``workset.workspaces``. ⚑ Same shape as the channel
-    # family above and labelled the same way — ``project/workset.py`` DERIVES the value
-    # (``resolve_workset_workspaces``, one face on the single pre-snapshot route
-    # ``settings/workset_dirkeys.resolve_workset_dir_key``) and ``commands/start.py``
-    # hands the answer to ``workset_anchor_floor``. The label names the DERIVER, not the
-    # floor, exactly as ``channels/channels.py`` does, because that is where a wrong value
-    # would come from.
-    # ⚑ IT IS NOT IN THE DERIVED ANCHOR-FLOOR GROUP ABOVE, and cannot be: that group is
-    # probed at ``mode="primary"``, and this is the FIRST floor key with no primary arm
-    # (manifest ``{primary: null, …}``). A probe that reached it would have to hand the
-    # floor a primary value, which the floor refuses on purpose.
-    ("project/workset.py (workspaces key resolution)",
-     frozenset({"workset.workspaces"})),
+    # ⚑⚑ THE ``built-in (path join at use)`` AND ``project/workset.py (workspaces key
+    # resolution)`` LABELS ARE GONE. The first went 2026-08-29, when its last member
+    # ``workset.workspaces`` got a carrier; the second held that key until 2026-09-27,
+    # when the anchor floor started supplying its PRIMARY ``<None>`` as a present ``None``
+    # (Q82), so the ``mode="primary"`` probe above derives it. Do NOT re-add either: a key
+    # in two groups raises out of :func:`key_rows`.
     # The helper-hub SPAWN BUDGET (spec §2g) — the shipped system-scope SCALAR floor,
     # installed unconditionally by every resolve. The label names the FLOOR rather than
     # `bootstrap.SPAWN_BUDGET_DEFAULTS` (the value table it derives from) for the same
@@ -230,7 +216,6 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # ``agent.shell.{continue_mode,model,endpoint}`` rows ARE here: no floor installs them.
     ("(nothing declares it — unset until you set it)", frozenset({
       "system.agent", "system.setup_completed",
-      "box.shell",
       "agent.shell.continue_mode", "agent.shell.model", "agent.shell.endpoint"})),
     # ``default: {}`` — the resolver's own initial state for a category arm.
     ("(empty — the category starts with no entries)", frozenset({

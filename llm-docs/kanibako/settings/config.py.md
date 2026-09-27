@@ -95,9 +95,12 @@ nothing left to strand, and `config.box_scalar_defaults_floor()` builds the floo
 declared default when it did not. Only the first is the violation; deleting both would make
 `@box.image` dangle at launch AND at set time. `box_scalar_defaults_floor` is the ONE recipe, shared
 with `config_interface._category_set_lookups` so the launch floor and the set-time floor cannot
-drift. A `""` default (`box.shell`) is dropped as a SUPPRESSION — `build_launch_snapshot`'s own rule
-(`if val == "": continue`) — so an unset `@box.shell` still refuses BY NAME rather than resolving to
-blank.
+drift. A `""` field default (`box.shell`) is the flat object's spelling of the declared `<None>`
+(spec §2b `box.shell | <None>`), and the floor SUPPLIES it as a present `None` ([R177]). It is not
+`""`: `build_launch_snapshot` drops a `""` as a suppression (`if val == "": continue`), which left
+`@box.shell` dangling, so `set box.env.SH=@box.shell` refused by name until 2026-09-27. A whole-value
+ref to it now resolves to `None` (§0). `_resolve_box_scalars` skips a resolved `None`, so the flat
+`box_shell` field keeps its `""` and `launch.shells.resolve_box_shell` still auto-detects.
 
 ⚑ The floor is the DECLARED DEFAULTS and is built before any overlay, so a workset or box value
 cannot masquerade as the system-stored default — it enters the resolve at its OWN tier instead.

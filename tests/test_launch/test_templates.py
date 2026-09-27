@@ -548,6 +548,45 @@ class TestLayeredHomeSeed:
         for leaf in ("common", "chat", "broadcast", "share"):
             assert dict.get(channels, leaf, __MISSING__) is None, (leaf, channels)
 
+    def test_a_primary_launch_carries_workspaces_as_a_present_none(
+        self, std, config, primary_proj,
+    ):
+        """PRIMARY ``workset.workspaces`` is ``<None>`` (spec §2c), SUPPLIED present (Q82).
+
+        The floor used to OMIT it at primary, so ``@workset.workspaces`` dangled there.
+        """
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.kb_store import __MISSING__
+
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=primary_proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=None, agent_cfg=None,
+            deliver_creds=True,
+            cli_level=None,
+        )
+        workset = dict.get(snapshot, "workset")
+        assert dict.get(workset, "workspaces", __MISSING__) is None, workset
+
+    def test_a_primary_workspaces_the_user_sets_is_honored(
+        self, std, config, primary_proj,
+    ):
+        """A value the user sets in the primary ``workset.yaml`` wins over the floor's
+        ``None`` (spec §2c, Q82) — the settings cascade outranks the floor."""
+        from kanibako.commands.start import _resolve_launch_snapshot
+
+        wsf = std.primary_workset / "workset.yaml"
+        wsf.parent.mkdir(parents=True, exist_ok=True)
+        wsf.write_text("workset:\n  workspaces: /srv/pods\n")
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=primary_proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=None, agent_cfg=None,
+            deliver_creds=True,
+            cli_level=None,
+        )
+        assert dict.get(dict.get(snapshot, "workset"), "workspaces") == "/srv/pods"
+
     def test_a_standalone_seed_entry_naming_workset_template_takes_no_host_path(
         self, std, config, standalone_proj,
     ):

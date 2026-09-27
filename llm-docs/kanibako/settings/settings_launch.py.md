@@ -674,7 +674,7 @@ until 2026-08-25 — a manifest row with a declared default that the keyspace co
 `@workset.channelroot` dangled in every launch snapshot.
 
 *workspaces* is the resolved `workset.workspaces` — the member-workspace root. NAMED and STANDALONE
-only; `None` at PRIMARY, whose manifest arm is `null`. Same defect as `channelroot` and the same fix
+only; at PRIMARY, whose manifest arm is `null`, the floor supplies the present `None` itself. Same defect as `channelroot` and the same fix
 (2026-08-29): the row had real named/standalone defaults that no floor emitted, so
 `@workset.workspaces` was `__MISSING__` in every launch snapshot, and its dependent
 `meta.box.workspace` `@`-referenced a key that answered at no terminus.
@@ -691,13 +691,14 @@ is**. A floor spelling the formula would let detection and the keyspace answer t
 workset-tier value; only `resolve_workset_dir_key` does, and only pre-snapshot. A formula composed at
 expand time would have produced `comms/common`. The same is true of a relative `workspaces:` repoint.
 
-🛑 **A `workspaces` value at PRIMARY is REFUSED, not dropped.** The manifest declares
-`{primary: null, …}`. The CODE does honor a primary `workspaces` repoint —
-`project.workset.default_workset` composes member workspaces off it — and that divergence is RULED
-and the user's (manifest note, B2-Editor S-1: *"do NOT 'conform' the code to the null"*). Publishing
-the resolved value as this KEY would conform the declared null to a code value, which is the wrong
-direction; the absence IS the primary arm's content. Refusing rather than ignoring keeps the per-mode rule in ONE carrier — a caller cannot
-re-open the arm quietly.
+🛑 **PRIMARY is a present `None`, and a caller's value there is REFUSED.** Keyspec §2c declares
+`workset.workspaces | <None>` for PRIMARY, and a declared `<None>` is a SUPPLIED value ([R177]), as
+standalone's `<None>` arms are. A value the user sets in the primary workset's settings file is
+honored: it reaches the key through the settings cascade, which outranks the floor by merge level
+(the RAW spelling, as for named), and `project.workset.default_workset` composes member workspaces off
+the same repoint. The floor refuses a CALLER's primary value rather than ignoring it, so the per-mode
+rule has ONE carrier. Until 2026-09-27 the floor OMITTED the key at primary under the retired
+B2-Editor S-1 note; Q82 ruled it "supplied as a present None; a value the user sets is honored".
 
 🛑 **`meta.box.workspace` IS NOT SPELLED AGAINST THIS KEY, AND MUST NOT BE.** The manifest note
 claiming it is "spelled against the KEY so a repointed `workset.workspaces` carries it" is FALSE of

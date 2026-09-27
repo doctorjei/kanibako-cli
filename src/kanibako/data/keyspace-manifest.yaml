@@ -1073,11 +1073,8 @@ keys:
     default: {primary: null, named: "@meta.workset.path/workspaces",
               standalone: "@meta.workset.path/workspace"}
     note: "standalone: just the one box; changeable from workset level (R-26).
-           ⚑ PRIMARY arm: the spec default is null, but the CODE composes and
-           HONORS a `workspaces` leaf at primary (a set value repoints member
-           workspace composition). Behavior-preserving divergence — do NOT
-           'conform' the code to the null (that relocation would be an M-3-shaped
-           migration, not a conformance fix). B2-Editor S-1, 2026-08-02."
+           PRIMARY arm: the anchor floor supplies the null as a present None
+           (Q82); a value the user sets is honored through the cascade."
     spec: "§2c / §2e (R-26)"
   workset.boxes:
     scope: workset

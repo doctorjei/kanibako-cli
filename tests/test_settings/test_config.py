@@ -390,18 +390,28 @@ class TestBoxScalarDefaultsFloor:
         assert floor["box.image"] == KanibakoConfig().box_image
         assert floor["box.share_images"] is False
 
-    def test_box_shell_is_suppressed_not_blank(self):
-        """``""`` is a SUPPRESSION — "absent ≡ no default" — so an unset
-        ``@box.shell`` refuses BY NAME instead of resolving to blank (spec §2b).
+    def test_box_shell_is_a_present_none(self):
+        """``box.shell``'s ``""`` field default is floored as the declared ``<None>``.
 
-        ⚑ Pinned against ``build_launch_snapshot``'s own rule (``if val == "":
-        continue``), which this floor has to agree with or the launch floor and the
-        set-time floor answer differently for the same key.
+        Spec §2b ``box.shell | <None>``: a declared ``<None>`` is SUPPLIED ([R177]), so a
+        whole-value ``@box.shell`` resolves instead of dangling.  ``""`` would not do:
+        ``build_launch_snapshot`` drops a ``""`` default as a suppression.
         """
         from kanibako.settings.config import box_scalar_defaults_floor
 
         assert KanibakoConfig().box_shell == ""
-        assert "box.shell" not in box_scalar_defaults_floor()
+        floor = box_scalar_defaults_floor()
+        assert "box.shell" in floor
+        assert floor["box.shell"] is None
+
+    def test_a_floored_none_leaves_the_flat_shell_to_auto_detect(self, tmp_path):
+        """The present ``None`` never reaches the flat field as ``"None"``.
+
+        ``launch.shells.resolve_box_shell`` reads ``box_shell`` and runs it; a stringified
+        ``None`` would launch a program called ``None``.
+        """
+        cfg = load_merged_config(tmp_path / "kanibako.cfg")
+        assert cfg.box_shell == ""
 
     def test_false_survives_because_it_is_a_value(self):
         """⚑ ``False == ""`` is False — the suppression must not eat a real bool."""
