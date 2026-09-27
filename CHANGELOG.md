@@ -21,13 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A plugin's `behavior:` row declares "no default" as `null`, and the three shipped plugins do.**
   claude's, codex's and goose's `model` and `endpoint` rows (and goose's `provider`) are `null` in
-  their `<agent>-defaults.yaml` instead of `""`, so `agent.<agent>.<key>` holds a present `<None>`,
-  which is what the settings spec declares for these keys. A launch emits nothing for them, as
-  before, and `kanibako box config --effective` now omits them when nothing sets them, where it
-  showed an empty value. As a plugin row it beats `agent.default.<key>` (see the entry *An agent plugin's own
-  default for a key beats `agent.default.<key>`*). For plugin authors: `TargetSetting.default` is
-  `str | None`, and the loader accepts `default: null` beside a string; an omitted `default:` is
-  still refused.
+  their `<agent>-defaults.yaml`, so `agent.<agent>.<key>` holds a present `<None>`, which is what
+  the settings spec declares for these keys. A launch emits nothing for them, and
+  `kanibako box show --effective` now omits them when nothing sets them. In 1.8.0-rc2 these rows
+  were `""`, except claude's and codex's `model`, which were `opus` and `gpt-5.5` (see *Kanibako no
+  longer chooses a model for your agent*); `--effective` showed an empty value for the others and
+  that model for claude and codex. As plugin rows they beat `agent.default.<key>` (see the entry
+  *An agent plugin's own default for a key beats `agent.default.<key>`*). For plugin authors:
+  `TargetSetting.default` is `str | None`, and the loader accepts `default: null` beside a string;
+  an omitted `default:` is still refused.
 
 - **The base images (`kanibako-{min,oci,lxc,vm}`) are built and released from this repo.** Their
   sources moved in from the former `kanibako-images` repo, with its history, under `images/`. One
@@ -156,12 +158,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An agent plugin's own default for a key beats `agent.default.<key>`.** A plugin's declared
   defaults now sit at `agent.<agent>.*`, above the `agent.default` tier, so a user's
   `agent.default.model`, `endpoint`, `label` or `transform` no longer reaches an agent whose
-  plugin declares that key; `agent.<agent>.<key>` still overrides the plugin. In 1.8.0-rc2 the
-  plugin's default sat at `agent.default` and a user's `agent.default.<key>` replaced it.
+  plugin declares that key; `agent.<agent>.<key>` still overrides the plugin. In 1.7.2 and
+  1.8.0-rc2 the plugin's default sat at `agent.default`, so a user's `agent.default.<key>` (for
+  example `kanibako system set model=…`) replaced it (`label` is new since 1.8.0-rc2).
   `agent.default.{model,endpoint,run_args,transform}` are now supplied as a present `<None>`
   rather than left absent. A persona box is the exception for `model`: its model is still read
-  as before, so a user's `agent.default.model` still reaches it. See `MIGRATION.md` § *2.90 An
-  agent plugin's own default beats `agent.default`*.
+  as before, so a user's `agent.default.model` still reaches it. See `MIGRATION.md` § *An agent
+  plugin's own default beats `agent.default`*.
 
 ### Fixed
 
@@ -190,13 +193,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to hit this. A value that embeds a reference to a `null` key is now `null` as a whole (keyspec
   §0), and the ordinary rules for `null` apply:
   - a `bindings`, `caches`, `common`, `synced` or `seeded` entry whose source becomes `null` is
-    left out; v1.8.0-rc2 mounted the host path, or stopped the launch with `… is NoneType,
-    expected a BindEntry …` when the source was exactly one such reference;
+    left out; v1.7.2 and v1.8.0-rc2 mounted the host path when the reference was embedded in a
+    longer source, and v1.8.0-rc2 stopped the launch with `… is NoneType, expected a BindEntry …`
+    when the source was exactly one such reference;
   - a `seeded` layer whose destination references one is skipped; any other destination that
     references one refuses the launch and names it;
   - a `secret_path` is left out, so the box starts without that secret, and the launch warns once,
     naming the `secret_path` key, the `null` key it refers to and the file that set the `null`;
-    v1.8.0-rc2 mounted the host path as the secret;
+    v1.7.2 and v1.8.0-rc2 mounted the host path as the secret;
   - an environment variable is left out of the box, and any other setting reads as `null`.
 
   A binding you added yourself is left out without a warning; one of kanibako's own binds may warn
@@ -1377,7 +1381,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asked for one or not, and the agent's own default was unreachable. Both floors are `<None>` now,
   which is what the key has always declared (`agent.<agent>.model`, default `<None>` — *use the
   harness's built-in default*) and what goose already shipped. With no model set anywhere, kanibako
-  emits no `--model` flag and the CLI picks for itself. Setting one is unchanged and still wins:
+  emits no `--model` flag and the CLI picks for itself. Setting one still wins:
   `kanibako agent set <agent> model=<name>` for one agent, `-M <name>` for a single launch
   (`kanibako system set model=<name>` sets `agent.default.model`, which the shipped agents'
   own `<None>` rows now outrank). The key stays declared, so those commands still
@@ -1404,9 +1408,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agent: default: provider:`, move it under `agent: goose:`** — see `MIGRATION.md`,
   *`agent.default.<plugin-leaf>` is no longer a key*. Core-declared leaves — `model`, `endpoint`,
   `transform`, `access`, `allow_helpers`, `bootstrap`, `continue_mode`, `run_args`, `template`,
-  `canon`, `transform_settings` — are unaffected at `agent.default`, including where a plugin
-  declares one too. Precedence is unchanged: a settings file at any scope still outranks a
-  floored value.
+  `canon`, `transform_settings` — are still keys at `agent.default`. Where a plugin declares one
+  too, the plugin's own default now answers before `agent.default` (see the entry *An agent
+  plugin's own default for a key beats `agent.default.<key>`*); set it per agent.
 
 - **A setting an agent plugin declares is a key on that agent alone, at every door.** The rule the
   entry above applies to the all-agents tier applies to the named tier too: every leaf other than
@@ -2128,10 +2132,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@workset.workspaces/mine` expanded to `/mine` in both of those modes, and the key that references
   it referenced nothing. The workset anchor floor now emits it, from the directory the pre-launch
   resolution already reached — so a `workset.workspaces` repoint carries into the keyspace instead
-  of being silently dropped. ⚑ **A PRIMARY box deliberately gets no value**, because the key
-  declares none for that mode; that is unchanged, and now enforced rather than incidental. This
-  closes the last of the four keys in this class: `workset.channelroot`, `workset.registry`,
-  `workset.kuid`, `workset.skip_kuid_check` and `workset.template` preceded it.
+  of being silently dropped. A primary box gets `<None>`, which the key declares for that mode,
+  unless the primary workset's file sets one. A reference inside a longer path to it is then `null`
+  and its bind is left out (see *A setting set to `null` inside a path no longer turns the path
+  into one under the host's root*). This closes the last of the four keys in this class:
+  `workset.channelroot`, `workset.registry`, `workset.kuid`, `workset.skip_kuid_check` and
+  `workset.template` preceded it.
 
 - **`kanibako system defaults` reported `workset.workspaces` as having no artifact behind it.** The
   source column said the value was built by joining path components at the point of use, with no
