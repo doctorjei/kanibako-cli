@@ -797,6 +797,12 @@ NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
 #: tier's own ``tmux``, the other two as a present ``None`` — compared by ``shell-tier-fence``.
 #: ``agent.default.{model,endpoint,run_args,transform}`` left likewise: ``agent_default:``
 #: floors them as a present ``None``, compared by ``default-tier-none``.
+#: ⚑ THE WEAKER CLAIM IS HELD, BY THE ``no-floor-fabricates`` KINEMATA VIEW: every
+#: ``default: <None>`` row, these included, resolves NO value at any existing-box
+#: terminus, in every mode, for every discovered agent node (a leaf the launch's CLI
+#: level supplies, the ``system.agent`` selection, aside).  That is "no builder emits a
+#: value", not a value oracle, so these rows stay here and out of
+#: :data:`CARRIED_DEFAULT_KEYS`.
 NO_ORACLE_ABSENT: frozenset[str] = frozenset({
     "system.agent", "system.setup_completed",
     "agent.shell.continue_mode", "agent.shell.model", "agent.shell.endpoint",

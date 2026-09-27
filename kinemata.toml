@@ -2404,6 +2404,23 @@ source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.runtime\.admin\.(config|settings)$' }
 
+# FACT: a freshly initialized box RESOLVES NO VALUE for a `keys:` row whose declared
+# default is `<None>` -- no floor the launch folds, core or plugin, fabricates one. The
+# class-wide half the per-carrier `equal` views cannot hold: each of those sees only
+# its own carrier, and a floor with no view is seen by none.
+# AUTHORITY: `declared`; the manifest's `null` cells, sourced from keyspec §2c/§2d/§2g.
+# ⚑ WHAT IT COSTS ELSEWHERE, measured 2026-09-27 against `73f910ab`: `check`'s
+# `silent:` tally goes 686/798 to 699/811 -- its 13 rows, none carrying an
+# antipattern -- and `unread:` goes 1760 to 1761 f-strings (the terminus label in
+# `kinemata_views.existing_box_termini`). `shape` and `undeclared` print
+# byte-identical output.
+[[registry]]
+name = "no-floor-fabricates"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { holds = "kinemata_views:declares_no_floor_value" }
+
 # ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
 # produces and compares that set against what a registry above DECLARES.
@@ -5001,6 +5018,58 @@ print(f"kanibako-site-base: meta.runtime.admin.settings={settings_base_path()}")
 extract = '(?m)^kanibako-site-base: ([^\s=]+)=(\S+)$'
 field = "value"
 authority = "declared"
+
+# ⚑ THE LAUNCH'S OWN FLOOR ASSEMBLY, NOT A LIST OF PRODUCERS: the oracle drives every
+# existing-box terminus -- the merged-config box-scalar resolve, the two focused agent
+# picks, the auth resolves and the main launch resolve
+# (`kinemata_views.existing_box_termini`, the SAME driver list
+# `test_reachability_conformance` asserts P off) -- on a freshly initialized box in
+# every mode, for every agent node `discover_targets()` finds, records every snapshot
+# `build_launch_snapshot` builds, and prints every path that holds a value. So a floor
+# added to a terminus is covered without being named, and a plugin's floors and target
+# hooks run on its own node wherever the plugin is installed -- which is why the CI
+# `conformance` job installs all three. What this view claims is the MANIFEST's rows:
+# a plugin value landing on one of them reds, while a plugin's own
+# `agent.<node>.<key>` rows are declared by its descriptor, not here. A path the
+# resolve's §1A CLI level supplied (the agent selection, `system.agent`) is left
+# out: it is the launch's input, not a default.
+# ⚑ THE SELECTOR IS STRUCTURAL (`kinemata_views.declares_no_floor_value`): `null` only,
+# so `box.images_store`'s prose placeholder (supplied by the image floor by design,
+# `test_manifest_conformance`'s E2) is not claimed. A row floored as a present `None` is
+# claimed too: `None` is not a value, so the oracle never prints it.
+# GREEN ON THE CURRENT PRODUCT, measured 2026-09-27 with kinemata `0.5.0` and all three
+# plugins on the path, as CI installs them: rc=0,
+#   `# no-floor-fabricates: 13 declared, 271 produced, no identifier is both declared
+#   and produced.`
+# (178 produced with core alone). The reds it held when first built are cured in
+# code: plugin behavior floors land at `agent.<active>.<key>`, never at
+# `agent.default.<key>`, and a declared `<None>` is floored as a present `None`.
+# NEGATIVE CONTROLS, each in a copy, each reading
+# `<key>: declared and produced, where neither may be`:
+#   code, `core-defaults.yaml` `agent_default.model` null -> "opus": `agent.default.model`
+#   code, `config._DEFAULTS["box_shell"]` "" -> "zsh": `box.shell` (the
+#     `load_merged_config` terminus)
+#   code, `shell_tier_defaults()` gains `agent.shell.endpoint`: `agent.shell.endpoint`
+#   manifest, `box.image`'s default -> null: `box.image`
+#   the CLI-level filter removed: `system.agent` (the selection the launch installs)
+# VACUITY, the `print` removed: `BLOCKED: claims no identifier is both declared and
+# produced, and its oracle produced no identifiers at all`.
+[[parity]]
+registry = "no-floor-fabricates"
+relation = "disjoint"
+command = ["{python}", "-c", """
+from kinemata_views import fresh_launch_snapshots, snapshot_paths
+produced = set()
+for _node, _mode, _terminus, snapshot, cli_level in fresh_launch_snapshots():
+    supplied = set(cli_level or ())
+    produced.update(
+        key for key, value in snapshot_paths(snapshot)
+        if value is not None and key not in supplied
+    )
+for key in sorted(produced):
+    print(f"kanibako-fresh-path: {key}")
+"""]
+extract = '(?m)^kanibako-fresh-path: (.+)$'
 
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is

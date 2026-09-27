@@ -105,25 +105,23 @@ Indent note: 2 spaces (the house style); ``tests/test_settings/`` carries both.
 
 from __future__ import annotations
 
-import contextlib
 import re
 
 import pytest
 
 from kanibako.project.workset import add_project, create_workset
-from kanibako.settings.agent_select import AgentSelection, launch_resolve_ctx
-from kanibako.settings.config import load_merged_config
+from kanibako.settings.agent_select import launch_resolve_ctx
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.paths import (
   WorksetSpec,
-  box_workset_settings_paths,
   resolve_project,
   resolve_standalone_project,
   resolve_workset_project,
 )
 from kanibako.settings.settings_launch import snapshot_leaf
 from kanibako.targets.shell import ShellTarget
+from kinemata_views import existing_box_termini
 
 
 # The three box modes, spelled as ``meta.box.mode`` spells them (``BoxMode``).
@@ -167,109 +165,20 @@ def standalone_proj(std, config, project_dir, credentials_dir):
   return resolve_standalone_project(std, config, str(project_dir), initialize=True)
 
 
-@contextlib.contextmanager
-def _recording():
-  """Record every snapshot ``build_launch_snapshot`` produces while the block runs.
-
-  ⚑ THE ONE MECHANISM THAT KEEPS THIS FILE FROM BECOMING A SECOND CARRIER.  Every
-  resolve on the launch path funnels through this single builder — ``start.py`` calls
-  it as ``settings_launch.build_launch_snapshot`` and ``config.py`` imports it inside
-  the function body, so both bind the module attribute at CALL time and both are seen.
-  The probe therefore never has to know what floor a resolve assembles or what
-  arguments it forwards: it calls the production function and collects what that
-  function's own pipeline built.
-  """
-  from kanibako.settings import settings_launch
-
-  built: "list[object]" = []
-  real = settings_launch.build_launch_snapshot
-
-  def spy(*args, **kwargs):
-    snapshot = real(*args, **kwargs)
-    built.append(snapshot)
-    return snapshot
-
-  settings_launch.build_launch_snapshot = spy
-  try:
-    yield built
-  finally:
-    settings_launch.build_launch_snapshot = real
-
-
 def _termini(std, config_file, proj, target):
-  """Every terminus the production path produces FOR A BOX THAT ALREADY EXISTS.
+  """Every terminus the production path produces FOR A BOX THAT ALREADY EXISTS — the
+  ``claude`` node's, off :func:`kinemata_views.existing_box_termini`.
 
-  Returns ``[(label, snapshot), …]``; the label names the production entry point and
-  its call site, so a finding can say WHERE a key answered.
-
-  ⚑ IN-SCOPE IS DECIDED BY THE CALL SITE (see the module docstring): a resolve counts
-  when the production path reaches it down a route that is NOT gated on the box being
-  created.  Each driver below therefore carries the existing-box call site it stands
-  for.  Nothing is skipped by name — the create-time resolves have no line here
-  because no existing-box route reaches them, not because they were filtered out.
-
-  ⚑ ARGUMENT SHAPE HELD CONSTANT: ``system_settings_path`` / ``agent_cfg_path`` are
-  passed ``None`` throughout, exactly as this file's original single-terminus probe
-  passed them (an absent file is an empty tier, which the resolvers document as an
-  ordinary state).  Holding them fixed is what makes the before/after delta of this
-  rewrite attributable to the TERMINUS change and to nothing else.
-
-  ⚑ NOTHING IS SWALLOWED.  A driver that cannot stand up raises and reds the run; a
-  ``try``/``except`` here would silently drop a terminus, which is a carve-out wearing
-  an exception handler.
+  ⚑ THE DRIVER LIST LIVES THERE, ONCE: the kinemata ``no-floor-fabricates`` oracle
+  walks the same termini for every node, asking the complement of P (a ``<None>`` row
+  answers NOWHERE), so a terminus added for one question reaches the other.
   """
-  from kanibako.commands import start as start_cmd
-
-  box_path, workset_path = box_workset_settings_paths(proj)
-  # The §1A selection level a launch installs, built from the PRODUCTION dataclass
-  # rather than hand-spelled — ``AgentSelection.selection_level`` is the only thing
-  # that knows the shape (``{system.agent: node}``) and the no-agent ``None``.
-  selection = AgentSelection(node="claude", source="settings").selection_level
-
-  collected: "list[tuple[str, object]]" = []
-  with _recording() as built:
-
-    def drive(label: str, call) -> None:
-      start_at = len(built)
-      call()
-      for offset, snapshot in enumerate(built[start_at:]):
-        collected.append((f"{label}#{offset}", snapshot))
-
-    # _run_container — every launch loads the merged config before anything else,
-    # and its box-scalar resolve (config._resolve_box_scalars) is a real resolve.
-    drive("load_merged_config", lambda: load_merged_config(
-      config_file, box_path, workset_path=workset_path, cli_overrides=None,
-    ))
-    # _run_container's _bootstrap_choice / _effective_transform — the two focused
-    # agent-behavior resolves (_agent_scalar_pick) a launch runs ahead of the main
-    # snapshot.
-    drive("bootstrap_choice", lambda: start_cmd._bootstrap_choice(
-      proj, None, "claude", std=std, selection_level=selection, agent_path=None,
-    ))
-    drive("effective_transform", lambda: start_cmd._effective_transform(
-      proj, None, "claude", target, None, std=std, selection_level=selection,
-    ))
-    # _run_container's _resolve_box_launch_decisions — the auth/decisions resolve.
-    drive("box_launch_decisions", lambda: start_cmd._resolve_box_launch_decisions(
-      std=std, proj=proj, target=target, agent_name="claude", agent_cfg=None,
-      system_settings_path=None, agent_cfg_path=None, selection_level=selection,
-    ))
-    # stop.py's and launch/creds_watcher.py's calls to start._resolve_box_auth_source — the
-    # same build for the TARGET-LESS paths.  An existing box is what both of those act on,
-    # which is the whole test.
-    drive("box_auth_source", lambda: start_cmd._resolve_box_auth_source(
-      std=std, proj=proj, agent_name="claude",
-      system_settings_path=None, agent_cfg_path=None, selection_level=selection,
-    ))
-    # _run_container's _resolve_launch_snapshot — the main launch resolve, carrying
-    # the selection the launch installs (no flag is set, so the level is that alone).
-    drive("launch_snapshot", lambda: start_cmd._resolve_launch_snapshot(
-      std=std, proj=proj, agent_name="claude",
-      system_settings_path=None, agent_cfg_path=None,
-      desc=None, install=None, target=target, agent_cfg=None,
-      cli_level=selection,
-    ))
-  return collected
+  return [
+    (label, snapshot)
+    for label, snapshot, _ in existing_box_termini(
+      std, config_file, proj, target, node="claude",
+    )
+  ]
 
 
 def _probe(request, std, config_file, mode: str, target=None):

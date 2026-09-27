@@ -169,11 +169,13 @@ jobs:
       # IT. `parity` runs a command that prints what the code produces, and an
       # oracle it cannot run is a FAILURE that no baseline can accept -- so a
       # missing install here is a permanently red job, not a quiet skip.
-      # Plain `-e .` is enough and the agent plugin packages the `test` job
-      # installs are deliberately absent: the oracle imports
-      # `settings/settings_categories.py`, which is stdlib-only by invariant.
-      # Verified 2026-09-14 in a venv holding only kinemata and this project.
-      - run: pip install -e .
+      # ⚑ THE THREE AGENT PLUGINS ARE INSTALLED TOO, as the `test` job installs them:
+      # `no-floor-fabricates` drives the launch for every node discovery finds, and a
+      # plugin's descriptor floor exists only where the plugin is installed. They
+      # were absent only because no earlier oracle needed them; the stdlib-only
+      # invariant of `settings/settings_categories.py` is a property of that module
+      # and is unaffected.
+      - run: pip install -e . -e packages/agent-claude/ -e packages/agent-goose/ -e packages/agent-codex/
       # ⚑ EVERY GATE THE CONFIG DECLARES IS INVOKED HERE. `kinemata.toml` had
       # declared two `[[shape]]` blocks since 2026-09-14 and `shape` ran in no
       # pipeline at all -- a declared gate that executes nowhere is a gate we do

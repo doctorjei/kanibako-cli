@@ -59,6 +59,7 @@ a dependency of this project and must not become one: it is pinned in CI, not in
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 
@@ -441,3 +442,218 @@ def box_address_floor(mode: str) -> dict[str, Any]:
         box_name="@meta.box.name", project_path="@DECOY.project_path",
         **box_address_args(addr), box_settings="@DECOY.box_settings",
     )
+
+
+@contextlib.contextmanager
+def recording_launch_snapshots() -> Any:
+    """Record every snapshot ``build_launch_snapshot`` produces while the block runs.
+
+    ⚑ THE ONE MECHANISM THAT KEEPS A PROBE FROM BECOMING A SECOND CARRIER.  Every
+    resolve on the launch path funnels through this single builder — ``start.py`` calls
+    it as ``settings_launch.build_launch_snapshot`` and ``config.py`` imports it inside
+    the function body, so both bind the module attribute at CALL time and both are seen.
+    A probe therefore never has to know what floor a resolve assembles or what
+    arguments it forwards: it calls the production function and collects what that
+    function's own pipeline built.  Each record is ``(snapshot, cli_level)``: the §1A
+    CLI level the resolve was handed rides along, because a leaf it supplied is the
+    launch's INPUT, not a default.
+    """
+    from kanibako.settings import settings_launch
+
+    built: list[tuple[Any, Any]] = []
+    real = settings_launch.build_launch_snapshot
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        snapshot = real(*args, **kwargs)
+        built.append((snapshot, kwargs.get("cli_level")))
+        return snapshot
+
+    settings_launch.build_launch_snapshot = spy
+    try:
+        yield built
+    finally:
+        settings_launch.build_launch_snapshot = real
+
+
+def existing_box_termini(
+    std: Any, config_file: Any, proj: Any, target: Any, node: str,
+) -> list[tuple[str, Any, Any]]:
+    """Every terminus the production path produces FOR A BOX THAT ALREADY EXISTS.
+
+    Returns ``[(label, snapshot, cli_level), …]``; the label names the production entry
+    point and its call site, so a finding can say WHERE a key answered.
+
+    ⚑ IN-SCOPE IS DECIDED BY THE CALL SITE (``test_reachability_conformance``'s module
+    docstring): a resolve counts when the production path reaches it down a route that
+    is NOT gated on the box being created.  Each driver below therefore carries the
+    existing-box call site it stands for.  Nothing is skipped by name — the
+    create-time resolves have no line here because no existing-box route reaches
+    them, not because they were filtered out.
+
+    ⚑ ARGUMENT SHAPE HELD CONSTANT: ``system_settings_path`` / ``agent_cfg_path`` are
+    passed ``None`` throughout (an absent file is an empty tier, which the resolvers
+    document as an ordinary state).  *node* is the agent node every driver launches.
+
+    ⚑ NOTHING IS SWALLOWED.  A driver that cannot stand up raises and reds the run; a
+    ``try``/``except`` here would silently drop a terminus, which is a carve-out wearing
+    an exception handler.
+    """
+    from kanibako.commands import start as start_cmd
+    from kanibako.settings.agent_select import AgentSelection
+    from kanibako.settings.config import load_merged_config
+    from kanibako.settings.paths import box_workset_settings_paths
+
+    box_path, workset_path = box_workset_settings_paths(proj)
+    # The §1A selection level a launch installs, built from the PRODUCTION dataclass
+    # rather than hand-spelled — ``AgentSelection.selection_level`` is the only thing
+    # that knows the shape (``{system.agent: node}``) and the no-agent ``None``.
+    selection = AgentSelection(node=node, source="settings").selection_level
+
+    collected: list[tuple[str, Any, Any]] = []
+    with recording_launch_snapshots() as built:
+
+        def drive(label: str, call: Any) -> None:
+            start_at = len(built)
+            call()
+            for offset, (snapshot, cli_level) in enumerate(built[start_at:]):
+                collected.append((f"{label}#{offset}", snapshot, cli_level))
+
+        # _run_container — every launch loads the merged config before anything else,
+        # and its box-scalar resolve (config._resolve_box_scalars) is a real resolve.
+        drive("load_merged_config", lambda: load_merged_config(
+            config_file, box_path, workset_path=workset_path, cli_overrides=None,
+        ))
+        # _run_container's _bootstrap_choice / _effective_transform — the two focused
+        # agent-behavior resolves (_agent_scalar_pick) a launch runs ahead of the main
+        # snapshot.
+        drive("bootstrap_choice", lambda: start_cmd._bootstrap_choice(
+            proj, None, node, std=std, selection_level=selection, agent_path=None,
+        ))
+        drive("effective_transform", lambda: start_cmd._effective_transform(
+            proj, None, node, target, None, std=std, selection_level=selection,
+        ))
+        # _run_container's _resolve_box_launch_decisions — the auth/decisions resolve.
+        drive("box_launch_decisions", lambda: start_cmd._resolve_box_launch_decisions(
+            std=std, proj=proj, target=target, agent_name=node, agent_cfg=None,
+            system_settings_path=None, agent_cfg_path=None, selection_level=selection,
+        ))
+        # stop.py's and launch/creds_watcher.py's calls to start._resolve_box_auth_source — the
+        # same build for the TARGET-LESS paths.  An existing box is what both of those act on,
+        # which is the whole test.
+        drive("box_auth_source", lambda: start_cmd._resolve_box_auth_source(
+            std=std, proj=proj, agent_name=node,
+            system_settings_path=None, agent_cfg_path=None, selection_level=selection,
+        ))
+        # _run_container's _resolve_launch_snapshot — the main launch resolve, carrying
+        # the selection the launch installs (no flag is set, so the level is that alone).
+        drive("launch_snapshot", lambda: start_cmd._resolve_launch_snapshot(
+            std=std, proj=proj, agent_name=node,
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=target, agent_cfg=None,
+            cli_level=selection,
+        ))
+    return collected
+
+
+def fresh_launch_snapshots() -> Any:
+    """Yield `(node, mode, terminus, snapshot, cli_level)` for every terminus
+    (:func:`existing_box_termini`) of a freshly initialized box, for every mode and
+    every agent node discovery finds -- the launch's own floor assembly, with nothing
+    on top of it but what `init` writes.
+
+    ⚑ IT TAKES OVER THE PROCESS'S HOME: `HOME`, the four `XDG_*` bases and
+    `XDG_RUNTIME_DIR` point into a scratch tree, and the cwd moves there, before any
+    path is loaded. An oracle is its own process, which is the only reason that is
+    acceptable. The three boxes are the shapes the reachability probe
+    (`test_reachability_conformance`) stands up: a primary project, a project in a
+    named workset, and a standalone project, each in its own directory.
+    ⚑ THE NODES ARE `targets.discover_targets()`'s, so an installed plugin is covered
+    without being named here -- and so the run means what it says only where the
+    plugins are installed (the CI `conformance` job installs all three).
+    """
+    import os
+    import tempfile
+    from pathlib import Path
+
+    # The XDG names are `bootstrap`'s declared constants; the module is a terminal leaf
+    # that reads no environment, so importing it before the takeover loads no path.
+    from kanibako.settings.bootstrap import (
+        XDG_CACHE_HOME, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_RUNTIME_DIR, XDG_STATE_HOME,
+    )
+
+    with tempfile.TemporaryDirectory() as scratch:
+        root = Path(scratch)
+        env = {
+            "HOME": "home", XDG_CONFIG_HOME: "config", XDG_DATA_HOME: "data",
+            XDG_STATE_HOME: "state", XDG_CACHE_HOME: "cache", XDG_RUNTIME_DIR: "runtime",
+        }
+        for var, sub in env.items():
+            (root / sub).mkdir()
+            os.environ[var] = str(root / sub)
+        os.chdir(root)
+
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.config import (
+            load_config, user_config_file, write_global_config,
+        )
+        from kanibako.settings.paths import (
+            WorksetSpec, load_std_paths, resolve_project, resolve_standalone_project,
+            resolve_workset_project,
+        )
+        from kanibako.targets import discover_targets, resolve_target
+
+        write_global_config(user_config_file())
+        config = load_config(user_config_file())
+        std = load_std_paths(config)
+        for sub in ("primary-project", "named-source", "standalone-project"):
+            (root / sub).mkdir()
+        workset = create_workset("floor-probe", root / "worksets" / "floor-probe", std)
+        add_project(workset, "named-project", root / "named-source")
+        projects = {
+            "primary": resolve_project(
+                std, config, str(root / "primary-project"), initialize=True,
+            ),
+            "named": resolve_workset_project(
+                WorksetSpec.from_workset(workset), "named-project", std, config,
+                initialize=True,
+            ),
+            "standalone": resolve_standalone_project(
+                std, config, str(root / "standalone-project"), initialize=True,
+            ),
+        }
+        for node in sorted(discover_targets()):
+            for mode, proj in projects.items():
+                termini = existing_box_termini(
+                    std, user_config_file(), proj, resolve_target(node, None), node,
+                )
+                for terminus, snapshot, cli_level in termini:
+                    yield node, mode, terminus, snapshot, cli_level
+
+
+def snapshot_paths(snapshot: Any) -> Any:
+    """Yield `(dotted path, value)` for every path of a `KeyStore` snapshot, NODES
+    included, walked by the production `settings_keyspace.walk_store_paths`.
+
+    ⚑ A node is yielded too: a `<None>` row that resolved to a table has a value.
+    """
+    from kanibako.settings.settings_keyspace import walk_store_paths
+
+    for segments, _is_node in walk_store_paths(snapshot):
+        value = snapshot
+        for segment in segments:
+            value = dict.__getitem__(value, segment)
+        yield ".".join(segments), value
+
+
+def declares_no_floor_value(entry: Any) -> bool:
+    """A `keys:` row whose `default:` is `<None>` -- a YAML `null`, "there is no
+    value". The launch must RESOLVE NONE for it, on every tier.
+
+    ⚑ `null` ONLY, NOT a `<...>` PROSE placeholder: `box.images_store`'s
+    `<runtime-probed podman graphroot>` describes a value the image floor supplies by
+    design (`test_manifest_conformance`'s E2). ⚑ A row floored as a PRESENT `None`
+    ([R177]; `default-tier-none`, `shell-tier-fence`, `shell-template-none`,
+    `box-scalar-floor`) is selected too: those views compare its own carrier, and
+    this one asks every floor at once.
+    """
+    return "default" in entry.extra and entry.extra["default"] is None

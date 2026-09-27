@@ -29,6 +29,12 @@ def ref_token_standard_paths(mode: str) -> Any
 def guest_bind_arm(binds: Any, arm: str) -> list[tuple[str, tuple[str, ...]]]
 def sentinel_helper_binds() -> Any
 def box_address_floor(mode: str) -> dict[str, Any]
+@contextlib.contextmanager
+def recording_launch_snapshots() -> Any
+def existing_box_termini(std: Any, config_file: Any, proj: Any, target: Any, node: str) -> list[tuple[str, Any, Any]]
+def fresh_launch_snapshots() -> Any
+def snapshot_paths(snapshot: Any) -> Any
+def declares_no_floor_value(entry: Any) -> bool
 def _standalone_arm(entry: Any) -> tuple[bool, Any]
 def _root_or_decoy(mode: str, attribute: str) -> Any
 ```
