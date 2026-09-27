@@ -13,6 +13,12 @@ _CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
 _CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'force', 'register')
 ```
 
+## Types
+```
+_StandaloneTeardown = tuple[list[Path], list[Path], 'Path | None', str]
+
+```
+
 ## Functions
 ```
 def add_parser(subparsers: argparse._SubParsersAction) -> None
@@ -33,7 +39,8 @@ def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
 def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool
-def _teardown_standalone_box(root: Path, registered_name: str) -> bool
+def _standalone_teardown_plan(root: Path, registered_name: str) -> _StandaloneTeardown
+def _teardown_standalone_box(root: Path, registered_name: str, *, plan: _StandaloneTeardown | None=None) -> bool
 def _read_box_image(settings_file: Path) -> str | None
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int

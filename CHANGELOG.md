@@ -279,6 +279,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box.bindings.ro[~/.kanibako/state/helpers.jsonl]` bind is omitted until that entry is set `null`
   as well (keyspec §2a). See `MIGRATION.md` § *2.89 A `workset.logs` of `null` means no logs*.
 
+- **A `workset.boxes` of `null` is refused, naming the key and the file.** v1.8.0-rc2 read a
+  `null` `workset.boxes` as unset: `workset connect` created the box under the default
+  `<workset>/boxes/` directory, while starting a box refused with a message about the box root.
+  Every box needs a box store, so `null` has no meaning here. `workset connect`,
+  `box create`, `box list`, and every other command that resolves a box store now stop with
+  exit 1 and say which `workset.yaml` sets `workset.boxes` to `null`. See `MIGRATION.md`
+  § *2.93 A `workset.boxes` of `null` is refused*.
+
 - **`box move`, `box convert`, and `box remap` no longer delete a working-set box's workspace
   before the operation succeeds.** Moving or converting a box out of a working set released it by
   deleting `workspaces/<name>` first. The copy that should have read it then found it empty — a

@@ -82,7 +82,8 @@ ERR_CONFIG_LAYER1_TABLE = (
                                                     # the Layer-1 file path, the offending value
 # ⚑ A ``null`` path key was stringified to the four bytes ``None`` and then refused as a
 # bare relative path — a message about a directory the user never wrote. Both path
-# layers share this one: the ``config:`` read and the settings file's ``system:`` read.
+# layers share this one: the ``config:`` read and the settings file's ``system:`` read;
+# so does a null ``workset.boxes`` (``project.workset.resolve_workset_boxes``).
 ERR_CONFIG_NULL_PATH = (
                         "%s sets these path keys to null:\n  %s\n" +
                         "kanibako gives a null path key no meaning. Delete those lines to use each key's " +

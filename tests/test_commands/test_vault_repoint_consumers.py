@@ -349,6 +349,29 @@ class TestTeardownResolvesBeforeItDeletes:
         assert (root / "vault").is_dir()
         assert (root / "workset.yaml").is_file()
 
+    def test_a_null_box_store_refuses_the_purge_before_the_unregister(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A null ``workset.boxes`` refuses through the logs default (``@meta.box.path``);
+        the refusal lands while the box is still REGISTERED, not after the unregister."""
+        from kanibako.commands.box._parser import _rm_standalone
+        from kanibako.project import registry_store
+        from kanibako.settings.settings_resolve import SettingsError
+
+        std, config = _reload(config_file)
+        root = tmp_home / "nullstore"
+        root.mkdir()
+        resolve_standalone_project(std, config, project_dir=str(root), initialize=True)
+        registered = registry_store.load_standalone(std.registry)
+        [name] = [n for n, r in registered.items() if r == str(root)]
+        write_nested_key(root / "workset.yaml", ("workset",), "boxes", None)
+        with pytest.raises(SettingsError, match="workset.boxes"):
+            _rm_standalone(std, name, root, argparse.Namespace(purge=True, force=True))
+        capsys.readouterr()
+        assert registry_store.load_standalone(std.registry) == registered
+        assert (root / "box_data").is_dir()
+        assert (root / "workset.yaml").is_file()
+
     def test_a_missing_workset_yaml_still_purges_the_default_layout(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):

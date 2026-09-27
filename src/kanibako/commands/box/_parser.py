@@ -1263,29 +1263,48 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
     return removed
 
 
-def _teardown_standalone_box(root: Path, registered_name: str) -> bool:
+_StandaloneTeardown = tuple[list[Path], list[Path], "Path | None", str]
+
+
+def _standalone_teardown_plan(root: Path, registered_name: str) -> _StandaloneTeardown:
+    """Resolve what :func:`_teardown_standalone_box` deletes — vault split, logs dir, box name.
+
+    ⚑⚑ RESOLVE BEFORE ANYTHING IS DELETED — or unregistered.  Two reasons, and both bite:
+    the root workset.yaml unlinked by the teardown carries the ``workset.vault_*`` and
+    ``workset.logs`` repoints and the kuid the box's name is composed from, so a later read
+    answers the composed default; and an UNRESOLVABLE value (a bare-relative repoint, a
+    null ``workset.boxes`` the standalone logs default chains through) raises here, which
+    must happen while the box is still whole.  Resolving after the metadata purge left a
+    half-removed box behind the traceback; resolving after ``box rm``'s unregister left a
+    box that was neither registered nor parked as deregistered.
+    """
+    from kanibako.launch.box_resolve import standalone_box_name
+    from kanibako.project.workset import standalone_vault_teardown
+    from kanibako.settings.paths import standalone_logs_dir
+
+    removable_vault, retained_vault = standalone_vault_teardown(root)
+    return (removable_vault, retained_vault, standalone_logs_dir(root),
+            standalone_box_name(root, registered_name))
+
+
+def _teardown_standalone_box(
+    root: Path, registered_name: str, *, plan: _StandaloneTeardown | None = None,
+) -> bool:
     """Delete a STANDALONE box's in-tree metadata + its logs; the workspace and *root* stay.
 
     *registered_name* is the box's STORED registry name — the name a pre-kuid box's
     logs were written under (:func:`~kanibako.launch.box_resolve.standalone_box_name`).
+    *plan* is :func:`_standalone_teardown_plan`, from a caller that resolved it before an
+    irreversible step of its own.
     """
-    from kanibako.launch.box_resolve import standalone_box_name
-    from kanibako.project.workset import standalone_vault_teardown
-    from kanibako.settings.paths import STANDALONE_META_DIR, standalone_logs_dir
+    from kanibako.settings.paths import STANDALONE_META_DIR
 
     metadata_dir = root / STANDALONE_META_DIR
-    # ⚑⚑ RESOLVE THE VAULT BEFORE ANYTHING IS DELETED.  Two reasons, and both bite:
-    # the root workset.yaml unlinked below carries the ``workset.vault_*`` repoint, so a
-    # later read answers the composed default; and an UNRESOLVABLE repoint raises here,
-    # which must happen while the box is still whole.  Resolving after the metadata purge
-    # left a half-removed box behind the traceback.
-    removable_vault, retained_vault = standalone_vault_teardown(root)
-    # ⚑ THE LOGS TOO, for the same two reasons: ``workset.logs`` and the kuid the box's
-    # name is composed from both live in that workset.yaml.  Deleted by NAME, so a log
-    # under a ``workset.logs`` pointed outside ``box_data/`` goes too.
-    for log_file in remove_box_logs(
-        standalone_logs_dir(root), standalone_box_name(root, registered_name),
-    ):
+    removable_vault, retained_vault, logs_dir, box_name = (
+        plan or _standalone_teardown_plan(root, registered_name))
+    # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
+    # ``box_data/`` goes too.
+    for log_file in remove_box_logs(logs_dir, box_name):
         print(f"Removed log: {log_file}")
     if _purge_dir(metadata_dir):
         print(f"Removed metadata: {metadata_dir}")
@@ -1454,13 +1473,18 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     from kanibako.utils import confirm_prompt
 
     print(f"Removing standalone box: {box_name} ({root})")
+    root_path = Path(root) if root is not None else None
+    metadata_dir = root_path / STANDALONE_META_DIR if root_path is not None else None
+    # ⚑ Resolved BEFORE the unregister: a teardown that refuses stops ``rm`` while the
+    # box is still registered (see :func:`_standalone_teardown_plan`).
+    plan = None
+    if args.purge and root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
+        plan = _standalone_teardown_plan(root_path, box_name)
     registry_store.unregister_standalone(std.registry, box_name)
     print(f"Removed '{box_name}' from the registry")
 
-    root_path = Path(root) if root is not None else None
-    metadata_dir = root_path / STANDALONE_META_DIR if root_path is not None else None
     if args.purge:
-        if root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
+        if plan is not None and root_path is not None:
             if not args.force:
                 print()
                 try:
@@ -1471,7 +1495,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
                 except UserCancelled:
                     print("Aborted (box was already unregistered).")
                     return 2
-            _teardown_standalone_box(root_path, box_name)
+            _teardown_standalone_box(root_path, box_name, plan=plan)
         else:
             print(f"No metadata directory found at {metadata_dir}")
     elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
