@@ -1356,9 +1356,9 @@ behavior key wants — and that is exactly the distinction the persona model gat
 the raw value, mirroring `agent_select.resolve_selected_agent` / `settings_launch.snapshot_leaf`'s
 ABSENT-vs-PRESENT-None idiom for `pref.system.agent: null`.
 
-The codex-persona provider needs a real model id, so this DELIBERATELY excludes the harness `model`
-DEFAULT floor (e.g. codex's `gpt-5.5` — an own-endpoint default that is wrong for a third-party
-provider): an unset persona model resolves `__MISSING__` here so the preflight surfaces an actionable
+The codex-persona provider needs a real model id, so this DELIBERATELY excludes any harness `model`
+DEFAULT floor (none ships since Q105, but a plugin that declared one would name an own-endpoint model,
+wrong for a third-party provider): an unset persona model resolves `__MISSING__` here so the preflight surfaces an actionable
 empty-model error rather than shipping a bogus default into a NaviGator `[model_providers.<id>]`
 block. It is only consumed for a persona load gate, and is unused (harmless) for bare launches, where
 the `--model` flag still resolves its own default via the main launch snapshot.

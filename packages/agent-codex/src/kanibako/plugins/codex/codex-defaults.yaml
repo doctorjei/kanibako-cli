@@ -184,9 +184,10 @@ descriptor:
 
 # AGENT-scope BEHAVIOR defaults -> the `agent.codex.<key>` FLOOR (spec §2d), read by
 # the launch off `setting_descriptors()` and laid UNDER the whole cascade, so a user
-# overrides one by writing the SAME key in any settings file.  `default:` is MANDATORY
-# on every row and its value is a STRING, or `null` for a key the spec declares
-# <None> (a PRESENT None, never omitted and never `""`).
+# overrides one by writing the SAME key in any settings file.  A `default:` is a
+# STRING, or `null` for <None>.  A row for a key `agent.default` declares (core-defaults.yaml
+# `agent_default:`) may omit it: the key then inherits `agent.default.<key>`, and a
+# `null` there is refused, because `agent.default` already supplies <None> (Q105).
 #
 # ⚑ This is a SEPARATE section from `descriptor.settings:` above, and the two key sets
 # are not the same one: `settings:` says HOW a value is realized, and `endpoint` below
@@ -203,28 +204,19 @@ behavior:
   - key: label
     description: "Human-readable description of this agent"
     default: "Codex CLI"
-  # ⚑ NO OPINIONATED DEFAULT, and do not put one back.  Spec §2d ships
-  # `agent.codex.model | default <None> (use codex's built-in default)`, and a
-  # plugin spells <None> as `null`: a PRESENT None at `agent.codex.model`, which
-  # the launch omits, so a box the user has set no model on launches with no
-  # `--model` on the argv at all and codex picks for itself.  kanibako imposes
-  # no model — the same reason goose's row is null.
-  # ⚑ This row WINS over a user's `agent.default.model` (Q95.1): the §2d pick
-  # reads `agent.codex` first, and a present None there is an answer.  A user
-  # names a model per agent, `agent.<node>.model` at any cascade scope (or `-M`),
-  # which still wins and IS emitted.  The same holds for `endpoint`.
+  # ⚑ NO DEFAULT, and do not add one.  Spec §2d: `agent.codex.model` has no
+  # plugin default and inherits `agent.default.model`, whose <None> means codex's
+  # built-in default: a box with no model set anywhere launches with no `--model`.
+  # A user's `agent.default.model` reaches codex; `agent.codex.model` at any
+  # cascade scope (or `-M`) beats it.  The same holds for `endpoint`.
   # ⚑ This is the BARE-BOX floor and it is NOT the persona gate: a codex PERSONA
   # still needs a model, vetoed by `persona.model_required` above, because a
-  # config-file harness cannot express "no model".  That gate never read this
-  # floor — `start.py` `_resolve_box_launch_decisions` drops `model` from the
-  # persona floor on purpose — so a null row does not weaken it.
+  # config-file harness cannot express "no model".
   - key: model
     description: "Model to use (unset = codex's own built-in default)"
-    default: null
   - key: endpoint
     description: "Alternate model-provider base-URL (persona); unset uses the
       harness default and syncs the codex login"
-    default: null
 
 # AGENT-scope declared env DEFAULTS -> `agent.codex.env.<VAR>` (spec §2d).  These are
 # ordinary settings keys, not a private channel: a user overrides one by writing the

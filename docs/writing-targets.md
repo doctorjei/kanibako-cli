@@ -177,7 +177,7 @@ import time.  This is pinned, not merely a style preference:
 `test_a_plugin_behavior_default_lives_in_the_yaml_not_the_code` reds if a
 shipped `target.py` constructs a `TargetSetting` anywhere in the module, and
 `test_no_shipped_plugin_imposes_a_model` reds if any shipped agent's `model`
-floor is anything but `null`.
+row sets a value at all.
 
 Codex's `codex-defaults.yaml` (trimmed to the fields covered above):
 
@@ -224,8 +224,10 @@ descriptor:
   init_dirs: [".codex"]
 
 # The `agent.codex.*` BEHAVIOR floor (spec §2d) -- setting_descriptors() returns
-# exactly this table, in file order.  `default:` is mandatory; a key with no
-# default is written `null` (<None>) rather than omitted.
+# exactly this table, in file order.  A key core's `agent.default` declares may
+# omit `default:` and inherit `agent.default.<key>`; `default: null` there is
+# refused when `agent.default` is already <None>.  Any other key must write its
+# `default:`, a string or `null` (<None>).
 behavior:
   # The agent's human-readable DESCRIPTION -- `agent.codex.label` (spec §2d), and
   # what `kanibako agent info` prints.  Declare one or your agent reads the
@@ -233,19 +235,16 @@ behavior:
   - key: label
     description: "Human-readable description of this agent"
     default: "Codex CLI"
-  # 🛑 NO OPINIONATED DEFAULT.  kanibako imposes no model on any shipped agent —
-  # a null floor is <None>, which the launch's argv/env assembly omits, so
-  # codex falls back to its OWN built-in default until a user sets one
-  # explicitly (`agent.codex.model` or `-M`).  This row beats a user's
-  # `agent.default.model`: a model is named per agent.  Pinned by
-  # `test_no_shipped_plugin_imposes_a_model`; do not put a value back here.
+  # 🛑 NO DEFAULT.  kanibako imposes no model on any shipped agent — the row
+  # inherits `agent.default.model`, whose <None> the launch's argv/env assembly
+  # omits, so codex falls back to its OWN built-in default until a user sets one
+  # (`agent.default.model`, `agent.codex.model` or `-M`).  Pinned by
+  # `test_no_shipped_plugin_imposes_a_model`; do not add a value here.
   - key: model
     description: "Model to use (unset = codex's own built-in default)"
-    default: null
   - key: endpoint
     description: "Alternate model-provider base-URL (persona); unset uses the
       harness default"
-    default: null
 ```
 
 `target.py` loads both tables at import time and returns them unmodified —
@@ -306,9 +305,11 @@ requires that `descriptor` return a `PluginDescriptor` and `setting_descriptors(
 return a list of `TargetSetting`s, and both may be built by hand in Python (the
 "Method reference" section below still shows that shape, and it works).  What is
 never acceptable on *any* plugin, shipped or third-party: an opinionated `model`
-default.  Kanibako imposes no model — ship a `<None>` floor (`default=None`,
-`null` in YAML) and let the harness pick its own, exactly as codex, claude and
-goose all do.
+default.  Kanibako imposes no model — set none (`default=UNSET`, from
+`kanibako.settings.settings_resolve`, or no `default:` in YAML) so `model`
+inherits `agent.default.model` and the harness picks its own unless the user
+names one, exactly as codex, claude and goose all do.  A `None` there would
+shadow a user's `agent.default.model`.
 
 For agents whose host config or auth files mix portable and non-portable
 fields, set `filtered=True` on the relevant `CredFileSpec` and override
@@ -477,9 +478,10 @@ value.
 ```python
 def setting_descriptors(self) -> list[TargetSetting]:
     return [
-        # ⚑ A <None> model floor: kanibako imposes no model, so myagent picks
-        # its own until a user sets `agent.myagent.model`.
-        TargetSetting(key="model", description="Model to use", default=None),
+        # ⚑ No model default (UNSET, from kanibako.settings.settings_resolve):
+        # `model` inherits `agent.default.model`, so myagent picks its own until
+        # a user sets one.
+        TargetSetting(key="model", description="Model to use", default=UNSET),
         TargetSetting(key="verbosity", description="Output verbosity", default="normal",
                       choices=("quiet", "normal", "verbose")),
     ]

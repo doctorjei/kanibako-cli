@@ -29,6 +29,7 @@ CategoryBindDefaults = dict[str, BindArm]
 
 ## Functions
 ```
+def descriptor_floor(descriptors: Iterable[TargetSetting]) -> dict[str, str | None]
 def http_probe(url: str, *, headers: dict[str, str], body: dict, timeout: float) -> ProbeResponse
 def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
 def probe_outcome_no_model(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
@@ -51,7 +52,7 @@ def _validate_agent_binary(binary: Path) -> str | None
 class TargetSetting:
     key: str
     description: str
-    default: str | None = ''
+    default: str | None | _Unset = ''
     choices: tuple[str, ...] = ()
 
 @dataclass(frozen=True)

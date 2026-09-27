@@ -12,24 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **A bare agent key refused at workset scope now points at the per-agent key.** `workset set
-  <ws> model=…` (and every other bare agent key, for `set`, `get` and `reset`) still refuses, but
-  its cure no longer says system scope applies "to all agents": it names
-  `agent.<agent>.<key>` at system scope or `pref.agent.<agent>.<key>` per box, and says the bare
-  system key's `agent.default.<key>` does not reach an agent whose plugin declares the key. In
-  1.8.0-rc2 the message told you to configure it at system scope for all agents.
+- **A bare agent key refused at workset scope names the exception to "all agents".** `workset set
+  <ws> transform=…` (and every other bare agent key, for `set`, `get` and `reset`) still refuses and
+  still points at system scope for all agents, or `pref.agent.<agent>.<key>` per box. It now adds
+  that an agent whose plugin sets its own default for the key needs `agent.<agent>.<key>` at
+  system scope (see *An agent plugin's own default for a key beats `agent.default.<key>`*).
 
-- **A plugin's `behavior:` row declares "no default" as `null`, and the three shipped plugins do.**
-  claude's, codex's and goose's `model` and `endpoint` rows (and goose's `provider`) are `null` in
-  their `<agent>-defaults.yaml`, so `agent.<agent>.<key>` holds a present `<None>`, which is what
-  the settings spec declares for these keys. A launch emits nothing for them, and
-  `kanibako box show --effective` now omits them when nothing sets them. In 1.8.0-rc2 these rows
-  were `""`, except claude's and codex's `model`, which were `opus` and `gpt-5.5` (see *Kanibako no
-  longer chooses a model for your agent*); `--effective` showed an empty value for the others and
-  that model for claude and codex. As plugin rows they beat `agent.default.<key>` (see the entry
-  *An agent plugin's own default for a key beats `agent.default.<key>`*). For plugin authors:
-  `TargetSetting.default` is `str | None`, and the loader accepts `default: null` beside a string;
-  an omitted `default:` is still refused.
+- **A plugin's `behavior:` row can leave a key to `agent.default`, and the shipped plugins do for
+  `model` and `endpoint`.** claude's, codex's and goose's `model` and `endpoint` rows set no value,
+  so each agent inherits `agent.default.model` and `agent.default.endpoint`: `<None>` unless you
+  set them, and a launch then emits nothing for them. goose's `provider`, which `agent.default`
+  does not declare, is `null`. `kanibako box show --effective` now omits all of these when nothing
+  sets them. In 1.8.0-rc2 these rows were `""`, except claude's and codex's `model`, which were
+  `opus` and `gpt-5.5` (see *Kanibako no longer chooses a model for your agent*); `--effective`
+  showed an empty value for the others and that model for claude and codex. For plugin authors:
+  `TargetSetting.default` may now be `None` (`<None>`) or `UNSET` (no default; the key inherits
+  `agent.default.<key>`), and the floor the launch reads is `descriptor_floor()`. In the defaults
+  file, a row for a key `agent.default` declares may omit `default:` to inherit it, and its
+  `default: null` is refused, naming the file and the key, when `agent.default` already declares
+  `<None>` for it. Any other row still must write its `default:`, as a string or `null`.
 
 - **The base images (`kanibako-{min,oci,lxc,vm}`) are built and released from this repo.** Their
   sources moved in from the former `kanibako-images` repo, with its history, under `images/`. One
@@ -155,16 +156,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box duplicate` already did into a primary box. With `--force`, the duplicate merges
   into it as before.
 
-- **An agent plugin's own default for a key beats `agent.default.<key>`.** A plugin's declared
-  defaults now sit at `agent.<agent>.*`, above the `agent.default` tier, so a user's
-  `agent.default.model`, `endpoint`, `label` or `transform` no longer reaches an agent whose
-  plugin declares that key; `agent.<agent>.<key>` still overrides the plugin. In 1.7.2 and
-  1.8.0-rc2 the plugin's default sat at `agent.default`, so a user's `agent.default.<key>` (for
-  example `kanibako system set model=…`) replaced it (`label` is new since 1.8.0-rc2).
+- **An agent plugin's own default for a key beats `agent.default.<key>`.** A value a plugin
+  declares now sits at `agent.<agent>.*`, above the `agent.default` tier, so a user's
+  `agent.default.<key>` no longer reaches an agent whose plugin sets its own default for that key:
+  claude's `transform` (`tweakcc`) and each shipped agent's `label`. `agent.<agent>.<key>` still
+  overrides the plugin. In 1.8.0-rc2 the plugin's default sat at `agent.default`, so a user's
+  `agent.default.transform` (for example `kanibako system set transform=…`) replaced claude's
+  `tweakcc`; `label` is new since 1.8.0-rc2. Upgrading from 1.7.2 changes nothing here for the
+  shipped agents, which declared neither key then; only a third-party plugin's own defaults move
+  above `agent.default`. A key the plugin sets no default for, such as `model` or `endpoint`,
+  still takes a user's `agent.default.<key>`.
   `agent.default.{model,endpoint,run_args,transform}` are now supplied as a present `<None>`
-  rather than left absent. A persona box is the exception for `model`: its model is still read
-  as before, so a user's `agent.default.model` still reaches it. See `MIGRATION.md` § *An agent
-  plugin's own default beats `agent.default`*.
+  rather than left absent. See `MIGRATION.md` § *An agent plugin's own default beats
+  `agent.default`*.
 
 ### Fixed
 
@@ -1378,14 +1382,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Kanibako no longer chooses a model for your agent.** claude boxes were floored at `opus` and
   codex boxes at `gpt-5.5`, so every launch put a `--model` on the command line whether you had
-  asked for one or not, and the agent's own default was unreachable. Both floors are `<None>` now,
-  which is what the key has always declared (`agent.<agent>.model`, default `<None>` — *use the
-  harness's built-in default*) and what goose already shipped. With no model set anywhere, kanibako
-  emits no `--model` flag and the CLI picks for itself. Setting one still wins:
-  `kanibako agent set <agent> model=<name>` for one agent, `-M <name>` for a single launch
-  (`kanibako system set model=<name>` sets `agent.default.model`, which the shipped agents'
-  own `<None>` rows now outrank). The key stays declared, so those commands still
-  validate and resolve. **A fresh claude box no longer starts on opus, and a fresh codex box no
+  asked for one or not, and the agent's own default was unreachable. Neither plugin sets a model
+  now, so both inherit `agent.default.model`, `<None>` — *use the harness's built-in default* — as
+  goose already did. With no model set anywhere, kanibako emits no `--model` flag and the CLI picks
+  for itself. Setting one is unchanged and still wins: `kanibako system set model=<name>` for every
+  box, `kanibako agent set <agent> model=<name>` for one agent, `-M <name>` for a single launch.
+  The key stays declared, so those commands still validate and resolve. **A fresh claude box no longer starts on opus, and a fresh codex box no
   longer starts on gpt-5.5** — each starts on whatever that CLI defaults to. Pin either back with
   the commands above if you want the old behavior.
   ⚑ **This exposes a bad line in claude boxes created between 2026-08-17 and 2026-08-31**, including
@@ -1408,8 +1410,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agent: default: provider:`, move it under `agent: goose:`** — see `MIGRATION.md`,
   *`agent.default.<plugin-leaf>` is no longer a key*. Core-declared leaves — `model`, `endpoint`,
   `transform`, `access`, `allow_helpers`, `bootstrap`, `continue_mode`, `run_args`, `template`,
-  `canon`, `transform_settings` — are still keys at `agent.default`. Where a plugin declares one
-  too, the plugin's own default now answers before `agent.default` (see the entry *An agent
+  `canon`, `transform_settings` — are still keys at `agent.default`. Where a plugin sets its own
+  default for one, that default now answers before `agent.default` (see the entry *An agent
   plugin's own default for a key beats `agent.default.<key>`*); set it per agent.
 
 - **A setting an agent plugin declares is a key on that agent alone, at every door.** The rule the

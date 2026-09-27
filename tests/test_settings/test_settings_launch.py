@@ -68,8 +68,8 @@ def test_behavior_floor_maps_to_scope_qualified_agent_key():
 #
 # [Q91]: ``agent.default`` builtin < ``agent.default`` setting < ``agent.<a>``
 # builtin < ``agent.<a>`` setting. The core floor is the first rung, the plugin's
-# descriptor floor the third, so a plugin row (a ``<None>`` one included, [Q95] (a))
-# beats a user's ``agent.default.*`` while a user's ``agent.<a>.*`` beats the plugin.
+# descriptor floor the third, so a plugin row beats a user's ``agent.default.*`` while a
+# user's ``agent.<a>.*`` beats the plugin. A row that inherits (Q105) is not in the floor.
 
 
 def _snap(agent_name="goose", system_path=None, **floors):
@@ -124,7 +124,7 @@ def test_BOTH_floors_reach_the_behavior_read():
 
 def test_a_PLUGIN_row_beats_a_users_agent_default_setting(tmp_path: Path):
     """🛑 [Q91] rung 3 over rung 2: the plugin's own row wins the §2d pick over a
-    user's ``agent.default.<key>``, and a ``<None>`` row wins the same way ([Q95] (a)).
+    user's ``agent.default.<key>``.
 
     The negative half rides along: with no plugin row the same user value answers,
     over the core ``<None>`` floor (rung 2 over rung 1).
@@ -134,10 +134,10 @@ def test_a_PLUGIN_row_beats_a_users_agent_default_setting(tmp_path: Path):
     snap = _snap(
         system_path=system_file,
         behavior_floor={"model": None, "endpoint": None},
-        agent_behavior_floor={"model": None},
+        agent_behavior_floor={"model": "plugin-model"},
     )
     eff = effective_behavior(snap, active_agent="goose")
-    assert "model" not in eff, "the plugin's <None> row must beat agent.default.model"
+    assert eff["model"] == "plugin-model", "the plugin's row must beat agent.default.model"
     assert eff["endpoint"] == "mine", "no plugin row: agent.default setting answers"
 
 

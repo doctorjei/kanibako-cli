@@ -82,6 +82,7 @@ from kanibako.agent_ref import (
 )
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
+from kanibako.targets.base import descriptor_floor
 from kanibako.utils import container_name_for, short_hash
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
 # :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker
@@ -1208,7 +1209,7 @@ def _effective_transform(
     # tests returns a mock, and iterating it would fabricate a floor (same guard,
     # same reason, as ``_resolve_box_launch_decisions``).
     agent_floor = (
-        {d.key: d.default for d in descriptors if d.key == "transform"}
+        {k: v for k, v in descriptor_floor(descriptors).items() if k == "transform"}
         if isinstance(descriptors, list) else {}
     )
     return _effective_agent_scalar(
@@ -6362,7 +6363,7 @@ def _effective_behavior_for_display(
     # The two floors ``build_launch_snapshot`` places apart ([Q91]): core's at
     # ``agent.default``, the plugin's at ``agent.<active>``.
     behavior_floor = core_defaults.behavior_defaults()
-    agent_behavior_floor = {d.key: d.default for d in descriptors}
+    agent_behavior_floor = descriptor_floor(descriptors)
 
     # The behavior tables are keyed by the ACTIVE node-name (fix 4a): for a persona
     # (``navigator℘claude``) the per-node ``agents/<node>/agent.yaml`` state and
@@ -6570,7 +6571,7 @@ def _resolve_box_launch_decisions(
     # endpoint + model only, and the bare-box ``--model`` flag resolves its own
     # default via the separate main-launch snapshot.
     plugin_floor = (
-        {d.key: d.default for d in descriptors if d.key != "model"}
+        {k: v for k, v in descriptor_floor(descriptors).items() if k != "model"}
         if isinstance(descriptors, list)
         else {}
     )
@@ -7039,7 +7040,7 @@ def _resolve_launch_snapshot(
             # keep leaving ``behavior_floor`` None; downstream gates read its
             # truthiness.
             behavior_floor = core_defaults.behavior_defaults()
-            agent_behavior_floor = {d.key: d.default for d in descriptors}
+            agent_behavior_floor = descriptor_floor(descriptors)
     # ⚑ NOT gated on ``include_base_families``: the narrow CREATE seed resolve needs the
     # file's scalars too.  Why: llm-docs, ``_resolve_launch_snapshot`` → *agent_cfg*.
     if target is not None and agent_cfg is not None:

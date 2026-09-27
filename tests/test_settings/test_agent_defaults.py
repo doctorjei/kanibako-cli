@@ -17,7 +17,7 @@ import sys
 
 import pytest
 
-from kanibako.settings import agent_defaults
+from kanibako.settings import agent_defaults, core_defaults
 from kanibako.settings.agent_config import (
     agent_category_dirname,
     agent_category_root_ref,
@@ -25,7 +25,8 @@ from kanibako.settings.agent_config import (
     root_relative_source,
     store_dirname,
 )
-from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.settings_resolve import UNSET, SettingsError
+from kanibako.targets.base import TargetSetting, descriptor_floor
 
 
 @pytest.fixture
@@ -1152,9 +1153,9 @@ class TestLoadBehavior:
         assert setting.default == ""
 
     def test_a_null_default_is_kept_a_present_none(self, declfile):
-        """``default: null`` is how a plugin spells a spec ``<None>`` row (Q95.1).
+        """``default: null`` spells ``<None>`` for a key ``agent.default`` does not declare.
 
-        goose's three floors are ``null`` DELIBERATELY (never pin goose).  It loads as
+        goose's ``provider`` is ``null`` DELIBERATELY (never pin goose).  It loads as
         ``None`` — not ``""`` and not a refusal — so the launch places a PRESENT
         ``None`` at ``agent.<agent>.<key>``.
 
@@ -1168,23 +1169,81 @@ class TestLoadBehavior:
         (setting,) = agent_defaults.load_behavior(package, filename)
         assert setting.default is None
 
-    def test_an_absent_default_is_refused(self, declfile):
-        """START-STRICT: absence is NOT a synonym for ``null``.
+    def test_an_absent_default_is_refused_for_a_plugin_only_key(self, declfile):
+        """START-STRICT where nothing can be inherited: absence is NOT ``null``.
 
-        An omitted floor would silently name no value — for claude's ``transform``
-        that means nothing is ever patched, reported as success.  The refusal is what
-        keeps goose's ``null`` defaults a STATEMENT."""
+        ``agent.default`` declares no ``provider``, so an omitted floor would name no
+        value with no tier below to supply one.  The refusal is what keeps goose's
+        ``null`` a STATEMENT."""
         package, filename = declfile(
             "behavior:\n"
-            "  - key: transform\n"
-            "    description: Binary transform\n"
+            "  - key: provider\n"
+            "    description: LLM provider\n"
         )
         with pytest.raises(SettingsError) as exc:
             agent_defaults.load_behavior(package, filename)
         msg = str(exc.value)
-        assert "transform" in msg
+        assert "provider" in msg
         assert "default" in msg
         assert filename in msg
+
+    @pytest.mark.parametrize("key", sorted(core_defaults.behavior_defaults()))
+    def test_an_absent_default_inherits_for_an_agent_default_key(self, declfile, key):
+        """Q105: a row for a key ``agent.default`` declares may set no value.
+
+        It loads as ``UNSET`` and :func:`~kanibako.targets.base.descriptor_floor`
+        leaves it out, so the §2d pick reaches ``agent.default.<key>``.  The corpus is
+        every key core's ``agent_default:`` table declares, never a list."""
+        package, filename = declfile(
+            "behavior:\n"
+            f"  - key: {key}\n"
+            "    description: D\n"
+            "    choices: [a]\n"
+        )
+        (setting,) = agent_defaults.load_behavior(package, filename)
+        assert setting.default is UNSET
+        assert setting.choices == ("a",)
+        assert descriptor_floor([setting]) == {}
+
+    def test_descriptor_floor_keeps_real_and_none_defaults(self):
+        """Only the inheriting row drops out; a string and a present ``None`` stay."""
+        rows = [
+            TargetSetting(key="label", description="L", default="Mine"),
+            TargetSetting(key="provider", description="P", default=None),
+            TargetSetting(key="model", description="M", default=UNSET),
+        ]
+        assert descriptor_floor(rows) == {"label": "Mine", "provider": None}
+
+    @pytest.mark.parametrize(
+        "key",
+        sorted(k for k, v in core_defaults.behavior_defaults().items() if v is None),
+    )
+    def test_a_null_that_repeats_agent_defaults_none_is_refused(self, declfile, key):
+        """Q105: ``agent.default.<key>`` already supplies ``<None>``, so a plugin
+        ``null`` adds nothing but a shadow over a user's ``agent.default.<key>``."""
+        package, filename = declfile(
+            "behavior:\n"
+            f"  - key: {key}\n"
+            "    description: D\n"
+            "    default: null\n"
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_behavior(package, filename)
+        msg = str(exc.value)
+        assert filename in msg
+        assert f"'agent.default.{key}' is already <None>" in msg
+
+    def test_a_real_default_for_an_agent_default_key_is_kept(self, declfile):
+        """[Q91]: a plugin's real value still floors at ``agent.<agent>`` (claude's
+        ``transform: tweakcc``), whatever ``agent.default`` holds."""
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: transform\n"
+            "    description: T\n"
+            "    default: tweakcc\n"
+        )
+        (setting,) = agent_defaults.load_behavior(package, filename)
+        assert setting.default == "tweakcc"
 
     def test_a_non_string_default_is_refused(self, declfile):
         """A floor is a string or ``None``; an int would travel as an int."""

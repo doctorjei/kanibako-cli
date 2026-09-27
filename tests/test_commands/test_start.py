@@ -18,7 +18,7 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
-from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence, descriptor_floor
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 from tests.support.filenames import CONFIG_FILENAME
 
@@ -8920,20 +8920,20 @@ class TestPersonaLiveTierWiring:
         from kanibako.commands.start import _effective_behavior_for_display
 
         target = self._target()
-        floor = {d.key: d.default for d in target.setting_descriptors()}
+        floor = descriptor_floor(target.setting_descriptors())
         display = _effective_behavior_for_display(
             target, target.generate_agent_config(),
             std=std, proj=self._proj(std),
             system_settings_path=None, selection_level=None,
             node_name=self._NODE,
         )
-        # ⚑ The `model` floor is `<None>` — kanibako imposes no model (spec §2d
-        # `agent.claude.model | default <None> (use claude's built-in default)`,
-        # held for every shipped plugin by `test_no_shipped_plugin_imposes_a_model`
-        # in `tests/test_targets/test_agent_behavior_defaults.py`), and the display
+        # ⚑ The plugin sets no `model` — it inherits `agent.default.model`, `<None>`
+        # (spec §2d, held for every shipped plugin by
+        # `test_no_shipped_plugin_imposes_a_model` in
+        # `tests/test_targets/test_agent_behavior_defaults.py`), and the display
         # omits a `<None>` — so the line below cannot tell "resolved the floor"
         # from "resolved nothing".
-        assert floor["model"] is None and "model" not in display
+        assert "model" not in floor and "model" not in display
         # `transform` still carries a NON-empty floor and is the witness that
         # the display really did read the harness defaults.
         assert floor["transform"]
@@ -9061,18 +9061,18 @@ class TestPersonaLiveTierWiring:
         assert not dict.get(active, "env")
         assert not dict.get(active, "secret_path")
         # The lower rungs still resolve — emptiness never overrode them.
-        floor = {d.key: d.default for d in target.setting_descriptors()}
+        floor = descriptor_floor(target.setting_descriptors())
         display = _effective_behavior_for_display(
             target, target.generate_agent_config(),
             std=std, proj=self._proj(std),
             system_settings_path=None, selection_level=None,
             node_name=self._NODE,
         )
-        assert floor["model"] is None and "model" not in display
-        # ⚑ `model`'s floor is `<None>` — kanibako imposes no model (spec §2d
-        # `agent.claude.model | default <None> (use claude's built-in default)`,
-        # held for every shipped plugin by `test_no_shipped_plugin_imposes_a_model`
-        # in `tests/test_targets/test_agent_behavior_defaults.py`) — so it cannot
+        assert "model" not in floor and "model" not in display
+        # ⚑ The plugin sets no `model` — it inherits `agent.default.model`, `<None>`
+        # (spec §2d, held for every shipped plugin by
+        # `test_no_shipped_plugin_imposes_a_model` in
+        # `tests/test_targets/test_agent_behavior_defaults.py`) — so it cannot
         # witness "resolved" against "resolved nothing".  `transform` has a
         # non-empty floor and does.
         assert floor["transform"]

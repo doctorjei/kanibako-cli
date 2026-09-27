@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from kanibako.plugins.goose import GooseTarget
+from kanibako.settings.settings_resolve import UNSET
 from kanibako.targets import assembly
 from kanibako.targets.base import (
     AgentInstall,
@@ -380,14 +381,15 @@ class TestSettingDescriptors:
         assert len(settings) == 4
 
     def test_provider_and_model_have_no_default(self):
-        # The keys stay declared/settable, but with ``null`` (<None>) defaults so
-        # the launch omits them when unset — goose then reads provider/model from
-        # its own config.yaml (goose configure).
+        # The keys stay declared/settable, but set no value, so the launch omits
+        # them when unset — goose then reads provider/model from its own
+        # config.yaml (goose configure).  ``provider`` is goose's own key and says
+        # <None> as ``null``; ``model``/``endpoint`` inherit ``agent.default``.
         settings = {s.key: s for s in GooseTarget().setting_descriptors()}
         assert settings["provider"].default is None
-        assert settings["model"].default is None
+        assert settings["model"].default is UNSET
         # endpoint too: unset = bare/harness-default (no persona).
-        assert settings["endpoint"].default is None
+        assert settings["endpoint"].default is UNSET
 
 
 class TestDefaultShares:

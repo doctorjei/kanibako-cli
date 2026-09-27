@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.plugins.codex import CodexTarget
+from kanibako.settings.settings_resolve import UNSET
 from kanibako.targets import assembly
 from kanibako.targets.base import (
     BindKind,
@@ -461,16 +462,14 @@ class TestGenerateAgentConfig:
         assert label.default == "Codex CLI"
 
     def test_model_default_comes_from_the_descriptor_floor(self):
-        # ... and that floor imposes nothing: spec §2d ships
-        # ``agent.codex.model | default <None> (use codex's built-in default)``,
-        # and a ``null`` floor is how a plugin spells <None>: a PRESENT ``None``
-        # at ``agent.<agent>.model``, which the launch omits, so a box the user has
-        # set no model on launches with no ``--model`` at all.  The ALL-AGENTS form of this rule
-        # is pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
+        # ... and the plugin floor sets none: spec §2d ``agent.codex.model`` has no
+        # plugin default and inherits ``agent.default.model`` (<None> = codex's
+        # built-in default).  The ALL-AGENTS form of this rule is pinned in
+        # ``tests/test_targets/test_agent_behavior_defaults.py``.
         t = CodexTarget()
         assert "model" not in t.generate_agent_config().state
         model = next(d for d in t.setting_descriptors() if d.key == "model")
-        assert model.default is None
+        assert model.default is UNSET
 
 
 class TestSettingDescriptors:
@@ -484,7 +483,7 @@ class TestSettingDescriptors:
         # key now, and the file order is the order ``config`` lists the agent's settings in.
         assert keys == ["label", "model", "endpoint"]
         endpoint = next(s for s in settings if s.key == "endpoint")
-        assert endpoint.default is None
+        assert endpoint.default is UNSET
         # ``access`` (R-41's permission TIER) is NOT a declared TargetSetting —
         # it is the agent-scope enum key routed verbatim
         # (access_realization.setting_key), redeemed + validated at launch.  The retired

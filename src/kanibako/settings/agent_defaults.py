@@ -46,13 +46,13 @@ from kanibako.settings.agent_config import (
     is_self_resolving,
     root_relative_source,
 )
-from kanibako.settings.core_defaults import add_bind
+from kanibako.settings.core_defaults import add_bind, behavior_defaults
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
     is_terminal_category_tail,
     key_validity,
 )
-from kanibako.settings.settings_resolve import GUEST_HOME, SettingsError
+from kanibako.settings.settings_resolve import GUEST_HOME, UNSET, SettingsError
 from kanibako.targets.base import (
     AccessRealization,
     AccessTierRow,
@@ -357,14 +357,15 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
     rather than a :class:`SettingArg`.  Folding the floor into the realization
     rows would leave both of those with nowhere to live.
 
-    ⚑ ``default:`` is MANDATORY, and a key the spec declares ``<None>`` is written
-    ``null``.  Absence and ``null`` are different declarations: goose declares
-    three null defaults DELIBERATELY (never pin a provider/model — its own
-    ``config.yaml`` owns them), while an accidentally omitted claude ``transform``
-    default would silently patch nothing.  Requiring the field makes the ``<None>``
-    case a statement rather than an oversight.  A ``null`` is kept a PRESENT
-    ``None`` — the launch places the floor at ``agent.<active>.<key>``, where it
-    wins over a user's ``agent.default.<key>`` (Q95.1).
+    ⚑ ``default:`` TAKES ITS MEANING FROM ``agent_default:`` (``core-defaults.yaml``).
+    For a key that table declares, an omitted ``default:`` means the plugin sets no
+    floor (:data:`~kanibako.settings.settings_resolve.UNSET`) and the key inherits
+    ``agent.default.<key>``; a ``null`` is refused when ``agent.default`` already
+    supplies ``<None>`` (Q105).  For a plugin-only key (goose's ``provider``) no tier
+    below can supply a value, so ``default:`` is MANDATORY and a ``<None>`` is
+    written ``null``, a statement rather than an oversight.  A real default is kept
+    either way: it lands at ``agent.<active>.<key>`` and beats a user's
+    ``agent.default.<key>`` ([Q91]).
 
     ⚑ The value must be a STRING or ``null``.  Everything else is stringified
     downstream, so a YAML ``default: 1`` would travel as an int until something
@@ -402,32 +403,50 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
                 f"behavior setting is a DECLARED agent key and its description "
                 f"is what 'kanibako config' shows for it."
             )
+    core = behavior_defaults()
     if "default" not in entry:
+        if named in core:
+            return TargetSetting(
+                key=named, description=entry["description"], default=UNSET,
+                choices=_behavior_choices(entry, named, where),
+            )
         raise SettingsError(
-            f"behavior entry {named!r}{where} declares no 'default': the floor "
-            f"value is the whole point of the row. Write the value, or "
-            f"'default: null' if the key deliberately has none (goose pins no "
-            f"provider/model so its own config.yaml keeps owning them)."
+            f"behavior entry {named!r}{where} declares no 'default', and "
+            f"'agent.default' declares no {named!r} for it to inherit. Write the "
+            f"value, or 'default: null' if the key deliberately has none (goose "
+            f"pins no provider so its own config.yaml keeps owning it)."
         )
     default = entry["default"]
+    if default is None and named in core and core[named] is None:
+        raise SettingsError(
+            f"behavior entry {named!r}{where} declares 'default: null', but "
+            f"'agent.default.{named}' is already <None>. Omit 'default:' so the "
+            f"key inherits 'agent.default.{named}'; a null here would shadow a "
+            f"user's 'agent.default.{named}'."
+        )
     if default is not None and not isinstance(default, str):
         raise SettingsError(
             f"behavior entry {named!r}{where} declares a "
             f"{type(default).__name__} default; a behavior floor value is a "
             f'STRING — quote it (e.g. "1", "true") — or null for <None>.'
         )
+    return TargetSetting(
+        key=named,
+        description=entry["description"],
+        default=default,
+        choices=_behavior_choices(entry, named, where),
+    )
+
+
+def _behavior_choices(entry: dict[str, Any], named: str, where: str) -> tuple[str, ...]:
+    """A ``behavior:`` row's ``choices``, refused unless every one is a string."""
     choices = entry.get("choices") or ()
     if not all(isinstance(c, str) for c in choices):
         raise SettingsError(
             f"behavior entry {named!r}{where} declares a non-string choice; the "
             f"choices are compared against the resolved STRING value."
         )
-    return TargetSetting(
-        key=entry["key"],
-        description=entry["description"],
-        default=default,
-        choices=tuple(choices),
-    )
+    return tuple(choices)
 
 
 def _build_persona(raw: dict[str, Any] | None) -> PersonaSpec | None:

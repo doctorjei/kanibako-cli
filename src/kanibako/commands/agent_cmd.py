@@ -621,6 +621,7 @@ def _label_floor(agent_id: str) -> dict[str, object]:
     from kanibako.settings import core_defaults
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
     from kanibako.targets import get_target
+    from kanibako.targets.base import descriptor_floor
 
     floor: dict[str, object] = {
         f"agent.{AGENT_DEFAULT_SUB}.label": core_defaults.behavior_default("label"),
@@ -636,9 +637,9 @@ def _label_floor(agent_id: str) -> dict[str, object]:
     except Exception:  # pragma: no cover - a plugin must not break a display verb
         _log.debug("setting_descriptors() failed for a target", exc_info=True)
         descriptors = []
-    for descriptor in descriptors:
-        if descriptor.key == "label":
-            floor[f"agent.{agent_id}.label"] = str(descriptor.default)
+    plugin_floor = descriptor_floor(descriptors)
+    if "label" in plugin_floor:
+        floor[f"agent.{agent_id}.label"] = plugin_floor["label"]
     return floor
 
 

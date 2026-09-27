@@ -88,7 +88,7 @@ descriptor:
 
   # provider/model route via the ENV channel (GOOSE_MODEL/GOOSE_PROVIDER); the
   # SettingArg only wires the env-var NAME — there is deliberately NO default
-  # value (the `behavior:` rows below are null, so goose falls back to its own
+  # value (the `behavior:` rows below set none, so goose falls back to its own
   # config.yaml from `goose configure`).
   settings:
     - setting_key: model
@@ -182,19 +182,19 @@ descriptor:
 
 # AGENT-scope BEHAVIOR defaults -> the `agent.goose.<key>` FLOOR (spec §2d), read by
 # the launch off `setting_descriptors()` and laid UNDER the whole cascade, so a user
-# overrides one by writing the SAME key in any settings file.  `default:` is MANDATORY
-# on every row and its value is a STRING, or `null` for a key the spec declares <None>
-# (a PRESENT None, never omitted and never `""`).
+# overrides one by writing the SAME key in any settings file.  A `default:` is a
+# STRING, or `null` for <None>.  A row for a key `agent.default` declares
+# (core-defaults.yaml `agent_default:`) may omit it: the key then inherits
+# `agent.default.<key>`, and a `null` there is refused, because `agent.default`
+# already supplies <None> (Q105).  Any other row must write its `default:`.
 #
-# ⚑⚑ ALL THREE DEFAULTS ARE NULL ON PURPOSE — NEVER PIN GOOSE.  goose's own
-# `config.yaml` (written by `goose configure`, persisted by the home bind) owns the
-# provider/model, so the floor must resolve to <None> and the launch must omit
-# GOOSE_PROVIDER/GOOSE_MODEL/OPENAI_HOST entirely; a non-null default here would
-# override the user's own goose config on EVERY launch (spec §2d, the goose section).
-# A null row also WINS over a user's `agent.default.*` (Q95.1), so a user names these
-# per agent: an explicit `agent.goose.model` still wins the cascade and IS emitted.
-# ⚑ Do not "tidy" these rows away: an ABSENT `default:` is a load refusal, not a
-# synonym for `null`, precisely so this stays a statement and not an oversight.
+# ⚑⚑ NO VALUE ON PURPOSE — NEVER PIN GOOSE.  goose's own `config.yaml` (written by
+# `goose configure`, persisted by the home bind) owns the provider/model, so with
+# nothing set the launch must omit GOOSE_PROVIDER/GOOSE_MODEL/OPENAI_HOST entirely; a
+# real default here would override the user's own goose config on EVERY launch (spec
+# §2d, the goose section).  `model` and `endpoint` inherit `agent.default` (<None>
+# unless the user sets it); `provider` is goose's own key, so its <None> is written
+# `null` — an ABSENT `default:` there is a load refusal, so it stays a statement.
 behavior:
   # The agent's human-readable DESCRIPTION (spec §2d `agent.goose.label | "Goose
   # Harness"`), and the ONLY thing `agent info` / `agent show` print as this agent's
@@ -209,11 +209,9 @@ behavior:
     default: null
   - key: model
     description: "Model to use (unset = use goose configure / config.yaml)"
-    default: null
   - key: endpoint
     description: "Alternate OpenAI-compatible base-URL endpoint (persona); unset
       uses the harness default and syncs the goose login"
-    default: null
 
 # AGENT-scope declared env DEFAULTS -> `agent.goose.env.<VAR>` (spec §2d).  These are
 # ordinary settings keys, not a private channel: a user overrides one by writing the

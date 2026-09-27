@@ -803,16 +803,18 @@ class TestTheRealizedVariablesArriveAsKeys:
 
         The case above resolves ``provider`` from NO floor at all, so it would pass on a
         build that had lost the declaration entirely. This one drives goose's real
-        shipped floor — ``null``, which ``goose-defaults.yaml`` keeps deliberately so
-        its own ``config.yaml`` stays in charge — through the plugin floor, which lands
-        at ``agent.goose.*``. It must arrive as a PRESENT ``None`` and realize nothing,
-        NOT arrive as ``GOOSE_PROVIDER=''`` (or ``'None'``) and override goose's own
-        config.
+        shipped floor — ``provider: null``, which ``goose-defaults.yaml`` keeps
+        deliberately so its own ``config.yaml`` stays in charge, and no value for
+        ``model``/``endpoint`` (they inherit ``agent.default``'s ``<None>``) — through
+        the plugin floor, which lands at ``agent.goose.*``. ``provider`` must arrive as
+        a PRESENT ``None`` and nothing may realize, NOT ``GOOSE_PROVIDER=''`` (or
+        ``'None'``) overriding goose's own config.
         """
         from kanibako.plugins.goose import GooseTarget
+        from kanibako.targets.base import descriptor_floor
 
-        floor = {d.key: d.default for d in GooseTarget().setting_descriptors()}
-        assert floor["provider"] is None and floor["model"] is None
+        floor = descriptor_floor(GooseTarget().setting_descriptors())
+        assert floor["provider"] is None and "model" not in floor
         slots = resolve_realized(target_for("goose"), agent_behavior_floor=floor)
         for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
             assert var not in slots, f"{var} was realized from a <None> declared floor"
