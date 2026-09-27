@@ -141,6 +141,13 @@ def remove_nested_key(
     return True
 
 
+def count_leaves(node: object) -> int:
+    """Count the leaf entries under a nested table — the unit every ``reset --all`` reports."""
+    if isinstance(node, dict):
+        return sum(count_leaves(v) for v in node.values())
+    return 1
+
+
 # ---------------------------------------------------------------------------
 # Stored-value reads (the ``get`` model's stored-at-noun read + its rendering)
 # ---------------------------------------------------------------------------

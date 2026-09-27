@@ -939,12 +939,49 @@ class TestSparseWrites:
             agent_id="claude", key=None, all_keys=True, force=True,
         ))
         assert rc == 0
-        # env{FOO} + secret_path{TOK} + self{label, endpoint, model, run_args,
-        # transform_settings} = 7 ROOT keys, each counted once. Nothing is preserved.
+        # env{FOO} + secret_path{TOK} + transform_settings{theme} + label, endpoint, model,
+        # run_args (a list is one value) = 7 leaves. Nothing is preserved.
         assert "Reset 7 override(s)." in capsys.readouterr().out
 
         # Nothing survives, and the now-empty root table is pruned with it.
         assert load_doc(path) == {}
+
+    @pytest.mark.parametrize("doc, count, left", [
+        # A stray beside ``self:`` refuses ``agent show`` and the launch; the reset clears
+        # the overrides around it and leaves the stray, which is not one.
+        ({"self": {"model": "opus", "env": {"A": "1", "B": "2"}}, "model": "x"},
+         3, {"model": "x"}),
+        # An undeclared leaf under ``self:`` refuses the launch; the reset clears it.
+        ({"self": {"model": "opus", "zippity": 1}}, 2, {}),
+    ])
+    def test_reset_all_is_the_repair_door(self, agent_env, capsys, doc, count, left):
+        """``agent reset <node> --all --force`` refuses nothing: it is how a file the
+        other readers refuse gets fixed. (Mutation: read through ``_contribution`` in
+        ``clear_overrides`` → the stray case raises → RED.)"""
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.settings.config_io import load_doc
+
+        path = _write_sparse(agent_env, "claude", doc)
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key=None, all_keys=True, force=True,
+        ))
+        assert rc == 0
+        assert f"Reset {count} override(s)." in capsys.readouterr().out
+        assert load_doc(path) == left
+
+    @pytest.mark.parametrize("verb", ("run_info", "run_show", "run_list"))
+    def test_the_show_verbs_refuse_a_stray_beside_self(self, agent_env, verb):
+        """The launch's verdict, not a silent listing (``agent_file._contribution``)."""
+        from kanibako.commands import agent_cmd
+        from kanibako.settings.settings_resolve import SettingsError
+
+        path = _write_sparse(
+            agent_env, "claude", {"self": {"model": "opus"}, "model": "x"},
+        )
+        args = argparse.Namespace(agent_id="claude", effective=False, quiet=False)
+        with pytest.raises(SettingsError) as exc:
+            getattr(agent_cmd, verb)(args)
+        assert f"`model` at the top level of {path}" in str(exc.value)
 
     def test_reset_all_confirm_gates_destructive_write(self, agent_env, capsys):
         """Without --force, a declined confirm aborts and leaves the file

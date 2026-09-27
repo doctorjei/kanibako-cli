@@ -22,6 +22,7 @@ from kanibako.settings.agent_config import (
     agent_settings_path,
 )
 from kanibako.settings.config_io import (
+    count_leaves,
     dump_doc,
     load_doc,
     read_stored_leaf,
@@ -30,10 +31,19 @@ from kanibako.settings.config_io import (
     stored_leaf_object,
     write_nested_key,
 )
+from kanibako.settings.settings_drops import cascade_drop_set, contained_scopes
 from kanibako.settings.settings_resolve import SettingsError
 
 #: The per-agent file's ROOT table — the file's self-reference, spelled ONCE, HERE.
 _ROOT: Final[str] = "self"
+
+#: The SCOPE this file sits at: its root expands to ``agent.<node>`` [spec:15-21, "self"].
+FILE_SCOPE: Final[str] = "agent"
+
+#: The top-level tables the file CONTRIBUTES to the cascade — the ONE list every reader takes
+#: (:func:`contributed_tables`). Spec §0 makes the own-scope and contained-scope tables inputs
+#: too (``agent:``, ``workset:``, ``box:``); each joins here when its read is built.
+_CONTRIBUTED: Final[frozenset[str]] = frozenset({_ROOT})
 
 #: The root as a nested-walk PREFIX, for the ONE raw-walk site that needs it:
 #: ``settings_assemble._BEHAVIOR_TABLE_SHAPES``, whose rows are uniform ``(prefix, depth)`` pairs
@@ -458,24 +468,29 @@ def remove_leaf(slot: AgentFileSlot) -> bool:
 def clear_overrides(path: Path) -> int:
     """Drop every user override from the file at *path*; return the count.
 
-    Sparse: the whole root table, then prune it. No default keys re-materialized
-    ([[settings-must-map-to-keystore-key]]).
+    Sparse: every table the file contributes (:func:`contributed_tables`), then prune it. No
+    default keys re-materialized ([[settings-must-map-to-keystore-key]]).
+
+    ⚑⚑ IT REFUSES NOTHING — reset is the REPAIR DOOR. A file carrying a stray top-level key or an
+    undeclared leaf that stops every other reader must still be resettable (the stray key itself
+    stays, for the user to move or delete), so this asks the file only which tables to clear and
+    count, never for a verdict (:func:`_contribution` is the verdict).
 
     ⚑ IT USED TO PRESERVE ONE KEY, ``name`` — the file's non-key identity field, which D8b
     retired (2026-09-15). Nothing in the file is exempt now: every root key IS an override, so
     preserving one would be preserving a user's setting from a verb whose whole promise is that
     it clears them. The widening is user-visible and documented in ``MIGRATION.md``.
 
-    The COUNT is part of the contract, in the same terms the other scopes' ``reset_all`` uses:
-    EACH REMOVED ROOT KEY COUNTS ONCE, whatever it holds — a category table counts as the one
-    override it is.
+    The COUNT is part of the contract, in the unit every scope's ``reset --all`` reports:
+    EACH REMOVED LEAF COUNTS ONCE (``config_io.count_leaves``) — a category table counts its
+    entries, a list counts as the one value it is.
     """
     data = load_doc(path)
     count = 0
-    agent_sec = data.get(_ROOT)
-    if isinstance(agent_sec, dict):
-        count = len(agent_sec)
-        del data[_ROOT]
+    for key, table in contributed_tables(data).items():
+        if isinstance(table, dict):
+            count += count_leaves(table)
+            del data[key]
     dump_doc(path, data)
     return count
 
@@ -489,13 +504,10 @@ def load(path: Path) -> AgentConfig:
 
     Returns defaults if the file does not exist.
 
-    ⚑ IT RUNS THE SAME REFUSAL THE CASCADE DOES (:func:`_refuse_nested_tables`): two readers of
-    ONE file must not disagree about what the file means.  Before this, ``load`` accepted a nested
-    sub-table the launch refused, so ``agent show`` described a shape that could not start a box.
-    ⚑ EXCEPT THE TOP-LEVEL STRAY CHECK (:func:`_refuse_stray_roots`), which is CASCADE-ONLY: it
-    needs the drop-set, which lives in ``settings_assemble`` (importing it here closes a cycle),
-    and without it ``load`` would refuse a ``pref:`` table the spec drops with a warning.  So
-    ``agent info`` / ``list`` read a file carrying a stray silently, and the launch refuses it.
+    ⚑ IT RUNS THE SAME REFUSALS THE CASCADE DOES — the top-level stray check
+    (:func:`_contribution`) and the nested one (:func:`_refuse_nested_tables`): two readers of
+    ONE file must not disagree about what the file means.  Before this, ``load`` accepted shapes
+    the launch refused, so ``agent show`` described a file that could not start a box.
     """
     cfg = AgentConfig()
     if not path.exists():
@@ -503,7 +515,7 @@ def load(path: Path) -> AgentConfig:
 
     data = load_doc(path)
 
-    agent_sec = data.get(_ROOT, {})
+    agent_sec = _contribution(data, node=None, path=path).get(_ROOT, {})
     if not isinstance(agent_sec, dict):
         agent_sec = {}
     _refuse_nested_tables(agent_sec, node=None, path=path)
@@ -780,29 +792,35 @@ def _refuse_nested_tables(
         )
 
 
+def contributed_tables(raw: Any) -> dict:
+    """The top-level tables of *raw* the cascade READS (:data:`_CONTRIBUTED`); judges nothing."""
+    if not isinstance(raw, dict):
+        return {}
+    return {k: v for k, v in raw.items() if str(k) in _CONTRIBUTED}
+
+
 def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None:
-    """RAISE on a key at the FILE's top level that is neither its root nor a scope token (spec §0).
+    """RAISE on a key at the FILE's top level that the file neither contributes nor drops (spec §0).
 
     ⚑ THE FILE-LEVEL HALF OF THE CLOSED KEYSPACE. In the other settings files an unknown
     top-level entry rides into the launch snapshot, where the §0 audit can refuse it BY NAME; this
-    file contributes only its root table, so a stray beside ``self:`` never reached that audit
-    and vanished without a word — a ``model:`` written one level too high set nothing.
+    file's partial is built from :func:`contributed_tables` alone, so a stray never reached that
+    audit and vanished without a word — a ``model:`` written one level too high set nothing.
 
-    ⚑⚑ A SCOPE TOKEN (``kb_store.SCOPE_CONTAINMENT``) IS NOT THIS RULE'S TO JUDGE. ``system:`` is
-    dropped with a warning before this runs (§0 directional enforcement), as are ``meta:``,
-    ``binding_derivations:`` and ``pref:``. ``agent:`` / ``workset:`` / ``box:`` DO arrive, and
-    are passed over UNREAD: whether §0's defaults-down clause makes a contained scope's table an
-    INPUT of this file, or the ``self:`` root makes it a non-input to refuse, is an open spec
-    question (Q85). 🛑 Passing them over is correct under NEITHER reading — the first wants them
-    merged, the second refused — and stands only while Q85 is pending.
+    ⚑⚑ THE TABLES THE CASCADE DROPS ARE NOT STRAYS. ``system:`` (§0 directional enforcement),
+    ``meta:``, ``binding_derivations:`` and ``pref:`` (§2h) drop with a warning at assembly
+    (:func:`~kanibako.settings.settings_drops.cascade_drop_set`); the non-launch readers see them
+    here before any drop, so this passes them rather than refuse what the launch drops.
+    🛑 ``agent:`` / ``workset:`` / ``box:`` ARE PASSED OVER UNREAD, and that is a gap, not a rule:
+    spec §0 makes the file's own-scope and contained-scope tables INPUTS, merged defaults-down.
+    Each stops being passed over when it joins :data:`_CONTRIBUTED`.
     """
-    from kanibako.settings.kb_store import SCOPE_CONTAINMENT
-
     agent = node or "<agent>"
     where = path if path is not None else "the agent settings file"
+    passed = cascade_drop_set(FILE_SCOPE) | {FILE_SCOPE, *contained_scopes(FILE_SCOPE)}
     for raw_key in raw:
         key = str(raw_key)
-        if key == _ROOT or key in SCOPE_CONTAINMENT:
+        if key in _CONTRIBUTED or key in passed:
             continue
         raise SettingsError(
             f"`{key}` at the top level of {where} is not a settings key, so kanibako "
@@ -817,6 +835,18 @@ def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> No
         )
 
 
+def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
+    """:func:`contributed_tables`, after refusing a stray (:func:`_refuse_stray_roots`).
+
+    ⚑⚑ EVERY READER THAT JUDGES THE FILE COMES THROUGH HERE — the launch (:func:`level_table`)
+    and the record (:func:`load`: ``agent show`` / ``info`` / ``list``) — so one file gets one
+    verdict. The reset does not (:func:`clear_overrides`): it is the repair door.
+    """
+    if isinstance(raw, dict):
+        _refuse_stray_roots(raw, node=node, path=path)
+    return contributed_tables(raw)
+
+
 def level_table(
     raw: Any, *, sub_key: str, node: str | None = None, path: Path | None = None
 ) -> AgentFileLevel:
@@ -829,14 +859,12 @@ def level_table(
     bare-``agent`` collapse. A missing root table yields an EMPTY table. *path* and *node* only
     render the refusal message; neither is read.
 
-    ⚑ THE REFUSALS RUN FIRST: over the file's TOP level (:func:`_refuse_stray_roots`), then over
-    the WHOLE root (:func:`_refuse_nested_tables`).
+    ⚑ THE REFUSALS RUN FIRST: over the file's TOP level (:func:`_contribution`), then over the
+    WHOLE root (:func:`_refuse_nested_tables`).
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
-    if isinstance(raw, dict):
-        _refuse_stray_roots(raw, node=node, path=path)
-    agent = raw.get(_ROOT) if isinstance(raw, dict) else None
+    agent = _contribution(raw, node=node, path=path).get(_ROOT)
     if not isinstance(agent, dict):
         return AgentFileLevel(sub_key, {})
     _refuse_nested_tables(agent, node=node, path=path)

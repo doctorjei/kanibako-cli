@@ -967,14 +967,6 @@ agree on the address on purpose — that agreement is what makes the CLI verb no
 all other content (read-modify-write via `write_nested_key`).
 
 
-```_count_leaves(node: object) -> int```
-Count the scalar/leaf entries under a nested-dict *node* (a settings-file table).
-
-A `dict` recurses; anything else (scalar / list / `Bind`) is ONE leaf. Used so `reset_all`
-reports the real number of overrides it removed when it clears a whole nested scope table
-(residuals item 3).
-
-
 ```_clear_writable_tables(path: Path, command_scope: ConfigLevel | None) -> int```
 Drop the top-level tables *command_scope* may write from *path*; count the leaves.
 
@@ -1031,6 +1023,14 @@ the `KanibakoConfig` dataclass fields, leaving nested scope tables (`<scope>.aut
 `box.bindings` / a downward `box:` table in a workset file …) intact. It reads the same file the
 settings live in (`settings_dest` — `config_path` at box/workset, the system settings file at
 SYSTEM) and is gated by the §0 containment guard.
+
+⚑ **THE COUNT UNIT IS THE LEAF** (`config_io.count_leaves`), in both the `agent:` table pass and
+the SCOPE table pass, and `agent reset --all` (`agent_file.clear_overrides`) reports the same unit.
+The `agent:` pass counted each key once until 1.8.0, so an `env:` table of two variables was one
+override there and two in a `box:` table. The flat pass counts one per removed field, which is one
+leaf each.
+🛑 **KNOWN GAP:** the `agent:` pass still clears and counts an `agent:` table in a box's settings file that
+`box show` hides (the cascade drops it), so "Reset N" can exceed what `show` listed.
 
 
 ```show_config(*, global_config_path, command_scope, config_path=None, env_global=None, env_project=None, effective=False, file=None, workset_path=None, agent_state=None, env_resolved=None, system_settings_path=None, category_snapshot=None, category_ctx=None, category_error=None, category_declared_by=None) -> int```

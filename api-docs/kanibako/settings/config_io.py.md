@@ -19,6 +19,7 @@ def write_root_key(path: Path, key: str, value: object) -> None
 def remove_root_key(path: Path, key: str) -> bool
 def write_nested_key(path: Path, sections: tuple[str, ...], key: str, value: object) -> None
 def remove_nested_key(path: Path, sections: tuple[str, ...], key: str) -> bool
+def count_leaves(node: object) -> int
 def render_stored_scalar(v: object) -> str
 def stored_leaf_object(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, default: object=None) -> object
 def read_stored_leaf(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_scalar) -> str | None

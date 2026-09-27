@@ -1110,6 +1110,20 @@ class TestResetAll:
         assert msg == "No overrides to reset.", msg
         assert load_doc(ssp) == {"pref": {"system": {"agent": "goose"}}}
 
+    def test_reset_all_counts_an_agent_tables_leaves(self, tmp_path):
+        # ONE count unit for every ``reset --all``: an agent's category table in the system
+        # file counts each entry, as a scope table's does (``config_io.count_leaves``).
+        # (Mutation: count ``+= 1`` per key again → "Reset 2" → RED.)
+        cf = tmp_path / "kanibako.cfg"
+        ssp = tmp_path / "system.yaml"
+        dump_doc(ssp, {"agent": {"claude": {"model": "opus", "env": {"A": "1", "B": "2"}}}})
+        msg = reset_all(
+            config_path=cf, force=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert msg == "Reset 3 override(s).", msg
+        assert "agent" not in load_doc(ssp), load_doc(ssp)
+
     def test_reset_all_without_scope_leaves_nested_tables(self, tmp_path):
         # Backward-compat: command_scope=None (no scope context) does NOT touch a
         # nested scope table (the guard can't be evaluated) — flat/agent/env

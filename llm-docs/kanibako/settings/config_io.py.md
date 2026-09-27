@@ -169,6 +169,18 @@ with the file left untouched.
 the return value: `load_doc` would answer `{}` for a missing file anyway, so the early return is a
 readability choice, not a correctness one.
 
+```python
+def count_leaves(node: object) -> int
+```
+Count the leaf entries under a nested table — the unit every `reset --all` reports.
+
+A `dict` recurses; anything else (scalar, list, `None`) is ONE leaf, so an empty table counts 0.
+⚑ It lives HERE, below both of its callers, because they sit on opposite sides of an import edge:
+`config_interface.reset_all` (the scope files) imports `agent_file`, whose `clear_overrides`
+(`agent reset --all`) counts the same way. It moved out of `config_interface` so every reset
+reports one unit: `agent reset --all` and `reset_all`'s pass over a file's `agent:` table used to
+count each KEY once (a two-variable `env:` table was 1), while its scope-table pass counted leaves.
+
 ## Stored-value reads (the `get` model's stored-at-noun read + its rendering)
 
 ```python
