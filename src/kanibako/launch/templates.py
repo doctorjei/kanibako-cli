@@ -447,24 +447,31 @@ def copy_tree(
 copy_resource_tree_if_absent = copy_tree
 
 
+#: The packaged TEMPLATE ROOT, relative to the ``kanibako.data`` root.
+PACKAGED_TEMPLATES_PARTS = ("templates",)
+
 #: Subtrees of the packaged template root, by their role.  ⚑ The install is an
 #: ENUMERATED set of (packaged subtree → host dest) pairs, NEVER a whole-tree copy
 #: (P-S2): copying the root wholesale would leave a SECOND, never-read copy of the
-#: handbook at ``@system.template/system_handbook``.
-#: ⚑ Each is named for the scope it is for (``agent_default`` = the ``agent.default``
-#: node); ``system_handbook`` lands at ``@system.canon/handbook``.  It must not share the
-#: chapter leaf's spelling (:data:`_CANON_CHAPTER_LEAF`): the canon-layout duplicate-value
-#: check reads two constants with one value as one fact.
+#: handbook at ``@system.template/system``, and would stamp the agent.default content
+#: into the agent MOULD at ``@system.template/agent``.
+#: ⚑ Each is named for the scope it is for: ``agent`` holds the ``agent.default`` node's
+#: content, which lands at ``@system.agents/default``; ``system/canon/handbook`` lands at
+#: ``@system.canon/handbook``.  The handbook path must not equal the chapter leaf's
+#: spelling (:data:`_CANON_CHAPTER_LEAF`): the canon-layout duplicate-value check reads two
+#: constants with one value as one fact.
 PACKAGED_BOX_TEMPLATE = "box"
 PACKAGED_WORKSET_TEMPLATE = "workset"
-PACKAGED_AGENT_DEFAULT = "agent_default"
-PACKAGED_HANDBOOK = "system_handbook"
+PACKAGED_AGENT_DEFAULT = "agent"
+PACKAGED_HANDBOOK = "system/canon/handbook"
 
 #: The AGENT MOULD's dir name under ``@system.template`` — the host copy every agent
-#: install stamps from (J-5).  ⚑ There is deliberately NO packaged ``template/agent``
-#: directory: the mould ships EMPTY (D5), so the host dir is GUARANTEE-CREATED by the
-#: install action (D7).  Shipping structure only is what keeps it OVERLAP-FREE with
-#: ``agent_default`` — see :func:`ensure_agent_stores`.
+#: install stamps from (J-5).  ⚑ The mould ships EMPTY (D5): nothing packaged is copied
+#: into it, so the host dir is GUARANTEE-CREATED by the install action (D7).  The packaged
+#: ``templates/agent`` subtree (:data:`PACKAGED_AGENT_DEFAULT`) shares the name but NOT the
+#: role — it is the ``agent.default`` content, stamped only into ``@system.agents/default``,
+#: never into this mould.  Shipping the mould structure-only is what keeps it OVERLAP-FREE
+#: with that content — see :func:`ensure_agent_stores`.
 AGENT_MOULD_DIRNAME = "agent"
 
 #: The box-template SKELETON a scope store gets guarantee-created (D7) so the shape
@@ -508,15 +515,15 @@ _CANON_CHAPTER_LEAF = HANDBOOK_REL
 
 
 def _packaged_base_template() -> Path | None:
-    """Locate the packaged TEMPLATE ROOT (``kanibako.data/global/template``).
+    """Locate the packaged TEMPLATE ROOT (``kanibako.data/templates``).
 
     ⚑ It is NOT itself an install dest, and a root-relative path is NOT a
-    home-relative one — the box-HOME seed source is ``template/box/home``, two levels
+    home-relative one — the box-HOME seed source is ``templates/box/home``, two levels
     down.  Code treating the two as the same is silently wrong (see
     :func:`kanibako.settings.core_defaults.assert_canon_bind_seed_disjoint`).
     """
     try:
-        ref = packaged_data_dir("global", "template")
+        ref = packaged_data_dir(*PACKAGED_TEMPLATES_PARTS)
     except (ModuleNotFoundError, FileNotFoundError):
         return None
     path = Path(str(ref))
@@ -524,7 +531,7 @@ def _packaged_base_template() -> Path | None:
 
 
 def packaged_box_home_template() -> Path | None:
-    """The packaged BOX-HOME seed source (``template/box/home``), or None.
+    """The packaged BOX-HOME seed source (``templates/box/home``), or None.
 
     ⚑ The HOME-RELATIVE root: every path under it is spelled exactly as it lands in a
     box home.  Its consumers would be wrong one level up.
@@ -541,7 +548,7 @@ def _packaged_shared_bundle() -> Path | None:
 
     ⚑ BOUND, never installed — it has no ``install``/``plan_template_refresh``
     target and is enumerated only for the content DIGEST.  The rom ROOT is the digest
-    root, so a file added anywhere under ``rom/`` is watched.
+    root, so a file added anywhere under ``rom/canon/`` is watched.
     """
     try:
         ref = packaged_data_dir(*ROM_ROOT_PARTS)
@@ -977,7 +984,7 @@ def install_packaged_templates(
         copy_tree(
             base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF,
         )
-    # The agent MOULD dir exists even though nothing packages it (D5/D7).
+    # The agent MOULD dir exists even though nothing packaged is copied into it (D5/D7).
     (std.template / AGENT_MOULD_DIRNAME).mkdir(parents=True, exist_ok=True)
     # USER-OWNED: the agent stores — the A-action, default included.
     ensure_agent_stores(std, ["default", *agent_names])

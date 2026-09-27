@@ -10,7 +10,7 @@
 # config in this repository. Nothing passes this file to `kinemata -c`, and
 # kinemata would refuse it if anything did. It is named for its contents rather
 # than for the tool that reads them, following
-# `src/kanibako/data/keyspace-manifest.yaml`.
+# `src/kanibako/data/rom/settings/keyspace-manifest.yaml`.
 #
 # 🛑 IT IS HAND-MAINTAINED, AND THAT IS THE POINT. A list derived from the
 # `api-docs/` tree would compare that tree with itself: an artifact DELETED

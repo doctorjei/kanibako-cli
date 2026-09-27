@@ -1,6 +1,6 @@
 # Core Defaults — the shipped launch-floor tables, and the box-create canon skeleton
 
-_thin reader of `kanibako.data/core-defaults.yaml`, plus the `~/canon` skeleton J-7 specifies_
+_thin reader of `kanibako.data/rom/settings/core-defaults.yaml`, plus the `~/canon` skeleton J-7 specifies_
 
 ⚠️ **RELOCATION PASS, 2026-08-11.** Every explanatory paragraph that used to live in
 `src/kanibako/settings/core_defaults.py` is here; the source keeps one-line descriptors and `⚑`
@@ -12,7 +12,7 @@ history.
 ## What the module is
 
 The STATIC, non-agent-specific launch-floor tables live as declarative data in
-:mod:`kanibako.data` (`core-defaults.yaml`), mirroring how the image baseline ships
+:mod:`kanibako.data` (`rom/settings/core-defaults.yaml`), mirroring how the image baseline ships
 (:mod:`kanibako.runtime.baseline`) and how containerfiles/templates ship via
 :mod:`importlib.resources`. This module reads that file and emits its entries through the existing
 category seam, so nothing enters a box except through the keyspace.
@@ -150,11 +150,21 @@ Resolve a path inside the packaged `kanibako.data` tree.
 Single source of truth for `importlib.resources.files("kanibako.data")` joined with `*parts` —
 returns the same `Traversable` the inline `files("kanibako.data").joinpath(*parts)` expression
 produced (callers wrap it in `Path(str(...))` as before). Notably it centralizes the rom-root
-subpath literal :data:`ROM_ROOT_PARTS` (`("global", "rom")`) that is resolved in both this module
+subpath literal :data:`ROM_ROOT_PARTS` (`("rom", "canon")`) that is resolved in both this module
 and :mod:`kanibako.launch.templates`.
 
+```PACKAGED_ROM_PARTS = ("rom",)```
+The packaged READ-ONLY tree, relative to the `kanibako.data` root: the shipped settings files, the
+kickoff loader, and the rom canon. Packaged SOURCE layout only — nothing here names where a file
+lands in a store or a box.
+
+```PACKAGED_SETTINGS_PARTS = (*PACKAGED_ROM_PARTS, "settings")```
+The shipped settings files: `core-defaults.yaml`, and the keyspace manifest and image baseline that
+:mod:`kanibako.settings.keyspace_manifest` and :mod:`kanibako.runtime.baseline` read through
+`packaged_data_dir`.
+
 ```CORE_DEFAULTS_FILENAME = "core-defaults.yaml"```
-Filename of the shipped system/core defaults, inside `kanibako.data`.
+Filename of the shipped system/core defaults, under `PACKAGED_SETTINGS_PARTS`.
 
 ```_load_doc() -> dict[str, Any]```
 Read and parse the bundled system/core defaults file.
@@ -295,11 +305,11 @@ kickoff bind, the one core bind with a gate, is its own family.
 
 Spec §2c, P-5.
 
-```KICKOFF_PACKAGED_PARTS = ("global", "KICKOFF.md")```
+```KICKOFF_PACKAGED_PARTS = (*PACKAGED_ROM_PARTS, "KICKOFF.md")```
 The packaged kickoff loader, relative to the `kanibako.data` root.
 
-It sits FLAT under `global/` beside the two other shipped content trees (`global/rom`, the RO canon;
-`global/template`, the writable seed) because it is NEITHER of them: it is not canon TEXT (it never
+It sits FLAT under `rom/` beside `rom/canon` (the RO canon) and `rom/settings` (the shipped settings
+files) because it is NEITHER of them: it is not canon TEXT (it never
 lands under `~/canon` and the box never reads it as a directive — the flattener CONSUMES it) and it
 is not seeded (it is bound RO so it version-follows the package instead of freezing at create).
 
@@ -332,7 +342,7 @@ Build the core KICKOFF bind as `default_categories` (spec §2c, P-5).
 One entry in the terminal `box.bindings.ro` arm, keyed by destination:
 
 ```
-/home/agent/.config/kanibako/kickoff.md = (<packaged global/KICKOFF.md>, ro)
+/home/agent/.config/kanibako/kickoff.md = (<packaged rom/KICKOFF.md>, ro)
 ```
 
 The directive-chain ENTRY SLOT: the flattener reads this file at box start, follows its
@@ -375,12 +385,13 @@ exists to end, so a missing packaged file RAISES here rather than emitting a bin
 
 ## The packaged ROM canon — constants
 
-```ROM_ROOT_PARTS = ("global", "rom")```
+```ROM_ROOT_PARTS = (*PACKAGED_ROM_PARTS, "canon")```
 The packaged rom root — the READ-ONLY built-in CANON content (the CHARTER, plus the `COLLECTION.md`
 index that enters it).
 
-A module constant, symmetric with :func:`templates._packaged_base_template`'s hardcoded
-`("global","template")` writable-seed root: rom is the RO-bind DUAL of that writable template seed.
+A module constant, symmetric with :func:`templates._packaged_base_template`'s
+`PACKAGED_TEMPLATES_PARTS` (`("templates",)`) writable-seed root: rom is the RO-bind DUAL of that
+writable template seed.
 
 ```CANON_GUEST_ROOT = "canon"```
 The guest canon root, `~/canon`.
@@ -936,7 +947,7 @@ current. Recorded here so nobody restores them from git history.
 | 10 | `helper_default_categories` | *"The per-entry empty-options 3rd slot carries that through `unpack_bind`"* | under dest-keying (R-6) `add_bind` writes `(host_src, options)`, so options is the **2nd** slot, and dest-keyed entries are consumed by `unpack_bind_entry` (`settings_assemble.py`), not the legacy name-keyed `unpack_bind`. The same docstring said `box_dest -> (host_src, options)` two paragraphs earlier |
 | 11 | `add_bind` | *"rather than at ten call sites"* | **eleven** today (nine here + two in `settings/agent_defaults.py`). A distance, not a direction; replaced with "at every call site" |
 
-⚑ The same two stale claims as #4 and #10 also live in `src/kanibako/data/core-defaults.yaml` (the
+⚑ The same two stale claims as #4 and #10 also live in `src/kanibako/data/rom/settings/core-defaults.yaml` (the
 shipped DATA file, a different seam): its `core:` header says options are *"the OPTIONAL 3rd slot …
 consumed by `settings_resolve.unpack_bind`"* and its `helpers:` header repeats the 3rd-slot wording.
 Boarded, not fixed here.

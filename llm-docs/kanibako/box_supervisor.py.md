@@ -273,10 +273,10 @@ bare-shell fallback.
 
 Single-sourced HERE — the lowest module that needs it: `start.py` imports it and
 `scrub_bootstrap_pythonpath` strips it back out — so the mount dest and the injected/scrubbed
-PYTHONPATH can never drift. ⚑ `scripts/kanibako-entry` and `data/core-defaults.yaml` also carry this
+PYTHONPATH can never drift. ⚑ `scripts/kanibako-entry` and `data/rom/settings/core-defaults.yaml` also carry this
 literal (the entry script runs BEFORE kanibako is importable, and a YAML data file cannot reference a
 constant); keep those literals in sync. *(Both confirmed present this pass: the `kani_pkg` entry's
-`box_dest` in `data/core-defaults.yaml`, and `scripts/kanibako-entry`'s `sys.path.insert`.)*
+`box_dest` in `data/rom/settings/core-defaults.yaml`, and `scripts/kanibako-entry`'s `sys.path.insert`.)*
 
 ### Why the children must NOT inherit it
 

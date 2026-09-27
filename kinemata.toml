@@ -458,7 +458,7 @@ machinery = [
 [[registry]]
 name = "categories"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "categories"
 clause_field = "spec"
 
@@ -543,7 +543,7 @@ clause_field = "spec"
 [[registry]]
 name = "bind-shaped"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "categories"
 where = { field = "cli_set", equals = false }
 
@@ -559,7 +559,7 @@ where = { field = "cli_set", equals = false }
 [[registry]]
 name = "workset-denials"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["policy", "seed_whitelists", "workset", "deny"]
 
 # FACT: where the manifest declares a row's `standalone` arm as a `<…>` PROSE
@@ -578,7 +578,7 @@ section = ["policy", "seed_whitelists", "workset", "deny"]
 [[registry]]
 name = "standalone-absences"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:standalone_is_placeholder" }
 
@@ -597,7 +597,7 @@ where = { holds = "kinemata_views:standalone_is_placeholder" }
 [[registry]]
 name = "standalone-nulls"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:standalone_is_null" }
 
@@ -612,7 +612,7 @@ where = { holds = "kinemata_views:standalone_is_null" }
 [[registry]]
 name = "never-settable-paths"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:never_settable_path" }
 
@@ -637,7 +637,7 @@ where = { holds = "kinemata_views:never_settable_path" }
 [[registry]]
 name = "auth-chain"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^(system|box|workset)\.auth\.' }
 
@@ -678,7 +678,7 @@ where = { id_matches = '^(system|box|workset)\.auth\.' }
 [[registry]]
 name = "fixed-scope-keys"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:fixed_scope_key" }
 
@@ -987,7 +987,7 @@ kind = "code-patterns"
   # for all four scopes, so the destination is a CHAPTER fact.
   #
   # ⚑ `PACKAGED_HANDBOOK` in templates.py is a different fact -- the packaged
-  # SOURCE subtree, spelled `system_handbook` so it no longer shares this
+  # SOURCE subtree, spelled `system/canon/handbook` so it does not share this
   # spelling -- which is why the home here is the YAML rather than that
   # constant. The call sites that once paired a constant source with a bare
   # `"handbook"` destination have read `_CANON_CHAPTER_LEAF` since `3f573d66`;
@@ -995,7 +995,7 @@ kind = "code-patterns"
   [[registry.entry]]
   id = "CANON_CHAPTER_LEAF"
   antipatterns = ['canon\s*/\s*"handbook"', '"canon/handbook"']
-  home = ["src/kanibako/data/core-defaults.yaml"]
+  home = ["src/kanibako/data/rom/settings/core-defaults.yaml"]
   note = "the chapter destination -- a chapter fact, not a packaging fact"
 
   # FACT: `settings_categories.py` is the declaring authority for the
@@ -1106,7 +1106,7 @@ kind = "code-patterns"
 #     them", while `modules` is what the constants adapter derives antipatterns
 #     from. Neither declares the other's fact, and the kinds differ.
 #   * `canonical` homes `kb_store.py` (in store-layout) and
-#     `src/kanibako/data/core-defaults.yaml` -- which is the DATA file, not
+#     `src/kanibako/data/rom/settings/core-defaults.yaml` -- which is the DATA file, not
 #     `settings/core_defaults.py`, the module `canon-layout` declares. Different
 #     files with adjacent names; checked rather than assumed.
 # ---------------------------------------------------------------------------
@@ -1254,7 +1254,7 @@ kind = "code-patterns"
   # day it reports anything the mechanism came back.
   # 🛑 `kinemata unused` WILL LIST BOTH as mentioned by nobody. That is this
   # entry working, not this entry rotting.
-  # ⚑ The names DO survive in `src/kanibako/data/keyspace-manifest.yaml` as
+  # ⚑ The names DO survive in `src/kanibako/data/rom/settings/keyspace-manifest.yaml` as
   # retired-key chain rows. This registry reads `.py` only, so they are out of
   # reach here -- and they are load-bearing MIGRATION DATA, not a reappearance.
   [[registry.entry]]
@@ -1652,7 +1652,7 @@ kind = "code-patterns"
 [[registry]]
 name = "agent-template-source"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.(<agent>|default)\.template$' }
 
@@ -1677,7 +1677,7 @@ where = { id_matches = '^agent\.(<agent>|default)\.template$' }
 [[registry]]
 name = "shell-template-none"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.shell\.template$' }
 
@@ -1716,7 +1716,7 @@ where = { id_matches = '^agent\.shell\.template$' }
 [[registry]]
 name = "seed-scopes"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["policy", "seed_whitelists"]
 where = { present = "root" }
 
@@ -1727,7 +1727,7 @@ where = { present = "root" }
 [[registry]]
 name = "seed-whitelist-fields"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["policy", "seed_whitelists"]
 
 # FACT: the `box` and `agent` deny maps name each tier's settings FILE.
@@ -1742,13 +1742,13 @@ section = ["policy", "seed_whitelists"]
 [[registry]]
 name = "box-denials"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["policy", "seed_whitelists", "box", "deny"]
 
 [[registry]]
 name = "agent-denials"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["policy", "seed_whitelists", "agent", "deny"]
 
 # FACT: `config_keys.KEY_TYPES` types every key the manifest's `type:` column
@@ -1760,7 +1760,7 @@ section = ["policy", "seed_whitelists", "agent", "deny"]
 [[registry]]
 name = "key-types"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:cli_typed_key" }
 
@@ -1777,7 +1777,7 @@ where = { holds = "kinemata_views:cli_typed_key" }
 [[registry]]
 name = "cli-routed-keys"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:cli_routed_key" }
 
@@ -1789,7 +1789,7 @@ where = { holds = "kinemata_views:cli_routed_key" }
 [[registry]]
 name = "bootstrap-path-defaults"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:bootstrap_path_row" }
 
@@ -1847,7 +1847,7 @@ where = { holds = "kinemata_views:bootstrap_path_row" }
 [[registry]]
 name = "workset-anchor-floor"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^(workset\.(boxes|vault_ro|vault_rw|logs|canon|skip_kuid_check|registry|template)|box\.canon)$' }
 
@@ -1857,7 +1857,7 @@ where = { id_matches = '^(workset\.(boxes|vault_ro|vault_rw|logs|canon|skip_kuid
 [[registry]]
 name = "workset-anchor-meta"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.box\.(path|home)$' }
 
@@ -1870,7 +1870,7 @@ where = { id_matches = '^meta\.box\.(path|home)$' }
 [[registry]]
 name = "auth-chain-meta"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.box\.(auth\.workset_path|agent\.auth\.share_support)$' }
 
@@ -1881,7 +1881,7 @@ where = { id_matches = '^meta\.box\.(auth\.workset_path|agent\.auth\.share_suppo
 [[registry]]
 name = "box-scalar-floor"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^box\.(image|share_images|enable_vault|shell)$' }
 
@@ -1891,7 +1891,7 @@ where = { id_matches = '^box\.(image|share_images|enable_vault|shell)$' }
 [[registry]]
 name = "box-scalar-launch-floor"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^box\.(image|share_images|enable_vault|shell)$' }
 
@@ -1905,7 +1905,7 @@ where = { id_matches = '^box\.(image|share_images|enable_vault|shell)$' }
 [[registry]]
 name = "workset-workspaces"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.workspaces$' }
 
@@ -1916,7 +1916,7 @@ where = { id_matches = '^workset\.workspaces$' }
 [[registry]]
 name = "behavior-floor"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.default\.(access|allow_helpers|continue_mode|bootstrap|label)$' }
 
@@ -1927,7 +1927,7 @@ where = { id_matches = '^agent\.default\.(access|allow_helpers|continue_mode|boo
 [[registry]]
 name = "default-tier-none"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.default\.(model|endpoint|run_args|transform)$' }
 
@@ -1938,7 +1938,7 @@ where = { id_matches = '^agent\.default\.(model|endpoint|run_args|transform)$' }
 [[registry]]
 name = "shell-tier-behavior"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.shell\.(label|access|allow_helpers)$' }
 
@@ -1948,7 +1948,7 @@ where = { id_matches = '^agent\.shell\.(label|access|allow_helpers)$' }
 [[registry]]
 name = "env-defaults"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '\.env\.' }
 
@@ -1958,7 +1958,7 @@ where = { id_matches = '\.env\.' }
 [[registry]]
 name = "spawn-budget-floor"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^system\.helpers\.' }
 
@@ -1969,7 +1969,7 @@ where = { id_matches = '^system\.helpers\.' }
 [[registry]]
 name = "canon-defaults"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.(<agent>|default|shell)\.canon$' }
 
@@ -1983,14 +1983,14 @@ where = { id_matches = '^agent\.(<agent>|default|shell)\.canon$' }
 [[registry]]
 name = "workset-channels-primary"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.channel(root|s\.(common|chat|broadcast|share))$' }
 
 [[registry]]
 name = "workset-channels-named"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.channel(root|s\.(common|chat|broadcast|share))$' }
 
@@ -2000,7 +2000,7 @@ where = { id_matches = '^workset\.channel(root|s\.(common|chat|broadcast|share))
 [[registry]]
 name = "workset-partition"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.channels\.(mailboxes|share_global)$' }
 
@@ -2010,7 +2010,7 @@ where = { id_matches = '^workset\.channels\.(mailboxes|share_global)$' }
 [[registry]]
 name = "meta-runtime-floor"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.(workset\.(path|name|settings)|box\.mode)$' }
 
@@ -2024,7 +2024,7 @@ where = { id_matches = '^meta\.(workset\.(path|name|settings)|box\.mode)$' }
 [[registry]]
 name = "helper-socket-bind"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.rw"]
 where = { id_matches = '^~/\.kanibako/state/helper\.sock$' }
 
@@ -2037,14 +2037,14 @@ where = { id_matches = '^~/\.kanibako/state/helper\.sock$' }
 [[registry]]
 name = "kuid-primary"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.kuid$' }
 
 [[registry]]
 name = "kuid-named"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.kuid$' }
 
@@ -2057,7 +2057,7 @@ where = { id_matches = '^workset\.kuid$' }
 [[registry]]
 name = "agent-identity-literals"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.agent\.(default\.(name|path)|shell\.(path|name|settings|mode|auth\.share_support))$' }
 
@@ -2070,7 +2070,7 @@ where = { id_matches = '^meta\.agent\.(default\.(name|path)|shell\.(path|name|se
 [[registry]]
 name = "auth-active-keys"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { field = "value", equals = "<computed>" }
 
@@ -2082,7 +2082,7 @@ where = { field = "value", equals = "<computed>" }
 [[registry]]
 name = "reader-defaults"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^(workset\.skip_kuid_check|box\.enable_vault)$' }
 
@@ -2096,7 +2096,7 @@ where = { id_matches = '^(workset\.skip_kuid_check|box\.enable_vault)$' }
 [[registry]]
 name = "spawn-budget-fallback"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^system\.helpers\.' }
 
@@ -2107,7 +2107,7 @@ where = { id_matches = '^system\.helpers\.' }
 [[registry]]
 name = "workset-channel-leaves"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^workset\.channels\.' }
 
@@ -2134,7 +2134,7 @@ where = { id_matches = '^workset\.channels\.' }
 [[registry]]
 name = "access-choices"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.[^.]+\.access$' }
 
@@ -2144,7 +2144,7 @@ where = { id_matches = '^agent\.[^.]+\.access$' }
 [[registry]]
 name = "access-default-reader"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.default\.access$' }
 
@@ -2155,14 +2155,14 @@ where = { id_matches = '^agent\.default\.access$' }
 [[registry]]
 name = "agent-path-anchor"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.agent\.<agent>\.path$' }
 
 [[registry]]
 name = "agent-settings-anchor"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.agent\.<agent>\.settings$' }
 
@@ -2176,35 +2176,35 @@ where = { id_matches = '^meta\.agent\.<agent>\.settings$' }
 [[registry]]
 name = "box-inbox"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.box\.inbox$' }
 
 [[registry]]
 name = "box-share-global"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.box\.share_global$' }
 
 [[registry]]
 name = "box-share-workset-primary"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.box\.share_workset$' }
 
 [[registry]]
 name = "box-share-workset-named"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.box\.share_workset$' }
 
 [[registry]]
 name = "box-share-workset-standalone"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.box\.share_workset$' }
 
@@ -2214,7 +2214,7 @@ where = { id_matches = '^meta\.box\.share_workset$' }
 [[registry]]
 name = "seed-table-template"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.(<agent>|default)\.template$' }
 
@@ -2224,13 +2224,13 @@ where = { id_matches = '^agent\.(<agent>|default)\.template$' }
 [[registry]]
 name = "agent-seeded-layer"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["category_default_entries", "agent.<agent>.seeded"]
 
 [[registry]]
 name = "agent-seeded-layer-bare"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["category_default_entries", "agent.<agent>.seeded"]
 
 # FACT: `agent_template_defaults` on a BARE node -- the control beside
@@ -2239,7 +2239,7 @@ section = ["category_default_entries", "agent.<agent>.seeded"]
 [[registry]]
 name = "agent-template-bare"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.(<agent>|default)\.template$' }
 
@@ -2249,7 +2249,7 @@ where = { id_matches = '^agent\.(<agent>|default)\.template$' }
 [[registry]]
 name = "handbook-binds"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.ro"]
 where = { id_matches = '^~/canon/handbook/' }
 
@@ -2258,7 +2258,7 @@ where = { id_matches = '^~/canon/handbook/' }
 [[registry]]
 name = "helper-log-bind"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.ro"]
 where = { id_matches = '^~/\.kanibako/state/' }
 
@@ -2268,7 +2268,7 @@ where = { id_matches = '^~/\.kanibako/state/' }
 [[registry]]
 name = "helper-socket-options"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.rw"]
 where = { id_matches = '^~/\.kanibako/state/helper\.sock$' }
 
@@ -2277,14 +2277,14 @@ where = { id_matches = '^~/\.kanibako/state/helper\.sock$' }
 [[registry]]
 name = "core-binds-ro"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.ro"]
 where = { id_matches = '^~/vault/' }
 
 [[registry]]
 name = "core-binds-rw"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.rw"]
 where = { id_matches = '^~/(workspace|vault/rw)$' }
 
@@ -2294,14 +2294,14 @@ where = { id_matches = '^~/(workspace|vault/rw)$' }
 [[registry]]
 name = "channel-binds"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.rw"]
 where = { id_matches = '^~/channels/' }
 
 [[registry]]
 name = "channel-binds-primary"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.rw"]
 where = { id_matches = '^~/channels/' }
 
@@ -2312,7 +2312,7 @@ where = { id_matches = '^~/channels/' }
 [[registry]]
 name = "channel-binds-standalone"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.rw"]
 where = { id_matches = '^~/channels/(?!workset/)' }
 
@@ -2322,7 +2322,7 @@ where = { id_matches = '^~/channels/(?!workset/)' }
 [[registry]]
 name = "helper-log-writer"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["bind_default_entries", "box.bindings.ro"]
 where = { id_matches = '^~/\.kanibako/state/' }
 
@@ -2334,25 +2334,25 @@ where = { id_matches = '^~/\.kanibako/state/' }
 [[registry]]
 name = "system-seeded-layer"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["category_default_entries", "system.seeded"]
 
 [[registry]]
 name = "workset-seeded-layer"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["category_default_entries", "workset.seeded"]
 
 [[registry]]
 name = "system-seeded-layer-primary"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["category_default_entries", "system.seeded"]
 
 [[registry]]
 name = "workset-seeded-layer-primary"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = ["category_default_entries", "workset.seeded"]
 
 # FACT: the seed LAYER KEY SET is the manifest's three `*.seeded` layers (spec §2a),
@@ -2362,21 +2362,21 @@ section = ["category_default_entries", "workset.seeded"]
 [[registry]]
 name = "seed-layer-keys"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "category_default_entries"
 where = { id_matches = '\.seeded$' }
 
 [[registry]]
 name = "seed-layer-keys-primary"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "category_default_entries"
 where = { id_matches = '\.seeded$' }
 
 [[registry]]
 name = "seed-layer-keys-standalone"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "category_default_entries"
 where = { id_matches = '^(system|agent\.<agent>)\.seeded$' }
 
@@ -2388,14 +2388,14 @@ where = { id_matches = '^(system|agent\.<agent>)\.seeded$' }
 [[registry]]
 name = "mode-choices"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.runtime\.project_type$' }
 
 [[registry]]
 name = "mode-choices-launch"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.runtime\.project_type$' }
 
@@ -2405,7 +2405,7 @@ where = { id_matches = '^meta\.runtime\.project_type$' }
 [[registry]]
 name = "site-base-files"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^meta\.runtime\.admin\.(config|settings)$' }
 
@@ -2422,7 +2422,7 @@ where = { id_matches = '^meta\.runtime\.admin\.(config|settings)$' }
 [[registry]]
 name = "no-floor-fabricates"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:declares_no_floor_value" }
 
@@ -3231,7 +3231,7 @@ authority = "declared"
 [[registry]]
 name = "pseudo-agent-leaves"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^(meta\.)?agent\.[a-z_]+\.(auth\.)?[a-z_]+$' }
 
@@ -3259,7 +3259,7 @@ where = { id_matches = '^(meta\.)?agent\.[a-z_]+\.(auth\.)?[a-z_]+$' }
 [[registry]]
 name = "shell-tier-fence"
 kind = "yaml-mapping"
-source = "src/kanibako/data/keyspace-manifest.yaml"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.shell\.(bootstrap|continue_mode|model|endpoint|run_args|transform)$' }
 
@@ -5173,7 +5173,7 @@ registry = "keyspace"
   # into this comment went stale twice in one day -- once when `system.state` landed
   # and once when the typing pass ran.)
   # ⚑ THE RULE ITSELF IS STATED ONCE, AT THE POINT OF USE -- the `##` header above the
-  # `meta.*` group in `src/kanibako/data/keyspace-manifest.yaml`. Do not restate it
+  # `meta.*` group in `src/kanibako/data/rom/settings/keyspace-manifest.yaml`. Do not restate it
   # here: this comment drifted into a THIRD bucket the ratification never named, which
   # is the two-carriers defect the rule exists to prevent.
   # `when = { present = "type" }` makes this a rule ABOUT rows that have one, rather

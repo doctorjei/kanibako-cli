@@ -4,7 +4,7 @@
 each with its own class:
 
 * ``box.bindings.ro.kickoff`` — CORE's bind (spec §2c, P-5 / C-CANON R2).  The
-  kickoff CONTENT now ships in the base (``data/global/KICKOFF.md``) and is emitted
+  kickoff CONTENT now ships in the base (``data/rom/KICKOFF.md``) and is emitted
   by ``core_defaults.kickoff_default_categories``.  See ``TestCoreKickoffBind``.
 * ``managed_pointer`` — each PLUGIN's descriptor binding, still shipped (the
   deletion is DEFERRED one release; see ``TestCoreKickoffBind`` for why and for the

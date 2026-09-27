@@ -1,6 +1,6 @@
 """MANIFEST CONFORMANCE — the shipped keyspace REGISTRY asserted against the code.
 
-``kanibako/data/keyspace-manifest.yaml`` is the machine-readable projection of
+``kanibako/data/rom/settings/keyspace-manifest.yaml`` is the machine-readable projection of
 ``specs/settings-keyspace-1.8.0.md``.  It SHIPS IN THE WHEEL as release authority, and
 until this module existed nothing checked that it still described the code: it was a
 3000-line hand-maintained document whose every value was a VERBATIM COPY of a literal
@@ -78,6 +78,7 @@ from kanibako.settings.config import (
     WORKSET_META_FILE,
 )
 from kanibako.settings.config_keys import _KEY_ROUTES
+from kanibako.settings.core_defaults import CORE_DEFAULTS_FILENAME, PACKAGED_SETTINGS_PARTS
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.keyspace_manifest import (
     KEYSPACE_MANIFEST_FILENAME,
@@ -177,7 +178,7 @@ class TestManifestLoader:
         """
         shipped = Path(
             str(importlib.resources.files("kanibako.data").joinpath(
-                KEYSPACE_MANIFEST_FILENAME))
+                *PACKAGED_SETTINGS_PARTS, KEYSPACE_MANIFEST_FILENAME))
         )
         assert shipped.is_file(), f"packaged manifest not found at {shipped}"
         assert manifest_doc() == yaml.safe_load(shipped.read_text())
@@ -603,7 +604,8 @@ def _check_helper_socket_row(raw: object) -> None:
 
 def _core_defaults_doc() -> dict:
     """The shipped ``core-defaults.yaml``, read as packaged data (as the loader does)."""
-    ref = importlib.resources.files("kanibako.data").joinpath("core-defaults.yaml")
+    ref = importlib.resources.files("kanibako.data").joinpath(
+        *PACKAGED_SETTINGS_PARTS, CORE_DEFAULTS_FILENAME)
     return yaml.safe_load(Path(str(ref)).read_text()) or {}
 
 
@@ -1526,8 +1528,8 @@ def _assert_registry_is_read(registry: dict) -> None:
 
 def _reads_manifest(registry: dict) -> bool:
     """Whether a ``[[registry]]`` reads the shipped keyspace manifest."""
-    return Path(str(registry.get("source", ""))).parts[-3:] == (
-        "kanibako", "data", KEYSPACE_MANIFEST_FILENAME,
+    return Path(str(registry.get("source", ""))).parts[-5:] == (
+        "kanibako", "data", *PACKAGED_SETTINGS_PARTS, KEYSPACE_MANIFEST_FILENAME,
     )
 
 

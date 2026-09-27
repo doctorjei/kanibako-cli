@@ -439,8 +439,8 @@ The content ships as STATIC files inside the installed packages (mirroring how
 `image-baseline.yaml` ships under `kanibako.data`):
 
 ```
-core   -> kanibako.data resource global/template/, whose FOUR subtrees
-          (box, workset, agent_default, system_handbook) each have their OWN
+core   -> kanibako.data resource templates/, whose FOUR subtrees
+          (box, workset, agent, system/canon/handbook) each have their OWN
           destination — the root is never copied wholesale (P-S2)
 plugin -> kanibako.plugins.<agent> resource data/base/ (D4), the agent
           STORE payload
@@ -461,25 +461,30 @@ does not yet have and never clobbers their edits (J-3 item 1).
 
 ### The packaged subtree names
 
-`PACKAGED_BOX_TEMPLATE` / `PACKAGED_WORKSET_TEMPLATE` / `PACKAGED_AGENT_DEFAULT` /
-`PACKAGED_HANDBOOK` name subtrees of the packaged template root, by their role. ⚑ The install is an
+`PACKAGED_TEMPLATES_PARTS` (`("templates",)`) is the packaged template root, relative to the
+`kanibako.data` root. `PACKAGED_BOX_TEMPLATE` / `PACKAGED_WORKSET_TEMPLATE` / `PACKAGED_AGENT_DEFAULT` /
+`PACKAGED_HANDBOOK` name subtrees of that root, by their role. ⚑ The install is an
 ENUMERATED set of (packaged subtree → host dest) pairs, NEVER a whole-tree copy (P-S2): copying the
 root wholesale would leave a SECOND, never-read copy of the handbook at
-`@system.template/system_handbook`, which is the duplicated-shared-data defect design principle 2
-forbids — and §2a states the same rule ("SEED DESTINATIONS ARE ENUMERATED … AND THIS HOLDS AT EVERY
+`@system.template/system`, and would stamp the `agent.default` content into the agent MOULD at
+`@system.template/agent` — the duplicated-shared-data defect design principle 2 forbids — and §2a
+states the same rule ("SEED DESTINATIONS ARE ENUMERATED … AND THIS HOLDS AT EVERY
 LEVEL") for every level.
 
-⚑ Each subtree is named for the scope it is for (`agent_default` = the `agent.default` node), so the
-system scope's handbook ships as `system_handbook` and lands at `@system.canon/handbook`. It must not
-share the chapter leaf's spelling (`_CANON_CHAPTER_LEAF`): the canon-layout duplicate-value check
+⚑ Each subtree is named for the scope it is for: `agent` (`PACKAGED_AGENT_DEFAULT`) holds the
+`agent.default` node's content and lands at `@config.agents/default`; the system scope's handbook
+ships at `system/canon/handbook` and lands at `@system.canon/handbook`. The handbook path must not
+equal the chapter leaf's spelling (`_CANON_CHAPTER_LEAF`): the canon-layout duplicate-value check
 reads two constants with one value as one fact.
 
 `AGENT_MOULD_DIRNAME = "agent"` is the AGENT MOULD's dir name under `@system.template` — the host
-copy every agent install stamps from (J-5). ⚑ There is deliberately NO packaged `template/agent`
-directory: the mould ships EMPTY (D5), and a wheel cannot ship an empty dir, so the host dir is
-GUARANTEE-CREATED by the install action (D7). Shipping structure only is also what keeps it
-OVERLAP-FREE with `agent_default`: both are stamped create-if-absent into the same store, so an
-overlapping mould file would win over the default agent's own content.
+copy every agent install stamps from (J-5). ⚑ The mould ships EMPTY (D5): nothing packaged is copied
+into it, and a wheel cannot ship an empty dir, so the host dir is GUARANTEE-CREATED by the install
+action (D7). The packaged `templates/agent` subtree (`PACKAGED_AGENT_DEFAULT`) shares the name but
+NOT the role — it is the `agent.default` content, stamped only into `@config.agents/default`, never
+into this mould. Shipping the mould structure-only is also what keeps it OVERLAP-FREE with that
+content: both are stamped create-if-absent into the same store, so an overlapping mould file would
+win over the default agent's own content.
 
 `_BOX_TEMPLATE_SKELETON` is the box-template SKELETON a scope store gets guarantee-created (D7) so
 the shape is discoverable: a user who wants a per-workset or per-agent box template can see where
@@ -495,27 +500,27 @@ the constant and the workset half silently ignores that key again.
 
 ### Locating the packaged roots
 
-`_packaged_base_template` locates the packaged TEMPLATE ROOT (`kanibako.data/global/template`), one
-of the two packaged content roots (`global/rom` is BOUND, `global/template` is INSTALLED — the same
+`_packaged_base_template` locates the packaged TEMPLATE ROOT (`kanibako.data/templates`), one
+of the two packaged content roots (`rom/canon` is BOUND, `templates` is INSTALLED — the same
 bound-vs-seeded split §2c draws for the canon books themselves). Its four subtrees are enumerated
 above and each has its OWN host destination; the function returns the ROOT, which is what the
 staleness DIGEST walks and what `install_packaged_templates` indexes into.
 
 ⚑ It is NOT itself an install dest. Before the canon restructure this root WAS copied wholesale
 into `@system.base_template` and seeded at the box home `~`, so a root-relative path was also a
-home-relative one. That is no longer true — the box-HOME seed source is `template/box/home`, two
+home-relative one. That is no longer true — the box-HOME seed source is `templates/box/home`, two
 levels down — and any code treating a root-relative walk as home-relative is now silently wrong
 (see `kanibako.settings.core_defaults.assert_canon_bind_seed_disjoint`, whose caller had to be
 re-anchored for exactly this reason).
 
-`packaged_box_home_template` returns the packaged BOX-HOME seed source (`template/box/home`), the
+`packaged_box_home_template` returns the packaged BOX-HOME seed source (`templates/box/home`), the
 HOME-RELATIVE root: every path under it is spelled exactly as it lands in a box home. It is named
 because two consumers need precisely this level and would be wrong one level up — the disjointness
 guard (whose seed rels must be comparable with the `canon/...` bind dests) and any future
 home-layout check.
 
 `_packaged_shared_bundle` locates the packaged read-only built-in CANON tree (the rom root):
-`kanibako.data/global/rom` — the `canon/COLLECTION.md` index plus the whole `canon/charter/` book,
+`kanibako.data/rom/canon` — the `canon/COLLECTION.md` index plus the whole `canon/charter/` book,
 which the launch path bind-mounts LIVE (ro) at `~/canon/COLLECTION.md` and at each of the book's
 CHAPTERS (see `kanibako.settings.core_defaults.rom_default_categories`). ⚑ The book ROOT
 `~/canon/charter` is NOT itself bound — under J-7 every entry is its own sibling bind onto a
@@ -525,7 +530,7 @@ content DIGEST, so a drift in the shipped canon content is visible to the releas
 requires the matching `SETUP_FCV`/`SETUP_BCV` bump (R-38 retired the host-side staleness gate that
 used to consume the digest). ⚑ Repointed from the retired `global/rom/playbook/kanibako` bundle
 root when rom became the canon: the rom ROOT is now the digest root, so a file added anywhere under
-`rom/` is watched.
+`rom/canon/` is watched.
 
 ## The plugin payload
 
@@ -563,7 +568,7 @@ Per name, in order:
 
 1. the MOULD — `@system.template/agent` → `agents/<name>`. Uniform for every agent, `default`
    included (J-5), and read AS IT STANDS so a user's mould customisation reaches FUTURE stores only.
-2. the SPECIFIC payload — `agents/default` gets the packaged `template/agent_default` DIRECTLY from
+2. the SPECIFIC payload — `agents/default` gets the packaged `templates/agent` DIRECTLY from
    the package (no host staging: with exactly one default agent, a staged copy would be read once
    and never again — the principle-2 dead-copy class); every other name gets its plugin's
    `data/base`.
@@ -788,11 +793,11 @@ pairs, each named because each has a different OWNER and therefore a different c
 
 | packaged subtree | host destination |
 |---|---|
-| `template/box` | `@system.template/box` (STAGING) |
-| `template/workset` | `@system.template/workset` (STAGING) |
-| *(none — ships empty, D5)* | `@system.template/agent` (STAGING) |
-| `template/system_handbook` | `@system.canon/handbook` (USER-OWNED) |
-| `template/agent_default` + plugins | `@config.agents/<name>` (USER-OWNED) |
+| `templates/box` | `@system.template/box` (STAGING) |
+| `templates/workset` | `@system.template/workset` (STAGING) |
+| *(none — ships empty, D5; NOT `templates/agent`)* | `@system.template/agent` (STAGING) |
+| `templates/system/canon/handbook` | `@system.canon/handbook` (USER-OWNED) |
+| `templates/agent` + plugins | `@config.agents/<name>` (USER-OWNED) |
 
 ⚑⚑ `refresh=True` (the `kanibako setup` TRUE-REFRESH) reaches the STAGING rows ONLY. The user-owned
 rows are create-if-absent on EVERY path — J-3 item 1: *"user-owned canon stores are NEVER

@@ -1046,7 +1046,7 @@ class TestWorksetBoxesAndLogsResolved:
     """``workset.boxes`` / ``workset.logs`` are DECLARED, repointable keys (keyspec
     ``@meta.workset.path/boxes``, ``@meta.workset.path/logs``), and the launch seam
     has always resolved them (``settings_launch``, ``meta.box.path |
-    @workset.boxes/@meta.box.name``; ``data/core-defaults.yaml``,
+    @workset.boxes/@meta.box.name``; ``data/rom/settings/core-defaults.yaml``,
     ``@workset.logs/@{meta.box.name}.jsonl``).
 
     ⚑⚑ THE STATE THIS CLOSES was worse than plain breakage.  Detection resolved both

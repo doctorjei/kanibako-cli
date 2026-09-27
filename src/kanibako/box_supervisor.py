@@ -68,7 +68,7 @@ TAKEOVER_HEADS_UP = (
 #: ⚑ Single-sourced HERE, the lowest module that needs it: ``commands/start.py``
 #: imports it and :func:`scrub_bootstrap_pythonpath` strips it back out, so the
 #: mount dest and the injected/scrubbed PYTHONPATH cannot drift.  ⚑ ``scripts/
-#: kanibako-entry`` and ``data/core-defaults.yaml`` carry the same literal (neither
+#: kanibako-entry`` and ``data/rom/settings/core-defaults.yaml`` carry the same literal (neither
 #: can import a constant) — keep all three in sync.
 KANIBAKO_PKG_MOUNT_ROOT = "/opt/kanibako"
 

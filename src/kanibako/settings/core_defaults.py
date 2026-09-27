@@ -36,7 +36,15 @@ def packaged_data_dir(*parts: str) -> Traversable:
     """Resolve a path inside the packaged ``kanibako.data`` tree; the ONE ``files()`` join."""
     return importlib.resources.files("kanibako.data").joinpath(*parts)
 
-# Filename of the shipped system/core defaults (in kanibako.data).
+
+# The packaged READ-ONLY tree, relative to the ``kanibako.data`` root: the shipped
+# settings files, the kickoff loader, and the rom canon.  ⚑ Packaged SOURCE layout only;
+# nothing here names where a file lands in a store or a box.
+PACKAGED_ROM_PARTS = ("rom",)
+# The shipped settings files (core defaults, keyspace manifest, image baseline).
+PACKAGED_SETTINGS_PARTS = (*PACKAGED_ROM_PARTS, "settings")
+
+# Filename of the shipped system/core defaults (under :data:`PACKAGED_SETTINGS_PARTS`).
 CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 
 # ⚑ ``FLOOR_PLACEHOLDER_SRC`` / ``core_default_bind_keys`` (the SET-TIME floor registry) were
@@ -45,7 +53,7 @@ CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 
 def _load_doc() -> dict[str, Any]:
     """Read and parse the bundled system/core defaults file."""
-    ref = packaged_data_dir(CORE_DEFAULTS_FILENAME)
+    ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, CORE_DEFAULTS_FILENAME)
     raw = yaml.safe_load(Path(str(ref)).read_text()) or {}
     if not isinstance(raw, dict):
         return {}
@@ -371,9 +379,9 @@ def kani_default_categories() -> BindArmTable:
 # The KICKOFF LOADER — the directive-chain ENTRY SLOT (spec §2c, P-5).
 # ===========================================================================
 
-# The packaged kickoff loader, relative to the ``kanibako.data`` root; FLAT under ``global/``
-# beside ``global/rom`` (RO canon) and ``global/template`` (writable seed), being neither.
-KICKOFF_PACKAGED_PARTS = ("global", "KICKOFF.md")
+# The packaged kickoff loader, relative to the ``kanibako.data`` root; FLAT under ``rom/``
+# beside ``rom/canon`` (RO canon) and ``rom/settings`` (shipped settings), being neither.
+KICKOFF_PACKAGED_PARTS = (*PACKAGED_ROM_PARTS, "KICKOFF.md")
 
 
 def _kickoff_entry() -> dict[str, Any]:
@@ -436,8 +444,8 @@ def kickoff_default_categories(
 
 
 # The packaged rom root — the READ-ONLY built-in CANON content; RO-bind DUAL of the
-# ``("global","template")`` writable seed in :func:`templates._packaged_base_template`.
-ROM_ROOT_PARTS = ("global", "rom")
+# ``templates`` writable seed in :func:`templates._packaged_base_template`.
+ROM_ROOT_PARTS = (*PACKAGED_ROM_PARTS, "canon")
 
 # ⚑ The packaged rom tree is FLAT (J-7) and does NOT mirror the guest layout: a rom-relative
 # path is NOT its own ``~/``-dest — every guest dest goes through :func:`_canon_dest`.

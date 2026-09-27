@@ -4072,7 +4072,7 @@ migration code.** Four released config surfaces are removed outright
     dropped.
 - **BREAKING: `system.base_template` → `system.template`, and it names a template ROOT.**
   The packaged template tree takes its canon shape — per-scope moulds under
-  `data/global/template/{box,workset,agent,agent_default}` plus the system handbook —
+  `data/templates/{box,workset,agent}` plus the system handbook —
   replacing the flat `playbook/notebook/workbook` layout, and the box-home seed now lives
   at `global/template/box/home/`. Agent-level and workset-level template dirs restructure
   the same way (`<data>/agents/<agent>/template/box/home/`,

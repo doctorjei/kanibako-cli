@@ -45,20 +45,19 @@ where = ["src"]
 "kanibako.scripts" = ["*.sh", "kanibako-entry"]
 # ⚑ THE DOT-DIR PATTERNS ARE LOAD-BEARING, even though core ships no dotfile today.
 # setuptools' ``**/*`` does NOT recurse into hidden directories (the three plugin
-# pyprojects document the same trap and carry the same set). ``global/template/box/
-# home/`` is a BOX HOME seed: the moment a ``.claude/``, ``.config/`` or
+# pyprojects document the same trap and carry the same set). ``templates/box/home/``
+# is a BOX HOME seed: the moment a ``.claude/``, ``.config/`` or
 # ``.claude.json`` lands there, a wheel built without these patterns ships it EMPTY
 # and the seed delivers nothing — silently, with no build error and no launch
 # warning. Added AHEAD of the first such file precisely because the trap is that the
 # next person to drop one gets no signal.
 "kanibako.data" = [
-    "*.yaml",
-    "templates/**/*", "templates/**/.*",
+    "rom/*", "rom/**/*", "rom/**/.*",
+    "rom/.*/**/*", "rom/.*/*",
+    "rom/**/.*/**/*", "rom/**/.*/*",
+    "templates/*", "templates/**/*", "templates/**/.*",
     "templates/.*/**/*", "templates/.*/*",
     "templates/**/.*/**/*", "templates/**/.*/*",
-    "global/*", "global/**/*", "global/**/.*",
-    "global/.*/**/*", "global/.*/*",
-    "global/**/.*/**/*", "global/**/.*/*",
 ]
 
 [tool.ruff]

@@ -15,4 +15,3 @@ launch has no unresolved import left to warn about.
 
 "Raw" @-imports do not appear as links, so the import below is transparently added. -->
 @~/canon/COLLECTION.md
-

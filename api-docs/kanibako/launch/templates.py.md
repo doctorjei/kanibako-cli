@@ -11,10 +11,11 @@ Prose for these symbols lives in `llm-docs/kanibako/launch/templates.py.md`.
 AGENT_TEMPLATE_STORE_REL = 'template'
 SCOPE_WHITELISTS: dict[str, tuple[str, ...]] = {'box': ('home', 'canon/handbook'), 'agent': ('template', 'canon/handbook', 'common'), 'workset': ('template', 'canon/handbook')}
 copy_resource_tree_if_absent = copy_tree
+PACKAGED_TEMPLATES_PARTS = ('templates',)
 PACKAGED_BOX_TEMPLATE = 'box'
 PACKAGED_WORKSET_TEMPLATE = 'workset'
-PACKAGED_AGENT_DEFAULT = 'agent_default'
-PACKAGED_HANDBOOK = 'system_handbook'
+PACKAGED_AGENT_DEFAULT = 'agent'
+PACKAGED_HANDBOOK = 'system/canon/handbook'
 AGENT_MOULD_DIRNAME = 'agent'
 PLUGIN_STORE_PAYLOAD_DIRNAME = 'base'
 _SEED_DEST_HOME = '~/'

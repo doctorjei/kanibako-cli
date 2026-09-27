@@ -378,7 +378,7 @@ def _ensure_initialized() -> None:
     # create-if-absent first-run write of ``box.env.COLORTERM=truecolor`` into the
     # system settings file — a default MATERIALISED AT A SEAM, which is what
     # ``tests/test_settings/test_defaults_enforcement.py`` forbids.  It is declared
-    # in ``data/core-defaults.yaml``'s ``env:`` section instead, so it resolves for
+    # in ``data/rom/settings/core-defaults.yaml``'s ``env:`` section instead, so it resolves for
     # every box with nothing stored — including the installs this first-run path
     # never reached, because it returns early once the config file exists.
     # 🛑 Do not restore a write here: a value that needs a default belongs in a

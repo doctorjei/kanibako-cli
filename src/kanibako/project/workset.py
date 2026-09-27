@@ -526,7 +526,7 @@ class Workset:
         ``None`` when ``workset.logs`` is a present ``<None>`` (no logs dir).
 
         ⚑ The helper-log MOUNT has always been the spec spelling
-        (``@workset.logs/@{meta.box.name}.jsonl``, ``data/core-defaults.yaml``), so a
+        (``@workset.logs/@{meta.box.name}.jsonl``, ``data/rom/settings/core-defaults.yaml``), so a
         composed leaf here made the hub WRITE somewhere the box does not READ — the
         split migration M-14 records.  A standalone box's log is resolved through the
         same key with ``standalone=True``, not through this property, which is a

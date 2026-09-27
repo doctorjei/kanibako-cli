@@ -2,13 +2,13 @@
 
 Two delivery mechanisms land kanibako's shipped directive content into a box:
 
-* the RO packaged CANON (``data/global/rom``) is bound by FIVE SIBLING binds (spec
+* the RO packaged CANON (``data/rom/canon``) is bound by FIVE SIBLING binds (spec
   §2c, J-7) — ``canon_collection`` and ``canon_charter_contents`` as FILE binds, plus
   one whole-directory bind per packaged charter chapter
   (``canon_charter_{general,workset,box}``) — with a SIXTH, ``canon_charter_agent``,
   that core emits from the resolved target when that plugin ships a charter chapter;
   and
-* the writable user tree (``data/global/template``) is SEEDED create-if-absent
+* the writable user tree (``data/templates``) is SEEDED create-if-absent
   through the existing base-template layer at box create.
 
 ⚑ J-7 (2026-07-31) REPLACED R1's whole-directory ``canon_bible`` bind (shipped only
@@ -1289,7 +1289,7 @@ class TestCanonSkeleton:
 
 
 class TestBaseTemplateSeedsTheNotebook:
-    """The box-home seed source (``data/global/template/box/home``) after the canon
+    """The box-home seed source (``data/templates/box/home``) after the canon
     restructure: it carries the NOTEBOOK + WORKBOOK (the box's own, agent-writable
     books) and seeds them into the box home create-if-absent. ⚑ The retired
     ``playbook/`` tree is gone — its content became the canon HANDBOOK, which is

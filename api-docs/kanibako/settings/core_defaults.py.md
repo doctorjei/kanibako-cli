@@ -8,9 +8,11 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/core_defaults.py.md
 ## Variables
 
 ```
+PACKAGED_ROM_PARTS = ('rom',)
+PACKAGED_SETTINGS_PARTS = (*PACKAGED_ROM_PARTS, 'settings')
 CORE_DEFAULTS_FILENAME = 'core-defaults.yaml'
-KICKOFF_PACKAGED_PARTS = ('global', 'KICKOFF.md')
-ROM_ROOT_PARTS = ('global', 'rom')
+KICKOFF_PACKAGED_PARTS = (*PACKAGED_ROM_PARTS, 'KICKOFF.md')
+ROM_ROOT_PARTS = (*PACKAGED_ROM_PARTS, 'canon')
 CANON_GUEST_ROOT = 'canon'
 ROM_COLLECTION_REL = 'COLLECTION.md'
 ROM_CHARTER_REL = 'charter'

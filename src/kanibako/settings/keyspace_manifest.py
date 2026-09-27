@@ -22,9 +22,9 @@ from typing import Any
 
 import yaml
 
-from kanibako.settings.core_defaults import packaged_data_dir
+from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_data_dir
 
-# Filename of the shipped keyspace registry (in kanibako.data).
+# Filename of the shipped keyspace registry (under ``PACKAGED_SETTINGS_PARTS``).
 KEYSPACE_MANIFEST_FILENAME = "keyspace-manifest.yaml"
 
 
@@ -36,7 +36,7 @@ def _parse_manifest() -> dict[str, Any]:
   :func:`~kanibako.settings.core_defaults.packaged_data_dir`, never a repo-relative path:
   a guard that read the checkout would describe this tree, not the wheel that ships.
   """
-  ref = packaged_data_dir(KEYSPACE_MANIFEST_FILENAME)
+  ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, KEYSPACE_MANIFEST_FILENAME)
   raw = yaml.safe_load(Path(str(ref)).read_text())
   if not isinstance(raw, dict):
     raise RuntimeError(
