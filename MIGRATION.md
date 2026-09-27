@@ -352,8 +352,8 @@ inside boxes. In order of likely impact:
     `extract` copy a symlink as a symlink, not the file or directory it points at — see *2.88
     `box move`, `convert`, `duplicate` and `extract` copy a symlink as a symlink*; and a
     plugin's own default for `model`, `endpoint`, `label` or `transform` now beats your
-    `agent.default.<key>`, so set those per agent — see *2.90 An agent plugin's own default
-    beats `agent.default`*.
+    `agent.default.<key>`, so set those per agent — see *An agent plugin's own default beats
+    `agent.default`*.
 
 ---
 
@@ -4171,17 +4171,17 @@ agent:
 Left where it is, it is not a key: the resolve refuses it by name rather than ignoring it quietly,
 so you will be told rather than left wondering why the setting had no effect.
 
-**What is NOT affected.** The leaves kanibako itself declares stay keys at `agent.default` and mean
-what they always did — `model`, `endpoint`, `transform`, `access`, `allow_helpers`, `bootstrap`,
-`continue_mode`, `run_args`, `template`, `canon`, `transform_settings` — **including where a plugin
-declares one of them too.** goose declaring `model` does not move `agent.default.model`.
+**What stays a key.** The leaves kanibako itself declares are still keys at `agent.default` —
+`model`, `endpoint`, `transform`, `access`, `allow_helpers`, `bootstrap`, `continue_mode`,
+`run_args`, `template`, `canon`, `transform_settings`. Where a plugin declares one too, the
+plugin's own default now answers before `agent.default` (see *An agent plugin's own default beats
+`agent.default`*); set it per agent.
 
 ⚑ **A second, invisible half of the same change.** A plugin's own declared defaults were being
 recorded internally under `agent.default.` as well, which on a goose box made the resolve refuse
 its own floor — and because nearly every command loads settings, that reached far more than
 `start`. Those defaults are now recorded under the agent that declares them. You did not set them
 and you cannot see them; the symptom was commands failing on a goose box, and it is gone.
-Precedence is unchanged: a value in a settings file at any scope still beats a plugin's default.
 
 ---
 
@@ -5495,11 +5495,12 @@ box:
 `agent.default.label` or `agent.default.transform`** and you expect it to reach claude, codex or
 goose.
 
-**What changed.** In v1.8.0-rc2 a plugin's declared default for one of these keys sat at the
-`agent.default` tier, under your settings, so your `agent.default.<key>` replaced it. The plugin's
-default now sits at its own agent's tier, `agent.<agent>.<key>`, and that tier answers before
-`agent.default` does. So a key the plugin declares ignores your `agent.default.<key>` for that agent:
-`model`, `endpoint` and `label` for all three shipped agents, and `transform` for claude. The order,
+**What changed.** In v1.7.2 and v1.8.0-rc2 a plugin's declared default for one of these keys sat
+at the `agent.default` tier, under your settings, so your `agent.default.<key>` replaced it
+(`label` is new since v1.8.0-rc2). The plugin's default now sits at its own agent's tier,
+`agent.<agent>.<key>`, and that tier answers before `agent.default` does. So a key the plugin
+declares ignores your `agent.default.<key>` for that agent: `model`, `endpoint` and `label` for all
+three shipped agents, and `transform` for claude. The order,
 lowest first: kanibako's `agent.default` default, your `agent.default` setting, the plugin's
 default, your `agent.<agent>` setting. `agent.default.<key>` still reaches every agent whose plugin
 declares no default for that key. A persona box is the exception for `model`: its model is still
@@ -5513,12 +5514,13 @@ read as before, so your `agent.default.model` still reaches it.
 **Read this if a settings file embeds a reference inside a longer path** (`@<key>/<more>`, or
 `@{<key>}` followed by more text) and the key it names is `null`: set with `--null`, written as
 `null`, or `<None>` by declaration, as a standalone box's `workset.auth.path` and
-`workset.template` are, and as `box.shell` is when unset.
+`workset.template` are, as `box.shell` is when unset, and as the primary workset's
+`workset.workspaces` is when that workset sets none.
 
-**What changed.** In v1.8.0-rc2 the `null` rendered as an empty string, so the path became one
-under the host's root: `@workset.auth.path/x` in a standalone box was the host directory `/x`, and
-`workset.vault_ro: null` in a primary or named workset made the vault source `/<box>`. Such a value
-is now `null` as a whole:
+**What changed.** In v1.7.2 and v1.8.0-rc2 the `null` rendered as an empty string, so the path
+became one under the host's root: `@workset.auth.path/x` in a standalone box was the host
+directory `/x`, and `workset.vault_ro: null` in a primary or named workset made the vault source
+`/<box>`. Such a value is now `null` as a whole:
 
 - A `bindings`, `caches`, `common`, `synced` or `seeded` entry with that source is left out. A
   source that is exactly one reference to a `null` key is left out too; before, it stopped the
@@ -5535,9 +5537,9 @@ is now `null` as a whole:
 - An `env` variable whose value embeds one is left out of the box.
 
 A reference to a key that has no value at all is unchanged: it still renders as an empty string.
-In v1.8.0-rc2, `@box.image`, `@box.share_images`, `@box.enable_vault` and `@box.shell` rendered as
-an empty string at launch unless a settings file set them; they now resolve to their declared
-defaults, so `@box.shell/<path>` is `null` and its bind is left out.
+In v1.7.2 and v1.8.0-rc2, `@box.image`, `@box.share_images`, `@box.enable_vault` and `@box.shell`
+rendered as an empty string at launch unless a settings file set them; they now resolve to their
+declared defaults, so `@box.shell/<path>` is `null` and its bind is left out.
 
 **What to do.** Decide what you meant for each bind:
 
@@ -5678,7 +5680,7 @@ gone* above for the one-line edit they owe each agent file.
 
 A `behavior:` row for a key with no default is written `default: null`, and `TargetSetting.default`
 is `str | None`. Any row you declare sits at `agent.<agent>.<key>`, which answers before a user's
-`agent.default.<key>` — a `null` row included (see *2.90 An agent plugin's own default beats
+`agent.default.<key>` — a `null` row included (see *An agent plugin's own default beats
 `agent.default`*). So choose per key: declare `null` to say "this harness picks its own" and have
 users name the value per agent, as the shipped plugins do for `model` and `endpoint`, or declare no
 row and let `agent.default.<key>` reach your agent. A persona's `model` is the exception: it is still

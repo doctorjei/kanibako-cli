@@ -406,7 +406,7 @@ error, not a silent no-op).
 #### `--box`: operate on any box
 
 `--box` substitutes for being in the box's directory: `kanibako stop --box myproj`,
-`kanibako box set --box myproj model=opus`. The value is a **box name (resolved
+`kanibako box set --box myproj pref.agent.claude.model=opus`. The value is a **box name (resolved
 first) or a path**. It is the *subject* the command acts on, and stays orthogonal to
 the `move`/`convert` *destination* group, so they coexist:
 
@@ -501,7 +501,7 @@ worksets (workset name token `__PRIMARY__`), so primary-workset settings use the
 ordinary `workset set default` mechanism (see [Configuration](#configuration)):
 
 ```bash
-kanibako workset set default model=opus          # default for ALL primary-mode boxes
+kanibako workset set default pref.agent.claude.model=opus  # claude's model, ALL primary-mode boxes
 kanibako workset set default workset.auth.share_allowed=false  # distinct credentials by default
 ```
 
@@ -981,12 +981,12 @@ All settings levels share the same four verbs -- `set` / `get` / `show` /
 kanibako box show                       # show box overrides
 kanibako box show --effective           # show resolved values (inherited + overrides)
 kanibako box get model                  # get one key
-kanibako box set model=sonnet           # set one key
-kanibako box reset model                # remove override, back to default
+kanibako box set pref.agent.claude.model=sonnet  # set one key (this box's claude)
+kanibako box reset pref.agent.claude.model       # remove override, back to default
 
 # Workset level (group defaults inherited by member boxes)
-kanibako workset set <workset> model=opus
-kanibako workset set default model=opus      # primary-workset default
+kanibako workset set <workset> pref.agent.claude.model=opus
+kanibako workset set default pref.agent.claude.model=opus  # primary-workset default
 
 # Agent level (defaults for all boxes using this agent)
 kanibako agent set claude model=opus
