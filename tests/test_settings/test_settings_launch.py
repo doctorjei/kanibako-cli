@@ -230,6 +230,47 @@ def test_a_CORE_ONLY_floor_with_no_descriptors_is_UNTOUCHED_by_the_split():
     assert "claude" not in snap.agent
 
 
+@pytest.mark.parametrize("subject_name", ["BOX", "WORKSET", "SYSTEM"])
+def test_the_box_scalar_floor_is_folded_for_a_BOX_resolve_only(subject_name):
+    """Spec §0/§2b: a BOX resolve carries every box scalar at its declared default
+    (``box.shell`` a present ``None``, [R177]) off ``config.box_scalar_defaults_floor``;
+    a box-less resolve (WORKSET / SYSTEM subject) has no box and floors none."""
+    from kanibako.settings.config import box_scalar_defaults_floor
+    from kanibako.settings.kb_store import __MISSING__
+    from kanibako.settings.settings_launch import ResolveSubject, snapshot_leaf
+
+    subject = ResolveSubject[subject_name]
+    snap = _snap(agent_name="claude", subject=subject)
+    for key, value in box_scalar_defaults_floor().items():
+        got = snapshot_leaf(snap, key)
+        if subject is ResolveSubject.BOX:
+            assert got is not __MISSING__ and got == value, key
+        else:
+            assert got is __MISSING__, key
+
+
+def test_a_box_file_scalar_beats_the_box_scalar_floor(tmp_path: Path):
+    """The floor sits at the base rung: a box file's ``box.shell`` / ``box.share_images``
+    win by merge level, and an embedded ``@box.shell`` renders the user's value."""
+    from kanibako.settings.config import box_scalar_defaults_floor
+    from kanibako.settings.config_io import dump_doc
+
+    box_file = tmp_path / "box.yaml"
+    dump_doc(box_file, {"box": {
+        "shell": "/bin/zsh", "share_images": True, "enable_vault": False,
+        "canon": "@box.shell/sub",
+    }})
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+        workset_path=None, box_path=box_file,
+    )
+    assert snap.box.shell == "/bin/zsh"
+    assert snap.box.share_images is True
+    assert snap.box.enable_vault is False
+    assert snap.box.canon == "/bin/zsh/sub"
+    assert snap.box.image == box_scalar_defaults_floor()["box.image"]
+
+
 def test_category_default_table_folds_into_snapshot():
     snap = build_launch_snapshot(
         agent_name="claude",

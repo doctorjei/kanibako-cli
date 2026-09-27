@@ -173,6 +173,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<None>`. A `box.shell` you set still wins, and an unset `box.shell` still auto-detects the
   login shell.
 
+- **A launch resolves `@box.image`, `@box.share_images`, `@box.enable_vault` and `@box.shell` at
+  their defaults when no settings file sets them.** The launch left all four out unless a file
+  set them, so a reference inside a longer value rendered an empty string and a whole-value
+  reference was dropped: `box.canon=@box.shell/sub` mounted `/sub/handbook` as the box's
+  handbook. With `box.shell` unset, that value is now `<None>`, so the bind is left out and a
+  warning names the file that set `box.canon`. A value you set for any of the four still wins.
+  See `MIGRATION.md` § *A `null` setting inside a bind's source leaves the bind out instead of
+  mounting a host path*.
+
 - **A setting set to `null` inside a path no longer turns the path into one under the host's
   root.** A reference embedded in a longer value rendered a `null` key as an empty string, so
   `@workset.auth.path/x` became `/x`, and the shared-workset vault source

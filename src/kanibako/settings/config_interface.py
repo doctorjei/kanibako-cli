@@ -618,8 +618,9 @@ def _set_time_snapshot(
     # went and the DECLARED half stayed.  🛑 Do not delete the floor to finish the job:
     # without it ``@box.image`` dangles at every command scope, which is a REGRESSION, not
     # conformance — the defaults are a legitimate carrier, the file is not.
-    # ⚑ ``config.box_scalar_defaults_floor`` is the ONE recipe, shared with the launch-side
-    # ``_resolve_box_scalars`` so the set-time floor and the launch floor cannot drift.
+    # ⚑ ``config.box_scalar_defaults_floor`` is the ONE recipe, shared with every BOX
+    # launch resolve (``build_launch_snapshot``) so the set-time floor and the launch
+    # floor cannot drift.
     from kanibako.settings.config import box_scalar_defaults_floor
 
     # ⚑ A path-tier failure must NOT crash a ``config set`` — fall back to an empty floor.

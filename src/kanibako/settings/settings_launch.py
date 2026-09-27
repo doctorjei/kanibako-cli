@@ -61,6 +61,7 @@ from kanibako.settings.agent_file import AgentFileLevel, stored_leaf_text
 from kanibako.settings.config import (
     AGENT_META_FILE,
     WORKSET_META_FILE,
+    box_scalar_defaults_floor,
     settings_base_path,
 )
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
@@ -2038,6 +2039,13 @@ def build_launch_snapshot(
     # EVERY resolve (see :data:`SYSTEM_SCALAR_FLOOR`). Everything below may overwrite
     # them by name, and every settings scope outranks them by merge level.
     floor: dict[str, object] = dict(SYSTEM_SCALAR_FLOOR)
+    # The box scalars' declared defaults (spec §2b; ``box.shell``'s ``<None>`` as a
+    # present ``None``, [R177]) for every BOX resolve, so an ``@box.shell`` / ``@box.image``
+    # a user writes resolves (spec §0) instead of rendering ``""`` or dropping. ONE carrier,
+    # :func:`~kanibako.settings.config.box_scalar_defaults_floor`, shared with the
+    # set-time probe. A box-less resolve (WORKSET / SYSTEM subject) has no box to floor.
+    if subject is ResolveSubject.BOX:
+        floor.update(box_scalar_defaults_floor())
     # OS1: bare behavior keys → their scope-qualified §2d spelling. There is NO bare
     # ``agent.<key>`` (spec §0).
     #

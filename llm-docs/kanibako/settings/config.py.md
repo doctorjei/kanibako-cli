@@ -93,11 +93,12 @@ nothing left to strand, and `config.box_scalar_defaults_floor()` builds the floo
 🛑 **The floor was SEPARATED from the file read, not deleted.** The old expression
 (`getattr(load_config(cf), field)`) fused two things: the file's value when the file spoke, the
 declared default when it did not. Only the first is the violation; deleting both would make
-`@box.image` dangle at launch AND at set time. `box_scalar_defaults_floor` is the ONE recipe, shared
-with `config_interface._category_set_lookups` so the launch floor and the set-time floor cannot
-drift. A `""` field default (`box.shell`) is the flat object's spelling of the declared `<None>`
+`@box.image` dangle at launch AND at set time. `box_scalar_defaults_floor` is the ONE recipe, folded
+by `settings_launch.build_launch_snapshot` into every BOX resolve (the main launch snapshot and
+`_resolve_box_scalars` alike), by `_narrow_box_scalar_cascade`, and by
+`config_interface._category_set_lookups`, so the launch floor and the set-time floor cannot drift. A `""` field default (`box.shell`) is the flat object's spelling of the declared `<None>`
 (spec §2b `box.shell | <None>`), and the floor SUPPLIES it as a present `None` ([R177]). It is not
-`""`: `build_launch_snapshot` drops a `""` as a suppression (`if val == "": continue`), which left
+`""`: a `default_categories` fold drops a `""` as a suppression (`if val == "": continue`), which left
 `@box.shell` dangling, so `set box.env.SH=@box.shell` refused by name until 2026-09-27. A whole-value
 ref to it now resolves to `None` (§0). `_resolve_box_scalars` skips a resolved `None`, so the flat
 `box_shell` field keeps its `""` and `launch.shells.resolve_box_shell` still auto-detects.
@@ -346,7 +347,8 @@ floor(declared box-scalar defaults) < /etc settings_base.yaml < system
 ⚑ **THE FLOOR WAS `kanibako.cfg`'s `[box]` TABLE UNTIL 2026-08-26**, when Jei ruled that
 file cannot carry settings at all. It is `config.box_scalar_defaults_floor()` now — the DECLARED
 defaults, shared with `config_interface._category_set_lookups` so the launch floor and the set-time
-floor cannot drift. Nothing else about the chain moved.
+floor cannot drift. `build_launch_snapshot` folds it for every BOX resolve, so this function passes
+no `default_categories` of its own. Nothing else about the chain moved.
 
 The floor really does sit UNDER the `/etc` base file: `assemble_levels` folds *floor* beneath the
 base file's content within the single `base` level, so a base-FILE set-value beats the floor at the

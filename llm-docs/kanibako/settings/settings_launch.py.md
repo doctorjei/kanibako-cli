@@ -48,6 +48,14 @@ overrides by name — precedence-equivalent to the old AGENT-level `defaults=`, 
   `__MISSING__` for a key the manifest promises a value for. A new non-path `system.*` default
   belongs in that table; the rest of §2g's scalars either declare no default, are paths floored by
   `paths.resolve_system_paths`, or ride `auth_chain`.
+* **The box scalars' declared defaults — every BOX resolve.** For `subject=ResolveSubject.BOX` the
+  seed also takes `config.box_scalar_defaults_floor()` (`box.image`, `box.share_images`,
+  `box.enable_vault`, and `box.shell`'s `<None>` as a present `None`, [R177]), so every declared box
+  scalar resolves (spec §0) in the main launch snapshot and every other box resolve. Before, only
+  `config._resolve_box_scalars` folded it, so a user's `box.canon=@box.shell/sub` rendered `""` in
+  the launch (`/sub/handbook`) and a bare `@box.shell` dropped; now the present `None` makes the
+  whole value `None` (`settings_expand`, embedded or whole-value) and the entry is skipped. ONE
+  carrier, shared with the set-time probe. A WORKSET or SYSTEM resolve has no box and is not floored.
 
 * **OS1** — the two bare behavior floors are mapped to SCOPE-QUALIFIED keys before folding, by
   SOURCE: core's (`core_defaults.behavior_defaults`, the ALL-AGENTS backstop spec §2d lists under

@@ -1890,6 +1890,16 @@ source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^box\.(image|share_images|enable_vault|shell)$' }
 
+# FACT: the MAIN launch snapshot of a fresh box carries every box scalar at its declared
+# default -- `box-scalar-floor`'s rows, read where a launch resolves them rather than
+# off the carrier (one registry, one oracle).
+[[registry]]
+name = "box-scalar-launch-floor"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^box\.(image|share_images|enable_vault|shell)$' }
+
 # FACT: `workset.workspaces`' three arms are what the launch hands and the anchor
 # floor supplies -- PRIMARY the present `None` the floor installs itself, NAMED and
 # STANDALONE the dir `settings_launch._workset_workspaces_floor_value` resolves.
@@ -3652,6 +3662,44 @@ for key, value in sorted(box_scalar_defaults_floor().items()):
     print(f"kanibako-box-scalar: {key}={json.dumps(value)}")
 """]
 extract = '(?m)^kanibako-box-scalar: ([^\s=]+)=(.+)$'
+field = "default"
+format = "json"
+authority = "declared"
+
+# ⚑ THE SAME ROWS, READ AT THE LAUNCH TERMINUS (`box-scalar-launch-floor`): the carrier above can agree with the
+# manifest while no launch folds it (the main launch snapshot had no box-scalar floor
+# until 2026-09-27, so `@box.shell/sub` rendered `/sub`). This oracle drives the main
+# launch resolve (`kinemata_views.fresh_launch_snapshots`, terminus `launch_snapshot`)
+# on a freshly initialized box in every mode, for every discovered node, and prints each
+# box scalar's resolved value; an absent key prints nothing, and two termini that
+# disagree print both values.
+# AUTHORITY: `declared`; the cells are keyspec §2b's box-scalar rows.
+# GREEN, measured 2026-09-27 (core alone): `# box-scalar-launch-floor: 4 declared, 4
+#   produced, in agreement, agreeing on default.`  rc=0
+# NEGATIVE CONTROL, in a copy: the `floor.update(box_scalar_defaults_floor())` line in
+#   `settings_launch.build_launch_snapshot` removed: rc=1, each of the four reading
+#   `box.<leaf>: declared, produced by nothing`; `box-scalar-floor` stays green.
+[[parity]]
+registry = "box-scalar-launch-floor"
+command = ["{python}", "-c", """
+import json
+from kinemata_views import fresh_launch_snapshots
+from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.settings_launch import snapshot_leaf
+keys = ("box.enable_vault", "box.image", "box.share_images", "box.shell")
+seen = {}
+for _node, _mode, terminus, snapshot, _cli in fresh_launch_snapshots():
+    if not terminus.startswith("launch_snapshot#"):
+        continue
+    for key in keys:
+        value = snapshot_leaf(snapshot, key)
+        if value is not __MISSING__:
+            seen.setdefault(key, set()).add(json.dumps(value))
+for key in sorted(seen):
+    for value in sorted(seen[key]):
+        print(f"kanibako-launch-box-scalar: {key}={value}")
+"""]
+extract = '(?m)^kanibako-launch-box-scalar: ([^\s=]+)=(.+)$'
 field = "default"
 format = "json"
 authority = "declared"

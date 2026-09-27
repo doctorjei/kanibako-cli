@@ -1463,7 +1463,9 @@ class TestPrimaryWorksetMigration:
             box_path=None,
         )
         box = snap.box if "box" in snap else KeyStore()
-        assert "shell" not in box       # the legacy value must NOT resolve
+        # The legacy value must NOT resolve: ``box.shell`` is the floor's present
+        # ``None`` (spec §2b ``<None>``), never ``/bin/legacy``.
+        assert dict.get(box, "shell", "ABSENT") is None
         assert legacy.read_text() == legacy_text  # and the file is untouched
 
 
