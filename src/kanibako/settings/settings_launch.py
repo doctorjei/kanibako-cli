@@ -67,7 +67,13 @@ from kanibako.settings.config import (
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.paths import BoxMode
+from kanibako.settings.paths import (
+    BoxMode,
+    ProjectError,
+    box_workset_settings_paths,
+    system_path_floor,
+    workset_settings_path,
+)
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.config_keys import is_path_valued_key, path_key_anchor
 from kanibako.settings.settings_assemble import (
@@ -1749,7 +1755,6 @@ def resolve_inputs(
     for what each floor carries and why it is built here.
     """
     from kanibako.settings.agent_select import host_resolve_ctx
-    from kanibako.settings.paths import system_path_floor
 
     takes = {
         ResolveSubject.BOX: (True, False),
@@ -1777,7 +1782,6 @@ def resolve_inputs(
         auth_chain = auth_chain_floor(mode=None, agent_name=agent_name)
     else:
         from kanibako.channels import channels as _channels
-        from kanibako.settings.paths import workset_settings_path
 
         # A working set is PRIMARY or NAMED; ``workset create --standalone`` is
         # refused, so no working set is standalone.
@@ -1860,7 +1864,6 @@ def _box_workset_floors(
     call this, so they compare the launch's own per-mode root choice.
     """
     from kanibako.channels import channels as _channels
-    from kanibako.settings.paths import ProjectError
 
     mode = proj.mode.value
     if mode == "named" and proj.group is None:
@@ -1881,7 +1884,6 @@ def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> Laun
     """:func:`resolve_inputs` for the ``BOX`` subject: the box *proj*."""
     from kanibako.channels import channels as _channels
     from kanibako.settings.agent_select import launch_resolve_ctx
-    from kanibako.settings.paths import box_workset_settings_paths, system_path_floor
 
     # ONE ctx builder (P7): the SELECTION pre-pass resolves against the identical
     # host-side namespace, so the two passes cannot disagree about what
