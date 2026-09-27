@@ -192,14 +192,11 @@ class TestTemplateSeedDefaults:
     """``template_seed_defaults`` declares the THREE §2a layers as ordinary keystore
     ``seeded`` keys (+ their ``@``-ref SOURCE keys), gated per mode / agent."""
 
-    def test_system_layer_always_present(self, primary_proj):
-        defs = template_seed_defaults(primary_proj, "claude")
-        # Layer 1 (base) rides the seed system with NO carve-out (Q4).
-        # ⚑ DEST-KEYED and TERMINAL (2026-08-08c): ``system.seeded`` IS the key and
-        # its value is the whole ``{box_dest: (src,)}`` map. There is no entry name.
-        assert defs["system.seeded"] == {
-            "~/": ("@system.template/box/home",),
-        }
+    # ⚑ Layers 1 and 3's ENTRIES and the LAYER KEY SET (a fourth layer, or one dropped
+    # in any single mode) are compared with the manifest by the ``system-seeded-layer``,
+    # ``workset-seeded-layer`` and ``seed-layer-keys`` kinemata views (2026-09-27), one
+    # view per mode: the bare name for NAMED, ``-primary`` for PRIMARY, and
+    # ``seed-layer-keys-standalone`` for STANDALONE.
 
     def test_the_only_seed_dest_is_the_box_home(self, primary_proj):
         """⚑ THE H2 PIN, RESPELLED. Every declared seed dest is the GUEST home
@@ -304,67 +301,32 @@ class TestTemplateSeedDefaults:
             "~/": ("@agent.shell.template/box/home",),
         }
 
-    def test_workset_layer_default_points_at_workset_template(self, primary_proj):
-        """Layer 3 default = @meta.workset.path/template (Q3, was <None>).
-
-        ⚑⚑ THE SOURCE KEY IS THE FLOOR'S, NOT THIS TABLE'S (2026-08-29).  This table
-        only ``@``-REFERENCES ``@workset.template``; ``settings_launch
+    def test_the_workset_source_key_is_the_floors_not_this_tables(self, primary_proj):
+        """⚑⚑ Layer 3's SOURCE key is the floor's, not this table's (2026-08-29).  This
+        table only ``@``-REFERENCES ``@workset.template``; ``settings_launch
         .workset_anchor_floor`` declares it, beside ``workset.registry``.  A source key
         spelled only here answered for a box being CREATED and for no box that already
         existed — this table's one consumer is the create-time seed resolve.
 
-        Both halves are asserted TOGETHER on purpose: the reference and the declaration
-        are what make the layer resolve, and a test that checked only one of them would
-        stay green while the other went missing.
+        The other half, the layer's ``~/`` entry, is the ``workset-seeded-layer``
+        kinemata view's, and the floor's ``@meta.workset.path/template`` value is
+        ``workset-anchor-floor``'s.
         """
-        from kanibako.settings.settings_launch import workset_anchor_floor
-
         defs = template_seed_defaults(primary_proj, "claude")
         assert "workset.template" not in defs
-        assert defs["workset.seeded"] == {
-            "~/": ("@workset.template/box/home",),
-        }
-        assert (
-            workset_anchor_floor(mode="primary")["workset.template"]
-            == "@meta.workset.path/template"
-        )
-
-    def test_named_includes_workset_layer(self, named_proj):
-        defs = template_seed_defaults(named_proj, "claude")
-        assert "workset.seeded" in defs
 
     def test_standalone_omits_workset_layer(self, standalone_proj):
         """STANDALONE has no workset tier -> no workset.template source/layer
-        (spec §2c workset.template <None>)."""
+        (spec §2c workset.template <None>).
+
+        The standalone LAYER KEY SET (no ``workset.seeded``) is the
+        ``seed-layer-keys-standalone`` kinemata view's.
+        """
         defs = template_seed_defaults(standalone_proj, "claude")
         assert "workset.template" not in defs
-        assert "workset.seeded" not in defs
         # base + agent layers still present.
         assert "system.seeded" in defs
         assert "agent.claude.seeded" in defs
-
-    def test_exactly_three_seed_layer_keys_are_declared(self, primary_proj):
-        """The seed LAYER SET is pinned as an equality — a fourth layer cannot be
-        added without this test naming it.
-
-        ⚑ THIS REPLACES ``test_seed_keys_of_selects_exactly_the_seeded_keys``.
-        That test derived a HOST-space key set via ``templates.seed_keys_of``, which
-        was DELETED with the 2026-08-08c respell (every dest is guest-spelled now, so
-        there is no second namespace to select). Its anti-drift half, however, did NOT
-        dissolve, and is restored here.
-
-        ⚑⚑ IT IS NOT SUBSUMED BY ``test_the_only_seed_dest_is_the_box_home``, and the
-        difference is the whole reason this exists: that test asserts the set of
-        DESTS is ``{"~/"}``, so a FOURTH layer added at the same ``~/`` dest leaves it
-        GREEN. Only an equality on the KEYS catches one. (A layer DROPPED is caught by
-        the per-layer tests above, which assert each key's value individually.)
-        """
-        defs = template_seed_defaults(primary_proj, "claude")
-        assert {k for k in defs if k.endswith(".seeded")} == {
-            "system.seeded",
-            "agent.claude.seeded",
-            "workset.seeded",
-        }
 
 
 # ---------------------------------------------------------------------------

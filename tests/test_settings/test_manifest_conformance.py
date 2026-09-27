@@ -1298,11 +1298,12 @@ NO_VALUE_RUNTIME_PROSE: frozenset[str] = frozenset({
 
 #: (E7) ``value:`` rows answered OFF-SNAPSHOT through bootstrap constants, which no
 #: launch floor emits.  ``user_config_file`` is READ, never composed (``[R154]``), and
-#: the site pair lives as ``SITE_CONFIG_DIR`` + the file names — joining them here
-#: would be a second carrier of the site layout, so each side is asserted verbatim and
-#: the reason names the carrier.
+#: its cell is prose (the ``$XDG_CONFIG_HOME`` fallback), so the manifest side is
+#: asserted verbatim and the reason names the carrier.  (The site pair
+#: ``meta.runtime.admin.{config,settings}`` left this class: ``config.config_base_path``
+#: / ``settings_base_path`` do the join in production, and the ``site-base-files``
+#: kinemata view compares them.)
 NO_VALUE_BOOTSTRAP_OFF_SNAPSHOT: frozenset[str] = frozenset({
-    "meta.runtime.admin.config", "meta.runtime.admin.settings",
     "meta.runtime.user.config",
 })
 
@@ -1345,27 +1346,13 @@ class TestNoValueExemptions:
         )
 
     def test_the_bootstrap_rows_name_their_off_snapshot_carrier(self):
-        """E7: the manifest literals verbatim, and the bootstrap constants verbatim —
-        deliberately NOT equated (see E7's reason: the join would be a second carrier).
-        """
-        assert _value("meta.runtime.admin.config") == "/etc/kanibako/base.cfg"
-        assert _value("meta.runtime.admin.settings") == (
-            "/etc/kanibako/settings_base.yaml"
-        )
+        """E7: the manifest's prose verbatim, and the bootstrap constant it names."""
         assert _value("meta.runtime.user.config") == (
             "$XDG_CONFIG_HOME/kanibako.cfg, or ~/.config/ if unset / not absolute"
         )
 
-        from kanibako.settings.bootstrap import (
-            CONFIG_FILE,
-            SITE_CONFIG_DIR,
-            SITE_CONFIG_FILE,
-            SITE_SETTINGS_FILE,
-        )
+        from kanibako.settings.bootstrap import CONFIG_FILE
 
-        assert SITE_CONFIG_DIR == "/etc/kanibako"
-        assert SITE_CONFIG_FILE == "base.cfg"
-        assert SITE_SETTINGS_FILE == "settings_base.yaml"
         assert CONFIG_FILE == "kanibako.cfg"
 
     def test_the_delivery_rows_are_the_collapse_outputs(self):
@@ -1894,7 +1881,7 @@ class TestDefaultsCoverage:
         )
 
     def test_the_value_split_is_the_measured_split(self):
-        """6 pinned, 20 carried, 10 exempted — stated so a silent migration between them reds.
+        """6 pinned, 22 carried, 8 exempted — stated so a silent migration between them reds.
 
         ⚑ 24/10 → 11 pinned + 13 carried / 10 (2026-09-25), with the default side: the
         anchor, auth and re-root rows and the agent-identity literals are compared by
@@ -1905,10 +1892,12 @@ class TestDefaultsCoverage:
         ``<computed>`` rows.
         18 → 20 carried when the fences' own ``meta.agent.default.path`` and
         ``meta.agent.shell.auth.share_support`` rows joined ``agent-identity-literals``.
+        20 → 22 carried, 10 → 8 exempted (2026-09-27): the site pair
+        ``meta.runtime.admin.{config,settings}`` left E7 for the ``site-base-files`` view.
         """
         assert len(PINNED_VALUE_KEYS) == 6
-        assert len(CARRIED_VALUE_KEYS) == 20
-        assert len(EXEMPT_VALUE_KEYS) == 10
+        assert len(CARRIED_VALUE_KEYS) == 22
+        assert len(EXEMPT_VALUE_KEYS) == 8
         assert not (PINNED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
         assert not (CARRIED_VALUE_KEYS & EXEMPT_VALUE_KEYS)
         assert not (PINNED_VALUE_KEYS & CARRIED_VALUE_KEYS), (
