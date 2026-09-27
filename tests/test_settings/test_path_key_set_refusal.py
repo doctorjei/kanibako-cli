@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.project.workset import create_workset
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
 from kanibako.settings.config_interface import set_config_value
 from kanibako.settings.config_io import load_doc
@@ -127,13 +128,18 @@ class TestEverySetRouteRefusesABareRelative:
         message = _set("workset.channelroot", value, files, ConfigLevel.workset)
         _assert_named_both_readings(message, "workset.channelroot", value)
 
-    def test_the_message_names_the_file_the_value_would_have_landed_in(self, tmp_path):
+    def test_the_message_names_the_file_the_value_would_have_landed_in(
+        self, std, tmp_home,
+    ):
         """``MIGRATION.md`` § 2.62 prints this transcript; the ``in <file>`` clause is
-        part of it, and it is the file the WRITE was routed to."""
-        files = _files(tmp_path)
-        message = _set("workset.channelroot", _BARE, files, ConfigLevel.workset)
-        assert f"in {files['workset']}" in message
-        assert str(files["workset"].parent / _BARE) in message
+        part of it, and it is the file the WRITE was routed to.  The other reading is
+        the working set's own root, which only the working set as TARGET supplies."""
+        from kanibako.settings.paths import workset_settings_path
+
+        ws = create_workset("filews", tmp_home / "filews", std)
+        message = _set_ws("workset.channelroot", _BARE, std, ws)
+        assert f"in {workset_settings_path(ws)}" in message
+        assert str(ws.root / _BARE) in message
         assert "@meta.workset.path" in message
 
 
@@ -236,7 +242,9 @@ class TestTheLegalShapesAreAccepted:
         "$XDG_DATA_HOME/comms",       # an XDG base, BARE
         "${XDG_DATA_HOME}/comms",     # ...and BRACED — parsed, never prefix-matched
         "@config.data/comms",         # an @-ref to another key
-        "@meta.workset.path/comms",   # ...including the one [R147]'s cure offers
+        # ``@meta.workset.path/comms`` — the cure [R147] offers — needs the COMMAND's
+        # target to resolve, so it is pinned with a real working set below
+        # (``TestSetTimeResolvesTheCommandsTarget``), not with these bare files.
     ])
     def test_workset_scope_accepts_it(self, value, config_file, tmp_path):
         # ⚑ ``config_file`` (hence ``tmp_home``) is REQUIRED for the ``@config.*`` cases:
@@ -258,27 +266,104 @@ class TestTheLegalShapesAreAccepted:
         assert not message.startswith("Error:"), message
         assert load_doc(files["system"])["system"]["cache"] == value
 
-    def test_the_cure_the_refusal_OFFERS_actually_resolves(self, tmp_path):
-        """⚑⚑ THE PAIR IS THE POINT, and it is why the set-time snapshot carries the
-        ``@meta.{workset,box}.path`` anchors.  The refusal names
-        ``@meta.workset.path/comms``; ``MIGRATION.md`` § 2.62's table names it as the
-        replacement for the old root-relative reading.  Until the anchor was floored the
-        set-time E3 probe answered "dangling @-reference" to it — a rule that banned a
-        form and then refused its own cure.
-        MUTATION: drop ``_meta_scope_anchor_floor`` from ``_category_set_lookups``'
-        floor and this reds while every refusal above stays green."""
-        files = _files(tmp_path)
-        refusal = _set("workset.channelroot", _BARE, files, ConfigLevel.workset)
+    def test_the_cure_the_refusal_OFFERS_actually_resolves(self, std, tmp_home):
+        """⚑⚑ THE PAIR IS THE POINT, and it is why the set-time snapshot resolves the
+        command's target.  The refusal names ``@meta.workset.path/comms``;
+        ``MIGRATION.md`` § 2.62's table names it as the replacement for the old
+        root-relative reading.  Without the working set's anchors the set-time E3
+        probe answered "dangling @-reference" to it — a rule that banned a form and
+        then refused its own cure."""
+        ws = create_workset("curews", tmp_home / "curews", std)
+        refusal = _set_ws("workset.channelroot", _BARE, std, ws)
         offered = f"@meta.workset.path/{_BARE}"
         assert offered in refusal
-        assert not _set(
-            "workset.channelroot", offered, files, ConfigLevel.workset,
-        ).startswith("Error:")
+        assert not _set_ws("workset.channelroot", offered, std, ws).startswith("Error:")
 
-    def test_the_box_root_cure_resolves_too(self, tmp_path):
-        files = _files(tmp_path)
-        message = _set("box.canon", "@meta.box.path/canon", files, ConfigLevel.box)
+    def test_the_box_root_cure_resolves_too(self, std, config_file, tmp_home):
+        proj = _primary_box(std, config_file, tmp_home)
+        message = _set_box("box.canon", "@meta.box.path/canon", std, proj)
         assert not message.startswith("Error:"), message
+
+
+def _primary_box(std, config_file, tmp_home):
+    """A real primary box in the default working set."""
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import resolve_project
+
+    return resolve_project(
+        std, load_config(config_file), project_dir=str(tmp_home / "project"),
+        initialize=True,
+    )
+
+
+def _set_box(key: str, value, std, proj) -> str:
+    """``set_config_value`` threaded as ``box set`` threads it: the box is the target."""
+    from kanibako.settings.paths import box_workset_settings_paths
+
+    box_file, _ = box_workset_settings_paths(proj)
+    return set_config_value(
+        key, value, config_path=box_file, cascade_system_path=std.settings,
+        command_scope=ConfigLevel.box, std=std, proj=proj,
+    )
+
+
+def _set_ws(key: str, value, std, ws) -> str:
+    """``set_config_value`` threaded as ``workset set`` threads it: the working set is the target."""
+    from kanibako.settings.paths import workset_settings_path
+
+    return set_config_value(
+        key, value, config_path=workset_settings_path(ws),
+        cascade_system_path=std.settings, command_scope=ConfigLevel.workset,
+        std=std, ws=ws,
+    )
+
+
+class TestSetTimeResolvesTheCommandsTarget:
+    """Spec §2a, *"Build the full cascade snapshot for the COMMAND's target"*: the
+    set-time snapshot is ``settings_launch.resolve_inputs`` for the box, the working
+    set or the system scope the command names — never a root rebuilt from where its
+    settings files sit.  ⚑ Each ACCEPT row below was refused as a dangling reference
+    while the snapshot floored only ``@meta.{workset,box}.path`` from the file paths."""
+
+    def test_a_box_value_resolves_against_the_boxs_own_anchors(
+        self, std, config_file, tmp_home,
+    ):
+        # ``meta.box.home`` hangs off the box's real ``meta.box.path``; only the
+        # box's own resolve has it.
+        proj = _primary_box(std, config_file, tmp_home)
+        message = _set_box("box.canon", "@meta.box.home/canon", std, proj)
+        assert message == "Set box.canon=@meta.box.home/canon", message
+
+    def test_a_box_refusal_names_the_boxs_real_root(self, std, config_file, tmp_home):
+        proj = _primary_box(std, config_file, tmp_home)
+        message = _set_box("box.canon", _BARE, std, proj)
+        assert f"{proj.metadata_path / _BARE}   (this key's default root" in message
+
+    def test_a_workset_value_resolves_against_the_worksets_anchors(self, std, tmp_home):
+        ws = create_workset("anchorws", tmp_home / "anchorws", std)
+        message = _set_ws("workset.canon", "@meta.runtime.ws_root/canon", std, ws)
+        assert message == "Set workset.canon=@meta.runtime.ws_root/canon", message
+
+    @pytest.mark.parametrize("ref", ["@meta.box.path", "@meta.box.home"])
+    def test_a_workset_value_needing_a_box_is_judged_without_one(
+        self, ref, std, tmp_home,
+    ):
+        """A working set names no box: its box anchors are OMITTED, never fabricated."""
+        ws = create_workset("noboxws", tmp_home / "noboxws", std)
+        message = _set_ws("workset.canon", f"{ref}/canon", std, ws)
+        assert message.startswith("Error:"), message
+        assert f"dangling @-reference '{ref}'" in message
+
+    def test_a_write_naming_no_target_gets_no_anchor_from_its_file(self, tmp_path):
+        """⚑ NO TARGET, NO ANCHOR: ``meta.workset.path`` is never read off the parent
+        of the file being written — the guess spec §2a removes."""
+        files = _files(tmp_path)
+        message = _set(
+            "workset.channelroot", f"@meta.workset.path/{_BARE}", files,
+            ConfigLevel.workset,
+        )
+        assert message.startswith("Error:"), message
+        assert "dangling @-reference '@meta.workset.path'" in message
 
 
 class TestTheRuleDoesNotOVERREACH:
@@ -346,3 +431,141 @@ class TestTheAnchorDegradesHONESTLY:
         # every one of these messages ends "spelled so it resolves on its own".
         assert ", spelled '" not in message
         assert str(Path.cwd() / _BARE) in message
+
+
+#: The malformed ``pref:`` entry is the POINT of the three box cases, and the target-less
+#: snapshot reads the file it sits in, so the census sees it written.
+_WRITES_THE_DOTTED_PREF = pytest.mark.writes_undeclared(
+    "pref.system.agent",
+    reason="a DOTTED pref entry in box.yaml is the broken config these cases repair; "
+           "the target-less set-time snapshot reads that file.",
+)
+
+
+class TestABrokenTargetDoesNotBlockTheRepair:
+    """Spec §2a: ``config set`` MUST stay usable to FIX a broken config.  A defect in
+    the target's own files (a DOTTED ``pref:`` entry, which ``collect_prefs`` refuses)
+    stops ``resolve_inputs``; the write is then judged WITHOUT the target, which can only
+    refuse more, and a refusal says why the target was missing."""
+
+    @staticmethod
+    def _break(proj):
+        from kanibako.settings.paths import box_workset_settings_paths
+
+        box_file, _ = box_workset_settings_paths(proj)
+        box_file.parent.mkdir(parents=True, exist_ok=True)
+        with box_file.open("a") as fh:
+            fh.write("pref:\n  system.agent: claude\n")
+
+    @_WRITES_THE_DOTTED_PREF
+    def test_an_unrelated_value_is_still_written(self, std, config_file, tmp_home):
+        proj = _primary_box(std, config_file, tmp_home)
+        self._break(proj)
+        message = _set_box("box.canon", "/abs/canon", std, proj)
+        assert message == "Set box.canon=/abs/canon", message
+
+    @_WRITES_THE_DOTTED_PREF
+    def test_the_pref_cure_itself_is_still_written(self, std, config_file, tmp_home):
+        proj = _primary_box(std, config_file, tmp_home)
+        self._break(proj)
+        message = _set_box("pref.system.agent", "claude", std, proj)
+        assert not message.startswith("Error:"), message
+
+    @_WRITES_THE_DOTTED_PREF
+    def test_a_value_needing_the_missing_anchor_names_why_it_is_missing(
+        self, std, config_file, tmp_home,
+    ):
+        proj = _primary_box(std, config_file, tmp_home)
+        self._break(proj)
+        message = _set_box("box.canon", "@meta.box.home/canon", std, proj)
+        assert message.startswith("Error:"), message
+        assert "dangling @-reference '@meta.box.home'" in message
+        assert "did not resolve:" in message and "DOTTED" in message
+
+    @_WRITES_THE_DOTTED_PREF
+    def test_the_fallback_reads_the_same_files_so_it_cannot_accept_more(
+        self, std, config_file, tmp_home, capsys,
+    ):
+        """⚑ THE COUNTEREXAMPLE. The fallback is "strictly less context" only while the
+        caller still threads its tier files: without the working-set tier, a valid
+        system-level ``workset.canon`` showed through the box's DANGLING working-set
+        value and ``@workset.canon/x`` was WRITTEN, though the box's real cascade
+        refuses it. Driven through ``box set`` itself, so the caller's threading is
+        what is pinned."""
+        import argparse
+
+        from kanibako.commands.box._parser import run_set
+        from kanibako.settings.paths import box_workset_settings_paths
+
+        proj = _primary_box(std, config_file, tmp_home)
+        box_file, workset_file = box_workset_settings_paths(proj)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        std.settings.write_text("workset:\n  canon: /sys/canon\n")
+        workset_file.parent.mkdir(parents=True, exist_ok=True)
+        workset_file.write_text('workset:\n  canon: "@workset.nonexistent_zz/c"\n')
+        box_file.parent.mkdir(parents=True, exist_ok=True)
+        box_file.write_text("box:\n  canon: /first\npref:\n  system.agent: claude\n")
+        rc = run_set(argparse.Namespace(
+            args=[str(proj.project_path), "box.canon=@workset.canon/x"],
+            box=None, force=False,
+        ))
+        err = capsys.readouterr().err
+        assert rc == 1, err
+        assert "did not resolve:" in err
+        assert "canon: /first" in box_file.read_text()
+
+    def test_a_caller_that_could_not_name_its_target_gets_the_same_rule(self, tmp_path):
+        files = _files(tmp_path)
+        message = set_config_value(
+            "workset.channelroot", f"@meta.workset.path/{_BARE}",
+            config_path=files["workset"], cascade_system_path=files["system"],
+            command_scope=ConfigLevel.workset, target_error="no std here",
+        )
+        assert message.startswith("Error:"), message
+        assert message.endswith("did not resolve: no std here)")
+
+
+class TestEveryNounPassesItsTarget:
+    """The CALLERS hold the target, so each noun must hand it over — a noun that
+    passes none silently falls back to a snapshot with no box or working-set anchor."""
+
+    def test_box_set(self, std, config_file, tmp_home, capsys):
+        import argparse
+
+        from kanibako.commands.box._parser import run_set
+
+        proj = _primary_box(std, config_file, tmp_home)
+        rc = run_set(argparse.Namespace(
+            args=[str(proj.project_path), "box.canon=@meta.box.home/canon"],
+            box=None, force=False,
+        ))
+        assert rc == 0, capsys.readouterr().err
+
+    def test_workset_set(self, std, tmp_home, capsys):
+        import argparse
+
+        from kanibako.commands.workset_cmd import run_set
+
+        create_workset("cliws", tmp_home / "cliws", std)
+        rc = run_set(argparse.Namespace(
+            workset="cliws", key_value="workset.canon=@meta.runtime.ws_root/canon",
+            force=False,
+        ))
+        assert rc == 0, capsys.readouterr().err
+
+    def test_system_set_names_the_system_scope(self, config_file, monkeypatch):
+        import argparse
+
+        from kanibako.commands.system_cmd import run_set
+        from kanibako.settings import config_interface
+
+        seen: dict = {}
+
+        def spy(*args, **kwargs):
+            seen.update(kwargs)
+            return "Set spied"
+
+        monkeypatch.setattr(config_interface, "set_config_value", spy)
+        assert run_set(argparse.Namespace(key_value="system.cache=/srv/c", force=True)) == 0
+        assert seen["std"] is not None
+        assert seen.get("proj") is None and seen.get("ws") is None

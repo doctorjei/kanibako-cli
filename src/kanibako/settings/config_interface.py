@@ -15,7 +15,7 @@ import sys
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 from kanibako.settings.config import (
     _LAYER1_TABLE,
@@ -117,7 +117,7 @@ from kanibako.settings.config_io import (
     write_nested_key,
     write_root_key,
 )
-from kanibako.errors import UserCancelled
+from kanibako.errors import KanibakoError, UserCancelled
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.settings_categories import (
     ABSTRACT_CATEGORIES,
@@ -129,6 +129,9 @@ from kanibako.settings.settings_keyspace import (
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.utils import confirm_prompt
+
+if TYPE_CHECKING:
+    from kanibako.settings.settings_launch import LaunchInputs
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +173,7 @@ def _pref_value_error(
     workset_path: Path | None,
     box_path: Path | None,
     agent_name: str,
+    set_target: "LaunchInputs | None",
 ) -> str | None:
     """Validate a pref's VALUE against the shape + resolution of its TARGET key."""
     from kanibako.settings.settings_categories import (
@@ -235,8 +239,9 @@ def _pref_value_error(
         config_path=config_path,
         system_settings_path=system_settings_path,
         command_scope=command_scope,
-        workset_path=workset_path,
-        box_path=box_path,
+        target=set_target,
+        agent_path=agent_path,
+        agent_name=agent_name,
         agents_root=None,  # a pref is set at box/workset scope, which holds no agents root.
     )
     if path_err is not None:
@@ -253,6 +258,7 @@ def _pref_value_error(
         workset_path=workset_path,
         box_path=box_path,
         agent_name=agent_name,
+        target=set_target,
     )
     defect = resolves(target, value)
     if defect is not None:
@@ -338,33 +344,80 @@ def _path_tier_split() -> "tuple[dict[str, str], dict[str, object]]":
     return config_foundation, floor
 
 
-def _meta_scope_anchor_floor(
-    workset_path: "Path | None", box_path: "Path | None",
-) -> dict[str, object]:
-    """The ``@meta.{workset,box}.path`` anchors the COMMAND holds, from its threaded tiers.
+def _set_time_target(
+    *, std, proj, ws, agent_name: str, system_path: "Path | None",
+) -> "LaunchInputs | None":
+    """The COMMAND's target as ``settings_launch.resolve_inputs`` builds it; ``None`` without *std*.
 
-    ⚑⚑ THE SET-TIME TWIN OF ``settings_launch.meta_agent_path_floor``, and it exists for
-    the reason that one does: a value spelled against a root the keyspace declares
-    DANGLES at set time unless the root is floored.  Without it ``workset set
-    workset.channelroot=@meta.workset.path/comms`` — the very spelling [R147]'s refusal
-    offers as the cure, and the first row of ``MIGRATION.md`` § 2.62's table — was
-    refused as a dangling reference, so the rule banned a form and then refused its own
-    replacement.
-
-    ⚑ NOT A SECOND DERIVATION OF EITHER ROOT.  Both tiers' settings files are DECLARED as
-    ``<that root>/<filename>``: ``paths.workset_settings_path`` says so in its own
-    docstring (``@meta.workset.path/workset.yaml``) and ``paths._box_settings_files``
-    builds the box tier under ``box_metadata_dir``.  So a threaded tier file NAMES its
-    root by its parent; nothing here decides where a root is.
-    ⚑ A TIER THE COMMAND DID NOT THREAD YIELDS NOTHING — ``system set box.canon=x`` names
-    no box, and a fabricated anchor would be exactly the guess this whole rule removes.
+    Spec §2a, *"Build the full cascade snapshot for the COMMAND's target"*: a box
+    command's target is its box (*proj*), a workset command's its working set (*ws*),
+    and a system or agent command's the system scope (neither). The caller passes the
+    objects it already holds; nothing is re-loaded here. A key the target has no value
+    for is OMITTED by ``resolve_inputs``, never fabricated — a working set names no box,
+    so no ``@meta.box.*`` anchor exists at workset scope.
+    ⚑ NO *std*, NO TARGET: a caller that names none (a programmatic write) gets a
+    snapshot with no box or working-set anchor at all, rather than one guessed from
+    where its settings files sit.
     """
-    floor: dict[str, object] = {}
-    if workset_path is not None:
-        floor["meta.workset.path"] = str(workset_path.parent)
-    if box_path is not None:
-        floor["meta.box.path"] = str(box_path.parent)
-    return floor
+    if std is None:
+        return None
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
+
+    if proj is not None:
+        return resolve_inputs(
+            subject=ResolveSubject.BOX, std=std, proj=proj,
+            agent_name=agent_name, system_path=system_path,
+        )
+    if ws is not None:
+        return resolve_inputs(
+            subject=ResolveSubject.WORKSET, std=std, ws=ws,
+            agent_name=agent_name, system_path=system_path,
+        )
+    return resolve_inputs(
+        subject=ResolveSubject.SYSTEM, std=std,
+        agent_name=agent_name, system_path=system_path,
+    )
+
+
+def _target_scope_anchors(
+    target: "LaunchInputs | None",
+    *,
+    agent_path: "Path | None",
+    agent_name: str,
+) -> dict[str, object]:
+    """The ``@meta.{workset,box}.path`` directories *target*'s own snapshot resolves.
+
+    Read out of the SAME set-time snapshot the E3 probe judges against, so a scope file
+    that moves a root (``workset.boxes``, which ``meta.box.path`` hangs off) moves the
+    anchor the refusal names too. A root the target lacks, or one that does not
+    resolve, is absent from the result.
+    """
+    if target is None:
+        return {}
+    from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_expand import expand
+
+    # ⚑ THE ANCHOR ONLY NAMES A DIRECTORY IN A REFUSAL that is issued either way, so a
+    # cascade that cannot be assembled leaves the anchor spelled, never a crash.
+    try:
+        snapshot, ctx = _set_time_snapshot(
+            target=target, agent_name=agent_name, agent_path=agent_path,
+        )
+    except Exception:
+        return {}
+    result = expand(_clone_keystore(snapshot), ctx, collect_errors=True)
+    assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
+    expanded, errors = result
+    anchors: dict[str, object] = {}
+    for ref in ("meta.workset.path", "meta.box.path"):
+        if ref in errors:
+            continue
+        node: "Any" = expanded
+        for seg in ref.split("."):
+            node = dict.get(node, seg) if isinstance(node, KeyStore) else None
+        if isinstance(node, str) and node:
+            anchors[ref] = node
+    return anchors
 
 
 def _set_time_anchor(
@@ -412,8 +465,9 @@ def _bare_relative_path_error(
     config_path: Path,
     system_settings_path: "Path | None",
     command_scope: "ConfigLevel | None",
-    workset_path: "Path | None",
-    box_path: "Path | None",
+    target: "LaunchInputs | None",
+    agent_path: "Path | None",
+    agent_name: str,
     agents_root: "Path | None",
 ) -> "str | None":
     """[R147] at SET TIME — refuse a bare-relative value for a PATH key, naming both readings.
@@ -444,9 +498,13 @@ def _bare_relative_path_error(
     if is_unambiguous_path_value(value):
         return None
     anchor_ref, anchor_label = path_key_anchor(canonical)
+    # ⚑ The workset and box roots come from the COMMAND's target (spec §2a), never
+    # from where its settings files sit; a root the target lacks is named, unresolved.
     anchor = _set_time_anchor(
         anchor_ref,
-        scope_anchors=_meta_scope_anchor_floor(workset_path, box_path),
+        scope_anchors=_target_scope_anchors(
+            target, agent_path=agent_path, agent_name=agent_name,
+        ),
         agents_root=agents_root,
     )
     dest = _write_dest(
@@ -532,21 +590,24 @@ def _unusable_store_root_error(canonical: str, value: "str | None") -> "str | No
     return None
 
 
-def _category_set_lookups(
-    config_path: Path,
+def _set_time_snapshot(
     *,
-    canonical: str,
+    target: "LaunchInputs | None",
+    agent_name: str,
+    agent_path: "Path | None",
+    config_path: "Path | None" = None,
     command_scope: "ConfigLevel | None" = None,
-    system_settings_path: Path | None = None,
-    system_path: Path | None = None,
-    agent_path: Path | None = None,
-    workset_path: Path | None = None,
-    box_path: Path | None = None,
-    agent_name: str = "",
-):
-    """The set-time lookups over ONE merged cascade snapshot: ``(resolves, raw_bind)``."""
+    system_settings_path: "Path | None" = None,
+    system_path: "Path | None" = None,
+    workset_path: "Path | None" = None,
+    box_path: "Path | None" = None,
+) -> "tuple[Any, Any]":
+    """The set-time cascade, merged and NOT expanded, with the ``ResolveCtx`` to expand it: ``(snapshot, ctx)``.
+
+    With a *target* (:func:`_set_time_target`), its tier files, anchors and context are
+    the ones the snapshot reads, and the file arguments after *agent_path* are unused.
+    """
     from kanibako.settings.settings_assemble import assemble_levels
-    from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_merge import merge
 
     # The box scalars' DECLARED-DEFAULT floor, so an ``@box.image`` ref RESOLVES at set
@@ -588,12 +649,34 @@ def _category_set_lookups(
     if agent_name:
         floor.update(meta_agent_path_floor(agent_name))
 
-    # The WORKSET and BOX store-root anchors, from the tier files the command threaded.
-    # ⚑ THE SAME REASON THE AGENT ANCHOR ABOVE IS HERE, one scope out: a value spelled
-    # against a declared root dangles at set time unless the root is floored, and
-    # ``@meta.workset.path/<leaf>`` is what [R147] tells the user to write instead of the
-    # bare relative it refuses. Withheld, the cure was refused as a dangling reference.
-    floor.update(_meta_scope_anchor_floor(workset_path, box_path))
+    # The COMMAND's TARGET (spec §2a, "Build the full cascade snapshot for the COMMAND's
+    # target"): its tier files, its context and the floor fragments the launch folds —
+    # in the builder's order — so ``@meta.workset.path/<leaf>``, which [R147] tells the
+    # user to write instead of a bare relative, resolves here as it will at launch. A
+    # root the target lacks (a working set's box, the system scope's working set) is
+    # OMITTED by ``resolve_inputs``, never derived here from a settings file's parent.
+    # ⚑ P10 — A SECOND CARRIER OF THIS ORDER, ON PURPOSE: the fold below restates
+    # ``settings_launch.build_launch_snapshot``'s floor order (auth chain, runtime,
+    # identity, workset anchor). That builder cannot serve here — it EXPANDS STRICTLY and
+    # runs ``refuse_read_time_faults``, while set time needs the merged UNEXPANDED
+    # snapshot, so it can splice the candidate value in and expand leniently. Change one
+    # order and change the other; a shared helper belongs to a pass that opens
+    # ``settings_launch.py``.
+    if target is not None:
+        for fragment in (
+            target.auth_chain, target.meta_runtime, target.meta_identity,
+            target.workset_anchor,
+        ):
+            floor.update(fragment)
+        levels = assemble_levels(
+            agent_name=agent_name,
+            system_path=target.system_path,
+            agent_path=agent_path,
+            workset_path=target.cascade_workset_path,
+            box_path=target.cascade_box_path,
+            floor=floor,
+        )
+        return merge(levels), target.ctx
 
     ctx = _set_time_ctx(config=config_foundation)
 
@@ -620,6 +703,7 @@ def _category_set_lookups(
     # ⚑ The former ``agent``-slot special case is GONE ON PURPOSE, not lost: it existed only
     # to dodge ``_drop_upward_scopes`` on a file the key's scope token had already mis-filed.
     # With the slot taken from the command there is nothing left for it to dodge.
+    assert config_path is not None  # a target-less snapshot backfills the command's file
     cmd: "Path | None" = noun_settings_file(config_path, system_settings_path)
     if cmd is not None and not cmd.exists():
         cmd = None
@@ -646,7 +730,36 @@ def _category_set_lookups(
         box_path=box_p,
         floor=floor,
     )
-    base_snapshot = merge(levels)
+    return merge(levels), ctx
+
+
+def _category_set_lookups(
+    config_path: Path,
+    *,
+    canonical: str,
+    command_scope: "ConfigLevel | None" = None,
+    system_settings_path: Path | None = None,
+    system_path: Path | None = None,
+    agent_path: Path | None = None,
+    workset_path: Path | None = None,
+    box_path: Path | None = None,
+    agent_name: str = "",
+    target: "LaunchInputs | None" = None,
+):
+    """The set-time lookups over ONE merged cascade snapshot: ``(resolves, raw_bind)``."""
+    from kanibako.settings.settings_expand import expand
+
+    base_snapshot, ctx = _set_time_snapshot(
+        target=target,
+        agent_name=agent_name,
+        agent_path=agent_path,
+        config_path=config_path,
+        command_scope=command_scope,
+        system_settings_path=system_settings_path,
+        system_path=system_path,
+        workset_path=workset_path,
+        box_path=box_path,
+    )
 
     def resolves(key: str, value: str) -> "str | None":
         # Apply the candidate into a FRESH copy (S19), lenient-expand, read the key's defect.
@@ -1019,8 +1132,18 @@ def set_config_value(
     cascade_agent_name: str = "",
     command_scope: ConfigLevel | None = None,
     agents_root: Path | None = None,
+    std: Any = None,
+    proj: Any = None,
+    ws: Any = None,
+    target_error: "str | None" = None,
 ) -> str:
-    """Write a config value to the appropriate store; returns a message or error, NEVER raises."""
+    """Write a config value to the appropriate store; returns a message or error, NEVER raises.
+
+    *std* with *proj* (a box), *ws* (a working set) or neither (the system scope) names
+    the COMMAND's target, whose full cascade the set-time validation resolves against
+    (spec §2a); see :func:`_set_time_target`. *target_error* is why a caller could
+    not name its target; the write is then validated as if the target failed to build.
+    """
     canonical = resolve_key(key)
 
     # ⚑ ``config.*`` foundation keys are NEVER CLI-settable (B2) — refused BEFORE the scope
@@ -1109,6 +1232,39 @@ def set_config_value(
             canonical, verb="set", active_agent=cascade_agent_name or None,
         )
 
+    # The COMMAND's target, built ONCE for every value check below (spec §2a). A clear
+    # (``--null``) has no value to resolve, so it builds none.
+    # ⚑⚑ A TARGET THAT CANNOT BE BUILT DOES NOT REFUSE THE WRITE. Spec §2a: ``config set``
+    # MUST stay usable to FIX a broken config, and the usual reason a target fails is a
+    # defect in one of its own settings files (a dotted ``pref:`` entry, say), which a
+    # ``set`` is how the user repairs. So the value is judged against the TARGET-LESS
+    # snapshot instead — strictly less context, so it can only refuse more, never accept
+    # more — and a refusal carries the build error, which is why an anchor was missing.
+    # ⚑ "Strictly less" holds ONLY because every caller still threads its tier files: the
+    # fallback reads the same files as the target and differs by the floors alone. A
+    # caller that drops a tier lets a lower tier's value show through, and the fallback
+    # then ACCEPTS what the target refuses.
+    # *target_error* is the same case from a caller that could not even load ``std``.
+    set_target = None
+    target_reason = target_error
+    if value is not None and target_reason is None:
+        try:
+            set_target = _set_time_target(
+                std=std, proj=proj, ws=ws,
+                agent_name=cascade_agent_name, system_path=cascade_system_path,
+            )
+        except KanibakoError as exc:
+            target_reason = str(exc)
+
+    def _refusal(message: str) -> str:
+        """*message*, plus why the command's target could not be resolved, if it was not."""
+        if target_reason is None:
+            return message
+        return (
+            f"{message}\n(Validated without this command's full settings, which did not "
+            f"resolve: {target_reason})"
+        )
+
     # [R147] — a BARE RELATIVE value for a PATH key is AMBIGUOUS and is REFUSED, the twin of
     # the three read-time refusals in ``paths._refuse_bare_relative``,
     # ``workset_dirkeys.resolve_workset_dir_key`` and
@@ -1132,12 +1288,13 @@ def set_config_value(
         config_path=config_path,
         system_settings_path=system_settings_path,
         command_scope=command_scope,
-        workset_path=cascade_workset_path,
-        box_path=cascade_box_path,
+        target=set_target,
+        agent_path=cascade_agent_path,
+        agent_name=cascade_agent_name,
         agents_root=agents_root,
     )
     if path_err is not None:
-        return path_err
+        return _refusal(path_err)
 
     # Q16 — ``system.state`` naming an unusable store root is REFUSED at set time, so
     # the CLI never again stores a value its own resolve cannot read back.  See
@@ -1164,12 +1321,13 @@ def set_config_value(
             workset_path=cascade_workset_path,
             box_path=cascade_box_path,
             agent_name=cascade_agent_name,
+            target=set_target,
         )
         scalar_verdict = validate_config_set(
             canonical, value, resolves=_resolves,
         )
         if isinstance(scalar_verdict, _SetError):
-            return f"Error: {scalar_verdict.message}"
+            return _refusal(f"Error: {scalar_verdict.message}")
 
     # ``pref.<target>`` — the §2h REQUEST, validated with the SAME filters the launch applies.
     # ⚑ Written NESTED, never as a dotted literal: a dotted bind-shaped value is never
@@ -1188,9 +1346,10 @@ def set_config_value(
             workset_path=cascade_workset_path,
             box_path=cascade_box_path,
             agent_name=cascade_agent_name,
+            set_target=set_target,
         )
         if value_err is not None:
-            return value_err
+            return _refusal(value_err)
         dest = _write_dest(
             canonical, command_scope=command_scope,
             config_path=config_path, settings_path=system_settings_path,

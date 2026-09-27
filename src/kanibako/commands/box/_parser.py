@@ -821,7 +821,7 @@ def run_create(args: argparse.Namespace) -> int:
     if proj.is_new:
         # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE shared gate, writing the BOX-TIER
         # file from the ONE pair (M-8).  Only an EXPLICIT ``-i``/``--image`` persists.
-        project_toml, _ = box_workset_settings_paths(proj)
+        project_toml, create_ws_path = box_workset_settings_paths(proj)
         persist_creation_flags(
             project_toml, materializing=proj.is_new, image=args.image,
         )
@@ -841,7 +841,11 @@ def run_create(args: argparse.Namespace) -> int:
                 _msg = set_config_value(
                     _auth_key, "false",
                     config_path=project_toml,
+                    cascade_system_path=std.settings,
+                    cascade_workset_path=create_ws_path,
+                    cascade_box_path=project_toml,
                     command_scope=ConfigLevel.box,
+                    std=std, proj=proj,
                 )
                 if not _msg.startswith("Set "):
                     raise KanibakoError(
@@ -857,10 +861,16 @@ def run_create(args: argparse.Namespace) -> int:
         if _agent_arg is not None:
             from kanibako.settings.config_interface import set_config_value
             from kanibako.settings.config_keys import ConfigLevel
+            # ⚑ The box being created is the target (spec §2a); no agent is selected
+            # yet, so the resolve is the no-agent one.
             _msg = set_config_value(
                 "pref.system.agent", _agent_arg,
                 config_path=project_toml,
+                cascade_system_path=std.settings,
+                cascade_workset_path=create_ws_path,
+                cascade_box_path=project_toml,
                 command_scope=ConfigLevel.box,
+                std=std, proj=proj,
             )
             if not _msg.startswith("Set "):
                 # ⚑ A silent no-op would make plain `start` launch a DIFFERENT agent.
@@ -2288,10 +2298,13 @@ def _run_box_config(args: argparse.Namespace) -> int:
         return 0
 
     if action == ConfigAction.set:
-        # ⚑ Thread the FULL launch cascade so a cross-scope ``@``-ref in the new value
-        # resolves at set time exactly as it would at launch.  ⚑ The workset tier is the
-        # one the M-8 pair named above — NEVER a second derivation.
-        cascade_workset_path = workset_path
+        # ⚑ The BOX is the target (spec §2a): ``resolve_inputs`` builds its full cascade
+        # — the M-8 file pair, its real ``@meta.box.path`` and workset anchors — so a
+        # cross-scope ``@``-ref in the new value resolves at set time as at launch.
+        # ⚑ THE TIER PAIR IS STILL THREADED, and it is not redundant: if the target
+        # cannot be built, the target-less fallback reads these same files and differs
+        # only by the floors. Without the workset tier a system-level value shows
+        # through a dangling workset one, and the fallback ACCEPTS what the box refuses.
         cascade_agent_name = ""
         try:
             from kanibako.settings.agent_select import select_agent
@@ -2303,10 +2316,11 @@ def _run_box_config(args: argparse.Namespace) -> int:
             key, value,
             config_path=project_toml,
             cascade_system_path=std.settings,
-            cascade_workset_path=cascade_workset_path,
+            cascade_workset_path=workset_path,
             cascade_box_path=project_toml,
             cascade_agent_name=cascade_agent_name,
             command_scope=ConfigLevel.box,
+            std=std, proj=proj,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

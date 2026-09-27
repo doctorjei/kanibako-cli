@@ -532,6 +532,8 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             cascade_agent_name=agent_id,
             command_scope=ConfigLevel.system,
             agents_root=std.agents,
+            # The per-node store is global, so the target is the SYSTEM scope (§2a).
+            std=std,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
