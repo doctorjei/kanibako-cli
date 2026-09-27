@@ -36,7 +36,7 @@ keyed by setting name, not dest-keyed category tables, and they are why the sent
 
 | block | producer | emits |
 |---|---|---|
-| `agent_default` | `behavior_defaults` / `behavior_default` | the `agent.default.<key>` BEHAVIOR floor (spec §2d) — `access` · `allow_helpers` · `continue_mode` · `bootstrap` |
+| `agent_default` | `behavior_defaults` / `behavior_default` | the `agent.default.<key>` BEHAVIOR floor (spec §2d) — `access` · `allow_helpers` · `continue_mode` · `bootstrap` · `label`, and the `<None>` rows `model` · `endpoint` · `run_args` · `transform` as a present `None` |
 | `env` | `env_default_categories` | STATIC `<scope>.env.<VAR>` floor keys; ships exactly two — `box.env.COLORTERM` and `agent.default.env.TERM` |
 
 Two reading traps in that pair:

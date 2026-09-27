@@ -4143,7 +4143,7 @@
       "entry": "SETUP_MARKER_KEY",
       "antipattern": "system\\.setup_completed",
       "path": "src/kanibako/settings/defaults_inventory.py",
-      "text": "\"system.agent\", \"system.setup_completed\", \"box.shell\", \"agent.default.model\","
+      "text": "\"system.agent\", \"system.setup_completed\","
     },
     {
       "registry": "parity:categories:unproduced",

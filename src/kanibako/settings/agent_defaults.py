@@ -357,17 +357,18 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
     rather than a :class:`SettingArg`.  Folding the floor into the realization
     rows would leave both of those with nowhere to live.
 
-    ⚑ ``default:`` is MANDATORY, and an EMPTY one must be written ``""``.  Absence
-    and ``""`` are different declarations and only one of them can be the
-    fallback: goose declares three empty defaults DELIBERATELY (never pin a
-    provider/model — its own ``config.yaml`` owns them), while an accidentally
-    omitted claude ``transform`` default would floor at ``""`` and silently patch
-    nothing.  Requiring the field makes the empty case a statement rather than an
-    oversight.
+    ⚑ ``default:`` is MANDATORY, and a key the spec declares ``<None>`` is written
+    ``null``.  Absence and ``null`` are different declarations: goose declares
+    three null defaults DELIBERATELY (never pin a provider/model — its own
+    ``config.yaml`` owns them), while an accidentally omitted claude ``transform``
+    default would silently patch nothing.  Requiring the field makes the ``<None>``
+    case a statement rather than an oversight.  A ``null`` is kept a PRESENT
+    ``None`` — the launch places the floor at ``agent.<active>.<key>``, where it
+    wins over a user's ``agent.default.<key>`` (Q95.1).
 
-    ⚑ The value must be a STRING.  The floor is merged into a ``dict[str, str]``
-    and stringified downstream, so a YAML ``default: 1`` would travel as an int
-    until something compared it to ``"1"`` and disagreed.
+    ⚑ The value must be a STRING or ``null``.  Everything else is stringified
+    downstream, so a YAML ``default: 1`` would travel as an int until something
+    compared it to ``"1"`` and disagreed.
 
     ⚑ Deliberately NOT checked against the closed keyspace: THIS is the site that
     declares a plugin's agent leaves (``settings_prefs`` unions
@@ -404,17 +405,16 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
     if "default" not in entry:
         raise SettingsError(
             f"behavior entry {named!r}{where} declares no 'default': the floor "
-            f"value is the whole point of the row, and an omitted one would "
-            f"silently floor the key at the empty string. Write the value, or "
-            f'\'default: ""\' if the key deliberately has none (goose pins no '
+            f"value is the whole point of the row. Write the value, or "
+            f"'default: null' if the key deliberately has none (goose pins no "
             f"provider/model so its own config.yaml keeps owning them)."
         )
     default = entry["default"]
-    if not isinstance(default, str):
+    if default is not None and not isinstance(default, str):
         raise SettingsError(
             f"behavior entry {named!r}{where} declares a "
             f"{type(default).__name__} default; a behavior floor value is a "
-            f'STRING — quote it (e.g. "1", "true").'
+            f'STRING — quote it (e.g. "1", "true") — or null for <None>.'
         )
     choices = entry.get("choices") or ()
     if not all(isinstance(c, str) for c in choices):

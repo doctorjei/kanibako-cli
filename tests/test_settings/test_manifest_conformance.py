@@ -844,10 +844,10 @@ NO_ORACLE_PLACEHOLDER: frozenset[str] = frozenset({"box.images_store"})
 #: ``shell-template-none`` kinemata view.  ``agent.shell.{bootstrap,run_args,transform}``
 #: left the same day: the ``agent_shell:`` floor carries them — ``bootstrap`` as the
 #: tier's own ``tmux``, the other two as a present ``None`` — compared by ``shell-tier-fence``.
+#: ``agent.default.{model,endpoint,run_args,transform}`` left likewise: ``agent_default:``
+#: floors them as a present ``None``, compared by ``default-tier-none``.
 NO_ORACLE_ABSENT: frozenset[str] = frozenset({
     "system.agent", "system.setup_completed", "box.shell",
-    "agent.default.model", "agent.default.endpoint", "agent.default.run_args",
-    "agent.default.transform",
     "agent.shell.continue_mode", "agent.shell.model", "agent.shell.endpoint",
 })
 
@@ -1837,10 +1837,12 @@ class TestDefaultsCoverage:
         reason has stopped being true.
         ⚑ 1+65/13 → 1+65/16: the §2d shell block's ``agent.shell.{continue_mode,model,
         endpoint}`` rows (fence ``<None>``) joined E3 — no floor installs them.
+        ⚑ 1+65/16 → 1+69/12: ``agent.default.{model,endpoint,run_args,transform}`` left E3
+        for the ``default-tier-none`` view.
         """
         assert len(PINNED_DEFAULT_KEYS) == 1
-        assert len(CARRIED_DEFAULT_KEYS) == 65
-        assert len(EXEMPT_DEFAULT_KEYS) == 16
+        assert len(CARRIED_DEFAULT_KEYS) == 69
+        assert len(EXEMPT_DEFAULT_KEYS) == 12
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
         assert not (PINNED_DEFAULT_KEYS & CARRIED_DEFAULT_KEYS), (
             f"pinned here AND compared by a kinemata view: "

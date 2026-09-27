@@ -297,8 +297,8 @@ class GooseTarget(Target):
         ⚑ The keys and their FLOOR values live in ``goose-defaults.yaml``'s
         ``behavior:`` section, not here: a default written in plugin code is a second
         declaration site for what the shipped file already owns.  All three floors are
-        the EMPTY STRING, and that file states why.  What each key does, and why an
-        empty floor is load-bearing for provider/model: llm-doc.
+        ``None`` (``<None>``), and that file states why.  What each key does, and why a
+        ``<None>`` floor is load-bearing for provider/model: llm-doc.
         """
         return list(_GOOSE_BEHAVIOR)
 

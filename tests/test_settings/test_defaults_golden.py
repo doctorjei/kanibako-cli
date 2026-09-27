@@ -467,7 +467,7 @@ class TestCoreBehaviorDefaults:
 
     The first NON-BIND section in the core defaults file: a flat scalar map, not a
     dest-keyed category table.  These two tests are the guardrail over the D1-1
-    move — the VALUES against their spec oracle, and the MERGE ORDER that keeps a
+    move — the VALUES against their spec oracle, and the TIER PLACEMENT that keeps a
     plugin's declared default winning over the core floor.
     """
 
@@ -477,12 +477,17 @@ class TestCoreBehaviorDefaults:
     #: ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
     #: ⚑ ``label`` joined 2026-09-08 — the spec's ``agent.default.label`` row, cited by
     #: KEY rather than by the line offsets above, which rot (P16).
+    #: ⚑ The four ``<None>`` rows are PRESENT ``None`` (the one exception to STRINGS).
     _SPEC_2D = {
         "access": "full",
         "allow_helpers": "true",
         "continue_mode": "true",
         "bootstrap": "tmux",
         "label": "Agent Description (None)",
+        "model": None,
+        "endpoint": None,
+        "run_args": None,
+        "transform": None,
     }
 
     def test_the_core_behavior_defaults_match_spec_2d(self):
@@ -501,7 +506,7 @@ class TestCoreBehaviorDefaults:
             f"{self._SPEC_2D}, got {declared!r}"
         )
         for key, value in declared.items():
-            assert isinstance(value, str), (
+            assert value is None or isinstance(value, str), (
                 f"agent_default.{key} must be a QUOTED string, got "
                 f"{type(value).__name__}: {value!r} — an unquoted YAML bool "
                 f"round-trips to a consumer as \"True\"/\"False\""
@@ -572,13 +577,13 @@ class TestCoreBehaviorDefaults:
     def test_a_descriptor_default_still_beats_the_core_behavior_floor(
         self, std, config, project_dir,
     ):
-        """A plugin's declared default WINS over the core floor at the merge sites.
+        """A plugin's declared default WINS over the core floor at the floor sites.
 
-        Both floor build sites in ``start.py`` spell the merge with the DESCRIPTOR
-        LAST; flipping either one would destroy every plugin default that shares a
-        name with a core one.  Driven through ``_effective_behavior_for_display``,
-        which is the cheaply-callable of the two sites and carries the identical
-        expression.
+        Both floor build sites in ``start.py`` hand the descriptor floor to
+        ``agent.<active>`` and core's to ``agent.default`` ([Q91]); swapping them
+        would destroy every plugin default that shares a name with a core one.
+        Driven through ``_effective_behavior_for_display``, the cheaply-callable
+        of the two sites.
         """
         from unittest.mock import MagicMock
 
@@ -602,8 +607,8 @@ class TestCoreBehaviorDefaults:
             system_settings_path=None, selection_level=None,
         )
         assert effective["bootstrap"] == "screen", (
-            "the DESCRIPTOR default must beat the core floor — a flipped merge "
-            f"order would leave the core {self._SPEC_2D['bootstrap']!r} here"
+            "the DESCRIPTOR default must beat the core floor — swapped tiers "
+            f"would leave the core {self._SPEC_2D['bootstrap']!r} here"
         )
         # ...and the non-colliding core keys still reach the read.
         assert effective["allow_helpers"] == self._SPEC_2D["allow_helpers"]
@@ -612,14 +617,14 @@ class TestCoreBehaviorDefaults:
     def test_the_real_launch_seam_merges_the_core_floor_under_the_descriptor(
         self, std, config, project_dir,
     ):
-        """The LAUNCH site carries the same merge — presence AND order.
+        """The LAUNCH site places the same two floors — presence AND tier.
 
         The test above drives the ``config --effective`` DISPLAY site.  This one
         goes through ``_resolve_launch_snapshot`` itself, because the two sites
-        spell the merge SEPARATELY: deleting it from the launch site, or flipping
-        its order there, is invisible to every other test in the tree.  A real
-        target whose descriptor declares ``bootstrap`` COLLIDES with the core
-        floor on purpose — that collision is the only thing an order flip moves.
+        build their floors SEPARATELY: dropping one at the launch site, or
+        swapping their tiers there, is invisible to every other test in the tree.
+        A real target whose descriptor declares ``bootstrap`` COLLIDES with the
+        core floor on purpose — that collision is the only thing a swap moves.
         """
         from kanibako.commands.start import _resolve_launch_snapshot
         from kanibako.settings.paths import resolve_project
@@ -657,10 +662,14 @@ class TestCoreBehaviorDefaults:
         effective = effective_behavior(snapshot, active_agent=node)
 
         assert effective["bootstrap"] == "screen", (
-            "ORDER: the descriptor must go in LAST at the launch site — a flipped "
-            f"merge leaves the core {self._SPEC_2D['bootstrap']!r} here, destroying "
-            "every plugin default that shares a name with a core one"
+            "TIER: the descriptor must floor at agent.<active> at the launch site — "
+            f"swapped tiers leave the core {self._SPEC_2D['bootstrap']!r} here, "
+            "destroying every plugin default that shares a name with a core one"
         )
+        # [Q91]: each floor at its own tier, so a user's ``agent.default.bootstrap``
+        # would sit between them.
+        assert snapshot.agent.claude.bootstrap == "screen"
+        assert snapshot.agent.default.bootstrap == self._SPEC_2D["bootstrap"]
         assert effective["continue_mode"] == self._SPEC_2D["continue_mode"], (
             "PRESENCE: a non-colliding core key must reach the launch read — if "
             "this is absent the launch site is not merging the core floor at all"

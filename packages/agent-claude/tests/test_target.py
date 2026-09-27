@@ -602,14 +602,14 @@ class TestSettingDescriptors:
     def test_model_setting(self):
         # DECLARED but with NO opinionated floor: spec §2d ships
         # ``agent.claude.model | default <None> (use claude's built-in default)``,
-        # and an empty floor is how a plugin spells <None>.  ``assemble_argv``
-        # omits an empty value (``if value:``), so a box the user has set no model
-        # on launches with no ``--model`` at all.  The ALL-AGENTS form of this rule
+        # and a ``null`` floor is how a plugin spells <None>: a PRESENT ``None``
+        # at ``agent.<agent>.model``, which the launch omits, so a box the user has
+        # set no model on launches with no ``--model`` at all.  The ALL-AGENTS form of this rule
         # is pinned in ``tests/test_targets/test_agent_behavior_defaults.py``.
         t = ClaudeTarget()
         descriptors = {d.key: d for d in t.setting_descriptors()}
         assert "model" in descriptors
-        assert descriptors["model"].default == ""
+        assert descriptors["model"].default is None
         assert descriptors["model"].choices == ()  # freeform
 
     def test_access_is_not_a_declared_setting(self):
@@ -623,12 +623,12 @@ class TestSettingDescriptors:
         assert "auto_approve" not in descriptors
 
     def test_endpoint_setting(self):
-        # Block B: endpoint declared with an empty (<None>) default → unset by
+        # Block B: endpoint declared with a ``null`` (<None>) default → unset by
         # default (bare/harness-default), freeform URL (no choices).
         t = ClaudeTarget()
         descriptors = {d.key: d for d in t.setting_descriptors()}
         assert "endpoint" in descriptors
-        assert descriptors["endpoint"].default == ""
+        assert descriptors["endpoint"].default is None
         assert descriptors["endpoint"].choices == ()
 
 
@@ -671,7 +671,7 @@ class TestGenerateAgentConfig:
         t = ClaudeTarget()
         assert "model" not in t.generate_agent_config().state
         model = next(d for d in t.setting_descriptors() if d.key == "model")
-        assert model.default == ""
+        assert model.default is None
 
     def test_is_crab_config_instance(self):
         from kanibako.settings.agent_config import AgentConfig

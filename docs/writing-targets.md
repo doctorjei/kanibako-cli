@@ -177,7 +177,7 @@ import time.  This is pinned, not merely a style preference:
 `test_a_plugin_behavior_default_lives_in_the_yaml_not_the_code` reds if a
 shipped `target.py` constructs a `TargetSetting` anywhere in the module, and
 `test_no_shipped_plugin_imposes_a_model` reds if any shipped agent's `model`
-floor is non-empty.
+floor is anything but `null`.
 
 Codex's `codex-defaults.yaml` (trimmed to the fields covered above):
 
@@ -224,8 +224,8 @@ descriptor:
   init_dirs: [".codex"]
 
 # The `agent.codex.*` BEHAVIOR floor (spec §2d) -- setting_descriptors() returns
-# exactly this table, in file order.  `default:` is mandatory; an empty floor is
-# written "" rather than omitted.
+# exactly this table, in file order.  `default:` is mandatory; a key with no
+# default is written `null` (<None>) rather than omitted.
 behavior:
   # The agent's human-readable DESCRIPTION -- `agent.codex.label` (spec §2d), and
   # what `kanibako agent info` prints.  Declare one or your agent reads the
@@ -234,17 +234,18 @@ behavior:
     description: "Human-readable description of this agent"
     default: "Codex CLI"
   # 🛑 NO OPINIONATED DEFAULT.  kanibako imposes no model on any shipped agent —
-  # an empty floor resolves to "", which the launch's argv/env assembly omits,
-  # so codex falls back to its OWN built-in default until a user sets one
-  # explicitly (`agent.codex.model` or `-M`).  Pinned by
+  # a null floor is <None>, which the launch's argv/env assembly omits, so
+  # codex falls back to its OWN built-in default until a user sets one
+  # explicitly (`agent.codex.model` or `-M`).  This row beats a user's
+  # `agent.default.model`: a model is named per agent.  Pinned by
   # `test_no_shipped_plugin_imposes_a_model`; do not put a value back here.
   - key: model
     description: "Model to use (unset = codex's own built-in default)"
-    default: ""
+    default: null
   - key: endpoint
     description: "Alternate model-provider base-URL (persona); unset uses the
       harness default"
-    default: ""
+    default: null
 ```
 
 `target.py` loads both tables at import time and returns them unmodified —
@@ -305,8 +306,9 @@ requires that `descriptor` return a `PluginDescriptor` and `setting_descriptors(
 return a list of `TargetSetting`s, and both may be built by hand in Python (the
 "Method reference" section below still shows that shape, and it works).  What is
 never acceptable on *any* plugin, shipped or third-party: an opinionated `model`
-default.  Kanibako imposes no model — ship an empty floor (`default=""`) and let
-the harness pick its own, exactly as codex, claude and goose all do.
+default.  Kanibako imposes no model — ship a `<None>` floor (`default=None`,
+`null` in YAML) and let the harness pick its own, exactly as codex, claude and
+goose all do.
 
 For agents whose host config or auth files mix portable and non-portable
 fields, set `filtered=True` on the relevant `CredFileSpec` and override
@@ -475,9 +477,9 @@ value.
 ```python
 def setting_descriptors(self) -> list[TargetSetting]:
     return [
-        # ⚑ An EMPTY model floor: kanibako imposes no model, so myagent picks
+        # ⚑ A <None> model floor: kanibako imposes no model, so myagent picks
         # its own until a user sets `agent.myagent.model`.
-        TargetSetting(key="model", description="Model to use", default=""),
+        TargetSetting(key="model", description="Model to use", default=None),
         TargetSetting(key="verbosity", description="Output verbosity", default="normal",
                       choices=("quiet", "normal", "verbose")),
     ]

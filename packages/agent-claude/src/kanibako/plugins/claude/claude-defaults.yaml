@@ -141,7 +141,8 @@ descriptor:
 # AGENT-scope BEHAVIOR defaults -> the `agent.claude.<key>` FLOOR (spec §2d), read
 # by the launch off `setting_descriptors()` and laid UNDER the whole cascade, so a
 # user overrides one by writing the SAME key in any settings file.  `default:` is
-# MANDATORY on every row (an empty one is written `""`) and its value is a STRING.
+# MANDATORY on every row and its value is a STRING, or `null` for a key the spec
+# declares <None> (a PRESENT None, never omitted and never `""`).
 #
 # ⚑ This is a SEPARATE section from `descriptor.settings:` above, and the two key
 # sets are not the same one: `settings:` says HOW a value is realized (which flag /
@@ -157,20 +158,22 @@ behavior:
     description: "Human-readable description of this agent"
     default: "Claude Code"
   # ⚑ NO OPINIONATED DEFAULT, and do not put one back.  Spec §2d ships
-  # `agent.claude.model | default <None> (use claude's built-in default)`, and an
-  # EMPTY floor is how a plugin spells <None>: it resolves to "", which
-  # `assemble_argv` omits (`if value:`), so a box the user has set no model on
-  # launches with no `--model` on the argv at all and claude picks for itself.
-  # kanibako imposes no model — the same reason goose's row is empty.
-  # The key stays DECLARED, so an explicit `agent.<node>.model` at any cascade
-  # scope (or `-M`) still wins and IS emitted.
+  # `agent.claude.model | default <None> (use claude's built-in default)`, and a
+  # plugin spells <None> as `null`: a PRESENT None at `agent.claude.model`, which
+  # the launch omits, so a box the user has set no model on launches with no
+  # `--model` on the argv at all and claude picks for itself.  kanibako imposes
+  # no model — the same reason goose's row is null.
+  # ⚑ This row WINS over a user's `agent.default.model` (Q95.1): the §2d pick
+  # reads `agent.claude` first, and a present None there is an answer.  A user
+  # names a model per agent, `agent.<node>.model` at any cascade scope (or `-M`),
+  # which still wins and IS emitted.  The same holds for `endpoint`.
   - key: model
     description: "Claude model to use (unset = claude's own built-in default)"
-    default: ""
+    default: null
   - key: endpoint
     description: "Alternate base-URL endpoint (persona); unset uses the harness
       default and syncs the OAuth login"
-    default: ""
+    default: null
   - key: transform
     description: "Binary transform applied to the agent binary (tweakcc); empty
       = none"

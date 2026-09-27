@@ -51,8 +51,8 @@ def _declared_behavior(key: str) -> str
 def _declared_behavior_bool(key: str) -> bool
 def _bootstrap_default() -> str
 def _is_no_bootstrap(program: str | None) -> bool
-def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
-def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'tuple[str | None, str | None]'
+def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
+def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'tuple[str | None, str | None]'
 def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, agent_cfg, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> 'str | None'
 def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> BootstrapChoice
 def _bootstrap_available(program: str | None=None) -> bool

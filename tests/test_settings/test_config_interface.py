@@ -3657,7 +3657,7 @@ class TestBareAgentKeyAtWorksetScope:
     agent ⊃ workset). UNLIKE box, a workset spans MULTIPLE boxes/agents, so there is
     deliberately NO ``workset.agent.*`` mirror (no single "the agent"). The
     conformant fix is therefore to REFUSE — uniformly for set / get / reset — with a
-    message pointing at system scope (all agents) or the per-box §2h request
+    message pointing at system scope per agent or the per-box §2h request
     ``pref.agent.<agent>.<key>`` (P7 — was the retired ``box.agent.*`` mirror).
     Uniform over the whole ``_is_agent_setting`` family (NOT a per-key list).
     """
@@ -3671,6 +3671,10 @@ class TestBareAgentKeyAtWorksetScope:
             assert msg is not None and msg.startswith("Error:"), (verb, msg)
             assert f"can't be {verb} at workset scope" in msg, (verb, msg)
             assert "system scope" in msg, (verb, msg)
+            # The system-scope cure is PER AGENT ([Q91]: a plugin's own row outranks
+            # the bare key's agent.default.<key>), never "all agents".
+            assert "agent.<agent>.bootstrap" in msg, (verb, msg)
+            assert "all agents" not in msg, (verb, msg)
             # No workset.agent.* mirror is invented — it points per-box instead.
             assert "workset.agent" not in msg, (verb, msg)
             # P7: the per-box cure is the §2h REQUEST, not the retired mirror.

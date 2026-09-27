@@ -726,12 +726,12 @@ def start_mocks():
                 # the dedicated suites with a REAL std).
                 _target = kw.get("target")
                 _agent_cfg = kw.get("agent_cfg")
-                _floor = None
+                _agent_floor = None
                 _state = None
                 if _target is not None:
                     _descriptors = _target.setting_descriptors()
                     if _descriptors:
-                        _floor = {d.key: d.default for d in _descriptors}
+                        _agent_floor = {d.key: d.default for d in _descriptors}
                 if _agent_cfg is not None:
                     # The DISCRIMINATED level the real producers build (C-2): the
                     # node is the ACTIVE one, exactly as ``start.py`` folds it.
@@ -821,13 +821,13 @@ def start_mocks():
                 # False`` seam) — a test exercising the hub sets
                 # ``start_mocks.agent_cfg.state["allow_helpers"] = "true"`` (the
                 # active-over-default pick makes the per-agent slot WIN).
-                _floor = _floor or {}
-                _floor.setdefault("allow_helpers", "false")
                 snap = build_launch_snapshot(
                     agent_name=_node, ctx=ctx,
                     system_path=None, agent_path=None,
                     workset_path=None, box_path=None,
-                    behavior_floor=_floor, default_categories=_default_cats,
+                    behavior_floor={"allow_helpers": "false"},
+                    agent_behavior_floor=_agent_floor,
+                    default_categories=_default_cats,
                     agent_partial=partial,
                     agent_state=_state,
                     # B5: the launch grammar (meta.agent.<a>.{mode,exec}) — the

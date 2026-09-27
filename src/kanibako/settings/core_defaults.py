@@ -61,8 +61,9 @@ def vault_mask_default() -> list[str]:
 def behavior_defaults() -> dict[str, str | None]:
     """Return the declared ``agent.default.<key>`` BEHAVIOR floor (spec §2d).
 
-    The all-agents backstop, merged UNDER a plugin's descriptor floor at the launch
-    sites (descriptor last ⇒ a plugin's declared default still wins).  ⚑ Values are
+    The all-agents backstop, floored at ``agent.default.<key>``; a plugin's
+    descriptor floor lands at ``agent.<active>.<key>``, which the §2d pick reads
+    first, so a plugin's declared row still wins.  ⚑ Values are
     STRINGS: the consumers run them through ``coerce_bool`` and
     ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
     ⚑ Except a ``<None>`` row, which stays a PRESENT ``None``, as in

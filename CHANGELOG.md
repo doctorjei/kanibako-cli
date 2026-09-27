@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A bare agent key refused at workset scope now points at the per-agent key.** `workset set
+  <ws> model=…` (and every other bare agent key, for `set`, `get` and `reset`) still refuses, but
+  its cure no longer says system scope applies "to all agents": it names
+  `agent.<agent>.<key>` at system scope or `pref.agent.<agent>.<key>` per box, and says the bare
+  system key's `agent.default.<key>` does not reach an agent whose plugin declares the key. In
+  1.8.0-rc2 the message told you to configure it at system scope for all agents.
+
+- **A plugin's `behavior:` row declares "no default" as `null`, and the three shipped plugins do.**
+  claude's, codex's and goose's `model` and `endpoint` rows (and goose's `provider`) are `null` in
+  their `<agent>-defaults.yaml` instead of `""`, so `agent.<agent>.<key>` holds a present `<None>`,
+  which is what the settings spec declares for these keys. A launch emits nothing for them, as
+  before, and `kanibako box config --effective` now omits them when nothing sets them, where it
+  showed an empty value. As a plugin row it beats `agent.default.<key>` (see the entry *An agent plugin's own
+  default for a key beats `agent.default.<key>`*). For plugin authors: `TargetSetting.default` is
+  `str | None`, and the loader accepts `default: null` beside a string; an omitted `default:` is
+  still refused.
+
 - **The base images (`kanibako-{min,oci,lxc,vm}`) are built and released from this repo.** Their
   sources moved in from the former `kanibako-images` repo, with its history, under `images/`. One
   tag now drives both releases: an rc tag publishes the `:X.Y.Z-rcN` images, and the final tag
@@ -135,6 +152,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   duplicate with `Error: destination already exists: <path>` and `Use --force to overwrite.`, as
   `box duplicate` already did into a primary box. With `--force`, the duplicate merges
   into it as before.
+
+- **An agent plugin's own default for a key beats `agent.default.<key>`.** A plugin's declared
+  defaults now sit at `agent.<agent>.*`, above the `agent.default` tier, so a user's
+  `agent.default.model`, `endpoint`, `label` or `transform` no longer reaches an agent whose
+  plugin declares that key; `agent.<agent>.<key>` still overrides the plugin. In 1.8.0-rc2 the
+  plugin's default sat at `agent.default` and a user's `agent.default.<key>` replaced it.
+  `agent.default.{model,endpoint,run_args,transform}` are now supplied as a present `<None>`
+  rather than left absent. A persona box is the exception for `model`: its model is still read
+  as before, so a user's `agent.default.model` still reaches it. See `MIGRATION.md` § *2.90 An
+  agent plugin's own default beats `agent.default`*.
 
 ### Fixed
 
@@ -1290,12 +1317,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Kanibako no longer chooses a model for your agent.** claude boxes were floored at `opus` and
   codex boxes at `gpt-5.5`, so every launch put a `--model` on the command line whether you had
-  asked for one or not, and the agent's own default was unreachable. Both floors are empty now,
+  asked for one or not, and the agent's own default was unreachable. Both floors are `<None>` now,
   which is what the key has always declared (`agent.<agent>.model`, default `<None>` — *use the
   harness's built-in default*) and what goose already shipped. With no model set anywhere, kanibako
   emits no `--model` flag and the CLI picks for itself. Setting one is unchanged and still wins:
-  `kanibako system set model=<name>` for every box, `kanibako agent set <agent> model=<name>` for
-  one agent, `-M <name>` for a single launch. The key stays declared, so those commands still
+  `kanibako agent set <agent> model=<name>` for one agent, `-M <name>` for a single launch
+  (`kanibako system set model=<name>` sets `agent.default.model`, which the shipped agents'
+  own `<None>` rows now outrank). The key stays declared, so those commands still
   validate and resolve. **A fresh claude box no longer starts on opus, and a fresh codex box no
   longer starts on gpt-5.5** — each starts on whatever that CLI defaults to. Pin either back with
   the commands above if you want the old behavior.

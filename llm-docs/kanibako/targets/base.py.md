@@ -57,11 +57,13 @@ v1.8.0 being a clean break. There is no shim.
 class TargetSetting:
     key: str
     description: str
-    default: str = ""
+    default: str | None = ""
     choices: tuple[str, ...] = ()
 ```
 A runtime setting a target advertises through `setting_descriptors`. *key* is the setting key in
-the agent state dict (`"model"`); empty *choices* means freeform.
+the agent state dict (`"model"`); empty *choices* means freeform. *default* is the floor the launch
+places at `agent.<active>.<key>`; `None` is a present `<None>`, which beats a user's
+`agent.default.<key>` exactly as a string floor does.
 
 ```python
 @dataclass(frozen=True)

@@ -1139,10 +1139,9 @@ class TestLoadBehavior:
         assert [s.key for s in got] == ["provider", "model", "endpoint"]
 
     def test_an_explicit_empty_default_is_kept(self, declfile):
-        """goose's three floors are ``""`` DELIBERATELY (never pin goose).
+        """A ``""`` floor is a STRING declaration and stays ``""``.
 
-        (Mutation: coerce an empty default to some placeholder → RED, and the box
-        would override the user's own goose config.yaml on every launch.)"""
+        (Mutation: coerce an empty default to some placeholder → RED.)"""
         package, filename = declfile(
             "behavior:\n"
             "  - key: provider\n"
@@ -1152,12 +1151,29 @@ class TestLoadBehavior:
         (setting,) = agent_defaults.load_behavior(package, filename)
         assert setting.default == ""
 
-    def test_an_absent_default_is_refused(self, declfile):
-        """START-STRICT: absence is NOT a synonym for ``""``.
+    def test_a_null_default_is_kept_a_present_none(self, declfile):
+        """``default: null`` is how a plugin spells a spec ``<None>`` row (Q95.1).
 
-        An omitted floor would silently resolve to the empty string — for claude's
-        ``transform`` that means nothing is ever patched, reported as success.  The
-        refusal is what keeps goose's empty defaults a STATEMENT."""
+        goose's three floors are ``null`` DELIBERATELY (never pin goose).  It loads as
+        ``None`` — not ``""`` and not a refusal — so the launch places a PRESENT
+        ``None`` at ``agent.<agent>.<key>``.
+
+        (Mutation: refuse a ``None`` default, or coerce it to ``""`` → RED.)"""
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: provider\n"
+            "    description: LLM provider\n"
+            "    default: null\n"
+        )
+        (setting,) = agent_defaults.load_behavior(package, filename)
+        assert setting.default is None
+
+    def test_an_absent_default_is_refused(self, declfile):
+        """START-STRICT: absence is NOT a synonym for ``null``.
+
+        An omitted floor would silently name no value — for claude's ``transform``
+        that means nothing is ever patched, reported as success.  The refusal is what
+        keeps goose's ``null`` defaults a STATEMENT."""
         package, filename = declfile(
             "behavior:\n"
             "  - key: transform\n"
@@ -1171,7 +1187,7 @@ class TestLoadBehavior:
         assert filename in msg
 
     def test_a_non_string_default_is_refused(self, declfile):
-        """The floor is a ``dict[str, str]``; an int would travel as an int."""
+        """A floor is a string or ``None``; an int would travel as an int."""
         package, filename = declfile(
             "behavior:\n"
             "  - key: model\n"

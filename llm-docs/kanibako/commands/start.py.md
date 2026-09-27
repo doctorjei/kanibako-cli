@@ -1327,8 +1327,8 @@ command and fails), silently degrading the probe to the bare-shell fallback. The
 ## `_resolve_box_launch_decisions` — auth SOURCE + persona endpoint + persona model, off ONE snapshot
 
 The single-source consolidation of the auth resolve and the behavior (endpoint/model) resolve.
-`build_launch_snapshot` accepts BOTH the auth 3-tier `auth_chain` floor AND the behavior
-`behavior_floor` in a single call, so the box's sharing decision (`settings_launch.AuthSource`,
+`build_launch_snapshot` accepts BOTH the auth 3-tier `auth_chain` floor AND the plugin's behavior
+floor (`agent_behavior_floor`) in a single call, so the box's sharing decision (`settings_launch.AuthSource`,
 `resolve_auth_source`) and its active-node `agent.<node>.endpoint` (`effective_behavior`) are read off
 the SAME expanded snapshot — no duplicate build. Same pipeline the main launch uses (single-route).
 
@@ -1341,8 +1341,9 @@ the SAME expanded snapshot — no duplicate build. Same pipeline the main launch
   set), THREE-STATE per the 2026-08-17 ruling: `__MISSING__` (never set, incl. no descriptors / no
   target), `None` (PRESENT-null — *"this endpoint needs no model"*), or a resolved `str` id.
 
-The behavior floor folds in as `agent.default.<key>` (OS1) and the per-agent FILE state as the active
-`agent.<node>` slot; the §2d active-over-default pick yields the endpoint for the NODE (persona
+The plugin's behavior floor folds in as `agent.<node>.<key>` (OS1; core's floor is not passed — its
+`endpoint` is `<None>`, which the pick omits like an absent key) and the per-agent FILE state as the
+active `agent.<node>` slot; the §2d active-over-default pick yields the endpoint for the NODE (persona
 identity). A target with no declared settings contributes no floor → endpoint `None` (bare).
 
 ### Why the model is read by `_persona_model_state`, not by `effective_behavior`

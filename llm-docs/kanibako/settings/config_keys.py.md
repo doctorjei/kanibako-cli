@@ -1099,7 +1099,10 @@ agent resolves.
   ``pref.agent.<agent>.<key>`` (the box-scoped tweak surface since P7 retired the ``box.agent.*``
   mirror).
 * **WORKSET** — a workset spans multiple boxes/agents, so there is deliberately no single "the agent".
-  The refusal points at system scope (all agents) or the per-box request. ⚑ WORKSET keeps the
+  The refusal points at system scope PER AGENT (``agent.<agent>.<key>``) or the per-box request —
+  not the bare system key, whose ``agent.default.<key>`` a plugin-declared row outranks ([Q91],
+  Q95.1), so "system scope applies to all agents" would be false for a shipped agent's ``model``,
+  ``endpoint``, ``label`` or ``transform``. ⚑ WORKSET keeps the
   PLACEHOLDER on purpose: naming one box's resolved agent there would be a lie.
 
 Returns `None` for every other scope — a bare key at SYSTEM scope is a legit DOWNWARD write;

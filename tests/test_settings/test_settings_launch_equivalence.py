@@ -325,7 +325,7 @@ from kanibako.settings.settings_launch import effective_behavior  # noqa: E402
 
 
 def _behavior_snapshot(agent, *, floor, agent_state, box_path, system_path):
-    """Build the launch snapshot the LIVE behavior read consumes: the descriptor
+    """Build the launch snapshot the LIVE behavior read consumes: the core
     floor (→ agent.default.*), the per-agent FILE state (→ agent.<active>), and any
     box/system settings files (discriminated agent tables, read via assemble)."""
     snap = build_launch_snapshot(
