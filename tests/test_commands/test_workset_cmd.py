@@ -1556,16 +1556,19 @@ class TestWorksetCmdSystemFloor:
         Two hand-written maps would each keep their own copy and neither would notice.
         """
         from kanibako.settings import paths as paths_mod
+        from kanibako.settings import settings_launch as launch_mod
         from kanibako.settings.paths import resolve_project, system_path_floor
         from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
         dropped = "system.channelroot"
-        monkeypatch.setattr(
-            paths_mod, "system_path_floor",
-            lambda s: {k: v for k, v in system_path_floor(s).items() if k != dropped},
-        )
-        # Both sides import it lazily (``settings_launch.resolve_inputs`` and
-        # ``workset_cmd``), so the one module patch reaches them both.
+
+        def mutated(s):
+            return {k: v for k, v in system_path_floor(s).items() if k != dropped}
+
+        # ONE mutated builder at both binding sites: ``settings_launch`` imports
+        # it at module level, ``workset_cmd`` from ``paths`` at call time.
+        monkeypatch.setattr(paths_mod, "system_path_floor", mutated)
+        monkeypatch.setattr(launch_mod, "system_path_floor", mutated)
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         resolved_sys = resolve_inputs(
             subject=ResolveSubject.BOX, std=std, proj=proj, agent_name="claude",
