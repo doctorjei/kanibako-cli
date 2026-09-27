@@ -149,9 +149,10 @@ This is the **single source** for every directional derivation, and it lives her
 that imports nothing from the stack — so every consumer can import it without cycling
 (`config_interface` → `config` → … would cycle back). The consumers today:
 
-* `config_keys._SCOPE_WRITE_ALLOWED` — the `config set` write-allow sets.
-* `settings_assemble._drop_upward_scopes` — the RESOLVE-time drop of containing-scope keys from a
-  lower settings file (spec §0, "directional enforcement at RESOLVE").
+* `settings_drops` — `writable_scopes` (read by `config_keys._SCOPE_WRITE_ALLOWED`, the `config set`
+  write-allow sets) and `upward_scope_drop_set` (read by `settings_assemble._drop_upward_scopes`,
+  the RESOLVE-time drop of containing-scope keys from a lower settings file — spec §0,
+  "directional enforcement at RESOLVE").
 * `settings_keyspace` — what counts as a scope token at all.
 * `settings_launch`, `store_shape`, `store_collapse` — the per-scope iteration order of the launch
   snapshot and the disk-store arms.

@@ -35,7 +35,6 @@ from kanibako.settings.config import (
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.kb_store import (
     BINDING_DERIVATIONS_NODE,
-    SCOPE_CONTAINMENT,
     Bind,
     BindEntry,
 )
@@ -45,7 +44,8 @@ from kanibako.settings.settings_categories import (
     BARE_RELATIVE_SOURCE_HAZARD,
     DECLARATION_ROOT_REF,
 )
-from kanibako.settings.settings_prefs import PREF_ROOT, refuse_pref_table
+from kanibako.settings.settings_drops import cascade_drop_set, upward_scope_drop_set
+from kanibako.settings.settings_prefs import PREF_LEGAL_LEVELS, PREF_ROOT, refuse_pref_table
 from kanibako.settings.settings_resolve import (
     SettingsError,
     unpack_bind,
@@ -145,11 +145,6 @@ RETIRED_FILE_KEYS: "dict[tuple[str, ...], str]" = {
     ("agent", "default", "default_agent"): "system.default_agent",
 }
 
-#: The levels where a ``pref`` REQUEST may be WRITTEN (spec §2h) — the
-#: single fact that decides which cure a retired ``box.agent_name`` gets.
-_PREF_LEGAL_LEVELS: "frozenset[str]" = frozenset({"workset", "box"})
-
-
 def _stored_spelling(raw: Any) -> str:
     """A stored leaf AS THE USER'S FILE SPELLS IT — ONE derivation, shared by every message and
     cure this module quotes a stored value back into.
@@ -211,7 +206,7 @@ def _retired_mirror_cure(
     box carrying this table most needs kanibako not to make.
     """
     tails = [_cure_assignment(str(sub), val) for sub, val in table.items()] or ["<key>=<value>"]
-    if level in _PREF_LEGAL_LEVELS:
+    if level in PREF_LEGAL_LEVELS:
         subject = _cure_subject(level, box_name)
         return "; ".join(
             f"kanibako {level} set {subject} pref.agent.<agent>.{tail}" for tail in tails
@@ -253,7 +248,7 @@ def _retired_key_cure(
     # pref.system.agent` "for a no-agent box"; since the 2026-09-19 ruling a null
     # selection REFUSES to launch (spec §2b), so that half sent the user from one
     # error to another.
-    if level in _PREF_LEGAL_LEVELS:
+    if level in PREF_LEGAL_LEVELS:
         subject = _cure_subject(level, box_name)
         return f"kanibako {level} set {subject} pref.system.agent={value}"
     # M-4: no legal pref equivalent at base/system/agent — FLAG it, never silently relocate it.
@@ -406,7 +401,7 @@ def _retired_behavior_cure(
     agent = subject or "<agent>"
     if level == "agent":
         return f"kanibako agent set {agent} {successor}={tier}"
-    if level in _PREF_LEGAL_LEVELS:
+    if level in PREF_LEGAL_LEVELS:
         # ⚑ TWO subjects, and they are not the same one. *subject* names the AGENT inside the pref
         # key; the verb's own required positional is the BOX or WORKSET, which is *box_name* where
         # the caller knows it and a PLACEHOLDER where it does not (:func:`_cure_subject`). Emitting
@@ -562,29 +557,6 @@ def refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None:
     )
 
 
-def _containing_scopes(file_scope: str) -> frozenset[str]:
-    """The scope tokens that CONTAIN *file_scope* — the HEAD-slice of
-    :data:`SCOPE_CONTAINMENT` strictly before it (spec §0, the drop-set)."""
-    idx = SCOPE_CONTAINMENT.index(file_scope)
-    return frozenset(SCOPE_CONTAINMENT[:idx])
-
-
-def _upward_scope_drop_set(file_scope: str) -> frozenset[str]:
-    """The top-level tokens directional enforcement removes from a *file_scope* file (spec §0).
-
-    ONE drop-set: the containing scopes UNION the always-dropped tokens. Defensive branch —
-    ``base`` is not in SCOPE_CONTAINMENT, so ``.index`` would raise; it takes an empty set.
-    ⚑ SPLIT OUT FROM THE WARNING :func:`_drop_upward_scopes` emits, because
-    :func:`cascade_view` needs the RULE without the noise.
-    """
-    containing = (
-        _containing_scopes(file_scope)
-        if file_scope in SCOPE_CONTAINMENT
-        else frozenset()
-    )
-    return containing | frozenset({"meta", BINDING_DERIVATIONS_NODE})
-
-
 #: Process-scoped DISPLAY state for :func:`_warn_upward_drops`: the ``(file, key)`` pairs
 #: already announced.  It changes no resolution outcome — the drop itself runs on every read —
 #: which is why it may be module-level at all, the same footing as
@@ -627,7 +599,7 @@ def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None:
     """
     if not isinstance(raw, dict):
         return
-    drop_set = _upward_scope_drop_set(file_scope)
+    drop_set = upward_scope_drop_set(file_scope)
     where = str(path) if path is not None else "<settings>"
     for token in (str(k) for k in raw if str(k) in drop_set):
         if not announce_drop_once(path, token):
@@ -686,7 +658,7 @@ def _drop_upward_scopes(
     """
     if not isinstance(raw, dict):
         return raw
-    drop_set = _upward_scope_drop_set(file_scope)
+    drop_set = upward_scope_drop_set(file_scope)
     if not any(str(k) in drop_set for k in raw):
         return raw
     _warn_upward_drops(raw, file_scope=file_scope, path=path)
@@ -722,10 +694,10 @@ def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any:
     THREE, one per rule:
 
     * directional enforcement (spec §0) drops a CONTAINING scope's table, ``meta:`` and the
-      reserved derivations node — :func:`_upward_scope_drop_set`;
+      reserved derivations node — :func:`~kanibako.settings.settings_drops.upward_scope_drop_set`;
     * a ``pref:`` table survives only where §2h permits one to be WRITTEN
-      (:data:`_PREF_LEGAL_LEVELS`), matching ``assemble_levels``'s three
-      :func:`~kanibako.settings.settings_prefs.refuse_pref_table` calls;
+      (:data:`~kanibako.settings.settings_prefs.PREF_LEGAL_LEVELS`), matching
+      ``assemble_levels``'s three :func:`~kanibako.settings.settings_prefs.refuse_pref_table` calls;
     * the per-agent file contributes its ROOT table and nothing else
       (:func:`~kanibako.settings.agent_file.level_table`), so a top-level ``agent:`` there is
       not a DROP — it was never an input.
@@ -737,15 +709,13 @@ def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any:
         return raw
     if path is not None:
         _warn_upward_drops(raw, file_scope=level, path=path)
-        if level not in _PREF_LEGAL_LEVELS:
+        if level not in PREF_LEGAL_LEVELS:
             # The SAME call ``assemble_levels`` drops an illegal ``pref:`` table with, so the
             # warning is its text, through the same guard.
             raw = refuse_pref_table(raw, level=level, path=path)
     if level == _AGENT_FILE_LEVEL:
         return {k: v for k, v in raw.items() if str(k) in ROOT_SECTIONS}
-    drop_set = _upward_scope_drop_set(level)
-    if level not in _PREF_LEGAL_LEVELS:
-        drop_set = drop_set | frozenset({PREF_ROOT})
+    drop_set = cascade_drop_set(level)
     return {k: v for k, v in raw.items() if str(k) not in drop_set}
 
 
@@ -947,9 +917,10 @@ def _agent_partial(
     file, re-rooted under its TRUE discriminated name ``agent.<sub_key>``.
 
     ⚑ THE SEAM: :func:`~kanibako.settings.agent_file.level_table` owns the file's SHAPE (which
-    tables a level reads, the flat-category re-root, and the nested refusal that precedes it) and
-    hands back a RAW table; this function owns the STORE coercion and the §2d wrap. The split is
-    what keeps the boundary free of ``KeyStore`` — and the import edge one-way.
+    tables a level reads, the flat-category re-root, and the two refusals that precede it — the
+    nested ``self:`` and the stray top-level key) and hands back a RAW table; this function owns
+    the STORE coercion and the §2d wrap. The split is what keeps the boundary free of
+    ``KeyStore`` — and the import edge one-way.
 
     *sub_key* selects the TIER; the two agent levels are kept SEPARATE (spec §2) and merge by
     their true §2d names — NO bare-``agent`` collapse. An empty level yields an empty partial,
@@ -1080,13 +1051,13 @@ def assemble_levels(
     # LOAD-BEARING: the agent tier never mirrors a non-``self:`` table into its partial, so a
     # post-partial filter could not see (or warn about) a ``system:`` or ``pref:`` table there.
     #
-    # ``pref:`` is legal ONLY at :data:`_PREF_LEGAL_LEVELS` (spec §2h) — elsewhere DROPPED with a
+    # ``pref:`` is legal ONLY at :data:`PREF_LEGAL_LEVELS` (spec §2h) — elsewhere DROPPED with a
     # warning, the SAME treatment the sibling mis-scope gets; the HARD refusal lives at the WRITE
     # site. Directional enforcement then drops any CONTAINING-scope top-level table (spec §0):
     # ``system``'s containing set is empty, and ``base`` is a CODE FLOOR, EXEMPT for SCOPE keys but
     # NOT for ``meta``. Full reasoning: llm-docs.
     raw_base, raw_system, raw_agent, raw_workset, raw_box = (
-        raw if level in _PREF_LEGAL_LEVELS else refuse_pref_table(raw, level=level, path=path)
+        raw if level in PREF_LEGAL_LEVELS else refuse_pref_table(raw, level=level, path=path)
         for raw, level, path in (
             (raw_base, "base", base_p), (raw_system, "system", system_path),
             (raw_agent, "agent", agent_path), (raw_workset, "workset", workset_path),

@@ -30,6 +30,7 @@ from kanibako.settings.agent_config import (
 from kanibako.settings.config import coerce_bool
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_categories import DECLARATION_ROOT_REF, SECRET_VAR_RE
+from kanibako.settings.settings_drops import writable_scopes
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
     DECLARED_AGENT_LEAVES,
@@ -503,10 +504,9 @@ _SCOPE_NAMESPACES: frozenset[str] = frozenset({*SCOPE_CONTAINMENT, "config", "me
 _SCOPE_CONTAINMENT: tuple[str, ...] = SCOPE_CONTAINMENT
 
 # Which key-scope namespaces a COMMAND scope may WRITE (spec §0 + §2a): its OWN
-# namespace plus every scope it CONTAINS, derived as a TAIL-SLICE of the order.
+# namespace plus every scope it CONTAINS — ``settings_drops.writable_scopes``.
 _SCOPE_WRITE_ALLOWED: dict[ConfigLevel, frozenset[str]] = {
-    level: frozenset(_SCOPE_CONTAINMENT[_SCOPE_CONTAINMENT.index(level.value):])
-    for level in ConfigLevel
+    level: writable_scopes(level.value) for level in ConfigLevel
 }
 
 # The scope tokens whose prefixed keys are SETTINGS keys stored in a SETTINGS file.

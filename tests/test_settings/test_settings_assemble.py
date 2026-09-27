@@ -22,9 +22,14 @@ import pytest
 import yaml
 
 from kanibako.settings.kb_store import Bind, BindEntry
-from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.kb_store import __MISSING__, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_assemble import assemble_levels, parse_bind_map
+from kanibako.settings.settings_drops import (
+    containing_scopes,
+    upward_scope_drop_set,
+    writable_scopes,
+)
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_resolve import SettingsError
 
@@ -1207,6 +1212,15 @@ def test_p6c_standalone_workset_scope_key_also_resolves(tmp_path: Path) -> None:
     assert _marker_of(snap, "workset") == "w"
     # box.* still resolves too (both scopes coexist at the workset tier).
     assert _box_enable_vault(snap) is False
+
+
+@pytest.mark.parametrize("scope", SCOPE_CONTAINMENT)
+def test_a_scope_writes_exactly_what_its_file_does_not_drop_upward(scope):
+    # ⚑ ONE containment rule, two readers (spec §0): the write guard's set and the cascade's
+    # upward drop-set partition the order, so a scope never writes what its own file would drop.
+    assert writable_scopes(scope) == frozenset(SCOPE_CONTAINMENT) - containing_scopes(scope)
+    assert scope in writable_scopes(scope)
+    assert not writable_scopes(scope) & upward_scope_drop_set(scope)
 
 
 # --------------------------------------------------------------------------- #
