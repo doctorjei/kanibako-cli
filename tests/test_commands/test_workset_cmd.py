@@ -1780,7 +1780,7 @@ class TestWorksetShowListsTheAbstractTrio:
         out = self._show("trio", capsys, effective=effective)
         for cat, table in self.TRIO.items():
             for dest in table:
-                assert f"workset.{cat}.{normalize_bind_dest(dest)}" in out, out
+                assert f"workset.{cat}[{normalize_bind_dest(dest)}]" in out, out
 
     def test_a_declaration_is_listed_ONCE(self, config_file, tmp_home, capsys):
         """One carrier, one row: the flatten is the only reader of this file."""
@@ -1789,8 +1789,8 @@ class TestWorksetShowListsTheAbstractTrio:
         out = self._show("trioonce", capsys, effective=False)
         for cat, table in self.TRIO.items():
             for dest in table:
-                dotted = f"workset.{cat}.{normalize_bind_dest(dest)}"
-                assert out.count(dotted) == 1, dotted
+                label = f"workset.{cat}[{normalize_bind_dest(dest)}]"
+                assert out.count(label) == 1, label
 
     def test_a_row_prints_the_key_the_resolve_uses_and_its_source_as_written(
         self, config_file, tmp_home, capsys,
@@ -1810,11 +1810,11 @@ class TestWorksetShowListsTheAbstractTrio:
             "masks": {"~/.ssh": True},
         })
         out = self._show("triospell", capsys, effective=False)
-        assert f"workset.common.{normalize_bind_dest('~/shared/docs')} = teamdocs\n" in out
-        assert f"workset.caches.{normalize_bind_dest('~/.cache/uv')} = uv  [Z,U]\n" in out
-        assert "workset.masks.~/.ssh = true\n" in out
+        assert f"workset.common[{normalize_bind_dest('~/shared/docs')}] = teamdocs\n" in out
+        assert f"workset.caches[{normalize_bind_dest('~/.cache/uv')}] = uv  [Z,U]\n" in out
+        assert "workset.masks[~/.ssh] = true\n" in out
         assert "['" not in out, out
-        assert "workset.common.~/" not in out, out
+        assert "workset.common[~/]" not in out, out
 
     def test_a_pref_request_is_not_doubled_by_the_flatten(
         self, config_file, tmp_home, capsys,
@@ -1951,7 +1951,7 @@ class TestWorksetShowDerivesTheAbstractTrio:
         ws = self._ws(config_file, tmp_home, "derivkey")
         self._merge(ws, self.TRIO)
         out = self._show("derivkey", capsys).out
-        assert "workset.common./home/agent/shared/docs" in out
+        assert "workset.common[/home/agent/shared/docs]" in out
 
     def test_the_root_anchor_resolves(self, config_file, tmp_home, capsys):
         """🛑 The REGRESSION this pins: ``@meta.workset.path`` was absent from the
@@ -1975,7 +1975,7 @@ class TestWorksetShowDerivesTheAbstractTrio:
         })
         out = self._show("derivmask", capsys).out
         assert "no mount" in out
-        assert "workset.masks.~/shared/docs" in out
+        assert "workset.masks[~/shared/docs]" in out
         assert "teamdocs -> " not in out
 
     def test_the_block_names_the_masks_it_does_not_apply(
@@ -2181,7 +2181,7 @@ class TestWorksetShareListArbitrates:
         # key they had written — the destination alone, which for the PARENT case
         # below is not even a path their own key spells.
         assert (
-            "no mount — the mask declared by 'workset.masks./opt/arb' at /opt/arb"
+            "no mount — the mask declared by 'workset.masks[/opt/arb]' at /opt/arb"
         ) in out
         assert "workset.bindings.ro" not in out, (
             "the row named the SHARE's key where the MASK's belongs: the question "
@@ -2207,7 +2207,7 @@ class TestWorksetShareListArbitrates:
         assert rc == 0
         assert f"{self._SRC} -> /opt/arb/inner" not in out
         assert (
-            "no mount — the mask declared by 'workset.masks./opt/arb' at /opt/arb "
+            "no mount — the mask declared by 'workset.masks[/opt/arb]' at /opt/arb "
         ) in out
 
     def test_the_masks_key_is_READ_not_rebuilt_from_the_destination(
@@ -2229,9 +2229,9 @@ class TestWorksetShareListArbitrates:
         })
         rc, out, _err = self._effective("arb-tilde", capsys)
         assert rc == 0
-        assert "workset.masks.~/masked" in out
+        assert "workset.masks[~/masked]" in out
         assert f"at {GUEST_HOME}/masked " in out
-        assert f"workset.masks.{GUEST_HOME}/masked" not in out, (
+        assert f"workset.masks[{GUEST_HOME}/masked]" not in out, (
             "the key was rebuilt from the destination, so it names a key spelling "
             "that is not in the user's file"
         )
@@ -2278,7 +2278,7 @@ class TestWorksetShareListArbitrates:
         assert "no box in it can launch" in err
         assert "'/opt/arb'" in err
         # THE DETAIL — the launch's own words, including the remedy block.
-        assert "workset.common./opt/arb" in err
+        assert "workset.common[/opt/arb]" in err
         assert "already binds" in err
         assert "Set the unwanted key to null" in err
         # ⚑ ONE prefix, not two: ``cli.main`` would have printed exactly one

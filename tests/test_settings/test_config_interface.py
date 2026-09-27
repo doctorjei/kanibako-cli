@@ -887,7 +887,7 @@ class TestShowConfig:
 
         out = capsys.readouterr().out
         for cat in ABSTRACT_CATEGORIES:
-            assert f"box.{cat}.{normalize_bind_dest(f'~/.{cat}/dest')}" in out, (cat, out)
+            assert f"box.{cat}[{normalize_bind_dest(f'~/.{cat}/dest')}]" in out, (cat, out)
         assert "no overrides" not in out, out
 
     def test_the_box_declaration_block_prints_each_row_once(self, tmp_path, capsys):
@@ -910,7 +910,7 @@ class TestShowConfig:
         out = capsys.readouterr().out
         assert out.count("custom") == 1, out
         assert out.count("pref.system.agent") == 1, out
-        assert out.count(f"box.caches.{normalize_bind_dest('~/c')}") == 1, out
+        assert out.count(f"box.caches[{normalize_bind_dest('~/c')}]") == 1, out
 
     def test_an_undeclared_table_named_after_a_category_is_not_a_declaration(
         self, tmp_path, capsys,
@@ -934,6 +934,29 @@ class TestShowConfig:
         assert out.count("box.bogus.common.~/x") == 1, out
         assert "(no overrides)" in out, out
 
+    @pytest.mark.parametrize("forged", ["caches[/foo]", "common[/foo"])
+    def test_a_stored_key_spelled_like_an_entry_label_is_not_a_declaration(
+        self, tmp_path, capsys, forged,
+    ):
+        """An undeclared key whose NAME carries a ``[`` renders like a category entry label.
+        The declaration list is read off the stored STRUCTURE, never a rendered row, so the
+        forgery shows once — in the undeclared block — while a real entry is still listed."""
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        project_toml = tmp_path / BOX_META_FILE
+        dump_doc(project_toml, {"box": {forged: "bar", "caches": {"~/.cache/uv": ["uv"]}}})
+
+        show_config(
+            global_config_path=global_cfg, config_path=project_toml,
+            command_scope=ConfigLevel.box,
+        )
+
+        out = capsys.readouterr().out
+        declared, _sep, undeclared = out.partition("(undeclared")
+        assert f"box.{forged} = bar" in undeclared, out
+        assert out.count(f"box.{forged} = bar") == 1, out
+        assert f"box.caches[{normalize_bind_dest('~/.cache/uv')}] = uv" in declared, out
+
     def test_an_upward_scope_declaration_is_not_an_override_at_the_box(
         self, tmp_path, capsys,
     ):
@@ -956,7 +979,7 @@ class TestShowConfig:
         )
 
         out = capsys.readouterr().out
-        assert f"box.caches.{normalize_bind_dest('~/ok')}" in out, out
+        assert f"box.caches[{normalize_bind_dest('~/ok')}]" in out, out
         assert "workset.caches" not in out, out
         assert "system.common" not in out, out
 
@@ -4893,6 +4916,26 @@ class TestSetTimeResolutionProbe:
         )
         assert not msg.startswith("Error:"), msg
 
+    def test_a_ref_to_a_present_none_is_a_value_not_a_defect(self, tmp_path):
+        """V1: an embedded ref to a present ``<None>`` makes the value ``<None>`` (spec
+        §0) — a value, not a dangling ref, so the set is accepted; and the effective
+        value names nothing rather than the root-relative ``/logs``.  ``workset.logs``
+        because its null is legal (no logs); a null ``workset.boxes`` is refused ([Q96])."""
+        from kanibako.settings.config_interface import effective_value
+
+        cfg = tmp_path / BOX_META_FILE
+        cfg.write_text("workset:\n  template: null\n")
+        msg = set_config_value(
+            "workset.logs", "@workset.template/logs",
+            config_path=cfg, cascade_workset_path=cfg,
+            command_scope=ConfigLevel.workset,
+        )
+        assert not msg.startswith("Error:"), msg
+        assert effective_value(
+            "workset.logs", ("workset",), "logs", agent_name="",
+            system_path=None, agent_path=None, workset_path=cfg, box_path=None,
+        ) is None
+
     def test_an_unrelated_pre_existing_defect_still_allows_the_set(self, tmp_path):
         """``config set`` must stay usable to REPAIR a broken config: the probe
         blocks only on the EDITED value's own transitive upstream chain."""
@@ -5198,8 +5241,8 @@ class TestEffectiveCategoryBlock:
     #: were written against: the categories went TERMINAL and dest-keyed, and
     #: destinations arrive R-11-ABSOLUTIZED, which is what retired the deferred-``~``
     #: contrast the first of them used to state.
-    _COMMON_KEY = "agent.claude.common./home/agent/.claude/plugins"
-    _SEEDED_KEY = "agent.claude.seeded./home/agent"
+    _COMMON_KEY = "agent.claude.common[/home/agent/.claude/plugins]"
+    _SEEDED_KEY = "agent.claude.seeded[/home/agent]"
 
     def test_declaration_and_derived_binding_print_adjacently(self, tmp_path):
         """⚑ UN-SKIPPED when the pairing landed — REWRITTEN, not restored.
@@ -5253,7 +5296,7 @@ class TestEffectiveCategoryBlock:
         """
         text = self._render(tmp_path, box_bind_dest="~/w", assemble=True)
         assert (
-            "box.bindings.rw./home/agent/w = /boxes/mybox/home -> /home/agent/w  [Z,U]"
+            "box.bindings.rw[/home/agent/w] = /boxes/mybox/home -> /home/agent/w  [Z,U]"
             in text
         )
 
@@ -5263,7 +5306,7 @@ class TestEffectiveCategoryBlock:
         exists at all."""
         text = self._render(tmp_path, box_bind_dest="~/w", assemble=True)
         assert (
-            "agent.claude.bindings.ro./home/agent/ref = /store/ref -> /home/agent/ref"
+            "agent.claude.bindings.ro[/home/agent/ref] = /store/ref -> /home/agent/ref"
             in text
         )
 
@@ -5590,12 +5633,12 @@ class TestPrefShow:
         assert "pref.system.agent = goose" in out
         # A suppression REQUEST must be visible as such, not blank.
         assert (
-            "pref.agent.claude.common./home/agent/.claude/plugins = null" in out
+            "pref.agent.claude.common[/home/agent/.claude/plugins] = null" in out
         )
         # A request on a category carries the whole map and renders as the map's rows do
         # (spec §2h). MUTATION: drop the ``pref.`` strip in
         # ``config_display._is_bind_map_key`` and this reds on the Python repr.
-        assert "pref.agent.claude.caches./home/agent/c = uv" in out, out
+        assert "pref.agent.claude.caches[/home/agent/c] = uv" in out, out
         assert "['" not in out, out
 
     def test_effective_shows_request_and_result(self, tmp_path, capsys):
@@ -5704,9 +5747,9 @@ class TestPrefShow:
         )
         out = capsys.readouterr().out
         dest = "/home/agent/.cache/uv"
-        assert f"pref.agent.claude.caches.{dest} = /host/caches/uv -> {dest}" in out
+        assert f"pref.agent.claude.caches[{dest}] = /host/caches/uv -> {dest}" in out
         assert (
-            f"-> agent.claude.caches.{dest} = /host/caches/uv -> {dest}" in out
+            f"-> agent.claude.caches[{dest}] = /host/caches/uv -> {dest}" in out
         )
         assert "suppressed" not in out
 

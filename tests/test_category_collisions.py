@@ -268,16 +268,16 @@ class TestRow1BindingVsBinding:
             ])
         text = str(exc.value)
         assert DEST in text
-        assert "system.bindings.ro.vault" in text
-        assert "box.bindings.rw.vault" in text
+        assert "system.bindings.ro[vault]" in text
+        assert "box.bindings.rw[vault]" in text
         assert "/srv/vaults/shared" in text
         # The remedy is the non-obvious part (§0), and it is the YAML edit rather
         # than a CLI verb, because no suppression verb exists.
         assert "SUPPRESS" in text
         assert "vault: null" in text
         assert exc.value.entries == (
-            ("system.bindings.ro.vault", "/srv/vaults/shared"),
-            ("box.bindings.rw.vault", "/home/jei/vault"),
+            ("system.bindings.ro[vault]", "/srv/vaults/shared"),
+            ("box.bindings.rw[vault]", "/home/jei/vault"),
         )
 
     def test_a_lone_binding_is_not_a_collision(self):
@@ -392,7 +392,7 @@ class TestSecretDestContentionMovedToTheSeam:
         # retired route's order (the contending bind first, the suppression block's
         # subject), so the text a user is handed is unchanged.
         assert [k for k, _src in exc.value.entries] == [
-            "box.bindings.rw.sneaky", "box.secret_path.TOK",
+            "box.bindings.rw[sneaky]", "box.secret_path.TOK",
         ]
 
     # 🕯️ ``test_the_reconcile_and_the_seam_refuse_the_SAME_configuration`` DIED AT
@@ -564,10 +564,10 @@ class TestRow3ExtensionOntoOccupied:
                            host_src="/base"),
             )
         # entries[0] is the refused EXTENSION, entries[1] the surviving BASE.
-        assert exc.value.entries[0][0] == f"agent.claude.{abstract}.plugins"
-        assert exc.value.entries[1][0] == "box.bindings.rw.claude_plugins"
+        assert exc.value.entries[0][0] == f"agent.claude.{abstract}[plugins]"
+        assert exc.value.entries[1][0] == "box.bindings.rw[claude_plugins]"
         text = str(exc.value)
-        assert text.startswith(f"'agent.claude.{abstract}.plugins' extends onto")
+        assert text.startswith(f"'agent.claude.{abstract}[plugins]' extends onto")
         assert "already binds" in text
         assert "the derived\nextension is refused" in text
 
@@ -646,7 +646,7 @@ class TestTheAgentTierIsONEScope:
         produced = build_store_shape_set(entries)
         assert len(produced.warnings) == 1
         assert produced.warnings[0].scope == "agent"
-        assert set(produced.warnings[0].loser_keys) == {"agent.default.common.a"}
+        assert set(produced.warnings[0].loser_keys) == {"agent.default.common[a]"}
         # …and the PICK proceeds: the active slot's row is what the arm carries.
         assert produced["agent"].rw[DEST].src == "/act"
 
@@ -684,8 +684,8 @@ class TestCollisionWarningEmission:
         from kanibako.settings.settings_categories import CategoryCollision
 
         return CategoryCollision(
-            box_dest=DEST, scope="box", winner_key="box.common.b",
-            loser_keys=("box.caches.a",),
+            box_dest=DEST, scope="box", winner_key="box.common[b]",
+            loser_keys=("box.caches[a]",),
         )
 
     def test_five_resolves_in_one_launch_log_one_line(self, caplog):
@@ -718,8 +718,8 @@ class TestCollisionWarningEmission:
         from kanibako.settings.settings_categories import CategoryCollision
 
         other = CategoryCollision(
-            box_dest="/g/y", scope="box", winner_key="box.common.d",
-            loser_keys=("box.caches.c",),
+            box_dest="/g/y", scope="box", winner_key="box.common[d]",
+            loser_keys=("box.caches[c]",),
         )
         with caplog.at_level(logging.WARNING):
             emit_collision_warnings([self._collision(), other])
@@ -794,7 +794,7 @@ class TestTheCollapseRouteFeedsTheSameChannel:
 
         assert len(self._lines(caplog)) == 1
         # The LOSER is the actionable half — it names the declaration to edit.
-        assert "box.caches.build" in self._lines(caplog)[0]
+        assert "box.caches[build]" in self._lines(caplog)[0]
 
     # 🕯️ ``test_there_is_NO_SECOND_FEED_left_to_add`` DIED AT 6-R3, WITH THE
     # DATACLASS IT INSPECTED. It asserted that ``ReconciledCategories`` had no
@@ -1317,8 +1317,8 @@ class TestPrefOriginEnrichment:
             "two declarations at /home/agent/workspace",
             kind="extension_onto_occupied",
             box_dest="/home/agent/workspace",
-            entries=(("agent.claude.common.~/workspace", "/src"),
-                     ("box.bindings.rw.~/workspace", "/proj")),
+            entries=(("agent.claude.common[~/workspace]", "/src"),
+                     ("box.bindings.rw[~/workspace]", "/proj")),
         )
         prefs = [PrefRequest(
             target="agent.claude.common",
@@ -1329,7 +1329,7 @@ class TestPrefOriginEnrichment:
         text = str(out)
         # The ENTRY key is named in full (target + dest); the REQUEST is named in
         # the only spelling the user can write.
-        assert "agent.claude.common.~/workspace' was installed by" in text
+        assert "agent.claude.common[~/workspace]' was installed by" in text
         assert "'pref.agent.claude.common'" in text
         assert "box settings file" in text
         assert str(src) in text
@@ -1358,8 +1358,8 @@ class TestPrefOriginEnrichment:
             "two declarations at /home/agent/workspace",
             kind="extension_onto_occupied",
             box_dest="/home/agent/workspace",
-            entries=(("agent.claude.common.~/workspace", "/src"),
-                     ("box.bindings.rw.~/workspace", "/proj")),
+            entries=(("agent.claude.common[~/workspace]", "/src"),
+                     ("box.bindings.rw[~/workspace]", "/proj")),
         )
         prefs = [PrefRequest(
             target="agent.claude.common",
@@ -1390,8 +1390,8 @@ class TestPrefOriginEnrichment:
             "two declarations at /home/agent/workspace",
             kind="extension_onto_occupied",
             box_dest="/home/agent/workspace",
-            entries=(("agent.claude.common.~/workspace", "/src"),
-                     ("box.bindings.rw.~/workspace", "/proj")),
+            entries=(("agent.claude.common[~/workspace]", "/src"),
+                     ("box.bindings.rw[~/workspace]", "/proj")),
         )
         # APPLICATION ORDER: workset first, box second (``collect_prefs``).
         prefs = [
@@ -1429,7 +1429,7 @@ class TestPrefOriginEnrichment:
             "two declarations at /home/agent/workspace",
             kind="extension_onto_occupied",
             box_dest="/home/agent/workspace",
-            entries=(("agent.claude.common.~/workspace", "/src"),),
+            entries=(("agent.claude.common[~/workspace]", "/src"),),
         )
         prefs = [
             PrefRequest(
@@ -1522,7 +1522,7 @@ class TestPrefOriginEnrichment:
             "two declarations at /home/agent/workspace",
             kind="extension_onto_occupied",
             box_dest="/home/agent/workspace",
-            entries=(("agent.claude.common.~/workspace", "/src"),),
+            entries=(("agent.claude.common[~/workspace]", "/src"),),
         )
         prefs = [PrefRequest(
             target="agent.claude.common",
@@ -1547,7 +1547,7 @@ class TestPrefOriginEnrichment:
             kind="binding_vs_binding",
             box_dest=f"{SECRET_MOUNT_DIR}/TOK",
             entries=(("agent.claude.secret_path.TOK", "/h/tok"),
-                     ("box.bindings.rw.~/tok", "/h/other")),
+                     ("box.bindings.rw[~/tok]", "/h/other")),
         )
         prefs = [PrefRequest(
             target="agent.claude.secret_path.TOK", value="/h/tok",
@@ -1563,7 +1563,7 @@ class TestPrefOriginEnrichment:
 
         exc = CategoryCollisionError(
             "boom", kind="binding_vs_binding", box_dest="/d",
-            entries=(("box.bindings.ro.~/a", "/s"),),
+            entries=(("box.bindings.ro[~/a]", "/s"),),
         )
         assert _annotate_pref_origin(exc, []) is exc
 
@@ -1590,7 +1590,7 @@ class TestPrefOriginOnTheAdapterRaise:
 
         src = Path(tmp_path) / "box.yaml"
         exc = SettingsError(
-            "category agent.claude.common.~/plugins is str, expected a "
+            "category agent.claude.common[~/plugins] is str, expected a "
             "BindEntry (common is dest-keyed: the map key is the destination; "
             "present-None binds are omitted at build, §3/§6e)"
         )
@@ -1603,7 +1603,7 @@ class TestPrefOriginOnTheAdapterRaise:
         text = str(out)
         assert isinstance(out, SettingsError)
         assert "expected a BindEntry" in text            # the original diagnosis
-        assert "'agent.claude.common.~/plugins' was installed by" in text
+        assert "'agent.claude.common[~/plugins]' was installed by" in text
         assert "'pref.agent.claude.common'" in text
         assert str(src) in text
 
@@ -1644,7 +1644,7 @@ class TestPrefOriginOnTheAdapterRaise:
         from kanibako.settings.settings_resolve import SettingsError
 
         exc = SettingsError(
-            "category agent.claude.common.~/plugins is str, expected a BindEntry"
+            "category agent.claude.common[~/plugins] is str, expected a BindEntry"
         )
         prefs = [PrefRequest(
             target="agent.claude.common",

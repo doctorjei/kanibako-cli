@@ -455,6 +455,19 @@ def is_terminal_category_key(key: str) -> bool:
         return len(scope) == (2 if scope[0] == "agent" else 1)
     return False
 
+
+def entry_label(declaration: str, entry: str) -> str:
+    """How a message names the *entry* of the category key *declaration*.
+
+    A DEST-KEYED category's entry is a dict INDEX, not a key segment (spec §2c), so it
+    is ``box.bindings.ro[~/w]``; a VAR-keyed family's is a segment, ``box.env.FOO``.  A
+    ``pref.<category>`` request carries the same map (§2h), so it is indexed too.
+    """
+    head, _, target = declaration.partition(".")
+    if is_terminal_category_key(target if head == "pref" else declaration):
+        return f"{declaration}[{entry}]"
+    return f"{declaration}.{entry}"
+
 # (There is deliberately no CATEGORY_SCOPES constant. The scope dispatch in
 # :func:`key_validity` is an explicit if-chain on the head token, and the
 # category test runs on the TAIL via :func:`_looks_like_category`, so a set of

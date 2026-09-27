@@ -61,6 +61,7 @@ AgentLeafMap = Mapping[str, Collection[str]]
 def access_default() -> str
 def is_terminal_category_tail(tail: Sequence[str]) -> bool
 def is_terminal_category_key(key: str) -> bool
+def entry_label(declaration: str, entry: str) -> str
 def pseudo_agent_fence(name: str) -> PseudoAgentFence | None
 def glob_match(pattern: str, key: str) -> bool
 def pref_allowlist_entry(target: str, *, allowlist: Sequence[str]=PREF_ALLOWLIST) -> str | None

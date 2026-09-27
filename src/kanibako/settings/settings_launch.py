@@ -25,6 +25,7 @@ per-mode anchor tables, the level-splice rungs, and the archived
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -84,9 +85,10 @@ from kanibako.settings.settings_categories import (
     refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_cli_level import guard_cli_level
-from kanibako.settings.settings_expand import expand
+from kanibako.settings.settings_expand import NullSources, expand
 from kanibako.settings.settings_keyspace import (
     KeyClass,
+    entry_label,
     pseudo_agent_fence,
     render_store_path,
     undeclared_store_paths,
@@ -120,6 +122,9 @@ _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
 _BIND_FLOOR_TAILS: tuple[str, ...] = (".bindings.ro", ".bindings.rw") + tuple(
     f".{c}" for c in sorted(_BIND_LEAF_CATEGORIES)
 )
+
+
+_log = logging.getLogger(__name__)
 
 
 def _is_bind_floor_key(key: str) -> bool:
@@ -227,11 +232,11 @@ def auth_chain_floor(
         # False, so the workset tier's Python AND is false regardless of the knob.
         floor["workset.auth.share_allowed"] = False
         floor["workset.auth.global_sync"] = False
-        # ⚑ Both anchors pinned None (defensive root-cause fix): otherwise
-        # ``@workset.auth.path/<agent>`` resolves against the absent path key and
-        # expands to the literal ``/<agent>`` — an @-ref to an absent key renders
-        # ``""``, not a drop — garbage the credsync dir-creation would mkdir against
-        # the host ROOT.
+        # ⚑ Both anchors are the spec's standalone ``<None>`` rows (§2c), SUPPLIED
+        # as a present None, never omitted: an embedded @-ref to an ABSENT key
+        # renders ``""``, so ``@workset.auth.path/@system.agent`` would expand to
+        # ``/<agent>`` — garbage the credsync dir-creation would mkdir against the
+        # host ROOT.  A present None instead makes the derived value None (§0).
         floor["workset.auth.path"] = None
         floor["meta.box.auth.workset_path"] = None
     elif mode is not None:
@@ -687,7 +692,8 @@ def workset_anchor_floor(
     ``workset.registry``, ``workset.template``, ``workset.channelroot`` and the four
     workset-LOCAL ``workset.channels.*`` leaves. A supplied ``<None>`` is a value, and a
     default is a fallback that applies only where nothing was supplied ([R177]); an
-    OMITTED key instead renders ``""`` inside an embedded ``@``-ref, so a user entry
+    OMITTED key instead renders ``""`` inside an embedded ``@``-ref (a present ``None``
+    makes the whole value ``None``, spec §0), so a user entry
     ``@workset.template/box/home`` seeded from the HOST path ``/box/home``.
     ``workset.kuid`` stays absent: its standalone arm is the PROSE
     ``<generated at creation>``, not ``<None>``.
@@ -2200,7 +2206,8 @@ def build_launch_snapshot(
     levels.append(base_levels[5])                       # base (+ folded floor)
 
     snapshot = merge(levels)
-    expanded = expand(snapshot, ctx)
+    null_sources: NullSources = {}
+    expanded = expand(snapshot, ctx, null_sources=null_sources)
     # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
     # are resolved terminals.
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)
@@ -2246,7 +2253,196 @@ def build_launch_snapshot(
     refuse_read_time_faults(
         written, expanded, ctx=ctx, files=files, subject=subject,
     )
+    _warn_lone_none_standard_binds(
+        floor, snapshot, expanded, null_sources=null_sources, written=written, ctx=ctx,
+    )
+    _warn_null_ref_secrets(
+        snapshot, expanded, active_agent=agent_name, written=written, ctx=ctx,
+    )
     return expanded
+
+
+#: The ``<None>`` warnings already given in this process ([R185] and the secret one), by
+#: their text: one command runs several resolves over the same files, and one ``<None>``
+#: is ONE fact. Module-level on the footing of ``settings_assemble._DROP_WARNED``: it
+#: changes no resolution.
+_NONE_WARNED: "set[str]" = set()
+
+
+def reset_none_warnings() -> None:
+    """Clear the per-process ``<None>`` warning memo (test seam)."""
+    _NONE_WARNED.clear()
+
+
+def _warn_once(message: str) -> None:
+    """Log *message* as a warning unless this process already has."""
+    if message not in _NONE_WARNED:
+        _NONE_WARNED.add(message)
+        _log.warning("%s", message)
+
+
+def _none_setter(written: Sequence[_WrittenLevel], key: str, dest: str | None) -> str | None:
+    """The settings file whose value wins at *key* (``[dest]``), or ``None`` for the floor.
+
+    *written* is most-specific-first, so the first level holding the key is the winner.
+    With *dest*, *key* is a bind ARM and a ``None`` arm counts as setting the entry
+    ([Q94] 1).  A ``base`` leaf still equal to the folded floor's is the floor's.
+    """
+    for level, path, floor_store in written:
+        value = snapshot_leaf(level, key)
+        if dest is not None and isinstance(value, KeyStore):
+            value = dict.get(value, dest, __MISSING__)
+        if value is __MISSING__:
+            continue
+        if floor_store is not None and snapshot_leaf(floor_store, key) == value:
+            return None
+        return str(path) if path is not None else "<settings>"
+    return None
+
+
+def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]:
+    """Every ``@``-ref in the source expression *src*, via the ONE scanner."""
+    refs: list[str] = []
+
+    def lookup(ref: str, chain: tuple[str, ...]) -> str:
+        del chain  # only the names are wanted; *expanded* holds terminals.
+        refs.append(ref)
+        value = snapshot_leaf(expanded, ref)
+        return value if isinstance(value, str) else ""
+
+    try:
+        expand_expr(src, space="host", ctx=ctx, lookup=lookup, defer_env=True)
+    except SettingsError:
+        pass  # a malformed source is refused where it is expanded, not here.
+    return refs
+
+
+def _warn_lone_none_standard_binds(
+    floor: Mapping[str, object],
+    merged: KeyStore,
+    expanded: KeyStore,
+    *,
+    null_sources: NullSources,
+    written: Sequence[_WrittenLevel],
+    ctx: ResolveCtx,
+) -> None:
+    """Warn when a settings file makes only ONE of a STANDARD bind's entry & source ``<None>``.
+
+    Spec §2a / companion "Delivery at launch" ([R185]): a standard bind is omitted by
+    setting BOTH to ``<None>``; if a file sets only one, the launch warns, naming both
+    keys and that file.  Both, or neither, is silent.
+    ⚑ STANDARD = a floor entry whose source carries an ``@``-ref (its source key): the
+    core-defaults tables, plugin binds ([Q95] 2) and the helper log alike, since each
+    folds its source formula into this floor.  A literal-source floor entry is INTERNAL
+    and has no source key; a user-added entry is not in the floor ([Q94] 2).
+    ⚑ ``seeded`` is out: §2a skips a ``<None>`` layer and names no warning.
+    ⚑ A ``<None>`` the floor itself supplies (a standalone ``<None>`` row) was not SET by
+    anyone, so it never warns; only a settings file's value does.
+    """
+    for arm, entries in floor.items():
+        if not (_is_bind_floor_key(arm) and isinstance(entries, dict)):
+            continue
+        if arm.endswith(".seeded"):
+            continue
+        for dest, value in entries.items():
+            src = str(value[0]) if isinstance(value, (tuple, list)) and value else ""
+            refs = _source_refs(src, expanded, ctx)
+            if not refs:
+                continue  # INTERNAL: no source key.
+            label = entry_label(arm, dest)
+            merged_arm = snapshot_leaf(merged, arm)
+            if isinstance(merged_arm, KeyStore) and dict.__contains__(merged_arm, dest):
+                expanded_arm = snapshot_leaf(expanded, arm)
+                if not (isinstance(expanded_arm, KeyStore)
+                        and dict.get(expanded_arm, dest, __MISSING__) is None):
+                    continue  # the entry and its source both stand.
+                set_refs = [
+                    (ref, where)
+                    for ref in null_sources.get((*arm.split("."), dest), ())
+                    if (where := _none_setter(written, ref, None)) is not None
+                ]
+                if not set_refs:
+                    continue
+                named = ", ".join(f"{ref} (in {where})" for ref, where in set_refs)
+                message = (
+                    f"The standard bind {label} is omitted: its source references "
+                    f"{named}, which is null, but the entry itself is not. Set {label} "
+                    f"to null as well to omit it without this warning."
+                )
+            else:
+                where = _none_setter(written, arm, dest)
+                if where is None:
+                    continue  # not set by a settings file.
+                if any(snapshot_leaf(expanded, ref) is None for ref in refs):
+                    continue  # its source is <None> too: both, silent.
+                # ``meta.*`` is read-only (§0): named, but never offered as the cure.
+                settable = [r for r in dict.fromkeys(refs) if not r.startswith("meta.")]
+                keys = ", ".join(settable or dict.fromkeys(refs))
+                message = (
+                    f"The standard bind {label} is set to null in {where}, so it is "
+                    f"omitted, but its source key ({keys}) is not null."
+                )
+                if settable:
+                    message += (
+                        f" Set {keys} to null as well to omit it without this warning."
+                    )
+            _warn_once(message)
+
+
+#: Where a ``<None>`` the floor supplies was set, as a message names it.
+_FLOOR_WHERE = "kanibako's defaults for this box"
+
+
+def _warn_null_ref_secrets(
+    merged: KeyStore,
+    expanded: KeyStore,
+    *,
+    active_agent: str,
+    written: Sequence[_WrittenLevel],
+    ctx: ResolveCtx,
+) -> None:
+    """Warn when a ``secret_path`` value is ``<None>`` because a key it references is.
+
+    Spec §0 makes the whole value ``<None>`` ([R186]), so the entry mounts nothing and
+    the box starts without that secret ([Q94] 3, fail-soft).  The warning names the
+    ``secret_path`` key, each ``<None>`` key it references, and where that ``<None>``
+    was set, the floor included: a standalone box's ``workset.auth.path`` is the case.
+    ⚑ A ``secret_path`` set to ``null`` itself is a reset, and silent.
+    """
+    for scope in _SCOPES:
+        if scope == "agent":
+            node: object = _agent_pick_node(expanded, active_agent)
+            decl_scope_fn = _agent_decl_scope_fn(
+                dict.get(expanded, "agent", __MISSING__), active_agent,
+            )
+        else:
+            node = dict.get(expanded, scope, __MISSING__)
+            decl_scope_fn = _fixed_decl_scope_fn(scope)
+        secret = dict.get(node, "secret_path", __MISSING__) if isinstance(
+            node, KeyStore) else __MISSING__
+        if not isinstance(secret, KeyStore):
+            continue
+        for var in dict.keys(secret):
+            if dict.__getitem__(secret, var) is not None:
+                continue
+            key = f"{decl_scope_fn('secret_path', var)}.secret_path.{var}"
+            raw = snapshot_leaf(merged, key)
+            if not isinstance(raw, str):
+                continue  # set to null itself: a reset.
+            null_refs = [
+                ref for ref in dict.fromkeys(_source_refs(raw, expanded, ctx))
+                if snapshot_leaf(expanded, ref) is None
+            ]
+            if not null_refs:
+                continue
+            named = ", ".join(
+                f"{ref} (null in {_none_setter(written, ref, None) or _FLOOR_WHERE})"
+                for ref in null_refs
+            )
+            _warn_once(
+                f"{key} is {raw!r}, which references {named}, so it is null and "
+                f"the secret {var} is not mounted from it."
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -2355,12 +2551,13 @@ def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object:
 def _assert_box_root_resolved(snapshot: KeyStore) -> None:
     """Fail LOUDLY when the box root, or the store it derives from, did not resolve.
 
-    ⚑ A box root that resolves to nothing does NOT surface as an error on its own.
-    The pid-0 foundation bind's src IS ``meta.box.home`` = ``@meta.box.path/home``, an
-    EMBEDDED ``@``-ref, and the embedded rule (§6b) coerces an absent / present-``None``
-    referent to ``""``. The L7 guarantee-create then ``mkdir``\\ s whatever that
-    produced and mounts it OVER the box home, so the box comes up with the wrong host
-    directory as its home and nothing anywhere reports an error.
+    ⚑ A box root that resolves to nothing does NOT surface as an error on its own. The
+    pid-0 foundation bind's src IS ``meta.box.home`` = ``@meta.box.path/home``, an
+    EMBEDDED ``@``-ref, and the embedded rule (§6b) coerces an absent referent to ``""``
+    (a present-``None`` one makes the key ``None``, spec §0). The L7 guarantee-create
+    then ``mkdir``\\ s whatever that produced and mounts it OVER the box home, so the
+    box comes up with the wrong host directory as its home and nothing anywhere reports
+    an error.
 
     ⚑ AND THE RESULT CAN LOOK PERFECTLY VALID, which is why BOTH keys are checked —
     primary/named yields the syntactically perfect ``/mybox`` that no shape check
@@ -3303,17 +3500,20 @@ def _emit_bind_map(
             *decl_scope_fn(category, dest).split("."),
             *category.split("."), dest,
         )
-        if entry is None and category == "seeded":
-            # Spec §2a: a seeded LAYER whose source is ``<None>`` is SKIPPED, not
-            # refused.  ``settings_expand`` hands a present-None source up as ``None``
-            # so it still overrides a fallback arm in the §2d pick ([R177]).
+        if entry is None:
+            # A ``<None>`` SOURCE, whole-value or embedded (spec §0): the entry is
+            # SKIPPED in every category, never refused ([Q80] (a)) — a seeded layer
+            # (§2a) and a bind alike.  ``settings_expand`` hands it up as ``None``, not
+            # absent, so it still overrides a fallback arm in the §2d pick ([R177]).
+            # A STANDARD bind's lone ``<None>`` is WARNED once, by
+            # :func:`_warn_lone_none_standard_binds`; a user-added one is silent ([R185]).
             continue
         if not isinstance(entry, BindEntry):
             raise SettingsError(
-                f"category {'.'.join(key_segments)} is {type(entry).__name__}, "
+                f"category {entry_label('.'.join(key_segments[:-1]), dest)} is "
+                f"{type(entry).__name__}, "
                 f"expected a BindEntry ({category} is dest-keyed: the map key is "
-                f"the destination; present-None binds are omitted at build, "
-                f"§3/§6e)"
+                f"the destination)"
             )
         _emit_bind(
             collected, order, scope, category, dest,

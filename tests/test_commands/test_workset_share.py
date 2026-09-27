@@ -677,4 +677,4 @@ class TestEffectiveListingsWithNoShares:
         assert _run_show_effective() == 0
         out = capsys.readouterr().out
         assert "Derived bindings for working set 'myws':" in out
-        assert "workset.common./home/agent/shared/docs" in out
+        assert "workset.common[/home/agent/shared/docs]" in out

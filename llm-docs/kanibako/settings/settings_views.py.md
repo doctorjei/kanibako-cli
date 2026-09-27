@@ -119,6 +119,12 @@ present. The `Bind`s themselves are shared, not copied, because they are immutab
 An absent or empty node yields `{}`. A non-`Bind` leaf raises `ViewError` (S22 — a build breach,
 never type-laundered).
 
+⚑ **ONE WALK, TWO VIEWS.** `derived_binding_rows` returns the same subtree keyed by SEGMENTS, the
+DEST last; `derived_bindings` joins them. A caller that NAMES a declaration to a user
+(`settings_categories.effective_bindings_and_template_sources`) takes the segments, because the
+label `<declaration>[<dest>]` (spec §2c) cannot be recovered from the joined key without
+re-splitting a dest that carries dots.
+
 ⚑ This is the READ half only. The keys are PRODUCED by
 `kanibako.settings.settings_categories.derive_binding_keys`, which is deliberately named
 differently: two functions with one name in two modules is exactly the confusion the conventions

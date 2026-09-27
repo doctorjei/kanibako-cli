@@ -54,6 +54,7 @@ from kanibako.settings import core_defaults
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.paths import BoxMode
+from kanibako.settings.settings_keyspace import entry_label
 
 #: Substituted for the manifest's ``<agent>`` placeholder when a floor builder needs an
 #: agent name.  ONLY the builder's KEY SET is consumed (never a value), and none of the
@@ -393,14 +394,15 @@ def bind_rows() -> list[DefaultRow]:
       internal = entry.get("user_key") is False
       raw = entry["value"] if internal else entry["default"]
       value, per_mode = _render_default(raw)
+      label = entry_label(str(arm), str(dest))
       source = _BIND_SOURCES_OUTSIDE_THE_FILE.get(str(dest)) or family.get(str(dest))
       if source is None:
         raise RuntimeError(
-          f"{arm}[{dest}] has no declaring artefact — add it to "
+          f"{label} has no declaring artefact — add it to "
           f"_BIND_SOURCES_OUTSIDE_THE_FILE with a reason, or fix the dest"
         )
       rows.append(DefaultRow(
-        key=f"{arm}[{dest}]", value=value, scope=str(arm).split(".", 1)[0],
+        key=label, value=value, scope=str(arm).split(".", 1)[0],
         source=source, per_mode=per_mode, internal=internal,
       ))
 
@@ -413,7 +415,7 @@ def bind_rows() -> list[DefaultRow]:
       raw = entry["value"] if internal else entry["default"]
       value, per_mode = _render_default(raw)
       rows.append(DefaultRow(
-        key=f"{arm}[{dest}]", value=value, scope=str(arm).split(".", 1)[0],
+        key=entry_label(str(arm), str(dest)), value=value, scope=str(arm).split(".", 1)[0],
         source=_SEED_LAYER_SOURCE, per_mode=per_mode, internal=internal,
       ))
   return rows

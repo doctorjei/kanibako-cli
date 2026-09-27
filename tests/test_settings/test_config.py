@@ -1392,8 +1392,8 @@ class TestTargetSettings:
         )
         assert rows == {
             "model": "opus",
-            "caches./home/agent/c": "uv",
-            "common./home/agent/p": "q  [ro]",
+            "caches[/home/agent/c]": "uv",
+            "common[/home/agent/p]": "q  [ro]",
         }, rows
 
     def test_no_bleed_across_agents(self, tmp_path):

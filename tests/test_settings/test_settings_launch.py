@@ -950,12 +950,13 @@ class TestAMasksListInASETTINGSFILEIsRefusedByName:
         assert [e for e in entries if e.category == "masks"] == []
 
 
-def test_adapter_bind_with_none_leaf_raises():
-    from kanibako.settings.settings_resolve import SettingsError
-
-    snap = KeyStore({"box": {"bindings": {"rw": {"bad": None}}}})
-    with pytest.raises(SettingsError):
-        snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+def test_adapter_skips_a_none_entry_and_keeps_its_sibling():
+    # A ``None`` entry is a ``<None>`` SOURCE (spec §0): skipped, never refused ([Q80] (a)).
+    snap = KeyStore({"box": {"bindings": {"rw": {
+        "/bad": None, "/ok": BindEntry("/h/ok"),
+    }}}})
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    assert [(e.box_dest, e.host_src) for e in entries] == [("/ok", "/h/ok")]
 
 
 class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:
@@ -996,7 +997,7 @@ class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:
                 "/box/home": Bind("/h/home", "/somewhere/else", None),
             }}}})
         text = str(exc.value)
-        assert f"box.bindings.{mode}./box/home" in text   # names the KEY
+        assert f"box.bindings.{mode}[/box/home]" in text  # names the ENTRY
         assert "BindEntry" in text                        # names the shape wanted
         assert "Bind" in text                             # names the shape found
 
@@ -1021,7 +1022,7 @@ class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:
                 "/box/thing": Bind("/h/thing", "/elsewhere", None),
             }}})
         text = str(exc.value)
-        assert f"box.{category}./box/thing" in text        # names the KEY
+        assert f"box.{category}[/box/thing]" in text       # names the ENTRY
         assert "expected a BindEntry" in text              # names the shape wanted
         assert "is Bind," in text                          # names the shape found
         assert f"{category} is dest-keyed" in text         # says WHY
@@ -3667,10 +3668,10 @@ def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
 def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
     """An EMPTY ``meta.box.name`` must not silently yield the SHARED box store.
 
-    primary/named spell the root ``@workset.boxes/@meta.box.name``, so an empty or
-    None name leaves ``<…>/boxes/`` — and the home host_src ``<…>/boxes//home``,
-    which is the box STORE's home rather than this box's. Every box in the workset
-    would resolve the same home directory.
+    primary/named spell the root ``@workset.boxes/@meta.box.name``, so an empty name
+    leaves ``<…>/boxes/`` — and the home host_src ``<…>/boxes//home``, which is the
+    box STORE's home rather than this box's (every box in the workset would resolve
+    the same home directory); a None name makes the root None (spec §0).
 
     Reachable today: ``paths._resolve_local_dir``'s unregistered-primary fallback
     returns an empty name and the launch passes ``proj.name`` through unexamined.
@@ -3695,7 +3696,11 @@ def test_box_root_with_a_vanished_name_leaf_is_a_named_error():
                 workset_anchor=floor,
             )
         assert "meta.box.path" in str(exc.value), name
-        assert "trailing separator" in str(exc.value), name
+        if name == "":
+            assert "trailing separator" in str(exc.value), name
+        else:
+            # Spec §0 ([R186]): an embedded ref to a present None makes the root None.
+            assert "got None" in str(exc.value), name
 
 
 def test_box_root_assertion_is_skipped_for_a_partial_floor():
@@ -6151,3 +6156,206 @@ class TestANamelessBoxGetsNoNameDerivedKey:
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         floors = self._floors(std, proj)
         assert {*_BOX_NAME_KEYS, *self._DERIVED} <= set(floors)
+
+
+# --------------------------------------------------------------------------- #
+# [R185] — a STANDARD bind with ONE of its entry & source ``<None>`` warns     #
+# --------------------------------------------------------------------------- #
+
+
+class TestLoneNoneStandardBind:
+    """Spec §2a + companion "Delivery at launch": a standard bind is omitted by setting
+    its entry AND its source key to ``<None>``; a file that sets only one gets a warning
+    naming both keys and that file.  Both is silent; a user-added bind is silent
+    ([Q94] 2); a ``<None>`` source is SKIPPED at the collapse, never refused ([Q80]).
+    """
+
+    _DEST = f"{GUEST_HOME}/.kanibako/state/helpers.jsonl"
+    _FLOOR = {
+        "workset.logs": "/h/logs",
+        "box.bindings.ro": {_DEST: ("@workset.logs/@{meta.box.name}.jsonl", "ro")},
+    }
+    _NULL_ENTRY = {"box": {"bindings": {"ro": {"~/.kanibako/state/helpers.jsonl": None}}}}
+    _NULL_SOURCE = {"workset": {"logs": None}}
+
+    def _resolve(self, tmp_path, caplog, *, box=None, workset=None, floor=None):
+        from kanibako.settings.settings_launch import reset_none_warnings
+
+        reset_none_warnings()
+        box_path = _write_yaml(tmp_path / "box.yaml", box) if box else None
+        ws_path = _write_yaml(tmp_path / "workset.yaml", workset) if workset else None
+        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+        for _ in range(2):  # one command, several resolves: ONE warning.
+            snap = build_launch_snapshot(
+                agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+                workset_path=ws_path, box_path=box_path,
+                default_categories=self._FLOOR if floor is None else floor,
+                meta_identity={"meta.box.name": "b1"}, valid_agents=("claude",),
+            )
+        mounted = {
+            e.box_dest for e in snapshot_category_entries(
+                snap, active_agent="claude", box_ctx=_ctx(),
+            )
+            if e.category.startswith("bindings")
+        }
+        warnings = [
+            r.getMessage() for r in caplog.records
+            if r.name == "kanibako.settings.settings_launch"
+        ]
+        return mounted, warnings
+
+    def test_the_control_mounts_and_is_silent(self, tmp_path, caplog):
+        assert self._resolve(tmp_path, caplog) == ({self._DEST}, [])
+
+    def test_a_lone_null_source_is_skipped_and_warns_once(self, tmp_path, caplog):
+        mounted, warnings = self._resolve(tmp_path, caplog, workset=self._NULL_SOURCE)
+        assert mounted == set()
+        assert len(warnings) == 1, warnings
+        text = warnings[0]
+        assert f"box.bindings.ro[{self._DEST}]" in text
+        assert "workset.logs" in text
+        assert str(tmp_path / "workset.yaml") in text
+
+    def test_a_lone_null_entry_warns_naming_the_source_key(self, tmp_path, caplog):
+        mounted, warnings = self._resolve(tmp_path, caplog, box=self._NULL_ENTRY)
+        assert mounted == set()
+        assert len(warnings) == 1, warnings
+        text = warnings[0]
+        assert f"box.bindings.ro[{self._DEST}]" in text
+        assert str(tmp_path / "box.yaml") in text
+        assert "Set workset.logs to null" in text
+        assert "meta.box.name" not in text  # read-only: never offered as a cure.
+
+    def test_a_null_ARM_is_a_null_entry_for_each_standard_bind(self, tmp_path, caplog):
+        # [Q94] 1: ``box.bindings.ro: null`` warns unless the source is null too.
+        mounted, warnings = self._resolve(
+            tmp_path, caplog, box={"box": {"bindings": {"ro": None}}},
+        )
+        assert mounted == set()
+        assert len(warnings) == 1, warnings
+        assert str(tmp_path / "box.yaml") in warnings[0]
+
+    def test_both_null_is_silent(self, tmp_path, caplog):
+        assert self._resolve(
+            tmp_path, caplog, box=self._NULL_ENTRY, workset=self._NULL_SOURCE,
+        ) == (set(), [])
+
+    def test_a_user_added_bind_with_a_null_source_is_skipped_silently(
+        self, tmp_path, caplog,
+    ):
+        # [Q94] 2 / [Q80] (a): skipped — not refused, not warned.
+        mounted, warnings = self._resolve(
+            tmp_path, caplog,
+            box={"box": {"bindings": {"rw": {"~/mine": ["@workset.logs/x"]}}}},
+            workset=self._NULL_SOURCE, floor={"workset.logs": "/h/logs"},
+        )
+        assert (mounted, warnings) == (set(), [])
+
+    def test_a_null_the_floor_supplies_is_not_set_by_anyone(self, tmp_path, caplog):
+        # A standalone ``<None>`` row: the bind is omitted with no warning.
+        floor = {**self._FLOOR, "workset.logs": None}
+        assert self._resolve(tmp_path, caplog, floor=floor) == (set(), [])
+
+    def test_a_literal_source_floor_entry_is_internal(self, tmp_path, caplog):
+        # No ``@``-ref ⇒ no source key ⇒ not STANDARD ([Q95] 2): no warning.
+        floor = {"box.bindings.ro": {self._DEST: ("/h/pkg", "ro")}}
+        assert self._resolve(
+            tmp_path, caplog, box=self._NULL_ENTRY, floor=floor,
+        ) == (set(), [])
+
+
+class TestNullRefSecretPath:
+    """[Q94] 3: a ``secret_path`` whose value references a present ``<None>`` is
+    ``<None>`` itself ([R186], spec §0), so the box starts WITHOUT that secret, and the
+    launch warns, naming the key and where the ``<None>`` was set (fail-soft).
+    """
+
+    _SECRET = {"box": {"secret_path": {"TOK": "@workset.auth.path/tok"}}}
+
+    def _resolve(self, tmp_path, caplog, *, box, floor, workset=None):
+        from kanibako.settings.settings_launch import reset_none_warnings
+
+        reset_none_warnings()
+        box_path = _write_yaml(tmp_path / "box.yaml", box)
+        ws_path = _write_yaml(tmp_path / "workset.yaml", workset) if workset else None
+        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+        for _ in range(2):  # one command, several resolves: ONE warning.
+            snap = build_launch_snapshot(
+                agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+                workset_path=ws_path, box_path=box_path, default_categories=floor,
+                meta_identity={"meta.box.name": "b1"}, valid_agents=("claude",),
+            )
+        delivered = {
+            e.name for e in snapshot_category_entries(
+                snap, active_agent="claude", box_ctx=_ctx(),
+            )
+            if e.category in ("secret_path", "env")
+        }
+        warnings = [
+            r.getMessage() for r in caplog.records
+            if r.name == "kanibako.settings.settings_launch"
+        ]
+        return delivered, warnings
+
+    def test_the_control_mounts_the_secret_silently(self, tmp_path, caplog):
+        assert self._resolve(
+            tmp_path, caplog, box=self._SECRET, floor={"workset.auth.path": "/h/auth"},
+        ) == ({"TOK"}, [])
+
+    def test_a_null_the_floor_supplies_leaves_the_secret_out_and_warns(
+        self, tmp_path, caplog,
+    ):
+        # The standalone case: ``workset.auth.path`` is the floor's ``<None>`` row.
+        delivered, warnings = self._resolve(
+            tmp_path, caplog, box=self._SECRET, floor={"workset.auth.path": None},
+        )
+        assert delivered == set()
+        assert len(warnings) == 1, warnings
+        assert "box.secret_path.TOK" in warnings[0]
+        assert "workset.auth.path (null in kanibako's defaults" in warnings[0]
+
+    def test_the_standalone_auth_floor_warns_through_the_launch_floors(
+        self, tmp_path, caplog,
+    ):
+        # The production auth floor (``auth_chain_floor``), not a hand-built one.
+        from kanibako.settings.settings_launch import reset_none_warnings
+
+        reset_none_warnings()
+        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+        snap = _auth_snapshot("standalone", tmp_path=tmp_path, box_file=self._SECRET)
+        assert not [
+            e for e in snapshot_category_entries(
+                snap, active_agent="claude", box_ctx=_ctx(),
+            ) if e.category == "secret_path"
+        ]
+        warnings = [
+            r.getMessage() for r in caplog.records
+            if r.name == "kanibako.settings.settings_launch"
+        ]
+        assert warnings == [
+            "box.secret_path.TOK is '@workset.auth.path/tok', which references "
+            "workset.auth.path (null in kanibako's defaults for this box), so it is "
+            "null and the secret TOK is not mounted from it."
+        ]
+
+    def test_a_null_a_file_sets_is_named_by_that_file(self, tmp_path, caplog):
+        delivered, warnings = self._resolve(
+            tmp_path, caplog, box=self._SECRET, floor={"workset.auth.path": "/h/auth"},
+            workset={"workset": {"auth": {"path": None}}},
+        )
+        assert delivered == set()
+        assert len(warnings) == 1, warnings
+        assert f"workset.auth.path (null in {tmp_path / 'workset.yaml'})" in warnings[0]
+
+    def test_a_secret_path_set_to_null_is_a_silent_reset(self, tmp_path, caplog):
+        assert self._resolve(
+            tmp_path, caplog, box={"box": {"secret_path": {"TOK": None}}},
+            floor={"workset.auth.path": "/h/auth"},
+        ) == (set(), [])
+
+    def test_an_env_value_with_a_null_ref_is_left_out(self, tmp_path, caplog):
+        # B5: ``env`` skips a ``<None>`` value, an embedded one included; no warning.
+        assert self._resolve(
+            tmp_path, caplog, box={"box": {"env": {"PROBE": "@workset.auth.path/y"}}},
+            floor={"workset.auth.path": None},
+        ) == (set(), [])

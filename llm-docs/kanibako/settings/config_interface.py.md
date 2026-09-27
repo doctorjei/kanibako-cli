@@ -1092,11 +1092,19 @@ noun (spec §2h "config show lists prefs" — also overrides at this level).
 ⚑ **Where that nested block cannot run — the BOX, whose settings file IS its config file — the
 ABSTRACT declarations are printed instead** (`_abstract_declarations`). Spec §0 obliges the plain
 view to list `common` / `caches` / `seeded` ("a user sets them in YAML …, `config show` lists
-them"), and every other reader in the branch is blind to them. It is the SAME flatten the SYSTEM
-block uses, NARROWED: run whole here it would print the box scalars and the `pref` requests a
-second time, the scalars under a second spelling. The narrowing is to the spec's clause, not to
+them"), and every other reader in the branch is blind to them. Its rows render through the SAME
+bind-map renderer the SYSTEM block's flatten uses (`config_display._flatten_bind_map`), over only
+the noun's own category tables: the whole flatten here would print the box scalars and the `pref`
+requests a second time, the scalars under a second spelling. The narrowing is to the spec's clause, not to
 the file — a box's `bindings` / `masks` / `synced` / `env` / `secret_path` stay unlisted in this
 view, no clause obliging them and [R149] reading the other way for the last.
+
+⚑ **The selection reads the STORED STRUCTURE, never a rendered row**: a declaration is a dict
+stored at `<scope>.<category>` for each category in `ABSTRACT_CATEGORIES`, and only that dict is
+rendered. Parsing the row label (`box.caches[/home/agent/.cache/uv]`) for its `[` would take an
+undeclared stored key that merely holds one (`box: {"caches[/foo]": …}`) for a declaration and
+print it twice; it is listed once, in the undeclared block. An undeclared table named after a
+category (`box.bogus.common.x`) is not at `<scope>.<category>` and never counts.
 
 ⚑ **It is narrowed by SCOPE as well as by category.** The flatten walks every top-level table the
 doc carries, `pref:` and hand-written junk included, and only the noun's own declarations are its

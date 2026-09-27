@@ -977,7 +977,9 @@ def helper_default_categories(
 ) -> BindArmTable:
     """Build the helper hub binds — the live unix SOCKET + the per-box message LOG (Phase B).
 
-    A ``None`` *log_path* (``workset.logs`` is ``<None>``) omits the ``helper_log`` bind.
+    A ``None`` *log_path* (``workset.logs`` is ``<None>``) still emits the ``helper_log``
+    FORMULA: its ``<None>`` source makes the entry ``None`` at expand, so the collapse
+    omits it and ``settings_launch`` gives the [R185] warning when the entry is not null.
 
     ⚠ ``helper_sock`` options MUST be ``""``: a ``Z``/``U`` relabel/chown would break the
     shared socket topology of a LIVE unix socket the hub listens on.
@@ -993,9 +995,12 @@ def helper_default_categories(
     binds: BindArmTable = {}
     for entry in _load_doc().get("helpers", []):
         src_path = sources[entry["source"]]
-        # A ``<None>`` source omits its bind; otherwise skip-if-missing (parity with the
-        # old `.exists()`-guarded appends).
-        if src_path is None or not src_path.exists():
+        # Skip-if-missing (parity with the old `.exists()`-guarded appends).  A ``<None>``
+        # source is not skipped HERE: omitting it here was the silent second route.
+        if src_path is None:
+            if "meta_ref" not in entry:
+                continue
+        elif not src_path.exists():
             continue
         box_dest = str(entry["box_dest"])
         category = entry["category"]

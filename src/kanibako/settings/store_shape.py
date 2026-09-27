@@ -87,7 +87,7 @@ def build_store_shape_set(entries: list[CategoryEntry]) -> StoreShapeSet:
   for entry in entries:
     if entry.scope not in by_scope:
       raise SettingsError(
-        f"category entry {entry.key!r} carries scope {entry.scope!r}, which is not "
+        f"category entry '{entry.label}' carries scope {entry.scope!r}, which is not "
         f"one of the declared scopes {SCOPE_CONTAINMENT}"
       )
     if _arm_of(entry) is not None:
@@ -124,7 +124,7 @@ def build_store_shape(
       continue
     if entry.host_src is None:
       raise SettingsError(
-        f"category entry {entry.key!r} folds into the {arm!r} arm but has no "
+        f"category entry '{entry.label}' folds into the {arm!r} arm but has no "
         f"host source (only 'masks' and 'env' are source-less)"
       )
     bind = BindEntry(entry.host_src, entry.options)
@@ -187,8 +187,8 @@ def _within_scope_survivors(
   warning = CategoryCollision(
     box_dest=box_dest,
     scope=winner.scope,
-    winner_key=winner.key,
-    loser_keys=tuple(e.key for e in losers),
+    winner_key=winner.label,
+    loser_keys=tuple(e.label for e in losers),
   )
   survivors = [e for e in group if not any(e is loser for loser in losers)]
   return survivors, [warning]
@@ -201,7 +201,7 @@ def _arm_of(entry: CategoryEntry) -> str | None:
   arm = _ARM.get(entry.category)
   if arm is None:
     raise SettingsError(
-      f"category entry {entry.key!r} names category {entry.category!r}, which has "
+      f"category entry '{entry.label}' names category {entry.category!r}, which has "
       f"no store_shape arm (the keyspace is closed: an undeclared category is not "
       f"a category)"
     )

@@ -22,6 +22,7 @@ T = TypeVar('T')
 def bind_map(node: KeyStore, *, label: str='bindings') -> Mapping[str, BindEntry]
 def bind_maps(node: KeyStore, *, label: str='bindings') -> tuple[Mapping[str, BindEntry], Mapping[str, BindEntry]]
 def derived_bindings(node: KeyStore, *, label: str=BINDING_DERIVATIONS_NODE) -> dict[str, Bind]
+def derived_binding_rows(node: KeyStore, *, label: str=BINDING_DERIVATIONS_NODE) -> dict[tuple[str, ...], Bind]
 def env_view(node: KeyStore, *, label: str='env') -> Mapping[str, 'str | int | float | bool']
 def masks_set(node: KeyStore, *, label: str='masks') -> set[str]
 def as_str(value: Any) -> str

@@ -1585,8 +1585,8 @@ second map available to reach for.
 **The image + helper tables are CONDITIONAL.** A table is included ONLY when its gate holds
 (image-sharing active → *storage_conf_path* given, *graph_root* only when the probe succeeded — it
 feeds ONLY the `box.images_store` default, ruled 11a; helpers enabled → *socket_path* given, and
-*log_path* is `None` when `workset.logs` is a present `<None>`, which omits only the log bind, and
-`_start_helper_hub` then starts the hub with no message log), so
+*log_path* is `None` when `workset.logs` is a present `<None>`: the log bind's `<None>` source is
+omitted at the collapse, and `_start_helper_hub` then starts the hub with no message log), so
 their binds do NOT appear otherwise — exactly as the per-family path emitted them only
 inside their conditional block.
 

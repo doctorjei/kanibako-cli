@@ -167,10 +167,10 @@ def template_seed_defaults(
         # at every scope, ``agent.<active>`` included) — the shell node too.  Whether it
         # SEEDS is the SOURCE's business, decided at resolve time off the cascade, never
         # here off the default: the shell fence's ``<None>`` skips it (§2a, "any layer
-        # whose source is ``<None>`` is SKIPPED" — ``settings_expand`` drops a seeded
-        # entry whose embedded ``@``-ref resolves to ``None``), and a USER-set
-        # ``agent.shell.template`` seeds from that store.  Gating on the default's value
-        # here dropped the user's value at create.
+        # whose source is ``<None>`` is SKIPPED" — an embedded ``@``-ref to a present
+        # ``None`` makes the entry ``None`` (spec §0), and the collapse skips a ``None``
+        # seeded entry), and a USER-set ``agent.shell.template`` seeds from that store.
+        # Gating on the default's value here dropped the user's value at create.
         defs[f"agent.{agent_id}.seeded"] = _layer(f"@agent.{agent_id}.template")
     if has_workset_channels(proj):
         # STANDALONE (no workset channels) omits the layer: its workset tier is <None>

@@ -165,6 +165,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A setting set to `null` inside a path no longer turns the path into one under the host's
+  root.** A reference embedded in a longer value rendered a `null` key as an empty string, so
+  `@workset.auth.path/x` became `/x`, and the shared-workset vault source
+  `@workset.vault_ro/@meta.box.name` became `/<box>` when `workset.vault_ro` was `null`. A
+  standalone box's `workset.auth.path` is `null` by default, so an entry naming it needed no mistake
+  to hit this. A value that embeds a reference to a `null` key is now `null` as a whole (keyspec
+  §0), and the ordinary rules for `null` apply:
+  - a `bindings`, `caches`, `common`, `synced` or `seeded` entry whose source becomes `null` is
+    left out; v1.8.0-rc2 mounted the host path, or stopped the launch with `… is NoneType,
+    expected a BindEntry …` when the source was exactly one such reference;
+  - a `seeded` layer whose destination references one is skipped; any other destination that
+    references one refuses the launch and names it;
+  - a `secret_path` is left out, so the box starts without that secret, and the launch warns once,
+    naming the `secret_path` key, the `null` key it refers to and the file that set the `null`;
+    v1.8.0-rc2 mounted the host path as the secret;
+  - an environment variable is left out of the box, and any other setting reads as `null`.
+
+  A binding you added yourself is left out without a warning; one of kanibako's own binds may warn
+  (the next entry). A reference to a key that has no value at all still renders as an empty
+  string. See MIGRATION.md, *A `null` setting inside a bind's source leaves the bind out instead of
+  mounting a host path*.
+
+- **One of kanibako's own binds now warns when a settings file makes only its entry or only its
+  source `null`.** Such a bind (the workspace, vault, channel, canon handbook, helper-log and
+  shared-image binds, and a plugin's binds) is left out silently only when its entry and its
+  source key are both `null` (keyspec §2a). If a file makes only one of them `null`, or sets the
+  whole `bindings.ro` / `bindings.rw` arm `null`, the bind is left out and the launch now warns
+  once, naming both keys and that file; v1.8.0-rc2 gave no message for a lone `null` entry. A
+  `null` that kanibako's own defaults supply does not warn. This warning names a bind entry as
+  `box.bindings.ro[<dest>]` (keyspec §2c: the bracket is an index, not a key segment), and so now
+  does every other place kanibako names a bind, `masks`, `caches`, `common`, `seeded` or `synced`
+  entry: the rows of `box show`, `workset show` and `system show` (including a `pref.*` request's
+  entries), the `--effective` blocks and their `binding_derivations.*` lines, `workset share list
+  --effective`, the refusal of an entry that is not a bind, the refusals of two declarations at
+  one destination, every `declared by '…'` clause, and the warning when a same-scope `common` and
+  `caches` meet there. v1.8.0-rc2 wrote `box.bindings.ro.<dest>`, which is not a key. The spelling
+  you type into `get` and `set` is unchanged. See MIGRATION.md, *One of kanibako's own binds
+  warns when only its entry or only its source is `null`*.
+
 - **The undeclared-key refusal no longer lists a `meta.box.agent.<key>` entry that no file
   carries.** `meta.box.agent.*` is the read-only copy of the running agent's settings, so an
   undeclared key written under that agent's table (or under `agent: default:`) was copied into it,
@@ -211,8 +250,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory and the box still got its `helpers.jsonl` mount. `null` is a value (spec §2a,
   standard binds): the hub now keeps no log, the helper-log mount is left out, the credentials
   watcher's output is discarded, and the purge commands have no box logs to delete. The helper
-  socket is still mounted, and `""` still takes the default directory. See `MIGRATION.md` §
-  *2.89 A `workset.logs` of `null` means no logs*.
+  socket is still mounted, and `""` still takes the default directory. The launch warns that the
+  `box.bindings.ro[~/.kanibako/state/helpers.jsonl]` bind is omitted until that entry is set `null`
+  as well (keyspec §2a). See `MIGRATION.md` § *2.89 A `workset.logs` of `null` means no logs*.
 
 - **`box move`, `box convert`, and `box remap` no longer delete a working-set box's workspace
   before the operation succeeds.** Moving or converting a box out of a working set released it by
@@ -929,11 +969,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sourced there copied the host's `/notes` when the box was created. None of these gave a message.
   Such a reference now resolves to the same value credential sharing uses — here
   `<working set>/auth/<agent>` for a primary or named box. A standalone box has no working-set
-  credential store, so `workset.auth.path` and `meta.box.auth.workset_path` are `null` there: the
-  `AUTHDIR` example still sets nothing, but a binding whose whole source is one of them now stops
-  the launch with an error rather than being dropped without a message. A reference inside a
-  longer path is not fixed there yet: in a standalone box, `@workset.auth.path/notes` still mounts
-  the host's `/notes`.
+  credential store, so `workset.auth.path` and `meta.box.auth.workset_path` are `null` there, and
+  so is any value that refers to one, alone or inside a longer path: the `AUTHDIR` example still
+  sets nothing, a binding or `seeded` entry sourced at `@workset.auth.path/notes` is left out, and
+  a `secret_path` sourced there is left out with a warning (see *A setting set to `null` inside a
+  path no longer turns the path into one under the host's root*).
 
 ### Added
 

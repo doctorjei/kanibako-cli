@@ -92,6 +92,8 @@ class CategoryEntry:
 
     @property
     def key(self) -> str
+    @property
+    def label(self) -> str
 
 @dataclass(frozen=True)
 class CategoryCollision:

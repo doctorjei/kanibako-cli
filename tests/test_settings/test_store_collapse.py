@@ -1377,8 +1377,8 @@ class TestDeclarationProvenance:
       "system.bindings.ro": {"~/ro": ("/h/ro",)},
       "box.masks": ["~/m"],
     })
-    assert collapsed.declared_by[f"{GUEST}/ro"] == f"system.bindings.ro.{GUEST}/ro"
-    assert collapsed.declared_by[f"{GUEST}/m"] == "box.masks.~/m"
+    assert collapsed.declared_by[f"{GUEST}/ro"] == f"system.bindings.ro[{GUEST}/ro]"
+    assert collapsed.declared_by[f"{GUEST}/m"] == "box.masks[~/m]"
 
   def test_home_is_named_by_no_key_because_no_key_names_it(self):
     """Home is pid 0, built by the SEAM off the RO derived key — it is in no arm."""
@@ -1391,7 +1391,7 @@ class TestDeclarationProvenance:
       "box.masks": ["~/x"],
     })
     assert collapsed.bindings[f"{GUEST}/x"] == MASK
-    assert collapsed.declared_by[f"{GUEST}/x"] == "box.masks.~/x"
+    assert collapsed.declared_by[f"{GUEST}/x"] == "box.masks[~/x]"
 
   def test_the_key_is_the_mask_that_SURVIVED_not_the_one_that_was_swept(self):
     """🛑 THE ORACLE. Two scopes mask one dest; only the LATER one is the occupant.
@@ -1399,7 +1399,7 @@ class TestDeclarationProvenance:
     A bind may take a mask's own point (the sweep removes the mask), and a later
     scope's mask may then retake that point — so the finished map holds ONE mask at a
     dest that TWO scopes' keys name. Reading provenance off the entry list by
-    destination answers ``system.masks.~/x`` here, which is a key whose mask the box
+    destination answers ``system.masks[~/x]`` here, which is a key whose mask the box
     does not have. Only recording at the FOLD gets it right.
     """
     collapsed = self.collapsed({
@@ -1408,7 +1408,7 @@ class TestDeclarationProvenance:
       "box.masks": ["~/x"],
     })
     assert collapsed.bindings[f"{GUEST}/x"] == MASK
-    assert collapsed.declared_by[f"{GUEST}/x"] == "box.masks.~/x"
+    assert collapsed.declared_by[f"{GUEST}/x"] == "box.masks[~/x]"
 
   def test_a_copy_sharing_a_binds_destination_does_not_claim_it(self):
     """``synced`` at a bind's EXACT dest is ordinary (spec §2a) — and it is not a mount."""
@@ -1416,12 +1416,12 @@ class TestDeclarationProvenance:
       "box.bindings.rw": {"~/x": ("/h/x",)},
       "box.synced": {"~/x": ("/h/x",)},
     })
-    assert collapsed.declared_by[f"{GUEST}/x"] == f"box.bindings.rw.{GUEST}/x"
+    assert collapsed.declared_by[f"{GUEST}/x"] == f"box.bindings.rw[{GUEST}/x]"
 
   def test_an_abstraction_folded_into_the_rw_arm_is_named_by_ITS_key(self):
     """``caches``/``common`` fold into ``rw``; the key filed must be the one written."""
     collapsed = self.collapsed({"box.caches": {"~/cache": ("/h/cache",)}})
-    assert collapsed.declared_by[f"{GUEST}/cache"] == f"box.caches.{GUEST}/cache"
+    assert collapsed.declared_by[f"{GUEST}/cache"] == f"box.caches[{GUEST}/cache]"
 
 
 def live_refusal_both(floor: dict) -> tuple[str, str]:
@@ -1478,8 +1478,8 @@ class TestTheRefusalsNameBothParticipants:
       "system.bindings.rw": {"~/x": ("/h/sys",)},
       "box.bindings.rw": {"~/x": ("/h/box",)},
     })
-    assert f"the binding declared by 'box.bindings.rw.{GUEST}/x' of '/h/box'" in keyed
-    assert f"'/h/sys' declared by 'system.bindings.rw.{GUEST}/x'" in keyed
+    assert f"the binding declared by 'box.bindings.rw[{GUEST}/x]' of '/h/box'" in keyed
+    assert f"'/h/sys' declared by 'system.bindings.rw[{GUEST}/x]'" in keyed
     # The remedy the keys exist to make actionable is untouched.
     assert "Set the unwanted key to null" in keyed
     assert "declared by" not in bare
@@ -1490,8 +1490,8 @@ class TestTheRefusalsNameBothParticipants:
       "system.masks": ["~/x"],
       "box.bindings.rw": {"~/x/inner": ("/h/inner",)},
     })
-    assert f"the binding declared by 'box.bindings.rw.{GUEST}/x/inner'" in keyed
-    assert "sits inside the mask declared by 'system.masks.~/x'" in keyed
+    assert f"the binding declared by 'box.bindings.rw[{GUEST}/x/inner]'" in keyed
+    assert "sits inside the mask declared by 'system.masks[~/x]'" in keyed
     assert "declared by" not in bare
     assert "sits inside the mask at" in bare
 
@@ -1501,15 +1501,15 @@ class TestTheRefusalsNameBothParticipants:
       "system.masks": ["~/x"],
       "box.masks": ["~/x/inner"],
     })
-    assert "the mask declared by 'box.masks.~/x/inner'" in keyed
-    assert f"collapsed at '{GUEST}/x' declared by 'system.masks.~/x'" in keyed
+    assert "the mask declared by 'box.masks[~/x/inner]'" in keyed
+    assert f"collapsed at '{GUEST}/x' declared by 'system.masks[~/x]'" in keyed
     assert "declared by" not in bare
     assert f"the mask at '{GUEST}/x/inner' lands on" in bare
 
   def test_mask_over_home_names_the_mask_and_SAYS_home_has_no_key(self):
     """One participant genuinely has none — home is pid 0, in no scope's arm."""
     keyed, bare = self.both({"box.masks": ["~"]})
-    assert "the mask declared by 'box.masks.~' at" in keyed
+    assert "the mask declared by 'box.masks[~]' at" in keyed
     assert "no settings key declares it, so there is nothing to suppress" in keyed
     assert "declared by" not in bare
     # ⚑ The home clause is NOT provenance and is printed either way: it explains the
@@ -1528,7 +1528,7 @@ class TestTheRefusalsNameBothParticipants:
       "agent.claude.masks": ["~/x"],
       "box.bindings.rw": {"~/x/inner": ("/h/inner",)},
     })
-    assert "the mask declared by 'agent.claude.masks.~/x'" in keyed
+    assert "the mask declared by 'agent.claude.masks[~/x]'" in keyed
     assert "agent.masks." not in keyed
 
 
@@ -1609,8 +1609,8 @@ class TestTheResultPhrasesTakeTheProvenance:
   pairing never produces.
   """
 
-  MASK_KEY = "workset.masks./opt/m"
-  BIND_KEY = "box.bindings.rw./opt/b"
+  MASK_KEY = "workset.masks[/opt/m]"
+  BIND_KEY = "box.bindings.rw[/opt/b]"
 
   def rows(self, declarations, bindings, copies=()):
     return pair_declarations(declarations, bindings, copies)

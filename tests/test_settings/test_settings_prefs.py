@@ -970,3 +970,39 @@ class TestPrefLegalLevelsIsWired:
                 valid_agents=AGENTS,
             )
         assert "structural tier" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# pref_entry_keys — the entries a request accounts for, as a message names them
+# ---------------------------------------------------------------------------
+
+
+class TestPrefEntryKeys:
+    """A dest-keyed entry is named ``<target>[<dest>]`` (spec §2c: the bracket is a
+    dict index, not a key segment); a VAR-keyed one stays a key."""
+
+    def test_a_dest_keyed_request_names_each_declared_dest_by_index(self):
+        from kanibako.settings.settings_prefs import pref_entry_keys
+
+        value = KeyStore()
+        dict.__setitem__(value, "~/.cache/uv", BindEntry("/src", None))
+        dict.__setitem__(value, "~/gone", None)  # a present-None dest removes, never names.
+        assert pref_entry_keys(req("agent.claude.common", value)) == (
+            "agent.claude.common[~/.cache/uv]",
+        )
+
+    def test_a_var_keyed_request_is_its_own_key(self):
+        from kanibako.settings.settings_prefs import pref_entry_keys
+
+        assert pref_entry_keys(req("agent.claude.env.FOO", "1")) == (
+            "agent.claude.env.FOO",
+        )
+
+    def test_a_pref_on_a_dest_keyed_category_is_indexed_too(self):
+        # ``config show`` prints a ``pref.<category>`` request's entries (spec §2h).
+        from kanibako.settings.settings_keyspace import entry_label
+
+        assert entry_label("pref.agent.claude.caches", "~/c") == (
+            "pref.agent.claude.caches[~/c]"
+        )
+        assert entry_label("pref.box.env", "FOO") == "pref.box.env.FOO"

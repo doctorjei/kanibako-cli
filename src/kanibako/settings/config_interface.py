@@ -27,6 +27,7 @@ from kanibako.settings.config import (
     unset_project_config_key,
 )
 from kanibako.settings.config_display import (
+    _flatten_bind_map,
     _nested_settings_overrides,
     _pref_overrides,
     _print_category_block,
@@ -48,7 +49,6 @@ from kanibako.settings.agent_file import (
 )
 from kanibako.settings.config_dest import (
     DestRoute,
-    _category_segments,
     _write_dest,
     _read_dest,
     noun_settings_file,
@@ -124,7 +124,7 @@ from kanibako.settings.settings_categories import (
     refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_keyspace import (
-    is_terminal_category_key, is_var_table, key_validity, render_store_path,
+    is_var_table, key_validity, render_store_path,
 )
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
@@ -2081,32 +2081,33 @@ def _abstract_declarations(data: dict, scope: str) -> dict[str, str]:
     user sets them in YAML …, ``config show`` lists them"* — an obligation on the PLAIN
     view, which ``--effective`` (the sibling clause, the derivation block) does not discharge.
 
-    ⚑ A SELECTION over :func:`_nested_settings_overrides`, never a second read: the rows a
-    noun renders come off the one flatten at every noun, so a declaration cannot be shown
-    one way here and another way at the system noun.  The narrowing is what lets it run at
-    a noun whose settings file IS its config file — see the call site.
+    ⚑ ROWS RENDER THROUGH :func:`_flatten_bind_map`, the renderer
+    :func:`_nested_settings_overrides` uses for the same tables, so a declaration cannot be
+    shown one way here and another way at the system noun.  Reading only the category tables
+    is what lets it run at a noun whose settings file IS its config file — see the call site.
 
-    ⚑ *scope* SELECTS THE NOUN'S OWN TABLE: the flatten walks every top-level table the doc
-    carries, ``pref:`` and hand-written junk included, and only the noun's own declarations
-    are its rows.  A table naming a CONTAINING scope (a ``workset:`` table hand-pasted into a
+    ⚑ *scope* SELECTS THE NOUN'S OWN TABLE: the doc may carry other top-level tables,
+    ``pref:`` and hand-written junk included, and only the noun's own declarations are its
+    rows.  A table naming a CONTAINING scope (a ``workset:`` table hand-pasted into a
     box's file) never gets this far — *data* is the file as the cascade reads it
     (:func:`_noun_stored_view`), and directional enforcement has already dropped it there
     (spec §0), so this filter is not the carrier of that rule.
 
-    ⚑ The key ends at the CATEGORY and the destination is one whole segment after it, so the
-    split is ``config_dest._category_segments`` rather than a ``.``-split: a destination
-    carries dots (``box.caches./home/agent/.cache/uv``).  A row only counts when that split really
-    STOPPED at a terminal category key, which is what keeps an undeclared table that merely
-    happens to be named after one (``box.bogus.common.x``) out of the list.
+    ⚑ READ OFF THE STORED STRUCTURE, never a rendered row: a declaration is a DICT stored at
+    ``<scope>.<category>``, and its rows come from the one bind-map renderer the flatten
+    uses (:func:`_flatten_bind_map`), so label and value keep one spelling.  Re-parsing a
+    row's ``[`` would list an undeclared stored key that merely HOLDS one
+    (``box: {"caches[/foo]": …}``) as a declaration; such a key stays in the undeclared
+    block alone.
     """
     out: dict[str, str] = {}
-    for dotted, value in _nested_settings_overrides(data).items():
-        segments = _category_segments(dotted)
-        if segments[0] != scope:
-            continue
-        category = ".".join(segments[:-1])
-        if is_terminal_category_key(category) and segments[-2] in ABSTRACT_CATEGORIES:
-            out[dotted] = value
+    table = data.get(scope)
+    if not isinstance(table, dict):
+        return out
+    for cat in ABSTRACT_CATEGORIES:
+        entries = table.get(cat)
+        if isinstance(entries, dict):
+            _flatten_bind_map(entries, f"{scope}.{cat}", out)
     return out
 
 

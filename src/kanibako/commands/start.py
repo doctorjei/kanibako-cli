@@ -6986,7 +6986,7 @@ def _resolve_launch_snapshot(
             family="narrow injection", origins=cat_origins,
         )
     # ⚑ *socket_path* alone gates the helper table; a ``None`` *log_path* (``workset.logs``
-    # is ``<None>``) omits only the log bind, inside the table builder.
+    # is ``<None>``) leaves the log bind's ``<None>`` source for the collapse to omit.
     if socket_path is not None:
         _merge_default_categories(
             default_categories, core_defaults.helper_default_categories(
@@ -7092,7 +7092,7 @@ def _resolve_launch_snapshot(
         )
     except SettingsError as exc:
         # A malformed CATEGORY shape raises here naming the DECLARATION key
-        # (e.g. "category agent.claude.common.~/plugins is str, expected a
+        # (e.g. "category agent.claude.common[~/plugins] is str, expected a
         # BindEntry"). When a pref installed that key the name is one the user
         # never wrote — under dest-keying not even the TAIL is writable as a key
         # — so the same enrichment the collision path gets applies; otherwise the
@@ -7117,7 +7117,7 @@ def _resolve_launch_snapshot(
     # ONE ``try`` is why (cutover 6-R3). A collision names the DECLARATION key PLUS
     # the entry's DEST. When that declaration was INSTALLED BY A PREF, the named key
     # is one the user never wrote and cannot write
-    # (``agent.claude.common.~/plugins`` from ``pref.agent.claude.common``, whose
+    # (``agent.claude.common[~/plugins]`` from ``pref.agent.claude.common``, whose
     # value carries the dest), so the message would send them looking for a key that
     # is not in any of their files. This is the one seam that holds BOTH the error
     # and the requests, so it is the only place the enrichment can happen.
@@ -7189,7 +7189,7 @@ def _annotate_pref_origin(exc, prefs):
       instead.
 
     Either way the point is the same: a message naming
-    ``agent.claude.common.~/plugins`` is useless to a user whose files only
+    ``agent.claude.common[~/plugins]`` is useless to a user whose files only
     contain ``pref.agent.claude.common``.
 
     ⚑ BOTH arms match on ``pref_entry_keys`` — the entry keys a request can
@@ -7229,7 +7229,7 @@ def _annotate_pref_origin(exc, prefs):
     # No structured participants: match the candidate keys against the message.
     # ⚑ The two adapter raises a pref can cause are COMPLEMENTARY, which is why
     # one rule covers both: a map-valued request can only fail per-LEAF
-    # (``_emit_bind_map``, message names ``<target>.<dest>``), and the
+    # (``_emit_bind_map``, message names ``<target>[<dest>]``), and the
     # CATEGORY-ROOT raise (``_assert_declared_categories``, message names the bare
     # ``<target>``) can only fire when the value is NOT a map — exactly the case
     # where ``pref_entry_keys`` yields the bare target.

@@ -1291,7 +1291,7 @@ def _print_effective_shares(ws, std) -> int:
         return 0
     derivations = pair_declarations(
         [
-            Declaration(entry.key, entry.box_dest, entry.host_src, entry.delivery)
+            Declaration(entry.label, entry.box_dest, entry.host_src, entry.delivery)
             for entry, _ in shares
         ],
         collapsed.bindings,
@@ -1378,7 +1378,7 @@ def _print_effective_derivations(ws, std) -> int:
     # derives a COPY where the other two derive a MOUNT.
     derivations = pair_declarations(
         [
-            Declaration(e.key, e.box_dest, e.host_src, e.delivery)
+            Declaration(e.label, e.box_dest, e.host_src, e.delivery)
             for e in abstract
         ],
         collapsed.bindings,

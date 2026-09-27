@@ -244,13 +244,15 @@ LITERAL `False`, so the Python AND for the workset tier is false regardless of t
 `global_enabled` = support && `system.auth.share_allowed` && box_knob STILL applies — a standalone
 box CAN use global/host creds (a deliberate change, IMPL-arc noted).
 
-There is no workset store for a lone box, so `workset.auth.path` is the absent (present-`None`)
-anchor and `meta.box.auth.workset_path` is pinned `None` too, as a defensive root-cause fix.
-Otherwise `@workset.auth.path/<agent>` would resolve against the absent `workset.auth.path` and
-expand to the literal `/<agent>` — an `@`-ref to an absent key renders `""`, not a drop — garbage
-the credsync dir-creation would `mkdir` against the host ROOT. The workset enable is false anyway,
-so this source is never consulted; pinning `None` makes that explicit at the floor, belt-and-braces
-with the resolver's scrub. This is the established meta-anchor-is-`None`-for-standalone pattern.
+There is no workset store for a lone box, so `workset.auth.path` and `meta.box.auth.workset_path`
+are both SUPPLIED as a present `None` — the spec's standalone `<None>` rows (§2c), never omitted. An
+OMITTED `workset.auth.path` would make `@workset.auth.path/@system.agent` expand to the literal
+`/<agent>` — an embedded `@`-ref to an ABSENT key renders `""`, not a drop — garbage the credsync
+dir-creation would `mkdir` against the host ROOT; a present `None` makes the derived value `None`
+(spec §0: an embedded reference to a present `<None>` makes the whole value `<None>`). The workset
+enable is false anyway, so this source is never consulted; pinning `None` makes that explicit at the
+floor, belt-and-braces with the resolver's scrub. This is the established
+meta-anchor-is-`None`-for-standalone pattern.
 
 PRIMARY / NAMED (ALL WORKSETS) instead use the `@`-ref forms: the workset allow defaults to the
 system gate, the workset dir syncs UP to global by default, and `workset.auth.path` is
@@ -786,10 +788,10 @@ mode and is REFUSED rather than silently taking the primary/named arm.
 
 The consumer is the ASSEMBLY SEAM, which builds the pid-0 foundation bind straight off
 `meta.box.home`, and that key is itself the EMBEDDED ref `@meta.box.path/home` — the embedded rule
-(§6b) coerces an absent / present-`None` referent to `""`, so a box root that fails to resolve
-yields the `host_src` `/home`, which the L7 guarantee-create then `mkdir`s and mounts OVER the box
-home, silently. Naming the key moved the embedded dereference one level up; it did not remove it.
-The derived key is a NAME for that formula, not a guard on it.
+(§6b) coerces an absent referent to `""` (a present-`None` one makes the key `None`, spec §0), so a
+box root that fails to resolve yields the `host_src` `/home`, which the L7 guarantee-create then
+`mkdir`s and mounts OVER the box home, silently. Naming the key moved the embedded dereference one
+level up; it did not remove it. The derived key is a NAME for that formula, not a guard on it.
 
 The floor values themselves are constants and cannot be `None`, but the anchor dereferences the
 SETTABLE `workset.boxes`, so a settings file carrying `workset: {boxes: null}` (or an empty-string
@@ -1088,6 +1090,37 @@ half stays for the workset preview, which does not run this builder yet.
 
 (2) and (3) raise independently, so a file carrying BOTH a bare-relative path value and an
 undeclared key reports the path value first and the undeclared key on the next run.
+
+⚑ **After the refusals, `_warn_lone_none_standard_binds` gives the [R185] warning** (spec §2a;
+companion "Delivery at launch"): a STANDARD bind is omitted by setting its entry AND its source key
+to `<None>`, and a settings file that sets only one gets one warning naming both keys and that file.
+- **Standard** = a floor entry in a dest-keyed arm whose source carries an `@`-ref — the
+  core-defaults tables (incl. the `mode_meta_ref` vault rows, since the floor holds the per-mode
+  expression), plugin binds ([Q95] 2), and the helper log, whose table emits its formula even for a
+  `<None>` `workset.logs` (`core_defaults.helper_default_categories`). A literal-source entry is
+  INTERNAL, with no source key; a user-added entry is not in the floor ([Q94] 2); `seeded` is out,
+  because §2a skips a `<None>` layer and names no warning.
+- **Entry `<None>`:** the floor supplied the destination but the MERGED arm lacks it — an entry or a
+  whole ARM set to null ([Q94] 1). The file is the most specific *written* level holding it. Silent
+  when any source ref is present-`None` in the expanded snapshot (both).
+- **Source `<None>`:** the entry expanded to `None`; the refs come from `settings_expand`'s E2 side
+  table (`null_sources`). Each ref's file is the most specific *written* level holding the key.
+- **Only a file's value warns.** A leaf equal to the folded floor's is the floor's own `<None>` (a
+  standalone `<None>` row) — nobody SET it, so the omission is silent.
+- **Once per process** (`_NONE_WARNED` via `_warn_once`, on the `settings_assemble._DROP_WARNED`
+  footing): one command runs several resolves over the same files. `reset_none_warnings` is the
+  test seam; the secret warning below shares the memo.
+- The entry is named by `settings_keyspace.entry_label` (`<arm>[<dest>]`, spec §2c). `meta.*` source
+  refs are named but never offered as the cure (read-only, §0).
+
+⚑ **Then `_warn_null_ref_secrets` gives the [Q94] 3 warning.** A `secret_path` value that references
+a present `<None>` is `<None>` as a whole ([R186], spec §0), so the entry mounts nothing and the box
+starts without that secret (fail-soft). The warning names the `secret_path` key, each `<None>` ref,
+and where that `<None>` was set — the floor included (`_FLOOR_WHERE`), unlike [R185]: the motivating
+case is a standalone box's `workset.auth.path`, whose `<None>` is the floor's. The agent scope is
+read through the same §2d pick as the emitter (`_agent_pick_node` + `_agent_decl_scope_fn`), so a
+shadowed tier never warns. A `secret_path` set to `null` itself is a reset and silent. `env` has no
+such warning: its `<None>` value is left out silently.
 
 ⚑ **WHY (4) EXISTS.** Every retired spelling is also an undeclared key, so (3) reaches it first —
 and the seam that owns the tailored selection message (`agent_select`) sits DOWNSTREAM of the
@@ -1553,12 +1586,13 @@ their error text).
 leaf is a 2-element `BindEntry(src, opts)` that carries no destination at all. The type is ruled in
 HERE, at the seam that knows the shape, and the destination handed to `_emit_bind` is the map key —
 never a value field. That is what makes "mount at the destination stored in the value"
-UNREPRESENTABLE rather than merely guarded against (R-8). Present-`None` binds are omitted at build
-(§3/§6e). ⚑ **The one `None` that reaches the loop is a `seeded` entry, and it is SKIPPED, not
-refused** — spec §2a: a layer whose source is `<None>` is skipped. `settings_expand` hands such a layer
-up as a present `None` (not absent) so that it still overrides a fallback arm in the §2d pick
-(`[R177]`); a whole-value source ref to a present `None` arrives the same way. Every other category
-keeps the raise.
+UNREPRESENTABLE rather than merely guarded against (R-8). A present-`None` ENTRY set in a file is
+omitted at the merge (§3/§6e). ⚑ **The `None` that reaches the loop is an entry whose SOURCE is
+`<None>`, and it is SKIPPED in every category, never refused** ([Q80] (a); spec §2a for a `seeded`
+layer). `settings_expand` hands it up as a present `None` (not absent) — whole-value or embedded
+(spec §0) — so it still overrides a fallback arm in the §2d pick (`[R177]`). A standard bind's lone
+`<None>` is warned by `_warn_lone_none_standard_binds`, not here. Only a non-`BindEntry` of another
+type still raises, naming the entry by `entry_label`.
 
 ⚑ `name` is the DESTINATION for every category now. There is no entry name in the keyspace, so the
 collision messages and the `binding_derivations.*` materialisation identify an entry by where it

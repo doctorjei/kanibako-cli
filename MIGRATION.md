@@ -5472,11 +5472,22 @@ the box got its `~/.kanibako/state/helpers.jsonl` mount. `null` is now a value t
 directory. The helper hub keeps no message log, the box gets no `helpers.jsonl` mount, the
 credentials watcher's output is discarded, and `box rm --purge`, `box purge` and
 `workset disconnect --remove-files` have no box logs to delete. The helper socket is still
-mounted. An empty `workset.logs` (`""`) still takes the default directory, as before.
+mounted. An empty `workset.logs` (`""`) still takes the default directory, as before. The
+`helpers.jsonl` mount is one of kanibako's own binds, so each launch warns that it is left out
+until its entry is `null` as well (see *One of kanibako's own binds warns when only its entry or
+only its source is `null`*).
 
 **What to do.** If you want the logs, delete the `logs:` line (the default directory answers
 again) or give it a path. Logs already written to the default directory stay there; delete them
-yourself if you no longer want them.
+yourself if you no longer want them. If you want no logs, set the entry `null` as well, in the
+same file or in `<box>/box.yaml`, and the warning stops:
+
+```yaml
+box:
+  bindings:
+    ro:
+      ~/.kanibako/state/helpers.jsonl: null
+```
 
 ### 2.90 An agent plugin's own default beats `agent.default`
 
@@ -5496,6 +5507,84 @@ read as before, so your `agent.default.model` still reaches it.
 
 **What to do.** Set the value per agent: `kanibako agent set claude model=<id>` (and the same for
 `codex` and `goose`), or `agent.<agent>.<key>` in the system settings file.
+
+### 2.91 A `null` setting inside a bind's source leaves the bind out instead of mounting a host path
+
+**Read this if a settings file embeds a reference inside a longer path** (`@<key>/<more>`, or
+`@{<key>}` followed by more text) and the key it names is `null`: set with `--null`, written as
+`null`, or `<None>` by declaration, as a standalone box's `workset.auth.path` and
+`workset.template` are.
+
+**What changed.** In v1.8.0-rc2 the `null` rendered as an empty string, so the path became one
+under the host's root: `@workset.auth.path/x` in a standalone box was the host directory `/x`, and
+`workset.vault_ro: null` in a primary or named workset made the vault source `/<box>`. Such a value
+is now `null` as a whole:
+
+- A `bindings`, `caches`, `common`, `synced` or `seeded` entry with that source is left out. A
+  source that is exactly one reference to a `null` key is left out too; before, it stopped the
+  launch with `… is NoneType, expected a BindEntry …`. A binding you added is left out silently;
+  one of kanibako's own may warn (see *One of kanibako's own binds warns when only its entry or
+  only its source is `null`*).
+- A destination that references such a key refuses the launch and names the destination,
+  except in a `seeded` entry, where the layer is skipped.
+- A `secret_path` whose value embeds one is left out, so the box starts without that secret.
+  Before, the secret's host path was the one under `/` (`/tok` for `@workset.auth.path/tok`).
+  Each launch warns once, naming the `secret_path` key, the `null` key it refers to, and the file
+  that set the `null` (or kanibako's defaults for this box, as for a standalone box's
+  `workset.auth.path`).
+- An `env` variable whose value embeds one is left out of the box.
+
+A reference to a key that has no value at all is unchanged: it still renders as an empty string.
+
+**What to do.** Decide what you meant for each bind:
+
+- **You want the mount.** Set the key it references to a path, or write the source as a literal
+  path.
+- **You want no mount.** Leave the key `null`. For one of kanibako's own binds, also set its entry
+  `null` (see *One of kanibako's own binds warns when only its entry or only its source is
+  `null`*).
+- **You want no secret.** Set the `secret_path` entry itself `null`; that is silent.
+
+```bash
+grep -rn '@[a-z{]' <data>/global/settings.yaml <data>/agents/*/agent.yaml <box>/box.yaml <workset>/workset.yaml
+```
+
+### 2.92 One of kanibako's own binds warns when only its entry or only its source is `null`
+
+**Read this if a launch warns `The standard bind …`**, or if a settings file sets to `null` a key
+that one of kanibako's own binds reads (such as `workset.vault_ro`, `workset.logs` or a
+`system.channels.*` or `workset.channels.*` key), an entry of such a bind, or a whole
+`bindings.ro` or `bindings.rw` arm. kanibako's own binds are the workspace, vault, channel, canon
+handbook, helper-log and shared-image binds, and a plugin's binds.
+
+**What changed.** Such a bind is left out silently only when its entry and its source key are both
+`null` (keyspec §2a). In v1.8.0-rc2 a `null` entry alone left the bind out with no message, and a
+`null` source key alone stopped the launch, mounted a host path, or was read as unset (see *A `null`
+setting inside a bind's source leaves the bind out instead of mounting a host path* and *A
+`workset.logs` of `null` means no logs*). Now the bind is left out and
+each launch warns once, naming the entry, the source key and the file that set the `null`. A whole
+arm set `null` counts as each of its entries set `null`. A `null` that kanibako's own defaults
+supply does not warn, and neither does a binding you added yourself.
+
+The warning names an entry as `box.bindings.ro[<dest>]`, and so does every other place kanibako
+names a bind, `masks`, `caches`, `common`, `seeded` or `synced` entry: the rows of `box show`,
+`workset show` and `system show` (a `pref.*` request's entries included), the `--effective`
+blocks and their `binding_derivations.*` lines, `workset share list --effective`, the refusals of
+an entry that is not a bind and of two declarations at one destination, and every
+`declared by '…'` clause. v1.8.0-rc2 wrote `box.bindings.ro.<dest>`, which is not a key. A script
+that reads these outputs must match the bracket; the key you pass to `get` and `set` is unchanged.
+
+**What to do.** Set the other half `null` too. For `workset.vault_ro: null`, in the same workset
+file or in `<box>/box.yaml`:
+
+```yaml
+box:
+  bindings:
+    ro:
+      ~/vault/ro: null
+```
+
+If you meant to keep the bind, remove the `null` instead.
 
 ---
 
