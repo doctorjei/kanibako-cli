@@ -5185,19 +5185,15 @@ you.
    `mv` it, which would nest it inside the lowercase one: nothing ever read those values, so set
    them again and delete the capitalized directory.
 
-2. **Re-spell every settings key that names the agent.** A key path stored in a settings file is
-   matched exactly, and the launch now reads `agent.kirobo.*` — so a value written at
-   `agent.Kirobo.*` no longer reaches
-   it. The keys live in `<data>/global/settings.yaml`, in each working set's settings file, and in
-   each box's own settings file:
-
-   ```bash
-   kanibako system set agent.kirobo.model=<your value>
-   ```
-
-   Then delete the line carrying the old spelling from the file. Edit it by hand: a typed key is
-   folded to the node, so `system reset agent.Kirobo.model` clears the `agent.kirobo.model` you
-   just set and leaves the old line where it was.
+2. **Re-spell every settings key that names the agent.** A capitalized node in a settings file —
+   `agent: {Kirobo: …}` in the system settings file (`<data>/global/settings.yaml` unless
+   `config.settings` moves it), or `pref: {agent: {Kirobo: …}}` in a working set's or box's file —
+   is read as the lowercase node, and every command that reads the file warns, naming the file and
+   both spellings. That is short-term relief, not a second spelling: rename the key in the file,
+   by hand. A file that spells one node both ways (`Kirobo:` beside `kirobo:`) is refused, naming
+   both, until you keep one. A key you type folds the same way and warns the same way, so
+   `kanibako system set agent.Kirobo.model=…` writes the `kirobo` node's value, which lives in its
+   own settings file (`<data>/agents/kirobo/agent.yaml`), not in `<data>/global/settings.yaml`.
 
 3. **Re-spell the agent inside any `@`-reference you wrote as a VALUE**, not just in the keys. A
    `@meta.agent.Kirobo.path` or an `@agent.Kirobo.<key>` on the right-hand side of a setting is a
@@ -5217,11 +5213,10 @@ hold a *name*, not a node, and a name is matched without regard to case — so a
 still selects the plugin and is resolved to the `kirobo` node on the way to the launch. The same
 goes for `--agent` and for `kanibako setup --agent`: either spelling reaches the plugin.
 
-⚑ **A spelling you TYPE folds to the node; only what is already STORED is matched exactly.**
-`kanibako agent show Kirobo` and `kanibako system set agent.Kirobo.model=…` both reach the
-lowercase `kirobo` node, so after the `mv` either spelling works at the command line. The settings
-files are the one place the capital is not accepted for you, which is why step 2 edits them by
-hand.
+⚑ **The agent NAME folds quietly; a KEY folds with a warning.** `kanibako agent show Kirobo`
+names an agent and reaches the `kirobo` node without comment. `agent.Kirobo.model`, typed or
+stored, is a key and is spelled wrong: it reaches the `kirobo` node too, with the warning step 2
+describes, which is why step 2 edits the files.
 
 ⚑ **Nothing about a box, a working set or a persona changed here.** Their names have no
 name/node split: the case you typed is the case that is stored, which is §2.78.

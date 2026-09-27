@@ -1024,9 +1024,10 @@ def _declared_behavior_bool(key: str, agent_id: str) -> bool:
     through would read as FALSE at every consumer, i.e. a typo in the shipped file
     would silently disable a feature instead of naming itself.
     """
-    # ``pseudo_agent_fence``, the predicate ``settings_launch._fallback_node`` uses, so
-    # ``Shell`` folds as it does there ([R173]).  ``shell`` is the only pseudo-agent a
-    # launch can run: ``default`` is reserved and refused as an agent name (§2d).
+    # ``pseudo_agent_fence``, the predicate ``settings_launch._fallback_node`` uses; it takes
+    # a NODE, already lowercase — [R173]'s fold is where a NAME becomes one.  ``shell`` is the
+    # only pseudo-agent a launch can run: ``default`` is reserved and refused as an agent
+    # name (§2d).
     tier = "shell" if pseudo_agent_fence(agent_id) is not None else "default"
     raw = (
         core_defaults.shell_tier_default(key) if tier == "shell"

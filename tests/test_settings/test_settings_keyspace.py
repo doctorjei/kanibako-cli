@@ -534,19 +534,19 @@ def test_every_pseudo_agent_has_a_fence():
 
 
 @pytest.mark.parametrize("key", [
-    "agent.Shell.frobnicate",
+    "agent.shell.frobnicate",
     "meta.agent.default.settings", "meta.agent.default.mode",
     "meta.agent.default.exec", "meta.agent.default.auth",
     "meta.agent.default.auth.share_support",
 ])
 def test_a_true_agent_leaf_is_refused_at_a_pseudo_agent(key):
     """Each ``meta.agent.default`` spelling was a KEY while the true-agent rows reached
-    the pseudo-agents; the folded node is judged against the shell fence, which lists
+    the pseudo-agents; the shell node is judged against the shell fence, which lists
     no ``frobnicate``.
 
     The agent-tier fences themselves are compared with the manifest by the kinemata
     view ``pseudo-agent-leaves``; these pin the spellings it does not print — the
-    folded node and the ``meta.agent`` tier.
+    ``meta.agent`` tier.
     """
     assert "not a declared" in reason(key)
 
@@ -1748,27 +1748,28 @@ def test_the_narrowing_does_not_touch_a_NAMED_agents_leaf():
     assert "provider" in other.reason
 
 
-def test_the_node_segment_folds_on_lookup():
-    """``agent.Goose.provider`` reaches the ``goose`` node ([R173]).
+@pytest.mark.parametrize("key", [
+    "agent.Goose.provider", "agent.GOOSE.provider", "agent.Claude.model",
+    "agent.Shell.label", "agent.Default.model", "agent.navigator+Claude.model",
+    "meta.agent.Claude.name", "pref.agent.Claude.model",
+])
+def test_a_capital_node_reaching_the_verdict_is_refused(key):
+    """Q87: the verdict does not fold — a capital node that reaches it was built by code.
 
-    The leaf map is keyed by lowercase NODE while the key arrives in the user's
-    spelling, so the lookup folds for comparison instead of reading a wrong-cased
-    node as an unknown agent. A plugin leaf still has no slot on a READABLE agent
-    that does not declare it — the fold reaches the node, it does not union
-    vocabularies.
+    A user's capital is folded, with a warning, where it enters (a settings file, a typed
+    key); these pins keep that relief out of the verdict, and the refusal names the cure.
     """
     from kanibako.settings.settings_keyspace import KeyClass
 
-    judged = _class("agent.Goose.provider", agent_leaf_map=_GOOSE_MAP)
-    assert judged.cls is KeyClass.KEY, f"agent.Goose.provider: {judged.reason}"
-    judged = _class("agent.GOOSE.provider", agent_leaf_map=_GOOSE_MAP)
-    assert judged.cls is KeyClass.KEY, f"agent.GOOSE.provider: {judged.reason}"
-    other = _class(
-        "agent.Claude.provider",
-        agent_leaf_map={**_GOOSE_MAP, "claude": frozenset()},
-    )
-    assert other.cls is KeyClass.UNDECLARED, "a fold is not a union"
-    assert "provider" in other.reason
+    judged = _class(key, agent_leaf_map=_GOOSE_MAP)
+    assert judged.cls is KeyClass.UNDECLARED, f"{key}: {judged.reason}"
+    assert "is not a valid agent" in judged.reason
+    assert "node is lowercase" in judged.reason, judged.reason
+
+
+def test_an_unknown_agent_is_not_offered_a_lowercase_cure():
+    """The case cure is offered only where the lowercase spelling IS a valid agent."""
+    assert "lowercase" not in reason("agent.Zippity.model")
 
 
 def test_conceding_a_vocabulary_concedes_nothing_else():

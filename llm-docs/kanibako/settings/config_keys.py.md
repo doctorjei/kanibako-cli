@@ -760,8 +760,12 @@ canonicalizes the ``<node>`` SEGMENT ``+`` -> ``℘`` (``agent.navigator+claude.
 ``agents/<node>/`` slot the resolver reads. The node segment is canonicalized as a WHOLE via
 :func:`agent_key_node` (agent_ref design law: never re-split a ref on the raw separator), which also
 FOLDS its harness to node case (``agent.Shell.label`` -> ``agent.shell.label``,
-``agent.Claude.model`` -> ``agent.claude.model``, `[R173]`) — the spelling the §0 check already
-accepts, so the check and the write route name one node; the
+``agent.Claude.model`` -> ``agent.claude.model``, `[R173]`) and SAYS SO: ``_typed_key_node`` logs
+one warning per typed spelling per command (Q87: a key from the command line is accepted loudly; the
+§0 check does not fold, so a capital built by code is refused there). A case change is detected by
+``agent_ref.agent_segment_case``, so a separator-only canonicalization is not warned about. A
+``pref.agent.<node>.…`` key is resolved by the same route (``_resolve_agent_key``) with its
+``pref.`` kept, and the warning names the key as typed (``pref.agent.<Node>``). The
 tail (``endpoint`` / ``env.<VAR>`` / ``secret_path.<VAR>``) is preserved verbatim. A malformed node is
 left RAW here — the set/reset persona branch surfaces the parse error (and a bad node never silently
 swaps). Applied ONLY to the ``agent.<node>.*`` node segment, never blindly to all keys.

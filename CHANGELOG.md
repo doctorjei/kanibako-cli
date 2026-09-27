@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A capitalized agent node you write is accepted, with a warning, as the lowercase node.** In
+  1.8.0-rc2, `agent: {Claude: {model: opus}}` in the system settings file was not a key: `kanibako
+  system show` listed it as undeclared, and a launch did not refuse it but never read it either —
+  the value sat at a node the active agent does not reach. A typed `kanibako workset set <ws>
+  pref.agent.Claude.model=…` was refused as *"'Claude' is not a valid agent"*. Such a node —
+  `agent.<Node>` in a settings file, `pref.agent.<Node>` in a working set's or box's file, or a
+  typed key such as `kanibako system set agent.Claude.model=…` or `… pref.agent.Claude.model=…` —
+  is now read as its lowercase node (`agent.claude`), and every command that reads it warns, naming
+  the file (or the command line) and both spellings. It is short-term relief: rename the key. A
+  file spelling one node two ways (`Claude:` beside `claude:`, or `nav+Claude:` beside
+  `nav℘claude:`) is refused, naming both. A capital node that kanibako's own code builds is refused
+  as an unknown agent, and the refusal names the lowercase spelling. See *An agent's store
+  directory and cascade slot are its name in lowercase* in [MIGRATION.md](MIGRATION.md).
+
 - **A bare agent key refused at workset scope names the exception to "all agents".** `workset set
   <ws> transform=…` (and every other bare agent key, for `set`, `get` and `reset`) still refuses and
   still points at system scope for all agents, or `pref.agent.<agent>.<key>` per box. It now adds
@@ -1208,8 +1222,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stored in exactly one place whatever case it declares. ⚑ **Nothing moves for the agents kanibako
   publishes**: `claude`, `codex` and `goose` declare lowercase names already, and a lowercase name
   is its own node. A plugin that declares a capital does move its store, and the keys naming it
-  must be re-spelled — a key stored at the old capital in a settings file no longer reaches the
-  node — see *An agent's store directory and cascade slot are its name in lowercase* in
+  must be re-spelled — a key stored at the old capital in a settings file reaches the node only
+  with a warning — see *An agent's store directory and cascade slot are its name in lowercase* in
   [MIGRATION.md](MIGRATION.md). ⚑ Reserved names go by comparison too: a plugin calling itself
   `Shell` is now skipped with the same warning `shell` gets, because it claims the same store.
 
@@ -1237,9 +1251,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--agent Shell+claude` are refused as a RESERVED pseudo-agent name, and `--agent Shell` selects
   the plain-shell box exactly as `--agent shell` does — one identifier, one answer, whatever its
   spelling. `shellx` and `defaults` are still ordinary names; the rule was never a prefix test.
-  ⚑ **A key you TYPE is folded; a key already STORED is not:** a settings file entry at an old
-  capital does not reach the node, so re-spell it — see *An agent's name keeps the case its
-  plugin declares* above.
+  ⚑ **A key folds with a warning, typed or stored** — see *A capitalized agent node you write is
+  accepted, with a warning, as the lowercase node*.
 
 - **A box name is stored in the case you typed it.** `kanibako create --name Foo` folded the name
   to lowercase before it validated, registered or displayed it, so the box was `foo` and a capital

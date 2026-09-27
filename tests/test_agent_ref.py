@@ -543,3 +543,16 @@ def test_persona_of_inverse_of_harness_of():
     # persona_of / harness_of partition a persona node either side of ℘.
     node = "navigator℘claude"
     assert f"{persona_of(node)}{CANONICAL_SEP}{harness_of(node)}" == node
+
+
+@pytest.mark.parametrize(("segment", "node"), [
+    ("Claude", "claude"), ("claude", "claude"), ("Shell", "shell"), ("DEFAULT", "default"),
+    ("Nav+Claude", "Nav+claude"), ("nav℘CLAUDE", "nav℘claude"), ("nav+claude", "nav+claude"),
+    ("zip.py", "zip.py"), ("shell+x", "shell+x"),
+])
+def test_agent_segment_case_folds_case_and_nothing_else(segment, node):
+    """Only the case changes: the separator stays as written, a persona keeps its case, and a
+    segment that is no ref comes back for the verdict to refuse."""
+    from kanibako.agent_ref import agent_segment_case
+
+    assert agent_segment_case(segment) == node
