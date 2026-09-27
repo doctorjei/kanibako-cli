@@ -792,8 +792,9 @@ anywhere to compare the manifest to", and now one does. ⚑ **E1 IS NOW RETIRED 
 member, `workset.workspaces`, left the same way on 2026-08-29, so there is no "path join" class left
 to move a row back into.
 
-`_BOX_MODES` is the set of box modes this floor knows how to root. An undeclared variant is NOT a
-mode and is REFUSED rather than silently taking the primary/named arm.
+`_BOX_MODES` is the set of box modes this floor knows how to root, as plain strings. An undeclared
+variant is NOT a mode and is REFUSED rather than silently taking the primary/named arm. It is
+derived from `paths.BoxMode`, the one carrier of the set, and is never spelled again here.
 
 ### ⚑ A BOX ROOT THAT DOES NOT RESOLVE IS CATASTROPHIC, NOT COSMETIC
 

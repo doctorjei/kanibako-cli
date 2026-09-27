@@ -67,6 +67,7 @@ from kanibako.settings.config import (
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
+from kanibako.settings.paths import BoxMode
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.config_keys import is_path_valued_key, path_key_anchor
 from kanibako.settings.settings_assemble import (
@@ -588,9 +589,10 @@ def meta_agent_identity_floor(
 # :func:`_assert_box_root_resolved`.
 
 
-#: The box modes this floor knows how to root. An undeclared variant is NOT a mode
-#: and is REFUSED rather than silently taking the primary/named arm.
-_BOX_MODES: frozenset[str] = frozenset({"primary", "named", "standalone"})
+#: The box modes this floor knows how to root, as plain strings. An undeclared variant
+#: is NOT a mode and is REFUSED rather than silently taking the primary/named arm.
+#: Derived from :class:`~kanibako.settings.paths.BoxMode`, the one carrier of the set.
+_BOX_MODES: frozenset[str] = frozenset(mode.value for mode in BoxMode)
 
 #: The DECLARED ``workset.channels.*`` leaves (spec §2c) — the FULL family: the
 #: workset-LOCAL type roots plus the ALL-PROJECTS system-rooted addresses. The floor
@@ -1774,7 +1776,7 @@ def resolve_inputs(
         auth_chain = auth_chain_floor(mode=None, agent_name=agent_name)
     else:
         from kanibako.channels import channels as _channels
-        from kanibako.settings.paths import BoxMode, workset_settings_path
+        from kanibako.settings.paths import workset_settings_path
 
         # A working set is PRIMARY or NAMED; ``workset create --standalone`` is
         # refused, so no working set is standalone.
