@@ -3898,13 +3898,11 @@ field = ["default", "named"]
 authority = "declared"
 
 # ⚑ THE FILTER IS AN EXCLUSION, so a key the two floors start emitting reds here
-# as `produced, declared by nothing`. It drops exactly eight of the fifteen keys the
+# as `produced, declared by nothing`. It drops exactly six of the thirteen keys the
 # two nodes' identity and grammar floors return: the six `meta.box.*` keys
 # (`inbox`, `share_global`, `share_workset`, `settings`, `workspace`, `name`) --
 # the caller's inputs echoed back, whose rows are the box-address `value:` family
-# (not declared here); and `meta.agent.default.{settings,auth.share_support}` --
-# NOT KEYS (the default fence lists neither), emitted only because this oracle runs
-# the floors for node `default`, which no launch selects.
+# (not declared here).
 # 🛑 THE COST, IN PLACE: a new key under `meta.box.*` from these floors is not seen
 # by this table.
 # `meta.agent.shell.mode = {}` compares as data under `json` (in `text` it is
@@ -3938,10 +3936,7 @@ for node in ("default", "shell"):
         share_workset=None, box_settings="/s", agent_name=node,
     ))
     floor.update(meta_agent_grammar_floor(node, None))
-DROPPED = re.compile(
-    r"meta\\.box\\..*"
-    r"|meta\\.agent\\.default\\.(settings|auth\\.share_support)"
-)
+DROPPED = re.compile(r"meta\\.box\\..*")
 for key, value in sorted(floor.items()):
     if not DROPPED.fullmatch(key):
         print(f"kanibako-agent-identity: {key}={json.dumps(value)}")

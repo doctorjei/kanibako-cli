@@ -4455,16 +4455,14 @@ so the entry stops every command that builds the resolved snapshot — `start`, 
 `box show --effective` and the rest of the list in §2.47 — with that section's message:
 
 ```
-Error: the settings resolved for this box carry 2 entries that are not settings keys (spec §0 — the keyspace is CLOSED):
+Error: the settings resolved for this box carry 1 entry that is not a settings key (spec §0 — the keyspace is CLOSED):
   - agent.claude.env.: 'agent.claude.env.' has an empty path segment; a key is dot-separated non-empty segments (spec §0)
-  - meta.box.agent.env.: 'meta.box.agent.env.' has an empty path segment; a key is dot-separated non-empty segments (spec §0)
 ```
 
 ⚑ **The key reads oddly, and that is the tell.** `agent.claude.env.` ends in a dot with nothing
 after it because the name *is* empty — it is not a truncated line or a typo in the error. A
 `foo-bar` entry names itself plainly instead, with §2a's reason: *'foo-bar' is not a legal
-environment variable name*. Both are listed twice, once as the agent key and once under
-`meta.box.agent.env.`; that is one entry seen through two spellings, and removing it clears both.
+environment variable name*.
 
 **What you need to do.** Delete the entry from the `env:` table of the agent's settings file and
 start again. Nothing else moves, on disk or anywhere else — a legal variable in the same table is

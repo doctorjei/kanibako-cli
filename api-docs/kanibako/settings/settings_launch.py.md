@@ -25,6 +25,7 @@ _WORKSET_ONLY_PREFIXES: Final = ('meta.workset.', 'workset.')
 _WORKSET_RUNTIME_KEYS: Final = frozenset({'meta.runtime.ws_root', 'meta.runtime.ws_name', 'meta.runtime.project_type'})
 _BOX_ROOT_KEY = 'meta.box.path'
 _BOX_STORE_KEY = 'workset.boxes'
+_MIRROR_SEGMENTS: tuple[str, ...] = ('meta', 'box', 'agent')
 ```
 
 ## Types
@@ -82,6 +83,7 @@ def _box_workset_floors(std, proj, agent_name: str) -> tuple[dict[str, object], 
 def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
+def _drop_non_mirror_keys(effective: KeyStore) -> None
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None
 def _agent_state_partial(level: AgentFileLevel | None) -> KeyStore | None
 def _persona_partial(agent_name: str, persona_values: Mapping[str, str] | None) -> KeyStore | None
