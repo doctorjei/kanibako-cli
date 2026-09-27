@@ -522,7 +522,9 @@ class TestBuildEffectiveState:
         assert res_goose["model"] == "opus"
 
     def test_default_tier_applies_to_all_agents_unless_overridden(self, tmp_path):
-        """agent.default applies to every agent; agent.<name> overrides it.
+        """agent.default applies to every agent whose plugin declares no row for the
+        key; agent.<name> overrides it, and so does a plugin's declared row ([Q91]:
+        ``agent.<a>`` builtin outranks an ``agent.default`` setting).
 
         Both the any-agent default and the claude-specific override ride the
         SYSTEM file — the legal downward source that carries per-agent /
@@ -550,7 +552,16 @@ class TestBuildEffectiveState:
         res_goose = _build_effective_state(
             goose, agent_cfg, **box_file, system_settings_path=ssp
         )
-        assert res_goose["model"] == "haiku"  # default tier applies
+        assert res_goose["model"] == "opus"  # the plugin's own row beats agent.default
+
+        codex = self._make_target(
+            [TargetSetting(key="label", description="Label", default="Codex")],
+            name="codex",
+        )
+        res_codex = _build_effective_state(
+            codex, agent_cfg, **box_file, system_settings_path=ssp
+        )
+        assert res_codex["model"] == "haiku"  # no plugin row: default tier applies
 
 
 class TestDisplayAnswersLikeTheLaunch:

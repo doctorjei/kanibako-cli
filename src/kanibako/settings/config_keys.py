@@ -1218,13 +1218,16 @@ def bare_agent_key_scope_error(
             f"Use '{verb} pref.agent.{agent}.<key>' — did you mean "
             f"'{verb} pref.agent.{agent}.{canonical}'? (spec §2h)"
         )
-    # workset — no mirror; point at system (all agents) or the per-box mirror.
+    # workset — no mirror; point at system scope per agent, or the per-box request.
     # ⚑ WORKSET keeps the PLACEHOLDER on purpose: naming one box's agent would be a lie.
     return (
         f"Error: agent settings can't be {verb} at workset scope (a workset spans "
         f"multiple boxes/agents, so there's no single agent to configure). "
-        f"Configure them at system scope to apply to all agents, or per-box via "
-        f"'pref.agent.<agent>.{canonical}' (spec §2h)."
+        f"Configure them at system scope per agent with "
+        f"'agent.<agent>.{canonical}', or per-box via "
+        f"'pref.agent.<agent>.{canonical}' (spec §2h). The bare system key sets "
+        f"'agent.default.{canonical}', which an agent whose plugin declares "
+        f"'{canonical}' does not read."
     )
 
 #: ⚑ ``_agent_scope_node`` IS GONE (DS-BL1 = (a)) — no bind-shaped category reaches a

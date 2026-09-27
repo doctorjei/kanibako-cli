@@ -233,7 +233,9 @@ class TestSourcePartition:
         assert sizes["settings_launch.py (auth floor)"] == 6
         # ⚑ WIDENED 4 → 5 (2026-09-08): ``agent.default.label``, the spec §2d description
         # leaf, declared in ``agent_default:`` beside the other four behavior scalars.
-        assert sizes["core-defaults.yaml (agent_default:)"] == 5
+        # ⚑ WIDENED 5 → 9: the four §2d ``<None>`` rows (``model``, ``endpoint``,
+        # ``run_args``, ``transform``), floored as a present ``None``.
+        assert sizes["core-defaults.yaml (agent_default:)"] == 9
 
     def test_the_auth_floor_key_set_does_not_depend_on_the_probe_agent(self):
         """The probe agent name is inert for the six auth rows — pinned, not assumed.

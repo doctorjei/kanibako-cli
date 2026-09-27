@@ -988,6 +988,26 @@ class TestEffectiveTransformResolution:
             proj, sys_file, "goose", target, self._cfg(), **_focused(),
         ) == "tweakcc"
 
+    def test_the_plugin_row_beats_a_users_agent_default_transform(self, tmp_path):
+        """🛑 [Q91]: claude's declared ``tweakcc`` is ``agent.claude`` builtin, which
+        outranks a user's ``agent.default.transform``; ``agent.claude.transform``
+        outranks it in turn.  MUTATION: floor the descriptor at ``agent.default`` (the
+        old merged floor) and the first read answers ``None``."""
+        from kanibako.commands.start import _effective_transform
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.tweakcc import TRANSFORM_NAME
+        proj = self._proj(tmp_path)
+        sys_file = tmp_path / "system.yaml"
+        dump_doc(sys_file, {"agent": {"default": {"transform": ""}}})
+        assert _effective_transform(
+            proj, sys_file, "claude", ClaudeTarget(), self._cfg(), **_focused(),
+        ) == TRANSFORM_NAME
+        dump_doc(sys_file, {"agent": {"claude": {"transform": ""}}})
+        assert _effective_transform(
+            proj, sys_file, "claude", ClaudeTarget(), self._cfg(), **_focused(),
+        ) is None
+
 
 class TestImageReferenceResolution:
     """Verify a bare configured image is resolved before ensure_image (#81)."""
@@ -8907,12 +8927,13 @@ class TestPersonaLiveTierWiring:
             system_settings_path=None, selection_level=None,
             node_name=self._NODE,
         )
-        assert display["model"] == floor["model"]
-        # ⚑ The `model` floor is EMPTY — kanibako imposes no model (spec §2d
+        # ⚑ The `model` floor is `<None>` — kanibako imposes no model (spec §2d
         # `agent.claude.model | default <None> (use claude's built-in default)`,
         # held for every shipped plugin by `test_no_shipped_plugin_imposes_a_model`
-        # in `tests/test_targets/test_agent_behavior_defaults.py`) — so the line
-        # above can no longer tell "resolved the floor" from "resolved nothing".
+        # in `tests/test_targets/test_agent_behavior_defaults.py`), and the display
+        # omits a `<None>` — so the line below cannot tell "resolved the floor"
+        # from "resolved nothing".
+        assert floor["model"] is None and "model" not in display
         # `transform` still carries a NON-empty floor and is the witness that
         # the display really did read the harness defaults.
         assert floor["transform"]
@@ -9047,8 +9068,8 @@ class TestPersonaLiveTierWiring:
             system_settings_path=None, selection_level=None,
             node_name=self._NODE,
         )
-        assert display["model"] == floor["model"]
-        # ⚑ `model`'s floor is EMPTY — kanibako imposes no model (spec §2d
+        assert floor["model"] is None and "model" not in display
+        # ⚑ `model`'s floor is `<None>` — kanibako imposes no model (spec §2d
         # `agent.claude.model | default <None> (use claude's built-in default)`,
         # held for every shipped plugin by `test_no_shipped_plugin_imposes_a_model`
         # in `tests/test_targets/test_agent_behavior_defaults.py`) — so it cannot

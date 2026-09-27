@@ -435,13 +435,16 @@ images:
 # ⚑ THE FIRST BEHAVIOR SECTION IN THIS FILE.  Everything above declares a
 # bind/seed/mask CATEGORY family, keyed by box destination; this one declares
 # agent-scope BEHAVIOR SCALARS, keyed by setting name.
-# `core_defaults.behavior_defaults()` reads it verbatim and `start.py` merges it
-# UNDER the plugin descriptor floor (descriptor last ⇒ a plugin's declared
-# default still wins).
+# `core_defaults.behavior_defaults()` reads it verbatim and the launch floors
+# it at `agent.default.<key>`; a plugin's descriptor floor lands at
+# `agent.<active>.<key>`, which the §2d pick reads first, so a plugin's
+# declared row (a `<None>` one included) beats this tier.
 #
 # ⚑ VALUES ARE STRINGS, INCLUDING THE BOOLEANS.  The floor is consumed through
 # `coerce_bool` and `effective_behavior` STRINGIFIES what it returns, so a YAML
-# `true` here would reach a consumer as `"True"`.  Quote them.
+# `true` here would reach a consumer as `"True"`.  Quote them.  ONE exception,
+# as in `agent_shell:` below: a row the spec declares `<None>` is written
+# `null`, and the reader keeps it a PRESENT `None`.
 #
 # `access` (spec :1244) is DECLARED HERE like the rest, and it is the one whose
 # consumers do NOT share a clock: `config_keys.access_value_error` runs at SET time
@@ -459,6 +462,10 @@ agent_default:
   continue_mode: "true"
   bootstrap: "tmux"
   label: "Agent Description (None)"
+  model: null
+  endpoint: null
+  run_args: null
+  transform: null
 
 # The SHELL pseudo-agent's own tier values (spec §2d, "Pseudo-agent(s)" fence) —
 # the tier a plain-shell box resolves, installed UNCONDITIONALLY in every launch
@@ -466,7 +473,7 @@ agent_default:
 # answer for a box that already exists, whatever that box runs).  A dormant tier
 # for every other agent: the §2d pick reads `agent.<active>`, so these leaves
 # reach only a shell pick and never overlay a plugin agent's own tier.
-# ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above, with ONE
+# ⚑ VALUES ARE STRINGS, exactly as in `agent_default:` above, with the same
 # exception: a fence row declared `<None>` is written `null`, and the reader
 # keeps it a PRESENT `None`, never the string "None" and never an omission.
 # ⚑ EVERY ROW IS A SUPPLIED VALUE ([R177]), and a supplied value beats the

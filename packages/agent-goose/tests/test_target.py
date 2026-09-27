@@ -380,14 +380,14 @@ class TestSettingDescriptors:
         assert len(settings) == 4
 
     def test_provider_and_model_have_no_default(self):
-        # The keys stay declared/settable, but with EMPTY defaults so the
-        # resolver floor yields "" (omitted by assemble_env) when unset — goose
-        # then reads provider/model from its own config.yaml (goose configure).
+        # The keys stay declared/settable, but with ``null`` (<None>) defaults so
+        # the launch omits them when unset — goose then reads provider/model from
+        # its own config.yaml (goose configure).
         settings = {s.key: s for s in GooseTarget().setting_descriptors()}
-        assert settings["provider"].default == ""
-        assert settings["model"].default == ""
+        assert settings["provider"].default is None
+        assert settings["model"].default is None
         # endpoint too: unset = bare/harness-default (no persona).
-        assert settings["endpoint"].default == ""
+        assert settings["endpoint"].default is None
 
 
 class TestDefaultShares:

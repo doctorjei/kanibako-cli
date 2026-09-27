@@ -49,11 +49,15 @@ overrides by name — precedence-equivalent to the old AGENT-level `defaults=`, 
   belongs in that table; the rest of §2g's scalars either declare no default, are paths floored by
   `paths.resolve_system_paths`, or ride `auth_chain`.
 
-* **OS1** — the bare behavior floor (`{d.key: d.default}`) is mapped to the SCOPE-QUALIFIED
-  `agent.default.<key>` before folding: the declared behavior defaults are the ALL-AGENTS backstop
-  (spec §2d lists them under `agent.default.*` — access / allow_helpers / model / …). There is NO
-  bare `agent.<key>` (spec §0); the §2d active-over-default READ layers a per-agent
-  `agent.<active>.<key>` over this default.
+* **OS1** — the two bare behavior floors are mapped to SCOPE-QUALIFIED keys before folding, by
+  SOURCE: core's (`core_defaults.behavior_defaults`, the ALL-AGENTS backstop spec §2d lists under
+  `agent.default.*`) to `agent.default.<key>`, and the active plugin's (`{d.key: d.default}`) to
+  `agent.<active>.<key>`. That is [Q91]'s order — `agent.default` builtin < `agent.default` setting
+  < `agent.<a>` builtin < `agent.<a>` setting — because the §2d active-over-default READ takes any
+  present `agent.<active>.<key>` over the default slot. A plugin's `<None>` row therefore wins over a
+  user's `agent.default.<key>` ([Q95] (a)); a user sets `agent.<a>.<key>`. There is NO bare
+  `agent.<key>` (spec §0), and a plugin-only leaf in the core floor would write an undeclared
+  `agent.default.<leaf>`, which the §0 audit refuses by name.
 * **7a** — `agent_representation.agent_default_partial` is an ADDITIONAL agent-level partial (S27):
   the descriptor delivery binds become `agent.<active>.bindings.{ro,rw}.<key>` in the cascade (the
   active agent's DISCRIMINATED slot, `install.name`; §2d / §0 — NO bare `agent` token), so agent
@@ -885,13 +889,14 @@ in `bootstrap` / `transform` / `--effective` as it does at launch.
 
 ## `build_launch_snapshot` — the level splice
 
-`build_launch_snapshot` folds the behavior floor (mapped to `agent.default.<key>` — OS1, the
-all-agents backstop) and every runtime `default_categories` table into ONE base-level floor,
+`build_launch_snapshot` folds the two behavior floors (core to `agent.default.<key>`, the plugin's to
+`agent.<active>.<key>` — OS1) and every runtime `default_categories` table into ONE base-level floor,
 assembles the 6-level cascade (S8) with 7a's *agent_partial* inserted as an additional agent-level
 source (S27), merges (S15), and expands (S17/S19) with *ctx*. There is NO bare `agent.<key>` in the
 snapshot (spec §2d / §0) — the agent tier is DISCRIMINATED throughout.
 
-*behavior_floor* is the BARE behavior-default dict (`{d.key: d.default}`). *default_categories* are
+*behavior_floor* is core's BARE behavior-default dict; *agent_behavior_floor* the active plugin's
+(`{d.key: d.default}`). *default_categories* are
 the already-scope-qualified category default tables, unioned across every mount family: each KEY is
 a whole category ARM and each VALUE the whole DEST-KEYED map under it —
 `{"box.bindings.rw": {box_dest: (host_src, opts)}, ...}`, the shape `core_defaults.add_bind` builds
@@ -1361,8 +1366,8 @@ spelled.
 This is the LIVE launch behavior reader (block 7b — ruling A, the FULL swap): it replaces
 `start.py`'s retired `_build_effective_state` LAUNCH read. The behavior cascade now flows through the
 ONE snapshot — each scope file's `agent.default.*` / `agent.<active>.*` tables merge by NAME (block
-2b / `assemble_levels` S8), the declared-default floor folds in under `base` as `agent.default.*`
-(OS1) — and THIS function does the §2d active-over-default value-pick over that merged result. It
+2b / `assemble_levels` S8), the two declared-default floors fold in under `base` as `agent.default.*`
+and `agent.<active>.*` (OS1) — and THIS function does the §2d active-over-default value-pick over that merged result. It
 returns the `{key: str}` dict the descriptor assembler consumes.
 
 **Resolution order (the SPEC model, S8 + §2d): cascade FIRST, THEN active-over-default.** The merge

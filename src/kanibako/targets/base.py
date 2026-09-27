@@ -37,7 +37,7 @@ class TargetSetting:
 
     key: str                     # Setting key in agent state dict (e.g. "model")
     description: str             # Human-readable description
-    default: str = ""            # Default value when not overridden
+    default: str | None = ""     # Floor value when not overridden; None = <None>
     choices: tuple[str, ...] = ()  # Valid values; empty = freeform
 
 

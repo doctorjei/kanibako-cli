@@ -991,8 +991,9 @@ kanibako workset set default model=opus      # primary-workset default
 # Agent level (defaults for all boxes using this agent)
 kanibako agent set claude model=opus
 
-# System level (global settings defaults)
-kanibako system set model=opus
+# System level (global settings defaults; a key an agent's plugin declares,
+# like model, is set per agent above)
+kanibako system set access=editing
 kanibako system reset --all             # reset all global settings
 ```
 

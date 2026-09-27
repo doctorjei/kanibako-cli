@@ -62,82 +62,110 @@ def test_behavior_floor_maps_to_scope_qualified_agent_key():
 
 
 # --------------------------------------------------------------------------- #
-# OS1's tier split — the floor lands by LEAF, never by who supplied it         #
+# OS1's tier split — the floor lands by SOURCE: core at agent.default, plugin  #
+# at agent.<active>                                                            #
 # --------------------------------------------------------------------------- #
 #
-# ⚑⚑ THE CASE THIS SUITE NEVER DROVE. Every target in this module is a mock whose
-# descriptors are CORE §2d leaves, so no test ever pushed a PLUGIN-ONLY leaf through
-# the floor — which is exactly why ``agent.default.provider`` was written on every
-# goose launch for as long as it was and no red ever showed. ``provider`` below is
-# goose's real ``setting_descriptors()`` leaf, and ``agent.default.provider`` is NOT a
-# key: [R150] makes ``agent.default.*`` the UNIVERSAL vocabulary, and §2d's Default
-# census enumerates no ``provider`` row.
+# [Q91]: ``agent.default`` builtin < ``agent.default`` setting < ``agent.<a>``
+# builtin < ``agent.<a>`` setting. The core floor is the first rung, the plugin's
+# descriptor floor the third, so a plugin row (a ``<None>`` one included, [Q95] (a))
+# beats a user's ``agent.default.*`` while a user's ``agent.<a>.*`` beats the plugin.
 
 
-def test_a_PLUGIN_ONLY_floor_leaf_lands_at_the_AGENT_tier():
-    """🛑 A leaf only a PLUGIN declares floors at ``agent.<active>``, not ``default``."""
-    snap = build_launch_snapshot(
-        agent_name="goose",
+def _snap(agent_name="goose", system_path=None, **floors):
+    return build_launch_snapshot(
+        agent_name=agent_name,
         ctx=_ctx(),
-        system_path=None,
+        system_path=system_path,
         agent_path=None,
         workset_path=None,
         box_path=None,
-        behavior_floor={"provider": "openai", "model": "opus"},
+        **floors,
     )
-    assert snap.agent.goose.provider == "openai"
-    # …and NOT also at the all-agents tier, which is the undeclared key this fixes.
-    assert "provider" not in snap.agent.default
-    # ⚑ THE CORE LEAF BESIDE IT IS UNMOVED. The split is by LEAF, not by supplier:
-    # both arrived in the SAME floor dict and they land at different tiers.
-    assert snap.agent.default.model == "opus"
-    assert "model" not in snap.agent.goose
 
 
-def test_BOTH_tiers_of_the_split_floor_reach_the_behavior_read():
-    """Trap 1: plugins declare CORE leaves too, so the floor now populates BOTH slots.
+def test_the_PLUGIN_floor_lands_at_the_AGENT_tier_core_leaves_included():
+    """🛑 Every plugin row floors at ``agent.<active>``, whatever its leaf.
 
-    goose declares ``model`` and ``endpoint`` (core §2d) alongside ``provider``
-    (plugin-only). ``effective_behavior``'s active-over-default pick has to surface each
-    from whichever tier it landed at — dropping either would lose a declared default
-    silently, which is the failure mode a tier split invites.
+    goose declares a plugin-only leaf (``provider``) and a core one (``model``); both
+    are ``agent.goose`` builtin, so neither reaches ``agent.default``.
     """
-    snap = build_launch_snapshot(
-        agent_name="goose",
-        ctx=_ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        behavior_floor={
-            "provider": "openai", "model": "opus", "endpoint": "https://e.example",
-        },
+    snap = _snap(agent_behavior_floor={"provider": "openai", "model": "opus"})
+    assert snap.agent.goose.provider == "openai"
+    assert snap.agent.goose.model == "opus"
+    assert "provider" not in snap.agent.get("default", {})
+    assert "model" not in snap.agent.get("default", {})
+
+
+@pytest.mark.writes_undeclared(
+    "agent.default.provider", reason="the undeclared key IS the input the refusal names.",
+)
+def test_a_PLUGIN_ONLY_leaf_in_the_CORE_floor_is_refused_by_name():
+    """The core floor writes ``agent.default.<leaf>`` for EVERY row it carries, so a
+    plugin-only leaf there names the undeclared key instead of landing anywhere."""
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError, match=r"agent\.default\.provider"):
+        _snap(behavior_floor={"provider": "openai"})
+
+
+def test_BOTH_floors_reach_the_behavior_read():
+    """``effective_behavior``'s active-over-default pick surfaces each floor's rows."""
+    snap = _snap(
+        behavior_floor={"allow_helpers": "true", "model": None},
+        agent_behavior_floor={"provider": "openai", "endpoint": "https://e.example"},
     )
     eff = effective_behavior(snap, active_agent="goose")
-    assert eff["provider"] == "openai"            # active slot  (agent.goose)
-    assert eff["model"] == "opus"                 # default slot (agent.default)
-    assert eff["endpoint"] == "https://e.example"  # default slot
+    assert eff["provider"] == "openai"             # active slot  (agent.goose)
+    assert eff["endpoint"] == "https://e.example"  # active slot
+    assert eff["allow_helpers"] == "true"          # default slot (agent.default)
+    assert "model" not in eff                      # core <None>, nothing above it
+
+
+def test_a_PLUGIN_row_beats_a_users_agent_default_setting(tmp_path: Path):
+    """🛑 [Q91] rung 3 over rung 2: the plugin's own row wins the §2d pick over a
+    user's ``agent.default.<key>``, and a ``<None>`` row wins the same way ([Q95] (a)).
+
+    The negative half rides along: with no plugin row the same user value answers,
+    over the core ``<None>`` floor (rung 2 over rung 1).
+    """
+    system_file = tmp_path / "settings.yaml"
+    system_file.write_text("agent:\n  default:\n    model: mine\n    endpoint: mine\n")
+    snap = _snap(
+        system_path=system_file,
+        behavior_floor={"model": None, "endpoint": None},
+        agent_behavior_floor={"model": None},
+    )
+    eff = effective_behavior(snap, active_agent="goose")
+    assert "model" not in eff, "the plugin's <None> row must beat agent.default.model"
+    assert eff["endpoint"] == "mine", "no plugin row: agent.default setting answers"
+
+
+def test_the_SHELL_label_ignores_a_users_agent_default_label(tmp_path: Path):
+    """🛑 §2d: *"Only true agents inherit from agent.default"* — the shell does not.
+
+    The shell's own ``agent.shell.label`` fence row answers its pick, so a user's
+    ``agent.default.label`` reaches no shell box, while a true agent with no plugin
+    row still reads it (the negative half: the same snapshot, a different pick).
+    """
+    from kanibako.settings.core_defaults import behavior_defaults, shell_tier_defaults
+
+    system_file = tmp_path / "settings.yaml"
+    system_file.write_text("agent:\n  default:\n    label: Mine\n")
+    snap = _snap(
+        agent_name="shell",
+        system_path=system_file,
+        behavior_floor=behavior_defaults(),
+        default_categories=shell_tier_defaults(),
+    )
+    assert effective_behavior(snap, active_agent="shell")["label"] == "Box Shell"
+    assert effective_behavior(snap, active_agent="other")["label"] == "Mine"
 
 
 def test_an_EMPTY_floor_value_survives_as_a_DECLARATION():
-    """⚑ goose floors all three of its leaves at ``""`` ON PURPOSE.
-
-    Its own ``config.yaml`` owns provider/model, so the floor must resolve to ``""`` and
-    let the env fold's ``if value:`` omit the variable entirely; a non-empty default
-    would override the user's ``goose configure`` on every launch. ``""`` and ABSENT are
-    different declarations (``goose-defaults.yaml`` says so at length, and an absent
-    ``default:`` is a load refusal precisely to keep them apart), so the split must
-    carry ``""`` through as a PRESENT value at the moved tier.
-    """
-    snap = build_launch_snapshot(
-        agent_name="goose",
-        ctx=_ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        behavior_floor={"provider": "", "model": ""},
-    )
+    """``""`` and ABSENT are different declarations, so the plugin floor carries
+    ``""`` through as a PRESENT value at its tier."""
+    snap = _snap(agent_behavior_floor={"provider": "", "model": ""})
     assert snap.agent.goose.provider == ""
     eff = effective_behavior(snap, active_agent="goose")
     # PRESENT, and empty — not omitted. ``in`` is the assertion; the value is the check.
@@ -145,57 +173,36 @@ def test_an_EMPTY_floor_value_survives_as_a_DECLARATION():
     assert "model" in eff and eff["model"] == ""
 
 
-def test_a_user_set_agent_key_still_BEATS_the_moved_floor(tmp_path: Path):
-    """🛑 PRECEDENCE IS UNMOVED BY THE SPLIT, and for a plugin-only leaf this is the
-    ONLY thing separating floor from user value.
+def test_a_user_set_agent_key_still_BEATS_the_plugin_floor(tmp_path: Path):
+    """🛑 [Q91] rung 4 over rung 3: within one slot, merge level separates the plugin
+    floor from the user's value, and nothing else does.
 
-    Both tiers ride the ONE floor into ``base_levels[5]``, the LOWEST rung, so a
-    settings file outranks it by merge level. For a CORE leaf the §2d pick would also
-    separate them; for ``provider`` the floor and the user's value share one path in one
-    node, so the pick cannot — merge level does all of the work, and that is what this
-    pins.
-
-    ⚑ THE SYSTEM FILE IS THE DELIBERATE CHOICE, on two counts. It is the TIGHTEST
-    margin — ``system`` is the rung immediately above the floor, so this reds first if
-    the floor is ever promoted; routing the plugin population through the per-agent
-    descriptor rung ``agent_partial`` (which sits ABOVE ``system``) is precisely the
-    shape it refuses. And it is the only scope that CAN carry this: ``agent`` is a
-    CONTAINING scope of both ``workset`` and ``box`` (``SCOPE_CONTAINMENT``), so §0
-    directional enforcement drops an ``agent:`` table written in either of those files.
+    Both floors ride the ONE floor into ``base_levels[5]``, the LOWEST rung.
+    ⚑ THE SYSTEM FILE IS THE DELIBERATE CHOICE: it is the rung immediately above the
+    floor, so this reds first if the plugin floor is ever promoted (routing it through
+    ``agent_partial``, which sits ABOVE ``system``, is the shape it refuses); and it is
+    the only scope that CAN carry an ``agent:`` table (``SCOPE_CONTAINMENT``: §0
+    directional enforcement drops one written in a workset or box file).
     """
     system_file = tmp_path / "settings.yaml"
     system_file.write_text("agent:\n  goose:\n    provider: openrouter\n")
-    snap = build_launch_snapshot(
-        agent_name="goose",
-        ctx=_ctx(),
-        system_path=system_file,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        behavior_floor={"provider": "openai"},
-    )
+    snap = _snap(system_path=system_file, agent_behavior_floor={"provider": "openai"})
     assert snap.agent.goose.provider == "openrouter"
     assert effective_behavior(snap, active_agent="goose")["provider"] == "openrouter"
 
 
-def test_the_moved_floor_keys_on_the_ACTIVE_NODE_not_the_harness():
-    """⚑ A PERSONA takes the floor at its OWN node (the fix-4a rule, applied here).
+def test_the_plugin_floor_keys_on_the_ACTIVE_NODE_not_the_harness():
+    """⚑ A PERSONA takes the plugin floor at its OWN node (the fix-4a rule).
 
     The read side picks ``agent.<active node>`` ∪ ``agent.default``, and for a persona
-    the active node is ``navigator℘goose``, not the harness ``goose``. Keying the moved
-    floor on the harness would strand it at a slot nothing reads — the same orphaning
-    ``agent_default_partial`` documents for descriptor BINDINGS. A bare agent, where
-    node == harness, is byte-identical either way.
+    the active node is ``navigator℘goose``, not the harness ``goose``: keying on the
+    harness would strand the floor at a slot nothing reads.
     """
     node = "navigator℘goose"
-    snap = build_launch_snapshot(
+    snap = _snap(
         agent_name=node,
-        ctx=_ctx(),
-        system_path=None,
-        agent_path=None,
-        workset_path=None,
-        box_path=None,
-        behavior_floor={"provider": "openai", "model": "opus"},
+        behavior_floor={"model": "opus"},
+        agent_behavior_floor={"provider": "openai"},
     )
     assert getattr(snap.agent, node).provider == "openai"
     assert effective_behavior(snap, active_agent=node)["provider"] == "openai"

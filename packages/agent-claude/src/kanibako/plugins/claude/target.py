@@ -506,7 +506,7 @@ class ClaudeTarget(Target):
         ``state`` is intentionally EMPTY (the FILE-PURITY invariant): the agent
         settings file holds USER INTENT only, and defaults come from the
         descriptor floor (:meth:`setting_descriptors` — ``model`` defaults to
-        ``opus``).  Seeding that same value into the file would pin every
+        ``<None>``).  Seeding that same value into the file would pin every
         install ABOVE the floor, so a later change to the default could never
         reach an existing box.
 

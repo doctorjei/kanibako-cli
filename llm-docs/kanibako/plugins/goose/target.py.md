@@ -200,13 +200,14 @@ This is one rule stated by three symbols, and it is the single easiest thing to 
 env vars win over its own `config.yaml`; that clobbers a provider (and key) the user selected
 interactively.
 
-`setting_descriptors` returns the three declared behavior keys, all with an EMPTY floor:
+`setting_descriptors` returns `label` and three declared behavior keys with a `<None>` floor:
 
-* **`provider`** and **`model`** carry NO default (`default=""`). The resolver floor therefore
-  resolves them to empty when unset, and `assemble_env`'s `if value:` omits the env vars entirely —
-  goose then reads provider/model from its own `config.yaml`. An EXPLICIT `agent.goose.provider` /
-  `agent.goose.model` setting still wins the cascade and IS emitted, so a user who *wants* to pin a
-  provider through kanibako settings still can.
+* **`provider`** and **`model`** carry NO default (`default: null`). The floor is a PRESENT `None`
+  at `agent.goose.<key>`, so the launch omits the env vars entirely — goose then reads
+  provider/model from its own `config.yaml`. That present `None` also beats a user's
+  `agent.default.<key>` (Q95.1). An EXPLICIT `agent.goose.provider` / `agent.goose.model` setting
+  still wins the cascade and IS emitted, so a user who *wants* to pin a provider through kanibako
+  settings still can.
 * **`endpoint`** (persona) is the alternate OpenAI-compatible base URL; unset means bare /
   harness-default. It is delivered via the descriptor's `endpoint`→`OPENAI_HOST` ENV `SettingArg`
   (goose's built-in `openai` provider reads `OPENAI_HOST`), and is declared here to make it a

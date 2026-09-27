@@ -155,6 +155,49 @@ class TestRunInfo:
         assert "EDITOR" in out
         assert "--no-helpers" in out
 
+    def test_the_plugin_label_beats_a_users_agent_default_label(
+        self, agent_env, config_file, capsys,
+    ):
+        """🛑 [Q91]: the plugin's declared row is ``agent.<a>`` builtin, which outranks a
+        user's ``agent.default.label`` — the display floors it where the launch does.
+
+        MUTATION: floor the plugin label at ``agent.default.label`` (the old merged
+        floor) and the system file's ``Mine`` prints instead.
+        """
+        from kanibako.commands.agent_cmd import run_info
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        dump_doc(std.settings, {"agent": {"default": {"label": "Mine"}}})
+        capsys.readouterr()
+        assert run_info(argparse.Namespace(agent_id="claude")) == 0
+        out = capsys.readouterr().out
+        assert "Claude Code" in out, out
+        assert "Mine" not in out, out
+
+    def test_the_shell_label_ignores_a_users_agent_default_label(
+        self, agent_env, config_file, capsys,
+    ):
+        """🛑 §2d: *"Only true agents inherit from agent.default"* — ``agent info shell``
+        prints the shell's own fence label, never a user's ``agent.default.label``."""
+        from kanibako.commands.agent_cmd import run_info
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        dump_doc(std.settings, {"agent": {"default": {"label": "Mine"}}})
+        write_agent_config(
+            agent_settings_path(agents_dir(agent_env), "shell"), AgentConfig(state={}),
+        )
+        capsys.readouterr()
+        assert run_info(argparse.Namespace(agent_id="shell")) == 0
+        out = capsys.readouterr().out
+        assert "Box Shell" in out, out
+        assert "Mine" not in out, out
+
     def test_a_label_stored_EMPTY_still_falls_through_to_the_declaration(
         self, agent_env, capsys,
     ):

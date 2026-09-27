@@ -1052,7 +1052,8 @@ def _effective_agent_scalar(
     std,
     selection_level: "Mapping[str, object] | None",
     key: str,
-    floor: str,
+    floor: str | None,
+    agent_floor: "Mapping[str, str | None] | None" = None,
     agent_state: "agent_file.AgentFileLevel | None" = None,
     agent_path: "Path | None" = None,
 ) -> "str | None":
@@ -1060,7 +1061,7 @@ def _effective_agent_scalar(
     return _agent_scalar_pick(
         proj, system_settings_path, agent_id, std=std,
         selection_level=selection_level, key=key, floor=floor,
-        agent_state=agent_state, agent_path=agent_path,
+        agent_floor=agent_floor, agent_state=agent_state, agent_path=agent_path,
     )[0]
 
 
@@ -1072,7 +1073,8 @@ def _agent_scalar_pick(
     std,
     selection_level: "Mapping[str, object] | None",
     key: str,
-    floor: str,
+    floor: str | None,
+    agent_floor: "Mapping[str, str | None] | None" = None,
     agent_state: "agent_file.AgentFileLevel | None" = None,
     agent_path: "Path | None" = None,
 ) -> "tuple[str | None, str | None]":
@@ -1096,6 +1098,8 @@ def _agent_scalar_pick(
     *agent_id* is the launch-resolved active node-name (``"shell"`` for a
     no-agent / shell box, whose own tier answers first — the ``agent.default``
     backstop reaches only a key that tier leaves unsupplied).
+    *floor* is core's ``agent.default.<key>`` value; *agent_floor* the active
+    plugin's declared row for *key*, if any (``agent.<active>.<key>``, [Q91]).
     *agent_state* is the per-agent file's flat behavior state as an
     ``AgentFileLevel`` — the table WITH the node it merges under, attached at the
     boundary (C-2) — when the caller already holds it; *agent_path* loads it from
@@ -1135,10 +1139,11 @@ def _agent_scalar_pick(
         # ``effective_behavior`` early-returns ``{}`` BEFORE consulting the
         # pref-installed value — silently dropping the override (the regression the
         # retired ``box.bootstrap_program`` did not have).  Unlike the main launch's read,
-        # this focused snapshot has no descriptor floor, so the caller supplies the
-        # one value.  ``keys=[key]`` below extracts ONLY *key*, so flooring it has
-        # no effect on any other behavior key.
+        # this focused snapshot reads no descriptors, so the caller supplies both
+        # floors' values for *key*.  ``keys=[key]`` below extracts ONLY *key*, so
+        # flooring it has no effect on any other behavior key.
         behavior_floor={key: floor},
+        agent_behavior_floor=agent_floor,
         # The SHELL TIER's own values (spec §2d fence), the same producer the main
         # launch folds (``_resolve_launch_snapshot``).  ⚑ WITHOUT IT A SHELL PICK
         # FINDS ``agent.shell.<key>`` ABSENT and reads the ``agent.default`` floor
@@ -1186,29 +1191,31 @@ def _effective_transform(
     """Resolve the AGENT-scope ``transform`` key — WHICH binary transform this launch runs.
 
     Spec §2d ``agent.default.transform | <None>`` / ``agent.claude.transform |
-    tweakcc``.  The FLOOR is the PLUGIN's declared default (§0: every non-universal
-    agent specific is plugin-established), read off ``setting_descriptors()``; the
-    cascade above it is the ordinary system / workset / box / per-agent-file one.
-    ``None`` = no transform named ⇒ nothing is patched.
+    tweakcc``.  Two floors: core's ``<None>`` at ``agent.default``, and the PLUGIN's
+    declared row, read off ``setting_descriptors()``, at ``agent.<active>``, where it
+    beats a user's ``agent.default.transform`` ([Q91]); the cascade above them is
+    the ordinary system / workset / box / per-agent-file one.
+    ``None`` = no transform named ⇒ nothing is patched; a ``""`` means the same
+    (folded by :func:`_agent_scalar_pick`).
 
     Resolved HERE rather than off the 7b launch snapshot because the patched install
     feeds that snapshot's delivery binds, so the decision must precede it.
     *agent_cfg_path* is the file *agent_cfg* was read from, so a read-time refusal of
     one of its values can name it.
     """
-    floor = ""
     descriptors = target.setting_descriptors() if target is not None else []
     # A real target returns a list of TargetSetting; a MagicMock target in unit
     # tests returns a mock, and iterating it would fabricate a floor (same guard,
     # same reason, as ``_resolve_box_launch_decisions``).
-    if isinstance(descriptors, list):
-        for descriptor in descriptors:
-            if descriptor.key == "transform":
-                floor = descriptor.default or ""
+    agent_floor = (
+        {d.key: d.default for d in descriptors if d.key == "transform"}
+        if isinstance(descriptors, list) else {}
+    )
     return _effective_agent_scalar(
         proj, system_settings_path, agent_id, std=std,
         selection_level=selection_level,
-        key="transform", floor=floor,
+        key="transform", floor=core_defaults.behavior_defaults()["transform"],
+        agent_floor=agent_floor,
         agent_state=(
             agent_file.state_level(agent_cfg, node=agent_id, path=agent_cfg_path)
             if agent_cfg is not None else None
@@ -3818,10 +3825,11 @@ def _run_container(
         # Block 7b (ruling A — the FULL read-path swap): build the ONE launch
         # snapshot HERE, before the behavior read, so BOTH the behavior read (just
         # below) AND the category delivery (further down) consume the SAME snapshot
-        # (S12 resolve-ONCE). It carries the behavior FLOOR (→ agent.default.*, OS1),
-        # the per-agent file's flat behavior state (wrapped under agent.<active>),
-        # the always-available category default tables, 7a's descriptor delivery
-        # partial, and the resolved system.* tier.
+        # (S12 resolve-ONCE). It carries the behavior FLOORS (core's → agent.default.*,
+        # the target's declared defaults → agent.<active>.*; OS1, [Q91]), the
+        # per-agent file's flat behavior state (wrapped under agent.<active>), the
+        # always-available category default tables, 7a's descriptor delivery partial,
+        # and the resolved system.* tier.
         #
         # The §1A CLI LEVEL (P8): the resolved agent selection PLUS this launch's
         # ephemeral key-shadowing flags, built ONCE by the single flag→key table and
@@ -6317,8 +6325,9 @@ def _effective_behavior_for_display(
 
     Read off the SAME KeyStore snapshot the live launch reads (block 7c).
     Single-route + launch-FIDELITY: this builds the behavior snapshot exactly as
-    :func:`_resolve_launch_snapshot` does for a launch — the target's declared
-    defaults fold in as the ``agent.default.*`` floor (OS1); the per-agent FILE's
+    :func:`_resolve_launch_snapshot` does for a launch — core's floor folds in at
+    ``agent.default.*`` and the target's declared defaults at ``agent.<active>.*``
+    (OS1, [Q91]); the per-agent FILE's
     behavior (``agent_cfg``, the flat ``[agent]`` state plus the modelled
     ``run_args``) is injected as ``agent_state``
     (the active slot ``agent.<active>.*``); the box / workset / system settings
@@ -6350,12 +6359,10 @@ def _effective_behavior_for_display(
     if not descriptors:
         return dict(agent_cfg.state)
 
-    # ⚑ ORDER IS LOAD-BEARING: the CORE floor (spec §2d, the all-agents backstop)
-    # goes UNDER the descriptor floor, so a plugin's declared default still wins.
-    behavior_floor = {
-        **core_defaults.behavior_defaults(),
-        **{d.key: d.default for d in descriptors},
-    }
+    # The two floors ``build_launch_snapshot`` places apart ([Q91]): core's at
+    # ``agent.default``, the plugin's at ``agent.<active>``.
+    behavior_floor = core_defaults.behavior_defaults()
+    agent_behavior_floor = {d.key: d.default for d in descriptors}
 
     # The behavior tables are keyed by the ACTIVE node-name (fix 4a): for a persona
     # (``navigator℘claude``) the per-node ``agents/<node>/agent.yaml`` state and
@@ -6388,8 +6395,9 @@ def _effective_behavior_for_display(
 
     # DISPLAY == LAUNCH: the box's files, ctx and floors from the ONE input builder
     # (so a behavior value spelled ``@meta.workset.path/…`` or ``@workset.auth.path/…``
-    # answers here as it does at launch); the floor folds in as ``agent.default.*``
-    # and the per-agent file state as the ``agent.<active>`` slot. No category
+    # answers here as it does at launch); the floors fold in as ``agent.default.*``
+    # and ``agent.<active>.*``, the per-agent file state into the ``agent.<active>``
+    # slot. No category
     # tables beyond the resolved ``system.*`` tier (display reads behavior only).
     inputs = settings_launch.resolve_inputs(
         subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
@@ -6400,6 +6408,7 @@ def _effective_behavior_for_display(
         agent_name=active,
         agent_path=None,
         behavior_floor=behavior_floor,
+        agent_behavior_floor=agent_behavior_floor,
         default_categories=dict(inputs.system_floor),
         agent_state=agent_state,
         persona_values=persona_values,
@@ -6560,7 +6569,7 @@ def _resolve_box_launch_decisions(
     # when unset.  Dropping it here is safe: this snapshot's ``effective`` is read for
     # endpoint + model only, and the bare-box ``--model`` flag resolves its own
     # default via the separate main-launch snapshot.
-    behavior_floor = (
+    plugin_floor = (
         {d.key: d.default for d in descriptors if d.key != "model"}
         if isinstance(descriptors, list)
         else {}
@@ -6569,13 +6578,16 @@ def _resolve_box_launch_decisions(
         **inputs.as_kwargs(),
         agent_name=agent_name,
         agent_path=agent_cfg_path,
-        behavior_floor=behavior_floor or None,
+        # The plugin's rows only, at ``agent.<active>`` ([Q91]); core's floor adds
+        # nothing to the endpoint read (its ``endpoint`` is ``<None>``, which the pick
+        # omits exactly as it omits an absent key).
+        agent_behavior_floor=plugin_floor or None,
         # agent_state (the active-node slot) is only needed when we actually read
-        # behavior; gated on behavior_floor so a no-descriptor / mock target never
+        # behavior; gated on plugin_floor so a no-descriptor / mock target never
         # dereferences agent_cfg.
         agent_state=(
             agent_file.state_level(agent_cfg, node=agent_name)
-            if behavior_floor and agent_cfg is not None
+            if plugin_floor and agent_cfg is not None
             else None
         ),
         persona_values=persona_values,
@@ -6591,7 +6603,7 @@ def _resolve_box_launch_decisions(
     auth_src = settings_launch.resolve_auth_source(snapshot, mode=proj.mode.value)
     endpoint: str | None = None
     model: object = __MISSING__
-    if behavior_floor:
+    if plugin_floor:
         effective = settings_launch.effective_behavior(
             snapshot, active_agent=agent_name
         )
@@ -7008,26 +7020,26 @@ def _resolve_launch_snapshot(
     )
 
     # Block 7b (ruling A — the FULL read-path swap): the BEHAVIOR cascade now flows
-    # through THIS one snapshot too. The target's declared-default floor folds in as
-    # ``agent.default.<key>`` (OS1); the per-agent FILE's behavior
+    # through THIS one snapshot too. The core floor folds in as
+    # ``agent.default.<key>`` and the target's declared-default floor as
+    # ``agent.<active>.<key>`` (OS1); the per-agent FILE's behavior
     # (``agent_cfg``) is wrapped under ``agent.<active>`` (it is NOT the
     # discriminated tables ``assemble_levels`` reads from ``agent_path``, so it is
     # injected as ``agent_state`` — see ``build_launch_snapshot``). Only the MAIN
     # launch carries the behavior FLOOR (the conditional image/helper resolves do not).
     behavior_floor = None
+    agent_behavior_floor = None
     agent_state = None
     if include_base_families and target is not None:
         descriptors = target.setting_descriptors()
         if descriptors:
-            # ⚑ ORDER IS LOAD-BEARING: the CORE floor (spec §2d) goes UNDER the
-            # descriptor floor, so a plugin's declared default still wins.
+            # The two floors ``build_launch_snapshot`` places apart ([Q91]): core's
+            # at ``agent.default``, the plugin's at ``agent.<active>``.
             # ⚑ INSIDE the ``if`` deliberately — a no-descriptor / mock target must
             # keep leaving ``behavior_floor`` None; downstream gates read its
             # truthiness.
-            behavior_floor = {
-                **core_defaults.behavior_defaults(),
-                **{d.key: d.default for d in descriptors},
-            }
+            behavior_floor = core_defaults.behavior_defaults()
+            agent_behavior_floor = {d.key: d.default for d in descriptors}
     # ⚑ NOT gated on ``include_base_families``: the narrow CREATE seed resolve needs the
     # file's scalars too.  Why: llm-docs, ``_resolve_launch_snapshot`` → *agent_cfg*.
     if target is not None and agent_cfg is not None:
@@ -7042,6 +7054,7 @@ def _resolve_launch_snapshot(
         agent_name=agent_name,
         agent_path=agent_cfg_path,
         behavior_floor=behavior_floor,
+        agent_behavior_floor=agent_behavior_floor,
         default_categories=default_categories,
         agent_partial=agent_partial,
         agent_state=agent_state,

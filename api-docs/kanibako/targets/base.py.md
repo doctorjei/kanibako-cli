@@ -51,7 +51,7 @@ def _validate_agent_binary(binary: Path) -> str | None
 class TargetSetting:
     key: str
     description: str
-    default: str = ''
+    default: str | None = ''
     choices: tuple[str, ...] = ()
 
 @dataclass(frozen=True)

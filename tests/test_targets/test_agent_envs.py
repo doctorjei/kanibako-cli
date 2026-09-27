@@ -122,7 +122,7 @@ def resolve_envs(target, *, node: str | None = None, rekey: bool = True, **files
 
 def resolve_realized(
     target, *, node: str | None = None, safe_mode: bool = False,
-    autonomous: bool = False, behavior_floor=None, model=None, cli_env=None,
+    autonomous: bool = False, agent_behavior_floor=None, model=None, cli_env=None,
     **files,
 ):
     """The same chain WITH the launch REALIZATION installed — the P4c-2 seam, BY CALL.
@@ -133,9 +133,9 @@ def resolve_realized(
     production implementation — a hand-made realized map here would pin the harness.
 
     *model* rides the §1A CLI LEVEL (``-M``), because that is how a flag reaches the
-    behavior read; *safe_mode* / *autonomous* are ``-S`` / ``-A``. *behavior_floor*
-    seeds ``agent.default.<key>`` for the driving keys a plugin declares with no
-    default of its own.
+    behavior read; *safe_mode* / *autonomous* are ``-S`` / ``-A``. *agent_behavior_floor*
+    stands in for the plugin's descriptor floor, at ``agent.<node>.<key>`` as the
+    launch places it.
     """
     from kanibako.commands.start import _LaunchRealizer, _install_realized_env
     from kanibako.settings.settings_cli_level import build_cli_level
@@ -151,7 +151,7 @@ def resolve_realized(
     snapshot = build_launch_snapshot(
         agent_name=node, ctx=ctx,
         default_categories=env_floor(target, node=node),
-        behavior_floor=behavior_floor,
+        agent_behavior_floor=agent_behavior_floor,
         cli_level=build_cli_level(active_agent=node, model=model),
         **paths,
     )
@@ -781,7 +781,7 @@ class TestTheRealizedVariablesArriveAsKeys:
     def test_a_driving_key_that_resolves_truthy_realizes_its_variable(self):
         """``agent.<node>.model`` → ``GOOSE_MODEL``, provenance on the agent scope."""
         slots = resolve_realized(
-            target_for("goose"), behavior_floor={"model": "some-model"},
+            target_for("goose"), agent_behavior_floor={"model": "some-model"},
         )
         assert slots["GOOSE_MODEL"].value == "some-model"
         assert slots["GOOSE_MODEL"].key == "agent.goose.env.GOOSE_MODEL"
@@ -798,24 +798,24 @@ class TestTheRealizedVariablesArriveAsKeys:
         for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
             assert var not in slots, f"{var} was realized from an unset key"
 
-    def test_an_EMPTY_floor_at_the_MOVED_tier_still_realizes_nothing(self):
-        """🛑 THE ``""``-SURVIVES CASE, END TO END, at the tier the split moved it to.
+    def test_a_NONE_floor_at_the_AGENT_tier_realizes_nothing(self):
+        """🛑 THE ``<None>`` CASE, END TO END, at the tier the plugin floor lands on.
 
         The case above resolves ``provider`` from NO floor at all, so it would pass on a
         build that had lost the declaration entirely. This one drives goose's real
-        shipped floor value — the empty string, which ``goose-defaults.yaml`` keeps
-        deliberately so its own ``config.yaml`` stays in charge — through the floor,
-        where it now lands at ``agent.goose.provider`` rather than the undeclared
-        ``agent.default.provider``. It must arrive as a PRESENT-but-empty declaration
-        and be dropped by the fold's ``if value:``, NOT arrive as ``GOOSE_PROVIDER=''``
-        and override goose's own config with nothing.
+        shipped floor — ``null``, which ``goose-defaults.yaml`` keeps deliberately so
+        its own ``config.yaml`` stays in charge — through the plugin floor, which lands
+        at ``agent.goose.*``. It must arrive as a PRESENT ``None`` and realize nothing,
+        NOT arrive as ``GOOSE_PROVIDER=''`` (or ``'None'``) and override goose's own
+        config.
         """
-        slots = resolve_realized(
-            target_for("goose"),
-            behavior_floor={"provider": "", "model": "", "endpoint": ""},
-        )
+        from kanibako.plugins.goose import GooseTarget
+
+        floor = {d.key: d.default for d in GooseTarget().setting_descriptors()}
+        assert floor["provider"] is None and floor["model"] is None
+        slots = resolve_realized(target_for("goose"), agent_behavior_floor=floor)
         for var in ("GOOSE_MODEL", "GOOSE_PROVIDER", "OPENAI_HOST"):
-            assert var not in slots, f"{var} was realized from an EMPTY declared floor"
+            assert var not in slots, f"{var} was realized from a <None> declared floor"
 
     def test_a_PLUGIN_ONLY_floor_key_realizes_from_the_AGENT_tier(self):
         """The other direction: a NON-empty plugin-only floor still reaches the box.
@@ -824,7 +824,7 @@ class TestTheRealizedVariablesArriveAsKeys:
         carrying ``provider`` anywhere — the exact regression a tier move invites.
         """
         slots = resolve_realized(
-            target_for("goose"), behavior_floor={"provider": "openai"},
+            target_for("goose"), agent_behavior_floor={"provider": "openai"},
         )
         assert slots["GOOSE_PROVIDER"].value == "openai"
         assert slots["GOOSE_PROVIDER"].key == "agent.goose.env.GOOSE_PROVIDER"
@@ -844,7 +844,7 @@ class TestTheRealizedVariablesArriveAsKeys:
     def test_the_endpoint_key_is_realized_for_claude_too(self):
         """``ANTHROPIC_BASE_URL`` — the claude half of the closed inventory."""
         slots = resolve_realized(
-            target_for("claude"), behavior_floor={"endpoint": "https://e.example"},
+            target_for("claude"), agent_behavior_floor={"endpoint": "https://e.example"},
         )
         assert slots["ANTHROPIC_BASE_URL"].value == "https://e.example"
         assert slots["ANTHROPIC_BASE_URL"].key == (
@@ -860,7 +860,7 @@ class TestTheRealizedVariablesArriveAsKeys:
         target = target_for("codex")
         slots = resolve_realized(
             target,
-            behavior_floor={"model": "gpt-5.5", "endpoint": "https://e.example"},
+            agent_behavior_floor={"model": "gpt-5.5", "endpoint": "https://e.example"},
         )
         assert set(slots) == set(DECLARED["codex"])
 
@@ -900,7 +900,7 @@ class TestARealizedVariableADeclaredKeyAlsoNamesRefuses:
         with pytest.raises(SettingsError) as excinfo:
             resolve_realized(
                 target, agent_path=agent_file,
-                behavior_floor={"model": "some-model"},
+                agent_behavior_floor={"model": "some-model"},
             )
         message = str(excinfo.value)
         # BOTH keys — the one the user wrote, and the one that drives the variable.

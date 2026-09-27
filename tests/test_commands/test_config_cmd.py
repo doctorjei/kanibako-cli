@@ -128,9 +128,11 @@ class TestBoxConfigShow:
         # System settings tier: select claude, and set a behavior key the
         # per-agent file does NOT set (endpoint) so the system-tier value is
         # the effective one at launch — the display must show the same.
+        # ``agent.claude``, not ``agent.default``: claude's declared row is
+        # ``agent.claude`` builtin, which a default-tier value does not reach ([Q91]).
         write_nested_key(std.settings, ("system",), "agent", "claude")
         write_nested_key(
-            std.settings, ("agent", "default"), "endpoint", "https://ssp.example",
+            std.settings, ("agent", "claude"), "endpoint", "https://ssp.example",
         )
 
         args = argparse.Namespace(args=[project_dir], effective=True)

@@ -1902,6 +1902,17 @@ source = "src/kanibako/data/keyspace-manifest.yaml"
 section = "keys"
 where = { id_matches = '^agent\.default\.(access|allow_helpers|continue_mode|bootstrap|label)$' }
 
+# FACT: `agent.default.{model,endpoint,run_args,transform}` (`<None>`) are SUPPLIED
+# by `agent_default:` as a PRESENT `None` -- never omitted, never stringified. The
+# `behavior-floor` oracle prints every other row, so the two views split the table
+# and together hold all of it; json form for the reason `shell-tier-fence` gives.
+[[registry]]
+name = "default-tier-none"
+kind = "yaml-mapping"
+source = "src/kanibako/data/keyspace-manifest.yaml"
+section = "keys"
+where = { id_matches = '^agent\.default\.(model|endpoint|run_args|transform)$' }
+
 # FACT: the shell tier's `label`, `access` and `allow_helpers` are the
 # `agent_shell:` table's -- the half `shell-tier-fence` does not hold. The two views
 # split one table, and together they hold all of it. (`TestShellTierDefaults` keeps
@@ -3639,13 +3650,40 @@ registry = "behavior-floor"
 command = ["{python}", "-c", """
 from kanibako.settings.core_defaults import behavior_defaults
 for leaf, value in sorted(behavior_defaults().items()):
-    print(f"kanibako-behavior: {leaf}={value}")
+    if leaf not in ("model", "endpoint", "run_args", "transform"):
+        print(f"kanibako-behavior: {leaf}={value}")
 """]
 extract = '(?m)^kanibako-behavior: ([^\s=]+)=(.+)$'
 field = "default"
 authority = "declared"
 translate = { map = { "True" = "true", "False" = "false" } }
 translate_identifier = { pattern = '^agent\.default\.', replacement = "" }
+
+# ⚑ THE ORACLE PRINTS THE FOUR ROWS `behavior-floor` FILTERS OUT, the exact
+# complement, so a new `agent_default:` row lands there and reds.
+#   `# default-tier-none: 4 declared, 4 produced, in agreement, agreeing on
+#   default.`
+# NEGATIVE CONTROLS, each one edit in a copy under /tmp run with
+# `PYTHONPATH=<copy>/src`, each rc=1:
+#   `model: null` OMITTED from `agent_default:`: `agent.default.model: declared,
+#     produced by nothing`
+#   the reader stringifying (`str(value)`, no `None` arm): `agent.default.model:
+#     default declared 'null', code produces '"None"'`, and the same for the other three
+#   a new row `shell: "x"` in `agent_default:`: `behavior-floor`'s `shell: produced,
+#     declared by nothing`
+[[parity]]
+registry = "default-tier-none"
+command = ["{python}", "-c", """
+import json
+from kanibako.settings.core_defaults import behavior_defaults
+for leaf, value in sorted(behavior_defaults().items()):
+    if leaf in ("model", "endpoint", "run_args", "transform"):
+        print(f"kanibako-default-tier: agent.default.{leaf}={json.dumps(value)}")
+"""]
+extract = '(?m)^kanibako-default-tier: ([^\s=]+)=(.+)$'
+field = "default"
+format = "json"
+authority = "declared"
 
 # ⚑ THE ORACLE PRINTS EVERY ROW EXCEPT THE THREE `shell-tier-fence` HOLDS, the
 # exact complement of that table's filter, so a new `agent_shell:` row lands here
