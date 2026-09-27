@@ -125,6 +125,23 @@ default-only `agent.default.common.plugins` BOTH survive. A present-`None` reset
 by the merge (§3 / §6e), so it never reaches here. It must NOT itself read `meta.box.agent.*` — that
 node is MATERIALIZED FROM this pick, so reading it would be a chicken-and-egg.
 
+### A pseudo-agent has no default slot — `_fallback_node`
+
+Keyspec §2d: *"Only true agents inherit from agent.default; all pseudo-agents must explicitly define
+values for any universal keys"*, and the shell block ends *"All other keys for `shell` are unset."*
+(his Q89/Q93 answers: a pseudo-agent reads ONLY its own tier). `_fallback_node(agent_node,
+active_agent)` is the one carrier of that rule for the three picks — `behavior_pick`,
+`effective_behavior`'s discovery, and `_agent_pick_node`: it returns the `agent.default` node for a
+true agent and `__MISSING__` when `settings_keyspace.pseudo_agent_fence(active_agent)` names a fence.
+So for a plain-shell box no `agent.default` value reaches the pick — no scalar (`model`, `label`,
+…), no category entry (a user's `agent.default.bindings.ro.*`, `agent.default.env.*`), and no
+`meta.box.agent.*` mirror leaf. The shell tier answers every fence row itself: `core-defaults.yaml`
+`agent_shell:` (every behavior row, the three `<None>` universals included), its `env: agent.shell:`
+table (`TERM`), the canon producer's shell arm, and `launch.templates`' present-`None` template.
+The `agent.default` floors stay in every snapshot, dormant for a shell pick, and a user's
+`agent.default.*` tables are still read and still judged at the boundary (a malformed one refuses
+on a shell box too) — they just deliver nothing there.
+
 A box's `pref.agent.<agent>.<category>` requests (§2h) merged INTO `agent.<active>` as an ordinary
 cascade level, so the PURE pick already carries them: the box's tweak is live in category resolution
 with NO post-expand overlay (single-route).
@@ -143,6 +160,8 @@ the tier the same way the pick decides it, and from the same RAW tiers `snapshot
 already walks: a leaf declared by the ACTIVE slot came from `agent.<active>`; otherwise it came from
 `agent.default`, the only other tier that can have contributed it. It reads the raw tiers directly
 and does NOT thread per-leaf provenance through `_overlay_into` — the pick's own rule answers it.
+For a pseudo-agent it is `_fixed_decl_scope_fn("agent.<active>")`: its pick reads no default tier, so
+`agent.default` can never be the declaring tier there.
 
 Collapsing the two facts would either lose the precedence token or emit a bare `agent.<category>`
 key, which is not a key.
@@ -1351,15 +1370,13 @@ through the UNBOUND `dict` protocol (S3) so a key named `get` or `agent` cannot 
 The inherited comment here was WRONG twice over: it claimed a spec requirement that §2b does not
 state, and a caller behaviour no caller has.
 
-* The LAUNCH passes `agent_name="general"` for a no-agent/shell box (`start.py`:
-  `agent_id = with_harness(...) if target else "general"`), so the blank short-circuit does NOT fire
-  and the mirror is materialized from the §2d pick — which for `"general"` is the `agent.default`
-  backstop alone (no `agent.general` table exists anywhere). MEASURED on the launch shape:
-  `meta.box.agent` holds `auth` (the floor's capability key) PLUS the `agent.default` behavior leaves
-  (`access` / `bootstrap` / `model`). That is a defensible read-back — it IS the effective subtree
-  when the effective agent is the default backstop — and NOTHING consumes those leaves: the only
-  runtime reader under `meta.box.agent` is `auth.share_support`, which the auth FLOOR materializes
-  pre-expand, not this copy.
+* The LAUNCH passes `agent_name="shell"` for a no-agent box, so the blank short-circuit does NOT fire
+  and the mirror is materialized from the §2d pick — which for the `shell` pseudo-agent is the shell
+  tier ALONE (`_fallback_node`: no `agent.default` value). `meta.box.agent` holds `auth` (the floor's
+  capability key) PLUS the shell tier's own leaves (`label`, `access`, `bootstrap`, …). NOTHING consumes those leaves: the
+  only runtime reader under `meta.box.agent` is `auth.share_support`, which the auth FLOOR
+  materializes pre-expand, not this copy. rc2's no-agent box ran as `"general"` and mirrored the
+  `agent.default` backstop instead.
 * A caller that passes a BLANK `active_agent` (tests, and any future caller that wants the strict
   reading) gets an EMPTY mirror — the short-circuit. It does NOT fall back to `agent.default`, which
   is the all-agents backstop, not an ACTIVE agent the box runs.
@@ -1450,7 +1467,8 @@ the setting to change needs exactly that (`start._bootstrap_choice`). `start._pe
 reads the `model` value raw, because the persona model gate must keep ABSENT and PRESENT-`None`
 apart — the distinction `effective_behavior`'s collapse erases. The subtree counterpart is
 `_agent_pick_node`, which deep-overlays the default slot, then the active slot, and materializes
-`meta.box.agent.*`.
+`meta.box.agent.*`. For a pseudo-agent there is no default slot (`_fallback_node`), so the slot is
+`"active"` or `None`.
 
 ## The category adapter — snapshot subtrees → the ONE list every delivery seam eats
 

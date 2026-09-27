@@ -80,8 +80,8 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # value in the module that owns ``AGENT_TEMPLATE_STORE_REL``.
     # ⚑ INERT FOR DELIVERY, and that is the point: the node arm below is emitted
     # for every TRUE agent, so the §2d fallback to this arm never fires.  The shell
-    # pseudo-agent's node arm is a present ``None`` (see below), so the fallback never
-    # reaches it either.
+    # pseudo-agent does not inherit ``agent.default`` at all (§2d), so it never reaches
+    # this arm either.
     # ⚑⚑ INERT FOR DELIVERY IS NOT UNREACHABLE.  Delivery asks which arm the §2d pick
     # lands on; REACHABILITY asks whether ``@agent.default.template`` resolves at all.
     # Two different questions, and the answer to the second must be yes.
@@ -93,10 +93,9 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     )
     if agent_id == GENERAL_SLOT:
         # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
-        # ``agent.shell.template | <None>`` — a SUPPLIED value, so it beats the
-        # ``agent.default.template`` fallback, which applies only where nothing was
-        # supplied ([R177]; omitting the key is the rejected shape, and lets the §2d
-        # pick read the default arm back).  §2b: the tier installs NO layer-2 template;
+        # ``agent.shell.template | <None>`` — a SUPPLIED value ([R177]; omitting the
+        # key is the rejected shape: a pseudo-agent has no ``agent.default`` fallback,
+        # so the key would answer nothing).  §2b: the tier installs NO layer-2 template;
         # the layer itself stays declared, and a ``None`` source SKIPS it at resolve.
         defs[f"agent.{agent_id}.template"] = None
         return defs

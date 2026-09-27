@@ -136,10 +136,10 @@ the cascade (setting `workset.template` / `agent.<a>.template` reroutes that lay
 `agent.default.template` = `@config.agents/default/template` (the §2d DEFAULT-TIER arm) and
 `agent.<a>.template` = `@config.agents/<a>/template` (the NODE arm), under one `if agent_id` gate.
 ⚑ The shell node's NODE arm is a present `None`. Its §2d fence declares
-`agent.shell.template | <None>`, and a `<None>` there is a SUPPLIED value: `agent.default.template` is
-a fallback that applies only where nothing was supplied, so it never reaches a shell box (`[R177]`,
-which rejected OMITTING the key — absence lets the §2d pick read the default arm back as the shell
-box's `meta.box.agent.template`). The `agent.shell.seeded` layer is still declared; the `None` source
+`agent.shell.template | <None>`, and a `<None>` there is a SUPPLIED value. `agent.default.template`
+never reaches a shell box: a pseudo-agent has no `agent.default` fallback at all
+(`settings_launch._fallback_node`, keyspec §2d). `[R177]` rejected OMITTING the key — with no
+fallback, an omitted row would leave the shell box no `template` at all. The `agent.shell.seeded` layer is still declared; the `None` source
 skips it at resolve (see the seed table above). Until 2026-09-24 the node arm was emitted for
 `shell` as a store path: the floor carried `@config.agents/shell/template` and every shell box was
 seeded from that store (which `install_packaged_templates` creates). Pinned by `test_templates.py`'s

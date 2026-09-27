@@ -57,9 +57,9 @@ AGENT_ENTRY_POINT_GROUP = "kanibako.agents"
 # (``kanibako init``'s agent file, the workset previews, the effective-settings
 # dumps).  It OCCUPIES the ``agents/<node>/`` dir & the ``agent.<node>.*``
 # cascade POSITION as a real node-name does — which is why
-# ``_materialize_box_agent_mirror``'s blank short-circuit does not fire & the
-# ``agent.default`` backstop still reaches a no-agent launch — for every key the
-# shell tier does not supply itself (why: ``core-defaults.yaml`` ``agent_shell:``).
+# ``_materialize_box_agent_mirror``'s blank short-circuit does not fire.  A
+# pseudo-agent reads its own tier ONLY: no ``agent.default`` value reaches a
+# no-agent launch (keyspec §2d; ``settings_launch._fallback_node``).
 # 🛑 IT IS A DECLARED PSEUDO-AGENT (keyspec §2d, "Pseudo-agent(s)"), & the
 # difference from the old ``"general"`` slot is not cosmetic: ``agent.shell.*``
 # is DECLARED, so a closed-keyspace resolve ACCEPTS it where it REFUSED

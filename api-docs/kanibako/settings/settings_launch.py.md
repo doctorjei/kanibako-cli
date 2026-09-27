@@ -99,6 +99,7 @@ def _persona_partial(agent_name: str, persona_values: Mapping[str, str] | None) 
 def _fixed_decl_scope_fn(scope: str)
 def _agent_decl_scope_fn(agent_node: object, active_agent: str)
 def _agent_pick_node(snapshot: KeyStore, active_agent: str) -> KeyStore
+def _fallback_node(agent_node: KeyStore, active_agent: str) -> object
 def _overlay_into(base: KeyStore, top: KeyStore) -> None
 def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None
 def _require_category_node(key_prefix: str, category: str, node: object) -> KeyStore
