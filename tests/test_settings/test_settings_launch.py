@@ -1782,8 +1782,7 @@ def test_R147_a_leaf_the_keyspace_does_not_declare_is_never_swept():
 
 _R147_UNDECLARED_REASON = (
     "the refused entry IS an undeclared nested persona shape in a settings file; "
-    "assemble_levels writes it (and the meta.box.agent mirror copies it) before §0 "
-    "refuses it."
+    "assemble_levels writes it before §0 refuses it."
 )
 
 
@@ -1792,7 +1791,6 @@ _R147_UNDECLARED_REASON = (
         {"agent": {"claude": {"nav": {"template": "x"}}}}, "agent.claude.nav.template",
         marks=pytest.mark.writes_undeclared(
             "agent.claude.nav", "agent.claude.nav.template",
-            "meta.box.agent.nav", "meta.box.agent.nav.template",
             reason=_R147_UNDECLARED_REASON,
         ),
         id="nested-persona-template",
@@ -1802,8 +1800,7 @@ _R147_UNDECLARED_REASON = (
         "agent.claude.nav.secret_path.X",
         marks=pytest.mark.writes_undeclared(
             "agent.claude.nav", "agent.claude.nav.secret_path",
-            "agent.claude.nav.secret_path.X", "meta.box.agent.nav",
-            "meta.box.agent.nav.secret_path", "meta.box.agent.nav.secret_path.X",
+            "agent.claude.nav.secret_path.X",
             reason=_R147_UNDECLARED_REASON,
         ),
         id="nested-persona-secret",
@@ -5452,18 +5449,32 @@ def test_an_uninstalled_agents_leaf_is_conceded_with_its_name(tmp_path):
     assert dict.get(dict.get(snap, "agent"), "zzznotinstalled").zippity == "wibble"
 
 
+def _assert_names_only(msg: str, key: str, carrier: Path) -> None:
+    """*msg* is a §0 refusal naming *key* and no other entry, with *carrier* among its files.
+
+    ⚑ Exactly one: the ``meta.box.agent.*`` mirror is DERIVED from the active agent's
+    tier, so a stray there has no mirror row (spec §2b) and no file carries a copy for
+    the hand-edit cure to remove.
+    """
+    assert "1 entry that is not a settings key" in msg, msg
+    assert f"\n  - {key}: " in msg, msg
+    assert "meta.box.agent" not in msg, msg
+    assert f"\n    - {carrier}\n" in msg, msg
+
+
 @pytest.mark.writes_undeclared(
-    "agent.claude.zippity", "meta.box.agent.zippity",
+    "agent.claude.zippity",
     reason="the concession must stop at agents this machine CAN see; the undeclared "
-           "leaf under an installed one is the write that proves it. The mirror row "
-           "follows: meta.box.agent.* re-tags the ACTIVE agent's tier, so an "
-           "undeclared leaf on it arrives twice.",
+           "leaf under an installed one is the write that proves it.",
 )
 def test_an_installed_agents_undeclared_leaf_still_refuses(tmp_path):
     """Where the vocabulary is knowable, §0 is enforced against it exactly as before.
 
     Without this the fix above reads as "the agent tier is unenforced", which is a
     different and much larger change than the one that was made.
+
+    MUTATION: drop the ``_drop_non_mirror_keys`` call in
+    ``settings_launch._materialize_box_agent_mirror`` and this names 2 entries.
     """
     system_path = tmp_path / "settings.yaml"
     system_path.write_text(
@@ -5471,21 +5482,20 @@ def test_an_installed_agents_undeclared_leaf_still_refuses(tmp_path):
     )
     with pytest.raises(_SettingsError) as e:
         _snapshot(system_path=system_path)
-    assert "agent.claude.zippity" in str(e.value)
+    _assert_names_only(str(e.value), "agent.claude.zippity", system_path)
 
 
 @pytest.mark.writes_undeclared(
-    "agent.default.zippity", "meta.box.agent.zippity",
+    "agent.default.zippity",
     reason="the all-agents tier must stay judged though no plugin declares it; the "
-           "undeclared leaf on it is the write that proves it. The mirror row "
-           "follows: the default tier feeds the ACTIVE agent's meta.box.agent.* "
-           "read-back.",
+           "undeclared leaf on it is the write that proves it.",
 )
 def test_the_all_agents_tier_stays_judged(tmp_path):
     """``agent.default`` is CORE's tier, so the concession never reaches it.
 
     It is also where the behavior floor lands, so conceding it would unarm §0 over
-    the largest agent-scope subtree there is.
+    the largest agent-scope subtree there is. It feeds the mirror too (§2d pick), so
+    the MUTATION above reds this as well.
     """
     system_path = tmp_path / "settings.yaml"
     system_path.write_text(
@@ -5493,7 +5503,30 @@ def test_the_all_agents_tier_stays_judged(tmp_path):
     )
     with pytest.raises(_SettingsError) as e:
         _snapshot(system_path=system_path)
-    assert "agent.default.zippity" in str(e.value)
+    _assert_names_only(str(e.value), "agent.default.zippity", system_path)
+
+
+def test_a_conceded_leaf_on_the_active_agent_is_not_refused_through_its_copy(tmp_path):
+    """Spec §0 concedes a leaf whose agent's plugin is not installed; that holds for the
+    ACTIVE agent too. The mirror's copy of it used to be refused in its place — the only
+    entry named, and one no file carries. §2b mirrors only a KEY, so neither the leaf
+    nor a nested table reaches ``meta.box.agent``; the declared sibling still does.
+
+    MUTATION: drop the ``_drop_non_mirror_keys`` call and this refuses
+    ``meta.box.agent.zippity``.
+    """
+    snap = _auth_snapshot(
+        "primary", tmp_path=tmp_path, agent_name="zzznotinstalled",
+        system_file={"agent": {"zzznotinstalled": {
+            "model": "opus", "zippity": "wibble", "frob": {"nard": 1},
+        }}},
+    )
+    # The user's entries stay where they wrote them.
+    written = dict.get(dict.get(snap, "agent"), "zzznotinstalled")
+    assert {"frob", "model", "zippity"} <= set(dict.keys(written))
+    mirror = dict.keys(snap.meta.box.agent)
+    assert "model" in mirror
+    assert "zippity" not in mirror and "frob" not in mirror
 
 
 def test_a_file_of_declared_keys_resolves_unrefused(tmp_path):
@@ -5538,10 +5571,8 @@ def _nested_yaml(parts: tuple[str, ...], value: str) -> str:
 
 @pytest.mark.writes_undeclared(
     "box.agent", "box.agent_name",
-    "agent.default.default_agent", "meta.box.agent.default_agent",
-    reason="each parametrisation writes the retired spelling it is named for; the "
-           "meta row follows the agent-tier one, because meta.box.agent.* re-tags "
-           "the ACTIVE agent's subtree after expand.",
+    "agent.default.default_agent",
+    reason="each parametrisation writes the retired spelling it is named for.",
 )
 @pytest.mark.parametrize(
     "parts,key", sorted(_RETIRED_FILE_KEYS.items()), ids=lambda v: str(v),

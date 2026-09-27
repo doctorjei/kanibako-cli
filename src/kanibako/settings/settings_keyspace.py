@@ -2220,11 +2220,13 @@ def undeclared_store_paths(
     where it WOULD sit by passing that path as *prefix*, which then leads every
     returned path — judging it without first writing it there.
 
-    ⚑ It REPORTS; refusing is the CALLER's decision, and the two live callers take
+    ⚑ It REPORTS; refusing is the CALLER's decision, and the two snapshot callers take
     it oppositely off one list. ``settings_keyspace_probe.observe`` writes a row and
     returns; ``settings_launch._refuse_undeclared_snapshot`` raises naming every
     entry. Keeping the verdict here and the policy there is what let the refusal be
-    measured before it was armed.
+    measured before it was armed. (A third caller refuses nothing:
+    ``settings_launch._drop_non_mirror_keys`` keeps a non-key out of the
+    ``meta.box.agent`` copy it derives.)
     """
     judged: dict[tuple[str, ...], Judgement] = {}
     nodes: dict[tuple[str, ...], StoreNode] = {}

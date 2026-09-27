@@ -455,6 +455,14 @@ step 2): plugin-set, RO — the hard floor a user can't fake. The auth chain's
 snapshot whenever an agent exists. A NO-AGENT box omits it: no agent capability to mirror → the
 mirror `@`-ref resolves to `<None>` and the box enables degenerate false.
 
+⚑ **A pseudo-agent node gets only what its §2d block declares.** `meta_agent_identity_floor` filters
+its output through `settings_keyspace.pseudo_agent_fence`: `meta_leaves` plus `auth.<leaf>` for each
+`meta_auth_leaves` entry. `default` therefore floors `name` and `path` only; `shell`'s fence lists
+all four, so it is unchanged. No launch selects `default`, but the kinemata `agent-identity-literals`
+oracle runs the floor for it, and without the guard it produced `settings` and
+`auth.share_support` there — keys the default fence does not declare. The fence is the one carrier,
+shared with the §0 verdict.
+
 ### `meta_agent_path_floor` — one builder, two seams
 
 `meta_agent_path_floor` is THE single builder for `meta.agent.<a>.path`, used by BOTH the launch
@@ -1269,7 +1277,12 @@ resolved effective-agent node into `snapshot["meta"]["box"]["agent"]`:
 * NO LEAK — the materialized subtree is a FRESH deep COPY (`_deep_copy_store` leaves immutable
   Bind/scalar/None leaves shared but never aliases a nested KeyStore), written ONLY under
   `meta.box.agent.*`. `snapshot["agent"]` is never mutated, so a later in-place edit of the read-back
-  cannot escape into the shared agent subtree.
+  cannot escape into the shared agent subtree;
+* KEYS ONLY — `_drop_non_mirror_keys` first removes from that fresh pick every entry the §0 oracle
+  refuses at `meta.box.agent.*` (judged in place via `undeclared_store_paths(..., prefix=)`, never
+  by writing it there). §2b mirrors a KEY of the agent's subtree, so a stray a user wrote under
+  `agent.<active>` / `agent.default` has no mirror row; copying it made the §0 refusal list a
+  second entry that no file carries. The refusal still judges the whole snapshot, mirror included.
 
 Re-materialization on an agent change is AUTOMATIC: `agent_name` is the launch-resolved active agent
 (`@system.agent` — the stored key, a `pref.system.agent` request, or `--agent`; see

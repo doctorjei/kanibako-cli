@@ -138,6 +138,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The undeclared-key refusal no longer lists a `meta.box.agent.<key>` entry that no file
+  carries.** `meta.box.agent.*` is the read-only copy of the running agent's settings, so an
+  undeclared key written under that agent's table (or under `agent: default:`) was copied into it,
+  and the refusal named the copy as well, under a cure telling you to delete it by hand from a
+  settings file. The copy now takes only declared keys: the refusal names what you wrote, such as
+  `agent.claude.zippity`, and nothing else. Where the running agent's plugin is not installed, a
+  key under its table is accepted unjudged, as for any other agent; its copy is no longer refused
+  in its place.
+
 - **`box move`, `box convert`, and `box remap` report a failed file operation as an `Error:`
   line, not a Python traceback.** A permission, disk-full, or other file-system error during the
   relocation, or a copy that could not copy some entries, escaped all three commands as a

@@ -88,6 +88,7 @@ from kanibako.settings.settings_expand import expand
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
     KeyClass,
+    pseudo_agent_fence,
     render_store_path,
     undeclared_store_paths,
     walk_store_paths,
@@ -507,7 +508,8 @@ def meta_agent_identity_floor(
     """The ``meta.agent.<agent_name>.*`` half of :func:`meta_identity_floor`.
 
     Separate because it names no box: a resolve with no box (a working set, the
-    system scope) floors these and nothing else of the identity set.
+    system scope) floors these and nothing else of the identity set. A pseudo-agent
+    gets only the leaves its §2d fence declares (``default``: ``name``, ``path``).
     """
     floor: dict[str, object] = {}
     # ⚑ THE KEY DISCRIMINATOR AND THE VALUE ARE SPELLED DIFFERENTLY, and §2d's
@@ -551,7 +553,12 @@ def meta_agent_identity_floor(
     floor[f"meta.agent.{agent_name}.auth.share_support"] = bool(
         agent_auth_share_support
     )
-    return floor
+    fence = pseudo_agent_fence(agent_name)
+    if fence is None:
+        return floor
+    declared = {*fence.meta_leaves, *(f"auth.{a}" for a in fence.meta_auth_leaves)}
+    node = f"meta.agent.{agent_name}."
+    return {k: v for k, v in floor.items() if k.removeprefix(node) in declared}
 
 
 # --------------------------------------------------------------------------- #
@@ -2430,6 +2437,7 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
 
     Mutates *snapshot* in place — it is the launch-local expanded tree, owned by the
     caller. A BLANK *active_agent* → NO subtree to mirror → nothing materialized.
+    Only its KEYS are copied (:func:`_drop_non_mirror_keys`).
 
     ⚑ The auth floor separately materializes ``meta.box.agent.auth.share_support``
     (a PRE-expand floor key), so this copy must not clobber it: an existing name under
@@ -2443,6 +2451,7 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
     # The PURE pick (agent.default ⊕ agent.<active>), which already carries any
     # ``pref.agent.<agent>.*`` the box requested (a pref is a cascade INPUT).
     effective = _agent_pick_node(snapshot, active_agent)
+    _drop_non_mirror_keys(effective)
     if not dict.__len__(effective):
         return  # no leaves anywhere — nothing to mirror.
     meta_node = dict.get(snapshot, "meta", __MISSING__)
@@ -2458,6 +2467,37 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
         box_agent = KeyStore()
         meta_box["agent"] = box_agent
     _mirror_fill(box_agent, effective)
+
+
+#: Where the mirror hangs, as SEGMENTS: the path the §0 oracle judges a copied entry at.
+_MIRROR_SEGMENTS: tuple[str, ...] = ("meta", "box", "agent")
+
+
+def _drop_non_mirror_keys(effective: KeyStore) -> None:
+    """Remove from *effective*, in place, every entry the §0 oracle refuses AT the mirror.
+
+    Spec §2b declares ``meta.box.agent.<key>`` for a KEY of the active agent's
+    subtree, and §0 allows no free-form passthrough, so an undeclared entry a user
+    wrote under ``agent.<active>`` or ``agent.default`` has no mirror row. Copying it
+    anyway made the §0 refusal name it twice — once where the user wrote it, once as a
+    ``meta.box.agent.*`` entry no file carries, under a hand-edit cure.
+    ⚑ The refusal is unchanged: it still judges the whole snapshot, mirror included,
+    and still names the user's entry at the tier that carries it. The oracle is the
+    refusal's own (:func:`keyspace_verdict`), so the two cannot disagree.
+    *effective* must be the fresh pick (:func:`_agent_pick_node`), never the snapshot.
+    ⚑ Judged IN PLACE (``prefix=``), never by writing it under ``meta.box.agent`` first:
+    that write is the fabrication this removes, and the test-suite census counts it.
+    """
+    findings = undeclared_store_paths(
+        effective, oracle=keyspace_verdict, prefix=_MIRROR_SEGMENTS,
+    )
+    # Sorted by path: a refused node goes before its children, which then are gone.
+    for segments, _judgement in findings:
+        node: object = effective
+        for seg in segments[len(_MIRROR_SEGMENTS):-1]:
+            node = dict.get(node, seg, None) if isinstance(node, KeyStore) else None
+        if isinstance(node, KeyStore):
+            dict.pop(node, segments[-1], None)
 
 
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None:
