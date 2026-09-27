@@ -479,7 +479,8 @@ class TestEffectiveListingsReadTimeRefusals:
     cannot preview cleanly at rc 0 — whether or not it declares a share.
 
     ⚑ MUTATION: drop the ``refuse_read_time_faults`` call in
-    ``_workset_preview_entries`` → every case here goes rc 0. Move
+    ``build_launch_snapshot`` (the preview's resolve) → the undeclared-entry and
+    bare-relative cases go rc 0. Move
     ``run_share_list``'s ``--effective`` branch back below its empty-shares return →
     the ``share-list--effective-no-shares`` cases go rc 0.
     """
@@ -531,38 +532,116 @@ class TestEffectiveListingsReadTimeRefusals:
         assert "kanibako workset show --effective" in err
         assert "this box" not in err and "kanibako box" not in err
 
-    @pytest.mark.writes_undeclared(
-        "workset.zzz_not_a_key",
-        reason="the undeclared entry IS the input under test: the preview must "
-               "refuse it by name, as the launch does.",
-    )
-    def test_a_site_base_file_the_preview_never_reads_is_neither_named_nor_scanned(
+    def test_a_site_base_file_is_read_and_named_like_the_launch(
         self, config_file, tmp_home, workset, capsys, monkeypatch
     ):
-        """The preview folds no base file (its ``base_path`` is absent), so the §0
-        refusal names only the file it read. A retired spelling sitting in the site
-        base file must not speak in place of the working set's own entry.
+        """The preview is the launch's resolve (``build_launch_snapshot``), so it reads
+        the site base file, and a bare-relative path value there ([R147]) refuses,
+        naming the key and that file.
 
-        ⚑ ``share list --effective`` ONLY, and deliberately: its whole resolve is the
-        preview. ``workset show --effective`` ALSO renders its display half through
-        ``load_merged_config`` — the launch resolve, which DOES read the base file —
-        so there the retirement refusal is the right answer, from a different resolve.
-
-        ⚑ MUTATION: let ``settings_launch._loaded_tiers`` append the base tier again
-        → the retirement message replaces this one and the base path is named.
+        ⚑ MUTATION: restore the preview's old hand assembly (``assemble_levels`` with
+        an absent ``base_path``) → rc 0 and the base path is not named.
         """
         from kanibako.settings import settings_assemble as _assemble
         from kanibako.settings import settings_launch as _launch
 
         base = tmp_home / "site-base.yaml"
-        base.write_text("box:\n  agent_name: claude\n", encoding="utf-8")
+        base.write_text("workset:\n  auth:\n    path: foo\n", encoding="utf-8")
         monkeypatch.setattr(_assemble, "settings_base_path", lambda: base)
         monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
-        self._hand_edit(workset, {"zzz_not_a_key": 1})
         assert _run_share_list_effective() == 1
         err = capsys.readouterr().err
-        assert "workset.zzz_not_a_key" in err
-        assert str(base) not in err and "RETIRED" not in err
+        assert str(base) in err
+        assert "workset.auth.path" in err
+
+    @pytest.mark.writes_undeclared(
+        "system.zzz_not_a_key",
+        reason="the undeclared entry IS the input under test: the preview must "
+               "refuse it by name, as the launch does.",
+    )
+    def test_an_undeclared_entry_in_the_system_file_is_refused(
+        self, config_file, tmp_home, workset, std, capsys
+    ):
+        """The system settings file is one of the files a launch reads, so the
+        preview refuses what it carries, naming the key and the file, for this
+        working set.
+
+        ⚑ ``share list --effective`` ONLY: ``workset show --effective`` renders its
+        display half through ``load_merged_config`` first, which refuses the same
+        entry in a box's words (S1 Pass 2b gives that resolve its own subject)."""
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(std.settings, {"system": {"zzz_not_a_key": 1}})
+        assert _run_share_list_effective() == 1
+        err = capsys.readouterr().err
+        assert "system.zzz_not_a_key" in err
+        assert str(std.settings) in err
+        assert "resolved for this working set" in err
+
+    @_EFFECTIVE_LISTINGS
+    def test_a_config_table_in_the_workset_file_is_refused(
+        self, config_file, tmp_home, workset, capsys, run_listing
+    ):
+        """Spec §1: a ``config:`` table in a settings file refuses at launch, naming the
+        file and key, so the preview refuses it too (``refuse_config_table``)."""
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(workset.root / "workset.yaml", {
+            "config": {"data": "/x"},
+            "workset": {"bindings": {"ro": {"/opt/c": ["/abs/c"]}}},
+        })
+        assert run_listing() == 1
+        err = capsys.readouterr().err
+        assert "config.data" in err
+        assert str(workset.root / "workset.yaml") in err
+
+    @_EFFECTIVE_LISTINGS
+    def test_a_bare_relative_pref_request_is_refused(
+        self, config_file, tmp_home, workset, capsys, run_listing
+    ):
+        """Spec §2h: a ``pref:`` request is installed at its target and resolved, so a
+        bare-relative path requested for a path key refuses as it does at launch."""
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(workset.root / "workset.yaml", {
+            "pref": {"agent": {"default": {"canon": "rel"}}},
+        })
+        assert run_listing() == 1
+        err = capsys.readouterr().err
+        assert "agent.default.canon" in err and "'rel'" in err
+        assert str(workset.root / "workset.yaml") in err
+
+
+class TestEffectiveListingsResolveTheWorksetAnchors:
+    """``share list --effective`` resolves a share's source against the anchors a
+    launch floors for this working set (``resolve_inputs``, ``WORKSET`` subject)."""
+
+    def _list_one(self, workset, capsys, dest: str, src: str) -> str:
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(workset.root / "workset.yaml", {
+            "workset": {"bindings": {"ro": {dest: [src]}}},
+        })
+        assert _run_share_list_effective() == 0
+        return capsys.readouterr().out
+
+    @pytest.mark.parametrize("src, leaf", [
+        ("@meta.workset.path/refdir", "refdir"),
+        ("@meta.runtime.ws_root/r", "r"),
+    ])
+    def test_a_workset_anchor_resolves_to_the_working_set_root(
+        self, config_file, tmp_home, workset, capsys, src, leaf
+    ):
+        out = self._list_one(workset, capsys, "/opt/w", src)
+        assert f"  {workset.root / leaf} -> /opt/w  [ro]" in out
+
+    def test_the_auth_chain_resolves_as_at_launch(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """Spec §2c: ``workset.auth.path`` defaults under the working-set root, so a
+        share sourced there lists the directory a launch mounts, not ``/notes``."""
+        out = self._list_one(workset, capsys, "/opt/n", "@workset.auth.path/notes")
+        assert f"  {workset.root / 'auth' / 'notes'} -> /opt/n  [ro]" in out
 
 
 class TestEffectiveListingsWithNoShares:

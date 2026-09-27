@@ -147,6 +147,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   key under its table is accepted unjudged, as for any other agent; its copy is no longer refused
   in its place.
 
+- **`workset share list --effective` and `workset show --effective` resolve a working set the way a
+  launch does.** They read only the working set's own settings file, so they could print a listing a
+  launch would not match. A share sourced at `@workset.auth.path/notes` listed `/notes`, and one
+  sourced at `@meta.runtime.ws_root/r` listed `/r`. A `config:` table in `workset.yaml` and a
+  bare-relative `pref:` request listed at exit code 0 in both views, and an undeclared key in the
+  base or system settings file did in `share list --effective`, although every launch in the working
+  set refuses them. Both views now read the base and system settings files, apply the working set's
+  `pref:` requests, and resolve the `@workset.*` and `@meta.runtime.*` references a launch resolves.
+  They exit 1 with the launch's refusal, naming the file that carries the entry. A box's own
+  settings file and the agent file are still not read, since a working set names neither. See
+  MIGRATION.md, *`workset show --effective` exits 1 on a working set file it cannot resolve*.
+
 - **`box move`, `box convert`, and `box remap` report a failed file operation as an `Error:`
   line, not a Python traceback.** A permission, disk-full, or other file-system error during the
   relocation, or a copy that could not copy some entries, escaped all three commands as a

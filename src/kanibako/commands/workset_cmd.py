@@ -784,7 +784,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # LAUNCH's snapshot, and a working set has no box to launch.
         if rc != 0 or not args.effective:
             return rc
-        return _print_effective_derivations(ws, std, ws_config)
+        return _print_effective_derivations(ws, std)
 
     if action == ConfigAction.get:
         # ⚑ Refused at the HANDLER, not in the engine: the get engine returns VALUES and
@@ -1052,7 +1052,7 @@ def run_share_list(args: argparse.Namespace) -> int:
     # carry a value every box in it refuses (``workset: {frob: 1}``); returning "No
     # bindings" first answered rc 0 for it.
     if getattr(args, "effective", False):
-        return _print_effective_shares(ws, std, ws_config)
+        return _print_effective_shares(ws, std)
 
     if not raw_shares:
         _print_no_shares(ws)
@@ -1148,103 +1148,42 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
 _PREVIEW_HOME_SRC: str = "(each box's own home store)"
 
 
-def _workset_preview_entries(ws, std, ws_config: Path) -> "list[CategoryEntry]":
-    """The workset-only resolve → the ONE ``CategoryEntry`` list both listings read.
+def _workset_preview_entries(ws, std) -> "list[CategoryEntry]":
+    """The working set's launch resolve → the ONE ``CategoryEntry`` list both listings read.
 
-    A working set names no BOX, so this builds the cascade a launch would build MINUS
-    the box tier: the agent name is a placeholder, the base file is absent, and the
-    only settings file passed is the workset's own.  ⚑ IT IS SHARED, and that is the
-    point — ``workset share list --effective`` and the derived-binding block of
-    ``workset show --effective`` describe ONE working set, and two resolves of one
-    file would be two answers about it.
+    ⚑ THE LAUNCH'S OWN RESOLVE, with the ``WORKSET`` subject: the inputs come from
+    ``settings_launch.resolve_inputs`` and the snapshot from ``build_launch_snapshot``,
+    so the system and base files, the workset's ``pref:`` requests, the §2c auth chain,
+    every workset anchor and the launch's refusals all apply here as they do at launch.
+    A working set names no box: every box-scope anchor is OMITTED, never fabricated, and
+    the agent is the ``GENERAL_SLOT`` placeholder with no agent file. ⚑ SHARED —
+    ``workset share list --effective`` and the derived block of ``workset show
+    --effective`` must give one answer about one working set.
 
-    Raises :class:`~kanibako.settings.settings_resolve.SettingsError` for a malformed
-    file, and for any stored value the launch's read-time refusals reject ([R147]
-    bare-relative paths, §0 undeclared entries); the ARBITRATION and its refusals are
-    :func:`_workset_preview_collapse`'s.
+    Raises :class:`~kanibako.settings.settings_resolve.SettingsError` for anything the
+    launch refuses; the ARBITRATION is :func:`_workset_preview_collapse`'s.
     """
     from kanibako.agent_ref import GENERAL_SLOT
-    from kanibako.settings.paths import (host_config_map, host_xdg_map,
-                                         system_path_floor)
-    from kanibako.settings.settings_assemble import assemble_levels
-    from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_launch import (
         ResolveSubject,
-        refuse_read_time_faults,
+        build_launch_snapshot,
+        resolve_inputs,
         snapshot_category_entries,
     )
-    from kanibako.settings.settings_merge import merge
-    from kanibako.settings.settings_resolve import ResolveCtx
 
-    # ⚑ Resolver SPLIT (spec §1A / JC-2): Layer-1 ``config.*`` goes in ``ctx.config``,
-    # Layer-2 ``system.*`` in the snapshot floor below. The xdg map must be the FULL host
-    # map — a data-home-only partial raises on a stored ``$XDG_CACHE_HOME/...``.
-    # ⚑⚑ ``config=`` IS THE SAME DERIVED BUILDER THE LAUNCH USES, for the reason the
-    # ``system_path_floor`` note below gives about the OTHER half of this ctx: written out
-    # by hand here and again in ``agent_select.launch_resolve_ctx``, it carried five of the
-    # six declared Layer-1 keys in both places, so a workset binding sourced at
-    # ``@config.journal`` was accepted by ``config set`` and reached neither this display
-    # nor the launch.
-    ctx = ResolveCtx(
-        agent_name=None,
-        workset_name=None if ws.is_default else ws.name,
-        host_home=str(Path.home()),
-        xdg=host_xdg_map(std.data_home),
-        config=host_config_map(std),
+    inputs = resolve_inputs(
+        subject=ResolveSubject.WORKSET, std=std, ws=ws,
+        agent_name=GENERAL_SLOT, system_path=std.settings,
     )
-
-    # Fold the resolved Layer-2 system.* tier into the floor so a value's @-ref (e.g.
-    # @system.channelroot) resolves from the snapshot. Keys are flat dotted; assemble explodes.
-    # ⚑⚑ THE SAME BUILDER THE LAUNCH USES (``settings_launch.resolve_inputs``),
-    # because this display's whole job is to say what a launch would mount. Written out
-    # by hand, it carried three of the eight keys — so a workset binding sourcing
-    # ``@system.channels.chat`` mounted at launch and was SILENTLY OMITTED from this
-    # listing, with rc 0 and no error. A user checking their bindings here saw a row
-    # they had configured simply not appear.
-    floor: dict[str, object] = dict(system_path_floor(std))
-
-    # ⚑⚑ THE DECLARATION-ROOT ANCHOR (spec §2a "Declaration roots"), and WITHOUT IT THE
-    # LISTINGS LIE. The abstract trio are ROOTED at declaration load, so what is stored
-    # is ``@meta.workset.path/common/<src>`` — and ``system_path_floor`` carries no
-    # ``meta.*`` key at all, so that anchor expanded to the EMPTY STRING and a
-    # declaration sourced at the workset root printed as ``/common/<src>``, a path that
-    # exists nowhere. MEASURED on the CONCRETE half too: a share written
-    # ``@meta.workset.path/refdir`` listed as ``/refdir -> …`` at rc 0 with no warning.
-    # ⚑ ``ws.root`` IS this anchor — ``paths.workset_settings_path`` declares the
-    # workset tier as ``@meta.workset.path/workset.yaml`` — so nothing here decides
-    # where a root is. 🛑 NO PER-MODE BRANCH, and the spec is why: §2c's RUNTIME-
-    # DERIVED / ALL PROJECTS block declares ``meta.workset.path | @meta.runtime
-    # .ws_root`` for EVERY mode, so there is no per-mode variation at this key to
-    # reproduce. ``ws.root`` is already the resolved root for primary and named
-    # alike, and standalone cannot arrive here at all (``workset create
-    # --standalone`` is refused; ``resolve_workset_name`` reads the registry).
-    # ⚑ ``config_interface._meta_scope_anchor_floor(ws_config, None)`` WOULD return
-    # exactly this value — its ``workset_path.parent`` is ``ws.root``. It is not
-    # called only because it is private to a module another writer is inside; the
-    # consolidation is boarded, not declined.
-    floor["meta.workset.path"] = str(ws.root)
-
-    levels = assemble_levels(
+    expanded = build_launch_snapshot(
+        **inputs.as_kwargs(),
         agent_name=GENERAL_SLOT,
-        base_path=ws_config.parent / "__absent_base__",
-        workset_path=ws_config,
-        floor=floor,
-    )
-    snapshot = merge(levels)
-    expanded = expand(snapshot, ctx)
-    # ⚑⚑ THE LAUNCH'S READ-TIME REFUSALS, through the launch's own entry point. This
-    # resolve is a parallel route to ``build_launch_snapshot``, and without them a
-    # working set a launch REFUSES — a bare-relative stored path ([R147]), an entry
-    # that is not a settings key (§0) — previewed cleanly at rc 0. The workset file is
-    # the ONLY file this resolve reads: the base level is the floor alone
-    # (``base_path`` is absent), so it is neither judged nor named.
-    refuse_read_time_faults(
-        [(levels[1], ws_config, None)], expanded, ctx=ctx,
-        files=(("workset", ws_config),),
-        subject=ResolveSubject.WORKSET,
+        agent_path=None,
+        # The resolved ``system.*`` tier, as in every box resolve.
+        default_categories=dict(inputs.system_floor),
     )
     return snapshot_category_entries(
-        expanded, active_agent=GENERAL_SLOT, box_ctx=ctx,
+        expanded, active_agent=GENERAL_SLOT, box_ctx=inputs.ctx,
     )
 
 
@@ -1318,7 +1257,7 @@ def _preview_refusal(ws, exc: CategoryCollisionError | SettingsError) -> int:
     return 1
 
 
-def _print_effective_shares(ws, std, ws_config: Path) -> int:
+def _print_effective_shares(ws, std) -> int:
     """Resolve, ARBITRATE and print the workset's bindings as launch-time mounts."""
     from kanibako.errors import CategoryCollisionError
     from kanibako.settings.settings_categories import is_read_only
@@ -1331,7 +1270,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     )
 
     try:
-        entries = _workset_preview_entries(ws, std, ws_config)
+        entries = _workset_preview_entries(ws, std)
         collapsed = _workset_preview_collapse(entries)
     except (CategoryCollisionError, SettingsError) as e:
         return _preview_refusal(ws, e)
@@ -1371,7 +1310,7 @@ def _print_effective_shares(ws, std, ws_config: Path) -> int:
     return 0
 
 
-def _print_effective_derivations(ws, std, ws_config: Path) -> int:
+def _print_effective_derivations(ws, std) -> int:
     """Print each ABSTRACT declaration WITH the binding it derives (keyspec §0).
 
     §0 on the abstract trio: *"The binding they produce is MATERIALISED beside the
@@ -1390,11 +1329,11 @@ def _print_effective_derivations(ws, std, ws_config: Path) -> int:
     (``store_collapse.pair_declarations``), fed off the SAME entry list and the SAME
     fold ``workset share list --effective`` reads.  Nothing is re-derived.
 
-    ⚑ **WHAT THIS CLAIMS, EXACTLY: what the declarations in THIS WORKING SET's settings
-    file derive among themselves** — not what a named box receives.  That file's ``box:``
-    defaults-down table is read like the rest of it, so a ``box.masks`` written there
-    does apply here.  A working set names no box, so no box's OWN settings file is read
-    (nor an agent file, nor the system or base settings file), and a ``masks`` entry in one of those that
+    ⚑ **WHAT THIS CLAIMS, EXACTLY: what the base, system and working-set settings files
+    derive for a box in this working set** — not what a named box receives.  The working
+    set's ``box:`` defaults-down table is read like the rest of it, so a ``box.masks``
+    written there does apply here.  A working set names no box and no agent, so no box's
+    OWN settings file and no agent file is read, and a ``masks`` entry in one of those that
     would swallow one of these at launch cannot be seen from here.  The pid-0 foundation is spelled
     :data:`_PREVIEW_HOME_SRC` for the same reason, and a ``seeded`` row prints its
     GUEST destination only: §0's tuple direction resolves a seed to the host store
@@ -1425,7 +1364,7 @@ def _print_effective_derivations(ws, std, ws_config: Path) -> int:
     )
 
     try:
-        entries = _workset_preview_entries(ws, std, ws_config)
+        entries = _workset_preview_entries(ws, std)
         abstract = [e for e in entries if e.category in ABSTRACT_CATEGORIES]
         if not abstract:
             return 0
@@ -1455,12 +1394,11 @@ def _print_effective_derivations(ws, std, ws_config: Path) -> int:
     print("")
     print(f"Derived bindings for working set '{ws.name}':")
     # ⚑ WHAT THE HEADING DOES NOT COVER, said where the user reads it: the resolve
-    # above reads this working set's settings file alone, so a mask in any other
-    # settings file that would swallow one of these rows at launch is not applied.
+    # above reads no agent file and no box's own file, so a mask in one of those that
+    # would swallow one of these rows at launch is not applied.
     print(
-        "  (Masks from the base or system settings file, an agent file or a box's "
-        "own file are not applied here; 'kanibako box show <box> --effective' "
-        "shows what a box receives.)"
+        "  (Masks from an agent file or a box's own file are not applied here; "
+        "'kanibako box show <box> --effective' shows what a box receives.)"
     )
     for row in derivations:
         print(f"  {row.declaration.key} = {row.declaration.src}")
