@@ -2600,9 +2600,10 @@ self:
       model: x
   ```
 
-  `agent: claude:` in claude's own file sets the same keys `self:` does — except
-  `transform_settings`, which is still read from `self:` alone, so under `agent: claude:` it has
-  no effect. The `default:` node beats the system file's `agent: default:`, but not a system-file
+  `agent: claude:` in claude's own file sets the same keys `self:` does, and the `agent` verbs
+  treat the two spellings as one: `agent list`, `get`, `show` and `info` display a value under
+  either, and `agent set` / `agent reset` change it where it is written (a new value goes under
+  `self:`). The `default:` node beats the system file's `agent: default:`, but not a system-file
   `agent: claude:` value: a named agent's key still beats a default. Check such a table before
   you upgrade: a value that did nothing until now takes effect. **One setting under both `self:`
   and `agent: claude:` refuses**, naming both spellings and the file (`agent: Claude:` counts as
@@ -2612,6 +2613,25 @@ self:
   (`agent: goose: bogus: 1`) — the same check `self:` gets. Every `agent` verb that reads the
   file (`show`, `info`, `list`, `get`) refuses it as the launch does; `agent reset <agent> --all` does not refuse, and now
   clears this table as well.
+- **You have a value where `env`'s or `secret_path`'s table goes, or a bad entry inside a
+  category.** 1.8.0-rc2 dropped `self: {env: 5}` (or a bare `env:` line) without a word, in the
+  launch and in the `agent` verbs alike, and its `agent` verbs listed a file whose category
+  contents a launch refused (`self: {env: {1BAD: x}}`, a name that is not an environment
+  variable). Both **refuse now, naming the entry and the file**, in every `agent` verb that reads
+  the file as at a launch, and under `self:` as under `agent: claude:`: write `env` as a table
+  of variables (`env: {PAGER: less}`) or delete the line; correct or delete the entry. An arm
+  `bindings` does not have (`bindings: {zz: …}`; the arms are `ro` and `rw`) is the same case. One
+  refusal names every such entry, so one edit cures them all. One agent spelled twice in the
+  `agent:` table (`agent: {Claude: …, claude: …}`) refuses too, naming both spellings, in a refusal
+  of its own that comes first. `agent reset <agent> --all` still opens the file.
+- **You have `self` as an agent name in a key** — an `agent: self:` table, or
+  `agent.self.<key>`. `self` names this file's own top-level table and nothing else. In 1.8.0-rc2
+  `system set agent.self.model=x` answered `Set` and created an agent store folder named `self`, and an
+  `agent: self:` table in the system settings file started a box without a word. Both **refuse
+  now**, naming the key; so does `agent: self:` in an agent's own settings file. Move the settings under
+  the agent's real name (`agent: claude:`), or under `self:` in that agent's own file. A leftover
+  `agents/self/` folder is not an agent, and `agent list`, `info`, `show` and `get` now refuse it
+  by path: delete it (or empty it with `agent reset self --all`).
 
 **Why refuse a nested level rather than keep accepting it?** Because it was never one spelling —
 it was two, and the flat one won without saying so. A file carrying both a nested and a flat table

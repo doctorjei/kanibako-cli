@@ -819,15 +819,27 @@ class TestLoadSurvivesAMalformedTable:
     have to stay reachable, so the READ side coerces and the WRITE side refuses.
     """
 
-    @pytest.mark.parametrize("key", ("transform_settings", "env", "secret_path"))
-    def test_a_scalar_at_a_table_key_does_not_raise(self, key, tmp_path):
+    def test_a_scalar_at_a_table_key_does_not_raise(self, tmp_path):
         path = tmp_path / "agent.yaml"
-        path.write_text(f"self:\n  model: opus\n  {key}: oops\n")
+        path.write_text("self:\n  model: opus\n  transform_settings: oops\n")
         cfg = load(path, node="claude")          # must not raise
         assert cfg.state == {"model": "opus"}
-        assert getattr(cfg, key) == {}
+        assert cfg.transform_settings == {}
         # ...and the garbage does NOT ride into the launch as an agent-state knob.
-        assert key not in cfg.state
+        assert "transform_settings" not in cfg.state
+
+    @pytest.mark.parametrize("key", ("env", "secret_path"))
+    def test_a_scalar_at_a_category_refuses_by_name(self, key, tmp_path):
+        # ⚑ NOT coerced away: ``agent.<node>.<key>`` is a NAMESPACE, and a value there is
+        # refused under ``agent: <node>:`` — so under ``self:`` too, where the launch used to
+        # drop it without a word. The repair door (``reset --all``) never reads through here.
+        path = tmp_path / "agent.yaml"
+        path.write_text(f"self:\n  model: opus\n  {key}: oops\n")
+        with pytest.raises(SettingsError) as exc:
+            load(path, node="claude")
+        assert f"'agent.claude.{key}' is a namespace" in str(exc.value)
+        assert f"remove `self.{key}`" in str(exc.value)
+        assert clear_overrides(path) == 2
 
 
 class TestClearOverrides:
@@ -999,7 +1011,9 @@ class TestLevelTable:
         assert level.scope == (table if scope == "agent" else {})
         path = tmp_path / "agent.yaml"
         dump_doc(path, raw)
-        assert load(path, node="claude").env == {"A": "b"}
+        # The own node's ``agent:`` entry is the file's own settings too (Q92).
+        expected_env = {"A": "b", "X": "1"} if scope == "agent" else {"A": "b"}
+        assert load(path, node="claude").env == expected_env
 
     @pytest.mark.parametrize("stray", ("model", "stray", "env", "config", "Self"))
     def test_load_refuses_the_stray_the_launch_refuses(self, stray, tmp_path):
@@ -1197,6 +1211,40 @@ class TestTheAgentTable:
         assert f"carries '{shown}'" in str(exc.value)
 
     @pytest.mark.parametrize("scope", (
+        {"Claude": {"model": "a"}, "claude": {"model": "b"}},
+        {"nav+Claude": {"model": "a"}, "nav℘claude": {"model": "b"}},
+    ))
+    def test_one_node_spelled_twice_in_the_table_refuses(self, tmp_path, scope):
+        # ``load`` gives the launch's verdict (``refuse_node_spelled_twice``, one carrier).
+        # (Mutation: drop the call from ``_contribution`` → ``load`` returns → RED.)
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"agent": scope})
+        with pytest.raises(SettingsError, match="ONE agent node .* spelled twice"):
+            load(path, node="claude")
+
+    def test_every_undeclared_entry_is_named_at_once(self, tmp_path):
+        # The cure is a hand-edit: one refusal names every entry, as the launch does.
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": {"model": "a", "bogus": 1, "zippity": 2}})
+        with pytest.raises(SettingsError) as exc:
+            load(path, node="claude")
+        message = str(exc.value)
+        assert "has 2 entries that are not settings keys" in message
+        assert "carries 'bogus'" in message and "carries 'zippity'" in message
+        assert "`self.bogus`, `self.zippity`" in message
+
+    def test_the_alias_is_no_node_for_any_reader(self, tmp_path):
+        # A leftover ``agents/self/`` (1.8.0-rc2's ``system set agent.self.<key>``) is refused
+        # by ``load``, which every ``agent`` reader shares.
+        path = tmp_path / "self" / "agent.yaml"
+        path.parent.mkdir()
+        dump_doc(path, {"self": {"model": "a"}})
+        with pytest.raises(SettingsError) as exc:
+            load(path, node="self")
+        assert f"{path.parent} is not an agent store" in str(exc.value)
+        assert "'self' is not an agent" in str(exc.value)
+
+    @pytest.mark.parametrize("scope", (
         {"nosuchharness": {"x": 1}},            # conceded: no readable vocabulary ([R150])
         {"claude": {"run_args": ["-x"], "transform_settings": {"a": 1}}},
         {"bar": {"env": {"A": "1"}}},           # a category's entries are data, not keys
@@ -1205,7 +1253,7 @@ class TestTheAgentTable:
     def test_what_the_launch_concedes_load_concedes(self, tmp_path, scope):
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": {"model": "a"}, "agent": scope})
-        assert load(path, node="claude").state == {"model": "a"}
+        assert load(path, node="claude").state["model"] == "a"
 
     def test_different_leaves_of_one_table_merge(self, tmp_path):
         # Two dests of one arm, two VARs of one family: different settings, as across files.
@@ -1490,3 +1538,57 @@ class TestLoadSharesTheRefusal:
         cfg = load(path, node="claude")
         assert cfg.env == {"EDITOR": "vim"}
         assert cfg.category_tables == {"bindings": {"ro": {"/box/x": ["/h/x"]}}}
+
+
+class TestOneNodeTwoSpellings:
+    """``self:`` IS ``agent.<node>`` (Q92), so ``agent: <own node>:`` spells the same settings:
+    the record every ``agent`` verb displays holds both, and the slot addresses whichever holds
+    the value. (Two spellings of ONE setting refuse — Q103, :class:`TestTheAgentTable`.)"""
+
+    def test_the_record_holds_both_spellings(self, tmp_path):
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {
+            "self": {"label": "L", "env": {"A": "1"}},
+            "agent": {
+                "Claude": {"model": "b", "env": {"B": "2"}, "run_args": ["--x"],
+                           "masks": {"/m": True}},
+                "goose": {"model": "g"},
+            },
+        })
+        cfg = load(path, node="claude")
+        assert cfg.state == {"label": "L", "model": "b"}
+        assert cfg.env == {"A": "1", "B": "2"}
+        assert cfg.run_args == ["--x"]
+        assert cfg.category_tables == {"masks": {"/m": True}}
+
+    @pytest.mark.parametrize("tail", ("model", "env.FOO"))
+    def test_the_slot_reads_writes_and_removes_where_the_value_is(self, tail, tmp_path):
+        from kanibako.settings.config_io import load_doc
+
+        slot = slot_for(tmp_path, "claude", tail)
+        spelled = {"model": {"model": "b"}, "env.FOO": {"env": {"FOO": "b"}}}[tail]
+        dump_doc(slot.path, {"agent": {"claude": spelled}})
+        assert read_leaf(slot) == "b"
+        write_leaf(slot, "c")
+        # Rewritten in place: a second spelling under ``self:`` would refuse every read.
+        assert "self" not in load_doc(slot.path)
+        assert read_leaf(slot) == "c"
+        assert remove_leaf(slot) is True
+        assert load_doc(slot.path) == {}
+
+    def test_a_new_value_is_written_under_the_root(self, tmp_path):
+        from kanibako.settings.config_io import load_doc
+
+        slot = slot_for(tmp_path, "claude", "env.NEW")
+        dump_doc(slot.path, {"agent": {"claude": {"env": {"OLD": "1"}}}})
+        write_leaf(slot, "2")
+        assert load_doc(slot.path) == {
+            "agent": {"claude": {"env": {"OLD": "1"}}}, "self": {"env": {"NEW": "2"}},
+        }
+        load(slot.path, node="claude")  # one setting per spelling: still reads
+
+    def test_another_nodes_value_is_not_this_nodes(self, tmp_path):
+        slot = slot_for(tmp_path, "claude", "model")
+        dump_doc(slot.path, {"agent": {"goose": {"model": "g"}, "default": {"model": "d"}}})
+        assert read_leaf(slot) is None
+        assert load(slot.path, node="claude").state == {}

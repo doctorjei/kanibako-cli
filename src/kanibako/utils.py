@@ -1,4 +1,5 @@
-"""Utility functions: cp_if_newer, confirm_prompt, short_hash, path encoding, container naming."""
+"""Utility functions: cp_if_newer, confirm_prompt, deep_merge, short_hash, path encoding,
+container naming."""
 
 from __future__ import annotations
 
@@ -44,6 +45,23 @@ def confirm_prompt(message: str) -> None:
         raise UserCanceled("Aborted.")
     if response.strip() != "yes":
         raise UserCanceled("Aborted.")
+
+
+def deep_merge(base: dict, override: dict) -> dict:
+    """*base* with *override*'s entries added, a table into its table; neither is mutated.
+
+    A key both hold as tables is merged recursively; otherwise *override*'s value wins.  The
+    result SHARES every nested table neither side overrides with its input: copy before
+    mutating it.
+    """
+    result = dict(base)
+    for key, val in override.items():
+        mine = result.get(key)
+        if isinstance(mine, dict) and isinstance(val, dict):
+            result[key] = deep_merge(mine, val)
+        else:
+            result[key] = val
+    return result
 
 
 def short_hash(full_hash: str, length: int = 8) -> str:

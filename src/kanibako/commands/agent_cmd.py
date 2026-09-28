@@ -208,7 +208,8 @@ def _store_node(store: Path) -> str:
     """The agent NODE an agent store folder names; refuses a folder that names no agent.
 
     ⚑ The ref grammar's refusal says only which name is illegal; this one names the folder and
-    the cure, because the user put the folder there and must be told where it is.
+    the cure, because the user put the folder there and must be told where it is.  A folder
+    named after the file's alias (``self``) is refused by ``agent_file.load``, as every reader is.
     """
     from kanibako.errors import ConfigError
     from kanibako.settings.config_keys import agent_key_node

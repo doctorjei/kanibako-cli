@@ -1283,9 +1283,8 @@ def _refuse_undeclared_snapshot(
 
     ⚑ EVERY offending path, not the first. A user hand-edits the cure, and a
     refusal that names one entry per attempt turns one edit into N launches.
-    (``agent_file._refuse_undeclared_state`` names one because it judges a FLAT
-    table of at most a handful of behavior keys; a resolved snapshot is the whole
-    cascade.)
+    (``agent_file._refuse_undeclared_state`` names every entry too, as ONE agent
+    file is read and before any snapshot exists; this names the whole cascade's.)
 
     ⚑ THE CURE IS A HAND-EDIT AND THE MESSAGE MUST SAY SO. ``box reset <key>``
     cannot remove what is not a key, and ``box show --effective`` resolves through

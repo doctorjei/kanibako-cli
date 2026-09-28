@@ -21,6 +21,7 @@ from typing import overload
 from kanibako.agent_ref import parse_agent_address
 from kanibako.errors import ConfigError
 from kanibako.settings.agent_file import AgentFileSlot, slot_for
+from kanibako.settings.settings_keyspace import file_alias_reason
 from kanibako.settings.config_keys import (
     _AGENT_DEFAULT_TIER_CURE,
     AGENT_DEFAULT_SUB,
@@ -65,8 +66,9 @@ def _agent_node_route(
 
 
 def check_agent_node(node: str) -> "NodeRouteRefusal | None":
-    """The GUARD PAIR every per-node route enforces, or ``None`` when *node* is
-    routable: ``default`` is the RESERVED any-agent tier, and a ref must parse.
+    """The GUARDS every per-node route enforces, or ``None`` when *node* is routable:
+    ``default`` is the RESERVED any-agent tier, the agent file's alias is no node
+    (``settings_keyspace.file_alias_reason``), and a ref must parse.
 
     ⚑ The caller this was split out for is GONE (R-9).  The split is KEPT: the
     guard pair is the rule, and a rule spelled once cannot drift back into the
@@ -79,6 +81,9 @@ def check_agent_node(node: str) -> "NodeRouteRefusal | None":
     # own ([R175] — built-in is a category).  The ADDRESS grammar admits it; the
     # §2d reservation still refuses ``shell`` to agents, personas and harnesses —
     # this door routes the owner's own settings, it lets nobody claim the name.
+    alias = file_alias_reason(node)
+    if alias is not None:
+        return NodeRouteRefusal("malformed", alias)
     try:
         parse_agent_address(node)  # validate only (raises on a malformed ref)
     except ConfigError as exc:

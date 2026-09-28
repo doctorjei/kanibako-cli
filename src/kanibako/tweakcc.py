@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Final
 
 from kanibako.log import get_logger
+from kanibako.utils import deep_merge
 
 logger = get_logger("tweakcc")
 
@@ -86,17 +87,6 @@ def load_external_config(config_path: str | None) -> dict:
         return {}
 
 
-def _deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge *override* into *base*, returning a new dict."""
-    result = dict(base)
-    for key, val in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
-            result[key] = _deep_merge(result[key], val)
-        else:
-            result[key] = val
-    return result
-
-
 def build_merged_config(
     tweakcc_cfg: TweakccConfig,
     kanibako_defaults: dict | None = None,
@@ -114,16 +104,16 @@ def build_merged_config(
 
     # Layer 1: kanibako defaults (lowest priority)
     if kanibako_defaults:
-        result = _deep_merge(result, kanibako_defaults)
+        result = deep_merge(result, kanibako_defaults)
 
     # Layer 2: external config file
     external = load_external_config(tweakcc_cfg.config_path)
     if external:
-        result = _deep_merge(result, external)
+        result = deep_merge(result, external)
 
     # Layer 3: inline overrides (highest priority)
     if tweakcc_cfg.overrides:
-        result = _deep_merge(result, tweakcc_cfg.overrides)
+        result = deep_merge(result, tweakcc_cfg.overrides)
 
     return result
 

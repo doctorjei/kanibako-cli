@@ -51,7 +51,6 @@ def _behavior_leaf_sites(raw: Any, leaf: str) -> 'list[tuple[tuple[str, ...], An
 def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None) -> str
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict
-def _canonical_node(segment: Any) -> Any
 def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict
 def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=()) -> Any
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str

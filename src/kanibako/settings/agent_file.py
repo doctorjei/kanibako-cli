@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, Iterable
+from typing import Any, Callable, Final, Iterable, Iterator
 
 from kanibako.settings.agent_config import (
     AgentConfig,
@@ -33,6 +33,7 @@ from kanibako.settings.config_io import (
 )
 from kanibako.settings.settings_drops import cascade_drop_set, contained_scopes
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
+from kanibako.utils import deep_merge
 
 #: The per-agent file's ROOT table — the file's self-reference, spelled ONCE, HERE.
 _ROOT: Final[str] = "self"
@@ -160,12 +161,15 @@ class AgentFileSlot:
     True and every ``path, sections, leaf = route`` unpacking silently working at the WRONG arity
     — the same-arity shape flip that passes green while the meaning changes.
 
-    ⚑ IT CARRIES NO ``node`` EITHER, SINCE S3: the node picks the FILE (``slot_for`` still takes
-    it) and nothing else — ``self`` IS that node, so no address depends on whose file it is.
+    ⚑ IT CARRIES THE ``node`` AGAIN (Q92), and only to find the value's SPELLING: the file's
+    ``agent:`` table may spell the node's own settings as ``agent: <node>:`` beside ``self:``, so
+    every read and write of the slot addresses whichever of the two holds it
+    (:func:`_spelled_sections`).
     """
 
     path: Path
     tail: str
+    node: str
 
 
 @dataclass(frozen=True)
@@ -307,12 +311,41 @@ def file_spelling(*segments: str) -> str:
     return ".".join((_ROOT, *(s for s in segments if s)))
 
 
+#: "Not there" for :func:`_spelled_sections`, which must tell it from a stored ``None``.
+_UNSET: Final[object] = object()
+
+
 def slot_for(agents_root: Path, node: str, tail: str) -> AgentFileSlot:
     """The :class:`AgentFileSlot` for *node*'s *tail* under *agents_root*.
 
-    *node* picks the FILE and is not carried any further — see :class:`AgentFileSlot`.
+    *node* picks the FILE, and rides on to find the value's spelling (:class:`AgentFileSlot`).
     """
-    return AgentFileSlot(agent_settings_path(agents_root, node), tail)
+    return AgentFileSlot(agent_settings_path(agents_root, node), tail, node)
+
+
+def _spelled_sections(
+    slot: AgentFileSlot, sections: tuple[str, ...], leaf: str,
+) -> tuple[str, ...]:
+    """*sections* as the file SPELLS them for *slot*: under ``self:``, or under ``agent: <node>:``.
+
+    ``self`` IS ``agent.<node>``, so a value may sit under either spelling (Q92) and the file's
+    readers refuse one written under both (:func:`_refuse_two_spellings`). The own-node spelling
+    is taken only when it HOLDS *leaf*; otherwise ``self:`` — where a new value is written.
+    """
+    doc = load_doc(slot.path) if slot.path.exists() else None
+    scope = doc.get(FILE_SCOPE) if isinstance(doc, dict) else None
+    if not isinstance(scope, dict):
+        return sections
+    own_id = _node_identity(slot.node)
+    for seg, table in scope.items():
+        if not isinstance(seg, str) or not isinstance(table, dict):
+            continue
+        if _node_identity(seg) != own_id:
+            continue
+        spelled = (FILE_SCOPE, seg, *sections[1:])
+        if stored_leaf_object(slot.path, spelled, leaf, default=_UNSET) is not _UNSET:
+            return spelled
+    return sections
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +456,7 @@ def stored_leaf_value(slot: AgentFileSlot) -> object:
     be told.  That verb uses :func:`read_leaf`.
     """
     sections, leaf = _read_address(slot.tail)
-    return stored_leaf_object(slot.path, sections, leaf)
+    return stored_leaf_object(slot.path, _spelled_sections(slot, sections, leaf), leaf)
 
 
 def read_leaf(slot: AgentFileSlot) -> str | None:
@@ -438,7 +471,7 @@ def read_leaf(slot: AgentFileSlot) -> str | None:
     """
     sections, leaf = _read_address(slot.tail)
     return read_stored_leaf(
-        slot.path, sections, leaf,
+        slot.path, _spelled_sections(slot, sections, leaf), leaf,
         render=(
             partial(stored_leaf_display, slot.tail)
             if slot.tail in _LIST_VALUED_KEYS
@@ -457,7 +490,10 @@ def write_leaf(slot: AgentFileSlot, value: object) -> None:
     defect this closed.
     """
     sections, leaf = _write_address(slot.tail)
-    write_nested_key(slot.path, sections, leaf, stored_leaf_shape(slot.tail, value))
+    write_nested_key(
+        slot.path, _spelled_sections(slot, sections, leaf), leaf,
+        stored_leaf_shape(slot.tail, value),
+    )
 
 
 def remove_leaf(slot: AgentFileSlot) -> bool:
@@ -467,7 +503,7 @@ def remove_leaf(slot: AgentFileSlot) -> bool:
     disagree about where a value lives.
     """
     sections, leaf = _write_address(slot.tail)
-    return remove_nested_key(slot.path, sections, leaf)
+    return remove_nested_key(slot.path, _spelled_sections(slot, sections, leaf), leaf)
 
 
 def clear_overrides(path: Path) -> int:
@@ -512,14 +548,27 @@ def load(path: Path, *, node: str) -> AgentConfig:
     ⚑ IT RUNS EVERY REFUSAL THE FILE OWES, AS IT IS READ (spec §0, closed keyspace): the
     top-level ones (:func:`_contribution`), the nested one (:func:`_refuse_nested_tables`)
     and the undeclared-leaf one (:func:`_refuse_undeclared_state`), over ``self:`` AND the
-    ``agent:`` table's nodes (Q92).  Every reader — the launch,
+    ``agent:`` table's nodes (Q92), category contents included (:func:`_undeclared_entries`).
+    The record holds BOTH spellings of the file's own node — ``self:`` and ``agent: <node>:``
+    (:func:`_own_node_settings`) — as the launch reads both.  Every reader — the launch,
     ``agent show`` / ``info`` / ``list`` / ``get`` — takes the record from here, so one file gets
     one verdict.  The repair door is :func:`clear_overrides`, which never calls this.
 
     *node* is the agent whose file this is: the undeclared-leaf check judges against ITS
     declared keys, and every refusal names ``agent.<node>``.  REQUIRED, because a check that
-    could not name its agent could not judge a leaf at all.
+    could not name its agent could not judge a leaf at all.  The file's alias (``self``) is
+    never a *node* (``settings_keyspace.file_alias_reason``), so a store folder named after it
+    is refused here, for every reader at once.
     """
+    from kanibako.settings.settings_keyspace import file_alias_reason
+
+    alias = file_alias_reason(node)
+    if alias is not None:
+        raise SettingsError(
+            f"{path.parent} is not an agent store: {alias}.\n"
+            f"  Fix: rename the folder to the agent's name, or move it out of "
+            f"{path.parent.parent}."
+        )
     cfg = AgentConfig()
     if not path.exists():
         return cfg
@@ -531,6 +580,7 @@ def load(path: Path, *, node: str) -> AgentConfig:
     if not isinstance(agent_sec, dict):
         agent_sec = {}
     _refuse_nested_tables(agent_sec, node=node, path=path)
+    agent_sec = _own_node_settings(agent_sec, tables.get(FILE_SCOPE), node=node)
     # ⚑ NO ``name`` READ, AND ITS ABSENCE IS THE POINT (D8b): the field is retired, so a
     # ``name:`` still in the file falls into ``cfg.state`` below like any other undeclared
     # entry and REFUSES by name at the end of this read.
@@ -581,9 +631,11 @@ def load(path: Path, *, node: str) -> AgentConfig:
     # env: VAR -> value, read DIRECTLY from the root's ``env`` table.  Carried for the
     # ``agent info`` / ``show`` / ``get`` READS; the launch reads the same table
     # through the cascade, never off this field (MBR-1 P3).
-    # ⚑ ISINSTANCE-GUARDED, like every modeled table below (S3/D-7): the READ side
-    # stays permissive about a wrong SHAPE on purpose — the reads are how a user SEES
-    # a broken file. The WRITE side refuses it (``table_value_error``).
+    # ⚑ ISINSTANCE-GUARDED, like every modeled table below (S3/D-7), so the record
+    # builds; a VALUE where ``env``'s table goes is then refused by name at the end of
+    # this read (``agent.<node>.env`` is a namespace), as the launch refuses it.  Only
+    # ``transform_settings`` — a declared key, whatever its shape — is coerced away
+    # here; the WRITE side refuses a wrong shape (``table_value_error``).
     # ⚑⚑ A ``None`` value is KEPT as ``None``, exactly as ``cfg.secret_path`` below and
     # ``cfg.state`` above keep it, and for the same 2026-08-17 reason: it is the DECLARED
     # suppression state (spec §2h's present-``None``), not a malformed one. A bare
@@ -620,11 +672,26 @@ def load(path: Path, *, node: str) -> AgentConfig:
         if k in _CARRIED_CATEGORIES and isinstance(v, dict)
     }
     _refuse_undeclared_state(
-        [(node, k, k, file_spelling(k)) for k in cfg.state]
-        + _scope_state(tables.get(FILE_SCOPE)),
+        _undeclared_entries(tables.get(_ROOT), tables.get(FILE_SCOPE), node=node),
         node=node, path=path,
     )
     return cfg
+
+
+def _own_node_settings(own: dict, scope: Any, *, node: str) -> dict:
+    """*own* (``self:``) with the ``agent:`` table's entry for *node* added: ONE agent's settings.
+
+    ``self`` IS ``agent.<node>``, so both spellings set the one node the launch reads, and the
+    record every ``agent`` verb displays holds both. They share no setting —
+    :func:`_refuse_two_spellings` has refused one written twice — so the union loses nothing.
+    """
+    if not isinstance(scope, dict):
+        return own
+    own_id = _node_identity(node)
+    for seg, other in scope.items():
+        if isinstance(other, dict) and _node_identity(seg) == own_id:
+            own = deep_merge(own, other)
+    return own
 
 
 def save(path: Path, cfg: AgentConfig) -> None:
@@ -860,14 +927,18 @@ def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
     verdict. The reset does not (:func:`clear_overrides`): it is the repair door.
 
     ⚑ THE FILE-SHAPE REFUSALS THE ``agent:`` TABLE BROUGHT (Q92) RUN HERE TOO, for that reason: a
-    VALUE where its node tables go (:func:`_refuse_scope_value`), and one setting written under
-    both ``self:`` and ``agent: <node>:`` (:func:`_refuse_two_spellings`, Q103).
+    VALUE where its node tables go (:func:`_refuse_scope_value`), one node spelled twice in it
+    (:func:`refuse_node_spelled_twice`), and one setting written under both ``self:`` and
+    ``agent: <node>:`` (:func:`_refuse_two_spellings`, Q103).
     """
     if not isinstance(raw, dict):
         return contributed_tables(raw)
     _refuse_stray_roots(raw, node=node, path=path)
     tables = contributed_tables(raw)
-    _refuse_scope_value(tables.get(FILE_SCOPE), path=path)
+    scope = tables.get(FILE_SCOPE)
+    _refuse_scope_value(scope, path=path)
+    if isinstance(scope, dict):
+        refuse_node_spelled_twice(scope, prefix=FILE_SCOPE, path=path)
     _refuse_node_values(tables, node=node, path=path)
     _refuse_two_spellings(tables, node=node, path=path)
     return tables
@@ -961,6 +1032,29 @@ def _refuse_two_spellings(tables: dict, *, node: str | None, path: Path | None) 
             f"win (spec §0):\n{pairs}\n"
             f"  Fix: keep one spelling of each and remove the other from {where}."
         )
+
+
+def refuse_node_spelled_twice(table: dict, *, prefix: str, path: Path | None) -> None:
+    """RAISE when two keys of the agent node table *table* spell ONE node (spec §0).
+
+    Two spellings are one node when the node they reach agrees — separator AND case
+    (``nav+Claude`` beside ``nav℘claude``), not only the case-folded spelling; neither may
+    silently win. ONE carrier for every reader of a node table: the file's own readers
+    (:func:`_contribution`, over its ``agent:`` table) and the cascade's fold
+    (``settings_assemble._fold_node_table``). *prefix* is the table's dotted address.
+    """
+    where = str(path) if path is not None else "<settings>"
+    identity: dict[Any, Any] = {}
+    for seg in table:
+        ident = _node_identity(seg)
+        if ident in identity:
+            raise SettingsError(
+                f"'{prefix}.{identity[ident]}' and '{prefix}.{seg}' in settings file {where} "
+                f"are ONE agent node ('{ident}') spelled twice; neither may silently win. "
+                f"Keep one spelling and remove the other (spec §0: an agent's node is "
+                f"lowercase)."
+            )
+        identity[ident] = seg
 
 
 def _node_identity(segment: Any) -> Any:
@@ -1091,62 +1185,121 @@ def state_level(
 
 
 def _refuse_undeclared_state(
-    leaves: "Iterable[tuple[str, str, str, str]]", *, node: str, path: Path,
+    entries: "Iterable[tuple[str, str, str]]", *, node: str, path: Path,
 ) -> None:
-    """RAISE on the first agent-file key that is not a declared key (spec §0).
+    """RAISE naming EVERY agent-file entry that is not a declared key (spec §0).
 
-    Each of *leaves* is ``(judged node, key, shown, spelled)``: the key is judged against the
-    node it sits under — *node* itself for ``self:``'s state, or any node of the file's
-    ``agent:`` table (Q92, :func:`_scope_state`) — and *shown* / *spelled* are how the message
-    quotes it and where the cure points in the file. *node* is the file's own agent.
-
-    ⚑ THE PLUGIN UNION IS LOAD-BEARING, not a nicety: ``config_keys.agent_key_reason`` unions the
-    leaves the installed targets DECLARE, and without it a legitimate ``agent.goose.provider``
-    would refuse a working box.  It also CONCEDES a node whose vocabulary is unreadable
-    (``[R150]``), exactly as the launch's §0 audit does.
+    Each of *entries* is ``(shown, spelled, reason)``, from :func:`_undeclared_entries`: how the
+    message quotes the entry, where the cure points in the file, and why it is not a key.
+    *node* is the file's own agent.  ⚑ EVERY entry, not the first, as the launch's
+    ``settings_launch._refuse_undeclared_snapshot`` names them: the cure is a hand-edit, and one
+    entry per attempt turns one edit into N.  An entry both passes find is named once.
     """
-    from kanibako.settings.config_keys import agent_key_reason
-
-    for judged, key, shown, spelled in leaves:
-        reason = agent_key_reason(judged, key)
-        if reason is None:
-            continue
-        raise SettingsError(
+    found: dict[str, tuple[str, str]] = {}
+    for shown, spelled, reason in entries:
+        found.setdefault(spelled, (shown, reason))
+    if not found:
+        return
+    lines = "\n".join(
+        f"  carries '{shown}', which is not a settings key: {reason}."
+        for shown, reason in found.values()
+    )
+    if len(found) == 1:
+        (shown, reason), = found.values()
+        head = (
             f"the agent settings file for '{node}' carries '{shown}', which is not a "
-            f"settings key: {reason}.\n"
-            f"kanibako will not start a box on the file or display it — an undeclared "
-            f"key has no meaning to give a box, and carrying it through would be the "
-            f"very 'anything goes' behavior the closed keyspace replaces.\n"
-            f"  Fix: remove `{spelled}` from {path} (or correct the "
-            f"spelling), or clear every override with "
-            f"'kanibako agent reset {node} --all'."
+            f"settings key: {reason}."
         )
+    else:
+        head = (
+            f"the agent settings file for '{node}' has {len(found)} entries that are not "
+            f"settings keys:\n{lines}"
+        )
+    spelled = ", ".join(f"`{s}`" for s in found)
+    raise SettingsError(
+        f"{head}\n"
+        f"kanibako will not start a box on the file or display it — an undeclared "
+        f"key has no meaning to give a box, and carrying it through would be the "
+        f"very 'anything goes' behavior the closed keyspace replaces.\n"
+        f"  Fix: remove {spelled} from {path} (or correct the "
+        f"spelling), or clear every override with "
+        f"'kanibako agent reset {node} --all'."
+    )
 
 
-def _scope_state(scope: Any) -> "list[tuple[str, str, str, str]]":
-    """The keys of the file's ``agent:`` table (Q92) :func:`_refuse_undeclared_state` judges.
+def _node_tables(
+    own: Any, scope: Any, *, node: str,
+) -> "list[tuple[str, dict, Callable[..., str]]]":
+    """The file's node tables as ``(judged node, table, spelling)`` — ``self:``, then ``agent:``'s.
 
-    Every node table's keys except a CATEGORY key holding a TABLE, whose entries are data (a
-    VAR, a dest) and are judged by their own readers. A category key holding a VALUE is judged
-    here like any key, so ``env: 5`` gets the launch's verdict (``agent.<node>.env`` is a
-    namespace, not a key) and ``caches: 'x'`` its concession. ⚑ NOT ``self:``'s partition,
-    which drops every dict-valued entry and every modeled key from state. Each is
-    judged under its node as the cascade folds it (Q87: ``Claude`` is ``claude``); a node that is
-    not a table holds no key to judge.
+    ``self:`` is judged as *node*; each ``agent:`` node as the cascade folds it (Q87: ``Claude``
+    is ``claude``). *spelling* turns a key tail into the file's own spelling of it. A node that
+    is not a table holds nothing to judge (:func:`_refuse_node_values` has refused it).
     """
     from kanibako.agent_ref import agent_segment_case
 
-    if not isinstance(scope, dict):
-        return []
-    leaves: list[tuple[str, str, str, str]] = []
-    for seg, table in scope.items():
-        if not isinstance(table, dict):
-            continue
-        judged = agent_segment_case(seg) if isinstance(seg, str) else str(seg)
-        for raw_key in table:
-            key = str(raw_key)
-            if key in _FLAT_AGENT_CATEGORIES and isinstance(table[raw_key], dict):
+    tables: list[tuple[str, dict, Callable[..., str]]] = []
+    if isinstance(own, dict):
+        tables.append((node, own, file_spelling))
+    if isinstance(scope, dict):
+        for seg, table in scope.items():
+            if not isinstance(table, dict):
                 continue
-            spelled = f"{FILE_SCOPE}.{seg}.{key}"
-            leaves.append((judged, key, spelled, spelled))
-    return leaves
+            judged = agent_segment_case(seg) if isinstance(seg, str) else str(seg)
+            tables.append((judged, table, partial(_scope_spelling, seg)))
+    return tables
+
+
+def _scope_spelling(seg: Any, *tail: str) -> str:
+    """The ``agent:`` table's spelling of *tail* under its node *seg*, as written."""
+    return ".".join((FILE_SCOPE, str(seg), *tail))
+
+
+def _undeclared_entries(
+    own: Any, scope: Any, *, node: str,
+) -> "Iterator[tuple[str, str, str]]":
+    """Every entry of the file's node tables the LAUNCH refuses, as ``(shown, spelled, reason)``.
+
+    Two passes, each the launch's own verdict, so the file's readers refuse what the launch does:
+
+    1. every KEY of a node table but a category holding a TABLE, through
+       ``config_keys.agent_key_reason`` — the verdict the launch takes from :func:`load`. A
+       category holding a VALUE is judged as a key, so ``env: 5`` gets ``agent.<node>.env`` is a
+       namespace, under ``self:`` as under ``agent: <node>:``;
+    2. every PATH, category contents included, through the launch's whole-snapshot audit
+       (``settings_keyspace.undeclared_store_paths`` over ``keyspace_verdict``): an undeclared
+       bind arm (``bindings: {zz: …}``), a malformed ``env`` VAR, an ``agent: {self: {}}`` node.
+
+    ⚑ ``self:``'s shown key stays BARE (``'model'``), as the record names it.
+    """
+    from kanibako.settings.config_keys import agent_key_reason
+    from kanibako.settings.settings_keyspace import (
+        render_store_path,
+        undeclared_store_paths,
+    )
+    from kanibako.settings.settings_keyspace_probe import keyspace_verdict
+
+    tables = _node_tables(own, scope, node=node)
+    for judged, table, spelling in tables:
+        for raw_key, value in table.items():
+            key = str(raw_key)
+            if key in _FLAT_AGENT_CATEGORIES and isinstance(value, dict):
+                continue
+            reason = agent_key_reason(judged, key)
+            if reason is not None:
+                shown = key if spelling is file_spelling else spelling(key)
+                yield shown, spelling(key), reason
+    for judged, table, spelling in tables:
+        found = undeclared_store_paths(
+            {judged: _str_keys(table)}, oracle=keyspace_verdict, prefix=(FILE_SCOPE,),
+        )
+        for segments, judgment in found:
+            tail = render_store_path(segments[2:], max(judgment.key_len - 2, 0))
+            yield render_store_path(segments, judgment.key_len), spelling(tail), judgment.note
+
+
+def _str_keys(table: dict) -> dict:
+    """*table* with every key as a string, as the cascade's ``KeyStore`` holds them."""
+    return {
+        str(k): _str_keys(v) if isinstance(v, dict) else v for k, v in table.items()
+    }

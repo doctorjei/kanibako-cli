@@ -103,6 +103,22 @@ def test_fabrication_is_still_rejected():
     assert "not a declared agent key" in reason("agent.claude.notakey")
 
 
+def test_the_agent_file_alias_is_never_an_agent_segment():
+    """``self`` is the per-agent file's alias for its own node, never a key segment — refused
+    even where the valid-agent set would CONCEDE an unheard-of name (``[R150]``), which is the
+    set every launch and ``agent_file.load`` judge with."""
+    from kanibako.settings.agent_file import file_spelling
+
+    alias = file_spelling()
+    for agents in (AGENTS, (alias,)):
+        r = key_validity(f"agent.{alias}.model", valid_agents=agents, agent_leaf_map=_KNOWN_MAP)
+        assert r is not None and f"'{alias}' is not an agent" in r
+    # The CONTROL: a conceded unheard-of name is still a key.
+    assert key_validity(
+        "agent.nosuchharness.model", valid_agents=("nosuchharness",), agent_leaf_map=_KNOWN_MAP,
+    ) is None
+
+
 def test_bare_agent_key_is_not_a_key():
     """§0 / §2d — the agent tier is DISCRIMINATED; a bare
     ``agent.<category>.<name>`` must be REFUSED, not quietly widened."""

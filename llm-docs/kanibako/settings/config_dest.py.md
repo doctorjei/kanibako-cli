@@ -71,12 +71,15 @@ and *tail* — exactly the shape a rule takes just before one copy drifts. The i
 
 ### The guard pair
 
-`check_agent_node` is the pair, and it refuses two conditions:
+`check_agent_node` is the pair, and it refuses two conditions — three since S4:
 
 * **`default` is RESERVED**, the any-agent tier name (`read_agent_settings`: *"no real agent may be
   named default"*). The launch never reads an `agents/default/` dir as a node, so routing one would
   breach the keystore-maps-to-a-real-key rule and foot-gun a user who wants the any-agent default —
   that is the BARE key, e.g. `system set model=…`.
+* **The agent file's alias** (`settings_keyspace.file_alias_reason`, the §0 verdict's own carrier),
+  refused as a malformed ref: it parses as an agent name, so `system set agent.self.model=x` wrote
+  an agent file for a node named `self` at rc 0 while `system get` of the same key refused it (measured, S4).
 * **A MALFORMED node ref**, caught by `parse_agent_address` — the ADDRESS grammar, so the `shell`
   node routes: its §2d fence declares `agent.shell.*` and a settings file the shell tier owns
   (`[R175]`), and routing the owner's own settings claims nothing. The node is used AS-IS for the dir and only
