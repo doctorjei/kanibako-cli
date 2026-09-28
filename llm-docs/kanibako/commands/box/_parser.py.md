@@ -171,7 +171,8 @@ record is authoritative and must not be overwritten with possibly-different args
   ephemeral over settings, and `start` never persists.
 * **`.gitignore`** — standalone only, written at the project ROOT (`metadata_path`), where
   `box_data/` and `vault/` live and need ignoring. `project_path` is the workspace SUBDIR, not the
-  root.
+  root. Its messages (`project already initialized in …`, `Created …`) and `box info`'s `Project`
+  row print `<None>` for a standalone box whose root nulls `workset.workspaces` (Q106 review).
 
 ⚑ **`--agent` has a SECOND consumer outside the guard, and that is why it is normalized once.**
 `seed_new_box` takes an `explicit_agent`, and the seed runs after the journal write — outside

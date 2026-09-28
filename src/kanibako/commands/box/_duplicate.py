@@ -168,7 +168,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
-        if not args.bare and workspace_src.is_dir():
+        if not args.bare and workspace_src is not None and workspace_src.is_dir():
             # The copy DESTINATION is the destination root's resolved
             # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
             # default ``@meta.workset.path/workspace`` for a fresh root (no
@@ -177,14 +177,11 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
                 load_workset_settings_doc,
                 resolve_workset_workspaces,
             )
-            _merge_workspace(
-                workspace_src,
-                resolve_workset_workspaces(
-                    new_path, load_workset_settings_doc(new_path),
-                    standalone=True,
-                ),
-                args.force,
+            dest_workspace = resolve_workset_workspaces(
+                new_path, load_workset_settings_doc(new_path), standalone=True,
             )
+            assert dest_workspace is not None  # a nulling root refused before the prompt
+            _merge_workspace(workspace_src, dest_workspace, args.force)
         _duplicate_to_standalone(src_proj, new_path, std, args.force)
     else:
         # PRIMARY (local) target.  F-3: copy the workspace and lay down the
@@ -196,7 +193,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         # the boxes/<name> metadata dir + its registration.
         from kanibako.errors import ProjectError
         try:
-            if not args.bare and workspace_src.is_dir():
+            if not args.bare and workspace_src is not None and workspace_src.is_dir():
                 _merge_workspace(workspace_src, new_path, args.force)
             _duplicate_to_local(src_proj, new_path, std, config, args.force)
         except FileExistsError:
@@ -635,7 +632,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     # workspace.  No-op difference for ordinary internal workset sources.
     if not args.bare:
         ws_workspace = src_proj.project_path
-        if ws_workspace.is_dir():
+        if ws_workspace is not None and ws_workspace.is_dir():
             _merge_workspace(ws_workspace, new_path, args.force)
 
     # Copy metadata into target layout.

@@ -352,7 +352,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connects, now without the `workspaces/<name>` link. Starting a box whose workspace comes from the
   `null` (`start`, `shell`, `code`, or `agent reauth` opening the box) refuses the same way, naming
   the box, where v1.8.0-rc2 mounted the default workspace directory; a box connected from outside
-  the working set, and a primary box, still start. See `MIGRATION.md`
+  the working set, and a primary box, still start. A standalone box under the `null` has no
+  workspace at all: `box info` shows `Project: <None>` and `box show --effective` lists no
+  `~/workspace` bind, where v1.8.0-rc2 showed `<root>/workspace` in both, and `box move`,
+  `box remap`, and `box convert` of that box refuse the same way. See `MIGRATION.md`
   § *2.94 A `workset.workspaces` of `null` refuses to create a workspace or launch a box in it*.
 
 - **`box move`, `box convert`, and `box remap` no longer delete a working-set box's workspace

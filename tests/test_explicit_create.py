@@ -11,6 +11,7 @@ absent-box cases.
 from __future__ import annotations
 
 import argparse
+import re
 
 import pytest
 
@@ -683,3 +684,97 @@ class TestLaunchRefusesNullWorkspaceBind:
         assert proj is not None and proj.name == "project"
         _refuse_null_workspace_bind(proj)  # no raise
         _assert_launch_passes_the_gate(str(tmp_home / "project"), monkeypatch, capsys)
+
+
+class TestStandaloneNullWorkspaceHasNoPath:
+    """Q106 review: under a null ``workset.workspaces`` a standalone box has NO workspace.
+
+    ``meta.box.workspace`` is ``<None>``; no display names the default ``<root>/workspace``
+    and nothing named ``None`` is created.  The launch refusal above stays the one refusal.
+    """
+
+    def _box(self, tmp_home):
+        import shutil
+
+        from kanibako.commands.box._parser import run_create
+
+        root = (tmp_home / "sa-null").resolve()
+        root.mkdir()
+        ns = argparse.Namespace(
+            path=str(root), standalone=True, no_vault=True,
+            name=None, image=None, agent=None, allow_home=False, register=True,
+        )
+        assert run_create(ns) == 0
+        _null_workspaces(root)
+        # The create made the default folder before the null; without it, any path to it
+        # in the output below can only be a fabrication.
+        shutil.rmtree(root / "workspace")
+        return root
+
+    def _cli(self, argv, capsys):
+        from kanibako import cli
+
+        capsys.readouterr()
+        try:
+            cli.main(argv)
+            code = 0
+        except SystemExit as exc:
+            code = exc.code
+        return code, capsys.readouterr()
+
+    def test_resolve_and_floor_carry_none(self, config_file, tmp_home, credentials_dir):
+        from kanibako.settings.paths import resolve_standalone_project
+        from kanibako.settings.settings_launch import (
+            _box_inputs, _workset_workspaces_floor_value,
+        )
+
+        root = self._box(tmp_home)
+        config, std = _std(config_file)
+        proj = resolve_standalone_project(std, config, str(root), initialize=True)
+        assert proj.project_path is None
+        assert _workset_workspaces_floor_value("standalone", str(root)) is None
+        inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None)
+        assert inputs.meta_identity is not None
+        assert inputs.meta_identity["meta.box.workspace"] is None
+        assert not (root / "workspace").exists()
+        assert not any(p.name == "None" for p in _tree(tmp_home))
+
+    def test_displays_show_none_never_the_default_folder(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        root = self._box(tmp_home)
+        fabricated = str(root / "workspace")
+
+        code, out = self._cli(["box", "show", str(root), "--effective"], capsys)
+        assert code == 0, out.err
+        assert "box.bindings" in out.out  # the resolve ran
+        assert fabricated not in out.out + out.err
+        assert "= None" not in out.out
+
+        code, out = self._cli(["box", "info", str(root)], capsys)
+        assert code == 0, out.err
+        assert re.search(r"^\s*Project:\s+<None>$", out.out, re.MULTILINE), out.out
+        assert fabricated not in out.out + out.err
+
+        # ``meta.*`` is derived per launch and ``box get`` refuses it for EVERY box.
+        code, out = self._cli(["box", "get", str(root), "meta.box.workspace"], capsys)
+        assert code == 1
+        assert "cannot be read here" in out.err
+        assert fabricated not in out.out + out.err
+
+        # The display verbs may seed their own state; none of it is the default folder.
+        assert not (root / "workspace").exists()
+        assert not any(p.name == "None" for p in _tree(tmp_home))
+
+    def test_lifecycle_ops_refuse_naming_the_key(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.commands.box._lifecycle import resolve_lifecycle_target
+        from kanibako.errors import WorksetError
+
+        root = self._box(tmp_home)
+        config, std = _std(config_file)
+        with pytest.raises(WorksetError) as exc:
+            resolve_lifecycle_target(str(root), std, config)
+        assert "workset.workspaces" in str(exc.value)
+        assert str(root / "workset.yaml") in str(exc.value)

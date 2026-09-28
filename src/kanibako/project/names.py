@@ -253,14 +253,14 @@ def resolve_name(
         from kanibako.project import workset_registry
         from kanibako.project.workset import (
             load_workset_settings_doc,
-            resolve_workset_workspaces,
+            resolve_workspaces_locator,
         )
 
         cwd_str = str(cwd.resolve())
         for ws_name, ws_root in names["worksets"].items():
             ws_path = Path(ws_root)
             settings_doc = load_workset_settings_doc(ws_path)
-            ws_workspaces = resolve_workset_workspaces(ws_path, settings_doc)
+            ws_workspaces = resolve_workspaces_locator(ws_path, settings_doc)
             ws_workspaces_str = str(ws_workspaces)
             inside = (
                 cwd_str == ws_root
@@ -362,7 +362,7 @@ def resolve_qualified_name(
     from kanibako.project import workset_registry
     from kanibako.project.workset import (
         load_workset_settings_doc,
-        resolve_workset_workspaces,
+        resolve_workspaces_locator,
     )
 
     ws_root = Path(names["worksets"][stored_ws])
@@ -380,7 +380,7 @@ def resolve_qualified_name(
     # Fallback: a workspace subdir under the resolved ``workset.workspaces``
     # (repoint honored — §3.3) — e.g. an in-tree connect before its first start
     # (no ``boxes:`` entry yet).
-    candidate = resolve_workset_workspaces(ws_root, settings_doc) / proj_name
+    candidate = resolve_workspaces_locator(ws_root, settings_doc) / proj_name
     if not candidate.is_dir():
         raise ProjectError(
             f"Project '{proj_name}' not found in workset '{stored_ws}'"

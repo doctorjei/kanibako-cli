@@ -78,7 +78,7 @@ into function bodies**, and keeps a decoupled primitive workset view rather than
   fully loaded by the module-scope `StandardPaths` import above them. They are historical. Do not
   "fix" the module-scope import by pushing it into a function on the theory that it closes a cycle —
   it does not, and the deferral that matters lives on the other side.
-* `kanibako.launch.box_resolve` imports `resolve_workset_workspaces` from here inside a function
+* `kanibako.launch.box_resolve` imports `resolve_workspaces_locator` from here inside a function
   body, so the resolvers below are on a deferred edge in the other direction too.
   `launch.templates._workset_stamp_dirs` has the SAME shape, importing `resolve_workset_canon` and
   `resolve_workset_template` in its body for the workset stamp. Both are `launch` → `project` edges;
@@ -162,8 +162,8 @@ default TABLE is the source, never a second literal at a consumer site.
   one makes the bind's source `<None>` and the bind is omitted). `resolve_workset_logs` returns
   `None` in every mode — the standalone `@meta.box.path` default does not stand in for it — and so
   do `Workset.logs_dir`, `StandardPaths.primary_logs`, `settings/paths.py`'s `helper_log_path`,
-  `creds_watcher_log_path` and `standalone_logs_dir`. `_workset_skeleton_dirs` then holds three
-  dirs, so such a root is still detected; `remove_box_logs(None, …)` deletes nothing; the hub keeps
+  `creds_watcher_log_path` and `standalone_logs_dir`. `_workset_skeleton_dirs` then omits the logs
+  dir (and the workspaces dir under a null `workset.workspaces`), so such a root is still detected; `remove_box_logs(None, …)` deletes nothing; the hub keeps
   no message log; and `core_defaults.helper_default_categories` omits the log bind while keeping
   the socket's. The loud warning [R185] owes when only one of the bind's entry and source is
   `<None>` is not here yet — it belongs to the standard-bind warning pass.
@@ -355,14 +355,6 @@ class Workset
 ```
 In-memory representation of a workset.
 
-`workspaces_repoint` is the RAW `workset.workspaces` repoint captured from the root `workset.yaml`
-(the routed `workset: {workspaces: …}` slot) at load/synthesis time. `None` = unset, so the spec
-default composes in `workspaces_dir`.
-
-⚑ **A direct construction — a fresh `create_workset`, or a test — has no settings yet**, so the
-default applies, which is exactly the resolved value at that moment. This is why the field can
-default to `None` without a separate "not yet loaded" state.
-
 ```python
 @property
 def projects_dir(self) -> Path      # the RESOLVED workset.boxes
@@ -384,18 +376,18 @@ def registry_path(self) -> Path     # the RESOLVED workset.registry
 
 ⚑ **`vault_dir` is the last composed one, and correctly so** — no key names it (§3.3: real and
 USED; every other leaf here honors its repoint and spells its default once, in the resolver
-machinery). `projects_dir`, `logs_dir`, `vault_ro_dir`, `vault_rw_dir` and `registry_path` all
-RE-READ `workset.yaml` on each access rather than caching, which is the opposite choice from
-`workspaces_dir`'s `workspaces_repoint` field. **Deliberate:** a cached field is populated only by
-the two constructors in this module, so a hand-built or test-built `Workset` silently gets the
-default leaf — a footgun that, for `boxes`, means writing a box tree to the wrong store. Re-reading
-is correct by construction. ⚑ Where a caller uses one of these in a LOOP it hoists the property
+machinery). `projects_dir`, `workspaces_dir`, `logs_dir`, `vault_ro_dir`, `vault_rw_dir` and
+`registry_path` all RE-READ `workset.yaml` on each access rather than caching. **Deliberate:** a
+cached field is populated only by the constructors that load it, so a hand-built or test-built
+`Workset` silently gets the default leaf — a footgun that, for `boxes`, means writing a box tree to
+the wrong store. Re-reading is correct by construction. `workspaces_dir` was the last cached one
+(a `workspaces_repoint` field, which collapsed a null to unset); the Q106 review retired it. ⚑ Where a caller uses one of these in a LOOP it hoists the property
 first (`iter_workset_projects`, `clean.py`'s purge): one read per workset, so every member is
 judged against the same document — the same reason `resolve_workset_vault_pair` exists.
 
 ⚑ **`workspaces_dir` is `None` when the root's settings file carries `workspaces: null`** (Q106):
-never the default leaf, which would be a directory the user said does not exist. It reads
-`workset_workspaces_nulled` on each access, since `workspaces_repoint` collapses a null to unset.
+never the default leaf, which would be a directory the user said does not exist. It is
+`resolve_workset_workspaces` on the root's current document.
 `require_workspaces_dir(what)` is the face for an op that needs the dir: under a null it raises
 `WorksetError` with `messages.ERR_WORKSET_NULL_WORKSPACES`, naming *what*. The creation and copy
 ops (`box/_lifecycle.copy_into_workset`, `_validate`'s bare-into-workset dest, `_to_workset`'s
@@ -432,13 +424,14 @@ or an empty value — so the caller takes the default formula. `""` is still UNS
 the split: the spec's `""` ≠ unset (§2h) is not yet carried for these keys.
 
 `_repoint_or_default` COLLAPSES the three states back to the old two for every dir key whose S3
-pass is still owed (workspaces, channelroot, canon, template, vault_ro, vault_rw): a present
-`<None>` still takes the default there, which [R177] does not allow. `resolve_workset_logs`
-carries `None` through, and `resolve_workset_boxes` refuses it. `launch/templates.py::_assert_stamp_leaf_in_root` reads the result with
+pass is still owed (channelroot, canon, template, vault_ro, vault_rw): a present `<None>` still
+takes the default there, which [R177] does not allow. `resolve_workset_logs` and
+`resolve_workset_workspaces` carry `None` through, and `resolve_workset_boxes` refuses it. `launch/templates.py::_assert_stamp_leaf_in_root` reads the result with
 `isinstance(repoint, str)` for the same reason.
 
 ```python
-def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool = False) -> Path
+def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool = False) -> Path | None
+def resolve_workspaces_locator(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
 ```
 Return the resolved `workset.workspaces` dir for a workset.
 
@@ -450,10 +443,18 @@ Honors a set `workset: {workspaces: …}`; else the spec default `@meta.workset.
 == `<root>/workspace`. ⚑ The repoint SLOT is the same `workset: {workspaces: …}` key either way —
 only the default formula varies by mode.
 
-🛑 A present `<None>` still COLLAPSES to the default here (`_repoint_or_default`), because a
-standalone box's `project_path` IS this value and is typed `Path`. What refuses is CREATION under a
+A present `<None>` returns `None` ([R177]; the Q106 review retired the collapse to the default):
+a standalone box's `project_path` IS this value, so under a null it is `None` and its
+`meta.box.workspace` is `<None>` (`settings/paths.ProjectPaths`). What refuses is CREATION under a
 null (`refuse_null_workspaces`, below) and a LAUNCH (`refuse_null_box_workspace`, below): the
 workspace bind is mounted at every launch, so a box without one cannot run (Q106).
+
+`resolve_workspaces_locator` is the DETECTION face: the resolved dir, or the named default leaf
+`<root>/workspaces` under a null, because in-tree members connected before the null still sit
+there and a lookup must still find them. Its readers only locate: `settings/paths._check_workset`
+and `_find_workset_for_path`, `project/names.resolve_name`'s cwd arm and
+`resolve_qualified_name`'s fallback, `launch/box_resolve.find_connected_external_box`'s in-tree
+skip, and `release_project`'s stale-link unlink. 🛑 Nothing creates or binds at its answer.
 
 ```python
 def workset_workspaces_nulled(workset_root: Path) -> bool
@@ -472,14 +473,15 @@ pre-flight (`box create --standalone`), before its first write. *standalone* sel
 lone box's root has no outside member.
 
 ```python
-def refuse_null_box_workspace(workset_root: Path, workspace: Path, box: str, *, standalone: bool) -> None
+def refuse_null_box_workspace(workset_root: Path, workspace: Path | None, box: str, *, standalone: bool) -> None
 ```
 The LAUNCH refusal (Q106): raises `WorksetError` with `messages.ERR_NULL_WORKSPACE_BIND`, naming
 the box, the key and `<root>/workset.yaml`, when the root nulls `workset.workspaces` and the box's
 `meta.box.workspace` resolves through it — always for *standalone* (`@workset.workspaces`), and for
 a named member whose recorded *workspace* lies inside the root (`@workset.workspaces/<name>`). An
 EXTERNAL member's recorded workspace resolves through no key, so it still launches; primary is
-never asked (its workspace is the project dir). The one caller is
+never asked (its workspace is the project dir). *workspace* is `None` only for a standalone box under
+a null, which refuses either way. The one caller is
 `commands/start._refuse_null_workspace_bind`, on `_run_container`'s non-materializing probe.
 ⚑ The in-tree test is the same one `add_project` decides external wiring by (`_path_in_tree`), so
 an in-tree member recorded under an ABSOLUTE `workset.workspaces` repoint outside the root, then

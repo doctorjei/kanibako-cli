@@ -672,11 +672,10 @@ def run_box_diagnose(args: object) -> int:
     # missing` for moved/copied/plain directories.  (P8a: replaces the
     # transitional `read_project_meta(...) is not None` registration signal.)
     from kanibako.launch import box_resolve
-    is_registered = (
-        proj.project_path is not None
-        and box_resolve.resolve_box_identity(proj.project_path, std, config)
-        is not None
-    )
+    # A standalone box with no workspace (a null ``workset.workspaces``) resolves by its root.
+    is_registered = box_resolve.resolve_box_identity(
+        proj.project_path or proj.metadata_path, std, config,
+    ) is not None
     if not is_registered:
         target = proj.project_path if proj.project_path else project_dir
         print(_format_check("!!", "Project", f"no kanibako project registered for {target}"))
@@ -686,12 +685,14 @@ def run_box_diagnose(args: object) -> int:
         )
         return 1
 
-    print(f"Box Diagnostics: {proj.project_path}")
+    print(f"Box Diagnostics: {proj.project_path or '<None>'}")
     print("=" * 40)
     print()
 
     # Project directory
-    if proj.project_path and proj.project_path.is_dir():
+    if proj.project_path is None:
+        print(_format_check("!!", "Project directory", "<None> (workset.workspaces is null)"))
+    elif proj.project_path.is_dir():
         print(_format_check("ok", "Project directory", str(proj.project_path)))
     else:
         print(_format_check("!!", "Project directory", "missing"))

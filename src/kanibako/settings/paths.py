@@ -150,7 +150,9 @@ def _default_project_group(std: StandardPaths) -> ProjectGroup:
 @dataclass
 class ProjectPaths:
     """Resolved paths for a specific project."""
-    project_path: Path
+    # ⚑ ``None`` ONLY for a standalone box whose root nulls ``workset.workspaces`` (Q106):
+    # it has no workspace, its ``meta.box.workspace`` is ``<None>`` and its launch refuses.
+    project_path: Path | None
     project_hash: str
     metadata_path: Path      # host-only: workset.yaml, breadcrumb, lock
     shell_path: Path         # mounted as /home/agent
@@ -1362,7 +1364,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None:
     """Check whether *resolved_dir* is inside a registered workset (``workspaces/`` first)."""
     from kanibako.project import registry_store
-    from kanibako.project.workset import (load_workset_settings_doc, resolve_workset_workspaces)
+    from kanibako.project.workset import load_workset_settings_doc, resolve_workspaces_locator
 
     worksets_section = registry_store.load_section(std.registry, "worksets")
     if not worksets_section:
@@ -1371,7 +1373,7 @@ def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | 
     for _root_str in worksets_section.values():
         ws_root = Path(_root_str).resolve()
         # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).
-        ws_workspaces = resolve_workset_workspaces(ws_root, load_workset_settings_doc(ws_root))
+        ws_workspaces = resolve_workspaces_locator(ws_root, load_workset_settings_doc(ws_root))
         # Check workspaces/ first (more specific).
         try:
             resolved_dir.relative_to(ws_workspaces)
@@ -1709,14 +1711,14 @@ def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _Works
 def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]:
     """Return ``(workset, project_name)`` for a path inside a workset (name ``None`` at the root)."""
     from kanibako.project.workset import (list_worksets, load_workset,
-                                          load_workset_settings_doc, resolve_workset_workspaces)
+                                          load_workset_settings_doc, resolve_workspaces_locator)
 
     registry = list_worksets(std)
     resolved = project_dir.resolve()
     for ws_name, root in registry.items():
         ws_root = root.resolve()
         # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).
-        ws_workspaces = resolve_workset_workspaces(ws_root, load_workset_settings_doc(ws_root))
+        ws_workspaces = resolve_workspaces_locator(ws_root, load_workset_settings_doc(ws_root))
         # Check workspaces/ first (specific project).
         try:
             rel = resolved.relative_to(ws_workspaces)
@@ -1876,7 +1878,7 @@ def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths:
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
     """Advisory (never fatal): warn when a box that EXPECTS a vault has none on disk (spec D5)."""
     if proj.enable_vault and not proj.vault_rw_path.is_dir():
-        get_logger(__name__).warning(WARN_BOX_NO_VAULT, proj.name or str(proj.project_path),
+        get_logger(__name__).warning(WARN_BOX_NO_VAULT, proj.name or str(proj.project_path or "<None>"),
                                      proj.vault_rw_path)
 
     return proj
@@ -1923,7 +1925,8 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
 
     from kanibako.project.workset import (load_workset_settings_doc, resolve_workset_workspaces)
 
-    # Metadata at the ROOT; ``project_path`` is the RESOLVED ``workset.workspaces`` (ruled 10).
+    # Metadata at the ROOT; ``project_path`` is the RESOLVED ``workset.workspaces`` (ruled 10),
+    # ``None`` when the root nulls it.
     metadata_path = root
     box_data = root / STANDALONE_META_DIR
     project_path = resolve_workset_workspaces(root, load_workset_settings_doc(root),
@@ -1966,6 +1969,7 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         # create (Q96), refused here, before the first write, not at the later mkdir.
         from kanibako.project.workset import refuse_null_workspaces
         refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True)
+        assert project_path is not None  # a null root refused on the line above
         # ⚑ The WORKSET CANON tier, stamped CANON-ONLY.  ``workset.canon`` is UNIFORM
         # IN EVERY MODE (spec ``:962``) so a lone box has one; ``workset.template`` is
         # <None> in standalone (spec ``:936``), so the template half is NOT stamped —
@@ -1995,11 +1999,12 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         is_new = True
 
     if initialize:
-        # Recovery: ensure home + workspace exist.
+        # Recovery: ensure home + workspace exist (a null names no workspace to make).
         if not shell_path.is_dir():
             shell_path.mkdir(parents=True, exist_ok=True)
             _bootstrap_shell(shell_path)
-        project_path.mkdir(parents=True, exist_ok=True)
+        if project_path is not None:
+            project_path.mkdir(parents=True, exist_ok=True)
 
     return ProjectPaths(project_path=project_path, project_hash=phash, metadata_path=metadata_path,
                         shell_path=shell_path, vault_ro_path=vault_ro_path,

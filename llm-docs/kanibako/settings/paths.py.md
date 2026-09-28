@@ -117,6 +117,14 @@ group is the *default workset* (`is_default` is True), rooted at `@config.primar
 §2c: PRIMARY `meta.workset.path`); a named workset forms a non-default group rooted at the workset
 root. Standalone projects belong to no group (`ProjectPaths.group` is None).
 
+`ProjectPaths.project_path` is `Path | None`: `None` ONLY for a standalone box whose root nulls
+`workset.workspaces` (Q106 review). Such a box has no workspace, its `meta.box.workspace` is
+`<None>` and its launch refuses (`commands/start._refuse_null_workspace_bind`). The readers that can
+meet it: displays print `<None>` (`box info`, `box create`'s messages, `clean`, `archive`,
+`extract`, `diagnose`); the lifecycle verbs (`box move`/`remap`/`convert`) refuse at
+`_lifecycle._state_from_paths`; `duplicate` and `extract`'s git check treat it as no workspace; the
+launch narrows it after the probe. Primary and named boxes always carry a path.
+
 *local_shared_base* is the root under which the local-shared path lives (`base / "common"`): the
 standard data path for the default group, the workset root for a workset group.
 
@@ -1054,7 +1062,8 @@ Check whether *resolved_dir* is inside a registered workset.
 Returns a `DetectionResult` if found, `None` otherwise. Checks `workspaces/` first (specific
 project), then the workset root itself (inside workset but not necessarily a project workspace). The
 `workspaces` location is the RESOLVED `workset.workspaces` (repoint honored; default
-`@meta.workset.path/workspaces` — §3.3: real and USED).
+`@meta.workset.path/workspaces` — §3.3: real and USED), through
+`project.workset.resolve_workspaces_locator`, so a null still finds members connected before it.
 
 ```python
 def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
@@ -1349,7 +1358,8 @@ The returned object is a concrete `kanibako.project.workset.Workset` (typed stru
 root. When *project_dir* is inside `workspaces/{name}/`, the project name is returned. When inside
 the workset root but not in a specific workspace, `None` is returned as the project name. The
 `workspaces` location is the RESOLVED `workset.workspaces` (repoint honored; default
-`@meta.workset.path/workspaces` — §3.3: real and USED).
+`@meta.workset.path/workspaces` — §3.3: real and USED), through
+`project.workset.resolve_workspaces_locator`, so a null still finds members connected before it.
 
 Raises `WorksetError` if *project_dir* does not belong to any registered workset.
 
@@ -1583,6 +1593,8 @@ subdir is the bind source, not the identity.
 `project_path` is the resolved `workset.workspaces` (ruled 10, 2026-08-02): the STANDALONE default
 is `@meta.workset.path/workspace` == the `workspace/` subdir, and a set `workset: {workspaces: …}`
 in the ROOT `workset.yaml` repoints it ("changeable from workset level", spec §2e).
+A `null` there makes it `None` (never the default subdir), and the `initialize` recovery then makes
+no workspace.
 
 The mode-aware tier pair comes from the ONE derivation (M-8): the BOX tier is
 `box_data/box.yaml` (absent by default) and the WORKSET tier is the ROOT `workset.yaml` — the

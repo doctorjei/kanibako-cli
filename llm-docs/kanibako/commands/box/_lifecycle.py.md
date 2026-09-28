@@ -499,6 +499,9 @@ Adapter from `ProjectPaths` to `ProjectState`.
 
 ⚑ `ProjectPaths.enable_vault` is the RESOLVED value only, so the adapter re-reads the BOX TIER
 (`box_workset_settings_paths(proj)[0]`) for `box_authored_vault`.
+⚑ A standalone box whose root nulls `workset.workspaces` has `project_path = None` (Q106 review):
+the adapter refuses it with `refuse_null_workspaces(..., standalone=True)`, so `box move`, `remap`
+and `convert` name the key instead of moving or copying a workspace that does not exist.
 
 ```def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_path: Path, source_path: Path, source_mode: BoxMode, *, copy_workspace: bool, std: StandardPaths) -> None```
 Re-root a project into *ws* — the std-aware copy path for `duplicate`.
@@ -729,7 +732,9 @@ original placement.
 
 ⚑ The destination is `_resolve_standalone_workspaces`, computed in `_to_standalone` — the SAME key
 `resolve_standalone_project` reads to answer `project_path`. Two answers for one box is the defect
-class this file has already paid for at the vault arm and the channel partition.
+class this file has already paid for at the vault arm and the channel partition. A null there
+refuses (`refuse_null_workspaces`); `_validate` refused such a root first, so this only keeps a
+null from ever reading as the default.
 
 ⚑ *root* ALWAYS holds the project's current files at this point in the convert — in-place: the
 source dir; relocating: the copy STEP 2 made at *dest*; external-in-place: the external dir that is

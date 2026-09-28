@@ -159,9 +159,11 @@ def _workset_path_repoint(
 def _repoint_or_default(repoint: str | None | _Unset) -> str | None:
     """COLLAPSE a present ``<None>`` into "take the default" — keys whose S3 pass is still owed.
 
-    ``workset.logs`` carries ``<None>`` through (:func:`resolve_workset_logs`) and
-    ``workset.boxes`` refuses it (:func:`resolve_workset_boxes`); every other dir key still
-    reads a present ``<None>`` as unset, which [R177] does not allow.
+    ``workset.logs`` and ``workset.workspaces`` carry ``<None>`` through
+    (:func:`resolve_workset_logs`, :func:`resolve_workset_workspaces`) and ``workset.boxes``
+    refuses it (:func:`resolve_workset_boxes`); ``channelroot``, ``canon``, ``template``,
+    ``vault_ro`` and ``vault_rw`` still read a present ``<None>`` as unset, which [R177]
+    does not allow.
     """
     return repoint if isinstance(repoint, str) else None
 
@@ -169,14 +171,34 @@ def _repoint_or_default(repoint: str | None | _Unset) -> str | None:
 def resolve_workset_workspaces(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
     *, standalone: bool = False,
-) -> Path:
-    """Return the resolved ``workset.workspaces`` dir (*standalone* selects the singular default)."""
+) -> Path | None:
+    """Return the resolved ``workset.workspaces`` dir (*standalone* selects the singular default).
+
+    ``None`` when ``workset.workspaces`` is a present ``<None>`` ([R177]): there is no
+    workspaces dir, and the default leaf would be a path the user said does not exist.
+    """
+    repoint = _workset_path_repoint(workset_settings, _WORKSPACES_LEAF)
+    if repoint is None:
+        return None
     return resolve_workset_dir_key(
-        workset_root,
-        _repoint_or_default(_workset_path_repoint(workset_settings, _WORKSPACES_LEAF)),
+        workset_root, repoint if isinstance(repoint, str) else None,
         _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF,
         key=_WORKSPACES_LEAF,
     )
+
+
+def resolve_workspaces_locator(
+    workset_root: Path, workset_settings: Mapping[str, Any] | None,
+) -> Path:
+    """Where a named root's in-tree members are FOUND: :func:`resolve_workset_workspaces`,
+    or its default leaf under a null — for DETECTION only, never a place to create in.
+
+    Members made before a null still sit at the default, and a lookup must still find them.
+    """
+    workspaces = resolve_workset_workspaces(workset_root, workset_settings)
+    if workspaces is not None:
+        return workspaces
+    return resolve_workset_dir_key(workset_root, None, _WORKSPACES_LEAF, key=_WORKSPACES_LEAF)
 
 
 def workset_workspaces_nulled(workset_root: Path) -> bool:
@@ -202,7 +224,7 @@ def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool = 
 
 
 def refuse_null_box_workspace(
-    workset_root: Path, workspace: Path, box: str, *, standalone: bool,
+    workset_root: Path, workspace: Path | None, box: str, *, standalone: bool,
 ) -> None:
     """RAISE when a box's ``meta.box.workspace`` resolves through a null ``workset.workspaces`` (Q106).
 
@@ -214,7 +236,7 @@ def refuse_null_box_workspace(
     """
     if not workset_workspaces_nulled(workset_root):
         return
-    if standalone or _path_in_tree(workspace, workset_root):
+    if standalone or workspace is None or _path_in_tree(workspace, workset_root):
         raise WorksetError(ERR_NULL_WORKSPACE_BIND % (box, workset_root / WORKSET_META_FILE))
 
 
@@ -516,8 +538,6 @@ class Workset:
     root: Path
     projects: list[WorksetProject] = field(default_factory=list)
     is_default: bool = False                 # True = synthesized default workset
-    #: RAW ``workset.workspaces`` repoint from the root workset.yaml; ``None`` = unset.
-    workspaces_repoint: str | None = None
 
     # Convenience paths -------------------------------------------------------
 
@@ -538,14 +558,9 @@ class Workset:
     @property
     def workspaces_dir(self) -> Path | None:
         """The resolved ``workset.workspaces`` dir; ``None`` when the root nulls it (no dir, Q106)."""
-        # ⚑ RESOLVED, not composed (§3.3: real and USED).  A null never falls back to the
-        # default leaf: that would be a path the user said does not exist.
-        if workset_workspaces_nulled(self.root):
-            return None
-        return resolve_workset_dir_key(
-            self.root, self.workspaces_repoint, _WORKSPACES_LEAF,
-            key=_WORKSPACES_LEAF,
-        )
+        # ⚑ RESOLVED, not composed (§3.3: real and USED), and read off the root's file
+        # each time, like :attr:`projects_dir`.
+        return resolve_workset_workspaces(self.root, load_workset_settings_doc(self.root))
 
     def require_workspaces_dir(self, what: str) -> Path:
         """:attr:`workspaces_dir` for an op that needs the dir; a null REFUSES, naming *what*."""
@@ -623,12 +638,7 @@ def _load_workset(root: Path, name: str) -> Workset:
             registry_path,
         ).items()
     ]
-    return Workset(
-        name=name, root=root, projects=projects,
-        workspaces_repoint=_repoint_or_default(
-            _workset_path_repoint(settings_doc, _WORKSPACES_LEAF),
-        ),
-    )
+    return Workset(name=name, root=root, projects=projects)
 
 
 def refuse_retired_workset_identity(root: Path) -> None:
@@ -722,7 +732,8 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]:
     """The four dirs a workset root is made of — ⚑ three RESOLVED, ``vault`` alone literal.
 
-    Three when ``workset.logs`` is a present ``<None>``: that key then names no dir.
+    Fewer when ``workset.logs`` or ``workset.workspaces`` is a present ``<None>``: that key
+    then names no dir.
     """
     # ⚑⚑ THE RESOLVED DIRS ARE THE LOCATOR (system-design, NAMED arm of "Detect =
     # ancestor-walk").  ``boxes``, ``workspaces`` and ``logs`` are all declared,
@@ -736,16 +747,13 @@ def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]:
     # workset.yaml yet, so the read yields None and every leaf is its default — the same
     # four dirs the pre-refactor literals made.
     settings_doc = load_workset_settings_doc(root)
-    dirs = [
+    dirs = (
         resolve_workset_boxes(root, settings_doc),
         resolve_workset_workspaces(root, settings_doc),
         root / _VAULT_LEAF,
-    ]
-    # A present-``<None>`` ``workset.logs`` has no dir, so the skeleton is the other three.
-    logs = resolve_workset_logs(root, settings_doc)
-    if logs is not None:
-        dirs.append(logs)
-    return tuple(dirs)
+        resolve_workset_logs(root, settings_doc),
+    )
+    return tuple(d for d in dirs if d is not None)
 
 
 def is_workset_skeleton(root: Path) -> bool:
@@ -756,8 +764,8 @@ def is_workset_skeleton(root: Path) -> bool:
     *"is a workset here"* — [R139]: detection and naming are two questions, and
     answering one does not answer the other.  ``_is_standalone_meta_dir`` is the same
     shape for the same reason.
-    ⚑ ALL are required (four, or three under a ``<None>`` ``workset.logs``): any one of
-    them alone is an ordinary directory name.
+    ⚑ ALL are required (four, fewer under a ``<None>`` ``workset.logs`` or
+    ``workset.workspaces``): any one of them alone is an ordinary directory name.
     ⚑ Three of the four are RESOLVED through their workset keys, so this finds a root
     that has repointed ``workset.boxes``, ``workset.workspaces`` or ``workset.logs``.
     """
@@ -890,10 +898,6 @@ def default_workset(std: StandardPaths) -> Workset:
         root=std.primary_workset,
         projects=projects,
         is_default=True,
-        # PRIMARY honors a repoint from its own workset.yaml, like a named workset.
-        workspaces_repoint=_repoint_or_default(_workset_path_repoint(
-            load_workset_settings_doc(std.primary_workset), _WORKSPACES_LEAF,
-        )),
     )
 
 
@@ -1195,10 +1199,7 @@ def release_project(ws: Workset, name: str) -> WorksetProject:
     # ⚑ Under a null ``workset.workspaces`` a link made before the null still sits at the
     # DEFAULT place; unlink it there (never create anything), or a later in-tree member of
     # the same name would inherit the old external folder through it.
-    workspaces = ws.workspaces_dir
-    if workspaces is None:
-        workspaces = resolve_workset_workspaces(ws.root, None)
-    link = workspaces / name
+    link = resolve_workspaces_locator(ws.root, load_workset_settings_doc(ws.root)) / name
     if (link.is_symlink()
             and _unfollowed(target.source_path) != _unfollowed(link)):
         link.unlink()
