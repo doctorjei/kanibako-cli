@@ -25,7 +25,12 @@ from kanibako.settings.agent_config import (
     is_self_resolving,
     root_relative_source,
 )
-from kanibako.settings.agent_file import ROOT_SECTIONS, level_table
+from kanibako.settings.agent_file import (
+    FILE_SCOPE,
+    ROOT_SECTIONS,
+    contributed_tables,
+    level_table,
+)
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS
 from kanibako.settings.config import (
     _LAYER1_TABLE,
@@ -629,11 +634,11 @@ def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None:
             # derivations node (R-8), machinery output, never file input. SCOPE TIGHT: this ONE
             # name; any other unknown top-level entry rides on, to be REFUSED by name at the
             # launch's §0 audit (``settings_launch._refuse_undeclared_snapshot``; llm-docs).
-            # Not in the per-agent file, whose partial reads only ``self:``: there
-            # ``agent_file.level_table`` REFUSES by name whatever the drops leave (this one
-            # takes ``system:``, ``meta:``, ``binding_derivations:``; ``settings_prefs``
-            # takes ``pref:``), except a contained scope's table (``agent:`` / ``workset:``
-            # / ``box:``), which it passes over unread pending Q85.
+            # Not in the per-agent file, whose partial reads only ``self:`` and ``agent:``
+            # (Q92): there ``agent_file.level_table`` REFUSES by name whatever the drops leave
+            # (this one takes ``system:``, ``meta:``, ``binding_derivations:``;
+            # ``settings_prefs`` takes ``pref:``), except a contained scope's table
+            # (``workset:`` / ``box:``), which it passes over unread pending Q85.
             _log.warning(
                 "Dropping top-level %r table from %s settings file %s: "
                 "'%s' is the RESERVED INTERNAL derivations node (R-8; manifest "
@@ -776,9 +781,9 @@ def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any:
     * a ``pref:`` table survives only where §2h permits one to be WRITTEN
       (:data:`~kanibako.settings.settings_prefs.PREF_LEGAL_LEVELS`), matching
       ``assemble_levels``'s three :func:`~kanibako.settings.settings_prefs.refuse_pref_table` calls;
-    * the per-agent file contributes its ROOT table and nothing else
-      (:func:`~kanibako.settings.agent_file.level_table`), so a top-level ``agent:`` there is
-      not a DROP — it was never an input.
+    * the per-agent file contributes its ROOT table and its ``agent:`` table (Q92) and nothing
+      else (:func:`~kanibako.settings.agent_file.contributed_tables`), so a top-level
+      ``workset:`` / ``box:`` there is not a DROP — it is not an input yet (Q85).
 
     What survives is then case-folded by :func:`fold_agent_nodes`, the fold :func:`_file_partial`
     applies, so a capital node reads here as it merges.
@@ -795,7 +800,7 @@ def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any:
             # warning is its text, through the same guard.
             raw = refuse_pref_table(raw, level=level, path=path)
     if level == _AGENT_FILE_LEVEL:
-        return {k: v for k, v in raw.items() if str(k) in ROOT_SECTIONS}
+        return fold_agent_nodes(contributed_tables(raw), path=path)
     drop_set = cascade_drop_set(level)
     # Folded AFTER the drops, as the cascade folds only what it merges (:func:`_file_partial`).
     return fold_agent_nodes(
@@ -1007,29 +1012,65 @@ def _agent_partial(
     ``KeyStore`` — and the import edge one-way.
 
     *sub_key* selects the TIER; the two agent levels are kept SEPARATE (spec §2) and merge by
-    their true §2d names — NO bare-``agent`` collapse. An empty level yields an empty partial,
-    which is what the all-agents tier ALWAYS is out of this file since the flatten.
-    *path* NAMES THE FILE in every refusal this level raises — the boundary's AND this function's
-    own parse (:func:`_parse_naming_file`, the same wrap the file tiers get); *node* renders the
-    boundary's message alone. Neither is read as a VALUE. llm-docs.
+    their true §2d names — NO bare-``agent`` collapse. *path* NAMES THE FILE in every refusal
+    this level raises — the boundary's AND this function's own parse (:func:`_parse_naming_file`,
+    the same wrap the file tiers get); *node* renders the boundary's message alone. Neither is
+    read as a VALUE. llm-docs.
+
+    ⚑ THE FILE'S ``agent:`` TABLE IS READ (Q92) — parsed by :func:`_file_partial`, the scope
+    files' own builder, so it folds and parses exactly as that table does in a workset or system
+    file. The all-agents tier takes its ``agent.default`` node; the active tier takes every other
+    node and merges them beside the re-rooted ``self:`` (:func:`_scope_nodes`). So in foo's file,
+    ``agent: {bar: …}`` MERGES but is never picked while foo is active (bar's own file is the one
+    read when bar is), and ``agent: {default: …}`` sets ``agent.default.*`` at this file's level,
+    which applies only while foo is. ``self:`` beside ``agent: <own node>:`` setting one leaf
+    has already REFUSED at the boundary (Q103, ``agent_file._refuse_two_spellings``).
     """
     level = level_table(raw, sub_key=sub_key, node=node, path=path)
-    if not level.table:
+    scope = _scope_nodes(level.scope, sub_key=sub_key, path=path)
+    if not level.table and not scope:
         return KeyStore()
-    # The discriminator (``default`` / the active agent's name) is the §2d key form and is
-    # load-bearing: it keeps the fallback layer and any per-agent override distinct under the merge.
-    # ⚑ The KEY path is SEEDED, unlike every other level's: this document's root table IS
-    # ``agent.<node>`` ([spec:15-21, "self"]), so the walk starts one scope in and the §2a
-    # DECLARATION ROOT would otherwise have no scope to read. It is the ONLY thing this call
-    # does differently from a file tier's — the file naming is the shared wrap's.
-    parsed_sub = _parse_naming_file(
-        level.table, file_path=path, key_path=("agent", level.node),
-    )
-    agent_node = KeyStore()
-    agent_node[level.node] = parsed_sub
     store = KeyStore()
+    agent_node = KeyStore()
     store["agent"] = agent_node
+    if level.table:
+        # The discriminator (``default`` / the active agent's name) is the §2d key form and is
+        # load-bearing: it keeps the fallback layer and any per-agent override distinct under the
+        # merge.
+        # ⚑ The KEY path is SEEDED, unlike every other level's: this document's root table IS
+        # ``agent.<node>`` ([spec:15-21, "self"]), so the walk starts one scope in and the §2a
+        # DECLARATION ROOT would otherwise have no scope to read. It is the ONLY thing this call
+        # does differently from a file tier's — the file naming is the shared wrap's.
+        agent_node[level.node] = _parse_naming_file(
+            level.table, file_path=path, key_path=("agent", level.node),
+        )
+    if scope:
+        # ⚑ WHAT THE BOUNDARY GUARANTEES, AND ALL IT GUARANTEES: before this overlay
+        # ``agent_node`` holds at most the own node's ``self:`` categories, and
+        # ``agent_file._contribution`` has refused an own-node entry that is not a table
+        # (``_refuse_node_values``) and any own-node setting that equals, or is a prefix of or
+        # under, one ``self:`` sets (``_refuse_two_spellings``, Q103). So nothing ``self:`` set is
+        # replaced here; the other nodes land where nothing was.
+        _overlay(agent_node, scope)
     return store
+
+
+def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore:
+    """The node tables of the agent file's ``agent:`` table that the *sub_key* tier merges.
+
+    Parsed as the scope files parse it (:func:`_file_partial`: node fold, bind parse, file named
+    in every refusal). The all-agents tier takes the ``default`` node; the active tier the rest.
+    """
+    if not scope:
+        return KeyStore()
+    nodes = _file_partial({FILE_SCOPE: scope}, path=path).get(FILE_SCOPE)
+    picked = KeyStore()
+    if not isinstance(nodes, KeyStore):
+        return picked
+    for seg in dict.keys(nodes):
+        if (seg == _AGENT_DEFAULT_SUB) == (sub_key == _AGENT_DEFAULT_SUB):
+            picked[seg] = dict.__getitem__(nodes, seg)
+    return picked
 
 
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore:
@@ -1174,14 +1215,11 @@ def assemble_levels(
         _agent_partial(
             raw_agent, sub_key=agent_name, path=agent_path, node=agent_name,
         ),
-        # ⚑⚑ THIS LEVEL IS STRUCTURALLY EMPTY SINCE THE S2 FLATTEN, and saying so is the
-        # point: the agent file has NO spelling for the all-agents tier at all (``self:`` IS
-        # ``agent.<node>``, so a ``default`` sub-table under it reads
-        # ``agent.<node>.default.*`` and REFUSES). That tier's route is the SYSTEM file's
-        # ``agent: default:`` table, which arrives on the system level below. The call is KEPT
-        # rather than deleted: dropping it re-indexes every ``base_levels[n]`` consumer, and
-        # whether a permanently-empty rung should be encoded at all is a re-encoding question
-        # boarded on its own, not a rider here.
+        # ⚑⚑ THIS LEVEL HOLDS ONLY THE FILE'S ``agent: default:`` TABLE (Q92). ``self:`` has
+        # no spelling for the all-agents tier (``self:`` IS ``agent.<node>``, so a ``default``
+        # sub-table under it reads ``agent.<node>.default.*`` and REFUSES); the ``agent:``
+        # table does, read as in any settings file, and applies only while this agent is
+        # active, since only then is this file read.
         _agent_partial(
             raw_agent, sub_key=_AGENT_DEFAULT_SUB, path=agent_path, node=agent_name,
         ),

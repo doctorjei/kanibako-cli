@@ -477,15 +477,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never reached it, with no message; the top-level check for the other settings files did not
   cover this one. It now stops the command, naming the key and the file: move the setting under
   `self:`, or delete the line. A top-level `system:`, `meta:`, `pref:` or `binding_derivations:`
-  table is still dropped with a warning, and an `agent:`, `workset:` or `box:` table is still not
-  read. See `MIGRATION.md` § *2.37 An agent's settings file has ONE level: everything sits directly
-  under `self:`*.
+  table is still dropped with a warning, and a `workset:` or `box:` table is still not read; an
+  `agent:` table is now read (next entry). See `MIGRATION.md` § *2.37 An agent's settings file has
+  ONE level: everything sits directly under `self:`*.
+
+- **An `agent:` table at the top of an agent's `agent.yaml` is now read, like the `agent:` table in
+  any settings file.** In 1.7.2 (whose file was `agents/<agent>/settings.yaml`) and 1.8.0-rc2 the
+  file's reader took `self:` alone, so `agent: {default: {model: sonnet}}` in
+  `agents/claude/agent.yaml` reached no box, without a word.
+  It is read now: `agent: default:` sets the every-agent defaults, applying only while that agent
+  runs (its file is read only then) and beating the system settings file's `agent: default:` —
+  the defaults only: a system-file `agent: claude:` value still beats this file's
+  `agent.default.*` (a named agent's key beats a default). `agent: <this agent>:` sets the same keys
+  `self:` does, with one exception: `transform_settings` is still read from `self:` alone, so
+  there it has no effect. Another agent's node merges but is never used, since that agent's own
+  file is the one read when it runs. The same setting under both `self:` and
+  `agent: <this agent>:` refuses, naming both spellings and the file, in every `agent` verb that
+  reads the file as well as at a launch; so does a value in place of the table (`agent: 5`) or
+  of one agent's table (`agent: {claude: 5}`), and a key in it that is not a setting of that
+  agent (`agent: {claude: {bogus: 1}}`), as a key under `self:` already did. `agent reset <agent> --all`
+  now clears this table too, and counts its settings. See `MIGRATION.md` § *2.37 An agent's
+  settings file has ONE level: everything sits directly under `self:`*.
 
 - **`agent show`, `agent info` and `agent list` refuse that stray key beside `self:` too.** In
   v1.8.0-rc2 they read an `agent.yaml` carrying one without a word, as a launch did. They now stop
   with the launch's message, naming the key and the file. `agent reset <agent> --all` does
-  not refuse: it clears the settings under `self:` and leaves the stray line, which is not a
-  setting, for you to move or delete. See `MIGRATION.md` § *2.37 An agent's settings file has ONE
+  not refuse: it clears the settings under `self:` and in the file's `agent:` table, and leaves the
+  stray line, which is not a setting, for you to move or delete. See `MIGRATION.md` § *2.37 An agent's settings file has ONE
   level: everything sits directly under `self:`*.
 
 - **`workset share list --effective` now refuses a working set file that carries an undeclared

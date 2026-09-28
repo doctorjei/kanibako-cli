@@ -62,8 +62,12 @@ NamedTuple turns TWO tests red, both in `TestRouteCarriesNoAddress` — `test_re
 whose `is_dataclass(slot)` goes False and whose write then raises `AttributeError` rather than
 `FrozenInstanceError`. Nothing else in `test_agent_file_boundary.py` or `test_agent_file.py`.)*
 
-```AgentFileLevel(node: str, table: dict, path: Path | None = None)```  — frozen dataclass
+```AgentFileLevel(node: str, table: dict, path: Path | None = None, scope: dict = {})```  — frozen dataclass
 ONE cascade tier read out of the file: its §2d discriminator and its RAW table.
+
+*scope* is the file's top-level `agent:` table, RAW, on BOTH tiers (Q92), already judged by
+`_contribution`; `settings_assemble._agent_partial` parses it with the scope files' own builder.
+It defaults to empty (`field(default_factory=dict)`).
 
 *node* is the discriminator the tier merges under (`default` or the active agent), NOT necessarily
 the agent whose file it is — `assemble_levels` builds BOTH tiers from the one file.
@@ -103,9 +107,12 @@ shape, over a different file. Dropped, not relocated.)* Inside `self:`:
   tier at all**, which is
   written in the SYSTEM file as `agent: default: <category>:`.
 
-**Beside `self:`, nothing is read yet** — the contributed set is ONE constant, `_CONTRIBUTED`, and
-holds `self` alone — and a key there that the cascade neither reads nor drops REFUSES BY NAME
-(`_refuse_stray_roots`, below), because no other audit can see it.
+**Beside `self:`, only the `agent:` table is read (Q92)** — the contributed set is ONE constant,
+`_CONTRIBUTED`, holding `self` and `agent` — and a key there that the cascade neither reads nor
+drops REFUSES BY NAME (`_refuse_stray_roots`, below), because no other audit can see it. The
+`agent:` table is read like that table in any settings file: `agent: {<node>: {…}}`, the
+all-agents `default` node included; a VALUE there (`agent: 5`) refuses (`_refuse_scope_value`),
+and a bare `agent:` is no table.
 
 ⚑ **THE FLATTEN (S2) IS WHY THIS IS ONE LIST AND NOT THREE.** `secret_path` flattened at
 2026-07-14b, `env` at MBR-1 P3, and `bindings` was the last occupant of the nested shape — kept
@@ -417,7 +424,8 @@ This was `agent reset --all`'s hand-rolled read-modify-write on the raw document
 module — the sixth shape site. "Remove all user overrides" is the `self:` root table deleted
 outright — `run_args`, all state keys and every category table go with it — and the file is left
 SPARSE, no default key re-materialized in their place. WHICH tables go is `contributed_tables`
-(today the root alone), so the reset clears exactly what the cascade reads. The COUNT is part of the
+(the root and, since Q92, the `agent:` table), so the reset clears exactly what the cascade reads.
+A `workset:` / `box:` table (unread until Q85) stays, uncounted. The COUNT is part of the
 contract, not a detail: **each removed LEAF counts once** (`config_io.count_leaves`) — a category
 table counts its entries, a list counts once — the unit every scope's `reset --all` prints.
 
@@ -547,7 +555,9 @@ Which RAW table one agent-tier level reads — the SHAPE half of the cascade sea
 
 ⚑ **`sub_key` selects the TIER, not a sub-table.** Since the flatten it does not index into the
 document at all: the ACTIVE tier is the file's own flat category tables, and the all-agents
-`default` tier is **STRUCTURALLY EMPTY** — the file has no spelling for it.
+`default` tier's table is **EMPTY** — `self:` has no spelling for it. Both tiers carry the file's
+`agent:` table as *scope* (Q92), whose `default` node IS a spelling for that tier; which nodes a
+tier takes is decided in `settings_assemble._agent_partial`, after the cascade's node fold.
 
 ⚑ **The FLAT-CATEGORY re-root, and why it is ACTIVE-LAYER ONLY.** `self` IS `agent.<active-node>`,
 so the categories at the file's top level belong to THIS node; re-rooting them for the all-agents
@@ -574,13 +584,12 @@ reappearing in this table is a second rung.
 and it is why the launch tests that contend a behavior scalar build the PRODUCTION PAIR —
 `agent_path=` **plus** `agent_state=` — rather than writing the file alone.)*
 
-⚑ **`base_levels[3]` — the `agent.default` level built from this file — is a PERMANENTLY EMPTY
-rung**, and `settings_assemble` says so at the call site. The call is KEPT rather than deleted:
-dropping it re-indexes every `base_levels[n]` consumer, and whether a structurally-empty rung
-should be encoded at all is a re-encoding question boarded on its own.
+⚑ **`base_levels[3]` — the `agent.default` level built from this file — holds ONLY the file's
+`agent: default:` table** (Q92): `self:` has no spelling for that tier, the `agent:` table does.
+Which nodes of *scope* each tier takes is `settings_assemble._scope_nodes`' call.
 
-The top-level refusal runs first, then the nested one. A missing `self` table, or a non-dict
-root, yields an empty level.
+The top-level refusals run first, then the nested one. A missing `self` table, or a non-dict
+root, yields an empty *table*; the level still carries the file's `agent:` table as *scope*.
 
 ```_nested_agent_cure(category: str | None, sub_key: str, *, var: str, value: str) -> str```
 The ARM-APPROPRIATE fix for a refused `self.<sub>:` sub-table.
@@ -663,12 +672,29 @@ Neither weakens the other and neither test may stand in for the other's.
 
 ```contributed_tables(raw: Any) -> dict``` · ```_contribution(raw, *, node, path) -> dict```
 `contributed_tables` answers WHICH top-level tables the cascade reads (`_CONTRIBUTED`) and judges
-nothing; `_contribution` is the same answer after `_refuse_stray_roots`. Every reader that JUDGES
-the file (`level_table`, `load`) takes `_contribution`; the reset takes `contributed_tables`. ⚑
-`_CONTRIBUTED` is the ONE constant the later passes grow: `agent:` joins it when Q92's read lands,
-`workset:` / `box:` when Q85's defaults-down merge does. 🛑 `settings_assemble.cascade_view` still
-filters the agent file by `ROOT_SECTIONS`, a second statement of the same set that agrees only while
-it is `self` alone; it moves to `contributed_tables` with the first table that joins.
+nothing; `_contribution` is the same answer after the file's TOP-LEVEL refusals. Every reader
+that JUDGES the file (`level_table`, `load` — so `agent show` / `info` / `list` / `get` as well as
+the launch) takes `_contribution`; the reset takes `contributed_tables`, and stays the repair door.
+
+⚑ **THE FOUR TOP-LEVEL REFUSALS `_contribution` RUNS**, in order: `_refuse_stray_roots` (below);
+`_refuse_scope_value` — a VALUE where the `agent:` table's node tables go (`agent: 5`), which merged
+as one would replace every other file's agent tables; `_refuse_node_values` — a NODE of that table
+holding a value or nothing (`agent: {bar: 5}`, a bare `claude:`), which names an agent tier, not a
+key (§2d), as the launch's §0 audit also says; for the file's own node beside a non-empty `self:`
+the message adds that it writes the node twice and would replace every setting under `self:`;
+and `_refuse_two_spellings` (Q103) — one setting written under both `self:` and
+`agent: <own node>:`, where a PREFIX counts too (`model` beside `model.x`). The last matches the node as the
+cascade folds it (`agent_ref.agent_address_node` over `agent_segment_case`, so `Claude:` is
+`claude`) and compares SETTINGS as the merge sees them (`_setting_leaves`): a table descends to
+its leaves, except that a TABLE-VALUED agent key (`settings_keyspace.TABLE_VALUED_AGENT_LEAVES`,
+`transform_settings`) is ONE setting whole, and in a bind category
+(`settings_keyspace.BIND_CATEGORIES`) each DEST is one, compared through
+`settings_resolve.normalize_bind_dest` (`/a/` is `/a`). `env.A` beside `env.B` merges; so do two
+dests of one arm. Every pair is named AS WRITTEN. It needs *node*, so a caller that passes none
+skips it. Pinned in `test_agent_file.py` (`TestTheAgentTable`) and `test_agent_cmd.py` (the verbs). ⚑
+`_CONTRIBUTED` is the ONE constant the later passes grow: `agent:` joined it with Q92's read;
+`workset:` / `box:` join when Q85's defaults-down merge does. `settings_assemble.cascade_view` reads
+the agent file through `contributed_tables` too, so the verbs judge what the merge reads.
 
 ```_refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None```
 RAISE on a key at the FILE's top level that the file neither contributes nor drops (spec §0).
@@ -682,10 +708,11 @@ took `self` alone).
 ⚑⚑ **THE TABLES THE CASCADE DROPS ARE NOT STRAYS.** `system:`, `meta:`, `binding_derivations:`
 and `pref:` (`settings_drops.cascade_drop_set("agent")`) are dropped WITH A WARNING by
 `assemble_levels` before `level_table` runs; `load` sees them undropped, so the rule passes them by
-the same derivation. 🛑 `agent:` / `workset:` / `box:` are passed over UNREAD, and that is a GAP,
-not a rule: spec §0 (*"a settings file contributes keys of its OWN scope and of scopes it
-CONTAINS"*), `Q85` and `Q92` make them inputs, merged defaults-down. Each stops being passed over
-when it joins `_CONTRIBUTED`; refusing them meanwhile would refuse a table the spec reads. Pinned in
+the same derivation. `agent:` is not a stray: it is READ (`Q92`, `_CONTRIBUTED`). 🛑 `workset:` /
+`box:` are passed over UNREAD, and that is a GAP, not a rule: spec §0 (*"a settings file
+contributes keys of its OWN scope and of scopes it CONTAINS"*) and `Q85` make them inputs, merged
+defaults-down. Each stops being passed over when it joins `_CONTRIBUTED`; refusing them meanwhile
+would refuse a table the spec reads. Pinned in
 `test_agent_file.py`: `TestLevelTable` (the refusal, and the scope-token control) and
 `TestTheStrayRuleOnTheProductionPath` (every upstream drop, DERIVED from the drop rules, still warns
 and builds).
@@ -740,9 +767,18 @@ producers' own node arguments, by `TestTheLaunchAgentFileStateMergesUnderTheLaun
 pins are mutation-measured; the launch one was UNCOVERED until the S1b fix round wrote it —
 `start_mocks` stubs `_resolve_launch_snapshot` out, and the real-chain callers pass `agent_cfg=None`.
 
-```_refuse_undeclared_state(state, *, node, path) -> None```
-RAISE on the first agent-file state key that is not a declared key (spec §0) — the last refusal
-`load` runs.
+```_refuse_undeclared_state(leaves, *, node, path) -> None``` · ```_scope_state(scope) -> list```
+RAISE on the first agent-file key that is not a declared key (spec §0) — the last refusal
+`load` runs. Each leaf is `(judged node, key, shown, spelled)`: `self:`'s flat state is judged
+under the file's own *node*; since Q92 the `agent:` table's keys are judged too, each under ITS
+node as the cascade folds it (`_scope_state`: every node table's keys except a category key
+holding a TABLE — a category key holding a value is judged like any key, so `env: 5` refuses as
+the launch refuses it and `caches: 'x'` is conceded as the launch concedes it; this is NOT
+`self:`'s partition, which drops every dict-valued entry and every modeled key from state). One carrier, one gate: `config_keys.agent_key_reason`,
+which concedes a node whose vocabulary is unreadable (`[R150]`) — measured to give the launch's
+§0 audit's verdict on `agent.claude.bogus`, `agent.goose.bogus`, `agent.default.bogus`,
+`agent.Claude.bogus` and `agent.claude.self` (refused) and on `agent.nosuchharness.x`,
+`agent.goose.provider` and `agent.claude+nav.bogus` (conceded).
 
 ⚑ **THE PLUGIN UNION IS LOAD-BEARING, not a nicety.** `config_keys.agent_key_reason` unions the
 leaves the INSTALLED targets declare, and without it a legitimate `agent.goose.provider` would

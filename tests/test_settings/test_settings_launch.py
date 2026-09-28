@@ -6070,14 +6070,15 @@ _RELIC_TIER_CASES = [
     pytest.param("base", SITE_SETTINGS_FILENAME, True, id="base-refuses"),
     pytest.param("box_path", "box.yaml", False, id="box-file-drops-the-table"),
     pytest.param("workset_path", "workset.yaml", False, id="workset-file-drops-it"),
-    pytest.param("agent_path", "agent.yaml", False, id="agent-file-never-read-it"),
+    # Q92: the agent file's ``agent:`` table is READ, like the system file's.
+    pytest.param("agent_path", "agent.yaml", True, id="agent-file-refuses"),
 ]
 
 
 @pytest.mark.writes_undeclared(
     "agent.common.plugins",
-    reason="the two refusing tiers resolve the relic into the snapshot, which is "
-           "what §0 then refuses; the three others never merge the table at all.",
+    reason="the three refusing tiers resolve the relic into the snapshot, which is "
+           "what §0 then refuses; the two others never merge the table at all.",
 )
 @pytest.mark.parametrize("tier,filename,refuses", _RELIC_TIER_CASES)
 def test_where_an_undiscriminated_agent_relic_stops_the_resolve(
@@ -6086,11 +6087,10 @@ def test_where_an_undiscriminated_agent_relic_stops_the_resolve(
     """⚑ ``MIGRATION.md`` §2.11 SAYS THIS PER FILE, so a pin says it per file.
 
     The bullet used to claim flatly that a leftover ``agent.common.plugins`` "stops
-    the resolve". It does in the system and base files. In a ``box.yaml`` or
-    ``workset.yaml`` the whole ``agent:`` table is a containing scope's and is
-    dropped before the merge, and in an ``agent.yaml`` only the ``self:`` table is
-    ever an input — so in the three files a user's own settings actually live in,
-    the relic resolves and the only trace is a log line or nothing at all.
+    the resolve". It does in the system and base files, and (Q92: its ``agent:``
+    table is read) in an ``agent.yaml``. In a ``box.yaml`` or ``workset.yaml`` the
+    whole ``agent:`` table is a containing scope's and is dropped before the merge,
+    so there the relic resolves and the only trace is a log line.
 
     That is not a defect to fix here: the table genuinely contributes nothing, and
     refusing on it would be the cure-for-a-no-op the retirement scan already
@@ -6532,3 +6532,72 @@ class TestNullRefSecretPath:
             tmp_path, caplog, box={"box": {"env": {"PROBE": "@workset.auth.path/y"}}},
             floor={"workset.auth.path": None},
         ) == (set(), [])
+
+
+# --------------------------------------------------------------------------- #
+# Q92: an agent file's ``agent:`` table, through the PRODUCTION pair           #
+# --------------------------------------------------------------------------- #
+
+
+class TestAgentFileAgentTable:
+    """What "by construction" means for Q92, pinned on the launch snapshot: the file is read
+    only while its agent is active, so its ``agent:`` nodes apply only then."""
+
+    @staticmethod
+    def _snap(tmp_path, doc, *, system=None):
+        agent_file = _yaml(tmp_path / "agent.yaml", doc)
+        system_file = _yaml(tmp_path / "system.yaml", system) if system else None
+        return build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(),
+            system_path=system_file, agent_path=agent_file,
+            workset_path=None, box_path=None,
+            agent_state=agent_file_state_level(
+                agent_file_load(agent_file, node="claude"), node="claude",
+            ),
+        )
+
+    def test_the_own_node_sets_the_active_agent(self, tmp_path):
+        snap = self._snap(tmp_path, {"agent": {"claude": {"model": "own"}}})
+        assert effective_behavior(snap, active_agent="claude")["model"] == "own"
+
+    def test_the_default_node_applies_and_outranks_the_system_file(self, tmp_path):
+        # The agent file is MORE specific than the system file, for ``agent.default.*`` too.
+        # (INVERT: drop the agent file's table and the system's ``s`` stands.)
+        system = {"agent": {"default": {"model": "s"}}}
+        snap = self._snap(tmp_path, {"agent": {"default": {"model": "d"}}}, system=system)
+        assert effective_behavior(snap, active_agent="claude")["model"] == "d"
+        control = self._snap(tmp_path, {"self": {"env": {"A": "1"}}}, system=system)
+        assert effective_behavior(control, active_agent="claude")["model"] == "s"
+
+    def test_the_root_still_beats_the_files_own_default(self, tmp_path):
+        snap = self._snap(tmp_path, {
+            "self": {"model": "own"}, "agent": {"default": {"model": "d"}},
+        })
+        assert effective_behavior(snap, active_agent="claude")["model"] == "own"
+
+    def test_another_agents_node_merges_but_is_never_picked(self, tmp_path):
+        snap = self._snap(tmp_path, {"agent": {"goose": {"model": "g"}}})
+        assert snap.agent.goose.model == "g"
+        assert effective_behavior(snap, active_agent="claude").get("model") != "g"
+
+    @pytest.mark.parametrize(("doc", "expected"), (
+        # D1: the own node as a VALUE beside ``self:`` — merged, it replaced ``agent.claude``
+        # and every ``self:`` category silently vanished from the snapshot.
+        ({"self": {"model": "a", "env": {"A": "1"}}, "agent": {"claude": 5}},
+         "writes agent 'claude' a second time"),
+        ({"self": {"model": "a"}, "agent": {"claude": {"model": {"x": 1}}}},
+         "`self.model` and `agent.claude.model.x`"),
+        # The fold-in: an undeclared key in the table, refused as ``self:``'s would be.
+        ({"agent": {"claude": {"bogus": 1}}}, "carries 'agent.claude.bogus'"),
+    ))
+    def test_the_production_pair_refuses_by_name(self, tmp_path, doc, expected):
+        with pytest.raises(SettingsError) as exc:
+            self._snap(tmp_path, doc)
+        assert expected in str(exc.value)
+
+    def test_self_and_the_own_node_setting_one_leaf_refuse(self, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            self._snap(tmp_path, {
+                "self": {"model": "a"}, "agent": {"claude": {"model": "b"}},
+            })
+        assert "`self.model` and `agent.claude.model`" in str(exc.value)
