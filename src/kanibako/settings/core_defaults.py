@@ -533,6 +533,27 @@ def assert_canon_bind_seed_disjoint(
         )
 
 
+def _rom_sibling_binds() -> list[tuple[str, str, bool]]:
+    """The packaged-canon SIBLING bind set, as ``(key-leaf, rom-relative source, is_dir)``.
+
+    ⚑ ONE declaration drives the completeness guard, the emission AND
+    :func:`internal_bind_keys`, so none of them can drift from the others.
+    """
+    return [
+        ("canon_collection", ROM_COLLECTION_REL, False),
+        ("canon_charter_contents", ROM_CONTENTS_REL, False),
+        *(
+            (f"canon_charter_{chapter}", f"{ROM_CHARTER_REL}/{chapter}", True)
+            for chapter in ROM_CHARTER_CHAPTERS
+        ),
+    ]
+
+
+def _rom_agent_chapter_dest() -> str:
+    """The ``~``-spelled dest of the plugin's charter chapter bind (spec §2c)."""
+    return _canon_dest(f"{ROM_CHARTER_REL}/{CHARTER_AGENT_CHAPTER}")
+
+
 def rom_default_categories() -> BindArmTable:
     """Build the FIVE read-only packaged-CANON binds as ``default_categories`` (J-7, spec §2c).
 
@@ -565,16 +586,7 @@ def rom_default_categories() -> BindArmTable:
     if not rom_files:
         return {}
 
-    # The SIBLING bind set, as ``(key-leaf, rom-relative source, is_dir)``.  ⚑ ONE declaration
-    # drives BOTH the completeness guard and the emission, so they cannot drift apart.
-    binds: list[tuple[str, str, bool]] = [
-        ("canon_collection", ROM_COLLECTION_REL, False),
-        ("canon_charter_contents", ROM_CONTENTS_REL, False),
-        *(
-            (f"canon_charter_{chapter}", f"{ROM_CHARTER_REL}/{chapter}", True)
-            for chapter in ROM_CHARTER_CHAPTERS
-        ),
-    ]
+    binds = _rom_sibling_binds()
 
     # ⚑ FAIL-CLOSED (b): a POPULATED rom root must carry the WHOLE payload — every emitted
     # bind's SOURCE, plus the guide (which has no bind of its own: it rides ``general``'s).
@@ -629,7 +641,7 @@ def rom_agent_default_categories(
     out: BindArmTable = {}
     add_bind(
         out, "bindings.ro",
-        _canon_dest(f"{ROM_CHARTER_REL}/{CHARTER_AGENT_CHAPTER}"), str(rom_root), "ro",
+        _rom_agent_chapter_dest(), str(rom_root), "ro",
     )
     return out
 
@@ -961,6 +973,50 @@ def bind_dest_families() -> dict[str, str]:
         for table in BIND_TABLES
         for entry in _load_doc().get(table) or []
     }
+
+
+#: The declarative tables whose EVERY row is an INTERNAL bind (spec §2c: not a user key,
+#: not repointable) — the kanibako CLI trio and the kickoff slot.
+_INTERNAL_BIND_TABLES = ("kani", "kickoff")
+
+#: The rows of MIXED tables that are INTERNAL, as ``(table, row key)``: the GENERATED
+#: storage.conf companion of the image store (``not_keys.never_a_key.images_conf``).
+_INTERNAL_BIND_ROWS = (("images", "images_conf"),)
+
+
+def internal_bind_keys() -> frozenset[tuple[str, str]]:
+    """Every INTERNAL bind as ``(arm key, normalized dest)`` — the binds no user arm may drop.
+
+    Spec §2c: the kanibako CLI delivery, the secrets snippet, the kickoff slot, the six
+    packaged-charter binds and the generated storage.conf are INTERNAL — not user keys, not
+    repointable.  ``settings_launch.build_launch_snapshot`` re-imposes each one the floor
+    carries AFTER the merge, so a user's ``box.bindings.ro: null`` (or an entry at the
+    same dest) cannot remove or repoint kanibako's own delivery.
+    ⚑ Read from the SAME rows / constants that emit the binds, normalized with the SAME
+    function, so a moved dest moves here too.
+    """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    doc = _load_doc()
+    rows = [
+        entry for table in _INTERNAL_BIND_TABLES for entry in doc.get(table) or []
+    ]
+    for table, key in _INTERNAL_BIND_ROWS:
+        found = [e for e in doc.get(table) or [] if e.get("key") == key]
+        if not found:
+            raise RuntimeError(
+                f"{CORE_DEFAULTS_FILENAME} has no {table!r} row keyed {key!r} — an "
+                "INTERNAL bind (spec §2c) this module re-imposes after every merge"
+            )
+        rows += found
+    keys = {
+        (f"box.{entry['category']}", normalize_bind_dest(str(entry["box_dest"])))
+        for entry in rows
+    }
+    rom_dests = [_canon_dest(rel) for _key, rel, _is_dir in _rom_sibling_binds()]
+    rom_dests.append(_rom_agent_chapter_dest())
+    keys |= {("box.bindings.ro", normalize_bind_dest(dest)) for dest in rom_dests}
+    return frozenset(keys)
 
 
 def helper_bind_dests() -> frozenset[str]:

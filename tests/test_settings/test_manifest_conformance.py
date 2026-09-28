@@ -710,6 +710,22 @@ class TestBindDefaults:
         assert row["user_key"] is False
         assert "images_conf" in manifest_doc()["not_keys"]["never_a_key"]
 
+    def test_the_re_imposed_internal_binds_are_exactly_the_manifest_internal_rows(self):
+        """MANIFEST ↔ CODE: ``core_defaults.internal_bind_keys`` (the binds the launch
+        re-imposes after the merge, so no user arm drops them) names EXACTLY the
+        ``user_key: false`` rows — no internal bind left droppable, no user key frozen."""
+        from kanibako.settings import core_defaults
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+
+        declared = {
+            (str(arm), normalize_bind_dest(str(dest)))
+            for arm, entries in manifest_doc()["bind_default_entries"].items()
+            for dest, entry in entries.items()
+            if entry.get("user_key") is False
+        }
+        assert declared  # anti-vacuity
+        assert core_defaults.internal_bind_keys() == declared
+
     def test_every_code_bind_dest_is_a_manifest_dest(self):
         """CODE → MANIFEST: every dest a ``core-defaults.yaml`` bind table declares is a
         ``bind_default_entries`` row, under the arm the table's ``category`` names.

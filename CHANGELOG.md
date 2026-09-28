@@ -224,6 +224,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Setting `box.bindings.ro` to `null` no longer removes kanibako's own binds from the box.** In
+  1.8.0-rc2, `bindings: {ro: null}` in a box's or working set's settings file dropped every
+  read-only bind, including the ones kanibako delivers itself: the in-box `kanibako` command
+  (`/opt/kanibako/kanibako` and `~/.local/bin/kanibako`), the secrets profile snippet, the kickoff
+  file, the packaged charter and, with image sharing, the generated `storage.conf`. An entry at one
+  of those destinations also replaced or removed it. These binds are not settings keys, so a
+  launch now always delivers them as shipped. A `null` arm still omits every other read-only
+  bind, and your own entries still merge.
+
 - **`box set` and the other `set` verbs accept a reference to `@box.shell` instead of refusing it as
   dangling.**
   `box.shell` declares `<None>` as its default (spec §2b), but nothing supplied it, so a setting

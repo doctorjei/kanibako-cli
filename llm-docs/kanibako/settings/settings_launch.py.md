@@ -1083,6 +1083,18 @@ settable input left to fold, and removing it FLIPS the transitional contest P6 p
 wins a CATEGORY, as it already won a SCALAR. Pinned by
 `tests/test_settings/test_settings_launch.py::TestPrefLevelPrecedence`.
 
+⚑ **THE INTERNAL BINDS ARE RE-IMPOSED AFTER THE MERGE (`_internal_floor_binds`).** Spec §2c's
+INTERNAL binds — the kanibako CLI trio, the kickoff slot, the six packaged-charter binds and the
+generated `storage.conf` — are not user keys and not repointable, yet they ride the SAME floor arm
+(`box.bindings.ro`) a user may reset. Merge is last-wins per name, so a user's `box.bindings.ro: null`
+omitted the whole arm, kanibako's own `/opt/kanibako/kanibako` included. So the floor's entries at
+`core_defaults.internal_bind_keys()` are merged ONCE MORE, ON TOP of the merged snapshot
+(`merge([dotted_partial(internal), snapshot])`), before `expand`: a null or empty user arm, a user
+null at an internal dest, and a user entry repointing one all leave the internal bind as the floor
+spelled it, while the arm's STANDARD entries still follow the user (a null arm still omits them, with
+the [R185] warning). A narrow resolve re-imposes only what its own floor carries (the image resolve:
+`storage.conf`).
+
 After `merge` + `expand`, `_materialize_box_agent_mirror` runs, and the box-root assertion runs when
 the caller supplied the anchor.
 
