@@ -1490,8 +1490,8 @@ constant too — three consumers, one source. Add a consumer, never a fourth spe
 The §0 reason *tail* is not a declared key of agent *node*, or `None` when it is — **the `agent`
 noun's closed keyspace, spelled ONCE** (S3, defect D-5).
 
-⚑ **ONE CONSTRUCTION, THREE CONSUMERS**: the verb's WRITE gate, its READ gate, and the LAUNCH
-boundary's passthrough refusal (`agent_file.state_level`). A REASON rather than a message, for the
+⚑ **ONE CONSTRUCTION, THREE CONSUMERS**: the verb's WRITE gate, its READ gate, and the refusal
+as an agent file is read (`agent_file.load`, which every reader, the launch included, uses). A REASON rather than a message, for the
 reason `config_dest.NodeRouteRefusal` gives — the rule is one, but a verb owes a cure and a refused
 launch owes a file to open.
 

@@ -1396,9 +1396,10 @@ discriminated `agent.<active>.*` / `agent.default.*` sub-tables that `assemble_l
 merges by name.
 
 ⚑ **IT NEEDS NO GATE OF ITS OWN, AND THAT IS DELIBERATE (P4).** The undeclared keys it used to ride
-through verbatim — the "forward-compat" passthrough spec §0 SPECIFICALLY EXCLUDES — are refused at
-the BOUNDARY that builds the level (`agent_file.state_level`), so nothing undeclared can reach this
-function to be gated. A second check here would be a rule spelled twice, and the one downstream
+through verbatim — the "forward-compat" passthrough spec §0 SPECIFICALLY EXCLUDES — are refused as
+the file is read (`agent_file.load`), and every record reaching this function comes from `load` or
+from a plugin's generated config, whose state is empty — so nothing undeclared can reach it to be
+gated. A second check here would be a rule spelled twice, and the one downstream
 would be the one that rots.
 
 ⚑⚑ **THE DISCRIMINATOR ARRIVES WITH THE DATA (C-2; [spec:15-21, "self"]).** It used to be a SECOND

@@ -8968,7 +8968,7 @@ class TestPersonaLiveTierWiring:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('self:\n  model: null\n')
         from kanibako.settings.agent_file import load as load_agent_config
-        agent_cfg = load_agent_config(path)
+        agent_cfg = load_agent_config(path, node=self._NODE)
 
         _auth, endpoint, model = _resolve_box_launch_decisions(
             std=std,
@@ -9307,7 +9307,7 @@ class TestPersonaLiveTierWiring:
         via_file = self._leaf_outcome(
             std, tmp_home, target=target,
             category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
-            agent_cfg=load_agent_config(path), agent_cfg_path=path,
+            agent_cfg=load_agent_config(path, node=self._NODE), agent_cfg_path=path,
         )
         assert via_store == via_file, (
             f"store and agent-file secret_path disagree for {raw!r}: "
@@ -9366,7 +9366,7 @@ class TestPersonaLiveTierWiring:
         via_file = self._leaf_outcome(
             std, tmp_home, target=target,
             category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
-            agent_cfg=load_agent_config(path), agent_cfg_path=path,
+            agent_cfg=load_agent_config(path, node=self._NODE), agent_cfg_path=path,
         )
         # kanibako's namespace does not carry it: REFUSED, not silently wrong.
         assert via_file[0] == "raised"
@@ -9431,7 +9431,7 @@ class TestPersonaLiveTierWiring:
         write_agent_config(path, AgentConfig(env={"NAV_X": raw}))
         via_file = self._leaf_outcome(
             std, tmp_home, target=target, category="env", var="NAV_X",
-            agent_cfg=load_agent_config(path), agent_cfg_path=path,
+            agent_cfg=load_agent_config(path, node=self._NODE), agent_cfg_path=path,
         )
         via_keyspace = self._leaf_outcome(
             std, tmp_home, target=target, category="env", var="NAV_X",

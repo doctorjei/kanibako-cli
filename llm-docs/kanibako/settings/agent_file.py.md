@@ -438,15 +438,26 @@ table was one override), while `config_interface.reset_all` counted a scope tabl
 `env:` table of two variables was 1 here and 2 under a workset file's `box:`. It counts leaves now,
 and the helper moved to `config_io` so both import one counter.
 
-```load(path: Path) -> AgentConfig``` · ```save(path: Path, cfg: AgentConfig) -> None```
-The WHOLE-FILE round trip — the `agent` verbs' own reads (`info` / `show` / `get`) and the
-first-use generate.
+```load(path: Path, *, node: str) -> AgentConfig``` · ```save(path: Path, cfg: AgentConfig) -> None```
+The WHOLE-FILE round trip — the `agent` verbs' own reads (`list` / `info` / `show` / `get`), every
+`start.py` read, `box show --effective`'s display, and the first-use generate.
 
-⚑ **`load` RUNS THE SAME REFUSALS THE CASCADE DOES** — the top-level stray check and the nested
-one — through `_contribution`, the one verdict `level_table` also takes: two readers of ONE file
-must not disagree about what the file means. Before it, `load` accepted shapes the launch refused,
-so `agent show` described a file that could not start a box. The escape hatch is intact: `agent
-reset --all` reaches `clear_overrides` only, never `load`. The loudest surface is `start.py`'s
+⚑ **`load` RUNS EVERY REFUSAL THE FILE OWES, AS IT IS READ** (Q101 option 1: every settings file
+is checked for unknown keys as it is read) — the top-level stray check and the nested one, through
+`_contribution`, the one verdict `level_table` also takes, and the undeclared-leaf check
+(`_refuse_undeclared_state`). Two readers of ONE file must not disagree about what the file means.
+Before the first two moved here, `load` accepted shapes the launch refused, so `agent show`
+described a file that could not start a box; before the third moved here (S4 C2), `agent show` on
+`self: {model: opus, zippity: 1}` listed `zippity = 1` at rc 0 while the launch refused it. The
+escape hatch is intact: `agent reset --all` reaches `clear_overrides` only, never `load`.
+⚑ **`node` IS REQUIRED**, keyword-only. The undeclared-leaf check judges a leaf against ONE agent's
+declared keys, so a read that could not name its agent could not be checked at all; and every
+refusal names `agent.<node>` rather than a placeholder. Each caller already holds the node it built
+the path from (`agent list` canonicalizes the store dirname through `config_keys.agent_key_node`,
+the same route `agent info`'s positional takes).
+⚑ **`agent list` stops at the first refused file**, by name. No list verb in the tree reports an
+error per row (the two that catch per row, `workset list` and `image list`, substitute a fallback
+value silently), and printing the row anyway would be the silent accept §0 bars. The loudest surface is `start.py`'s
 per-launch load, which is why the message quality matters more here than anywhere.
 ⚑ The stray check used to be CASCADE-ONLY because its drop-set lived in `settings_assemble`
 (importing it here closes a cycle); `settings_drops` now sits below both, so `load` passes the
@@ -628,9 +639,9 @@ reds exactly 13 bindings-specific tests across four files while `test_agent_envs
 green — the categories are not riding one another's coverage.)*
 
 ⚑ **PRESENCE, not truthiness.** An empty `claude: {}` is still the refused spelling. ⚑ But a BARE
-`claude:` leaf parses to `None` and is NOT refused: it is not a table, carries nothing, and
-delivers nothing, so `load` sweeps it into state as the scalar it parsed to, like any other stray
-root leaf.
+`claude:` leaf parses to `None` and is NOT refused HERE: it is not a table, so `load` sweeps it
+into state as the scalar it parsed to, like any other root leaf, and the undeclared-leaf check
+(`_refuse_undeclared_state`) refuses it there by name.
 
 ⚑ **THE MESSAGE NAMES the offending sub-table, its inner keys, the file, the ALIAS EXPANSION, the
 per-arm history and the cure.** The expansion is load-bearing rather than decorative: a refusal
@@ -703,14 +714,13 @@ the boundary — defect **C-2, CLOSED in S1b**. It used to be attached LATE, at 
 dict had travelled undiscriminated through `start.py`: the node a table came FROM and the node it
 merged UNDER were two independent facts and nothing cross-checked them.
 
-⚑⚑ **AND IT IS WHERE THE FORWARD-COMPAT PASSTHROUGH CLOSES** (S3, D-5's other end). An undeclared
-scalar in the file used to ride into the launch snapshot VERBATIM — the "old
-`agent.<name>.<anyleaf>` behaviour" spec §0 SPECIFICALLY EXCLUDES — so the garbage `agent set`
-stored was not merely dead, it reached the box. The refusal lives at the boundary and is
-**LAUNCH-ONLY on purpose**: `agent list` / `info` read `cfg.state` directly and the repair verbs
-never call `load`, so a poisoned file still LISTS, still DISPLAYS, and can still be fixed — only
-starting a box on it refuses, by name. (The persona precedent: a broken config is a hard launch
-error, never a last-known-good.)
+⚑⚑ **IT JUDGES NOTHING.** The forward-compat passthrough (S3, D-5's other end) — an undeclared
+scalar in the file riding into the launch snapshot VERBATIM, the "old `agent.<name>.<anyleaf>`
+behaviour" spec §0 SPECIFICALLY EXCLUDES — closed here at S3, launch-only. S4 C2 MOVED the refusal
+into `load` (Q101 option 1), so every reader refuses the file by name, not the launch alone, and
+this boundary kept no second copy of it. The only record reaching here from elsewhere is a plugin's
+`generate_agent_config()`, whose `state` is empty by the file-purity invariant. The repair door is
+`clear_overrides`, which never calls `load`.
 
 ⚑ **The five `start.py` producers all route through here** — `_agent_scalar_pick` (its own
 `agent_path` load, which RAISES on a file it cannot read), `_effective_transform`,
@@ -730,12 +740,13 @@ producers' own node arguments, by `TestTheLaunchAgentFileStateMergesUnderTheLaun
 pins are mutation-measured; the launch one was UNCOVERED until the S1b fix round wrote it —
 `start_mocks` stubs `_resolve_launch_snapshot` out, and the real-chain callers pass `agent_cfg=None`.
 
-```_refuse_undeclared_state(state, *, node) -> None```
-RAISE on the first agent-file state key that is not a declared key (spec §0) — the refusal
-`state_level` runs, and the reason that boundary is launch-only.
+```_refuse_undeclared_state(state, *, node, path) -> None```
+RAISE on the first agent-file state key that is not a declared key (spec §0) — the last refusal
+`load` runs.
 
 ⚑ **THE PLUGIN UNION IS LOAD-BEARING, not a nicety.** `config_keys.agent_key_reason` unions the
 leaves the INSTALLED targets declare, and without it a legitimate `agent.goose.provider` would
-refuse a working box at launch. The message names the key, says kanibako will not start a box on
-it, and points the cure at `agents/<node>/agent.yaml` while noting that `kanibako agent info
-<node>` still lists what the file holds.
+refuse a working box. The message names the key, says kanibako will not start a box on the file or display it, and
+points the cure at the file's own *path* — or at `kanibako agent reset <node> --all`, the one verb
+that still opens a refused file. (It used to say `kanibako agent info <node>` still listed what
+the file held; that became false when the refusal moved into `load`.)

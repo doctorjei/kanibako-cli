@@ -168,6 +168,25 @@ class TestAgentVerbsAddressTheShellTier:
         assert "frobnicate" in capsys.readouterr().err
         assert load_doc(agent_settings_path(_std().agents, "shell")) == before
 
+    @pytest.mark.parametrize("argv", [
+        ("agent", "show", "shell"), ("agent", "info", "shell"), ("agent", "list"),
+    ])
+    def test_a_hand_written_leaf_the_fence_does_not_list_refuses_every_reader(
+        self, argv, capsys,
+    ):
+        """What ``agent set`` refuses, a hand edit cannot smuggle past the READERS either
+        (Q101 option 1): the file is refused by name as it is read, never listed."""
+        from kanibako.settings.agent_config import agent_settings_path
+        from kanibako.settings.config_io import dump_doc
+
+        path = agent_settings_path(_std().agents, "shell")
+        dump_doc(path, {"self": {"label": "Mine", "frobnicate": "x"}})
+        capsys.readouterr()
+        assert _kb(*argv) != 0
+        out, err = capsys.readouterr()
+        assert "'shell' carries 'frobnicate'" in err
+        assert "frobnicate" not in out
+
     def test_show_effective_reads_the_shell_tier_floor(self, capsys):
         """Nothing set: the display verb reports the fence's own ``label``."""
         assert _kb("agent", "show", "shell", "--effective") == 0

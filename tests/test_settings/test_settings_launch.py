@@ -4651,7 +4651,7 @@ class TestCliLevelPrecedence:
             system_path=None, agent_path=agent_file,
             workset_path=None, box_path=None,
             agent_state=agent_file_state_level(
-                agent_file_load(agent_file), node="claude",
+                agent_file_load(agent_file, node="claude"), node="claude",
             ),
             cli_level=cli_level,
         )

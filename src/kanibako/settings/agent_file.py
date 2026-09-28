@@ -499,15 +499,20 @@ def clear_overrides(path: Path) -> int:
 # The WHOLE-FILE round trip (the ``agent`` verbs' own reads + the persona artifact)
 # ---------------------------------------------------------------------------
 
-def load(path: Path) -> AgentConfig:
-    """Read an agent config file and return an AgentConfig.
+def load(path: Path, *, node: str) -> AgentConfig:
+    """Read agent *node*'s settings file at *path* and return an AgentConfig.
 
     Returns defaults if the file does not exist.
 
-    ⚑ IT RUNS THE SAME REFUSALS THE CASCADE DOES — the top-level stray check
-    (:func:`_contribution`) and the nested one (:func:`_refuse_nested_tables`): two readers of
-    ONE file must not disagree about what the file means.  Before this, ``load`` accepted shapes
-    the launch refused, so ``agent show`` described a file that could not start a box.
+    ⚑ IT RUNS EVERY REFUSAL THE FILE OWES, AS IT IS READ (spec §0, closed keyspace): the
+    top-level stray check (:func:`_contribution`), the nested one (:func:`_refuse_nested_tables`)
+    and the undeclared-leaf one (:func:`_refuse_undeclared_state`).  Every reader — the launch,
+    ``agent show`` / ``info`` / ``list`` / ``get`` — takes the record from here, so one file gets
+    one verdict.  The repair door is :func:`clear_overrides`, which never calls this.
+
+    *node* is the agent whose file this is: the undeclared-leaf check judges against ITS
+    declared keys, and every refusal names ``agent.<node>``.  REQUIRED, because a check that
+    could not name its agent could not judge a leaf at all.
     """
     cfg = AgentConfig()
     if not path.exists():
@@ -515,14 +520,13 @@ def load(path: Path) -> AgentConfig:
 
     data = load_doc(path)
 
-    agent_sec = _contribution(data, node=None, path=path).get(_ROOT, {})
+    agent_sec = _contribution(data, node=node, path=path).get(_ROOT, {})
     if not isinstance(agent_sec, dict):
         agent_sec = {}
-    _refuse_nested_tables(agent_sec, node=None, path=path)
+    _refuse_nested_tables(agent_sec, node=node, path=path)
     # ⚑ NO ``name`` READ, AND ITS ABSENCE IS THE POINT (D8b): the field is retired, so a
     # ``name:`` still in the file falls into ``cfg.state`` below like any other undeclared
-    # entry and REFUSES the launch by name. ``load`` itself stays permissive — the repair
-    # verbs must still be able to show the user the line they have to delete.
+    # entry and REFUSES by name at the end of this read.
     # ⚑⚑ A STORED STRING IS SPLIT, NOT DISCARDED, and that is what makes the write
     # routes' old disagreement recoverable without touching anyone's data.  This
     # reader took a list or NOTHING, so every ``run_args`` the ``config set
@@ -608,7 +612,7 @@ def load(path: Path) -> AgentConfig:
         for k, v in agent_sec.items()
         if k in _CARRIED_CATEGORIES and isinstance(v, dict)
     }
-
+    _refuse_undeclared_state(cfg.state, node=node, path=path)
     return cfg
 
 
@@ -740,7 +744,7 @@ def _refuse_nested_tables(
     ⚑ PRESENCE, not truthiness: an empty ``claude: {}`` sub-table is still the spelling being
     refused. A BARE ``claude:`` leaf parses to ``None`` and is NOT refused here — it is not a
     table, carries nothing, and delivers nothing; ``load`` sweeps it into state as the scalar it
-    parsed to.
+    parsed to, and the undeclared-leaf check refuses it there by name.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
@@ -915,18 +919,13 @@ def state_level(
     ``agent.default.run_args``.  A truthy test folds it in with the absent key and silently
     hands that agent the default it wrote the empty list to refuse.
 
-    ⚑⚑ AND IT IS WHERE THE FORWARD-COMPAT PASSTHROUGH CLOSES (S3, D-5's other end): an undeclared
-    scalar in the file used to ride into the launch snapshot VERBATIM.  The refusal is LAUNCH-ONLY
-    on purpose — ``agent list`` / ``info`` read ``cfg.state`` directly and the repair verbs never
-    call :func:`load`, so a poisoned file still LISTS, still DISPLAYS, and can still be fixed;
-    only starting a box on it refuses, by name.
+    ⚑ IT JUDGES NOTHING: an undeclared scalar in the file is refused when the file is READ
+    (:func:`load`), so every reader — not the launch alone — refuses it by name.  The record
+    arriving here from anywhere else is a plugin's generated one, whose state is empty.
     """
     if cfg is None:
         return None
-    state: "Mapping[str, str | None]" = cfg.state or {}
-    if state:
-        _refuse_undeclared_state(state, node=node)
-    table: dict[str, object] = dict(state)
+    table: dict[str, object] = dict(cfg.state or {})
     if cfg.run_args is not None:
         table["run_args"] = list(cfg.run_args)
     if not table:
@@ -934,12 +933,14 @@ def state_level(
     return AgentFileLevel(node, table, path)
 
 
-def _refuse_undeclared_state(state: "Mapping[str, str | None]", *, node: str) -> None:
+def _refuse_undeclared_state(
+    state: "Mapping[str, str | None]", *, node: str, path: Path,
+) -> None:
     """RAISE on the first agent-file state key that is not a declared key (spec §0).
 
     ⚑ THE PLUGIN UNION IS LOAD-BEARING, not a nicety: ``config_keys.agent_key_reason`` unions the
     leaves the installed targets DECLARE, and without it a legitimate ``agent.goose.provider``
-    would refuse a working box at launch.
+    would refuse a working box.
     """
     from kanibako.settings.config_keys import agent_key_reason
 
@@ -950,10 +951,10 @@ def _refuse_undeclared_state(state: "Mapping[str, str | None]", *, node: str) ->
         raise SettingsError(
             f"the agent settings file for '{node}' carries '{key}', which is not a "
             f"settings key: {reason}.\n"
-            f"kanibako will not start a box on it — an undeclared key has no "
-            f"meaning to give the box, and carrying it through would be the very "
-            f"'anything goes' behaviour the closed keyspace replaces.\n"
-            f"  Fix: remove `{file_spelling(key)}` from agents/{node}/agent.yaml "
-            f"(or correct the spelling); 'kanibako agent info {node}' still lists "
-            f"what the file holds."
+            f"kanibako will not start a box on the file or display it — an undeclared "
+            f"key has no meaning to give a box, and carrying it through would be the "
+            f"very 'anything goes' behavior the closed keyspace replaces.\n"
+            f"  Fix: remove `{file_spelling(key)}` from {path} (or correct the "
+            f"spelling), or clear every override with "
+            f"'kanibako agent reset {node} --all'."
         )

@@ -22,6 +22,7 @@ def run_show(args: argparse.Namespace) -> int
 def run_reauth(args: argparse.Namespace) -> int
 def _config_file() -> Path
 def _load_std() -> StandardPaths
+def _store_node(store: Path) -> str
 def _run_agent_config(args: argparse.Namespace) -> int
 def _agent_key_gate(agent_id: str, key: str, *, path: 'Path', verb: str) -> str | None
 def _label_floor(agent_id: str) -> dict[str, object]
