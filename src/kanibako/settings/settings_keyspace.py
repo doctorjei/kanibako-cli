@@ -845,6 +845,25 @@ def is_valid_agent_segment(segment: str, valid_agents: Collection[str]) -> bool:
     return harness_of(node) in valid_agents
 
 
+def file_alias_reason(segment: str) -> str | None:
+    """Why *segment* cannot be an ``agent.<HERE>`` node — it is the agent file's alias — or ``None``.
+
+    The spec: the per-agent file's root alias is "NOT a key, never a key segment". ONE carrier for
+    every door that takes a node: the §0 verdict (:func:`key_class`) and the per-node file route
+    (``config_dest.check_agent_node``), which would otherwise write ``agents/<alias>/agent.yaml``.
+    The alias is spelled by ``agent_file``, its one owner.
+    """
+    from kanibako.settings.agent_file import file_spelling
+
+    if segment != file_spelling():
+        return None
+    return (
+        f"'{segment}' is not an agent: it is the per-agent settings file's alias for that "
+        f"file's own node, valid only as the file's top-level table and never a key segment "
+        f"(spec header, the `{segment}` FILE-SURFACE ALIAS)"
+    )
+
+
 def valid_agent_segments(valid_agents: Collection[str]) -> list[str]:
     """Every legal ``agent.<HERE>`` discriminator, sorted — for a refusal MESSAGE.
 
@@ -1795,6 +1814,11 @@ def key_class(
         if not rest:
             return _namespace("'agent' is a namespace, not a key (spec §2d)")
         name = rest[0]
+        # ⚑ BEFORE the validity test: a conceding *valid_agents* would admit the alias as
+        # an unheard-of agent name (``[R150]``).
+        alias = file_alias_reason(name)
+        if alias is not None:
+            return _undeclared(alias)
         if not is_valid_agent_segment(name, valid_agents):
             return _undeclared(_bad_agent_reason(name, valid_agents))
         # ⚑⚑ ONE BRANCH FOR EVERY DISCRIMINATOR, ``default`` INCLUDED, and the

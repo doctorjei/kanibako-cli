@@ -39,13 +39,16 @@ whether a NODE is routable (`config_dest.check_agent_node` — key classificatio
 
 ## The two carriers
 
-```AgentFileSlot(path: Path, tail: str)```  — frozen dataclass
+```AgentFileSlot(path: Path, tail: str, node: str)```  — frozen dataclass
 WHERE one per-node value lives.
 
-⚑ **It carries no `node` either, since S3.** The node picks the FILE (`slot_for` still takes it) and
-nothing else: once the flatten put every category at the file's top level, no address depends on
-whose file it is — `self` IS that node. A `node` field kept only for an address that no longer reads
-it is a second copy of a fact, waiting to disagree with the path it was derived from.
+⚑ **It carries the `node` again (S4, after Q92).** S3 dropped it: once the flatten put every category
+at the file's top level, no address depended on whose file it was. Q92 made the file's `agent:` table
+READ, so `agent: <node>:` is a second spelling of the node's own settings, and which spelling holds a
+value depends on the node. `_spelled_sections` asks the file: the own-node spelling when it HOLDS the
+leaf, else `self:`, for every read, write and remove. Written under `self:` beside a value already
+under `agent: <node>:`, a `set` produced a file every reader then refused (the Q103 two-spelling
+refusal; measured before this: `agent set claude model=c` rc 0, then every read of the file refused).
 
 ⚑⚑ **It carries NO `sections`/`leaf`, and that is the whole point (P3/P4).** The per-node resolvers
 in `config_dest` used to hand callers a `(path, sections, leaf)` triple, so SEVEN `config_interface`
@@ -245,7 +248,7 @@ are exactly the two spec §2a declares scalar, so a caller applying the non-scal
 (`settings_categories.refuse_non_scalar_family_value`) asks this instead of matching the tail itself.
 The partition is `_read_address`'s — first segment the category, everything after it ONE name.
 
-⚑ **A TAIL, NOT A KEY**, because `AgentFileSlot` carries no node: the caller holding the canonical
+⚑ **A TAIL, NOT A KEY**, because the tail is all this asks about: the caller holding the canonical
 key phrases the refusal, since §2a requires the whole key be named and a tail is not one. That is why
 `read_leaf` does not refuse for itself and `config_interface._read_slot` does it instead.
 
@@ -330,7 +333,8 @@ the census caught it on the first run. Route the site through `file_spelling()`.
 ```slot_for(agents_root, node, tail) -> AgentFileSlot``` · ```read_leaf(slot)``` ·
 ```write_leaf(slot, value)``` · ```remove_leaf(slot)```
 The per-VALUE half of the boundary — every `config_interface` per-node get/set/reset and every
-`agent set`/`reset` goes through these.
+`agent set`/`reset` goes through these. Each addresses the value under whichever of the node's two
+spellings holds it (`_spelled_sections`, above); a new value goes under `self:`.
 
 ⚑ `read_leaf` goes through `config_io.read_stored_leaf` and must NOT re-render on top of it: its
 conventions (bools lowercase, and spec §2h's empty idioms each spelled apart — present-`None` →
@@ -458,6 +462,18 @@ Before the first two moved here, `load` accepted shapes the launch refused, so `
 described a file that could not start a box; before the third moved here (S4 C2), `agent show` on
 `self: {model: opus, zippity: 1}` listed `zippity = 1` at rc 0 while the launch refused it. The
 escape hatch is intact: `agent reset --all` reaches `clear_overrides` only, never `load`.
+`load` also refuses the file's alias as its *node* (`settings_keyspace.file_alias_reason`): a
+leftover agent store folder named `self`, which 1.8.0-rc2's `system set agent.self.<key>` created,
+stops every reader by path, while `agent reset self --all` still clears it.
+
+⚑ **THE RECORD HOLDS BOTH SPELLINGS OF THE FILE'S OWN NODE** (`_own_node_settings`, S4): `self:`
+and the `agent:` table's entry for *node* (folded, Q87) are united before the record is built, so
+`agent list` / `get` / `show` / `info` display what the launch uses. Before, `agent: {claude: {model:
+b}}` in claude's file launched with `b` while `agent list` printed `-` and `agent get claude model`
+`(not set)`. The union (`utils.deep_merge`) loses nothing: `_refuse_two_spellings` has refused one setting
+written under both. The verbs show a setting once, with no mark of which spelling holds it — they are ONE key.
+The record now feeds the launch's state level with those values too, beside the `agent:` table
+riding the level as *scope*: one value at one node, merged twice, one answer.
 ⚑ **`node` IS REQUIRED**, keyword-only. The undeclared-leaf check judges a leaf against ONE agent's
 declared keys, so a read that could not name its agent could not be checked at all; and every
 refusal names `agent.<node>` rather than a placeholder. Each caller already holds the node it built
@@ -540,10 +556,14 @@ default. *(The old pin `test_run_args_must_be_list` asserted the empty list and 
 code while wrong about the product; it is replaced by
 `test_a_stored_run_args_STRING_is_split_not_discarded`.)*
 
-⚑ **Every modeled table is ISINSTANCE-GUARDED, and the READ side stays permissive on purpose**
-(S3/D-7). A hand-authored SCALAR at a table-valued key is a wrong SHAPE, but `agent info` / `list` /
-`show` are how a user SEES a broken file, so they must not be the thing the broken file kills. The
-WRITE side refuses the shape (`table_value_error`), which is what stops one being made.
+⚑ **Every modeled table is ISINSTANCE-GUARDED, so the record builds** (S3/D-7). The guard used to
+be the whole answer — the READ side stayed permissive so `agent info` / `list` / `show` could show
+a broken file — and for `env` / `secret_path` that made `self: {env: 5}` vanish from BOTH readers
+while `agent: {claude: {env: 5}}` refused. Since S4 a VALUE where either category's table goes is
+refused by name at the end of `load` (`agent.<node>.env` is a namespace), under both spellings;
+`agent reset --all` is still the door that opens the file. Only `transform_settings` — a declared key,
+whatever its shape — is still coerced to `{}` here. The WRITE side refuses a wrong shape
+(`table_value_error`).
 
 **`save` is sparse for the same reason at both ends.** An EMPTY `transform_settings: {}` or `env: {}`
 would be counted as an override by `agent reset --all`, so nothing empty is materialized.
@@ -676,9 +696,12 @@ nothing; `_contribution` is the same answer after the file's TOP-LEVEL refusals.
 that JUDGES the file (`level_table`, `load` — so `agent show` / `info` / `list` / `get` as well as
 the launch) takes `_contribution`; the reset takes `contributed_tables`, and stays the repair door.
 
-⚑ **THE FOUR TOP-LEVEL REFUSALS `_contribution` RUNS**, in order: `_refuse_stray_roots` (below);
+⚑ **THE FIVE TOP-LEVEL REFUSALS `_contribution` RUNS**, in order: `_refuse_stray_roots` (below);
 `_refuse_scope_value` — a VALUE where the `agent:` table's node tables go (`agent: 5`), which merged
-as one would replace every other file's agent tables; `_refuse_node_values` — a NODE of that table
+as one would replace every other file's agent tables; `refuse_node_spelled_twice` — two keys of
+that table reaching ONE node (`Claude:` beside `claude:`, `nav+Claude:` beside `nav℘claude:`),
+PUBLIC because it is the one carrier the cascade's fold (`settings_assemble._fold_node_table`)
+calls too; `_refuse_node_values` — a NODE of that table
 holding a value or nothing (`agent: {bar: 5}`, a bare `claude:`), which names an agent tier, not a
 key (§2d), as the launch's §0 audit also says; for the file's own node beside a non-empty `self:`
 the message adds that it writes the node twice and would replace every setting under `self:`;
@@ -767,18 +790,31 @@ producers' own node arguments, by `TestTheLaunchAgentFileStateMergesUnderTheLaun
 pins are mutation-measured; the launch one was UNCOVERED until the S1b fix round wrote it —
 `start_mocks` stubs `_resolve_launch_snapshot` out, and the real-chain callers pass `agent_cfg=None`.
 
-```_refuse_undeclared_state(leaves, *, node, path) -> None``` · ```_scope_state(scope) -> list```
-RAISE on the first agent-file key that is not a declared key (spec §0) — the last refusal
-`load` runs. Each leaf is `(judged node, key, shown, spelled)`: `self:`'s flat state is judged
-under the file's own *node*; since Q92 the `agent:` table's keys are judged too, each under ITS
-node as the cascade folds it (`_scope_state`: every node table's keys except a category key
-holding a TABLE — a category key holding a value is judged like any key, so `env: 5` refuses as
-the launch refuses it and `caches: 'x'` is conceded as the launch concedes it; this is NOT
-`self:`'s partition, which drops every dict-valued entry and every modeled key from state). One carrier, one gate: `config_keys.agent_key_reason`,
-which concedes a node whose vocabulary is unreadable (`[R150]`) — measured to give the launch's
-§0 audit's verdict on `agent.claude.bogus`, `agent.goose.bogus`, `agent.default.bogus`,
-`agent.Claude.bogus` and `agent.claude.self` (refused) and on `agent.nosuchharness.x`,
-`agent.goose.provider` and `agent.claude+nav.bogus` (conceded).
+```_refuse_undeclared_state(entries, *, node, path) -> None``` · ```_undeclared_entries(own, scope, *, node)``` · ```_node_tables(own, scope, *, node)```
+RAISE naming EVERY agent-file entry that is not a declared key (spec §0), once each, in one
+refusal, as the launch's `settings_launch._refuse_undeclared_snapshot` does — the last refusal
+`load` runs. Each entry is `(shown, spelled, reason)`, produced by `_undeclared_entries` over the
+file's node tables (`_node_tables`: `self:` judged as the file's own *node*, then each `agent:` node
+as the cascade folds it, Q87) in TWO passes, each the launch's own verdict:
+
+1. every KEY of a node table except a category key holding a TABLE, through
+   `config_keys.agent_key_reason` — which concedes a node whose vocabulary is unreadable (`[R150]`),
+   measured to give the launch's §0 audit's verdict on `agent.claude.bogus`, `agent.goose.bogus`,
+   `agent.default.bogus`, `agent.Claude.bogus` and `agent.claude.self` (refused) and on
+   `agent.nosuchharness.x`, `agent.goose.provider` and `agent.claude+nav.bogus` (conceded). A
+   category key holding a value is judged like any key, so `env: 5` refuses and `caches: 'x'` is
+   conceded, as the launch does. ⚑ **`self:` takes the SAME partition since S4**; it used to judge
+   only its flat state (no modeled key, no dict), so `self: {env: 5}` was never judged at all;
+2. every PATH, category contents included, through the launch's whole-snapshot audit
+   (`settings_keyspace.undeclared_store_paths` over `settings_keyspace_probe.keyspace_verdict`, the
+   node table placed at `agent.<node>`): an undeclared bind arm (`bindings: {zz: …}`), a malformed
+   `env` VAR, and an `agent: {self: {}}` node. Before S4 these loaded clean while the launch refused.
+
+⚑ **What pass 2 does NOT cover, measured:** three malformed bind entries — a retired name-keyed
+entry (`bindings.ro: {/x: {q: 1}}`), an entry of three elements, and a bare relative source — are
+refused by the launch in `settings_assemble`'s bind parse and still load clean (boarded, conformance
+S4). Two spellings of ONE node in the `agent:` table (`claude:` beside `Claude:`) are NOT in that
+set: `_contribution` refuses them through `refuse_node_spelled_twice`, before either pass runs.
 
 ⚑ **THE PLUGIN UNION IS LOAD-BEARING, not a nicety.** `config_keys.agent_key_reason` unions the
 leaves the INSTALLED targets declare, and without it a legitimate `agent.goose.provider` would

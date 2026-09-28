@@ -18,8 +18,7 @@ import logging
 from pathlib import Path
 from typing import Any, Iterable
 
-from kanibako.agent_ref import agent_address_node, agent_segment_case
-from kanibako.errors import ConfigError
+from kanibako.agent_ref import agent_segment_case
 from kanibako.settings.agent_config import (
     category_root_ref,
     is_self_resolving,
@@ -30,6 +29,7 @@ from kanibako.settings.agent_file import (
     ROOT_SECTIONS,
     contributed_tables,
     level_table,
+    refuse_node_spelled_twice,
 )
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS
 from kanibako.settings.config import (
@@ -692,22 +692,11 @@ def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any:
 
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict:
     """One node table's keys folded (:func:`fold_agent_nodes`); *table* itself when none changes."""
+    refuse_node_spelled_twice(table, prefix=prefix, path=path)
     where = str(path) if path is not None else "<settings>"
     spelled: dict[Any, Any] = {}
-    identity: dict[Any, Any] = {}
     for seg in table:
         node = agent_segment_case(seg) if isinstance(seg, str) else seg
-        # Two spellings are ONE node when the CANONICAL node agrees — separator AND case
-        # (``nav+Claude`` beside ``nav℘claude``), not only the case-folded spelling.
-        ident = _canonical_node(node)
-        if ident in identity:
-            raise SettingsError(
-                f"'{prefix}.{identity[ident]}' and '{prefix}.{seg}' in settings file {where} "
-                f"are ONE agent node ('{ident}') spelled twice; neither may silently win. "
-                f"Keep one spelling and remove the other (spec §0: an agent's node is "
-                f"lowercase)."
-            )
-        identity[ident] = seg
         spelled[node] = seg
     if all(node == seg for node, seg in spelled.items()):
         return table
@@ -721,15 +710,6 @@ def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict:
             )
     return {node: table[seg] for node, seg in spelled.items()}
 
-
-def _canonical_node(segment: Any) -> Any:
-    """The node *segment* names (separator and case canonical), or *segment* when it names none."""
-    if not isinstance(segment, str):
-        return segment
-    try:
-        return agent_address_node(segment)
-    except ConfigError:
-        return segment
 
 
 def _drop_upward_scopes(

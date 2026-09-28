@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -1037,6 +1038,41 @@ class TestSparseWrites:
         )
         assert getattr(agent_cmd, verb)(args) in (0, None)
 
+    def test_the_agent_verbs_show_the_own_node_spelling(self, agent_env, capsys):
+        """``agent: {claude: {model: b}}`` in claude's file is what the launch uses, so every
+        display verb shows it — they printed ``-`` / ``(not set)`` while the box got ``b``."""
+        from kanibako.commands import agent_cmd
+
+        _write_sparse(agent_env, "claude", {"agent": {"claude": {
+            "model": "b", "env": {"FOO": "bar"}, "masks": {"/m": True},
+        }}})
+        capsys.readouterr()
+        agent_cmd.run_list(argparse.Namespace(quiet=False))
+        assert re.search(r"^claude\s+b$", capsys.readouterr().out, re.M)
+        for key, shown in (("model", "b"), ("env.FOO", "bar"), ("masks", "{'/m': True}")):
+            assert agent_cmd.run_get(argparse.Namespace(agent_id="claude", key=key)) == 0
+            assert capsys.readouterr().out.strip() == shown, key
+        agent_cmd.run_show(argparse.Namespace(agent_id="claude", effective=False))
+        out = capsys.readouterr().out
+        assert "model = b" in out and "env.FOO = bar" in out
+
+    def test_set_and_reset_address_the_own_node_spelling(self, agent_env, capsys):
+        """A value spelled ``agent: <own node>:`` is set and reset IN PLACE: written under
+        ``self:`` instead, the file would carry one setting twice and every reader refuse it."""
+        from kanibako.commands.agent_cmd import run_get, run_reset, run_set
+        from kanibako.settings.config_io import load_doc
+
+        path = _write_sparse(agent_env, "claude", {"agent": {"claude": {"model": "b"}}})
+        assert run_set(argparse.Namespace(agent_id="claude", key_value="model=c")) == 0
+        assert load_doc(path) == {"agent": {"claude": {"model": "c"}}}
+        capsys.readouterr()
+        assert run_get(argparse.Namespace(agent_id="claude", key="model")) == 0
+        assert capsys.readouterr().out.strip() == "c"
+        assert run_reset(argparse.Namespace(
+            agent_id="claude", key="model", all_keys=False, force=False,
+        )) == 0
+        assert load_doc(path) == {}
+
     def test_reset_all_clears_a_both_spellings_file(self, agent_env, capsys):
         """The repair door stays open for the new refusals too (``clear_overrides``)."""
         from kanibako.commands.agent_cmd import run_reset
@@ -1052,23 +1088,31 @@ class TestSparseWrites:
         assert "Reset 2 override(s)." in capsys.readouterr().out
         assert load_doc(path) == {}
 
-    @pytest.mark.parametrize("folder", ("claude.bak", "bad name"))
-    def test_list_refuses_a_store_folder_that_names_no_agent(self, agent_env, folder):
+    @pytest.mark.parametrize(("folder", "why"), (
+        ("claude.bak", "invalid agent name 'claude.bak'"),
+        ("bad name", "invalid agent name 'bad name'"),
+        # The agent file's alias names no agent: ``system set agent.self.<key>`` made this
+        # folder in 1.8.0-rc2.
+        ("self", "'self' is not an agent"),
+    ))
+    def test_list_refuses_a_store_folder_that_names_no_agent(self, agent_env, folder, why):
         """A folder under ``agents/`` whose name is not a legal agent name stops the listing,
         naming the folder's PATH and the cure — not the bare ref-grammar refusal, which names
-        neither. (Mutation: drop ``_store_node``'s re-raise → the path is missing → RED.)"""
+        neither. (Mutation: drop ``_store_node``'s re-raise → the path is missing → RED.) The
+        alias folder is refused by ``agent_file.load``, which every reader shares, so its error is
+        a ``SettingsError``; both are ``KanibakoError``s, which the CLI prints the same way."""
         from kanibako.commands import agent_cmd
-        from kanibako.errors import ConfigError
+        from kanibako.errors import KanibakoError
 
         good = _write_sparse(agent_env, "claude", {"self": {"model": "opus"}})
         bad = good.parent.parent / folder
         bad.mkdir()
         (bad / good.name).write_text("self: {}\n")
-        with pytest.raises(ConfigError) as exc:
+        with pytest.raises(KanibakoError) as exc:
             agent_cmd.run_list(argparse.Namespace(quiet=False))
         message = str(exc.value)
         assert f"{bad} is not an agent store" in message
-        assert f"invalid agent name '{folder}'" in message
+        assert why in message
         assert "rename the folder" in message
 
     @pytest.mark.parametrize("verb, key_value", [
@@ -1095,6 +1139,37 @@ class TestSparseWrites:
         assert "'claude' carries 'zippity'" in message
         assert str(path) in message
         assert "kanibako agent reset claude --all" in message
+
+    @pytest.mark.parametrize("verb", ["run_info", "run_show"])
+    def test_the_show_verbs_refuse_the_alias_folder(self, agent_env, verb):
+        """``agent info self`` / ``show self`` refuse a leftover ``agents/self/`` (review R2):
+        ``self`` is the file's alias, never an agent. (``get self`` already refuses at its key
+        check.) (Mutation: drop the alias check from ``agent_file.load`` → the folder is shown
+        at rc 0 → RED.)"""
+        from kanibako.commands import agent_cmd
+        from kanibako.settings.settings_resolve import SettingsError
+
+        # An EMPTY table: any setting in it would refuse on its own, as ``agent.self.<key>``.
+        path = _write_sparse(agent_env, "self", {"self": {}})
+        args = argparse.Namespace(
+            agent_id="self", effective=False, quiet=False, key=None,
+        )
+        with pytest.raises(SettingsError) as exc:
+            getattr(agent_cmd, verb)(args)
+        assert f"{path.parent} is not an agent store" in str(exc.value)
+        assert "'self' is not an agent" in str(exc.value)
+
+    def test_reset_all_still_clears_the_alias_folder(self, agent_env, capsys):
+        """The repair door stays open: ``agent reset self --all`` never reads through ``load``."""
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.settings.config_io import load_doc
+
+        path = _write_sparse(agent_env, "self", {"self": {"model": "opus"}})
+        rc = run_reset(argparse.Namespace(
+            agent_id="self", key=None, all_keys=True, force=True,
+        ))
+        assert rc == 0
+        assert load_doc(path) == {}
 
     def test_reset_all_confirm_gates_destructive_write(self, agent_env, capsys):
         """Without --force, a declined confirm aborts and leaves the file

@@ -1220,6 +1220,28 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert msg.startswith("Error:")
         assert "reserved any-agent tier" in msg
 
+    @pytest.mark.parametrize("key", (
+        pytest.param("agent.self.model", marks=pytest.mark.writes_undeclared(
+            "agent.self", "agent.self.model",
+            reason="the set-time resolution probe builds the proposed snapshot before the "
+                   "per-node route refuses the node.",
+        )),
+        pytest.param("agent.self.env.A", marks=pytest.mark.writes_undeclared(
+            "agent.self", "agent.self.env", "agent.self.env.A",
+            reason="the set-time resolution probe builds the proposed snapshot before the "
+                   "per-node route refuses the node.",
+        )),
+    ))
+    def test_set_at_the_agent_file_alias_is_refused(self, tmp_path, key):
+        """``self`` is the agent file's alias, never a node: the per-node route wrote
+        ``agents/self/agent.yaml`` at rc 0 and the read back refused it."""
+        msg = set_config_value(
+            key, "x", config_path=tmp_path / CONFIG_FILENAME,
+            command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
+        )
+        assert msg.startswith("Error:") and "'self' is not an agent" in msg
+        assert not (tmp_path / "agents").exists()
+
     def test_set_access_off_enum_value_is_rejected(self, tmp_path):
         """``access`` is AUTH-CRITICAL: a value outside the enum must be REJECTED
         at set time, never stored to be re-read at launch.
@@ -6626,6 +6648,7 @@ class TestCategorySetAgentNodeGuardsSuperseded:
 
         assert check_agent_node("default").reason == "reserved"
         assert check_agent_node("a+b+c").reason == "malformed"
+        assert check_agent_node("self").reason == "malformed"
         assert check_agent_node("navigator℘claude") is None
 
 

@@ -22,6 +22,7 @@ _TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS
 _LIST_VALUED_KEYS: Final[frozenset[str]] = frozenset({'run_args'})
 _CATEGORY_PLACEHOLDER: Final[dict[str, tuple[str, str]]] = {'env': ('<VAR>', '<value>'), 'secret_path': ('<VAR>', '<host-path>'), 'bindings': ('ro', '{<box-dest>: [<host-src>]}')}
 _DEST_KEYED_PLACEHOLDER: Final[tuple[str, str]] = ('<box-dest>', '[<host-src>]')
+_UNSET: Final[object] = object()
 ```
 
 ## Functions
@@ -43,11 +44,14 @@ def clear_overrides(path: Path) -> int
 def load(path: Path, *, node: str) -> AgentConfig
 def save(path: Path, cfg: AgentConfig) -> None
 def contributed_tables(raw: Any) -> dict
+def refuse_node_spelled_twice(table: dict, *, prefix: str, path: Path | None) -> None
 def level_table(raw: Any, *, sub_key: str, node: str | None=None, path: Path | None=None) -> AgentFileLevel
 def state_level(cfg: 'AgentConfig | None', *, node: str, path: Path | None=None) -> AgentFileLevel | None
 def _read_address(tail: str) -> tuple[tuple[str, ...], str]
 def _write_address(tail: str) -> tuple[tuple[str, ...], str]
 def _is_table_valued(tail: str) -> bool
+def _spelled_sections(slot: AgentFileSlot, sections: tuple[str, ...], leaf: str) -> tuple[str, ...]
+def _own_node_settings(own: dict, scope: Any, *, node: str) -> dict
 def _nested_agent_cure(category: str | None, sub_key: str, *, var: str, value: str) -> str
 def _refused_category(sub_tbl: dict) -> str | None
 def _refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None
@@ -58,8 +62,11 @@ def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) ->
 def _refuse_two_spellings(tables: dict, *, node: str | None, path: Path | None) -> None
 def _node_identity(segment: Any) -> Any
 def _setting_leaves(table: dict, trail: tuple[str, ...]=()) -> dict[tuple[str, ...], str]
-def _refuse_undeclared_state(leaves: 'Iterable[tuple[str, str, str, str]]', *, node: str, path: Path) -> None
-def _scope_state(scope: Any) -> 'list[tuple[str, str, str, str]]'
+def _refuse_undeclared_state(entries: 'Iterable[tuple[str, str, str]]', *, node: str, path: Path) -> None
+def _node_tables(own: Any, scope: Any, *, node: str) -> 'list[tuple[str, dict, Callable[..., str]]]'
+def _scope_spelling(seg: Any, *tail: str) -> str
+def _undeclared_entries(own: Any, scope: Any, *, node: str) -> 'Iterator[tuple[str, str, str]]'
+def _str_keys(table: dict) -> dict
 ```
 
 ## Classes
@@ -69,6 +76,7 @@ def _scope_state(scope: Any) -> 'list[tuple[str, str, str, str]]'
 class AgentFileSlot:
     path: Path
     tail: str
+    node: str
 
 @dataclass(frozen=True)
 class AgentFileLevel:

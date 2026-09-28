@@ -564,9 +564,10 @@ the file and both spellings, and the keyspace verdict does not fold — a capita
 refused there. MEASURED before this: a system file's `agent: {Claude: {model: opus}}` passed the §0
 check (the verdict folded) while the launch built `agent.claude` and never read `agent.Claude` —
 neither refused nor delivered. Two spellings of ONE node in one file (`Claude:` beside `claude:`)
-are REFUSED naming both (FA = Q103: neither may silently win); "one node" is judged on the
-CANONICAL node (`_canonical_node`, via `agent_ref.agent_address_node`: separator and case), so
-`nav+Claude:` beside `nav℘claude:` is refused too. Called by `_file_partial` (every
+are REFUSED naming both (FA = Q103: neither may silently win) by
+`agent_file.refuse_node_spelled_twice`, the one carrier the agent file's own readers share; "one
+node" is judged on the CANONICAL node (separator and case), so `nav+Claude:` beside `nav℘claude:` is
+refused too. Called by `_file_partial` (every
 file level, and `settings_prefs.collect_prefs`'s pref parse) and by `cascade_view` AFTER its drops,
 so a table the cascade drops is neither folded nor judged. Copies only what it changes.
 

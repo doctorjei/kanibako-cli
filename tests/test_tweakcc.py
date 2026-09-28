@@ -9,7 +9,6 @@ import pytest
 
 from kanibako.tweakcc import (
     TweakccConfig,
-    _deep_merge,
     build_merged_config,
     load_external_config,
     resolve_tweakcc_config,
@@ -20,6 +19,7 @@ from kanibako.tweakcc_cache import (
     TweakccCacheError,
     config_hash,
 )
+from kanibako.utils import deep_merge
 
 
 class TestResolveTweakccConfig:
@@ -87,27 +87,27 @@ class TestLoadExternalConfig:
 
 class TestDeepMerge:
     def test_flat(self):
-        assert _deep_merge({"a": 1}, {"b": 2}) == {"a": 1, "b": 2}
+        assert deep_merge({"a": 1}, {"b": 2}) == {"a": 1, "b": 2}
 
     def test_override(self):
-        assert _deep_merge({"a": 1}, {"a": 2}) == {"a": 2}
+        assert deep_merge({"a": 1}, {"a": 2}) == {"a": 2}
 
     def test_nested(self):
         base = {"settings": {"misc": {"a": 1, "b": 2}}}
         override = {"settings": {"misc": {"b": 3, "c": 4}}}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result == {"settings": {"misc": {"a": 1, "b": 3, "c": 4}}}
 
     def test_nested_replace_non_dict(self):
         base = {"settings": {"misc": {"a": 1}}}
         override = {"settings": {"misc": "replaced"}}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result == {"settings": {"misc": "replaced"}}
 
     def test_does_not_mutate(self):
         base = {"a": {"b": 1}}
         override = {"a": {"c": 2}}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert "c" not in base["a"]
         assert result["a"] == {"b": 1, "c": 2}
 

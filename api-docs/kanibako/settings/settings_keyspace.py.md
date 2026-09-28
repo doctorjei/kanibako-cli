@@ -67,6 +67,7 @@ def glob_match(pattern: str, key: str) -> bool
 def pref_allowlist_entry(target: str, *, allowlist: Sequence[str]=PREF_ALLOWLIST) -> str | None
 def leaf_name_reason(leaf: str) -> str | None
 def is_valid_agent_segment(segment: str, valid_agents: Collection[str]) -> bool
+def file_alias_reason(segment: str) -> str | None
 def valid_agent_segments(valid_agents: Collection[str]) -> list[str]
 def unread_harnesses(declared: 'AgentLeafMap') -> 'Container[str]'
 def agent_declared_leaves(name: str, agent_leaf_map: 'AgentLeafMap | None') -> 'Collection[str] | None'

@@ -6601,3 +6601,63 @@ class TestAgentFileAgentTable:
                 "self": {"model": "a"}, "agent": {"claude": {"model": "b"}},
             })
         assert "`self.model` and `agent.claude.model`" in str(exc.value)
+
+
+class TestTheAgentFileGetsOneVerdict:
+    """S4: every shape of an agent file gets the SAME verdict from ``load`` (the ``agent`` verbs'
+    reader) as from the launch — category CONTENTS, a category holding a value under ``self:``,
+    and ``self`` spelled as a node."""
+
+    _ARM = {"/box/x": ["/h/x"]}
+
+    @staticmethod
+    def _launch(tmp_path, doc, *, system=None):
+        return TestAgentFileAgentTable._snap(tmp_path, doc, system=system)
+
+    @pytest.mark.parametrize(("doc", "expected"), (
+        ({"self": {"bindings": {"zz": _ARM}}}, "carries 'agent.claude.bindings.zz'"),
+        ({"agent": {"claude": {"bindings": {"zz": _ARM}}}}, "carries 'agent.claude.bindings.zz'"),
+        ({"agent": {"default": {"bindings": {"zz": _ARM}}}}, "carries 'agent.default.bindings.zz'"),
+        ({"self": {"env": {"1BAD": "x"}}}, "carries 'agent.claude.env.1BAD'"),
+        # Silently dropped by BOTH readers before: ``level_table`` keeps only a TABLE category,
+        # and ``load`` kept every modeled key out of what it judged.
+        ({"self": {"env": 5}}, "'agent.claude.env' is a namespace"),
+        ({"self": {"secret_path": 5}}, "'agent.claude.secret_path' is a namespace"),
+        # ``self`` is the file's alias, never a key segment — as a node, spelled any way.
+        ({"agent": {"self": {"model": "x"}}}, "carries 'agent.self.model'"),
+        ({"agent": {"Self": {"model": "x"}}}, "carries 'agent.Self.model'"),
+        ({"agent": {"self": {}}}, "carries 'agent.self'"),
+    ))
+    def test_load_and_the_launch_refuse_alike(self, tmp_path, doc, expected):
+        with pytest.raises(SettingsError) as launched:
+            self._launch(tmp_path, doc)
+        path = _yaml(tmp_path / "agent.yaml", doc)
+        with pytest.raises(SettingsError) as loaded:
+            agent_file_load(path, node="claude")
+        assert expected in str(launched.value)
+        assert str(loaded.value) == str(launched.value)
+
+    @pytest.mark.parametrize("doc", (
+        {"self": {"bindings": {"ro": _ARM}, "env": {"A": "1"}, "masks": {"/m": True}}},
+        {"agent": {"claude": {"bindings": {"ro": _ARM}}, "default": {"env": {"A": "1"}}}},
+    ))
+    def test_the_declared_shapes_pass_both(self, tmp_path, doc):
+        # The CONTROL: the new judgment refuses the shapes above, not the category tables.
+        self._launch(tmp_path, doc)
+        agent_file_load(_yaml(tmp_path / "agent.yaml", doc), node="claude")
+
+    @pytest.mark.writes_undeclared(
+        "agent.self", "agent.self.model",
+        reason="the system file's agent table is assembled into the snapshot, which is what "
+               "the §0 audit then refuses — naming the alias as no agent.",
+    )
+    def test_the_system_file_refuses_self_as_a_node(self, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            self._launch(tmp_path, {"self": {}}, system={"agent": {"self": {"model": "x"}}})
+        assert "agent.self.model: 'self' is not an agent" in str(exc.value)
+
+    def test_the_own_node_value_reaches_the_launch_once(self, tmp_path):
+        # The record now holds ``agent: <own>:`` too, so it rides the state level beside the
+        # ``agent:`` table: one value, one node, one answer.
+        snap = self._launch(tmp_path, {"agent": {"claude": {"model": "b"}}})
+        assert effective_behavior(snap, active_agent="claude")["model"] == "b"

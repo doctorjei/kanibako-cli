@@ -500,15 +500,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs (its file is read only then) and beating the system settings file's `agent: default:` —
   the defaults only: a system-file `agent: claude:` value still beats this file's
   `agent.default.*` (a named agent's key beats a default). `agent: <this agent>:` sets the same keys
-  `self:` does, with one exception: `transform_settings` is still read from `self:` alone, so
-  there it has no effect. Another agent's node merges but is never used, since that agent's own
-  file is the one read when it runs. The same setting under both `self:` and
+  `self:` does, and the `agent` verbs treat the two spellings as one: `agent list`, `get`, `show`
+  and `info` display what either holds, and `agent set` / `agent reset` change a value where it is
+  written (a new value goes under `self:`). Another agent's node merges but is never used, since
+  that agent's own file is the one read when it runs. The same setting under both `self:` and
   `agent: <this agent>:` refuses, naming both spellings and the file, in every `agent` verb that
   reads the file as well as at a launch; so does a value in place of the table (`agent: 5`) or
   of one agent's table (`agent: {claude: 5}`), and a key in it that is not a setting of that
   agent (`agent: {claude: {bogus: 1}}`), as a key under `self:` already did. `agent reset <agent> --all`
   now clears this table too, and counts its settings. See `MIGRATION.md` § *2.37 An agent's
   settings file has ONE level: everything sits directly under `self:`*.
+
+- **The `agent` verbs refuse an undeclared entry in an agent's `agent.yaml` as a launch does, down
+  to what is inside a category.** In v1.8.0-rc2 `agent show`, `info`, `list` and `get` answered rc 0 for a file a
+  launch refused over its contents — an environment variable name that is not one
+  (`self: {env: {1BAD: x}}`) — and both readers dropped, without a word, a value written where
+  `env`'s or `secret_path`'s table goes (`self: {env: 5}`, or a bare `env:`). Both now stop, naming
+  the entry and the file: an undeclared entry inside a category (`self: {bindings: {zz: …}}`, an
+  arm that does not exist), and a value in place of the `env` or `secret_path` table, under `self:`
+  as already under the file's `agent:` table. One refusal names every such entry at once, as the
+  launch's does. One agent spelled twice in that table (`agent: {Claude: …, claude: …}`) now
+  refuses in these verbs too, naming both spellings, in a refusal of its own. Three malformed bind entries still refuse only when a box starts: `/x: {q: 1}`, an entry of
+  three elements, and a bare relative source. `agent reset <agent> --all` still opens the file. See
+  `MIGRATION.md` § *2.37 An agent's settings file has ONE level: everything sits directly under
+  `self:`*.
+
+- **`self` is refused as an agent name in a key.** It is only the name of an agent file's own
+  top-level table. In v1.8.0-rc2 `system set agent.self.model=x` answered `Set` and created
+  `agents/self/agent.yaml`, and an `agent: self:` table in the system settings file started a box
+  without a word; both now refuse, naming the key, as `system get agent.self.model` already did.
+  In an agent's `agent.yaml`, an `agent: self:` table refuses too, and a leftover `agents/self/`
+  folder stops `agent list`, `info`, `show` and `get`, naming its path; `agent reset self --all`
+  still clears it.
 
 - **`agent show`, `agent info` and `agent list` refuse that stray key beside `self:` too.** In
   v1.8.0-rc2 they read an `agent.yaml` carrying one without a word, as a launch did. They now stop
