@@ -8,9 +8,9 @@ manifest.  The keyspace's live carriers are the ``DECLARED_*`` frozensets and
 ``core-defaults.yaml``; the manifest is asserted AGAINST them
 (``tests/test_settings/test_manifest_conformance.py``), never generated FROM.
 
-⚑ THE PARSE IS CACHED and :func:`kanibako.settings.core_defaults._load_doc`'s is not;
-neither shape is an oversight.  Reasoning for both, the declined generation and the
-copy-out: ``llm-docs/kanibako/settings/keyspace_manifest.py.md``.
+⚑ THE PARSE IS CACHED, as :func:`kanibako.settings.core_defaults._parse_doc` is.
+Reasoning for the cache, the declined generation and the copy-out:
+``llm-docs/kanibako/settings/keyspace_manifest.py.md``.
 """
 
 from __future__ import annotations

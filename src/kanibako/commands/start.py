@@ -1000,8 +1000,8 @@ def _declared_behavior(key: str) -> str:
     """One DECLARED ``agent.default.<key>`` behavior floor value (spec §2d).
 
     ⚑ FUNCTIONS, not module constants, throughout this trio:
-    ``core_defaults._load_doc`` re-reads the shipped YAML on every call, so a
-    module-level read would bind at IMPORT time.
+    tests replace ``core_defaults._load_doc``, and a module-level read would bind
+    at IMPORT time, before any patch.
     ⚑ FAIL-CLOSED like the kickoff loader: an absent declaration is a PACKAGING
     defect, never a case to paper over with a fallback here — a re-materialized
     literal is exactly the consumer default this read replaced.

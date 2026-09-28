@@ -74,6 +74,8 @@ def helper_bind_dests() -> frozenset[str]
 def image_bind_dests() -> frozenset[str]
 def helper_default_categories(*, socket_path: Path, log_path: Path | None) -> BindArmTable
 def image_default_categories(*, graph_root: Path | None, storage_conf_path: Path) -> dict[str, object]
+@lru_cache(maxsize=1)
+def _parse_doc() -> dict[str, Any]
 def _load_doc() -> dict[str, Any]
 def _check_env_key(scope: str, var: str) -> None
 def _kickoff_entry() -> dict[str, Any]
