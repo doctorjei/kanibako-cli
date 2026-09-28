@@ -42,11 +42,11 @@ RETIRING_KEYS: Final[frozenset[str]] = frozenset()
 PREF_ALLOWLIST: Final[tuple[str, ...]] = ('system.agent', 'agent.*.**')
 KEYSPACE_ROOTS: Final[frozenset[str]] = frozenset(SCOPE_CONTAINMENT) | {'config', 'meta', 'pref', BINDING_DERIVATIONS_NODE}
 FINDING_VERDICTS: Final[frozenset[str]] = frozenset({Verdict.UNDECLARED, Verdict.NAMESPACE})
-RESERVED_NODE_REASON: Final[str] = f'{BINDING_DERIVATIONS_NODE!r} is the RESERVED INTERNAL NODE the spec names in so many words (§0, ABSTRACT declarations): the materialised binding an abstract declaration derives is machinery output, not a settable surface. Its interior is declaration keys and box DESTINATIONS, which are data.'
+RESERVED_NODE_REASON: Final[str] = f'{BINDING_DERIVATIONS_NODE!r} is the RESERVED INTERNAL NODE the spec names in so many words (§0, ABSTRACT declarations): the materialized binding an abstract declaration derives is machinery output, not a settable surface. Its interior is declaration keys and box DESTINATIONS, which are data.'
 MAX_STORE_DEPTH: Final[int] = 64
 _DUNDER_RE: Final = re.compile('^__.*__$')
 _VAR_RE: Final = re.compile('^[A-Za-z_][A-Za-z0-9_]*$')
-_KEY: Final[KeyJudgement] = KeyJudgement(KeyClass.KEY, '')
+_KEY: Final[KeyJudgment] = KeyJudgment(KeyClass.KEY, '')
 _NOT_ASKED: Final[object] = object()
 ```
 
@@ -73,28 +73,28 @@ def agent_declared_leaves(name: str, agent_leaf_map: 'AgentLeafMap | None') -> '
 def agent_leaf_is_declared(name: str, tail: str, agent_leaf_map: 'AgentLeafMap | None') -> bool
 def effective_agent_leaves(agent_leaf_map: 'AgentLeafMap | None') -> Collection[str]
 def key_validity(key: str, *, valid_agents: Collection[str], agent_leaf_map: 'AgentLeafMap | None'=None) -> str | None
-def key_class(key: str, *, valid_agents: Collection[str], agent_leaf_map: 'AgentLeafMap | None'=None) -> KeyJudgement
+def key_class(key: str, *, valid_agents: Collection[str], agent_leaf_map: 'AgentLeafMap | None'=None) -> KeyJudgment
 def render_store_path(segments: Collection[str], key_len: int | None=None) -> str
 def dotted_entry_reason(parent: Sequence[str], name: str) -> str
-def is_var_table(parent: Sequence[str], *, oracle: Callable[[str], KeyJudgement]) -> bool
-def classify_store_path(segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgement]) -> Judgement
+def is_var_table(parent: Sequence[str], *, oracle: Callable[[str], KeyJudgment]) -> bool
+def classify_store_path(segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgment]) -> Judgment
 def container_notes(nodes: Mapping[tuple[str, ...], StoreNode]) -> dict[tuple[str, ...], str]
 def walk_store_paths(node: Mapping[str, Any], prefix: tuple[str, ...]=()) -> Iterator[tuple[tuple[str, ...], bool]]
-def undeclared_store_paths(store: Mapping[str, Any], *, oracle: Callable[[str], KeyJudgement], prefix: tuple[str, ...]=()) -> list[tuple[tuple[str, ...], Judgement]]
+def undeclared_store_paths(store: Mapping[str, Any], *, oracle: Callable[[str], KeyJudgment], prefix: tuple[str, ...]=()) -> list[tuple[tuple[str, ...], Judgment]]
 def _is_pref_interior(segments: Sequence[str]) -> bool
-def _namespace(reason: str) -> KeyJudgement
-def _undeclared(reason: str) -> KeyJudgement
-def _leaf(leaf: str) -> KeyJudgement
-def _category_reason(prefix: str, rest: list[str], *, what: str) -> KeyJudgement
+def _namespace(reason: str) -> KeyJudgment
+def _undeclared(reason: str) -> KeyJudgment
+def _leaf(leaf: str) -> KeyJudgment
+def _category_reason(prefix: str, rest: list[str], *, what: str) -> KeyJudgment
 def _is_category_token(token: str) -> bool
 def _looks_like_category(rest: list[str]) -> bool
 def _could_name_an_agent(segment: str) -> bool
-def _scope_reason(scope: str, rest: list[str], *, leaves: frozenset[str], sub_tables: dict[str, frozenset[str]], what: str) -> KeyJudgement
-def _meta_reason(rest: list[str], valid_agents: Collection[str], leaves: Collection[str]=DECLARED_AGENT_LEAVES) -> KeyJudgement
+def _scope_reason(scope: str, rest: list[str], *, leaves: frozenset[str], sub_tables: dict[str, frozenset[str]], what: str) -> KeyJudgment
+def _meta_reason(rest: list[str], valid_agents: Collection[str], leaves: Collection[str]=DECLARED_AGENT_LEAVES) -> KeyJudgment
 def _bad_agent_reason(name: str, valid_agents: Collection[str]) -> str
 def _leaves_are_known() -> bool
-def _agent_tail_reason(prefix: str, tail: list[str], leaves: Collection[str]=DECLARED_AGENT_LEAVES, *, leaves_known: Callable[[], bool]=_leaves_are_known) -> KeyJudgement
-def _classify_whole_store_path(segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgement]) -> Judgement
+def _agent_tail_reason(prefix: str, tail: list[str], leaves: Collection[str]=DECLARED_AGENT_LEAVES, *, leaves_known: Callable[[], bool]=_leaves_are_known) -> KeyJudgment
+def _classify_whole_store_path(segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgment]) -> Judgment
 ```
 
 ## Classes
@@ -110,7 +110,7 @@ class KeyClass(enum.Enum):
     NAMESPACE = 'NAMESPACE'
     UNDECLARED = 'UNDECLARED'
 
-class KeyJudgement(NamedTuple):
+class KeyJudgment(NamedTuple):
     cls: KeyClass
     reason: str
 
@@ -145,7 +145,7 @@ class Verdict:
     RESERVED = 'RESERVED'
     UNDECLARED = 'UNDECLARED'
 
-class Judgement(NamedTuple):
+class Judgment(NamedTuple):
     verdict: str
     key: str
     key_len: int

@@ -196,7 +196,7 @@ than empty.
 `validate_endpoint` raises `kanibako.errors.ConfigError` unless the endpoint is a well-formed
 `http`/`https` base URL. It is validate-only, exactly like `kanibako.agent_ref.parse_agent_ref`.
 
-It checks minimal well-formedness ONLY: a recognised scheme (`http`/`https`, case-insensitive) and
+It checks minimal well-formedness ONLY: a recognized scheme (`http`/`https`, case-insensitive) and
 a non-empty host. Nothing about path, port or query is checked. A persona endpoint is a base URL
 the harness appends its own routes to, and a stricter gate risks refusing a shape that works today.
 A false refusal here breaks a working box, which is the one outcome this check must never cause.
@@ -262,7 +262,7 @@ of refusing a box that actually works:
 
 * `~/canon/notebook/procedures/persona-resolution-model.md` — the governing procedure.
 * `designs/persona-grata-autoimport-DESIGN.md` §1, §2, §3, §4, §5a — the design SOT.
-* `llm-docs/kanibako/agent_ref.py.md` — the `persona+harness` ref grammar this module normalises
+* `llm-docs/kanibako/agent_ref.py.md` — the `persona+harness` ref grammar this module normalizes
   through.
 * `kanibako.targets.base` — `Target.read_persona_settings` and `PersonaReadOutcome`, the harness
   half of the read.

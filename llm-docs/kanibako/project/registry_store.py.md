@@ -136,7 +136,7 @@ rather than promoted into the key. Box names come from a single validated namesp
 from the primary-workset `boxes:` membership, standalone boxes as canonical `<kuid>_<leaf>` names —
 and the user-facing recovery verbs (`rm <name> --purge`, `register <name>`) are keyed by that bare
 name. So a flat name → entry map matches the lookup exactly, and it keeps the YAML round-trip clean:
-tuple keys do not serialise.
+tuple keys do not serialize.
 
 The per-kind teardown/readopt routing reads `kind` out of the entry, so no composite key is needed.
 If a real primary/standalone name collision domain ever emerges, the entry already carries `kind`

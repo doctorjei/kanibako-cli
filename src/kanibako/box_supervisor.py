@@ -201,7 +201,7 @@ _MarkerRemover = Callable[[str, int], None]
 # The PROCESS-CONTROL primitives — the 4b takeover signals, the pane-group evict and the
 # PID-1 reap duty.  Injectable exactly like ``run`` / ``sleep``, so a unit test can never
 # signal a REAL process; the defaults are the stdlib ops (and the module reaper) below.
-_Signaller = Callable[[int, int], None]   # os.kill / os.killpg
+_Signaler = Callable[[int, int], None]   # os.kill / os.killpg
 _GroupOf = Callable[[int], int]           # os.getpgid
 _OwnGroup = Callable[[], int]             # os.getpgrp
 _Reaper = Callable[[], int]               # reap_zombie_children
@@ -348,7 +348,7 @@ def agent_launch_heads(*argvs: Iterable[str]) -> set[tuple[str, str | None]]:
     ⚑ The shim shape is QUARANTINED KNOWLEDGE of a sibling module, deliberately not
     imported: PID 1 is stdlib-only, and importing the CLI would put every marker scan
     at the mercy of the whole command package importing cleanly.  ⚑ It is SAFE UNDER
-    SKEW — a shim shape this does not recognise leaves the wrapper's own ``sh`` as the
+    SKEW — a shim shape this does not recognize leaves the wrapper's own ``sh`` as the
     head, which matches no real agent, so :func:`agent_session_verdict` falls through
     to ``None`` and KEEPS the marker rather than reaping on a misread.
     """
@@ -720,8 +720,8 @@ class BoxSupervisor:
         list_marker_pids: _MarkersLister = _default_list_marker_pids,
         cmdline_of: _CmdlineOf = _proc_cmdline,
         remove_marker: _MarkerRemover = _default_remove_marker,
-        kill: _Signaller = os.kill,
-        killpg: _Signaller = os.killpg,
+        kill: _Signaler = os.kill,
+        killpg: _Signaler = os.killpg,
         getpgid: _GroupOf = os.getpgid,
         getpgrp: _OwnGroup = os.getpgrp,
         reap: _Reaper = reap_zombie_children,

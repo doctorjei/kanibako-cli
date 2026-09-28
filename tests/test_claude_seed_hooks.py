@@ -21,7 +21,7 @@ shell, where it IS the agent) and drops ``|| true``.
 
 ⚑ BELT AND BRACES, DELIBERATELY. With ``|| true`` gone the shell MAY ``exec`` the
 script and its own ``$PPID`` would be right anyway — but the explicit argument makes
-the pid correct BY CONSTRUCTION rather than by a shell optimisation that would break
+the pid correct BY CONSTRUCTION rather than by a shell optimization that would break
 silently the day the command became compound again. The pin below is on the argument,
 not on the exec.
 

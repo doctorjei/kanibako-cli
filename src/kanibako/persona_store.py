@@ -265,7 +265,7 @@ def validate_endpoint(endpoint: str) -> None:
     """Raise :class:`~kanibako.errors.ConfigError` unless *endpoint* is a well-formed
     ``http``/``https`` base URL — validate-only, like :func:`kanibako.agent_ref.parse_agent_ref`.
 
-    Minimal well-formedness ONLY, by design: a recognised scheme and a non-empty host,
+    Minimal well-formedness ONLY, by design: a recognized scheme and a non-empty host,
     nothing about path/port/query.  A persona endpoint is a base URL the harness appends
     its own routes to, so a stricter gate risks a FALSE REFUSAL — breaking a working box,
     the one outcome this check must never cause.  ⚑ The uncaught live incident it exists
@@ -298,7 +298,7 @@ def validate_endpoint(endpoint: str) -> None:
         # (``user:pw@host``); echo it only if it survived into *shown*.
         got = parsed.scheme if shown.lower().startswith(parsed.scheme) else _REDACTED
         raise ConfigError(
-            f"persona endpoint {shown!r} has no recognised scheme "
+            f"persona endpoint {shown!r} has no recognized scheme "
             f"(got {got!r}; must start with 'http://' or 'https://')"
         )
     if not parsed.hostname:

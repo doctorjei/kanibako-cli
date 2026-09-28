@@ -253,7 +253,7 @@ class TestLayer1FileCannotHaveSettings:
             load_system_config(cf, data_home=data_home, home=home)
         assert "system.cache" in str(exc.value)
 
-        # ...while the SETTINGS file's own row IS honoured — the route that replaced it.
+        # ...while the SETTINGS file's own row IS honored — the route that replaced it.
         cf.write_text(f'config:\n  data: "{data_home}/kanibako"\n')
         resolved = load_system_config(cf, data_home=data_home, home=home)
         ssp = resolved["config.settings"]
@@ -631,7 +631,7 @@ class TestSetupCompatGate:
     empty ranges.  To exercise EACH band independently of the
     build version, most tests patch ``kanibako.__version__`` (CurrentVer) and the
     ``SETUP_BCV``/``SETUP_FCV`` module constants — the gate imports them inside
-    the function, so patching the ``kanibako`` module attributes is honoured.
+    the function, so patching the ``kanibako`` module attributes is honored.
     """
 
     # --- helpers -----------------------------------------------------------
@@ -1206,7 +1206,7 @@ class TestBoxEnableVault:
         """The RULE, not an inventory: the authored reader applies the SHARED truth table.
 
         ⚑ The corpus is ``config``'s own ``_BOOL_TRUE``/``_BOOL_FALSE``, so a token added
-        there that this reader does not honour reds here instead of outdating a list.
+        there that this reader does not honor reds here instead of outdating a list.
         (Mutation: return ``box_tbl["enable_vault"]`` raw → every token is a non-empty
         string → the four ``_BOOL_FALSE`` cases go RED.)
         """

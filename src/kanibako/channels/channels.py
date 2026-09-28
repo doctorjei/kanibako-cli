@@ -308,7 +308,7 @@ def partition_key_paths(
     :func:`own_partition_dirs` for the relocation path, which holds a pair of
     ``ProjectState``s and no ``ProjectPaths`` at all.  Those two used to answer the
     same question differently — one through the keys, one through
-    :func:`system_partition` — which is how a repoint could be honoured at launch and
+    :func:`system_partition` — which is how a repoint could be honored at launch and
     ignored by a ``box move``.
 
     ⚑ RAISES (``SettingsError``, naming the key) on a repoint that cannot resolve, like

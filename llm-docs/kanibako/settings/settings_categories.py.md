@@ -155,7 +155,7 @@ returns early).
 ⚑ **The class went for the same reason its `warnings` field went before it.** That field carried
 §0's same-scope ambiguities until cutover 5-1c, when the per-scope producer became the sole builder; two
 feeds of one channel printed one line only because both arms happened to build an EQUAL
-`CategoryCollision` and the emitter memoises on `(box_dest, scope)` — a property of the two
+`CategoryCollision` and the emitter memoizes on `(box_dest, scope)` — a property of the two
 constructions, not of the channel. Making a second implementation UNAVAILABLE rather than unused
 (P3) is what stops it drifting back; re-adding one now means re-adding a function and a type, which
 is a visible design act. Full reasoning and the mutation proof:
@@ -166,7 +166,7 @@ is spec §0's, written once, beside the two refusal texts (`raise_binding_vs_bin
 `raise_extension_onto_occupied`) that the producer also raises. `store_shape` imports all three from
 here. It is DEFINED here and BUILT there.
 
-⚑ **The exempt pair's BEHAVIOUR is unchanged in this module.** "Proceed on the existing ordering" is
+⚑ **The exempt pair's BEHAVIOR is unchanged in this module.** "Proceed on the existing ordering" is
 still `_resolve_mount_group`'s `_most_specific` pick, the same pick a cross-scope pair gets. Only the
 announcement moved. Both refusals still RAISE here, and the mask override still applies here —
 none of that is 5-1c's.
@@ -250,17 +250,17 @@ Ruling DS-BL1 = (a), 2026-08-07g: *"accept the loss uniformly"*. `bindings.{ro,r
 write route first (R-9, two steps) because their per-name key stopped existing; the other four
 lost it by the uniform ruling rather than by shape, and it is a KNOWN, ACCEPTED user-surface
 loss — a bind-shaped entry is authored in YAML, full stop. Every retired spelling stays
-RECOGNISED so the verbs refuse it BY NAME instead of degrading to "unknown config key"; the
+RECOGNIZED so the verbs refuse it BY NAME instead of degrading to "unknown config key"; the
 closed keyspace (spec §0) refuses, never accepts quietly. All six stay READABLE via
 `config get`:
 
-* `{system,workset,box}.<any-of-the-six>.<name>` — recognised by `SCOPE_BIND_KEY_RE`, refused
+* `{system,workset,box}.<any-of-the-six>.<name>` — recognized by `SCOPE_BIND_KEY_RE`, refused
   by `config_keys.scope_bind_retired_error`.
-* `agent.<node>.<any-of-the-six>.<name>` — recognised by the node-splitting
+* `agent.<node>.<any-of-the-six>.<name>` — recognized by the node-splitting
   `AGENT_BIND_KEY_RE` (the node segment may itself be dotted, so it cannot be folded into the
   regex above), refused by `config_keys.agent_node_bind_retired_error`. The `bindings` arms are
   ALSO matched by the narrower `config_keys._AGENT_NODE_BIND_RE`, which is the READ parser, not
-  the recogniser.
+  the recognizer.
 
 ⚑ **The READ route is the TERMINAL KEY, NOT THE ENTRY** (2026-08-08c). The per-entry dotted
 spelling is not a key at ANY scope now, so `config get` reads `<scope>.<category>` — the WHOLE
@@ -300,16 +300,16 @@ a key at any scope). Recognition is derived here; resolution is not.
 **`SCOPE_BIND_KEY_RE`** — `{system,workset,box}.<bind-shaped category>.<name>`, the RETIRED
 FILE-scope bind route. It covers all six since DS-BL1 = (a) emptied `SETTABLE_BIND_CATEGORIES`;
 it reads `RETIRED_BIND_CATEGORIES`, so it widened by DERIVATION, not by an edit. It exists ONLY
-to be RECOGNISED and refused by name: the verbs call `config_keys.scope_bind_retired_error` on
+to be RECOGNIZED and refused by name: the verbs call `config_keys.scope_bind_retired_error` on
 it, `config get` reads the tuple through the slot it routes, and the `pref` value guard uses it
 to keep refusing a scalar written at a bind-shaped target. ⚑ It deliberately does NOT cover the
 AGENT scope — `agent.<node>`'s node segment must be split NON-GREEDILY and canonicalized
 (`+` → `℘`) before anything else can be done with it, so the agent-scope spelling has its own
-recogniser built from the SAME alternation.
+recognizer built from the SAME alternation.
 
 **`AGENT_BIND_KEY_RE`** — `agent.<node>.<bind-shaped category>.<name>`, the AGENT-scope twin,
 over the SAME derived alternation so the two scopes cannot come to cover different category
-sets. It exists for ONE reason: to be RECOGNISED and refused BY NAME
+sets. It exists for ONE reason: to be RECOGNIZED and refused BY NAME
 (`config_keys.agent_node_bind_retired_error`, `config_keys.is_known_key`).
 
 ⚑ **The node is NON-GREEDY so the FIRST category segment splits node from name.** A DEST tail
@@ -318,13 +318,13 @@ parses node=`claude.caches.~/`), and a greedy node would swallow everything up t
 *(An earlier revision claimed node segments may contain dots — measured false 2026-08-15:
 `parse_agent_ref` refuses `.` in an agent name outright. The split rule stands on the dest side
 alone.)* An UNDISCRIMINATED `agent.<category>.<name>` therefore does NOT match: the agent tier
-is discriminated (spec §0/§2d) and an undeclared spelling must stay unrecognised rather than be
+is discriminated (spec §0/§2d) and an undeclared spelling must stay unrecognized rather than be
 quietly admitted.
 
 ⚑⚑ **Recognition only — it picks NO read route, and that separation is load-bearing.**
 `config_keys._AGENT_NODE_BIND_RE` is the narrower parser that DOES pick one (the agent file's
 address rule), and it covers the `bindings` arms alone because those are the only per-entry
-spellings whose READ survived R-9. Recognising a spelling in order to REFUSE it is a different
+spellings whose READ survived R-9. Recognizing a spelling in order to REFUSE it is a different
 job from resolving one, so it gets a different parser.
 
 **`BIND_KEY_RE`** — the PER-ENTRY bind-shaped key shape, a NON-TERMINAL bind category's
@@ -392,7 +392,7 @@ key.) It carries the DISCRIMINATED spelling, so its agent segment names a real a
 from *scope*, which is the BARE precedence token, and it replaces nothing: three consumers need
 it and none can be served by *scope* + *category* + *name* —
 
-* the derived-binding materialisation entry (`binding_derivations.<declaration-key>.<dest>`,
+* the derived-binding materialization entry (`binding_derivations.<declaration-key>.<dest>`,
   the reserved internal snapshot node, R-8);
 * every collision error / warning message (a message that named only the category would not
   tell a user which declaration to edit);
@@ -400,7 +400,7 @@ it and none can be served by *scope* + *category* + *name* —
 
 ⚑⚑ **SEGMENTS, NOT A DOTTED STRING, AND THAT IS THE POINT.** A destination routinely contains
 `.` (`~/.cache/uv`, `/home/agent/.claude/plugins`), so a dotted spelling is AMBIGUOUS with the
-key-path separator: the materialisation used to hand the joined form to a splitting installer
+key-path separator: the materialization used to hand the joined form to a splitting installer
 and the dest shattered into extra tree levels, and two dests whose shattered paths nest
 (`~/.claude` under `~/.claude.json`) silently overwrote one another. Carrying segments makes
 the split unnecessary rather than careful. The `key` property is the DOTTED spelling, DERIVED
@@ -738,7 +738,7 @@ writing that scope's top-level table (`settings_assemble._drop_upward_scopes` dr
 edit belongs in that scope's own file.
 
 *ambiguous* is True when the caller could not know WHICH entry the user wants to keep (two
-peers, either is a legitimate choice), so the printed block is labelled an example rather
+peers, either is a legitimate choice), so the printed block is labeled an example rather
 than a prescription. The extension refusal passes False — there the occupant is determined, because the base
 always survives.
 
@@ -756,10 +756,10 @@ without saying so would hand the reader an edit that silently does nothing in th
 so the flatten changed it in ONE place. ⚑ And it quotes the TABLE, never the entry: the last
 segment is the DEST, so a spelling that swallowed it would print something unreadable back.
 
-## `derive_binding_keys` — the materialised derived bindings
+## `derive_binding_keys` — the materialized derived bindings
 
 `common` / `caches` / `seeded` are ROOTED declarations that EXTEND `bindings.rw`; §0 requires
-the binding each one produces to be materialised BESIDE the declaration so `--effective` can
+the binding each one produces to be materialized BESIDE the declaration so `--effective` can
 show both and a reader can see WHY a mount exists. The entry is
 `binding_derivations.<declaration-key>.<dest>` — R-8: the reserved INTERNAL node at the
 snapshot root, NOT a key — mechanically one fixed prefix on the entry's own segments, so the
@@ -827,7 +827,7 @@ answer is READ off `meta.assembly.*`.
 installed `binding_derivations` node ALONE looks sufficient and is not. That node is populated
 at `commands/start._resolve_launch_snapshot` **before** the credential gate and the collapse,
 deliberately — *"a derived binding is a property of the DECLARATION, not of whether the box may
-receive it"* — and `derive_binding_keys` materialises a row for WINNERS AND LOSERS ALIKE,
+receive it"* — and `derive_binding_keys` materializes a row for WINNERS AND LOSERS ALIKE,
 because a loser's derivation is what explains the warning that names it. So every row in the
 node reads as a live mount. Measured: an `agent.claude.common` declaration under a box-scope
 `masks` entry at the same dest collapses to `CollapsedBind(src=None)` — a mask sentinel, **no

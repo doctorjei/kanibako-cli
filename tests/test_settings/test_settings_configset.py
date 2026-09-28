@@ -312,7 +312,7 @@ def test_escaped_at_brace_is_literal_not_a_ref() -> None:
 #    2-element value under a bindings arm is CARRIED THROUGH, not refused.  A stored
 #    ``[src, box_dest]`` and a live ``[src, options]`` are indistinguishable at two
 #    elements; the heuristic refusal was offered as option B and Jei DECLINED it in
-#    favour of option A (docs only, 2026-08-06e).  ⚑⚑ That test existed PRECISELY to
+#    favor of option A (docs only, 2026-08-06e).  ⚑⚑ That test existed PRECISELY to
 #    go red if anyone built the declined thing.  Its subject is gone, so the guard is
 #    gone with it — **the 2-element accept is still the ruling, and a rebuilt
 #    category write route owes it a new pin.**

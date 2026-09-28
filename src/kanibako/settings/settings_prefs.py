@@ -15,7 +15,7 @@ LEVELS, one per pref-legal level, placed immediately BELOW that level's own
 partial. §2h's **RECOMPUTE** is then satisfied *a fortiori*. Do NOT instead patch
 the EXPANDED snapshot afterwards, beside ``_materialize_box_agent_mirror`` /
 ``_install_derived_bindings`` — those are legitimate post-expand ``meta.*``
-materialisations, a pref is not, because a pref's value is an INPUT to
+materializations, a pref is not, because a pref's value is an INPUT to
 resolution. That is the DELTA failure mode §2h warns about;
 ``tests/test_settings/test_settings_launch.py``
 ``TestPrefRecomputeNotDelta.test_a_key_derived_from_a_prefd_value_updates`` is the
@@ -229,7 +229,7 @@ def collect_prefs(
     ``_drop_upward_scopes`` first, which strips the top-level ``meta:`` table.
     A workset root's identity is NOT a key and is not on disk under the root at all —
     the global registry's ``worksets:`` section names it — but 1.6.0/1.7.x kept a table
-    in this file, and parsing the whole document here materialised it into a
+    in this file, and parsing the whole document here materialized it into a
     ``KeyStore`` as ``meta.workset.created`` / ``.projects``, neither of which the
     keyspace declares (spec §0 declares ``meta.workset.{path,name,settings}``).
     Nothing read

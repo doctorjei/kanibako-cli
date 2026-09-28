@@ -547,7 +547,7 @@ class TestCreateStandaloneOptIn:
     def test_unregistered_create_prints_the_pasteable_cure(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        """The flip is SIGNALLED: v1.7.2 registered silently, so silence would
+        """The flip is SIGNALED: v1.7.2 registered silently, so silence would
         report the old outcome.
 
         ⚑ The asserted command is closed with its quote on purpose.  The success

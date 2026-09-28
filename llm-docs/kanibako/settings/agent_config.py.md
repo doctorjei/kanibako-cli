@@ -104,7 +104,7 @@ The category tables that get no field of their own: `bindings` (the `{ro, rw}` p
 `caches`, `seeded`, `common`, `synced`, `masks`. All flat under the file's root since the S2 flatten,
 again because `self` IS `agent.<node>`.
 
-They are not modelled as fields because they ride `_agent_partial` into the launch **cascade**, not
+They are not modeled as fields because they ride `_agent_partial` into the launch **cascade**, not
 into the launch invocation. They are carried OPAQUELY through the load → write round trip.
 
 ⚑ **That round trip has no live producer, MEASURED.** All four `agent_file.save` callers persist a
@@ -218,7 +218,7 @@ OPPOSITE sides.** This is why the test cannot be a plain first-character check:
 
 * `\/foo` unescapes to `/foo`, which is ABSOLUTE. The retired post-expand join never joined it — it
   tested the *unescaped* string for a leading `/` — so calling it relative here would DIVERGE from
-  the behaviour this phase preserves.
+  the behavior this phase preserves.
 * `\~foo` unescapes to the literal `~foo`, a plain relative dir that merely starts with a tilde, NOT
   a home reference. The retired join did not join that one either, but only because `~foo` expands
   home-ward before the test; the answer (leave it alone, treat as relative) matches anyway.

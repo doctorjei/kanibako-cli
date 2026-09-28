@@ -127,7 +127,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# run / show a command, honouring --dry-run
+# run / show a command, honoring --dry-run
 run() {
     if $DRY_RUN; then
         echo "[dry-run] $*"
@@ -216,7 +216,7 @@ if [[ -z "$BUMPER" ]]; then
 fi
 
 # Verify the working tree has no MODIFIED tracked files (untracked are fine —
-# mirrors bump2version's own behaviour). Under --dry-run this is reported but
+# mirrors bump2version's own behavior). Under --dry-run this is reported but
 # not enforced, so the dry-run stays safely verifiable on a dirty tree.
 if ! ( git -C "$REPO_ROOT" diff --quiet && git -C "$REPO_ROOT" diff --cached --quiet ); then
     if $DRY_RUN; then

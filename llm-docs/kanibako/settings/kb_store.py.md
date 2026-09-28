@@ -128,8 +128,8 @@ BindMap = dict[str, BindEntry]
 ⚑ The inner keys are destinations — **they are NOT part of the keyspace.**
 
 ⚑ It is a plain `dict` and deliberately NOT a member of `StoreValue`. Inside a `KeyStore`, a
-`BindMap` materialises as a nested `KeyStore` NODE with `BindEntry` leaves (the container's wrapper
-turns a plain `dict` into a node), just as `masks` materialises as a nested node of `bool | None`
+`BindMap` materializes as a nested `KeyStore` NODE with `BindEntry` leaves (the container's wrapper
+turns a plain `dict` into a node), just as `masks` materializes as a nested node of `bool | None`
 leaves rather than an opaque dict leaf. That is load-bearing, not incidental: it makes the bindings
 arm merge PER-ENTRY across cascade levels through the generic node recursion, instead of a box-level
 arm wiping an inherited workset entry wholesale. The alias exists for the view and producer

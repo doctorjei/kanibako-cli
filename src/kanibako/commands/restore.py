@@ -13,7 +13,7 @@ from pathlib import Path
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
-from kanibako.errors import ProjectError, UserCancelled, WorksetError
+from kanibako.errors import ProjectError, UserCanceled, WorksetError
 from kanibako.git import is_git_repo
 from kanibako.settings.paths import (
     BoxMode,
@@ -68,7 +68,7 @@ def run(args: argparse.Namespace) -> int:
 
     if args.all_archives:
         if getattr(args, "name", None):
-            # One name cannot address N boxes.  Refusing beats the old behaviour
+            # One name cannot address N boxes.  Refusing beats the old behavior
             # (silently dropping it) — see the --name note in _restore_one.
             print(
                 "Error: --name cannot be combined with --all (it names ONE box, "
@@ -108,7 +108,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
       a box existing.  Its ``metadata_path``/``name`` are the sentinel and must not
       be touched;
     * a DESTINATION resolve (``initialize=True, register=False``) taken only AFTER
-      those gates pass, so a cancelled or mismatched extract does not materialize a
+      those gates pass, so a canceled or mismatched extract does not materialize a
       box dir.  ``register=False`` defers registration to after the copy succeeds —
       create's ordering, for create's reason.
 
@@ -206,7 +206,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             print()
             try:
                 confirm_prompt("Continue anyway? Type 'yes' to confirm: ")
-            except UserCancelled:
+            except UserCanceled:
                 print("Aborted.")
                 return 2
 
@@ -218,7 +218,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
                 return rc
 
         # ⚑ DESTINATION resolve — only now that every gate has passed, so a
-        # cancelled/mismatched extract leaves no box dir behind.  ``initialize=True``
+        # canceled/mismatched extract leaves no box dir behind.  ``initialize=True``
         # is what replaces the ``__unregistered__`` sentinel with the box's REAL
         # metadata dir (assigning a name if the workspace has none, or REUSING the
         # existing one via the registry reverse-lookup, which is what makes
@@ -280,7 +280,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
 
         # ⚑ Re-assert the canon skeleton on the RESTORED home.  ``tar.extractall``
         # runs ``_keep_links_filter`` ("data" for every member but a symlink), which
-        # STRIPS ownership AND NORMALISES directory modes (to 0755) — so the
+        # STRIPS ownership AND NORMALIZES directory modes (to 0755) — so the
         # extracted skeleton is host-user-owned (= the agent, in-box) and plainly
         # writable.  This call RESTORES both the ownership
         # and the declared 555/444 modes; it is not merely an ownership top-up.
@@ -371,7 +371,7 @@ def _restore_all(std, config, args) -> int:
                 "Restore all listed archives? Existing session data will be overwritten.\n"
                 "Type 'yes' to confirm: "
             )
-        except UserCancelled:
+        except UserCanceled:
             print("Aborted.")
             return 2
 
@@ -420,7 +420,7 @@ def _validate_git_state(proj, info: dict[str, str], force: bool) -> int:
             print()
             try:
                 confirm_prompt("Continue anyway? Type 'yes' to confirm: ")
-            except UserCancelled:
+            except UserCanceled:
                 print("Aborted.")
                 return 2
         return 0
@@ -459,7 +459,7 @@ def _validate_git_state(proj, info: dict[str, str], force: bool) -> int:
         print()
         try:
             confirm_prompt("Continue anyway? Type 'yes' to confirm: ")
-        except UserCancelled:
+        except UserCanceled:
             print("Aborted.")
             return 2
 

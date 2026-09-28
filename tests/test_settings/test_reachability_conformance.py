@@ -97,7 +97,7 @@ that "every row of it is already emitted by the main path", so neither can carry
 the main resolve lacks; but that is the code's claim, not this file's measurement.
 
 ⚑ THIS FILE IS EXPECTED TO BE RED.  It measures the keyspace as it is; the findings it
-reports are inputs to an approval-gated fix, not licence to move ``src/`` until it is
+reports are inputs to an approval-gated fix, not license to move ``src/`` until it is
 green.  Every ``print`` below is visible under ``pytest -s``.
 
 Indent note: 2 spaces (the house style); ``tests/test_settings/`` carries both.
@@ -185,7 +185,7 @@ def _probe(request, std, config_file, mode: str, target=None):
   """``(termini, ctx)`` for *mode*, built off that mode's project and no other.
 
   ⚑ ``getfixturevalue`` rather than a three-project fixture ON PURPOSE: ``primary``
-  and ``standalone`` both resolve the SAME ``project_dir``, so materialising both in
+  and ``standalone`` both resolve the SAME ``project_dir``, so materializing both in
   one test would let one mode's ``initialize=True`` write into the other's reading.
   One test, one project, one mode.
 

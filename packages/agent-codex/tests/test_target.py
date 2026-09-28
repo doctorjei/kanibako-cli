@@ -36,7 +36,7 @@ class TestProperties:
         assert CodexTarget().default_entrypoint == "codex"
 
     def test_reattach_config_notice_warns_restart(self):
-        """codex's config.toml is a reconciled projection re-materialised only on
+        """codex's config.toml is a reconciled projection re-materialized only on
         start, so a reattach-to-running notice tells the user to restart for
         config changes to apply (base default is None; codex overrides)."""
         notice = CodexTarget().reattach_config_notice()
@@ -561,7 +561,7 @@ class TestDescriptor:
         """The three codex rows (R-41), all from VERIFIED codex-cli 0.141.0
         vocabulary: the bypass flag, the sandbox enum's middle step, and an
         EMPTY restricted row (nothing on the argv — the pre-R-41 ``-S``
-        behaviour).
+        behavior).
 
         ⚑ The approval flag is deliberately NOT in any row: ``-a`` does not exist
         on ``codex exec``, which shares this argv tail.  Approval rides the

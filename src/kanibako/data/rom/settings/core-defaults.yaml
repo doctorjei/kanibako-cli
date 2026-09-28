@@ -232,7 +232,7 @@ kani:
   # ``core_defaults.rom_default_categories`` emits FIVE SIBLING binds from the
   # packaged rom root (``global/rom``, which is FLAT — no ``canon/`` wrapper):
   # ``canon_collection`` + ``canon_charter_contents`` as FILE binds (file-onto-file
-  # over the 0-byte mountpoints box create materialises), and one whole-directory
+  # over the 0-byte mountpoints box create materializes), and one whole-directory
   # bind per packaged charter chapter — ``canon_charter_{general,workset,box}``.
   # ``rom_agent_default_categories`` adds the resolved plugin's own chapter at
   # ``~/canon/charter/agent`` when it ships one.  All six are INTERNAL/generated
@@ -293,7 +293,7 @@ kickoff:
 # the NORMAL case; without this, almost every box would print two ro-drop WARNINGS
 # on every launch, which is exactly the noise that teaches users to ignore warnings.
 # `canon_hb_contents` + `canon_hb_general` are NOT optional: the system store is
-# materialised by install/setup, so a missing one means something is genuinely wrong.
+# materialized by install/setup, so a missing one means something is genuinely wrong.
 #
 # ⚑⚑ THE NAMING TRAP, stated here because this is where both spellings meet: a box
 # store holds TWO different `canon` dirs.  `<box_dir>/home/canon` is the ASSEMBLED
@@ -537,7 +537,7 @@ agent_shell:
 #
 # `COLORTERM` (MBR-2): BOX scope, because it describes the terminal a box runs
 # and not the host install.  It was a first-run WRITE into the system settings
-# file until D1-4 deleted it — a value materialised at a seam, which is the shape
+# file until D1-4 deleted it — a value materialized at a seam, which is the shape
 # `tests/test_settings/test_defaults_enforcement.py` now forbids.  Declared here
 # it needs no stored value at all: it resolves for every box, including boxes and
 # installs that predate this release, and a user's own `box.env.COLORTERM` in any

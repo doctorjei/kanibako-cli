@@ -426,7 +426,7 @@ class TestUniformAccessAcrossAgents:
         The reason is positive: ``--dangerously-bypass-approvals-and-sandbox``
         IS in ``--help`` with an unambiguous description, so the argv kanibako
         emits says what it does to anyone reading a log or a process list. This
-        test pins the BEHAVIOUR (which is unchanged); only its justification
+        test pins the BEHAVIOR (which is unchanged); only its justification
         was wrong.
         """
         from kanibako.plugins.codex.target import CodexTarget

@@ -604,7 +604,7 @@ def test_top_level_binding_derivations_in_base_file_drops_too(
 ) -> None:
     # Same base-file profile as meta: EXEMPT for scope keys (system.* is the
     # floor and survives) but NOT for the reserved node — a base-file forged
-    # table would ride into the merged snapshot beside the real materialisation.
+    # table would ride into the merged snapshot beside the real materialization.
     base = _write(
         tmp_path / "base.yaml",
         {"system": {"auth": {"share_allowed": True}},
@@ -1309,7 +1309,7 @@ class TestPrefTableWriteSiteAtAssembly:
     """D4 — WARN + DROP in a file where a pref is illegal.
 
     Same treatment ``_drop_upward_scopes`` gives the sibling mis-scope: two
-    behaviours for one fault class is the confusion §0's convention 0 forbids.
+    behaviors for one fault class is the confusion §0's convention 0 forbids.
     The HARD refusal §2h calls for lives at the WRITE site (``config set``).
     """
 

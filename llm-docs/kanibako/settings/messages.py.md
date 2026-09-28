@@ -18,7 +18,7 @@ authority; read them first.**
 A declaration file. It holds the XDG variable names and their spec defaults, the two path-key
 default tables (Layer-1 `config.*`, Layer-2 `system.*`), the directory- and file-name leaves the
 layout tier composes, the status tokens the workset listing emits, the whole user-visible MESSAGE
-catalogue, and the box shell-file contents.
+catalog, and the box shell-file contents.
 
 It has **no functions, no classes and no docstrings** — the entire file is module-level assignment.
 That is the point: `paths.py` is the resolver and this is the table it resolves, so a value can be
@@ -183,7 +183,7 @@ The per-uid runtime base, as a `%d` FORMAT string.
 
 ⚑⚑ **It is CONCATENATED INTO `WARN_RUNDIR_UNUSABLE`**, which puts a `%d` in the middle of that
 message's `%s` run. Changing this literal's conversion — or dropping the `%d` — silently changes that
-warning's argument contract; see [the message catalogue](#the-message-catalogue).
+warning's argument contract; see [the message catalog](#the-message-catalog).
 
 ```python
 STANDALONE_META_DIR = 'box_data'
@@ -236,7 +236,7 @@ STRING is the real signal that there is no box name, and the marker only keeps t
 well-formed instead of pointing a caller at the boxes ROOT — which is a live directory full of other
 boxes. ⚑ Callers must test the NAME, not the path. Nothing on disk is expected at the marker path.
 
-## The message catalogue
+## The message catalog
 
 Every literal below is USER-VISIBLE, and every one is a **printf-style `%`-format template** — not an
 f-string and not `str.format`. Two consequences, stated once rather than at each line:

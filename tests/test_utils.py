@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from kanibako.errors import UserCancelled
+from kanibako.errors import UserCanceled
 from kanibako.utils import (
     confirm_prompt,
     container_name_for,
@@ -76,22 +76,22 @@ class TestConfirmPrompt:
 
     def test_no_raises(self):
         with patch("builtins.input", return_value="no"):
-            with pytest.raises(UserCancelled):
+            with pytest.raises(UserCanceled):
                 confirm_prompt("ok? ")
 
     def test_empty_raises(self):
         with patch("builtins.input", return_value=""):
-            with pytest.raises(UserCancelled):
+            with pytest.raises(UserCanceled):
                 confirm_prompt("ok? ")
 
     def test_eof_raises(self):
         with patch("builtins.input", side_effect=EOFError):
-            with pytest.raises(UserCancelled):
+            with pytest.raises(UserCanceled):
                 confirm_prompt("ok? ")
 
     def test_keyboard_interrupt_raises(self):
         with patch("builtins.input", side_effect=KeyboardInterrupt):
-            with pytest.raises(UserCancelled):
+            with pytest.raises(UserCanceled):
                 confirm_prompt("ok? ")
 
     def test_whitespace_yes_passes(self):

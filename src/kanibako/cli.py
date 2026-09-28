@@ -7,7 +7,7 @@ import sys
 from typing import Any
 
 from kanibako import __version__
-from kanibako.errors import KanibakoError, UserCancelled
+from kanibako.errors import KanibakoError, UserCanceled
 
 
 class _Formatter(argparse.RawDescriptionHelpFormatter):
@@ -248,7 +248,7 @@ def _normalize_command(effective: list[str]) -> list[str]:
     shell`` with ``project="shell"``, which both launches the wrong thing and
     fires the Gate-1 setup nudge.
 
-    To honour the blanket-flag design (``kanibako --agent X <subcommand>`` ==
+    To honor the blanket-flag design (``kanibako --agent X <subcommand>`` ==
     ``kanibako <subcommand> --agent X``), when ``effective[0]`` is an option
     (starts with ``-``) and a KNOWN subcommand appears later, move the FIRST such
     subcommand token to the front, preserving the relative order of everything
@@ -362,7 +362,7 @@ def _ensure_initialized() -> None:
     # A template change that RIDES A RELEASE is announced by the setup bands
     # (``SETUP_FCV`` nudge / ``SETUP_BCV`` hard block in ``setup_compat_gate``); a
     # plugin pip-installed LATER at the SAME kanibako version is the ruled ACCEPTED
-    # LOSS — its store materialises at the next ``kanibako setup``, the deliberate
+    # LOSS — its store materializes at the next ``kanibako setup``, the deliberate
     # trigger.  Verified 2026-08-02: ``install_packaged_templates`` has exactly two
     # callers, this first-run backstop and ``setup_cmd._run_template_refresh``.
     # Recorded as migrations M-18 (superseded in part) and M-23.
@@ -376,7 +376,7 @@ def _ensure_initialized() -> None:
 
     # ⚑ NOTHING SEEDS ``COLORTERM`` HERE ANY MORE (MBR-2/D1-4).  It was a
     # create-if-absent first-run write of ``box.env.COLORTERM=truecolor`` into the
-    # system settings file — a default MATERIALISED AT A SEAM, which is what
+    # system settings file — a default MATERIALIZED AT A SEAM, which is what
     # ``tests/test_settings/test_defaults_enforcement.py`` forbids.  It is declared
     # in ``data/rom/settings/core-defaults.yaml``'s ``env:`` section instead, so it resolves for
     # every box with nothing stored — including the installs this first-run path
@@ -550,7 +550,7 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         rc = func(args)
-    except UserCancelled:
+    except UserCanceled:
         print("Aborted.")
         rc = 2
     except KanibakoError as e:

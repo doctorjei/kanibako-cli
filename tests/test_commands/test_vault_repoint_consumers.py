@@ -1,4 +1,4 @@
-"""The DESTRUCTIVE and lifecycle verbs honour a repointed ``workset.{vault_ro,vault_rw}``.
+"""The DESTRUCTIVE and lifecycle verbs honor a repointed ``workset.{vault_ro,vault_rw}``.
 
 ``57742a05`` made both keys resolve on the paths side.  This file pins the CONSUMERS —
 the verbs that DELETE, MOVE or REPORT a vault — because a key that resolves everywhere
@@ -86,7 +86,7 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         assert (tmp_home / "pv" / "ro").is_dir()
         assert (tmp_home / "pv" / "rw").is_dir()
 
-    def test_unrepointed_behaviour_is_exactly_unchanged(
+    def test_unrepointed_behavior_is_exactly_unchanged(
         self, config_file, tmp_home, credentials_dir,
     ):
         """Anti-vacuity twin: the default layout must behave as it does today."""

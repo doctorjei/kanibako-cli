@@ -1156,7 +1156,7 @@ kind = "code-patterns"
 # "fires only inside these three files". Every entry below therefore bans the
 # spelling EVERYWHERE except its `home`, which is the stronger claim. Where that
 # is not the invariant we mean, the entry is marked.
-# 🛑 THE WIDENING IS A DECISION, NOT AN ARTEFACT OF THE TOOL. The broader claim
+# 🛑 THE WIDENING IS A DECISION, NOT AN ARTIFACT OF THE TOOL. The broader claim
 # -- this spelling belongs to its `home` and nowhere else -- is the invariant we
 # actually mean; the source tests name one to three files only because that is
 # what a pytest scan could reach. IT FOLLOWS THAT A RED HERE ON A SITE NO TEST
@@ -1553,6 +1553,126 @@ suffixes = [".toml"]
 # folds its produced names the same way, for the same reason.
 
 # ---------------------------------------------------------------------------
+# FACT: everything kanibako ships or keeps in this repository uses American
+# spelling -- identifiers, keys, file names, messages, comments, documentation.
+# AUTHORITY: system design spec, "Language -- American English". The only
+# exemption is text kanibako does not own; no tracked file holds any.
+# CATCHES: a British form anywhere a `raw` scan reads, as a whole word or as a
+# piece of an identifier (`_` or camelCase joined): each pattern
+# ends at a non-lowercase letter, so a camelCase or `_` boundary still matches.
+# NOT CAUGHT: files under `[project] exclude` -- the test trees. The exclusion is
+# project-wide and a registry cannot narrow it, so the tests are unchecked here
+# (NOT EXPRESSIBLE, [R160]); a pytest guard in its place would be the bespoke
+# check that rule retires.
+# Every pattern breaks its own word with a one-letter class (`[u]`) so this file
+# does not spell what it forbids.
+# The one `home`: CHANGELOG and MIGRATION spell the retired predecessor of
+# `UserCanceled` and the old `kanibako rig rm` decline message with a doubled l,
+# on purpose -- they tell a reader what to rename.
+[[registry]]
+name = "american-spelling"
+kind = "code-patterns"
+match_mode = "raw"
+suffixes = [
+  ".py", ".md", ".sh", ".toml", ".yaml", ".yml", ".json", ".cfg", ".conf", ".head",
+  ".kanibako", ".typed", ".template-systems", ".template-jvm", ".template-js",
+  ".template-dotnet", ".template-android", "",
+]
+
+  [[registry.entry]]
+  id = "our"
+  antipatterns = ['''(?i)(behavio|colo|favo|flavo|hono|labo|neighbo|harbo|humo|rumo|vapo|odo|armo|vigo|rigo|savio|endeavo|tumo|parlo|splendo|clamo|cando|ardo|fervo|valo|savo|demeano)[u]r(s|ed|ing|al|ally|able|ably|ite|ites|ful|less|er|ers|hood|hoods|ist)?(?-i:(?![a-z]))''']
+  note = "-our: behavior, color, honor, neighbor"
+
+  [[registry.entry]]
+  id = "ise"
+  antipatterns = ['''(?i)(absolut|author|canonical|capital|central|character|custom|synchron|general|harmon|initial|internal|material|memo|neutral|normal|optim|parametr|parenthes|recogn|relativ|serial|summar|synthes|real|organ|util|special|minim|maxim|standard|visual|categor|priorit|emphas|apolog|critic|final|local|global|personal|stabil|sanit|token|legal|modern|fantas|familiar|formal|mobil|penal|politic|random|rational|tantal|trivial|vapor|verbal)[i]s(e|es|ed|edly|ing|ingly|er|ers|ation|ations|able|ably|ability)(?-i:(?![a-z]))''']
+  note = "-ize: materialize, recognize, normalize"
+
+  [[registry.entry]]
+  id = "yse"
+  antipatterns = ['''(?i)(analy|paraly|cataly)[s](e|ed|ing|er|ers|able)(?-i:(?![a-z]))''']
+  note = "-yze as a verb: analyze; the plural noun `analyses` is American"
+
+  [[registry.entry]]
+  id = "doubled-l"
+  antipatterns = ['''(?i)(label|model|travel|signal|funnel|journal|level|fuel|dial|tunnel|channel|total|equal|rival|marvel|quarrel|counsel|panel|pedal|shovel|swivel|unravel|revel|chisel|duel|enamel|libel|parcel|yodel|grovel|bevel|spiral)l(ed|ing|er|ers)(?-i:(?![a-z]))''']
+  note = "one l before an unstressed suffix: labeled, modeled, signaler"
+
+  [[registry.entry]]
+  id = "cancel"
+  antipatterns = ['''(?i)cancel[l](ed|ing|er|ers)(?-i:(?![a-z]))''']
+  home = ["CHANGELOG.md", "MIGRATION.md"]
+  note = "canceled, canceling; `cancellation` is American"
+
+  [[registry.entry]]
+  id = "ence"
+  antipatterns = ['''(?i)(defen|offen|preten|licen)[c]e(s|d|less)?(?-i:(?![a-z]))''']
+  note = "defense, offense, pretense, and license as a noun"
+
+  [[registry.entry]]
+  id = "artifact"
+  antipatterns = ['''(?i)artef[a]ct''']
+  note = "artifact"
+
+  [[registry.entry]]
+  id = "judgment"
+  antipatterns = ['''(?i)(judg|acknowledg)[e]ment''']
+  note = "judgment, acknowledgment"
+
+  [[registry.entry]]
+  id = "gray"
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))gr[e]y(s|ed|ing|ish)?(?-i:(?![a-z]))''']
+  note = "gray"
+
+  [[registry.entry]]
+  id = "program"
+  antipatterns = ['''(?i)program[m]e(s)?(?-i:(?![a-z]))''']
+  note = "program; `programmer` and `programmed` are American"
+
+  [[registry.entry]]
+  id = "past-t"
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(misspe[l]t|spe[l]t|lear[n]t|drea[m]t)(?-i:(?![a-z]))''']
+  note = "spelled, misspelled, learned, dreamed"
+
+  [[registry.entry]]
+  id = "re"
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(theat|cent|met|lit|fib|calib)[r]e(s|d)?(?-i:(?![a-z]))''']
+  note = "theater, center, meter, liter, fiber, caliber"
+
+  [[registry.entry]]
+  id = "aging"
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))ag[e]ing(?-i:(?![a-z]))''']
+  note = "aging"
+
+  [[registry.entry]]
+  id = "ogue"
+  antipatterns = ['''(?i)(catalog|analog)[u](e|es|ed|ing)(?-i:(?![a-z]))''']
+  note = "catalog, analog"
+
+  [[registry.entry]]
+  id = "mold"
+  antipatterns = ['''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))mou[l]d(s|ed|ing)?(?-i:(?![a-z]))''']
+  note = "mold"
+
+  [[registry.entry]]
+  id = "single-l"
+  antipatterns = [
+    '''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(fulfi[l]|enro[l])(s|ment|ments)?(?-i:(?![a-z]))''',
+    '''(?i)(skil|wil)[f]ul''',
+  ]
+  note = "fulfill, enroll, skillful, willful"
+
+  [[registry.entry]]
+  id = "other"
+  antipatterns = [
+    '''(?i)scept[i]c''',
+    '''(?i)man[o]euvr''',
+    '''(?i)(?:(?<![a-z])|(?-i:(?=[A-Z])))(practi[s](e|es|ed|ing)|ty[r]es?|che[q]ues?)(?-i:(?![a-z]))''',
+  ]
+  note = "skeptic, maneuver, practice (verb), tire, check"
+
+# ---------------------------------------------------------------------------
 # FACT: the value vocabulary of `KEY_TYPES` -- the kinds a key IS in
 # `settings/config_keys.py`: `bool`, `int`, `path`.
 # AUTHORITY: `KEY_TYPES` is the code carrier of the registry's `type:` column,
@@ -1709,7 +1829,7 @@ where = { id_matches = '^agent\.shell\.template$' }
 # carrier is `launch.templates.SCOPE_WHITELISTS`, the table `_check_whitelist`
 # reads.
 # ⚑ `where = { present = "root" }` KEEPS THE SCOPE ROWS AND DROPS THE TWO POLICY
-# FIELDS (`default`, `traversal_defences`), which carry no `root`. The guard reads
+# FIELDS (`default`, `traversal_defenses`), which carry no `root`. The guard reads
 # `root`, a cell the parity never compares, so the selector does not grade the
 # row it keeps. A new field WITHOUT `root` is dropped here silently -- which is
 # why `seed-whitelist-fields` below exists, and its `[[shape]]` is the catch.
@@ -1800,7 +1920,7 @@ where = { holds = "kinemata_views:bootstrap_path_row" }
 # one `[[parity]]`. The two blockers the re-inventory recorded, re-measured the
 # same day on a probe config:
 #   a DICT CELL still BLOCKS a `text` value run whole (`BLOCKED: declares
-#     workset.boxes with a 'default' holding dict`, its scalar neighbours in the
+#     workset.boxes with a 'default' holding dict`, its scalar neighbors in the
 #     view uncompared); `format = "json"` compares the map as data.
 #   ABSENT ≡ NULL still holds in `text` (a declared `null` reads as `the
 #     declaration records no default`); `json` meets a declared `null` with a
@@ -5234,7 +5354,7 @@ registry = "keyspace"
 # resolves against.
 # CATCHES: a family whose flags stop matching its shape -- a new bind-shaped family
 # added without `dest_keyed`, or a parametric one that acquires a flag it cannot
-# honour. A flag is one line in a record nobody reads until a launch does.
+# honor. A flag is one line in a record nobody reads until a launch does.
 #
 # 🛑 THE GUARD IS `cli_set`, AND THE OBVIOUS ALTERNATIVE IS WRONG. The
 # `categories:` section also holds TWO NON-FAMILY records -- `scopes` (a list) and
@@ -5294,7 +5414,7 @@ registry = "categories"
 # Measured 2026-09-24, kinemata `0.3.0`: 3 rules, all satisfied, examined 2 / 1
 # / 1. CONTROLS in a scratch copy, each rc=1:
 #   `audit: strict` added:        `audit: a-rootless-field-is-a-classified-policy-field`
-#   `traversal_defences` deleted: `VACUOUS 'traversal-defences-is-still-a-policy-field':
+#   `traversal_defenses` deleted: `VACUOUS 'traversal-defenses-is-still-a-policy-field':
 #                                 examined no entry, so it checked nothing`
 #   `default` given a `root`:     `default: default-is-still-a-policy-field`
 [[shape]]
@@ -5303,7 +5423,7 @@ registry = "seed-whitelist-fields"
   [[shape.rule]]
   name = "a-rootless-field-is-a-classified-policy-field"
   when = { absent = "root" }
-  id_matches = '^(default|traversal_defences)$'
+  id_matches = '^(default|traversal_defenses)$'
 
   [[shape.rule]]
   name = "default-is-still-a-policy-field"
@@ -5311,8 +5431,8 @@ registry = "seed-whitelist-fields"
   absent = "root"
 
   [[shape.rule]]
-  name = "traversal-defences-is-still-a-policy-field"
-  when = { id_matches = '^traversal_defences$' }
+  name = "traversal-defenses-is-still-a-policy-field"
+  when = { id_matches = '^traversal_defenses$' }
   absent = "root"
 
 # ---------------------------------------------------------------------------

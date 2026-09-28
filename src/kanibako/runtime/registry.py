@@ -161,7 +161,7 @@ def _fetch_config_created(
 def _parse_image_ref(image: str) -> tuple[str, str, str]:
     """Split ``registry/owner/name:tag`` into ``(registry, owner/name, tag)``.
 
-    Raises ``ValueError`` if the format is unrecognised.
+    Raises ``ValueError`` if the format is unrecognized.
     """
     # Strip tag
     if ":" in image.rsplit("/", 1)[-1]:

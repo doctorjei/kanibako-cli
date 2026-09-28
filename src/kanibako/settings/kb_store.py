@@ -27,7 +27,7 @@ class BindEntry(NamedTuple):
 
 
 # ⚑ A plain ``dict`` & deliberately NOT a member of :data:`StoreValue`: inside a
-# :class:`KeyStore` it materialises as a nested NODE, so arms merge per-entry.
+# :class:`KeyStore` it materializes as a nested NODE, so arms merge per-entry.
 BindMap = dict[str, BindEntry]
 
 #### The absence marker ####

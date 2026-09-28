@@ -232,7 +232,7 @@ def _run_template_refresh(args: argparse.Namespace) -> TemplateStep:
     changes what FUTURE instantiations get and never rewrites an existing store; the
     ``kept`` list reports the user-owned files whose packaged version moved on while
     their copy stayed. It is also the DELIBERATE trigger of the agent-store
-    materialisation (``ensure_agent_stores``, run inside
+    materialization (``ensure_agent_stores``, run inside
     ``install_packaged_templates``), which is where a newly pip-installed plugin
     finally gets its store — pip installs run no code, so "at plugin install" means
     "at the next trigger". ⚑ Since R-38 nothing FORCES that trigger within a version:

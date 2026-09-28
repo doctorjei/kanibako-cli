@@ -36,7 +36,7 @@ given and includes its body; ``__LINK__`` writes the row and nothing else, which
 is how a load-on-demand chapter is named without being pulled into the artifact.
 Either way the call line becomes one table-of-contents row per entry.
 
-We do NOT honour Claude's documented four-hop depth cap: that bound exists for
+We do NOT honor Claude's documented four-hop depth cap: that bound exists for
 Anthropic's context budget, not ours, and kanibako flattens its own directive
 tree. Imports resolve to FULL depth. Termination and cycle-safety are guaranteed
 independently by import-once collection -- each file is collected exactly once,
@@ -123,7 +123,7 @@ DIRECTIVE_SIZE_WARN_LIMIT = 32 * 1024
 #: Manifest format this flattener emits.  ⚑ The READER (``kanibako.box_supervisor``,
 #: ``DIRECTIVE_MANIFEST_VERSION``) hardcodes the version it understands: the two are
 #: separate processes and cannot share a constant, so a skew is made SAFE rather than
-#: prevented -- an unrecognised version reads as "stale", costing one re-flatten.
+#: prevented -- an unrecognized version reads as "stale", costing one re-flatten.
 MANIFEST_VERSION = 1
 
 # An import is ``@`` followed by a path, only at a word boundary so an address
@@ -295,7 +295,7 @@ def first_real_line(text: str) -> str | None:
 
 
 def gfm_anchor(text: str) -> str:
-    """Derive a heading's fragment id the way a GitHub-flavoured renderer does.
+    """Derive a heading's fragment id the way a GitHub-flavored renderer does.
 
     Measured against GitHub, and reproduced exactly: lowercase, spaces to ``-``,
     then drop every character that is neither a word character nor ``-``.
@@ -309,7 +309,7 @@ def gfm_anchor(text: str) -> str:
         ``11.2 Baz Man`` both derive ``112-baz-man`` (see :func:`Flattener._unique_anchor`).
       * ``&`` yields a DOUBLE hyphen -- ``1.1 Identity & Environment`` ->
         ``11-identity--environment`` -- because the spaces around it become
-        hyphens and the ``&`` itself is dropped. That is GitHub's behaviour; the
+        hyphens and the ``&`` itself is dropped. That is GitHub's behavior; the
         link resolves.
       * Parentheses are dropped: ``1. Charter (Core)`` -> ``1-charter-core``.
     """
@@ -419,7 +419,7 @@ def assign_section_numbers(
     a row whose parent dropped WOULD change depth -- it is deliberately not done,
     because nothing in the design says what number the promoted row should take
     and two survivors would compete for the same one. The formatter is also what
-    normalises a malformed authored number: ``1.1.`` renders as ``1.1``.
+    normalizes a malformed authored number: ``1.1.`` renders as ``1.1``.
     """
     def parse(text: str) -> list[int]:
         return [int(part) for part in text.rstrip(".").split(".")]
@@ -934,7 +934,7 @@ class Flattener:
         what :meth:`resolve` does with a bare ``@path``. ⚑ Without it a relative
         pattern would be read against the process CWD, which in a box is wherever
         the agent happened to be standing. ``None`` keeps the CWD-relative
-        behaviour, for a caller that has already made the target absolute.
+        behavior, for a caller that has already made the target absolute.
 
         *current* is the calling document's own ``__CURRENT__``, bound into the
         expression namespace and used as the default of a bare ``__SECTION__()``
@@ -1242,7 +1242,7 @@ class Flattener:
     def anchor(self, path: Path) -> str:
         """The fragment a BARE ``@path`` mention points at.
 
-        GitHub-flavoured renderers derive a heading's fragment id by lowercasing,
+        GitHub-flavored renderers derive a heading's fragment id by lowercasing,
         and the slug is already restricted to ``[A-Za-z0-9_]``, so lowercasing is
         the whole rule. ⚑ Nothing GENERATES a heading with this id -- the bare
         form creates no heading, by design -- so the fragment does not in fact
@@ -1286,7 +1286,7 @@ class Flattener:
     def _record_misses(self, tried: list[Path]) -> None:
         """Record every candidate of one unresolved import, deduped, in first-seen order."""
         for p in tried:
-            # ``resolve()`` on a non-existent path still normalises it (and follows
+            # ``resolve()`` on a non-existent path still normalizes it (and follows
             # symlinks on the ancestors that DO exist), which is what makes the
             # dedup and the watcher's later probe agree on one spelling.
             resolved = p.resolve()
@@ -1545,7 +1545,7 @@ class Flattener:
         #     never reaches the output, so it cannot own one.
         #     ⚑ AUTHORED ROWS ONLY. A template row's number was MINTED rather
         #     than read off the page, so it neither renumbers against its
-        #     neighbours nor generates a heading -- pooling the two kinds would
+        #     neighbors nor generates a heading -- pooling the two kinds would
         #     let a minted row shift an authored one's number.
         by_container: dict[Path, dict[int, list[int]]] = {}
         for i, row in enumerate(self.rows):

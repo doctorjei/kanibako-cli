@@ -712,7 +712,7 @@ def read_workset_skip_kuid_check(path: Path) -> bool:
 
 
 def _split_config_key(flat_key: str) -> tuple[str, str]:
-    """Split a flat config key into ``(section, key)``; no recognised prefix → an EMPTY section."""
+    """Split a flat config key into ``(section, key)``; no recognized prefix → an EMPTY section."""
     for prefix in ("paths_", "box_"):
         if flat_key.startswith(prefix):
             section = prefix.rstrip("_")
@@ -726,7 +726,7 @@ def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
     section, key = _split_config_key(flat_key)
     data = load_doc(path)
     if not section:
-        # Top-level scalar field (no recognised section prefix).
+        # Top-level scalar field (no recognized section prefix).
         data[key] = value
         dump_doc(path, data)
         return
@@ -746,7 +746,7 @@ def unset_project_config_key(path: Path, flat_key: str) -> bool:
     section, key = _split_config_key(flat_key)
     data = load_doc(path)
     if not section:
-        # Top-level scalar field (no recognised section prefix).
+        # Top-level scalar field (no recognized section prefix).
         if key not in data:
             return False
         del data[key]
@@ -1039,7 +1039,7 @@ def resolve_agent(
     raw_resolved = explicit_agent if explicit_agent is not None else requested
 
     if raw_resolved is not None:
-        # ⚑ Canonicalise + validate the ref shape; the HARNESS is what must be
+        # ⚑ Canonicalize + validate the ref shape; the HARNESS is what must be
         # installed — NOT the composite node-name (a persona segment is free-form).
         # ⚑ It also STRIPS, and it OWNS every way a ref can be illegal — charset,
         # pseudo-agent reservation, empty-after-strip — so a blank is refused by

@@ -17,7 +17,7 @@ There is no allow-list and no exemption: a row the code disagrees with is a FIND
 file does not exercise must PROVE it is parametric (a ``<placeholder>`` spelling the
 registry cannot resolve to one CLI key without inventing the discriminator).
 
-⚑ EFFECT-BASED, like its ``Bench`` neighbour: it runs the REAL ``set_config_value``
+⚑ EFFECT-BASED, like its ``Bench`` neighbor: it runs the REAL ``set_config_value``
 against real files.  A predicate-level pin would only re-state the code's own belief,
 which is the thing that was wrong.
 """

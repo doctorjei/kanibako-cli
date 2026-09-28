@@ -438,7 +438,7 @@ values OVER them, so a file storing exactly the defaults was a fourth carrier th
 against two real stores: the old file (568 bytes) and the new one (0 bytes) resolve to a
 byte-identical 21-key system path map, and to identical flat scalars.
 `tests/test_settings/test_config.py::test_sparse_file_resolves_identically_to_the_old_verbatim_defaults`
-is the standing pin. This generalises the rule spec `:868` already stated for one key,
+is the standing pin. This generalizes the rule spec `:868` already stated for one key,
 `box.enable_vault`.
 
 ⚑ **THE FILE IS STILL CREATED.** `cli._ensure_initialized` uses its EXISTENCE as the "already
@@ -678,7 +678,7 @@ Split a flat config key into `(section, key)`.
 * `"paths_dot_path"` → `("paths", "dot_path")`
 * `"some_scalar"` → `("", "some_scalar")` (top-level scalar field)
 
-A flat key with no recognised section prefix is a TOP-LEVEL scalar field; it returns an empty
+A flat key with no recognized section prefix is a TOP-LEVEL scalar field; it returns an empty
 section rather than raising. The typed writer in `config_interface` is the routed set/get/reset
 path — this helper only serves the few remaining flat-key callers and must never crash on an
 advertised key.
@@ -892,7 +892,7 @@ Validate the effective agent name against the installed set, or REFUSE.
 workset/box files are resolved off the launch snapshot by
 :func:`kanibako.settings.agent_select.select_agent`, which passes the winner here as *requested*.
 What stays here is what is NOT a key: name VALIDATION against the installed set and persona-ref
-canonicalisation. (Was: `explicit_agent > box_agent_name > workset_agent > system default`, with
+canonicalization. (Was: `explicit_agent > box_agent_name > workset_agent > system default`, with
 `box.agent_name` — RETIRED, spec §2b — as the box tier.)
 
 Precedence: *explicit_agent* (the §1A CLI level) > *requested* (whatever the settings cascade
@@ -921,9 +921,9 @@ default set* — never reaches this function at all: `select_agent` raises
 :class:`~kanibako.errors.AgentNoDefaultError` for it, because the two states must print different
 sentences.
 
-### Canonicalisation before validation
+### Canonicalization before validation
 
-Each ref source may be a persona ref (`persona+harness`). The winning tier is canonicalised to its
+Each ref source may be a persona ref (`persona+harness`). The winning tier is canonicalized to its
 node-name (`persona℘harness`; a bare ref stays byte-identical) so callers see a uniform node-name,
 and the same call VALIDATES the ref shape (raises `ConfigError` on a malformed segment).
 

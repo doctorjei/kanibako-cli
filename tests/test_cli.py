@@ -108,7 +108,7 @@ class TestParser:
         """E2h regression lock: --detach/--attach is a store_const tri-state.
         Byte-safe with the pre-change store_true/store_false: unset -> None (the
         attach default), --detach/--background -> True, --attach -> False (still
-        'do not detach').  run_start normalises None/False -> no detach and uses
+        'do not detach').  run_start normalizes None/False -> no detach and uses
         the explicit False only to reject a contradictory --warm-only --attach."""
         parser = build_parser()
         assert parser.parse_args(["start"]).detach is None
@@ -1131,7 +1131,7 @@ def _marker_file(tmp_path):
     ⚑ The setup marker left ``kanibako.cfg`` on 2026-08-26 (Jei; spec §2g has
     always declared it a Layer-2 ``system.*`` SETTINGS key), so a test that PLANTS one
     must plant it where the shipped code looks.  Computed by the SHIPPED resolver
-    rather than spelled out here: a literal would pin a path instead of the behaviour,
+    rather than spelled out here: a literal would pin a path instead of the behavior,
     and would go stale the moment ``config.settings``' default moved.
     """
     from pathlib import Path
@@ -1524,7 +1524,7 @@ class TestTemplateStalenessRetired:
         from kanibako.settings.config_io import load_doc, write_nested_key
         from kanibako.settings.paths import load_std_paths, xdg
 
-        # Materialise the config file the way a first run would, WITHOUT the
+        # Materialize the config file the way a first run would, WITHOUT the
         # rest of init, then plant a user value and let init run for real.
         cf = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
         cf.parent.mkdir(parents=True, exist_ok=True)

@@ -152,7 +152,7 @@ stat/glob error ⇒ `False`, because a fresh start is always safe.
 
 ## The managed `~/.codex/config.toml` — two seams, one key set each
 
-The box's `config.toml` is a RECONCILED PROJECTION (D1): the launch seams re-materialise its
+The box's `config.toml` is a RECONCILED PROJECTION (D1): the launch seams re-materialize its
 model/provider/approval elements only on the start of a STOPPED box.
 
 ### `deliver_panel_permissions` — and only it — owns approval and sandbox

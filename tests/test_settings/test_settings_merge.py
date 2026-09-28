@@ -556,7 +556,7 @@ class TestPrefSubtreeIsNotClassified:
 
 
 def test_bindmap_merges_per_entry_across_levels() -> None:
-    # The BindMap analogue of ``test_masks_three_state_generic_merge``: a box arm
+    # The BindMap analog of ``test_masks_three_state_generic_merge``: a box arm
     # and a workset arm at DIFFERENT dests both survive; the box entry does NOT
     # replace the arm wholesale.
     box = KeyStore({"box": {"bindings": {"rw": {"~/a": BindEntry("/h/a")}}}})

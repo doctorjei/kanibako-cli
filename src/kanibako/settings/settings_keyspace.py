@@ -92,7 +92,7 @@ production supplier (``settings_keyspace_probe``) answers by IMPORTING every
 installed plugin, so ASKING it is I/O even though this module does none.
 :func:`key_class` therefore judges as much as it can from its own declarations
 before it puts a question to the map, and the map arrives as a thing to ASK rather
-than as a materialised set (:class:`AgentVocabulary`, :class:`_EffectiveLeaves`,
+than as a materialized set (:class:`AgentVocabulary`, :class:`_EffectiveLeaves`,
 :func:`_agent_tail_reason`'s ``leaves_known``). It changes no verdict; it decides
 whether every ``box.image`` resolve pays for a plugin import.
 """
@@ -116,7 +116,7 @@ from typing import (
 
 # ⚑ MODULE SCOPE, and it closes no cycle: ``agent_ref`` is pure — stdlib ``re``
 # plus ``kanibako.errors``, no settings import in either direction. The keyspace
-# needs it because NORMALISING a node to its harness is the KEYSPACE's rule, not a
+# needs it because NORMALIZING a node to its harness is the KEYSPACE's rule, not a
 # supplier's: see :func:`agent_declared_leaves`.
 from kanibako.agent_ref import (
     PSEUDO_AGENT_NAMES,
@@ -316,7 +316,7 @@ def access_default() -> str:
     """The tier a launch uses when NO scope in the cascade sets ``access``.
 
     Spec §2d ``:1244`` (``agent.default.access | full``; R-41 CLOSED: option (a),
-    today's behaviour preserved).  The value is DECLARED in ``core-defaults.yaml``
+    today's behavior preserved).  The value is DECLARED in ``core-defaults.yaml``
     beside the other ``agent.default.*`` behavior floors (D1-2) and read from there.
 
     ⚑ A FUNCTION, not the retired ``ACCESS_DEFAULT`` constant, and the reason is
@@ -338,7 +338,7 @@ def access_default() -> str:
         raise RuntimeError(
             f"{CORE_DEFAULTS_FILENAME} declares 'agent_default.access' as {value!r}, "
             f"which is not one of {' | '.join(ACCESS_TIERS)} (spec §2d). Refusing "
-            "rather than defaulting every unset box to an unrecognised tier."
+            "rather than defaulting every unset box to an unrecognized tier."
         )
     return value
 
@@ -469,7 +469,7 @@ def entry_label(declaration: str, entry: str) -> str:
 # category test runs on the TAIL via :func:`_looks_like_category`, so a set of
 # "scopes that may carry a category" has no consumer. It existed briefly and was
 # DELETED rather than kept as an unused declaration — an unwired constant reads
-# as a contract something is supposed to honour.)
+# as a contract something is supposed to honor.)
 
 # ---------------------------------------------------------------------------
 # meta.* — the RO families (spec §0, §2c, §2d)
@@ -756,7 +756,7 @@ class KeyClass(enum.Enum):
     UNDECLARED = "UNDECLARED"
 
 
-class KeyJudgement(NamedTuple):
+class KeyJudgment(NamedTuple):
     """A :class:`KeyClass` and the REASON, which is empty only for ``KEY``.
 
     Every non-key answer carries prose because every consumer must be able to tell
@@ -768,19 +768,19 @@ class KeyJudgement(NamedTuple):
     reason: str
 
 
-#: The one ``KEY`` judgement — there is nothing to say about a key that is a key.
-_KEY: Final[KeyJudgement] = KeyJudgement(KeyClass.KEY, "")
+#: The one ``KEY`` judgment — there is nothing to say about a key that is a key.
+_KEY: Final[KeyJudgment] = KeyJudgment(KeyClass.KEY, "")
 
 
-def _namespace(reason: str) -> KeyJudgement:
-    return KeyJudgement(KeyClass.NAMESPACE, reason)
+def _namespace(reason: str) -> KeyJudgment:
+    return KeyJudgment(KeyClass.NAMESPACE, reason)
 
 
-def _undeclared(reason: str) -> KeyJudgement:
-    return KeyJudgement(KeyClass.UNDECLARED, reason)
+def _undeclared(reason: str) -> KeyJudgment:
+    return KeyJudgment(KeyClass.UNDECLARED, reason)
 
 
-def _leaf(leaf: str) -> KeyJudgement:
+def _leaf(leaf: str) -> KeyJudgment:
     """A declared leaf, subject to the reserved-name floor."""
     reason = leaf_name_reason(leaf)
     return _KEY if reason is None else _undeclared(reason)
@@ -860,7 +860,7 @@ def valid_agent_segments(valid_agents: Collection[str]) -> list[str]:
 
 def _category_reason(
     prefix: str, rest: list[str], *, what: str
-) -> KeyJudgement:
+) -> KeyJudgment:
     """Judge a ``<category>.<name>`` tail under an already-valid *prefix*.
 
     *rest* is the tail AFTER the scope token(s). *what* names the scope for the
@@ -1002,7 +1002,7 @@ def _could_name_an_agent(segment: str) -> bool:
 
     ⚑ THIS IS THE CONCESSION'S TEST, and it is NOT "is this agent installed"
     (:func:`key_class`). A machine cannot enumerate the agents it has never heard
-    of, so an unrecognised NAME has to be conceded — but the tokens below are a
+    of, so an unrecognized NAME has to be conceded — but the tokens below are a
     KNOWN FINITE SET the keyspace declares itself, so there is nothing unknowable
     about them and conceding one would un-arm §0 over a shape that is documented as
     a RELIC (``agent.common.plugins``, ``agent.env.<VAR>``, ``agent.seeded.*`` — the
@@ -1016,7 +1016,7 @@ def _could_name_an_agent(segment: str) -> bool:
 
     ⚑ ``shell`` REACHED THE SAME ANSWER BY ACCIDENT BEFORE IT WAS NAMED HERE, and that
     is why it is named. It fell through to :func:`agent_declared_leaves`'s
-    will-not-canonicalise arm, because ``agent_ref`` happens to REFUSE a reserved name
+    will-not-canonicalize arm, because ``agent_ref`` happens to REFUSE a reserved name
     to the parser — so the keyspace's own rule was being carried by another module's
     refusal. Relax that refusal and ``shell`` would silently become a CONCEDED name,
     with every leaf a user liked legal under ``agent.shell.*``.
@@ -1031,7 +1031,7 @@ def _scope_reason(
     leaves: frozenset[str],
     sub_tables: dict[str, frozenset[str]],
     what: str,
-) -> KeyJudgement:
+) -> KeyJudgment:
     """Judge a NON-agent scope key ``<scope>.<rest…>``."""
     if not rest:
         # The SCOPE TABLE itself. A settings file's ``box:`` heading writes this
@@ -1074,7 +1074,7 @@ def _meta_reason(
     rest: list[str],
     valid_agents: Collection[str],
     leaves: Collection[str] = DECLARED_AGENT_LEAVES,
-) -> KeyJudgement:
+) -> KeyJudgment:
     """Judge a ``meta.<rest…>`` key (spec §0, §2c, §2d).
 
     ⚑ EVERY GROUP HEAD IS A NAMESPACE, and saying so is not a courtesy: spec :42
@@ -1287,7 +1287,7 @@ def unread_harnesses(declared: "AgentLeafMap") -> "Container[str]":
     itself would be a second place for it to be got wrong, and the two states it
     separates look identical from the outside.
     ⚑ IT STAYS LAZY: *declared* may be a map that discovers on its first question, and
-    this asks it no sooner than the judgement does.
+    this asks it no sooner than the judgment does.
     """
     return _UnreadHarnesses(declared)
 
@@ -1350,11 +1350,11 @@ def agent_declared_leaves(
     named agent — the closed keyspace opened by an omission. :class:`ConcedingLeafMap`
     is how a supplier that HAS looked reports what it could not read.
 
-    ⚑ THE NORMALISATION IS THE KEYSPACE'S, NOT A SUPPLIER'S, for the same reason
+    ⚑ THE NORMALIZATION IS THE KEYSPACE'S, NOT A SUPPLIER'S, for the same reason
     :func:`is_valid_agent_segment` gives: a rule every supplier has to re-implement is
     a rule some supplier gets wrong. A persona takes its HARNESS's vocabulary
     (``[R150]``'s *"or harness"*), and the ref arrives RAW — ``config_keys`` hands this
-    pre-canonicalisation keys — so ``harness_of`` alone is not enough: it splits on
+    pre-canonicalization keys — so ``harness_of`` alone is not enough: it splits on
     ``℘`` only, and a raw ``nav+claude`` would miss the map and be silently CONCEDED.
     That was live at the resolve seam: ``agent.nav+claude.zippity`` classified KEY
     while the canonical ``agent.nav℘claude.zippity`` classified UNDECLARED — one key,
@@ -1366,7 +1366,7 @@ def agent_declared_leaves(
     (:class:`PseudoAgentFence`). Neither is withheld from the concession by policy:
     their standing is the KEYSPACE's own, so it is knowable on every machine and
     there is nothing a missing plugin could make unreadable
-    (:func:`_could_name_an_agent`). ⚑ A ref that will not canonicalise joins them, for
+    (:func:`_could_name_an_agent`). ⚑ A ref that will not canonicalize joins them, for
     the same reason pointing the other way — it names no agent, so there is no plugin
     whose absence could excuse it.
     """
@@ -1458,10 +1458,10 @@ def agent_leaf_is_declared(
 
     ⚑ ONE CARRIER FOR THE PER-AGENT RULE. :func:`key_class` judges through
     :class:`AgentVocabulary` because it owes a REASON; ``config_keys``' per-node
-    recogniser needs only the bool, and taking it from here is what keeps the two
+    recognizer needs only the bool, and taking it from here is what keeps the two
     from becoming two keyspaces — which is exactly what they were until 2026-08-30,
-    when the recogniser read a flat cross-agent union the classifier had stopped
-    honouring at the ``agent.default`` tier.
+    when the recognizer read a flat cross-agent union the classifier had stopped
+    honoring at the ``agent.default`` tier.
 
     ⚑ SHAPE IS NOT ASKED HERE: this answers only "is this word in that agent's
     vocabulary". The tail SHAPE rules (one leaf, or a §2a category) are
@@ -1486,7 +1486,7 @@ class _EffectiveLeaves(Collection[str]):
     which is a capability removal no ruling asks for. ⚑ Its being the ONLY remaining
     union is why it is worth a name: a third caller wants an agent, not this.
 
-    ⚑ THE UNION IS THE COST, and materialising it eagerly made every judgement pay it.
+    ⚑ THE UNION IS THE COST, and materializing it eagerly made every judgment pay it.
     ``key_class`` used to build ``frozenset(DECLARED_AGENT_LEAVES) |
     frozenset(agent_leaves)`` before dispatching on the head, so a ``box.image``
     resolve paid for a question only an ``agent.*`` leaf can ask.
@@ -1543,7 +1543,7 @@ def _agent_tail_reason(
     leaves: Collection[str] = DECLARED_AGENT_LEAVES,
     *,
     leaves_known: Callable[[], bool] = _leaves_are_known,
-) -> KeyJudgement:
+) -> KeyJudgment:
     """Judge the tail of an agent-scope key, after the discriminator.
 
     *leaves* is the effective agent-leaf vocabulary: core's universal §2d table plus
@@ -1620,10 +1620,10 @@ def key_validity(
     a goose store on a machine where goose had been uninstalled would not launch. One
     parameter cannot be dropped where there is only one.
     """
-    judgement = key_class(
+    judgment = key_class(
         key, valid_agents=valid_agents, agent_leaf_map=agent_leaf_map,
     )
-    return None if judgement.cls is KeyClass.KEY else judgement.reason
+    return None if judgment.cls is KeyClass.KEY else judgment.reason
 
 
 def key_class(
@@ -1631,7 +1631,7 @@ def key_class(
     *,
     valid_agents: Collection[str],
     agent_leaf_map: "AgentLeafMap | None" = None,
-) -> KeyJudgement:
+) -> KeyJudgment:
     """*key*'s :class:`KeyClass` under §0, with the REASON for a non-key.
 
     *valid_agents* is injected (purity) — the set of agent discriminators that
@@ -1653,7 +1653,7 @@ def key_class(
     a DEPENDENT PAIR: a set is only meaningful for the agents it was read from. Two
     parameters can be forwarded singly, and the ``pref.<target>`` recursion did
     exactly that. One cannot.
-    ⚑ It is ASKED, NEVER MATERIALISED HERE. Its production supplier discovers plugins
+    ⚑ It is ASKED, NEVER MATERIALIZED HERE. Its production supplier discovers plugins
     on the first question put to it, so a ``dict(...)`` around it charges every path
     judged — ``config.*``, ``box.*``, a bare namespace — for a vocabulary only an
     agent LEAF can consult. :class:`AgentVocabulary` carries the measurement.
@@ -1675,7 +1675,7 @@ def key_class(
         )
     head, rest = parts[0], parts[1:]
     # ⚑ LAZY, and the dispatch below is why: only the agent tail asks about leaves,
-    # and materialising the union here charged every ``box.*`` / ``system.*`` /
+    # and materializing the union here charged every ``box.*`` / ``system.*`` /
     # ``meta.*`` path for a plugin import it never uses. See :class:`_EffectiveLeaves`.
     # ⚑ THE FLAT UNION, and its ONE reader is ``meta.box.agent.*`` — the RO mirror,
     # whose agent is a runtime fact absent from the key, so ``[R150]``'s per-agent
@@ -1854,7 +1854,7 @@ def key_class(
 
 #: The tokens a KEYSPACE path may start with: the four scopes (``kb_store``'s own
 #: containment order), the three non-scope namespaces, and the reserved internal
-#: node — included so a ``binding_derivations`` path is recognised as the node the
+#: node — included so a ``binding_derivations`` path is recognized as the node the
 #: SPEC names (:data:`Verdict.RESERVED`) rather than dismissed as an unrooted
 #: fragment whose true path the walker cannot know.
 #: ⚑ Only :func:`classify_store_path` gates on it; see :func:`_classify_whole_store_path`.
@@ -1930,13 +1930,13 @@ FINDING_VERDICTS: Final[frozenset[str]] = frozenset({
 #: constant so a rename cannot leave a stale spelling behind.
 RESERVED_NODE_REASON: Final[str] = (
     f"{BINDING_DERIVATIONS_NODE!r} is the RESERVED INTERNAL NODE the spec names in "
-    f"so many words (§0, ABSTRACT declarations): the materialised binding an abstract "
+    f"so many words (§0, ABSTRACT declarations): the materialized binding an abstract "
     f"declaration derives is machinery output, not a settable surface. Its interior "
     f"is declaration keys and box DESTINATIONS, which are data."
 )
 
 
-class Judgement(NamedTuple):
+class Judgment(NamedTuple):
     """One path's class, the declared key it sits in, & where the DATA starts."""
     verdict: str
     key: str
@@ -1992,7 +1992,7 @@ def dotted_entry_reason(parent: Sequence[str], name: str) -> str:
 
 
 def is_var_table(
-    parent: Sequence[str], *, oracle: Callable[[str], KeyJudgement],
+    parent: Sequence[str], *, oracle: Callable[[str], KeyJudgment],
 ) -> bool:
     """Is the table at *parent* a per-VARIABLE family's root (:data:`VAR_KEYED_CATEGORIES`),
     so that an entry directly under it sits in the ``<VAR>`` slot?
@@ -2013,13 +2013,13 @@ def is_var_table(
 
 
 def classify_store_path(
-    segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgement],
-) -> Judgement:
-    """One path's :class:`Judgement`, ignoring what landed UNDER it.
+    segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgment],
+) -> Judgment:
+    """One path's :class:`Judgment`, ignoring what landed UNDER it.
 
     *oracle* answers :func:`key_class`'s question — KEY, NAMESPACE or UNDECLARED.
     :func:`key_class` is the production answer; it is injected rather than called so
-    this stays pure and so a caller can memoise (the prefix walk asks about every
+    this stays pure and so a caller can memoize (the prefix walk asks about every
     proper prefix, and prefixes repeat heavily across a store).
 
     ⚑ THE ORACLE MUST ANSWER ALL THREE. With a key-or-not oracle this function
@@ -2035,7 +2035,7 @@ def classify_store_path(
     ⚑ FRAGMENT-TOLERANT, for the pytest census — see :func:`_classify_whole_store_path`.
     """
     if segments and segments[0] not in KEYSPACE_ROOTS:
-        return Judgement(
+        return Judgment(
             Verdict.UNROOTED, "", len(segments),
             f"{segments[0]!r} is not a keyspace root: a scope-LOCAL or fragment "
             f"store, whose key path this cannot know",
@@ -2044,8 +2044,8 @@ def classify_store_path(
 
 
 def _classify_whole_store_path(
-    segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgement],
-) -> Judgement:
+    segments: tuple[str, ...], *, oracle: Callable[[str], KeyJudgment],
+) -> Judgment:
     """:func:`classify_store_path` for a path in a WHOLE store — one whose ROOT is
     the keyspace root, as the launch snapshot's is.
 
@@ -2064,9 +2064,9 @@ def _classify_whole_store_path(
     the ``UNROOTED`` answer it has always had, since there is no path to judge.
     """
     if not segments:
-        return Judgement(Verdict.UNROOTED, "", 0, "empty path")
+        return Judgment(Verdict.UNROOTED, "", 0, "empty path")
     if segments[0] == BINDING_DERIVATIONS_NODE:
-        return Judgement(
+        return Judgment(
             Verdict.RESERVED, BINDING_DERIVATIONS_NODE, 1, RESERVED_NODE_REASON,
         )
     for cut in range(1, len(segments) + 1):
@@ -2088,11 +2088,11 @@ def _classify_whole_store_path(
                 oracle(".".join(parent)).cls is KeyClass.NAMESPACE
                 and not is_var_table(parent, oracle=oracle)
             ):
-                return Judgement(
+                return Judgment(
                     Verdict.UNDECLARED, "", len(segments),
                     dotted_entry_reason(parent, segments[cut - 1]),
                 )
-            return Judgement(
+            return Judgment(
                 Verdict.DATA_SEGMENT, ".".join(segments[:cut - 1]), cut - 1,
                 f"segment {segments[cut - 1]!r} contains a dot, so this is not a "
                 f"key path",
@@ -2100,18 +2100,18 @@ def _classify_whole_store_path(
         prefix = ".".join(segments[:cut])
         if oracle(prefix).cls is KeyClass.KEY:
             if cut == len(segments):
-                return Judgement(Verdict.DECLARED, prefix, cut, "")
-            return Judgement(
+                return Judgment(Verdict.DECLARED, prefix, cut, "")
+            return Judgment(
                 Verdict.VALUE, prefix, cut,
                 f"a value address inside the declared key {prefix!r}",
             )
     full = ".".join(segments)
-    judgement = oracle(full)
+    judgment = oracle(full)
     verdict = (
-        Verdict.NAMESPACE if judgement.cls is KeyClass.NAMESPACE
+        Verdict.NAMESPACE if judgment.cls is KeyClass.NAMESPACE
         else Verdict.UNDECLARED
     )
-    return Judgement(verdict, "", len(segments), judgement.reason)
+    return Judgment(verdict, "", len(segments), judgment.reason)
 
 
 def container_notes(
@@ -2196,15 +2196,15 @@ def walk_store_paths(
 def undeclared_store_paths(
     store: Mapping[str, Any],
     *,
-    oracle: Callable[[str], KeyJudgement],
+    oracle: Callable[[str], KeyJudgment],
     prefix: tuple[str, ...] = (),
-) -> list[tuple[tuple[str, ...], Judgement]]:
+) -> list[tuple[tuple[str, ...], Judgment]]:
     """Every path in *store* the CLOSED keyspace does not declare (spec §0).
 
     The whole pipeline in one call: walk, classify each path, then apply the
-    CONTAINER rule over the complete set. Returns ``(segments, judgement)`` pairs
-    sorted by path — the SEGMENTS travel with the judgement because a
-    :class:`Judgement` alone cannot be rendered (an ``UNDECLARED`` one names no key,
+    CONTAINER rule over the complete set. Returns ``(segments, judgment)`` pairs
+    sorted by path — the SEGMENTS travel with the judgment because a
+    :class:`Judgment` alone cannot be rendered (an ``UNDECLARED`` one names no key,
     which is the point of it).
 
     ⚑ *store* MUST BE A WHOLE STORE (:func:`_classify_whole_store_path`); a scope-local
@@ -2220,14 +2220,14 @@ def undeclared_store_paths(
     ``settings_launch._drop_non_mirror_keys`` keeps a non-key out of the
     ``meta.box.agent`` copy it derives.)
     """
-    judged: dict[tuple[str, ...], Judgement] = {}
+    judged: dict[tuple[str, ...], Judgment] = {}
     nodes: dict[tuple[str, ...], StoreNode] = {}
     for segments, is_node in walk_store_paths(store, prefix):
-        judgement = _classify_whole_store_path(segments, oracle=oracle)
-        judged[segments] = judgement
-        nodes[segments] = StoreNode(judgement.verdict, is_node)
+        judgment = _classify_whole_store_path(segments, oracle=oracle)
+        judged[segments] = judgment
+        nodes[segments] = StoreNode(judgment.verdict, is_node)
     rescued = container_notes(nodes)
     return [
-        (segments, judgement) for segments, judgement in sorted(judged.items())
-        if judgement.verdict in FINDING_VERDICTS and segments not in rescued
+        (segments, judgment) for segments, judgment in sorted(judged.items())
+        if judgment.verdict in FINDING_VERDICTS and segments not in rescued
     ]

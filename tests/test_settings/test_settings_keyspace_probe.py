@@ -7,7 +7,7 @@ exercised only transitively — through ``test_settings_keyspace.py`` (the keysp
 RULES) and ``test_settings_launch.py`` (the seam's REFUSAL) — so the module's own
 mechanism had no direct driver.
 
-⚑⚑ THE DIVISION OF LABOUR WITH ITS TWO NEIGHBOURS IS DELIBERATE, and a second
+⚑⚑ THE DIVISION OF LABOR WITH ITS TWO NEIGHBORS IS DELIBERATE, and a second
 carrier of either of theirs would be the defect class this project keeps paying for:
 
 * ``test_settings_keyspace.py`` owns the KEYSPACE RULES — what ``key_class`` says
@@ -146,7 +146,7 @@ def test_a_non_key_verdict_carries_its_reason_and_a_KEY_carries_none():
 #
 # ⚑ THE KEYSPACE RULES BELOW ARE PINNED IN ``test_settings_keyspace.py``, against
 # ``key_class`` and ``declared_keyspace_oracle``. What is pinned HERE is that
-# ``keyspace_verdict`` — the memoised wrapper both live consumers call, and the only
+# ``keyspace_verdict`` — the memoized wrapper both live consumers call, and the only
 # one either of them can reach — still delivers them. A memo is a place a correct
 # oracle can be given a wrong answer.
 
@@ -197,7 +197,7 @@ def test_a_PERSONA_is_known_by_its_HARNESS(claude_only):
   machine — and the persona set is open, which is why nothing enumerates it.
 
   ⚑ THE SUPPLIER NO LONGER ANSWERS THIS; the map it hands over is keyed by plain
-  harness name and ``settings_keyspace.agent_declared_leaves`` normalises. Asserted
+  harness name and ``settings_keyspace.agent_declared_leaves`` normalizes. Asserted
   through the VERDICT, which is the only thing that was ever load-bearing.
   """
   assert probe.keyspace_verdict(
@@ -227,7 +227,7 @@ def test_the_concession_does_NOT_reach_the_relic_shapes(claude_only):
     assert probe.keyspace_verdict(path).cls is KeyClass.UNDECLARED, path
   # ``default`` fails the same first question: the all-agents tier is CORE's, so its
   # vocabulary is knowable on every machine and conceding it would give away the
-  # whole behaviour floor on any install missing any one plugin.
+  # whole behavior floor on any install missing any one plugin.
   assert probe.keyspace_verdict("agent.default.zippity").cls is KeyClass.UNDECLARED
 
 
@@ -254,7 +254,7 @@ def test_the_meta_agent_tier_is_NOT_conceded(claude_only):
 # --------------------------------------------------------------------------- #
 
 
-def test_the_verdict_is_memoised_per_distinct_path(clean_probe, monkeypatch):
+def test_the_verdict_is_memoized_per_distinct_path(clean_probe, monkeypatch):
   """The prefix walk asks about every proper PREFIX of every path, and a launch
   resolves many — so the memo is what keeps the oracle off the hot path."""
   calls = []
@@ -488,7 +488,7 @@ def test_a_HALF_READ_descriptor_list_contributes_NOTHING(clean_probe, monkeypatc
 # and ``box.share_images``, and the discovery pass was attributed to ``box`` — a
 # NAMESPACE, which cannot carry an agent leaf at all. 223ms median -> 17ms.
 #
-# 🛑 THE COST IS INVISIBLE TO EVERY OTHER CASE IN THIS FILE. Re-materialising either
+# 🛑 THE COST IS INVISIBLE TO EVERY OTHER CASE IN THIS FILE. Re-materializing either
 # argument changes no verdict, so nothing else here would red. That is what these
 # cases are for.
 
@@ -537,7 +537,7 @@ def test_a_leaf_only_a_PLUGIN_can_answer_DOES_import_one(path, counting_discover
 
   ``provider`` is a real ``setting_descriptor`` leaf the core §2d table does not
   declare; ``zippity`` is declared by nothing, and refusing it needs BOTH the plugin
-  vocabulary and the concession — one memoised pass answers both.
+  vocabulary and the concession — one memoized pass answers both.
   """
   probe.declared_keyspace_oracle(path)
   assert len(counting_discovery) == 1

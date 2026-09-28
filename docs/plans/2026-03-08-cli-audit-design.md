@@ -17,7 +17,7 @@ Old names (pre-1.0): "account-centric" / "AC" → local. "decentralized" → sta
 
 ## Design Principles
 
-1. **Follow docker/podman patterns** where direct analogues exist
+1. **Follow docker/podman patterns** where direct analogs exist
 2. **1.0 is a clean slate** — rename freely, no backwards compatibility
 3. **Hierarchy**: box → image → workset → agent → system (narrow to wide scope)
 4. **Standard lifecycle commands** shared across all levels: `create`, `list`/`ls`, `info`/`inspect`, `rm`/`delete`, `config`

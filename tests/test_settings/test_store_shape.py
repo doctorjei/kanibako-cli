@@ -98,7 +98,7 @@ class TestTheFold:
   def test_every_category_lands_in_its_own_arm(self):
     box = shapes(self.FLOOR)["box"]
     assert set(box.ro) == {f"{GUEST}/ro"}
-    # ⚑ THE MATERIALISATION: caches and common are ABSTRACT rw mounts and land in
+    # ⚑ THE MATERIALIZATION: caches and common are ABSTRACT rw mounts and land in
     # ``rw`` beside the concrete binding — there is no ``caches`` arm to land in.
     assert set(box.rw) == {f"{GUEST}/rw", f"{GUEST}/cache", f"{GUEST}/common"}
     assert set(box.mask) == {f"{GUEST}/masked"}
@@ -140,7 +140,7 @@ class TestTheFold:
     # ⚑ THE REASON THE PRODUCER MUST NOT RE-DERIVE OPTIONS. ``[src, ""]`` means
     # "no mount options" — an rw mount with no relabel, which is well-formed.
     # ``entry.options or bind_options(category)`` would silently upgrade it to
-    # ``Z,U``; that is a behaviour change, not a no-op.
+    # ``Z,U``; that is a behavior change, not a no-op.
     box = shapes({"box.bindings.rw": {"~/x": ("/h/x", "")}})["box"]
     assert box.rw[DEST] == BindEntry("/h/x", "")
 

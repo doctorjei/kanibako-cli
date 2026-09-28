@@ -931,7 +931,7 @@ class TestBoxInfo:
         assert "No project data found" in out
         # The cure names ``create`` and ONLY ``create``.  Offering "start a
         # session with 'kanibako start'" was false from v1.7.0 on: the
-        # explicit-create gate makes a launch refuse instead of materialising.
+        # explicit-create gate makes a launch refuse instead of materializing.
         assert "kanibako box create" in out
         assert "kanibako start" not in out
 
@@ -2612,14 +2612,14 @@ class TestCheckPersonaStoreForCreate:
         )
         assert not (tmp_home / "data" / "agents").exists()
 
-    def test_store_entry_is_recognised_and_persists_nothing(
+    def test_store_entry_is_recognized_and_persists_nothing(
         self, tmp_home, monkeypatch, capsys,
     ):
         """⚑ NEVER-PERSIST: a conforming store is CONFIRMED, not copied.
 
         The create used to write ``agents/<node>/agent.yaml`` here from the
         store.  It must not any more — the store is resolved live at every
-        launch — but the user must still be told the store was recognised.
+        launch — but the user must still be told the store was recognized.
         """
         self._store(tmp_home)
         err = self._call(tmp_home, "navigator+codex", monkeypatch)
@@ -3049,7 +3049,7 @@ class TestCreatePersistsAgentSelection:
     ):
         """FAILURE-PATH RESIDUE: a create refused by the persona verdict must
         leave NO box (no meta, no ``pref.system.agent`` anywhere).  The verdict
-        runs BEFORE box materialisation and before the agent-selection write —
+        runs BEFORE box materialization and before the agent-selection write —
         pin that ordering.  ⚑ The ``agents/<node>/agent.yaml`` the store
         import used to leave behind was the ONE documented exception to "no
         residue"; the import is gone, so the exception is gone with it and the
@@ -3079,7 +3079,7 @@ class TestCreatePersistsAgentSelection:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        # No box was materialised: nothing resolves, no settings file exists,
+        # No box was materialized: nothing resolves, no settings file exists,
         # so pref.system.agent cannot have been written anywhere.
         assert _resolve_existing_box(std, config, str(tmp_home / "project")) is None
         # …and no persona residue either: the verdict refuses BEFORE the seed's

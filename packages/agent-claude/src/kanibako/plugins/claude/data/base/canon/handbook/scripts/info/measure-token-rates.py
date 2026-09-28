@@ -9,7 +9,7 @@ Key correctness points:
   * g = positive first-difference of C between consecutive requests in a stream.
     Negative diffs = compaction / context drop; reported separately, not averaged in.
   * Sidechain (subagent) turns are excluded from the director stream and
-    analysed separately, split by agentType from the sibling .meta.json.
+    analyzed separately, split by agentType from the sibling .meta.json.
 
 Usage: measure-token-rates.py [transcript-dir]
 """

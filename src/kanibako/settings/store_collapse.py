@@ -562,7 +562,7 @@ def _refuse_bind_under_mask(
 
   ⚑ BOTH PARTICIPANTS BY KEY (keyspec ``:153-165``). The mask's key is the one that
   matters here: it is the OTHER declaration, it may live in a scope the reader is not
-  looking at, and — unlike the binding — it carries no host source to recognise it by.
+  looking at, and — unlike the binding — it carries no host source to recognize it by.
 
   ⚑⚑ AND THE CURE, for exactly that reason. This fires hardest CROSS-SCOPE, where
   "do not declare the mask" is not something the reader can act on: the mask is in a
@@ -817,7 +817,7 @@ class Declaration(NamedTuple):
   """One declaration offered for pairing: ``(key, dest, src, delivery)``.
 
   *dest* is the RESOLVED guest destination and *src* the host source, both as the
-  declaration's own materialised derivation spells them. *src* is ``None`` for a
+  declaration's own materialized derivation spells them. *src* is ``None`` for a
   declaration that asks for no source - a mask. *key* is DISPLAY only - the pairing
   never reads it - so every builder passes the entry's label (``box.caches[~/x]``).
   """
@@ -855,7 +855,7 @@ def pair_declarations(
   re-derived.
 
   ⚑⚑ THE INPUT MAY CONTAIN ARBITRATION LOSERS, and it is meant to: the reserved
-  ``binding_derivations`` node materialises a derivation for WINNERS AND LOSERS
+  ``binding_derivations`` node materializes a derivation for WINNERS AND LOSERS
   ALIKE (``settings_categories.derive_binding_keys``), which is exactly why reading
   THAT node alone reports a mount for a declaration the box receives nothing for.
   A loser is identified HERE, by what occupies its destination.

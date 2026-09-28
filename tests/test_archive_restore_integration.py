@@ -256,7 +256,7 @@ class TestRestoreGitIntegration:
         from kanibako.commands.archive import _archive_one
         from kanibako.commands.restore import _restore_one
         from kanibako.settings.config import load_config
-        from kanibako.errors import UserCancelled
+        from kanibako.errors import UserCanceled
         from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
@@ -286,10 +286,10 @@ class TestRestoreGitIntegration:
                 cwd=real_git_repo, capture_output=True, check=True,
             )
 
-            # Mock confirm_prompt to raise UserCancelled (user says "no")
+            # Mock confirm_prompt to raise UserCanceled (user says "no")
             with patch(
                 "kanibako.commands.restore.confirm_prompt",
-                side_effect=UserCancelled("Aborted."),
+                side_effect=UserCanceled("Aborted."),
             ):
                 rc = _restore_one(
                     std, config,
@@ -307,7 +307,7 @@ class TestRestoreGitIntegration:
         from kanibako.commands.archive import _archive_one
         from kanibako.commands.restore import _restore_one
         from kanibako.settings.config import load_config
-        from kanibako.errors import UserCancelled
+        from kanibako.errors import UserCanceled
         from kanibako.settings.paths import load_std_paths, resolve_project
 
         config = load_config(integration_config)
@@ -351,7 +351,7 @@ class TestRestoreGitIntegration:
 
             with patch(
                 "kanibako.commands.restore.confirm_prompt",
-                side_effect=UserCancelled("Aborted."),
+                side_effect=UserCanceled("Aborted."),
             ):
                 rc = _restore_one(
                     std, config,

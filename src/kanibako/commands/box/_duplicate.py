@@ -391,7 +391,7 @@ def _assert_dup_home_free(std, name: str) -> None:
     DEREGISTERED box (retained by ``rm``) or a hand-left ORPHAN.  With ``--force``
     the copy path ``rmtree``s that home before copying — the very data-loss window
     the create-side guard closes.  REUSE that guard here, BEFORE any home
-    materialises.
+    materializes.
 
     On a conflict, unwind ONLY the just-registered name (``assign_primary_box_name``
     registered it a moment ago) and re-raise :class:`ProjectError` — NEVER touch

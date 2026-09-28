@@ -125,7 +125,7 @@ class TestShareAdd:
             ("rw", "/g2"): ["/host/a"],
         }
 
-    def test_add_relative_is_absolutised_at_write(
+    def test_add_relative_is_absolutized_at_write(
         self, config_file, tmp_home, workset, capsys
     ):
         """T6 — a bare-relative host source is resolved against the working set

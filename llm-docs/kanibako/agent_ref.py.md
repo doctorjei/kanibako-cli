@@ -2,7 +2,7 @@
 
 `--agent` value is a *ref* that names agent as `persona+harness`, e.g., `navigator+claude`. This
 is single, dependency-light, pure parser for the grammar; every ref source (explicit `--agent`,
-box/workset/system settings) is normalised before resolver so other code only sees *node-names*.
+box/workset/system settings) is normalized before resolver so other code only sees *node-names*.
 
 ## Terminology (design SOT ``plans/2026-06-24-agent-variant-DESIGN.md``):
 
@@ -25,13 +25,13 @@ only ``agent.nav`` and silently resolves a different key. ``℘`` exists to make
 INSIDE a key, and nowhere else does it belong: everything a human types or looks at, the store
 directory included, is ``+``.
 
-Both are accepted on input; node-name always canonicalises separator to ``℘``. Only FIRST separator splits
+Both are accepted on input; node-name always canonicalizes separator to ``℘``. Only FIRST separator splits
 (persona segment may not itself contain separator; harness segment is whatever follows  & also
 separator-checked).
 
 ### Backward compatibility (LOAD-BEARING)
 Bare ref with no separator (``claude``) parses to ``(raw, raw)`` — node == harness == bare name —
-so every bare path is byte-for-byte identical to pre-persona behaviour.
+so every bare path is byte-for-byte identical to pre-persona behavior.
 
 ## Permitted Characters (Persona / Harness)
 In addition to ``str.isalnum()``, these characters may appear in persona/harness names:
@@ -147,8 +147,8 @@ lowercase cure (`settings_keyspace._bad_agent_reason`) all read it.
 ```def harness_of(node: str) -> str```
 Return harness (part right of `℘`) of a *node*-name.
 
-Bare node with no separator IS own harness (`"claude" -> "claude"`). Only canonical `℘` recognised;
-callers pass node-names (always canonicalised).  `+` is deliberately NOT split here so literal `+`
+Bare node with no separator IS own harness (`"claude" -> "claude"`). Only canonical `℘` recognized;
+callers pass node-names (always canonicalized).  `+` is deliberately NOT split here so literal `+`
 in already-canonical node (there should be none) is not mistaken for separator; use
 :func:`parse_agent_ref` / :func:`canonicalize_agent_ref` for raw, possibly-``+`` input.
 
@@ -192,7 +192,7 @@ error text, `box` listings, session labels, log lines, **the on-disk store dir**
 (`settings.agent_config.store_dirname`) and **the `KANIBAKO_AGENT` stamp**, which an in-box agent
 is told to read by the shipped ROM directive.
 
-⚑ The stamp is the one that ROUND-TRIPS: emitted `+`, and canonicalised back to `℘` by every reader
+⚑ The stamp is the one that ROUND-TRIPS: emitted `+`, and canonicalized back to `℘` by every reader
 before anything is derived from it (`stop`, `code`, the creds watcher, `start`'s reattach). That is
 also what keeps a box stamped by an older version working — both parsers accept both separators.
 Every one of those readers goes through `parse_agent_address`, because a plain-shell box is stamped

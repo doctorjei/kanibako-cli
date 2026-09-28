@@ -22,7 +22,7 @@ def _templates_current():
     These tests are about Steps 1-3 and the closing summary, not the template
     refresh — and Step 5's outcome now GATES both the completion marker and the
     summary banner, so an unstubbed step would make them assert Step 5's
-    behaviour by accident.  Step 5 itself is covered in tests/test_setup_cmd.py.
+    behavior by accident.  Step 5 itself is covered in tests/test_setup_cmd.py.
     """
     return patch(
         "kanibako.commands.setup_cmd._run_template_refresh",
@@ -333,7 +333,7 @@ class TestSettingsRefusalStopsSetup:
         captured = capsys.readouterr()
         assert "[--] Cannot check (configuration not initialized yet)" in captured.out
         assert "Settings error -- setup cannot continue" not in captured.out
-        # Unchanged behaviour: an unforeseen failure is a REPORT, and the run
+        # Unchanged behavior: an unforeseen failure is a REPORT, and the run
         # still reaches its summary.
         assert rc == 0
         assert "Setup Complete" in captured.out

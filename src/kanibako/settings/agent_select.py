@@ -32,7 +32,7 @@ and fail as *not installed*.
 
 The reference material lives in ``llm-docs/kanibako/settings/agent_select.py.md``:
 the P7 retirement of ``box.agent_name``, the three ways the snapshot and the
-process diverge without the install, P8's generalisation to every key-shadowing
+process diverge without the install, P8's generalization to every key-shadowing
 flag, and why the selection key is excluded from §2h's locator closure.
 """
 

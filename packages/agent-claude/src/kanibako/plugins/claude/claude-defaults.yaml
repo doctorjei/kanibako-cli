@@ -85,7 +85,7 @@ descriptor:
   #   editing    -> --permission-mode acceptEdits  (edits free, boundaries ask)
   #   restricted -> EMIT NOTHING: claude's own default already prompts for
   #                 everything, so the empty row is the correct realization (and
-  #                 it is byte-identical to the pre-R-41 `-S` behaviour, which
+  #                 it is byte-identical to the pre-R-41 `-S` behavior, which
   #                 declared no secure_flag).
   access_realization:
     channel: flag

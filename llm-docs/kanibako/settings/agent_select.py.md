@@ -3,7 +3,7 @@
 `agent_select` is the ONE seam every command uses to answer *"which agent is this box's?"*. It
 resolves the settings side of the question with a narrow pre-pass, applies `--agent` on top, and
 hands the winner to `kanibako.settings.config.resolve_agent`, which owns everything that is NOT a
-key: name validation against the installed set and persona-ref canonicalisation.
+key: name validation against the installed set and persona-ref canonicalization.
 
 🛑 **IF NOTHING NAMES AN AGENT, NOTHING LAUNCHES** (his ruling, 2026-09-19; keyspec §2b). The
 installed-agent COUNT decides nothing — not even one installed plugin is picked for the user — and
@@ -67,9 +67,9 @@ Without the install there are three ways to disagree:
 Suppressing the pref when `--agent` is given (the alternative considered) fixes none of these: it
 only changes WHICH wrong value the snapshot reports. One rule — *the resolved selection is
 installed at the top* — covers all three, is a no-op when the cascade already said it, and is
-exactly the mechanism P8 generalised to every key-shadowing flag.
+exactly the mechanism P8 generalized to every key-shadowing flag.
 
-## P8 (v1.8.0) landed that generalisation
+## P8 (v1.8.0) landed that generalization
 
 The level is now built by `kanibako.settings.settings_cli_level.build_cli_level`, which owns the
 flag→key table and carries this selection alongside the launch's ephemeral flag values, and it is

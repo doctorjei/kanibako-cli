@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.errors import UserCancelled
+from kanibako.errors import UserCanceled
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths
@@ -35,15 +35,15 @@ def cp_if_newer(src: str | os.PathLike, dst: str | os.PathLike) -> bool:
 
 
 def confirm_prompt(message: str) -> None:
-    """Print *message*, read a line, raise UserCancelled unless it is 'yes'."""
+    """Print *message*, read a line, raise UserCanceled unless it is 'yes'."""
     print(message, end="", flush=True)
     try:
         response = input()
     except (EOFError, KeyboardInterrupt):
         print()
-        raise UserCancelled("Aborted.")
+        raise UserCanceled("Aborted.")
     if response.strip() != "yes":
-        raise UserCancelled("Aborted.")
+        raise UserCanceled("Aborted.")
 
 
 def short_hash(full_hash: str, length: int = 8) -> str:

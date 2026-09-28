@@ -1176,7 +1176,7 @@ def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None:
     ⚑ WHY THIS IS HERE AT ALL. Every retired spelling is ALSO an undeclared key, so
     §0's refusal below fires on it first — and the seam that owns the tailored
     selection message sits DOWNSTREAM of the resolve (``agent_select.select_agent``;
-    the behaviour key's own seam, :func:`_refuse_retired_behavior`, runs before the
+    the behavior key's own seam, :func:`_refuse_retired_behavior`, runs before the
     resolve, but only for :func:`build_launch_snapshot` callers). Left alone, a
     ``box.yaml`` carrying ``box: {agent_name: claude}`` got the generic "not a
     settings key" text and the documented cure — ``kanibako box set <box>
@@ -1188,7 +1188,7 @@ def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None:
 
     ⚑ ONE CARRIER. The retirement text and its cures live in ``settings_assemble``
     and are CALLED from here — never copied. Which is also why this runs the
-    BEHAVIOUR refusal too: a system-file ``agent.<sub>.auto_approve`` was preempted
+    BEHAVIOR refusal too: a system-file ``agent.<sub>.auto_approve`` was preempted
     the same way by the same seam, and a fix that repaired one instance of a defect
     class and walked past the other is how the class survives. (Its other sites are
     answered elsewhere and none of them is a silence — the llm-doc has the table.)
@@ -1276,7 +1276,7 @@ def _refuse_undeclared_snapshot(
     ⚑ EVERY offending path, not the first. A user hand-edits the cure, and a
     refusal that names one entry per attempt turns one edit into N launches.
     (``agent_file._refuse_undeclared_state`` names one because it judges a FLAT
-    table of at most a handful of behaviour keys; a resolved snapshot is the whole
+    table of at most a handful of behavior keys; a resolved snapshot is the whole
     cascade.)
 
     ⚑ THE CURE IS A HAND-EDIT AND THE MESSAGE MUST SAY SO. ``box reset <key>``
@@ -1310,8 +1310,8 @@ def _refuse_undeclared_snapshot(
     tiers = _loaded_tiers(files)
     _refuse_retired_spelling(tiers)
     named = "\n".join(
-        f"  - {render_store_path(segments, judgement.key_len)}: {judgement.note}"
-        for segments, judgement in findings
+        f"  - {render_store_path(segments, judgment.key_len)}: {judgment.note}"
+        for segments, judgment in findings
     )
     loaded = [str(path) for _level, path in tiers]
     where = (
@@ -2096,7 +2096,7 @@ def build_launch_snapshot(
             # ⚑ The suppression applies PER ENTRY too. A bind-shaped category is one
             # TERMINAL dest-keyed map (R-5), so category-level suppression alone would
             # coarsen the smallest suppressible unit from an entry to a whole
-            # category — a behaviour change nobody ruled.
+            # category — a behavior change nobody ruled.
             if _is_bind_floor_key(key) and isinstance(val, dict):
                 floor[key] = {d: v for d, v in val.items() if v != ""}
                 continue
@@ -2694,7 +2694,7 @@ def _drop_non_mirror_keys(effective: KeyStore) -> None:
         effective, oracle=keyspace_verdict, prefix=_MIRROR_SEGMENTS,
     )
     # Sorted by path: a refused node goes before its children, which then are gone.
-    for segments, _judgement in findings:
+    for segments, _judgment in findings:
         node: object = effective
         for seg in segments[len(_MIRROR_SEGMENTS):-1]:
             node = dict.get(node, seg, None) if isinstance(node, KeyStore) else None
@@ -3522,7 +3522,7 @@ def _emit_bind_map(
 
     ⚑ ``name`` is the DESTINATION for every category now: there is no entry name in the
     keyspace, so the collision messages and the ``binding_derivations.*``
-    materialisation identify an entry by where it lands (R-10).
+    materialization identify an entry by where it lands (R-10).
     """
     for dest in dict.keys(map_node):
         entry = dict.__getitem__(map_node, dest)

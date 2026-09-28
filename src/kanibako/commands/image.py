@@ -370,7 +370,7 @@ def run_list(args: argparse.Namespace) -> int:
         return 0
 
     # A runtime is required to derive live status; without one, every status is
-    # reported as "unknown" but the (registry/template) catalogue still lists.
+    # reported as "unknown" but the (registry/template) catalog still lists.
     try:
         runtime = ContainerRuntime()
     except ContainerError:
@@ -615,7 +615,7 @@ def run_rm(args: argparse.Namespace) -> int:
             print(f"Rig '{image}' may be recoverable via 'kanibako rig prep --force'.")
 
         if not _confirm(f"Remove image '{image}'?"):
-            print("Cancelled.")
+            print("Canceled.")
             return 0
 
     try:

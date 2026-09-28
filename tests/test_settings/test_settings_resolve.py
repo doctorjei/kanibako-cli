@@ -380,7 +380,7 @@ def test_expand_braced_and_bare_agree_where_both_expressible() -> None:
 
 def test_expand_braced_ref_alone_equals_bare_alone() -> None:
     # Nothing following the brace → identical to the bare form (the whole-value
-    # position; its 3-state behaviour is covered in test_settings_expand.py).
+    # position; its 3-state behavior is covered in test_settings_expand.py).
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         assert ref == "a.b.c"
         return "/root"

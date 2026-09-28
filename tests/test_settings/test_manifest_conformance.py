@@ -165,10 +165,10 @@ def _per_mode(value: object) -> dict[str, object]:
 # --------------------------------------------------------------------------- #
 
 class TestManifestLoader:
-    """``keyspace_manifest`` reads the ARTEFACT, caches the parse, and copies out."""
+    """``keyspace_manifest`` reads the ARTIFACT, caches the parse, and copies out."""
 
     def test_it_reads_the_installed_package_data_not_the_checkout(self):
-        """The artefact property, stated once here instead of in four test docstrings.
+        """The artifact property, stated once here instead of in four test docstrings.
 
         Four ad-hoc ``importlib.resources`` reads (three in
         ``test_settings_keyspace.py``, one in ``test_config_dest_parity.py``) each
@@ -776,7 +776,7 @@ class TestBindDefaults:
 #:   ``<None>`` included (supplied as a present ``None`` since 2026-09-24).
 #: * ``workset.workspaces`` (2026-08-29) — THE LAST ONE, and the reason died the same way:
 #:   the launch now writes the RESOLVED dir out (``workset_anchor_floor``'s ``workspaces``
-#:   arm), so there is an artefact to compare to, and the row had dangled at every
+#:   arm), so there is an artifact to compare to, and the row had dangled at every
 #:   terminus while its dependent ``meta.box.workspace`` demanded it.  Compared by
 #:   the ``workset-workspaces`` kinemata view, all three arms.
 #:
@@ -1764,7 +1764,7 @@ class TestDefaultsCoverage:
         new class with its own reason.
         ⚑ 51/14 → 52/14 (2026-09-08): ``agent.default.label`` joined the BEHAVIOR floor.
         It arrived PINNED, not exempt — the spec declares a literal value and
-        ``core-defaults.yaml``'s ``agent_default:`` carries it, so there is an artefact to
+        ``core-defaults.yaml``'s ``agent_default:`` carries it, so there is an artifact to
         compare against and no reason to decline one.
         ⚑ 52/14 → 53/14 (2026-09-14): ``system.state`` was declared in the code, closing a
         spec-conformance gap (the keyspec §2g has carried the row since R-43). It arrives

@@ -77,7 +77,7 @@ def _report_settings_error(
     """Print *label* as a FAILED check and hand *err* to *errors* for the body.
 
     Every settings load in this module used to sit inside a bare ``except
-    Exception`` whose only report was ``cannot check`` (some spelt ``cannot
+    Exception`` whose only report was ``cannot check`` (some spelled ``cannot
     check (not configured)``).  That text is a lie for every error the settings
     engine raises deliberately, and there are TWO such triggers -- do NOT
     collapse them:

@@ -66,7 +66,7 @@ such as goose or codex.
 ## The access tiers — `resolve_access_tier` and `effective_access`
 
 `resolve_access_tier` validates a CASCADE-resolved `access` value into a permission TIER. `None`
-(unset) yields `access_default()` — `full`, R-41's ruled default: today's behaviour preserved,
+(unset) yields `access_default()` — `full`, R-41's ruled default: today's behavior preserved,
 because the box is the containment boundary. That default is DECLARED in `core-defaults.yaml` and
 is not spelled in this module. Anything else must be a member of `ACCESS_TIERS` EXACTLY.
 
@@ -103,7 +103,7 @@ no `access_realization` at all (an agent with no permission surface).
 
 It RAISES when the descriptor HAS an `access_realization` but cannot render the requested tier.
 That is the un-rendered-tier rule: the launch stops and names the tiers this agent CAN render,
-rather than substituting a neighbouring one. Never silently permissive, never silently stricter.
+rather than substituting a neighboring one. Never silently permissive, never silently stricter.
 The worked case is goose's missing `editing` tier: substituting `auto` would over-permit, while
 substituting `approve` would deliver prompt-on-every-edit while reporting success — both are lies
 about what the user asked for.

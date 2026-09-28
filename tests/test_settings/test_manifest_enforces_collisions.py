@@ -153,7 +153,7 @@ _OK = "ok"
 #:
 #: ⚑⚑ ``not_applicable`` MAPS TO ``ok``, AND THAT IS THE HONEST ANSWER.  The spec writes
 #: *n/a* in the two ``copy (file)`` CHILD cells because nothing can sit inside a FILE —
-#: the arrangement is expressible as declarations and unrealisable as a filesystem.  The
+#: the arrangement is expressible as declarations and unrealizable as a filesystem.  The
 #: code has no branch for it, so what it DOES is exactly what it does for ``ok``:
 #: accept, and leave the occupant alone.  Claiming a second measurable outcome here
 #: would be inventing evidence.  What makes the token more than decoration is
@@ -509,7 +509,7 @@ class TestEveryCellIsWhatTheCodeDoes:
     The manifest cell is the EXPECTED value and the code is on trial.  🛑 If one of
     these ever reds, the fix is NOT to edit the cell to match the code and NOT to edit
     the code to match the cell: a divergence between the shipped registry and the
-    shipped behaviour at a spec-stated cell is an approved-breakage question, and the
+    shipped behavior at a spec-stated cell is an approved-breakage question, and the
     finding names the cell, the outcome declared and the outcome measured.
     """
 

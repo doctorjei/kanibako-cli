@@ -187,7 +187,7 @@ class TestSetPersona:
         assert not _node_file(agents_root).exists()
 
     def test_default_only_persona_file_stays_sparse(self, tmp_path, agents_root):
-        # Setting ONLY endpoint must not materialise name/run_args/env/secret_path/
+        # Setting ONLY endpoint must not materialize name/run_args/env/secret_path/
         # tweakcc — the sparse-store rule. The file has EXACTLY the one key.
         set_config_value(
             "agent.navigator+claude.endpoint", _URL,

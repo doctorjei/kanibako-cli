@@ -297,7 +297,7 @@ class TestWorksetFixedPaths:
 
 class TestNamedWorksetEnableVaultDownwardDefault:
     """``workset create --no-vault`` writes ``box.enable_vault`` at the WORKSET
-    tier; the NAMED resolver must honour it as an overridable default.
+    tier; the NAMED resolver must honor it as an overridable default.
     """
 
     @staticmethod
@@ -348,7 +348,7 @@ class TestNamedWorksetEnableVaultDownwardDefault:
                                                        credentials_dir):
         """Spec ``:868``: sparse — absent from the box file unless THE USER sets it there.
 
-        The inherited workset default must resolve, but must NOT be materialised into
+        The inherited workset default must resolve, but must NOT be materialized into
         the box tier, or a later workset edit could never reach the box.
         """
         from kanibako.settings.config_io import load_doc

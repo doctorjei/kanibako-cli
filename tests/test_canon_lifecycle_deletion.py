@@ -105,7 +105,7 @@ class TestVerbsRouteThroughIt:
     """⚑ THE ROUTING CONTRACT — the part that actually regressed.
 
     Each verb below owned a bare ``shutil.rmtree`` of a BOX tree. These assert the
-    call reaches ``remove_box_tree``; the primitive's own behaviour is covered above,
+    call reaches ``remove_box_tree``; the primitive's own behavior is covered above,
     so a verb that quietly reverts to ``shutil.rmtree`` fails here by name.
     """
 
@@ -227,7 +227,7 @@ class TestVerbsRouteThroughIt:
         ⚑ ``workset`` is in the list because it is the module that ACTUALLY had the
         bug — ``remove_project``/``delete_workset`` both bare-rmtree'd member box
         trees — and it was the one module the first version of this sweep did not
-        cover. A guard that omits the site it was written for is theatre.
+        cover. A guard that omits the site it was written for is theater.
         """
         import inspect
 

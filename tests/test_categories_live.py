@@ -621,7 +621,7 @@ class TestP1BoxRootAnchor:
         Standalone is the interesting one — its ``meta.box.path`` is a BARE
         whole-value ref, so the resolver inherits ``@workset.boxes`` verbatim rather
         than joining an empty leaf onto it — but the property is asserted for ALL
-        THREE modes, because primary/named can produce the same artefact by a
+        THREE modes, because primary/named can produce the same artifact by a
         different route: an empty ``meta.box.name`` makes
         ``@workset.boxes/@meta.box.name`` resolve to ``<…>/boxes/``, which is the
         SHARED box store rather than this box (guarded in
@@ -1445,7 +1445,7 @@ class TestTheEffectiveBlockShowsThePidZeroFoundation:
         _install_assembly_collapse(snap, entries, whole_box=True)
         return snap, ctx
 
-    def test_the_foundation_is_rendered_and_labelled_as_one(self):
+    def test_the_foundation_is_rendered_and_labeled_as_one(self):
         """MUTATION ANCHOR: drop the foundation line and this fails — the box home is
         then absent from the whole block, exactly as it silently was mid-6-H."""
         import io
@@ -1653,7 +1653,7 @@ class TestForgedDerivationsTableNeverEntersTheMerge:
         bind = raw[self._DECL_KEY]
         assert isinstance(bind, Bind)
         # The colliding key is the SEAM's Bind, not the forged pair: the REAL
-        # host source, and the RESOLVED guest dest the seam materialises (the
+        # host source, and the RESOLVED guest dest the seam materializes (the
         # forged pair was ``/forged/src`` -> ``~/forged``).
         assert bind.host == "/store/plugins"
         assert bind.box == "/home/agent/claude-plugins"
@@ -1689,7 +1689,7 @@ def _assembled_pair(categories: dict):
     ``meta.assembly.bindings`` (the arbitrated result the box receives).
 
     ``meta.box.home`` is written directly because it is a DERIVED key the floor
-    below does not materialise; the assembly seam refuses without it.
+    below does not materialize; the assembly seam refuses without it.
 
     Returns ``(snapshot, declared_by)``.  ⚑ THE SECOND HALF IS THE SEAM'S OWN RETURN
     VALUE, not a leaf and not a second fold: at launch it rides out on
@@ -1744,7 +1744,7 @@ class TestTheNaiveReadIsWrong:
 
     The node is populated BEFORE arbitration and that is DELIBERATE (§0 / R-8: a
     derived binding is a property of the DECLARATION, and ``derive_binding_keys``
-    materialises one for WINNERS AND LOSERS ALIKE, because a loser's derivation is
+    materializes one for WINNERS AND LOSERS ALIKE, because a loser's derivation is
     what explains the warning that names it).
 
     So the node says "this declaration derives a mount at this dest" for a

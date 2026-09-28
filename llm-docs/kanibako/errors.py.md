@@ -9,7 +9,7 @@ The one thing the hierarchy actually *does* is decide how a failure LEAVES the p
 `cli.py`'s top-level dispatch (`cli.py:523-534`) has exactly three arms:
 
 ```python
-except UserCancelled:      print("Aborted.");            rc = 2
+except UserCanceled:      print("Aborted.");            rc = 2
 except KanibakoError as e: print(f"Error: {e}", stderr); rc = 1
 except KeyboardInterrupt:  print();                      rc = 130
 ```
@@ -95,7 +95,7 @@ the same `kind` / `box_dest` / `entries`. The user-visible payoff: a message nam
   order the rendered message names them in**, at both raise sites: `raise_binding_vs_binding` builds
   it from the same `concrete` list it feeds to `_entry_lines`, and `raise_extension_onto_occupied`
   builds it as `(extension, base)` while its message names the extension first. A reordering at
-  either raise site silently desynchronises the structured view from the prose.
+  either raise site silently desynchronizes the structured view from the prose.
 * `kind` discriminates which refusal fired. The set is CLOSED at two values, and both live in
   `settings/settings_categories.py`:
 
@@ -125,7 +125,7 @@ exists exactly once each: `settings_categories.raise_binding_vs_binding` and
 `raise_extension_onto_occupied`, three callers apiece.
 
 ⚑⚑ **KNOWN DELTA — the `§0 row-1` / `§0 row-3` numbering does not resolve.** The old docstring said
-*kind* "discriminates the §0 table row that fired" and labelled the two kinds Row 1 and Row 3. The
+*kind* "discriminates the §0 table row that fired" and labeled the two kinds Row 1 and Row 3. The
 live spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 has no such numbering: its collision
 table (L113-118) is keyed by the ARRIVING entry (bind / mask / copy-file / copy-dir), and its
 numbered refusal list (L138-148) reads 1 = an existing MASK parent refuses every arrival, 2 =
@@ -150,7 +150,7 @@ credentials and code. Spec §2a's note on this names those three as *"USER DATA 
 **Where it is raised — TWO surfaces, not one.**
 
 `launch/templates.copy_tree` (`templates.py:358`) is "the ONE copier" by its own docstring: every
-template stage, box seed and host-store fill routes through it, so the defences cannot be present on
+template stage, box seed and host-store fill routes through it, so the defenses cannot be present on
 one path and missing on another. It enforces four points, and they are exactly what spec §2a demands
 of the copier — *"WHITELISTS, per scope. Anything not listed is DENIED by default"* (L904) and *"The
 copier MUST reject `..` components and MUST NOT follow symlinks out of the destination subtree"*
@@ -171,7 +171,7 @@ copier MUST reject `..` components and MUST NOT follow symlinks out of the desti
 docstring said the error came from "the one shared copier" and that was FALSE. The second raise is
 deliberate and the staging code says why: a symlink in a staged layer would already have been
 resolved into the staging dir as a PLAIN FILE by the time the shared copier looked at it, so the
-copier's own symlink defence could never fire. Staging has to refuse it where the link is still a
+copier's own symlink defense could never fire. Staging has to refuse it where the link is still a
 link.
 
 `commands/workset_cmd.py:359` is the only in-tree catcher.
@@ -229,8 +229,8 @@ A per-workset `registry.yaml` still carries a RETIRED `workset:` identity table 
 `project/workset_registry.py:_refuse_retired_registry_sections`, reached from `_load_raw` — the
 module's ONE read seam, so every read of that file passes it. Cure: MIGRATION.md §2.43.
 
-```class UserCancelled(KanibakoError):```
-User cancelled an interactive prompt.
+```class UserCanceled(KanibakoError):```
+User canceled an interactive prompt.
 
 ⚑ It is the ONE member with its own `cli.py` arm: `Aborted.` on stdout and **exit 2**, not the
 generic `Error: …` / exit 1. `utils.confirm_prompt` raises it both when the answer is not literally

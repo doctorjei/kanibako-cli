@@ -136,7 +136,7 @@ _COMMAND_PATH_DEST = "_command_path"
 # ``box``, and it supplies a value only when the user actually typed one.
 #
 # ⚑⚑ *advertise* separates PARSING from ADVERTISING.  The flag is added to every
-# leaf either way, so it always parses and relevance stays a post-parse judgement
+# leaf either way, so it always parses and relevance stays a post-parse judgment
 # with an enumerating message; ``advertise=False`` only withholds the help text,
 # so a command that would REFUSE the flag does not offer it first.
 
@@ -250,8 +250,8 @@ def _option_take(
     if head != token and head in option_nargs:
         return 0  # ``--opt=value`` carries its own value
     # An unambiguous long-option ABBREVIATION (argparse's own allow_abbrev
-    # behaviour).  ⚑ Without this, ``--nul`` would parse before the positionals
-    # and not after them — one flag with two behaviours.
+    # behavior).  ⚑ Without this, ``--nul`` would parse before the positionals
+    # and not after them — one flag with two behaviors.
     prefix = parser.prefix_chars
     if (
         getattr(parser, "allow_abbrev", True)
@@ -294,7 +294,7 @@ def hoist_optionals(
     ``>=3.11`` and CI pins 3.11, where a ZERO-WIDTH trailing positional is
     matched into the FIRST group and dropped — 3.13 masked that defect locally
     while CI reddened.  The two failing shapes, the measured
-    ``_match_arguments_partial`` behaviour and the inertness rules are in the
+    ``_match_arguments_partial`` behavior and the inertness rules are in the
     llm-doc.
     """
     positionals = [a for a in parser._actions if not a.option_strings]

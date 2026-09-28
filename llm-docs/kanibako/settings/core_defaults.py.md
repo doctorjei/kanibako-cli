@@ -55,7 +55,7 @@ Two reading traps in that pair:
 ⚑ **`env_default_categories` FAILS CLOSED on the key it builds** (`_check_env_key`, MBR-2/D1-4): the
 emitted `<scope>.env.<VAR>` is matched against `settings_categories.ENV_KEY_RE`, so a typo'd scope
 head or a VAR that is not an env-name RAISES instead of entering `default_categories` as a key
-nothing downstream recognises. The regex is IMPORTED rather than re-spelled — it is the keyspace's
+nothing downstream recognizes. The regex is IMPORTED rather than re-spelled — it is the keyspace's
 own declaration of the family — through a function-local import, the `add_bind` pattern that keeps
 this module's MODULE scope free of the settings stack.
 
@@ -431,7 +431,7 @@ nested-bind model that needed it (a wheel cannot ship an empty directory, and a 
 live inside a bind SOURCE).
 
 ```CHARTER_AGENT_CHAPTER = "agent"```
-The charter's PLUGIN chapter. Guest-only: it is a mountpoint the box-create skeleton materialises in
+The charter's PLUGIN chapter. Guest-only: it is a mountpoint the box-create skeleton materializes in
 the box home, never a packaged directory.
 
 ```PLUGIN_CHAPTER_MARKER_REL = "ROM_AGENT.md"```
@@ -524,7 +524,7 @@ order, so a repointable index would mean no guaranteed structure.
 
 ⚑⚑ **SIBLINGS, NOT A WHOLE-DIR BOOK** (J-7, 2026-07-31 — REPLACES R1's single `canon_bible`
 directory bind, which shipped only in the unreleased `93b9a9d`). Every entry is its own bind onto a
-mountpoint that ALREADY EXISTS in the box home, materialised by :func:`materialize_canon_skeleton` at
+mountpoint that ALREADY EXISTS in the box home, materialized by :func:`materialize_canon_skeleton` at
 box create. Nothing nests inside anything, so no mountpoint ever has to live inside a bind SOURCE —
 which is what killed the whole-dir model: the plugin chapter's mountpoint would have had to exist
 inside site-packages (where a wheel cannot ship an empty directory and no runtime may write), and
@@ -718,7 +718,7 @@ installed anywhere.
 ⚑⚑ **THE ENTRY FILE SITS DIRECTLY IN THE CHAPTER DIRECTORY**, with no `directives/` level:
 `SYS_CONTENTS.md` imports `<chapter>/<entry>`, and the packaged per-scope chapters ship that same
 flat shape. A `directives/` level would put the 0-byte file where nothing imports it — and that is a
-SILENT failure, not a cosmetic one: the fallback still materialises, so the skeleton looks right,
+SILENT failure, not a cosmetic one: the fallback still materializes, so the skeleton looks right,
 while the unresolved-import warning returns on every launch of every box lacking that chapter. The
 flat spelling is the whole mechanism working.
 
@@ -793,7 +793,7 @@ The J-7 assembly model in one function. Callers today:
 `canon/notebook` + `canon/workbook`, which live UNDER `canon/`; if the 555 landed first those copies
 would fail with EACCES.
 
-⚑ **IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED.** Re-running over an already-materialised skeleton
+⚑ **IDEMPOTENT, BUT NOT EXTENSIBLE ONCE PROTECTED.** Re-running over an already-materialized skeleton
 is a no-op (every `mkdir`/`touch` is create-if-absent) and the ownership pass is a plain re-assert,
 so calling this after a box-home COPY restores what the copy could not carry. It does NOT, however,
 let a FUTURE release add a new mountpoint to :func:`canon_skeleton_rels` and have existing boxes pick

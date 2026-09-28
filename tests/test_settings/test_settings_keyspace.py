@@ -266,7 +266,7 @@ class TestTerminalCategoryKeyMatchesOnPosition:
     does"* — a category token is a category only where the SCOPE ends.
 
     ⚑ These tests came from ``test_commands/test_start.py`` (QC), where the predicate
-    was a private copy. They moved WITH it; what stayed there is the FOLD behaviour
+    was a private copy. They moved WITH it; what stayed there is the FOLD behavior
     that copy was bought for.
     """
 
@@ -662,7 +662,7 @@ def _manifest_leaves(prefix: str) -> set[str]:
     ⚑ The manifest is read through :func:`kanibako.settings.keyspace_manifest
     .manifest_doc`, which resolves the INSTALLED package data rather than a
     repo-relative path — that is what makes a guard here a statement about the
-    ARTEFACT rather than about this checkout.  Four ad-hoc ``importlib.resources``
+    ARTIFACT rather than about this checkout.  Four ad-hoc ``importlib.resources``
     reads (three here, one in ``test_config_dest_parity``) each restated that
     property in their own docstring; the loader now carries it once.
 
@@ -747,7 +747,7 @@ def test_a_flat_meta_declaration_matches_the_manifest(group, declared):
     ratified registry the spec projects onto. A leaf added to one and not the other
     is the exact drift these families had no guard against.
 
-    ⚑ Parametrising over the PAIR is what makes the 2026-08-09 move safe:
+    ⚑ Parametrizing over the PAIR is what makes the 2026-08-09 move safe:
     ``meta.assembly`` arrived as a new family, and a drift guard that covered only
     ``meta.runtime`` would have said nothing about it. The ``meta.box`` sibling
     keeps its own case below because it carries an extra claim about its
@@ -827,7 +827,7 @@ def test_a_retired_assembly_spelling_is_gone_from_the_manifest_too(leaf):
 def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
     """UNIFORMITY, stated as sibling-equality rather than against a literal.
 
-    The honest read behaviour is that NO ``meta.*`` key has a file-scope read surface:
+    The honest read behavior is that NO ``meta.*`` key has a file-scope read surface:
     a ``meta.*`` value is DERIVED per box at launch and stored in no settings file, so
     ``system get meta.runtime.ws_root`` — a key that IS produced — is refused with the
     same message an unproduced one gets. Having no producer therefore costs these four
@@ -1114,7 +1114,7 @@ class TestOneSetTwoPositions:
     the very thing the sentence said had nothing to guard.
 
     ⚑⚑ THE GAP IS A NARROWER SUBSET, NOT A DISAGREEMENT, and that DIRECTION is what
-    these pin.  Widening the keyspace check to every segment would be a behaviour
+    these pin.  Widening the keyspace check to every segment would be a behavior
     change — it would refuse keys that are legal today — and inverting the direction
     silently would mean the keyspace refusing something the store accepts, which is
     the failure this area has already paid for once.
@@ -1147,7 +1147,7 @@ class TestOneSetTwoPositions:
         MUTATION-PROVED: make ``is_valid_agent_segment`` refuse a reserved name — the
         smallest edit that "aligns the positions" for the witness path — and the second
         block reds with *"the positional gap closed"* (the LEAF_ONLY case beside it reds
-        too).  That is the behaviour change the comment now says must not be made
+        too).  That is the behavior change the comment now says must not be made
         silently: it refuses ``agent.items.model``, a key that is legal today.
         """
         from kanibako.settings.keystore import KeyStore, ReservedKeyError
@@ -1247,8 +1247,8 @@ def _paths(store: dict, prefix: tuple[str, ...] = ()) -> set[str]:
         return key_class(path, valid_agents=AGENTS)
 
     return {
-        render_store_path(segments, judgement.key_len)
-        for segments, judgement in undeclared_store_paths(
+        render_store_path(segments, judgment.key_len)
+        for segments, judgment in undeclared_store_paths(
             store, oracle=oracle, prefix=prefix,
         )
     }
@@ -1798,14 +1798,14 @@ def test_conceding_a_vocabulary_concedes_nothing_else():
 #
 # ⚑ A COST RULE WITH A CORRECTNESS BILL ATTACHED. Both injected sets are answered in
 # production by ``settings_keyspace_probe``, which IMPORTS every installed plugin —
-# and ``key_class`` used to materialise ``frozenset(DECLARED_AGENT_LEAVES) |
+# and ``key_class`` used to materialize ``frozenset(DECLARED_AGENT_LEAVES) |
 # frozenset(agent_leaves)`` before it looked at the head, so the FIRST path of every
 # settings resolve paid for it whatever its shape. MEASURED at ~96% of a cold
 # ``load_merged_config`` on this box (223ms median -> 17ms), with the pass attributed
 # to ``box`` — a NAMESPACE, which cannot have an agent leaf at all.
 #
 # 🛑 THE ORDER IS FREE TO CHANGE BECAUSE BOTH OPERANDS ARE PURE. What is NOT free is
-# re-materialising either one: a ``frozenset(...)`` around ``agent_leaves``, or a
+# re-materializing either one: a ``frozenset(...)`` around ``agent_leaves``, or a
 # ``bool(...)`` around the ``leaves_known`` thunk, restores the whole cost silently —
 # nothing about the CLASSIFICATION would move, so no other test in this file reds.
 
@@ -1814,7 +1814,7 @@ class _NeverAsk(Mapping):
     """An injected leaf MAP that REDS if it is consulted at all.
 
     ⚑ IT ANSWERS NOTHING, deliberately. A stub returning ``False`` would let a
-    re-materialised union pass this file while paying the cost it exists to forbid;
+    re-materialized union pass this file while paying the cost it exists to forbid;
     only raising makes the ASKING itself visible.
     ⚑ A ``Mapping`` since 2026-08-30, and the collapse is visible in the rows below:
     the vocabulary and the concession used to be two injected sets asked at two
@@ -1874,7 +1874,7 @@ def test_the_plugin_set_IS_asked_for_a_leaf_only_a_plugin_can_declare():
 
 
 def test_the_REFUSAL_message_still_names_the_whole_vocabulary():
-    """🛑 NOT AN OPTIMISATION TARGET. The render forces the map, and it is owed:
+    """🛑 NOT AN OPTIMIZATION TARGET. The render forces the map, and it is owed:
     this branch is already refusing, and §2h wants the error to say WHAT is declared.
     A refusal listing only the core table would be a lie on an agent with a plugin.
 
@@ -2007,7 +2007,7 @@ def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
     ⚑⚑ THE RULE MOVED FROM THE SUPPLIER TO THE KEYSPACE, and the pin moved with it.
     The supplier used to answer ``harness_of(node)`` itself; the map it now hands over
     is keyed by plain harness name, and ``settings_keyspace.agent_declared_leaves``
-    does the normalising — which is what keeps the rule from having to be re-derived
+    does the normalizing — which is what keeps the rule from having to be re-derived
     by every future supplier. It is asserted through the oracle rather than against a
     set, because the verdict is the only thing that was ever load-bearing.
     """
@@ -2030,7 +2030,7 @@ def test_the_resolve_oracle_answers_known_by_HARNESS(monkeypatch):
     # 🛑 THE RAW SPELLING, AND IT WAS A LIVE HOLE: ``harness_of`` splits on ``℘``
     # alone, so ``nav+claude`` used to miss the lookup entirely and be CONCEDED while
     # its own canonical form was refused — one key, two answers by spelling. The
-    # keyspace canonicalises before it looks, so both agree.
+    # keyspace canonicalizes before it looks, so both agree.
     assert verdict("agent.navigator+claude.zippity") is KeyClass.UNDECLARED
     # ⚑ ``default`` is never conceded: the all-agents tier's standing is the
     # keyspace's, so every supplier gets it right by not having to know it.

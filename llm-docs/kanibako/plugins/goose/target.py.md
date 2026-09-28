@@ -10,7 +10,7 @@ provider/model, and its own `config.yaml`.
 Plugins declare `kanibako-cli>=1.8.0.dev0,<2.0` (bounded 2026-09-01). **Every wheel published before
 v1.8.0 carries a bare `["kanibako-cli"]`**, so an old plugin wheel can still land on a new core; when
 the contract it was written against is gone, the failure is a NAMED error rather than a silent
-misbehaviour. The bound removes that pairing only for wheels published from v1.8.0 on, so the named
+misbehavior. The bound removes that pairing only for wheels published from v1.8.0 on, so the named
 error stays the safety net and the reason this surface stays small. That is the reason the surface here stays small and the
 declarations stay in the data file.
 

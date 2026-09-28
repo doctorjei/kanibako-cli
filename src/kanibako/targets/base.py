@@ -1007,7 +1007,7 @@ class Target(ABC):
         ⚑ Keyed on the CASCADE-resolved `access`, NEVER the per-launch `-S`/`-A` flags
         (spec §1A's projected-surface exception).
         ⚑ An implementation MUST render every tier explicitly and MUST NOT fall through to
-        the permissive arm; an unrecognised value here is a BUG and should raise.
+        the permissive arm; an unrecognized value here is a BUG and should raise.
         Best-effort: the caller wraps the call. Returns whether a write occurred.
         """
         return False

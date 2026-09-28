@@ -878,7 +878,7 @@ class TestTheLaunchAgentFileStateMergesUnderTheLaunchNode:
 
     ``_resolve_launch_snapshot`` is the fifth and last of the ``agent_file.state_level``
     producers, and the only one that feeds the WHOLE-BOX launch: it wraps the per-agent
-    file's flat behaviour table (``agent_cfg.state``) into a discriminated level under
+    file's flat behavior table (``agent_cfg.state``) into a discriminated level under
     the node the launch is running as, and ``_agent_state_partial`` files it by
     ``level.node``. A wrong node here files a user's ``model`` under a slot the reader
     never looks in, and the box launches on the target's declared default instead.
@@ -894,7 +894,7 @@ class TestTheLaunchAgentFileStateMergesUnderTheLaunchNode:
     """
 
     def _snapshot(self, std, config, project_dir, *, value="from-the-file"):
-        """A whole-box resolve carrying a real per-agent behaviour state."""
+        """A whole-box resolve carrying a real per-agent behavior state."""
         proj = resolve_project(std, config, str(project_dir), initialize=True)
         snapshot, _deliveries = _resolve_launch_snapshot(
             std=std, proj=proj, agent_name="claude",
@@ -2132,7 +2132,7 @@ class TestTheSyncApplierConsumesTheLeaf:
 
         ⚑ MOVED HERE AT 2c from ``test_start.TestApplySyncedCopies``, whose whole class
         drove a NARROW resolve and therefore exercised the fallback arm that the
-        cutover deleted. The behaviour is unchanged; what changed is that it is now
+        cutover deleted. The behavior is unchanged; what changed is that it is now
         asserted against the route the box actually takes.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
@@ -2222,7 +2222,7 @@ class TestTheSyncApplierConsumesTheLeaf:
     def test_a_WORKSPACE_dest_still_lands_under_the_workspace_bind(
         self, std, config, project_dir, tmp_path,
     ):
-        """The control for M2, and the shipped behaviour that must not move.
+        """The control for M2, and the shipped behavior that must not move.
 
         ⚑ It stays GREEN under the mutation above precisely because
         ``_guest_dest_to_host`` has a hardwired ``~/workspace`` arm. That is what
@@ -2444,7 +2444,7 @@ class TestTheSyncApplierConsumesTheLeaf:
         ⚑ NOTHING IN ``test_commands/test_start.py`` PINS THIS, and the note that
         used to name ``TestApplySyncedCopies.test_synced_suppressed_when_not_sharing``
         pointed at a test that no longer exists (corrected 2026-08-13). That file's
-        surviving neighbour, ``TestApplyInitSeeds::
+        surviving neighbor, ``TestApplyInitSeeds::
         test_non_credential_seed_copied_even_when_not_sharing``, asserts the gate's
         NARROWNESS — a plain seed still copies for a private box — so it is green
         whether the gate runs or not, by construction. This test resolves with base
@@ -2804,7 +2804,7 @@ class TestEverySpecNamedSyncedRefusalRAISES:
 
     ⚑ THE VERDICTS ARE NOT WRITTEN DOWN HERE. :func:`_spec_refuses_the_copy` computes
     each one from the spec's sentence, so a shape change reddens this rather than
-    ageing a list of names (P13).
+    aging a list of names (P13).
 
     ⚑⚑ IT REDS ON ITS OWN EMPTINESS (P15). A geometry sweep that discovered no refusal
     — or no acceptance — would pass vacuously and manufacture confidence, so both

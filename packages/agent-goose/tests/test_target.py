@@ -465,7 +465,7 @@ class TestDescriptor:
         Source-verified at goose v1.38.0: no GOOSE_MODE value realizes it
         (``smart_approve`` auto-approves READ-ONLY tools and PROMPTS for writes —
         the inverse of claude's acceptEdits).  So the row is ABSENT and the tier
-        is REFUSED by name, never substituted with a neighbour.
+        is REFUSED by name, never substituted with a neighbor.
         """
         from kanibako.errors import ConfigError
         from kanibako.targets import assembly

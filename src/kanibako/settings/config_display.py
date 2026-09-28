@@ -68,7 +68,7 @@ def flatten_under(prefix: str, table: dict) -> dict[str, str]:
 
     ⚑ :func:`_flatten_table` for a caller that prints rows RELATIVE to a table (the agent tier's
     ``model = …`` rows): the walk still sees the WHOLE key, so a category map under the table is
-    recognised and rendered as :func:`_flatten_bind_map` renders it, never as a Python repr.
+    recognized and rendered as :func:`_flatten_bind_map` renders it, never as a Python repr.
     """
     out: dict[str, str] = {}
     _flatten_table(table, prefix, out)
@@ -403,7 +403,7 @@ def _print_category_block(
         return node
 
     # The pid-0 FOUNDATION, FIRST — and it is not a scope declaration, which is why
-    # it is labelled rather than spelled as a key.  The box home does NOT route
+    # it is labeled rather than spelled as a key.  The box home does NOT route
     # through ``bindings.rw`` (spec ``:1015``): the assembly seam builds it from the
     # RO DERIVED ``meta.box.home``, so the per-scope walk below cannot see it, and
     # without this line the one mount EVERY box has would be missing from the view

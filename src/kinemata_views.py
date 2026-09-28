@@ -134,7 +134,7 @@ def never_settable_path(entry: Any) -> bool:
 #: Measured 2026-09-19: dropping `env` admits the manifest's illustrative
 #: `box.env.COLORTERM` and reports 50 declared, the extra row produced by nothing.
 #: `secret_path` has no manifest row yet, so the count is unchanged either way; it
-#: is listed because the realistic future row is that row's exact analogue --
+#: is listed because the realistic future row is that row's exact analog --
 #: `is_known_key("box.secret_path")` is False, `is_known_key("box.secret_path.FOO")`
 #: is True -- and with it this set is exactly the manifest's own two shape classes.
 _DELIVERY_HEADS = frozenset(

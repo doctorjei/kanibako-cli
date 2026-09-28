@@ -376,7 +376,7 @@ def _behavior_leaf_sites(
     if not isinstance(raw, dict):
         return sites
     # ⚑ Walks EXACTLY the declared shapes — no free-form recursion, so an unrelated user key spelled
-    # ``auto_approve`` deeper in some other table is not swept up. Do not generalise this loop.
+    # ``auto_approve`` deeper in some other table is not swept up. Do not generalize this loop.
     for prefix, sub_depth in _BEHAVIOR_TABLE_SHAPES:
         node = _nested_present(raw, prefix)
         if node is _NO_LEAF or not isinstance(node, dict):

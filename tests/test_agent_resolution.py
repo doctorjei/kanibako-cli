@@ -4,7 +4,7 @@
 ``system.agent`` and the workset/box ``pref.system.agent`` requests are resolved
 off the settings snapshot (``settings_launch.resolve_selected_agent``), and
 ``resolve_agent`` keeps only what is NOT a key — name validation and persona-ref
-canonicalisation. The retired ``box.agent_name`` / ``workset_agent`` /
+canonicalization. The retired ``box.agent_name`` / ``workset_agent`` /
 ``system_default_path`` parameters are gone.
 
 🛑 **THERE IS NO INSTALLED-AGENT COUNT RULE** (retired 2026-09-19, his ruling; spec
@@ -127,7 +127,7 @@ def test_unset_refuses_whatever_is_installed(monkeypatch, installed):
 
     MUTATION: restore ``if len(real_installed) == 1: return next(iter(...))`` and
     the ``one`` and ``one-plus-pseudo`` rows go green-by-launching instead of
-    refusing — which is exactly the behaviour being deleted.
+    refusing — which is exactly the behavior being deleted.
     """
     _patch_targets(monkeypatch, installed)
     _no_default(monkeypatch)
@@ -308,7 +308,7 @@ def test_an_unrelated_name_is_still_refused(monkeypatch):
 
 
 def test_persona_box_tier_canonicalized(monkeypatch):
-    # A persona ref supplied at the BOX tier (not just explicit) is canonicalised.
+    # A persona ref supplied at the BOX tier (not just explicit) is canonicalized.
     _patch_targets(monkeypatch, ["claude"])
     _no_default(monkeypatch)
     assert (

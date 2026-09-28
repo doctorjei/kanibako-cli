@@ -1,7 +1,7 @@
 """Explicit box creation — no auto-create on launch (Jei 2026-07-11g, v1.7.0).
 
 Creating a box is a deliberate act: it must go through ``kanibako create``.  A
-launch (``start`` / bare ``kanibako`` / ``code`` / ``shell``) NEVER materialises a
+launch (``start`` / bare ``kanibako`` / ``code`` / ``shell``) NEVER materializes a
 new box — it ERRORS if the target box does not exist.  Auto-START of an EXISTING
 box is unchanged.  These are REAL-path tests (real ``std``/resolver/journal); the
 gate errors BEFORE any container work, so no runtime stubbing is needed for the
@@ -20,7 +20,7 @@ from kanibako.commands.start import (
 )
 
 # ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — not even to set up a case.
-# These tests drive the REAL ``run_create``, which materialises the J-7 canon skeleton
+# These tests drive the REAL ``run_create``, which materializes the J-7 canon skeleton
 # and then makes it root-owned + 555 via ``podman unshare``.  Where that works (CI
 # runners, bifrost) a bare ``rmtree`` of the box dir dies with EACCES partway through;
 # where it does not (this project's dev box, broken ``newuidmap``) the protect pass
@@ -61,7 +61,7 @@ def _std(config_file):
 
 
 # ---------------------------------------------------------------------------
-# Launch on an ABSENT box → exact error + non-zero exit (no box materialised)
+# Launch on an ABSENT box → exact error + non-zero exit (no box materialized)
 # ---------------------------------------------------------------------------
 
 class TestLaunchAbsentBoxErrors:
@@ -69,7 +69,7 @@ class TestLaunchAbsentBoxErrors:
         self, config_file, tmp_home, credentials_dir, capsys
     ):
         """Bare ``kanibako`` (project_dir=None → cwd) on a dir with no box errors
-        and materialises NOTHING; the suggestion is a bare ``kanibako create``."""
+        and materializes NOTHING; the suggestion is a bare ``kanibako create``."""
         _config, std = _std(config_file)
         rc = _launch(None)
         assert rc == 1
@@ -104,7 +104,7 @@ class TestLaunchAbsentBoxErrors:
 
 
 # ---------------------------------------------------------------------------
-# `create` materialises + prints the start-hint; create-then-launch passes gate
+# `create` materializes + prints the start-hint; create-then-launch passes gate
 # ---------------------------------------------------------------------------
 
 class TestCreateAndThenLaunch:
@@ -145,7 +145,7 @@ class TestCreateAndThenLaunch:
         from kanibako.settings.paths import resolve_box_target
 
         config, std = _std(config_file)
-        # Materialise + register a bare box the way `create` would.
+        # Materialize + register a bare box the way `create` would.
         resolve_box_target(
             std, config, None, initialize=True, register=True, warn=False,
         )
@@ -207,7 +207,7 @@ class TestInterruptedCreateBoundary:
 class TestLaunchRefusesUnbuiltBox:
     """Jei 2026-08-02f: *"no, a launch should not silently rebuild anything."*
 
-    A registered box whose directory has been deleted used to be re-materialised
+    A registered box whose directory has been deleted used to be re-materialized
     by the launch resolve — a REPAIR, not a creation.  It now refuses, names the
     box, and leaves the filesystem untouched.
 
@@ -243,7 +243,7 @@ class TestLaunchRefusesUnbuiltBox:
         assert "is registered, but its box directory is gone" in err
         assert "box 'project'" in err
         assert "will not rebuild it" in err
-        # NOTHING was materialised — not the box dir, not a home tree.
+        # NOTHING was materialized — not the box dir, not a home tree.
         assert not box_dir.exists()
         # ...and the registration is left exactly as it was, so the cure below
         # has something to work with.
@@ -313,7 +313,7 @@ class TestUnbuiltBoxErrorMessage:
         """⚑ The reason the test is the BOX DIR and not the home tree.
 
         ``workset connect`` registers the box and creates its dir but NEVER
-        seeds — the home is materialised by the FIRST launch.  Gating on
+        seeds — the home is materialized by the FIRST launch.  Gating on
         ``shell_path`` would refuse that sanctioned flow.
         """
         from kanibako.project.workset import add_project, create_workset

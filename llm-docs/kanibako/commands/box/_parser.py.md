@@ -23,7 +23,7 @@ Authority: the keyspace spec `settings-keyspace-1.8.0.md` §0 (closed keyspace, 
 
 | Verb | Aliases | What it does |
 |------|---------|--------------|
-| `create` | — | Make a box: probe, gate, materialise, seed, register (standalone: only on `--register`) |
+| `create` | — | Make a box: probe, gate, materialize, seed, register (standalone: only on `--register`) |
 | `list` | `ls` | Every known project + status; the DEFAULT when `box` is given no verb |
 | `ps` | — | `list` filtered to active boxes |
 | `remap` | — | Records-only relocation (you already moved the folder) |
@@ -68,16 +68,16 @@ any of them reopens a bug that has already been paid for.
    the primary/workset name domain and skip it. The deferred registration
    (`_register_new_box`) re-checks with the same flag.
 4. **The I4 home guard** (`_assert_primary_home_free_for_create`) — see below.
-5. **The persona pre-flight**, on a NON-materialising probe (`initialize=False`, no `mkdir`), so
+5. **The persona pre-flight**, on a NON-materializing probe (`initialize=False`, no `mkdir`), so
    an unloadable persona refuses with NOTHING on disk: no box dir, no meta, no journal entry, no
    seed. This applies the same probe → gate → initialize pattern the launch path uses. The probe
-   carries the deterministic name it WILL materialise under (`_name_new_box_probe`) so the gate's
+   carries the deterministic name it WILL materialize under (`_name_new_box_probe`) so the gate's
    channel-address derivation resolves instead of raising "box has no name".
 6. **The persona-grata STORE check**, before the create verdict, so a store that cannot yield a
    usable persona is reported as ITSELF rather than as the verdict's downstream "no endpoint
    configured".
-7. **The already-initialized refusal**, HOISTED above the materialising resolve.
-8. **The materialising resolve**, with `register=False`.
+7. **The already-initialized refusal**, HOISTED above the materializing resolve.
+8. **The materializing resolve**, with `register=False`.
 9. **The J1 write-ahead sequence**: write entry → seed → canon skeleton → register → clear entry.
    ⚑ The register step is CONDITIONAL for a standalone box (I3/§D4a): `_register_new_box` runs
    for every PRIMARY box, whose membership IS its workset, but for a standalone box only on
@@ -95,11 +95,11 @@ only the mutation it used to trail now happens after it.
 
 ### Why the already-initialized refusal is hoisted
 
-It used to sit AFTER the materialising resolve, reading `proj.is_new`. But that resolve runs with
+It used to sit AFTER the materializing resolve, reading `proj.is_new`. But that resolve runs with
 `initialize=True`, and its recovery arms re-create a missing home (`resolve_project`) and a missing
 home + workspace (`resolve_standalone_project`) BEFORE returning — so a box whose home had been
 deleted got it silently bootstrapped and was THEN told "already initialized", a message that was
-false at the moment it printed. Asking the NON-materialising probe makes the message TRUE: nothing
+false at the moment it printed. Asking the NON-materializing probe makes the message TRUE: nothing
 has been written when it prints. Message and exit code are unchanged.
 
 J1 interrupted-create RECOVERY still takes precedence: a box that already exists but carries a
@@ -107,7 +107,7 @@ pending create journal entry is a half-completed create (a crash between seed-st
 registry write) and is COMPLETED by replay rather than refused. **The journal entry, not
 `is_new`, drives completion** — that is the central J1 fix, restoring the hard invariant
 "registered ⇒ no pending entry" for PRIMARY and STANDALONE alike. `_pending_create_entry` keys on
-the box dir, which the probe resolves identically to the materialising call.
+the box dir, which the probe resolves identically to the materializing call.
 
 ### The J1 write-ahead journal
 
@@ -131,7 +131,7 @@ time the journal opens the persona is known loadable. It STILL precedes the writ
 (Director ruling #3): an abort after the entry would leave a pending entry whose recovery replays
 the seed.
 
-The canon skeleton (J-7) is materialised AFTER the seed and INSIDE the journal window. After,
+The canon skeleton (J-7) is materialized AFTER the seed and INSIDE the journal window. After,
 because the seed writes `canon/{notebook,workbook}` under the same root this step makes 555 —
 protect first and those copies die with `EACCES`. Inside, because an interrupted create must
 replay it like every other step.
@@ -200,7 +200,7 @@ Explicit-create: `create` MAKES the box but does NOT launch it. A launch (`start
 
 ## Names, homes, and the I4 data-loss guard
 
-`create --name X` materialises the box at `std.boxes/X` with `mkdir(exist_ok=True)`, so if that
+`create --name X` materializes the box at `std.boxes/X` with `mkdir(exist_ok=True)`, so if that
 home is ALREADY occupied the create MERGES into the existing box's data instead of failing.
 Combined with the retained metadata of a `deregistered` box, a later `rm X --purge` (which
 resolves the deregistered entry) would then delete the FRESHLY-CREATED box's home — silent data
@@ -349,7 +349,7 @@ box, `workset disconnect` + `connect` for a NAMED one). `info` therefore DEFERS 
 `_unbuilt_box_error`, the launch's own refusal, rather than restating it, so the two can never name
 different cures. For a genuinely unused default-mode directory it says a launch will not create a
 box — ⚑ NOT "start a session with `kanibako start`": since the v1.7.0 explicit-create gate a launch
-NEVER materialises a box, so naming `start` described behaviour we do not have.
+NEVER materializes a box, so naming `start` described behavior we do not have.
 
 Agent resolution here is INFORMATIONAL, not an agent-requiring launch, so a failure (`system.agent`
 unset, `system.agent` null / no default set, adapter missing) DEGRADES to `n/a` rather than
@@ -397,7 +397,7 @@ from it.
 
 ### `--effective`
 
-The `--effective` display resolves the PATH-DELIVERY categories and their materialised derivations
+The `--effective` display resolves the PATH-DELIVERY categories and their materialized derivations
 (§0) off the SAME single launch pipeline a start takes, so it cannot drift from what actually
 mounts. Three properties are deliberate:
 
@@ -447,8 +447,8 @@ reports what the box IS configured to do, and a per-launch override is by defini
 ⚑ `--agent` is the EXCEPTION, and it is a PRE-EXISTING DEFECT rather than a P8 decision. The
 blanket flag injector puts it on every leaf parser, so `box config --agent goose --effective`
 PARSES — but this call site, and the other four read-verb `select_agent` sites, never pass it
-through, so it is silently IGNORED. It is advertised and inert. P8 left the behaviour exactly as it
-found it rather than quietly changing what a read verb reports; honouring it (or refusing it) is a
+through, so it is silently IGNORED. It is advertised and inert. P8 left the behavior exactly as it
+found it rather than quietly changing what a read verb reports; honoring it (or refusing it) is a
 tracked follow-on.
 
 ### The `get` path
@@ -470,7 +470,7 @@ means no redirect.
 to pick a real name (`resolve_project`'s create block; `restore`, which rewrites it with the box's
 real name). The config verbs pick NO name: they simply address the box the sentinel points at, so
 `box set box.image=…` from a cwd that is no box used to WRITE
-`boxes/__unregistered__/settings.yaml` and report SUCCESS — materialising a placeholder instead of
+`boxes/__unregistered__/settings.yaml` and report SUCCESS — materializing a placeholder instead of
 refusing.
 
 It is refused HERE, at the verb's own seam, so the sentinel keeps working for the resolvers that
@@ -521,7 +521,7 @@ store entry, the harness not installed, or a harness with no persona reader, all
 through to normal create behavior — or when the store checked out (a soft token-pointer warning is
 printed here).
 
-`bundle is None` cannot happen (the entry was located a moment ago) but costs nothing to honour.
+`bundle is None` cannot happen (the entry was located a moment ago) but costs nothing to honor.
 `no_reader` DOES happen: a goose persona is configured entirely through the keyspace and may own a
 store dir purely for its `.secret_path`, so "this harness cannot read a store config" is a
 fall-through, never a refusal.

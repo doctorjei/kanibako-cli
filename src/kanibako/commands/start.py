@@ -159,7 +159,7 @@ def _link_persona_share(
     # plugin binds by path): a bare ``mkdir(exist_ok=True)`` raises FileExistsError on
     # an existing non-directory, which would turn a legal declaration into a launch
     # that dies naming nothing.  An existing dir made this call a no-op anyway, so the
-    # only behaviour that changes is the raise — and a symlink to a real file shares it
+    # only behavior that changes is the raise — and a symlink to a real file shares it
     # exactly as a link to a dir shares a dir.
     if not harness_dir.exists():
         harness_dir.mkdir(parents=True, exist_ok=True)
@@ -1339,7 +1339,7 @@ def _check_box_components(proj) -> str | None:
     The **settings-file marker** (the third CRITICAL component per D5) is NOT
     re-checked here: its absence is already handled at resolution/detection time
     (``box_resolve.standalone_settings_present`` requires the box
-    ``box.yaml`` for a standalone to be recognised as a box at all; the
+    ``box.yaml`` for a standalone to be recognized as a box at all; the
     read-side ``box_resolve`` returns ``None`` = "not a box").  A launch resolve
     (``initialize=True``) would recreate a fresh marker, so a marker check here
     would be dead.  The **vault** (NON-CRITICAL) only WARNS, at resolve time,
@@ -1365,14 +1365,14 @@ def _check_box_components(proj) -> str | None:
 def _resolve_existing_box(
     std: StandardPaths, config: BootstrapConfig, project_dir: str | None,
 ) -> ProjectPaths | None:
-    """Non-materialising probe: the :class:`ProjectPaths` of an EXISTING registered box.
+    """Non-materializing probe: the :class:`ProjectPaths` of an EXISTING registered box.
 
     ``None`` when no box exists at *project_dir*.  Explicit-create gate (Jei 2026-07-11g): a launch (``start`` / bare
     ``kanibako`` / ``code`` / ``shell``) NEVER auto-creates a box — the box must
     already have been made by ``kanibako create``.  We resolve through the SAME
     ``resolve_box_target`` the launch uses, but:
 
-    * ``initialize=False`` — a NON-materialising resolve (no mkdir / no name
+    * ``initialize=False`` — a NON-materializing resolve (no mkdir / no name
       assignment / no seed): probing must never leave a box dir behind.
     * ``register=True`` — the register=False journal-recovery arm is NOT
       consulted, so a half-created box that crashed BEFORE its registry write
@@ -1533,16 +1533,16 @@ def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
     ``None`` when the directory is where the registration says it is.
     MBR-6 (Jei, 2026-08-02f): *"no, a launch should not silently rebuild
     anything."*  ``_run_container``'s explicit-create gate only asks whether a box
-    is REGISTERED; the materialising resolve right after it re-creates a missing
+    is REGISTERED; the materializing resolve right after it re-creates a missing
     box directory UNDER that surviving registration and reports ``is_new``.  That
     is a REPAIR of an existing box, not a creation, and a repair has to be asked
-    for by name.  Called from that same gate, on its NON-materialising probe and
+    for by name.  Called from that same gate, on its NON-materializing probe and
     before the resolve, so the refusal leaves nothing behind on disk.
 
     ⚑ The test is the BOX DIRECTORY (``metadata_path``), NOT the home tree.  A
     NAMED workset box is registered by ``workset connect``, which creates the box
     dir but deliberately NEVER seeds (see ``workset_cmd.run_connect``): its home
-    is materialised by its FIRST launch, legitimately, so gating on ``shell_path``
+    is materialized by its FIRST launch, legitimately, so gating on ``shell_path``
     would refuse exactly that flow.  A STANDALONE box whose ``box_data/`` is gone
     resolves to no name at all, so the explicit-create gate answers it first and
     it never reaches here.
@@ -1768,7 +1768,7 @@ def _bootstrap_wrap(program: str, inner_cmd: str, cli_args: list[str]) -> tuple[
 
 
 def _env_flag_enabled(value: str | None) -> bool:
-    """True iff *value* is a recognised truthy env-flag string (case-insensitive).
+    """True iff *value* is a recognized truthy env-flag string (case-insensitive).
 
     Accepts ``1`` / ``true`` / ``yes`` / ``on`` (trimmed, any case) as enabled;
     everything else — including ``None``, empty, ``0``, ``false`` — is disabled.  Used
@@ -2063,7 +2063,7 @@ def _deliver_panel_permissions(
     freeze).  *provider* is the launch's resolved persona model-provider
     (``None`` for bare / non-persona ⇒ byte-identical write); this call site is
     reached whenever a box is (re)started — first launch after create and start
-    of a stopped box — so the provider block re-materialises to the current
+    of a stopped box — so the provider block re-materializes to the current
     persona config.  (A reattach to an ALREADY-running box early-returns above
     and does not re-deliver — a config change made while the box ran is NOT
     picked up until restart, so that path prints ``reattach_config_notice``
@@ -2552,9 +2552,9 @@ def _run_container(
     #
     # TRUE PRE-FLIGHT for a BOX-INDEPENDENT persona (Director rulings, Jei
     # 2026-07-03): when the effective agent is a persona resolvable WITHOUT the box
-    # we DEFER box materialisation — resolve the box's PATHS only (``initialize=
+    # we DEFER box materialization — resolve the box's PATHS only (``initialize=
     # False`` → NO mkdir, ``warn=False`` so the name flag is not doubled by the
-    # later materialising resolve), run the persona load-or-error gate below, and
+    # later materializing resolve), run the persona load-or-error gate below, and
     # mkdir the box ONLY once it is known loadable.  An unloadable persona then
     # leaves NO box dir behind (no rmtree).
     #
@@ -2563,7 +2563,7 @@ def _run_container(
     # box-scoped ``pref.system.agent`` can only shadow an ALREADY-existing box (never
     # a brand-new one), so those two are exactly the sources that could otherwise
     # leave an empty unregistered box dir for a system-default persona (Director
-    # RESIDUAL ruling).  A bare / non-persona launch materialises immediately,
+    # RESIDUAL ruling).  A bare / non-persona launch materializes immediately,
     # exactly as before (single resolve, byte-identical).
     _defer_box = False
     # ⚑⚑ ONE TYPED value and ONE STORED one, so "GIVEN" IS ``is not None`` HERE
@@ -2585,9 +2585,9 @@ def _run_container(
             _defer_box = False  # malformed ref: surfaced by select_agent below.
 
     # EXPLICIT-CREATE gate (Jei 2026-07-11g, v1.7.0 BREAKING): a launch NEVER
-    # materialises a NEW box.  Creating a box is a deliberate act — it must go
-    # through ``kanibako create``.  Probe non-materialisingly (``initialize=
-    # False`` → no mkdir/name/seed) BEFORE the materialising resolve below; if no
+    # materializes a NEW box.  Creating a box is a deliberate act — it must go
+    # through ``kanibako create``.  Probe non-materializingly (``initialize=
+    # False`` → no mkdir/name/seed) BEFORE the materializing resolve below; if no
     # EXISTING registered box resolves for the target, error out and point at
     # ``create`` rather than silently inventing a box for a typo'd project / wrong
     # cwd.  This single chokepoint covers every launch route (``start`` / bare
@@ -2601,7 +2601,7 @@ def _run_container(
     # MBR-6 (Jei 2026-08-02f, "no, a launch should not silently rebuild
     # anything"): the gate above passes a box whose REGISTRATION survives but
     # whose box DIRECTORY is gone — and the resolve below would rebuild it.
-    # Refuse it on the probe, while nothing has been materialised yet.
+    # Refuse it on the probe, while nothing has been materialized yet.
     _unbuilt = _unbuilt_box_error(_existing)
     if _unbuilt is not None:
         print(_unbuilt, file=sys.stderr)
@@ -2612,9 +2612,9 @@ def _run_container(
         initialize=not _defer_box, register=False, warn=not _defer_box,
     )
     if _defer_box:
-        # The deferred probe did NOT materialise the box, so a brand-new box is
+        # The deferred probe did NOT materialize the box, so a brand-new box is
         # still nameless (name assigned only inside ``initialize=True``).  Carry the
-        # deterministic name it WILL materialise under onto the probe so the persona
+        # deterministic name it WILL materialize under onto the probe so the persona
         # load-or-error gate below (``_resolve_box_launch_decisions`` →
         # ``box_channel_addresses``) resolves instead of raising "box has no name"
         # BEFORE it can verdict (F7).  An already-named (existing) box is untouched.
@@ -2623,11 +2623,11 @@ def _run_container(
     # The "orphaned project data" hint that used to fire here is GONE (MBR-6
     # residual 2): no launch can reach the state it was gated on, which was
     # ``proj.is_new`` AND ``group.is_default`` — i.e. a PRIMARY box being
-    # materialised by this launch.
+    # materialized by this launch.
     #
     # ⚑ ``is_new`` alone does NOT imply that, and a launch can still set it: the
     # NAMED resolver keys ``is_new`` on the HOME (``shell_path``), so a box that
-    # ``workset connect`` registered without seeding legitimately materialises on
+    # ``workset connect`` registered without seeding legitimately materializes on
     # its FIRST launch.  The hint never applied to those (``is_default`` is False
     # for NAMED, and ``group`` is None for STANDALONE).  For a PRIMARY box the
     # resolver keys ``is_new`` on the box DIRECTORY instead — and that is exactly
@@ -2677,7 +2677,7 @@ def _run_container(
     logger = get_logger("start")
 
     # Detect the container runtime up front: agent resolution below needs it to
-    # honour a REATTACH to an already-running persistent box (the box's stored
+    # honor a REATTACH to an already-running persistent box (the box's stored
     # agent supersedes the cascade), and the image step further down needs it
     # too.  Detection is cheap and side-effect-free.
     try:
@@ -2736,7 +2736,7 @@ def _run_container(
     # system default (silently); a differing EXPLICIT --agent is a hard error
     # (stop the box to relaunch with a different agent).  Boxes launched before
     # this change have no stamp -> inspect_env returns None -> normal resolution
-    # (a default/--agent is then required, unchanged behaviour).
+    # (a default/--agent is then required, unchanged behavior).
     #
     # ⚑ ``box_running`` (is the container UP?) and ``reattach_running`` (is this
     # launch going to REATTACH to it?) are two different facts and are kept as
@@ -2752,11 +2752,11 @@ def _run_container(
             container_name_for(proj), "KANIBAKO_AGENT"
         )
         if stored_agent:
-            # 🛑 CANONICALISE ON READ, ONCE, AND USE THAT VALUE ONWARDS.
+            # 🛑 CANONICALIZE ON READ, ONCE, AND USE THAT VALUE ONWARDS.
             # ``KANIBAKO_AGENT`` stamps the OUTSIDE spelling (``+``); an explicit
             # ``--agent`` may arrive in either. Both become node-form here, so the
             # comparison is idempotent for a re-pasted ref AND the value that
-            # feeds ``resolve_agent`` below is a node — this used to canonicalise
+            # feeds ``resolve_agent`` below is a node — this used to canonicalize
             # for the COMPARISON only and then propagate the raw stamp.
             # ⚑ Both separators are accepted, so a box stamped ``℘`` by an older
             # version reattaches unchanged.
@@ -2851,7 +2851,7 @@ def _run_container(
         _rejected: list[str] = []
         # Session shape.  Scoped to an AGENT launch: ``kanibako shell`` and
         # ``shell -- cmd`` against a live box exec INTO it (the documented UX),
-        # which honours an ``--ephemeral`` request rather than dropping it, so
+        # which honors an ``--ephemeral`` request rather than dropping it, so
         # there is nothing there to refuse.
         if is_agent_mode and explicit_persistent:
             _rejected.append("--persistent")
@@ -3239,8 +3239,8 @@ def _run_container(
     #     fix.  The endpoint VALUE the pre-flight would refine is not an input
     #     here: the reattach only asks WHETHER one exists (``suppress_oauth``),
     #     and the launch decisions above already answered that.
-    #   * deferred box materialisation and ``_check_box_components`` — a RUNNING
-    #     box is materialised by definition and its dirs are live bind mounts.
+    #   * deferred box materialization and ``_check_box_components`` — a RUNNING
+    #     box is materialized by definition and its dirs are live bind mounts.
     #   * the persona ARTIFACT writes (``agent_file.save`` /
     #     ``ensure_persona_share_symlinks``).  ⚑ A reattach must NOT write the
     #     agent config: it delivers nothing to the live box, and rewriting under
@@ -3292,7 +3292,7 @@ def _run_container(
             # its own sake: see the ``stored_agent`` note in the door table above.
             # ⚑ Accepted degrade: a pre-stamp legacy agent box (see the
             # fast-source note above) carries no stamp, so it takes "attach" too
-            # and keeps today's behaviour — the original bug persists there
+            # and keeps today's behavior — the original bug persists there
             # rather than a live session being stranded, and such boxes clear on
             # their next restart.  Degrading to the status quo is the safe
             # direction.
@@ -3331,7 +3331,7 @@ def _run_container(
             # The two exec doors converge: a resolved box shell and an explicit
             # ``--entrypoint`` are both "a second process in the live box" and
             # get the identical exec.  ⚑ Per-run ``-e`` is applied through BOTH,
-            # which is precisely what the gate above authorised by consulting
+            # which is precisely what the gate above authorized by consulting
             # ``running_door`` — the gate and this arm read the SAME answer, so
             # neither can accept what the other would drop.
             return runtime.exec(
@@ -3392,7 +3392,7 @@ def _run_container(
     # claude on the user's real account.  The pre-flight only READS (every persona
     # value is already resolved through the cascade); on a hard error we return
     # BEFORE creating any artifact, and for a DEFERRED explicit persona
-    # (``_defer_box``) the box was never materialised, so NOTHING is left behind —
+    # (``_defer_box``) the box was never materialized, so NOTHING is left behind —
     # a true pre-flight, not a rollback.
     #
     # ``provider`` is the resolved codex CodexModelProvider for a config-file
@@ -3419,10 +3419,10 @@ def _run_container(
             print(persona_error, file=sys.stderr)
             return 1
 
-    # Loadability resolved → materialise the DEFERRED box now (the explicit-persona
+    # Loadability resolved → materialize the DEFERRED box now (the explicit-persona
     # path resolved paths only above; mkdir the box + set ``is_new`` here, then
     # replay the one ``is_new``-gated step the deferred probe skipped — the
-    # flag-persist seam below).  A non-deferred launch already materialised at the
+    # flag-persist seam below).  A non-deferred launch already materialized at the
     # ``resolve_box_target`` up top — this is a no-op for it.  (There were TWO such
     # steps until MBR-6 residual 2 removed the orphan hint; see its note at the probe.)
     if _defer_box:
@@ -3433,7 +3433,7 @@ def _run_container(
         # resolved paths against the placeholder ``boxes/__unregistered__``
         # metadata_path (a brand-NEW box has no name/dir yet), so ``project_toml``/
         # ``workset_path``/``merged`` were bound to that placeholder.  Now that the
-        # box is materialised its REAL metadata_path is known — recompute them so
+        # box is materialized its REAL metadata_path is known — recompute them so
         # the image-override persist AND every downstream box-tier read/write hit
         # the real ``box.toml``, never ``__unregistered__/``.  (For a deferred
         # EXISTING box the probe already had the real path; this recomputes the
@@ -3462,7 +3462,7 @@ def _run_container(
         )
 
     # D5 CRITICAL integrity gate (host components).  ``proj`` is now fully
-    # materialised in BOTH the deferred and non-deferred paths, so its required
+    # materialized in BOTH the deferred and non-deferred paths, so its required
     # host-side dirs (workspace + home) can be verified before committing to a
     # launch.  Runs HERE (launch time), not the shared resolve chokepoint, so a
     # `box list` / `archive` / `diagnose` of a MOVED box never hard-crashes.
@@ -3476,7 +3476,7 @@ def _run_container(
     # its endpoint came from the keyspace or the persona-store tier below it.
     suppress_oauth = active_endpoint is not None
 
-    # Loadability resolved → NOW materialise the persona artifacts.  Persist the
+    # Loadability resolved → NOW materialize the persona artifacts.  Persist the
     # freshly generated agent config; the share shim points ``agents/<node>/``'s
     # ``template``, ``common`` and ``canon`` leaves (plus ``caches/tweakcc`` and any
     # other declared store leaf) at the harness's dirs BEFORE mount assembly
@@ -4203,7 +4203,7 @@ def _run_container(
         # that varied by call site would decide one dest two ways.
         # ⚑ The AGENT best-effort dests join SKIP-IF-ABSENT: a missing or
         # suppressed agent share is fine (``BindScope.AGENT``), which is the
-        # skip-if-absent behaviour up to the log line. The CRITICAL dests are
+        # skip-if-absent behavior up to the log line. The CRITICAL dests are
         # subtracted — must-exist wins its own dests outright.
         try:
             category_mounts = _emit_category_mounts(
@@ -4888,7 +4888,7 @@ def _run_container(
                 # here, never loop back into setup.
                 # ⚑⚑ TEAR THE EXITED BOX DOWN — this branch is the two-state
                 # lifecycle's "exited" state arriving EARLY, and it was the one
-                # arrival that did not honour it.
+                # arrival that did not honor it.
                 #
                 # The attached path below tears an exited box down (it is what makes
                 # the next start fresh); this path returned 1 and left the container
@@ -5173,7 +5173,7 @@ def writeback_session_credentials(
             else:
                 target.writeback_credentials(proj.shell_path)
             # Plugin-specific writeback beyond the cred_files specs (e.g. claude's
-            # .claude.json oauthAccount merge-back, not modelled as a cred_file
+            # .claude.json oauthAccount merge-back, not modeled as a cred_file
             # because its host->project IMPORT was removed in 1.6.0). Route it to the
             # SELECTED tier source root (the SAME destination the cred_files writeback
             # used), NOT unconditionally to host home — otherwise a workset-tier box
@@ -5512,21 +5512,21 @@ def _secret_pointer_usable(raw_path: str) -> bool:
 def _name_new_box_probe(std, proj) -> None:
     """Carry a deterministic gate-name onto a brand-NEW box PROBE (F5/F7 fix).
 
-    A NON-materialising resolve (``initialize=False``) of a BRAND-NEW box yields
+    A NON-materializing resolve (``initialize=False``) of a BRAND-NEW box yields
     ``proj.name == ''`` — the name is assigned only inside the ``initialize=True``
     branch, coupled to dir creation.  The persona load-or-error gate resolves the
     box's channel partition addresses via ``box_channel_addresses``, which RAISES
     for a nameless box (``channels.py``) — so without a name the gate crashes
     BEFORE it can verdict (F7 on the launch path, F5 on the create path).  Give the
-    probe the name it WILL be materialised under so the gate resolves cleanly:
+    probe the name it WILL be materialized under so the gate resolves cleanly:
 
     * PRIMARY — :func:`~kanibako.settings.paths.pick_primary_box_name` (DETERMINISTIC: the
       workspace basename plus a collision check against the SAME primary
       membership/boxes state the later ``initialize=True`` resolve reads, so the
-      probe name == the name the materialise picks — gate → materialise happen in
+      probe name == the name the materialize picks — gate → materialize happen in
       ONE invocation with no intervening registry/dir writes; single-source guard met).
     * STANDALONE / other — the standalone identity is a ``<kuid>_<leaf>``
-      assigned at materialise, so it cannot be predicted; but a standalone box's
+      assigned at materialize, so it cannot be predicted; but a standalone box's
       config lives at ``<root>/workset.yaml`` (name-INDEPENDENT) and is empty for a
       brand-new box, so the box NAME never influences the persona endpoint verdict.
       A stable placeholder (``short_hash`` of the project hash) unblocks the address
@@ -5687,7 +5687,7 @@ def _persona_wiring(target) -> "PersonaSpec":
         return spec
     # LEGACY fallback shape (no descriptor / no ``persona:`` block): claude as it
     # resolved before this seam.  Spelled out EXPLICITLY rather than left to the
-    # field defaults — this site keeps the pre-seam behaviour byte-identical and is
+    # field defaults — this site keeps the pre-seam behavior byte-identical and is
     # what a later neutralization of the fallback would remove.
     return PersonaSpec(token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env")
 
@@ -6347,7 +6347,7 @@ def _effective_behavior_for_display(
     :func:`_resolve_launch_snapshot` does for a launch — core's floor folds in at
     ``agent.default.*`` and the target's declared defaults at ``agent.<active>.*``
     (OS1, [Q91]); the per-agent FILE's
-    behavior (``agent_cfg``, the flat ``[agent]`` state plus the modelled
+    behavior (``agent_cfg``, the flat ``[agent]`` state plus the modeled
     ``run_args``) is injected as ``agent_state``
     (the active slot ``agent.<active>.*``); the box / workset / system settings
     files merge as their discriminated ``agent.default.*`` / ``agent.<name>.*``
@@ -7118,7 +7118,7 @@ def _resolve_launch_snapshot(
         # — so the same enrichment the collision path gets applies; otherwise the
         # box fails to start pointing at a key that is in none of their files.
         raise _annotate_pref_origin(exc, prefs) from None
-    # MATERIALISE each ABSTRACT declaration's derived binding beside it, under
+    # MATERIALIZE each ABSTRACT declaration's derived binding beside it, under
     # the reserved ``binding_derivations`` node at the snapshot root (R-8),
     # BEFORE the collapse — the derivation is a property of the declaration,
     # not of whether it won.
@@ -7269,7 +7269,7 @@ def _annotate_pref_origin(exc, prefs):
 def _install_derived_bindings(
     snapshot, derived: "Mapping[tuple[str, ...], object]",
 ) -> None:
-    """Write the ``binding_derivations.*`` materialisation into *snapshot* in place.
+    """Write the ``binding_derivations.*`` materialization into *snapshot* in place.
 
     Mirrors ``settings_launch._materialize_box_agent_mirror``: a post-expand
     write into the built snapshot at ONE seam.  ``binding_derivations`` is the
@@ -7328,7 +7328,7 @@ def _install_assembly_collapse(
     collapses exactly the keys, as it always did.
 
     🛑 THE GATE IS *whole_box*, NEVER "did ``meta.box.home`` resolve". The key is
-    materialised by ``settings_launch.workset_anchor_floor``, which the launch builds
+    materialized by ``settings_launch.workset_anchor_floor``, which the launch builds
     UNCONDITIONALLY, so it resolves on a narrow resolve too — gating on the value would
     write every leaf for the image and helper tables. It also closes what the old
     entry-list gate left open: a USER home row on a narrow resolve made a home bind
@@ -7370,7 +7370,7 @@ def _install_assembly_collapse(
     # not of whether the assembly then succeeds.
     #
     # ⚑⚑ DO NOT RE-ADD A SECOND FEED. Two feeds printed one line only because both arms
-    # happened to build an EQUAL ``CategoryCollision`` and the emitter memoises on
+    # happened to build an EQUAL ``CategoryCollision`` and the emitter memoizes on
     # ``(box_dest, scope)`` — a coincidence of construction, not a guarantee. One
     # builder is the guarantee (§5: "together, never apart").
     #
@@ -8236,7 +8236,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # non-zero exit); the create journal keeps the half-built box forward-
     # recoverable (a cleanup command is a separate follow-up).  The provider itself
     # is NOT consumed here (create seeds creds + templates; the codex config.toml —
-    # hook + provider — materialises at first launch via _run_container), but the
+    # hook + provider — materializes at first launch via _run_container), but the
     # model gate must run so an unconfigured-model codex persona is rejected at
     # CREATE, symmetric with the launch path.
     agent_cfg_dirty = target is not None and not agent_cfg_exists
@@ -8253,7 +8253,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
 
     suppress_oauth = active_endpoint is not None
 
-    # Loadability resolved → materialise the persona artifacts (write the freshly
+    # Loadability resolved → materialize the persona artifacts (write the freshly
     # generated config, then the share-link shim) BEFORE the seed resolve reads them.
     if target is not None and agent_cfg_dirty:
         assert seed_agent_cfg is not None  # target set ⇒ config built above.
@@ -8809,7 +8809,7 @@ def _synced_host_dest(box_dest: str, bindings, *, logger) -> "Path | None":
         # here with one. 🛑 It is KEPT rather than deleted because this function also
         # runs against a bind map READ BACK from a snapshot, and a warn-and-skip is
         # the safe residue if one ever arrives by a route the refusal does not gate —
-        # but it is no longer a licence, and the rule is not "a mis-declared dest must
+        # but it is no longer a license, and the rule is not "a mis-declared dest must
         # not cost the user the launch". It does.
         logger.warning(
             "synced %s: no binding covers this destination; skipping", box_dest,
@@ -8849,7 +8849,7 @@ def _synced_last_wins(copies: "list[CollapsedCopy]") -> "list[CollapsedCopy]":
     is emitted in it.  Each destination keeps its FIRST appearance's position, so the
     apply order over distinct dests does not move either.
 
-    ⚑ There is no seed analogue and there must not be: a ``seeded`` dest's repeats
+    ⚑ There is no seed analog and there must not be: a ``seeded`` dest's repeats
     are LAYERS that all apply (the §2a template trio).
     """
     last: "dict[str, CollapsedCopy]" = {}
@@ -9012,7 +9012,7 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     string, so ``resolve_target`` looks up a plugin that does not exist.  In
     ``stop.py`` that sits under a blanket catch, i.e. credential writeback would
     stop running for every persona box in SILENCE.
-    ⚑ Canonicalising on READ is also what makes this BACK-COMPATIBLE with a box
+    ⚑ Canonicalizing on READ is also what makes this BACK-COMPATIBLE with a box
     already running: a container stamped ``℘`` by an older version keeps working,
     because the ref grammar accepts both separators.
 

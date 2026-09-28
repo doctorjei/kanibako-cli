@@ -134,14 +134,14 @@ class TestCheckBoxComponents:
 
     def test_marker_absence_is_a_resolution_concern(self, tmp_path):
         """#3 (cont.) — the settings-file marker IS the box signal at the
-        RESOLUTION layer: a standalone root is only recognised as a box when its
+        RESOLUTION layer: a standalone root is only recognized as a box when its
         workset.yaml is present, so a missing marker → 'not a box' there (never
         double-checked at launch)."""
         from kanibako.launch import box_resolve
 
         root = tmp_path / "sbox"
         (root / "box_data").mkdir(parents=True)
-        # box_data present but NO workset.yaml → not recognised as a box.
+        # box_data present but NO workset.yaml → not recognized as a box.
         assert not box_resolve.standalone_settings_present(root)
         (root / "workset.yaml").write_text("project: {mode: standalone}\n")
         assert box_resolve.standalone_settings_present(root)
@@ -895,7 +895,7 @@ class TestEffectiveTransformResolution:
         return AgentConfig(**kw)
 
     def test_claude_declaration_is_the_floor(self, tmp_path):
-        """⚑ THE BEHAVIOUR-PRESERVATION TEST: a claude box with today's config —
+        """⚑ THE BEHAVIOR-PRESERVATION TEST: a claude box with today's config —
         nothing set anywhere — still names ``tweakcc``, so it still patches.
 
         Reads the REAL ``ClaudeTarget``, not a fixture value: the whole risk of
@@ -1816,7 +1816,7 @@ class TestTheMissingSourcePolicyIsWiredIntoTheLaunch:
     suite-green regression: every workset with no handbook chapter goes back to
     warning on every launch, which is almost every box.
 
-    The emitter's own behaviour is pinned in
+    The emitter's own behavior is pinned in
     ``test_seed_hostdest.py::TestOptionalBindEmission``; this pins that the LAUNCH
     hands it the policy, DEST-spelled.
     """
@@ -3526,7 +3526,7 @@ class TestTweakccIntegration:
     def test_unnamed_transform_skips_patching(self, start_mocks):
         """No transform NAMED → ``_apply_tweakcc`` is never reached, even with settings.
 
-        This is the behaviour the key buys: before the wiring, ANY agent whose
+        This is the behavior the key buys: before the wiring, ANY agent whose
         settings merely carried a ``transform_settings`` dict got claude's tweakcc
         run against its binary.
         """
@@ -6258,7 +6258,7 @@ class TestSeedNewBoxCreateEntry:
         box's ``synced`` destinations sync-written rather than seed-written.
 
         ⚑ AFTER the seed, and it must live INSIDE this function rather than beside
-        ``run_create``'s call to it: ``run_create`` materialises the canon skeleton
+        ``run_create``'s call to it: ``run_create`` materializes the canon skeleton
         (555) immediately after, and a copy into that region afterwards dies EACCES.
         The seed→skeleton half of that order is pinned in ``test_canon_delivery``.
         """
@@ -6651,7 +6651,7 @@ class TestPreflightPersonaLoad:
         assert cfg.secret_path == {}      # NOT adopted into the config.
         assert "/claude/navigator" not in err
 
-    def test_unrecognised_persona_hard_errors(self, tmp_path, monkeypatch):
+    def test_unrecognized_persona_hard_errors(self, tmp_path, monkeypatch):
         from kanibako.commands.start import _preflight_persona_load
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
@@ -7311,7 +7311,7 @@ class TestCodexPersonaLaunchWiring:
 
     Reached on EVERY launch (first-launch-after-create, start, reattach — all funnel
     through this one call site), so this proves the create/start/reattach coverage.
-    The box materialisation is mocked exactly as the other ``start_mocks`` launch
+    The box materialization is mocked exactly as the other ``start_mocks`` launch
     tests do (``m.target`` records the seam calls); the delivered-file content is
     proven at the emitter/Target level in ``test_code_config.py`` + the golden.
     """
@@ -7503,7 +7503,7 @@ class TestPersonaLoadOrErrorIntegration:
         return cfg
 
     # ---- (a) unconfigured EXPLICIT persona → hard error, NO artifacts,
-    #          and the box is NEVER materialised (true pre-flight) -----------
+    #          and the box is NEVER materialized (true pre-flight) -----------
 
     def test_unconfigured_persona_errors_no_artifacts(
         self, start_mocks, tmp_path, monkeypatch, capsys,
@@ -7554,7 +7554,7 @@ class TestPersonaLoadOrErrorIntegration:
             m_seed.assert_not_called()
             m.runtime.run.assert_not_called()  # no KANIBAKO_AGENT stamp / launch
             # TRUE PRE-FLIGHT: the box was resolved paths-only (initialize=False)
-            # and NEVER materialised (no initialize=True call) → no box dir.
+            # and NEVER materialized (no initialize=True call) → no box dir.
             inits = [
                 c.kwargs.get("initialize")
                 for c in m.resolve_any_project.call_args_list
@@ -7677,7 +7677,7 @@ class TestPersonaLoadOrErrorIntegration:
     ):
         # No explicit --agent, but the SYSTEM DEFAULT is a persona (Director
         # RESIDUAL ruling, 2026-07-03): the box-independent source must ALSO defer
-        # box materialisation, so an unloadable system-default persona on a
+        # box materialization, so an unloadable system-default persona on a
         # brand-new box leaves NO empty unregistered box dir.
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir laid
         absent_cfg = tmp_path / "agents" / "navigator℘claude" / "agent.yaml"
@@ -7703,7 +7703,7 @@ class TestPersonaLoadOrErrorIntegration:
             assert rc == 1
             m_write.assert_not_called()
             m.runtime.run.assert_not_called()
-            # TRUE PRE-FLIGHT via the system-default source: box never materialised.
+            # TRUE PRE-FLIGHT via the system-default source: box never materialized.
             inits = [
                 c.kwargs.get("initialize")
                 for c in m.resolve_any_project.call_args_list
@@ -7717,7 +7717,7 @@ class TestPersonaLoadOrErrorIntegration:
         self, start_mocks, tmp_path, monkeypatch,
     ):
         # A DEFERRED (persona) launch resolves the probe against ONE box dir and
-        # then materialises against ANOTHER.  The image-override persist + every
+        # then materializes against ANOTHER.  The image-override persist + every
         # downstream box-tier read/write MUST use the box settings file of the
         # SECOND one (Editor round-1 ADD-c).  Mutation-proven: drop the
         # post-materialize rebind and the write lands in the probe's dir → this
@@ -7739,7 +7739,7 @@ class TestPersonaLoadOrErrorIntegration:
             )
 
             def _resolve(*a, **kw):
-                # Probe (initialize=False) → placeholder; materialise
+                # Probe (initialize=False) → placeholder; materialize
                 # (initialize=True) → the real, named box dir (is_new set here).
                 if kw.get("initialize") is True:
                     m.proj.metadata_path = real
@@ -7767,7 +7767,7 @@ class TestPersonaLoadOrErrorIntegration:
             assert rc == 0
             # The image override persisted (via the ONE shared CREATE-exception
             # gate, B6) to the REAL box settings file, NOT the placeholder —
-            # proving project_toml was rebound after materialise.  The REAL gate
+            # proving project_toml was rebound after materialize.  The REAL gate
             # ran: assert the on-disk write itself.
             from kanibako.settings.config_io import load_doc
             written = load_doc(real / "box.yaml")
@@ -7783,7 +7783,7 @@ class TestPersonaLoadOrErrorUnmasked:
     real ``std``/``proj``).  Only the container-execution boundary (runtime / rig /
     image) is stubbed — just enough to REACH the persona gate on a real filesystem.
 
-    EXPLICIT-CREATE (Jei 2026-07-11g): a launch NEVER materialises a NEW box, so the
+    EXPLICIT-CREATE (Jei 2026-07-11g): a launch NEVER materializes a NEW box, so the
     launch-time persona load-or-error gate now applies to an EXISTING box (the box
     is pre-created bare here, then launched with the persona).  The BRAND-NEW-box F7
     proof (a nameless probe fed to ``box_channel_addresses``) moved to the create
@@ -7817,7 +7817,7 @@ class TestPersonaLoadOrErrorUnmasked:
 
     @staticmethod
     def _precreate_bare_box(config_file):
-        """Materialise + register a BARE box at cwd so a persona launch passes the
+        """Materialize + register a BARE box at cwd so a persona launch passes the
         explicit-create gate and reaches the persona load-or-error gate.  (No agent
         seed is needed — the persona gate runs before the home seed; the launch only
         requires the box dir + home + registry membership to exist.)"""
@@ -7855,7 +7855,7 @@ class TestPersonaLoadOrErrorUnmasked:
         assert "navigator+claude" in err
 
         std = load_std_paths(load_config(config_file))
-        # An unloadable persona materialises NO persona agent store (the box itself
+        # An unloadable persona materializes NO persona agent store (the box itself
         # was pre-created bare and legitimately exists).
         assert not (std.agents / "navigator℘claude").exists()
 
@@ -8059,7 +8059,7 @@ class TestTerminalCategoryKeyMatchesOnPosition:
     ``test_settings/test_settings_keyspace.py``, with the predicate: it is
     ``settings_keyspace.is_terminal_category_key`` now, one definition for six call
     sites, not a private copy here. What stays is what is about THIS CALLER — the
-    FOLD's two branches — because that is the behaviour the predicate is bought for.
+    FOLD's two branches — because that is the behavior the predicate is bought for.
 
     The predicate gates the entry-merge branch of ``_merge_default_categories``, so
     a False POSITIVE means a value that is not a dest-keyed map gets folded key by
@@ -8085,7 +8085,7 @@ class TestTerminalCategoryKeyMatchesOnPosition:
         return is_terminal_category_key(key)
 
     def test_a_dict_at_a_channels_type_root_stays_last_wins(self):
-        """⚑ THE POINT OF THE CHANGE, stated as behaviour rather than as a claim.
+        """⚑ THE POINT OF THE CHANGE, stated as behavior rather than as a claim.
 
         A scalar at ``system.channels.common`` was kept off the entry-merge branch
         by the caller's ``isinstance(value, dict)`` test, so the OLD predicate and
@@ -10273,7 +10273,7 @@ class TestReattachFastPath(_RunningBoxDriver):
             assert m_seam.called
 
     def test_reattach_does_not_verify_box_components(self, start_mocks):
-        """A RUNNING box is materialised by definition — its dirs are live
+        """A RUNNING box is materialized by definition — its dirs are live
         bind mounts."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._check_box_components", return_value=None,
@@ -10656,7 +10656,7 @@ class TestRunningBoxOverrideGate(_RunningBoxDriver):
 
     def test_gate_precedes_the_flag_persist_seam(self, start_mocks):
         """``_persist_or_announce_flags`` must never observe a Class-A flag on a
-        running box — it would store/announce a value the box cannot honour."""
+        running box — it would store/announce a value the box cannot honor."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._persist_or_announce_flags",
         ) as m_seam:
@@ -10744,7 +10744,7 @@ class TestRunningBoxOverrideGate(_RunningBoxDriver):
     def test_shell_into_a_live_box_is_not_refused(self, start_mocks):
         """``kanibako shell --ephemeral`` against a live box execs INTO it (the
         documented UX) — ephemeral is the shell's own default and it is
-        honoured, not dropped, so there is nothing to refuse.  Scoping the
+        honored, not dropped, so there is nothing to refuse.  Scoping the
         session-shape refusal to an AGENT launch is what keeps this working."""
         with start_mocks() as m:
             self._running(m)
@@ -10795,7 +10795,7 @@ class TestRunningBoxOverrideGate(_RunningBoxDriver):
         assert "kanibako stop" in err
 
     def test_env_is_allowed_alongside_an_entrypoint(self, start_mocks):
-        """``-e`` is refused on a REATTACH (nothing would apply it) but honoured
+        """``-e`` is refused on a REATTACH (nothing would apply it) but honored
         on the ``--entrypoint`` exec, which does."""
         with start_mocks() as m:
             self._running(m)
@@ -10914,7 +10914,7 @@ class TestDetachAtALiveBoxRefusesThePerRunFlags(_RunningBoxDriver):
     # ---- the CONTROLS that make the refusals meaningful -------------------
 
     def test_a_fresh_detached_launch_still_delivers_cli_env(self, start_mocks):
-        """⚑ THE POSITIVE CONTROL, AND THE WHOLE REASON THE LIVE-BOX BEHAVIOUR
+        """⚑ THE POSITIVE CONTROL, AND THE WHOLE REASON THE LIVE-BOX BEHAVIOR
         WAS WRONG.  On a FRESH detached launch a container is actually created
         and ``-e`` reaches it (the assembly collapse -> ``meta.assembly.env`` ->
         ``_assemble_launch_env`` -> ``runtime.run(env=)``).  A live box under
@@ -10930,7 +10930,7 @@ class TestDetachAtALiveBoxRefusesThePerRunFlags(_RunningBoxDriver):
         self, start_mocks,
     ):
         """The door-table control: remove ``--detach`` and the SAME invocation
-        takes the ``entrypoint`` door, where both flags are honoured.  The
+        takes the ``entrypoint`` door, where both flags are honored.  The
         refusals above pin ``detach``, not ``--entrypoint``/``-e``."""
         with start_mocks() as m:
             self._running(m)

@@ -368,7 +368,7 @@ def start_mocks():
                 _register_new_box=DEFAULT,
                 # The load-or-error pre-flight resolves the box-INDEPENDENT agent
                 # (explicit --agent OR the stored ``system.agent``) to decide
-                # whether to DEFER box materialisation.  With a MagicMock
+                # whether to DEFER box materialization.  With a MagicMock
                 # ``std.settings`` the real reader would feed a MagicMock to yaml
                 # (>10 GB balloon risk), so default it to "no system default"
                 # (bare — today's behavior). Tests exercising a system-default
@@ -476,7 +476,7 @@ def start_mocks():
             m_launch_mount_stubs["_pending_create_entry"].return_value = None
             m_launch_mount_stubs["_register_new_box"].return_value = None
             # Default: no system-default agent → non-explicit launches are NOT
-            # deferred (byte-identical to today's single materialising resolve).
+            # deferred (byte-identical to today's single materializing resolve).
             m_launch_mount_stubs["read_system_agent"].return_value = None
             # Default agent-scope bootstrap = tmux (the persistent-session default).
             from kanibako.commands.start import BootstrapChoice
@@ -542,7 +542,7 @@ def start_mocks():
             # ⚑ TYPED LIKE THE REAL COLLABORATOR: ``ContainerRuntime.inspect_env``
             # returns ``str | None``, never an object.  Left unset, a bare MagicMock
             # is a truthy NON-STRING, which every reader of the ``KANIBAKO_AGENT``
-            # stamp must now reject — the readers canonicalise the stamp, and a
+            # stamp must now reject — the readers canonicalize the stamp, and a
             # non-string is a caller bug the ref parser names rather than coerces.
             # ``"claude"`` matches the agent the rest of this fixture resolves; a
             # test wanting a persona, or a pre-stamp box, sets its own value.
@@ -885,7 +885,7 @@ def start_mocks():
                 # ⚑ ITS RETURN VALUE IS THE FOLD'S ``declared_by``, and it goes onto the
                 # carrier below exactly as the orchestrator puts it there. Dropping it
                 # would leave every display driven through this fixture printing a loss
-                # with no key — the harness asserting the old behaviour.
+                # with no key — the harness asserting the old behavior.
                 _declared_by = _install_assembly_collapse(
                     snap, delivered, whole_box=True, cli_env=kw.get("cli_env"),
                 )
@@ -897,7 +897,7 @@ def start_mocks():
                     declared_by=_declared_by,
                 )
                 # ⚑ DELIBERATE OMISSION: the real orchestrator also installs the
-                # ``binding_derivations.*`` materialisation (``derive_binding_keys``) and
+                # ``binding_derivations.*`` materialization (``derive_binding_keys``) and
                 # emits the §0 row-5 collision warnings. This stub does NEITHER,
                 # because mirroring them would put a second copy of that seam in
                 # the test harness — the drift risk the single-route rule exists

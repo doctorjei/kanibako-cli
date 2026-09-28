@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **kanibako's own text uses American spelling.** Printed and raised messages, identifiers,
+  comments and documentation now read *behavior*, *recognized*, *canceled*. One message shipped in
+  v1.7.2 changes: declining the confirmation of `kanibako rig rm` printed `Cancelled.` and now
+  prints `Canceled.`. The exception raised when a user cancels a prompt,
+  `kanibako.errors.UserCancelled`, is renamed `UserCanceled`, with no alias; see
+  *`kanibako.errors.UserCancelled` is renamed `UserCanceled`* in [MIGRATION.md](MIGRATION.md).
+
 - **A capitalized agent node you write is accepted, with a warning, as the lowercase node.** In
   1.8.0-rc2, `agent: {Claude: {model: opus}}` in the system settings file was not a key: `kanibako
   system show` listed it as undeclared, and a launch did not refuse it but never read it either —
@@ -1107,7 +1114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `system.helpers.breadth`, instead of an undeclared table in a file of its own.** The budget that
   decides how far and how wide `kanibako box helper spawn` may go was read out of a bespoke
   `spawn:` table — a key the closed keyspace does not have, so no verb could show it, set it or
-  refuse a typo in it, and a misspelt leaf silently became the built-in 4. Both leaves are declared
+  refuse a typo in it, and a misspelled leaf silently became the built-in 4. Both leaves are declared
   now and behave like every other setting: `kanibako system get system.helpers.depth` reads the
   effective value, `kanibako system set system.helpers.breadth=2` writes it, a non-numeric value is
   refused when you type it rather than at the spawn that needed the number, and `kanibako system
@@ -1148,7 +1155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "a model is required" default.
 
 - **`kanibako system defaults` lists every default kanibako ships, and says where each one is
-  declared.** `show --effective` resolves the cascade but never names an artefact — it can mark a
+  declared.** `show --effective` resolves the cascade but never names an artifact — it can mark a
   value you stored `(override)`, but nothing it prints tells you where a default is written down.
   The new command answers the other half: one line per shipped
   default with its **key, value, scope and the file that declares it** (`core-defaults.yaml
@@ -1501,7 +1508,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The vocabulary is now supplied per harness, which also closed two faults a pooled list could not
   express. The gate that reads an agent's own settings file could not concede at all, so a goose
   box on a machine where the goose plugin had been removed refused to start — measured, and the
-  concession has always been the documented behaviour everywhere else. And the surface deciding
+  concession has always been the documented behavior everywhere else. And the surface deciding
   where an `agent.default.<leaf>` value is *stored* still read the pooled list after the classifier
   had stopped, so the two disagreed. Four surfaces judge this question and none of them had a test
   asking two of them about one key; there is one now. A refusal also names the agent and lists that
@@ -1558,7 +1565,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Repointing `workset.boxes` or `workset.logs` now actually moves the box store and the helper
   logs.** Both are settings you have always been allowed to write, and until now kanibako only
-  half-honoured them. It would *find* a workset whose store you had moved — the directory walk that
+  half-honored them. It would *find* a workset whose store you had moved — the directory walk that
   identifies a workset root resolved both settings correctly — and then create, move and delete
   that workset's box trees under the default `boxes/` anyway, and write each box's helper log under
   the default `logs/`, because the code that composed those paths spelled the directory names by
@@ -1593,7 +1600,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it. With nothing bound at or above the destination there is no such mount, so the copy went into
   the container's own ephemeral storage and vanished the moment the box stopped. Kanibako logged one
   warning and carried on. That is the wrong trade for this category: a `synced` entry is a
-  credential more often than not, so the old behaviour handed you a box that started cleanly and
+  credential more often than not, so the old behavior handed you a box that started cleanly and
   then failed to authenticate *inside* the agent, naming nothing you could act on. It is refused at
   assembly now, before a single row is written, and the message names the source, the destination
   and the cure. **The fix is a binding**: declare `box.bindings.rw` (or any mount) at or above the
@@ -1635,7 +1642,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   line of shell — `d="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; mkdir -p "$d" && …` —
   sitting in a file you read and hand-edit. They now call
   `~/canon/bible/general/scripts/util/pid-add.sh` and `pid-rm.sh`, which kanibako already ships
-  and already binds into every box, codex included. One behaviour widens with the move: those
+  and already binds into every box, codex included. One behavior widens with the move: those
   scripts also maintain `/tmp/kanibako/agent.pid`, the shared pidfile a box's own hooks already
   keep, which the inline shell never touched. ⚑ **On a box that predates this change the old
   inline hooks stay in your `~/.claude/settings.json`** — kanibako identifies its own hook by the
@@ -1663,7 +1670,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<data>/agents/navigator℘claude/`, a path you cannot type without pasting a character that is
   on no keyboard. Every place kanibako composes that directory now writes the `+` form: the
   agent file, the per-node `canon` and `template` stores, and the symlinks that share the
-  harness's plugins and cache. **Key names are unchanged** — `agent.<node>.*` still canonicalises
+  harness's plugins and cache. **Key names are unchanged** — `agent.<node>.*` still canonicalizes
   to `℘` internally, and both spellings still work on the command line and reach the same store.
   One key's *value* moves with the directory it names: `meta.agent.<node>.name` now reads
   `navigator+claude`, which is what the spec's own formula
@@ -1865,7 +1872,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stdout, so a hook whose child's output *is* the interface cannot be treated like one whose child
   only logs. Both layers had to move together: unsuppressing the inner one changes nothing while the
   outer one still sends both streams to `/dev/null`, and the outer redirect wins. Nothing that
-  worked before stops — mail and broadcast notification never travelled this cascade, because
+  worked before stops — mail and broadcast notification never traveled this cascade, because
   `check-comms.sh` is wired directly into `settings.json` and prints its own message. A box with no
   notebook hook is unaffected: the template ships nothing at that endpoint, so the cascade's
   existence check is simply false and nothing runs.
@@ -1920,7 +1927,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   token that was perfectly valid.** Claude Code accepts `sonnet`, `opus`, `haiku` and `fable` as
   aliases and resolves each through an environment variable — `ANTHROPIC_DEFAULT_SONNET_MODEL` and
   its siblings — before it puts anything on the wire. Kanibako's pre-launch probe did not: it sent
-  the alias itself. An endpoint that serves only its own catalogue answered `403 team not allowed to
+  the alias itself. An endpoint that serves only its own catalog answered `403 team not allowed to
   access model`, kanibako read the 403 as an auth reject, and the launch was refused with a message
   telling you to fix the token. The box, had it been allowed to start, would have sent the resolved
   model and worked. The probe now resolves the alias through the persona store entry's own
@@ -2274,8 +2281,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ro`/`rw` above the box name for a primary or named box, and still has no per-box subdirectory
   for a standalone one.
   ⚑ **The verbs that DELETE a vault follow the key too, and they are careful about it.** A key
-  that is honoured everywhere except where a directory is removed is worse than one that was never
-  honoured: your real vault would be orphaned while a directory the box never used was the thing
+  that is honored everywhere except where a directory is removed is worse than one that was never
+  honored: your real vault would be orphaned while a directory the box never used was the thing
   taken. `box rm --purge`, `kanibako box purge`, `box move` and `box convert` now resolve the
   vault before they delete anything, and they draw a line the earlier code had no reason to. For a
   primary or named box only the per-box `<box-name>` directory is ever removed, under whichever arm
@@ -2428,7 +2435,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible hooks take that pid as their first argument and fall back to their own `$PPID` only for a
   caller that wires one of them as the hook command directly. ⚑ **A box created before this change
   keeps the old hooks**: `~/.claude/settings.json` is seeded once at create and is yours to edit
-  afterwards, so kanibako does not rewrite it. To get the fixed behaviour, replace `|| true` with
+  afterwards, so kanibako does not rewrite it. To get the fixed behavior, replace `|| true` with
   `"$PPID"` on each `~/canon/bible/general/scripts/hooks/*.sh` command, and drop it outright from
   the `stop.sh` one, which needs no pid. Markers left behind by the old spelling need nothing done
   to them: the supervisor reaps a marker whose process is gone on its first scan.
@@ -2456,7 +2463,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helper's marker would read as exactly that phantom second agent. What is compared is the program
   plus its subcommand, which is all that survives a real launch: a box started with `--continue`
   runs as `--resume`, and your own flags and model overrides move everything after. ⚑ **A marker is
-  only ever removed on a positive judgement.** If `/proc` cannot be read, if the process is
+  only ever removed on a positive judgment.** If `/proc` cannot be read, if the process is
   something else that merely names the agent, or if the supervisor has no launch grammar to compare
   against, the marker is left alone — deleting a live agent's marker would blind the supervisor to
   an agent that is running, which is worse than the leak it fixes. A genuine second agent session is
@@ -2819,7 +2826,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **…and those same eleven repoints now actually move the directories they name.** Making them
   settable was only half the repair. `kanibako system set system.canon=/srv/canon` stored the value
-  and the launch cascade honoured it — binds, seeds and `show --effective` all moved — but the
+  and the launch cascade honored it — binds, seeds and `show --effective` all moved — but the
   host-side path resolver read the bootstrap config file *only*, so every part of kanibako that
   asks for "the canon root" directly kept handing back the default. A `system.template` repoint did
   not move the seed source; a `system.channelroot` repoint did not move the channel tree. The set
@@ -2839,7 +2846,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value was written to `workset.yaml`, `workset get` read it straight back, and not one byte moved.
   `mailboxes` was the one that could actually mislead you: repointing it looked for all the world
   like you had relocated your box's own inbox, and `~/channels/inbox` stayed exactly where it was.
-  `chat` and `share` were worse in a quieter way, because half of kanibako honoured them: the
+  `chat` and `share` were worse in a quieter way, because half of kanibako honored them: the
   `~/channels/workset/chat` mount followed your override while the launch kept creating and
   rotating `general.md` and `broadcast.md` in the *old* directory — which is mounted nowhere. A box
   whose workset repointed `chat` therefore had an empty `~/channels/workset/chat`, and a growing
@@ -2853,7 +2860,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and get nothing back. See [MIGRATION.md](MIGRATION.md) §2.51.
 
 - **The any-agent defaults `template`, `canon`, `run_args` and `transform` are settable, and the
-  refusal that pointed at them stopped lying.** Six agent behaviour keys were settable by their bare
+  refusal that pointed at them stopped lying.** Six agent behavior keys were settable by their bare
   names — `model`, `access`, `endpoint`, `bootstrap`, `allow_helpers`, `continue_mode` — and the
   rest of the declared set was not, though the settings spec declares all of them alike. Typing the
   full `agent.default.template` got you a refusal saying *"set the any-agent default with the bare
@@ -2982,7 +2989,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validation had no branch for it, so it fell through to the agent-tail rule, which judged it
   against the wrong declared set. An undeclared leaf under that namespace now refuses by name and
   lists the leaves that are declared, and the declared one is accepted where the launch path
-  materialises it.
+  materializes it.
 
 - **A `box: agent:` table left in a settings file is now refused by name, instead of being
   silently discarded.** `box.agent` was retired in 1.8.0 in two different senses — as a scalar it
@@ -3273,7 +3280,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`agent.<agent>.env.<VAR>`), so you can override one by writing the same key in a settings file
   the way you would any other setting. **The breaking half:** because they are ordinary keys, they
   take part in the one-owner rule above. If you had set the *same* variable at another scope — say
-  `box.env.DISABLE_AUTOUPDATER` — your value used to be silently discarded in favour of the
+  `box.env.DISABLE_AUTOUPDATER` — your value used to be silently discarded in favor of the
   plugin's; that configuration now **refuses the launch and names both keys.** The cure is the
   same one owner: drop your key and override the plugin's key instead, at whatever scope you like.
   See [MIGRATION.md](MIGRATION.md) §2.34.
@@ -3318,14 +3325,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `self: claude: bindings:` reads `agent.claude.claude.bindings`, which is not a key and never
   was. `env` and `secret_path` were flattened first (above); **every remaining category follows:
   `bindings`, `caches`, `seeded`, `common`, `synced` and `masks` are read flat now, and the
-  agent's behaviour keys (`model`, `access`, `endpoint`, …) sit directly under the root beside
+  agent's behavior keys (`model`, `access`, `endpoint`, …) sit directly under the root beside
   them.** The nested spelling is **refused by name**, with the key the spelling actually reads and
   the flat table to write instead. This affects files you may never have hand-edited: `bindings:`
   was the last table still written the nested way, so an agent settings file untouched since
   v1.7.2 will carry it. Two more consequences, both of arrangements that used to launch: **the
   all-agents `self: default:` level has no agent-file spelling at all** — that tier is written in
   the system file as `agent: default: <category>:`, which is what the refusal's cure names; and
-  **a nested behaviour key** (`self: claude: model:`) refuses too, where a flat `model:` in the
+  **a nested behavior key** (`self: claude: model:`) refuses too, where a flat `model:` in the
   same file used to beat it silently. The reason for refusing rather than continuing to accept: it
   was never one spelling but two, and a file carrying both lost the nested table *wholesale* —
   entries spelled only there were absent, not overridden, with nothing said. See
@@ -3579,7 +3586,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   created, **the box could not be started until the offending directories were moved out by hand.**
   Pruning now widens directory permissions when, and only when, an ordinary removal has already
   failed, and a snapshot that still cannot be reclaimed is reported and skipped rather than
-  cancelling your launch. Housekeeping is no longer able to refuse to start a box.
+  canceling your launch. Housekeeping is no longer able to refuse to start a box.
 
 - **Helper boxes inherited the director's browser endpoint by accident of timing.** With
   `--browser`, kanibako starts a headless browser sidecar and gives the box its address as
@@ -3649,7 +3656,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A blocked template seed blamed the wrong thing.** Seeding into the managed canon region
   (`canon/COLLECTION.md`, `canon/bible/…`, `canon/handbook/…`) is refused, but the refusal said the
   seeded content "would be silently invisible — never merged, never an error", which describes a
-  file that quietly loses to a mount. That is not what happens: box create materialises that region
+  file that quietly loses to a mount. That is not what happens: box create materializes that region
   root-owned, so the copy fails with `EACCES` and stops the create outright. The message now leads
   with the permission failure and keeps the shadowing as the secondary reason, so the cure you reach
   for matches the failure you actually hit.
@@ -3744,7 +3751,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unaffected, and the mount a box actually receives at `~` is byte-identical to before. **The cure
   is `workset.boxes`**, the workset-scope key naming where box stores live; a box's home is derived
   from it. Home also leaves the per-scope `bindings.*` listing in `kanibako box show --effective`
-  and appears at the top of that block as a labelled foundation line, so the one mount every box has
+  and appears at the top of that block as a labeled foundation line, so the one mount every box has
   is still visible in the view that exists to show what a box gets. See
   [MIGRATION.md](MIGRATION.md) §2.32.
 
@@ -3858,7 +3865,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`kanibako box get <box> box.caches`, `kanibako system get system.caches`). A per-agent
   category table is read at the **agent** noun instead (`kanibako agent get <agent> caches`);
   asking a file-scope noun for `agent.<agent>.caches` is refused and points there. A readable
-  form is planned and its shape is not decided, so treat today's behaviour as provisional. See
+  form is planned and its shape is not decided, so treat today's behavior as provisional. See
   [MIGRATION.md](MIGRATION.md) §2.23 for how to verify an edit meanwhile.
 - **Seed and sync destinations are spelled guest-side.** The three template seed layers target
   `~/` rather than a host path under the box store, and kanibako resolves that to the box store when
@@ -3939,7 +3946,7 @@ migration code.** Four released config surfaces are removed outright
   - `notebook/` and `workbook/` — box-owned and writable: box directives/procedures, and
     box working state (devnotes, tasks, plans). Seeded once at `create`.
 
-  `box create` materialises a root-owned, mode-555 skeleton of book roots, chapter
+  `box create` materializes a root-owned, mode-555 skeleton of book roots, chapter
   mountpoints and file mountpoints, and launch mounts each chapter as an individual
   read-only **sibling** — no mountpoint ever lives inside a bind source, and neither
   `~/canon` nor `~/canon/bible` is ever bound whole. Protection is re-asserted after
@@ -3962,7 +3969,7 @@ migration code.** Four released config surfaces are removed outright
   together with a base-version floor.
 - **The abstract categories record what each declaration derived.** `common`, `caches` and
   `seeded` expand into concrete bindings and copies as the settings collapse, and that
-  pairing — a declaration and the mount or copy it produced — is materialised into the
+  pairing — a declaration and the mount or copy it produced — is materialized into the
   launch snapshot instead of being discarded. It is written at a reserved internal node
   spelled `binding_derivations`, and that node is **not a key**: it cannot be set, reset,
   read back or referenced, the closed keyspace refuses the spelling like any other name it
@@ -4050,7 +4057,7 @@ migration code.** Four released config surfaces are removed outright
 
   - `kanibako box set pref.system.agent=<name>` writes it; `kanibako create --agent
     <name>` persists the request, so a plain `kanibako start` runs that agent —
-    unchanged behaviour, new storage.
+    unchanged behavior, new storage.
   - Selection now runs once, early, through one seam: a narrow lenient pre-pass resolves
     `system.agent` with prefs applied, and the resolved selection is installed at the top
     precedence level *whatever chose it* (a pref, `--agent`, or the single-installed
@@ -4117,7 +4124,7 @@ migration code.** Four released config surfaces are removed outright
     `<data>/agents/claude/{plugins,cache}` → `<data>/agents/claude/common/{plugins,cache}`.
     Move them before your first launch or the box binds an empty `common/plugins` over
     `~/.claude/plugins` and every installed plugin appears gone, with no message;
-  - `workset share add` absolutises a relative source against the workset root **at write
+  - `workset share add` absolutizes a relative source against the workset root **at write
     time** and stores the result (on the default workset, whose bindings never had a root
     to join, it refuses with the reason); `set` on a bind category refuses a bare
     relative source outright and prints the correctly rooted form. **Already-stored
@@ -4132,7 +4139,7 @@ migration code.** Four released config surfaces are removed outright
   replacing the flat `playbook/notebook/workbook` layout, and the box-home seed now lives
   at `global/template/box/home/`. Agent-level and workset-level template dirs restructure
   the same way (`<data>/agents/<agent>/template/box/home/`,
-  `<workset>/template/box/home/`). Host stores materialise through **one** copier with
+  `<workset>/template/box/home/`). Host stores materialize through **one** copier with
   one discipline: per-scope whitelists that deny by default, symlink and traversal
   refusal on every path component, containment checked before anything is created, and
   per-file create-if-absent wherever user content lives. `kanibako setup` self-heals the
@@ -4175,11 +4182,11 @@ migration code.** Four released config surfaces are removed outright
   change: a fresh CODEX-persona box whose store names no model now refuses at the pre-flight
   instead of silently running against `gpt-5.5`.
 - **BREAKING (plugin authors): three persona surfaces on `Target` changed shape**, and one fails at
-  IMPORT. `probe_verdict` is removed in favour of `probe_outcome`; it was public in 1.7.2 and the
+  IMPORT. `probe_verdict` is removed in favor of `probe_outcome`; it was public in 1.7.2 and the
   published 1.7.2 claude plugin imports it at module scope, so an old plugin wheel against the new
   base raises `ImportError` from any command that resolves an agent. `read_persona_settings` now
   returns a tri-state `PersonaReadOutcome`, `verify_persona` a four-way `PersonaProbeOutcome`.
-  ⚑ **The module-level helper `http_probe_status` is removed the same way**, in favour of
+  ⚑ **The module-level helper `http_probe_status` is removed the same way**, in favor of
   `http_probe`, which answers with a `ProbeResponse(status, body)` rather than a bare status so a
   refusal can quote the provider's own words. It was public in 1.7.2 too, and both released 1.7.2
   plugins import it at module scope, so an old wheel fails on it exactly as it fails on
@@ -4242,8 +4249,8 @@ migration code.** Four released config surfaces are removed outright
   reattached you to the OLD conversation** rather than starting a new one, and `--image` was even
   recorded as the box's image before being ignored. The error names every offending flag and the
   cure (`kanibako --restart`). An explicit session-shape refusal leaves the running session
-  completely untouched — nothing is signalled, killed, or attached. Exempt because they are
-  genuinely honoured against a live box: `--attach`, `--detach`, `--print-container`, `--warm-only`,
+  completely untouched — nothing is signaled, killed, or attached. Exempt because they are
+  genuinely honored against a live box: `--attach`, `--detach`, `--print-container`, `--warm-only`,
   `--entrypoint`, and `-e`/`--env` whenever the invocation starts a second process in the box that
   will apply it (`--entrypoint`, or `kanibako shell --persistent` at a box that is running an
   agent) — env is refused only where nothing would consume it. ⚑ **`--detach` and `--warm-only` are
@@ -4262,7 +4269,7 @@ migration code.** Four released config surfaces are removed outright
   disconnect <workset> <box> && kanibako workset connect <workset> <workspace>` for a workset
   member. Unaffected: `create`, `box extract`, and the first launch of a box added with `workset
   connect` (connect registers the box without seeding it, so that launch is a genuine
-  materialisation). ⚑ **Check anything that deletes box directories and relies on the next
+  materialization). ⚑ **Check anything that deletes box directories and relies on the next
   `start` to put them back** (`MIGRATION.md` §2.18).
 - **BREAKING: a box-config verb run from a directory that is not a box now errors.** `kanibako
   box set box.<key>=<value>` (and `get`/`show`/`reset`) with no box named, run from a cwd with no
@@ -4283,8 +4290,8 @@ migration code.** Four released config surfaces are removed outright
   all — the three first-party plugins each needed the annotation moved. Plugins that build the
   table from their `<agent>-defaults.yaml` `category_binds:` section get the new shape for free,
   but a `key:` line under a `bindings` category is now refused rather than ignored. Destinations
-  must be normalised (`normalize_bind_dest`): arm keys merge as strings but resolve to paths, so an
-  unnormalised `~/x` neither matches nor is matched by an override written `/home/agent/x` — the
+  must be normalized (`normalize_bind_dest`): arm keys merge as strings but resolve to paths, so an
+  unnormalized `~/x` neither matches nor is matched by an override written `/home/agent/x` — the
   two survive as separate entries and then collide at launch as two bindings on one destination.
   See `MIGRATION.md` §3 item 7.
 
@@ -4292,7 +4299,7 @@ migration code.** Four released config surfaces are removed outright
 
 - **`kanibako box info` named a cure that has not worked since v1.7.0.** For a directory with no
   box data it printed `Start a session with 'kanibako start', or create with:` — but the explicit
-  create gate means a launch never materialises a box; it errors and points at `create`. The same
+  create gate means a launch never materializes a box; it errors and points at `create`. The same
   branch also collapsed two different states, so a **registered** box whose directory had been
   deleted was told it *"has not been used with kanibako yet"* — false, and offering a cure that was
   correct only by accident for a primary box and **absent entirely** for a named one. `info` now
@@ -4320,8 +4327,8 @@ migration code.** Four released config surfaces are removed outright
   the home — and, for a standalone box, re-created the workspace directory — before `create` errored
   with `already initialized`. The message was false: a bare home with no seed, no canon skeleton, no
   agent config and no credentials had just been written. The refusal now happens before anything is
-  materialised. Affects primary and standalone boxes alike.
-- **The `orphaned project data` hint is gone.** It required a launch to be materialising a primary
+  materialized. Affects primary and standalone boxes alike.
+- **The `orphaned project data` hint is gone.** It required a launch to be materializing a primary
   box, keyed on the box directory — which is exactly what the refusal added in this release (above)
   now rejects first, so the hint could no longer fire. ⚑ Not the v1.7.0 create gate: that one keys
   on *registration*, and a registered box whose directory was deleted still passed it. Orphan
@@ -4338,7 +4345,7 @@ migration code.** Four released config surfaces are removed outright
   refresh credentials, print the reconciled-config notice, attach — and the agent config is never
   rewritten under a live agent.
 - **`--entrypoint` against a running box runs your command instead of being dropped.** It now execs
-  as a second process in the box, per-run `-e` applied — the behaviour `kanibako shell <box> -- cmd`
+  as a second process in the box, per-run `-e` applied — the behavior `kanibako shell <box> -- cmd`
   already had ephemerally. Previously `start` defaulted to persistent whenever tmux was present, so
   the invocation reattached and the entrypoint was silently discarded. Same fix covers
   `kanibako shell --persistent <box> -- cmd`.
@@ -4351,7 +4358,7 @@ migration code.** Four released config surfaces are removed outright
   actually running. Where that image cannot be read, the image tier is dropped rather than guessed:
   `box.shell` → `$KANIBAKO_SHELL` → `sh`. **A persistent no-agent box is unchanged and still
   reattaches**: its session already *is* your shell, so you get back the one you left running
-  rather than a new one. (A box launched before agent stamping keeps the old behaviour until its
+  rather than a new one. (A box launched before agent stamping keeps the old behavior until its
   next restart.) Per-run `-e`/`--env` is applied to that shell, like any other second process in a
   live box; it stays refused at a no-agent box, which reattaches and would drop it.
 - **A flag now works wherever you type it.** `kanibako box set <box> --null <key>` failed
@@ -4447,7 +4454,7 @@ migration code.** Four released config surfaces are removed outright
   `start.py` wiring is deleted with them.
 - **`<data>/agents/<agent>/share/`** — the join root died with assembly-time rooting. It
   was verified empty on inspection; if yours has content it belongs to a hand-set
-  relative agent binding, which needs absolutising rather than deleting.
+  relative agent binding, which needs absolutizing rather than deleting.
 
 ## [1.7.2] - 2026-07-16
 
@@ -5144,7 +5151,7 @@ The revamp is **one breaking change set** with **no automatic migration** — se
     brittle `.seeded` sentinel (and its `needs_seed` / `mark_seeded` machinery)
     is **removed**.
   - **Legacy boxes are adopted automatically.** A pre-existing box with no
-    registry flag is recognised as seeded via the inbox backstop and stamped
+    registry flag is recognized as seeded via the inbox backstop and stamped
     with the flag on detect — no converter or migration step is required.
 
 ## [1.5.1] - 2026-06-16

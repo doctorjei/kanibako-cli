@@ -9,7 +9,7 @@ That is not hypothetical. That exact divergence shipped, was found in an audit, 
 hand in `3b67e61` — without removing the thirteen copies of the test that made it possible. This
 module is where the question is answered once, so there is no second opinion left to drift.
 
-⚑ **THE ROUTE IS A DESTINATION, NOT A JUDGEMENT.** Whether a key EXISTS is spec §0's closed
+⚑ **THE ROUTE IS A DESTINATION, NOT A JUDGMENT.** Whether a key EXISTS is spec §0's closed
 keyspace, owned by `kanibako.settings.settings_keyspace`; which FAMILY a spelling belongs to is
 `kanibako.settings.config_keys`. This module consumes both and re-implements neither — it maps an
 already-classified key to a path. Keeping that line is what stops a routing layer from quietly
@@ -80,7 +80,7 @@ and *tail* — exactly the shape a rule takes just before one copy drifts. The i
 * **A MALFORMED node ref**, caught by `parse_agent_address` — the ADDRESS grammar, so the `shell`
   node routes: its §2d fence declares `agent.shell.*` and a settings file the shell tier owns
   (`[R175]`), and routing the owner's own settings claims nothing. The node is used AS-IS for the dir and only
-  VALIDATED here, never re-swapped: canonicalisation happened once, at `config_keys.resolve_key`. So
+  VALIDATED here, never re-swapped: canonicalization happened once, at `config_keys.resolve_key`. So
   breaking the `resolve_key` swap routes a `+` key to an `agents/<node-with-+>/` dir the resolver
   never reads — the canonicalization mutation the gate proves.
 
@@ -169,7 +169,7 @@ launch — and hand-editing it is the cure the refusal prescribes.
 
 ⚑ **The read-only claim is true of EVERY verb since S3.** Before S3 the `agent` noun had its own
 writer and no gate, so `agent set claude bindings.ro.x=…` was a live write route past this one. It
-now takes the SAME retirement refusal, from the same recogniser.
+now takes the SAME retirement refusal, from the same recognizer.
 
 ⚑⚑ The returned slot's tail is `bindings.<ro|rw>.<dest>`, and `kanibako.settings.agent_file` places
 it at EXACTLY the table the launch reads — `self: bindings: <arm>:`, flat, with the DESTINATION
@@ -251,12 +251,12 @@ declared once.
 
 ⚑⚑ **THE SCOPE-TOKEN TEST IS AN ASSERTION, NOT A FORK, AND THAT CHANGE IS THE FIX FOR A REAL BUG.**
 It used to FALL THROUGH to the command's Layer-1 config file when the token was not a settings
-scope. Nothing legitimate reaches that arm — the routing table, both bind recognisers and
+scope. Nothing legitimate reaches that arm — the routing table, both bind recognizers and
 `is_terminal_category_key` all require a head in `SCOPE_CONTAINMENT` — but the UNDECLARED flat
 spelling did: `box_image`'s first dotted token is the whole string, so a `set box_image=…` slotted
 at `box: image:` in `kanibako.cfg` (the bootstrap FLOOR) while `box.image` slotted
 identically in the settings tier ABOVE it. The spelling chose the precedence, silently. The
-normaliser is deleted (`config_keys`), and this arm now says so instead of routing around it.
+normalizer is deleted (`config_keys`), and this arm now says so instead of routing around it.
 
 ⚑⚑ **CATEGORY AND SCOPED NOW PICK THE SAME FILE, AND THAT IS THE REPAIR, NOT AN OVERSIGHT.**
 `CATEGORY` was distinguished for exactly one reason: it carried the deliberately-broken agent-scope
@@ -370,7 +370,7 @@ write half is what closed it.
 ⚑ **SO THE TWO FUNCTIONS ARE NOW BYTE-IDENTICAL, AND BOTH NAMES ARE KEPT ON PURPOSE.** Agreement
 between the write route and the read route is this module's whole reason to exist; two names that
 provably resolve the same way state that at every call site. Merging them is a naming decision, not
-a behavioural one, and it is a separate pass.
+a behavioral one, and it is a separate pass.
 
 ### The agent-scope category route is still wrong — the half QA′ did not touch
 

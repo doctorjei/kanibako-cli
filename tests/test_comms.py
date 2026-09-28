@@ -63,7 +63,7 @@ class TestCommsOnStart:
         saying "simulate env var injection from start.py" — and then assert its own
         two lines. It pinned nothing: it would have stayed green through the whole of
         P4b, while the statement it appears to make ("the box gets its name") became
-        one nothing in the product had to honour.
+        one nothing in the product had to honor.
 
         It calls ``_core_env_default_categories`` now, the one function that spells
         the variable, and reads the KEY the launch floor carries it under. The full

@@ -76,7 +76,7 @@ def sample_leaf_value(leaf: str, tag: str = "V") -> str:
 
     ⚑ THE PATH ARM IS AN INVERSION, NOT A LOOSENING.  These sweeps used to pass
     ``V-canon`` / ``probe`` and assert acceptance, which pinned the OLD permissive
-    behaviour for the two path leaves as a side effect of pinning the route.  The claim
+    behavior for the two path leaves as a side effect of pinning the route.  The claim
     each sweep exists for is unchanged; only the sample moved to a spelling the keyspace
     admits, and the refusal itself is pinned in
     ``tests/test_settings/test_path_key_set_refusal.py``.
@@ -293,7 +293,7 @@ class TestRoutedScalarDest:
         the SPELLING chose the precedence tier: the bootstrap floor under
         everything, or the system settings tier above it.  ``get`` refused the
         same spelling outright, so ``set`` taught a form no other verb served.
-        The spelling is UNDECLARED (spec §0), the normaliser is deleted, and the
+        The spelling is UNDECLARED (spec §0), the normalizer is deleted, and the
         write verbs now refuse it BY NAME and touch no file at all.
         """
         before = bench.snapshot()
@@ -368,14 +368,14 @@ class TestOneSpellingPerKey:
 
     ``box_image`` was a second, undeclared user-facing surface: ``set`` took it,
     ``get`` refused it, and the two spellings of one key landed in DIFFERENT
-    FILES at different precedence tiers.  Deleting the normaliser fixes that
+    FILES at different precedence tiers.  Deleting the normalizer fixes that
     spelling; this class fixes the SHAPE — a write verb may not accept a spelling
     the read gate refuses, whatever spelling anyone invents next.
 
     ⚑ THE ORACLE IS ``is_known_key``, WHICH IS THE GATE ``get`` ALREADY APPLIES
     (``system_cmd``'s get arm), and NOT ``key_validity``.  Measured: ``model`` is a
     legitimate bare CLI spelling of ``agent.default.model`` that ``key_validity``
-    refuses, because that function judges KEYSPACE keys and a bare behaviour key
+    refuses, because that function judges KEYSPACE keys and a bare behavior key
     is a CLI spelling of one.  ``is_known_key`` answers the question actually at
     issue — is this key-SHAPED to the CLI — so it admits the bare form and refuses
     the flattened one.
@@ -424,7 +424,7 @@ class TestOneSpellingPerKey:
 
 
 # ---------------------------------------------------------------------------
-# 2. Bare agent behaviour keys (``agent.default`` tier)
+# 2. Bare agent behavior keys (``agent.default`` tier)
 # ---------------------------------------------------------------------------
 
 class TestBareAgentKeyDest:
@@ -887,7 +887,7 @@ class TestAgentScopeCategoryDestination:
     FILE-scope per-entry spelling (``box.caches.x``, via ``_is_scope_bind_key``). It
     is the key's declared FAMILY; what it no longer does is change the destination.
 
-    ⚑⚑ THE CLASS STILL PINS ONE KNOWN-WRONG BEHAVIOUR, AND QA′ DID NOT TOUCH IT:
+    ⚑⚑ THE CLASS STILL PINS ONE KNOWN-WRONG BEHAVIOR, AND QA′ DID NOT TOUCH IT:
     ``test_get_reads_the_noun_settings_file`` asserts that the agent-scope terminal
     READ lands on the noun's settings file rather than on
     ``agents/<node>/agent.yaml``, which is the wrong file. Re-pointing it moves
@@ -1028,7 +1028,7 @@ class TestChannelTypeRootsRouteUNIFORMLY:
     KNOWN GAP by ``test_the_unrouted_members_are_a_KNOWN_GAP_not_this_change``. The
     three now have ``_KEY_ROUTES`` entries at the SAME ``workset: channels:`` nested
     slot as their siblings, that case went red as its own docstring predicted, and it
-    was DELETED in favour of :meth:`test_every_declared_member_is_routed` — the same
+    was DELETED in favor of :meth:`test_every_declared_member_is_routed` — the same
     property stated in the positive. The family is uniform now, so the case that said
     it was not had to go rather than be weakened.
     """
@@ -1042,7 +1042,7 @@ class TestChannelTypeRootsRouteUNIFORMLY:
 
         ⚑ Read through ``keyspace_manifest.manifest_doc``, which resolves the
         INSTALLED package data (not a repo-relative path), so this stays a
-        statement about the shipped artefact.
+        statement about the shipped artifact.
         """
         doc = manifest_doc()
         out: dict[str, list[str]] = {}

@@ -32,9 +32,9 @@ Design §6d, ratified by Jei 2026-06-27, as it stands with the category arm gone
   is a normal explicit file edit at the command's own scope — identical to hand-editing the YAML —
   so it does not warn.
 
-## Q9 — the dangling judgement is FULL RESOLUTION, not per-token existence
+## Q9 — the dangling judgment is FULL RESOLUTION, not per-token existence
 
-Spec §2a, ruling 2026-06-29. The dangling / unknown / cycle judgement is made by the injected E3
+Spec §2a, ruling 2026-06-29. The dangling / unknown / cycle judgment is made by the injected E3
 `resolves` probe, which answers ONE question: *does the edited value resolve cleanly post-edit?*
 This REPLACED the retired conservative per-token existence check (`ref_exists` / `var_known`).
 
@@ -82,7 +82,7 @@ retired by DS-BL1 = (a). S25 is the only seam this module still realizes.
 
 That arm carried the `:` `src:dest` refusal, the bare-relative refusal with `_rooted_form_hint`,
 and the not-yet-existent-host-path `Warn`. The live caller — `set_config_value`'s E3 set-time probe
-— always passed `is_category=False`, so removing it was a zero-behaviour-change deletion.
+— always passed `is_category=False`, so removing it was a zero-behavior-change deletion.
 
 ⚑ **A COLON IS ORDINARY CONTENT ON THIS PATH.** The forbidden `:` `src:dest` notation was a
 CATEGORY rule about the bind SHAPE — a structured pair spelled as a joined string. A scalar has no
@@ -130,7 +130,7 @@ families through the scanner's own parsers, called rather than re-derived:
 
 So "well-formed" here means EXACTLY what the build expander will later accept: one grammar, not a
 second (S25). A DANGLING braced ref is judged exactly like a dangling bare one, because the
-judgement is made downstream by the E3 probe, which sees only the ref NAME this function returns.
+judgment is made downstream by the E3 probe, which sees only the ref NAME this function returns.
 
 A leading `~` is the home token (environment; validated for existence elsewhere, or box-deferred).
 It carries no name to check, so the scanner ignores it — but a caller must still treat a value

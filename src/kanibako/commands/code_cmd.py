@@ -175,7 +175,7 @@ def run_code(args: argparse.Namespace) -> int:
     std = load_std_paths(config)
 
     # EXPLICIT-CREATE gate (Jei 2026-07-11g): `code` never auto-CREATES a box —
-    # only auto-STARTS an existing one.  Resolve NON-materialisingly (``initialize=
+    # only auto-STARTS an existing one.  Resolve NON-materializingly (``initialize=
     # False`` → no mkdir/seed; ``register=True`` so a half-created, not-yet-
     # registered box does NOT resurrect off the create journal) and, when no
     # EXISTING registered box resolves, surface the SAME "no box; run create" error
@@ -239,7 +239,7 @@ def run_code(args: argparse.Namespace) -> int:
         # Re-resolve the (existing) box after the auto-START so proj/cname reflect
         # its now-running state before seeding + attaching.  (The box already
         # existed — the explicit-create gate above guaranteed it — so this is a
-        # refresh, not a materialisation.)
+        # refresh, not a materialization.)
         proj = resolve_box_target(std, config, project_dir, initialize=False)
         cname = container_name_for(proj)
         if not runtime.is_running(cname):
@@ -303,7 +303,7 @@ def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | No
     try:
         stamp = runtime.inspect_env(container_name, "KANIBAKO_AGENT")
         if stamp:
-            # 🛑 CANONICALISE ON READ. The stamp is the OUTSIDE spelling (``+``);
+            # 🛑 CANONICALIZE ON READ. The stamp is the OUTSIDE spelling (``+``);
             # this function's contract is a NODE-name, which is what the
             # ``select_agent`` fallback below already returns — so both branches
             # answer in ONE spelling. ⚑ Both separators are accepted, so an
@@ -620,7 +620,7 @@ def _seed_remote_attached_config(engine, container_name: str) -> None:
         try:
             stamp = engine.inspect_env(container_name, "KANIBAKO_AGENT")
             if stamp:
-                # 🛑 CANONICALISE ON READ, as the local leg does: the stamp is the
+                # 🛑 CANONICALIZE ON READ, as the local leg does: the stamp is the
                 # OUTSIDE spelling and ``_extension_for_agent`` takes a NODE-name
                 # (it derives the harness with ``harness_of``, which splits on ``℘``
                 # alone).  No LOCAL project → resolve the plugin with

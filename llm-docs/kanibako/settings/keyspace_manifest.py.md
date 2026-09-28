@@ -1,4 +1,4 @@
-# The keyspace registry reader — one parse, one copy, one artefact
+# The keyspace registry reader — one parse, one copy, one artifact
 
 `settings/keyspace_manifest.py` is a thin reader of the shipped `keyspace-manifest.yaml`, and it
 is the ONE way anything in the tree reads that file. It does two things: parse the packaged
@@ -49,14 +49,14 @@ The difference between the two thin loaders is deliberate, not an oversight:
     parsing its 3000-odd lines costs ~137 ms — so `_parse_manifest` is an `lru_cache(maxsize=1)`
     and the parse happens once per process.
 
-Do not "harmonise" the two by removing this cache or by adding one to `core_defaults`; each shape
+Do not "harmonize" the two by removing this cache or by adding one to `core_defaults`; each shape
 answers a property of the file it reads.
 
-## It reads the INSTALLED artefact, never the checkout
+## It reads the INSTALLED artifact, never the checkout
 
 `_parse_manifest` resolves its path through `kanibako.settings.core_defaults.packaged_data_dir` —
 the ONE `importlib.resources.files()` join in the tree. That is what makes the conformance suite a
-statement about the artefact that SHIPS. A guard that read a repo-relative path would instead be a
+statement about the artifact that SHIPS. A guard that read a repo-relative path would instead be a
 statement about this working tree, which is the wrong subject: it would pass on a developer's
 machine while the wheel shipped a stale manifest.
 

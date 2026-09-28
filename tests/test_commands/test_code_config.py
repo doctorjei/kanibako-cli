@@ -570,7 +570,7 @@ def test_pid_scripts_fallback_dir_is_the_python_constant():
         assert set(defaults) == {AGENT_MARKERS_DIR}
 
 
-def test_pid_scripts_honour_the_pid_argument_and_name_the_marker_for_it():
+def test_pid_scripts_honor_the_pid_argument_and_name_the_marker_for_it():
     """The two halves that make ``pid-add.sh "$PPID"`` mean what the hook intends:
     the script must PREFER its argument over its own ``$PPID`` (which by then is the
     hook's transient shell), and it must name the marker FOR that pid, so a CLI
@@ -593,7 +593,7 @@ def test_marker_hook_commands_really_write_and_remove_a_marker(tmp_path):
 
     ⚑ THE DISCRIMINATING ASSERTION is the marker's NAME.  The command is compound, so
     the shell forks and the script's own ``$PPID`` is that shell — a different pid from
-    this test process.  The marker is named for THIS process only if the script honours
+    this test process.  The marker is named for THIS process only if the script honors
     the argument the hook passes it.
     """
     home = tmp_path / "home"
@@ -797,7 +797,7 @@ def test_codex_trusted_hash_omits_matcher_key_when_none():
 
 
 def test_codex_trusted_hash_default_timeout_600():
-    """The default timeout is 600 s (codex normalises unset → 600)."""
+    """The default timeout is 600 s (codex normalizes unset → 600)."""
     assert (
         codex_trusted_hash("session_start", "startup", "/x/fire.sh")
         == codex_trusted_hash("session_start", "startup", "/x/fire.sh", 600)
@@ -1120,7 +1120,7 @@ def test_codex_merge_no_provider_is_byte_identical():
 
 def test_codex_merge_with_provider_composes_both_regions():
     """With a provider, the merged config carries BOTH the hook region and the
-    provider region, all valid TOML, hook behaviour intact."""
+    provider region, all valid TOML, hook behavior intact."""
     mp = CodexModelProvider(**_NAVIGATOR)
     out = merge_codex_config(
         _TEMPLATE, box_config_path=_BOX_CFG, codex_cwd=_CODEX_CWD,

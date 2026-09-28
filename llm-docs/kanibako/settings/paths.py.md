@@ -213,7 +213,7 @@ def box_tree_materialized(proj: ProjectPaths) -> bool
 ```
 True when the box tree a `create` would materialize is ALREADY on disk.
 
-The MODE-AWARE analogue of `is_new`, computable from a NON-materialising probe (`initialize=False`)
+The MODE-AWARE analog of `is_new`, computable from a NON-materializing probe (`initialize=False`)
 — which is the whole point: `is_new` is only set inside the `initialize=True` branch that does the
 mutation, so a caller that wants to REFUSE before mutating cannot ask `is_new` and has to ask this
 instead.
@@ -943,7 +943,7 @@ inside the `ro` arm up to the skeleton, which is the fix.
 ### ⚑⚑ ONE CARRIER FOR THREE WRITE SITES
 
 `_init_common` here, `_lifecycle._to_standalone` and `_duplicate._duplicate_to_standalone`. The gate
-travelled as PROSE and only the first site had it: both convert sites kept writing on
+traveled as PROSE and only the first site had it: both convert sites kept writing on
 `vault_dir.is_dir()` alone, which is a POSITION answering a KEY. The skeleton is the `ro` arm's
 DEFAULT parent, so it sits on disk for every un-repointed box while `vault_rw` — an independent key —
 may be anywhere; an existing skeleton is no evidence about where `rw` is (P10).
@@ -1455,8 +1455,8 @@ positional-`project` default.
 an auto-created box defers registration until after its home seed (journal entry → seed → register →
 clear-entry). Defaults True.
 
-*warn* gates the non-conforming-name FLAG (`_flag_nonconforming`). A NON-materialising PROBE
-(`initialize=False`) run purely to read a box's paths ahead of a second materialising resolve passes
+*warn* gates the non-conforming-name FLAG (`_flag_nonconforming`). A NON-materializing PROBE
+(`initialize=False`) run purely to read a box's paths ahead of a second materializing resolve passes
 `warn=False` so the name flag fires exactly ONCE (on the real resolve), never doubled. Defaults True.
 
 ```python

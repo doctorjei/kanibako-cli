@@ -134,9 +134,9 @@ from kanibako.settings import keystore as _keystore_mod
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
   FINDING_VERDICTS,
-  Judgement,
+  Judgment,
   KeyClass,
-  KeyJudgement,
+  KeyJudgment,
   StoreNode,
   classify_store_path,
   container_notes,
@@ -197,10 +197,10 @@ _MAX_TAG_DEPTH = 64
 #: section).  What was built instead asserts code ← manifest without touching this
 #: oracle: the family half of key-set conformance in
 #: ``tests/test_settings/test_manifest_enforces.py``.
-_oracle: Callable[[str], KeyJudgement] = declared_keyspace_oracle
+_oracle: Callable[[str], KeyJudgment] = declared_keyspace_oracle
 
 
-def set_oracle(fn: Callable[[str], KeyJudgement]) -> None:
+def set_oracle(fn: Callable[[str], KeyJudgment]) -> None:
   """Substitute the declared-keyspace oracle (see THE ORACLE SEAM above)."""
   global _oracle
   _oracle = fn
@@ -269,7 +269,7 @@ class RowKey(NamedTuple):
 _rows: dict[RowKey, dict[str, Any]] = {}
 
 #: dotted prefix -> oracle verdict, so the oracle runs once per distinct prefix.
-_verdicts: dict[str, KeyJudgement] = {}
+_verdicts: dict[str, KeyJudgment] = {}
 
 #: Writes the collector itself failed on.  A census bug must not red the suite for
 #: the WRONG reason, so the failure is COUNTED and reported rather than raised.
@@ -373,24 +373,24 @@ def _patched_setitem(self: KeyStore[Any], key: str, value: Any) -> None:
       _collector_errors.append(f"{type(exc).__name__}: {exc}")
 
 
-def _ask(path: str) -> KeyJudgement:
-  """The oracle's verdict on *path*, memoised per distinct dotted prefix."""
+def _ask(path: str) -> KeyJudgment:
+  """The oracle's verdict on *path*, memoized per distinct dotted prefix."""
   if path not in _verdicts:
     try:
       _verdicts[path] = _oracle(path)
     except Exception as exc:  # pragma: no cover - an oracle fault is not a failure
-      _verdicts[path] = KeyJudgement(
+      _verdicts[path] = KeyJudgment(
         KeyClass.UNDECLARED, f"<oracle raised {type(exc).__name__}: {exc}>",
       )
   return _verdicts[path]
 
 
-def classify(segments: tuple[str, ...]) -> Judgement:
-  """One write's :class:`Judgement`, ignoring what landed UNDER it.
+def classify(segments: tuple[str, ...]) -> Judgment:
+  """One write's :class:`Judgment`, ignoring what landed UNDER it.
 
   ⚑ A SEAM, not a rule: the shape rules are
   :func:`~kanibako.settings.settings_keyspace.classify_store_path`'s, and all this
-  adds is THIS collector's memoised oracle.  Keeping the signature at exactly
+  adds is THIS collector's memoized oracle.  Keeping the signature at exactly
   ``(segments)`` is pinned by ``tests/test_keystore_census.py`` — a second parameter
   would be a place to smuggle an origin discriminator back in.
 

@@ -1110,7 +1110,7 @@ per-launch `-S`/`-A` flags — spec §1A's projected-surface exception, because 
 OUTLIVES the launch.
 
 *access* is one of `restricted` / `editing` / `full`. ⚑ **An implementation MUST render every tier
-explicitly and MUST NOT fall through to the permissive arm for a tier it does not recognise;** the
+explicitly and MUST NOT fall through to the permissive arm for a tier it does not recognize;** the
 launch has already refused a tier this agent's descriptor cannot render, so an unexpected value
 here is a BUG and should raise.
 
@@ -1138,7 +1138,7 @@ shell).
 
 A heads-up to print when REATTACHING to an ALREADY-RUNNING box.
 
-The launch-time delivery seams above re-materialise this agent's native config surface only on
+The launch-time delivery seams above re-materialize this agent's native config surface only on
 (re)start of a STOPPED box; a reattach to a LIVE box early-returns and does NOT re-deliver, because
 **it is unsafe to rewrite config under an app-server that already read it.**
 
@@ -1270,7 +1270,7 @@ legacy plugins override.
 Plugin-specific post-session writeback BEYOND `cred_files` specs. Default: no-op.
 
 Called by core on EVERY session-end path (clean exit, detach, reattach-exit, `kanibako stop`) AFTER
-the descriptor `cred_files` writeback, for state that CANNOT be modelled as a `SYNC`
+the descriptor `cred_files` writeback, for state that CANNOT be modeled as a `SYNC`
 `CredFileSpec`. The motivating case is claude's `~/.claude.json` `oauthAccount`: the box's login
 writes the account block there and it must reach the host, but the file cannot be a normal `SYNC`
 spec, because that would also IMPORT host→project and a wholesale copy would clobber host-specific

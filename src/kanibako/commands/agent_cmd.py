@@ -234,7 +234,7 @@ def run_info(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # The positional may arrive in either spelling; canonicalise to the ``℘`` node —
+    # The positional may arrive in either spelling; canonicalize to the ``℘`` node —
     # the form every KEY takes.  ``agent_settings_path`` maps it back to the ``+``
     # store dirname, so nothing here composes a path from the node itself.
     from kanibako.settings.config_keys import agent_key_node
@@ -360,7 +360,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    # Canonicalise the (possibly ``+``) persona ref to the ``℘`` node — the KEY form.
+    # Canonicalize the (possibly ``+``) persona ref to the ``℘`` node — the KEY form.
     # ``agent_settings_path`` maps it back to the ``+`` store dirname.
     from kanibako.settings.config_keys import agent_key_node
 
@@ -380,13 +380,13 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         if args.all_keys:
             if not args.force:
                 from kanibako.utils import confirm_prompt
-                from kanibako.errors import UserCancelled
+                from kanibako.errors import UserCanceled
 
                 try:
                     confirm_prompt(
                         "Remove all config overrides? Type 'yes' to proceed: "
                     )
-                except UserCancelled:
+                except UserCanceled:
                     print("Aborted.")
                     return 0
             # ⚑ THROUGH THE BOUNDARY, not by hand on the raw document. This was the
@@ -606,7 +606,7 @@ def _agent_key_gate(
 
     1. a RETIRED bind-shaped route is refused BY NAME with its own cure — never degraded to "not
        a declared key" (spec §0).  It covers all five bind-shaped categories, from the same
-       derived recogniser the other verbs use, so there is no bindings-only rule to widen later;
+       derived recognizer the other verbs use, so there is no bindings-only rule to widen later;
     2. the CLOSED KEYSPACE (D-5) — this verb had no vocabulary at all and stored whatever it was
        handed, including ``self.model`` (ruling 55);
     3. the VALUE SHAPE (D-7) — a declared key whose value is a TABLE takes no scalar.
@@ -646,7 +646,7 @@ def _label_floor(agent_id: str) -> dict[str, object]:
 
     if agent_id == GENERAL_SLOT:
         # ⚑ The built-in's tier declaration (D2): no descriptor to read, so the
-        # shell floor's own label IS the declaration — the same artefact the
+        # shell floor's own label IS the declaration — the same artifact the
         # launch folds, keeping `agent show` and the box in agreement.  No
         # ``agent.default.label`` floor: only true agents inherit from it (§2d).
         return {f"agent.{agent_id}.label": core_defaults.shell_tier_default("label")}
@@ -675,7 +675,7 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
 
     1. the agent FILE's own flat ``label`` — read through the file boundary's slot, because
        ``assemble_levels`` carries only this file's CATEGORY tables into the agent rung; its
-       flat behaviour scalars reach the launch through ``agent_file.state_level`` instead.
+       flat behavior scalars reach the launch through ``agent_file.state_level`` instead.
        This is the same SLOT ``agent get <node> label`` reads, but NOT the same read: that
        verb renders and this one must not (below).
     2. ``agent.<node>.label`` through the cascade — a per-agent value in the SYSTEM file.

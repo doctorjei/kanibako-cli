@@ -5,9 +5,9 @@ host-side mountpoint pre-created so the OCI runtime never has to mkdir a bind de
 *Mask* — an empty read-only tmpfs emitted over a box-dest; a VOID, with nothing inside
 it.  *Shadowing* — pre-existing host content at a bind DEST, hidden (not deleted) by the
 bind that lands on it.  *Managed canon* — the root-owned 555 skeleton box-create
-materialises under ``~/canon``, whose mountpoints the launch path does not manage.
+materializes under ``~/canon``, whose mountpoints the launch path does not manage.
 
-⚑ The ``⚑`` comments below record PLATFORM behaviour, not design, and most of it cannot
+⚑ The ``⚑`` comments below record PLATFORM behavior, not design, and most of it cannot
 be tested from a box without podman.  Eight such claims are UNVERIFIED here and listed
 under "UNVERIFIED on this box" in ``llm-docs/kanibako/runtime/container.py.md``; do not
 delete one for lack of a covering test.
@@ -411,22 +411,22 @@ class ContainerRuntime:
         self, name: str, post_start: "Callable[[], None]",
     ) -> "threading.Event":
         """Fire *post_start* once *name* is running; return a cancel Event."""
-        cancelled = threading.Event()
+        canceled = threading.Event()
 
         def _wait() -> None:
             deadline = time.monotonic() + _POST_START_TIMEOUT_S
-            while not cancelled.is_set() and time.monotonic() < deadline:
+            while not canceled.is_set() and time.monotonic() < deadline:
                 try:
                     if self.is_running(name):
                         _run_post_start(post_start)
                         return
                 except Exception as exc:  # noqa: BLE001 - never break a launch
                     logger.debug("post-start watcher probe failed: %s", exc)
-                cancelled.wait(_POST_START_POLL_S)
+                canceled.wait(_POST_START_POLL_S)
             logger.debug("post-start watcher gave up waiting for %s", name)
 
         threading.Thread(target=_wait, daemon=True, name=f"kanibako-poststart-{name}").start()
-        return cancelled
+        return canceled
 
     def exec(
         self,
@@ -729,7 +729,7 @@ def remove_box_tree(target: Path) -> bool:
     return not target.exists()
 
 
-# The MANAGED CANON region inside a box (J-7): box-create materialises these mountpoints.
+# The MANAGED CANON region inside a box (J-7): box-create materializes these mountpoints.
 _CANON_GUEST_PREFIX = f"{GUEST_HOME}/canon"
 
 

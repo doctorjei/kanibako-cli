@@ -67,7 +67,7 @@ of the safe-fail. Reading the policy first makes "mkdir'd into existence" unreac
 merely discouraged (P3). Pinned by `test_a_missing_critical_source_RAISES_before_any_mkdir`.
 
 ⚑ The agent's best-effort dests join **skip-if-absent** rather than keeping a branch of their own: a
-missing or suppressed agent share is fine (`BindScope.AGENT`), which is skip-if-absent behaviour up to
+missing or suppressed agent share is fine (`BindScope.AGENT`), which is skip-if-absent behavior up to
 the log line. The critical dests are subtracted from that set — must-exist wins its own dests outright,
 and a dest in both would otherwise resolve two ways depending on which test ran first.
 
@@ -104,7 +104,7 @@ tail (gate → collapse → carrier, off the same gated list), so those launches
 else** — home is lifted out before any scope folds, so its options stay `Z,U`, and the agent delivery
 binds fold `fold_opt("ro", "ro") == "ro"`, byte-identical to the fallback.
 
-### One measured behavioural difference, pinned rather than smoothed
+### One measured behavioral difference, pinned rather than smoothed
 
 The five-arm shape carries ro/rw as the ARM, so the collapse folds the mode back into the option
 string: a rw DECLARATION whose own options read `Z,U` arrives as `Z,U,rw`. Podman's default IS rw and
@@ -161,7 +161,7 @@ to add without re-adding a field.
 **Why the field went with the feed, rather than being left empty.** An always-empty field is a false
 claim in the type, and — more to the point — a re-pluggable socket. Two feeds printed one line only
 because both arms happened to build an EQUAL `CategoryCollision` and `emit_collision_warnings`
-memoises on `(box_dest, scope)`; that was a property of the two CONSTRUCTIONS, never of the channel.
+memoizes on `(box_dest, scope)`; that was a property of the two CONSTRUCTIONS, never of the channel.
 Making the second feed **unavailable** (P3) is what closes it. 🔬 **Mutation-proved:** the full
 revert — construction + field + feed, all three — leaves every LOG-based test in
 `TestTheCollapseRouteFeedsTheSameChannel` **green**, because the memo hides it. Only the structural
@@ -193,7 +193,7 @@ else — and the collapse then refuses the survivor against the seeded foundatio
 
 ⚑ **Whether the channel should exist AT ALL is still a spec question, and still open.** §0's
 rule makes two mounts at one destination an error "in every scope combination but one", and
-warn-and-proceed is that one exception. 5-0 gave that behaviour
+warn-and-proceed is that one exception. 5-0 gave that behavior
 a home in the new route and 5-1c gave it exactly one; neither rules on whether it survives.
 
 ### The credential gate is HOISTED above EVERY consumer (cutover 2b-0)
@@ -212,7 +212,7 @@ that remain after 6-R3.
 (`42f5291`), not deferred.** This paragraph said "it stays … removing it is step 5" and was stale
 from that commit onward; the hoisted call above is now the rule's ONLY spelling, on any path.
 
-⚑ The gate runs AFTER `_install_derived_bindings`, not before. A derived binding materialises a
+⚑ The gate runs AFTER `_install_derived_bindings`, not before. A derived binding materializes a
 property of the DECLARATION (R-8) — `binding_derivations` records what was declared, not what this
 box is allowed to receive.
 
@@ -238,7 +238,7 @@ foundation itself —
 home_bind = BindEntry(_snapshot_home(snapshot), _HOME_OPTIONS)
 ```
 
-— from the RO DERIVED key `meta.box.home`, which `settings_launch.workset_anchor_floor` materialises
+— from the RO DERIVED key `meta.box.home`, which `settings_launch.workset_anchor_floor` materializes
 as `@meta.box.path/home`. 🛑 **That key is the ONE spelling of the derivation.** Never re-derive the
 foundation from `proj.shell_path`, and never re-inline `@meta.box.path/home` here; `settings_launch`
 says so in terms at the floor line, and A9 existed precisely to remove the second spelling.
@@ -309,7 +309,7 @@ honestly say the map describes a whole box, which is why the question is asked h
 `_collapse_synced`.
 
 🛑 **THE GATE IS `whole_box`, NEVER "did `meta.box.home` resolve" (cutover 6-H).** The key is
-materialised by `workset_anchor_floor`, which the launch builds unconditionally, so it resolves on a
+materialized by `workset_anchor_floor`, which the launch builds unconditionally, so it resolves on a
 NARROW resolve too — gating on the value would write all three leaves for the image and helper
 tables. It also closes what the old entry-list gate left open: a USER row at the home dest made
 `home_bind is not None` on a narrow resolve and ran the whole fold over a narrow snapshot.
@@ -335,7 +335,7 @@ one implementation of the seed rule is worth more than one saved traversal.
 ⚑ The home bind row in `data/rom/settings/core-defaults.yaml` is **DELETED** (cutover 6-H) — see the section
 above. `core_defaults.add_bind`'s "home arm", which older drafts of this file and the manifest both
 named as a second follow-up, was a PHANTOM: the function has been generic since its introducing
-commit and the home behaviour lived in the YAML row alone, so deleting the row discharged both.
+commit and the home behavior lived in the YAML row alone, so deleting the row discharged both.
 
 ### A collapse refusal IS the launch's, as of cutover 2c
 
@@ -506,7 +506,7 @@ resolved or did not depending purely on WHICH FILE the value was written in.
 The re-root closes both, and it deletes the code rather than adding a rule: `agent.<node>.env.<VAR>`
 is an ordinary key, it cascades to its true rung (above `system`, below `workset`), it realizes
 through the same collapse as every other scope's, and `_build_config_env` is a straight projection of
-the slots with nothing layered under it. Two behaviours arrive with that: an agent-FILE variable and
+the slots with nothing layered under it. Two behaviors arrive with that: an agent-FILE variable and
 a `box.env.<VAR>` twin are now two scopes' keys at one slot and REFUSE the launch (spec, the
 `env.<VAR>` block: *"Two scopes' keys naming ONE variable REFUSE the launch, naming both keys"*),
 while an agent-FILE variable and the plugin's declared default are the SAME key at two cascade levels
@@ -531,7 +531,7 @@ default-categories floor beside `family="kickoff"`, under `family="core env"`. T
 `target` and `agent_id` died from its signature and its one call site, the same move P3 made with
 `agent_cfg`.
 
-Three behaviours arrive with that, and all three are the point rather than side effects: a nearer
+Three behaviors arrive with that, and all three are the point rather than side effects: a nearer
 `system.env.<VAR>` file entry **overrides** one (same key, ordinary cascade); a twin at any other
 scope **REFUSES** the launch naming both keys, where kanibako used to overwrite the user's value a
 moment later in silence; and `-e KANIBAKO_NAME=x` **wins**. ⚑ **`-e` needed no code for that at
@@ -1033,7 +1033,7 @@ to `_most_specific` because `SCOPE_CONTAINMENT` and `_SCOPE_APPLY_ORDER` are the
 leaf is emitted in it. Each dest keeps its first appearance's position, so apply order over distinct
 dests does not move.
 
-⚑ **There is no seed analogue and there must not be:** a `seeded` dest's repeats are LAYERS that all
+⚑ **There is no seed analog and there must not be:** a `seeded` dest's repeats are LAYERS that all
 apply (the §2a template trio).
 
 ### 🛑 The category filter outlived its arm by exactly one step, then went with it
@@ -1108,7 +1108,7 @@ Both `_seed_box_home` call sites are creates and both get it, immediately after 
 | site | why |
 |---|---|
 | `seed_new_box` (the `box create` entry) | INSIDE that function, not beside `run_create`'s call to it — so it lands BEFORE `materialize_canon_skeleton`, which makes the canon region 555 and would fail a later copy with `EACCES` |
-| `_run_container`'s `if proj.is_new:` block | the `workset connect` flow, whose FIRST launch materialises and seeds the box |
+| `_run_container`'s `if proj.is_new:` block | the `workset connect` flow, whose FIRST launch materializes and seeds the box |
 
 ⚑ On the launch auto-create path the sync then runs **again**, later in the same process, mtime-gated
 (`_apply_synced_copies` below the emit). That is correct and is the design: the create-time write
@@ -1192,7 +1192,7 @@ dropped, which is what happened before it:
   (2026-08-05f): *"it SHOULDN'T be necessary to kill tmux for this; we should find out if tmux is
   running BEFORE we try to reattach. If tmux is there, we go back to the command line (and leave the
   old tmux thread running)."* This gate IS that check: it precedes every attach, so the running
-  session is never signalled, killed, or even touched.
+  session is never signaled, killed, or even touched.
 
 The gate sits ahead of BOTH seams (the flag persist and the reattach fast path below), so neither can
 ever observe one. `--restart` never reaches it — it stopped the box above, so nothing is running.
@@ -1206,7 +1206,7 @@ facts stay distinct. They are also the reason this gate keys on `box_running` ra
 reattach and `reattach_running` would be False for the very case that must be refused.
 
 ⚑ The session-shape refusal is scoped to an AGENT launch: `kanibako shell` and `shell -- cmd`
-against a live box exec INTO it (the documented UX), which honours an `--ephemeral` request rather
+against a live box exec INTO it (the documented UX), which honors an `--ephemeral` request rather
 than dropping it, so there is nothing there to refuse.
 
 **DELIBERATELY NOT GATED:** `--attach` / `--detach` / `--print-container` / `--warm-only` — all
@@ -1336,7 +1336,7 @@ the SAME expanded snapshot — no duplicate build. Same pipeline the main launch
   credsync/gate consumer, exactly as `_resolve_box_auth_source`.
 * **`endpoint`** — the resolved PERSONA endpoint URL, or `None` when unset (`<None>` / empty / no
   descriptors / no target) — the cred-fork signal (non-None ⇒ suppress the OAuth cred). `None` is
-  byte-identical to the behaviour before personas.
+  byte-identical to the behavior before personas.
 * **`model`** — the cascade-resolved active-node `agent.<node>.model` (the box-level override where
   set), THREE-STATE per the 2026-08-17 ruling: `__MISSING__` (never set, incl. no descriptors / no
   target), `None` (PRESENT-null — *"this endpoint needs no model"*), or a resolved `str` id.
@@ -1815,7 +1815,7 @@ Contracts the signature cannot carry:
   claimant grammar refuses; the harness folds to node case, `[R173]`) — `harness_of` splits on `℘`
   alone, so deriving from the raw stamp returns the whole
   string and `resolve_target` hunts a plugin that does not exist (in `stop.py`, under a blanket
-  catch: writeback stops SILENTLY). Canonicalising on read is also what keeps a box stamped by an
+  catch: writeback stops SILENTLY). Canonicalizing on read is also what keeps a box stamped by an
   older version working, since both separators are accepted. For a bare agent every spelling here is
   one string. Emitted only when a TARGET resolved, which is why *target* is the gate: `kanibako
   shell` and an explicit-entrypoint launch resolve none and leave the variable unset, while a

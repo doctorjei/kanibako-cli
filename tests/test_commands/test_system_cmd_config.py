@@ -565,7 +565,7 @@ class TestSystemAgentNodeBindWriteRouteRetired:
     terminal naming the key they typed.
 
     This class REPLACES ``TestSystemAgentNodeBindRepoint``, which pinned the
-    opposite end-to-end behaviour (``system config set
+    opposite end-to-end behavior (``system config set
     agent.<node>.bindings.{ro,rw}.<name> /new`` writing a RAW tuple into
     ``agents/<node>/agent.yaml``). That surface is an ACCEPTED LOSS, boarded as
     DS-BL1. The end-to-end value of the tests is unchanged: they prove the refusal

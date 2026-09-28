@@ -60,7 +60,7 @@ _MODE_CHOICES = [m.value for m in BoxMode]
 
 # SHAPING — writes stored box state.  Attempt one already wrote it, and the create
 # journal records the INTENT and never the arguments, so on a replay a shaping flag
-# can be neither honoured nor compared against what was asked for the first time.
+# can be neither honored nor compared against what was asked for the first time.
 _CREATE_SHAPING_FLAGS = ("name", "image", "agent", "private", "no_vault")
 
 # SUBJECT — writes no stored box state.  Each one selects WHICH box, bypasses a
@@ -640,7 +640,7 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
                 "creating unprobed", display, outcome.reason,
             )
     print(
-        f"Recognised persona '{display}' in the persona store; its values are "
+        f"Recognized persona '{display}' in the persona store; its values are "
         f"resolved from the store at every launch."
     )
     return None
@@ -722,7 +722,7 @@ def run_create(args: argparse.Namespace) -> int:
     )
     from kanibako.settings.core_defaults import materialize_canon_skeleton
 
-    # ⚑ PERSONA LOAD-OR-ERROR IS A TRUE PRE-FLIGHT: this probe is NON-materialising
+    # ⚑ PERSONA LOAD-OR-ERROR IS A TRUE PRE-FLIGHT: this probe is NON-materializing
     # (``initialize=False``) so an unloadable persona refuses with NOTHING left on disk.
     if args.standalone:
         _probe = resolve_standalone_project(
@@ -790,7 +790,7 @@ def run_create(args: argparse.Namespace) -> int:
         print(_persona_err, file=sys.stderr)
         return 1
 
-    # ⚑ THE ALREADY-INITIALIZED REFUSAL IS HOISTED ABOVE THE MATERIALISING RESOLVE, and
+    # ⚑ THE ALREADY-INITIALIZED REFUSAL IS HOISTED ABOVE THE MATERIALIZING RESOLVE, and
     # asks the PROBE: the resolve's recovery arms would bootstrap the home the message
     # then claims already existed.
     if _already and not is_recovery:
@@ -800,7 +800,7 @@ def run_create(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # Loadability resolved → MATERIALISE the box for real.  ⚑ ``register=False`` DEFERS
+    # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False`` DEFERS
     # registration past the home seed, giving the invariant "registered ==> fully seeded".
     if args.standalone:
         proj = resolve_standalone_project(
@@ -1351,7 +1351,7 @@ def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None:
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int:
     """Handle ``rm <name>`` when *name* resolves only to a deregistered entry."""
     from kanibako.project import registry_store
-    from kanibako.errors import UserCancelled
+    from kanibako.errors import UserCanceled
     from kanibako.settings.paths import STANDALONE_META_DIR
     from kanibako.utils import confirm_prompt
 
@@ -1416,7 +1416,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
                 f"Delete metadata at {target_desc}? This cannot be undone.\n"
                 "Type 'yes' to confirm: "
             )
-        except UserCancelled:
+        except UserCanceled:
             print("Aborted (box remains deregistered).")
             return 2
 
@@ -1468,7 +1468,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     from datetime import datetime, timezone
 
     from kanibako.project import registry_store
-    from kanibako.errors import UserCancelled
+    from kanibako.errors import UserCanceled
     from kanibako.settings.paths import STANDALONE_META_DIR
     from kanibako.utils import confirm_prompt
 
@@ -1492,7 +1492,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
                         f"Delete metadata at {metadata_dir}? This cannot be undone.\n"
                         "Type 'yes' to confirm: "
                     )
-                except UserCancelled:
+                except UserCanceled:
                     print("Aborted (box was already unregistered).")
                     return 2
             _teardown_standalone_box(root_path, box_name, plan=plan)
@@ -1605,14 +1605,14 @@ def run_rm(args: argparse.Namespace) -> int:
 
         if metadata_dir.is_dir():
             if not args.force:
-                from kanibako.errors import UserCancelled
+                from kanibako.errors import UserCanceled
                 print()
                 try:
                     confirm_prompt(
                         f"Delete metadata at {metadata_dir}? This cannot be undone.\n"
                         "Type 'yes' to confirm: "
                     )
-                except UserCancelled:
+                except UserCanceled:
                     print("Aborted (name was already unregistered).")
                     return 2
 

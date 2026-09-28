@@ -128,7 +128,7 @@ failure is silent DATA LOSS, not a read that comes back empty: `load` would capt
 the opaque carrier, and `save`, having no field to emit it from, would never put it back.
 
 ⚑ **`run_args` sits here with the other three, not behind a set borrowed from elsewhere.** It is a
-modelled field exactly like them; the only thing odd about it is that its VALUE is not a table
+modeled field exactly like them; the only thing odd about it is that its VALUE is not a table
 (`_SCALAR_WRITABLE_KEYS`, below). *(Measured by removing it: `cfg.state` gains `run_args: "['--a',
 '--b']"` — the `str()` of the list — beside the correctly typed field, and `state_level` then carries
 that string into the launch cascade as `agent.<agent>.run_args`. Two carriers of one key,
@@ -162,7 +162,7 @@ D8b retired it, so a dict-valued `name:` refuses as a nesting now.
 ```_CARRIED_CATEGORIES: Final[frozenset[str]] = frozenset(_FLAT_AGENT_CATEGORIES) - _MODELED_KEYS```
 The categories that ride `AgentConfig.category_tables` OPAQUELY — every flat category the record
 does not model as a field. **ONE set for BOTH ends of the round trip**, which is what makes the
-old two-condition write guard unnecessary: a modelled table cannot be captured into the carrier
+old two-condition write guard unnecessary: a modeled table cannot be captured into the carrier
 (load) nor clobbered from it (write), and nothing the carrier can emit is a shape `load` refuses.
 
 ```_VERB_WRITABLE_CATEGORIES: Final[frozenset[str]] = frozenset({"env", "secret_path"})```
@@ -189,7 +189,7 @@ the §2d gate it short-circuited admits `run_args` unaided (`config_keys.py.md`,
 ⚑ **This is the ONE enumeration of the three**; `agent_config.py.md` points here rather than telling
 it a second way.
 ⚑ It is NOT a claim about the STORED shape: `run_args` takes the scalar and stores it as argv WORDS,
-so `_LIST_VALUED_KEYS` is a SUBSET of this set. A plain-scalar modelled key would belong here and not
+so `_LIST_VALUED_KEYS` is a SUBSET of this set. A plain-scalar modeled key would belong here and not
 there. **That subset is ASSERTED at import beside `_LIST_VALUED_KEYS`, not left to prose** (P15): a
 member added there and not here fails loudly the moment the module loads.
 
@@ -347,7 +347,7 @@ because two display surfaces need it: `agent_cmd._show_agent_config` (which prin
 `run_args = ['--a', '--b']` at the user) and `_get_agent_key`.
 
 ⚑ **`argv_words` is public since `[R169]` (it was `_argv_words`), and the reason is the LAUNCH.**
-The behaviour table hands `run_args` over as the command-line string `argv_text` joined — so a
+The behavior table hands `run_args` over as the command-line string `argv_text` joined — so a
 stored list and a string hand-written into a YAML arrive at `start.py`'s `all_extra` seam
 identically — and that seam splits it back with THIS function. One parser, both directions, no
 second answer to "what is a word".
@@ -406,7 +406,7 @@ It used to collapse absent and present-empty into one `[]`, which was harmless o
 was the argv's sole source: now `agent.default.run_args` reaches a launch, so the difference is
 whether this agent OPTS OUT of that default or lets it through. The display convention here and the
 record's three states are the same fact, and they were briefly out of step — the file surface kept
-the pair apart while the record did not, so `agent get` reported an opt-out that no launch honoured.
+the pair apart while the record did not, so `agent get` reported an opt-out that no launch honored.
 ⚑ A STRING here renders through the scalar convention unchanged — that is what the other write
 route stored before the routes agreed, and `load` reads it the same way.
 
@@ -487,12 +487,12 @@ calls `agent_file.load` / `agent_file.save`, and `tests/conftest.py` patches `lo
 ### What `load` coerces, and the three places it deliberately does NOT
 
 **Flat state is the SCALAR knobs only.** `cfg.state` takes every root entry that is neither a
-MODELLED key nor dict-valued. A category table (`env`, `secret_path`, `bindings`, …) is a dict, so
+MODELED key nor dict-valued. A category table (`env`, `secret_path`, `bindings`, …) is a dict, so
 it is never flat state — those ride `_agent_partial`, not the `_agent_state_partial` state channel.
 
-⚑ **The test is EVERY modelled key, not just the one with a scalar slot (S3/D-7).** A narrower test
+⚑ **The test is EVERY modeled key, not just the one with a scalar slot (S3/D-7).** A narrower test
 differs only for a MALFORMED file: a scalar written where a table belongs (`env: oops`) is not
-dict-valued, so it swept into state and the launch then carried a modelled field's garbage as an
+dict-valued, so it swept into state and the launch then carried a modeled field's garbage as an
 agent-state knob. ⚑ Dropping `run_args` from the set is the same defect from the other side —
 **measured 2026-09-18**: `run_args: ["--a", "--b"]` then lands in `cfg.state` as the string
 `"['--a', '--b']"` beside the properly typed field, and `state_level` carries it into the launch
@@ -521,7 +521,7 @@ read, only ro-mounted and exported IN-BOX at launch.
 old disagreement recoverable without touching anyone's data. This reader took a list or NOTHING, so
 every value the `config set agent.<node>.run_args=…` route wrote — verbatim, as a string — came
 back empty. It is a READ rule, not a shim: nothing writes a string here any more, the files that
-route already wrote work from the next command on, and the next `save` normalises them. A bare
+route already wrote work from the next command on, and the next `save` normalizes them. A bare
 `run_args:` parses to `None` and means "no arguments", never the word `"None"` — the same trap the
 `model: null` paragraph above records; anything else scalar is one word's worth of text and splits
 like one. ⚑ **The KEY'S ABSENCE is read by MEMBERSHIP (`"run_args" not in agent_sec`), not by the
@@ -532,7 +532,7 @@ default. *(The old pin `test_run_args_must_be_list` asserted the empty list and 
 code while wrong about the product; it is replaced by
 `test_a_stored_run_args_STRING_is_split_not_discarded`.)*
 
-⚑ **Every modelled table is ISINSTANCE-GUARDED, and the READ side stays permissive on purpose**
+⚑ **Every modeled table is ISINSTANCE-GUARDED, and the READ side stays permissive on purpose**
 (S3/D-7). A hand-authored SCALAR at a table-valued key is a wrong SHAPE, but `agent info` / `list` /
 `show` are how a user SEES a broken file, so they must not be the thing the broken file kills. The
 WRITE side refuses the shape (`table_value_error`), which is what stops one being made.
@@ -571,7 +571,7 @@ GONE; do not reintroduce a second env channel.
 spelling refuses now and this level carries CATEGORIES ONLY — one value, one route. A state key
 reappearing in this table is a second rung.
 *(Pinned by `test_settings_assemble.test_agent_file_state_does_not_ride_the_file_cascade_level`,
-and it is why the launch tests that contend a behaviour scalar build the PRODUCTION PAIR —
+and it is why the launch tests that contend a behavior scalar build the PRODUCTION PAIR —
 `agent_path=` **plus** `agent_state=` — rather than writing the file alone.)*
 
 ⚑ **`base_levels[3]` — the `agent.default` level built from this file — is a PERMANENTLY EMPTY
@@ -676,7 +676,7 @@ RAISE on a key at the FILE's top level that the file neither contributes nor dro
 ⚑ **WHY IT HAS TO BE HERE.** In the other settings files an unknown top-level entry rides into the
 launch snapshot, where `settings_launch._refuse_undeclared_snapshot` can refuse it by name. This file
 contributes only its root table, so a stray beside `self:` never reached that audit: a `model:`
-written one level too high set nothing and said nothing (a `v1.7.2` behaviour too — its reader also
+written one level too high set nothing and said nothing (a `v1.7.2` behavior too — its reader also
 took `self` alone).
 
 ⚑⚑ **THE TABLES THE CASCADE DROPS ARE NOT STRAYS.** `system:`, `meta:`, `binding_derivations:`
@@ -697,7 +697,7 @@ The file's BEHAVIOR as a DISCRIMINATED level, or `None` if it sets none. *path*,
 read from, rides on the level (see `AgentFileLevel`).
 
 ⚑⚑ **IT TAKES THE RECORD, NOT `cfg.state`, AND THAT IS THE `run_args` CASCADE (`[R169]`).**
-`run_args` is a behaviour leaf the record models as a FIELD of its own (`_MODELED_KEYS`), so a level
+`run_args` is a behavior leaf the record models as a FIELD of its own (`_MODELED_KEYS`), so a level
 built from `cfg.state` alone dropped it — and the file's argv reached the launch by a SECOND route,
 read straight off `AgentConfig.run_args` at `start.py`'s `all_extra` seam, where no
 `agent.default.run_args` could ever contest it. Folded in here, the §2d active-over-default pick does
@@ -707,16 +707,16 @@ folding on truthiness hands that agent the very default its empty list refuses.
 ⚑ It rides as the stored LIST — `effective_behavior` renders it through `stored_leaf_text`, and the
 consumer splits that string back with `argv_words`.
 
-The per-agent file stores behaviour FLAT (`model` — already per-agent), not under the sub-tables
+The per-agent file stores behavior FLAT (`model` — already per-agent), not under the sub-tables
 the cascade merges by, so the discriminator has to be attached somewhere. It is attached HERE, at
 the boundary — defect **C-2, CLOSED in S1b**. It used to be attached LATE, at snapshot build
 (`settings_launch._agent_state_partial`, from that caller's own `agent_name`), after the state
-dict had travelled undiscriminated through `start.py`: the node a table came FROM and the node it
+dict had traveled undiscriminated through `start.py`: the node a table came FROM and the node it
 merged UNDER were two independent facts and nothing cross-checked them.
 
 ⚑⚑ **IT JUDGES NOTHING.** The forward-compat passthrough (S3, D-5's other end) — an undeclared
 scalar in the file riding into the launch snapshot VERBATIM, the "old `agent.<name>.<anyleaf>`
-behaviour" spec §0 SPECIFICALLY EXCLUDES — closed here at S3, launch-only. S4 C2 MOVED the refusal
+behavior" spec §0 SPECIFICALLY EXCLUDES — closed here at S3, launch-only. S4 C2 MOVED the refusal
 into `load` (Q101 option 1), so every reader refuses the file by name, not the launch alone, and
 this boundary kept no second copy of it. The only record reaching here from elsewhere is a plugin's
 `generate_agent_config()`, whose `state` is empty by the file-purity invariant. The repair door is

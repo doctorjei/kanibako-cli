@@ -62,7 +62,7 @@ class TestTheDerivationIsNotVacuous:
         assert TABLE_VALUED_AGENT_LEAVES
 
 
-class TestEveryDeclaredLeafIsRecognised:
+class TestEveryDeclaredLeafIsRecognized:
 
     def test_the_bare_spelling_is_a_known_key(self):
         """``system_cmd``'s ``get`` arm gates on ``is_known_key``: a leaf missing from
@@ -74,7 +74,7 @@ class TestEveryDeclaredLeafIsRecognised:
         """
         missing = sorted(DECLARED_AGENT_LEAVES - KNOWN_CONFIG_KEYS)
         assert not missing, (
-            "declared agent leaves the CLI does not recognise in their BARE spelling "
+            "declared agent leaves the CLI does not recognize in their BARE spelling "
             f"— add them to KNOWN_CONFIG_KEYS: {missing}"
         )
 
@@ -138,7 +138,7 @@ class TestTheTableHalfIsRefusedBySHAPE:
                 assert "TABLE" in msg, msg
                 assert "unknown config key" not in msg, msg
 
-    def test_the_refusal_does_not_claim_a_neighbour(self):
+    def test_the_refusal_does_not_claim_a_neighbor(self):
         """⚑ It must fire on the AGENT leaf, not on anything ending in the word."""
         for leaf in sorted(TABLE_VALUED_AGENT_LEAVES):
             for other in (f"box.{leaf}", f"workset.{leaf}", f"system.{leaf}"):
@@ -241,9 +241,9 @@ class TestTheTableHalfIsREADABLE_JustNotHere:
                 leaf, ConfigLevel.box, active_agent="claude",
             ) is None, leaf
 
-    def test_a_neighbour_does_not_inherit_the_cure(self):
+    def test_a_neighbor_does_not_inherit_the_cure(self):
         """⚑ The BARE spelling only — the twin of ``test_the_refusal_does_not_claim_a
-        _neighbour`` above, plus one case the write half does not have.
+        _neighbor`` above, plus one case the write half does not have.
 
         ``agent.<bogus>.<leaf>`` is refused about its NODE, and a shape cure appended to
         that would answer a question the user did not ask.
@@ -259,7 +259,7 @@ class TestTheTableHalfIsREADABLE_JustNotHere:
 
 
 class TestThePerNodeVocabularyIsTheAgentVerbs:
-    """ONE vocabulary, two doors — the CONFIG engine's recogniser and the ``agent`` gate.
+    """ONE vocabulary, two doors — the CONFIG engine's recognizer and the ``agent`` gate.
 
     ⚑ MEASURED BEFORE THE FIX (2026-08-29), on a store built through the product path:
     ``kanibako agent set goose provider=openrouter`` stored the value and
@@ -295,8 +295,8 @@ class TestThePerNodeVocabularyIsTheAgentVerbs:
         """NON-VACUITY: a synthetic name core already declared would prove nothing."""
         assert one_plugin_leaf not in DECLARED_AGENT_LEAVES
 
-    def test_a_plugin_leaf_reaches_the_per_node_recogniser(self, one_plugin_leaf):
-        """⚑ MUTATION: narrow the recogniser's leaf question to ``DECLARED_AGENT_LEAVES``
+    def test_a_plugin_leaf_reaches_the_per_node_recognizer(self, one_plugin_leaf):
+        """⚑ MUTATION: narrow the recognizer's leaf question to ``DECLARED_AGENT_LEAVES``
         — core alone, the way it was — and this dies while every core row stays green."""
         assert _parse_persona_agent_key(f"agent.goose.{one_plugin_leaf}") == (
             "goose", one_plugin_leaf,
@@ -413,10 +413,10 @@ class TestTheEnvVarIsJUDGED_NotJustCounted:
     # distinct way the shape can fail.
     ILLEGAL = ("", "foo-bar", "1FOO")
 
-    def test_the_recogniser_declines_an_illegal_var(self):
+    def test_the_recognizer_declines_an_illegal_var(self):
         for var in self.ILLEGAL:
             assert _parse_persona_agent_key(f"agent.claude.env.{var}") is None, var
-        # THE CONTROL, so this is a partition and not a broken recogniser.
+        # THE CONTROL, so this is a partition and not a broken recognizer.
         assert _parse_persona_agent_key("agent.claude.env.FOO") == ("claude", "env.FOO")
 
     def test_the_keyspace_ALREADY_refused_every_one_of_them(self):
@@ -503,8 +503,8 @@ class TestTheAgentFileIdentityFieldIsRetired:
     def test_the_scalar_the_file_models_is_a_declared_leaf(self):
         """⚑ THE REASON THE ALLOWLIST IS GONE, not merely unused: the one root key the file
         models AND takes a scalar at is a declared §2d leaf, so the gate above admits it
-        unaided.  A modelled field added there that core does NOT declare would need the route
-        decided again — which is what the allowlist was.  (Of the other three modelled keys,
+        unaided.  A modeled field added there that core does NOT declare would need the route
+        decided again — which is what the allowlist was.  (Of the other three modeled keys,
         only ``transform_settings`` is also a declared §2d leaf, and
         ``TestTheKeyspaceAndTheFileAgree`` below pins the keyspace/file agreement for it;
         ``env`` and ``secret_path`` are §2a categories and that class never sees them.)"""
@@ -537,7 +537,7 @@ class TestTheWideningDidNotREARM_PluginDiscovery:
 
     ⚑ The twin lives in ``test_settings_keyspace.py`` (``_NeverAsk``) and pins the same
     deferral inside ``key_class``. This one pins ``config_keys``' side of it: the
-    recogniser, and the ``agent`` noun's gate.
+    recognizer, and the ``agent`` noun's gate.
     """
 
     @pytest.fixture
@@ -545,7 +545,7 @@ class TestTheWideningDidNotREARM_PluginDiscovery:
         """Make plugin discovery RAISE, so ASKING it at all is visible.
 
         ⚑ It raises rather than answering empty: a stub that answered would let a
-        re-materialised union pass while paying the cost this forbids.
+        re-materialized union pass while paying the cost this forbids.
         """
         from kanibako.settings import settings_prefs
 
@@ -582,7 +582,7 @@ class TestTheWideningDidNotREARM_PluginDiscovery:
 
     def test_a_leaf_ONLY_a_plugin_can_declare_DOES_ask(self, discovery_reds):
         """THE OTHER DIRECTION, without which the rows above would pass on a
-        recogniser that had simply stopped consulting the plugins."""
+        recognizer that had simply stopped consulting the plugins."""
         with pytest.raises(AssertionError, match="plugin discovery was asked"):
             _parse_persona_agent_key("agent.goose.a_leaf_core_cannot_answer")
 
@@ -637,7 +637,7 @@ class TestTheListValuedKeysAreScalarWritable:
 #   1. ``settings_keyspace.key_class``            — the classifier and the resolve seam
 #   2. ``config_keys.agent_key_reason``           — the ``agent`` verbs AND the LAUNCH gate
 #   3. ``settings_prefs.key_reason``              — §2h filter 1
-#   4. ``config_keys._parse_persona_agent_key``   — the per-node recogniser the verbs
+#   4. ``config_keys._parse_persona_agent_key``   — the per-node recognizer the verbs
 #                                                   dispatch on, plus its
 #                                                   ``agent_default_tier_leaf`` reader
 #   5. ``settings_cli_level.guard_cli_level``     — the §1A CLI LEVEL's closed-keyspace arm
@@ -739,7 +739,7 @@ class TestTheFiveDoorsAgreeOnOneKey:
             "3 pref filter 1": settings_prefs.key_reason(
                 key, valid_agents=agents,
             ) is None,
-            "4 persona recogniser": _parse_persona_agent_key(key) == (node, leaf),
+            "4 persona recognizer": _parse_persona_agent_key(key) == (node, leaf),
             "5 cli level": self._cli_level_accepts(key, node),
         }
 
@@ -773,7 +773,7 @@ class TestTheFiveDoorsAgreeOnOneKey:
         self._assert_all(self.KNOWN, self.PLUGIN_LEAF, agents, False)
 
     def test_a_leaf_NOBODY_declares_is_a_key_NOWHERE_readable(self, agents):
-        """The other direction: per-agent judgement may not open the keyspace."""
+        """The other direction: per-agent judgment may not open the keyspace."""
         self._assert_all(self.KNOWN, self.NOBODYS_LEAF, agents, False)
         self._assert_all(self.DECLARER, self.NOBODYS_LEAF, agents, False)
 

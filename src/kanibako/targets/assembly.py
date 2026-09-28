@@ -105,7 +105,7 @@ def resolve_access_tier(access: "str | None") -> str:
         raise ConfigError(
             f"'access' must be one of {' | '.join(ACCESS_TIERS)} (spec §2d); "
             f"this box resolved {access!r}. Refusing rather than running: an "
-            f"unrecognised permission tier is never treated as "
+            f"unrecognized permission tier is never treated as "
             f"'{access_default()}'."
         )
     return access
@@ -141,7 +141,7 @@ def access_row(
 
     RAISES when the descriptor HAS an ``access_realization`` but cannot render
     *tier* — the un-rendered-tier rule: name the tiers this agent CAN render rather
-    than substitute a neighbouring one, which would be either silently permissive
+    than substitute a neighboring one, which would be either silently permissive
     or silently stricter.  Both are lies about what the user asked for.
 
     ⚑ ZERO rows is diagnosed SEPARATELY as PLUGIN VERSION SKEW, not as a capability

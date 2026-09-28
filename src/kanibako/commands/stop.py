@@ -97,7 +97,7 @@ def _writeback_on_stop(
         from kanibako.settings.agent_config import agent_settings_path
         from kanibako.agent_ref import agent_address_node, harness_of
         from kanibako.targets import resolve_target
-        # 🛑 CANONICALISE, THEN DERIVE. The stamp is the OUTSIDE spelling (``+``) —
+        # 🛑 CANONICALIZE, THEN DERIVE. The stamp is the OUTSIDE spelling (``+``) —
         # an env var is a place a human looks — but every use below is a KEY or a
         # key-derived lookup, so the value re-enters code as a node. ``harness_of``
         # splits on ``℘`` ALONE: given the raw ``navigator+claude`` it returns the

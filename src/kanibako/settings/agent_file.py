@@ -51,12 +51,12 @@ _CONTRIBUTED: Final[frozenset[str]] = frozenset({_ROOT})
 #: ⚑ NOT AN INVITATION — a second raw-walk caller means the walk itself belongs in here.
 ROOT_SECTIONS: Final[tuple[str, ...]] = (_ROOT,)
 
-# Every schema-owned (MODELLED) key — the ones :class:`AgentConfig` holds as fields of its own.
+# Every schema-owned (MODELED) key — the ones :class:`AgentConfig` holds as fields of its own.
 # 🛑 A CATEGORY MUST NEVER BE ADDED HERE without both an ``AgentConfig`` field and a ``save``
 # emission: load would capture it out of the opaque carrier and write would never put it back,
 # which is a silent data-loss shape.
 # ⚑ ``run_args`` SITS HERE WITH THE REST, not behind a set borrowed from elsewhere: it is a
-# modelled field like the other three, and what makes it the odd one is only that its value is
+# modeled field like the other three, and what makes it the odd one is only that its value is
 # not a table (:data:`_SCALAR_WRITABLE_KEYS`).  Leaving it out would sweep the stored argv list
 # into :attr:`AgentConfig.state` as the ``str()`` of a list, beside the field that already holds
 # it properly.
@@ -84,7 +84,7 @@ _FLAT_AGENT_CATEGORIES: tuple[str, ...] = (
 _ROOT_TABLES: Final[frozenset[str]] = _MODELED_KEYS | frozenset(_FLAT_AGENT_CATEGORIES)
 
 #: The categories that ride :attr:`AgentConfig.category_tables` OPAQUELY — every flat category the
-#: record does NOT model as a field. ONE set for both ends of the round trip, so a modelled table
+#: record does NOT model as a field. ONE set for both ends of the round trip, so a modeled table
 #: can neither be captured into the carrier (load) nor clobbered from it (write).
 _CARRIED_CATEGORIES: Final[frozenset[str]] = frozenset(_FLAT_AGENT_CATEGORIES) - _MODELED_KEYS
 
@@ -99,7 +99,7 @@ _VERB_WRITABLE_CATEGORIES: Final[frozenset[str]] = frozenset({"env", "secret_pat
 #: be written AT this key?", and the reason :data:`_ROOT_TABLES` is not all tables.
 #: ⚑ It is NOT a claim about the STORED shape: ``run_args`` takes the scalar and stores it as
 #: argv WORDS, so :data:`_LIST_VALUED_KEYS` is a SUBSET of this set — every list-valued key takes
-#: the one string it was split from. A plain-scalar modelled key would belong here and NOT there.
+#: the one string it was split from. A plain-scalar modeled key would belong here and NOT there.
 _SCALAR_WRITABLE_KEYS: Final[frozenset[str]] = frozenset({"run_args"})
 
 #: Every ROOT key whose VALUE IS A TABLE — the complement, so it cannot drift from the shape the
@@ -534,7 +534,7 @@ def load(path: Path, *, node: str) -> AgentConfig:
     # empty: the CLI said "Set", ``agent show`` showed nothing and the launch got no
     # arguments.  Both routes write the list now (:func:`write_leaf`); reading the
     # string keeps the files that route ALREADY wrote working from the next command
-    # on, and the next :func:`save` normalises them.  It is a read rule, not a shim:
+    # on, and the next :func:`save` normalizes them.  It is a read rule, not a shim:
     # nothing writes a string here any more.
     # ⚑ A bare ``run_args:`` parses to ``None`` — "no arguments", never the word
     # "None"; anything else scalar is one word's worth of text and is split like one.
@@ -560,8 +560,8 @@ def load(path: Path, *, node: str) -> AgentConfig:
     # as a field of its own, and any dict-valued entry: a CATEGORY table is a dict
     # and is NOT flat state — those ride ``_agent_partial``, not the
     # ``_agent_state_partial`` state channel.
-    # ⚑ EVERY modelled key, not just the ones with a scalar slot (S3/D-7): the
-    # narrower test differs only for a MALFORMED file, where it swept a modelled
+    # ⚑ EVERY modeled key, not just the ones with a scalar slot (S3/D-7): the
+    # narrower test differs only for a MALFORMED file, where it swept a modeled
     # field's garbage — ``env: oops`` — into state as an agent-state knob (llm-docs).
     # ⚑ A ``None`` value is KEPT as ``None`` (2026-08-17 ruling), never coerced
     # through ``str()``: that turned a ``model: null`` into the four-byte string
@@ -574,7 +574,7 @@ def load(path: Path, *, node: str) -> AgentConfig:
     # env: VAR -> value, read DIRECTLY from the root's ``env`` table.  Carried for the
     # ``agent info`` / ``show`` / ``get`` READS; the launch reads the same table
     # through the cascade, never off this field (MBR-1 P3).
-    # ⚑ ISINSTANCE-GUARDED, like every modelled table below (S3/D-7): the READ side
+    # ⚑ ISINSTANCE-GUARDED, like every modeled table below (S3/D-7): the READ side
     # stays permissive about a wrong SHAPE on purpose — the reads are how a user SEES
     # a broken file. The WRITE side refuses it (``table_value_error``).
     # ⚑⚑ A ``None`` value is KEPT as ``None``, exactly as ``cfg.secret_path`` below and
@@ -658,7 +658,7 @@ def save(path: Path, cfg: AgentConfig) -> None:
     if cfg.env:
         agent_sec["env"] = dict(cfg.env)
     # The opaquely-carried CATEGORY tables re-emitted — sparse; see :func:`load`.
-    # ⚑ ONE set guards BOTH ends: a modelled table can neither be captured into the
+    # ⚑ ONE set guards BOTH ends: a modeled table can neither be captured into the
     # carrier nor clobber its own emission from there, and nothing the carrier holds
     # can be a shape :func:`load` would refuse.
     for category, table in cfg.category_tables.items():
@@ -891,20 +891,20 @@ def level_table(
 def state_level(
     cfg: "AgentConfig | None", *, node: str, path: Path | None = None,
 ) -> AgentFileLevel | None:
-    """The agent file's BEHAVIOUR as a DISCRIMINATED level, or ``None`` if it sets none.
+    """The agent file's BEHAVIOR as a DISCRIMINATED level, or ``None`` if it sets none.
 
-    The per-agent file stores behaviour FLAT (``model`` — already per-agent), not under the
+    The per-agent file stores behavior FLAT (``model`` — already per-agent), not under the
     sub-tables the cascade merges by.  The discriminator is the file's OWN node and is attached
     HERE, at the boundary, not carried undiscriminated through the launch and attached at
     snapshot build.  *path* is the file *cfg* was read from, attached here for the same
     reason: the launch's read-time path check names it (:class:`AgentFileLevel`).
 
-    ⚑ EVERY producer of a behaviour level goes through here (S1b), and
+    ⚑ EVERY producer of a behavior level goes through here (S1b), and
     ``settings_launch._agent_state_partial`` reads the level's node — so the node a table merges
     under is no longer a second, uncross-checked argument.
 
     ⚑⚑ IT TAKES THE RECORD, NOT :attr:`AgentConfig.state`, AND THAT IS THE ``run_args`` CASCADE
-    (`[R169]`).  ``run_args`` is a behaviour leaf the RECORD models as a field of its own
+    (`[R169]`).  ``run_args`` is a behavior leaf the RECORD models as a field of its own
     (:data:`_MODELED_KEYS`), so a level built from ``state`` alone dropped it and the file's argv
     reached a launch by a SECOND route — read straight off ``AgentConfig.run_args`` at the seam
     that builds the command line, where no ``agent.default.run_args`` could ever reach it.  Folded

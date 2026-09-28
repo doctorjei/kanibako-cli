@@ -8,7 +8,7 @@ Spec §1A. Three groups:
 * **equivalence** — the flag folds this phase deleted from the call sites must
   produce byte-identical launch decisions for EVERY flag/stored-value combination.
   That last group is the real bar: P8 is a mechanism change, so the observable
-  behaviour must not move.
+  behavior must not move.
 """
 
 from __future__ import annotations
@@ -385,7 +385,7 @@ def test_a_CORE_leaf_costs_no_plugin_discovery(monkeypatch) -> None:
     The map is handed to ``key_class`` as a thing to ASK, so its core-first ordering
     decides whether discovery is ever reached. Every leaf ``build_cli_level`` emits
     is a core §2d leaf, so the flag-carrying launch this door guards imports no
-    plugin — materialising the map instead would change no verdict and restore the
+    plugin — materializing the map instead would change no verdict and restore the
     whole cost silently (``config_keys._PluginDeclaredLeafMap``: measured at 73% of
     a settings resolve).
 
@@ -408,7 +408,7 @@ def test_a_CORE_leaf_costs_no_plugin_discovery(monkeypatch) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# equivalence — the P8 bar: the deleted folds must not move behaviour          #
+# equivalence — the P8 bar: the deleted folds must not move behavior          #
 # --------------------------------------------------------------------------- #
 
 
@@ -419,7 +419,7 @@ def _old_resolve_new_session(
     """``assembly.resolve_new_session`` as it stood at ``cd251aa``, reproduced.
 
     Deleted from ``src`` by P8; kept HERE as the equivalence oracle so the claim
-    "the fold moved, the behaviour did not" is checked against the real prior code
+    "the fold moved, the behavior did not" is checked against the real prior code
     rather than against a restatement of the new code.
     """
     if new_session:

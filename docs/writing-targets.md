@@ -133,7 +133,7 @@ harness: `Channel.FLAG` (argv, claude/codex) or `Channel.ENV` (`env_var`, goose
 `None`.
 
 - **`None` = this harness CANNOT render that tier.**  The launch then REFUSES,
-  naming the tiers you *can* render — it never substitutes a neighbour (goose
+  naming the tiers you *can* render — it never substitutes a neighbor (goose
   declares no `editing`).
 - **An EMPTY row = "emit nothing, deliberately"** — correct on the FLAG channel
   for a harness whose own default already prompts (claude/codex `restricted`).
@@ -400,7 +400,7 @@ The three hooks differ only in what they are *for*, and in rooting:
 
 An already self-resolving `host_src` (absolute, `~`, `$var`, or an `@`-ref) is
 always stored verbatim.  In a **defaults file** `box_dest` is a `$GUEST_HOME`
-(or `~`) expression, expanded and normalised by the loader.  From **Python**
+(or `~`) expression, expanded and normalized by the loader.  From **Python**
 there is no expander — `$GUEST_HOME` is not a variable kanibako resolves, and a
 launch that meets one fails with `Unknown variable: $GUEST_HOME` — so write the
 guest path in full (`/home/agent/.claude/x`).  Either way kanibako owns the host
@@ -416,7 +416,7 @@ rather than repoint it, a user present-`null`s that destination inside the value
 
 **Prefer the defaults file to Python.**  The shipped plugins declare `common:`
 and `env:` in their `<agent>-defaults.yaml` and read them with the loaders, which
-apply the rooting, the `$GUEST_HOME` expansion, the destination normalisation
+apply the rooting, the `$GUEST_HOME` expansion, the destination normalization
 and — for `env:` — the closed-keyspace check for you:
 
 ```python

@@ -70,7 +70,7 @@ descriptor:
   #                 kanibako box IS that outer sandbox)
   #   editing    -> -s workspace-write, the MIDDLE step of the verified sandbox
   #                 enum [read-only | workspace-write | danger-full-access]
-  #   restricted -> EMIT NOTHING on the argv — the pre-R-41 `-S` behaviour,
+  #   restricted -> EMIT NOTHING on the argv — the pre-R-41 `-S` behavior,
   #                 unchanged.
   # ⚑ The APPROVAL axis is deliberately NOT on the argv: `-a/--ask-for-approval`
   # is ABSENT from `codex exec` (verified: "error: unexpected argument '-a'"),

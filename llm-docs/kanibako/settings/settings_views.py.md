@@ -106,7 +106,7 @@ neither copies nor mutates the node.
 ## `derived_bindings` — the read half of `binding_derivations`
 
 *node* is the `binding_derivations` subtree: the reserved INTERNAL node at the snapshot root (R-8,
-not a key) carrying the MATERIALISED binding that each ABSTRACT declaration (`common` / `caches` /
+not a key) carrying the MATERIALIZED binding that each ABSTRACT declaration (`common` / `caches` /
 `seeded`) derives, filed at `binding_derivations.<declaration-key>` so a reader can see the
 declaration AND the binding it produces (spec §0).
 

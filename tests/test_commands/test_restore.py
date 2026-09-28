@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 
 from kanibako.settings.config import load_config
-from kanibako.errors import UserCancelled
+from kanibako.errors import UserCanceled
 from kanibako.settings.paths import (
     load_std_paths,
     resolve_any_project,
@@ -240,7 +240,7 @@ class TestExtract:
         assert registered, f"{dest_ws} was not registered after extract"
         assert (std.boxes / registered / "mydata.txt").is_file()
 
-    def test_extract_honours_name(self, config_file, tmp_home, credentials_dir):
+    def test_extract_honors_name(self, config_file, tmp_home, credentials_dir):
         """``--name`` was declared in the parser and then never read — ``args.name``
         had zero references in the module."""
         config = load_config(config_file)
@@ -414,7 +414,7 @@ class TestExtractExtended:
         other = tmp_home / "other_project"
         other.mkdir()
 
-        with patch("kanibako.commands.restore.confirm_prompt", side_effect=UserCancelled("no")):
+        with patch("kanibako.commands.restore.confirm_prompt", side_effect=UserCanceled("no")):
             args = argparse.Namespace(
                 file=archive_path, path=str(other), name=None,
                 all_archives=False, force=False,

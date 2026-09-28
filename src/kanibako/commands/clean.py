@@ -8,7 +8,7 @@ import sys
 
 from kanibako.settings.config import WORKSET_META_FILE, load_config
 from kanibako.runtime.container import remove_box_tree
-from kanibako.errors import UserCancelled
+from kanibako.errors import UserCanceled
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
@@ -156,7 +156,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
                 "Delete all session data for this project? This cannot be undone.\n"
                 "Type 'yes' to confirm: "
             )
-        except UserCancelled:
+        except UserCanceled:
             print("Aborted.")
             return 2
 
@@ -238,7 +238,7 @@ def _purge_all(std, config, *, force: bool) -> int:
                 "This cannot be undone.\n"
                 "Type 'yes' to confirm: "
             )
-        except UserCancelled:
+        except UserCanceled:
             print("Aborted.")
             return 2
 

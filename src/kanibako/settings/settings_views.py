@@ -192,7 +192,7 @@ def derived_bindings(
     """FLATTEN the ``binding_derivations`` subtree to ``{declaration-key: Bind}``.
 
     *node* is the reserved INTERNAL node at the snapshot root (R-8, not a key)
-    carrying the MATERIALISED binding each ABSTRACT declaration (``common`` /
+    carrying the MATERIALIZED binding each ABSTRACT declaration (``common`` /
     ``caches`` / ``seeded``) derives, so a reader can see the declaration AND the
     binding it produces (spec §0).
 
@@ -234,7 +234,7 @@ def derived_binding_rows(
             else:
                 raise ViewError(
                     f"{label}.{'.'.join(segments)} is {type(value).__name__}, "
-                    f"expected a Bind (the materialised derivation of a declaration)"
+                    f"expected a Bind (the materialized derivation of a declaration)"
                 )
 
     _walk(node, ())

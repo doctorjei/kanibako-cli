@@ -161,7 +161,7 @@ default arm IS inert for delivery — the node arm is emitted for every agent no
 a true agent, a present `None` for `shell` — so the §2d fallback to it never fires (proved by mutation: poisoning this arm moves no seed, poisoning the node arm reds
 ten cases). DELIVERY asks which arm the §2d pick lands on; REACHABILITY asks whether
 `@agent.default.template` resolves at all, and the answer to that must be yes: the key is DECLARED
-with a real default, so some artefact must carry its value or `system defaults` prints a row it
+with a real default, so some artifact must carry its value or `system defaults` prints a row it
 cannot source.
 
 The arms live HERE rather than beside their sibling `agent.default.canon` (`core_defaults`) because
@@ -171,7 +171,7 @@ because the node arm is spelled one `@`-hop from the registry and the default ar
 oracle. (The node arm's harness-vs-node divergence — finding 1 — is CLOSED as of 2026-08-27; only
 the hop is left.)
 ⚑ Neither arm carries a node-store probe, unlike `canon_default_categories`' `store_canon if
-node_store.is_dir() else …` node arm — that conditional is the canon key's own behaviour.
+node_store.is_dir() else …` node arm — that conditional is the canon key's own behavior.
 
 The dict `template_seed_defaults` returns therefore mixes the SEED tuple keys with the AGENT SOURCE
 scalars, so both land in the seed snapshot's floor: the scalar resolves the `@`-ref, and a user
@@ -273,7 +273,7 @@ shared copier saw them (as a plain file).
 ## THE ONE COPIER — `copy_tree` (P-S4)
 
 Every template stage, box seed and host-store fill routes through `copy_tree`, so the whitelist and
-the traversal defences cannot be present on one path and missing on another.
+the traversal defenses cannot be present on one path and missing on another.
 
 It mirrors the relative tree of *src* into *dest*. Existing destination files are left untouched
 (create-if-absent) so user edits to a seeded template survive a later kanibako upgrade. Directories
@@ -287,7 +287,7 @@ worksets, boxes) are create-if-absent on EVERY path, always, and their differenc
 rather than written (J-3 item 1). The default (False) preserves the load-bearing create-if-absent
 contract — the alias `copy_resource_tree_if_absent` (reused by the box-SEED apply in
 `commands.start`) must NEVER clobber a per-box home file. That alias is the create-if-absent
-spelling other modules reuse; it names `copy_tree`, whose skip-if-present behaviour is what the
+spelling other modules reuse; it names `copy_tree`, whose skip-if-present behavior is what the
 longer name is asserting.
 
 *scope* (`"box"` / `"agent"` / `"workset"`) turns on the §2a WHITELIST, evaluated on each entry's
@@ -349,7 +349,7 @@ their severities differ:
 
 | scope | denied, and why it matters |
 |---|---|
-| BOX | `box.yaml` = `meta.box.settings`, the LAST cascade level, so template content would become the box's TOP-PRIORITY settings, carrying any key it liked (CORRECTNESS). Create-if-absent is no defence: on a fresh box there is nothing there to lose the race. |
+| BOX | `box.yaml` = `meta.box.settings`, the LAST cascade level, so template content would become the box's TOP-PRIORITY settings, carrying any key it liked (CORRECTNESS). Create-if-absent is no defense: on a fresh box there is nothing there to lose the race. |
 | AGENT | `agent.yaml` = `meta.agent.<a>.settings` (CORRECTNESS); `caches/`. |
 | WORKSET | `workset.yaml`; `registry.yaml` = `workset.registry`, the AUTHORITATIVE box membership + names, so a templated one could ORPHAN or COLLIDE boxes (CORRECTNESS); `auth/` (CREDENTIALS), `vault/`, `workspaces/` (THE USER'S CODE); `boxes/`, `logs/`, `channels/`. |
 
@@ -424,7 +424,7 @@ would either refuse a legal copy or wave through an illegal one.
 `_is_contained` is THE ONE CONTAINMENT PREDICATE: *target*'s REAL path is *root*'s real path or
 below it. It catches BOTH residual escapes §2a names — a `..` component in a declared dest, and a
 symlinked intermediate DIRECTORY in the destination tree that `mkdir` + `copy2` would happily write
-THROUGH. `resolve()` on both sides is what makes the second one visible, and what normalises the
+THROUGH. `resolve()` on both sides is what makes the second one visible, and what normalizes the
 first; a plain string comparison sees neither.
 
 `_assert_contained` is its refusal FOR THE COPIER, and `_workset_stamp_dirs` is its refusal for a
@@ -558,7 +558,7 @@ unread — a loud absence beats a silent misplacement.
 
 ## `ensure_agent_stores` — the J-6 A-action
 
-Materialises each agent's STORE. An A-action is INSTANTIATION: stamp a new store from the current
+Materializes each agent's STORE. An A-action is INSTANTIATION: stamp a new store from the current
 host mold at the moment of the action, then the store is the user's. J-6's "two paths, one action"
 pair share this one implementation — the deliberate trigger at `kanibako setup` (which reports) and
 the lazy backstop in `cli._ensure_initialized` (silent, first run only). Both must run the SAME
@@ -567,7 +567,7 @@ full per-file stamp; the bare `mkdir` the lazy path used to do is what this repl
 Per name, in order:
 
 1. the MOLD — `@system.template/agent` → `agents/<name>`. Uniform for every agent, `default`
-   included (J-5), and read AS IT STANDS so a user's mold customisation reaches FUTURE stores only.
+   included (J-5), and read AS IT STANDS so a user's mold customization reaches FUTURE stores only.
 2. the SPECIFIC payload — `agents/default` gets the packaged `templates/agent` DIRECTLY from
    the package (no host staging: with exactly one default agent, a staged copy would be read once
    and never again — the principle-2 dead-copy class); every other name gets its plugin's
@@ -757,13 +757,13 @@ overwrites a chapter the user has edited. That failsafe answers a shipped data-l
 refactorable away. SKIP-IF-ABSENT: a layer whose `box/canon/handbook` dir does not exist is skipped
 (an unpopulated `@workset.template` is the normal case).
 
-GUARANTEE-CREATE, and it is a real (intended) behaviour change, so it is stated rather than left to
+GUARANTEE-CREATE, and it is a real (intended) behavior change, so it is stated rather than left to
 be discovered: the `mkdir` is UNCONDITIONAL, so `@box.canon/handbook` exists after every create
 even when all three layers are empty or absent. The RO `canon_hb_box` bind is declared
 `optional: true`, i.e. omitted when its source is missing — so it now ALWAYS mounts, and a user who
 has emptied all three handbook template subtrees gets an EMPTY read-only mount where the bind used
 to be dropped. `install_workset_template` guarantee-creates its own canon chapter the same way for
-the same reason (the chapter is a place the user is expected to fill later, not an artefact of the
+the same reason (the chapter is a place the user is expected to fill later, not an artifact of the
 template).
 
 ⚑ NO DEST WHITELIST HERE, and that is deliberate — do not "restore" one. There is ONE dest policy
@@ -882,14 +882,14 @@ output, which costs exactly the signal the report exists to carry.
 unreported today. The `[STOCK]` comment convention is what makes comment-aware handling possible
 later, in the explicit opt-in update verb.
 
-`_HTML_COMMENT_RE` matches HTML comments, non-greedy, across lines — stripped by the MD normaliser
+`_HTML_COMMENT_RE` matches HTML comments, non-greedy, across lines — stripped by the MD normalizer
 because both equivalence tiers ignore comments (J-3 item 5). `_FENCE_RE` matches a fenced code
-block (backtick or tilde fence), captured whole so the normaliser can leave its interior ALONE:
+block (backtick or tilde fence), captured whole so the normalizer can leave its interior ALONE:
 whitespace is SEMANTIC inside a fence.
 
-### `_normalise_markdown`
+### `_normalize_markdown`
 
-Normalises text for the MD equivalence tier — CONSERVATIVELY. Strips HTML comments, then collapses
+Normalizes text for the MD equivalence tier — CONSERVATIVELY. Strips HTML comments, then collapses
 insignificant whitespace: CRLF → LF, trailing whitespace per line, runs of blank lines, and the
 final newline.
 
@@ -899,7 +899,7 @@ final newline.
 * a TRAILING TWO-SPACE hard line break — stripping it would merge two lines.
 
 Anything this misses only costs a spurious "different" report, never a wrong copy; anything it
-over-normalises would HIDE a real change, which is why the bias is conservative.
+over-normalizes would HIDE a real change, which is why the bias is conservative.
 
 ### `_equivalent`
 
@@ -908,7 +908,7 @@ suffix (J-3 item 2):
 
 * `.yaml` / `.yml` — `safe_load` both sides and deep-compare. A parse failure on EITHER side ⇒
   "different" (never equivalent: an unparseable file is exactly the case a report should surface).
-* `.md` — `_normalise_markdown` both sides and compare.
+* `.md` — `_normalize_markdown` both sides and compare.
 * anything else — bytes only.
 
 ### `plan_template_refresh`

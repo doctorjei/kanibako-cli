@@ -1,7 +1,7 @@
 """The kanibako error hierarchy: what ``cli.py`` catches (not every exception in the tree)."""
 
 
-# ⚑ ``cli.py`` catches ONLY this base (plus UserCancelled): a class added here that does not
+# ⚑ ``cli.py`` catches ONLY this base (plus UserCanceled): a class added here that does not
 # subclass it reaches the user as a traceback, not an ``Error:`` line.
 class KanibakoError(Exception):
     """Base of the kanibako error hierarchy — what ``cli.py`` catches."""
@@ -60,8 +60,8 @@ class LegacyRegistryIdentityError(WorksetError):
     """A per-workset ``registry.yaml`` still carries a RETIRED ``workset:``/``projects:`` section."""
 
 
-class UserCancelled(KanibakoError):
-    """User cancelled an interactive prompt."""
+class UserCanceled(KanibakoError):
+    """User canceled an interactive prompt."""
 
 
 class SubjectConflictError(KanibakoError):

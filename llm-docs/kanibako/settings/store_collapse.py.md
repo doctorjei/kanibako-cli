@@ -127,7 +127,7 @@ Consequences, all of them removals rather than patches:
   removing its cause.
 
 **Its one error case:** a SEED whose dest is not inside home. Every seed shipped today is
-home-relative by construction, so this is structural rather than a behaviour change — and it is
+home-relative by construction, so this is structural rather than a behavior change — and it is
 refused BY NAME, never dropped.
 
 ### Nothing is arbitrated at a destination — including ACROSS the two arms
@@ -224,7 +224,7 @@ reasoning that a file bind's dest IS the file and writing through it would repla
 The refusal is DELETED, and nothing replaces it.
 
 ⚑ **The narrow concern was real; the blanket refusal was not his.** His worry was the file-bind
-overlap; a structural dest-equality rule was the generalisation an implementer drew from it, and
+overlap; a structural dest-equality rule was the generalization an implementer drew from it, and
 his consistent position across four earlier exchanges was the opposite — *"sometimes we want to
 copy onto a bind"*, *"copy | bind, same, OK"*, *"copy | bind copies on top of the bind, and most of
 bind remains intact"*, *"it's ok for a synced item to apply to the exact same root as a bind, just
@@ -412,7 +412,7 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   bind into the bind's host source, so it overwrites CONTENT and *"most of bind remains intact"*.
   ⚑ The `mount_forbidden` backlog item stays REMOVED — nothing needs replacing. ⚑ The rule was
   once justified by the file-bind inode-replacement case; that concern is narrower than the
-  structural blanket refusal it was generalised into, and the generalisation was an implementer's,
+  structural blanket refusal it was generalized into, and the generalization was an implementer's,
   not a ruling.
   ⚑ **§0 AGREES:** *"A sync dest that EXACTLY EQUALS a bind dest is ACCEPTED — the copy lands ON TOP
   of the bind and writes through into that bind's source, and the bind remains."* The annotations
@@ -515,7 +515,7 @@ box's `meta.assembly.*`. `kanibako workset share list --effective` feeds the wor
 `bindings.{ro,rw}` entries and pairs them against a map it collapses on the spot from that one
 workset file. Same question, two subjects — and one answer, which is the point.
 
-**The input MAY contain arbitration losers, and it is meant to.** `derive_binding_keys` materialises
+**The input MAY contain arbitration losers, and it is meant to.** `derive_binding_keys` materializes
 a derivation for winners and losers alike, deliberately. A loser is identified HERE, by what
 occupies its destination — which is why the pairing, not the node, is the display's source.
 See `llm-docs/kanibako/settings/settings_categories.py.md` for the measured failure that rule
