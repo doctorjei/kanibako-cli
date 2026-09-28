@@ -192,6 +192,21 @@ def _unescape(s: str) -> str:
     return "".join(out)
 
 
+#: The characters :func:`expand_expr` reads as syntax (``~`` only at position 0, escaped
+#: everywhere for simplicity).
+_EXPR_SIGNIFICANT: frozenset[str] = frozenset("\\$@~")
+
+
+def literal_expr(text: str) -> str:
+    """The expression that expands to *text* VERBATIM: each ``\\ $ @ ~`` gets a backslash.
+
+    For a host path a floor hands the expander as a value (a ``$``/``@`` in a directory
+    name is data, not a token). Host-space expansion removes every escape; a deferred
+    scan keeps ``\\$ \\~ \\\\`` for the box resolver and reads ``\\@`` as no reference.
+    """
+    return "".join(f"\\{c}" if c in _EXPR_SIGNIFICANT else c for c in text)
+
+
 def split_bind(value: str) -> tuple[str, str | None]:
     """Split ``host_src:guest_dest`` at the FIRST UNESCAPED ``:``; no colon ⇒ ``(value, None)``.
 

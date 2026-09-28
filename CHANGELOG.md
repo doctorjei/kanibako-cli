@@ -1175,6 +1175,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A setting can refer to the files kanibako reads its configuration from.** Three read-only
+  keys name them: `@meta.runtime.user.config` is your `kanibako.cfg` (under `$XDG_CONFIG_HOME`,
+  or `~/.config` when that is unset or not absolute), `@meta.runtime.admin.config` is
+  `/etc/kanibako/base.cfg`, and `@meta.runtime.admin.settings` is
+  `/etc/kanibako/settings_base.yaml`. Each is the path kanibako actually reads, and each resolves
+  in every box, in a working set and at the system scope. A `$`, `@`, `\` or `~` in one of those
+  paths is part of the name where a setting uses the key as a value or a bind source; a box-side
+  mount destination that refers to one can still misread such a character (a known issue).
+
 - **Every box now gets the host's terminal type, and `$TERM` resolves in a settings value.** Two
   halves of one gap. Nothing kanibako shipped declared `TERM` for anything but a plain-shell box, so
   an agent box got whatever terminal type its image happened to set; and the expression engine

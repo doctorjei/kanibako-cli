@@ -42,6 +42,7 @@ _WrittenLevel = tuple[KeyStore, Path | None, KeyStore | None]
 ## Functions
 ```
 def auth_chain_floor(*, mode: str | None, agent_name: str) -> dict[str, object]
+def meta_runtime_host_floor() -> dict[str, object]
 def meta_runtime_floor(*, mode: str, ws_name: str, ws_root_literal: str | None=None) -> dict[str, object]
 def meta_agent_path_floor(agent_name: str) -> dict[str, object]
 def meta_agent_grammar_floor(agent_name: str, descriptor: 'PluginDescriptor | None') -> dict[str, object]

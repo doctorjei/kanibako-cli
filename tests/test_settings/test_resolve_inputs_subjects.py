@@ -239,3 +239,51 @@ class TestTheWorksetKeyedChannelHelpersAreTheOnlyCarriers:
         assert channels.workset_token(BoxMode.named, named_ws.name) == (
             channels.workset_name_token(named_box)
         )
+
+
+def _subject_inputs(which: str, std, ws, box) -> LaunchInputs:
+    return {
+        "system": lambda: _system(std),
+        "workset": lambda: _workset(std, ws),
+        "box": lambda: _box(std, box),
+    }[which]()
+
+
+def _refer_to(std, refs: dict[str, str]) -> None:
+    """Write system binds whose SOURCES are the ``@``-refs in *refs* (guest dest → ref)."""
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    std.settings.write_text("system:\n  bindings:\n    ro:\n" + "".join(
+        f"      {dest}: ['{ref}']\n" for dest, ref in refs.items()
+    ))
+
+
+def _bind_sources(snap: KeyStore) -> dict[str, str]:
+    return {dest: e.src for dest, e in dict(snap.system.bindings.ro).items()}
+
+
+#: One expander-significant character each, spelled into a host directory name.
+_SIGNIFICANT = ["$HOME", "@b", "@meta.box.name", "\\q", "~"]
+
+
+class TestAHostPathInTheRuntimeFloorIsALiteral:
+    """§1A: a ``meta.runtime`` host-file path is DATA. A ``$``, ``@``, ``\\`` or ``~`` in a
+    directory name is neither expanded nor read as a reference, in every subject."""
+
+    @pytest.mark.parametrize("refer", [False, True])
+    @pytest.mark.parametrize("which", ["system", "workset", "box"])
+    @pytest.mark.parametrize("ch", _SIGNIFICANT)
+    def test_the_user_config_file(
+        self, ch, which, refer, std, tmp_home, named_ws, named_box, monkeypatch,
+    ):
+        from tests.support.filenames import CONFIG_FILENAME
+
+        config_home = tmp_home / f"x{ch}cfg"
+        config_home.mkdir()
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+        if refer:
+            _refer_to(std, {"~/host.cfg": "@meta.runtime.user.config"})
+        snap = _snapshot(_subject_inputs(which, std, named_ws, named_box))
+        user_config = str(config_home / CONFIG_FILENAME)
+        assert _leaf(snap, "meta.runtime.user.config") == user_config
+        if refer:
+            assert list(_bind_sources(snap).values()) == [user_config]

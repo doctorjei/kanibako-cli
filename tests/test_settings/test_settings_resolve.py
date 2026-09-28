@@ -15,6 +15,7 @@ from kanibako.settings.settings_resolve import (
     ResolvedValue,
     SettingsError,
     expand_expr,
+    literal_expr,
     match_ref,
     match_var,
     resolve_value,
@@ -638,6 +639,43 @@ def test_expand_escaped_dollar_and_backslash() -> None:
         expand_expr("\\$HOME\\\\x", space="host", ctx=make_ctx(), lookup=no_lookup)
         == "$HOME\\x"
     )
+
+
+_LITERAL_CASES = [
+    "/plain/path",
+    "/x$HOME/cfg",
+    "/x${XDG_DATA_HOME}/cfg",
+    "/a@b/cfg",
+    "/x@meta.box.name/cfg",
+    "/b\\q/cfg",
+    "/trailing\\",
+    "~/t~/cfg",
+]
+
+
+@pytest.mark.parametrize("text", _LITERAL_CASES)
+def test_literal_expr_expands_to_itself_host_side(text: str) -> None:
+    """A host path made a :func:`literal_expr` comes back VERBATIM: no token in it is read."""
+    assert expand_expr(
+        literal_expr(text), space="host", ctx=make_ctx(), lookup=no_lookup,
+    ) == text
+
+
+@pytest.mark.parametrize("text", _LITERAL_CASES)
+def test_literal_expr_has_no_refs_and_survives_deferral(text: str) -> None:
+    """The deferred scan reads no ``@``-ref in it, and keeps ``$ ~ \\`` ESCAPED for the later
+    resolver (the deferral rule in :func:`expand_expr`)."""
+    refs: list[str] = []
+
+    def record(ref: str, chain: tuple[str, ...]) -> str:
+        refs.append(ref)
+        return ""
+
+    deferred = expand_expr(
+        literal_expr(text), space="host", ctx=make_ctx(), lookup=record, defer_env=True,
+    )
+    assert refs == []
+    assert deferred == "".join(f"\\{c}" if c in "\\$~" else c for c in text)
 
 
 # ---------------------------------------------------------------------------

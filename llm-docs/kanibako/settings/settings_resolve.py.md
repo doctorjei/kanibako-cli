@@ -372,6 +372,20 @@ A backslash before any character yields that character literally (`\:` → `:`, 
 raising there would make an unremarkable path illegal.
 
 ```python
+literal_expr(text: str) -> str
+```
+The inverse direction: the expression that expands back to *text* verbatim. It puts a backslash
+before every `\`, `$`, `@` and `~` (`_EXPR_SIGNIFICANT`). A leading `~` is the only `~` the
+expander reads, but escaping all of them keeps the rule one line. Use it when a floor hands
+the expander a HOST PATH as a value (`settings_launch.meta_runtime_host_floor`). A `$` or `@`
+in a directory name is data. Unescaped, it raised `Unknown variable` or was read as a reference
+and dropped.
+Both passes are pinned in `tests/test_settings/test_settings_resolve.py`:
+* HOST space removes every escape and gives *text* back.
+* The DEFERRED scan (`defer_env=True`) records no `@`-ref and keeps `\$ \~ \\` escaped for
+  the later resolver.
+
+```python
 split_bind(value: str) -> tuple[str, str | None]
 ```
 Split `host_src:guest_dest` into its two halves at the FIRST UNESCAPED `:`.
