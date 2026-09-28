@@ -171,7 +171,7 @@ class WorksetSpec:
     name: str
     root: Path
     projects_dir: Path
-    workspaces_dir: Path
+    workspaces_dir: Path | None
     vault_ro_dir: Path
     vault_rw_dir: Path
     project_names: tuple[str, ...]
@@ -196,7 +196,7 @@ class _WorksetLike(Protocol):
     @property
     def projects_dir(self) -> Path
     @property
-    def workspaces_dir(self) -> Path
+    def workspaces_dir(self) -> Path | None
     @property
     def vault_ro_dir(self) -> Path
     @property

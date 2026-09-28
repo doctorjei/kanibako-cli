@@ -367,7 +367,7 @@ default to `None` without a separate "not yet loaded" state.
 @property
 def projects_dir(self) -> Path      # the RESOLVED workset.boxes
 @property
-def workspaces_dir(self) -> Path    # the RESOLVED workset.workspaces
+def workspaces_dir(self) -> Path | None   # the RESOLVED workset.workspaces; None under <None>
 @property
 def vault_dir(self) -> Path         # {root}/vault — the SKELETON dir, a NON-KEY
 @property
@@ -392,6 +392,17 @@ default leaf — a footgun that, for `boxes`, means writing a box tree to the wr
 is correct by construction. ⚑ Where a caller uses one of these in a LOOP it hoists the property
 first (`iter_workset_projects`, `clean.py`'s purge): one read per workset, so every member is
 judged against the same document — the same reason `resolve_workset_vault_pair` exists.
+
+⚑ **`workspaces_dir` is `None` when the root's settings file carries `workspaces: null`** (Q106):
+never the default leaf, which would be a directory the user said does not exist. It reads
+`workset_workspaces_nulled` on each access, since `workspaces_repoint` collapses a null to unset.
+`require_workspaces_dir(what)` is the face for an op that needs the dir: under a null it raises
+`WorksetError` with `messages.ERR_WORKSET_NULL_WORKSPACES`, naming *what*. The creation and copy
+ops (`box/_lifecycle.copy_into_workset`, `_validate`'s bare-into-workset dest, `_to_workset`'s
+in-tree landing, `box/_duplicate`) call it; each is also refused earlier by
+`refuse_null_workspaces`, so it narrows the type rather than adding a refusal. The readers that do
+not create — `release_project`, `remove_project`, `_lifecycle._member_leaves`, and
+`settings/paths`'s `WorksetSpec` (whose field is `Path | None` too) — skip the absent leaf.
 
 *(The old "toml" names — `toml_path`, `_write_workset_toml`, `_load_workset_toml` — said "toml" and
 operated on YAML. They were retired with this move; all config files in this project are YAML.)*
@@ -439,9 +450,10 @@ Honors a set `workset: {workspaces: …}`; else the spec default `@meta.workset.
 == `<root>/workspace`. ⚑ The repoint SLOT is the same `workset: {workspaces: …}` key either way —
 only the default formula varies by mode.
 
-🛑 A present `<None>` still COLLAPSES to the default here (`_repoint_or_default`): the launch
-half of Q96 (no workspace bind) is not landed, because a standalone box's `project_path` IS this
-value and is typed `Path`. What refuses today is CREATION under a null, below.
+🛑 A present `<None>` still COLLAPSES to the default here (`_repoint_or_default`), because a
+standalone box's `project_path` IS this value and is typed `Path`. What refuses is CREATION under a
+null (`refuse_null_workspaces`, below) and a LAUNCH (`refuse_null_box_workspace`, below): the
+workspace bind is mounted at every launch, so a box without one cannot run (Q106).
 
 ```python
 def workset_workspaces_nulled(workset_root: Path) -> bool
@@ -458,6 +470,20 @@ into a root that already nulls it), and `settings/paths.resolve_standalone_proje
 pre-flight (`box create --standalone`), before its first write. *standalone* selects
 `messages.ERR_STANDALONE_NULL_WORKSPACES`, whose cure omits "connect a directory outside it" — a
 lone box's root has no outside member.
+
+```python
+def refuse_null_box_workspace(workset_root: Path, workspace: Path, box: str, *, standalone: bool) -> None
+```
+The LAUNCH refusal (Q106): raises `WorksetError` with `messages.ERR_NULL_WORKSPACE_BIND`, naming
+the box, the key and `<root>/workset.yaml`, when the root nulls `workset.workspaces` and the box's
+`meta.box.workspace` resolves through it — always for *standalone* (`@workset.workspaces`), and for
+a named member whose recorded *workspace* lies inside the root (`@workset.workspaces/<name>`). An
+EXTERNAL member's recorded workspace resolves through no key, so it still launches; primary is
+never asked (its workspace is the project dir). The one caller is
+`commands/start._refuse_null_workspace_bind`, on `_run_container`'s non-materializing probe.
+⚑ The in-tree test is the same one `add_project` decides external wiring by (`_path_in_tree`), so
+an in-tree member recorded under an ABSOLUTE `workset.workspaces` repoint outside the root, then
+nulled, reads as external and launches on its recorded dir.
 
 ```python
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
@@ -718,7 +744,8 @@ never mounted** — and the box is registered in the workset's per-workset regis
 resolve back to this workset. Sources inside the workset tree keep the normal behavior: a real
 `workspaces/{name}` directory — and REFUSE (`refuse_null_workspaces`) when `workset.workspaces` is
 null, before anything is created. An external member still connects under a null, without the
-link. `source_in_tree(ws, source_path)` is the in-tree test, shared with `run_connect`.
+link. Under a null only a *restoring* unwind reaches the in-tree arm, and it records the member's
+own *source_path* (there is no `workspaces/<name>` to compose). `source_in_tree(ws, source_path)` is the in-tree test, shared with `run_connect`.
 *restoring* (keyword-only) skips that refusal: `box/_lifecycle`'s `_restore_source` unwind
 re-registers a member it just released and creates no workspace, so a null must not strand it.
 
@@ -790,9 +817,10 @@ def _detach_project(ws: Workset, name: str) -> None
 Drop *name* from the in-memory project list (compensating action).
 
 ```python
-def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> bool
+def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None
 ```
-Create `workspaces/<name>` → *target* for an external member; True iff it created the link. An
+Create `workspaces/<name>` → *target* for an external member; the link iff it created one (the
+caller's unwind unlinks it). An
 occupied leaf (dir, file or link) is left alone, and a null `workset.workspaces` creates nothing
 (there is no dir to link in). `add_project`'s external arm calls it, and so does a
 relocation after it retires the old in-tree leaf that held the spot (`commands/box/_lifecycle.py`,
@@ -830,7 +858,9 @@ resolve before an irreversible step of its own; without it the store resolves he
 def remove_project(ws: Workset, name: str, *, remove_files: bool = False, std: StandardPaths | None = None) -> WorksetProject
 ```
 `release_project`, then with *remove_files* `remove_member_store` and the workspace leaf (a symlink
-unlinked, never followed; a dir `rmtree`'d). The external source is always left intact. With
+unlinked, never followed; a dir `rmtree`'d). The external source is always left intact. Under a
+null `workset.workspaces` there is no `workspaces/<name>`: an in-tree member's leaf is the path its
+record holds, and an external member has no leaf to remove. With
 *remove_files* the store bases resolve BEFORE the release, so a refusal (a null `workset.boxes`)
 leaves the member registered.
 

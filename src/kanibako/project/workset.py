@@ -53,7 +53,8 @@ from kanibako.identifiers import find_identifier
 from kanibako.project.names import register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.messages import (
-    ERR_CONFIG_NULL_PATH, ERR_STANDALONE_NULL_WORKSPACES, ERR_WORKSET_NULL_WORKSPACES,
+    ERR_CONFIG_NULL_PATH, ERR_NULL_WORKSPACE_BIND, ERR_STANDALONE_NULL_WORKSPACES,
+    ERR_WORKSET_NULL_WORKSPACES,
 )
 from kanibako.settings.settings_resolve import UNSET, SettingsError, _Unset
 from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
@@ -198,6 +199,23 @@ def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool = 
     if workset_workspaces_nulled(workset_root):
         message = ERR_STANDALONE_NULL_WORKSPACES if standalone else ERR_WORKSET_NULL_WORKSPACES
         raise WorksetError(message % (workset_root / WORKSET_META_FILE, what))
+
+
+def refuse_null_box_workspace(
+    workset_root: Path, workspace: Path, box: str, *, standalone: bool,
+) -> None:
+    """RAISE when a box's ``meta.box.workspace`` resolves through a null ``workset.workspaces`` (Q106).
+
+    The workspace bind is mounted at every launch (system-design § "The workspace bind"), so a
+    box with no workspace cannot run.  Standalone's workspace IS ``@workset.workspaces``; a
+    named member's is ``@workset.workspaces/<name>`` unless it is EXTERNAL — its recorded
+    *workspace* lies outside *workset_root* and resolves through no key, so it still launches.
+    Primary is not asked: its workspace is the project dir.
+    """
+    if not workset_workspaces_nulled(workset_root):
+        return
+    if standalone or _path_in_tree(workspace, workset_root):
+        raise WorksetError(ERR_NULL_WORKSPACE_BIND % (box, workset_root / WORKSET_META_FILE))
 
 
 def resolve_workset_boxes(
@@ -518,12 +536,23 @@ class Workset:
         return resolve_workset_boxes(self.root, load_workset_settings_doc(self.root))
 
     @property
-    def workspaces_dir(self) -> Path:
-        # ⚑ RESOLVED, not composed (§3.3: real and USED) — the only one of the five.
+    def workspaces_dir(self) -> Path | None:
+        """The resolved ``workset.workspaces`` dir; ``None`` when the root nulls it (no dir, Q106)."""
+        # ⚑ RESOLVED, not composed (§3.3: real and USED).  A null never falls back to the
+        # default leaf: that would be a path the user said does not exist.
+        if workset_workspaces_nulled(self.root):
+            return None
         return resolve_workset_dir_key(
             self.root, self.workspaces_repoint, _WORKSPACES_LEAF,
             key=_WORKSPACES_LEAF,
         )
+
+    def require_workspaces_dir(self, what: str) -> Path:
+        """:attr:`workspaces_dir` for an op that needs the dir; a null REFUSES, naming *what*."""
+        workspaces = self.workspaces_dir
+        if workspaces is None:
+            raise WorksetError(ERR_WORKSET_NULL_WORKSPACES % (self.root / WORKSET_META_FILE, what))
+        return workspaces
 
     @property
     def vault_dir(self) -> Path:
@@ -927,11 +956,12 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
 
 def source_in_tree(ws: Workset, source_path: Path) -> bool:
     """True when *source_path* lies under *ws*'s root — an IN-TREE member, not an external one."""
-    try:
-        source_path.resolve().relative_to(ws.root.resolve())
-    except ValueError:
-        return False
-    return True
+    return _path_in_tree(source_path, ws.root)
+
+
+def _path_in_tree(path: Path, root: Path) -> bool:
+    """True when *path* lies under *root*, both resolved (the in-tree test)."""
+    return path.resolve().is_relative_to(root.resolve())
 
 
 def add_project(
@@ -1007,8 +1037,11 @@ def add_project(
     # ⚑⚑ THE ONE RECORDED PATH: an EXTERNAL connect records the source dir itself; an
     # in-tree member records ``workspaces/<name>``, which is the dir created below and
     # the only one it ever mounts.  Recording the caller's *source_path* for an in-tree
-    # connect wrote a path the box never ran on.
-    recorded_workspace = resolved_source if is_external else ws.workspaces_dir / name
+    # connect wrote a path the box never ran on.  Under a null ``workset.workspaces`` only
+    # a *restoring* unwind reaches the in-tree arm; it re-records the member's own path.
+    workspaces = ws.workspaces_dir
+    recorded_workspace = (resolved_source if is_external or workspaces is None
+                          else workspaces / name)
 
     # Multi-step: the external case touches a symlink + the box dirs before the
     # durable membership write.  Unwind in reverse so the connect is all-or-nothing.
@@ -1043,8 +1076,8 @@ def add_project(
             # ⚑ workspaces/{name} is a discoverability SYMLINK — never mounted.
             # is_external implies std is not None, but mypy can't track that.
             assert std is not None
-            link = ws.workspaces_dir / name
-            if ensure_discoverability_link(ws, name, resolved_source):
+            link = ensure_discoverability_link(ws, name, resolved_source)
+            if link is not None:
                 unwind.push(
                     lambda: link.unlink() if link.is_symlink() else None
                 )
@@ -1079,7 +1112,7 @@ def add_project(
                     unwind.push(_restore_standalone)
         else:
             # Internal (or no std): a real workspace directory.
-            ws_dir = ws.workspaces_dir / name
+            ws_dir = recorded_workspace
             existed_ws = ws_dir.exists()
             ws_dir.mkdir(parents=True, exist_ok=True)
             if not existed_ws:
@@ -1111,21 +1144,22 @@ def add_project(
     return proj
 
 
-def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> bool:
-    """Link ``workspaces/<name>`` → an external member's *target*; True iff created.
+def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None:
+    """Link ``workspaces/<name>`` → an external member's *target*; the link iff created.
 
     ⚑ An occupied leaf (dir, file or link) is left alone — a relocation re-runs this after
     it retires the old in-tree leaf that held the spot.  A null ``workset.workspaces`` has no
     dir to link in, so the member connects without one (Q96).
     """
-    if workset_workspaces_nulled(ws.root):
-        return False
-    ws.workspaces_dir.mkdir(parents=True, exist_ok=True)
-    link = ws.workspaces_dir / name
+    workspaces = ws.workspaces_dir
+    if workspaces is None:
+        return None
+    workspaces.mkdir(parents=True, exist_ok=True)
+    link = workspaces / name
     if link.exists() or link.is_symlink():
-        return False
+        return None
     link.symlink_to(target)
-    return True
+    return link
 
 
 def _detach_project(ws: Workset, name: str) -> None:
@@ -1158,8 +1192,15 @@ def release_project(ws: Workset, name: str) -> WorksetProject:
     # ⚑⚑ ORDER IS THE REVERSE OF add_project: clean the link BEFORE the durable write, so
     # the registry removal is the LAST durable step and a crash mid-cleanup leaves a
     # RE-RUNNABLE state, not a locked-out external path.
-    link = ws.workspaces_dir / name
-    if link.is_symlink() and _unfollowed(target.source_path) != _unfollowed(link):
+    # ⚑ Under a null ``workset.workspaces`` a link made before the null still sits at the
+    # DEFAULT place; unlink it there (never create anything), or a later in-tree member of
+    # the same name would inherit the old external folder through it.
+    workspaces = ws.workspaces_dir
+    if workspaces is None:
+        workspaces = resolve_workset_workspaces(ws.root, None)
+    link = workspaces / name
+    if (link.is_symlink()
+            and _unfollowed(target.source_path) != _unfollowed(link)):
         link.unlink()
 
     # ⚑⚑ Durable registry removal LAST, and UNCONDITIONAL: the ``boxes:`` row is the
@@ -1231,9 +1272,17 @@ def remove_project(
         import shutil
 
         remove_member_store(ws, name, bases=bases)
-        leaf = ws.workspaces_dir / name
-        if leaf.is_symlink():
+        # ⚑ Under a null ``workset.workspaces`` there is no ``workspaces/<name>``: an in-tree
+        # member's leaf is the path its record holds; an external one has no leaf here.
+        workspaces = ws.workspaces_dir
+        if workspaces is not None:
+            leaf: Path | None = workspaces / name
+        else:
+            in_tree = (source_in_tree(ws, target.source_path)
+                       and target.source_path.resolve() != ws.root.resolve())
+            leaf = target.source_path if in_tree else None
+        if leaf is not None and leaf.is_symlink():
             leaf.unlink()
-        elif leaf.is_dir():
+        elif leaf is not None and leaf.is_dir():
             shutil.rmtree(leaf)
     return target

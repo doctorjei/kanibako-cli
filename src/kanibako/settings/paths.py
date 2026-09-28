@@ -18,7 +18,8 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               ERR_PROJECT_NEW_HOME, ERR_PROJECT_REG_HOME,
                                               ERR_PROJECT_NAME_USED, ERR_PROJECT_DIR_IS_WS,
                                               ERR_WORKSET_NO_PROJECT, ERR_WORKSET_NO_WORKSET,
-                                              ERR_WORKSET_WS_NOT_BOX, ERR_WORKSET_NOT_IN_BOX)
+                                              ERR_WORKSET_WS_NOT_BOX, ERR_WORKSET_NOT_IN_BOX,
+                                              ERR_WORKSET_NULL_WORKSPACES)
 
 import os
 import tempfile
@@ -205,7 +206,7 @@ class _WorksetLike(Protocol):
     @property
     def projects_dir(self) -> Path: ...
     @property
-    def workspaces_dir(self) -> Path: ...
+    def workspaces_dir(self) -> Path | None: ...
     @property
     def vault_ro_dir(self) -> Path: ...
     @property
@@ -237,7 +238,8 @@ class WorksetSpec:
     name: str
     root: Path
     projects_dir: Path
-    workspaces_dir: Path
+    #: The resolved ``workset.workspaces``; ``None`` where the root nulls it (no dir).
+    workspaces_dir: Path | None
     #: ⚑ The RESOLVED ``workset.{vault_ro,vault_rw}`` — ONE ARM EACH, never a shared
     #: ``vault/`` parent to join ``ro``/``rw`` onto.  The two are independently
     #: repointable keys, so a single parent cannot answer both.
@@ -1543,7 +1545,6 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
         raise WorksetError(ERR_WORKSET_NO_PROJECT % (project_name, ws.name))
 
     # Name-based paths (not hash-based).
-    project_path = ws.workspaces_dir / project_name
     project_dir = ws.projects_dir / project_name
     metadata_path = project_dir
 
@@ -1554,6 +1555,11 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
     if registered_workspace is not None:
         project_path = Path(registered_workspace)
     else:
+        if ws.workspaces_dir is None:
+            # ⚑ No recorded workspace and no workspaces dir to compose one in.
+            raise WorksetError(ERR_WORKSET_NULL_WORKSPACES % (
+                ws.root / WORKSET_META_FILE, f"a workspace for '{project_name}'"))
+        project_path = ws.workspaces_dir / project_name
         from kanibako.launch import box_resolve
         identity = box_resolve.resolve_box_identity(project_path, std, config)
         if identity is not None:
@@ -1792,7 +1798,7 @@ def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir
     if detection.mode == BoxMode.named:
         ws, proj_name = _resolve_workset_or_connected(raw_dir, std)
         if proj_name is None:
-            raise WorksetError(ERR_WORKSET_NOT_IN_BOX % (ws.name, ws.workspaces_dir))
+            raise WorksetError(ERR_WORKSET_NOT_IN_BOX % (ws.name, ws.workspaces_dir or "<None>"))
 
         return resolve_workset_project(WorksetSpec.from_workset(ws), proj_name, std, config,
                                        initialize=initialize)

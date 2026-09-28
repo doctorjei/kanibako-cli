@@ -138,6 +138,7 @@ Primitive view of a workset, decoupled from `kanibako.project.workset.Workset`. 
 values the path resolver and project listings need, so `paths.py` does not import the `workset`
 module (which depends on `paths.py`). Callers holding a full `Workset` build one with
 `from_workset`.
+`workspaces_dir` is `Path | None`: `None` when the root nulls `workset.workspaces` (Q106).
 
 ## The two-layer path foundation
 
@@ -1235,7 +1236,8 @@ EXTERNAL dir for a connected box, `workspaces/<name>` for an in-tree box, and th
 path for a member registered before a `workset.workspaces` repoint (bifrost A0: re-deriving that
 member from the CURRENT composition strands it). An UNREGISTERED member (an in-tree connect before
 its first start, or a fresh `initialize` create) falls back to the composed default, with the
-`box_resolve` identity derivation preserved for any residual override.
+`box_resolve` identity derivation preserved for any residual override. Under a null `workset.workspaces` there is no default to compose, so an unregistered member
+raises `WorksetError` (`ERR_WORKSET_NULL_WORKSPACES`); a registered one resolves as before.
 
 ### B2b and `enable_vault` in the NAMED resolver
 

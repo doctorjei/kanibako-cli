@@ -61,6 +61,7 @@ def _resolve_existing_box(std: StandardPaths, config: BootstrapConfig, project_d
 def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
 def _no_box_error(project_dir: str | None, std: StandardPaths | None=None) -> str
 def _unbuilt_box_error(proj: ProjectPaths) -> str | None
+def _refuse_null_workspace_bind(proj: ProjectPaths) -> None
 def _launch_issues_path(std, container_name: str) -> Path
 def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std, *, setting: str | None)
 def _print_launch_issues(std, container_name: str) -> None

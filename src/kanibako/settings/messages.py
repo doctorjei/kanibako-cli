@@ -121,6 +121,12 @@ ERR_STANDALONE_NULL_WORKSPACES = ("%s sets workset.workspaces to null, so this s
                                   "no workspace directory and cannot hold %s.\nDelete that line " +
                                   "to use the default, or set the path you mean.")
                                                     # the workset.yaml path, what was refused
+# ⚑ The LAUNCH face (Q106): the workspace bind is mounted at every launch, so a box whose
+# ``meta.box.workspace`` resolves through a null ``workset.workspaces`` cannot run.
+ERR_NULL_WORKSPACE_BIND = ("Cannot launch box '%s': %s sets workset.workspaces to null, so the " +
+                           "box has no workspace to mount at ~/workspace.\nDelete that line " +
+                           "to use the default, or set the path you mean.")
+                                                    # the box label, the workset.yaml path
 
 # The `~/.shell.d/*.sh` user/template extension point for a box's INTERACTIVE shell.
 # ⚑ INTERACTIVE ONLY — it never reaches the agent; use `env.<VAR>` / `secret_path` for that.

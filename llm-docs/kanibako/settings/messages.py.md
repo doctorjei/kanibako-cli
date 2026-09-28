@@ -371,15 +371,18 @@ ERR_PROJECT_DIR_IS_WS   # (name)
 ERR_WORKSET_NO_PROJECT  # (project name, workset name)
 ERR_WORKSET_NO_WORKSET  # (project dir)
 ERR_WORKSET_WS_NOT_BOX  # (name, name — the SAME value twice)
-ERR_WORKSET_NOT_IN_BOX  # (workset name, workspaces dir)
+ERR_WORKSET_NOT_IN_BOX  # (workset name, workspaces dir — "<None>" under a null)
 ERR_WORKSET_NULL_WORKSPACES  # (the workset.yaml path, what was refused)
 ERR_STANDALONE_NULL_WORKSPACES  # (the workset.yaml path, what was refused)
+ERR_NULL_WORKSPACE_BIND  # (the box label, the workset.yaml path)
 ```
 Refusals and not-found errors for the project/workset layer. `ERR_WORKSET_NULL_WORKSPACES` is
 `project.workset.refuse_null_workspaces`'s text: a null `workset.workspaces` HAS a meaning (no
 workspace dir, spec §2c), so unlike `ERR_CONFIG_NULL_PATH` it names what cannot be created there.
 `ERR_STANDALONE_NULL_WORKSPACES` is its standalone face, without the "connect a directory
-outside it" cure.
+outside it" cure. `ERR_NULL_WORKSPACE_BIND` is the LAUNCH face (`refuse_null_box_workspace`, Q106):
+the workspace bind is mounted at every launch, so a box whose workspace resolves through the null
+cannot run.
 
 ⚑ **`ERR_PROJECT_NEW_HOME` and `ERR_PROJECT_REG_HOME` are the `$HOME` GUARD, and they take no
 arguments at all.** Rooting a project at `$HOME` would mount the entire home directory as the

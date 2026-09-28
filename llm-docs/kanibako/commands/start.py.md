@@ -1865,3 +1865,20 @@ back as a different one that is also no longer in the registry that named it.
 ⚑ **The CURE LINE** is the part a future `repair` verb replaces (the MBR-6 row in the canon workbook plans), exactly as in
 `_unbuilt_box_error`, whose three-part shape (`Error:` / *why we won't* / `Rebuild it:`) this
 deliberately reuses so standalone stops being the one mode that answers differently.
+
+---
+
+## `_refuse_null_workspace_bind` — a launch with no workspace to mount (Q106)
+
+```python
+def _refuse_null_workspace_bind(proj: ProjectPaths) -> None
+```
+The workspace bind is mounted at every launch, in every mode (system-design § "The workspace bind"),
+so a box whose `meta.box.workspace` resolves through a null `workset.workspaces` cannot run — his
+Q106 answer: *"if a critical bind is <None>, launch should fail"*. `_run_container` calls this right
+after `_unbuilt_box_error`, on the same NON-materializing probe, so the refusal leaves nothing on
+disk; every launch door reaches it there (`start`, bare `kanibako`, `shell`, `code` via
+`start_detached`, and `agent reauth`'s setup-only launch). It picks the workset root (standalone:
+`metadata_path`; named: `group.root`) and hands off to `project.workset.refuse_null_box_workspace`,
+which owns the rule and the message; the `WorksetError` propagates to the CLI's rc-1 handler.
+Primary returns at once: its workspace is the project dir, not a workset key.

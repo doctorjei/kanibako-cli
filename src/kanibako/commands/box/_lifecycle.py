@@ -419,12 +419,13 @@ def copy_into_workset(
     std: StandardPaths,
 ) -> None:
     """Re-root a project into *ws* — the std-aware copy path for ``duplicate``."""
+    workspace = ws.require_workspaces_dir(f"a workspace for '{proj_name}'") / proj_name
     # ⚑ Taken BEFORE add_project, which adopts an existing leaf: the rollback deletes only
     # the leaves this call created (a ``--bare`` or ``--force`` duplicate adopts on purpose).
     existed = _existing_member_leaves(ws, proj_name)
     # ⚑ Register the IN-TREE workspace dir: a duplicate is always INTERNAL, so add_project
     # makes a real directory instead of symlinking back at the source.
-    add_project(ws, proj_name, ws.workspaces_dir / proj_name, std)
+    add_project(ws, proj_name, workspace, std)
 
     # ⚑ Failure-consistency: a crash after add_project but during the copies would strand a
     # registered-but-incomplete project. Roll registration + created dirs back, then re-raise.
@@ -443,7 +444,7 @@ def copy_into_workset(
             materialize_canon_skeleton(dst_shell)
 
         if copy_workspace:
-            dst_workspace = ws.workspaces_dir / proj_name
+            dst_workspace = workspace
             ignore = None
             if source_mode == BoxMode.standalone:
                 ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
@@ -552,7 +553,8 @@ def _validate(
     dest: Path | None = None
     if spec.location is BARE_INTO_WS:
         assert target_ws is not None
-        dest = (target_ws.workspaces_dir / new_name).resolve()
+        dest = (target_ws.require_workspaces_dir(f"a workspace for '{new_name}'")
+                / new_name).resolve()
     elif isinstance(spec.location, Path):
         dest = spec.location.resolve()
 
@@ -1697,9 +1699,10 @@ def _to_workset(
     # ⚑ Copy only for an internal landing NOT already in place — STEP 2 may have moved the
     # tree to ``workspaces/<name>`` already. External never copies.
     copy_workspace = False
+    in_tree_leaf: Path | None = None
     if internal:
-        expected_internal = (target_ws.workspaces_dir / new_name).resolve()
-        already_in_place = new_workspace.resolve() == expected_internal
+        in_tree_leaf = target_ws.require_workspaces_dir(f"a workspace for '{new_name}'") / new_name
+        already_in_place = new_workspace.resolve() == in_tree_leaf.resolve()
         copy_workspace = not already_in_place
 
     # ⚑ The box METADATA DIR, not ``metadata_path``: for a standalone source those differ
@@ -1813,9 +1816,10 @@ def _to_workset(
         # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
         materialize_canon_skeleton(dst_shell)
 
-    dst_workspace = target_ws.workspaces_dir / new_name
     # ⚑ A source leaf that IS the landing leaf (same workset, same name) needs no copy.
-    if copy_workspace and state.workspace_path.resolve() != dst_workspace.resolve():
+    if (copy_workspace and in_tree_leaf is not None
+            and state.workspace_path.resolve() != in_tree_leaf.resolve()):
+        dst_workspace = in_tree_leaf
         ignore = None
         if state.mode == BoxMode.standalone:
             ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
@@ -1831,8 +1835,8 @@ def _to_workset(
                 old_leaf, dst_workspace, dst_workspace))
 
     # Determine the recorded workspace.
-    if internal:
-        recorded_workspace = (target_ws.workspaces_dir / new_name)
+    if in_tree_leaf is not None:
+        recorded_workspace = in_tree_leaf
     else:
         # ⚑ EXTERNAL: read the workspace back from the per-workset ``boxes:`` registry
         # add_project just wrote — under sparse create (P8b) the box's box.yaml no
@@ -2017,20 +2021,23 @@ def _safe_register_membership(
         pass
 
 
-def _member_leaves(ws: Workset, name: str) -> tuple[Path, Path, Path, Path]:
+def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path, Path]:
     """Member *name*'s four leaves: workspace, box tree, read-only and read-write vault.
 
-    ⚑ The vault arms are RESOLVED, as :func:`add_project` creates them.
+    ⚑ The vault arms are RESOLVED, as :func:`add_project` creates them.  The workspace leaf
+    is ``None`` under a null ``workset.workspaces`` — there is no ``workspaces/<name>``.
     """
     vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
-    return (ws.workspaces_dir / name, ws.projects_dir / name,
+    workspaces = ws.workspaces_dir
+    return (workspaces / name if workspaces is not None else None, ws.projects_dir / name,
             vault_ro_base / name, vault_rw_base / name)
 
 
 def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]:
     """Those of :func:`_member_leaves` already on disk (a dangling link counts)."""
     return frozenset(
-        p for p in _member_leaves(ws, name) if p.exists() or p.is_symlink()
+        p for p in _member_leaves(ws, name)
+        if p is not None and (p.exists() or p.is_symlink())
     )
 
 
@@ -2050,7 +2057,7 @@ def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> N
               f"'{ws.name}': {err}", file=sys.stderr)
     workspace, box_tree, vault_ro, vault_rw = _member_leaves(ws, name)
     for leaf in (workspace, box_tree, vault_ro, vault_rw):
-        if leaf in existed:
+        if leaf is None or leaf in existed:
             continue
         try:
             if leaf.is_symlink():
