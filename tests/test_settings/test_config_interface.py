@@ -4050,6 +4050,47 @@ class TestF7HonestResetMessage:
         assert "effective is now" not in msg, msg
         assert "falls back through the cascade" in msg, msg
 
+    @pytest.mark.writes_undeclared(
+        "pref.box", "pref.box.image",
+        reason="a pref apply_prefs refuses is how this test makes the cascade not read.",
+    )
+    def test_reset_succeeds_in_the_cleared_only_form_when_the_cascade_does_not_read(
+        self, tmp_path,
+    ):
+        """1F (V2): the reset has already written, so a cascade that refuses (here a pref
+        ``apply_prefs`` rejects) degrades the MESSAGE, never the reset.  (Mutation: drop the
+        ``except SettingsError`` in ``reset_config_value`` → the refusal escapes → RED.)"""
+        ws = tmp_path / "ws.yaml"
+        box = tmp_path / "box.yaml"
+        dump_doc(ws, {"box": {"image": "ws-img"}, "pref": {"box": {"image": "x"}}})
+        set_config_value(
+            "box.image", "box-img", config_path=box, command_scope=ConfigLevel.box,
+        )
+        msg = reset_config_value(
+            "box.image", config_path=box, command_scope=ConfigLevel.box,
+            cascade_workset_path=ws, cascade_box_path=box,
+        )
+        assert "falls back through the cascade" in msg, msg
+        assert "image" not in load_doc(box).get("box", {}), load_doc(box)
+
+    def test_reset_of_a_system_path_key_names_the_resolved_path_tier(
+        self, config_file, tmp_path,
+    ):
+        """1F: the resolved path tier is a value, not a declared default, so reading the
+        tier off the labeled levels keeps naming it ``(base)``.  (Mutation: drop the
+        path-tier test from the floor rule → cleared-only form → RED.)"""
+        ssp = tmp_path / "settings.yaml"
+        cfg = tmp_path / CONFIG_FILENAME
+        set_config_value(
+            "system.cache", "/abs/x", config_path=cfg, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        msg = reset_config_value(
+            "system.cache", config_path=cfg, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, cascade_system_path=ssp,
+        )
+        assert "effective is now" in msg and msg.endswith("(base)."), msg
+
     def test_scopeless_key_never_claims_cascade_effective(self, tmp_path):
         # Editor F1: a SCOPELESS key (allow_helpers) is read from a SINGLE
         # settings file / the flat KanibakoConfig — NOT the settings cascade.

@@ -430,9 +430,8 @@ def _narrow_box_scalar_cascade(
         floor=box_scalar_defaults_floor(),
     )
     # ``assemble_levels`` returns MOST-SPECIFIC-FIRST: [box, workset, agent.<a>,
-    # agent.default, system, base].  The two agent rungs are dropped, not skipped by
-    # accident: this resolve has no active agent, exactly as ``settings_launch.resolve_box_scalars``
-    # passes ``agent_path=None``.
+    # agent.default, system, base].  The two agent rungs are dropped: the path resolve
+    # precedes agent selection, so there is no active agent to read.
     return merge([base_levels[0], base_levels[1], base_levels[4], base_levels[5]])
 
 

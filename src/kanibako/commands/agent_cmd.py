@@ -779,7 +779,8 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     ALWAYS RETURNS A STRING: ``core-defaults.yaml``'s ``agent_default.label`` (``agent_shell.label``
     for the shell) is declared, so there is always a floor to fall to.  The final floor return covers only the arms
     where ``effective_value`` declines to name a value at all — an unreadable path tier, or a
-    ``label`` explicitly set to the empty string.
+    ``label`` explicitly set to the empty string.  When the settings files do not read, both
+    display verbs fall back to that floor with one warning line on stderr.
     """
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.settings.agent_file import (
@@ -789,6 +790,8 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     )
     from kanibako.settings.config_interface import effective_value
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
+    from kanibako.settings.settings_resolve import SettingsError
 
     # ⚑ EMPTY IS NOT A VALUE AT THIS DOOR EITHER. Doors 2 and 3 already decline an
     # empty render, and the contract below is that this function always returns
@@ -809,20 +812,34 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     doors: tuple[tuple[str, str], ...] = (("agent", agent_id),)
     if agent_id != GENERAL_SLOT:
         doors += (("agent", AGENT_DEFAULT_SUB),)
-    for sections in doors:
-        resolved = effective_value(
-            ".".join((*sections, "label")), sections, "label",
-            agent_name=agent_id,
-            system_path=std.settings,
-            agent_path=agent_settings_path(std.agents, agent_id),
-            workset_path=None,
-            box_path=None,
-            floor=floor,
-        )
-        if resolved is not None:
-            return resolved[0]
     own = f"agent.{agent_id}.label"
-    return str(floor[own] if own in floor else floor[f"agent.{AGENT_DEFAULT_SUB}.label"])
+    fallback = str(floor[own] if own in floor else floor[f"agent.{AGENT_DEFAULT_SUB}.label"])
+    try:
+        inputs = resolve_inputs(
+            subject=ResolveSubject.SYSTEM, std=std, agent_name=agent_id,
+            system_path=std.settings,
+        )
+        for sections in doors:
+            resolved = effective_value(
+                ".".join((*sections, "label")), sections, "label",
+                agent_name=agent_id,
+                system_path=std.settings,
+                agent_path=agent_settings_path(std.agents, agent_id),
+                workset_path=None,
+                box_path=None,
+                floor=floor,
+                inputs=inputs,
+            )
+            if resolved is not None:
+                return resolved[0]
+    except SettingsError as e:
+        reason = str(e).splitlines()[0] if str(e) else type(e).__name__
+        print(
+            "Label: showing the built-in default — the settings that could set it "
+            f"did not read: {reason}",
+            file=sys.stderr,
+        )
+    return fallback
 
 
 def _stored_rows(
