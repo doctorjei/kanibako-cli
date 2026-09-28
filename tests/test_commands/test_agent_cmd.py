@@ -247,6 +247,51 @@ class TestRunInfo:
         assert "Claude Code" in out, out
         assert 'Label: ""' not in out, out
 
+    @pytest.mark.parametrize("verb", ("run_info", "run_show"))
+    def test_unreadable_settings_fall_back_to_the_floor_label_with_one_warning(
+        self, agent_env, capsys, monkeypatch, verb,
+    ):
+        """1F: when the files that could set the label do
+        not read, both display verbs print the floor label and ONE warning line, rc 0.
+        The real trigger, an unknown key in the system file, refuses only once 2B lands.
+        (Mutation: drop the ``except SettingsError`` in ``_agent_label`` → RED.)"""
+        from kanibako.commands import agent_cmd
+        from kanibako.settings import config_interface
+        from kanibako.settings.settings_resolve import SettingsError
+
+        def _refuse(*_args, **_kwargs):
+            raise SettingsError("the system file does not read\nsecond line")
+
+        monkeypatch.setattr(config_interface, "effective_value", _refuse)
+        capsys.readouterr()
+        run = getattr(agent_cmd, verb)
+        assert run(argparse.Namespace(agent_id="claude", effective=False)) == 0
+        captured = capsys.readouterr()
+        assert "Claude Code" in captured.out, captured.out
+        assert [
+            line for line in captured.err.splitlines() if line.startswith("Label:")
+        ] == [
+            "Label: showing the built-in default — the settings that could set it "
+            "did not read: the system file does not read"
+        ], captured.err
+
+    def test_a_system_label_resolves_through_a_meta_anchor(
+        self, agent_env, config_file, capsys,
+    ):
+        """1F: ``agent info`` folds the system scope's anchors, so a label that refers to
+        one resolves instead of reading as dangling."""
+        from kanibako.commands.agent_cmd import run_info
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        dump_doc(std.settings, {"agent": {"claude": {"label": "@meta.agent.claude.name"}}})
+        capsys.readouterr()
+        assert run_info(argparse.Namespace(agent_id="claude")) == 0
+        out = capsys.readouterr().out
+        assert "Label:        claude" in out, out
+
     def test_a_label_stored_as_two_QUOTE_CHARACTERS_still_displays(
         self, agent_env, capsys,
     ):

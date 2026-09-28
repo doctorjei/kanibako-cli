@@ -1700,22 +1700,28 @@ def reset_config_value(
         # already written, so the assembled snapshot reflects the removal).
         # ⚑ GATED (F1): ONLY a scope-prefixed SETTINGS key READS through the cascade, so only
         # for those is a cascade-derived "effective" a true claim.
-        effective = (
-            # ⚑ NO ``floor=``, and the omission is the contract (F7): a cleared key with no
-            # lower-tier setter must name NO built-in default. See ``effective_value``.
-            effective_value(
-                canonical, dest.sections, dest.leaf,
-                agent_name=cascade_agent_name,
-                system_path=cascade_system_path,
-                agent_path=cascade_agent_path,
-                workset_path=cascade_workset_path,
-                box_path=cascade_box_path,
-            )
-            # ⚑ The token test stays HERE, not at the rule site: it asks whether the key READS
-            # through the cascade, not where it is STORED — two questions that share a test.
-            if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS
-            else None
-        )
+        effective = None
+        # ⚑ The token test stays HERE, not at the rule site: it asks whether the key READS
+        # through the cascade, not where it is STORED — two questions that share a test.
+        if canonical.split(".", 1)[0] in _SETTINGS_SCOPE_TOKENS:
+            from kanibako.settings.settings_resolve import SettingsError
+
+            # ⚑ The reset has already succeeded, so a cascade that does not read degrades the
+            # message to the cleared-only form; it never turns the reset into an error.
+            try:
+                effective = effective_value(
+                    canonical, dest.sections, dest.leaf,
+                    agent_name=cascade_agent_name,
+                    system_path=cascade_system_path,
+                    agent_path=cascade_agent_path,
+                    workset_path=cascade_workset_path,
+                    box_path=cascade_box_path,
+                )
+            except SettingsError:
+                effective = None
+        # (F7) a cleared key with no lower-tier setter names NO built-in default.
+        if effective is not None and effective[1] == FLOOR_TIER:
+            effective = None
         # ⚑ The CANONICAL key in both messages — see the ``set`` twin's note.
         return _honest_reset_message(canonical, command_scope, effective)
     return f"No override for {canonical}"
@@ -1757,6 +1763,10 @@ def _honest_reset_message(
     return f"{base}it now falls back through the cascade."
 
 
+#: :func:`effective_value`'s tier for a value only the floor supplies (a declared default).
+FLOOR_TIER = "built-in default"
+
+
 def effective_value(
     canonical: str,
     sections: tuple[str, ...],
@@ -1768,26 +1778,20 @@ def effective_value(
     workset_path: Path | None,
     box_path: Path | None,
     floor: "Mapping[str, object] | None" = None,
+    inputs: "LaunchInputs | None" = None,
 ) -> "tuple[str, str] | None":
     """The cascade-effective ``(value, source_tier)`` for *canonical*, or ``None``.
 
-    The BOX-LESS cascade resolve: the four settings files assembled into the six §2 levels,
-    merged, expanded, and read at ``(*sections, leaf)``. ``None`` means "no single scalar to
-    name" — the key is absent from every level, its value is a bind/subtree/list/present-``None``,
-    its reference does not resolve, or it renders EMPTY (never report a blank as a value).
+    The launch's first two phases (``fold_floor``, ``assemble_cascade``) over the four
+    settings files, then a lenient ``expand``, read at ``(*sections, leaf)``. With *inputs*,
+    their anchors, prefs and context are folded too. The tier is the winning labeled
+    level's, or :data:`FLOOR_TIER` when only the floor sets the key. ``None`` means "no
+    single scalar to name" — absent everywhere, a bind/subtree/list/present-``None``, an
+    unresolved reference, or an EMPTY render.
 
-    ⚑⚑ *floor* IS THE CALLER'S ARGUMENT AND MUST NOT BE BAKED IN, BECAUSE THE TWO CALLERS WANT
-    OPPOSITE FLOORS.  ``reset_config_value`` passes NOTHING: its ruled contract is that a cleared
-    key with no lower-tier setter names no built-in default (pinned by
-    ``test_reset_absent_below_keeps_cleared_only_form``), so folding declared defaults in here
-    would make every reset of ``box.image`` claim the shipped default as its effective value.  A
-    DISPLAY caller wants the opposite — ``agent info`` printing ``label`` DOES want the §2d
-    declared fallback — so it hands the declared floor in.  This is the same split the set-time
-    probe makes for the same reason; see the note above ``meta_agent_path_floor``.
-
-    *floor* is DOTTED-KEYED and folds UNDER the base file with the path tier (so every settings
-    scope still outranks it).  It is applied LAST, so an explicit entry wins a path-tier key of
-    the same name; the two are disjoint today (``system.*``/``config.*`` vs everything else).
+    *floor* (dotted keys) folds over the declared floor, so an explicit entry wins.
+    Raises :class:`~kanibako.settings.settings_resolve.SettingsError` when the files do
+    not read; the caller decides what that costs.
     """
     if all(
         p is None for p in (system_path, agent_path, workset_path, box_path)
@@ -1795,30 +1799,52 @@ def effective_value(
         return None
     from kanibako.settings.kb_store import Bind
     from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_expand import expand
-    from kanibako.settings.settings_merge import merge
+    from kanibako.settings.settings_launch import (
+        ResolveSubject,
+        assemble_cascade,
+        fold_floor,
+    )
 
-    # ⚑ The path tier — identical inputs to the set-time probe, but the failure arm DIFFERS:
-    # an "effective" computed without the floor would name a value the cascade never resolves.
-    try:
-        config_foundation, path_floor = _path_tier_split()
-    except Exception:
-        return None
-    floor = {**path_floor, **floor} if floor else path_floor
-
-    ctx = _set_time_ctx(config=config_foundation)
-    levels = assemble_levels(
+    if inputs is not None:
+        ctx = inputs.ctx
+        path_floor: dict[str, object] = dict(inputs.system_floor)
+        folded = fold_floor(
+            subject=inputs.subject,
+            agent_name=agent_name,
+            default_categories=path_floor,
+            auth_chain=inputs.auth_chain,
+            meta_runtime=inputs.meta_runtime,
+            meta_identity=inputs.meta_identity,
+            workset_anchor=inputs.workset_anchor,
+        )
+    else:
+        # ⚑ The path tier — identical inputs to the set-time probe, but the failure arm
+        # DIFFERS: an "effective" computed without it would name a value the cascade never resolves.
+        try:
+            config_foundation, path_floor = _path_tier_split()
+        except Exception:
+            return None
+        ctx = _set_time_ctx(config=config_foundation)
+        subject = (
+            ResolveSubject.BOX if box_path is not None
+            else ResolveSubject.WORKSET if workset_path is not None
+            else ResolveSubject.SYSTEM
+        )
+        folded = {
+            **fold_floor(subject=subject, agent_name=agent_name), **path_floor,
+        }
+    if floor:
+        folded.update(floor)
+    cascade = assemble_cascade(
         agent_name=agent_name,
+        floor=folded,
         system_path=system_path,
         agent_path=agent_path,
         workset_path=workset_path,
         box_path=box_path,
-        floor=floor,
+        prefs=inputs.prefs if inputs is not None else None,
     )
-    # ⚑ THE TIER NAMES PARALLEL ``assemble_levels``' ORDER (MOST-SPECIFIC-FIRST) — reordering
-    # one without the other mislabels every tier. Read with UNBOUND dict ops (S3).
-    tier_names = ("box", "workset", "agent", "agent.default", "system", "base")
     key_path = (*sections, leaf)
 
     def _reads(level: KeyStore, segs: tuple[str, ...]) -> "tuple[bool, object]":
@@ -1831,17 +1857,27 @@ def effective_value(
             node = dict.get(node, seg)
         return (True, node)
 
+    # The first labeled level holding the key wins; a ``base`` leaf equal to the folded
+    # floor's is the floor's (``settings_launch._none_setter``'s rule). A resolved path-tier
+    # value is not a declared default, so it keeps the ``base`` tier.
     source_tier: str | None = None
-    for idx, level in enumerate(levels):
-        found, _val = _reads(level, key_path)
-        if found:
-            source_tier = tier_names[idx] if idx < len(tier_names) else "base"
-            break
+    for (level, _path, floor_store), tier in zip(cascade.written, cascade.tiers):
+        found, val = _reads(level, key_path)
+        if not found:
+            continue
+        if (
+            floor_store is not None
+            and _reads(floor_store, key_path) == (True, val)
+            and canonical not in path_floor
+        ):
+            source_tier = FLOOR_TIER
+        else:
+            source_tier = tier
+        break
     if source_tier is None:
         return None  # absent from every level → nothing effective to name.
 
-    # Read the winning RAW value from the merged snapshot and lenient-expand it.
-    snapshot = merge(levels)
+    snapshot = cascade.snapshot
     found, raw = _reads(snapshot, key_path)
     if not found or isinstance(raw, (Bind, KeyStore, list)) or raw is None:
         return None  # a bind/subtree/list/present-None has no single scalar to print

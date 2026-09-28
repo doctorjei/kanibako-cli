@@ -2187,6 +2187,8 @@ class Cascade:
 
     snapshot: KeyStore
     written: tuple[_WrittenLevel, ...]
+    #: Each ``written`` level's scope name, parallel to it.
+    tiers: tuple[str, ...]
 
 
 def assemble_cascade(
@@ -2283,22 +2285,24 @@ def assemble_cascade(
     # The agent file's flat state names the file it was read from — the path travels
     # WITH the level — and ``agent_path`` answers only when the level carries none.
     state_path = (agent_state.path if agent_state is not None else None) or agent_path
-    written: list[_WrittenLevel] = [
-        (level, path, None)
-        for level, path in (
-            (base_levels[0], box_path),
-            (box_prefs, box_path),
-            (base_levels[1], workset_path),
-            (ws_prefs, workset_path),
-            (state_partial, state_path),
-            (base_levels[2], agent_path),
-            (base_levels[3], agent_path),
-            (base_levels[4], system_path),
+    labeled = [
+        (level, path, tier)
+        for level, path, tier in (
+            (base_levels[0], box_path, "box"),
+            (box_prefs, box_path, "box"),
+            (base_levels[1], workset_path, "workset"),
+            (ws_prefs, workset_path, "workset"),
+            (state_partial, state_path, "agent"),
+            (base_levels[2], agent_path, "agent"),
+            (base_levels[3], agent_path, "agent.default"),
+            (base_levels[4], system_path, "system"),
         )
         if level is not None
     ]
+    written: list[_WrittenLevel] = [(level, path, None) for level, path, _ in labeled]
     written.append((base_levels[5], base_path, dotted_partial(floor)))
-    return Cascade(snapshot=snapshot, written=tuple(written))
+    tiers = (*(tier for _, _, tier in labeled), "base")
+    return Cascade(snapshot=snapshot, written=tuple(written), tiers=tiers)
 
 
 def build_launch_snapshot(

@@ -236,6 +236,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`agent info` and `agent show` resolve a label that refers to an agent's own keys.** In 1.8.0-rc2
+  a system-file `agent.<node>.label` such as `@meta.agent.claude.name` did not resolve, and both verbs
+  printed the plugin's label instead. It now resolves as it does in the box.
+
 - **`workset share list --effective` and `workset show --effective` say when a box decides a value.**
   In 1.8.0-rc2 a working-set binding whose source referred to a box setting or a box-only path
   (`/opt/@box.image`, `@meta.box.path/x`) previewed with that part left empty (`/opt/`, `/x`), a

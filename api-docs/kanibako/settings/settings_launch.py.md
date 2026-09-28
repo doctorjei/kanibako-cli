@@ -164,6 +164,7 @@ class LaunchInputs:
 class Cascade:
     snapshot: KeyStore
     written: tuple[_WrittenLevel, ...]
+    tiers: tuple[str, ...]
 
 class AgentGrammar(NamedTuple):
     mode: dict[str, list[str]]
