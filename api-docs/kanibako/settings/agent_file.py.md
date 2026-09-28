@@ -11,7 +11,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/agent_file.py.md`.
 FILE_SCOPE: Final[str] = 'agent'
 ROOT_SECTIONS: Final[tuple[str, ...]] = (_ROOT,)
 _ROOT: Final[str] = 'self'
-_CONTRIBUTED: Final[frozenset[str]] = frozenset({_ROOT})
+_CONTRIBUTED: Final[frozenset[str]] = frozenset({_ROOT, FILE_SCOPE})
 _MODELED_KEYS: Final[frozenset[str]] = frozenset({'run_args', 'env', 'secret_path', 'transform_settings'})
 _FLAT_AGENT_CATEGORIES: tuple[str, ...] = ('bindings', 'caches', 'seeded', 'common', 'synced', 'masks', 'secret_path', 'env')
 _ROOT_TABLES: Final[frozenset[str]] = _MODELED_KEYS | frozenset(_FLAT_AGENT_CATEGORIES)
@@ -53,7 +53,13 @@ def _refused_category(sub_tbl: dict) -> str | None
 def _refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None
 def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None
 def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict
-def _refuse_undeclared_state(state: 'Mapping[str, str | None]', *, node: str, path: Path) -> None
+def _refuse_scope_value(scope: Any, *, path: Path | None) -> None
+def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) -> None
+def _refuse_two_spellings(tables: dict, *, node: str | None, path: Path | None) -> None
+def _node_identity(segment: Any) -> Any
+def _setting_leaves(table: dict, trail: tuple[str, ...]=()) -> dict[tuple[str, ...], str]
+def _refuse_undeclared_state(leaves: 'Iterable[tuple[str, str, str, str]]', *, node: str, path: Path) -> None
+def _scope_state(scope: Any) -> 'list[tuple[str, str, str, str]]'
 ```
 
 ## Classes
@@ -69,4 +75,5 @@ class AgentFileLevel:
     node: str
     table: dict
     path: Path | None = None
+    scope: dict = field(default_factory=dict)
 ```

@@ -986,12 +986,17 @@ class TestLevelTable:
     @pytest.mark.parametrize("scope", SCOPE_CONTAINMENT)
     def test_a_scope_table_is_not_this_refusals_to_judge(self, scope, tmp_path):
         # ⚑ The CONTROL: a scope token at the top level is not a stray — ``system:`` is
-        # dropped upstream (§0 directional enforcement), and the file's own-scope and
-        # contained-scope tables are inputs (§0 defaults-down) whose read has not landed.
-        # The stray refusal must not decide either by accident, in EITHER reader.
-        raw = {"self": {"env": {"A": "b"}}, scope: {"env": {"X": "1"}}}
+        # dropped upstream (§0 directional enforcement), the own-scope ``agent:`` table is
+        # READ (Q92, riding the level as ``scope``), and the contained-scope tables are inputs
+        # (§0 defaults-down) whose read has not landed (Q85). The stray refusal must not
+        # decide any of them by accident, in EITHER reader.
+        # The ``agent:`` table holds NODE tables, so its control is one; the other scopes' tables
+        # hold their own keys.
+        table = {"claude": {"env": {"X": "1"}}} if scope == "agent" else {"env": {"X": "1"}}
+        raw = {"self": {"env": {"A": "b"}}, scope: table}
         level = level_table(raw, sub_key="claude", node="claude")
         assert level.table == {"env": {"A": "b"}}
+        assert level.scope == (table if scope == "agent" else {})
         path = tmp_path / "agent.yaml"
         dump_doc(path, raw)
         assert load(path, node="claude").env == {"A": "b"}
@@ -1060,6 +1065,207 @@ class TestTheStrayRuleOnTheProductionPath:
             self._assemble(tmp_path, text)
         for token in dropped:
             assert any(f"'{token}'" in m for m in caplog.messages), (token, caplog.messages)
+
+
+class TestTheAgentTable:
+    """Q92: the file's top-level ``agent:`` table is READ, like that table in any settings file;
+    Q103: ``self:`` beside ``agent: <own node>:`` setting one leaf REFUSES, naming both."""
+
+    @staticmethod
+    def _assemble(tmp_path, doc):
+        from kanibako.settings.settings_assemble import assemble_levels
+
+        agent_path = tmp_path / "agent.yaml"
+        dump_doc(agent_path, doc)
+        return assemble_levels(
+            agent_name="claude", base_path=tmp_path / "absent-base.yaml",
+            agent_path=agent_path,
+        )
+
+    def test_the_table_rides_both_tiers_raw(self):
+        raw = {"self": {"model": "a"}, "agent": {"bar": {"model": "b"}}}
+        active = level_table(raw, sub_key="claude", node="claude")
+        default = level_table(raw, sub_key="default", node="claude")
+        assert active.scope == default.scope == {"bar": {"model": "b"}}
+
+    def test_each_tier_takes_its_nodes_beside_the_rerooted_root(self, tmp_path):
+        # "By construction" (Q92): in claude's file, ``agent: {bar: …}`` MERGES (on the active
+        # rung, where bar is never the one picked) and ``agent: {default: …}`` merges on the
+        # all-agents rung. Disjoint leaves of one node merge with the root's.
+        levels = self._assemble(tmp_path, {
+            "self": {"env": {"A": "1"}},
+            "agent": {
+                "claude": {"env": {"B": "2"}}, "bar": {"model": "b"},
+                "default": {"model": "d"},
+            },
+        })
+        active, default = levels[2], levels[3]
+        assert active == {"agent": {
+            "claude": {"env": {"A": "1", "B": "2"}}, "bar": {"model": "b"},
+        }}
+        assert default == {"agent": {"default": {"model": "d"}}}
+
+    def test_an_agent_table_alone_is_read(self, tmp_path):
+        # No ``self:`` at all: the table is still an input, not a table waiting on the root.
+        levels = self._assemble(tmp_path, {"agent": {"claude": {"env": {"B": "2"}}}})
+        assert levels[2] == {"agent": {"claude": {"env": {"B": "2"}}}}
+
+    @pytest.mark.parametrize(("own", "other", "pair"), (
+        ({"model": "a"}, {"claude": {"model": "b"}}, ("self.model", "agent.claude.model")),
+        (
+            {"env": {"A": "1"}}, {"claude": {"env": {"A": "2"}}},
+            ("self.env.A", "agent.claude.env.A"),
+        ),
+        # A capital node folds (Q87) — and is then the SAME node as the root.
+        ({"model": "a"}, {"Claude": {"model": "b"}}, ("self.model", "agent.Claude.model")),
+        # A TABLE-VALUED key (§2d) is ONE setting, whole — different sub-keys still clash.
+        (
+            {"transform_settings": {"a": 1}}, {"claude": {"transform_settings": {"b": 2}}},
+            ("self.transform_settings", "agent.claude.transform_settings"),
+        ),
+        # A bind DEST is compared canonically (``/a/`` IS ``/a``) and named as written.
+        (
+            {"bindings": {"ro": {"/a/": ["/x"]}}},
+            {"claude": {"bindings": {"ro": {"/a": ["/y"]}}}},
+            ("self.bindings.ro./a/", "agent.claude.bindings.ro./a"),
+        ),
+        ({"caches": {"~/c": ["/x"]}}, {"claude": {"caches": {"~/c/": ["/y"]}}},
+         ("self.caches.~/c", "agent.claude.caches.~/c/")),
+    ))
+    def test_one_setting_spelled_twice_refuses_naming_both(self, tmp_path, own, other, pair):
+        # Q103 (FA): neither spelling may silently win — in the launch AND in ``load``, the
+        # record every ``agent`` verb reads (one verdict per file, ``_contribution``).
+        # (Mutation: drop the ``_refuse_two_spellings`` call → no raise → RED.)
+        path = tmp_path / "agent.yaml"
+        for read in (
+            lambda: self._assemble(tmp_path, {"self": own, "agent": other}),
+            lambda: load(path, node="claude"),
+        ):
+            with pytest.raises(SettingsError) as exc:
+                read()
+            message = str(exc.value)
+            assert f"`{pair[0]}` and `{pair[1]}`" in message
+            assert str(path) in message
+
+    @pytest.mark.parametrize(("own", "other", "pair"), (
+        # A PREFIX is the same setting: ``model`` as a value and as a table.
+        ({"model": "a"}, {"claude": {"model": {"x": 1}}}, ("self.model", "agent.claude.model.x")),
+        ({"env": {"A": "1"}}, {"claude": {"env": 5}}, ("self.env.A", "agent.claude.env")),
+    ))
+    def test_a_prefix_is_the_same_setting(self, tmp_path, own, other, pair):
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": own, "agent": other})
+        with pytest.raises(SettingsError) as exc:
+            load(path, node="claude")
+        assert f"`{pair[0]}` and `{pair[1]}`" in str(exc.value)
+
+    @pytest.mark.parametrize("other", ({"claude": 5}, {"claude": None}, {"Claude": "x"}))
+    def test_the_own_node_as_a_value_beside_self_refuses(self, tmp_path, other):
+        # D1: merged, the value would REPLACE ``agent.claude`` — every ``self:`` category gone.
+        # (Mutation: drop ``_refuse_node_values`` → ``load`` passes → RED.)
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": {"model": "a", "env": {"A": "1"}}, "agent": other})
+        (seg,) = other
+        with pytest.raises(SettingsError) as exc:
+            load(path, node="claude")
+        message = str(exc.value)
+        assert f"`agent.{seg}` in {path}" in message
+        assert "writes agent 'claude' a second time" in message
+        assert "`self:` IS `agent.claude`" in message
+
+    def test_any_node_as_a_value_refuses_as_the_launch_does(self, tmp_path):
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"agent": {"bar": 5}})
+        with pytest.raises(SettingsError, match=r"`agent\.bar` in .* holds 5"):
+            load(path, node="claude")
+
+    @pytest.mark.parametrize(("scope", "shown"), (
+        ({"claude": {"bogus": 1}}, "agent.claude.bogus"),
+        ({"default": {"bogus": 1}}, "agent.default.bogus"),
+        ({"Claude": {"bogus": 1}}, "agent.Claude.bogus"),
+        ({"claude": {"self": {"model": "x"}}}, "agent.claude.self"),
+        # A category key holding a VALUE is judged like any key (the launch: a namespace).
+        ({"claude": {"env": 5}}, "agent.claude.env"),
+        ({"bar": {"bindings": None}}, "agent.bar.bindings"),
+    ))
+    def test_an_undeclared_key_in_the_table_refuses_by_name(self, tmp_path, scope, shown):
+        # The fold-in: ``load`` judges the table's keys as it judges ``self:``'s state.
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": {"model": "a"}, "agent": scope})
+        with pytest.raises(SettingsError) as exc:
+            load(path, node="claude")
+        assert f"carries '{shown}'" in str(exc.value)
+
+    @pytest.mark.parametrize("scope", (
+        {"nosuchharness": {"x": 1}},            # conceded: no readable vocabulary ([R150])
+        {"claude": {"run_args": ["-x"], "transform_settings": {"a": 1}}},
+        {"bar": {"env": {"A": "1"}}},           # a category's entries are data, not keys
+        {"claude": {"caches": "x"}},            # the launch concedes a terminal category value
+    ))
+    def test_what_the_launch_concedes_load_concedes(self, tmp_path, scope):
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": {"model": "a"}, "agent": scope})
+        assert load(path, node="claude").state == {"model": "a"}
+
+    def test_different_leaves_of_one_table_merge(self, tmp_path):
+        # Two dests of one arm, two VARs of one family: different settings, as across files.
+        levels = self._assemble(tmp_path, {
+            "self": {"env": {"A": "1"}, "bindings": {"ro": {"/a": ["/x"]}}},
+            "agent": {"claude": {"env": {"B": "2"}, "bindings": {"ro": {"/b": ["/y"]}}}},
+        })
+        node = levels[2]["agent"]["claude"]
+        assert dict(node["env"]) == {"A": "1", "B": "2"}
+        assert set(node["bindings"]["ro"]) == {"/a", "/b"}
+
+    def test_another_nodes_same_leaf_is_not_a_second_spelling(self, tmp_path):
+        # ``agent.bar.model`` and ``agent.default.model`` are other keys than ``self.model``.
+        levels = self._assemble(tmp_path, {
+            "self": {"model": "a"},
+            "agent": {"bar": {"model": "b"}, "default": {"model": "d"}},
+        })
+        assert levels[2] == {"agent": {"bar": {"model": "b"}}}
+        assert levels[3] == {"agent": {"default": {"model": "d"}}}
+
+    def test_a_value_where_the_node_tables_go_refuses(self, tmp_path):
+        with pytest.raises(SettingsError, match=r"`agent: 5` at the top level of"):
+            self._assemble(tmp_path, {"self": {"model": "a"}, "agent": 5})
+        with pytest.raises(SettingsError, match=r"`agent: 5` at the top level of"):
+            load(tmp_path / "agent.yaml", node="claude")
+
+    def test_a_bare_agent_key_is_no_table(self, tmp_path):
+        (tmp_path / "agent.yaml").write_text("self:\n  env:\n    A: '1'\nagent:\n")
+        from kanibako.settings.settings_assemble import assemble_levels
+
+        levels = assemble_levels(
+            agent_name="claude", base_path=tmp_path / "absent-base.yaml",
+            agent_path=tmp_path / "agent.yaml",
+        )
+        assert levels[2] == {"agent": {"claude": {"env": {"A": "1"}}}}
+        assert levels[3] == {}
+
+    def test_the_verbs_judge_the_table_the_cascade_merges(self, tmp_path):
+        # ``cascade_view`` is what the retirement scans and ``config show`` judge: it must
+        # carry the table the merge reads, folded as the merge folds it.
+        from kanibako.settings.settings_assemble import cascade_view
+
+        raw = {"self": {"model": "a"}, "agent": {"bar": {"model": "b"}}, "workset": {"x": 1}}
+        assert cascade_view(raw, level="agent", path=None) == {
+            "self": {"model": "a"}, "agent": {"bar": {"model": "b"}},
+        }
+
+    def test_reset_clears_the_table_and_counts_its_leaves(self, tmp_path):
+        # The table is a contribution, so it is an override the repair door clears; a
+        # contained-scope table (still unread, Q85) stays, uncounted.
+        from kanibako.settings.config_io import load_doc
+
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {
+            "self": {"model": "a"},
+            "agent": {"bar": {"model": "b"}, "default": {"env": {"X": "1"}}},
+            "workset": {"x": 1},
+        })
+        assert clear_overrides(path) == 3
+        assert load_doc(path) == {"workset": {"x": 1}}
 
 
 class TestStateLevel:

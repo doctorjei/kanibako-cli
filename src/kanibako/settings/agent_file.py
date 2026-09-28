@@ -12,10 +12,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, Iterable, Mapping
+from typing import Any, Final, Iterable
 
 from kanibako.settings.agent_config import (
     AgentConfig,
@@ -32,7 +32,7 @@ from kanibako.settings.config_io import (
     write_nested_key,
 )
 from kanibako.settings.settings_drops import cascade_drop_set, contained_scopes
-from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 
 #: The per-agent file's ROOT table — the file's self-reference, spelled ONCE, HERE.
 _ROOT: Final[str] = "self"
@@ -41,9 +41,10 @@ _ROOT: Final[str] = "self"
 FILE_SCOPE: Final[str] = "agent"
 
 #: The top-level tables the file CONTRIBUTES to the cascade — the ONE list every reader takes
-#: (:func:`contributed_tables`). Spec §0 makes the own-scope and contained-scope tables inputs
-#: too (``agent:``, ``workset:``, ``box:``); each joins here when its read is built.
-_CONTRIBUTED: Final[frozenset[str]] = frozenset({_ROOT})
+#: (:func:`contributed_tables`): its root, and (Q92) its own-scope ``agent:`` table, read like
+#: that table in any other settings file.  Spec §0 makes the contained-scope tables inputs too
+#: (``workset:``, ``box:``); each joins here when its read is built (Q85).
+_CONTRIBUTED: Final[frozenset[str]] = frozenset({_ROOT, FILE_SCOPE})
 
 #: The root as a nested-walk PREFIX, for the ONE raw-walk site that needs it:
 #: ``settings_assemble._BEHAVIOR_TABLE_SHAPES``, whose rows are uniform ``(prefix, depth)`` pairs
@@ -176,11 +177,15 @@ class AgentFileLevel:
     parsing, no precedence (that is ``settings_assemble``'s half of the seam).  *path* is the
     file the table was read from, or ``None`` when the caller did not say; it travels WITH the
     table so a refusal about one of its values can name the file ([R147], read time).
+
+    *scope* is the file's top-level ``agent:`` table, RAW (Q92: read like that table in any
+    settings file), already judged by :func:`_contribution`; ``settings_assemble`` parses it.
     """
 
     node: str
     table: dict
     path: Path | None = None
+    scope: dict = field(default_factory=dict)
 
 
 def scalar_family_of(tail: str) -> str | None:
@@ -505,8 +510,9 @@ def load(path: Path, *, node: str) -> AgentConfig:
     Returns defaults if the file does not exist.
 
     ⚑ IT RUNS EVERY REFUSAL THE FILE OWES, AS IT IS READ (spec §0, closed keyspace): the
-    top-level stray check (:func:`_contribution`), the nested one (:func:`_refuse_nested_tables`)
-    and the undeclared-leaf one (:func:`_refuse_undeclared_state`).  Every reader — the launch,
+    top-level ones (:func:`_contribution`), the nested one (:func:`_refuse_nested_tables`)
+    and the undeclared-leaf one (:func:`_refuse_undeclared_state`), over ``self:`` AND the
+    ``agent:`` table's nodes (Q92).  Every reader — the launch,
     ``agent show`` / ``info`` / ``list`` / ``get`` — takes the record from here, so one file gets
     one verdict.  The repair door is :func:`clear_overrides`, which never calls this.
 
@@ -520,7 +526,8 @@ def load(path: Path, *, node: str) -> AgentConfig:
 
     data = load_doc(path)
 
-    agent_sec = _contribution(data, node=node, path=path).get(_ROOT, {})
+    tables = _contribution(data, node=node, path=path)
+    agent_sec = tables.get(_ROOT, {})
     if not isinstance(agent_sec, dict):
         agent_sec = {}
     _refuse_nested_tables(agent_sec, node=node, path=path)
@@ -612,7 +619,11 @@ def load(path: Path, *, node: str) -> AgentConfig:
         for k, v in agent_sec.items()
         if k in _CARRIED_CATEGORIES and isinstance(v, dict)
     }
-    _refuse_undeclared_state(cfg.state, node=node, path=path)
+    _refuse_undeclared_state(
+        [(node, k, k, file_spelling(k)) for k in cfg.state]
+        + _scope_state(tables.get(FILE_SCOPE)),
+        node=node, path=path,
+    )
     return cfg
 
 
@@ -815,9 +826,10 @@ def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> No
     ``meta:``, ``binding_derivations:`` and ``pref:`` (§2h) drop with a warning at assembly
     (:func:`~kanibako.settings.settings_drops.cascade_drop_set`); the non-launch readers see them
     here before any drop, so this passes them rather than refuse what the launch drops.
-    🛑 ``agent:`` / ``workset:`` / ``box:`` ARE PASSED OVER UNREAD, and that is a gap, not a rule:
-    spec §0 makes the file's own-scope and contained-scope tables INPUTS, merged defaults-down.
-    Each stops being passed over when it joins :data:`_CONTRIBUTED`.
+    ⚑ ``agent:`` IS NOT A STRAY EITHER: it is READ (Q92, :data:`_CONTRIBUTED`).
+    🛑 ``workset:`` / ``box:`` ARE PASSED OVER UNREAD, and that is a gap, not a rule: spec §0
+    makes the file's contained-scope tables INPUTS, merged defaults-down (Q85). Each stops being
+    passed over when it joins :data:`_CONTRIBUTED`.
     """
     agent = node or "<agent>"
     where = path if path is not None else "the agent settings file"
@@ -830,9 +842,10 @@ def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> No
             f"`{key}` at the top level of {where} is not a settings key, so kanibako "
             f"will not read the file.\n"
             f"This file holds its settings under `{_ROOT}:` — an ALIAS for "
-            f"`agent.{agent}` — and nothing beside it is read (spec §0, closed "
-            f"keyspace). Refusing rather than running: a key here used to be ignored "
-            f"without a word, so whatever it set never reached a box.\n"
+            f"`agent.{agent}` — and nothing beside it is read but an `{FILE_SCOPE}:` "
+            f"table (spec §0, closed keyspace). Refusing rather than running: a key "
+            f"here used to be ignored without a word, so whatever it set never reached "
+            f"a box.\n"
             f"  Fix: if `{key}` is one of this agent's settings, move it under "
             f"`{_ROOT}:`:\n    {_ROOT}:\n      {key}: …\n"
             f"  otherwise delete the `{key}` entry from {where}."
@@ -845,10 +858,149 @@ def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
     ⚑⚑ EVERY READER THAT JUDGES THE FILE COMES THROUGH HERE — the launch (:func:`level_table`)
     and the record (:func:`load`: ``agent show`` / ``info`` / ``list``) — so one file gets one
     verdict. The reset does not (:func:`clear_overrides`): it is the repair door.
+
+    ⚑ THE FILE-SHAPE REFUSALS THE ``agent:`` TABLE BROUGHT (Q92) RUN HERE TOO, for that reason: a
+    VALUE where its node tables go (:func:`_refuse_scope_value`), and one setting written under
+    both ``self:`` and ``agent: <node>:`` (:func:`_refuse_two_spellings`, Q103).
     """
-    if isinstance(raw, dict):
-        _refuse_stray_roots(raw, node=node, path=path)
-    return contributed_tables(raw)
+    if not isinstance(raw, dict):
+        return contributed_tables(raw)
+    _refuse_stray_roots(raw, node=node, path=path)
+    tables = contributed_tables(raw)
+    _refuse_scope_value(tables.get(FILE_SCOPE), path=path)
+    _refuse_node_values(tables, node=node, path=path)
+    _refuse_two_spellings(tables, node=node, path=path)
+    return tables
+
+
+def _refuse_scope_value(scope: Any, *, path: Path | None) -> None:
+    """RAISE on a VALUE where the file's ``agent:`` table goes; absent or bare (``None``) passes.
+
+    ``agent`` is a scope, and a scope holds node tables, never a value (spec §0, closed
+    keyspace) — merged as one, it would replace every other file's agent tables.
+    """
+    if scope is None or isinstance(scope, dict):
+        return
+    where = path if path is not None else "the agent settings file"
+    raise SettingsError(
+        f"`{FILE_SCOPE}: {scope!r}` at the top level of {where} is not a settings key: "
+        f"`{FILE_SCOPE}` is a scope, and it holds agent node tables "
+        f"(`{FILE_SCOPE}: {{<agent>: {{…}}}}`), never a value (spec §0, closed keyspace).\n"
+        f"  Fix: delete the `{FILE_SCOPE}` entry from {where}, or give it node tables."
+    )
+
+
+def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) -> None:
+    """RAISE on a node of the ``agent:`` table that holds a VALUE (or nothing) instead of a table.
+
+    ``agent.<node>`` names an agent TIER, not a key (spec §2d) — the launch's §0 audit refuses it
+    so — and this is where every other reader gets the same verdict. ⚑ The file's OWN node is the
+    sharp case: beside a non-empty ``self:`` (which IS ``agent.<node>``), ``agent: {claude: 5}``
+    or a bare ``claude:`` writes that node a second time, and merged it would replace every
+    setting under ``self:`` without a word; the message says so.
+    """
+    scope = tables.get(FILE_SCOPE)
+    if not isinstance(scope, dict):
+        return
+    own = tables.get(_ROOT)
+    own_id = _node_identity(node) if node is not None else None
+    where = path if path is not None else "the agent settings file"
+    for seg, other in scope.items():
+        if isinstance(other, dict):
+            continue
+        twice = ""
+        if own_id is not None and isinstance(own, dict) and own and _node_identity(seg) == own_id:
+            twice = (
+                f" It also writes agent '{node}' a second time: `{_ROOT}:` IS "
+                f"`agent.{node}`, and neither may silently win (spec §0) — merged, this value "
+                f"would replace every setting under `{_ROOT}:`."
+            )
+        raise SettingsError(
+            f"`{FILE_SCOPE}.{seg}` in {where} holds {other!r}, but `{FILE_SCOPE}.{seg}` names "
+            f"an agent's settings table, not a key (spec §2d).{twice}\n"
+            f"  Fix: delete the `{FILE_SCOPE}.{seg}` entry from {where}, or give it a table "
+            f"of that agent's settings."
+        )
+
+
+def _refuse_two_spellings(tables: dict, *, node: str | None, path: Path | None) -> None:
+    """RAISE when ``self:`` and the ``agent:`` table's own-node entry set one setting (Q103).
+
+    ``self`` IS ``agent.<node>``, so ``self: {model: x}`` beside ``agent: {<node>: {model: y}}``
+    writes ONE setting twice in one file; neither may silently win. The node matches as the
+    cascade folds it (Q87: ``Claude:`` is ``claude``). Settings as the cascade merge sees them
+    (:func:`_setting_leaves`): ``env.A`` beside ``env.B`` merges, and so do two dests of one bind
+    arm, but ``/a/`` and ``/a`` are ONE dest. A PREFIX is the same setting too: ``model`` beside
+    ``model.x`` writes ``model`` once as a value and once as a table. Every pair is named AS
+    WRITTEN.
+
+    An own-node entry that is not a table never reaches here: :func:`_refuse_node_values` has
+    refused it first.
+    """
+    own, scope = tables.get(_ROOT), tables.get(FILE_SCOPE)
+    if node is None or not isinstance(own, dict) or not own or not isinstance(scope, dict):
+        return
+    own_id = _node_identity(node)
+    where = path if path is not None else "the agent settings file"
+    for seg, other in scope.items():
+        if not isinstance(other, dict) or _node_identity(seg) != own_id:
+            continue
+        mine, theirs = _setting_leaves(own), _setting_leaves(other)
+        clashes = [
+            (mine[a], theirs[b]) for a in mine for b in theirs
+            if a[:len(b)] == b or b[:len(a)] == a
+        ]
+        if not clashes:
+            continue
+        pairs = "\n".join(
+            f"  `{file_spelling(a)}` and `{FILE_SCOPE}.{seg}.{b}`" for a, b in clashes
+        )
+        raise SettingsError(
+            f"{where} sets the same setting twice — `{_ROOT}:` IS `agent.{node}`, so each "
+            f"pair below is ONE key written in two spellings, and neither may silently "
+            f"win (spec §0):\n{pairs}\n"
+            f"  Fix: keep one spelling of each and remove the other from {where}."
+        )
+
+
+def _node_identity(segment: Any) -> Any:
+    """The node an ``agent.<segment>`` spelling reaches, case folded (Q87); else *segment*."""
+    from kanibako.agent_ref import agent_address_node, agent_segment_case
+    from kanibako.errors import ConfigError
+
+    if not isinstance(segment, str):
+        return segment
+    try:
+        return agent_address_node(agent_segment_case(segment))
+    except ConfigError:
+        return segment
+
+
+def _setting_leaves(table: dict, trail: tuple[str, ...] = ()) -> dict[tuple[str, ...], str]:
+    """Every SETTING a node table writes: its merge address → its dotted spelling AS WRITTEN.
+
+    A table is descended to its leaves, with two stops the cascade merge makes too: a
+    table-valued agent key (``transform_settings``, §2d) is ONE setting, whole; and in a
+    dest-keyed bind category each DEST is one, compared as its canonical guest path.
+    """
+    from kanibako.settings.settings_keyspace import (
+        BIND_CATEGORIES,
+        TABLE_VALUED_AGENT_LEAVES,
+    )
+
+    leaves: dict[tuple[str, ...], str] = {}
+    for raw_key, value in table.items():
+        key = str(raw_key)
+        here = (*trail, key)
+        if (not trail and key in TABLE_VALUED_AGENT_LEAVES) or not isinstance(value, dict):
+            leaves[here] = ".".join(here)
+        elif ".".join(here) in BIND_CATEGORIES:
+            for dest in value:
+                leaves[(*here, normalize_bind_dest(str(dest)))] = ".".join((*here, str(dest)))
+        else:
+            for address, spelled in _setting_leaves(value, here).items():
+                leaves[address] = spelled
+    return leaves
 
 
 def level_table(
@@ -857,20 +1009,25 @@ def level_table(
     """The RAW table one agent-tier level reads out of *raw*, under its TRUE §2d name.
 
     *sub_key* selects the TIER, not a sub-table: since the flatten (S2) every category is read
-    FLAT off the root, so the ACTIVE tier is the file's own tables and the all-agents ``default``
-    tier is STRUCTURALLY EMPTY (the SYSTEM file's ``agent: default:`` table is that tier's route).
-    The two agent levels are still kept SEPARATE (spec §2) and merge by their true §2d names — NO
-    bare-``agent`` collapse. A missing root table yields an EMPTY table. *path* and *node* only
-    render the refusal message; neither is read.
+    FLAT off the root, so the ACTIVE tier's *table* is the file's own tables and the all-agents
+    ``default`` tier's *table* is EMPTY — ``self:`` has no spelling for that tier.  The file's
+    ``agent:`` table (Q92) does: it rides RAW on EVERY tier's level as *scope*, and which of its
+    nodes a tier takes — ``default`` for the all-agents tier — is the cascade's call, made after
+    its node fold (``settings_assemble``).  The two agent levels are still kept SEPARATE (spec §2)
+    and merge by their true §2d names — NO bare-``agent`` collapse. A missing root table yields an
+    EMPTY *table* (its *scope* still rides). *path* only renders the refusal messages; *node*
+    renders them too and is the node the two-spelling check matches (:func:`_contribution`).
 
     ⚑ THE REFUSALS RUN FIRST: over the file's TOP level (:func:`_contribution`), then over the
     WHOLE root (:func:`_refuse_nested_tables`).
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
-    agent = _contribution(raw, node=node, path=path).get(_ROOT)
+    tables = _contribution(raw, node=node, path=path)
+    scope = tables.get(FILE_SCOPE) or {}
+    agent = tables.get(_ROOT)
     if not isinstance(agent, dict):
-        return AgentFileLevel(sub_key, {})
+        return AgentFileLevel(sub_key, {}, scope=scope)
     _refuse_nested_tables(agent, node=node, path=path)
     # ⚑ ``self`` IS ``agent.<active-node>``, so EVERY category lives at the file's TOP level —
     # re-root them for the ACTIVE layer ONLY, never the all-agents ``default`` (they are THIS
@@ -885,7 +1042,7 @@ def level_table(
             flat = agent.get(category)
             if isinstance(flat, dict) and flat:
                 node_tbl[category] = flat
-    return AgentFileLevel(sub_key, node_tbl)
+    return AgentFileLevel(sub_key, node_tbl, scope=scope)
 
 
 def state_level(
@@ -934,27 +1091,62 @@ def state_level(
 
 
 def _refuse_undeclared_state(
-    state: "Mapping[str, str | None]", *, node: str, path: Path,
+    leaves: "Iterable[tuple[str, str, str, str]]", *, node: str, path: Path,
 ) -> None:
-    """RAISE on the first agent-file state key that is not a declared key (spec §0).
+    """RAISE on the first agent-file key that is not a declared key (spec §0).
+
+    Each of *leaves* is ``(judged node, key, shown, spelled)``: the key is judged against the
+    node it sits under — *node* itself for ``self:``'s state, or any node of the file's
+    ``agent:`` table (Q92, :func:`_scope_state`) — and *shown* / *spelled* are how the message
+    quotes it and where the cure points in the file. *node* is the file's own agent.
 
     ⚑ THE PLUGIN UNION IS LOAD-BEARING, not a nicety: ``config_keys.agent_key_reason`` unions the
     leaves the installed targets DECLARE, and without it a legitimate ``agent.goose.provider``
-    would refuse a working box.
+    would refuse a working box.  It also CONCEDES a node whose vocabulary is unreadable
+    (``[R150]``), exactly as the launch's §0 audit does.
     """
     from kanibako.settings.config_keys import agent_key_reason
 
-    for key in state:
-        reason = agent_key_reason(node, key)
+    for judged, key, shown, spelled in leaves:
+        reason = agent_key_reason(judged, key)
         if reason is None:
             continue
         raise SettingsError(
-            f"the agent settings file for '{node}' carries '{key}', which is not a "
+            f"the agent settings file for '{node}' carries '{shown}', which is not a "
             f"settings key: {reason}.\n"
             f"kanibako will not start a box on the file or display it — an undeclared "
             f"key has no meaning to give a box, and carrying it through would be the "
             f"very 'anything goes' behavior the closed keyspace replaces.\n"
-            f"  Fix: remove `{file_spelling(key)}` from {path} (or correct the "
+            f"  Fix: remove `{spelled}` from {path} (or correct the "
             f"spelling), or clear every override with "
             f"'kanibako agent reset {node} --all'."
         )
+
+
+def _scope_state(scope: Any) -> "list[tuple[str, str, str, str]]":
+    """The keys of the file's ``agent:`` table (Q92) :func:`_refuse_undeclared_state` judges.
+
+    Every node table's keys except a CATEGORY key holding a TABLE, whose entries are data (a
+    VAR, a dest) and are judged by their own readers. A category key holding a VALUE is judged
+    here like any key, so ``env: 5`` gets the launch's verdict (``agent.<node>.env`` is a
+    namespace, not a key) and ``caches: 'x'`` its concession. ⚑ NOT ``self:``'s partition,
+    which drops every dict-valued entry and every modeled key from state. Each is
+    judged under its node as the cascade folds it (Q87: ``Claude`` is ``claude``); a node that is
+    not a table holds no key to judge.
+    """
+    from kanibako.agent_ref import agent_segment_case
+
+    if not isinstance(scope, dict):
+        return []
+    leaves: list[tuple[str, str, str, str]] = []
+    for seg, table in scope.items():
+        if not isinstance(table, dict):
+            continue
+        judged = agent_segment_case(seg) if isinstance(seg, str) else str(seg)
+        for raw_key in table:
+            key = str(raw_key)
+            if key in _FLAT_AGENT_CATEGORIES and isinstance(table[raw_key], dict):
+                continue
+            spelled = f"{FILE_SCOPE}.{seg}.{key}"
+            leaves.append((judged, key, spelled, spelled))
+    return leaves

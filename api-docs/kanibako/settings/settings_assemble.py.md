@@ -58,6 +58,7 @@ def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -
 def _parse_naming_file(raw: dict, *, file_path: Path | None, key_path: tuple[str, ...]=()) -> KeyStore
 def _file_partial(raw: dict, *, path: Path | None=None) -> KeyStore
 def _agent_partial(raw: dict, *, sub_key: str, path: Path | None=None, node: str | None=None) -> KeyStore
+def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore
 def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None
 def _overlay(base: KeyStore, top: KeyStore) -> None
 ```

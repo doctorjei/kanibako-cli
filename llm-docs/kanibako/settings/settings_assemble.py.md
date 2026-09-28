@@ -117,6 +117,20 @@ stray top-level key — and turns its raw table into a `KeyStore` under `agent.<
 seam is cut at the SHAPE so the boundary never imports `KeyStore` and the import edge stays
 one-way. See `agent_file.py.md`.
 
+⚑ **THE FILE'S `agent:` TABLE IS READ (Q92)** — the level carries it RAW as `scope`, and
+`_scope_nodes` parses it with `_file_partial`, the scope files' own builder (node fold, bind
+parse, file named in every refusal). The all-agents tier takes its `default` node; the active tier
+takes every other node, merged beside the re-rooted `self:` (`_overlay`). What that means, BY
+CONSTRUCTION, since the file is read only while its agent is active: in foo's file,
+`agent: {bar: …}` merges but is never picked (bar's own file is read when bar is), and
+`agent: {default: …}` sets `agent.default.*` on this file's rung — above the system file — applying
+only while foo is. ⚑ **WHAT THE BOUNDARY GUARANTEES THE `_overlay`:** `agent_file._contribution`
+(every judging reader) has refused an own-node entry that is not a table (`_refuse_node_values`)
+and any own-node setting that equals, or is a prefix of or under, one `self:` sets
+(`_refuse_two_spellings`, Q103). Before the overlay the level holds at most the own node's `self:`
+categories, so nothing `self:` set is replaced; the other nodes land where nothing was. Pinned in `test_agent_file.py` (`TestTheAgentTable`) and
+`test_settings_launch.py` (`TestAgentFileAgentTable`, the production pair).
+
 `config.read_agent_settings` PRE-MERGES the default and per-agent sections inside one file; this
 module deliberately does not — the separation into two levels is the point.
 
@@ -266,11 +280,10 @@ plain `set`, so without it the annotation would be a lie.
 ```_AGENT_DEFAULT_SUB = "default"```
 The agent sub-table that supplies the all-agents `agent.default` cascade level.
 
-⚑ **THE LEVEL IT SUPPLIES IS STRUCTURALLY EMPTY OUT OF THE AGENT FILE** (S2): `self:` IS
-`agent.<node>`, so a `default:` level under it reads `agent.<node>.default.*` and REFUSES. That
-tier's route is the SYSTEM file's `agent: default:` table. The `_agent_partial` call at
-`assemble_levels` is KEPT — deleting it re-indexes every `base_levels[n]` consumer — with the
-emptiness stated at the call site.
+⚑ **OUT OF THE AGENT FILE, THE LEVEL IT SUPPLIES HOLDS ONLY THE FILE'S `agent: default:` TABLE**
+(Q92): `self:` IS `agent.<node>`, so a `default:` level under it reads `agent.<node>.default.*` and
+REFUSES; the file's top-level `agent:` table has the spelling, as every settings file does. The
+SYSTEM file's `agent: default:` table arrives on the system level below it.
 
 ⚑ `_FLAT_AGENT_CATEGORIES` · the nested REFUSAL · its cure placeholders MOVED to
 `settings/agent_file.py` with the machinery that reads them — see `agent_file.py.md`. *(The refusal
@@ -510,11 +523,10 @@ Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec
    name only. Any other unknown top-level entry is not dropped here: it rides into the merge and is
    REFUSED by name at the launch's §0 audit (`settings_launch._refuse_undeclared_snapshot`), which
    judges the snapshot as a WHOLE store and so has no `UNROOTED` escape (spec §0: no bare top-level
-   keys). Not in the per-agent file, whose partial reads only `self:`: there
+   keys). Not in the per-agent file, whose partial reads only `self:` and `agent:` (Q92): there
    `agent_file.level_table` REFUSES by name (`_refuse_stray_roots`) whatever the drops leave (this
    one takes `system:`, `meta:`, `binding_derivations:`; `settings_prefs` takes `pref:`), except a
-   contained scope's table (`agent:` / `workset:` / `box:`), which it passes over unread pending
-   `Q85`.
+   contained scope's table (`workset:` / `box:`), which it passes over unread pending `Q85`.
 
 `base` is EXEMPT for SCOPE keys (its containing set is empty — it is the system-scope floor) but NOT
 for `meta`: a base-file top-level `meta:` table would clobber the floor's materialized identity
@@ -594,9 +606,9 @@ caller can pull the wrong way (P3); the retirement scans (`agent_select`, `setti
 2. A `pref:` table survives only at a level §2h lets one be WRITTEN
    (`settings_prefs.PREF_LEGAL_LEVELS`), matching `assemble_levels`'s three `refuse_pref_table`
    calls. Rules 1 and 2 together are `settings_drops.cascade_drop_set`.
-3. The per-agent file contributes `ROOT_SECTIONS` (`self:`) and nothing else — `level_table` reads
-   that table alone — so a top-level `agent:` in an `agent.yaml` is not a DROP; it was never an
-   input.
+3. The per-agent file contributes `agent_file.contributed_tables` — `self:` and, since Q92,
+   `agent:` — and nothing else, so a top-level `workset:` / `box:` in an `agent.yaml` is not a
+   DROP; it is not an input yet (Q85).
 
 What survives is then folded by `fold_agent_nodes`, as `_file_partial` folds it, so a capital
 node reads here as it merges.

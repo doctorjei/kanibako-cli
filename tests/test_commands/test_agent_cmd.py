@@ -986,6 +986,72 @@ class TestSparseWrites:
         assert "`agent.claude`" in str(exc.value)
         assert "<agent>" not in str(exc.value)
 
+    @pytest.mark.parametrize("doc, expected", [
+        # Q103: one setting under both ``self:`` and ``agent: <own node>:``.
+        ({"self": {"model": "opus"}, "agent": {"claude": {"model": "sonnet"}}},
+         "`self.model` and `agent.claude.model`"),
+        # Q92: the ``agent:`` table holds node tables, never a value.
+        ({"self": {"model": "opus"}, "agent": 5}, "`agent: 5` at the top level of"),
+        # D1: the own node as a value beside ``self:``.
+        ({"self": {"model": "opus"}, "agent": {"claude": 5}},
+         "writes agent 'claude' a second time"),
+        # The table's keys are judged as ``self:``'s are, each under its own node.
+        ({"self": {"model": "opus"}, "agent": {"claude": {"bogus": 1}}},
+         "carries 'agent.claude.bogus'"),
+        ({"self": {"model": "opus"}, "agent": {"goose": {"bogus": 1}}},
+         "carries 'agent.goose.bogus'"),
+        # A category key holding a value is a namespace, not a key — as the launch says.
+        ({"self": {"model": "opus"}, "agent": {"claude": {"env": 5}}},
+         "carries 'agent.claude.env'"),
+    ])
+    @pytest.mark.parametrize("verb", ("run_list", "run_get", "run_show", "run_info"))
+    def test_the_agent_verbs_refuse_what_the_launch_refuses(
+        self, agent_env, verb, doc, expected,
+    ):
+        """ONE verdict per file (``agent_file._contribution``): the verbs reading the record
+        refuse the file the launch refuses, instead of answering rc 0 off ``self:`` alone.
+        (Mutation: drop either refusal from ``_contribution`` → ``list`` / ``get`` → RED.)"""
+        from kanibako.commands import agent_cmd
+        from kanibako.settings.settings_resolve import SettingsError
+
+        path = _write_sparse(agent_env, "claude", doc)
+        args = argparse.Namespace(
+            agent_id="claude", effective=False, quiet=False, key="model",
+        )
+        with pytest.raises(SettingsError) as exc:
+            getattr(agent_cmd, verb)(args)
+        assert expected in str(exc.value)
+        assert str(path) in str(exc.value)
+
+    @pytest.mark.parametrize("verb", ("run_list", "run_get", "run_show", "run_info"))
+    def test_the_agent_verbs_concede_what_the_launch_concedes(self, agent_env, capsys, verb):
+        """An agent with no readable vocabulary is conceded ([R150]) by the launch's §0 audit,
+        so the verbs concede it too — one verdict, in both directions."""
+        from kanibako.commands import agent_cmd
+
+        _write_sparse(agent_env, "claude", {
+            "self": {"model": "opus"}, "agent": {"nosuchharness": {"x": 1}},
+        })
+        args = argparse.Namespace(
+            agent_id="claude", effective=False, quiet=False, key="model",
+        )
+        assert getattr(agent_cmd, verb)(args) in (0, None)
+
+    def test_reset_all_clears_a_both_spellings_file(self, agent_env, capsys):
+        """The repair door stays open for the new refusals too (``clear_overrides``)."""
+        from kanibako.commands.agent_cmd import run_reset
+        from kanibako.settings.config_io import load_doc
+
+        path = _write_sparse(agent_env, "claude", {
+            "self": {"model": "opus"}, "agent": {"claude": {"model": "sonnet"}},
+        })
+        rc = run_reset(argparse.Namespace(
+            agent_id="claude", key=None, all_keys=True, force=True,
+        ))
+        assert rc == 0
+        assert "Reset 2 override(s)." in capsys.readouterr().out
+        assert load_doc(path) == {}
+
     @pytest.mark.parametrize("folder", ("claude.bak", "bad name"))
     def test_list_refuses_a_store_folder_that_names_no_agent(self, agent_env, folder):
         """A folder under ``agents/`` whose name is not a legal agent name stops the listing,

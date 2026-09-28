@@ -963,14 +963,15 @@ which**; only the first is a stale key that can stop the resolve, and only in so
 - **Bare `agent.<category>.*` keys** (e.g. `agent.common.plugins` with no agent name): an
   internal launch-built form that should never have been persisted. **Not a key — and what that
   costs you depends on which file it is in**, because a top-level `agent:` table is only ever an
-  input at two of them (verified for `agent.common.plugins` in each):
-  - the system's `<data>/global/settings.yaml` and the machine-wide `/etc/kanibako/settings_base.yaml`
-    **stop the resolve, naming the key** (§2.47);
+  input at three of them (verified for `agent.common.plugins` in each):
+  - the system's `<data>/global/settings.yaml`, the machine-wide `/etc/kanibako/settings_base.yaml`
+    and an agent's own **`agents/<agent>/agent.yaml`** **stop the resolve, naming the key**
+    (§2.47). In 1.7.2 and 1.8.0-rc2 the agent's settings file (`settings.yaml` in 1.7.2) was read
+    for its `self:` table alone, so there the relic printed nothing; its `agent:` table is read now
+    (*"2.37 An agent's settings file has ONE level: everything sits directly under `self:`"*);
   - a **`box.yaml` or `workset.yaml`** may not set a containing scope's keys (§0), so the whole
     `agent:` table is dropped before the merge — a warning in the launch log, and the resolve
-    continues;
-  - an agent's own **`agent.yaml`** contributes its `self:` table and nothing else, so a top-level
-    `agent:` there is not an input at all and **nothing is printed**.
+    continues.
 
   Grep for it wherever it might be: only the first case tells you it is there. If a settings file
   carries one, discriminate it: `agent.<agent>.<category>.<rest>`. (`agent.default.*` is
@@ -2578,11 +2579,39 @@ self:
   own: a flat `model:` in the same file silently beat the nested one, so the nested value was not
   overridden, it was ignored.
 - **You have a key *beside* `self:`** — `model: opus` at the top of the file instead of under the
-  root, say. Nothing but `self:` is read at that level (1.7.2 read it the same way), so the key was
+  root, say. Nothing but `self:` was read at that level (1.7.2 read it the same way), so the key was
   ignored without a word and never reached a box. It now **refuses, naming the key and the file**.
   Move it under `self:` if it is one of this agent's settings; otherwise delete it. A top-level
   `system:`, `meta:`, `pref:` or `binding_derivations:` table is still dropped with a warning, and
-  an `agent:`, `workset:` or `box:` table is still not read.
+  a `workset:` or `box:` table is still not read. An `agent:` table is read — next item.
+- **You have an `agent:` table at the top of the file.** 1.7.2 and 1.8.0-rc2 never read it — the
+  file's reader took `self:` alone (in 1.7.2 the file was `agents/<agent>/settings.yaml`) — so whatever it held reached no box, without a word. It is
+  **read now**, the way the `agent:` table in the system or a working set's settings file is:
+
+  ```yaml
+  # agents/claude/agent.yaml
+  self:
+    model: opus
+  agent:
+    default:                      # every-agent defaults, above the system file's —
+      env:                        # but only while claude runs: this file is read only then
+        PAGER: less
+    goose:                        # merges, but never used: goose's own file is read when goose runs
+      model: x
+  ```
+
+  `agent: claude:` in claude's own file sets the same keys `self:` does — except
+  `transform_settings`, which is still read from `self:` alone, so under `agent: claude:` it has
+  no effect. The `default:` node beats the system file's `agent: default:`, but not a system-file
+  `agent: claude:` value: a named agent's key still beats a default. Check such a table before
+  you upgrade: a value that did nothing until now takes effect. **One setting under both `self:`
+  and `agent: claude:` refuses**, naming both spellings and the file (`agent: Claude:` counts as
+  the same node) — keep one. Two different settings of one table merge (`self: env: A` beside
+  `agent: claude: env: B`). A value where an agent's table goes (`agent: claude: 5`, or a bare
+  `claude:`) refuses, and so does a key that is not a setting of the agent it sits under
+  (`agent: goose: bogus: 1`) — the same check `self:` gets. Every `agent` verb that reads the
+  file (`show`, `info`, `list`, `get`) refuses it as the launch does; `agent reset <agent> --all` does not refuse, and now
+  clears this table as well.
 
 **Why refuse a nested level rather than keep accepting it?** Because it was never one spelling —
 it was two, and the flat one won without saying so. A file carrying both a nested and a flat table
@@ -2625,8 +2654,8 @@ answer with the same vocabulary the settings engine uses everywhere else:
   serves that same read, and two verbs must not disagree about one file.
 - **`agent reset <agent> <table>`** (a whole category, or `transform_settings`) **refuses** —
   `set` cannot create those, so any such table is hand-authored and the hand-edit is the honest
-  cure. `agent reset --all <agent>` still clears every setting under `self:`, and remains the
-  recovery for a file the gates refuse over what is under `self:`. A key *beside* `self:` is not a
+  cure. `agent reset --all <agent>` still clears every setting under `self:` (and, since the
+  file's `agent:` table is read, that table too), and remains the recovery for a file the gates refuse over what is under `self:`. A key *beside* `self:` is not a
   setting, so the reset leaves it: move it under `self:` if it is one of this agent's settings,
   otherwise delete the line by hand (see *"2.37 An agent's settings file has ONE level: everything
   sits directly under `self:`"*).
