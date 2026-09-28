@@ -20,8 +20,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-import yaml
-
+from kanibako.settings.config_io import parse_packaged
 from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_data_dir
 
 # Filename of the shipped keyspace registry (under ``PACKAGED_SETTINGS_PARTS``).
@@ -37,7 +36,7 @@ def _parse_manifest() -> dict[str, Any]:
   a guard that read the checkout would describe this tree, not the wheel that ships.
   """
   ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, KEYSPACE_MANIFEST_FILENAME)
-  raw = yaml.safe_load(Path(str(ref)).read_text())
+  raw = parse_packaged(Path(str(ref)).read_text())
   if not isinstance(raw, dict):
     raise RuntimeError(
       f"{KEYSPACE_MANIFEST_FILENAME} is empty or is not a YAML mapping "

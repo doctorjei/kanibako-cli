@@ -24,10 +24,9 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import yaml
-
 from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.settings.agent_config import store_dirname
+from kanibako.settings.config_io import parse_packaged
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths, StandardPaths
@@ -57,7 +56,7 @@ CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 def _parse_doc() -> dict[str, Any]:
     """Parse the bundled system/core defaults file ONCE; the cached, never-handed-out original."""
     ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, CORE_DEFAULTS_FILENAME)
-    raw = yaml.safe_load(Path(str(ref)).read_text()) or {}
+    raw = parse_packaged(Path(str(ref)).read_text()) or {}
     if not isinstance(raw, dict):
         return {}
     return raw
