@@ -2061,6 +2061,225 @@ def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> Laun
     )
 
 
+def fold_floor(
+    *,
+    subject: ResolveSubject,
+    agent_name: str,
+    behavior_floor: Mapping[str, object] | None = None,
+    agent_behavior_floor: Mapping[str, object] | None = None,
+    default_categories: Mapping[str, object] | None = None,
+    auth_chain: Mapping[str, object] | None = None,
+    meta_runtime: Mapping[str, object] | None = None,
+    meta_identity: Mapping[str, object] | None = None,
+    workset_anchor: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """:func:`build_launch_snapshot`'s first phase, shared with set time: the one floor fold."""
+    # ⚑ SEEDED, not empty: the shipped ``system.*`` scalar defaults are installed by
+    # EVERY resolve (see :data:`SYSTEM_SCALAR_FLOOR`). Everything below may overwrite
+    # them by name, and every settings scope outranks them by merge level.
+    floor: dict[str, object] = dict(SYSTEM_SCALAR_FLOOR)
+    # The box scalars' declared defaults (spec §2b; ``box.shell``'s ``<None>`` as a
+    # present ``None``, [R177]) for every BOX resolve, so an ``@box.shell`` / ``@box.image``
+    # a user writes resolves (spec §0) instead of rendering ``""`` or dropping. ONE carrier,
+    # :func:`~kanibako.settings.config.box_scalar_defaults_floor`, shared with the
+    # set-time probe. A box-less resolve (WORKSET / SYSTEM subject) has no box to floor.
+    if subject is ResolveSubject.BOX:
+        floor.update(box_scalar_defaults_floor())
+    # OS1: bare behavior keys → their scope-qualified §2d spelling. There is NO bare
+    # ``agent.<key>`` (spec §0).
+    #
+    # ⚑⚑ THE TIER IS CHOSEN BY WHO SUPPLIED THE VALUE ([Q91]: ``agent.default``
+    # builtin < ``agent.default`` setting < ``agent.<a>`` builtin < ``agent.<a>``
+    # setting). Core's floor is the all-agents backstop at ``agent.default.<key>``; a
+    # plugin's declared row is ``agent.<a>`` builtin, so it lands at
+    # ``agent.<active>.<key>``, where the §2d pick in :func:`effective_behavior` reads
+    # it before any ``agent.default`` value, a user's included. A plugin row that
+    # inherits (``UNSET``, Q105) is not in *agent_behavior_floor* at all, so the pick
+    # falls through to ``agent.default``.
+    # A plugin-only leaf (goose's ``provider``) lands at the only tier declaring it.
+    # A non-core leaf in *behavior_floor* would write an undeclared
+    # ``agent.default.<leaf>``, which the §0 audit below refuses by name.
+    #
+    # ⚑ WITHIN A SLOT, EVERY SCOPE WINS: both tiers ride this ONE floor into ``base_levels[5]``,
+    # the LOWEST rung, so every settings scope — box, workset, agent file, system —
+    # still outranks a floored value by merge level alone. That is also why the
+    # per-agent descriptor rung ``agent_partial`` is NOT the carrier for this: it sits
+    # ABOVE ``system``, and routing behavior floors through it would promote a plugin
+    # default over a user's system-tier setting.
+    for tier, tier_floor in (
+        ("default", behavior_floor), (agent_name, agent_behavior_floor),
+    ):
+        for key, val in (tier_floor or {}).items():
+            floor[f"agent.{tier}.{key}"] = val
+    # Category default tables are already scope-qualified dotted keys, and the
+    # agent-scope ones arrive ALREADY DISCRIMINATED from the declaring plugin. A live
+    # ""-suppression of a DEFAULT means "this default is disabled" → DROP it
+    # (absent ≡ no default).
+    if default_categories:
+        for key, val in default_categories.items():
+            if val == "":
+                continue
+            # masks BRIDGE: the shipped/file form is a LIST[box_dest]; the KeyStore
+            # model is a keyed ``dict[box_dest → bool]`` (S5/§6f). ⚑ This CONVERTS,
+            # it does not filter — a different thing from the suppression below.
+            if (key == "masks" or key.endswith(".masks")) and isinstance(
+                val, (list, tuple)
+            ):
+                floor[key] = {str(dest): True for dest in val}
+                continue
+            # ⚑ The suppression applies PER ENTRY too. A bind-shaped category is one
+            # TERMINAL dest-keyed map (R-5), so category-level suppression alone would
+            # coarsen the smallest suppressible unit from an entry to a whole
+            # category — a behavior change nobody ruled.
+            if _is_bind_floor_key(key) and isinstance(val, dict):
+                floor[key] = {d: v for d, v in val.items() if v != ""}
+                continue
+            floor[key] = val
+
+    # The four floor fragments, each folded into the SAME floor so ``expand``
+    # resolves its @-ref chain ONCE (single-route). The auth chain goes in AFTER the
+    # category tables so its dotted keys land unconditionally. The ``meta.*``
+    # fragments are construct-set RO (§0), so the floor is their sole source; a scope
+    # FILE MAY legitimately override a ``workset.*`` key, so those sit at the floor
+    # (base) and a workset/box file still wins by name.
+    if auth_chain:
+        for key, val in auth_chain.items():
+            floor[key] = val
+
+    if meta_runtime:
+        for key, val in meta_runtime.items():
+            floor[key] = val
+
+    if meta_identity:
+        for key, val in meta_identity.items():
+            floor[key] = val
+
+    if workset_anchor:
+        for key, val in workset_anchor.items():
+            floor[key] = val
+    return floor
+
+
+@dataclass(frozen=True)
+class Cascade:
+    """:func:`assemble_cascade`'s merged, unexpanded snapshot and labeled ``written`` levels."""
+
+    snapshot: KeyStore
+    written: tuple[_WrittenLevel, ...]
+
+
+def assemble_cascade(
+    *,
+    agent_name: str,
+    floor: dict[str, object],
+    system_path: Path | None,
+    agent_path: Path | None,
+    workset_path: Path | None,
+    box_path: Path | None,
+    base_path: Path | None = None,
+    agent_partial: KeyStore | None = None,
+    agent_state: AgentFileLevel | None = None,
+    persona_values: Mapping[str, str] | None = None,
+    prefs: "Sequence[PrefRequest] | None" = None,
+    valid_agents: "Collection[str] | None" = None,
+    cli_level: Mapping[str, object] | None = None,
+) -> Cascade:
+    """:func:`build_launch_snapshot`'s second phase, shared with set time: assemble and merge."""
+    base_path = base_path if base_path is not None else settings_base_path()
+    base_levels = assemble_levels(
+        agent_name=agent_name,
+        system_path=system_path,
+        agent_path=agent_path,
+        workset_path=workset_path,
+        box_path=box_path,
+        floor=floor,
+        base_path=base_path,
+    )
+    # ``assemble_levels`` ALWAYS returns the 6 levels MOST-SPECIFIC-FIRST (S8):
+    #   [box, workset, agent.<active>, agent.default, system, base]
+    #    idx 0    1        2              3              4       5
+    # Build the FINAL ordered level list by splicing the optional extra partials at
+    # their PRECISE precedence rungs, computed from these FIXED base indices. Doing
+    # all splices in one pass keeps the math robust — no chained index drift. Each
+    # rung and the reason it sits where it does: the llm-doc.
+    state_partial = _agent_state_partial(agent_state)
+    persona_partial = _persona_partial(agent_name, persona_values)
+    # ⚑ THE ``box.agent.*`` CATEGORY FOLD IS GONE (P7) — §2b retired the settable
+    # mirror, so the fold has no settable input left. Removing it FLIPS the
+    # transitional contest P6 pinned: tests/test_settings/test_settings_launch.py
+    # TestPrefLevelPrecedence.
+    #
+    # ⚑ Prefs are collected HERE when the caller did not supply them, so no call path
+    # can silently skip them — the seed / synced / image / helper narrow resolves must
+    # see a pref on ``agent.<a>.seeded.*`` too.
+    requests = list(prefs) if prefs is not None else collect_prefs(
+        workset_path, box_path,
+    )
+    # ``valid_agents`` is passed through UNRESOLVED (``None`` = "decide inside"), so a
+    # pref-free launch pays nothing for discovery. ⚑ ``is None``, not falsy — an empty
+    # AgentNames is a legitimate caller-supplied value.
+    ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
+
+    levels: list[KeyStore] = []
+    if cli_level:
+        # §1A: the CLI LEVEL, ABOVE EVERYTHING (settings files AND prefs).
+        # ⚑ GUARDED HERE, not at the call site: §1A says the §2h forbidden tiers do
+        # NOT cover the CLI, so a flag that could set a LOCATOR-class value needs its
+        # own guard — and a guard a caller can forget to run is not a guard.
+        guard_cli_level(
+            cli_level, active_agent=agent_name, valid_agents=valid_agents,
+        )
+        levels.append(dotted_partial(dict(cli_level)))
+    levels.append(base_levels[0])                       # box
+    if box_prefs:
+        levels.append(box_prefs)                        # box pref REQUESTS
+    levels.append(base_levels[1])                       # workset
+    if ws_prefs:
+        levels.append(ws_prefs)                         # workset pref REQUESTS
+    if state_partial is not None:
+        levels.append(state_partial)                    # per-agent FILE behavior
+    levels.append(base_levels[2])                       # agent.<active> (file tables)
+    if persona_partial is not None:
+        # persona store — LIVE, never persisted. BELOW the per-agent FILE and ABOVE
+        # ``agent.default``. ⚑ The ordering is semantically FORCED: the agent file
+        # stores ONLY non-default values, so a value present in it can only be a
+        # DELIBERATE user edit, and a user edit must outrank one the store re-renders
+        # every launch. (The rung is UNOBSERVABLE in the merge — llm-doc.)
+        levels.append(persona_partial)                  # persona store (live)
+    levels.append(base_levels[3])                       # agent.default
+    if agent_partial is not None:
+        levels.append(agent_partial)                    # 7a descriptor default
+    levels.append(base_levels[4])                       # system
+    levels.append(base_levels[5])                       # base (+ folded floor)
+
+    snapshot = merge(levels)
+    # The INTERNAL binds (spec §2c: not user keys, not repointable) sit OUTSIDE every
+    # user-resettable arm: re-imposed from the floor AFTER the merge, so a user's null or
+    # entry in the same arm can neither drop nor repoint kanibako's own delivery.
+    internal = _internal_floor_binds(floor)
+    if internal:
+        snapshot = merge([dotted_partial(internal), snapshot])
+    # The agent file's flat state names the file it was read from — the path travels
+    # WITH the level — and ``agent_path`` answers only when the level carries none.
+    state_path = (agent_state.path if agent_state is not None else None) or agent_path
+    written: list[_WrittenLevel] = [
+        (level, path, None)
+        for level, path in (
+            (base_levels[0], box_path),
+            (box_prefs, box_path),
+            (base_levels[1], workset_path),
+            (ws_prefs, workset_path),
+            (state_partial, state_path),
+            (base_levels[2], agent_path),
+            (base_levels[3], agent_path),
+            (base_levels[4], system_path),
+        )
+        if level is not None
+    ]
+    written.append((base_levels[5], base_path, dotted_partial(floor)))
+    return Cascade(snapshot=snapshot, written=tuple(written))
+
+
 def build_launch_snapshot(
     *,
     agent_name: str,
@@ -2145,89 +2364,17 @@ def build_launch_snapshot(
     runtime. No resolve whose output is WRITTEN TO DISK may see a flag. Both lists,
     caller by caller: the llm-doc.
     """
-    # ⚑ SEEDED, not empty: the shipped ``system.*`` scalar defaults are installed by
-    # EVERY resolve (see :data:`SYSTEM_SCALAR_FLOOR`). Everything below may overwrite
-    # them by name, and every settings scope outranks them by merge level.
-    floor: dict[str, object] = dict(SYSTEM_SCALAR_FLOOR)
-    # The box scalars' declared defaults (spec §2b; ``box.shell``'s ``<None>`` as a
-    # present ``None``, [R177]) for every BOX resolve, so an ``@box.shell`` / ``@box.image``
-    # a user writes resolves (spec §0) instead of rendering ``""`` or dropping. ONE carrier,
-    # :func:`~kanibako.settings.config.box_scalar_defaults_floor`, shared with the
-    # set-time probe. A box-less resolve (WORKSET / SYSTEM subject) has no box to floor.
-    if subject is ResolveSubject.BOX:
-        floor.update(box_scalar_defaults_floor())
-    # OS1: bare behavior keys → their scope-qualified §2d spelling. There is NO bare
-    # ``agent.<key>`` (spec §0).
-    #
-    # ⚑⚑ THE TIER IS CHOSEN BY WHO SUPPLIED THE VALUE ([Q91]: ``agent.default``
-    # builtin < ``agent.default`` setting < ``agent.<a>`` builtin < ``agent.<a>``
-    # setting). Core's floor is the all-agents backstop at ``agent.default.<key>``; a
-    # plugin's declared row is ``agent.<a>`` builtin, so it lands at
-    # ``agent.<active>.<key>``, where the §2d pick in :func:`effective_behavior` reads
-    # it before any ``agent.default`` value, a user's included. A plugin row that
-    # inherits (``UNSET``, Q105) is not in *agent_behavior_floor* at all, so the pick
-    # falls through to ``agent.default``.
-    # A plugin-only leaf (goose's ``provider``) lands at the only tier declaring it.
-    # A non-core leaf in *behavior_floor* would write an undeclared
-    # ``agent.default.<leaf>``, which the §0 audit below refuses by name.
-    #
-    # ⚑ WITHIN A SLOT, EVERY SCOPE WINS: both tiers ride this ONE floor into ``base_levels[5]``,
-    # the LOWEST rung, so every settings scope — box, workset, agent file, system —
-    # still outranks a floored value by merge level alone. That is also why the
-    # per-agent descriptor rung ``agent_partial`` is NOT the carrier for this: it sits
-    # ABOVE ``system``, and routing behavior floors through it would promote a plugin
-    # default over a user's system-tier setting.
-    for tier, tier_floor in (
-        ("default", behavior_floor), (agent_name, agent_behavior_floor),
-    ):
-        for key, val in (tier_floor or {}).items():
-            floor[f"agent.{tier}.{key}"] = val
-    # Category default tables are already scope-qualified dotted keys, and the
-    # agent-scope ones arrive ALREADY DISCRIMINATED from the declaring plugin. A live
-    # ""-suppression of a DEFAULT means "this default is disabled" → DROP it
-    # (absent ≡ no default).
-    if default_categories:
-        for key, val in default_categories.items():
-            if val == "":
-                continue
-            # masks BRIDGE: the shipped/file form is a LIST[box_dest]; the KeyStore
-            # model is a keyed ``dict[box_dest → bool]`` (S5/§6f). ⚑ This CONVERTS,
-            # it does not filter — a different thing from the suppression below.
-            if (key == "masks" or key.endswith(".masks")) and isinstance(
-                val, (list, tuple)
-            ):
-                floor[key] = {str(dest): True for dest in val}
-                continue
-            # ⚑ The suppression applies PER ENTRY too. A bind-shaped category is one
-            # TERMINAL dest-keyed map (R-5), so category-level suppression alone would
-            # coarsen the smallest suppressible unit from an entry to a whole
-            # category — a behavior change nobody ruled.
-            if _is_bind_floor_key(key) and isinstance(val, dict):
-                floor[key] = {d: v for d, v in val.items() if v != ""}
-                continue
-            floor[key] = val
-
-    # The four floor fragments, each folded into the SAME floor so ``expand``
-    # resolves its @-ref chain ONCE (single-route). The auth chain goes in AFTER the
-    # category tables so its dotted keys land unconditionally. The ``meta.*``
-    # fragments are construct-set RO (§0), so the floor is their sole source; a scope
-    # FILE MAY legitimately override a ``workset.*`` key, so those sit at the floor
-    # (base) and a workset/box file still wins by name.
-    if auth_chain:
-        for key, val in auth_chain.items():
-            floor[key] = val
-
-    if meta_runtime:
-        for key, val in meta_runtime.items():
-            floor[key] = val
-
-    if meta_identity:
-        for key, val in meta_identity.items():
-            floor[key] = val
-
-    if workset_anchor:
-        for key, val in workset_anchor.items():
-            floor[key] = val
+    floor = fold_floor(
+        subject=subject,
+        agent_name=agent_name,
+        behavior_floor=behavior_floor,
+        agent_behavior_floor=agent_behavior_floor,
+        default_categories=default_categories,
+        auth_chain=auth_chain,
+        meta_runtime=meta_runtime,
+        meta_identity=meta_identity,
+        workset_anchor=workset_anchor,
+    )
 
     # Resolved ONCE: the base level is read from it, and the refusals below name it.
     base_path = settings_base_path()
@@ -2253,79 +2400,22 @@ def build_launch_snapshot(
         box_name=(meta_identity or {}).get("meta.box.name"),
     )
 
-    base_levels = assemble_levels(
+    cascade = assemble_cascade(
         agent_name=agent_name,
+        floor=floor,
         system_path=system_path,
         agent_path=agent_path,
         workset_path=workset_path,
         box_path=box_path,
-        floor=floor,
         base_path=base_path,
+        agent_partial=agent_partial,
+        agent_state=agent_state,
+        persona_values=persona_values,
+        prefs=prefs,
+        valid_agents=valid_agents,
+        cli_level=cli_level,
     )
-    # ``assemble_levels`` ALWAYS returns the 6 levels MOST-SPECIFIC-FIRST (S8):
-    #   [box, workset, agent.<active>, agent.default, system, base]
-    #    idx 0    1        2              3              4       5
-    # Build the FINAL ordered level list by splicing the optional extra partials at
-    # their PRECISE precedence rungs, computed from these FIXED base indices. Doing
-    # all splices in one pass keeps the math robust — no chained index drift. Each
-    # rung and the reason it sits where it does: the llm-doc.
-    state_partial = _agent_state_partial(agent_state)
-    persona_partial = _persona_partial(agent_name, persona_values)
-    # ⚑ THE ``box.agent.*`` CATEGORY FOLD IS GONE (P7) — §2b retired the settable
-    # mirror, so the fold has no settable input left. Removing it FLIPS the
-    # transitional contest P6 pinned: tests/test_settings/test_settings_launch.py
-    # TestPrefLevelPrecedence.
-    #
-    # ⚑ Prefs are collected HERE when the caller did not supply them, so no call path
-    # can silently skip them — the seed / synced / image / helper narrow resolves must
-    # see a pref on ``agent.<a>.seeded.*`` too.
-    requests = list(prefs) if prefs is not None else collect_prefs(
-        workset_path, box_path,
-    )
-    # ``valid_agents`` is passed through UNRESOLVED (``None`` = "decide inside"), so a
-    # pref-free launch pays nothing for discovery. ⚑ ``is None``, not falsy — an empty
-    # AgentNames is a legitimate caller-supplied value.
-    ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
-
-    levels: list[KeyStore] = []
-    if cli_level:
-        # §1A: the CLI LEVEL, ABOVE EVERYTHING (settings files AND prefs).
-        # ⚑ GUARDED HERE, not at the call site: §1A says the §2h forbidden tiers do
-        # NOT cover the CLI, so a flag that could set a LOCATOR-class value needs its
-        # own guard — and a guard a caller can forget to run is not a guard.
-        guard_cli_level(
-            cli_level, active_agent=agent_name, valid_agents=valid_agents,
-        )
-        levels.append(dotted_partial(dict(cli_level)))
-    levels.append(base_levels[0])                       # box
-    if box_prefs:
-        levels.append(box_prefs)                        # box pref REQUESTS
-    levels.append(base_levels[1])                       # workset
-    if ws_prefs:
-        levels.append(ws_prefs)                         # workset pref REQUESTS
-    if state_partial is not None:
-        levels.append(state_partial)                    # per-agent FILE behavior
-    levels.append(base_levels[2])                       # agent.<active> (file tables)
-    if persona_partial is not None:
-        # persona store — LIVE, never persisted. BELOW the per-agent FILE and ABOVE
-        # ``agent.default``. ⚑ The ordering is semantically FORCED: the agent file
-        # stores ONLY non-default values, so a value present in it can only be a
-        # DELIBERATE user edit, and a user edit must outrank one the store re-renders
-        # every launch. (The rung is UNOBSERVABLE in the merge — llm-doc.)
-        levels.append(persona_partial)                  # persona store (live)
-    levels.append(base_levels[3])                       # agent.default
-    if agent_partial is not None:
-        levels.append(agent_partial)                    # 7a descriptor default
-    levels.append(base_levels[4])                       # system
-    levels.append(base_levels[5])                       # base (+ folded floor)
-
-    snapshot = merge(levels)
-    # The INTERNAL binds (spec §2c: not user keys, not repointable) sit OUTSIDE every
-    # user-resettable arm: re-imposed from the floor AFTER the merge, so a user's null or
-    # entry in the same arm can neither drop nor repoint kanibako's own delivery.
-    internal = _internal_floor_binds(floor)
-    if internal:
-        snapshot = merge([dotted_partial(internal), snapshot])
+    snapshot, written = cascade.snapshot, cascade.written
     null_sources: NullSources = {}
     expanded = expand(snapshot, ctx, null_sources=null_sources)
     # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
@@ -2349,24 +2439,6 @@ def build_launch_snapshot(
     # expanded snapshot. The persona, descriptor, CLI and floor rungs are kanibako's
     # own and are deliberately absent (see the function). AFTER the probe, for the
     # reason the probe states.
-    # The agent file's flat state names the file it was read from — the path travels
-    # WITH the level — and ``agent_path`` answers only when the level carries none.
-    state_path = (agent_state.path if agent_state is not None else None) or agent_path
-    written: list[_WrittenLevel] = [
-        (level, path, None)
-        for level, path in (
-            (base_levels[0], box_path),
-            (box_prefs, box_path),
-            (base_levels[1], workset_path),
-            (ws_prefs, workset_path),
-            (state_partial, state_path),
-            (base_levels[2], agent_path),
-            (base_levels[3], agent_path),
-            (base_levels[4], system_path),
-        )
-        if level is not None
-    ]
-    written.append((base_levels[5], base_path, dotted_partial(floor)))
     # Then spec §0's RESOLVE clause, enforced. ⚑ A SIBLING of the probe, never a mode
     # of it: the probe is REPORT-ONLY by its own module contract, and the two share
     # the ORACLE so the refusal arms exactly what was measured.

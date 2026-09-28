@@ -59,6 +59,8 @@ def resolve_inputs(*, subject: Literal[ResolveSubject.WORKSET], std, agent_name:
 @overload
 def resolve_inputs(*, subject: Literal[ResolveSubject.SYSTEM], std, agent_name: str, system_path: Path | None, proj: None=None, ws: None=None) -> LaunchInputs
 def resolve_inputs(*, subject: ResolveSubject, std, agent_name: str, system_path: Path | None, proj=None, ws: Workset | None=None) -> LaunchInputs
+def fold_floor(*, subject: ResolveSubject, agent_name: str, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None) -> dict[str, object]
+def assemble_cascade(*, agent_name: str, floor: dict[str, object], system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> Cascade
 def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None, subject: ResolveSubject=ResolveSubject.BOX) -> KeyStore
 def reset_none_warnings() -> None
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
@@ -153,6 +155,11 @@ class LaunchInputs:
     prefs: tuple[PrefRequest, ...]
 
     def as_kwargs(self) -> _LaunchInputKwargs
+
+@dataclass(frozen=True)
+class Cascade:
+    snapshot: KeyStore
+    written: tuple[_WrittenLevel, ...]
 
 class AgentGrammar(NamedTuple):
     mode: dict[str, list[str]]
