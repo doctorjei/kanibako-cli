@@ -63,7 +63,9 @@ from kanibako.settings.config import (
     AGENT_META_FILE,
     WORKSET_META_FILE,
     box_scalar_defaults_floor,
+    config_base_path,
     settings_base_path,
+    user_config_file,
 )
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
@@ -112,6 +114,7 @@ from kanibako.settings.settings_resolve import (
     ResolveCtx,
     SettingsError,
     expand_expr,
+    literal_expr,
     normalize_bind_dest,
 )
 
@@ -276,6 +279,22 @@ def auth_chain_floor(
 # The key table, the cut ``ws_settings`` alias, and the chains: the llm-doc.
 
 
+def meta_runtime_host_floor() -> dict[str, object]:
+    """Build the mode-free ``meta.runtime.{user,admin}.*`` floor keys (spec §1A): the HOST files.
+
+    Each value is the path the Layer-1 / ``base`` reads open, off the same helper
+    (``$XDG_CONFIG_HOME`` honored as :func:`~kanibako.settings.config.user_config_file`
+    honors it), so the key and the read cannot disagree. Every subject has these files.
+    Each enters as :func:`~kanibako.settings.settings_resolve.literal_expr`, never as an
+    expression.
+    """
+    return {
+        "meta.runtime.user.config": literal_expr(str(user_config_file())),
+        "meta.runtime.admin.config": literal_expr(str(config_base_path())),
+        "meta.runtime.admin.settings": literal_expr(str(settings_base_path())),
+    }
+
+
 def meta_runtime_floor(
     *,
     mode: str,
@@ -296,7 +315,8 @@ def meta_runtime_floor(
     The re-rooted keys are UNIFORM across modes and construct-set RO per §0, so the
     floor is their sole source. Per-key detail: the llm-doc.
     """
-    floor: dict[str, object] = {}
+    # meta.runtime.{user,admin}.* — the host files, the same in every mode (spec §1A).
+    floor = meta_runtime_host_floor()
 
     # meta.runtime.project_type — the resolved mode token (spec §1A).
     floor["meta.runtime.project_type"] = mode
@@ -1845,7 +1865,7 @@ def resolve_inputs(
     # ONE ctx builder (P7), the box-less arm of the one the BOX subject uses.
     ctx = host_resolve_ctx(std, ws, agent_name)
     meta_identity = _agent_identity(agent_name, None)
-    meta_runtime: dict[str, object] = {}
+    meta_runtime = meta_runtime_host_floor()
     workset_anchor: dict[str, object] = {}
     cascade_workset_path: Path | None = None
     if ws is None:

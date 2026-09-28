@@ -26,10 +26,12 @@ DEFAULT_TERM = 'xterm'
 _VAR_NAME_RE = re.compile('[A-Za-z_][A-Za-z0-9_]*')
 _REF_SEG = f'[{SEGMENT_CHAR_CLASS}{CANONICAL_SEP}]+'
 _REF_NAME_RE = re.compile(f'{_REF_SEG}(?:\\.{_REF_SEG})*')
+_EXPR_SIGNIFICANT: frozenset[str] = frozenset('\\$@~')
 ```
 
 ## Functions
 ```
+def literal_expr(text: str) -> str
 def split_bind(value: str) -> tuple[str, str | None]
 def unpack_bind(value: object) -> tuple[str, str, str | None]
 def unpack_bind_entry(value: object) -> tuple[str, str | None]

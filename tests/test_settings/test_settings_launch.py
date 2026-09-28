@@ -2313,6 +2313,23 @@ def test_meta_runtime_floor_requires_literal_for_non_primary():
     assert floor["meta.runtime.ws_root"] == "@config.primary_workset"
 
 
+@pytest.mark.parametrize("mode", ["primary", "named", "standalone"])
+def test_meta_runtime_floor_carries_the_host_files(mode, tmp_home):
+    """Spec §1A: every mode's floor names the three HOST files, at the paths the reads open
+    (``$XDG_CONFIG_HOME`` honored for the user file)."""
+    from tests.support.filenames import CONFIG_FILENAME, SITE_CONFIG_FILENAME
+
+    site = "/etc/kanibako"
+    floor = meta_runtime_floor(mode=mode, ws_name="__TOKEN__", ws_root_literal="/root")
+    assert {k: v for k, v in floor.items() if k.startswith(("meta.runtime.user.",
+                                                            "meta.runtime.admin."))} == {
+        "meta.runtime.user.config": str(tmp_home / "config" / CONFIG_FILENAME),
+        "meta.runtime.admin.config": f"{site}/{SITE_CONFIG_FILENAME}",
+        "meta.runtime.admin.settings": f"{site}/{SITE_SETTINGS_FILENAME}",
+    }
+
+
+
 def test_meta_runtime_coexists_with_auth_chain():
     """The B1 meta.runtime floor + the auth chain BOTH inject under meta.box.* —
     distinct leaves, no collision (the main launch path passes both)."""

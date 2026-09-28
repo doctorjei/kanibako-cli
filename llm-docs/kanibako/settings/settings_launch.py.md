@@ -343,6 +343,23 @@ meta.runtime.ws_name      | primary → __PRIMARY__ · named → <detected name>
                           | standalone → __STANDALONE__
 ```
 
+The three HOST-file keys come from `meta_runtime_host_floor`, which `meta_runtime_floor` starts
+from. They are the same in every mode, so the SYSTEM subject (which has no mode) carries them too:
+
+```
+meta.runtime.user.config    | config.user_config_file()   ($XDG_CONFIG_HOME honored, as the reads do)
+meta.runtime.admin.config   | config.config_base_path()   (the site Layer-1 file)
+meta.runtime.admin.settings | config.settings_base_path() (the cascade `base` file)
+```
+
+Each value comes from the helper the file's own read uses, so a key cannot name one file while
+the read opens another. There is no second literal of these paths. Each value enters the floor
+through `settings_resolve.literal_expr`, so a `$`/`@`/`\`/`~` in the host path is data, not a token,
+wherever a setting uses the key as a value or a bind source. A box DESTINATION that refers to one
+loses the escape: the reference is expanded host-side (escapes consumed) and the deferred pass pastes
+the raw text, which the box-side resolver re-reads as syntax. That, and the other host paths the
+floors carry raw, are one class tracked on the board.
+
 There is NO `meta.runtime.ws_settings`: spec §1A CUT it — *"no longer needed (unified path)"*. It
 was a one-consumer alias for the value string below, holding exactly that value with exactly ONE
 consumer, so substituting its definition removes a hop without changing a single resolved value.
@@ -901,8 +918,9 @@ in `bootstrap` / `transform` / `--effective` as it does at launch.
   `agent_select.host_resolve_ctx`), then drops every `meta.box.*` key and every key derived from one
   (`meta.box.path`, `meta.box.home`, `meta.box.mode`, `box.canon`, `meta.box.auth.workset_path`, …).
   Its floors equal a member box's with those keys removed, pinned by
-  `tests/test_settings/test_resolve_inputs_subjects.py`. `SYSTEM` builds no runtime or layout floor
-  and the auth chain with `mode=None`, then drops every `meta.box.*`, `meta.workset.*` and
+  `tests/test_settings/test_resolve_inputs_subjects.py`. `SYSTEM` builds no layout floor, only the
+  host-file runtime floor (`meta_runtime_host_floor`), and the auth chain with `mode=None`,
+  then drops every `meta.box.*`, `meta.workset.*` and
   `workset.*` key, the three per-working-set `meta.runtime.*` keys of spec §1A (`ws_root`,
   `ws_name`, `project_type`; the host-file `meta.runtime.{user,admin}.*` stay), and anything derived
   from one (`_box_less_omits`). Both subjects' floors come from `_workset_floors`, the one
