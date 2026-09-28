@@ -1095,11 +1095,11 @@ def _sim_unshare_globally(request):
 #: runner, keeps the hermeticity IN the repo, so bare ``pytest``, the chunked
 #: gate and CI's bare invocation all run the same suite — a runner-side scrub
 #: cannot cover CI, and a second unset leg there would then prove nothing.
-#: ⚑ ``HOME`` / ``XDG_*`` / ``PATH`` / ``SHELL`` are DELIBERATELY absent: tests
-#: that do not take ``tmp_home`` read the real ``HOME``/``XDG_*``, and spawned
-#: subprocesses need ``PATH``. Those stay pinned per test (``tmp_home`` covers
-#: ``HOME``/``XDG_*``); this set holds only signals whose absence is a SPECIFIED
-#: answer the suite already pins both ways.
+#: ⚑ ``HOME`` / ``XDG_*`` / ``PATH`` / ``SHELL`` are DELIBERATELY absent: a
+#: missing ``HOME`` is not a specified answer and spawned subprocesses need
+#: ``PATH``. ``HOME``/``XDG_*`` are REDIRECTED instead, by
+#: ``_isolate_user_dirs`` below; this set holds only signals whose absence is a
+#: SPECIFIED answer the suite already pins both ways.
 _HOST_SIGNAL_VARS = ("COLORTERM", "TERM")
 
 
@@ -1116,4 +1116,39 @@ def _scrub_delivered_host_signals(monkeypatch):
     """
     for _var in _HOST_SIGNAL_VARS:
         monkeypatch.delenv(_var, raising=False)
+    yield
+
+
+#: The user-dir variables ``_isolate_user_dirs`` redirects. ``XDG_RUNTIME_DIR`` is
+#: absent: it holds no store, and its unset/invalid fallback is itself under test.
+_USER_DIR_VARS = ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_user_dirs(request, tmp_path_factory, monkeypatch):
+    """Point ``HOME`` and every ``XDG_*`` base dir at a fresh tree for EVERY test.
+
+    Without this, a test that redirects only ``XDG_CONFIG_HOME`` (or nothing) reaches
+    the REAL store of whoever runs the suite through the ``~/.local/share`` default: it
+    fails locally on a store CI never has, and it can write there. ``tmp_home`` and any
+    test that sets its own layout still win — they run after this autouse fixture. The
+    tree comes from ``tmp_path_factory``, not ``tmp_path``, so a test's own ``tmp_path``
+    stays empty.
+
+    ⚑ NOT for ``integration`` / ``e2e`` tests: they drive the REAL container runtime,
+    whose rootless image store lives under ``HOME``/``XDG_DATA_HOME`` — redirecting it
+    hides the session's ``pulled_image`` from the test that asked for it. They isolate
+    kanibako's own dirs with ``integration_home`` instead.
+    """
+    if request.node.get_closest_marker("integration") or request.node.get_closest_marker("e2e"):
+        yield
+        return
+    root = tmp_path_factory.mktemp("isolated_home")
+    home = root / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    for var in _USER_DIR_VARS:
+        base = root / var.lower()
+        base.mkdir()
+        monkeypatch.setenv(var, str(base))
     yield
