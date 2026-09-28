@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 import yaml
 
@@ -27,11 +25,11 @@ def test_repeated_resolves_parse_the_shipped_file_once(cold_parse, tmp_path, mon
   """
   calls: list[str] = []
 
-  def counting_safe_load(text: str) -> object:
+  def counting_parse(text: str) -> object:
     calls.append(text)
     return yaml.safe_load(text)
 
-  monkeypatch.setattr(core_defaults, "yaml", SimpleNamespace(safe_load=counting_safe_load))
+  monkeypatch.setattr(core_defaults, "parse_packaged", counting_parse)
   for _ in range(3):
     load_merged_config(tmp_path / CONFIG_FILENAME, None)
   assert len(calls) == 1

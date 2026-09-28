@@ -19,6 +19,15 @@ from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 
 
+#: libyaml where PyYAML has it, else pure Python; both are SafeLoaders.
+_PACKAGED_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def parse_packaged(text: str) -> object:
+    """Parse a YAML file kanibako SHIPS (never a user's file) with the fastest safe loader."""
+    return yaml.load(text, Loader=_PACKAGED_LOADER)
+
+
 def _yaml_problem(exc: yaml.YAMLError) -> str:
     """One-line rendering of a YAML parse failure (the problem + where)."""
     if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:

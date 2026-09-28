@@ -39,13 +39,12 @@ import importlib.resources
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from kanibako.settings.agent_config import (
     agent_category_root_ref,
     is_self_resolving,
     root_relative_source,
 )
+from kanibako.settings.config_io import parse_packaged
 from kanibako.settings.core_defaults import add_bind, behavior_defaults
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
@@ -89,7 +88,7 @@ def _expand(value: str) -> str:
 def _load_doc(package: str, filename: str) -> dict[str, Any]:
     """Read and parse a plugin's bundled defaults file."""
     ref = importlib.resources.files(package).joinpath(filename)
-    raw = yaml.safe_load(Path(str(ref)).read_text()) or {}
+    raw = parse_packaged(Path(str(ref)).read_text()) or {}
     if not isinstance(raw, dict):
         return {}
     return raw

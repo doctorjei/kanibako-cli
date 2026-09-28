@@ -8,6 +8,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_io.py.md`.
 ## Variables
 
 ```
+_PACKAGED_LOADER = getattr(yaml, 'CSafeLoader', yaml.SafeLoader)
 _MERGE_TAG = 'tag:yaml.org,2002:merge'
 _VALUE_TAG = 'tag:yaml.org,2002:value'
 _ABSENT = object()
@@ -15,6 +16,7 @@ _ABSENT = object()
 
 ## Functions
 ```
+def parse_packaged(text: str) -> object
 def load_doc(path: Path | None) -> dict
 def dump_doc(path: Path, data: dict) -> None
 def write_root_key(path: Path, key: str, value: object) -> None
