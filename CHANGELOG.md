@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bind without a word. Such an entry, in any dest-keyed category and whether a source or `null`,
   now stops the command, naming the entry and its file, and so does a mask above one of these
   destinations, naming the bind it would remove. A mount collision that involves one of these binds no
-  longer offers to suppress it. See *An entry at the destination of one of kanibako's internal
-  binds is refused* in [MIGRATION.md](MIGRATION.md).
+  longer offers to suppress it. `kanibako workset share add` refuses such a destination with the same
+  message and writes nothing; in 1.8.0-rc2 it answered `Added`. See *An entry at the destination of
+  one of kanibako's internal binds is refused* in [MIGRATION.md](MIGRATION.md).
 
 - **kanibako's own text uses American spelling.** Printed and raised messages, identifiers,
   comments and documentation now read *behavior*, *recognized*, *canceled*. One message shipped in
@@ -234,6 +235,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agent.default`*.
 
 ### Fixed
+
+- **A mask destination is canonicalized like every other box destination.** In 1.8.0-rc2 a
+  `masks` entry kept its spelling as a key, so `/m/` and `/m` were two entries: a `null` at
+  `/m` in a box's settings file did not unmask a working set's `/m/`, and the path stayed masked.
+  A trailing `/` and a leading `~` in a mask destination now name the same path as the bare
+  spelling, as they already did for binds.
 
 - **Setting `box.bindings.ro` to `null` no longer removes kanibako's own binds from the box.** In
   1.8.0-rc2, `bindings: {ro: null}` in a box's or working set's settings file dropped every

@@ -251,16 +251,25 @@ The ARMED bind-shaped category — the one whose category token is not the whole
 ```_BIND_ARMS: tuple[str, str] = ("ro", "rw")```
 The two arms a dest-keyed `bindings` node carries; each holds a `BindMap`.
 
-```_DEST_KEYED_LEAF_CATEGORIES: frozenset[str]```
-The bind-shaped categories whose CATEGORY TOKEN IS THE WHOLE KEY.
+`settings_keyspace.BIND_LEAF_CATEGORIES` (imported; this module's literal copy
+`_DEST_KEYED_LEAF_CATEGORIES` was deleted) is the set of bind-shaped categories whose CATEGORY TOKEN IS
+THE WHOLE KEY: `{"caches", "seeded", "common", "synced"}` — terminal ONE LEVEL SHALLOWER than a
+`bindings` arm, with a `BindMap` for a value. See "the depth rule" above for why this set is not
+redundant with `BIND_CATEGORY_TOKENS`.
 
-`{"caches", "seeded", "common", "synced"}` — terminal ONE LEVEL SHALLOWER than a `bindings` arm,
-with a `BindMap` for a value. See "the depth rule" above for why this set is not redundant with
-`BIND_CATEGORY_TOKENS`.
+```_MARKER_LEAF_CATEGORIES: frozenset[str]```
+The dest-keyed terminal categories whose token is the whole key but whose value is the 3-state MARKER
+rather than a `BindMap` — `{"masks"}`, DERIVED as every one-segment `TERMINAL_CATEGORY_TAILS` entry that
+is not a bind leaf. `_parse_node` and `_insert_dotted` hand such a map to `_parse_marker_map`, which
+canonicalizes each dest with `normalize_bind_dest` (spec §2a "A MOUNT DESTINATION IS CANONICALIZED")
+and keeps each value as authored. Before this, masks skipped canonicalization entirely: `masks: {/m/: true}`
+and a lower scope's `{/m: null}` were two entries, so the unmask never met the mask. Like
+`parse_bind_map`, two spellings of one dest inside ONE map collapse last-wins. `//`, `.` and `..` are NOT
+collapsed (an open question for him, not a decision made here).
 
 ```BIND_CATEGORY_TOKENS: frozenset[str]```
 The bind-shaped category tokens whose subtree holds bind entries. Spelled
-`frozenset({_DEST_KEYED_CATEGORY} | _DEST_KEYED_LEAF_CATEGORIES)`.
+`frozenset({_DEST_KEYED_CATEGORY} | BIND_LEAF_CATEGORIES)`.
 
 `{"bindings", "caches", "seeded", "common", "synced"}` — the tokens as they appear in a file. These
 are path SEGMENTS met on a tree walk, so `bindings` is UNSPLIT here: the walk meets that segment

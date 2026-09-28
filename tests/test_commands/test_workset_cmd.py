@@ -2240,16 +2240,16 @@ class TestWorksetShareListArbitrates:
             "no mount — the mask declared by 'workset.masks[/opt/arb]' at /opt/arb "
         ) in out
 
-    def test_the_masks_key_is_READ_not_rebuilt_from_the_destination(
+    def test_a_tilde_mask_is_named_by_its_canonical_key(
         self, std, config, tmp_home, capsys,
     ):
-        """MUTATION-PROOF for the key: a ``~`` dest makes the two spellings DIFFER.
+        """A ``~``-spelled mask is named by its CANONICAL key.
 
-        A display could fake this row by pasting ``workset.masks.`` in front of the
-        destination it already prints, and every absolute-path case would pass.  A
-        ``~``-spelled mask breaks that: the KEY keeps the tilde the author wrote,
-        while the collapsed destination is the resolved guest path.  Both appear in
-        the line, and they are not the same string.
+        A mask dest is canonicalized at parse (spec §2a "A MOUNT DESTINATION IS
+        CANONICALIZED"), so the key and the collapsed destination now agree on
+        ``~``; the tilde spelling must not survive into the line.  The read-not-rebuilt
+        proof now rests on a ``$VAR`` mask dest, which is NOT canonicalized, so its key and
+        its destination still differ (``test_categories_live.py``'s ``$XDG_DATA_HOME/z`` case).
         """
         from kanibako.settings.settings_resolve import GUEST_HOME
 
@@ -2259,12 +2259,9 @@ class TestWorksetShareListArbitrates:
         })
         rc, out, _err = self._effective("arb-tilde", capsys)
         assert rc == 0
-        assert "workset.masks[~/masked]" in out
+        assert f"workset.masks[{GUEST_HOME}/masked]" in out
         assert f"at {GUEST_HOME}/masked " in out
-        assert f"workset.masks[{GUEST_HOME}/masked]" not in out, (
-            "the key was rebuilt from the destination, so it names a key spelling "
-            "that is not in the user's file"
-        )
+        assert "workset.masks[~/masked]" not in out
 
     def test_a_share_nested_inside_another_share_still_mounts(
         self, std, config, tmp_home, capsys,

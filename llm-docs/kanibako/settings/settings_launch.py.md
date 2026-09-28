@@ -1156,8 +1156,10 @@ entry inside that noun's own table, by dropping the whole table (measured), so t
    under it). A mount or copy entry at a parent is NOT refused: binds fold parent-first, so the
    internal bind still mounts on top (probed in every category). Judged over *written*, like (2): a `base` entry equal
    to the folded floor's is kanibako's own bind. A dest spelled through an `@`-ref or `$VAR` is
-   compared unexpanded. There is no set-time twin because no `set` verb writes a dest-keyed entry
-   (`config_keys.terminal_category_write_error`).
+   compared unexpanded. The per-entry judgment and its wording are the public
+   `internal_bind_refusals(arm, entries, where=, floor_entries=)`, which `workset share add` calls BEFORE
+   it writes, so the one verb that writes a dest-keyed entry cannot store what this refuses. No `set`
+   verb writes one (`config_keys.terminal_category_write_error`).
 
 ⚑ **Before the resolve, beside the `config:`-table refusal, `_refuse_retired_behavior` scans the same
 files** (`cascade_view` of each, most-specific first) for a RETIRED behavior spelling (R-41/RQ-2:
@@ -1610,7 +1612,7 @@ What the arm check asserts is UNCHANGED by the dest-keyed reshape: a bindings ar
 MAP node. Before, a map of names; now, a map of destinations. A scalar / `Bind` / list sitting at
 `<scope>.bindings.ro` is an undeclared shape either way. An ARM-LESS `bindings.<name>` is refused
 too: bindings are declared per arm and the arm is the WHOLE key. `masks` is checked on its own line
-rather than folded into `_BIND_LEAF_CATEGORIES`, because that set is what the EMIT walks with
+rather than folded into `BIND_LEAF_CATEGORIES`, because that set is what the EMIT walks with
 `_emit_bind_map`, and a mask has no source to unpack.
 
 `_require_category_node` refuses a VALUE sitting at a CATEGORY ROOT (spec §2d) and returns the node
@@ -1733,7 +1735,8 @@ options-less rw bind collapses to a bare `rw` and silently loses its relabel and
 
 ## The small shared declarations
 
-`_BIND_LEAF_CATEGORIES` is the set of bind-shaped category tokens that ARE the terminal key — the
+`BIND_LEAF_CATEGORIES` (imported from `settings_keyspace`, derived there from `BIND_CATEGORIES`; the
+local literal copy was deleted) is the set of bind-shaped category tokens that ARE the terminal key — the
 snapshot's `<scope>.<category>` node IS the dest-keyed `BindMap`. `bindings` is the odd one out (its
 map sits under an `ro` / `rw` ARM) and is handled by its own two-line branch at each site, never
 folded in here: the difference is the DEPTH of the node, which is exactly what a shared set would

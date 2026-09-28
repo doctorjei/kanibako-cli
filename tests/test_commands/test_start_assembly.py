@@ -1397,7 +1397,7 @@ class TestTheMaskArm:
                 r"the binding declared by "
                 r"'box\.bindings\.ro\[/home/agent/private/notes\]' of '/tmp' at "
                 r"'/home/agent/private/notes' sits inside the mask declared by "
-                r"'agent\.claude\.masks\[~/private\]' at '/home/agent/private'"
+                r"'agent\.claude\.masks\[/home/agent/private\]' at '/home/agent/private'"
             ),
         ):
             _resolve(std, proj, extra_default_categories={

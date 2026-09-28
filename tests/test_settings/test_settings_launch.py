@@ -848,10 +848,10 @@ class TestAMasksListInTheFloorReachesTheEmit:
         assert all(e.scope == "box" for e in masks)
         # A mask is a value-LESS mount: no host source, ro tmpfs shadow.
         assert all(e.host_src is None and e.options == "ro" for e in masks)
-        # The reported KEY keeps the dest AS WRITTEN (``~/other``) — the key names
-        # what the user can edit; only the emitted box_dest is guest-expanded.
+        # The reported KEY carries the CANONICAL dest: a mask dest is canonicalized at
+        # parse (spec §2a "A MOUNT DESTINATION IS CANONICALIZED"), as a bind dest is.
         assert {e.key for e in masks} == {
-            "box.masks./home/agent/secret", "box.masks.~/other",
+            "box.masks./home/agent/secret", "box.masks./home/agent/other",
         }
         # ...and they arrive in the order the launch's tmpfs mask list takes.
         assert self._tmpfs_masks({"box.masks": ["/home/agent/secret", "~/other"]}) == [

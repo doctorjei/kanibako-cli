@@ -919,6 +919,7 @@ def run_share_add(args: argparse.Namespace) -> int:
     """Add (or overwrite) a workset binding, keyed by its box DESTINATION (R-10)."""
     from kanibako.settings.agent_config import is_self_resolving
     from kanibako.settings.config_io import dump_doc
+    from kanibako.settings.settings_launch import internal_bind_refusals
     from kanibako.settings.settings_resolve import (
         normalize_bind_dest,
         split_bind,
@@ -968,6 +969,13 @@ def run_share_add(args: argparse.Namespace) -> int:
     # ⚑ R-11: the DESTINATION is canonicalized before it is used as a key; the SOURCE
     # never is (its ``~`` is the invoking user's home). Do not make these symmetric.
     guest_dest = normalize_bind_dest(guest_dest)
+    # ⚑ The resolve's own §2c refusal, run BEFORE the write: never store what it refuses.
+    refusals = internal_bind_refusals(
+        f"workset.bindings.{args.mode}", {guest_dest: [host_src]}, where=str(ws_config),
+    )
+    if refusals:
+        print("Error: " + "\n".join(refusals), file=sys.stderr)
+        return 1
     existed = guest_dest in subtree
     # ⚑ The 1-ELEMENT dest-keyed entry (R-6): the destination is the KEY and appears
     # exactly once. Storage is structured (spec §2a); the colon form is input/display only.

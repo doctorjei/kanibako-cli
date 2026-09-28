@@ -8,13 +8,13 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/settings_assemble.p
 ## Variables
 
 ```
-BIND_CATEGORY_TOKENS: frozenset[str] = frozenset({_DEST_KEYED_CATEGORY} | _DEST_KEYED_LEAF_CATEGORIES)
+BIND_CATEGORY_TOKENS: frozenset[str] = frozenset({_DEST_KEYED_CATEGORY} | BIND_LEAF_CATEGORIES)
 RETIRED_FILE_KEYS: 'dict[tuple[str, ...], str]' = {('box', 'agent'): 'box.agent', ('box', 'agent_name'): 'box.agent_name', ('agent', 'default', 'default_agent'): 'system.default_agent'}
 RETIRED_BEHAVIOR_KEYS: 'dict[str, str]' = {'auto_approve': 'access'}
 _log = logging.getLogger(__name__)
 _DEST_KEYED_CATEGORY = 'bindings'
 _BIND_ARMS: tuple[str, str] = ('ro', 'rw')
-_DEST_KEYED_LEAF_CATEGORIES: frozenset[str] = frozenset({'caches', 'seeded', 'common', 'synced'})
+_MARKER_LEAF_CATEGORIES: frozenset[str] = frozenset((tail[0] for tail in TERMINAL_CATEGORY_TAILS if len(tail) == 1)) - BIND_LEAF_CATEGORIES
 _AGENT_DEFAULT_SUB = 'default'
 _NO_LEAF: Any = object()
 _SELECTION_STORY = "The RULE CHANGED in kanibako 1.8.0: a box no longer names its agent with a key of its own — it REQUESTS one at the key that resolves earlier (`pref.system.agent`, spec §2h), and the system default is now `system.agent` (§2g). Refusing rather than running: kanibako cannot tell which agent you meant, and guessing would launch a DIFFERENT agent and seed that agent's credentials into this box."
@@ -53,6 +53,7 @@ def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict
 def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict
 def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=()) -> Any
+def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str
 def _parse_naming_file(raw: dict, *, file_path: Path | None, key_path: tuple[str, ...]=()) -> KeyStore
 def _file_partial(raw: dict, *, path: Path | None=None) -> KeyStore

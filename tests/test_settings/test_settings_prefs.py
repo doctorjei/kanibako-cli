@@ -532,7 +532,8 @@ def test_a_pref_over_masks_is_ONE_request_too(tmp_path):
     (p,) = collect_prefs(None, box)
     assert p.target == "agent.claude.masks"
     assert isinstance(p.value, KeyStore)
-    assert dict.get(p.value, "~/.ssh") is True
+    # The dest is canonicalized at parse (spec §2a), exactly as a bind dest is.
+    assert dict.get(p.value, "/home/agent/.ssh") is True
     # A present-None entry survives VERBATIM — it is the per-entry unmask, and
     # this layer classifies nothing (§2h).
     assert "/home/agent/x" in dict.keys(p.value)

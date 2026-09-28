@@ -11,9 +11,8 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/settings_launch.py.
 SYSTEM_SCALAR_FLOOR: dict[str, object] = {f'system.helpers.{leaf}': value for leaf, value in SPAWN_BUDGET_DEFAULTS.items()}
 BOX_HOME_KEY: Final[str] = 'meta.box.home'
 SELECTION_KEY = 'system.agent'
-_BIND_LEAF_CATEGORIES: frozenset[str] = frozenset({'caches', 'seeded', 'common', 'synced'})
 _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
-_BIND_FLOOR_TAILS: tuple[str, ...] = ('.bindings.ro', '.bindings.rw') + tuple((f'.{c}' for c in sorted(_BIND_LEAF_CATEGORIES)))
+_BIND_FLOOR_TAILS: tuple[str, ...] = ('.bindings.ro', '.bindings.rw') + tuple((f'.{c}' for c in sorted(BIND_LEAF_CATEGORIES)))
 _log = logging.getLogger(__name__)
 _SYSTEM_SHARE_ALLOWED_KEY = 'system.auth.share_allowed'
 _BOX_MODES: frozenset[str] = frozenset((mode.value for mode in BoxMode))
@@ -52,6 +51,7 @@ def meta_agent_identity_floor(agent_name: str, agent_real_name: str | None, agen
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
 def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[_TierFile], subject: ResolveSubject) -> None
+def internal_bind_refusals(arm: str, entries: dict[str, object], *, where: str, floor_entries: dict[str, object] | None=None) -> list[str]
 @overload
 def resolve_inputs(*, subject: Literal[ResolveSubject.BOX], std, agent_name: str, system_path: Path | None, proj, ws: None=None) -> LaunchInputs
 @overload

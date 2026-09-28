@@ -92,6 +92,35 @@ class TestShareAdd:
         assert "Added rw share at '/home/agent/data'" in out
         assert "next box launch" in out
 
+    @pytest.mark.parametrize("mode", ["rw", "ro"])
+    @pytest.mark.parametrize("suffix", ["", "/"])
+    def test_add_at_an_internal_bind_dest_is_refused_before_writing(
+        self, config_file, tmp_home, workset, capsys, mode, suffix
+    ):
+        """An internal bind's dest is not repointable (spec §2c): the WRITE refuses with
+        the resolve's own message, so ``share list --effective`` never meets it later.
+
+        DERIVED from ``internal_bind_keys`` (P13); a trailing ``/`` spelling is the same dest.
+        MUTATION: drop the ``internal_bind_refusals`` call in ``run_share_add`` -> rc 0 and
+        the file gains the entry.
+        """
+        from kanibako.settings.core_defaults import internal_bind_keys
+
+        dests = sorted({dest for _arm, dest in internal_bind_keys()})
+        assert dests, "no internal binds — this test would pass vacuously (P15)"
+        ws_file = workset.root / "workset.yaml"
+        before = ws_file.read_bytes() if ws_file.exists() else None
+        for dest in dests:
+            rc = run_share_add(_add_args(bind=f"/tmp/x:{dest}{suffix}", mode=mode))
+            assert rc == 1
+            err = capsys.readouterr().err
+            assert (
+                f"workset.bindings.{mode}[{dest}] in {ws_file} is at the destination "
+                "of an internal kanibako bind (spec §2c)"
+            ) in err
+        after = ws_file.read_bytes() if ws_file.exists() else None
+        assert after == before
+
     def test_add_ro_writes_key(self, config_file, tmp_home, workset):
         rc = run_share_add(_add_args(bind="/host/docs:/srv/docs", mode="ro"))
         assert rc == 0

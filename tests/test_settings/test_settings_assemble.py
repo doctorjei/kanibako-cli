@@ -990,6 +990,23 @@ def test_masks_not_bind_parsed(tmp_path: Path) -> None:
     assert not isinstance(dict.get(masks, "/x"), (Bind, BindEntry))
 
 
+def test_mask_dests_are_canonicalized_so_spellings_collapse(tmp_path: Path) -> None:
+    # Spec §2a "A MOUNT DESTINATION IS CANONICALIZED" covers a mask dest: ``/m/`` and
+    # ``/m`` are ONE entry, so a box-level unmask of ``/m`` cancels a workset mask of
+    # ``/m/`` instead of both surviving as two keys. ``~`` expands like any guest dest.
+    ws = _write(tmp_path / "ws.yaml", {"box": {"masks": {"/m/": True, "~/": True}}})
+    box = _write(tmp_path / "box.yaml", {"box": {"masks": {"/m": None}}})
+    levels = assemble_levels(agent_name="claude", box_path=box, workset_path=ws)
+    assert set(dict.keys(levels[WORKSET]["box"]["masks"])) == {"/m", "/home/agent"}
+    # The box's unmask of ``/m`` meets the workset's ``/m/`` mask: one entry, unmasked.
+    assert set(dict.keys(merge(levels)["box"]["masks"])) == {"/home/agent"}
+
+
+def test_floor_mask_dests_are_canonicalized() -> None:
+    levels = assemble_levels(agent_name="claude", floor={"box.masks": {"/f/": True}})
+    assert set(dict.keys(levels[BASE]["box"]["masks"])) == {"/f"}
+
+
 # --------------------------------------------------------------------------- #
 # Absent / empty files → empty partials                                       #
 # --------------------------------------------------------------------------- #

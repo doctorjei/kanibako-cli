@@ -5812,7 +5812,8 @@ of these destinations (for example `/opt/kanibako` or `~/canon`) hid kanibako's 
 with no message. A mask above one of these destinations, at any scope, is now refused, naming the
 bind it would remove. A `null` mask entry there (an
 unmask) is still accepted, and so is a bind or copy entry at a parent directory: kanibako's bind is
-mounted on top of it.
+mounted on top of it. `kanibako workset share add` at one of these destinations, which answered
+`Added` in v1.8.0-rc2, now stops with the first message above and writes nothing.
 
 **What to do.** Delete the named entry. To mount something of your own, give it a destination of
 its own. To hide a directory that contains one of these binds, mask narrower paths beside it.
