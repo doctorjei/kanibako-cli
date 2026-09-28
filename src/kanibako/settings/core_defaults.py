@@ -15,9 +15,11 @@ floor. The box-create canon SKELETON also lives here — mirror image of the can
 
 from __future__ import annotations
 
+import copy
 import importlib.resources
 import logging
 from collections.abc import Iterable
+from functools import lru_cache
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -51,13 +53,19 @@ CORE_DEFAULTS_FILENAME = "core-defaults.yaml"
 # deleted with R-9; do not reintroduce one — the producers below are a different, LIVE mechanism.
 
 
-def _load_doc() -> dict[str, Any]:
-    """Read and parse the bundled system/core defaults file."""
+@lru_cache(maxsize=1)
+def _parse_doc() -> dict[str, Any]:
+    """Parse the bundled system/core defaults file ONCE; the cached, never-handed-out original."""
     ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, CORE_DEFAULTS_FILENAME)
     raw = yaml.safe_load(Path(str(ref)).read_text()) or {}
     if not isinstance(raw, dict):
         return {}
     return raw
+
+
+def _load_doc() -> dict[str, Any]:
+    """The bundled system/core defaults document — a FRESH deep copy every call (P8)."""
+    return copy.deepcopy(_parse_doc())
 
 
 def vault_mask_default() -> list[str]:
@@ -89,8 +97,8 @@ def behavior_default(key: str) -> str:
     ⚑ THE ONE SPELLING of this read.  ``start._declared_behavior`` and
     ``settings_keyspace.access_default`` both come here; a second fail-closed copy is
     how the two would drift.
-    ⚑ A FUNCTION, not a constant: :func:`_load_doc` re-reads the shipped file on every
-    call, so a module-level read would bind the value at IMPORT time.
+    ⚑ A FUNCTION, not a constant: tests replace :func:`_load_doc`, and a module-level
+    read would bind the value at IMPORT time, before any patch.
     ⚑ An absent declaration RAISES — it is a PACKAGING defect, and re-materializing a
     literal here would be exactly the consumer-side default this read replaced.
     ⚑ A ``<None>`` row RAISES too, as in :func:`shell_tier_default`: its consumers
