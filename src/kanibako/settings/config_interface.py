@@ -2139,8 +2139,11 @@ def show_config(
 
     if effective:
         # Show all resolved values
+        # ⚑ *config_path* is a BOX tier only for the box noun: the system and workset nouns
+        # pass the Layer-1 ``.cfg`` there (keyspec §1), which is not a settings tier at all.
+        box_tier = config_path if command_scope is ConfigLevel.box else None
         cfg = load_merged_config(
-            global_config_path, config_path, workset_path=workset_path,
+            global_config_path, box_tier, workset_path=workset_path,
         )
         overrides = load_project_overrides(config_path) if config_path else {}
         for fld in fields(cfg):

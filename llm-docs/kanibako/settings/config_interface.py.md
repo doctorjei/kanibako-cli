@@ -1076,7 +1076,10 @@ the file — every box verb, every `--effective` view — still names each dropp
 ### What each view prints
 
 The `--effective` view prints, in order: the merged `KanibakoConfig` fields (each marked
-`(override)` when the level overrides it); the agent settings — a fully-resolved *agent_state*
+`(override)` when the level overrides it) — resolved with *config_path* as the BOX tier at the box
+noun ONLY. The system and workset nouns pass the Layer-1 config file as *config_path* (keyspec
+§1: `.cfg` marks Layer 1, never a settings tier), and feeding it in as the box tier made a legal
+`config:` table refuse the view with a "move under `config:`" cure that was already true; the agent settings — a fully-resolved *agent_state*
 when supplied (the box view, UNMARKED: a box file cannot set an agent key — §0 drops its `agent:`
 table — so no row in it is a box-level override), else the project-level overrides; at a noun that supplies *system_settings_path* the nested settings-tier
 entries in that file (`system.auth.share_allowed`, downward scope defaults) — the values a

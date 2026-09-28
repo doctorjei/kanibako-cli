@@ -2480,3 +2480,22 @@ class TestWorksetVerbsAreCaseBlind:
         ))
         assert rc == 1
         assert "default workset cannot be removed" in capsys.readouterr().err
+
+
+class TestWorksetShowEffectiveReadsNoLayer1AsABoxTier:
+    """``workset show --effective`` never reads the Layer-1 ``kanibako.cfg`` as a box tier,
+    whose legal ``config:`` table (keyspec §1) that tier refuses."""
+
+    def test_a_config_table_in_the_cfg_does_not_refuse_the_view(
+        self, config_file, tmp_home, capsys,
+    ):
+        """MUTATION: feed *config_path* to ``load_merged_config`` in ``show_config`` again and
+        this reds on the refusal."""
+        from kanibako.commands.workset_cmd import run_show
+
+        std = load_std_paths(load_config(config_file))
+        create_workset("cfgtbl", tmp_home / "ws_cfgtbl", std)
+        with config_file.open("a") as fh:
+            fh.write(f"config:\n  journal: {tmp_home / 'journal'}\n")
+        assert run_show(argparse.Namespace(workset="cfgtbl", effective=True)) == 0
+        assert "config.* entries" not in capsys.readouterr().err
