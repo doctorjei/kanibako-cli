@@ -9,7 +9,7 @@ from kanibako.cli import _SUBCOMMANDS, build_parser
 from kanibako.commands.box._parser import run_create
 
 # ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — these tests drive the REAL
-# ``run_create``, which materialises the J-7 canon skeleton and then makes it
+# ``run_create``, which materializes the J-7 canon skeleton and then makes it
 # root-owned + 555 via ``podman unshare``.  Where that works a bare ``rmtree`` dies
 # with EACCES partway through; where it does not (this project's dev box) the same
 # line passes — the asymmetry is the whole bug.  ``remove_box_tree`` is the sanctioned
@@ -299,7 +299,7 @@ class TestRunCreate:
 
         ⚑ The filesystem assertions are the point.  The refusal says "already
         initialized", i.e. *nothing happened* — so prove nothing happened.  The
-        materialising resolve used to run FIRST and re-bootstrap a missing home
+        materializing resolve used to run FIRST and re-bootstrap a missing home
         (``resolve_standalone_project``'s ``if initialize:`` recovery arm) and
         re-mkdir a missing ``workspace/``, and only THEN print the refusal.  Both
         are deleted here precisely so that partial mutation would show up.
@@ -320,8 +320,8 @@ class TestRunCreate:
         assert rc == 1
         captured = capsys.readouterr()
         # ⚑ The FULL message, not a substring: the refusal now reads its path off
-        # the non-materialising PROBE, and that path must still be the resolved
-        # workspace the materialising resolve would have reported.
+        # the non-materializing PROBE, and that path must still be the resolved
+        # workspace the materializing resolve would have reported.
         assert captured.err.strip() == (
             f"Error: project already initialized in {workspace}"
         )

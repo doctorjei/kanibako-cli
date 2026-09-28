@@ -476,7 +476,7 @@ ROM_GUIDE_REL = f"{ROM_CHARTER_REL}/general/ROM_GENERAL.md"
 # ``agent``: J-7 retired the packaged placeholder chapter with the nested-bind model.
 ROM_CHARTER_CHAPTERS = ("general", "workset", "box")
 
-# The charter's PLUGIN chapter.  Guest-only: a mountpoint the box-create skeleton materialises.
+# The charter's PLUGIN chapter.  Guest-only: a mountpoint the box-create skeleton materializes.
 CHARTER_AGENT_CHAPTER = "agent"
 
 # The plugin-rom EMISSION GATE marker, relative to a plugin's ``data/rom`` chapter root.
@@ -523,7 +523,7 @@ def assert_canon_bind_seed_disjoint(
     if violations:
         raise RuntimeError(
             "template seed lands in the MANAGED canon region (box create "
-            "materialises that region ROOT-OWNED, so the copy FAILS WITH EACCES "
+            "materializes that region ROOT-OWNED, so the copy FAILS WITH EACCES "
             "AT CREATE — it does not silently lose, it stops the create with an "
             "OS error; and even where a copy could land, the mount SHADOWS it at "
             "the same path regardless of order, so the content would be invisible "
@@ -742,7 +742,7 @@ HANDBOOK_CONTENTS_REL = f"{HANDBOOK_REL}/SYS_CONTENTS.md"
 # ⚑⚑ A chapter's entry file sits DIRECTLY in the chapter dir — ``SYS_CONTENTS.md`` imports
 # ``<chapter>/<entry>``, and the packaged per-scope chapters ship the same flat shape.  A
 # ``directives/`` level here puts the 0-byte file where nothing imports it, which is a
-# SILENT failure: the fallback still materialises and the unresolved-import warning returns
+# SILENT failure: the fallback still materializes and the unresolved-import warning returns
 # on every launch of every box lacking that chapter.
 HANDBOOK_FALLBACK_ENTRIES: tuple[tuple[str, str], ...] = (
     ("agent", "SYS_AGENT.md"),

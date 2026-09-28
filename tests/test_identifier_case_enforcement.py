@@ -102,7 +102,7 @@ _DECLARED_NAME_ATTRS = frozenset({"name"})
 #: The derivation seam — the only sanctioned way to turn a NAME into a NODE.
 _NODE_SEAM = "agent_node_case"
 
-#: The REF parser.  What it returns is a canonical ref, **not a node**: it normalises
+#: The REF parser.  What it returns is a canonical ref, **not a node**: it normalizes
 #: the separator and validates the charset, and folds NOTHING.  A ref arriving from
 #: outside the process — a ``KANIBAKO_AGENT`` container stamp, a settings VALUE — has
 #: therefore still to pass :data:`_NODE_SEAM` before it may spell a store path.
@@ -350,7 +350,7 @@ def unfolded_node_derivations(tree: ast.Module) -> list[int]:
 def unfolded_stamp_derivations(tree: ast.Module) -> list[int]:
     """Lines spelling a STORE PATH from a ref that was parsed but never folded.
 
-    ``canonicalize_agent_ref`` normalises the separator and validates the charset.  It
+    ``canonicalize_agent_ref`` normalizes the separator and validates the charset.  It
     folds NOTHING — so a ``KANIBAKO_AGENT`` stamp or a settings value that reaches
     ``agent_settings_path`` through it alone names ``agents/Kirobo/`` while the launch
     writes ``agents/kirobo/``.  ``[R173]``: *any lookup that takes a user-supplied or
@@ -692,14 +692,14 @@ class TestNobodyComposesANodeFromADeclaredName:
         assert not offenders, (
             "a store path is spelled from a ref that was parsed but never folded:\n  "
             + "\n  ".join(_cite(rel, "stamp") for rel in offenders)
-            + f"\n\n`{_REF_PARSER}` normalises a ref's separator and validates its "
+            + f"\n\n`{_REF_PARSER}` normalizes a ref's separator and validates its "
             f"charset; it folds NOTHING. A `KANIBAKO_AGENT` stamp or a settings "
             f"VALUE reaching a store path through it alone names `agents/Kirobo/` "
             f"while the launch writes `agents/kirobo/` (spec §0, ⚑ NAMING RULES; "
             f"[R173]: any lookup that takes a value-supplied agent spelling and "
             f"reaches for a node folds at that hop). Fold the HARNESS segment "
             f"through `kanibako.identifiers.{_NODE_SEAM}`, which is what the launch "
-            f"itself does — folding the whole ref would move a capitalised PERSONA's "
+            f"itself does — folding the whole ref would move a capitalized PERSONA's "
             f"store, which the launch does not."
         )
 

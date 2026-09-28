@@ -44,7 +44,7 @@ An edge is an import statement that **executes when the importing module is impo
 * ``try`` / ``except`` / ``if`` / ``with`` / ``for`` / ``while`` / ``match`` bodies are all
   walked. A guarded import still runs.
 
-🛑 **ANCESTOR PACKAGES ARE NOT SYNTHESISED, and that is a modelling decision, not a
+🛑 **ANCESTOR PACKAGES ARE NOT SYNTHESIZED, and that is a modeling decision, not a
 concession.** Importing ``kanibako.targets.base`` does execute ``kanibako/targets/__init__``
 — but if that ``__init__`` is the module already in progress, Python finds it in
 ``sys.modules`` and the import is a no-op. Adding ``X.Y → X`` edges therefore reports the
@@ -244,7 +244,7 @@ def edges(modules: dict[str, Path]) -> list[Arc]:
 def cycles(arcs: list[Arc]) -> list[list[str]]:
     """Every cycle reachable as a back edge, each as a CLOSED path ``a → b → a``.
 
-    A depth-first colouring: a grey node reached again is a back edge, and the grey
+    A depth-first coloring: a gray node reached again is a back edge, and the gray
     stack from that node down is the arc.  One cycle per back edge, which is enough —
     a graph with any cycle has at least one back edge — and the path is what a reader
     needs, not the count.
@@ -253,30 +253,30 @@ def cycles(arcs: list[Arc]) -> list[list[str]]:
     for arc in arcs:
         out.setdefault(arc.importer, []).append(arc.imported)
 
-    WHITE, GREY, BLACK = 0, 1, 2
-    colour: dict[str, int] = {}
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: dict[str, int] = {}
     stack: list[str] = []
     found: list[list[str]] = []
     seen: set[tuple[str, ...]] = set()
 
     def visit(node: str) -> None:
-        colour[node] = GREY
+        color[node] = GRAY
         stack.append(node)
         for nxt in sorted(out.get(node, ())):
-            if colour.get(nxt, WHITE) == GREY:
+            if color.get(nxt, WHITE) == GRAY:
                 arc = stack[stack.index(nxt):]
-                # Normalised by rotation so one cycle is reported once however entered.
+                # Normalized by rotation so one cycle is reported once however entered.
                 key = tuple(arc[arc.index(min(arc)):] + arc[:arc.index(min(arc))])
                 if key not in seen:
                     seen.add(key)
                     found.append([*arc, nxt])
-            elif colour.get(nxt, WHITE) == WHITE:
+            elif color.get(nxt, WHITE) == WHITE:
                 visit(nxt)
         stack.pop()
-        colour[node] = BLACK
+        color[node] = BLACK
 
     for node in sorted({arc.importer for arc in arcs} | {arc.imported for arc in arcs}):
-        if colour.get(node, WHITE) == WHITE:
+        if color.get(node, WHITE) == WHITE:
             visit(node)
     return found
 

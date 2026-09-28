@@ -128,7 +128,7 @@ class TestKanibakoLazyInit:
         # ``global/settings.yaml`` at first run, so a fresh install now has no system
         # settings file until the user sets something.  Nothing needs it to exist —
         # a missing settings file reads as empty and the first ``system set``
-        # materialises it — so an ABSENT file is the strongest form of this pin, not
+        # materializes it — so an ABSENT file is the strongest form of this pin, not
         # a failure of it.
         settings_file = data_path / "global" / "settings.yaml"
         stored = (

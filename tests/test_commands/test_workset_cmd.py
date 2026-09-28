@@ -1729,7 +1729,7 @@ class TestWorksetGetIsWiredToTheClosedKeyspace:
     def test_the_BARE_agent_key_refusal_still_wins_over_the_generic_one(
         self, config_file, tmp_home, capsys,
     ):
-        """ORDER pin: a recognised spelling keeps the cure written for it. The §0 gate
+        """ORDER pin: a recognized spelling keeps the cure written for it. The §0 gate
         runs LAST, or it would overwrite a specific refusal with a vaguer one."""
         from kanibako.commands.workset_cmd import run_get
 
@@ -2321,7 +2321,7 @@ class TestWorksetShareListArbitrates:
     ):
         """MUTATION: hand the display the RETIRED answer and the defect comes back.
 
-        The stand-in is the listing's own former behaviour — every declared bind, no
+        The stand-in is the listing's own former behavior — every declared bind, no
         mask arm, no containment — and it is a throwaway, never the real symbol.  If the
         display had gone on reading the entry list, the cases above would pass anyway.
         """

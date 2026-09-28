@@ -527,8 +527,8 @@ def test_no_watch_context_without_an_agent_stamp(monkeypatch, stamp):
 
 
 @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
-def test_watch_context_canonicalises_the_stamp_before_deriving(stamp):
-    """The watcher's half of canonicalise-on-read (twin of ``test_stop.py``'s).
+def test_watch_context_canonicalizes_the_stamp_before_deriving(stamp):
+    """The watcher's half of canonicalize-on-read (twin of ``test_stop.py``'s).
 
     ``KANIBAKO_AGENT`` carries the OUTSIDE spelling (``+``) because a human reads
     it in the box; ``harness_of`` splits on ``℘`` ALONE, so the raw stamp would
@@ -538,7 +538,7 @@ def test_watch_context_canonicalises_the_stamp_before_deriving(stamp):
     is the seam.
 
     ⚑ BOTH SPELLINGS: ``+`` is what this version stamps, ``℘`` what an
-    already-running older box carries.  Identical behaviour is the back-compat
+    already-running older box carries.  Identical behavior is the back-compat
     guarantee.
     """
     from unittest.mock import MagicMock, patch

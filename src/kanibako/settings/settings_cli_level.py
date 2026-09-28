@@ -123,7 +123,7 @@ def guard_cli_level(
     agent against core alone; the llm-doc has the measured refusal that cost.
 
     ⚑ A dotted key is split on ``.``, so an agent NODE whose name contains a dot is refused
-    by arm 1 rather than silently mis-parsed. Defence in depth since ``agent_ref`` banned
+    by arm 1 rather than silently mis-parsed. Defense in depth since ``agent_ref`` banned
     ``.`` in a persona/harness segment (2026-08-04), kept because every dotted-key builder in
     the launch splits the same way; refusing loudly beats mis-resolving silently.
     """

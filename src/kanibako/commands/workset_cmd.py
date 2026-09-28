@@ -891,7 +891,7 @@ def _share_source_display(value: object) -> str:
             return ""
         src = str(value[0])
         # ⚑ ``value[2:]`` IS ALWAYS EMPTY under the live entry shape — see llm-docs,
-        # "The dead options bracket". Do not read this slice as live behaviour.
+        # "The dead options bracket". Do not read this slice as live behavior.
         extra = [str(p) for p in value[2:] if str(p)]
         return f"{src}  [{', '.join(extra)}]" if extra else src
     return str(value)
@@ -1223,7 +1223,7 @@ def _workset_preview_collapse(entries: "list[CategoryEntry]") -> "CollapsedStore
     # ⚑ THE ENTRY LIST GOES IN AS WELL, and it buys exactly one thing: the
     # DECLARATION KEY behind each collapsed mount
     # (``CollapsedStore.declared_by``). A mask is the row that needs it — every
-    # other loss names a host source the reader can recognise their own key by,
+    # other loss names a host source the reader can recognize their own key by,
     # and a mask has none, so "the mask at /opt/x" was the only diagnosis this
     # listing could give and /opt/x is not a path the swallowed share's key
     # names. ⚑ Passing it changes NO arbitration: the fold is byte-identical
@@ -1325,7 +1325,7 @@ def _print_effective_shares(ws, std) -> int:
 def _print_effective_derivations(ws, std) -> int:
     """Print each ABSTRACT declaration WITH the binding it derives (keyspec §0).
 
-    §0 on the abstract trio: *"The binding they produce is MATERIALISED beside the
+    §0 on the abstract trio: *"The binding they produce is MATERIALIZED beside the
     declaration, so ``--effective`` shows BOTH the declaration and the derived binding
     and a user can see WHY a mount exists."*  The declaration half is rendered by
     ``config_display`` from this noun's own settings file; this is the DERIVED half,
@@ -1334,7 +1334,7 @@ def _print_effective_derivations(ws, std) -> int:
     what the user must SEE."*
 
     🛑 **THE ``binding_derivations`` NODE IS NOT READ, AND MAY NOT BE.** It is
-    materialised BEFORE arbitration for winners and losers alike (R-8), so every row
+    materialized BEFORE arbitration for winners and losers alike (R-8), so every row
     in it reads as a live mount — a ``common`` declaration a mask swallowed would
     print ``(mount)`` with the mask invisible.  The answer comes from PAIRING the
     declarations against the COLLAPSE, which is the one decision function
@@ -1363,7 +1363,7 @@ def _print_effective_derivations(ws, std) -> int:
     rc 0 and now reports ``Error: Unknown variable: …`` at rc 1, with no abstract
     declaration anywhere in the file.  MEASURED both ways.  That is the intended
     answer — a view that cannot resolve the file must not claim rc 0 — but it is a
-    BEHAVIOUR CHANGE to the shipped verb, not a no-op for the ungated case.
+    BEHAVIOR CHANGE to the shipped verb, not a no-op for the ungated case.
     """
     from kanibako.errors import CategoryCollisionError
     from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE

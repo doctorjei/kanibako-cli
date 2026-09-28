@@ -240,7 +240,7 @@ def test_context_slug_and_name():
 
 
 def test_context_slug_distinct_dests_never_collide():
-    # The readable normalisation is lossy; the digest keeps these apart.
+    # The readable normalization is lossy; the digest keeps these apart.
     assert vr.context_slug("me@host") != vr.context_slug("me/host")
     assert vr.context_slug("me@host") == vr.context_slug("me@host")
 
@@ -268,7 +268,7 @@ def _write_store_config(
 
 def test_state_dir_defaults_under_the_state_key_when_no_config():
     """No config under the isolated ``XDG_CONFIG_HOME`` → ``system.state``'s own default,
-    exactly the prior hardcoded behaviour (TOTAL: absent config never raises)."""
+    exactly the prior hardcoded behavior (TOTAL: absent config never raises)."""
     assert vr._vscode_remote_state_dir() == (
         Path(os.environ["XDG_STATE_HOME"]) / "kanibako" / "vscode-remote"
     )
@@ -285,7 +285,7 @@ def test_state_dir_follows_a_repointed_system_state(tmp_path):
 
 def test_state_dir_ignores_a_repointed_config_data(tmp_path):
     """[R166] MUTATION PROOF: state has no relationship to ``config.data``.  The retired
-    behaviour put this under ``$XDG_STATE_HOME/custom_store``."""
+    behavior put this under ``$XDG_STATE_HOME/custom_store``."""
     _write_store_config(tmp_path / "custom_store")
     assert vr._vscode_remote_state_dir() == (
         Path(os.environ["XDG_STATE_HOME"]) / "kanibako" / "vscode-remote"

@@ -666,7 +666,7 @@ class TestImageSharingConfig:
     """Tests for the ``box.share_images`` SETTINGS key.
 
     ⚑⚑ THE FIXTURE FILE AND THE CLAIM MOVED HERE ON 2026-08-31 (R153), NOT THE
-    BEHAVIOUR.  Every case below wrote its ``box:`` table into a path named
+    BEHAVIOR.  Every case below wrote its ``box:`` table into a path named
     ``kanibako.cfg`` and read it back with ``load_config`` — green, because that
     was a GENERAL document reader.  Spec §1 gives the Layer-1 bootstrap file the
     ``config.*`` paths ALONE, so the key's file is a SETTINGS file and its reader is
@@ -679,7 +679,7 @@ class TestImageSharingConfig:
     (``box.image``: ``ws-img:2`` witnessed live, then ``box-img:3`` winning).  A version
     of it on ``box.share_images`` cannot fail: ``false`` IS this key's declared default
     (spec §2b), so a workset tier holding ``false`` is indistinguishable from no workset
-    tier at all.  What belongs here is this key's own behaviour as a real bool — and the
+    tier at all.  What belongs here is this key's own behavior as a real bool — and the
     ``true``-floor case below carries the precedence anyway, in the one direction where
     the assertion can tell the tiers apart.
     """

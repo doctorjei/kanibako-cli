@@ -1,9 +1,9 @@
 """The CLI-facing config KEY TAXONOMY — what a key is, and where it lives.
 
 **_Terminology_**
-- _family_: a CLI-surface key SHAPE recognised by SPELLING (``pref.<target>``,
+- _family_: a CLI-surface key SHAPE recognized by SPELLING (``pref.<target>``,
   ``agent.<node>.<leaf>``, ``<scope>.<category>.<name>``, ``<scope>.secret_path.<VAR>``, the bare
-  agent behaviour keys, the routed scalars, the config-file-only bootstrap tier)
+  agent behavior keys, the routed scalars, the config-file-only bootstrap tier)
 - _route_: the ``(sections, leaf)`` nested slot in a settings file a key is stored at
 - _refusal_: the ``Error: …`` string a verb returns for a key it will not serve
 
@@ -169,7 +169,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
     "config.agents",
     "config.primary_workset",
     "config.registry",
-    # config.journal: the lifecycle-journal location, recognised for sibling parity (§3.3).
+    # config.journal: the lifecycle-journal location, recognized for sibling parity (§3.3).
     "config.journal",
     # Layer-2 system.* path SETTINGS (the ``system:`` table of the SYSTEM SETTINGS
     # file, spec §2g).  ``global`` is ELIMINATED (children inline
@@ -217,7 +217,7 @@ KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({
 })
 
 # The RETIRED bare env-var prefix (R-39, spec §2a), kept ONLY so the spelling stays
-# RECOGNISED as key-shaped and the verbs can refuse it with a cure.
+# RECOGNIZED as key-shaped and the verbs can refuse it with a cure.
 DYNAMIC_PREFIXES: tuple[str, ...] = ("env.",)
 
 # ---------------------------------------------------------------------------
@@ -409,7 +409,7 @@ def is_path_valued_key(canonical: str) -> bool:
     The FIXED spellings come from :data:`KEY_TYPES`; the three PARAMETRIC families —
     the bare agent leaves the CLI serves for the any-agent tier, the per-node
     ``agent.<node>.{template,canon}``, and ``secret_path.<VAR>`` at every scope — have
-    no fixed string and are recognised by their own parsers.
+    no fixed string and are recognized by their own parsers.
     """
     if KEY_TYPES.get(canonical) == "path":
         return True
@@ -483,7 +483,7 @@ def agent_node_of(canonical: str) -> str:
     ``_agent_scope_node`` left: an ``agent.<node>.bindings.{ro,rw}.<name>`` set is refused
     BY NAME in the verb preamble (R-9), so an arm for it could never change an outcome —
     it would be dead the day it was written.  :func:`resolve_key` carries that arm because
-    it canonicalises a key the READ verbs still serve; this answers a WRITE-time question.
+    it canonicalizes a key the READ verbs still serve; this answers a WRITE-time question.
     """
     parsed = (
         _parse_agent_node_secret_key(canonical)
@@ -554,7 +554,7 @@ def _scope_direction_error(
 # dotted token is the whole string) fell to the Layer-1 ``kanibako.cfg``
 # floor while ``box.image`` went to the settings tier. The SPELLING chose the
 # precedence. There is no mapping left to consult, so no verb can route one.
-# ⚑ DO NOT REINTRODUCE A SPELLING NORMALISER HERE. A key has ONE spelling (spec §0,
+# ⚑ DO NOT REINTRODUCE A SPELLING NORMALIZER HERE. A key has ONE spelling (spec §0,
 # the keyspace is CLOSED); a second one is not an alias, it is a second keyspace.
 # The one-way display flatten went with it — a confirmation echoes the CANONICAL
 # dotted key, so a successful ``set`` cannot teach a form the next ``get`` refuses.
@@ -655,7 +655,7 @@ def plugin_declared_leaf_map() -> "Mapping[str, Collection[str]]":
     """harness → the leaves that PLUGIN declares (spec §0, ``[R150]``), or empty.
 
     ⚑ ONE SUPPLIER FOR THIS MODULE, and that is the whole point of it being a function:
-    the per-node RECOGNISER (:func:`_parse_persona_agent_key`) and the ``agent`` noun's
+    the per-node RECOGNIZER (:func:`_parse_persona_agent_key`) and the ``agent`` noun's
     §0 GATE (:func:`agent_key_reason`) asked two different sources until 2026-08-29, so
     a plugin leaf was a key at one verb and not at another.  ``default_valid_agents`` is
     the source both use now: it is the production ``valid_agents`` supplier, it memoizes
@@ -681,7 +681,7 @@ def plugin_declared_leaf_map() -> "Mapping[str, Collection[str]]":
 class _PluginDeclaredLeafMap(Mapping[str, "Collection[str]"]):
     """:func:`plugin_declared_leaf_map` as a map that DISCOVERS ON THE FIRST QUESTION.
 
-    ⚑⚑ IT MUST NOT BE MATERIALISED AT IMPORT OR AT A CALL SITE.  Discovery imports and
+    ⚑⚑ IT MUST NOT BE MATERIALIZED AT IMPORT OR AT A CALL SITE.  Discovery imports and
     instantiates every installed plugin, and those modules parse YAML in their module
     bodies; it was measured at ``+67 ms`` per settings-resolving command (2026-08-25),
     73% of the whole resolve, when it rode in as an eagerly-evaluated keyword argument.
@@ -745,7 +745,7 @@ AGENT_DEFAULT_SUB = "default"
 #: ``agents/default/agent.yaml`` (:func:`agent_default_tier_leaf` says so) and
 #: ``kanibako agent get default <category>`` exits 1 on "agent 'default' not found".
 #: The tier is a table in the SYSTEM settings file.
-#: ⚑ ONE SOURCE (P10) BECAUSE IT ALREADY TRAVELLED WRONG: two sibling refusals in this
+#: ⚑ ONE SOURCE (P10) BECAUSE IT ALREADY TRAVELED WRONG: two sibling refusals in this
 #: module name this destination — :func:`terminal_category_write_error` and
 #: :func:`agent_node_bind_retired_error` — and only the first had the measurement, so
 #: the second sent users to the file that must not exist. Both take it from here now.
@@ -763,12 +763,12 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
 
     ⚑⚑ THE LEAF TEST IS WHAT DECIDES WHERE THE NODE ENDS, so the node is a BY-PRODUCT
     of the leaf verdict rather than the other way round — which is why ``[R150]``'s
-    per-agent judgement had to reach in here and not merely sit beside it.  The node
+    per-agent judgment had to reach in here and not merely sit beside it.  The node
     offered to :func:`~kanibako.settings.settings_keyspace.agent_leaf_is_declared` is
-    the whole of ``parts[:-1]``, and that function normalises it: the keys arriving
-    here are RAW (``resolve_key`` calls this BEFORE canonicalisation), and
+    the whole of ``parts[:-1]``, and that function normalizes it: the keys arriving
+    here are RAW (``resolve_key`` calls this BEFORE canonicalization), and
     ``harness_of`` splits on ``℘`` alone, so a raw ``nav+claude`` judged without
-    normalising would miss the map and be silently CONCEDED.
+    normalizing would miss the map and be silently CONCEDED.
 
     🛑 IT IS NOT PURELY STRUCTURAL, AND MUST NOT BECOME SO.  Returning
     ``("claude", "zippity")`` for an undeclared tail flips :func:`_is_persona_agent_key`
@@ -778,9 +778,9 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
     ⚑⚑ BOTH ARMS JUDGE, AND ONLY SINCE 2026-09-09: the rule above was written for the
     leaf arm and the ``env.`` arm below simply did not obey it, so the §0 breach it
     describes was live at that spelling.  A new section admitted to
-    :data:`_PERSONA_ENV_SECTIONS` owes a judgement of its own tail — never a shape test
+    :data:`_PERSONA_ENV_SECTIONS` owes a judgment of its own tail — never a shape test
     alone.
-    ⚑ NON-RAISING, like every recogniser: a malformed ref is not a key, and saying so
+    ⚑ NON-RAISING, like every recognizer: a malformed ref is not a key, and saying so
     is the whole of the answer.
     """
     if not key.startswith("agent."):
@@ -832,7 +832,7 @@ def access_value_error(canonical: str, value: str) -> str | None:
     legal = " | ".join(ACCESS_TIERS)
     return (
         f"Error: {canonical} must be one of {legal} (spec §2d); got {value!r}. "
-        f"An unrecognised permission tier is REFUSED, never treated as "
+        f"An unrecognized permission tier is REFUSED, never treated as "
         f"'{access_default()}'."
     )
 
@@ -844,7 +844,7 @@ def access_value_error(canonical: str, value: str) -> str | None:
 
 # ``agent.<node>.bindings.{ro,rw}.<name>`` — the per-node descriptor delivery bind;
 # ``<node>`` is NON-greedy so the FIRST category segment splits node from name.
-# ⚑ THIS IS THE AGENT-SCOPE READ PARSER, NOT THE RECOGNISER (that is
+# ⚑ THIS IS THE AGENT-SCOPE READ PARSER, NOT THE RECOGNIZER (that is
 # ``settings_categories.AGENT_BIND_KEY_RE``, which covers all six categories).
 # ⚑⚑ DO NOT WIDEN IT to the other four — there is nothing to widen it TO, and a
 # widened parser would invent a read for a spelling the keyspace refuses. See llm-docs.
@@ -910,7 +910,7 @@ def _node_secret_display_key(canonical: str) -> str:
 
 def _is_bare_env_key(key: str) -> bool:
     """The RETIRED bare docker-``.env`` spelling ``env.<VAR>`` (R-39, spec §2a)."""
-    # ⚑ RECOGNISE-TO-REFUSE ONLY; the live family is the SCOPED ``<scope>.env.<VAR>``.
+    # ⚑ RECOGNIZE-TO-REFUSE ONLY; the live family is the SCOPED ``<scope>.env.<VAR>``.
     return key.startswith("env.")
 
 
@@ -1033,7 +1033,7 @@ def agent_default_tier_category(key: str) -> "tuple[str, str] | None":
     naming a hand-edit, and a hand-authored value read back "(not set)" (spec §0 forbids
     the fabricated answer) — a declared, ``cli_set: true`` key with no CLI route at all.
 
-    ⚑ DERIVED (P13) from the two RECOGNISERS, never from a hand list of category names:
+    ⚑ DERIVED (P13) from the two RECOGNIZERS, never from a hand list of category names:
     :func:`_parse_agent_node_secret_key` is the ``secret_path`` shape and
     :func:`_parse_persona_agent_key`'s section arm is the ``env`` one, so both VARs are
     JUDGED against the declared §2a shape rather than merely counted.
@@ -1191,7 +1191,7 @@ def _names_agent_leaf(canonical: str, leaf: str) -> bool:
 
 def _is_box_agent_key(key: str) -> bool:
     """The RETIRED box-scoped agent mirror ``box.agent.<key>`` (spec §2b)."""
-    # ⚑ RECOGNISE-TO-REFUSE ONLY (P7); the replacement is the §2h request.
+    # ⚑ RECOGNIZE-TO-REFUSE ONLY (P7); the replacement is the §2h request.
     return key.startswith("box.agent.")
 
 
@@ -1282,7 +1282,7 @@ def is_known_key(arg: str) -> bool:
     # question really is "key or project name" — so do NOT re-wire this into a gate.
     if arg in KNOWN_CONFIG_KEYS:
         return True
-    # Bare env.<VAR> — RETIRED (R-39), recognised so the verbs can refuse it.
+    # Bare env.<VAR> — RETIRED (R-39), recognized so the verbs can refuse it.
     if any(arg.startswith(p) for p in DYNAMIC_PREFIXES):
         return True
     # pref.<target-key> — the §2h REQUEST family; SHAPE-only here.
@@ -1479,7 +1479,7 @@ def _is_agent_scope_bind_key(key: str) -> bool:
 
 def _is_scope_bind_key(key: str) -> bool:
     """The RETIRED SCOPE-level bind route ``{system,workset,box}.bindings.{ro,rw}.<name>``."""
-    # ⚑ RECOGNISE-TO-REFUSE (R-9); it does NOT cover the AGENT scope, which needs a
+    # ⚑ RECOGNIZE-TO-REFUSE (R-9); it does NOT cover the AGENT scope, which needs a
     # non-greedy node split — that is :func:`_is_agent_scope_bind_key`.
     return _scope_bind_match(key) is not None
 
@@ -1488,7 +1488,7 @@ def _retired_because(category: str) -> str:
     """WHY a bind-shaped category has no CLI write route — the one clause that differs BY CATEGORY."""
     # ⚑ The two RETURNED strings are pinned APART by
     # ``test_config_interface.TestCategoryConfigSet.test_the_refusal_states_the_RULING_not_the_shape``
-    # on the OLD justification; collapsing them is a behaviour+test change. See llm-docs.
+    # on the OLD justification; collapsing them is a behavior+test change. See llm-docs.
     if category.startswith("bindings."):
         return (
             "the two bindings arms are a single terminal key keyed by DESTINATION, "
@@ -1665,8 +1665,8 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     which a legitimate ``agent.goose.provider`` would be refused.
 
     ⚑ :data:`AGENT_LEAF_MAP`, THE MODULE'S ONE SUPPLIER, and it is passed rather than
-    materialised.  ``default_valid_agents().leaf_map`` read here directly would be the same
-    VALUE reached a second way, and the per-node recogniser did not read it at all — which is
+    materialized.  ``default_valid_agents().leaf_map`` read here directly would be the same
+    VALUE reached a second way, and the per-node recognizer did not read it at all — which is
     how one verb came to declare a key another called unknown.  Passing it also DEFERS
     discovery: a core §2d leaf is answered without importing a single plugin.
 
@@ -1674,7 +1674,7 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     FLAT leaf set and had no concession parameter, so this refused ``agent.goose.provider``
     wherever goose was not installed — measured on a simulated claude-only machine, and this is
     the gate every reader of an agent file passes, the launch included (``agent_file.load``), so a goose store on a machine where goose had
-    been uninstalled would not start.  ``[R150]``: *"per-agent judgement applies where the
+    been uninstalled would not start.  ``[R150]``: *"per-agent judgment applies where the
     vocabulary is readable; where it is not, the concession still governs."*
 
     🛑 THERE IS NO IDENTITY ALLOWLIST ANY MORE, AND DO NOT PUT ONE BACK (D8b, 2026-09-15).  An
@@ -1918,7 +1918,7 @@ def foreign_scope_read_error(
         return None
     # ⚑ THE MESSAGE STATES THE FRAGMENT REASON, and must NOT say this noun cannot STORE the
     # key — measured false (basis 2 above: the system file carries ``box.caches`` and the
-    # launch honours it).  What is true is that storing a fragment is not holding the value.
+    # launch honors it).  What is true is that storing a fragment is not holding the value.
     return (
         f"Error: '{key}' cannot be read at the '{noun}' noun: it is a declared {scope}-scope "
         f"key whose value is merged entry by entry across tiers, so this noun holds at most a "
@@ -1955,7 +1955,7 @@ def scope_read_key_error(
     refusal and this gate is where that refusal happens.
 
     ⚑ LAST of the handlers' guards, never first.  ``bare_env_retired_error`` and
-    ``bare_agent_key_scope_error`` refuse a RECOGNISED spelling by name and hand back a cure;
+    ``bare_agent_key_scope_error`` refuse a RECOGNIZED spelling by name and hand back a cure;
     a generic "not a key" arriving before either one would overwrite the cure with less truth.
     """
     canonical = resolve_key(key)
@@ -2047,7 +2047,7 @@ def _is_path_category_key(key: str) -> bool:
     # ⚑⚑ IT IS NOW FALSE FOR EVERY KEY, AND THAT IS THE CORRECT ANSWER (2026-08-08c).
     # ⚑ KEPT, not inlined to ``False``: it must keep asking the REGEX, so re-admitting a
     # per-name category stays a one-line edit to ``_NON_TERMINAL_BIND_CATEGORIES``.
-    # ⚑⚑ It is NO LONGER A RECOGNISER — do not wire it back into one (llm-docs).
+    # ⚑⚑ It is NO LONGER A RECOGNIZER — do not wire it back into one (llm-docs).
     from kanibako.settings.settings_categories import BIND_KEY_RE
 
     return BIND_KEY_RE.match(key) is not None

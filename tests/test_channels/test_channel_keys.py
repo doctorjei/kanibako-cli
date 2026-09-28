@@ -99,7 +99,7 @@ class TestWorksetLocalLeafRepoints:
     """The four workset-LOCAL keys (spec §2c) — repoint each, read the derivation."""
 
     def test_channelroot_repoint_moves_the_whole_family(self, named_proj, std):
-        """The pre-existing behaviour, kept honest: the leaves follow their root."""
+        """The pre-existing behavior, kept honest: the leaves follow their root."""
         ws_root = named_proj.group.root
         _repoint(ws_root, "workset.channelroot", "@meta.workset.path/comms")
         wch = channels.workset_channel_paths(named_proj, std)
@@ -109,7 +109,7 @@ class TestWorksetLocalLeafRepoints:
         assert wch.chat == ws_root / "comms" / "chat"
         assert wch.share == ws_root / "comms" / "share"
 
-    def test_common_repoint_is_honoured(self, named_proj, std):
+    def test_common_repoint_is_honored(self, named_proj, std):
         ws_root = named_proj.group.root
         _repoint(ws_root, "workset.channels.common", str(ws_root / "elsewhere-common"))
         wch = channels.workset_channel_paths(named_proj, std)
@@ -118,7 +118,7 @@ class TestWorksetLocalLeafRepoints:
         # The siblings are UNMOVED — a leaf is a leaf, not a second root.
         assert wch.chat == wch.root / "chat"
 
-    def test_chat_repoint_is_honoured(self, named_proj, std):
+    def test_chat_repoint_is_honored(self, named_proj, std):
         ws_root = named_proj.group.root
         _repoint(ws_root, "workset.channels.chat", str(ws_root / "talk"))
         wch = channels.workset_channel_paths(named_proj, std)
@@ -129,7 +129,7 @@ class TestWorksetLocalLeafRepoints:
         # so moving chat moves it — that is the manifest's own formula, not a join.
         assert wch.chat_broadcast == ws_root / "talk" / "broadcast.md"
 
-    def test_share_repoint_is_honoured(self, named_proj, std):
+    def test_share_repoint_is_honored(self, named_proj, std):
         ws_root = named_proj.group.root
         _repoint(ws_root, "workset.channels.share", str(ws_root / "outbox"))
         wch = channels.workset_channel_paths(named_proj, std)
@@ -143,7 +143,7 @@ class TestWorksetLocalLeafRepoints:
         addr = channels.box_channel_addresses(named_proj, std)
         assert addr.share_workset == ws_root / "outbox" / named_proj.name
 
-    def test_broadcast_repoint_is_honoured(self, named_proj, std):
+    def test_broadcast_repoint_is_honored(self, named_proj, std):
         """``broadcast`` names a FILE, and had no consumer at all before R-35's repair."""
         ws_root = named_proj.group.root
         _repoint(ws_root, "workset.channels.broadcast", str(ws_root / "shout.md"))
@@ -206,7 +206,7 @@ class TestThePrimaryWorksetIsNotSpecial:
     and it is the workset almost every box is in.
     """
 
-    def test_a_chat_repoint_in_the_primary_workset_is_honoured(self, primary_proj, std):
+    def test_a_chat_repoint_in_the_primary_workset_is_honored(self, primary_proj, std):
         ws_root = channels.workset_root(primary_proj, std)
         assert ws_root == std.primary_workset
         _repoint(ws_root, "workset.channels.chat", str(ws_root / "talk"))
@@ -214,7 +214,7 @@ class TestThePrimaryWorksetIsNotSpecial:
         assert wch is not None
         assert wch.chat == ws_root / "talk"
 
-    def test_a_mailboxes_repoint_in_the_primary_workset_is_honoured(
+    def test_a_mailboxes_repoint_in_the_primary_workset_is_honored(
         self, primary_proj, std,
     ):
         ws_root = channels.workset_root(primary_proj, std)
@@ -256,7 +256,7 @@ class TestAllProjectsPartitionRepoints:
             std.channels_mailboxes / channels.WS_TOKEN_STANDALONE
         )
 
-    def test_a_standalone_box_honours_a_mailboxes_repoint(
+    def test_a_standalone_box_honors_a_mailboxes_repoint(
         self, standalone_proj, std, tmp_home,
     ):
         _repoint(

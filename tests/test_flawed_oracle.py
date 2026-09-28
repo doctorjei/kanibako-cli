@@ -207,7 +207,7 @@ def flawed_oracle_categories(
        the SettingsError surface.  Those are LIVE.  **Read this file as coverage
        of the resolve primitives, NOT as conformance coverage for the category
        route** — the category shapes it feeds them are frozen legacy, and a
-       divergence between them and live category behaviour is EXPECTED, not a
+       divergence between them and live category behavior is EXPECTED, not a
        finding.
 
        It is NOT a correctness authority.  On any divergence the SPEC adjudicates
@@ -812,7 +812,7 @@ class TestPrecedenceAndSuppression:
 
 
 class TestRootJoin:
-    """⚑ DELETED BEHAVIOUR — these guard NOTHING in the product (P3, 2026-07-31).
+    """⚑ DELETED BEHAVIOR — these guard NOTHING in the product (P3, 2026-07-31).
 
     The assembly-time root-prepend they exercise lives ONLY in this file's frozen
     copy of the retired by-name resolver. The live path no longer joins anything:
@@ -820,7 +820,7 @@ class TestRootJoin:
     (spec §2a L474-486, which names the mechanism and requires its deletion).
 
     They stay because this whole file is a QUARANTINED frozen baseline — deleting
-    parts of a frozen artefact defeats its purpose — but do NOT read them as a
+    parts of a frozen artifact defeats its purpose — but do NOT read them as a
     statement about how kanibako resolves a source, and do NOT copy the shape.
     """
 
@@ -917,7 +917,7 @@ class TestIsCategoryKey:
 #
 # 🛑 THE FROZEN HALVES OF THIS FILE ARE UNTOUCHED AND STAY WHOLE.  The frozen thing
 # is ``flawed_oracle_categories`` and the ``_FROZEN_*`` copies beside it; the file's
-# charter forbids part-editing that artefact, and nothing above or below this marker
+# charter forbids part-editing that artifact, and nothing above or below this marker
 # was edited except the one depth-order test that read the retired function's sorted
 # output and now sorts on the PUBLIC ``path_depth`` key instead.
 #

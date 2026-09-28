@@ -174,7 +174,7 @@ open exactly the hole this guard exists to close, on the very keys that lost the
   this guard. The per-entry AGENT-scope spelling it used to catch is now refused a step EARLIER,
   by `_pref_target_error` — the target is not a key at all.
 * ⚑ `pref` is NOT a retired route — a box may still REQUEST a bind change — so the retired
-  spellings must keep being recognised here even though the verbs refuse them.
+  spellings must keep being recognized here even though the verbs refuse them.
 * ⚑ Of the two node/scope retirement terms only the AGENT one is currently REACHABLE: the §2h
   allowlist refuses `pref.<file-scope>.…` several steps earlier, so `SCOPE_BIND_KEY_RE` here is
   belt-and-braces. Kept anyway — this is a value-shape rule about a target, and a rule that reads
@@ -711,7 +711,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   `agent_file.load` reads back (state leaf under `agent:`; `env.<VAR>` under `env:`). The
   SECRET pointer `secret_path.<VAR>` is handled EARLIER (discriminated node storage), not here.
   The node was `℘`-canonicalized by `resolve_key`. Sparse by construction: `write_nested_key` is
-  read-modify-write, so only the key the user set is materialised — a default-only persona file
+  read-modify-write, so only the key the user set is materialized — a default-only persona file
   stays empty of everything else. The value is written VERBATIM (like every other agent-setting
   write) — the persona-critical trio (`endpoint`, `secret_path.ANTHROPIC_AUTH_TOKEN`, `model`)
   are strings. `agents_root` is supplied only by the system scope (the global `config.agents`
@@ -738,7 +738,7 @@ pre-existing defect still allows the set and `config set` stays usable to REPAIR
   Do not restore it without a spec edit.
 * **Regular config keys** — routed via the single known-key table (the H1 fix: an unknown key
   returns an error string and NEVER raises). ⚑ The canonical dotted spelling and ONLY it — the flat
-  underscore form used to be normalised in here and is now refused by name (see the deleted
+  underscore form used to be normalized in here and is now refused by name (see the deleted
   `config_keys._route_key`); `_coerce_value` is the H2 fix (real `bool` etc.) and only returns
   a `str` for a typed key when coercion failed. The confirmation echoes the CANONICAL key, so a
   successful `set` cannot advertise a form `get` refuses. A scope-prefixed SETTINGS key (`{agent,workset,
@@ -1083,7 +1083,7 @@ entries in that file (`system.auth.share_allowed`, downward scope defaults) — 
 `set` at that scope stores and the launch cascade reads (F2: the effective view must show what
 set wrote); the `pref`
 REQUESTS and the RESULT each produced (spec §2h read verbs); the path-delivery CATEGORIES and
-their materialised derivations (§0); and the env vars.
+their materialized derivations (§0); and the env vars.
 
 The plain view prints the project overrides, the agent settings, that same noun's nested
 settings-tier overrides (they ARE overrides at this level), and the `pref` REQUESTS stored at this

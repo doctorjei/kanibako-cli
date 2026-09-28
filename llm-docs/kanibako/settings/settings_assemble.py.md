@@ -505,7 +505,7 @@ Drop a CONTAINING-scope, `meta:` or `binding_derivations:` top-level table (spec
    INTERNAL derivations node at the snapshot root (R-8, manifest `not_keys.reserved_internal`) —
    machinery output regenerated per launch by `commands.start._install_derived_bindings`, not a key.
    A hand-forged table in a settings file would otherwise ride into the snapshot beside the real
-   materialisation: phantom `--effective` lines, and a non-`Bind` leaf crashes the `derived_bindings`
+   materialization: phantom `--effective` lines, and a non-`Bind` leaf crashes the `derived_bindings`
    lens with `ViewError`. Same profile as `meta` — EVERY file, TOP-LEVEL ONLY. SCOPE TIGHT: this ONE
    name only. Any other unknown top-level entry is not dropped here: it rides into the merge and is
    REFUSED by name at the launch's §0 audit (`settings_launch._refuse_undeclared_snapshot`), which
@@ -772,7 +772,7 @@ catches both.
 
 * `refuse_pref_table` — a `pref:` table is legal in the WORKSET and BOX files ONLY (spec §2h, "this is
   what BOUNDS the recursion"). In the base / system / agent file it is DROPPED with a warning, the
-  SAME treatment the sibling mis-scope gets: two behaviours for one fault class is the confusion §0's
+  SAME treatment the sibling mis-scope gets: two behaviors for one fault class is the confusion §0's
   convention 0 forbids, and dropping preserves the recursion bound at least as strongly as erroring
   would. The HARD refusal §2h calls for lives at the WRITE site (`config set pref.*` at these scopes
   RAISES), which is the only way a user creates one short of hand-editing.

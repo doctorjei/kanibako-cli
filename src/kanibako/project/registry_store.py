@@ -186,7 +186,7 @@ def standalone_name_for_root(registry: Path, root: Path) -> str | None:
 #
 # ⚑ FLAT map keyed by the BARE name, with ``kind`` inside the entry — do not
 # promote ``kind`` into the key.  The recovery verbs are keyed by the bare name,
-# and tuple keys do not serialise to YAML.  See the llm-doc.
+# and tuple keys do not serialize to YAML.  See the llm-doc.
 
 
 def load_deregistered(registry: Path) -> dict[str, dict]:

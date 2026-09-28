@@ -182,7 +182,7 @@ def decide_watch(box_running: bool, dirty: bool) -> WatchAction:
     """PURE: decide a tick's action from box liveness + the dirty flag.
 
     * box RUNNING → :data:`WatchAction.WRITEBACK` when the flag is dirty (a detach
-      signalled a possible refresh), else :data:`WatchAction.NONE` (keep watching).
+      signaled a possible refresh), else :data:`WatchAction.NONE` (keep watching).
     * box GONE → the box is being torn down / stopped, so the watcher SELF-TERMINATES:
       :data:`WatchAction.FINAL_WRITEBACK` when the flag is still dirty (catch a
       last-moment refresh before exiting), else :data:`WatchAction.EXIT`.
@@ -203,7 +203,7 @@ class CredsWatcher:
     """Polls a box's creds-dirty flag and does the trusted writeback on the signal.
 
     Impure by nature (it probes the box, reads/clears a flag, copies credentials, and
-    sleeps), but every side effect is funnelled through an injected callable so tests
+    sleeps), but every side effect is funneled through an injected callable so tests
     drive it deterministically and instantly.  The pure :func:`decide_watch` holds the
     per-tick logic; this class only sequences the injected effects around it.
     """
@@ -346,7 +346,7 @@ def _resolve_watch_context(box: str | None):
     if not agent:
         log.info("box %s has no agent stamp; nothing to write back", container_name)
         return None
-    # 🛑 CANONICALISE, THEN DERIVE — the stamp is the OUTSIDE spelling (``+``) and
+    # 🛑 CANONICALIZE, THEN DERIVE — the stamp is the OUTSIDE spelling (``+``) and
     # every use below is a key or a key-derived lookup. ``harness_of`` splits on
     # ``℘`` ALONE, so the raw ``+`` form would send ``resolve_target`` after a
     # plugin that does not exist. ⚑ Both separators are accepted, so a box stamped

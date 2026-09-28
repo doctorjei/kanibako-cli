@@ -384,7 +384,7 @@ container keeps the creation-time settings and the agent session it was launched
 `--no-auto-auth`, `--browser`, `--share-images`, an explicit `--persistent`/`--ephemeral`, and the
 agent flags `-N -C -R -M -A -S` produce an error naming the cure rather than being silently
 dropped. Use `kanibako --restart [box]` to stop and relaunch with them in force. Two exceptions:
-`--detach`/`--print-container`/`--warm-only` are honoured; and anything that starts a **second
+`--detach`/`--print-container`/`--warm-only` are honored; and anything that starts a **second
 process inside the running box** — `--entrypoint CMD`, or `kanibako shell --persistent` at a box
 that is running an agent — runs with `-e` applied, so `-e` is refused only where nothing would
 apply it.

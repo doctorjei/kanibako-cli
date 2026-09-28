@@ -197,7 +197,7 @@ def _build_access_realization(
     ``editing`` / ``full``), not the old two-polarity ``flag``/``secure_flag`` +
     ``env_value``/``secure_env_value`` pair.  A tier the plugin OMITS is one this
     harness CANNOT render — the launch refuses that tier by name rather than
-    substituting a neighbouring one (goose has no ``editing`` realization; see
+    substituting a neighboring one (goose has no ``editing`` realization; see
     ``goose-defaults.yaml``).
 
     An unknown tier name is REFUSED: the tier set is closed by the spec, so a

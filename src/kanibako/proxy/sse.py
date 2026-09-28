@@ -162,7 +162,7 @@ def _content_block_events(index: int, block: Any) -> Iterator[dict[str, Any]]:
 
 
 def _verbatim_block_events(index: int, block: Any, block_type: Any) -> Iterator[dict[str, Any]]:
-  """Deliver an unrecognised block whole in ``content_block_start``, with no delta.
+  """Deliver an unrecognized block whole in ``content_block_start``, with no delta.
 
   ⚑ A FALLBACK, not a silent accept, and not a refusal — the choice is
   deliberate and this is the note that says so.  Upstream response data is not

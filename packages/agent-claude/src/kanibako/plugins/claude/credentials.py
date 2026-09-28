@@ -16,7 +16,7 @@ def merge_oauth_in(src: Path, dst: Path) -> bool:
 
     The PURE, gate-free content op behind the host->project credential refresh
     (the descriptor / credsync engine owns mtime/existence gating; this hook is
-    a content transform only).  Behaviour:
+    a content transform only).  Behavior:
 
     * *dst* absent  -> wholesale ``shutil.copy2(src, dst)``.
     * *dst* present -> read host JSON, splice ``claudeAiOauth`` into the project
@@ -105,7 +105,7 @@ def merge_oauth_account_out(project_json: Path, host_json: Path) -> bool:
     clobber the host's.  So this splices ONLY ``oauthAccount`` (the gate-free
     content op; the caller owns any gating).
 
-    Behaviour:
+    Behavior:
 
     * box file absent / unreadable / no ``oauthAccount`` -> no-op (return False).
     * host file absent -> create ``~/.claude.json`` with just ``{"oauthAccount": ...}``.

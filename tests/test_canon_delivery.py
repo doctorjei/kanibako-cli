@@ -19,7 +19,7 @@ row. Renaming a name inside a sentence about the past makes the sentence untrue.
 because nesting forced MOUNTPOINTS to live inside bind SOURCES — site-packages for
 the charter chapter, the user's own stores for the handbook chapters — where a wheel
 cannot ship an empty directory and no runtime may safely write. Under the sibling
-model every mountpoint lives in the box home, materialised once at box create by
+model every mountpoint lives in the box home, materialized once at box create by
 ``core_defaults.materialize_canon_skeleton`` and made root-owned + 555.
 
 ⚑ This module REPLACED ``test_playbook_delivery.py`` (the retired per-LEAF-FILE rom
@@ -1069,7 +1069,7 @@ class TestCanonSkeleton:
         so the store's real file shadows the fallback.
 
         ⚑ The entry file sits DIRECTLY in the chapter dir. A ``directives/`` level
-        would still materialise a 0-byte file — and still warn on every launch,
+        would still materialize a 0-byte file — and still warn on every launch,
         because nothing imports that path.
         """
         home = tmp_path / "home"

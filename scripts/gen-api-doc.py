@@ -45,7 +45,7 @@ TYPE_ALIAS_NODES: tuple[type[ast.AST], ...] = (
 #       that make a Type; everything else that calls something produces a value.)
 #
 # Anything the rules below cannot positively identify as a type falls through to Variables.
-# That bias is deliberate: a value mislabelled "Type" is a lie about the API, a type listed
+# That bias is deliberate: a value mislabeled "Type" is a lie about the API, a type listed
 # under Variables is merely a filing error.
 # ---------------------------------------------------------------------------
 
@@ -79,7 +79,7 @@ def _tail_name(node: ast.AST) -> str:
 
 
 def _is_type_leaf(node: ast.AST) -> bool:
-  """A leaf of a ``X | Y`` union that is recognisably a type (or ``None``)."""
+  """A leaf of a ``X | Y`` union that is recognizably a type (or ``None``)."""
   if isinstance(node, ast.Constant) and node.value is None:
     return True
   if isinstance(node, ast.Subscript):

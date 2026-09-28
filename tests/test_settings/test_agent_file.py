@@ -385,7 +385,7 @@ class TestCategoryTablesCarryThrough:
         "      /box/share: [/host/share]\n"
     )
 
-    def test_load_captures_the_unmodelled_categories(self, tmp_path):
+    def test_load_captures_the_unmodeled_categories(self, tmp_path):
         path = tmp_path / "agent.yaml"
         path.write_text(self._FLAT_YAML)
         cfg = load(path, node="claude")
@@ -408,7 +408,7 @@ class TestCategoryTablesCarryThrough:
         assert data["self"]["bindings"]["ro"] == {"/box/share": ["/host/share"]}
         assert data["self"]["endpoint"] == "https://e.example"
 
-    def test_every_unmodelled_category_rides_the_carrier(self, tmp_path):
+    def test_every_unmodeled_category_rides_the_carrier(self, tmp_path):
         # The carrier is derived from the flat-category tuple MINUS what the record
         # models, so widening one widens the other — no second list to keep in step.
         path = tmp_path / "agent.yaml"
@@ -446,7 +446,7 @@ class TestCategoryTablesCarryThrough:
         assert "caches" not in load_doc(path)["self"]
 
     def test_schema_owned_dict_keys_never_captured(self, tmp_path):
-        # A malformed dict-valued MODELLED key must not ride category_tables (it would
+        # A malformed dict-valued MODELED key must not ride category_tables (it would
         # clobber the emitted value on the next write) — and it is NOT refused as a nested
         # sub-table either: a mistyped scalar is not a nesting.
         # ⚑ ``run_args`` is the scalar-writable one (``_SCALAR_WRITABLE_KEYS``); ``name`` was
@@ -462,7 +462,7 @@ class TestCategoryTablesCarryThrough:
         assert cfg.category_tables == {}
 
     def test_write_guard_never_clobbers_modeled_tables(self, tmp_path):
-        # A hand-built config cannot smuggle a carrier entry named after a modelled
+        # A hand-built config cannot smuggle a carrier entry named after a modeled
         # key over the real category: ONE set guards both ends, and ``env`` is not in
         # it. Nor can the carrier emit a table ``load`` would refuse.
         from kanibako.settings.config_io import load_doc
@@ -478,7 +478,7 @@ class TestCategoryTablesCarryThrough:
         # And what was written loads back without a refusal.
         assert load(path, node="claude").env == {"A": "b"}
 
-    def test_transform_is_not_a_modelled_key(self):
+    def test_transform_is_not_a_modeled_key(self):
         # ``transform`` (the tweakcc state knob) is NOT ``transform_settings``: it
         # rides flat state, so it must not be swept into the opaque carrier.
         assert "transform" not in _MODELED_KEYS
@@ -684,7 +684,7 @@ class TestTheArgvSHAPEIsTheFileS:
         assert read_leaf(self._slot(tmp_path)) == "--c --d"
         assert load(path, node="claude").run_args == ["--c", "--d"]
 
-    def test_the_next_save_normalises_a_legacy_string(self, tmp_path):
+    def test_the_next_save_normalizes_a_legacy_string(self, tmp_path):
         """No migration step, and no second shape left on disk afterwards."""
         from kanibako.settings.config_io import load_doc
 
@@ -1121,7 +1121,7 @@ class TestTheForwardCompatPassthroughIsClosed:
     """S3b / D-5's other end: an undeclared scalar no longer rides into the launch.
 
     ``_agent_state_partial`` documented that "undeclared agent-scope scalar keys ride through
-    verbatim (forward-compat)" — which is the *"old ``agent.<name>.<anyleaf>`` behaviour"* spec §0
+    verbatim (forward-compat)" — which is the *"old ``agent.<name>.<anyleaf>`` behavior"* spec §0
     SPECIFICALLY EXCLUDES. Together with the ungated ``agent set`` (D-5) it meant stored garbage
     was not merely dead: it reached the box.
 
@@ -1149,7 +1149,7 @@ class TestTheForwardCompatPassthroughIsClosed:
         assert "agent info" not in message
 
     def test_the_self_alias_cannot_ride_in_either(self, tmp_path):
-        # ruling 55: nothing past the parse boundary recognises ``self``. A hand-authored
+        # ruling 55: nothing past the parse boundary recognizes ``self``. A hand-authored
         # ``self.model:`` root leaf is a scalar the loader sweeps into state — and it stops
         # here rather than becoming ``agent.claude.self.model`` in the snapshot.
         path = self._file(tmp_path, {"self.model": "opus"})

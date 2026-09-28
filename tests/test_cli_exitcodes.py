@@ -6,14 +6,14 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from kanibako.errors import KanibakoError, UserCancelled
+from kanibako.errors import KanibakoError, UserCanceled
 from kanibako.settings.paths import ProjectGroup, BoxMode
 
 from tests.support.filenames import CONFIG_FILENAME
 
 
 class TestMainExitCodes:
-    def test_user_cancelled_exits_2(self):
+    def test_user_canceled_exits_2(self):
         from kanibako.cli import main
 
         with (
@@ -24,7 +24,7 @@ class TestMainExitCodes:
         ):
             args = MagicMock()
             args.command = "start"
-            args.func.side_effect = UserCancelled("nope")
+            args.func.side_effect = UserCanceled("nope")
             mock_parser.return_value.parse_args.return_value = args
             main(["start"])
         assert exc_info.value.code == 2

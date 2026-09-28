@@ -146,9 +146,9 @@ declarations through the flatten above, and the binding each ABSTRACT one derive
 `_print_effective_derivations` below.
 
 ⚑ **The derived half was once thought unavailable here**, on the ground that a derivation is
-materialised by a launch resolve (`_resolve_launch_snapshot`), which needs a box identity and an
+materialized by a launch resolve (`_resolve_launch_snapshot`), which needs a box identity and an
 agent a working set does not have. That is true of the LAUNCH's route and false as a conclusion:
-§0 leaves *"WHERE the derivation is materialised"* to the implementation and obliges only what the
+§0 leaves *"WHERE the derivation is materialized"* to the implementation and obliges only what the
 user SEES, and `_print_effective_shares` had already built a workset-only collapse with no box.
 The derived block feeds the same one. What it CANNOT answer without a box is stated at
 `_print_effective_derivations` and is narrower than "the pair": no box's OWN settings file and no
@@ -156,7 +156,7 @@ agent file is read (the base, system and working-set files are, and the working 
 defaults-down table with them, so a `box.masks` written there does apply), and a `seeded` row names
 its guest destination but not the host store the copy eventually lands in.
 
-🛑 **THE `binding_derivations` NODE IS NOT READ HERE AND MAY NOT BE.** It is materialised BEFORE
+🛑 **THE `binding_derivations` NODE IS NOT READ HERE AND MAY NOT BE.** It is materialized BEFORE
 arbitration, for winners and losers alike (R-8), so every row in it reads as a live mount: a
 `common` declaration a `masks` entry swallowed would print `(mount)` with the mask invisible. The
 answer comes from PAIRING the declarations against the collapse — `store_collapse.pair_declarations`,
@@ -171,7 +171,7 @@ two's `(mount)`.
 *arbitration* refusal — bind-over-bind, mask-on-mask, seed-outside-home — is raised by the collapse,
 so a working set that declares none of the trio can no longer meet one from this verb.
 
-🛑 **THE RESOLVE IS NOT GATED, AND THAT IS A BEHAVIOUR CHANGE TO A SHIPPED VERB.** The entry list is
+🛑 **THE RESOLVE IS NOT GATED, AND THAT IS A BEHAVIOR CHANGE TO A SHIPPED VERB.** The entry list is
 built BEFORE the gate, `expand` is strict, and `snapshot_category_entries` refuses an undeclared
 shape — while the `show` arm's own rendering is a YAML flatten that expands nothing. So a working
 set carrying only `bindings.ro: {/opt/x: ["$NOPE/y"]}`, with no abstract declaration anywhere,
@@ -206,7 +206,7 @@ because the get engine returns VALUES and never error strings. The `set` and `re
 an `"Error: …"` string the handler already checks, so the equivalent refusals fire from inside the
 engine on those paths.
 
-⚑ **ORDER IS LOAD-BEARING, and §0's is LAST.** The first two recognise a SPECIFIC retired spelling
+⚑ **ORDER IS LOAD-BEARING, and §0's is LAST.** The first two recognize a SPECIFIC retired spelling
 and hand back a cure written for it; the §0 gate is the generic "that is not a key". Run generically
 first and every tailored cure disappears behind a vaguer sentence. The box handler orders its own
 pair the same way, and additionally judges the key AFTER the bare-agent redirect — there is no such
@@ -303,7 +303,7 @@ as `\:` (there, the `:` is the separator).
 
 ### Relative host sources, and why the default workset refuses them
 
-A BARE-RELATIVE host source is ABSOLUTISED AGAINST THE WORKSET ROOT at WRITE time (spec §2a: a
+A BARE-RELATIVE host source is ABSOLUTIZED AGAINST THE WORKSET ROOT at WRITE time (spec §2a: a
 stored source must fully resolve on its own). The documented convenience — "a relative `host_src` is
 resolved under the working set root" — is preserved EXACTLY: the same input yields the same mount,
 because this join is the one the launch used to apply (the retired assembly-time prepend). What
@@ -369,7 +369,7 @@ launch (P3).
   while `LevelView` itself survives and is still live in `settings/paths.py` and
   `settings/settings_resolve.py` — it is only this function's use of it that was retired.
 
-  Every stored `host_src` resolves ON ITS OWN (spec §2a), because `share add` absolutises a relative
+  Every stored `host_src` resolves ON ITS OWN (spec §2a), because `share add` absolutizes a relative
   source at WRITE time, so there is no root to apply here. No ROOT-JOIN can make this display
   diverge from what a launch mounts, which it previously could — but see the floor below for the
   divergence that had nothing to do with root-joins.
@@ -437,7 +437,7 @@ while `settings_expand` renders an anchor with no referent as the EMPTY STRING �
 warning. MEASURED on the shipped listing, 2026-09-19. The anchor is spec §2a's workset
 `<scope-root>`, so the same gap mis-rooted every `common` / `caches` / `seeded` declaration by
 definition — which is what made this a PREREQUISITE of rendering the derived half at all, not a
-neighbouring fix. 🛑 **THIS IS NOT A ROOT-JOIN** (the section above still holds): nothing is
+neighboring fix. 🛑 **THIS IS NOT A ROOT-JOIN** (the section above still holds): nothing is
 prepended to a stored value; an anchor the stored value already names is given its referent.
 
 ⚑ **`ws.root` IS the anchor, and there is NO per-mode branch to reproduce.**
@@ -580,7 +580,7 @@ element 2 and later. R-6 moved options to element 1 and the slice was never move
 mount, so the entry itself is live and only the raw view drops its options.)*
 
 The source now carries a one-line `⚑` marker at the slice so a future reader does not take it for
-live behaviour. **The code was not changed** — the fix is a decision, not a prose pass.
+live behavior. **The code was not changed** — the fix is a decision, not a prose pass.
 
 ## Functions
 
@@ -640,7 +640,7 @@ def run_reset(args: argparse.Namespace) -> int
 def run_get(args: argparse.Namespace) -> int
 def run_show(args: argparse.Namespace) -> int
 ```
-Argument shims: each normalises `args` into the shape `_run_workset_config` expects and delegates.
+Argument shims: each normalizes `args` into the shape `_run_workset_config` expects and delegates.
 `run_reset` is the only one with its own refusal — a reset needs a key or `--all`.
 
 ```python

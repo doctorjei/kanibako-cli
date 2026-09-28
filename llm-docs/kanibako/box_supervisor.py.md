@@ -3,7 +3,7 @@
 ⚠️ **DROP RULE INVERTED FOR THIS FILE.** `box_supervisor.py` is half of the PID-1 pair (with
 `box_lifecycle.py`), pinned flat on purpose, stdlib-only, and invoked in-box by a dotted literal.
 Its notes are overwhelmingly **platform facts about process / signal / PID-1 / tmux / container
-teardown behaviour, paid for once in painful debugging and NOT reproducible from the dev box**
+teardown behavior, paid for once in painful debugging and NOT reproducible from the dev box**
 (there is no working podman here). Nothing in that class was dropped. Each such fact is carried here
 verbatim in substance and tagged **`[UNVERIFIED-PLATFORM]`**; the index at the bottom lists every
 one. *"Sounds odd"* is not evidence of falsehood — only a proof retires one of these.
@@ -234,7 +234,7 @@ when the two are the same place.
 
 * It does not LOG the two refusals — PID-1's stderr is `podman logs`, and a shell twin cannot reach
   the module `log` anyway. The ACTIONS are identical.
-* The same-place guard compares the two paths as STRINGS where the Python normalises them first.
+* The same-place guard compares the two paths as STRINGS where the Python normalizes them first.
   Reaching that difference takes BOTH a non-normal spelling of the XDG var (a trailing slash, a
   `/./`) AND a future facet row for which the guard can fire at all — today's `state` row cannot
   reach it from either half, since `$XDG_STATE_HOME/kanibako` can never equal `~/.kanibako/state`
@@ -255,7 +255,7 @@ when the two are the same place.
   the forward-compat probe in `_build_supervisor_pid1` is exactly such a chain, and a projection that
   changed its exit status would decide which PID-1 the box gets. It is also safe under `set -e`: the
   only fallible list ends in `|| true`.
-* The XDG Base Directory spec is honoured identically on both sides: use the var **iff set AND
+* The XDG Base Directory spec is honored identically on both sides: use the var **iff set AND
   absolute**; anything else falls back to the spec default under `$HOME`.
 
 ## The host-package mount and the PYTHONPATH scrub
@@ -326,7 +326,7 @@ of every tick, **FIRST**, before the marker probes.
 
 **[UNVERIFIED-PLATFORM]** The stat line is `<pid> (<comm>) <state> <ppid> …` — and `comm` is
 attacker/filename-controlled text that may itself contain spaces AND parentheses (e.g. a process
-named `a) (b`), so a naive `split()` is wrong. The kernel emits `comm` as the ONLY parenthesised
+named `a) (b`), so a naive `split()` is wrong. The kernel emits `comm` as the ONLY parenthesized
 field, so the state is the first token AFTER the **last** `)`.
 
 ## Constants
@@ -386,7 +386,7 @@ Returns the PIDs named by the marker FILES in the markers dir (`[]` when the dir
 Both marker probes are injectable so unit tests never touch the real FS / os; the defaults are the
 real PID-1 implementations.
 
-```_Signaller = Callable[[int, int], None]```
+```_Signaler = Callable[[int, int], None]```
 The `(pid, sig)` shape of BOTH process-signal primitives — `os.kill` and `os.killpg` match it.
 
 ```_GroupOf = Callable[[int], int]```
@@ -508,7 +508,7 @@ exactly `{("claude", None)}`.
 
 ⚑ The shim shape is QUARANTINED KNOWLEDGE of a sibling module, deliberately NOT imported — PID 1 is
 stdlib-only, and importing `commands.start` would put every marker scan at the mercy of the whole
-command package importing cleanly. It is SAFE UNDER SKEW: a shim shape this does not recognise leaves
+command package importing cleanly. It is SAFE UNDER SKEW: a shim shape this does not recognize leaves
 the wrapper's own `sh` as the head, which matches no real agent, so `agent_session_verdict` falls
 through to `None` and KEEPS the marker rather than reaping on a misread.
 
@@ -773,7 +773,7 @@ B); otherwise `NONE` (keep-alive).
 
 ## `class BoxSupervisor` — PID-1 keep-alive supervising an agent in a detached tmux session
 
-Impure by nature (it shells `tmux`, sleeps and signals processes), but every side effect is funnelled
+Impure by nature (it shells `tmux`, sleeps and signals processes), but every side effect is funneled
 through an injected primitive — see the seam table under "Design for testability" — so tests drive it
 deterministically, instantly, and without touching a real process. Detection is **DELEGATED** to
 `kanibako.box_lifecycle` (`snapshot_attach_state` + `classify_transition` via `decide`); this class
@@ -796,7 +796,7 @@ self-heal that exhausts its bounded retries (principle B: then PID-1 returns so 
 * `_cmdline_of` / `_remove_marker` — the marker IDENTITY probe and the marker REAP, injectable on
   the same rule. ⚑ Tests inject `_cmdline_of` for a reason worth keeping: the default reads the REAL
   `/proc`, so a fixture PID that happens to exist in the runner would be judged a non-agent and
-  reclassified. `None` (cannot judge) reproduces the pre-reap behaviour exactly.
+  reclassified. `None` (cannot judge) reproduces the pre-reap behavior exactly.
 * `_agent_heads` — the agent `(PROGRAM, SUBCOMMAND)` heads recovered from the launch grammars by
   `agent_launch_heads`, computed ONCE (config-derived and immutable). ⚑ An EMPTY set DISARMS the
   identity half of the scan entirely: `_is_agent_pid` then answers `None` for every PID rather than
@@ -814,7 +814,7 @@ self-heal that exhausts its bounded retries (principle B: then PID-1 returns so 
 ```_run_tmux(self, args: list[str]) -> int | None```
 Run `tmux <args>` via the injected runner; return its rc, or `None`.
 
-Centralises tolerance: a missing tmux binary (`FileNotFoundError`) or any other `OSError` resolves to
+Centralizes tolerance: a missing tmux binary (`FileNotFoundError`) or any other `OSError` resolves to
 `None` (logged at debug), never an exception, so a tmux hiccup can never crash the loop.
 
 ```_tmux_output(self, args: list[str]) -> str | None```
@@ -924,7 +924,7 @@ Send *sig* to *pid*'s whole PROCESS GROUP (child-kill-with-parent); tolerant.
 
 **[UNVERIFIED-PLATFORM]** The agent is launched as `tmux new-session -- <agent>` (no shell wrap), so
 tmux starts it as a session/process-group LEADER — its PID is the group id — and every subagent /
-worker it spawns inherits that group. Signalling the GROUP (`os.killpg`) therefore reaps the agent
+worker it spawns inherits that group. Signaling the GROUP (`os.killpg`) therefore reaps the agent
 AND all its descendants, so no orphaned worker survives a takeover/teardown (the child-kill-with-
 parent ruling, design §267 / §348). Resolves the real pgid via the injected `getpgid` (falling back
 to the pid itself when it cannot — a group leader's pgid == its pid), then signals it through the

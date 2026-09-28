@@ -7,7 +7,7 @@ running BOTH sides through ``reconcile_categories`` and comparing the reconciled
 mount/copy/env sets. That reconcile is retired, and the comparison went with it:
 
 * the oracle is FROZEN by charter — it may not be re-pointed at the surviving route,
-  and part-editing the frozen artefact is exactly what its own file forbids;
+  and part-editing the frozen artifact is exactly what its own file forbids;
 * rebasing the live side onto the collapse while leaving the oracle where it is would
   compare two things that were never claimed to agree — the oracle predates the
   five-arm store shape entirely;

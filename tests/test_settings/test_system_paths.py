@@ -912,7 +912,7 @@ class TestResolveStatePath:
         assert path == tmp_path / "elsewhere" / "state"
 
     def test_never_tracks_config_datas_leaf(self, tmp_path, monkeypatch):
-        """[R166]: a repointed ``config.data`` moves no state.  The retired behaviour put
+        """[R166]: a repointed ``config.data`` moves no state.  The retired behavior put
         this under ``$XDG_STATE_HOME/custom_store``; nothing may reach that spelling again."""
         state_home = self._isolate(monkeypatch, tmp_path)
         config_home = tmp_path / "cfg"

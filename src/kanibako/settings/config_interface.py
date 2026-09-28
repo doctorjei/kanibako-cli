@@ -118,7 +118,7 @@ from kanibako.settings.config_io import (
     write_nested_key,
     write_root_key,
 )
-from kanibako.errors import KanibakoError, UserCancelled
+from kanibako.errors import KanibakoError, UserCanceled
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.settings_categories import (
     ABSTRACT_CATEGORIES,
@@ -1226,7 +1226,7 @@ def set_config_value(
     # ⚑ ``box.agent.<key>`` — RETIRED (P7, spec §2b): refused BY NAME here, in the preamble
     # with the other retired spellings, and NOT further down beside the write branches. The
     # E3 probe below builds a CANDIDATE snapshot with the proposed key spliced into it; run
-    # ahead of this refusal it materialises a retired, undeclared key into a real ``KeyStore``
+    # ahead of this refusal it materializes a retired, undeclared key into a real ``KeyStore``
     # before anything judges the name. The keyspace is CLOSED (spec §0) — the name is refused
     # first, and nothing downstream ever sees it. The message and its cure are unchanged.
     if _is_box_agent_key(canonical):
@@ -1471,8 +1471,8 @@ def set_config_value(
     # Regular config keys — the single known-key table (H1: an unknown key returns an error
     # string and NEVER raises).
     # ⚑ THE CANONICAL DOTTED SPELLING, AND ONLY IT. The flat underscore form used to be
-    # normalised in here; it is undeclared (spec §0), ``get`` always refused it, and it
-    # routed to a different FILE than its dotted twin. There is nothing to normalise now,
+    # normalized in here; it is undeclared (spec §0), ``get`` always refused it, and it
+    # routed to a different FILE than its dotted twin. There is nothing to normalize now,
     # so it falls out here as the unknown key it is, named in the refusal.
     route = _KEY_ROUTES.get(canonical)
     if route is None:
@@ -1921,7 +1921,7 @@ def reset_all(
     if not force:
         try:
             confirm_prompt("Remove all config overrides? Type 'yes' to proceed: ")
-        except UserCancelled:
+        except UserCanceled:
             return "Aborted."
 
     count = 0
@@ -2177,7 +2177,7 @@ def show_config(
         if category_snapshot is not None:
             _print_pref_block(category_snapshot, out)
 
-        # Path-delivery CATEGORIES + their materialised derivations (§0).
+        # Path-delivery CATEGORIES + their materialized derivations (§0).
         # ⚑ *category_ctx* travels WITH the snapshot and is required by it: the block
         # resolves each arm's written destination to the guest path the arbitrated map
         # is keyed by, and only the launch's own ctx spells those the same way.

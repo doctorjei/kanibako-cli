@@ -468,7 +468,7 @@ class TestReadPersonaBundle:
         assert bundle.reject_reason is not None
         assert "myhost:8080/v1" in bundle.reject_reason
         assert "not well-formed" in bundle.reject_reason
-        # names the key + the exact cure, like every neighbouring refusal
+        # names the key + the exact cure, like every neighboring refusal
         assert "agent.navigator+claude.endpoint=<url>" in bundle.reject_reason
         assert "kanibako system set" in bundle.reject_reason
         assert bundle.to_persona_values() == {}
@@ -638,4 +638,4 @@ class TestReadPersonaBundle:
             for p in sorted(persona_dir.rglob("*")) if p.is_file()
         }
         assert after == before
-        assert not agents_root.exists()   # no agent settings file materialised
+        assert not agents_root.exists()   # no agent settings file materialized

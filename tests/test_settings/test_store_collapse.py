@@ -1035,7 +1035,7 @@ class TestAMaskSweepsTheMountsItCovers:
 class TestAMaskMayNotSubsumeHome:
   """⚖️ RULED 2026-08-09d — "nothing may subsume home" is ABSOLUTE and covers MASKS.
 
-  ⚑ A DELIBERATE BEHAVIOUR CHANGE, not a regression: until this ruling a mask at
+  ⚑ A DELIBERATE BEHAVIOR CHANGE, not a regression: until this ruling a mask at
   ``~`` (or at ``/``) swept the home binding away and the box launched with no home,
   because the rule fell out of the BIND refusal alone, which counts bindings only.
   His words: *"of course we should prohibit masking home directly or allowing a mask
@@ -1148,7 +1148,7 @@ class TestTheIntraScopeSorts:
 
   def test_a_parent_bind_declared_AFTER_its_child_in_one_scope_still_lands_first(self):
     # ⚑ Without the sort this raises: the child is already collapsed when the
-    # parent arrives, and the rule cannot tell an ordering artefact from a genuine
+    # parent arrives, and the rule cannot tell an ordering artifact from a genuine
     # cross-scope conflict. Within a scope there is no precedence to express, so
     # the sort — not a diagnostic — is the answer.
     collapsed = collapse(
@@ -1744,7 +1744,7 @@ class TestThePerRunOverride:
     assert self.slots({"box.env.EDITOR": "vim"}, {"EDITOR": "ed"})["EDITOR"].value == "ed"
 
   def test_it_reaches_a_variable_at_any_scope_including_the_outermost(self):
-    """One flag, one behaviour, whichever scope happens to own the variable.
+    """One flag, one behavior, whichever scope happens to own the variable.
 
     The core ``KANIBAKO_*`` stamps are ``system.env.*`` keys (MBR-1 P4b), the
     outermost scope there is — so this is the case that makes MIGRATION §2.36's

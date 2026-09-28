@@ -1,6 +1,6 @@
 """tweakcc integration: config merging and patched binary caching.
 
-tweakcc customises Claude Code by patching its cli.js bundle.  Kanibako
+tweakcc customizes Claude Code by patching its cli.js bundle.  Kanibako
 manages the patching lifecycle — config merging, binary caching on tmpfs,
 flock-based reference counting — so that patched variants are transparent
 to the user and shared across projects with identical configs.

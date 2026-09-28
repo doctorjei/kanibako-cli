@@ -316,7 +316,7 @@ def prune_snapshots(
         # OLD snapshot is never a reason to refuse to start a box, so a failure
         # here is reported and skipped rather than propagated -- but it is NOT
         # swallowed: an undeletable snapshot means the retention limit is no
-        # longer being honoured, and the user has to be told which one.
+        # longer being honored, and the user has to be told which one.
         try:
             _rmtree_force(old)
         except OSError as exc:

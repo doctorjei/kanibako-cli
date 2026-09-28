@@ -432,7 +432,7 @@ class TestAgentCategoriesForNodeOnCommon:
     ``default_category_binds()`` were still folded HARNESS-KEYED at three call
     sites — so a persona took a declared seed or category bind with no mount, no
     copy, no error and no warning. :class:`TestEveryDeclaredCategoryMoves` below is
-    the generalisation; these cases keep the ``common`` case measured first.
+    the generalization; these cases keep the ``common`` case measured first.
 
     The delta below is the enumerated gate: identity for a bare agent, exactly
     two mounts gained for a claude persona, nothing for goose/codex (their

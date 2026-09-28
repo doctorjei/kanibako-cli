@@ -196,7 +196,7 @@ def parse_agent_address(raw: str) -> tuple[str, str]:
 def agent_address_node(raw: str) -> str:
   """The NODE an agent ADDRESS reaches: :func:`parse_agent_address`, then the harness folded.
 
-  🛑 CANONICALIZING IS NOT FOLDING.  The parser normalises the separator & validates the
+  🛑 CANONICALIZING IS NOT FOLDING.  The parser normalizes the separator & validates the
   charset but changes no case, while a node is lowercase (keyspec §0 ``⚑ NAMING RULES``).
   A user- or value-supplied spelling therefore folds at the hop that reaches for a node
   ([R173]) — unfolded, ``Claude`` names ``agents/Claude/``, a store the launch never writes.

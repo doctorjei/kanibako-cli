@@ -233,7 +233,7 @@ self:
 
 
 class TestAgentConfigTransformKey:
-    """``agent.<agent>.transform`` is a flat behavior SCALAR — it needs no modelled
+    """``agent.<agent>.transform`` is a flat behavior SCALAR — it needs no modeled
     ``AgentConfig`` field.
 
     ⚑ It rides ``AgentConfig.state`` exactly like ``model`` / ``endpoint`` /
@@ -276,8 +276,8 @@ class TestAgentConfigTransformKey:
         assert "transform" not in path.read_text()
         assert "transform" not in load_agent_config(path, node="claude").state
 
-    def test_not_a_modelled_field(self):
-        """A modelled ``AgentConfig.transform`` would duplicate the ``state`` entry."""
+    def test_not_a_modeled_field(self):
+        """A modeled ``AgentConfig.transform`` would duplicate the ``state`` entry."""
         from kanibako.settings.agent_config import AgentConfig
         from kanibako.settings.agent_file import _MODELED_KEYS
 

@@ -686,7 +686,7 @@ class TestEphemeralImageHint:
 # The launch-path hint was gated on ``proj.is_new`` AND ``group.is_default``,
 # and no launch can reach that pair any more: for a PRIMARY box ``is_new`` means
 # "the box DIRECTORY did not exist", which the MBR-6 refusal now rejects before
-# the materialising resolve.  (NAMED boxes DO still launch with ``is_new`` set —
+# the materializing resolve.  (NAMED boxes DO still launch with ``is_new`` set —
 # ``workset connect`` leaves the home unseeded — but the hint never applied to
 # them.)  The tests here forced ``proj.is_new`` on a mocked ``proj``, so they
 # stayed green over a hint that could no longer fire; they went with it.
@@ -915,7 +915,7 @@ class TestPersistentMode:
         through the deletion of ``no_helpers = True`` and would have reported
         coverage it does not have.
 
-        Skipped rather than deleted because the BEHAVIOUR is still wanted — it
+        Skipped rather than deleted because the BEHAVIOR is still wanted — it
         gets a real test when S2 lands.  ⚑ S2 is parked on a live defect: the
         helper hub is dead on arrival in a persistent box (``detach=persistent``
         + ``hub.stop()`` in the same ``finally``), so the ruled deletion cannot
@@ -1242,7 +1242,7 @@ class TestCredsWatcherSpawnAndFlagHygiene:
         """Drive a writeback with ``creds_store_lock`` swapped for a recorder.
 
         Returns the destination sets it was entered with, so a test can pin the
-        ``dests`` computation itself rather than the lock's own behaviour.
+        ``dests`` computation itself rather than the lock's own behavior.
         """
         from kanibako.commands.start import writeback_session_credentials
         from kanibako.settings.settings_launch import AuthSource
@@ -1579,7 +1579,7 @@ class TestModelOverride:
 class TestCliEnv:
     """Verify ``-e/--env VAR=VALUE`` vars reach the box — END TO END, through the launch.
 
-    ⚑⚑ THESE STAY GREEN BY BEHAVIOUR ACROSS MBR-1 P4c-1, and that is the point of
+    ⚑⚑ THESE STAY GREEN BY BEHAVIOR ACROSS MBR-1 P4c-1, and that is the point of
     keeping them unchanged: the MECHANISM underneath moved from a dict paste over the
     finished env to the CLI level of the cascade, applied inside
     ``store_collapse.collapse_env``. The user-visible promise did not move, so a case
@@ -1730,7 +1730,7 @@ class TestTheCliEnvParseRefusesAMalformedItem:
     settings override that quietly did not take.
 
     ⚑ EVERY CASE ASSERTS THE OFFENDING ITEM IS IN THE MESSAGE. "It raises" is not the
-    behaviour — a user with four ``-e`` flags needs to be told WHICH one.
+    behavior — a user with four ``-e`` flags needs to be told WHICH one.
     """
 
     @staticmethod
@@ -2482,7 +2482,7 @@ class TestReattachAgentSourcing:
         ``navigator+claude`` / ``pilot+goose``.
 
         ⚑ BOTH STAMP SPELLINGS: ``+`` is what this version emits, ``℘`` what a box
-        already running under an older version carries.  The reader canonicalises,
+        already running under an older version carries.  The reader canonicalizes,
         so the two are indistinguishable from here down — that is the back-compat
         guarantee, pinned rather than asserted in prose.
         """
@@ -2526,12 +2526,12 @@ class TestReattachAgentSourcing:
     def test_reattach_injects_the_CANONICAL_node_not_the_raw_stamp(
         self, start_mocks, stamp,
     ):
-        """🛑 The stamp is canonicalised ONCE and *that* value is what propagates.
+        """🛑 The stamp is canonicalized ONCE and *that* value is what propagates.
 
-        This path used to canonicalise for the mismatch COMPARISON only and then
+        This path used to canonicalize for the mismatch COMPARISON only and then
         assign the RAW stamp to ``explicit_agent``, which now means a ``+`` ref
         flowing on into agent resolution.  It survived by luck — the resolver
-        canonicalises too — and luck is not the shape: a node is what discriminates
+        canonicalizes too — and luck is not the shape: a node is what discriminates
         the agent tier, so it is a node that must be handed on.
 
         A bare agent cannot show it (the sibling above is the control): only a
@@ -3304,7 +3304,7 @@ class TestForegroundSupervisor:
             argv = self._supervisor_argv(self._script(m))
             assert "--session-takeover" in argv
 
-    def test_env_flag_enabled_recognises_truthy_strings(self):
+    def test_env_flag_enabled_recognizes_truthy_strings(self):
         """The gate accepts 1/true/yes/on (any case), rejects everything else."""
         from kanibako.commands.start import _env_flag_enabled
 
@@ -3402,7 +3402,7 @@ class TestExitedBeforeAttachTeardown:
     """
 
     def test_the_exited_before_attach_branch_calls_the_teardown(self):
-        """⚑ STRUCTURAL, and labelled as such — this pins the WIRING, not behaviour.
+        """⚑ STRUCTURAL, and labeled as such — this pins the WIRING, not behavior.
 
         The `start_mocks` harness cannot be steered into this branch (it is reached
         only when the poll loop exhausts, and the harness's mocked runtime resolves
@@ -3412,7 +3412,7 @@ class TestExitedBeforeAttachTeardown:
         exited box down before it returns, like the attached path does. Deleting the
         call — the regression — fails here.
 
-        The teardown's own behaviour (keep a running box, remove an exited one) is
+        The teardown's own behavior (keep a running box, remove an exited one) is
         covered by the two direct tests below, so this deliberately asserts only
         placement.
         """

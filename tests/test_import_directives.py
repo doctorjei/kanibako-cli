@@ -119,9 +119,9 @@ class TestResolution:
         out = _run(home, {"root.md": f"@{target}", "abs.md": "abs body"})
         assert "abs body" in out
 
-    def test_missing_file_neutralised(self, home):
+    def test_missing_file_neutralized(self, home):
         out = _run(home, {"root.md": "@nope.md stays inert"})
-        # A missing target is neutralised to an inert backticked form, not left as
+        # A missing target is neutralized to an inert backticked form, not left as
         # a raw live import, and produces no section.
         assert "`@nope.md`" in out
         assert "## nope" not in out
@@ -327,7 +327,7 @@ class TestDedupAndOrder:
             assert f"## {name}_md" not in out
 
     def test_slug_collision_numbered(self, home):
-        # ~/a/b.md and ~/a/b_md both normalise to a_b_md -> second gets a suffix.
+        # ~/a/b.md and ~/a/b_md both normalize to a_b_md -> second gets a suffix.
         out = _run(home, {
             "root.md": "@a/b.md and @a/b_md",
             "a/b.md": "dotted",

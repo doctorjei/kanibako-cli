@@ -132,7 +132,7 @@ import and clears the entry.
 
 The journal path is threaded as an **optional** `journal` argument from the resolver call sites
 (`std.journal`). When it is `None` — a std-less direct caller with no journal, such as a low-level
-test or a registry-only utility — the wrapper degrades to a plain register. Default behaviour is
+test or a registry-only utility — the wrapper degrades to a plain register. Default behavior is
 then byte-identical to the pre-J2 register-only path.
 
 ### `_journal_register` — the bracket
@@ -145,7 +145,7 @@ If the register body raises — a genuine collision — the entry is **intention
 is incomplete) and the exception propagates. Recovery resumes it on the next resolve. This is not an
 oversight in the error path; do not "fix" it by clearing on exception.
 
-A `None` journal is a no-op bracket, preserving the pre-J2 behaviour exactly.
+A `None` journal is a no-op bracket, preserving the pre-J2 behavior exactly.
 
 ### `_clear_stale_import` — closing the register→clear window
 
@@ -176,7 +176,7 @@ what lets a MOVED box keep its stable kuid identity while the leaf tracks the ne
 pre-kuid box (the `kuid.SENTINEL` value) falls back to the plain dir leaf.
 
 Order of operations: already-registered check by `standalone_name_for_root` (plus stale-entry clear)
-→ marker gate → compose name → collision check → journalled register → alert. The composed name is
+→ marker gate → compose name → collision check → journaled register → alert. The composed name is
 registered to `root` and alerted, UNLESS it already maps to a DIFFERENT root →
 `ImportConflictError` (refuse, no mutation). The register is register-only, with **no seed**: the
 box is already seeded on disk.
@@ -188,7 +188,7 @@ box is already seeded on disk.
 basename ([R139]).
 
 Order of operations: derive the name → bar check → `$HOME` guard → already-registered check (plus
-stale-entry clear) → same-kind collision check → cross-kind warning → journalled register → alert.
+stale-entry clear) → same-kind collision check → cross-kind warning → journaled register → alert.
 The section it writes is `registry.worksets`, the name → root index backing both name lookups and
 workset discovery. Registration goes through `names.register_name` — the SOLE writer of that
 section.

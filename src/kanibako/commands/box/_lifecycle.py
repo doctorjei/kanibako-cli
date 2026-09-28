@@ -2107,7 +2107,7 @@ def _make_confirm(force: bool, summary: str):
     if force:
         return None
 
-    from kanibako.errors import UserCancelled
+    from kanibako.errors import UserCanceled
     from kanibako.utils import confirm_prompt
 
     def _confirm() -> bool:
@@ -2115,7 +2115,7 @@ def _make_confirm(force: bool, summary: str):
         print()
         try:
             confirm_prompt("Type 'yes' to confirm: ")
-        except UserCancelled:
+        except UserCanceled:
             return False
         return True
 

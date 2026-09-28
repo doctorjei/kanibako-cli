@@ -715,7 +715,7 @@ def test_adapter_emits_the_stored_host_src_verbatim():
 
 def test_adapter_absolute_host_src_not_joined():
     """The surviving control from the retired pair: an absolute source passes
-    through — which is now the ONLY behaviour, for every source shape."""
+    through — which is now the ONLY behavior, for every source shape."""
     snap = KeyStore(
         {"agent": {"claude": {"common": {"/box/x": BindEntry("/abs/x", None)}}}}
     )
@@ -729,7 +729,7 @@ def test_adapter_does_not_root_a_relative_host_src():
     """⚑ A bare-relative source is emitted AS-IS — it is NOT silently rooted.
 
     Such a value should never reach here (the declaration loaders root it, and
-    both write surfaces refuse or absolutise it), but if one does, the adapter must
+    both write surfaces refuse or absolutize it), but if one does, the adapter must
     not invent a root: an invented root is exactly the silent-wrong-path failure
     §2a exists to prevent. Pinning the pass-through is what makes a
     re-introduced prepend RED.
@@ -2491,7 +2491,7 @@ class TestMetaAgentPath:
     ``@meta.agent.<a>.path/<category>/<leaf>``, so this key MUST resolve or every
     such source dangles."""
 
-    def test_meta_agent_path_materialised_for_node_and_harness(self):
+    def test_meta_agent_path_materialized_for_node_and_harness(self):
         """A PERSONA materializes BOTH slots. ``load_common`` keys its entries on
         the plugin's own ``Target.name`` (the HARNESS), while this floor is built
         with the ACTIVE NODE — so a node-only materialization would leave the
@@ -2511,7 +2511,7 @@ class TestMetaAgentPath:
         )
         assert floor["meta.agent.claude.path"] == "@config.agents/claude"
 
-    def test_bare_agent_materialises_one_slot(self):
+    def test_bare_agent_materializes_one_slot(self):
         """node == harness for a bare agent → ONE entry, byte-identical to the
         pre-P3 single-slot shape."""
         floor = meta_identity_floor(
@@ -3804,7 +3804,7 @@ def test_box_root_that_does_not_resolve_is_a_named_error(tmp_path: Path):
     to ``""``. So a box root that fails to resolve does not error: it yields the
     host_src ``/home``, which the L7 guarantee-create then mkdir's and mounts OVER
     the box home. Silent, catastrophic, and user-reachable — a workset settings
-    file may set ``workset.boxes: null``, which the cascade honours as a
+    file may set ``workset.boxes: null``, which the cascade honors as a
     present-None terminal.
 
     MUTATION-PROOF: without the assertion in ``build_launch_snapshot`` this test
@@ -4198,7 +4198,7 @@ class TestScalarFamilyNonScalarRefusal:
 class TestNoImplicitRootPrepend:
     """T10 — the DELETION instrument.
 
-    ⚑ THE BEHAVIOURAL GATE CANNOT SEE THIS CHANGE, and saying so out loud is the
+    ⚑ THE BEHAVIORAL GATE CANNOT SEE THIS CHANGE, and saying so out loud is the
     point. Once every source is rooted at DECLARATION, an assembly-time join
     no-ops on the (now absolute) inputs — so leaving the mechanism in place
     produces a byte-identical mount map. A gate that silently cannot see half the
@@ -4256,7 +4256,7 @@ class TestNoImplicitRootPrepend:
 
 
 # --------------------------------------------------------------------------- #
-# ``pref.*`` at the LAUNCH seam (spec §2h) — the behavioural half of P6        #
+# ``pref.*`` at the LAUNCH seam (spec §2h) — the behavioral half of P6        #
 # --------------------------------------------------------------------------- #
 
 from kanibako.settings.settings_prefs import AgentNames as _AgentNames  # noqa: E402
@@ -4636,7 +4636,7 @@ class TestCliLevelPrecedence:
         ``agent.<active>.model`` legitimately lives — and a box that wants one
         writes ``pref.agent.<agent>.model``, covered separately below.
 
-        ⚑⚑ THE PAIR IS THE POINT: a behaviour scalar lives FLAT in the file (``self:``
+        ⚑⚑ THE PAIR IS THE POINT: a behavior scalar lives FLAT in the file (``self:``
         IS ``agent.claude``, and a ``self: claude:`` sub-table is REFUSED —
         [spec:15-21, "self"]), and it reaches the cascade on its OWN rung, the one every production
         producer builds through ``agent_file.state_level``. Writing the file and NOT
@@ -4681,7 +4681,7 @@ class TestCliLevelPrecedence:
         assert snap.agent.claude.model == "from-cli"
 
     def test_the_cli_level_beats_a_pref_on_the_selection_key(self, tmp_path):
-        """The P7 case, restated at the generalised seam: ``--agent`` over
+        """The P7 case, restated at the generalized seam: ``--agent`` over
         ``pref.system.agent`` (spec §2h precedence chain)."""
         snap = _pref_snap(
             tmp_path,
@@ -4795,7 +4795,7 @@ def _agent_file_contender(key, value):
     ⚑⚑ THE SHAPE COLLAPSED, BUT THE TWO ROUTES DID NOT, and conflating them is the trap this
     helper exists to close. Since the flatten there is ONE file shape — everything sits
     DIRECTLY under ``self:``, which IS ``agent.<node>``; a second ``<node>`` level REFUSES
-    ([spec:15-21, "self"]). But a CATEGORY table and a BEHAVIOUR scalar still reach
+    ([spec:15-21, "self"]). But a CATEGORY table and a BEHAVIOR scalar still reach
     the cascade by different rungs: the category rides ``_agent_partial``'s ``agent.<active>`` level, while a
     scalar goes to ``cfg.state`` and rides ``state_level``'s own rung. So the file bytes are
     written the same way and the kwarg differs — which is exactly the production pair
@@ -4858,7 +4858,7 @@ class TestPersonaRungOrdering:
     """The ruled precedence, asserted once per persona VALUE CLASS.
 
     Each test is MUTATION-PROOF by construction: the contender and the persona
-    carry different values, so a rung spliced on the wrong side of a neighbour
+    carry different values, so a rung spliced on the wrong side of a neighbor
     flips exactly one of these red.
     """
 
@@ -5091,7 +5091,7 @@ def test_a_persona_env_var_name_with_a_dot_is_ONE_literal_leaf(tmp_path):
     # MUTATION guard: the exploded shape must NOT exist in any form.
     assert "WEIRD" not in env
     assert _leaf(snap, ("env", "WEIRD", "VAR")) is _NO_LEAF
-    # The sibling ordinary var is unaffected by the neighbour's spelling.
+    # The sibling ordinary var is unaffected by the neighbor's spelling.
     assert dict.get(env, "PLAIN") == "p"
 
 
@@ -5579,7 +5579,7 @@ def test_the_probe_still_records_the_finding_before_the_refusal(tmp_path, monkey
 
 @pytest.mark.writes_undeclared(
     "box.zippity",
-    reason="the bypass under test is the refusal's, so every parametrisation has "
+    reason="the bypass under test is the refusal's, so every parametrization has "
            "to present it with an undeclared key.",
 )
 @pytest.mark.parametrize("flag", ["0", "off", "", "1"])
@@ -5757,7 +5757,7 @@ def _nested_yaml(parts: tuple[str, ...], value: str) -> str:
 @pytest.mark.writes_undeclared(
     "box.agent", "box.agent_name",
     "agent.default.default_agent",
-    reason="each parametrisation writes the retired spelling it is named for.",
+    reason="each parametrization writes the retired spelling it is named for.",
 )
 @pytest.mark.parametrize(
     "parts,key", sorted(_RETIRED_FILE_KEYS.items()), ids=lambda v: str(v),
@@ -5810,7 +5810,7 @@ def test_the_retired_mirror_table_gets_the_mirror_story_not_the_generic_one(tmp_
     assert "is not a settings key" not in msg
 
 
-def test_the_retired_behaviour_key_gets_its_own_refusal(tmp_path):
+def test_the_retired_behavior_key_gets_its_own_refusal(tmp_path):
     """⚑ THE SECOND INSTANCE OF THE DEFECT CLASS, not a second defect.
 
     ``auto_approve`` (R-41 / M-22) was preempted exactly as the selection keys were,

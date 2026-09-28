@@ -50,7 +50,7 @@ The three `images-*` jobs call `.github/workflows/images.yml`, and every one of
 them requires a `push` event, so no dispatch of `release.yml` reaches an image
 job ([section 6](#6-container-images-release-with-the-cli)).
 
-Two consequences worth internalising:
+Two consequences worth internalizing:
 
 - **An rc tag push publishes nothing to PyPI.** It twine-checks the build and
   drafts a GitHub prerelease, and that is all. Getting an rc onto PyPI is a
@@ -449,7 +449,7 @@ later than** the meta that points at it — which is exactly why the `dev` and
 `skip-existing`. When a plugin bump has to go out ahead of, or between, train
 releases, publish the plugin through this path first and let the base train
 follow. The converse constraint also holds: a plugin change that depends on
-base behaviour which only exists on `main` is not usable until the **base** is
+base behavior which only exists on `main` is not usable until the **base** is
 released too — "it's on main" is not "it's shipped".
 
 ---

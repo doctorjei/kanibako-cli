@@ -24,7 +24,7 @@ kanibako = "kanibako.cli:main"
 # A floating gate makes a CI result ambiguous: an upstream release changes the
 # verdict on source nobody touched, so a local green stops predicting CI (a
 # floating ruff once reported 972 findings against a tree that was clean at the
-# pinned version). Bumping a pin — and adopting whatever new rules or behaviour
+# pinned version). Bumping a pin — and adopting whatever new rules or behavior
 # it brings — is a deliberate change of its own, made in its own commit, never a
 # side effect of an unrelated install. The rest are not gate tools and float.
 dev = [

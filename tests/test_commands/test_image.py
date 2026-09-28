@@ -304,7 +304,7 @@ class TestImageRm:
             assert rc == 0
             runtime.remove_image.assert_called_once()
 
-    def test_rm_cancelled(self, config_file, tmp_home, credentials_dir, capsys, monkeypatch):
+    def test_rm_canceled(self, config_file, tmp_home, credentials_dir, capsys, monkeypatch):
         """image rm prompts and cancels on 'n'."""
         from kanibako.commands.image import run_rm
 
@@ -320,7 +320,7 @@ class TestImageRm:
             runtime.remove_image.assert_not_called()
 
         captured = capsys.readouterr()
-        assert "Cancelled" in captured.out
+        assert "Canceled" in captured.out
 
     def test_rm_template_warns_local_only(self, config_file, tmp_home, credentials_dir, capsys, monkeypatch):
         """image rm warns that template images are not recoverable."""

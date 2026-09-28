@@ -74,7 +74,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     defs: dict[str, object] = {}
     # The §2d DEFAULT-TIER arm of the SOURCE key — the all-agents fallback, sibling
     # of ``agent.default.canon`` (spec :1143 + :1123 + :1116, the composition the
-    # spec performs in prose at :1144).  ⚑ It is a DECLARED key, so an artefact has
+    # spec performs in prose at :1144).  ⚑ It is a DECLARED key, so an artifact has
     # to carry its value or ``system defaults`` prints a row it cannot source;
     # carrying it here rather than beside the canon arm keeps the template family's
     # value in the module that owns ``AGENT_TEMPLATE_STORE_REL``.
@@ -87,7 +87,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     # Two different questions, and the answer to the second must be yes.
     # ⚑ NO NODE-STORE PROBE, unlike ``canon_default_categories``' node arm
     # (``store_canon if node_store.is_dir() else …``): that conditional is the canon
-    # key's own behaviour, not this family's.
+    # key's own behavior, not this family's.
     defs["agent.default.template"] = (
         f"@config.agents/default/{AGENT_TEMPLATE_STORE_REL}"
     )
@@ -226,7 +226,7 @@ def stage_layers(dest: Path, layers: list[Path]) -> None:
 
 # ---------------------------------------------------------------------------
 # THE ONE COPIER — every template/seed/store fill goes through here (P-S4), so the
-# whitelist and traversal defences cannot be present on one path and missing on
+# whitelist and traversal defenses cannot be present on one path and missing on
 # another.  The packaged-install set it serves is enumerated in the llm-doc.
 # ---------------------------------------------------------------------------
 
@@ -330,7 +330,7 @@ def _is_contained(target: Path, root: Path) -> bool:
 
     ⚑ ``resolve()`` on both sides is load-bearing: it is what makes a symlinked
     intermediate DIRECTORY visible, which a plain string comparison would not see — and
-    it is also what normalises a ``..`` component that ``relative_to`` accepts LEXICALLY.
+    it is also what normalizes a ``..`` component that ``relative_to`` accepts LEXICALLY.
     """
     real_root = root.resolve()
     real_target = target.resolve()
@@ -591,7 +591,7 @@ def _packaged_agent_store(agent_name: str) -> Path | None:
 def ensure_agent_stores(
     std: StandardPaths, agent_names: "Iterable[str]",
 ) -> list[str]:
-    """Materialise each agent's STORE — the J-6 **A-action**, one implementation.
+    """Materialize each agent's STORE — the J-6 **A-action**, one implementation.
 
     Per name: the MOLD, then the SPECIFIC payload, then the box-template SKELETON.
     Every stamp is create-if-absent, which makes the whole thing IDEMPOTENT and
@@ -634,7 +634,7 @@ def _assert_stamp_leaf_in_root(
 
     ⚑⚑ THIS IS THE OUT-OF-ROOT REFUSAL, AND IT IS DELIBERATELY NOT
     :func:`_assert_contained`'s.  That helper is shared with the copier's symlink and
-    ``..`` defences, where the offending thing IS a path; here the offending thing is a
+    ``..`` defenses, where the offending thing IS a path; here the offending thing is a
     SETTINGS VALUE, and a refusal that names only the path leaves the user with nothing
     to edit.  Same rule (:func:`_is_contained`), two audiences, two messages — the bar is
     ``settings.workset_dirkeys``' unresolvable-repoint refusal, which names the key, the
@@ -1085,18 +1085,18 @@ def packaged_templates_digest(agent_names: list[str]) -> str:
 #: ignore comments (J-3 item 5).
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
-#: A fenced code block, captured whole so the normaliser can leave its interior
+#: A fenced code block, captured whole so the normalizer can leave its interior
 #: ALONE: whitespace is SEMANTIC inside a fence.
 _FENCE_RE = re.compile(r"(^|\n)(```|~~~)[^\n]*\n.*?(\n\2[^\n]*(?=\n|$))", re.DOTALL)
 
 
-def _normalise_markdown(text: str) -> str:
-    """Normalise *text* for the MD equivalence tier — CONSERVATIVELY.
+def _normalize_markdown(text: str) -> str:
+    """Normalize *text* for the MD equivalence tier — CONSERVATIVELY.
 
     ⚑ TWO THINGS ARE DELIBERATELY LEFT ALONE, because in markdown they are SYNTAX,
     not whitespace: the interior of a FENCED CODE BLOCK, and a TRAILING TWO-SPACE
-    hard line break.  Under-normalising costs a spurious "different" report;
-    over-normalising would HIDE a real change, hence the bias.
+    hard line break.  Under-normalizing costs a spurious "different" report;
+    over-normalizing would HIDE a real change, hence the bias.
     """
     fences: list[str] = []
 
@@ -1148,7 +1148,7 @@ def _equivalent(src_file: Path, target: Path) -> bool:
             return False
     if suffix == ".md":
         try:
-            return _normalise_markdown(src_bytes.decode()) == _normalise_markdown(
+            return _normalize_markdown(src_bytes.decode()) == _normalize_markdown(
                 target_bytes.decode()
             )
         except UnicodeDecodeError:

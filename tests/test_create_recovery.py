@@ -33,7 +33,7 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import BoxMode, load_primary_boxes
 
-# ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — ``run_create`` materialises
+# ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — ``run_create`` materializes
 # the J-7 canon skeleton root-owned + 555, so a bare ``rmtree`` dies with EACCES where
 # ``podman unshare`` works and silently passes where it does not.  That asymmetry is
 # what makes a local green vacuous; ``remove_box_tree`` is the sanctioned deleter.
@@ -259,7 +259,7 @@ def _create_args(path, **over):
 
 class TestRunCreatePersonaGate:
     """`box create` for an UNLOADABLE persona: a TRUE PRE-FLIGHT (F5, Director
-    ruling 2026-07-03).  The load-or-error gate runs on a NON-materialising probe
+    ruling 2026-07-03).  The load-or-error gate runs on a NON-materializing probe
     BEFORE the box dir is created (and before the write-ahead journal entry, ruling
     #3), so a failed create leaves NOTHING behind: no box dir / box.yaml, no
     journal entry, no seed, and the registry untouched.  Real filesystem — these
@@ -304,7 +304,7 @@ class TestRunCreatePersonaGate:
 
         config = load_config(config_file)
         std = load_std_paths(config)
-        # TRUE PRE-FLIGHT: the box was NEVER materialised — no box dir /
+        # TRUE PRE-FLIGHT: the box was NEVER materialized — no box dir /
         # box.yaml (the workspace dir tmp_home/project the user asked to
         # create in is theirs; the BOX under std.boxes is what must be absent).
         assert not std.boxes.exists() or not any(std.boxes.iterdir())
@@ -314,7 +314,7 @@ class TestRunCreatePersonaGate:
         assert seed_called["v"] is False
         assert journal.read_journal(std.journal) == {}
         assert _primary_names(std) == {}
-        # No agent-store artifact was materialised for the persona node.
+        # No agent-store artifact was materialized for the persona node.
         assert not (std.agents / "navigator℘claude").exists()
 
 
@@ -417,7 +417,7 @@ class TestRunCreateJournalLifecycle:
         rc2 = run_create(_create_args(tmp_home / "project"))
         assert rc2 == 1
         # ⚑ FULL message: the path now comes off the PROBE, and must still be the
-        # resolved workspace the materialising resolve would have reported.
+        # resolved workspace the materializing resolve would have reported.
         assert capsys.readouterr().err.strip() == (
             f"Error: project already initialized in {(tmp_home / 'project').resolve()}"
         )
@@ -462,7 +462,7 @@ class TestRunCreateJournalLifecycle:
         box has no registered name, so ``_resolve_local_dir`` returns the
         ``__unregistered__`` PLACEHOLDER as ``metadata_path`` — and
         ``box_tree_materialized`` asks whether ``metadata_path`` is a dir.  The
-        placeholder is never materialised, which is why the create proceeds; this
+        placeholder is never materialized, which is why the create proceeds; this
         asserts both halves (rc 0, and the placeholder is not on disk).  ⚑ Note
         the coupling is INHERITED, not introduced: ``resolve_project``'s own
         ``is_new`` gate reads the same path, so a placeholder dir that DID exist
@@ -483,7 +483,7 @@ class TestRunCreateJournalLifecycle:
     def test_unregistered_placeholder_coupling_is_unchanged(
         self, config_file, tmp_home, credentials_dir, monkeypatch, capsys
     ):
-        """CHARACTERISATION, not an endorsement: a pre-existing
+        """CHARACTERIZATION, not an endorsement: a pre-existing
         ``std.boxes/__unregistered__`` dir makes a brand-new PRIMARY create refuse
         "already initialized".
 
@@ -1002,7 +1002,7 @@ class TestBlankAgentFlagIsGivenAtBothDoors:
         """Every blank spelling refuses identically, and nothing is created.
 
         INVERT: restore either door's old guard and ``""`` walks past both into a
-        materialised box whose agent came from the cascade.
+        materialized box whose agent came from the cascade.
         """
         from kanibako.commands.box._parser import run_create
         from kanibako.errors import ConfigError, KanibakoError
@@ -1179,7 +1179,7 @@ class TestCreateFlagsAreClassified:
     """Every flag ``create`` advertises is SHAPING or SUBJECT, on BOTH spellings.
 
     The recovery refusal turns on that partition — shaping flags cannot be
-    honoured on a replay because attempt one already wrote the box's state and
+    honored on a replay because attempt one already wrote the box's state and
     the journal records the intent, not the arguments — so a create flag nobody
     classified is a flag the refusal silently ignores.  Asserted against the
     parser, never against an inventory: adding a flag to ``create`` without
@@ -1202,7 +1202,7 @@ class TestCreateFlagsAreClassified:
             "'is this flag refused on a recovery' unanswerable."
         )
         assert "recover" not in shaping | subject, (
-            "--recover selects the behaviour the classes are consulted FOR; "
+            "--recover selects the behavior the classes are consulted FOR; "
             "it is not itself a create flag to be classified."
         )
 

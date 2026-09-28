@@ -248,7 +248,7 @@ def run_show(args: argparse.Namespace) -> int:
 
 
 def run_defaults(args: argparse.Namespace) -> int:
-    """``system defaults`` — the shipped defaults, each beside the artefact declaring it.
+    """``system defaults`` — the shipped defaults, each beside the artifact declaring it.
 
     Deliberately NOT routed through ``_run_system_config``: that engine reads and writes
     the user's own files, and this verb reads neither. It consults only PACKAGED data

@@ -303,7 +303,7 @@ class TestTheAgentNounSpellsTheEmptyIdiomsApart:
     block, which an equality on one line cannot see.
     """
 
-    #: One agent file holding each idiom in the record's MODELLED tables and in its flat
+    #: One agent file holding each idiom in the record's MODELED tables and in its flat
     #: state — the tables disagreed with each other, so a pin on any one of them is silent
     #: about the rest.
     FILE = {
@@ -1034,14 +1034,14 @@ class TestSparseWrites:
         """Without --force, a declined confirm aborts and leaves the file
         untouched (the confirm prompt gates the destructive clear)."""
         from kanibako.commands.agent_cmd import run_reset
-        from kanibako.errors import UserCancelled
+        from kanibako.errors import UserCanceled
 
         path = _write_sparse(
             agent_env, "claude", {"self": {"endpoint": "x", "model": "o"}},
         )
         before = path.read_text()
         with patch(
-            "kanibako.utils.confirm_prompt", side_effect=UserCancelled(),
+            "kanibako.utils.confirm_prompt", side_effect=UserCanceled(),
         ):
             rc = run_reset(argparse.Namespace(
                 agent_id="claude", key=None, all_keys=True, force=False,
@@ -1661,7 +1661,7 @@ class TestAgentVerbKeyspaceGate:
         """RULING 55, at the one surface that could still accept it.
 
         ``self`` is a FILE-SURFACE alias substituted at the parse boundary; nothing past that
-        boundary recognises it, and the way it stays out of the code is that no parser admits
+        boundary recognizes it, and the way it stays out of the code is that no parser admits
         it.  Every other noun already refused ``self.`` as unknown — this verb did not.
         """
         from kanibako.commands.agent_cmd import run_set
@@ -2023,7 +2023,7 @@ class TestRetiredBindRoutesRefuseByName:
     """D-4's write half: the bind-shaped categories are refused BY NAME, never degraded.
 
     A retired spelling gets its own message and cure (§0) rather than "not a declared key", and
-    the refusal comes from the SAME derived recogniser the other verbs use — so it covers all
+    the refusal comes from the SAME derived recognizer the other verbs use — so it covers all
     five bind-shaped categories rather than being a bindings-only rule someone widens later.
     """
 

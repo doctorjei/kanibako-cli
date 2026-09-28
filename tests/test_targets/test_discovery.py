@@ -561,7 +561,7 @@ class TestDirectoryPluginDiscovery:
         # ⚑ The file-drop rogue is skipped AND the seeded owner keeps the slot.
         assert targets["shell"] is ShellTarget
         assert "shellplugin" not in targets
-        assert "okplugin" in targets  # the healthy neighbour still lands
+        assert "okplugin" in targets  # the healthy neighbor still lands
 
     def test_discover_project_dir_plugins(self, tmp_path):
         """Plugins in project box_data/plugins/ are discovered."""

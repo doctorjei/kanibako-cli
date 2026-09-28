@@ -3,7 +3,7 @@
 Read, write and remove must answer WHICH FILE and which nested slot identically,
 or a value written by ``set`` is invisible to ``get``.
 
-⚑ THE ROUTE IS A DESTINATION, NOT A JUDGEMENT.  Whether a key EXISTS is spec
+⚑ THE ROUTE IS A DESTINATION, NOT A JUDGMENT.  Whether a key EXISTS is spec
 §0's closed keyspace (:mod:`kanibako.settings.settings_keyspace`); which FAMILY a
 spelling belongs to is :mod:`kanibako.settings.config_keys`.  This module
 consumes both and re-implements neither.
@@ -122,7 +122,7 @@ def _persona_agent_target(
     ``None`` when it is not a persona key / *agents_root* was not supplied.
 
     ⚑ The node is taken VERBATIM from *canonical* and only VALIDATED here, never
-    re-swapped — canonicalisation happened once, at :func:`resolve_key`.
+    re-swapped — canonicalization happened once, at :func:`resolve_key`.
     """
     parsed = _parse_persona_agent_key(canonical)
     if parsed is None:
@@ -376,7 +376,7 @@ def _key_slot(canonical: str) -> "tuple[tuple[str, ...], str, str] | None":
         return tail[:-1], tail[-1], _CATEGORY
     # ⚑ THE ROUTING TABLE IS CONSULTED WITH THE KEY AS TYPED, and that is the whole
     # point: :func:`_dest` reads the scope token off the SAME string. When a
-    # spelling normaliser sat here, the slot came from the canonical key while the
+    # spelling normalizer sat here, the slot came from the canonical key while the
     # FILE came from the typed one, so ``box_image`` slotted at ``box: image:`` in
     # the Layer-1 config file while ``box.image`` slotted identically in the
     # settings file — a spelling silently choosing the precedence tier.
@@ -415,7 +415,7 @@ def _dest(
 
     # ⚑⚑ THE SCOPE TOKEN IS AN ASSERTION, NOT A FORK. Every family :func:`_key_slot`
     # answers a non-NOUN rule for is scope-rooted BY CONSTRUCTION — the routing
-    # table, both bind recognisers and ``is_terminal_category_key`` all require a
+    # table, both bind recognizers and ``is_terminal_category_key`` all require a
     # head in ``SCOPE_CONTAINMENT``. This used to fall through to the Layer-1
     # ``config_path``, which is how the flat spelling ``box_image`` (first dotted
     # token = the whole string) wrote the bootstrap floor while ``box.image`` wrote

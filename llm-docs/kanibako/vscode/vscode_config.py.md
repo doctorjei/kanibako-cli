@@ -1,7 +1,7 @@
 # In-Box Agent Config Writers (the surfaces a VS Code panel actually reads)
 
 Every agent kanibako launches has **two** faces: the CLI process kanibako spawns itself, which
-gets its behaviour from argv flags and env; and the **panel** — the agent's own VS Code
+gets its behavior from argv flags and env; and the **panel** — the agent's own VS Code
 extension, which spawns a *second* agent process inside the box and sees **none** of kanibako's
 launch FLAGS. The launch ENV does reach it — a panel-spawned process descends from PID 1 or from a
 `podman exec`, and every one of those inherits the container's `Config.Env` (measured on real
@@ -127,7 +127,7 @@ Neither of the others can. goose's unset `GOOSE_MODE` default is `auto` — perm
 permissive. codex used to clear too, and that was a promise kanibako could not keep: clearing left
 codex at its **own** default approval policy, a value not documented anywhere in 0.141.0's local
 help and therefore unknown to us, while the same function was forcing `sandbox_mode` to
-`danger-full-access`. "Restricted" would have meant *unknown approval behaviour with full disk
+`danger-full-access`. "Restricted" would have meant *unknown approval behavior with full disk
 access* — and on a file already carrying `on-request` it may well have been byte-identical to what
 `editing` delivers. Writing `untrusted`, the most guarded member of the verified enum, makes the
 tier mean something kanibako controls.
@@ -277,7 +277,7 @@ format. It gates the hook behind a content-hash trust (`[hooks.state]`) PLUS a d
 ### Surgical, never a round-trip
 
 kanibako ships stdlib-only (argcomplete/PyYAML/packaging), so there is **no tomlkit dependency**.
-`tomllib` is read-only and cannot round-trip comments, and re-serialising an arbitrary user config
+`tomllib` is read-only and cannot round-trip comments, and re-serializing an arbitrary user config
 through a hand-rolled emitter risks corrupting exotic TOML — multiline strings, datetimes, floats.
 So the manager edits ONLY kanibako-managed lines and leaves every other byte of the user's file,
 all comments and all data, untouched. Two mechanisms:
@@ -393,7 +393,7 @@ SHA-256'd and prefixed `sha256:`. The identity is a WIRE FORMAT:
                 "async": false}]}
 
 ⚑ `command` is the RAW string BEFORE any `${ENV}` expansion — codex hashes the config **text**, not
-the expanded command — and `timeout` normalises to the 600 s default. Pinned to a real-oracle
+the expanded command — and `timeout` normalizes to the 600 s default. Pinned to a real-oracle
 vector in the tests.
 
 `_CODEX_EVENT_KEY` is codex's INTERNAL snake_case event id (`session_start`), used both in the trust

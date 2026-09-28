@@ -101,7 +101,7 @@ Two per-entry rules live in the floor fold:
   2026-08-08c), so the whole map is ONE floor key — which would coarsen the smallest suppressible
   unit from an entry to a whole category. The fold therefore applies the suppression per entry as
   well. No shipped default uses `""`; this keeps the latent path exactly as wide as it was, rather
-  than making a behaviour change nobody ruled.
+  than making a behavior change nobody ruled.
 
 ⚑ The floor's list→keyed-dict bridge for `<scope>.masks` is NOT the same permission as a settings
 FILE's, and it stays: a floor table is written by kanibako or by an agent plugin, never by a user,
@@ -536,7 +536,7 @@ a dangling `@`-ref in the edited value is a hard error refusing the write (spec 
 set-time*), but at LAUNCH the embedded-ref rule renders it `""` and the same bind silently becomes
 `src=/common/plugins` (measured) — a garbage host source, no error anywhere.
 
-🛑 **The commons no longer needing this entry is not licence to delete it.** The two consumers above
+🛑 **The commons no longer needing this entry is not license to delete it.** The two consumers above
 are its whole justification, and dropping it fails SILENTLY at launch — a bind with a garbage source
 and no error.
 
@@ -1050,7 +1050,7 @@ contends with either overlay: a box/workset file may not set `system.agent` or `
 breaks no test. It is spelled this way because §2h says prefs expand at the START of the level, and
 it becomes observable the moment the allowlist grows to a target a lower file may also set. Left
 unpinned on purpose: a test asserting an unobservable ordering would be asserting the
-implementation, not the behaviour.
+implementation, not the behavior.
 
 ⚑ **The persona rung's ordering is semantically FORCED, not a preference.** The agent file stores
 ONLY non-default values, so an `agent.<active>.<key>` present in it can only be a DELIBERATE user
@@ -1368,7 +1368,7 @@ through the UNBOUND `dict` protocol (S3) so a key named `get` or `agent` cannot 
 ### ⚑ NO-AGENT box — WHAT ACTUALLY HAPPENS, measured
 
 The inherited comment here was WRONG twice over: it claimed a spec requirement that §2b does not
-state, and a caller behaviour no caller has.
+state, and a caller behavior no caller has.
 
 * The LAUNCH passes `agent_name="shell"` for a no-agent box, so the blank short-circuit does NOT fire
   and the mirror is materialized from the §2d pick — which for the `shell` pseudo-agent is the shell
@@ -1403,7 +1403,7 @@ gated. A second check here would be a rule spelled twice, and the one downstream
 would be the one that rots.
 
 ⚑⚑ **THE DISCRIMINATOR ARRIVES WITH THE DATA (C-2; [spec:15-21, "self"]).** It used to be a SECOND
-parameter taken from the caller's `agent_name` while the state dict travelled undiscriminated all the
+parameter taken from the caller's `agent_name` while the state dict traveled undiscriminated all the
 way from `agent_file.load`, so the node the table came FROM and the node it merged UNDER were two
 independent facts that nothing cross-checked. `agent_file.state_level` now attaches the file's own
 node at the boundary and the pair travels as one `AgentFileLevel`; there is no longer a parameter to
@@ -1626,7 +1626,7 @@ layer). `settings_expand` hands it up as a present `None` (not absent) — whole
 type still raises, naming the entry by `entry_label`.
 
 ⚑ `name` is the DESTINATION for every category now. There is no entry name in the keyspace, so the
-collision messages and the `binding_derivations.*` materialisation identify an entry by where it
+collision messages and the `binding_derivations.*` materialization identify an entry by where it
 lands — which is what R-10 means by "the destination IS the identity". ⚑ The DEST is the LAST key
 segment and stays whole: it is data, and a dest such as `~/.cache/uv` carries dots of its own (see
 `CategoryEntry`).
@@ -1641,7 +1641,7 @@ in one function (CONVENTIONS §0) and would leave "take the dest from the value"
 box-side. *opts* is the per-entry options override (`None` ⇒ the category default). *key_segments* is
 the DISCRIMINATED declaration key the caller built from `decl_scope_fn`, plus the entry's DEST as the
 last segment — carried on the entry for the collision messages and the `binding_derivations.*`
-materialisation. *optional_keys* is matched on its DOTTED spelling.
+materialization. *optional_keys* is matched on its DOTTED spelling.
 
 ⚑⚑ **EVERY DEST IS GUEST-SPELLED, COPIES INCLUDED** (spec §0 "ONE DEST SPACE, TWO DELIVERIES",
 2026-08-08c) — so there is ONE resolution here and no space discriminator. A COPY's guest dest is

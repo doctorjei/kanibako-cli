@@ -1,7 +1,7 @@
 """The keyspec carve-up: every requested section, and NOTHING BETWEEN THEM, gets read.
 
 ``scripts/keyspec-extract.py`` slices the keyspace spec into per-section extraction
-requests, and its output becomes the ORACLE the manifest-enforcer programme is judged
+requests, and its output becomes the ORACLE the manifest-enforcer program is judged
 against.  So a span that no requested section asks for is not a cosmetic gap: it is key
 surface nobody read, wearing the appearance of coverage.  That is strictly worse than
 having no oracle, because nothing downstream can tell the difference.
@@ -275,7 +275,7 @@ def test_an_absent_finish_reason_is_kept_but_warned_about(
 def test_a_blank_finish_reason_is_unknown_and_still_recorded_verbatim(
   monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
-  """A field present but empty means what ``null`` means; only the VERDICT normalises it.
+  """A field present but empty means what ``null`` means; only the VERDICT normalizes it.
 
   ⚑ Both halves are the contract: an endpoint that blanks the field is the very endpoint
   the non-fatal-UNKNOWN decision exists to protect, and the meta record still keeps ``""``

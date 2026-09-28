@@ -356,7 +356,7 @@ class TestBuildEffectiveState:
         """⚑⚑ INVERTED AT S3 (D-5's other end), and the inversion is the point.
 
         This asserted that "undeclared keys from agent state are passed through" — the *"old
-        ``agent.<name>.<anyleaf>`` behaviour"* spec §0 SPECIFICALLY EXCLUDES. Together with the
+        ``agent.<name>.<anyleaf>`` behavior"* spec §0 SPECIFICALLY EXCLUDES. Together with the
         then-ungated ``agent set`` it meant stored garbage was not merely dead: it reached the
         box. The refusal lives where the file is READ (``agent_file.load``), so it fires before
         any record reaches this display — and before every launch, ``agent list`` and ``info``.

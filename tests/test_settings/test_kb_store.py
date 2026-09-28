@@ -94,7 +94,7 @@ def test_bind_and_bind_entry_are_mutually_exclusive_types() -> None:
     assert not isinstance(BindEntry("/a"), Bind)
     assert not isinstance(Bind("/a", "/b"), BindEntry)
     # And a 2-element value of each shape is NOT equal to the other's, because
-    # ``Bind`` always materialises 3 elements (opts defaults into the tuple).
+    # ``Bind`` always materializes 3 elements (opts defaults into the tuple).
     assert BindEntry("/a", "/b") != Bind("/a", "/b")
 
 
@@ -105,7 +105,7 @@ def test_bind_entry_round_trips_through_a_keystore() -> None:
     assert entry == BindEntry("/h/c")
 
 
-def test_bindmap_materialises_as_a_node_not_an_opaque_leaf() -> None:
+def test_bindmap_materializes_as_a_node_not_an_opaque_leaf() -> None:
     # ⚑ Load-bearing (see the ``BindMap`` docstring): a plain dict assigned into a
     # KeyStore is WRAPPED into a nested KeyStore node, so a dest-keyed arm merges
     # PER ENTRY through the generic node recursion rather than wholesale.

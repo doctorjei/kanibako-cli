@@ -392,7 +392,7 @@ class TestPostStartHook:
         assert calls, "the hook must fire at least once"
 
     def test_no_watcher_thread_leaks_when_the_container_never_starts(self):
-        """The watcher is a daemon on a bounded poll AND is cancelled in a
+        """The watcher is a daemon on a bounded poll AND is canceled in a
         ``finally``, so a container that never comes up cannot leave it spinning."""
         import threading
         from unittest.mock import MagicMock
@@ -525,7 +525,7 @@ class TestRemoveBoxTree:
 
     def test_purge_dir_still_delegates_here(self, tmp_path):
         """``_purge_dir`` is kept as a name (rm's call sites + tests read against it);
-        the behaviour must be the moved body, not a second implementation."""
+        the behavior must be the moved body, not a second implementation."""
         from unittest.mock import patch as _p
 
         from kanibako.commands.box._parser import _purge_dir

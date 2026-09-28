@@ -329,7 +329,7 @@ def engine_url(local_sock: Path) -> str:
 def context_slug(dest: str) -> str:
     """A filesystem-safe slug for *dest* (used to name the docker context).
 
-    The readable part is lossy (``me@host`` and ``me/host`` both normalise to
+    The readable part is lossy (``me@host`` and ``me/host`` both normalize to
     ``me-host``), so a short digest of the VERBATIM dest is appended to keep
     distinct destinations from sharing a context name / store entry.
     """

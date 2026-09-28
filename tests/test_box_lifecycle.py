@@ -232,7 +232,7 @@ def test_snapshot_tmux_oserror_is_not_attached():
 
 def test_snapshot_tmux_stdout_none_is_not_attached():
     # A CompletedProcess with stdout=None (defensive) must not raise; the
-    # ``proc.stdout or ""`` guard normalises it to "not attached".
+    # ``proc.stdout or ""`` guard normalizes it to "not attached".
     st = snapshot_attach_state(
         "s",
         run=_fake_run(stdout=None),

@@ -69,7 +69,7 @@ descriptor:
   #
   # ⚑ NO `editing` ROW — goose CANNOT render that tier, and the launch REFUSES it
   # by name (naming restricted/full as goose's legal tiers) rather than
-  # substituting a neighbour.  Source-verified at pinned tag v1.38.0 (evidence:
+  # substituting a neighbor.  Source-verified at pinned tag v1.38.0 (evidence:
   # plans/ratification-implementation-b7b-goose-smartapprove.md): the mode ladder
   # is auto > smart_approve > approve > chat, and `smart_approve` auto-approves
   # READ-ONLY tools while PROMPTING for write/edit/shell — the INVERSE of claude's

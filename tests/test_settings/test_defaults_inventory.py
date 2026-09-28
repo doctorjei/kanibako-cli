@@ -5,7 +5,7 @@ is each one declared". That is only worth printing if it is COMPLETE and if the 
 column is true, so this file asserts exactly those two properties against oracles that
 are not the command's own output:
 
-* COMPLETENESS — every section counted against the artefact it enumerates (the manifest's
+* COMPLETENESS — every section counted against the artifact it enumerates (the manifest's
   own default-row count, its ``bind_default_entries`` arms, the two env emitters).  The
   listing's own row count is never the standard it is measured by.
 * PROVENANCE — :func:`~kanibako.settings.defaults_inventory.source_groups` partitions the
@@ -162,7 +162,7 @@ class TestSourcePartition:
 
         A row that moves between "has a code oracle" and "does not" over in
         ``test_manifest_conformance`` reds HERE, because its SOURCE label would then be
-        describing an artefact that no longer carries it.
+        describing an artifact that no longer carries it.
 
         ⚑ AN ORACLE IS A PIN OR A KINEMATA VIEW — ``PINNED_DEFAULT_KEYS`` or
         ``CARRIED_DEFAULT_KEYS``, which the conformance file keeps disjoint.
@@ -172,7 +172,7 @@ class TestSourcePartition:
             by_class[LABEL_TO_CONFORMANCE_CLASS[label]] |= set(keys)
         oracled = set(PINNED_DEFAULT_KEYS) | set(CARRIED_DEFAULT_KEYS)
         assert by_class["pinned"] == oracled, (
-            f"labelled as having a declaring artefact but conformance exempts: "
+            f"labeled as having a declaring artifact but conformance exempts: "
             f"{sorted(by_class['pinned'] - oracled)}; conformance pins or carries "
             f"but this file classes as source-less: "
             f"{sorted(oracled - by_class['pinned'])}"
@@ -203,7 +203,7 @@ class TestSourcePartition:
         # ``workset show --effective`` render ``KanibakoConfig`` fields, agent behavior and
         # the category snapshot — not the ``workset.*`` floor · ``config get`` reads what is
         # STORED at the noun and never resolves the floor · ``system defaults`` still lists
-        # 65 rows, three of them relabelled to this group.
+        # 65 rows, three of them relabeled to this group.
         # What DID change is the launch snapshot itself: ``@workset.registry`` /
         # ``@workset.kuid`` / ``@workset.skip_kuid_check`` resolve where they used to be
         # ``__MISSING__``, in primary and named (standalone keeps the two ABSENCES).
@@ -378,7 +378,7 @@ class TestBindRows:
         for dest in inv._BIND_SOURCES_OUTSIDE_THE_FILE:
             assert dest in dests, f"{dest!r} is no longer a manifest bind entry"
 
-    def test_a_dest_with_no_declaring_artefact_is_refused(self, monkeypatch):
+    def test_a_dest_with_no_declaring_artifact_is_refused(self, monkeypatch):
         """⚑ MUTATION PROOF 3 — a bind whose source cannot be found REFUSES, naming it."""
         import kanibako.settings.defaults_inventory as inv
 
@@ -386,7 +386,7 @@ class TestBindRows:
         monkeypatch.setattr(core_defaults, "bind_dest_families", dict)
         with pytest.raises(RuntimeError) as exc:
             inv.bind_rows()
-        assert "no declaring artefact" in str(exc.value)
+        assert "no declaring artifact" in str(exc.value)
 
 
 class TestEnvRows:
@@ -523,7 +523,7 @@ class TestRendering:
 
         The pin is ``test_the_partition_agrees_with_the_conformance_classification`` and
         ``test_every_label_is_classified_by_this_file``: both key off the LABEL, so a
-        relabelled group reds there.  This case proves the label reaches the printed
+        relabeled group reds there.  This case proves the label reaches the printed
         cell at all — without it, "the label is pinned" would be a claim about a string
         nobody renders.
         """
@@ -539,7 +539,7 @@ class TestRendering:
         assert row.source == "A WRONG LABEL"
         assert "A WRONG LABEL" in self._output()
         # And the flipped label is NOT one this file classifies — the partition case
-        # above is exactly what would red on a real relabelling.
+        # above is exactly what would red on a real relabeling.
         assert "A WRONG LABEL" not in LABEL_TO_CONFORMANCE_CLASS
 
 

@@ -907,7 +907,7 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
     # view/set across CONTAINMENT levels" makes a ``box.*`` key stored there an OVERRIDABLE
     # DEFAULT for the boxes it contains.  That it goes live for EVERY default-mode box is
     # what a workset-tier default MEANS, not a reason to drop the tier: this module already
-    # honours that same file for ``workset.registry`` (see ``load_primary_boxes``).
+    # honors that same file for ``workset.registry`` (see ``load_primary_boxes``).
     actual_vault_enabled = (enable_vault if enable_vault is not None
                             else resolve_box_enable_vault(std.config_file,
                                                           box_path=project_toml,

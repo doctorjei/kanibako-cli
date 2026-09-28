@@ -841,7 +841,7 @@ class TestBoxConfigReset:
 
 class TestBoxConfigRefusesThePhantomBox:
     """MBR-6: a subject-less box-config verb run from a cwd that is NOT a box
-    must REFUSE, not materialise ``boxes/__unregistered__/box.yaml``.
+    must REFUSE, not materialize ``boxes/__unregistered__/box.yaml``.
 
     ``_resolve_local_dir`` returns that path as a NAME-ASSIGNMENT SENTINEL for
     resolvers that go on to pick a real name.  The config verbs pick none, so the

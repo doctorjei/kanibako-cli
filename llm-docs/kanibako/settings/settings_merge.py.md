@@ -119,7 +119,7 @@ also a subtree (design §6e). Three reasons, and each one alone is sufficient:
 2. The recursion yields a fresh, non-aliasing node (S15), so it subsumes the old single-subtree
    deep-copy branch.
 3. A lower non-subtree setter at this name is shadowed by the higher subtree — it is filtered out of
-   the `subtrees` list — which leaves that behaviour unchanged.
+   the `subtrees` list — which leaves that behavior unchanged.
 
 Non-`KeyStore` leaves are either immutable (a `Bind` tuple, `str`, `int`, `bool`) and stored
 verbatim, or a `list`, which is copied into a fresh `list` so the snapshot can never ALIAS an input

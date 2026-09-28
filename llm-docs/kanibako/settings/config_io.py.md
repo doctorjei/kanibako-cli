@@ -79,11 +79,11 @@ being read — `yaml` is handed a string, so its own mark says `"<unicode string
 traceback on any verb that touches the cascade, including the BOX-LESS ones (`rig list` / `setup` /
 `baseline`) that reach it through `load_merged_config`'s box-scalar resolve (B6-Editor S-3).
 
-*Verified 2026-08-18: `cli.py` catches `KanibakoError` (and `UserCancelled`) and nothing broader —
+*Verified 2026-08-18: `cli.py` catches `KanibakoError` (and `UserCanceled`) and nothing broader —
 `errors.py` carries a `⚑` saying exactly that. `commands/image.py` (`rig list`),
 `commands/setup_cmd.py` and `commands/baseline_cmd.py` all call `load_merged_config`.*
 
-⚑ **MEASURED PyYAML behaviour the `Missing/empty → {}` contract and the non-mapping refusal rest
+⚑ **MEASURED PyYAML behavior the `Missing/empty → {}` contract and the non-mapping refusal rest
 on** — keep, do not "simplify":
 
 | input | `yaml.safe_load` returns | `load_doc` returns |
@@ -350,7 +350,7 @@ settle the question between them. So the conclusion does not REST on an artifact
 have been cleaned away, which is what the rule above bars; read the third arm as confirmation a
 reader may be unable to reproduce.
 
-### Kept and MARKED, per the invert-the-drop rule for library behaviour
+### Kept and MARKED, per the invert-the-drop rule for library behavior
 
 All PyYAML claims (`str()` shape, `"<unicode string>"`, empty-file `None`, non-mapping passthrough)
 were **re-measured on PyYAML 6.0.3 rather than assumed**, and the measurements are tabulated above.

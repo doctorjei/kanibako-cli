@@ -1274,7 +1274,7 @@ class TestHandbookLayerSourceKeys:
         )
 
     def test_every_key_is_a_declared_source_scalar_somewhere(self, primary_proj):
-        """THE DRIFT PIN.  Every key names a SOURCE scalar SOME artefact declares —
+        """THE DRIFT PIN.  Every key names a SOURCE scalar SOME artifact declares —
         never a path this module invented.
 
         ⚑ THREE KEYS, THREE CARRIERS, and naming each is the point:
@@ -1432,7 +1432,7 @@ class TestInstallBoxHandbookTemplate:
         assert (repointed / "a.md").read_text() == "sys"
 
     def test_layer_content_cannot_escape_the_dest_subtree(self, tmp_path):
-        """And the reason no content whitelist is owed: ``stage_layers`` relativises
+        """And the reason no content whitelist is owed: ``stage_layers`` relativizes
         every entry UNDER each layer root, so a layer that ships a top-level name the
         box whitelist would deny (``box.yaml``, ``registry.yaml``) still lands
         INSIDE the dest — it cannot reach a sibling entry of the box store."""
@@ -1631,7 +1631,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         TWO passes, and they claim different things: the first is the WHOLE
         ``_seed_box_home`` ("create succeeds and the chapter lands"), the second
         wipes the dest and drives step 3 alone (so what REFILLS it is unambiguously
-        this route, not an artefact of an earlier step)."""
+        this route, not an artifact of an earlier step)."""
         from kanibako.commands.start import _install_box_handbook
 
         self._populate(std)
@@ -1839,7 +1839,7 @@ class TestEnsureAgentStores:
         assert chapter.read_text() == "MY CHAPTER"
 
     def test_host_mold_reaches_every_store(self, std):
-        """The mold is read AS IT STANDS at action time, so a user's customisation
+        """The mold is read AS IT STANDS at action time, so a user's customization
         reaches FUTURE stores (and this one, on its next self-heal)."""
         from kanibako.launch.templates import ensure_agent_stores
 
@@ -2031,7 +2031,7 @@ class TestWorksetStampFollowsTheKeys:
             )
         return root
 
-    def test_standalone_init_honours_a_workset_canon_repoint(
+    def test_standalone_init_honors_a_workset_canon_repoint(
         self, std, config, tmp_home
     ):
         """⚑⚑ THE ORACLE, on the PRODUCT path: a standalone create into a root whose
@@ -2047,7 +2047,7 @@ class TestWorksetStampFollowsTheKeys:
         assert (root / "my_canon" / "handbook").is_dir()
         assert not (root / "canon").exists()
 
-    def test_canon_only_stamp_honours_a_workset_canon_repoint(self, std, tmp_home):
+    def test_canon_only_stamp_honors_a_workset_canon_repoint(self, std, tmp_home):
         """The same thing at the seam, so a failure names the stamp and not the create."""
         from kanibako.launch.templates import install_workset_template
 
@@ -2093,7 +2093,7 @@ class TestWorksetStampFollowsTheKeys:
         assert "WORKSET" in str(exc.value)
         assert not (root / "my_canon" / "notebook").exists()
 
-    def test_template_skeleton_honours_a_workset_template_repoint(
+    def test_template_skeleton_honors_a_workset_template_repoint(
         self, std, tmp_path
     ):
         """⚑ NOT REACHABLE THROUGH TODAY'S PRODUCT CALLERS — it pins the resolver.
@@ -2789,7 +2789,7 @@ class TestRefreshEquivalenceTiers:
         target = std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
         text = target.read_text()
         # A comment edit, ONE trailing space (insignificant — two would be a
-        # markdown HARD BREAK, which the normaliser deliberately preserves), CRLF
+        # markdown HARD BREAK, which the normalizer deliberately preserves), CRLF
         # line endings, and extra blank lines: all noise, none of it content.
         target.write_text(
             text.replace("<!--", "<!--[STOCK]", 1)
@@ -2826,7 +2826,7 @@ class TestRefreshEquivalenceTiers:
         assert not _equivalent(src, dst)
 
     def test_fenced_code_whitespace_is_significant(self, tmp_path):
-        """CONSERVATIVE normalisation: inside a fence, whitespace is CONTENT."""
+        """CONSERVATIVE normalization: inside a fence, whitespace is CONTENT."""
         from kanibako.launch.templates import _equivalent
 
         src = tmp_path / "a.md"
@@ -2836,9 +2836,9 @@ class TestRefreshEquivalenceTiers:
         assert not _equivalent(src, dst)
 
     def test_trailing_hard_break_is_preserved(self, tmp_path):
-        from kanibako.launch.templates import _normalise_markdown
+        from kanibako.launch.templates import _normalize_markdown
 
-        assert _normalise_markdown("one  \ntwo\n") == "one  \ntwo"
+        assert _normalize_markdown("one  \ntwo\n") == "one  \ntwo"
 
 
 class TestStagingIsScoped:
@@ -2883,7 +2883,7 @@ class TestStagingIsScoped:
         assert "WORKSET" in str(exc.value)
 
 
-class TestRefreshHonoursTheClassifier:
+class TestRefreshHonorsTheClassifier:
     """S-6: the PREVIEW and the ACTION must tell ONE truth.
 
     ``plan_template_refresh`` calls an EQUIVALENT staging file "current" and does not
@@ -2905,7 +2905,7 @@ class TestRefreshHonoursTheClassifier:
         assert plan_template_refresh(std, ["claude"]) == ([], [], [])
         install_packaged_templates(std, ["claude"], refresh=True)
         # ...so the refresh must not have rewritten it.  BYTES, deliberately: text
-        # mode normalises CRLF on read, which would make this pass either way.
+        # mode normalizes CRLF on read, which would make this pass either way.
         assert target.read_bytes() == before
 
     def test_refresh_still_replaces_a_genuinely_DIFFERENT_staged_file(self, std):

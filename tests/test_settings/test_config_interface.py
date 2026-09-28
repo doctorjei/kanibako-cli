@@ -150,7 +150,7 @@ class TestIsKnownKey:
         assert is_known_key("foobar") is False
 
     def test_multifaceted_terminals_answer_false_quarantined(self):
-        """⚑ PINS THE QUARANTINE, NOT A DESIRED BEHAVIOUR (Jei, 2026-08-08).
+        """⚑ PINS THE QUARANTINE, NOT A DESIRED BEHAVIOR (Jei, 2026-08-08).
 
         The six bind-shaped category TERMINALS and ``<scope>.masks`` are DECLARED
         keys whose values are multi-faceted (a dest-keyed map; a list for
@@ -176,7 +176,7 @@ class TestIsKnownKey:
         # The AGENT-scope terminal spelling is in the same state.
         assert is_known_key("agent.claude.caches") is False
         assert is_known_key("agent.claude.bindings.ro") is False
-        # ⚑ The PER-ENTRY spellings stay recognised — they are refused BY NAME
+        # ⚑ The PER-ENTRY spellings stay recognized — they are refused BY NAME
         # (spec §0 refuses loudly), which requires the disambiguator to read them
         # as keys.  Only the terminals are quarantined.
         assert is_known_key("box.caches.npm") is True
@@ -464,7 +464,7 @@ class TestWorksetKuidKeys:
 class TestEnvKeys:
     """The engine's half of the R-39 retirement + the scoped replacement.
 
-    The FULL family behaviour (every scope arm, the reserved-name floor, the
+    The FULL family behavior (every scope arm, the reserved-name floor, the
     round trip) lives in ``tests/test_env_cmd.py``; these are the seams this
     module already owned.
     """
@@ -2646,7 +2646,7 @@ class TestCategoryConfigSet:
         positional-vs-key disambiguator: if the retired spelling stopped reading
         as a key, the verbs would take it for a PROJECT NAME and the user would
         get a project error instead of the retirement message that tells them
-        what happened. (It is also still readable.) Same recognise-to-refuse role
+        what happened. (It is also still readable.) Same recognize-to-refuse role
         the bare ``env.<VAR>`` spelling has."""
         assert is_known_key("box.bindings.rw.home")
         assert is_known_key("system.bindings.ro.helper")
@@ -3416,14 +3416,14 @@ class TestBoxAgentMirrorConfigSet:
     file at the nested ``box.agent.<key>`` location, and the B4 guard permits it
     as a same-scope box write (covered above + here)."""
 
-    def test_box_agent_key_is_recognised_so_it_can_be_refused(self):
-        """The retired spelling must still be RECOGNISED — a user with it in
+    def test_box_agent_key_is_recognized_so_it_can_be_refused(self):
+        """The retired spelling must still be RECOGNIZED — a user with it in
         muscle memory gets the cure, not "unknown config key"."""
         from kanibako.settings.config_keys import _is_box_agent_key
         assert _is_box_agent_key("box.agent.model") is True
         assert _is_box_agent_key("box.agent.bindings.ro.share") is True
         # It is no longer a SETTABLE key.
-        assert is_known_key("box.agent.model") is True  # recognised…
+        assert is_known_key("box.agent.model") is True  # recognized…
         # …but every WRITE verb refuses it (below).
 
     def test_the_retired_box_agent_name_scalar_is_not_a_key(self):
@@ -4156,7 +4156,7 @@ class TestScopeBindRouteRetired:
     ``{system,workset,box}.bindings.{ro,rw}.<name>`` is RETIRED.
 
     This class REPLACES ``TestF10CoreFloorRepoint``, which pinned the opposite
-    behaviour: a source-only repoint of a launch-only CORE bind, enabled by
+    behavior: a source-only repoint of a launch-only CORE bind, enabled by
     threading the floor registry. That surface is a KNOWN, ACCEPTED LOSS (Jei:
     *"unfortunate, but this is going to have to be a cost we'll pay"*), boarded
     for review as DS-BL1. It is NOT a regression to restore.
@@ -4164,7 +4164,7 @@ class TestScopeBindRouteRetired:
     What must hold instead: the refusal is LOUD, NAMES THE KEY, and WRITES
     NOTHING — spec §0 refuses, never silently accepts and never fabricates.
     ⚑ These calls used to thread the floor registry on purpose, so the refusal
-    could not be an artefact of the caller omitting it. The registry and its
+    could not be an artifact of the caller omitting it. The registry and its
     parameter are gone, so there is nothing left to omit — the refusal fires in the
     verb PREAMBLE, before any cascade is assembled at all.
     """
@@ -4238,7 +4238,7 @@ class TestScopeBindRouteRetired:
         as the control. DS-BL1 = (a) (Jei, 2026-08-07g) made the loss UNIFORM, so the
         control became a second retired spelling. What is pinned now is the same
         no-over/under-reach property from the other side: the SAME door refuses the
-        arms and the other four, and it does NOT reach a neighbouring scalar."""
+        arms and the other four, and it does NOT reach a neighboring scalar."""
         box = tmp_path / "box.yaml"
         dump_doc(box, {"box": {"synced": {"x": ["/old", "/dest"]}}, })
         for key in ("box.bindings.ro.x", "box.synced.x", "box.caches.x",
@@ -4257,9 +4257,9 @@ class TestScopeBindRouteRetired:
             config_path=box, command_scope=ConfigLevel.box, cascade_box_path=box,
         ).startswith("Error:")
 
-    def test_the_two_retirements_keep_their_own_recognisers(self):
+    def test_the_two_retirements_keep_their_own_recognizers(self):
         """The agent-scope route is retired TOO (the second R-9 step), but by its
-        OWN recogniser — the node-splitting parser, not this one. Pin the split so
+        OWN recognizer — the node-splitting parser, not this one. Pin the split so
         neither predicate quietly grows to cover the other's keys."""
         from kanibako.settings.config_keys import (
             _is_agent_node_bind_key,
@@ -4270,7 +4270,7 @@ class TestScopeBindRouteRetired:
         # Neither retired form is a settable category key any more.
         assert not _is_path_category_key("agent.claude.bindings.ro.launcher")
         assert not _is_path_category_key("box.bindings.ro.vault")
-        # ...and each is claimed by exactly ONE recogniser.
+        # ...and each is claimed by exactly ONE recognizer.
         assert _is_scope_bind_key("box.bindings.ro.vault")
         assert not _is_agent_node_bind_key("box.bindings.ro.vault")
         assert _is_agent_node_bind_key("agent.claude.bindings.ro.launcher")
@@ -4324,7 +4324,7 @@ class TestAgentNodeBindRouting:
     mirror. (There is no bare ``agent.bindings.*`` form to distinguish it from — the
     agent tier is DISCRIMINATED, spec §2d / §0.)
 
-    ⚑ Since R-9 the predicate's job is RECOGNISE-TO-REFUSE plus routing the
+    ⚑ Since R-9 the predicate's job is RECOGNIZE-TO-REFUSE plus routing the
     surviving ``config get``; it is no longer a set route. What it must still match
     is unchanged, which is exactly why these rows are kept.
     """
@@ -4336,7 +4336,7 @@ class TestAgentNodeBindRouting:
             _is_box_agent_key,
             _is_persona_agent_key,
         )
-        # A node bind key: node-bind True, and the neighbours False (no mis-capture).
+        # A node bind key: node-bind True, and the neighbors False (no mis-capture).
         k = "agent.claude.bindings.ro.launcher"
         assert _is_agent_node_bind_key(k)
         assert not _is_box_agent_key(k)
@@ -4344,8 +4344,8 @@ class TestAgentNodeBindRouting:
         # ⚑ THIS LINE USED TO READ ``assert not _is_path_category_key(k)`` and it had
         # gone VACUOUS: since 2026-08-08c ``BIND_KEY_RE``'s non-terminal complement
         # is empty, so that predicate compiles ``(?!)`` and answers False for EVERY
-        # string — the assertion would have held for ``""``. The live neighbour is
-        # the agent-scope RECOGNISER, and it deliberately answers TRUE here: it is a
+        # string — the assertion would have held for ``""``. The live neighbor is
+        # the agent-scope RECOGNIZER, and it deliberately answers TRUE here: it is a
         # SUPERSET of the node parser (recognition may be broad, resolution may
         # not), and the narrow one is checked FIRST wherever both matter.
         assert _is_agent_scope_bind_key(k)
@@ -4401,7 +4401,7 @@ class TestAgentNodeBindRouting:
         for cat in others:
             assert not _is_agent_node_bind_key(f"agent.claude.{cat}.x"), cat
             # RECOGNITION — ...and the other four are claimed by the agent-scope
-            # recogniser, so the DOOR still covers all six at the agent scope.
+            # recognizer, so the DOOR still covers all six at the agent scope.
             assert _is_agent_scope_bind_key(f"agent.claude.{cat}.x"), cat
 
         for cat in RETIRED_BIND_CATEGORIES:
@@ -4440,8 +4440,8 @@ class TestAgentNodeBindRouting:
     def test_bare_agent_category_is_not_a_node_bind(self):
         # The BARE ``agent.<category>.<name>`` (no node) is NOT A KEY: the keyspace
         # is CLOSED (spec §0) and the agent tier is DISCRIMINATED (§2d / §0), so
-        # BOTH the node-bind PARSER and the agent-scope RECOGNISER refuse it — and
-        # the recogniser's refusal is the load-bearing one, because a match there
+        # BOTH the node-bind PARSER and the agent-scope RECOGNIZER refuse it — and
+        # the recognizer's refusal is the load-bearing one, because a match there
         # would hand an undeclared spelling a "route is RETIRED" message implying it
         # had once been a key.
         #
@@ -4456,8 +4456,8 @@ class TestAgentNodeBindRouting:
         assert not _is_agent_scope_bind_key("agent.bindings.ro.foo")
         assert not _is_agent_scope_bind_key("agent.caches.foo")
         # A DISCRIMINATED key is claimed: the ``bindings`` arms by BOTH (the node
-        # parser resolves, the recogniser is its deliberate superset), and the other
-        # four by the recogniser alone.
+        # parser resolves, the recognizer is its deliberate superset), and the other
+        # four by the recognizer alone.
         assert _is_agent_node_bind_key("agent.claude.bindings.ro.foo")
         assert _is_agent_scope_bind_key("agent.claude.bindings.ro.foo")
         assert not _is_agent_node_bind_key("agent.default.caches.foo")
@@ -4482,7 +4482,7 @@ class TestAgentNodeBindWriteRouteRetired:
     ``agent.<node>.bindings.{ro,rw}.<name>`` is RETIRED.
 
     This class REPLACES ``TestAgentNodeBindRepoint``, which pinned the opposite
-    behaviour: a source-only repoint that wrote the RAW tuple into the node file,
+    behavior: a source-only repoint that wrote the RAW tuple into the node file,
     sourcing box_dest/opts from a detect-free descriptor floor registry. That
     surface is a KNOWN, ACCEPTED LOSS with no replacement spelling (R-9), boarded
     for review as DS-BL1. It is NOT a regression to restore.
@@ -4611,9 +4611,9 @@ class TestAgentNodeBindWriteRouteRetired:
         assert msg.startswith("Error:") and "cannot be set" in msg
         assert not box.exists()  # nothing written
 
-    def test_the_other_four_agent_categories_are_still_recognised(self, tmp_path):
+    def test_the_other_four_agent_categories_are_still_recognized(self, tmp_path):
         """The narrowing is SURGICAL: ``_AGENT_NODE_BIND_RE`` claims the two
-        ``bindings`` arms and nothing else, and the other four are still RECOGNISED
+        ``bindings`` arms and nothing else, and the other four are still RECOGNIZED
         at the agent scope by ``_is_agent_scope_bind_key`` — so their refusal names
         the key instead of degrading to "unknown config key" (spec §0) or, worse,
         being mistaken for a project name.
@@ -4624,7 +4624,7 @@ class TestAgentNodeBindWriteRouteRetired:
         answers False for every string (its non-terminal complement emptied on
         2026-08-08c), so the assertion had become a red that could only be reached by
         widening the node parser — the one change it exists to forbid. The guarantee
-        is unchanged and re-posed on the live recogniser; only the term moved.
+        is unchanged and re-posed on the live recognizer; only the term moved.
         """
         from kanibako.settings.config_keys import _is_agent_scope_bind_key
 
@@ -5051,7 +5051,7 @@ class TestSetTimeResolutionProbe:
         unknown-key rule with a key that is not unknown — and it went red the moment
         the surface was derived from ``DECLARED_AGENT_LEAVES`` rather than hand-kept.
         ``auto_approve`` is genuinely undeclared (R-41 RETIRED it) and is the same
-        SHAPE: a bare, plausible-looking agent behaviour spelling.
+        SHAPE: a bare, plausible-looking agent behavior spelling.
         """
         msg = set_config_value(
             "auto_approve", "--env FOO=$BAR", config_path=tmp_path / BOX_META_FILE,
@@ -5143,7 +5143,7 @@ class TestSetDispatchCoverage:
 # ---------------------------------------------------------------------------
 
 class TestEffectiveCategoryBlock:
-    """T15 — the materialisation is observable end-to-end (D6, box scope)."""
+    """T15 — the materialization is observable end-to-end (D6, box scope)."""
 
     # ⚑⚑ BUILT THROUGH THE PRODUCTION ROUTE, ON PURPOSE (2026-08-08f). The
     # previous fixture was hand-assembled from 3-element ``Bind`` leaves under
@@ -5230,7 +5230,7 @@ class TestEffectiveCategoryBlock:
         _install_derived_bindings(snapshot, derive_binding_keys(entries))
         if assemble:
             # The pid-0 foundation is a DERIVED key this floor-less build does not
-            # materialise; the assembly seam reads it and refuses without one.
+            # materialize; the assembly seam reads it and refuses without one.
             snapshot.insert_segments(("meta", "box", "home"), "/boxes/mybox/home")
             _install_assembly_collapse(snapshot, entries, whole_box=True)
         return snapshot
@@ -5495,7 +5495,7 @@ def test_reset_of_a_name_that_is_not_a_key_is_refused_as_get_refuses_it(
 
 class TestPrefTargetFiltersAtSetTime:
     """The SAME three filters the launch applies — so a request ``config set``
-    accepts is one the launch honours, and one refused here can never become a
+    accepts is one the launch honors, and one refused here can never become a
     stored request that fails every future launch."""
 
     def test_an_undeclared_target_is_refused(self, tmp_path):
@@ -5599,7 +5599,7 @@ class TestPrefAccessEnumGuard:
 
 
 class TestPrefIsKnownKey:
-    def test_a_pref_key_is_recognised_as_a_key_not_a_project_name(self):
+    def test_a_pref_key_is_recognized_as_a_key_not_a_project_name(self):
         """The positional-vs-key disambiguator — otherwise ``box config
         pref.system.agent`` is read as a PROJECT called ``pref.system.agent``."""
         assert is_known_key("pref.system.agent")
@@ -5802,7 +5802,7 @@ class TestPrefValueValidation:
         an agent bind it can no longer set directly — so the shape check must keep
         firing on a bindings target. That key left ``BIND_KEY_RE`` when its CLI
         route died (R-9), which is exactly how this hole would open: the guard would
-        stop recognising the very key that lost its direct route, and the LAUNCH
+        stop recognizing the very key that lost its direct route, and the LAUNCH
         would die naming a key the user never wrote.
 
         ⚑ REWRITTEN AT P4′. The target used to be
@@ -6678,7 +6678,7 @@ class TestClosedKeyspaceReadGate:
         """§0: *"Refuse the write; keep the read honest."* Every BIND-SHAPED category
         entry still reads at both scopes.
 
-        ⚑ The corpus is DERIVED from the category list the recogniser itself is built
+        ⚑ The corpus is DERIVED from the category list the recognizer itself is built
         from, so admitting or retiring a category moves this test with it (P13).
         """
         from kanibako.settings.config_keys import scope_read_key_error

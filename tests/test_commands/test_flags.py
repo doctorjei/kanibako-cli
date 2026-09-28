@@ -155,7 +155,7 @@ class TestRelevance:
         check_flag_relevance(_parse(parser, ["box", "inspect", "--box", "foo"]))
 
     def test_alias_still_refused_where_its_canonical_spelling_is(self, parser):
-        # The inverse: canonicalising must not make an alias MORE permissive
+        # The inverse: canonicalizing must not make an alias MORE permissive
         # than the command it aliases.  ``box ls`` → ``box list``, undeclared.
         with pytest.raises(FlagRelevanceError):
             check_flag_relevance(_parse(parser, ["box", "ls", "--box", "foo"]))
@@ -177,7 +177,7 @@ class TestRelevance:
         check_flag_relevance(_parse(parser, ["code", "--box", "foo", "--remote", "h"]))
 
     def test_box_still_irrelevant_on_rig_list(self, parser):
-        # Negative control: a neighbouring leaf whose handler never reads --box
+        # Negative control: a neighboring leaf whose handler never reads --box
         # must still refuse it.  Declaring ``code`` must not loosen anything.
         with pytest.raises(FlagRelevanceError):
             check_flag_relevance(_parse(parser, ["rig", "list", "--box", "foo"]))
@@ -341,7 +341,7 @@ class TestAnAliasIsJudgedAsTheCommandItAliases:
         assert command_key(_parse(parser, argv)) == canonical
 
     def test_the_typed_spelling_is_still_recorded(self, parser):
-        """Canonicalising is a RELEVANCE judgement, not a rewrite of the
+        """Canonicalizing is a RELEVANCE judgment, not a rewrite of the
         namespace — the subcommand dest still says what the user typed."""
         assert _parse(parser, ["box", "inspect"]).box_command == "inspect"
 
@@ -350,7 +350,7 @@ class TestATopLevelShortcutAgreesWithItsBoxVerb:
     """``kanibako rm --box`` was refused where ``kanibako box rm --box`` was not.
 
     These are NOT argparse aliases — ``cli.py`` registers them as separate
-    parsers — so no canonicalisation can relate them and each spelling is its own
+    parsers — so no canonicalization can relate them and each spelling is its own
     key.  What relates them is the HANDLER: ``run_rm`` reads ``--box`` through
     ``resolve_subject_value`` whichever parser dispatched to it, so a shortcut
     that refuses the flag refuses it for a handler that would have used it.
@@ -488,7 +488,7 @@ class TestEveryDeclaredKeyNamesAReachableCommand:
     parser — ``kanibako reauth`` parses as ``start reauth``, consuming the word as
     a box name, so ``kanibako reauth --help`` printed ``start``'s usage and
     ``kanibako reauth`` died with "no box at reauth".  ``command_key`` could
-    therefore never report ``"reauth"`` and the entry changed no behaviour; what
+    therefore never report ``"reauth"`` and the entry changed no behavior; what
     it did do was reach the user, because both sets are joined verbatim into the
     refusal message.  The real command was carried the whole time by the separate
     ``"agent reauth"`` entry.
@@ -496,7 +496,7 @@ class TestEveryDeclaredKeyNamesAReachableCommand:
     The property is the exact one the defect violated: a declared key must be a
     command someone can type.  It is deliberately WEAKER than "declared ⇒ a
     handler reads it" (see the class above) — over-declaring a live command is a
-    judgement call, naming a command that does not exist is not.
+    judgment call, naming a command that does not exist is not.
     INVERT: put ``"reauth"`` back in either set and the matching rows redden.
     """
 
@@ -931,7 +931,7 @@ class TestValueTakingFlagsKeepTheirValues:
         assert args.args == ["mybox", "pref.x=1"]
 
     def test_long_option_abbreviation(self, parser):
-        """argparse honours unambiguous abbreviations, so the rewrite must too —
+        """argparse honors unambiguous abbreviations, so the rewrite must too —
         otherwise ``--nul`` would work before the positionals and not after."""
         args = _parse(parser, ["box", "set", "mybox", "--nul", "pref.x"])
         assert args.null is True
@@ -1013,7 +1013,7 @@ def argparse_311_matching(monkeypatch):
     CPython 3.13 strips a ZERO-WIDTH trailing positional out of the first group
     when the next pattern token is an optional; 3.11 does not.  That one
     difference is why three of these orderings passed locally on 3.13 and failed
-    in CI on 3.11.  Restoring the OLD behaviour here exercises the declared
+    in CI on 3.11.  Restoring the OLD behavior here exercises the declared
     support floor (``requires-python = ">=3.11"``) on whatever interpreter
     happens to run the suite, so the gap cannot reopen unnoticed.
     """

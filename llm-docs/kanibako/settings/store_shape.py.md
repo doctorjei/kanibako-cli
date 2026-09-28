@@ -2,7 +2,7 @@
 
 A `store_shape` is the REALIZATION view of ONE scope: `{ro, rw, mask, seed, sync}` — the three MOUNT
 arms dest-keyed, the two COPY arms flat ordered lists — with the ABSTRACT categories (`caches`,
-`common`) already materialised into `rw` and every bind arm
+`common`) already materialized into `rw` and every bind arm
 carrying CONCRETE mount options. A `StoreShapeSet` holds one per scope over
 `("system", "agent", "workset", "box")` — **four scopes, deliberately not the six cascade levels.**
 
@@ -78,7 +78,7 @@ The exempt pair keeps the LAST entry in input order. Within one scope that is ex
 
 `bindings.ro`→`ro` · `bindings.rw` + `caches` + `common`→`rw` · `masks`→`mask` · `seeded`→`seed` ·
 `synced`→`sync`. The abstractions are already `Z,U` rw mounts (spec §0 "EXTEND `bindings.rw`"), so
-the fold is materialisation, not reclassification.
+the fold is materialization, not reclassification.
 
 ⚑ **`seeded` and `synced` ARE COPIES AND STAY COPIES.** The fold changes KEY SHAPE only; a copy
 never becomes a mount.
@@ -95,12 +95,12 @@ concrete opts — `caches`/`common` carry `Z,U`, `bindings.ro` carries `ro`. `Ca
 is typed `str`, not `str | None`, so concreteness is a property of the type, not of this fold.
 
 ⇒ **the producer carries `entry.options` VERBATIM and must not re-derive it.** Re-deriving with
-`entry.options or bind_options(...)` would be a behaviour change, not a no-op: a deliberate
+`entry.options or bind_options(...)` would be a behavior change, not a no-op: a deliberate
 empty-options bind (`[src, ""]`, reachable through `unpack_bind_entry`) means *no mount options* and
 would be silently upgraded to `Z,U`.
 
 COPY entries (`seeded`, `synced`) carry `options == ""` — `_emit_bind` discards a per-entry opts
-override for a copy. That is upstream behaviour, carried verbatim here, not a decision of this
+override for a copy. That is upstream behavior, carried verbatim here, not a decision of this
 module.
 
 ## The arms — and why the two COPY arms are NOT shaped like the three MOUNT arms

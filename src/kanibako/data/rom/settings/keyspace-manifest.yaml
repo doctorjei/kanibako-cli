@@ -184,7 +184,7 @@ policy:
                                 #   COPY, credential-delivery gate, inode-swap
                                 #   writeback); takes NO root — both sides fully spelled.
   abstract_extends: bindings.rw
-  # The derived binding is MATERIALISED beside the declaration (--effective shows
+  # The derived binding is MATERIALIZED beside the declaration (--effective shows
   # BOTH, so a user can see WHY a mount exists) — but the derivation is NOT a
   # key: it rides in the launch snapshot as the reserved internal node
   # `binding_derivations` (see not_keys.reserved_internal; R-8).
@@ -247,7 +247,7 @@ policy:
         ok: "ACCEPTED — the occupant is INSIDE the arriving copy and is UNTOUCHED.
                Only a MOUNT sweeps on accept, so a copy subsumes nothing"
         not_applicable: "the relation CANNOT ARISE — nothing sits inside a FILE.
-               Behaviourally identical to `ok`; it is the copy_file CHILD cells and
+               Behaviorally identical to `ok`; it is the copy_file CHILD cells and
                no others"
       cells:                      # arriving kind -> what the occupant is -> outcome
         bind:
@@ -445,7 +445,7 @@ policy:
     #                                rule stands; wiring is implementation work on
     #                                this version's plate (plan step B6). Listing an
     #                                unwired entry as `wired` would assert a contract
-    #                                the code does not honour — hence the marker.
+    #                                the code does not honor — hence the marker.
     #                                (B6 LANDED: no entry carries this status now;
     #                                the marker is kept for any future ruled gap.)
     #   projected_surface_excluded — folded at its EPHEMERAL consumer (the launch
@@ -562,11 +562,11 @@ policy:
     # ENFORCEMENT: dests are fixed by keys, so a template cannot CHOOSE where it
     # writes. The residual escape is traversal in template CONTENT — the copier
     # MUST reject `..` components and MUST NOT follow symlinks out of the
-    # destination subtree. Those TRAVERSAL DEFENCES are an algorithm, not a
+    # destination subtree. Those TRAVERSAL DEFENSES are an algorithm, not a
     # table: they stay in CODE (R-24's explicit split).
-    traversal_defences: code
+    traversal_defenses: code
   seed_whitelists_spec: "§2a (seed whitelists, ruled Jei 2026-07-30; R-24 — data
-                         into the manifest, defences stay code)"
+                         into the manifest, defenses stay code)"
 
   # OUT-OF-BOX TEMPLATES (R-24) — the HOST STORES are stamped from the PACKAGES:
   # the step before the box seed, filling the store the box layers copy from.
@@ -601,7 +601,7 @@ policy:
   # Create-if-absent per FILE, never overwrite — once a file exists it belongs
   # to whoever owns that store; a package upgrade must not silently revert their
   # edits. Report a skip ONLY where the packaged file DIFFERS from the one on
-  # disk. The whitelists and the (code-side) traversal defences apply here too.
+  # disk. The whitelists and the (code-side) traversal defenses apply here too.
   seeded_seeds_moments_spec: "§2a (OUT-OF-BOX TEMPLATES, five lifecycle moments; R-24)"
 
   # Set-time validation: full resolution in error-collecting/lenient mode.
@@ -1310,7 +1310,7 @@ keys:
     note: "THE ONE env MEMBER KANIBAKO ITSELF DECLARES — shipped in
            core-defaults.yaml's `env: box:` table (D1-4/MBR-2 9ac0980,
            2026-08-15), which REPLACED the first-run write that used to
-           materialise the value into the system settings file. BOX scope because
+           materialize the value into the system settings file. BOX scope because
            it describes the terminal a box runs in, not the host install; it
            resolves for every box, including installs predating the release, with
            no stored value anywhere.
@@ -1402,7 +1402,7 @@ keys:
     choices: [restricted, editing, full]
     set: cli+file
     default: full
-    note: "permission TIER (R-41). Default full preserves today's behaviour — the
+    note: "permission TIER (R-41). Default full preserves today's behavior — the
            box is the containment boundary. Per-agent realization is DESCRIPTOR-
            declared (R-37 pattern). Flags -S→restricted / -A→full, ephemeral
            (projected-surface class, §1A). An UNKNOWN stored value is REJECTED
@@ -1543,7 +1543,7 @@ keys:
            hops in prose one line later for the SIBLING key ('agent.default.canon
            resolves to @config.agents/default/canon'), which is why this row spells
            the result rather than the formula — matching agent.default.canon.
-           ⚑ THE ARTEFACT THAT EMITS IT is launch.templates.agent_template_defaults
+           ⚑ THE ARTIFACT THAT EMITS IT is launch.templates.agent_template_defaults
            (folded into the main launch floor; template_seed_defaults composes it for
            the create-time seed), beside the NODE arm agent.<agent>.template and under
            the same agent gate. It is INERT for delivery: the node arm is installed for
@@ -1551,8 +1551,8 @@ keys:
            guarantee-creates, for a true agent; a present None for the shell
            pseudo-agent, whose fence declares <None>), so the §2d fallback to this arm
            never fires. It is emitted anyway because a DECLARED
-           default needs a code artefact carrying its value — `system defaults`
-           refuses to print a row it cannot source, and a default no artefact
+           default needs a code artifact carrying its value — `system defaults`
+           refuses to print a row it cannot source, and a default no artifact
            produces would be exactly that row."
     spec: "§2d (default tier; the fallback arm of agent.<agent>.template)"
   agent.default.canon:
@@ -1617,7 +1617,7 @@ keys:
            PLUGIN-provided or the default — the ordinary §2d fallback picks
            exactly ONE to bind (OVERRIDE, not additive: no per-file merge).
            ⚑ The plural/singular split is LOAD-BEARING and must not be
-           'normalised' (R-9/R-13): STORAGE IS VARIED, BINDING IS NOT — the
+           'normalized' (R-9/R-13): STORAGE IS VARIED, BINDING IS NOT — the
            HOST stores N per-agent variants (agents/<agent>/…, plural, each
            settable incl. for an agent this box is not running, §2h); the BOX
            gets ONE chapter at a FIXED dest with NO agent segment (agent/…,
@@ -2383,7 +2383,7 @@ bind_default_entries:
       user_key: true
       default: "(@system.canon/handbook/SYS_CONTENTS.md)"
       note: "FILE bind; system store — user-editable on the HOST, ro in-box. NOT
-             skip-if-absent: install/setup materialises the system store, so a
+             skip-if-absent: install/setup materializes the system store, so a
              missing source is a genuine defect. The blessed repoint ROUTE is the
              SOURCE key system.canon (the bind spells itself against it)."
       spec: "§2c (CANON books; R-10)"
@@ -2638,7 +2638,7 @@ bind_default_entries:
 ## key for the separate, older reason recorded above: since 2026-08-07f the name
 ## segment is not keyspace at all.) What fills the box's handbook chapter now is
 ## `launch.templates.install_box_handbook_template`, a
-## host-side copy at create modelled on `install_workset_template`; its three layer
+## host-side copy at create modeled on `install_workset_template`; its three layer
 ## SOURCES are still the ordinary keys `{system, agent.<agent>, workset}.template`,
 ## so the user's repoint route is unchanged. Single-route composes: a host template
 ## never enters a box — the ro `box.bindings.ro[~/canon/handbook/box]` bind does,
@@ -2847,7 +2847,7 @@ pref:
 
 ## ---------------------------------------------------------------------------
 ## NOT KEYS / RETIRED NAMES — recorded so nobody re-adds or fabricates them.
-## ⚑ A fabricated key is very often a RETIRED name. This block is the defence:
+## ⚑ A fabricated key is very often a RETIRED name. This block is the defense:
 ##   `unknown_key: error` refuses it, and this table says WHAT TO USE INSTEAD.
 ## Names sourced from §2c/§2d/§3 rulings + the AS-IS audit
 ## (reference/keyspace-phase2/SUMMARY-key-lists.md, 2026-06-26f). ⚑ That audit is a
@@ -2861,11 +2861,11 @@ not_keys:
                                   # cannot be re-claimed as keys (R-8 option 2 /
                                   # plan decision D-4)
     "binding_derivations": "INTERNAL reserved node inside the per-launch snapshot,
-                            carrying the materialised binding each ABSTRACT
+                            carrying the materialized binding each ABSTRACT
                             declaration derives. NOT a key, not user-addressable;
                             the closed head dispatch refuses it. Replaces the CUT
                             meta.derived.<declaration-key> family (R-8); the
-                            materialisation requirement is unchanged. ENFORCED at
+                            materialization requirement is unchanged. ENFORCED at
                             assembly: a file-borne top-level `binding_derivations:`
                             table is DROPPED at assembly with a warning
                             (settings_assemble._drop_upward_scopes; landed at the
@@ -2884,7 +2884,7 @@ not_keys:
                             $XDG_STATE_HOME/kanibako/helpers.jsonl); the brace form
                             @{meta.box.name} exists precisely so this spelling is
                             not needed (§2c; policy.reference_forms)"
-    "config.handbook": "draft name REJECTED in favour of system.canon (R-36; §2g)
+    "config.handbook": "draft name REJECTED in favor of system.canon (R-36; §2g)
                         — the handbook root is the canon key's handbook/ subtree,
                         not a config.* key (fails §1's locate-and-load test)"
     "machine.*":    "NEVER a namespace — §2: `base` is an AUTHORITY (cascade) tier,
@@ -3174,7 +3174,7 @@ plugin_contributed:
 
   # R-15 (RATIFIED, follows R-10): the spec-NAMED plugin `synced` credential
   # entries live HERE, not in the core table — they are PLUGIN-declared (each is
-  # materialised from its plugin's cred_files descriptor entries).
+  # materialized from its plugin's cred_files descriptor entries).
   # ⚑ DEMOTED 2026-08-07f, same class as the core seed layers: `agent.<a>.synced`
   # is a TERMINAL key and these are its DEFAULT ENTRIES, indexed by DESTINATION.
   # `agent.claude.synced.credentials` and its two siblings are NOT keys — the

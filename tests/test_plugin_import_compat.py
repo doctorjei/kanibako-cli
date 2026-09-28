@@ -145,7 +145,7 @@ def test_no_file_remains_at_the_legacy_location(
 ) -> None:
     """No stub, no hollow module, no ``__init__`` package — the file is deleted.
 
-    ``import`` failing is the behaviour; an absent FILE is the state that
+    ``import`` failing is the behavior; an absent FILE is the state that
     guarantees it.  Checked separately because a stray ``.py`` at the old path
     that merely re-raises would pass the import test while re-opening exactly the
     deprecation window this release refused to ship.
@@ -178,14 +178,14 @@ def test_new_path_imports_and_carries_the_names(
 
 
 # --------------------------------------------------------------------------- #
-# Import-time WARNING behaviour — measured in FRESH SUBPROCESSES               #
+# Import-time WARNING behavior — measured in FRESH SUBPROCESSES               #
 # --------------------------------------------------------------------------- #
 #
 # ⚑ NEVER `importlib.reload()` A REAL MODULE IN-PROCESS.  See the module
 # docstring: reloading `kanibako.settings.settings_resolve` rebinds `UNSET` (a
 # sentinel compared with `is`) and `SettingsError` (a class imported at module
 # scope by ~8 modules), which poisoned 49 tests across `tests/test_settings/` in
-# a single-process run.  Import-time behaviour is measured in a fresh subprocess;
+# a single-process run.  Import-time behavior is measured in a fresh subprocess;
 # nothing here mutates the parent interpreter's module state.
 
 

@@ -243,7 +243,7 @@ def test_resolve_mode_bare_descriptor_always_start() -> None:
 
 
 def test_access_unset_defaults_to_full() -> None:
-    # R-41's ruled default: today's behaviour preserved (the box IS the
+    # R-41's ruled default: today's behavior preserved (the box IS the
     # containment boundary).  ``None`` — the key absent from the cascade — is
     # the ONE spelling of "unset"; see the next test for ``""``.
     assert resolve_access_tier(None) == "full"

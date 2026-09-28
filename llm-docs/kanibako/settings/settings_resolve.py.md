@@ -55,7 +55,7 @@ Four things, and the first line of the old docstring named only two of them:
 
 * **The expression grammar** — `$VAR` / `${VAR}`, bare `@a.b.c` and braced `@{a.b.c}`, a leading
   `~`, and the backslash escape rules. One parser per token family, shared out to every other
-  module that needs to recognise the same token.
+  module that needs to recognize the same token.
 * **The precedence walk** — `resolve_value` and its three-valued result.
 * **The bind value shapes** — `split_bind` (the colon form), `unpack_bind` and `unpack_bind_entry`
   (the structured forms), and `normalize_bind_dest` (destination canonicalization, R-11).
@@ -104,7 +104,7 @@ spelled with things that look like emptiness.
 **An explicit `""` is a SUPPRESSION and it is TERMINAL.** It wins at its level and does NOT fall
 through to a less-specific default. This is the whole point: `""` is how a user says "I do not
 want this thing", and falling through to a default would resurrect precisely what they
-suppressed. The spec keeps this idiom live and distinguishes it by name from its two neighbours —
+suppressed. The spec keeps this idiom live and distinguishes it by name from its two neighbors —
 present-`None` (the tri-state omit) and the COPY-disable sentinel — and warns that no layer may
 reinterpret one as another (§2h, the pref layer's "MUST NOT interpret emptiness AT ALL").
 

@@ -40,7 +40,7 @@ Under the pre-P8b model a primary box's `settings.yaml` carried a `project:`
 section (name/mode) and a `resolved:` section (workspace/shell/vault paths).
 These functions enumerated `@config.primary_workset/boxes/*`, read that on-disk
 meta, matched a box to an external workspace, refused name collisions, and
-journalled the register atomically — the mechanism that let a user move a box
+journaled the register atomically — the mechanism that let a user move a box
 tree and have kanibako re-discover it.
 
 P8b made `create` write a **sparse** `settings.yaml` (user-overrides only; no

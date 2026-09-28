@@ -138,7 +138,7 @@ default directory: an empty one, leaving every message the box had received stra
 no longer registered to it. It was not "two paths disagreeing by accident" — it was one of them
 consulting a key the other could not see, and the fix is to let it see: `ws_root` is now a REQUIRED
 keyword, and both entry points resolve through the single `partition_key_paths`. An OPTIONAL root
-would have reproduced the old behaviour for any caller who omitted it, silently, which is the shape
+would have reproduced the old behavior for any caller who omitted it, silently, which is the shape
 of the bug rather than a mitigation of it.
 
 ⚑ Reading a key put a REFUSING resolver on the relocation path for the first time —

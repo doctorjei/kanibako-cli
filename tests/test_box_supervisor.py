@@ -91,7 +91,7 @@ class FakeRun:
     """A ``subprocess.run`` stand-in that dispatches on the tmux subcommand.
 
     Records every argv; returns a ``CompletedProcess`` whose rc / stdout come from
-    per-subcommand programmes.  A programme value may be a plain value (used for
+    per-subcommand programs.  A program value may be a plain value (used for
     every call) or a list (consumed one entry per call, last value sticking) so a
     test can script "dead, then alive across ticks".  ``raise_on`` names a
     subcommand that should raise ``FileNotFoundError`` (simulating a missing tmux).
@@ -698,7 +698,7 @@ def test_run_forever_teardown_sole_agent_crash_also_returns_zero():
     # DOCUMENTED tradeoff of "no dead pane ever": with remain-on-exit off a sole-agent
     # CRASH is INDISTINGUISHABLE from a clean exit (both just vanish the session), so
     # it ALSO returns rc 0 — until a pipe-pane follow-up restores truthful crash codes.
-    # (Modelled identically to a clean exit: came up, then session gone, no status.)
+    # (Modeled identically to a clean exit: came up, then session gone, no status.)
     fake = FakeRun(rc={"has-session": [0, 1]}, stdout={"display-message": [""]})
     sup = BoxSupervisor(_config(on_agent_exit="teardown"), run=fake, proc_cmdlines=[])
     assert sup.run_forever() == 0
@@ -1042,7 +1042,7 @@ def test_main_leaves_pid1_emitting_its_decisions_on_stderr(
 # SELF_HEAL_CLI; `any_attached` (panel OR tmux terminal) gates keep-alive/teardown.
 # `server=True` implies `any_attached=True` (the panel IS a surface); `server=False,
 # any=True` is a bare tmux terminal.  Each row's expected value differs from a
-# neighbour that flips exactly ONE input, so the parametrization is mutation-proof.
+# neighbor that flips exactly ONE input, so the parametrization is mutation-proof.
 @pytest.mark.parametrize(
     "tmux_alive,panel,server,any_attached,seen,expected",
     [
@@ -1598,7 +1598,7 @@ def _no_cmdline(_pid: int) -> None:
 
     The real probe reads the REAL ``/proc``, so a fixture pid that happens to exist
     in the test runner would be judged a non-agent and reclassified.  ``None`` is the
-    INCONCLUSIVE answer, which is exactly the pre-reap behaviour these tests pin.
+    INCONCLUSIVE answer, which is exactly the pre-reap behavior these tests pin.
     """
     return None
 
@@ -1885,12 +1885,12 @@ def test_4a_detection_takes_no_destructive_or_signal_action():
         rc={"has-session": 0},
         stdout={"list-panes": "100\n", "display-message": ""},
     )
-    signalled: list[tuple[int, int]] = []
+    signaled: list[tuple[int, int]] = []
 
     def spy_kill(pid, sig):
-        signalled.append((pid, sig))
+        signaled.append((pid, sig))
         if sig != 0:
-            raise AssertionError(f"4a signalled pid {pid} with signal {sig}")
+            raise AssertionError(f"4a signaled pid {pid} with signal {sig}")
 
     sup = BoxSupervisor(
         _config(agent_markers_dir="/run/kanibako/agents"),
@@ -1917,7 +1917,7 @@ def test_4a_detection_takes_no_destructive_or_signal_action():
     assert fake.sub_calls("kill-pane") == []
     assert fake.sub_calls("send-keys") == []
     # And no real signal was ever sent (only signal 0 liveness, if any).
-    assert all(sig == 0 for _pid, sig in signalled)
+    assert all(sig == 0 for _pid, sig in signaled)
 
 
 # -- increment 4b: single-writer ENFORCEMENT (takeover; grace + pause + evict) -
@@ -2077,7 +2077,7 @@ def test_flag_off_is_4a_log_only_no_signals(monkeypatch):
     assert sup.run_forever() == 0
     # Detection still logged the newcomer exactly once (byte-identical to 4a).
     assert len([m for m in warnings if "newcomer agent PID 200" in m]) == 1
-    # ...but NOTHING destructive/signalling fired.
+    # ...but NOTHING destructive/signaling fired.
     assert signals == []
     assert fake.sub_calls("send-keys") == []
     assert fake.sub_calls("kill-session") == []
@@ -2164,7 +2164,7 @@ def test_panel_watch_reverse_direction_is_log_only_even_with_flag_on(monkeypatch
     _script_snapshots(sup, [_VS])
     _stop_after(sup, 3)
     assert sup.run_forever() == 0
-    # The newcomer is LOGGED (deferred), never signalled or evicted.
+    # The newcomer is LOGGED (deferred), never signaled or evicted.
     assert [m for m in warnings if "newcomer agent PID 901" in m] != []
     assert signals == []
     assert fake.sub_calls("send-keys") == []
@@ -2815,7 +2815,7 @@ class TestProjectPinnedXdg:
 # The Python half above runs ONLY where the supervisor is PID-1. A bare keep-alive
 # box, the forward-compat fallback (which fires BECAUSE the import failed) and a
 # helper box run no kanibako Python at PID-1 at all. So the same table also emits
-# shell, and these tests hold the two halves to the SAME behaviour by running each
+# shell, and these tests hold the two halves to the SAME behavior by running each
 # against a real temporary HOME and comparing the resulting tree -- not by comparing
 # their source text, which would pass while the shell did nothing.
 

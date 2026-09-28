@@ -1,7 +1,7 @@
 # The Podman Invocation (where a box actually becomes a process)
 
 Every kanibako box is, in the end, one `podman run` argv. This module builds it. That makes almost
-everything here **empirical platform behaviour** rather than design: the option spellings, the
+everything here **empirical platform behavior** rather than design: the option spellings, the
 argument ORDER, the escalating deletion attempts and the host-side mountpoint pre-creation are each
 a bug that was paid for once, in debugging, on a real runtime.
 
@@ -78,7 +78,7 @@ source, so there is nothing for the caller to pre-build.
 copies whatever already sits at the destination UP into the new tmpfs, so a mask left the
 pre-existing content plainly visible (read-only) and hid nothing — it downgraded the path to
 read-only instead. A mask is a VOID: there is nothing inside it (collapse DESIGN §8.1a). Deleting
-this option restores the old behaviour **silently, with every test still green**, because what
+this option restores the old behavior **silently, with every test still green**, because what
 changes is what podman shows INSIDE the box.
 
 ⚑ **A MASK IS INDEPENDENT OF THE VAULT.** The emission loop used to sit inside an `if enable_vault:`
@@ -145,7 +145,7 @@ poll interval is never observed running (measured: up at 20 ms, gone at 50 ms �
 fires before the subprocess even starts and the second lands after the cancel), so the watcher
 *alone* would leave short-lived ephemeral boxes NEVER repaired, silently, and invisibly to any e2e
 using a long-running stub. Re-asserting once the container is gone costs one idempotent pass and
-makes the on-disk state ALWAYS end protected. The watcher is only an OPTIMISATION: it shortens the
+makes the on-disk state ALWAYS end protected. The watcher is only an OPTIMIZATION: it shortens the
 window DURING a long session. Without the foreground arm entirely, the ephemeral/shell modes would
 run their whole session with an agent-owned canon while the detached path was protected — a split
 nobody would notice.
@@ -348,7 +348,7 @@ migration: an old box gains its canon mountpoints on its next launch.
 
 Where the skeleton DOES exist the fall-through would be a no-op anyway (`_ensure_dir`/`_ensure_file`
 are create-if-absent, and `_loosen_parents` finds 555 already carrying the `0o011` search bits), so
-the skip buys clarity rather than behaviour — it says out loud that these mountpoints are not the
+the skip buys clarity rather than behavior — it says out loud that these mountpoints are not the
 launch path's to manage.
 
 `_is_managed_canon_dest` is ⚑ **PATH-shaped, not key-shaped, and deliberately so**: EVERY bind under
@@ -548,7 +548,7 @@ parameter here has a platform note attached to it.
 ContainerRuntime._watch_for_start(name: str, post_start: Callable[[], None]) -> threading.Event
 ```
 Fire *post_start* once *name* is running; returns a cancel Event. A bounded, exception-swallowing
-daemon thread — an optimisation, never the guarantee.
+daemon thread — an optimization, never the guarantee.
 
 ```python
 ContainerRuntime.exec(name, command, *, env=None, attach=False) -> int

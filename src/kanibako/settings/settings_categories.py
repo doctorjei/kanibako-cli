@@ -77,7 +77,7 @@ SECRET_MOUNT_DIR: Final[str] = "/run/kanibako/secrets"
 # ⚑ FOUR TUPLES, AND EACH ANSWERS A DIFFERENT QUESTION; the other three are SUBSETS
 # of this one, and conflating any two is what the split exists to prevent (llm-doc).
 # ⚑⚑ THE CLI WRITE ROUTE IS RETIRED FOR ALL SIX (DS-BL1 = (a)), and THE READ ROUTE IS
-# THE TERMINAL KEY, NOT THE ENTRY.  Every retired spelling stays RECOGNISED so the
+# THE TERMINAL KEY, NOT THE ENTRY.  Every retired spelling stays RECOGNIZED so the
 # verbs refuse it BY NAME.
 #
 # NOTE the order: ``bindings.ro``/``bindings.rw`` must precede a bare ``bindings``
@@ -166,15 +166,15 @@ _RETIRED_CATEGORY_ALT = "|".join(
     c.replace(".", r"\.") for c in RETIRED_BIND_CATEGORIES
 )
 #: ``{system,workset,box}.<bind-shaped category>.<name>`` — the RETIRED FILE-scope
-#: bind route, which exists ONLY to be RECOGNISED and refused by name.  ⚑ NOT the
+#: bind route, which exists ONLY to be RECOGNIZED and refused by name.  ⚑ NOT the
 #: AGENT scope — its node segment must be split NON-GREEDILY and canonicalized
-#: (``+`` -> ``℘``) first, so it has its own recogniser below.
+#: (``+`` -> ``℘``) first, so it has its own recognizer below.
 SCOPE_BIND_KEY_RE = re.compile(
     rf"^(?P<scope>{_FILE_SCOPE_ALT})"
     rf"\.(?P<category>{_RETIRED_CATEGORY_ALT})\.(?P<name>.+)$"
 )
 #: ``agent.<node>.<bind-shaped category>.<name>`` — the AGENT-scope twin, for ONE
-#: purpose: to be RECOGNISED and refused BY NAME.  ⚑ THE NODE IS NON-GREEDY so the
+#: purpose: to be RECOGNIZED and refused BY NAME.  ⚑ THE NODE IS NON-GREEDY so the
 #: FIRST category segment splits node from name: a DEST tail may itself contain a
 #: DOT-PRECEDED category token (``caches.~/.caches.x`` — measured: greedy parses
 #: node=``claude.caches.~/``).  An UNDISCRIMINATED ``agent.<category>.<name>`` does NOT
@@ -817,7 +817,7 @@ def _suppress_then_add(
     remedy is a hand edit, and the message says so rather than naming a command that
     would not work.  ⚑ It also names the SCOPE: a box file may not suppress a
     containing scope's key.  *ambiguous* is True when the caller could not know WHICH
-    entry to keep (two peers), so the block is labelled an example rather than a
+    entry to keep (two peers), so the block is labeled an example rather than a
     prescription; the extension-onto-occupied refusal passes False.
     """
     # ⚑ SEGMENTS, NEVER A DOTTED SPLIT — a split block is not a declaration at all.
@@ -863,9 +863,9 @@ def _suppress_then_add(
 def derive_binding_keys(
     entries: list[CategoryEntry],
 ) -> dict[tuple[str, ...], "Bind"]:
-    """The MATERIALISED derived bindings for the ABSTRACT declarations (§0).
+    """The MATERIALIZED derived bindings for the ABSTRACT declarations (§0).
 
-    §0 requires the binding each abstract declaration produces to be materialised
+    §0 requires the binding each abstract declaration produces to be materialized
     BESIDE it, at ``binding_derivations.<declaration-key>.<dest>`` (R-8: the reserved
     INTERNAL node at the snapshot root — NOT a key).  ⚑ KEYED BY SEGMENTS, and
     ``KeyStore.insert_segments`` splits nothing — see :class:`CategoryEntry`.
@@ -927,7 +927,7 @@ def effective_bindings_and_template_sources(
     🛑🛑 **IT TAKES TWO INPUTS AND BOTH ARE LOAD-BEARING.**  The reserved
     ``binding_derivations`` node supplies the DECLARATIONS and nothing else: it is
     populated BEFORE arbitration, DELIBERATELY (R-8 — a derived binding is a
-    property of the DECLARATION, and :func:`derive_binding_keys` materialises one
+    property of the DECLARATION, and :func:`derive_binding_keys` materializes one
     for winners and losers ALIKE), so every row in it reads as a live mount.  What
     the box receives is ``meta.assembly.bindings`` / ``.seeded`` / ``.synced`` — the
     arbitrated collapse.  **Reading the reserved node ALONE is the measured failure

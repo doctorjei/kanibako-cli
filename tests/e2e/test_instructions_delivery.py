@@ -150,7 +150,7 @@ CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon", f"{GUEST_HOME}/canon/charter")
 CANON_AGENT_DEST = f"{GUEST_HOME}/canon/charter/agent"
 
 # The HANDBOOK book's SIBLING binds (spec §2c, the seeds half).  ⚑ Only the two SYSTEM
-# rows are unconditional: the system store is materialised by install/setup, so a
+# rows are unconditional: the system store is materialized by install/setup, so a
 # missing one means something is genuinely wrong.  The per-scope CHAPTERS are
 # SKIP-IF-ABSENT, so which of them appears depends on what the box's scopes supply —
 # see ``HANDBOOK_CHAPTERS_EXPECTED``.
@@ -222,7 +222,7 @@ def assert_canon_locked_down(box: str) -> None:
 
     1. ``mkdir ~/canon/scratch`` is REFUSED. Under R1 it SUCCEEDED — that is exactly
        the stray-file pollution the skeleton exists to prevent, so its refusal is the
-       behavioural contract.
+       behavioral contract.
     2. ``~/canon`` and ``~/canon/charter`` are owned by uid 0 IN-BOX. Without this a
        wrong ``UNSHARE_BOX_ROOT_UID`` landing on some other non-agent subuid would
        satisfy assertion 1 and sail through the entire suite — and that uid is
@@ -254,13 +254,13 @@ def assert_canon_locked_down(box: str) -> None:
 
 
 def assert_handbook_binds_ro(cfg: dict) -> None:
-    """The HANDBOOK book materialises as SIBLING ro binds, and SKIP-IF-ABSENT holds.
+    """The HANDBOOK book materializes as SIBLING ro binds, and SKIP-IF-ABSENT holds.
 
     Three separate claims, and the third is the one only a real box can settle:
 
     1. the two SYSTEM rows (``SYS_CONTENTS.md`` file bind + the ``general`` chapter)
        are mounted READ-ONLY — the handbook is HOST-owned content, so the box reads it
-       and never edits it (a deliberate behaviour change from the writable pre-canon
+       and never edits it (a deliberate behavior change from the writable pre-canon
        tree it replaces; M-10);
     2. the chapters a scope actually supplies are mounted, at dests carrying NO agent
        segment ("storage is varied, binding is not", §2d);

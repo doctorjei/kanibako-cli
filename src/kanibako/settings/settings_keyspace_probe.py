@@ -56,7 +56,7 @@ docstring called them a dependent pair three times while every failure it narrat
 was the pair coming apart — including one caller forwarding the vocabulary and
 dropping the concession. A map cannot be forwarded by halves. What it buys beyond
 that is ``[R150]``: a leaf is legal only on the agent (or HARNESS — a persona takes
-its harness's vocabulary) whose plugin declared it, and a per-agent judgement needs
+its harness's vocabulary) whose plugin declared it, and a per-agent judgment needs
 a per-agent supplier. Reading the descriptors is the membership test, not being
 installed, so a plugin that imports and then fails to declare is conceded like an
 absent one (see :func:`_discover`).
@@ -90,7 +90,7 @@ from typing import Any, Collection, Final, Iterator, Mapping
 from kanibako.settings.settings_keyspace import (
   ConcedingLeafMap,
   KeyClass,
-  KeyJudgement,
+  KeyJudgment,
   key_class,
   render_store_path,
   undeclared_store_paths,
@@ -145,7 +145,7 @@ _PLUGINS: "Mapping[str, frozenset[str]] | None" = None
 
 
 def _discover() -> "Mapping[str, frozenset[str]]":
-  """ONE discovery pass, memoised — harness → the leaves that plugin declares.
+  """ONE discovery pass, memoized — harness → the leaves that plugin declares.
 
   ⚑ ONE MAP RATHER THAN A PAIR OF SETS, because the leaf set is only meaningful for
   the agents it was read from and two sets could disagree about which those are. The
@@ -217,7 +217,7 @@ class _AgentLeafMap(Mapping[str, "frozenset[str]"]):
 
   ⚑ NOT A SECOND MEMO. Every access goes through :func:`_discover`, so a test that
   replaces :data:`_PLUGINS` is seen here exactly as it is by every other reader.
-  ⚑ IT DOES NOT NORMALISE A PERSONA TO ITS HARNESS. That rule is the KEYSPACE's
+  ⚑ IT DOES NOT NORMALIZE A PERSONA TO ITS HARNESS. That rule is the KEYSPACE's
   (``settings_keyspace.agent_declared_leaves``), which is what keeps every supplier
   from having to re-derive it — and what fixed a live split where the raw
   ``agent.nav+claude.zippity`` was conceded while ``agent.nav℘claude.zippity`` was
@@ -250,7 +250,7 @@ AGENT_LEAF_MAP: Final[ConcedingLeafMap] = ConcedingLeafMap(
 )
 
 
-def declared_keyspace_oracle(path: str) -> KeyJudgement:
+def declared_keyspace_oracle(path: str) -> KeyJudgment:
   """*path*'s ``KeyClass`` — KEY, declared NAMESPACE, or UNDECLARED.
 
   ⚑ ALL THREE, never the key-or-not view: the classifier's only other way to tell a
@@ -284,11 +284,11 @@ def declared_keyspace_oracle(path: str) -> KeyJudgement:
 
 #: Verdict per distinct dotted prefix. The prefix walk asks about every proper prefix
 #: of every path, and prefixes repeat heavily across one store.
-_verdicts: dict[str, KeyJudgement] = {}
+_verdicts: dict[str, KeyJudgment] = {}
 
 
-def keyspace_verdict(path: str) -> KeyJudgement:
-  """THE oracle, memoised: what the closed keyspace says *path* is.
+def keyspace_verdict(path: str) -> KeyJudgment:
+  """THE oracle, memoized: what the closed keyspace says *path* is.
 
   PUBLIC because two consumers must not answer this question twice.
   :func:`observe` REPORTS on it and ``settings_launch._refuse_undeclared_snapshot``
@@ -303,7 +303,7 @@ def keyspace_verdict(path: str) -> KeyJudgement:
       # ⚑ UNDECLARED, not a silent pass: a classifier that cannot judge a path must
       # SAY so — in the row, and in the refusal, which prints this note. Conceding
       # the path instead would let a broken oracle green-light §0.
-      _verdicts[path] = KeyJudgement(
+      _verdicts[path] = KeyJudgment(
         KeyClass.UNDECLARED, f"<oracle raised {type(exc).__name__}: {exc}>",
       )
       _note_error(exc)
@@ -350,10 +350,10 @@ def observe(store: Mapping[str, Any], *, origin: str) -> None:
       "count": len(findings),
       "undeclared": [
         {
-          "path": render_store_path(segments, judgement.key_len),
-          "note": judgement.note,
+          "path": render_store_path(segments, judgment.key_len),
+          "note": judgment.note,
         }
-        for segments, judgement in findings
+        for segments, judgment in findings
       ],
     }
     with open(_probe_file(), "a", encoding="utf-8") as fh:

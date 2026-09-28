@@ -11,7 +11,7 @@ one-line descriptors and `⚑` markers only; the reasons live here.
 
 A CLI verb (`set` / `reset` / `get`) that will not serve a key returns an ERROR STRING naming three
 things: the **route** that is closed, the **reason** it is closed, and a **cure that actually
-works**. Neighbouring members of this family — `scope_bind_retired_error`,
+works**. Neighboring members of this family — `scope_bind_retired_error`,
 `agent_node_bind_retired_error`, both built on `_bind_route_retired_message` — hold to the same
 shape, so a user who hits two of them reads one story rather than two.
 
@@ -84,8 +84,8 @@ is what stops a seventh leaf arriving unrouted;
 ## What the module owns
 
 `config_interface` exposes four verbs (get / set / reset / show) over a key surface whose families
-are recognised by SPELLING: ``pref.<target>``, ``agent.<node>.<leaf>``,
-``<scope>.<category>.<name>``, ``<scope>.secret_path.<VAR>``, the bare agent behaviour keys, the
+are recognized by SPELLING: ``pref.<target>``, ``agent.<node>.<leaf>``,
+``<scope>.<category>.<name>``, ``<scope>.secret_path.<VAR>``, the bare agent behavior keys, the
 routed scalars, the structural ``system.*`` path tier. This module owns that classification — the
 recognizers, the parsers, the per-family display spellings and refusal texts, the scope tables, and
 the routing table — so the verbs can dispatch instead of each re-deriving what a key is.
@@ -155,7 +155,7 @@ The visible cost, recorded so nobody re-discovers it as a bug: the one-positiona
 box.caches`` is read as a PROJECT NAME. That message is wrong, it is KNOWN to be wrong, and the cure
 is the promised surface — never a wider list. (The scope nouns' two-positional reads, ``kanibako
 box get <box> box.caches`` and its workset/agent siblings, are not gated by this set and do return
-the map today. That is where the behaviour currently lives; it is an accident of which door checks
+the map today. That is where the behavior currently lives; it is an accident of which door checks
 this set, not the chosen design, so do not build on it either. ⚑ Those two doors are no longer
 UNGATED — :func:`scope_read_key_error` closes §0's read there — but they still pass ``box.caches``,
 because it asks ``key_validity``, which DECLARES it. Declining to invent a refusal for a declared
@@ -181,7 +181,7 @@ returns the map. **Read what that did and did not decide:**
   Weigh the OUTCOME as well as the mechanism, and check which surface a measurement is actually of.
 
 **THE CROSS-SCOPE GATE'S BASIS — THREE WERE TRIED, TWO ARE DEAD.** The full statement lives in
-:func:`foreign_scope_read_error`'s docstring; it is summarised here because the two dead ones are
+:func:`foreign_scope_read_error`'s docstring; it is summarized here because the two dead ones are
 what a reader re-derives.
 
 1. **THE WRITE ROUTE** (`has_no_cli_write_route`) — selects the right rows, REJECTED anyway. It
@@ -215,7 +215,7 @@ what a reader re-derives.
   :func:`agent_category_read_error`.** ``agent.<node>.caches`` is declared too, but its value lives
   in ``agents/<node>/agent.yaml``, which the file-scope nouns never open, so falling through
   answered "(not set)" over a table on disk. ``is_known_key`` had been holding that line by
-  accident. **The lesson generalises: this predicate's `False` answers were load-bearing in places
+  accident. **The lesson generalizes: this predicate's `False` answers were load-bearing in places
   nobody had enumerated, so removing a gate that consults it needs the un-gated set MEASURED, not
   reasoned about.** The replacement refusal names ``kanibako agent get <node> <category>``, which
   does serve the read.
@@ -225,10 +225,10 @@ else, and do not split the block from the data.
 
 ### The inventory, key by key
 
-The notes below travelled out of the set literal itself; each names WHAT the key is, WHERE it is
+The notes below traveled out of the set literal itself; each names WHAT the key is, WHERE it is
 read back, and (where one exists) the RETIRED spelling it replaced.
 
-**The bare agent behaviour keys** (`model`, `allow_helpers`, `access`, `endpoint`, `bootstrap`,
+**The bare agent behavior keys** (`model`, `allow_helpers`, `access`, `endpoint`, `bootstrap`,
 `continue_mode`) are all the same shape: the BARE key is the any-agent `agent.default` tier, and a
 per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 
@@ -335,7 +335,7 @@ per-agent override is the persona key `agent.<agent>.<key>` (spec §2d).
 ``global`` is ELIMINATED (children inline ``@config.data/global/...``). ⚑ All eleven — the six
 top-level roots plus the five ``system.channels.*`` leaves — are here and in `_KEY_ROUTES` since
 2026-08-23; before that the whole family was refused as structural and the five channel leaves were
-not even recognised, so `get` answered *"unknown config key"* for a declared key.
+not even recognized, so `get` answered *"unknown config key"* for a declared key.
 
 * `system.template` — M-11: ``system.base_template`` → ``system.template``. The old spelling is
   RETIRED, not aliased — it is not a declared key any more (spec §0's closed keyspace), so ``config
@@ -349,14 +349,14 @@ not even recognised, so `get` answered *"unknown config key"* for a declared key
 ## `DYNAMIC_PREFIXES`
 
 The RETIRED bare env-var prefix (R-39, spec §2a: the env family is SCOPED — ``<scope>.env.<VAR>``; a
-bare ``env.<VAR>`` is not a key). Kept ONLY so the spelling stays RECOGNISED as key-shaped:
+bare ``env.<VAR>`` is not a key). Kept ONLY so the spelling stays RECOGNIZED as key-shaped:
 `is_known_key` must not read it as a project name, and the verbs refuse it with the cure
 (:func:`bare_env_retired_error`) rather than fail as an unknown key.
 
 ## The typed writer routing table — `_KEY_ROUTES` (the H1/H2 core)
 
 The single source of truth for HOW every non-dynamic, non-env config key is stored. `get`/`set`/
-`reset` all consult this table so the same key set is recognised on every path (no "get-validated,
+`reset` all consult this table so the same key set is recognized on every path (no "get-validated,
 set-unguarded" asymmetry that crashed H1). A key absent from here (and not `env.` / `agent.*` /
 `system.path.*`) is UNKNOWN — the writer returns an error string, never raises.
 
@@ -492,7 +492,7 @@ that mutation while the `canon` rows beside it stay green.
 left (see `config_interface.py.md`, "the second anchor that is gone"): an
 `agent.<node>.bindings.{ro,rw}.<name>` set is refused BY NAME in the verb preamble (R-9), so an arm
 for it could not change any outcome — it would be dead the day it was written. `resolve_key` carries
-that arm because it canonicalises a key the READ verbs still serve; this is a WRITE-time question.
+that arm because it canonicalizes a key the READ verbs still serve; this is a WRITE-time question.
 
 ⚑ **It is not an existence check and must not be read as one.** It says which node the write
 ADDRESSES — the node whose `agents/<node>/agent.yaml` the setter is about to reach — which is exactly
@@ -548,7 +548,7 @@ dotted token is the whole string, so it missed `_SETTINGS_SCOPE_TOKENS` and fell
 `kanibako.cfg` — the bootstrap floor `config.load_merged_config` puts UNDER every tier —
 while `box.image` went to the settings tier ABOVE it. A spelling silently selected precedence.
 
-⚑ **Do not reintroduce a spelling normaliser here.** Spec §0: the keyspace is CLOSED and a key has
+⚑ **Do not reintroduce a spelling normalizer here.** Spec §0: the keyspace is CLOSED and a key has
 one spelling; a second one is not an alias, it is a second keyspace. The class guard is
 `tests/test_settings/test_config_dest_parity.py::TestOneSpellingPerKey`, which derives the
 mutation itself so it cannot go green by the production flattener disappearing.
@@ -557,7 +557,7 @@ mutation itself so it cannot go green by the production flattener disappearing.
 
 ``agent.<node>.<key>``, set on the agent's OWN settings file ``agents/<node>/agent.yaml``.
 
-`_PERSONA_STATE_LEAVES` is the per-persona agent leaves this module RECOGNISES: the FLAT
+`_PERSONA_STATE_LEAVES` is the per-persona agent leaves this module RECOGNIZES: the FLAT
 agent-state knobs plus the ``env.`` section — the EXACT shape `agent_file.load`
 reads back (`AgentConfig.state` / `.env`), so a value `set` here is what the launch snapshot resolves
 for the persona (endpoint via `effective_behavior`). The former ``env_file.`` section is RENAMED to
@@ -575,9 +575,9 @@ system get agent.goose.provider` answered *"(not set)"* at **rc 0 over the value
 node's own file** — a fabricated default masking real data. The `agent` noun read the same key back
 fine the whole time, which is what "two carriers of one vocabulary" looks like from the outside.
 
-⚑ **THE LAZINESS IS THE CONTRACT, NOT AN OPTIMISATION.** The plugin half arrives as
+⚑ **THE LAZINESS IS THE CONTRACT, NOT AN OPTIMIZATION.** The plugin half arrives as
 `PLUGIN_DECLARED_LEAVES` — a `Collection` that DISCOVERS ON THE FIRST QUESTION ASKED — so the core
-set is consulted first and a plain `agent.claude.model` never imports a plugin. Materialising it
+set is consulted first and a plain `agent.claude.model` never imports a plugin. Materializing it
 (`frozenset(...)`, or calling `plugin_declared_leaves()` at a call site) re-arms the cost measured
 2026-08-25 at **+67 ms on every settings-resolving command**, 73% of the whole resolve. Counted
 `discover_targets()` calls before and after this change: identical on every arm, and **0** on a cold
@@ -587,7 +587,7 @@ set is consulted first and a plain `agent.claude.model` never imports a plugin. 
 default_valid_agents().leaves`.** `agent_key_reason` reached that value a second way and
 `_PERSONA_STATE_LEAVES` did not reach it at all; both go through the one function now. **Not the
 `settings_keyspace_probe` memo**, deliberately: that one is primed at `pytest_configure` and has no
-reset seam, so production behaviour would become unpatchable from a test. `reset_discovery_cache`
+reset seam, so production behavior would become unpatchable from a test. `reset_discovery_cache`
 is the seam this side keeps.
 
 Two of its leaves carry their own reason:
@@ -622,9 +622,9 @@ persona state leaf ``agent.<node>.model`` by the ``bindings.{ro,rw}`` segment). 
 is DISCRIMINATED — ``agent.<node>`` is the ONLY agent form (§2d / §0); an undiscriminated
 ``agent.<category>`` is not a key and ``BIND_KEY_RE`` refuses it.
 
-⚑ THIS IS THE AGENT-SCOPE READ PARSER, NOT THE RECOGNISER. The recogniser is
+⚑ THIS IS THE AGENT-SCOPE READ PARSER, NOT THE RECOGNIZER. The recognizer is
 `settings_categories.AGENT_BIND_KEY_RE` (the derived twin of `SCOPE_BIND_KEY_RE`, covering all six).
-What this parser uniquely owns is the two jobs that RESOLVE rather than recognise: `config get` reads
+What this parser uniquely owns is the two jobs that RESOLVE rather than recognize: `config get` reads
 the key through it, and `resolve_key` canonicalizes its node segment through it.
 
 ⚑ It spells the two arms LITERALLY rather than importing the alternation, because the node group has
@@ -643,7 +643,7 @@ other four, so widening would have resolved ``agent.claude.common.plugins`` to t
 ``self."common.plugins"`` and answered a silent "(not set)". Since S3 the address rule reads EVERY
 category flat with the destination whole, so widening would no longer mis-address them — it would
 ADMIT them. These two arms are the only per-entry spellings whose READ survived R-9, which is exactly
-what :func:`agent_read_key_error` carves out of the ``agent`` noun's §0 read gate. ⚑ DO NOT WIDEN IT. The four are RECOGNISED and
+what :func:`agent_read_key_error` carves out of the ``agent`` noun's §0 read gate. ⚑ DO NOT WIDEN IT. The four are RECOGNIZED and
 refused at the agent scope through `AGENT_BIND_KEY_RE` — see :func:`agent_node_bind_retired_error`.
 
 The regex does not match the ``box.agent.bindings.*`` box-mirror form (a ``box`` top-token).
@@ -751,7 +751,7 @@ Return the canonical config key for a user-supplied key name.
 
 Most config keys are already canonical (dot-notation like ``box.image`` or ``box.enable_vault``) and
 pass through unchanged; this is the single canonicalization seam every get/set/reset path routes
-through. ⚑ It does NOT normalise spellings — an underscore form is not a key and passes through to
+through. ⚑ It does NOT normalize spellings — an underscore form is not a key and passes through to
 be refused by name (see the deleted `_route_key` above).
 
 The ONE canonicalization it performs (block B1): for a per-persona agent key ``agent.<node>.<key>`` it
@@ -794,7 +794,7 @@ key-path separator and cannot appear in an agent name) for :func:`agent_key_node
 as a WHOLE.
 
 Parsed from the RIGHT: the closed set of settable tails is unambiguous, so everything left of a
-recognised tail is the node. ``env`` is matched BEFORE the flat leaves so ``agent.<node>.env.MODEL``
+recognized tail is the node. ``env`` is matched BEFORE the flat leaves so ``agent.<node>.env.MODEL``
 is an env var named ``MODEL``, never mis-split as the state leaf ``model``.
 
 ⚑⚑ **BOTH ARMS JUDGE THEIR TAIL, and the ``env.`` arm only since 2026-09-09.** The flat arm has
@@ -832,7 +832,7 @@ Matches both DIRECT settable forms: the BARE any-agent `agent.default` tier key 
 "access"``, routed via :func:`_is_agent_setting`) and a per-persona override ``agent.<node>.access``
 (routed via :func:`_is_persona_agent_key`). Used to WRITE-VALIDATE the value at `config set` time
 (:func:`access_value_error`): ``access`` decides whether the box's agent prompts at all, so an
-unrecognised value must be REJECTED at the write, never stored to be re-read at launch. Only
+unrecognized value must be REJECTED at the write, never stored to be re-read at launch. Only
 ``access`` gets this guard (Jei: only the auth-critical key), not ``allow_helpers`` / ``model``.
 
 ⚑ It answers False for the §2h REQUEST spelling ``pref.agent.<node>.access``, and that is correct
@@ -879,7 +879,7 @@ reset` to name. The key itself is NOT retired: still declared, still authored in
 ``agents/<node>/agent.yaml``, still delivered at launch, still READ by `config get`. Only the CLI
 write route is gone — a KNOWN, ACCEPTED loss (backlog DS-BL1).
 
-So this predicate now has three jobs, all live: recognise the retired spelling so the write verbs
+So this predicate now has three jobs, all live: recognize the retired spelling so the write verbs
 refuse it BY NAME with a cure (:func:`agent_node_bind_retired_error`) instead of degrading to "unknown
 config key" (spec §0 refuses loudly, never quietly); route the surviving `config get`; and keep the
 key out of the persona branch. Checked BEFORE :func:`_is_persona_agent_key` in every dispatch.
@@ -909,9 +909,9 @@ The RETIRED bare docker-``.env`` spelling ``env.<VAR>`` (R-39, spec §2a).
 ⮕ **R-39 RETIRED THE BARE SPELLING.** The keyspace env family is SCOPED — ``<scope>.env.<VAR>``,
 matched by :func:`_is_scope_env_key` — and the bare form wrote the docker ``.env`` FILE instead: an
 undiscriminated variant that silently meant something different from the discriminated key (Code
-Convention 0's failure mode). This predicate now exists ONLY to RECOGNISE the retired spelling so set
+Convention 0's failure mode). This predicate now exists ONLY to RECOGNIZE the retired spelling so set
 / reset / get can refuse it with the cure (:func:`bare_env_retired_error`) rather than fail as an
-unknown key — the same recognise-to-refuse role as :func:`_is_box_agent_key` (P7).
+unknown key — the same recognize-to-refuse role as :func:`_is_box_agent_key` (P7).
 
 ```_is_scope_env_key(key: str) -> bool```
 True iff *key* is a NON-agent ``<scope>.env.<VAR>`` key (system/workset/box) — settable to the command
@@ -1023,7 +1023,7 @@ applied it. This function claims the destination, and `config_dest._key_slot` ma
 `("agent", "default", <category>) / <VAR>` in the NOUN's settings file — the table
 `settings_assemble.assemble_levels` reads the tier from.
 
-⚑ **DERIVED (P13) FROM THE TWO RECOGNISERS**, never from a hand list of category names:
+⚑ **DERIVED (P13) FROM THE TWO RECOGNIZERS**, never from a hand list of category names:
 `_parse_agent_node_secret_key` is the `secret_path` shape, `_parse_persona_agent_key`'s section arm
 is the `env` one. Both JUDGE the VAR against the declared §2a shape rather than counting segments,
 so the reserved-name floor and the VAR grammar reach this family unchanged.
@@ -1046,7 +1046,7 @@ active agent's settings subtree. Spec §2b replaces it with the RO read-back
 its agent with the §2h request ``pref.agent.<agent>.<key>``, which targets the AGENT tier properly
 instead of smuggling a box-scope key into it.
 
-This predicate now exists ONLY to RECOGNISE the retired spelling so set / reset / get can refuse it
+This predicate now exists ONLY to RECOGNIZE the retired spelling so set / reset / get can refuse it
 with the cure (:func:`box_agent_retired_error`) rather than fail as an unknown key — a user who has
 the old form in muscle memory must be TOLD what replaced it.
 
@@ -1140,20 +1140,20 @@ The branch-by-branch reasons, in dispatch order:
   branches.
 * **``agent.<node>.bindings.{ro,rw}.<name>``** — the per-node DESCRIPTOR bind key (item-0), whose CLI
   WRITE route is RETIRED (R-9). ⚑ The agent-scope spelling of the OTHER four bind-shaped categories is
-  retired too (DS-BL1 = (a)) and is recognised by the FINAL branch, not here — this parser is the
+  retired too (DS-BL1 = (a)) and is recognized by the FINAL branch, not here — this parser is the
   ``bindings`` arms only (see `_AGENT_NODE_BIND_RE`). Kept KEY-SHAPED for the same reason as the
   file-scope spelling and the bare ``env.<VAR>`` one: the positional-vs-key disambiguator must read it
   as a key so the verbs can refuse it with the cure (`agent_node_bind_retired_error`) rather than
   mistake it for a project name. It is also still READABLE (`config get`), which on its own makes it a
-  key here. Recognised on the ``+``-form too, before canonicalization, and checked BEFORE the persona
-  form so a bind named after a state leaf is recognised as the bind.
+  key here. Recognized on the ``+``-form too, before canonicalization, and checked BEFORE the persona
+  form so a bind named after a state leaf is recognized as the bind.
 * **``agent.<node>.secret_path.<VAR>``** — the per-node SECRET category (spec §2a): a settable key
-  (recognised on the ``+``-form too, before canonicalization). Checked here so get/show + the
+  (recognized on the ``+``-form too, before canonicalization). Checked here so get/show + the
   project-name heuristic treat it as a KEY. Also the NON-agent ``<scope>.secret_path.<VAR>`` scope
   form.
 * **``<scope>.env.<VAR>``** (system/workset/box) — the LIVE env family (spec §2a L383). Its agent twin
-  ``agent.<node>.env.<VAR>`` is recognised by the per-persona arm.
-* **``agent.<node>.<key>``** — the per-persona agent key (block B1): a settable key (recognised on the
+  ``agent.<node>.env.<VAR>`` is recognized by the per-persona arm.
+* **``agent.<node>.<key>``** — the per-persona agent key (block B1): a settable key (recognized on the
   ``+``-form too, before canonicalization) so get/show + the project-name heuristic treat it as a KEY,
   never a project name.
 * **``box.agent.<key>``** — the box-scoped agent mirror (block B5, spec §2b): a settable box-scope key
@@ -1171,7 +1171,7 @@ The branch-by-branch reasons, in dispatch order:
   scope now (see :func:`_is_path_category_key`); recognition here is what keeps the refusal from
   degrading into "unknown config key", or worse into a PROJECT NAME. ⚑ This branch read
   `_is_path_category_key` until 2026-08-08c, when that predicate's regex began failing closed and took
-  the whole agent-scope arm down with it silently. The recogniser is now derived from the same
+  the whole agent-scope arm down with it silently. The recognizer is now derived from the same
   ``RETIRED_BIND_CATEGORIES`` the file-scope branch uses.
 
 ```is_config_file_only_key(key: str) -> bool```
@@ -1306,7 +1306,7 @@ The RETIRED AGENT-scope bind route ``agent.<node>.<bind-shaped category>.<name>`
 
 The EXACT counterpart of :func:`_is_scope_bind_key`, over the same derived category set, for the one
 scope that regex cannot cover (the node segment needs a non-greedy split). Its job is the same and it
-is the whole job: RECOGNISE the retired spelling so the write verbs refuse it BY NAME with a cure
+is the whole job: RECOGNIZE the retired spelling so the write verbs refuse it BY NAME with a cure
 (:func:`agent_node_bind_retired_error`) and so :func:`is_known_key` does not mistake a key for a
 project name — spec §0 refuses loudly, never quietly.
 
@@ -1328,13 +1328,13 @@ keyspace* — so there is no dotted key left for `config set` / `config reset` t
 themselves are NOT retired: they are still declared, still authored in the settings YAML, still
 delivered at launch. Only the CLI route is gone, and it is a KNOWN, ACCEPTED loss (backlog DS-BL1).
 
-Like :func:`_is_bare_env_key` and :func:`_is_box_agent_key`, this predicate exists to RECOGNISE the
+Like :func:`_is_bare_env_key` and :func:`_is_box_agent_key`, this predicate exists to RECOGNIZE the
 retired spelling so the write verbs refuse it BY NAME with a cure (:func:`scope_bind_retired_error`)
 instead of degrading to "unknown config key" — spec §0 refuses loudly, never quietly.
 
 ⚑ It does NOT cover the AGENT scope. Those spellings are retired too (the SAME door,
 :func:`agent_node_bind_retired_error`), but a node segment needs a non-greedy split +
-``℘``-canonicalization, so they have their own recogniser: :func:`_is_agent_scope_bind_key`.
+``℘``-canonicalization, so they have their own recognizer: :func:`_is_agent_scope_bind_key`.
 
 ```_retired_because(category: str) -> str```
 WHY a bind-shaped category has no CLI write route — the one clause that differs BY CATEGORY rather
@@ -1358,7 +1358,7 @@ difference in what the user can do.
 ⚑ The two RETURNED strings are UNCHANGED by that correction, deliberately:
 `tests/test_settings/test_config_interface.py`'s
 `TestCategoryConfigSet.test_the_refusal_states_the_RULING_not_the_shape` pins the two wordings apart on
-the OLD justification, so collapsing them is a behaviour+test change that belongs to whoever owns that
+the OLD justification, so collapsing them is a behavior+test change that belongs to whoever owns that
 file — recorded here, not smuggled in.
 
 ```has_no_cli_write_route(target: str) -> bool```
@@ -1449,7 +1449,7 @@ message also prints, which is what tells the user which file to open. ⚑ The sp
 can quietly stop covering its share. ⚑⚑ IT USED TO BE TWO — `parse_agent_node_bind_key` for the
 ``bindings`` arms and ``BIND_KEY_RE`` for the other four — and the second half went silently DEAD on
 2026-08-08c when the shape flip emptied ``BIND_KEY_RE``'s non-terminal complement and it began
-compiling ``(?!)``. The four then had NO agent-scope recogniser at all: ``config set
+compiling ``(?!)``. The four then had NO agent-scope recognizer at all: ``config set
 agent.claude.caches.pip`` answered "unknown config key", and ``box reset agent.claude.caches.pip``
 re-read the key as a PROJECT NAME. Recognition is derived from ONE source now precisely so a
 membership change cannot silently unhook a door again.
@@ -1512,7 +1512,7 @@ directions are pinned, with the union's own mutation proof.
 ⚑ **THE UNION ARRIVES AS `PLUGIN_DECLARED_LEAVES`, NOT AS `default_valid_agents().leaves` READ
 HERE** (2026-08-29). Same value, but reached through the module's ONE supplier, which is what stops
 this gate and `_PERSONA_STATE_LEAVES` from drifting into two vocabularies again — and passing it
-rather than materialising it means a core §2d leaf is answered without importing a single plugin.
+rather than materializing it means a core §2d leaf is answered without importing a single plugin.
 
 🛑 **THERE IS NO IDENTITY ALLOWLIST ANY MORE, AND IT DOES NOT GO BACK.** An `if tail in {"name",
 "run_args"}: return None` short-circuit stood above this gate; the ONE tail it rescued was `name`,
@@ -1574,8 +1574,8 @@ category would then be an edit to ``_NON_TERMINAL_BIND_CATEGORIES`` alone, not a
 hardcoded answers. ⚑ Its DELETION (with :func:`_has_dedicated_route`'s already-removed term) is a ruled
 follow-up, not a drive-by: its remaining call sites read it.
 
-⚑⚑ IT IS NO LONGER A RECOGNISER, AND THAT WAS A REPAIR. `is_known_key` and
-:func:`has_no_cli_write_route` both used it as the AGENT-scope arm of a "recognise the retired
+⚑⚑ IT IS NO LONGER A RECOGNIZER, AND THAT WAS A REPAIR. `is_known_key` and
+:func:`has_no_cli_write_route` both used it as the AGENT-scope arm of a "recognize the retired
 spelling" chain, so when the regex began failing closed those two arms went dead with it — no refusal
 by name, and a key re-read as a project name. Both now ask :func:`_is_agent_scope_bind_key`, which
 answers RECOGNITION from ``RETIRED_BIND_CATEGORIES``. This predicate answers only EXISTENCE, and the
@@ -1587,7 +1587,7 @@ YAML-only, so the repoint route is gone and the write verbs refuse these keys BY
 preamble (:func:`scope_bind_retired_error` at the file scopes, :func:`agent_node_bind_retired_error` at
 the agent scope).
 
-**A key that IS still recognised** is recognised elsewhere: the RETIRED per-name spellings by
+**A key that IS still recognized** is recognized elsewhere: the RETIRED per-name spellings by
 :func:`_is_scope_bind_key` (file scopes) / :func:`_is_agent_node_bind_key` (agent scope), and the
 DECLARED terminal keys by :func:`~kanibako.settings.settings_keyspace.is_terminal_category_tail`.
 

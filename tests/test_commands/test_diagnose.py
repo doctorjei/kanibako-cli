@@ -27,7 +27,7 @@ from kanibako.commands.diagnose import (
 
 # The detail `_report_settings_error` prints on the broken check's OWN line,
 # which now points at the consolidated section instead of at the next line.
-# Spelt out here rather than imported: importing it from the module under test
+# Spelled out here rather than imported: importing it from the module under test
 # would leave these assertions comparing the code to itself.
 _SETTINGS_ERROR_DETAIL = "settings error -- see 'Settings errors' below"
 
@@ -1250,7 +1250,7 @@ def _write_undeclared_key(config_file: Path) -> Path:
 def _quoted_body(config_file: Path) -> str:
     """The settings error as diagnose must quote it: same load, verbatim, indented.
 
-    Re-derived by running the load rather than spelt out here, so an assertion
+    Re-derived by running the load rather than spelled out here, so an assertion
     on it says "printed once" rather than "printed once in today's wording".
     """
     from kanibako.errors import KanibakoError

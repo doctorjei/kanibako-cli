@@ -57,7 +57,7 @@ def _workset_scope_allowed(workset_path: Path, canon_root: Path, template_root: 
 def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool, canon_root: Path) -> tuple[Path, Path]
 def _is_shipped_content(entry: Path) -> bool
 def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]]
-def _normalise_markdown(text: str) -> str
+def _normalize_markdown(text: str) -> str
 def _equivalent(src_file: Path, target: Path) -> bool
 ```
 

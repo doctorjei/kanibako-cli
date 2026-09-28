@@ -61,7 +61,7 @@ inside boxes. In order of likely impact:
    `~/.config/kanibako_config.yaml`, and the old name is not read at all (§2.68) — leave it
    as it is and every command runs as though you had never configured a host. So rename it
    first: `mv ~/.config/kanibako_config.yaml ~/.config/kanibako.cfg`.
-   Then look at what is in it. Through v1.7.2 kanibako wrote settings there too: initialising
+   Then look at what is in it. Through v1.7.2 kanibako wrote settings there too: initializing
    a host emitted `system:` and `box:` tables, and setup recorded its marker as
    `system: setup_completed:`. In v1.8.0 that file may hold the `config.*` bootstrap paths and
    nothing else, and reading it refuses by name (§2.67) — including when the command doing the
@@ -232,7 +232,7 @@ inside boxes. In order of likely impact:
     the mount a box receives at `~` is byte-identical to before. **The cure is `workset.boxes`**,
     the workset-scope key naming where box stores live, plus moving the directory yourself. Home
     also leaves the per-scope `bindings.*` listing in `kanibako box show --effective` and appears
-    above it as a labelled foundation line.
+    above it as a labeled foundation line.
 
 22. **If the same environment variable is declared at two scopes, that box no longer starts**
     (§2.33). `system.env.EDITOR` alongside `box.env.EDITOR` used to launch with the innermost
@@ -512,7 +512,7 @@ Notes:
   pref.system.agent`. `--null` writes a real YAML `null`; the sibling `reset` VERB
   (`kanibako box reset <box> <key>`) instead *removes* the entry. ⚑ There is no `--reset` flag.
 - A stale `box: {agent_name: ""}` row may also sit in `~/.config/kanibako.cfg` — old
-  versions wrote it into every freshly-initialised host. Nothing ever read it there, and it does
+  versions wrote it into every freshly-initialized host. Nothing ever read it there, and it does
   **not** trigger THIS section's launch refusal (verified) — but that file may no longer carry a
   `box:` table at all, so it stops every command and names `box.agent_name` (§2.67). Deleting it
   is required now, not tidiness.
@@ -686,7 +686,7 @@ What a v1.7.2 user needs to know:
   `home/canon/notebook/` and the devnotes/tasks to `home/canon/workbook/` — the same two
   destinations the table already gives that content, just reached from a different source
   path. There is deliberately no mechanical rule here: which of a box's directives belong in
-  a shared handbook chapter and which are only ever this box's own is a judgement call, and
+  a shared handbook chapter and which are only ever this box's own is a judgment call, and
   only you can make it. An older box spells the agents scope `agents/directives/**` rather
   than `agents/default/**`, and needs the same treatment.
 - **The playbook-equivalent tree is now read-only in-box.** An agent that edits its
@@ -814,7 +814,7 @@ mv '<data>/agents/<persona>℘<harness>' '<data>/agents/<persona>+<harness>'
 If you skip it, nothing reports an error: every store path is create-if-absent, so kanibako
 makes a fresh empty directory beside the old one and the persona launches with no settings and
 no canon of its own. The old directory is still on disk — move it and relaunch. Keys need no
-change: `agent.<node>.*` still canonicalises internally, and both spellings still address the
+change: `agent.<node>.*` still canonicalizes internally, and both spellings still address the
 same store.
 
 ### 2.6 The kickoff — upgrade base and plugins TOGETHER
@@ -893,7 +893,7 @@ does not apply, and reading that file now refuses by name (§2.67). To see what 
 effect, use `kanibako system show --effective`.
 
 **These repoints now move the directories they name, not just the cascade.** If you set one of
-these keys on an earlier 1.8.0 build, check it. The value was stored and the launch honoured
+these keys on an earlier 1.8.0 build, check it. The value was stored and the launch honored
 it — binds, seeds and `show --effective` all moved — but kanibako's own path resolver read the
 config file only, so anything asking directly for "the template root" or "the channel root" still
 got the default. A `system.template` repoint did not move the seed source; a `system.channelroot`
@@ -978,7 +978,7 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   unwound.
 - **`<data>/agents/<agent>/share/` is deleted** (it was only ever a join root and was verified
   empty on inspection). **A DIRECTORY, not a key** — nothing refuses, it is simply gone. If
-  yours has content, it belongs to a hand-set relative agent binding — absolutise that binding
+  yours has content, it belongs to a hand-set relative agent binding — absolutize that binding
   (§2.7's rule); don't just delete the dir.
 - **`workset.{boxes,vault_ro,vault_rw,logs}` overrides become live** where they were inert
   (standalone: all four; `workset.{vault_ro,vault_rw}` and `workset.logs`: all modes). **These ARE declared
@@ -1015,7 +1015,7 @@ which**; only the first is a stale key that can stop the resolve, and only in so
 The v1.8.0 host stores — `global/template/{box,workset,agent}`, `global/canon/handbook`, and
 the restructured `agents/<agent>/{template,canon/handbook}` stores — are installed by first-run
 init or by `kanibako setup`, **never by `pip install`** (installing a package runs no code),
-and the lazy first-run installer never re-fires on an already-initialised host. The designed
+and the lazy first-run installer never re-fires on an already-initialized host. The designed
 trigger for an upgrade is `setup`, and the **setup-compatibility gate forces it**: v1.8.0
 raises the setup baseline (`SETUP_BCV`), so the `setup_completed` marker your v1.7.2 config
 recorded is too old for the running build and every `start` / `box start` / `create` /
@@ -1094,7 +1094,7 @@ overriding the store — you edit the persona's `settings.json` and nothing chan
 those keys. A value that MATCHES the store is always safe to delete (the live tier supplies it). A
 value that DIFFERS is now, by definition, a deliberate user override: keep it if you meant it.
 
-**Behaviour changes to expect:**
+**Behavior changes to expect:**
 
 - **A broken store config now blocks the launch** instead of silently running on stale values. The
   error names the cause — malformed JSON, no endpoint, an unusable token pointer. There is no
@@ -1132,7 +1132,7 @@ pinning. ⚑ **Deleting it is no longer a no-op:** with the plugin floors emptie
 model at all and the harness picks its own. A hand-typed pin is indistinguishable from the seed, so
 if you meant it, leave it.
 
-⚑ **A behaviour change beyond the file, codex personas only.** The launch resolve deliberately drops the
+⚑ **A behavior change beyond the file, codex personas only.** The launch resolve deliberately drops the
 harness `model` default so that an unset persona model surfaces an actionable error rather than
 shipping an own-endpoint default into a third-party provider block. On a first launch there is no
 settings file, so the seed had been re-supplying exactly the value that exclusion dropped. A fresh
@@ -1158,7 +1158,7 @@ needs (refresh credentials, print the config notice, attach).
 
 **What you must do:** nothing, unless you pass flags to a box that is already up.
 
-**The behaviour change to expect:** flags that a running container cannot adopt are now **refused
+**The behavior change to expect:** flags that a running container cannot adopt are now **refused
 by name, with a nonzero exit**, where most of them were previously accepted and silently dropped.
 
 | Flag | Previously | Now |
@@ -1168,7 +1168,7 @@ by name, with a nonzero exit**, where most of them were previously accepted and 
 | `-N`, `-C`, `-R`, `-M`, `-A`, `-S` | **silently ignored** — `kanibako start -N <running box>` reattached to the OLD conversation | error |
 | `--persistent`, `--ephemeral` (typed explicitly) | reattached / hit a generic error | error, leaving the running session untouched |
 | `--entrypoint` | silently ignored; you got the agent session instead | **runs the command as a second process in the box** |
-| `--attach`, `--detach`, `--print-container`, `--warm-only` | honoured | unchanged |
+| `--attach`, `--detach`, `--print-container`, `--warm-only` | honored | unchanged |
 
 ⚑ **If you script `kanibako start` with flags, check whether the box may already be running.** A
 script that passed `-N` (or `--rig`) to a live box was silently getting something other than what it
@@ -1200,7 +1200,7 @@ $ kanibako --restart mybox      # stop, then start fresh with -N in force
 
 ### 2.18 A launch never rebuilds anything
 
-Two places used to materialise something rather than tell you it was missing. Both now refuse.
+Two places used to materialize something rather than tell you it was missing. Both now refuse.
 
 **A registered box whose directory is gone.** A box's registration and its box directory are
 separate things: `box rm` without `--purge` drops one, and deleting `<data>/…/boxes/<name>` (or
@@ -1228,10 +1228,10 @@ the right one for the box you are launching.
 put them back — they now need the explicit rebuild command. A dedicated `repair` verb is planned;
 when it lands it replaces the `Rebuild it:` line and nothing else about this error changes.
 
-**Unaffected**, because they materialise a box legitimately: `kanibako create`, `kanibako box extract`,
+**Unaffected**, because they materialize a box legitimately: `kanibako create`, `kanibako box extract`,
 and the **first launch of a box added with `workset connect`** — connect registers the box and
 creates its directory but deliberately never seeds it, so that first `start` is the box's real
-materialisation and still works exactly as before.
+materialization and still works exactly as before.
 
 **A box-config verb with no box.** `kanibako box set box.<key>=<value>` with no box named, run
 from a directory that is not a box, used to write `boxes/__unregistered__/settings.yaml` and exit
@@ -1601,7 +1601,7 @@ This closes a gap: `box.bindings.ro`, `box.bindings.rw` and `box.masks` previous
   the table lives in `agents/<agent>/agent.yaml` and the file-scope nouns do not open that file.
   The refusal points at `kanibako agent get <agent> caches`, which does read it, so the surface
   exists; it is just at a different noun. (The any-agent tier is not affected: everything under
-  `agent.default.` — the seven `<category>` tables *and* the behaviour leaves, `agent.default.model`
+  `agent.default.` — the seven `<category>` tables *and* the behavior leaves, `agent.default.model`
   and the rest — is stored in the system settings file and reads at `system get` like any other
   system key. There is no `agents/default/agent.yaml`, so `kanibako agent get default …` is not the
   spelling for it.)
@@ -1861,7 +1861,7 @@ source missing: /your/path
 - **If you repoint one of the agent's delivery destinations**, make sure the source exists. That is
   the same safe-fail the agent's own binds have always had — a box whose agent binary did not mount
   is a box that cannot run its agent, and it is better to hear that than to be dropped into it.
-- **If you do not repoint them, nothing changes.** Every other destination keeps the behaviour it had:
+- **If you do not repoint them, nothing changes.** Every other destination keeps the behavior it had:
   a read-only bind with a missing source is dropped with a warning, a read-write one has its source
   directory created.
 
@@ -1934,7 +1934,7 @@ box:
 ```
 
 **⚠️ A mask you rely on stops applying if a synced file is aimed at its exact destination.** Declaring
-both was previously a contradiction that resolved in the mask's favour and delivered nothing; now the
+both was previously a contradiction that resolved in the mask's favor and delivered nothing; now the
 file wins the destination outright. If you meant the void, remove the synced entry — or aim it
 somewhere the mask does not name.
 
@@ -2030,8 +2030,8 @@ also carry now survive underneath, where before they were never written at all.
 ⚑ The refusal for a `seeded` destination outside the box home is unchanged, and a `synced` entry at
 the same destination does not excuse it. It is still reported by name.
 
-**Why.** The timestamp check is an optimisation — it exists so an unchanged source costs nothing —
-and an optimisation was deciding which of two declared entries a box received. Making the sync write
+**Why.** The timestamp check is an optimization — it exists so an unchanged source costs nothing —
+and an optimization was deciding which of two declared entries a box received. Making the sync write
 its own destination once at creation fixes the assumption the check was built on, instead of deleting
 one of the user's entries to keep the assumption from being tested.
 
@@ -2135,7 +2135,7 @@ at a destination *inside* home (`~/work`, `~/somewhere`), which is unaffected an
 entry is only about `~` itself.
 
 **Where home shows up now.** `kanibako box show --effective` lists it first, on its own line,
-labelled as the foundation rather than as a settings key:
+labeled as the foundation rather than as a settings key:
 
 ```
   (foundation) meta.box.home = /data/ws/boxes/mybox/home -> /home/agent
@@ -2359,7 +2359,7 @@ below `workset`, and expanded like anything else.
 3. **A persona's stored value no longer beats it.** A persona's store config supplies `env:`
    entries as live agent-scope keys, and the rule has always been that your file wins — the file
    holds your own edits and nothing else, while a persona value is re-read on every launch. The
-   env half did not honour that. **If you were relying on a persona value while also having the
+   env half did not honor that. **If you were relying on a persona value while also having the
    same variable in the agent file, the file's value is what you get now.**
 4. **`~` and `$VAR` in the value are expanded**, exactly as in a value written in any other
    settings file. Before, an agent-file `env` value reached the box as literal text, so
@@ -2535,7 +2535,7 @@ launch, naming the table it found and the key your spelling reads:**
 ```yaml
 # agents/claude/agent.yaml — the whole shape
 self:
-  model: opus                   # behaviour keys: directly under the root
+  model: opus                   # behavior keys: directly under the root
   env:
     EDITOR: vim
   secret_path:
@@ -2655,7 +2655,7 @@ only, and it is applied while kanibako is deciding the box's variables rather th
 That is the same move §2.34 and §2.36 made for the variables plugins and kanibako itself set.
 Every mechanism that puts a variable in a box now goes through one channel, and `-e` is the CLI
 level of it — which is what lets kanibako tell you *which key* a `-e` is overriding, and refuse a
-`-e` it cannot honour instead of appearing to accept it.
+`-e` it cannot honor instead of appearing to accept it.
 
 **Nothing to do in the ordinary case.** `-e EDITOR=vim` on a box with no `env.EDITOR` key anywhere
 behaves exactly as before: the variable is injected for that launch as an ephemeral CLI entry,
@@ -3099,7 +3099,7 @@ code had passages whose only job was to say which `settings.yaml` was meant; tho
 gone. It also flushed out a class of our own tests that passed only because two tiers happened to
 spell their filename the same way.
 
-### 2.46 Five more bare agent keys are recognised, so five more names stop reading as a box
+### 2.46 Five more bare agent keys are recognized, so five more names stop reading as a box
 
 **Read this if you have a box named `template`, `canon`, `run_args`, `transform` or
 `transform_settings`.**
@@ -3109,7 +3109,7 @@ The any-agent defaults are set by their bare names: `kanibako system set model=o
 `allow_helpers`, `continue_mode` — and the rest of the declared set did not, though the settings
 spec declares them all alike. `agent.default.template` answered a refusal telling you to *"set the
 any-agent default with the bare key"*, and `template` then answered `unknown config key`; `run_args`
-and `transform` had no working spelling at all. All of them are recognised now.
+and `transform` had no working spelling at all. All of them are recognized now.
 
 **What that costs you.** `kanibako box get <token>` reads a lone token as a *key* when it is one
 and as a *box name* otherwise, so five names moved from the second reading to the first — exactly as
@@ -3126,7 +3126,7 @@ kanibako box set template box.image=…       # …and setting one of its keys
 `kanibako box show`, `kanibako start template` and every other verb that takes a box name are
 unaffected — the collision exists only where a single positional could be either thing.
 
-**`transform_settings` is recognised but still not settable**, because its value is a table rather
+**`transform_settings` is recognized but still not settable**, because its value is a table rather
 than a scalar. It is refused by name now, saying so and pointing at the settings file, instead of
 being denied as a key that does not exist. Edit it in `<data>/global/settings.yaml` under
 `agent: default: transform_settings:`, or in an agent's own `agent.yaml` under `self:`.
@@ -3223,7 +3223,7 @@ Here is the message, as `kanibako box show --effective` prints it:
 Error: the settings resolved for this box carry 2 entries that are not settings keys (spec §0 — the keyspace is CLOSED):
   - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
   - workset.frob: 'frob' is not a declared workset key (declared: boxes, canon, channelroot, kuid, logs, registry, skip_kuid_check, template, vault_ro, vault_rw, workspaces, plus the §2a categories)
-kanibako will not resolve settings that carry them: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behaviour the closed keyspace replaces.
+kanibako will not resolve settings that carry them: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behavior the closed keyspace replaces.
   Fix: remove them BY HAND from the settings file that carries them — this resolve loaded:
     - /home/you/.local/share/kanibako/worksets/demo/boxes/scratch/box.yaml
     - /home/you/.local/share/kanibako/worksets/demo/workset.yaml
@@ -3405,7 +3405,7 @@ Step 3: Container Rig
 
 Error: the settings resolved for this box carry 1 entry that is not a settings key (spec §0 — the keyspace is CLOSED):
   - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
-kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behaviour the closed keyspace replaces.
+kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behavior the closed keyspace replaces.
   Fix: remove it BY HAND from the settings file that carries it — this resolve loaded:
     - /home/you/.local/share/kanibako/global/settings.yaml
   'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
@@ -3440,7 +3440,7 @@ Settings errors:
     affects: Image
         the settings resolved for this box carry 1 entry that is not a settings key (spec §0 — the keyspace is CLOSED):
           - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
-        kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behaviour the closed keyspace replaces.
+        kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behavior the closed keyspace replaces.
           Fix: remove it BY HAND from the settings file that carries it — this resolve loaded:
             - /home/you/.local/share/kanibako/global/settings.yaml
           'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
@@ -3570,8 +3570,8 @@ is now resolved through its own key.
 |---|---|---|
 | `workset.channels.broadcast`, `.mailboxes`, `.share_global` | Nothing. The value was accepted, written to `workset.yaml` and read back by `kanibako workset get`, and no path moved | The value is used |
 | `workset.channels.chat`, `.share` | The mount followed your override; the rest of kanibako did not | Mount, seeded files and the `meta.box.*` addresses agree |
-| `workset.channels.common` | Honoured | Unchanged |
-| `workset.channelroot` | Honoured, but a settings file referencing `@workset.channelroot` got nothing back | The launch resolves it, so the reference works |
+| `workset.channels.common` | Honored | Unchanged |
+| `workset.channelroot` | Honored, but a settings file referencing `@workset.channelroot` got nothing back | The launch resolves it, so the reference works |
 
 **What to do.**
 
@@ -3589,7 +3589,7 @@ is now resolved through its own key.
 
 **One new refusal.** A repoint that cannot be resolved before the launch snapshot is built now
 fails by name instead of quietly falling back to the default. This is the same closed-keyspace
-behaviour `workset.channelroot` already had; it now covers the five leaves as well. A setting that
+behavior `workset.channelroot` already had; it now covers the five leaves as well. A setting that
 resolves is unaffected.
 
 ---
@@ -3684,7 +3684,7 @@ deleting the lines. To confirm what a box ends up with afterwards, `kanibako box
 the resolved `Image:` row.
 
 ⚑ **This is a value taking effect, not a refusal.** A `box:` table in the system file is legal and
-always was — v1.8.0 is the release that started honouring it.
+always was — v1.8.0 is the release that started honoring it.
 
 ---
 
@@ -3732,7 +3732,7 @@ image is unchanged.
 ```
 
 Scripts that start existing boxes with `--image` or `--share-images` will see this on **every**
-launch. It goes to stderr, and the behaviour it describes is unchanged from v1.7.2 — only the
+launch. It goes to stderr, and the behavior it describes is unchanged from v1.7.2 — only the
 announcement is new. (Flags refused outright against a *running* box are a different change; see
 §2.17.)
 
@@ -3829,7 +3829,7 @@ value you had set with `kanibako agent set` — and which every launch read — 
 
 **Why.** Kanibako kept two lists of what an agent setting may be called. The one that decides
 whether a key is a key had the installed plugins' declarations folded into it; the one that
-recognises the `agent.<agent>.<setting>` spelling before a command dispatches on it did not. So the
+recognizes the `agent.<agent>.<setting>` spelling before a command dispatches on it did not. So the
 same name was a key on one path and not a name at all on another. There is one list now.
 
 **What is unchanged.** A setting no agent declares is still refused, still by name, still rc 1 —
@@ -3857,7 +3857,7 @@ whose plugin declared it. Set it on the agent: `kanibako agent set goose provide
 is set by default, and nothing kanibako ships sets them, so on an ordinary install this section is
 a no-op.
 
-**What changed.** Both keys were only half-honoured. The directory walk that identifies a workset
+**What changed.** Both keys were only half-honored. The directory walk that identifies a workset
 root read them correctly, so a workset whose store you had moved was still *found* — but the code
 that composed the actual paths spelled `boxes` and `logs` by hand instead of reading the setting.
 So the box trees were created, moved, duplicated, converted, purged and deleted under the default
@@ -3963,12 +3963,12 @@ never mentions `run_args` lets the default through, and an explicitly empty one 
 
 ---
 
-### 2.60 `box convert --standalone` recognises a repointed directory as kanibako's
+### 2.60 `box convert --standalone` recognizes a repointed directory as kanibako's
 
 **Read this if you have converted a box to standalone, or intend to.** A standalone box keeps its
 live workspace in a subdirectory of the project root, so the convert sweeps everything else at the
 root down into it. Everything it must *not* sweep — the box directory, the vault, the canon tree —
-it used to recognise by literal directory name.
+it used to recognize by literal directory name.
 
 **What changed.** A name cannot describe a directory you have moved. Three consequences followed,
 and only the first needed a repointed setting to appear:
@@ -3983,10 +3983,10 @@ and only the first needed a repointed setting to appear:
   directory the box never opens, and left your files where nothing binds them.
 
 The sweep now resolves `workset.workspaces`, `workset.vault_ro`, `workset.vault_rw` and
-`workset.canon` and compares directories, so a repointed one is recognised wherever you put it, and
+`workset.canon` and compares directories, so a repointed one is recognized wherever you put it, and
 the workspace is filled at the path the box actually reads.
 
-**How a user notices.** Two new behaviours, both on `box convert --standalone`:
+**How a user notices.** Two new behaviors, both on `box convert --standalone`:
 
 - A directory kept because one of those four settings resolves into it is reported on standard
   error, naming the setting: `Note: left /path/store at the standalone root — workset.vault_ro
@@ -4294,7 +4294,7 @@ a box could run a different image than the file in front of you said, with nothi
 reporting the difference. The point of the message is that you find out.
 
 🛑 **If there is a leftover, it is most likely one kanibako itself wrote — and TWO different
-writers put one there.** **Initialising** the host wrote it: v1.7.2 created this file carrying
+writers put one there.** **Initializing** the host wrote it: v1.7.2 created this file carrying
 three tables, not one — the `config:` foundation, a `system:` table (`backup`, `channelroot`,
 `base_template`, `cache`, `runtime`) and a `box:` table (`image`, `agent_name`, `share_images`).
 That is the broader case, and it does not depend on `kanibako setup` ever having been run: a file
@@ -4703,7 +4703,7 @@ kanibako agent set claude label="My Claude"
 **What you see if you don't.** The launch refuses, by name, naming the file and the line — `name` is
 not a declared key, and an undeclared entry in a settings file stops the command (§2.47). There is
 no compatibility read and no grace period, and that is deliberate: an entry the keyspace does not
-declare has no meaning to give the box, and carrying it through unread is the behaviour the closed
+declare has no meaning to give the box, and carrying it through unread is the behavior the closed
 keyspace replaced.
 
 ```
@@ -5892,10 +5892,10 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
 
    - **The entry name is gone**, and all entries of one category live under **one** key — so build
      the map, don't emit a key apiece. A destination is data, not a key segment.
-   - **Normalise every destination** with `normalize_bind_dest` (it is idempotent, and it is for
+   - **Normalize every destination** with `normalize_bind_dest` (it is idempotent, and it is for
      destinations *only* — never call it on a `host_src`). This is not cosmetic. The arm key is
      matched as a **string** when tables merge, but it is resolved to a real path later, so an
-     unnormalised `~/x` is a different key from `/home/agent/x` and the same destination. Two
+     unnormalized `~/x` is a different key from `/home/agent/x` and the same destination. Two
      consequences: an override written at the canonical spelling — by a user, or by another scope —
      does **not** replace your entry, it becomes a *second* one; and both then resolve to one
      destination at launch, where bindings are act-once and two of them is a hard
@@ -5908,7 +5908,7 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
      ⚑ `seeded` and `synced` are still COPIES — the shared shape is about how an entry is written
      down, never about what is done with it.
    - **`kanibako.settings.core_defaults.add_bind` builds the map for you**, for all six: it
-     normalises the destination and refuses a second entry at one destination. Use it rather than
+     normalizes the destination and refuses a second entry at one destination. Use it rather than
      hand-rolling a dict.
    - **A user now overrides one of your entries by its DESTINATION**, since that is the key. If
      your docs tell users how to repoint a bind you declare, the spelling changed.
@@ -6021,7 +6021,7 @@ independently of the base and depend on **`kanibako-cli`** with **no version pin
      the user stored.
 
    ⚑ **A tier you OMIT is one your harness CANNOT render**, and the launch refuses that tier by
-   name rather than substituting a neighbour — goose declares no `editing` row, so asking goose for
+   name rather than substituting a neighbor — goose declares no `editing` row, so asking goose for
    `editing` is an error naming the tiers it does render. An EMPTY row means something else: *emit
    nothing, deliberately*, which is the correct realization on the FLAG channel for a harness whose
    own default already prompts (claude's `restricted: {}`). On the ENV channel an empty row is
@@ -6275,6 +6275,19 @@ a whole-name match, never a prefix.
    A value of `default` no longer parses, so no `set` verb will touch it. A value of `shell` still
    parses, but it now selects the built-in plain-shell box instead of your plugin, so rewrite it or
    that box keeps launching a plain shell.
+
+### 3.3 `kanibako.errors.UserCancelled` is renamed `UserCanceled`
+
+**Read this if your plugin imports `kanibako.errors.UserCancelled`.** The published
+`kanibako-agent-claude`, `-codex` and `-goose` plugins do not.
+
+**What changed.** kanibako now uses American spelling in its own names, and this is the one public
+Python name that renames. There is no alias: importing `UserCancelled` raises `ImportError`. The
+class is otherwise unchanged: it is still a `KanibakoError`, and the CLI still reports it as
+`Aborted.` with exit status 2.
+
+**What you must do.** Replace the name in every import and `except` clause:
+`from kanibako.errors import UserCancelled` becomes `from kanibako.errors import UserCanceled`.
 
 ---
 

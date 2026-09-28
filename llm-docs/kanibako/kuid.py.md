@@ -71,7 +71,7 @@ mirrors that composition, and falls back to the bare leaf when the stored value 
 `commands/box/_duplicate.py` mints a FRESH kuid for a duplicate rather than copying the
 source's.
 
-## Codec behaviour
+## Codec behavior
 
 **`encode`** writes MSB-first: char `i` holds bits `[5*(CHARS-1-i) .. 5*(CHARS-1-i)+4]`. It
 raises `ValueError` unless `0 <= value < 2**BITS`.

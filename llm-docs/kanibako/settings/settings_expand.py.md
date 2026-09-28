@@ -99,7 +99,7 @@ the SAME call.
 **It NEVER RAISES — a total predicate.** A malformed reference (`"@{a.b"`, `"@{"`) answers `None` so
 it falls through to `_Expander._expand_embedded`, where `expand_expr` raises it with the same message
 from the same place it always has. That keeps error provenance identical for malformed input in
-STRICT and LENIENT mode alike; the only behaviour delta in this function is that a WELL-FORMED braced
+STRICT and LENIENT mode alike; the only behavior delta in this function is that a WELL-FORMED braced
 ref now answers its name instead of `None`.
 
 ## Whole-value `$VAR` — the `$` twin, and why only one variable needs it

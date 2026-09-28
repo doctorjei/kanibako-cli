@@ -1,6 +1,6 @@
-"""The spec §0 ``box_dest`` COLLISION TABLE and the derived-binding materialisation.
+"""The spec §0 ``box_dest`` COLLISION TABLE and the derived-binding materialization.
 
-One test per table row, plus the behaviours the table does not mention and which
+One test per table row, plus the behaviors the table does not mention and which
 must survive it byte-for-byte (the pure-``seeded`` overlay, the credential gate
 ordering, the ``secret_path`` per-VAR cascade).
 
@@ -746,7 +746,7 @@ class TestTheCollapseRouteFeedsTheSameChannel:
     DELETION and its job is done. What replaced it is
     ``test_there_is_NO_SECOND_FEED_left_to_add`` below — the same guarantee stated
     structurally instead of by coincidence. (Two feeds printed one line only because
-    both arms happened to build an EQUAL ``CategoryCollision`` and the emitter memoises
+    both arms happened to build an EQUAL ``CategoryCollision`` and the emitter memoizes
     on ``(box_dest, scope)``; that was a property of the two constructions, never of
     the channel.)
     """
@@ -838,7 +838,7 @@ class TestTheCollapseRouteFeedsTheSameChannel:
 
 
 # --------------------------------------------------------------------------- #
-# The behaviours the table does not mention and which must survive it          #
+# The behaviors the table does not mention and which must survive it          #
 # --------------------------------------------------------------------------- #
 
 
@@ -975,7 +975,7 @@ class TestCredentialGateRunsFirst:
 
 
 # --------------------------------------------------------------------------- #
-# T14 — the derived-binding materialisation                                    #
+# T14 — the derived-binding materialization                                    #
 # --------------------------------------------------------------------------- #
 
 
@@ -1016,7 +1016,7 @@ class TestDeriveBindingKeys:
             entry("env", name="PATH", box_dest="PATH"),
         ]) == {}
 
-    def test_a_LOSING_declaration_is_materialised_too(self):
+    def test_a_LOSING_declaration_is_materialized_too(self):
         """§0's purpose is "a user can see WHY a mount exists" — a losing
         declaration's derivation is exactly what explains the warning that
         names it, so hiding it would defeat the point.
@@ -1112,7 +1112,7 @@ class TestDeriveBindingKeys:
 
 
 def test_the_flat_authority_ladder_is_gone():
-    """A behavioural test can pass while a dead ladder rots in place.
+    """A behavioral test can pass while a dead ladder rots in place.
 
     ``_CATEGORY_AUTHORITY`` was a TOTAL order over categories. The §0 table is
     not a permutation of it — it is a different shape (keyed on CONTAINMENT,

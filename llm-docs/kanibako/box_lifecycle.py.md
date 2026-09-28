@@ -18,7 +18,7 @@ layer. It makes NO launch-model changes and runs no supervisor loop. E2 imports
 the `LifecycleEvent.DETACH` that `classify_transition` emits.
 
 Everything here is deterministic and side-effect free EXCEPT the two probe functions at the bottom.
-Their only impurity — reading `/proc` cmdlines and shelling `tmux` — is funnelled through injectable
+Their only impurity — reading `/proc` cmdlines and shelling `tmux` — is funneled through injectable
 parameters, so tests never touch real processes or a real tmux server.
 
 ## The PID-1 contract
@@ -42,7 +42,7 @@ Concretely:
 * `_collect_proc_cmdlines` SKIPS a vanished PID, a permission error, and a kernel thread's empty
   cmdline rather than raising, so it is safe to call from PID-1 on any box. A system with no
   readable `/proc` yields `[]`.
-* `_tmux_clients_output` normalises EVERY not-attached / no-tmux condition to the empty string:
+* `_tmux_clients_output` normalizes EVERY not-attached / no-tmux condition to the empty string:
   a non-zero exit (no such session, no server) → `""`; a missing tmux binary (`FileNotFoundError`)
   → `""`; any other `OSError` → `""`.
 * `canonical_tmux_session_pid` returns `None` when the session or server is absent, tmux is not
@@ -50,7 +50,7 @@ Concretely:
 
 ## The VS Code remote-server markers
 
-A running in-box VS Code (or Cursor) server materialises a remote-server tree under `$HOME`. The
+A running in-box VS Code (or Cursor) server materializes a remote-server tree under `$HOME`. The
 directory that tree gets is what the detector keys on: `.vscode-server` covers Stable, the `-*`
 suffixes cover the Insiders and OSS channels, and `.cursor-server` is Cursor's fork.
 

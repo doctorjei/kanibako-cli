@@ -65,10 +65,10 @@ class TestNotAWellFormedUrl:
         assert info.value.__suppress_context__
 
 
-class TestNoRecognisedScheme:
+class TestNoRecognizedScheme:
     def test_a_misspelled_scheme_keeps_the_scheme_and_host(self):
         message = _refusal(f"htps://{_TOKEN}@gw.example.com/v1")
-        assert "has no recognised scheme" in message
+        assert "has no recognized scheme" in message
         assert _TOKEN not in message
         assert "'htps://<redacted>@gw.example.com/v1'" in message
         assert "(got 'htps';" in message
@@ -92,7 +92,7 @@ class TestNoRecognisedScheme:
     def test_a_credential_free_endpoint_reads_as_before(self):
         """Legibility pin: the live incident's own message is unchanged."""
         assert _refusal("myhost:8080/v1") == (
-            "persona endpoint 'myhost:8080/v1' has no recognised scheme "
+            "persona endpoint 'myhost:8080/v1' has no recognized scheme "
             "(got 'myhost'; must start with 'http://' or 'https://')"
         )
 

@@ -799,7 +799,7 @@ class TestUnregisteredStandaloneResolution:
         not permanently.
 
         The two rules collide and only one can hold; which one is not decided
-        here, and this pin is a record of the collision, never a licence for it.
+        here, and this pin is a record of the collision, never a license for it.
         """
         self._unregistered(std, config, project_dir)
         monkeypatch.chdir(project_dir)

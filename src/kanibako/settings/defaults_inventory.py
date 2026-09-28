@@ -1,4 +1,4 @@
-"""Every default kanibako ships, beside the ARTEFACT that declares it — ``system defaults``.
+"""Every default kanibako ships, beside the ARTIFACT that declares it — ``system defaults``.
 
 ``config show --effective`` resolves the cascade without reporting a SOURCE, so a user
 cannot tell a declared default from a value sitting in their own system file.  This
@@ -7,7 +7,7 @@ scope, and WHERE IS IT WRITTEN DOWN.  It is the install-wide STATIC view — no 
 project, no resolution.
 
 ⚑ READ-ONLY, AND IT DECLARES NOTHING.  No key is introduced, no default is invented, no
-value is computed.  Every value printed is read from the artefact that already carries
+value is computed.  Every value printed is read from the artifact that already carries
 it (the shipped manifest, ``core-defaults.yaml``, a plugin's defaults file); every key
 comes from a live code carrier or from the manifest.  A row this module cannot source is
 a RED TEST, never a fabricated cell.
@@ -28,7 +28,7 @@ deriving function or a lone constant are named by hand.  ⚑ "A READ-WITH-DEFAUL
 ACCESSOR" WAS A FOURTH KIND HERE AND IS NOT ANY MORE (2026-08-29): the last group of
 keys whose default lived inside the function that read the file was retired when
 ``box.enable_vault`` moved to a ``KanibakoConfig`` field.  Those readers still exist and
-still return the same values — what they stopped being is the artefact the keyspace
+still return the same values — what they stopped being is the artifact the keyspace
 answers from, which is the only thing this column names.
 
 ⚑ THE LAUNCH-DERIVED ``KANIBAKO_*`` STAMPS ARE NOT LISTED, AND THE OMISSION IS PRINTED.
@@ -199,7 +199,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # value would reach a box.
     ("settings_launch.py (system scalar floor)",
      frozenset({"system.helpers.depth", "system.helpers.breadth"})),
-    # --- rows with no value-carrying artefact at all --- #
+    # --- rows with no value-carrying artifact at all --- #
     ("runtime-probed (podman graphroot)", frozenset({"box.images_store"})),
     # The §2d SHELL FENCE's ``agent.shell.template | <None>``, floored as a PRESENT
     # ``None`` by ``launch.templates.agent_template_defaults``.  ⚑ ``<None>`` IS A VALUE
@@ -222,7 +222,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
       "agent.default.transform_settings", "agent.shell.transform_settings"})),
     # The per-NODE arm of the same producer, spelled ONE @-hop differently from the
     # registry (``@meta.agent.<a>.path`` IS ``@config.agents/<a>``; both resolve to one
-    # place). Labelled apart from the ``agent.default`` arm above because they are two
+    # place). Labeled apart from the ``agent.default`` arm above because they are two
     # rows a reader will otherwise wonder about, not because two producers exist.
     ("core_defaults.py (canon producer, per node)", frozenset({"agent.<agent>.canon"})),
     # The layer-2 SOURCE key, split by ARM for the same reason the canon pair above
@@ -330,7 +330,7 @@ def _scalar(value: Any) -> str:
 # split on a dot anywhere in this module; the SCOPE cell is split off the ARM
 # (``box.bindings.ro`` -> ``box``), which is a dotted key prefix and not data.
 
-#: Bind dests whose declaring artefact is NOT a ``core-defaults.yaml`` family table.
+#: Bind dests whose declaring artifact is NOT a ``core-defaults.yaml`` family table.
 #: NAMED with a reason each, in the ``BIND_EXEMPTIONS`` spirit: a silent fallback label
 #: here would quietly mis-attribute a bind, and the inventory test asserts every entry
 #: still names a live manifest row.
@@ -382,7 +382,7 @@ def bind_rows() -> list[DefaultRow]:
       source = _BIND_SOURCES_OUTSIDE_THE_FILE.get(str(dest)) or family.get(str(dest))
       if source is None:
         raise RuntimeError(
-          f"{label} has no declaring artefact — add it to "
+          f"{label} has no declaring artifact — add it to "
           f"_BIND_SOURCES_OUTSIDE_THE_FILE with a reason, or fix the dest"
         )
       rows.append(DefaultRow(

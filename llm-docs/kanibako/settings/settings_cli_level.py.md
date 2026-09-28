@@ -8,7 +8,7 @@ launch, and guards it, so the level is ONE mechanism rather than N checks scatte
 launch.
 
 P7 built the first instance of that level for exactly one key: `system.agent`, the resolved agent
-selection. P8 generalises it into the builder and the guard here (P8 also being the boundary-cost
+selection. P8 generalizes it into the builder and the guard here (P8 also being the boundary-cost
 principle the split pays for).
 
 **PURE:** no I/O and no plugin import at module load, like `kanibako.settings.settings_keyspace`.
@@ -64,7 +64,7 @@ table lists only entries this module actually wires.
 ### Why `-S` / `-A` are NOT listed
 
 The spec's enumeration also names `-S`/`-A` (`access` — `-S` selects the `restricted` tier, `-A` the
-`full` one). Listing an unwired entry would read as a contract this module honours — the same reason
+`full` one). Listing an unwired entry would read as a contract this module honors — the same reason
 `settings_keyspace` deleted its unused `CATEGORY_SCOPES` rather than keeping it.
 
 The `access` key is read TWICE, deliberately. The CASCADE tier feeds `deliver_panel_permissions` /
@@ -190,7 +190,7 @@ Two properties of the map are load-bearing, and neither survives being "simplifi
 
 * **It is a thing to ASK, not a value.** `AgentVocabulary` consults core's table first and reaches the
   map only for a leaf core cannot answer, so `-M` and `-N`/`-C`/`-R` still import no plugin. Handing
-  the guard a materialised map instead would change no verdict and restore the whole cost silently
+  the guard a materialized map instead would change no verdict and restore the whole cost silently
   (measured at 73% of a settings resolve) — `test_a_CORE_leaf_costs_no_plugin_discovery` is the only
   thing that would notice.
 * **It CONCEDES rather than refuses** what discovery could not read (`[R150]`, spec §0: *"Where an
@@ -208,7 +208,7 @@ door only has to hand it the map.
 ⚑ A dotted key is split on `.`, so an agent NODE whose name contains a dot (`a.b℘claude`) is refused
 by arm 1 rather than silently mis-parsed. As of 2026-08-04 such a node can no longer be CONSTRUCTED —
 `agent_ref` rejects `.` in a persona/harness segment for exactly this ambiguity — so this arm is now
-defence in depth against a node that reached here by some other route, not a live case. It stays
+defense in depth against a node that reached here by some other route, not a live case. It stays
 because it is free and because every dotted-key builder in the launch (`agent_defaults`,
 `meta_agent_path_floor`, `dotted_partial`) splits the same way and would never re-find the node;
 refusing loudly beats mis-resolving silently.

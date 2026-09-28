@@ -95,7 +95,7 @@ user reads, so a key no parse can produce is a command the message tells them to
 fails. `"reauth"` was that case: declared in BOTH sets with no top-level `reauth` parser behind it —
 `kanibako reauth` parses as `start reauth`, consuming the word as a box name, so `kanibako reauth
 --help` printed `start`'s usage and `kanibako reauth` died with "no box at reauth". It changed no
-behaviour, because `command_key` could never report it; it only ever reached the user, in the
+behavior, because `command_key` could never report it; it only ever reached the user, in the
 enumeration. The real command was carried throughout by the separate `"agent reauth"` entry, so
 dropping the bare key left `agent reauth --box` / `--agent` untouched. Whether to wire a top-level
 `reauth` shortcut remains a CLI-shape decision, and an open one — the key is gone, not the question.
@@ -198,8 +198,8 @@ the caller leave argv alone. `_BAIL` itself is the sentinel for "an option whose
 will not reason about", and `_take_for` is the mapping from an action's `nargs` to that answer.
 
 Abbreviations are resolved too — an unambiguous long-option ABBREVIATION, matching argparse's own
-`allow_abbrev` behaviour. Without this, `--nul` would parse before the positionals and not after
-them: one flag with two behaviours, which is worse than either.
+`allow_abbrev` behavior. Without this, `--nul` would parse before the positionals and not after
+them: one flag with two behaviors, which is worse than either.
 
 ### The bail on a value-taking option with nothing to take
 

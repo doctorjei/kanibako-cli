@@ -874,13 +874,13 @@ def test_remote_unforeseen_seed_failure_stays_silent(
 
 
 # ---------------------------------------------------------------------------
-# The KANIBAKO_AGENT stamp is CANONICALISED on read (step 2 of the ℘ leak)
+# The KANIBAKO_AGENT stamp is CANONICALIZED on read (step 2 of the ℘ leak)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
     "stamp", ["navigator+claude", "navigator℘claude", "navigator+Claude"],
 )
-def test_box_agent_node_canonicalises_the_stamp(stamp):
+def test_box_agent_node_canonicalizes_the_stamp(stamp):
     """🛑 The stamp re-enters code as a NODE, in ONE spelling.
 
     ``KANIBAKO_AGENT`` is stamped in the OUTSIDE spelling (``+``) because an

@@ -66,7 +66,7 @@ def tmux_terminal_attached(list_clients_output: str) -> bool:
     """True iff ``tmux list-clients`` output shows ≥1 attached terminal client.
 
     PURE: tmux prints one LINE per attached client and nothing otherwise.
-    ⚑ The CALLER must normalise any tmux error to ``""`` to keep this a pure
+    ⚑ The CALLER must normalize any tmux error to ``""`` to keep this a pure
     string test — :func:`_tmux_clients_output` is what does that.
     """
     return bool(list_clients_output.strip())
@@ -162,7 +162,7 @@ def _collect_proc_cmdlines() -> list[str]:
 def _tmux_clients_output(session: str, run: _Runner) -> str:
     """Return ``tmux list-clients -t <session>`` stdout, or ``""`` on any failure.
 
-    Normalises EVERY not-attached / no-tmux condition to the empty string
+    Normalizes EVERY not-attached / no-tmux condition to the empty string
     :func:`tmux_terminal_attached` reads as "no terminal".
     ⚑ ``-F ""`` is NOT used: the default one-line-per-client output IS the
     presence signal being tested.

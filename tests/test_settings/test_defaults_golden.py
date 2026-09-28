@@ -883,7 +883,7 @@ class TestCoreStaticEnvDefaults:
         ``sytem.env.X`` matches nothing downstream, so the entry entered the floor
         table and simply never reached a box.  Nothing else in the chain can catch
         it: ``default_categories`` is a plain string-keyed dict all the way to the
-        store, and an unrecognised key there is not an error, it is nobody's.
+        store, and an unrecognized key there is not an error, it is nobody's.
         """
         self._patch_env_section(monkeypatch, {"sytem": {self.PROBE_VAR: "x"}})
         with pytest.raises(RuntimeError) as excinfo:

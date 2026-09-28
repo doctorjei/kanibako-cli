@@ -77,7 +77,7 @@ def _undirect(entry: str) -> str:
     tests a prefix, so the slash is the manifest SAYING "directory prefix" rather than
     part of the name.
 
-    ⚑ The strip is not a licence to normalise anything into agreement.  On the ALLOW
+    ⚑ The strip is not a license to normalize anything into agreement.  On the ALLOW
     side the notation is UNIFORM — every entry ends with ``/`` — and
     :meth:`TestAllowNotation.test_every_allow_entry_is_written_in_directory_notation`
     pins that, so an entry naming a FILE reds here instead of being quietly rewritten
@@ -118,11 +118,11 @@ SCOPE_ROW_FIELDS: dict[str, str] = {
 #: SET-PARITY treatment, because neither carries a table to compare.
 POLICY_FIELDS: dict[str, str] = {
     "default": (
-        "the deny-by-default rule itself. Enforced BEHAVIOURALLY: an entry no scope "
+        "the deny-by-default rule itself. Enforced BEHAVIORALLY: an entry no scope "
         "lists must be refused by _check_whitelist in every scope"
     ),
-    "traversal_defences": (
-        "declares that the traversal defences live in CODE, not in this table (R-24's "
+    "traversal_defenses": (
+        "declares that the traversal defenses live in CODE, not in this table (R-24's "
         "split), so there is nothing here to enforce parity against. The code carriers "
         "are copy_tree's symlink refusals and _assert_contained, exercised by "
         "tests/test_launch/test_templates.py::TestCopierEnforcement — asserted THERE, "
@@ -221,7 +221,7 @@ class TestAllowNotation:
         odd = [e for e in _block()[scope]["allow"] if not str(e).endswith("/")]
         assert not odd, (
             f"{scope}: allow entries {odd} are not written in the block's trailing-slash "
-            f"DIRECTORY notation — _undirect() would normalise them silently, so decide "
+            f"DIRECTORY notation — _undirect() would normalize them silently, so decide "
             f"what a non-directory allow entry means before adding one"
         )
 
@@ -282,7 +282,7 @@ def _deny_cases() -> list[tuple[str, str]]:
     ]
 
 
-class TestThePredicateHonoursTheBlock:
+class TestThePredicateHonorsTheBlock:
     """``_check_whitelist`` accepts what the manifest allows and refuses what it denies."""
 
     @pytest.mark.parametrize(("scope", "entry"), _allow_cases())
@@ -313,7 +313,7 @@ class TestThePredicateHonoursTheBlock:
 
     @pytest.mark.parametrize("scope", sorted(SCOPE_WHITELISTS))
     def test_an_unlisted_entry_is_refused_in_every_scope(self, scope):
-        """``default: deny`` — the block's own first field, asserted as behaviour."""
+        """``default: deny`` — the block's own first field, asserted as behavior."""
         assert _block()["default"] == "deny"
         with pytest.raises(TemplateScopeError):
             _check_whitelist(Path(_UNLISTED_PROBE), scope)
@@ -359,10 +359,10 @@ class TestTheSettingsFileDenialsNameRealFiles:
         )
 
 
-class TestTraversalDefencesStayInCode:
+class TestTraversalDefensesStayInCode:
     """The one field that declares its own absence from the table."""
 
-    def test_the_block_defers_the_defences_to_code(self):
+    def test_the_block_defers_the_defenses_to_code(self):
         """R-24's split, pinned: if this ever becomes a TABLE, it needs parity cases.
 
         The value ``code`` is the manifest saying "no data here" — which is why
@@ -370,7 +370,7 @@ class TestTraversalDefencesStayInCode:
         value means the block grew a traversal table, and that table would need its own
         enforcement rather than inheriting this one's silence.
         """
-        assert _block()["traversal_defences"] == "code"
+        assert _block()["traversal_defenses"] == "code"
 
 
 # --------------------------------------------------------------------------- #

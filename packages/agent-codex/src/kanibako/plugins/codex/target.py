@@ -218,7 +218,7 @@ class CodexTarget(Target):
 
         Read from ``codex-defaults.yaml`` (via the loader), and currently EMPTY:
         the former ``@system.instructions`` → ``~/.codex/AGENTS.md`` bind was
-        retired in favour of the RO canon bind + the flattened FINAL file.
+        retired in favor of the RO canon bind + the flattened FINAL file.
         """
         return load_category_binds(_DEFAULTS_PACKAGE, _DEFAULTS_FILE, self.name)
 
@@ -317,7 +317,7 @@ class CodexTarget(Target):
         """Warn that codex config changes apply only after a restart.
 
         codex's ``config.toml`` is a RECONCILED PROJECTION (D1): the launch seams
-        re-materialise it only on start of a STOPPED box, and rewriting it under
+        re-materialize it only on start of a STOPPED box, and rewriting it under
         the panel's already-running app-server is unsafe.
         """
         return (

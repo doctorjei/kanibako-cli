@@ -573,7 +573,7 @@ class TestCLIArgsContract:
         assert "--permission-mode" not in args
 
     def test_unknown_stored_tier_refuses_rather_than_running_permissive(self):
-        """SAFETY INVARIANT (R-41's inversion): an unrecognised stored value
+        """SAFETY INVARIANT (R-41's inversion): an unrecognized stored value
         RAISES.  The retired boolean coerced junk to the PERMISSIVE default —
         i.e. a typo used to grant the bypass."""
         from kanibako.errors import ConfigError

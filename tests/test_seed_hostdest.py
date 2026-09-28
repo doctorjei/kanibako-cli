@@ -136,7 +136,7 @@ class TestSeedRoutesThroughTheOneGuestTranslator:
     OPPOSITE — that the three §2a keys NEVER touch the translator — and that was
     true while the seed dest was the absolute HOST path ``@meta.box.path/home``,
     which the translator would have re-rooted under the box home.  The respell to
-    the guest ``~/`` made routing through the translator the CORRECT behaviour, so
+    the guest ``~/`` made routing through the translator the CORRECT behavior, so
     the guarantee is replaced rather than dropped: the same mis-landing bug is now
     pinned by asserting the translator is asked AND answers with the box home.
     """
@@ -236,7 +236,7 @@ def _entry(**kw) -> CategoryEntry:
 # it pinned. It asserted that a COPY and a MOUNT at one destination resolve to the
 # MOUNT ALONE — the retired ``_resolve_dest_group``'s answer. That rule was ruled the
 # OPPOSITE way (Jei, 2026-08-12: a copy lands ON TOP of a bind and most of the bind
-# remains intact), so rebasing the class would have pinned a behaviour that no longer
+# remains intact), so rebasing the class would have pinned a behavior that no longer
 # exists. Its successor is
 # ``tests/test_settings/test_store_collapse.py::TestNothingPrunesACopy``, which states
 # the surviving rule: nothing prunes a copy for sharing a destination with a mount.

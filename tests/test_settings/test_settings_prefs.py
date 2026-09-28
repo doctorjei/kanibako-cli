@@ -844,7 +844,7 @@ class TestDiscoveryIsLazyCachedAndHonest:
         sp.default_valid_agents()
         assert calls == [1, 1]
 
-    def test_an_EMPTY_valid_agents_is_honoured_not_re_discovered(self, monkeypatch):
+    def test_an_EMPTY_valid_agents_is_honored_not_re_discovered(self, monkeypatch):
         """SHOULD-4 — `is None`, not falsy. An empty AgentNames is falsy, and a
         truthiness test would silently discard a caller's deliberate empty set."""
         import kanibako.settings.settings_prefs as sp
@@ -947,7 +947,7 @@ class TestDiscoveryIsLazyCachedAndHonest:
 
 
 class TestPrefLegalLevelsIsWired:
-    """SHOULD-6 — a constant nobody reads is a contract nobody honours."""
+    """SHOULD-6 — a constant nobody reads is a contract nobody honors."""
 
     def test_a_hand_built_request_at_an_illegal_level_is_refused(self):
         """`agent` level with a `system.agent` target passes BOTH the structural
@@ -963,7 +963,7 @@ class TestPrefLegalLevelsIsWired:
 
     def test_the_structural_filter_catches_the_ordinary_illegal_levels_first(self):
         """base/system levels are refused earlier, by the structural tier — the
-        level guard is the backstop, not the primary defence."""
+        level guard is the backstop, not the primary defense."""
         with pytest.raises(SettingsError) as exc:
             apply_prefs(
                 [req("system.agent", "goose", level="system")],

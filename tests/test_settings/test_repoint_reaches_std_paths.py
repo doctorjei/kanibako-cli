@@ -85,7 +85,7 @@ class TestTheSettingsFileFeedsThePathTier:
         )
 
     def test_every_repoint_reaches_standard_paths(self, repointed, tmp_home):
-        """The CONSUMER half: a repoint the resolver honours must also be what the
+        """The CONSUMER half: a repoint the resolver honors must also be what the
         rest of kanibako is handed.
 
         ⚑ The field MAP is not written down here — the assertion is set membership
@@ -155,7 +155,7 @@ def _fields(std) -> tuple:
 
 
 def test_the_probe_paths_are_all_distinct(tmp_home):
-    """⚑ A sentinel collision would let one honoured repoint vouch for another."""
+    """⚑ A sentinel collision would let one honored repoint vouch for another."""
     sentinels = {_sentinel(tmp_home, key) for key in SYSTEM_PATH_DEFAULTS}
     assert len(sentinels) == len(SYSTEM_PATH_DEFAULTS)
     assert all(Path(s).is_absolute() for s in sentinels)

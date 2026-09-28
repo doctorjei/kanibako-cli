@@ -1,4 +1,4 @@
-"""``workset.{vault_ro,vault_rw}`` are SETTABLE *and* HONOURED — spec §2c ALL PROJECTS.
+"""``workset.{vault_ro,vault_rw}`` are SETTABLE *and* HONORED — spec §2c ALL PROJECTS.
 
 ⚑ Both keys are declared ONCE FOR EVERY MODE (``@meta.workset.path/vault/{ro,rw}``, R-29):
 there is no ``standalone: <None>`` carve-out, and only the box BIND differs per mode (the
@@ -53,7 +53,7 @@ class TestVaultResolverFaces:
         assert resolve_workset_vault_ro(tmp_path, doc) == tmp_path / "vault" / "ro"
         assert resolve_workset_vault_rw(tmp_path, doc) == tmp_path / "vault" / "rw"
 
-    def test_absolute_repoint_is_honoured(self, tmp_path):
+    def test_absolute_repoint_is_honored(self, tmp_path):
         elsewhere = tmp_path / "elsewhere"
         _repoint(tmp_path, "vault_ro", str(elsewhere / "ro"))
         _repoint(tmp_path, "vault_rw", str(elsewhere / "rw"))

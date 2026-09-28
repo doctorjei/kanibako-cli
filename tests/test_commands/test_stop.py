@@ -361,10 +361,10 @@ class TestStopWriteback:
             )
 
     @pytest.mark.parametrize("stamp", ["navigator+claude", "navigator℘claude"])
-    def test_persona_writeback_canonicalises_the_stamp_before_deriving(
+    def test_persona_writeback_canonicalizes_the_stamp_before_deriving(
         self, mock_runtime, stamp,
     ):
-        """🛑 THE SILENT-FAILURE GUARD, and the reason canonicalise-on-read exists.
+        """🛑 THE SILENT-FAILURE GUARD, and the reason canonicalize-on-read exists.
 
         ``KANIBAKO_AGENT`` is stamped in the OUTSIDE spelling (``+``) because an
         agent reads it inside the box.  ``harness_of`` splits on ``℘`` ALONE, so

@@ -208,7 +208,7 @@ def test_whole_value_present_none_propagates_none() -> None:
 #
 # ⚑ WHY THIS BLOCK EXISTS. ``@{a.b}`` with nothing following is a WHOLE-VALUE ref
 # and must inherit the referent's 3-state VERBATIM, exactly as ``@a.b`` does. If
-# ``_is_whole_value_ref`` failed to recognise the braced form, the value would
+# ``_is_whole_value_ref`` failed to recognize the braced form, the value would
 # fall through to the EMBEDDED path, where ``_lookup_str`` coerces absent/None to
 # "" — silently turning the §3 "omit this bind" None terminal into a real
 # empty-string value. That substitution is invisible at every other layer, so it
@@ -224,7 +224,7 @@ def test_braced_whole_value_absent_drops_key_full_chain() -> None:
 
 
 def test_braced_whole_value_present_none_propagates_none() -> None:
-    # ⚑ THE silent-behaviour-change guard. c is present-None; a and b must carry
+    # ⚑ THE silent-behavior-change guard. c is present-None; a and b must carry
     # None — NOT "" (the embedded coercion) and NOT "None" (a stringification).
     snap = KeyStore({"a": "@{b}", "b": "@{c}", "c": None})
     out = expand(snap, _ctx())

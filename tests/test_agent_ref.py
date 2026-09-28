@@ -69,7 +69,7 @@ def test_parse_canonical_separator():
 
 
 def test_parse_plus_and_canonical_yield_same_node():
-    # Either separator on input canonicalises to the SAME node-name.
+    # Either separator on input canonicalizes to the SAME node-name.
     assert parse_agent_ref("navigator+claude")[0] == parse_agent_ref(
         "navigator℘claude"
     )[0]
@@ -257,7 +257,7 @@ def test_harness_of_node():
 
 def test_harness_of_only_splits_canonical():
     # harness_of works on NODE-names (canonical ℘). A stray '+' is NOT a separator
-    # here (nodes are always canonicalised before reaching harness_of).
+    # here (nodes are always canonicalized before reaching harness_of).
     assert harness_of("navigator+claude") == "navigator+claude"
 
 
@@ -401,7 +401,7 @@ def test_the_reservation_folds_for_comparison(variant):
 def test_the_reservation_leaves_the_agent_default_key_TIER_alone():
     """``default`` is reserved as a NAME and still legal as the any-agent TIER token.
 
-    ``config_keys.resolve_key`` canonicalises the node segment of
+    ``config_keys.resolve_key`` canonicalizes the node segment of
     ``agent.<node>.<leaf>`` through this module, so a ``ConfigError`` raised here
     reaches the KEY path as well.  The tier has to survive it — and it does,
     because that caller's ``except ConfigError`` arm returns the key unchanged,
@@ -535,7 +535,7 @@ def test_persona_of_other_harness():
 
 def test_persona_of_only_splits_canonical():
     # Like harness_of, persona_of operates on canonical NODE-names; a stray '+'
-    # is NOT a separator here (node-names are canonicalised before reaching it).
+    # is NOT a separator here (node-names are canonicalized before reaching it).
     assert persona_of("navigator+claude") == "navigator+claude"
 
 

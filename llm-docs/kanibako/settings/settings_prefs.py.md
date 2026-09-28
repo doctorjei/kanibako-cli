@@ -27,7 +27,7 @@ nothing has been resolved at all.
 
 ⚑ The DELTA failure mode the spec warns about is reachable only by the tempting wrong
 implementation — patching the EXPANDED snapshot afterwards, beside `_materialize_box_agent_mirror` /
-`_install_derived_bindings`. Those are legitimate post-expand `meta.*` materialisations; a pref is
+`_install_derived_bindings`. Those are legitimate post-expand `meta.*` materializations; a pref is
 NOT, because a pref's value is an INPUT to resolution.
 `tests/test_settings/test_settings_launch.py`
 `TestPrefRecomputeNotDelta.test_a_key_derived_from_a_prefd_value_updates` is the discriminator —
@@ -121,7 +121,7 @@ The warning is spoken ONCE per `(file, key)` for the process — it asks
 command reads one file through several resolves. The DROP itself runs every time.
 
 That is the SAME treatment `_drop_upward_scopes` gives the sibling fault — a containing scope's
-table in a lower file — because two behaviours for one fault class is exactly the confusion §0's
+table in a lower file — because two behaviors for one fault class is exactly the confusion §0's
 convention 0 forbids. Dropping preserves the recursion bound at least as strongly as erroring would.
 
 The HARD refusal §2h calls for lives at the write site: `config set pref.*` at these scopes RAISES,

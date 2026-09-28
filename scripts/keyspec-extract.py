@@ -564,7 +564,7 @@ _KEYISH = re.compile(r"`([A-Za-z_][A-Za-z0-9_<>.\-]*(?:\.[A-Za-z0-9_<>.\-]+)+)`"
 def harvest_keys(text: str) -> list[str]:
   """Pull the first backticked dotted token off each row-shaped line.
 
-  ⚑ HEURISTIC, and labelled as such wherever it is written: the brief asks for
+  ⚑ HEURISTIC, and labeled as such wherever it is written: the brief asks for
   prose rows, so this replaces the 2026-08-20 run's HAND transcription with a
   mechanical one.  The raw per-section text is always kept beside it.
   """
