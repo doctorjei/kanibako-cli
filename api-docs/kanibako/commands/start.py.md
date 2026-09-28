@@ -111,6 +111,7 @@ def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path
 def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, agent_cfg, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object]'
 def _persona_model_state(snapshot: 'KeyStore', active_agent: str) -> object
 def _merge_default_categories(table: dict[str, object], incoming: 'Mapping[str, object]', *, family: str, origins: dict[tuple[str, str], str]) -> None
+def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig
 def _resolve_launch_snapshot(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, desc, install, target=None, agent_cfg=None, persona_values: 'Mapping[str, str] | None'=None, socket_path=None, log_path=None, graph_root=None, storage_conf_path=None, deliver_creds: bool=True, include_base_families: bool=True, extra_default_categories: 'Mapping[str, object] | None'=None, guarantee_create: bool=True, cli_level: 'Mapping[str, object] | None', cli_env: 'Mapping[str, str] | None'=None, realize: 'Callable[[KeyStore], LaunchRealization] | None'=None, narrow_bind_dests: 'frozenset[str] | None'=None)
 def _annotate_pref_origin(exc, prefs)
 def _install_derived_bindings(snapshot, derived: 'Mapping[tuple[str, ...], object]') -> None

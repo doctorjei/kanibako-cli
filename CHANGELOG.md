@@ -236,6 +236,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A launch reports an agent-selection problem before a problem in the box's settings.** In
+  1.8.0-rc2, when both were wrong (for example no default agent, and a `config:` table in the working
+  set's file), `kanibako start` reported the settings problem first. It now reports the selection
+  problem first, and resolves the box's image and other box settings under the agent it selected.
+
 - **`agent info` and `agent show` resolve a label that refers to an agent's own keys.** In 1.8.0-rc2
   a system-file `agent.<node>.label` such as `@meta.agent.claude.name` did not resolve, and both verbs
   printed the plugin's label instead. It now resolves as it does in the box.

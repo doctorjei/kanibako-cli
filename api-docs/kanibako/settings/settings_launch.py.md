@@ -73,8 +73,8 @@ def effective_behavior(snapshot: KeyStore, *, active_agent: str, keys: 'list[str
 def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str
 def snapshot_category_entries(snapshot: KeyStore, *, active_agent: str, box_ctx: ResolveCtx, optional_keys: frozenset[str]=frozenset()) -> list[CategoryEntry]
-def resolve_box_scalars(*, workset_path: Path | None, box_path: Path | None, cli_overrides: 'dict[str, object] | None', inputs: LaunchInputs | None=None) -> dict[str, object]
-def load_merged_config(project_path: Path | None=None, *, workset_path: Path | None=None, cli_overrides: 'dict[str, object] | None'=None, inputs: LaunchInputs | None=None) -> KanibakoConfig
+def resolve_box_scalars(*, workset_path: Path | None, box_path: Path | None, cli_overrides: 'dict[str, object] | None', inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT) -> dict[str, object]
+def load_merged_config(project_path: Path | None=None, *, workset_path: Path | None=None, cli_overrides: 'dict[str, object] | None'=None, inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT) -> KanibakoConfig
 def _is_bind_floor_key(key: str) -> bool
 def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
 def _materialize_auth_active(snapshot: KeyStore) -> None
