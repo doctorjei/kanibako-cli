@@ -1876,8 +1876,8 @@ class TestWorksetShowListsTheAbstractTrio:
         """spec §0: a containing scope's table is dropped *"with a warning naming the file
         and key"*.  The PLAIN view assembled nothing, so it printed no warning at all; both
         views now name the file and key, once.
-        MUTATION: drop ``path=path`` from ``config_interface._noun_stored_view``'s
-        ``cascade_view`` call and the plain case reds; skip the ``_DROP_WARNED`` check in
+        MUTATION: drop the ``_warn_upward_drops`` call from ``settings_assemble._file_view``
+        and the plain case reds; skip the ``_DROP_WARNED`` check in
         ``settings_assemble._warn_upward_drops`` and the ``--effective`` case reds."""
         from kanibako.commands.workset_cmd import _workset_config_path
         from kanibako.settings.config_io import dump_doc, load_doc

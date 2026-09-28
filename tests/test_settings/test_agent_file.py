@@ -1052,11 +1052,11 @@ class TestTheStrayRuleOnTheProductionPath:
 
     @staticmethod
     def _assemble(tmp_path, text):
-        from kanibako.settings.settings_assemble import assemble_levels
+        from tests.support.assembly import assemble_levels_at
 
         agent_path = tmp_path / "agent.yaml"
         agent_path.write_text(text)
-        return assemble_levels(
+        return assemble_levels_at(
             agent_name="claude", base_path=tmp_path / "absent-base.yaml",
             agent_path=agent_path,
         )
@@ -1087,11 +1087,11 @@ class TestTheAgentTable:
 
     @staticmethod
     def _assemble(tmp_path, doc):
-        from kanibako.settings.settings_assemble import assemble_levels
+        from tests.support.assembly import assemble_levels_at
 
         agent_path = tmp_path / "agent.yaml"
         dump_doc(agent_path, doc)
-        return assemble_levels(
+        return assemble_levels_at(
             agent_name="claude", base_path=tmp_path / "absent-base.yaml",
             agent_path=agent_path,
         )
@@ -1282,9 +1282,9 @@ class TestTheAgentTable:
 
     def test_a_bare_agent_key_is_no_table(self, tmp_path):
         (tmp_path / "agent.yaml").write_text("self:\n  env:\n    A: '1'\nagent:\n")
-        from kanibako.settings.settings_assemble import assemble_levels
+        from tests.support.assembly import assemble_levels_at
 
-        levels = assemble_levels(
+        levels = assemble_levels_at(
             agent_name="claude", base_path=tmp_path / "absent-base.yaml",
             agent_path=tmp_path / "agent.yaml",
         )
@@ -1292,12 +1292,15 @@ class TestTheAgentTable:
         assert levels[3] == {}
 
     def test_the_verbs_judge_the_table_the_cascade_merges(self, tmp_path):
-        # ``cascade_view`` is what the retirement scans and ``config show`` judge: it must
+        # The reader's view is what the retirement checks and ``config show`` judge: it must
         # carry the table the merge reads, folded as the merge folds it.
-        from kanibako.settings.settings_assemble import cascade_view
+        from tests.support.assembly import display_view
 
-        raw = {"self": {"model": "a"}, "agent": {"bar": {"model": "b"}}, "workset": {"x": 1}}
-        assert cascade_view(raw, level="agent", path=None) == {
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {
+            "self": {"model": "a"}, "agent": {"bar": {"model": "b"}}, "workset": {"x": 1},
+        })
+        assert display_view(path, "agent") == {
             "self": {"model": "a"}, "agent": {"bar": {"model": "b"}},
         }
 

@@ -4293,7 +4293,7 @@ def _pref_snap(tmp_path, *, box=None, workset=None, floor=None, **kw):
     """A launch snapshot over hand-written box / workset files.
 
     *floor* injects declared defaults through ``default_categories`` — the floor
-    folds UNDER ``base`` (``assemble_levels(floor=…)``), which is exactly the
+    folds UNDER ``base`` (``assemble_levels_at(floor=…)``), which is exactly the
     "inherited value a pref overrides or suppresses" position. ``build_launch_
     snapshot`` takes no ``base_path``, and widening a production signature for a
     test affordance would be the wrong trade; the base FILE path is exercised
@@ -5367,11 +5367,11 @@ def test_the_narrow_box_scalar_resolve_does_not_refuse_a_config_table(tmp_path):
     answer so the user can see the line to delete. MUTATION: call
     ``refuse_config_table`` from ``assemble_levels`` and this raises."""
     from kanibako.settings.config_io import dump_doc
-    from kanibako.settings.settings_assemble import assemble_levels
+    from tests.support.assembly import assemble_levels_at
 
     box = tmp_path / "box.yaml"
     dump_doc(box, {"config": {"data": "/elsewhere"}})
-    assemble_levels(agent_name="claude", box_path=box)
+    assemble_levels_at(agent_name="claude", box_path=box)
 
 
 _DOTTED_REASON = "a dotted name inside a scope table is the subject, so the file has to carry one."
@@ -5874,23 +5874,22 @@ def test_the_retirement_scan_runs_only_on_a_resolve_that_refuses(
 ):
     """⚑ THE SCAN IS LAZY, and the happy path must not pay for it.
 
-    It re-reads the settings files, which is affordable only because it runs after
-    §0 has already decided to refuse. Wiring it ahead of that decision would put a
-    second read of every tier on every resolve behind ``load_merged_config`` — which
-    is nearly every kanibako command.
+    It runs only after §0 has already decided to refuse, over the files the resolve
+    already read, so a conforming resolve never reaches it.
     """
     from kanibako.settings import settings_launch as _launch
 
     seen: list[Path | None] = []
-    real = _launch.refuse_retired_keys
+    real = _launch.retired_cure
 
-    def recording(raw, **kwargs):
-        seen.append(kwargs.get("path"))
-        return real(raw, **kwargs)
+    def recording(files):
+        files = tuple(files)
+        seen.extend(f.path for f in files if f.loaded)
+        return real(files)
 
     # ⚑ The seam's OWN binding, not ``settings_assemble``'s: the import is at module
     # scope, so patching the source module would leave this caller on the original.
-    monkeypatch.setattr(_launch, "refuse_retired_keys", recording)
+    monkeypatch.setattr(_launch, "retired_cure", recording)
     # ⚑ The scan also appends the BASE tier, so this pins the FILES it read rather
     # than the machine it ran on: point base at an absent path deliberately.
     monkeypatch.setattr(

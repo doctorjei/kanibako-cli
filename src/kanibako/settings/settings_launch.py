@@ -84,15 +84,14 @@ from kanibako.settings.paths import (
     system_path_floor,
     workset_settings_path,
 )
-from kanibako.settings.config_io import load_doc
 from kanibako.settings.config_keys import is_path_valued_key, path_key_anchor
 from kanibako.settings.settings_assemble import (
+    ReadPurpose,
+    SettingsFile,
     assemble_levels,
-    cascade_view,
+    cascade_files,
     dotted_partial,
-    refuse_config_table,
-    refuse_retired_behavior_keys,
-    refuse_retired_keys,
+    retired_cure,
 )
 from kanibako.settings.settings_categories import (
     _DELIVERY,
@@ -1119,12 +1118,6 @@ _SETTINGS_FILE_NAMES: Final[str] = (
 )
 
 
-#: One cascade tier this seam can name: its LEVEL token and the file it read, or
-#: ``None`` when the resolve carries no such tier. The level is not decoration — it
-#: is what :func:`_refuse_retired_spelling` needs to pick a LEVEL-APPROPRIATE cure
-#: (spec §2h makes a ``pref`` legal in a workset or box file and nowhere else).
-_TierFile = tuple[str, Path | None]
-
 
 class ResolveSubject(Enum):
     """WHAT a resolve is FOR — the words its §0 refusal speaks in.
@@ -1167,133 +1160,28 @@ class ResolveSubject(Enum):
         self.cure_note = cure_note
 
 
-def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]:
+def _loaded_tiers(files: Sequence[SettingsFile]) -> tuple[SettingsFile, ...]:
     """The settings files this resolve ACTUALLY read: *files*, minus every tier with
     nothing on disk.
 
     ⚑⚑ ONE LIST, AND BOTH HALVES OF THE REFUSAL READ IT (P10). The two halves ask
-    different questions of the same tiers — :func:`_refuse_retired_spelling` scans
+    different questions of the same tiers — ``settings_assemble.retired_cure`` judges
     them, and the generic message NAMES them — so a tier known to one and not the
-    other produces a refusal that scans a file it never mentions. Measured before
+    other produces a refusal that judges a file it never mentions. Measured before
     this existed: an undeclared key in ``settings_base.yaml`` alone printed the
     box's ``box.yaml``, a file that does not carry it, while disclaiming ``box
     reset`` in the same breath — no working move for the user at all.
 
-    ⚑ THE CALLER PASSES THE ``base`` TIER, and only if it read it. It used to be
-    APPENDED HERE off ``settings_base_path()``, which held only while the launch was
-    the one caller: the workset preview (``commands/workset_cmd``) folds no base file,
-    so an appended base named — and had :func:`_refuse_retired_spelling` scan — a file
-    that resolve never read, and a retired spelling there would have replaced the
-    message about the workset's own entry.
-
     ⚑ AND A TIER WITH NO FILE IS NOT A TIER THAT WAS LOADED. Naming an absent
     ``/etc/kanibako/settings_base.yaml`` as a file to hand-edit sends a user to a
-    file that is not there, which is the same class of false message the shared
-    list exists to end. ``base`` is absent on most machines, so this is the common
-    case, not the corner one.
+    file that is not there. ``base`` is absent on most machines, so this is the
+    common case, not the corner one.
     """
-    return tuple(
-        (level, path)
-        for level, path in files
-        if path is not None and path.exists()
-    )
-
-
-def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None:
-    """RAISE the TAILORED refusal when one of *tiers* still carries a RETIRED spelling.
-
-    ⚑ WHY THIS IS HERE AT ALL. Every retired spelling is ALSO an undeclared key, so
-    §0's refusal below fires on it first — and the seam that owns the tailored
-    selection message sits DOWNSTREAM of the resolve (``agent_select.select_agent``;
-    the behavior key's own seam, :func:`_refuse_retired_behavior`, runs before the
-    resolve, but only for :func:`build_launch_snapshot` callers). Left alone, a
-    ``box.yaml`` carrying ``box: {agent_name: claude}`` got the generic "not a
-    settings key" text and the documented cure — ``kanibako box set <box>
-    pref.system.agent=claude`` — never reached the user at all.
-
-    ⚑ NOT AN EXEMPTION, AND THE DIFFERENCE IS THE WHOLE POINT. The retired key is
-    still REFUSED; this only decides WHICH refusal the user reads. A name-keyed
-    escape from §0 is the carve-out class the closed keyspace exists to reject.
-
-    ⚑ ONE CARRIER. The retirement text and its cures live in ``settings_assemble``
-    and are CALLED from here — never copied. Which is also why this runs the
-    BEHAVIOR refusal too: a system-file ``agent.<sub>.auto_approve`` was preempted
-    the same way by the same seam, and a fix that repaired one instance of a defect
-    class and walked past the other is how the class survives. (Its other sites are
-    answered elsewhere and none of them is a silence — the llm-doc has the table.)
-
-    ⚑ LAZILY — the caller invokes this only once §0 has already decided to refuse,
-    so the happy path pays nothing and the re-read of a handful of settings files
-    lands on a run that was going to stop anyway.
-
-    ⚑⚑ IT JUDGES WHAT THE CASCADE SEES, NOT WHAT THE FILE SAYS (``cascade_view``).
-    A settings file may legally CONTAIN a table the cascade never reads — an
-    ``agent:`` table in a ``box.yaml`` is dropped by directional enforcement, a
-    ``pref:`` outside a workset or box file by §2h — and a retired spelling found
-    there was doing NOTHING. Scanning the raw doc prescribed a cure for it anyway
-    and, worse, spoke INSTEAD of naming the key that actually stopped the resolve.
-    A cure for a no-op is worse than no cure: it tells a user their permission
-    setting is about to change when deleting the line changes nothing at all.
-
-    ⚑ NEITHER SUBJECT IS GUESSED. ``box_name`` and the agent ``subject`` are left to
-    their placeholders (``<box>`` / ``<agent>``). 🛑 THE REASON IS ORDERING, NOT
-    ABSENCE — do not "fix" this by reading ``meta.box.name`` off the snapshot.
-    ``commands/start.py`` DOES build an identity floor carrying that key and DOES
-    pass it to ``build_launch_snapshot``; what it also does is call
-    ``load_merged_config`` well before ``select_agent``, and that narrow resolve
-    materializes no identity. So the resolve that REACHES this refusal is always the
-    identity-free one, so a read here would find nothing on the very path that
-    matters. The placeholder is the documented fallback for exactly this case and
-    fails loudly if pasted unedited, where a wrong name would not.
-
-    ⚑ THE ``base`` TIER IS SCANNED, and it is not optional: a stale key in
-    ``/etc/kanibako/settings_base.yaml`` defaults DOWN into every box on the machine,
-    ``agent_select`` has always scanned it for exactly that reason, and this seam now
-    fires FIRST — so omitting it would give a site-wide fault strictly LESS help than
-    it got before the resolve was armed. It arrives in *tiers* rather than being
-    appended here, because the message that names these files has to name the same
-    set (:func:`_loaded_tiers`).
-    """
-    # LEAST specific LAST, matching *tiers*' most-specific-first order.
-    for level, path in tiers:
-        raw = cascade_view(load_doc(path), level=level, path=path)
-        refuse_retired_keys(raw, level=level, path=path)
-        refuse_retired_behavior_keys(raw, level=level, path=path)
-
-
-def _refuse_retired_behavior(
-    files: Sequence[_TierFile], *, agent_name: str, box_name: object,
-) -> None:
-    """RAISE when a file this resolve reads carries a RETIRED behavior spelling (R-41/RQ-2).
-
-    Runs BEFORE the resolve, beside the ``config:``-table refusal, so every
-    :func:`build_launch_snapshot` caller refuses a stored ``auto_approve`` by name
-    rather than coming up at the ``full`` default. EVERY tier the resolve reads is
-    scanned, the ACTIVE AGENT's own file included (where ``agent set <agent>
-    auto_approve=…`` used to write), most-specific first like the refusals around it.
-
-    ⚑⚑ IT JUDGES WHAT THE CASCADE SEES, NOT WHAT THE FILE SAYS (``cascade_view``): an
-    ``agent:`` table in a ``box.yaml`` is dropped by directional enforcement and a
-    ``pref:`` outside a workset or box file by §2h, so an ``auto_approve`` found in one
-    does nothing, and a cure for it would tell a user their permission tier is about
-    to change when deleting the line changes nothing.
-
-    The cure names the agent (*agent_name*, unless it is the ``shell`` slot) and, at
-    the box tier, the box (*box_name*, the ``meta.box.name`` the caller's identity
-    floor carries); a resolve with neither leaves the ``<agent>`` / ``<box>``
-    placeholders (:func:`_refuse_retired_spelling` says why they are never guessed).
-    """
-    subject = agent_name if agent_name and agent_name != GENERAL_SLOT else None
-    for level, path in _loaded_tiers(files):
-        refuse_retired_behavior_keys(
-            cascade_view(load_doc(path), level=level, path=path),
-            level=level, path=path, subject=subject,
-            box_name=box_name if level == "box" and isinstance(box_name, str) else None,
-        )
+    return tuple(f for f in files if f.loaded)
 
 
 def _refuse_undeclared_snapshot(
-    store: KeyStore, *, files: Sequence[_TierFile], subject: ResolveSubject,
+    store: KeyStore, *, files: Sequence[SettingsFile], subject: ResolveSubject,
 ) -> None:
     """RAISE naming EVERY resolved path the CLOSED keyspace does not declare (§0).
 
@@ -1316,15 +1204,15 @@ def _refuse_undeclared_snapshot(
     revision of this message named ``config unset`` / ``config show``, and there is
     no ``config`` noun at all (``config_keys._SCOPE_READ_COMMAND`` says so, off its
     own measurement). A cure a user cannot type is worse than no cure.
-    *files* are the CALLER-supplied tiers, MOST-SPECIFIC FIRST, each paired with its
-    cascade LEVEL; :func:`_loaded_tiers` turns them into the list this message names
-    and the retirement scan reads — the SAME list, which is the fix for a message
+    *files* are the tiers the resolve READ, MOST-SPECIFIC FIRST; :func:`_loaded_tiers`
+    turns them into the list this message names and the retirement choice judges — the
+    SAME list, which is the fix for a message
     that once pointed at a file the resolve had read and not at the one that carried
     the entry. Which of them carried it is not knowable here, because the snapshot
     is the MERGE of all of them.
 
     ⚑ A RETIRED SPELLING GETS ITS OWN MESSAGE, NOT THIS ONE
-    (:func:`_refuse_retired_spelling`) — the generic text is the FALLBACK for an
+    (``settings_assemble.retired_cure``) — the generic text is the FALLBACK for an
     entry nothing more specific is known about. It is consulted only once there is
     something to refuse, so an ordinary key pays nothing for it.
 
@@ -1336,12 +1224,12 @@ def _refuse_undeclared_snapshot(
     if not findings:
         return
     tiers = _loaded_tiers(files)
-    _refuse_retired_spelling(tiers)
+    retired_cure(tiers)
     named = "\n".join(
         f"  - {render_store_path(segments, judgment.key_len)}: {judgment.note}"
         for segments, judgment in findings
     )
-    loaded = [str(path) for _level, path in tiers]
+    loaded = [str(f.path) for f in tiers]
     where = (
         "\n".join(f"    - {path}" for path in loaded) if loaded
         else f"    - {_SETTINGS_FILE_NAMES}"
@@ -1479,7 +1367,7 @@ def refuse_read_time_faults(
     expanded: KeyStore,
     *,
     ctx: ResolveCtx,
-    files: Sequence[_TierFile],
+    files: Sequence[SettingsFile],
     subject: ResolveSubject,
 ) -> None:
     """RAISE for any stored value a resolve may not proceed with.
@@ -1491,8 +1379,8 @@ def refuse_read_time_faults(
     ⚑ ONE CARRIER OF THE ORDER: the launch (:func:`build_launch_snapshot`) and the workset preview
     (``commands/workset_cmd._workset_preview_entries``) both call this, so a resolve
     route cannot run one refusal and skip the other.
-    *files* are the tiers the caller ACTUALLY read, most-specific first, the ``base``
-    tier included only if it was read (:func:`_loaded_tiers`); *subject* is who the
+    *files* are the tiers the caller READ, most-specific first
+    (``settings_assemble.read_settings_files``); *subject* is who the
     resolve is for (:class:`ResolveSubject`).
     ⚑ Each raises on its own, so a file with both faults reports the path value first
     and the undeclared entry on the next run.
@@ -2195,11 +2083,7 @@ def assemble_cascade(
     *,
     agent_name: str,
     floor: dict[str, object],
-    system_path: Path | None,
-    agent_path: Path | None,
-    workset_path: Path | None,
-    box_path: Path | None,
-    base_path: Path | None = None,
+    files: Sequence[SettingsFile],
     agent_partial: KeyStore | None = None,
     agent_state: AgentFileLevel | None = None,
     persona_values: Mapping[str, str] | None = None,
@@ -2207,17 +2091,15 @@ def assemble_cascade(
     valid_agents: "Collection[str] | None" = None,
     cli_level: Mapping[str, object] | None = None,
 ) -> Cascade:
-    """:func:`build_launch_snapshot`'s second phase, shared with set time: assemble and merge."""
-    base_path = base_path if base_path is not None else settings_base_path()
-    base_levels = assemble_levels(
-        agent_name=agent_name,
-        system_path=system_path,
-        agent_path=agent_path,
-        workset_path=workset_path,
-        box_path=box_path,
-        floor=floor,
-        base_path=base_path,
-    )
+    """:func:`build_launch_snapshot`'s second phase, shared with set time: assemble and merge.
+
+    *files* are the cascade files as read (``settings_assemble.cascade_files``) for the
+    caller's purpose.
+    """
+    paths = {f.level: f.path for f in files}
+    system_path, agent_path = paths.get("system"), paths.get("agent")
+    workset_path, box_path, base_path = paths.get("workset"), paths.get("box"), paths.get("base")
+    base_levels = assemble_levels(agent_name=agent_name, files=files, floor=floor)
     # ``assemble_levels`` ALWAYS returns the 6 levels MOST-SPECIFIC-FIRST (S8):
     #   [box, workset, agent.<active>, agent.default, system, base]
     #    idx 0    1        2              3              4       5
@@ -2402,38 +2284,26 @@ def build_launch_snapshot(
         workset_anchor=workset_anchor,
     )
 
-    # Resolved ONCE: the base level is read from it, and the refusals below name it.
-    base_path = settings_base_path()
-    # The settings files this resolve reads, MOST-SPECIFIC-FIRST — the refusals below name
-    # the same set. ``base`` is named LAST: this resolve reads it, at the path
-    # ``assemble_levels`` is handed below.
-    files: tuple[_TierFile, ...] = (
-        ("box", box_path),
-        ("workset", workset_path),
-        ("agent", agent_path),
-        ("system", system_path),
-        ("base", base_path),
-    )
-    # Spec §1: a ``config:`` table in a settings file REFUSES, naming file and keys — before
-    # the resolve, since ``config.*`` are keys and §0's audit below passes them. The agent
-    # file is not asked: ``agent_file.level_table`` already refuses a top-level ``config:``
-    # there, by name, as a stray beside ``self:`` (``_refuse_stray_roots``).
-    for level, path in _loaded_tiers(files):
-        if level != "agent":
-            refuse_config_table(load_doc(path), level=level, path=path)
-    _refuse_retired_behavior(
-        files, agent_name=agent_name,
-        box_name=(meta_identity or {}).get("meta.box.name"),
+    # The settings files this resolve reads, MOST-SPECIFIC-FIRST, read ONCE for the launch
+    # (``ReadPurpose.RESOLVE``): a ``config:`` table (spec §1) and a retired behavior spelling
+    # refuse here, before the resolve. The cure names the agent (unless it is the ``shell``
+    # slot) and, at the box tier, the box.
+    box_name = (meta_identity or {}).get("meta.box.name")
+    files = cascade_files(
+        purpose=ReadPurpose.RESOLVE,
+        system_path=system_path,
+        agent_path=agent_path,
+        workset_path=workset_path,
+        box_path=box_path,
+        base_path=settings_base_path(),
+        subject=agent_name if agent_name and agent_name != GENERAL_SLOT else None,
+        box_name=box_name if isinstance(box_name, str) else None,
     )
 
     cascade = assemble_cascade(
         agent_name=agent_name,
         floor=floor,
-        system_path=system_path,
-        agent_path=agent_path,
-        workset_path=workset_path,
-        box_path=box_path,
-        base_path=base_path,
+        files=files,
         agent_partial=agent_partial,
         agent_state=agent_state,
         persona_values=persona_values,
@@ -2722,10 +2592,10 @@ def resolve_selected_agent(
     ws_prefs, box_prefs = apply_prefs(requests, valid_agents=valid_agents)
     base_levels = assemble_levels(
         agent_name="",
-        system_path=system_path,
-        agent_path=None,
-        workset_path=workset_path,
-        box_path=box_path,
+        files=cascade_files(
+            purpose=ReadPurpose.NARROW, system_path=system_path, agent_path=None,
+            workset_path=workset_path, box_path=box_path,
+        ),
         floor={},
     )
     levels: list[KeyStore] = [base_levels[0]]              # box

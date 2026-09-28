@@ -34,8 +34,8 @@ def upward_scope_drop_set(file_scope: str) -> frozenset[str]:
   """The top-level tokens directional enforcement removes from a *file_scope* file (spec §0).
 
   The containing scopes UNION the always-dropped tokens. ``base`` is not in SCOPE_CONTAINMENT, so
-  it takes an empty containing set. ⚑ The RULE without the warning: the silent reader
-  (``settings_assemble.cascade_view``) and the warning one (``_drop_upward_scopes``) share it.
+  it takes an empty containing set. ⚑ The RULE without the warning: ``settings_assemble``'s
+  reader and its assembly both read it.
   """
   containing = (
     containing_scopes(file_scope)

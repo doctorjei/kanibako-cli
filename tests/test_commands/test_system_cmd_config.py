@@ -1289,7 +1289,7 @@ def test_show_names_a_dropped_pref_table_ONCE(
     ``refuse_pref_table``'s own words.
     MUTATION: make ``settings_prefs.refuse_pref_table`` warn without asking
     ``announce_drop_once`` and the ``--effective`` case reds; drop the ``refuse_pref_table``
-    call from ``settings_assemble.cascade_view`` and the plain case reds."""
+    call from ``settings_assemble._file_view`` and the plain case reds."""
     std = _std(config_file)
     std.settings.parent.mkdir(parents=True, exist_ok=True)
     write_nested_key(std.settings, ("pref", "agent", "default"), "model", "opus")

@@ -36,10 +36,12 @@ def refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None
 def reset_drop_warnings() -> None
 def announce_drop_once(path: Path | None, token: str) -> bool
 def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any
-def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any
+def read_settings_files(files: Iterable[tuple[str, Path | None]], *, purpose: ReadPurpose, subject: str | None=None, box_name: str | None=None) -> tuple[SettingsFile, ...]
+def retired_cure(files: Iterable[SettingsFile]) -> None
 def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None) -> KeyStore
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
-def assemble_levels(*, agent_name: str, base_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, floor: dict[str, object] | None=None) -> list[KeyStore]
+def assemble_levels(*, agent_name: str, files: Iterable[SettingsFile], floor: dict[str, object] | None=None) -> list[KeyStore]
+def cascade_files(*, purpose: ReadPurpose, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, subject: str | None=None, box_name: str | None=None) -> tuple[SettingsFile, ...]
 def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None
 def _stored_spelling(raw: Any) -> str
 def _cure_assignment(sub: str, value: Any) -> str
@@ -52,6 +54,7 @@ def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: st
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict
 def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict
+def _file_view(raw: Any, *, level: str, path: Path | None, fold: bool=True) -> Any
 def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=()) -> Any
 def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str
@@ -61,4 +64,26 @@ def _agent_partial(raw: dict, *, sub_key: str, path: Path | None=None, node: str
 def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore
 def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None
 def _overlay(base: KeyStore, top: KeyStore) -> None
+```
+
+## Classes
+
+```
+class ReadPurpose(Enum):
+    RESOLVE = ('resolve', ('box', 'workset', 'agent', 'system', 'base'))
+    SELECT = ('select', ('base', 'system', 'workset', 'box'))
+    NARROW = ('narrow', ('base', 'system', 'agent', 'workset', 'box'))
+    DISPLAY = ('display', ('base', 'system', 'agent', 'workset', 'box'))
+
+    def __init__(self, _name: str, order: tuple[str, ...]) -> None
+
+@dataclass(frozen=True)
+class SettingsFile:
+    level: str
+    path: Path | None
+    stored: Any
+    view: Any
+
+    @property
+    def loaded(self) -> bool
 ```

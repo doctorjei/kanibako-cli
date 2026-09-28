@@ -15,6 +15,8 @@ here (S3/S7/S8/S9/S13/S14) & the dest-keying depth rule: llm-docs.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -607,9 +609,9 @@ def announce_drop_once(path: Path | None, token: str) -> bool:
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None:
     """Warn ONCE per ``(file, key)`` for each top-level table *raw* loses to spec §0.
 
-    ⚑ THE ONE GUARD for every §0 drop announcement: :func:`_drop_upward_scopes` (assembly) and
-    :func:`cascade_view` (a verb judging a file) both warn through here, so a file read by both
-    in one command still names each dropped key once.  THREE dropped tokens, THREE distinct
+    ⚑ THE ONE GUARD for every §0 drop announcement: every read of a file
+    (:func:`read_settings_files`) warns through here, so a file read several times in one
+    command still names each dropped key once.  THREE dropped tokens, THREE distinct
     rationales, one warning each (llm-docs).
     """
     if not isinstance(raw, dict):
@@ -736,63 +738,153 @@ def _drop_upward_scopes(
 
 
 #: The cascade LEVEL whose file is the per-agent ``agent.yaml``. Its contribution is
-#: NOT its top-level tables — see :func:`cascade_view`.
+#: NOT its top-level tables — see :func:`_file_view`.
 _AGENT_FILE_LEVEL: str = "agent"
 
 
-def cascade_view(raw: Any, *, level: str, path: Path | None) -> Any:
+def _file_view(raw: Any, *, level: str, path: Path | None, fold: bool = True) -> Any:
     """The part of a RAW settings doc at *level* that :func:`assemble_levels` actually MERGES.
 
     ⚑ WHY IT EXISTS. A consumer that judges a settings file has to judge what the file
     CONTRIBUTES, not what it CONTAINS. Reading the raw doc instead let the retirement scan
-    (``settings_launch._refuse_retired_spelling``) prescribe a cure for an entry the cascade had
-    already dropped: a ``box.yaml`` holding both an ``agent:`` table and an undeclared ``box``
-    key refused by naming the retired key and telling the user to rewrite it — for a table that
-    directional enforcement never read — while the key that actually stopped the resolve went
-    unnamed. A cure for a no-op is worse than no cure.
+    prescribe a cure for an entry the cascade had already dropped: a ``box.yaml`` holding both
+    an ``agent:`` table and an undeclared ``box`` key refused by naming the retired key and
+    telling the user to rewrite it — for a table that directional enforcement never read —
+    while the key that actually stopped the resolve went unnamed. A cure for a no-op is worse
+    than no cure.
 
-    ⚑ *path* NAMES THE FILE, AND ONLY A CALLER THAT PASSES IT IS WARNED FOR. A verb that shows a
-    file WITHOUT assembling it (``config_interface._noun_stored_view``, plain ``workset show`` /
-    ``system show``) passes it, so a dropped table is announced there too (spec §0: *"with a
-    warning naming the file and key"*), and so is an illegal ``pref:`` table (§2h). Both warnings
-    go through :func:`announce_drop_once`, the SAME once-per-``(file, key)`` guard
-    ``assemble_levels`` warns through, so a command that does both still names each key once. *path* is REQUIRED, never defaulted (P3): every caller names its
-    file, and the shared guard is what keeps a file read by several of them from being announced
-    twice. The RULES are read from their one
-    declaration each, never restated.
+    Each dropped table is announced through :func:`announce_drop_once`, the SAME
+    once-per-``(file, key)`` guard every reader warns through (spec §0: *"with a warning naming
+    the file and key"*; §2h for an illegal ``pref:`` table).
 
-    THREE, one per rule:
+    THREE rules, one per declaration: directional enforcement (spec §0) drops a CONTAINING
+    scope's table, ``meta:`` and the reserved derivations node; a ``pref:`` table survives only
+    where §2h permits one (:data:`~kanibako.settings.settings_prefs.PREF_LEGAL_LEVELS`); the
+    per-agent file contributes its ROOT table and its ``agent:`` table (Q92) and nothing else
+    (:func:`~kanibako.settings.agent_file.contributed_tables`). What survives is case-folded by
+    :func:`fold_agent_nodes` unless *fold* is off (the ``NARROW`` read folds at parse time).
 
-    * directional enforcement (spec §0) drops a CONTAINING scope's table, ``meta:`` and the
-      reserved derivations node — :func:`~kanibako.settings.settings_drops.upward_scope_drop_set`;
-    * a ``pref:`` table survives only where §2h permits one to be WRITTEN
-      (:data:`~kanibako.settings.settings_prefs.PREF_LEGAL_LEVELS`), matching
-      ``assemble_levels``'s three :func:`~kanibako.settings.settings_prefs.refuse_pref_table` calls;
-    * the per-agent file contributes its ROOT table and its ``agent:`` table (Q92) and nothing
-      else (:func:`~kanibako.settings.agent_file.contributed_tables`), so a top-level
-      ``workset:`` / ``box:`` there is not a DROP — it is not an input yet (Q85).
-
-    What survives is then case-folded by :func:`fold_agent_nodes`, the fold :func:`_file_partial`
-    applies, so a capital node reads here as it merges.
-
-    🛑 A TOP-LEVEL FILTER, exactly like the filters it mirrors. Nothing here descends, so it says
-    which TABLES reach the merge and never which leaves inside one survive.
+    🛑 A TOP-LEVEL FILTER: nothing here descends.
     """
     if not isinstance(raw, dict):
         return raw
-    if path is not None:
-        _warn_upward_drops(raw, file_scope=level, path=path)
-        if level not in PREF_LEGAL_LEVELS:
-            # The SAME call ``assemble_levels`` drops an illegal ``pref:`` table with, so the
-            # warning is its text, through the same guard.
-            raw = refuse_pref_table(raw, level=level, path=path)
+    if level not in PREF_LEGAL_LEVELS:
+        raw = refuse_pref_table(raw, level=level, path=path)
     if level == _AGENT_FILE_LEVEL:
-        return fold_agent_nodes(contributed_tables(raw), path=path)
-    drop_set = cascade_drop_set(level)
-    # Folded AFTER the drops, as the cascade folds only what it merges (:func:`_file_partial`).
-    return fold_agent_nodes(
-        {k: v for k, v in raw.items() if str(k) not in drop_set}, path=path,
+        _warn_upward_drops(raw, file_scope=level, path=path)
+        view = contributed_tables(raw)
+    else:
+        view = _drop_upward_scopes(raw, file_scope=level, path=path)
+    return fold_agent_nodes(view, path=path) if fold else view
+
+
+class ReadPurpose(Enum):
+    """WHY a settings file is read — each member fixes its stages and their order (design 2A).
+
+    ``RESOLVE``: the launch snapshot. Refuses a ``config:`` table (raw doc, non-agent files),
+    then a retired behavior spelling (the view). ``SELECT``: agent selection; refuses a
+    retired selection or mirror spelling (the view). ``NARROW``: assembly alone; the node fold
+    and the agent file's shape run in :func:`assemble_levels`. ``DISPLAY``: plain ``show``; the
+    view and its warnings, no refusal.
+    """
+
+    RESOLVE = ("resolve", ("box", "workset", "agent", "system", "base"))
+    SELECT = ("select", ("base", "system", "workset", "box"))
+    NARROW = ("narrow", ("base", "system", "agent", "workset", "box"))
+    DISPLAY = ("display", ("base", "system", "agent", "workset", "box"))
+
+    def __init__(self, _name: str, order: tuple[str, ...]) -> None:
+        #: The file order this read walks, one level per file. (The name keeps two members
+        #: with the same order distinct: an Enum makes equal values aliases.)
+        self.order = order
+
+
+@dataclass(frozen=True)
+class SettingsFile:
+    """One settings file as read: the doc on disk (*stored*) and what the cascade merges (*view*)."""
+
+    level: str
+    path: Path | None
+    stored: Any
+    view: Any
+
+    @property
+    def loaded(self) -> bool:
+        """True when a file is on disk here."""
+        return self.path is not None and self.path.exists()
+
+
+def read_settings_files(
+    files: Iterable[tuple[str, Path | None]],
+    *,
+    purpose: ReadPurpose,
+    subject: str | None = None,
+    box_name: str | None = None,
+) -> tuple[SettingsFile, ...]:
+    """Read *files* (``(level, path)`` pairs) for *purpose*, in its file order.
+
+    *subject* (the agent node) and *box_name* only fill the cures a retired spelling's
+    refusal prints. Each phase runs over every file before the next phase starts.
+    """
+    by_level = {level: Path(path) if path is not None else None for level, path in files}
+    levels = [level for level in purpose.order if level in by_level]
+    stored: dict[str, Any] = {}
+    if purpose is ReadPurpose.RESOLVE:
+        # P1: load + the ``config:`` table (spec §1). The agent file is not asked here:
+        # ``agent_file.level_table`` refuses a top-level ``config:`` there as a stray.
+        for level in levels:
+            if level != _AGENT_FILE_LEVEL:
+                stored[level] = load_doc(by_level[level])
+                if stored[level]:
+                    refuse_config_table(stored[level], level=level, path=by_level[level])
+    views: dict[str, Any] = {}
+    for level in levels:
+        path = by_level[level]
+        if level not in stored:
+            stored[level] = load_doc(path)
+        if purpose is ReadPurpose.NARROW:
+            continue
+        if not (path is not None and path.exists()):
+            views[level] = {}
+            continue
+        views[level] = _file_view(stored[level], level=level, path=path)
+        if purpose is ReadPurpose.RESOLVE:
+            refuse_retired_behavior_keys(
+                views[level], level=level, path=path, subject=subject,
+                box_name=box_name if level == "box" else None,
+            )
+        elif purpose is ReadPurpose.SELECT:
+            refuse_retired_keys(
+                views[level], level=level, path=path,
+                box_name=box_name if level == "box" else None,
+            )
+    if purpose is ReadPurpose.NARROW:
+        # ``assemble_levels``' own phases: every ``pref:`` drop, then every upward drop.
+        for level in levels:
+            if level not in PREF_LEGAL_LEVELS:
+                refuse_pref_table(stored[level], level=level, path=by_level[level])
+        for level in levels:
+            _warn_upward_drops(stored[level], file_scope=level, path=by_level[level])
+        views = {
+            level: _file_view(stored[level], level=level, path=by_level[level], fold=False)
+            for level in levels
+        }
+    return tuple(
+        SettingsFile(level=level, path=by_level[level], stored=stored[level], view=views[level])
+        for level in levels
     )
+
+
+def retired_cure(files: Iterable[SettingsFile]) -> None:
+    """RAISE the TAILORED refusal when a read file's view still carries a RETIRED spelling.
+
+    Called only once §0 has decided to refuse, to pick WHICH refusal the user reads: the
+    retired key is refused either way. *files* are most-specific first; nothing is re-read.
+    """
+    for f in files:
+        if f.loaded:
+            refuse_retired_keys(f.view, level=f.level, path=f.path)
+            refuse_retired_behavior_keys(f.view, level=f.level, path=f.path)
 
 
 def _parse_node(
@@ -1149,68 +1241,48 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
 def assemble_levels(
     *,
     agent_name: str,
-    base_path: Path | None = None,
-    system_path: Path | None = None,
-    agent_path: Path | None = None,
-    workset_path: Path | None = None,
-    box_path: Path | None = None,
+    files: Iterable[SettingsFile],
     floor: dict[str, object] | None = None,
 ) -> list[KeyStore]:
-    """Read each cascade scope's settings file into ONE nested ``KeyStore`` partial and return the
-    six MOST-SPECIFIC-FIRST (S8): ``[box, workset, agent.<active>, agent.default, system, base]``.
+    """Build each cascade scope's ONE nested ``KeyStore`` partial from the read *files* and return
+    the six MOST-SPECIFIC-FIRST (S8): ``[box, workset, agent.<active>, agent.default, system, base]``.
 
-    *floor* (declared defaults + default-categories) folds UNDER the base file into the ``base``
-    level and is the SOLE sanctioned ``meta.*`` source. Absent / unreadable files yield an empty
-    partial; NO ``machine`` path is consulted (S14). Per-parameter detail: llm-docs.
+    *files* come from :func:`read_settings_files`, with the purpose the caller chose; a level with
+    no file there contributes an empty partial. *floor* (declared defaults + default-categories)
+    folds UNDER the base file into the ``base`` level and is the SOLE sanctioned ``meta.*``
+    source. NO ``machine`` path is consulted (S14). Per-parameter detail: llm-docs.
     """
-    base_p = base_path if base_path is not None else settings_base_path()
+    by_level = {f.level: f for f in files}
 
-    raw_base = load_doc(base_p)
-    raw_system = load_doc(system_path)
-    raw_agent = load_doc(agent_path)
-    raw_workset = load_doc(workset_path)
-    raw_box = load_doc(box_path)
+    def _view(level: str) -> Any:
+        f = by_level.get(level)
+        return f.view if f is not None else {}
 
-    # ⚑ Both filters run on the RAW file view, BEFORE the partial is built, and that ordering is
-    # LOAD-BEARING: the agent tier never mirrors a non-``self:`` table into its partial, so a
-    # post-partial filter could not see (or warn about) a ``system:`` or ``pref:`` table there.
-    #
-    # ``pref:`` is legal ONLY at :data:`PREF_LEGAL_LEVELS` (spec §2h) — elsewhere DROPPED with a
-    # warning, the SAME treatment the sibling mis-scope gets; the HARD refusal lives at the WRITE
-    # site. Directional enforcement then drops any CONTAINING-scope top-level table (spec §0):
-    # ``system``'s containing set is empty, and ``base`` is a CODE FLOOR, EXEMPT for SCOPE keys but
-    # NOT for ``meta``. Full reasoning: llm-docs.
-    raw_base, raw_system, raw_agent, raw_workset, raw_box = (
-        raw if level in PREF_LEGAL_LEVELS else refuse_pref_table(raw, level=level, path=path)
-        for raw, level, path in (
-            (raw_base, "base", base_p), (raw_system, "system", system_path),
-            (raw_agent, "agent", agent_path), (raw_workset, "workset", workset_path),
-            (raw_box, "box", box_path),
-        )
-    )
+    def _path(level: str) -> Path | None:
+        f = by_level.get(level)
+        return f.path if f is not None else None
 
-    raw_base = _drop_upward_scopes(raw_base, file_scope="base", path=base_p)
-    raw_box = _drop_upward_scopes(raw_box, file_scope="box", path=box_path)
-    raw_workset = _drop_upward_scopes(
-        raw_workset, file_scope="workset", path=workset_path
-    )
-    # The ONE agent file builds TWO levels; drop+warn ONCE on the shared raw view.
-    raw_agent = _drop_upward_scopes(raw_agent, file_scope="agent", path=agent_path)
-    raw_system = _drop_upward_scopes(
-        raw_system, file_scope="system", path=system_path
-    )
+    # The agent file's SHAPE checks (``agent_file.level_table``: a stray root, a nested
+    # ``self:``) judge the file minus its dropped tables, not the contributed view, so a stray
+    # still refuses by name.
+    agent_file = by_level.get(_AGENT_FILE_LEVEL)
+    raw_agent: Any = {}
+    if agent_file is not None and isinstance(agent_file.stored, dict):
+        drop_set = cascade_drop_set(_AGENT_FILE_LEVEL)
+        raw_agent = {k: v for k, v in agent_file.stored.items() if str(k) not in drop_set}
+    agent_path = _path(_AGENT_FILE_LEVEL)
 
     # The floor is inserted FIRST and the base-file leaves overlay it, so a base-file entry wins
     # WITHIN this single level and the floor is the ultimate fallback.
     base_partial = dotted_partial(floor)
-    _overlay(base_partial, _file_partial(raw_base, path=base_p))
+    _overlay(base_partial, _file_partial(_view("base"), path=_path("base")))
 
     # MOST-SPECIFIC-FIRST (S8). Each scope file's partial keeps its scope token so the merge works
     # by scope-qualified name; the agent tier keeps its §2d discriminator — NO bare-``agent``
     # collapse.
     return [
-        _file_partial(raw_box, path=box_path),
-        _file_partial(raw_workset, path=workset_path),
+        _file_partial(_view("box"), path=_path("box")),
+        _file_partial(_view("workset"), path=_path("workset")),
         _agent_partial(
             raw_agent, sub_key=agent_name, path=agent_path, node=agent_name,
         ),
@@ -1222,9 +1294,33 @@ def assemble_levels(
         _agent_partial(
             raw_agent, sub_key=_AGENT_DEFAULT_SUB, path=agent_path, node=agent_name,
         ),
-        _file_partial(raw_system, path=system_path),
+        _file_partial(_view("system"), path=_path("system")),
         base_partial,
     ]
+
+
+def cascade_files(
+    *,
+    purpose: ReadPurpose,
+    system_path: Path | None,
+    agent_path: Path | None,
+    workset_path: Path | None,
+    box_path: Path | None,
+    base_path: Path | None = None,
+    subject: str | None = None,
+    box_name: str | None = None,
+) -> tuple[SettingsFile, ...]:
+    """The five cascade files read for *purpose*; *base_path* defaults to the site base file."""
+    return read_settings_files(
+        (
+            ("box", box_path),
+            ("workset", workset_path),
+            ("agent", agent_path),
+            ("system", system_path),
+            ("base", base_path if base_path is not None else settings_base_path()),
+        ),
+        purpose=purpose, subject=subject, box_name=box_name,
+    )
 
 
 def _overlay(base: KeyStore, top: KeyStore) -> None:

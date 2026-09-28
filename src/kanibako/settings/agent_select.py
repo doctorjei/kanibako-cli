@@ -179,38 +179,26 @@ def select_agent(
     """
     from kanibako.errors import AgentNoDefaultError
     from kanibako.settings.config import resolve_agent, settings_base_path
-    from kanibako.settings.config_io import load_doc
     from kanibako.settings.paths import box_workset_settings_paths
-    from kanibako.settings.settings_assemble import cascade_view, refuse_retired_keys
+    from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
     from kanibako.settings.settings_launch import resolve_selected_agent
 
     box_path, workset_path = box_workset_settings_paths(proj)
     system_path = std.settings
 
-    # RETIRED spellings: refuse by name BEFORE resolving anything (P7 / M-4).
-    # ⚑ EVERY tier is checked, BASE included — a site admin's stale key defaults
-    # DOWN into every box on the machine. The cure is LEVEL-APPROPRIATE, which is
-    # why ``proj.name`` is threaded only for ``level == "box"``. Reasoning, and why
-    # this is not inside ``assemble_levels``: llm-doc.
-    # ⚑⚑ IT JUDGES WHAT THE CASCADE SEES, NOT WHAT THE FILE SAYS (``cascade_view``),
-    # the same rule the resolve seam's retirement scan follows. ``agent.default.
-    # default_agent`` is the one retired spelling this reaches under a CONTAINING
-    # scope's table, so in a box or workset file directional enforcement had already
-    # dropped it: the cure sent a user to rewrite a line that was doing nothing, and
-    # the two ``box.*`` spellings — which are NOT dropped at those tiers — still
-    # refuse exactly as before.
-    for level, path in (
-        ("base", settings_base_path()),
-        ("system", system_path),
-        ("workset", workset_path),
-        ("box", box_path),
-    ):
-        if path is not None and Path(path).exists():
-            refuse_retired_keys(
-                cascade_view(load_doc(Path(path)), level=level, path=Path(path)),
-                level=level, path=Path(path),
-                box_name=proj.name if level == "box" else None,
-            )
+    # RETIRED spellings: refuse by name first (P7 / M-4), BASE
+    # included — a site admin's stale key defaults DOWN into every box. Judged on the
+    # reader's view: a dropped table gets no cure.
+    read_settings_files(
+        (
+            ("base", settings_base_path()),
+            ("system", system_path),
+            ("workset", workset_path),
+            ("box", box_path),
+        ),
+        purpose=ReadPurpose.SELECT,
+        box_name=proj.name,
+    )
 
     requested: object = __MISSING__
     # ⚑⚑ "GIVEN" IS ``is not None``, NOT TRUTHINESS.  This gate can answer the
