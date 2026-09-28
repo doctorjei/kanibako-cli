@@ -1753,3 +1753,19 @@ class TestSystemStateSetRefusal:
         assert _get("system.state") == 0
         assert "not set" in capsys.readouterr().out
         assert _show() == 0
+
+
+def test_show_effective_reads_a_legal_config_table_as_layer_1(
+    config_file, tmp_home, capsys,
+):
+    """A ``config:`` table is legal in ``kanibako.cfg`` (keyspec §1), and ``--effective`` must not
+    read that file as the BOX tier, which refuses the table with a cure that is already true.
+    MUTATION: feed *config_path* to ``load_merged_config`` in ``show_config`` again and this reds."""
+    with config_file.open("a") as fh:
+        fh.write(f"config:\n  journal: {tmp_home / 'journal'}\n")
+    assert _set("box.image=sys/img:1") == 0
+    capsys.readouterr()
+    assert _show(effective=True) == 0
+    cap = capsys.readouterr()
+    assert "config.* entries" not in cap.err, cap.err
+    assert "box_image = sys/img:1" in cap.out, cap.out
