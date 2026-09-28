@@ -368,6 +368,13 @@ BIND_CATEGORIES: Final[frozenset[str]] = frozenset({
     "bindings.ro", "bindings.rw", "caches", "seeded", "common", "synced",
 })
 
+#: The bind-shaped categories whose category token IS the whole key — terminal ONE
+#: SEGMENT SHALLOWER than a ``bindings`` arm, with a ``BindMap`` value.  DERIVED from
+#: :data:`BIND_CATEGORIES`; ``masks`` is dest-keyed too but holds the 3-state marker.
+BIND_LEAF_CATEGORIES: Final[frozenset[str]] = frozenset(
+    c for c in BIND_CATEGORIES if "." not in c
+)
+
 #: The DEST-KEYED **TERMINAL** category keys (spec §2a), as the segment tail that
 #: ENDS a key. A key may end here and nothing may follow: the value is a map whose
 #: keys are box DESTINATIONS — data, not keyspace.
@@ -975,7 +982,7 @@ def _category_reason(
     # Entries live INSIDE its value as a dict[box_dest -> [src[, options]]], and a
     # box_dest is a PATH, so a tail under one is a VALUE address, not a key. There
     # is no entry NAME at all any more — the destination IS the identity.
-    if head in {c for c in BIND_CATEGORIES if "." not in c}:
+    if head in BIND_LEAF_CATEGORIES:
         if len(rest) == 1:
             return _KEY
         return _undeclared(

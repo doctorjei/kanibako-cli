@@ -258,7 +258,9 @@ deliberately:
   second rule now would be two rules for one thing, which is the drift Code Convention 0 opens with.
 
 What guards `share add` is the BIND GRAMMAR in `run_share_add`: exactly one unescaped `:`, both
-halves non-empty. `tests/test_commands/test_workset_share.py` pins the retirement.
+halves non-empty. A destination at an INTERNAL bind (spec §2c) is refused before anything is written,
+by `settings_launch.internal_bind_refusals` — the resolve's own check and message, called rather than
+copied — so `share list --effective` never meets an entry `share add` answered "Added" to. `tests/test_commands/test_workset_share.py` pins the retirement.
 
 ### The stored entry shape
 

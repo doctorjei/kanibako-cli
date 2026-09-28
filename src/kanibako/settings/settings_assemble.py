@@ -52,9 +52,11 @@ from kanibako.settings.settings_categories import (
     DECLARATION_ROOT_REF,
 )
 from kanibako.settings.settings_drops import cascade_drop_set, upward_scope_drop_set
+from kanibako.settings.settings_keyspace import BIND_LEAF_CATEGORIES, TERMINAL_CATEGORY_TAILS
 from kanibako.settings.settings_prefs import PREF_LEGAL_LEVELS, PREF_ROOT, refuse_pref_table
 from kanibako.settings.settings_resolve import (
     SettingsError,
+    normalize_bind_dest,
     unpack_bind,
     unpack_bind_entry,
 )
@@ -67,24 +69,29 @@ _log = logging.getLogger(__name__)
 _DEST_KEYED_CATEGORY = "bindings"
 #: The two arms a dest-keyed ``bindings`` node carries; each holds a ``BindMap``.
 _BIND_ARMS: tuple[str, str] = ("ro", "rw")
-#: The bind-shaped categories whose CATEGORY TOKEN IS THE WHOLE KEY — terminal ONE
-#: LEVEL SHALLOWER than a ``bindings`` arm, with a ``BindMap`` for a value.
-#: ⚑⚑ This set says WHERE the map sits, not WHETHER there is one: read at the wrong
-#: depth, a destination is taken for an arm name. Why a blanket ``dest_keyed=True``
-#: cannot replace it (the 2-element arity trap): llm-docs.
-_DEST_KEYED_LEAF_CATEGORIES: frozenset[str] = frozenset(
-    {"caches", "seeded", "common", "synced"}
-)
+# The bind-shaped categories whose CATEGORY TOKEN IS THE WHOLE KEY are
+# ``settings_keyspace.BIND_LEAF_CATEGORIES``.
+# ⚑⚑ That set says WHERE the map sits, not WHETHER there is one: read at the wrong
+# depth, a destination is taken for an arm name. Why a blanket ``dest_keyed=True``
+# cannot replace it (the 2-element arity trap): llm-docs.
+
+#: The dest-keyed TERMINAL categories whose token is the whole key but whose value is the
+#: 3-state MARKER, not a ``BindMap`` (``masks``). DERIVED from ``TERMINAL_CATEGORY_TAILS``:
+#: every one-segment terminal tail that is not a bind leaf. Its keys are canonicalized like
+#: every other guest dest (spec §2a "A MOUNT DESTINATION IS CANONICALIZED").
+_MARKER_LEAF_CATEGORIES: frozenset[str] = frozenset(
+    tail[0] for tail in TERMINAL_CATEGORY_TAILS if len(tail) == 1
+) - BIND_LEAF_CATEGORIES
 
 # The bind-shaped category tokens; every one holds dest-keyed ``BindMap``(s). ``masks`` (a keyed
-# 3-state, S5) and the scalar ``env`` / ``secret_path`` families keep their natural nested shape and
-# are NOT bind-parsed. ``bindings`` carries the ``ro`` / ``rw`` sub-tables, each holding a map.
+# 3-state, S5; dests canonicalized by :func:`_parse_marker_map`) and the scalar ``env`` /
+# ``secret_path`` families are NOT bind-parsed. ``bindings`` carries the ``ro`` / ``rw`` sub-tables, each holding a map.
 # ⚑ These are path SEGMENTS met on a tree walk, so ``bindings`` is UNSPLIT: the walk meets that
 # segment before it can see the arm. DERIVED (P13) from the two constants above — the ARMED
 # category plus the terminal leaves ARE the tokens, so the two spellings cannot drift.
 # ⚑ The ``frozenset(...)`` wrap is load-bearing: ``{x} | frozenset(...)`` evaluates to a ``set``.
 BIND_CATEGORY_TOKENS: frozenset[str] = frozenset(
-    {_DEST_KEYED_CATEGORY} | _DEST_KEYED_LEAF_CATEGORIES
+    {_DEST_KEYED_CATEGORY} | BIND_LEAF_CATEGORIES
 )
 
 # The agent sub-table that supplies the all-agents ``agent.default`` cascade level.
@@ -817,7 +824,7 @@ def _parse_node(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
                     )
                     continue
-            if not in_binds and key_s in _DEST_KEYED_LEAF_CATEGORIES:
+            if not in_binds and key_s in BIND_LEAF_CATEGORIES:
                 # A TERMINAL dest-keyed category — the map is HERE, not one level down, so it is
                 # parsed on the way PAST the category token. Same malformed-shape hand-off as an arm.
                 # ⚑ ``not in_binds`` keeps a user's entry literally NAMED ``common`` inside another
@@ -828,6 +835,9 @@ def _parse_node(
                         root_ref=_declaration_root_ref(path, key_s),
                     )
                     continue
+            if not in_binds and key_s in _MARKER_LEAF_CATEGORIES and isinstance(sub, dict):
+                store[key_s] = _parse_marker_map(sub, path=(*path, key_s))
+                continue
             # Entering a bind-shaped category: its entries below are binds.
             descend_binds = in_binds or key_s in BIND_CATEGORY_TOKENS
             store[key_s] = _parse_node(
@@ -851,6 +861,15 @@ def _parse_node(
     return value
 
 
+def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore:
+    """Parse a dest-keyed MARKER map (``masks``): canonicalize each dest, keep each value as is."""
+    store = KeyStore()
+    for key, sub in raw.items():
+        dest = normalize_bind_dest(str(key))
+        store[dest] = _parse_node(sub, in_binds=False, path=(*path, dest))
+    return store
+
+
 def parse_bind_map(
     raw: Any, *, category: str = "bindings", root_ref: str | None = None,
 ) -> KeyStore:
@@ -869,8 +888,6 @@ def parse_bind_map(
     scope — a bare-relative source is a DEFECT and is REFUSED by name, because nothing later may
     supply the missing root (§2a: the assembler-prepend is FORBIDDEN).
     """
-    from kanibako.settings.settings_resolve import normalize_bind_dest
-
     if not isinstance(raw, dict):
         raise SettingsError(
             f"A dest-keyed {category!r} map must be a mapping "
@@ -1090,7 +1107,7 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
             f"{{box_dest: [src[, options]]}} (spec §2a, R-5/R-10 — the entry "
             f"name was dropped 2026-08-06c). Emit the arm, not the entry."
         )
-    deeper = [p for p in parts[:-1] if p in _DEST_KEYED_LEAF_CATEGORIES]
+    deeper = [p for p in parts[:-1] if p in BIND_LEAF_CATEGORIES]
     if deeper:
         category = deeper[0]
         terminal_key = ".".join(parts[: parts.index(category) + 1])
@@ -1114,7 +1131,7 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
         node[parts[-1]] = parse_bind_map(
             value, category=f"{_DEST_KEYED_CATEGORY}.{parts[-1]}",
         )
-    elif parts[-1] in _DEST_KEYED_LEAF_CATEGORIES and isinstance(value, dict):
+    elif parts[-1] in BIND_LEAF_CATEGORIES and isinstance(value, dict):
         # ⚑ SAME §2a rule as a settings file's own walk: a floor key names its scope in
         # its own segments, so the DECLARATION ROOT is read from them rather than left
         # unsupplied. A producer that already rooted (``agent_defaults.load_common``)
@@ -1123,6 +1140,8 @@ def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None:
             value, category=parts[-1],
             root_ref=_declaration_root_ref(tuple(parts[:-1]), parts[-1]),
         )
+    elif parts[-1] in _MARKER_LEAF_CATEGORIES and isinstance(value, dict):
+        node[parts[-1]] = _parse_marker_map(value, path=tuple(parts))
     else:
         node[parts[-1]] = _parse_node(value, in_binds=in_binds)
 

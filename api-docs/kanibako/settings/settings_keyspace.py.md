@@ -24,6 +24,7 @@ PATH_VALUED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({'template', 'canon'
 SCALAR_AGENT_LEAVES: Final[frozenset[str]] = DECLARED_AGENT_LEAVES - TABLE_VALUED_AGENT_LEAVES
 ACCESS_TIERS: Final[tuple[str, ...]] = ('restricted', 'editing', 'full')
 BIND_CATEGORIES: Final[frozenset[str]] = frozenset({'bindings.ro', 'bindings.rw', 'caches', 'seeded', 'common', 'synced'})
+BIND_LEAF_CATEGORIES: Final[frozenset[str]] = frozenset((c for c in BIND_CATEGORIES if '.' not in c))
 TERMINAL_CATEGORY_TAILS: Final[frozenset[tuple[str, ...]]] = frozenset({('masks',), ('bindings', 'ro'), ('bindings', 'rw'), ('caches',), ('seeded',), ('common',), ('synced',)})
 VAR_KEYED_CATEGORIES: Final[frozenset[str]] = CATEGORY_FAMILY_ROOTS - frozenset((tail[0] for tail in TERMINAL_CATEGORY_TAILS))
 DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({'ws_root', 'ws_name', 'project_type'})

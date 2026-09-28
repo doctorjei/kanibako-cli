@@ -31,6 +31,7 @@ from kanibako.settings.config_io import (
     stored_leaf_object,
     write_nested_key,
 )
+from kanibako.settings.settings_categories import CATEGORY_FAMILY_ROOTS
 from kanibako.settings.settings_drops import cascade_drop_set, contained_scopes
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.utils import deep_merge
@@ -71,9 +72,9 @@ _MODELED_KEYS: Final[frozenset[str]] = frozenset({
 #: ``bindings`` is ONE token: its ``{ro, rw}`` table rides WHOLE. ⚑ ORDER IS NOT SIGNIFICANT. It
 #: is ALSO :func:`_read_address`'s category set, which is what stops the value's storage shape and
 #: the cascade's read of it from drifting apart.
-_FLAT_AGENT_CATEGORIES: tuple[str, ...] = (
-    "bindings", "caches", "seeded", "common", "synced", "masks", "secret_path", "env",
-)
+#: ⚑ NOT the dest-keyed set (``settings_keyspace.TERMINAL_CATEGORY_TAILS``): ``env`` and
+#: ``secret_path`` are stored flat too, so this is EVERY family root, derived from its owner.
+_FLAT_AGENT_CATEGORIES: tuple[str, ...] = tuple(sorted(CATEGORY_FAMILY_ROOTS))
 
 #: EVERY table the file's ROOT may hold: what the record models, MERGED with what the cascade
 #: reads.

@@ -98,6 +98,7 @@ from kanibako.settings.settings_categories import (
 from kanibako.settings.settings_cli_level import guard_cli_level
 from kanibako.settings.settings_expand import NullSources, expand
 from kanibako.settings.settings_keyspace import (
+    BIND_LEAF_CATEGORIES,
     KeyClass,
     entry_label,
     is_terminal_category_key,
@@ -119,13 +120,6 @@ from kanibako.settings.settings_resolve import (
 )
 
 
-# The bind-shaped category tokens that ARE the terminal key — the snapshot's
-# ``<scope>.<category>`` node IS the dest-keyed ``BindMap``. ⚑ ``bindings`` is the
-# odd one out (its map sits under an ``ro`` / ``rw`` ARM) and is deliberately NOT
-# folded in: the difference is the DEPTH of the node, which a shared set would hide.
-_BIND_LEAF_CATEGORIES: frozenset[str] = frozenset(
-    {"caches", "seeded", "common", "synced"}
-)
 # Aliases the single-source scope-containment tuple (kb_store) so this consumer
 # never re-declares the scope set. This alias is the single source within this
 # module: the emit loop's ``scope_order`` map is DERIVED from it, not re-declared.
@@ -138,7 +132,7 @@ _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
 #: table — the ``bindings`` ARMS plus each of the four terminal categories. ONE tuple,
 #: so the per-entry ``""``-suppression in the floor fold cannot drift from the reader.
 _BIND_FLOOR_TAILS: tuple[str, ...] = (".bindings.ro", ".bindings.rw") + tuple(
-    f".{c}" for c in sorted(_BIND_LEAF_CATEGORIES)
+    f".{c}" for c in sorted(BIND_LEAF_CATEGORIES)
 )
 
 
@@ -1514,10 +1508,8 @@ def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
     ⚑ Judged per WRITTEN level, like the path sweep: a ``base`` entry still equal to the
     folded floor's is the floor's own internal bind, not the file's.
     ⚑ A dest spelled through an ``@``-ref or ``$VAR`` is compared as written, unexpanded.
+    The per-entry judgment is :func:`internal_bind_refusals`, which the write verbs share.
     """
-    from kanibako.settings.store_collapse import is_within
-
-    internal = sorted({dest for _arm, dest in core_defaults.internal_bind_keys()})
     refusals = []
     for level, path, floor_store in written:
         for segments, is_node in walk_store_paths(level):
@@ -1532,30 +1524,53 @@ def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
             floor_entries = (
                 snapshot_leaf(floor_store, arm) if floor_store is not None else None
             )
-            is_mask = segments[-1] == "masks"
-            where = str(path) if path is not None else "a settings file"
-            for dest, value in dict.items(entries):
-                if isinstance(floor_entries, dict) and (
-                    dict.get(floor_entries, dest, __MISSING__) == value
-                ):
-                    continue
-                norm = normalize_bind_dest(dest)
-                if norm in internal:
-                    refusals.append(
-                        f"{entry_label(arm, dest)} in {where} is at the destination of an "
-                        f"internal kanibako bind (spec §2c), not repointable; remove the entry."
-                    )
-                    continue
-                if not is_mask or value is None:
-                    continue
-                refusals.extend(
-                    f"{entry_label(arm, dest)} in {where} would remove the internal "
-                    f"kanibako bind at {hidden} (spec §2c), which is not suppressible; mask a "
-                    f"narrower path."
-                    for hidden in internal if is_within(hidden, norm)
-                )
+            refusals.extend(internal_bind_refusals(
+                arm, entries,
+                where=str(path) if path is not None else "a settings file",
+                floor_entries=floor_entries if isinstance(floor_entries, dict) else None,
+            ))
     if refusals:
         raise SettingsError("\n".join(refusals))
+
+
+def internal_bind_refusals(
+    arm: str, entries: dict[str, object], *, where: str,
+    floor_entries: dict[str, object] | None = None,
+) -> list[str]:
+    """One refusal line per entry of the dest-keyed map *entries* at key *arm* that would
+    repoint or remove an INTERNAL bind (spec §2c); empty when none does.
+
+    THE ONE CARRIER of that judgment and its wording: the resolve
+    (:func:`_refuse_internal_bind_entries`) and a WRITE verb (``workset share add``) both call
+    it, so a verb cannot store what the next resolve refuses.  *where* names the file.  An
+    entry equal to its *floor_entries* counterpart is the floor's own bind and is skipped.
+    """
+    from kanibako.settings.store_collapse import is_within
+
+    internal = sorted({dest for _arm, dest in core_defaults.internal_bind_keys()})
+    is_mask = arm.split(".")[-1] == "masks"
+    refusals: list[str] = []
+    for dest, value in dict.items(entries):
+        if floor_entries is not None and (
+            dict.get(floor_entries, dest, __MISSING__) == value
+        ):
+            continue
+        norm = normalize_bind_dest(dest)
+        if norm in internal:
+            refusals.append(
+                f"{entry_label(arm, dest)} in {where} is at the destination of an "
+                f"internal kanibako bind (spec §2c), not repointable; remove the entry."
+            )
+            continue
+        if not is_mask or value is None:
+            continue
+        refusals.extend(
+            f"{entry_label(arm, dest)} in {where} would remove the internal "
+            f"kanibako bind at {hidden} (spec §2c), which is not suppressible; mask a "
+            f"narrower path."
+            for hidden in internal if is_within(hidden, norm)
+        )
+    return refusals
 
 
 def _workset_channel_floor_values(
@@ -3386,12 +3401,12 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
             mode_node = dict.get(bindings, mode, __MISSING__)
             if mode_node is not __MISSING__:
                 _require_category_node(key_prefix, f"bindings.{mode}", mode_node)
-    for category in _BIND_LEAF_CATEGORIES:
+    for category in BIND_LEAF_CATEGORIES:
         cat_node = dict.get(node, category, __MISSING__)
         if cat_node is not __MISSING__:
             _require_category_node(key_prefix, category, cat_node)
     # ⚑ ``masks`` is checked on its own line rather than folded into
-    # ``_BIND_LEAF_CATEGORIES``: that set is what the EMIT walks, and a mask has no
+    # ``BIND_LEAF_CATEGORIES``: that set is what the EMIT walks, and a mask has no
     # source to unpack.
     masks = dict.get(node, "masks", __MISSING__)
     if masks is not __MISSING__:
@@ -3475,7 +3490,7 @@ def _emit_scope_node(
                 )
 
     # caches / seeded / common / synced — the map is AT the category token.
-    for category in _BIND_LEAF_CATEGORIES:
+    for category in BIND_LEAF_CATEGORIES:
         cat_node = dict.get(scope_node, category, __MISSING__)
         if isinstance(cat_node, KeyStore):
             _emit_bind_map(

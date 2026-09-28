@@ -968,7 +968,7 @@ class TestLaunchWiring:
         ),
         (
             {"masks": {"~/.config/kanibako/kickoff.md": True}},
-            "box.masks[~/.config/kanibako/kickoff.md]",
+            f"box.masks[{GUEST_HOME}/.config/kanibako/kickoff.md]",
         ),
     ], ids=["ro-list", "ro-null", "rw-trailing-slash", "masks"])
     def test_a_user_entry_at_an_internal_dest_refuses_naming_it_and_its_file(
@@ -1124,7 +1124,7 @@ class TestInternalBindEntryRefusal:
         with pytest.raises(SettingsError) as excinfo:
             self._refuse([(self._level(box), tmp_path / "box.yaml", None)])
         assert (
-            f"box.masks[/opt/kanibako/] in {tmp_path / 'box.yaml'} would remove the internal "
+            f"box.masks[/opt/kanibako] in {tmp_path / 'box.yaml'} would remove the internal "
             "kanibako bind at /opt/kanibako/kanibako (spec §2c), which is not suppressible; "
             "mask a narrower path."
         ) in str(excinfo.value)

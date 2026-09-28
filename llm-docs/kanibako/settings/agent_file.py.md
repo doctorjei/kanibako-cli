@@ -145,8 +145,10 @@ that string into the launch cascade as `agent.<agent>.run_args`. Two carriers of
 disagreeing in TYPE, with nothing refusing either. It is NOT that the undeclared-state refusal never
 sees it: `run_args` is declared, so that refusal would see it and ACCEPT it.)*
 
-```_FLAT_AGENT_CATEGORIES: tuple[str, ...] = ("bindings", "caches", "seeded", "common", "synced", "masks", "secret_path", "env")```
-EVERY category the file stores FLAT under `self`. **EIGHT TOKENS, NINE CATEGORIES** — `bindings` is
+```_FLAT_AGENT_CATEGORIES: tuple[str, ...] = tuple(sorted(CATEGORY_FAMILY_ROOTS))```
+EVERY category the file stores FLAT under `self` — DERIVED from `settings_categories.CATEGORY_FAMILY_ROOTS`
+(it was a literal copy of that set). It is NOT the dest-keyed set (`settings_keyspace.TERMINAL_CATEGORY_TAILS`):
+`env` and `secret_path` are VAR-keyed families stored flat as well. **EIGHT TOKENS, NINE CATEGORIES** — `bindings` is
 one token whose `{ro, rw}` table rides WHOLE, exactly as the canonical `agent.<node>.bindings` key
 holds both arms. ORDER IS NOT SIGNIFICANT. It is ALSO `_read_address`'s category set, so the shape a
 value is STORED in and the shape the cascade READS are one fact rather than two lists agreeing.

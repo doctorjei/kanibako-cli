@@ -2230,7 +2230,7 @@ class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
         text = _block(categories)
         assert (
             "binding_derivations.agent.claude.common[/home/agent/x] = (no mount — the "
-            "mask declared by 'box.masks[~/x]' at /home/agent/x covers this destination"
+            "mask declared by 'box.masks[/home/agent/x]' at /home/agent/x covers this destination"
             in text
         ), text
 
@@ -2249,7 +2249,7 @@ class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
 
         text = _block(categories)
         assert (
-            "the mask declared by 'box.masks[~/x]' at /home/agent/x covers this "
+            "the mask declared by 'box.masks[/home/agent/x]' at /home/agent/x covers this "
             "destination" in text
         ), text
 
