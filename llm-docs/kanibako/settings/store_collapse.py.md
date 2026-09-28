@@ -456,6 +456,13 @@ destination. The call is dropped entirely, not repaired, and a test pins the two
   holds DOTTED keys rather than `key_segments`. ⚑ MEASURED: carrying segments instead would mean
   retyping `DeclaringKeys`, which `config_display`, `config_interface` and `commands/box/_parser`
   all read as `Mapping[str, str]` — so the BLOCK stays one carrier's, while the PROSE is now shared.
+  ⚑ **Its last sentence is `_which_to_keep`'s**: "Either declaration may be the one you keep",
+  UNLESS a participant is an internal bind (spec §2c) — then `settings_categories.internal_bind_cure`,
+  the ONE predicate and sentence every collision remedy shares (the two in `settings_categories`
+  too), names it as not suppressible and sends the reader to the other declaration.
+  `settings_launch` refuses a settings entry whose WRITTEN dest is internal; this is reached by
+  NESTING (an earlier scope's bind inside an internal directory bind) and by a dest spelled through
+  an `@`-ref or `$VAR`, which that check compares unexpanded.
 * **bind under a mask** — names the mask that would swallow it, and both participants' keys, **and
   offers the cure**. ⚑ It fires hardest CROSS-SCOPE, and there its old closing advice — *"do not
   declare the mask"* — named an edit in a scope the reader may not own; present-`None` is the only

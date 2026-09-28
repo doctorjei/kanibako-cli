@@ -56,7 +56,7 @@ from kanibako.settings.core_defaults import (
 from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
-from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx
+from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
 from kanibako.targets import resolve_target
 from kanibako.targets.shell import ShellTarget
 from kanibako.launch.templates import (
@@ -935,19 +935,16 @@ class TestLaunchWiring:
             assert dest in by_dest, (dest, sorted(by_dest))
             assert by_dest[dest].options == "ro"
 
-    def test_a_user_ro_entry_merges_and_cannot_repoint_an_internal_bind(
+    def test_a_user_ro_entry_merges_beside_the_internal_binds(
         self, std, config, project_dir, tmp_path,
     ):
-        """A user entry still merges beside the internal binds; one written AT an
-        internal dest neither drops nor repoints it (spec §2c: not repointable)."""
+        """A user entry at its OWN dest merges beside the internal binds."""
         import kanibako
 
         mine = tmp_path / "mine"
         mine.mkdir()
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        self._write_box_settings(proj, {"bindings": {"ro": {
-            "~/mine": [str(mine)], "/opt/kanibako/kanibako": [str(mine)],
-        }}})
+        self._write_box_settings(proj, {"bindings": {"ro": {"~/mine": [str(mine)]}}})
 
         by_dest = self._launch_mounts(std, proj, _WiringTarget())
         assert Path(by_dest[f"{GUEST_HOME}/mine"].source) == mine
@@ -955,6 +952,40 @@ class TestLaunchWiring:
             Path(kanibako.__file__).parent
         )
         assert f"{GUEST_HOME}/.local/bin/kanibako" in by_dest
+
+    @pytest.mark.parametrize(("box_table", "label"), [
+        (
+            {"bindings": {"ro": {"/opt/kanibako/kanibako": ["/evil"]}}},
+            "box.bindings.ro[/opt/kanibako/kanibako]",
+        ),
+        (
+            {"bindings": {"ro": {"~/.local/bin/kanibako": None}}},
+            f"box.bindings.ro[{GUEST_HOME}/.local/bin/kanibako]",
+        ),
+        (
+            {"bindings": {"rw": {"/opt/kanibako/kanibako/": ["/evil"]}}},
+            "box.bindings.rw[/opt/kanibako/kanibako]",
+        ),
+        (
+            {"masks": {"~/.config/kanibako/kickoff.md": True}},
+            "box.masks[~/.config/kanibako/kickoff.md]",
+        ),
+    ], ids=["ro-list", "ro-null", "rw-trailing-slash", "masks"])
+    def test_a_user_entry_at_an_internal_dest_refuses_naming_it_and_its_file(
+        self, std, config, project_dir, box_table, label,
+    ):
+        """Spec §2c: an internal bind is not repointable, so a settings entry at its
+        dest — a source or a null, in any dest-keyed category — REFUSES, naming the
+        entry and its file. RED before the refusal: the re-impose overrode it silently
+        (and rc2 let it repoint kanibako's own CLI)."""
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        box_path = self._write_box_settings(proj, box_table)
+
+        with pytest.raises(SettingsError) as excinfo:
+            self._launch_resolve(std, proj, _WiringTarget())
+        message = str(excinfo.value)
+        assert f"{label} in {box_path} is at the destination of an internal kanibako bind" in message
+        assert "not repointable; remove the entry" in message
 
     def test_gate_negative_yields_no_mount_but_the_skeleton_still_pre_created_it(
         self, std, config, project_dir, tmp_path,
@@ -1038,6 +1069,122 @@ class TestLaunchWiring:
 # ===========================================================================
 # The box-create CANON SKELETON (J-7).
 # ===========================================================================
+
+
+class TestInternalBindEntryRefusal:
+    """``settings_launch._refuse_internal_bind_entries``, per written level (spec §2c)."""
+
+    @staticmethod
+    def _refuse(written):
+        from kanibako.settings.settings_launch import _refuse_internal_bind_entries
+
+        _refuse_internal_bind_entries(written)
+
+    @staticmethod
+    def _level(arms: dict):
+        from kanibako.settings.settings_assemble import dotted_partial
+
+        return dotted_partial(arms)
+
+    def test_the_folded_floor_s_own_internal_bind_is_not_the_file_s(self, tmp_path):
+        """The ``base`` level carries the floor folded in; an entry still equal to the
+        floor's is kanibako's own bind, and refusing it would blame a file for it."""
+        floor = {"box.bindings.ro": {"/opt/kanibako/kanibako": ("/pkg", "ro")}}
+        self._refuse([(self._level(floor), tmp_path / "base.yaml", self._level(floor))])
+
+    def test_a_base_file_entry_that_differs_from_the_floor_refuses(self, tmp_path):
+        floor = {"box.bindings.ro": {"/opt/kanibako/kanibako": ("/pkg", "ro")}}
+        site = {"box.bindings.ro": {"/opt/kanibako/kanibako": ("/evil",)}}
+        with pytest.raises(SettingsError, match=r"base\.yaml is at the destination"):
+            self._refuse([(self._level(site), tmp_path / "base.yaml", self._level(floor))])
+
+    def test_every_offender_in_every_level_is_named_with_its_file(self, tmp_path):
+        """Any dest-keyed category, any scope: one edit per launch would turn N
+        offenders into N launches."""
+        system = {"agent.claude.common": {"/opt/kanibako/kanibako": ("/evil",)}}
+        box = {
+            "box.caches": {f"{GUEST_HOME}/.config/kanibako/kickoff.md": ("/evil",)},
+            "box.bindings.ro": {f"{GUEST_HOME}/mine": ("/mine",)},
+        }
+        with pytest.raises(SettingsError) as excinfo:
+            self._refuse([
+                (self._level(box), tmp_path / "box.yaml", None),
+                (self._level(system), tmp_path / "system.yaml", None),
+            ])
+        message = str(excinfo.value)
+        assert f"box.caches[{GUEST_HOME}/.config/kanibako/kickoff.md] in {tmp_path / 'box.yaml'}" in message
+        assert f"agent.claude.common[/opt/kanibako/kanibako] in {tmp_path / 'system.yaml'}" in message
+        assert f"{GUEST_HOME}/mine" not in message
+
+    def test_a_mask_above_an_internal_bind_refuses_naming_what_it_would_remove(
+        self, tmp_path,
+    ):
+        """A present mask at an ANCESTOR swallows the internal bind in the collapse."""
+        box = {"box.masks": {"/opt/kanibako/": True}}
+        with pytest.raises(SettingsError) as excinfo:
+            self._refuse([(self._level(box), tmp_path / "box.yaml", None)])
+        assert (
+            f"box.masks[/opt/kanibako/] in {tmp_path / 'box.yaml'} would remove the internal "
+            "kanibako bind at /opt/kanibako/kanibako (spec §2c), which is not suppressible; "
+            "mask a narrower path."
+        ) in str(excinfo.value)
+
+    def test_what_cannot_remove_an_internal_bind_is_not_refused(self, tmp_path):
+        """An UNMASK (``None``) above one, a prefix that is not a parent, a mask inside an
+        internal dir, and a mount or copy at a parent (folded parent-first, so the internal
+        bind still mounts on top) all pass."""
+        box = {
+            "box.masks": {
+                f"{GUEST_HOME}/canon": None,
+                "/opt/kanibako2": True,
+                f"{GUEST_HOME}/canon/charter/box/sub": True,
+            },
+            "box.bindings.rw": {"/opt/kanibako": ("/h/p",)},
+            "box.caches": {f"{GUEST_HOME}/canon": ("/h/c",)},
+            "box.seeded": {f"{GUEST_HOME}/canon/charter": ("/h/s",)},
+            "box.synced": {f"{GUEST_HOME}/canon/charter": ("/h/s",)},
+        }
+        self._refuse([(self._level(box), tmp_path / "box.yaml", None)])
+
+    @pytest.mark.parametrize("arm", [
+        '  bindings:\n    rw:\n      "@box.canon/kanibako": [/tmp/evil]\n',
+        '  caches:\n    "@box.canon/kanibako": [/tmp/evil]\n',
+    ], ids=["rw", "caches"])
+    def test_an_at_ref_dest_meets_a_collision_that_keeps_the_internal_bind(
+        self, tmp_path, arm,
+    ):
+        """An ``@``-ref dest is compared unexpanded, so it passes the written-dest refusal
+        and collides after expand; the collision's remedy must not offer to null the
+        internal bind (spec §2c), which the resolve would then refuse."""
+        from kanibako.errors import CategoryCollisionError
+        from kanibako.settings.kb_store import BindEntry
+        from kanibako.settings.store_collapse import collapse_store_shapes
+        from kanibako.settings.store_shape import build_store_shape_set
+
+        box = tmp_path / "box.yaml"
+        box.write_text("box:\n  canon: /opt/kanibako\n" + arm)
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+            workset_path=None, box_path=box,
+            default_categories={"box.bindings.ro": {"/opt/kanibako/kanibako": ("/pkg", "ro")}},
+        )
+        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+        with pytest.raises(CategoryCollisionError) as excinfo:
+            collapse_store_shapes(
+                build_store_shape_set(entries), BindEntry("/h", "Z,U"), entries,
+            )
+        message = " ".join(str(excinfo.value).split())
+        assert (
+            "'/opt/kanibako/kanibako' is an internal kanibako bind (spec §2c), not "
+            "repointable and not suppressible: keep it, and change the other declaration."
+        ) in message
+        assert "suppresses" not in message and ": null" not in message
+
+    def test_the_rule_reads_the_one_internal_list(self):
+        """P13: every ``internal_bind_keys`` dest refuses — the pin is the rule's own list."""
+        for _arm, dest in sorted(core_defaults.internal_bind_keys()):
+            with pytest.raises(SettingsError):
+                self._refuse([(self._level({"box.bindings.rw": {dest: None}}), None, None)])
 
 
 @pytest.fixture

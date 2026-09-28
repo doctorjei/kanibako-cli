@@ -60,6 +60,7 @@ def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[st
 def narrow_table_winners(entries: list[CategoryEntry], dests: frozenset[str]) -> list[CategoryEntry]
 def raise_binding_vs_binding(box_dest: str, concrete: list[CategoryEntry]) -> NoReturn
 def raise_extension_onto_occupied(box_dest: str, *, extension: CategoryEntry, base: CategoryEntry) -> NoReturn
+def internal_bind_cure(dests: Sequence[str]) -> str | None
 def derive_binding_keys(entries: list[CategoryEntry]) -> dict[tuple[str, ...], 'Bind']
 def declaration_delivery(decl_key: str) -> Delivery
 def effective_bindings_and_template_sources(snapshot: 'KeyStore') -> 'tuple[Any, ...]'
@@ -69,6 +70,7 @@ def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry
 def _entry_lines(entries: list[CategoryEntry]) -> str
 def _and_list(keys: list[str]) -> str
 def _agrees(verb: str, subjects: list[str]) -> str
+def _suppress_then_add_or_keep_internal(box_dest: str, occupant_segments: tuple[str, ...], *, ambiguous: bool=False) -> str
 def _rule_changed(body: str) -> str
 def _suppress_then_add(occupant_segments: tuple[str, ...], *, ambiguous: bool=False) -> str
 def _assembly_copy_list(snapshot: 'KeyStore', dotted: str) -> list[Any]
