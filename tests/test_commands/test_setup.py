@@ -323,7 +323,7 @@ class TestSettingsRefusalStopsSetup:
             ),
             patch("kanibako.targets.discover_targets", return_value={}),
             patch(
-                "kanibako.settings.config.load_merged_config",
+                "kanibako.settings.settings_launch.load_merged_config",
                 side_effect=RuntimeError("boom"),
             ),
             _templates_current(),

@@ -858,7 +858,7 @@ class TestDiagnoseBaseline:
             self._patch_baseline(),
             patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
-                "kanibako.settings.config.load_merged_config",
+                "kanibako.settings.settings_launch.load_merged_config",
                 return_value=MagicMock(box_image="img:latest"),
             ),
             patch(
@@ -878,7 +878,7 @@ class TestDiagnoseBaseline:
             self._patch_baseline(),
             patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
-                "kanibako.settings.config.load_merged_config",
+                "kanibako.settings.settings_launch.load_merged_config",
                 return_value=MagicMock(box_image="img:latest"),
             ),
             patch(
@@ -899,7 +899,7 @@ class TestDiagnoseBaseline:
             self._patch_baseline(),
             patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
-                "kanibako.settings.config.load_merged_config",
+                "kanibako.settings.settings_launch.load_merged_config",
                 return_value=MagicMock(box_image="configured:latest"),
             ),
             patch(
@@ -940,7 +940,7 @@ class TestDiagnoseBaseline:
             self._patch_baseline(),
             patch("kanibako.runtime.container.ContainerRuntime", return_value=mock_runtime),
             patch(
-                "kanibako.settings.config.load_merged_config",
+                "kanibako.settings.settings_launch.load_merged_config",
                 return_value=MagicMock(box_image="img:latest"),
             ),
             patch(
@@ -1254,10 +1254,10 @@ def _quoted_body(config_file: Path) -> str:
     on it says "printed once" rather than "printed once in today's wording".
     """
     from kanibako.errors import KanibakoError
-    from kanibako.settings.config import load_merged_config
+    from kanibako.settings.settings_launch import load_merged_config
 
     try:
-        load_merged_config(config_file, None)
+        load_merged_config(None)
     except KanibakoError as err:
         return "\n".join(f"        {line}" for line in str(err).splitlines())
     raise AssertionError("the load this test is about did not fail")
@@ -1371,7 +1371,7 @@ class TestSettingsRefusalIsSurfaced:
                 side_effect=ContainerError("none"),
             ),
             patch(
-                "kanibako.settings.config.load_merged_config",
+                "kanibako.settings.settings_launch.load_merged_config",
                 side_effect=RuntimeError("boom"),
             ),
         ):
@@ -1602,7 +1602,7 @@ class TestSettingsErrorsAreConsolidated:
         with (
             self._no_runtime(),
             patch(
-                "kanibako.settings.config.load_merged_config",
+                "kanibako.settings.settings_launch.load_merged_config",
                 side_effect=ConfigError("first.yaml is not valid YAML"),
             ),
             patch(

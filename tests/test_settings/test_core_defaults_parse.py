@@ -6,8 +6,7 @@ import pytest
 import yaml
 
 from kanibako.settings import core_defaults
-from kanibako.settings.config import load_merged_config
-from tests.support.filenames import CONFIG_FILENAME
+from kanibako.settings.settings_launch import load_merged_config
 
 
 @pytest.fixture
@@ -31,7 +30,7 @@ def test_repeated_resolves_parse_the_shipped_file_once(cold_parse, tmp_path, mon
 
   monkeypatch.setattr(core_defaults, "parse_packaged", counting_parse)
   for _ in range(3):
-    load_merged_config(tmp_path / CONFIG_FILENAME, None)
+    load_merged_config(None)
   assert len(calls) == 1
 
 

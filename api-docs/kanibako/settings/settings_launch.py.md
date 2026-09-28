@@ -10,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/settings_launch.py.
 ```
 SYSTEM_SCALAR_FLOOR: dict[str, object] = {f'system.helpers.{leaf}': value for leaf, value in SPAWN_BUDGET_DEFAULTS.items()}
 BOX_HOME_KEY: Final[str] = 'meta.box.home'
+DEPENDS_ON_THE_BOX: Final = '(depends on the box)'
 SELECTION_KEY = 'system.agent'
 _SCOPES: tuple[str, ...] = SCOPE_CONTAINMENT
 _BIND_FLOOR_TAILS: tuple[str, ...] = ('.bindings.ro', '.bindings.rw') + tuple((f'.{c}' for c in sorted(BIND_LEAF_CATEGORIES)))
@@ -52,6 +53,7 @@ def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces:
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
 def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[_TierFile], subject: ResolveSubject) -> None
 def internal_bind_refusals(arm: str, entries: dict[str, object], *, where: str, floor_entries: dict[str, object] | None=None) -> list[str]
+def depends_on_the_box(refs: Collection[str], *, in_workset: bool) -> bool
 @overload
 def resolve_inputs(*, subject: Literal[ResolveSubject.BOX], std, agent_name: str, system_path: Path | None, proj, ws: None=None) -> LaunchInputs
 @overload
@@ -61,7 +63,7 @@ def resolve_inputs(*, subject: Literal[ResolveSubject.SYSTEM], std, agent_name: 
 def resolve_inputs(*, subject: ResolveSubject, std, agent_name: str, system_path: Path | None, proj=None, ws: Workset | None=None) -> LaunchInputs
 def fold_floor(*, subject: ResolveSubject, agent_name: str, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None) -> dict[str, object]
 def assemble_cascade(*, agent_name: str, floor: dict[str, object], system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> Cascade
-def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None, subject: ResolveSubject=ResolveSubject.BOX) -> KeyStore
+def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None, subject: ResolveSubject=ResolveSubject.BOX, refs_read: RefsRead | None=None) -> KeyStore
 def reset_none_warnings() -> None
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
 def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
@@ -71,6 +73,8 @@ def effective_behavior(snapshot: KeyStore, *, active_agent: str, keys: 'list[str
 def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str
 def snapshot_category_entries(snapshot: KeyStore, *, active_agent: str, box_ctx: ResolveCtx, optional_keys: frozenset[str]=frozenset()) -> list[CategoryEntry]
+def resolve_box_scalars(*, workset_path: Path | None, box_path: Path | None, cli_overrides: 'dict[str, object] | None', inputs: LaunchInputs | None=None) -> dict[str, object]
+def load_merged_config(project_path: Path | None=None, *, workset_path: Path | None=None, cli_overrides: 'dict[str, object] | None'=None, inputs: LaunchInputs | None=None) -> KanibakoConfig
 def _is_bind_floor_key(key: str) -> bool
 def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
 def _materialize_auth_active(snapshot: KeyStore) -> None

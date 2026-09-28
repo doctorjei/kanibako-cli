@@ -16,16 +16,17 @@ _SEEDED = 'seeded'
 ## Types
 ```
 NullSources = dict[tuple[str, ...], tuple[str, ...]]
+RefsRead = dict[tuple[str, ...], frozenset[str]]
 
 ```
 
 ## Functions
 ```
 @overload
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None=None) -> KeyStore
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None=None, refs_read: RefsRead | None=None) -> KeyStore
 @overload
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool, null_sources: NullSources | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, null_sources: NullSources | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool, null_sources: NullSources | None=None, refs_read: RefsRead | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, null_sources: NullSources | None=None, refs_read: RefsRead | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
 def _is_whole_value_ref(value: str) -> str | None
 def _is_whole_value_var(value: str) -> str | None
 ```

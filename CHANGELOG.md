@@ -236,6 +236,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`workset share list --effective` and `workset show --effective` say when a box decides a value.**
+  In 1.8.0-rc2 a working-set binding whose source referred to a box setting or a box-only path
+  (`/opt/@box.image`, `@meta.box.path/x`) previewed with that part left empty (`/opt/`, `/x`), a
+  path no box would use. Such a row now reads `(depends on the box)`, since each box may set its own
+  value.
+
 - **A value that references a key a `pref:` request supplies is accepted by `set`.** In 1.8.0-rc2,
   with `pref: {agent: {claude: {model: opus}}}` in a working set's settings file,
   `kanibako workset set <ws> workset.env.X=@agent.claude.model/x` was refused as a dangling

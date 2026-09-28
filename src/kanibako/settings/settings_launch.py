@@ -26,7 +26,7 @@ per-mode anchor tables, the level-splice rungs, and the archived
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import Enum
 from pathlib import Path
 from typing import (
@@ -60,9 +60,14 @@ from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.agent_file import AgentFileLevel, stored_leaf_text
 from kanibako.settings import core_defaults
 from kanibako.settings.config import (
+    _BOX_SCALAR_FIELDS,
     AGENT_META_FILE,
     WORKSET_META_FILE,
+    KanibakoConfig,
+    _present_scalar_fields,
+    _typed_box_scalar,
     box_scalar_defaults_floor,
+    load_config,
     config_base_path,
     settings_base_path,
     user_config_file,
@@ -74,6 +79,8 @@ from kanibako.settings.paths import (
     BoxMode,
     ProjectError,
     box_workset_settings_paths,
+    host_xdg_map,
+    load_std_paths,
     system_path_floor,
     workset_settings_path,
 )
@@ -95,8 +102,8 @@ from kanibako.settings.settings_categories import (
     _bind_options,
     refuse_non_scalar_family_value,
 )
-from kanibako.settings.settings_cli_level import guard_cli_level
-from kanibako.settings.settings_expand import NullSources, expand
+from kanibako.settings.settings_cli_level import build_cli_level, guard_cli_level
+from kanibako.settings.settings_expand import NullSources, RefsRead, expand
 from kanibako.settings.settings_keyspace import (
     BIND_LEAF_CATEGORIES,
     KeyClass,
@@ -1724,6 +1731,21 @@ _WORKSET_RUNTIME_KEYS: Final = frozenset({
 })
 
 
+#: What a box-less preview prints for a value that reads a key only a box can answer.
+DEPENDS_ON_THE_BOX: Final = "(depends on the box)"
+
+
+def depends_on_the_box(refs: Collection[str], *, in_workset: bool) -> bool:
+    """True if a box-less resolve cannot know a value that read *refs* (design 1C, N-e).
+
+    A key the box-less resolve OMITS has no value here, and any ``box.*`` key may be set by
+    a box's own file, so a value reading either is the box's to decide.
+    """
+    return any(
+        ref.startswith("box.") or _box_less_omits(ref, in_workset=in_workset) for ref in refs
+    )
+
+
 def _box_less_omits(key: str, *, in_workset: bool) -> bool:
     """True if a resolve with no box (in a working set, or not) has no value for *key*."""
     if key.startswith(_BOX_ONLY_PREFIXES):
@@ -2079,12 +2101,11 @@ def fold_floor(
     # them by name, and every settings scope outranks them by merge level.
     floor: dict[str, object] = dict(SYSTEM_SCALAR_FLOOR)
     # The box scalars' declared defaults (spec §2b; ``box.shell``'s ``<None>`` as a
-    # present ``None``, [R177]) for every BOX resolve, so an ``@box.shell`` / ``@box.image``
+    # present ``None``, [R177]), so an ``@box.shell`` / ``@box.image``
     # a user writes resolves (spec §0) instead of rendering ``""`` or dropping. ONE carrier,
-    # :func:`~kanibako.settings.config.box_scalar_defaults_floor`, shared with the
-    # set-time probe. A box-less resolve (WORKSET / SYSTEM subject) has no box to floor.
-    if subject is ResolveSubject.BOX:
-        floor.update(box_scalar_defaults_floor())
+    # :func:`~kanibako.settings.config.box_scalar_defaults_floor`. Every subject: they are
+    # DECLARED keys a system or workset file may set downward, and a declared key resolves.
+    floor.update(box_scalar_defaults_floor())
     # OS1: bare behavior keys → their scope-qualified §2d spelling. There is NO bare
     # ``agent.<key>`` (spec §0).
     #
@@ -2302,6 +2323,7 @@ def build_launch_snapshot(
     valid_agents: "Collection[str] | None" = None,
     cli_level: Mapping[str, object] | None = None,
     subject: ResolveSubject = ResolveSubject.BOX,
+    refs_read: RefsRead | None = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -2417,7 +2439,7 @@ def build_launch_snapshot(
     )
     snapshot, written = cascade.snapshot, cascade.written
     null_sources: NullSources = {}
-    expanded = expand(snapshot, ctx, null_sources=null_sources)
+    expanded = expand(snapshot, ctx, null_sources=null_sources, refs_read=refs_read)
     # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
     # are resolved terminals.
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)
@@ -3839,3 +3861,85 @@ def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
         f"unexpected unresolved @-reference in a box_dest: {ref!r} "
         f"(box_dest @-refs are resolved at build; only $XDG/~ are deferred)"
     )
+
+
+def resolve_box_scalars(
+    *,
+    workset_path: Path | None,
+    box_path: Path | None,
+    cli_overrides: "dict[str, object] | None",
+    inputs: LaunchInputs | None = None,
+) -> dict[str, object]:
+    """The box scalars resolved through the keyspace, as ``{dotted key: value}``.
+
+    With *inputs*, the resolve is theirs (its subject, files and anchors). Without, a box or
+    working-set file is read as a BOX resolve over those paths, and neither means SYSTEM.
+    """
+
+    overrides = cli_overrides or {}
+    image_val = overrides.get("box_image")
+    cli_level = build_cli_level(
+        image=str(image_val) if image_val else None,
+        share_images=bool(overrides.get("box_share_images", False)),
+    )
+    std = load_std_paths(load_config(user_config_file()))
+    if inputs is None and box_path is None and workset_path is None:
+        inputs = resolve_inputs(
+            subject=ResolveSubject.SYSTEM, std=std, agent_name=GENERAL_SLOT,
+            system_path=std.settings,
+        )
+    if inputs is not None:
+        snapshot = build_launch_snapshot(
+            **inputs.as_kwargs(), agent_name=GENERAL_SLOT, agent_path=None,
+            cli_level=cli_level,
+        )
+    else:
+        snapshot = build_launch_snapshot(
+            agent_name=GENERAL_SLOT,
+            ctx=ResolveCtx(
+                agent_name=GENERAL_SLOT, workset_name=None,
+                host_home=str(Path.home()), xdg=host_xdg_map(),
+            ),
+            system_path=std.settings if std.settings.exists() else None,
+            agent_path=None,
+            workset_path=workset_path,
+            box_path=box_path,
+            cli_level=cli_level,
+        )
+    resolved: dict[str, object] = {}
+    for dotted in _BOX_SCALAR_FIELDS:
+        node = snapshot_leaf(snapshot, dotted)
+        if node is not __MISSING__ and node is not None:
+            resolved[dotted] = node
+    return resolved
+
+
+def load_merged_config(
+    project_path: Path | None = None,
+    *,
+    workset_path: Path | None = None,
+    cli_overrides: "dict[str, object] | None" = None,
+    inputs: LaunchInputs | None = None,
+) -> KanibakoConfig:
+    """The box scalars as a :class:`KanibakoConfig`: each file's present values, then the keyspace resolve."""
+    if inputs is not None:
+        workset_path, project_path = inputs.cascade_workset_path, inputs.cascade_box_path
+    defaults = KanibakoConfig()
+    cfg = KanibakoConfig()
+    for path in (workset_path, project_path):
+        if path and path.exists():
+            for k, v in _present_scalar_fields(path).items():
+                setattr(cfg, k, getattr(defaults, k) if v is None else v)
+    if cli_overrides:
+        valid_keys = {fld.name for fld in fields(cfg)}
+        for k, v in cli_overrides.items():
+            if k in valid_keys:
+                setattr(cfg, k, v)
+    resolved = resolve_box_scalars(
+        workset_path=workset_path, box_path=project_path,
+        cli_overrides=cli_overrides, inputs=inputs,
+    )
+    for dotted, field_name in _BOX_SCALAR_FIELDS.items():
+        if dotted in resolved:
+            setattr(cfg, field_name, _typed_box_scalar(defaults, field_name, resolved[dotted]))
+    return cfg

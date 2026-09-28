@@ -682,12 +682,8 @@ class TestLifecycleCarriesBoxSettings:
 
     @staticmethod
     def _effective_image(config, box_tier, ws_tier):
-        from kanibako.settings.config import load_merged_config, config_file_path
-        from kanibako.settings.paths import xdg
-        return load_merged_config(
-            config_file_path(xdg("XDG_CONFIG_HOME", ".config")),
-            box_tier, workset_path=ws_tier,
-        ).box_image
+        from kanibako.settings.settings_launch import load_merged_config
+        return load_merged_config(box_tier, workset_path=ws_tier).box_image
 
     def test_convert_standalone_to_default_carries_box_settings(self, env, capsys):
         config, std, tmp_home = env

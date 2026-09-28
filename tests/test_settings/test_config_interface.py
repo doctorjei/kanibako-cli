@@ -692,8 +692,10 @@ class TestShowConfig:
         user reading their own file should not be shown a different answer in silence.
         """
         from kanibako.errors import ConfigError
+        from kanibako.settings.config import user_config_file
 
-        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg = user_config_file()
+        global_cfg.parent.mkdir(parents=True, exist_ok=True)
         global_cfg.write_text('box:\n  image: "layer1:planted"\n')
         project_toml = tmp_path / BOX_META_FILE
 
@@ -1579,7 +1581,7 @@ class TestH2BoolCoercion:
     """H2: bool keys must store a real bool, not the string ``'false'``."""
 
     def test_set_box_share_images_false_loads_as_real_bool(self, tmp_path):
-        from kanibako.settings.config import load_merged_config
+        from kanibako.settings.settings_launch import load_merged_config
 
         project_toml = tmp_path / BOX_META_FILE
         set_config_value("box.share_images", "false", config_path=project_toml)
@@ -1590,7 +1592,7 @@ class TestH2BoolCoercion:
 
         # ⚑ Read back through the MERGED settings load — ``load_config`` is the Layer-1
         # reader, and a box.yaml is a settings file.
-        cfg = load_merged_config(tmp_path / CONFIG_FILENAME, project_toml)
+        cfg = load_merged_config(project_toml)
         assert cfg.box_share_images is False
         assert not cfg.box_share_images  # consumer disable-check honored
 

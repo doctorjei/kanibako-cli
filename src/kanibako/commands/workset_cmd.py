@@ -713,7 +713,10 @@ def run_show(args: argparse.Namespace) -> int:
 
 def _run_workset_config(args: argparse.Namespace) -> int:
     """Shared get/set/show/reset dispatch into the ``config_interface`` engine."""
+    from kanibako.agent_ref import GENERAL_SLOT
     from kanibako.settings.config_keys import ConfigLevel
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
+    from kanibako.settings.settings_resolve import SettingsError
     from kanibako.settings.config_interface import (
         ConfigAction,
         get_config_value,
@@ -782,13 +785,20 @@ def _run_workset_config(args: argparse.Namespace) -> int:
         # in both views, against spec §0 ("``config show`` lists them").
         # ⚑ ONE CARRIER: the rows come from the flatten the system noun already renders
         # them with, never from a second read of the same file.
-        rc = show_config(
-            global_config_path=config_file,
-            command_scope=ConfigLevel.workset,
-            config_path=config_file,
-            effective=args.effective,
-            system_settings_path=ws_config,
-        )
+        try:
+            rc = show_config(
+                global_config_path=config_file,
+                command_scope=ConfigLevel.workset,
+                config_path=config_file,
+                effective=args.effective,
+                system_settings_path=ws_config,
+                inputs=resolve_inputs(
+                    subject=ResolveSubject.WORKSET, std=std, ws=ws,
+                    agent_name=GENERAL_SLOT, system_path=std.settings,
+                ) if args.effective else None,
+            )
+        except SettingsError as e:
+            return _preview_refusal(ws, e)
         # ⚑ THE OTHER HALF OF THE SAME §0 CLAUSE. ``show_config`` renders the
         # DECLARATIONS; the binding each abstract one DERIVES is an ``--effective``
         # obligation and needs the workset-scope COLLAPSE, which the display engine
@@ -1183,10 +1193,15 @@ def _workset_preview_entries(ws, std) -> "list[CategoryEntry]":
     Raises :class:`~kanibako.settings.settings_resolve.SettingsError` for anything the
     launch refuses; the ARBITRATION is :func:`_workset_preview_collapse`'s.
     """
+    from dataclasses import replace
+
     from kanibako.agent_ref import GENERAL_SLOT
+    from kanibako.settings.settings_expand import RefsRead
     from kanibako.settings.settings_launch import (
+        DEPENDS_ON_THE_BOX,
         ResolveSubject,
         build_launch_snapshot,
+        depends_on_the_box,
         resolve_inputs,
         snapshot_category_entries,
     )
@@ -1195,16 +1210,23 @@ def _workset_preview_entries(ws, std) -> "list[CategoryEntry]":
         subject=ResolveSubject.WORKSET, std=std, ws=ws,
         agent_name=GENERAL_SLOT, system_path=std.settings,
     )
+    refs: RefsRead = {}
     expanded = build_launch_snapshot(
         **inputs.as_kwargs(),
         agent_name=GENERAL_SLOT,
         agent_path=None,
         # The resolved ``system.*`` tier, as in every box resolve.
         default_categories=dict(inputs.system_floor),
+        refs_read=refs,
     )
-    return snapshot_category_entries(
-        expanded, active_agent=GENERAL_SLOT, box_ctx=inputs.ctx,
-    )
+    return [
+        replace(entry, host_src=DEPENDS_ON_THE_BOX)
+        if depends_on_the_box(refs.get(tuple(entry.key_segments), ()), in_workset=True)
+        else entry
+        for entry in snapshot_category_entries(
+            expanded, active_agent=GENERAL_SLOT, box_ctx=inputs.ctx,
+        )
+    ]
 
 
 def _workset_preview_collapse(entries: "list[CategoryEntry]") -> "CollapsedStore":

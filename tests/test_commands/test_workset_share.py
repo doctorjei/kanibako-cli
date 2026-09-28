@@ -707,3 +707,21 @@ class TestEffectiveListingsWithNoShares:
         out = capsys.readouterr().out
         assert "Derived bindings for working set 'myws':" in out
         assert "workset.common[/home/agent/shared/docs]" in out
+
+
+class TestAPreviewRowTheBoxDecides:
+    """Design 1C: a source that reads a ``box.*`` key or a box-only anchor previews
+    as ``(depends on the box)``; any box may override it, so no box-less value is right."""
+
+    @pytest.mark.parametrize("src", ["/opt/@box.image", "@meta.box.path/x"])
+    def test_a_box_dependent_source_says_so(self, config_file, workset, capsys, src):
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.settings_launch import DEPENDS_ON_THE_BOX
+
+        dump_doc(workset.root / "workset.yaml", {"workset": {"bindings": {"ro": {
+            "/home/agent/dep": [src], "/home/agent/plain": ["/srv/data"],
+        }}}})
+        assert _run_share_list_effective() == 0
+        out = capsys.readouterr().out
+        assert f"{DEPENDS_ON_THE_BOX} -> /home/agent/dep" in out
+        assert "/srv/data -> /home/agent/plain" in out

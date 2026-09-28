@@ -166,22 +166,25 @@ def _is_whole_value_var(value: str) -> str | None:
 #: the raw destination last) → the ``@``-refs in its source that resolved to a present
 #: ``None`` and made the entry ``None`` (spec §0).
 NullSources = dict[tuple[str, ...], tuple[str, ...]]
+#: Each expanded leaf's path → every key its value read, references followed through.
+RefsRead = dict[tuple[str, ...], frozenset[str]]
 
 
 @overload
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None = None,
+    refs_read: RefsRead | None = None,
 ) -> KeyStore: ...
 @overload
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool,
-    null_sources: NullSources | None = None,
+    null_sources: NullSources | None = None, refs_read: RefsRead | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]: ...
 
 
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False,
-    null_sources: NullSources | None = None,
+    null_sources: NullSources | None = None, refs_read: RefsRead | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]:
     """Expand *snapshot*'s tokens to terminals, returning a FRESH KeyStore (S19).
 
@@ -212,6 +215,8 @@ def expand(
     expanded = expander.run()
     if null_sources is not None:
         null_sources.update(expander.null_sources)
+    if refs_read is not None:
+        refs_read.update(expander.refs_read)
     if collect_errors:
         return expanded, expander.errors
     return expanded
@@ -240,6 +245,9 @@ class _Expander:
         self.errors: dict[str, str] = {}
         # E2: a bind entry made ``None`` by its source → the refs that did it.
         self.null_sources: NullSources = {}
+        self.refs_read: RefsRead = {}
+        self._deps: dict[str, frozenset[str]] = {}
+        self._reading: list[set[str]] = []
 
     # ------------------------------------------------------------------ #
     # Tree walk — build the fresh expanded snapshot                      #
@@ -276,28 +284,34 @@ class _Expander:
             if isinstance(value, KeyStore):
                 out[key] = self._expand_node(value, path=child_path)
                 continue
-            if self._collect_errors:
-                # LENIENT (Q9): a defect anywhere in THIS leaf's transitive chain
-                # surfaces here. Record it against the OWNING leaf path and OMIT
-                # the leaf; every clean leaf still resolves. STRICT never enters.
-                try:
+            self._reading.append(set())
+            try:
+                if self._collect_errors:
+                    # LENIENT (Q9): a defect anywhere in THIS leaf's transitive chain
+                    # surfaces here. Record it against the OWNING leaf path and OMIT
+                    # the leaf; every clean leaf still resolves. STRICT never enters.
+                    try:
+                        out_key = self._expand_dest_key(
+                            key, value, chain=child_path, seed=seed_map,
+                        )
+                        if out_key is None:
+                            continue  # a seeded layer with a <None> dest is SKIPPED (§2a).
+                        resolved = self._expand_leaf(value, path=child_path)
+                    except (_LenientDefect, SettingsError) as exc:
+                        reason = exc.reason if isinstance(exc, _LenientDefect) else str(exc)
+                        self.errors[".".join(child_path)] = reason
+                        continue
+                else:
                     out_key = self._expand_dest_key(
                         key, value, chain=child_path, seed=seed_map,
                     )
                     if out_key is None:
                         continue  # a seeded layer with a <None> dest is SKIPPED (§2a).
                     resolved = self._expand_leaf(value, path=child_path)
-                except (_LenientDefect, SettingsError) as exc:
-                    reason = exc.reason if isinstance(exc, _LenientDefect) else str(exc)
-                    self.errors[".".join(child_path)] = reason
-                    continue
-            else:
-                out_key = self._expand_dest_key(
-                    key, value, chain=child_path, seed=seed_map,
-                )
-                if out_key is None:
-                    continue  # a seeded layer with a <None> dest is SKIPPED (§2a).
-                resolved = self._expand_leaf(value, path=child_path)
+            finally:
+                read = self._reading.pop()
+            if read:
+                self.refs_read[(*path, out_key)] = frozenset(read)
             if resolved is _ABSENT:
                 continue  # whole-value ref to an absent key → drop this key (§6b).
             if isinstance(value, BindEntry) and dict.__contains__(out, out_key):
@@ -533,6 +547,9 @@ class _Expander:
                 # so the pass TERMINATES rather than re-entering the ref.
                 raise _LenientDefect(f"cyclic @-reference: {cycle}")
             raise SettingsError(f"Cyclic @-reference: {cycle}")
+        for reading in self._reading:
+            reading.add(dotted)
+            reading.update(self._deps.get(dotted, ()))
         if dotted in self._memo:
             return self._memo[dotted]
         if len(chain) > MAX_REF_DEPTH:
@@ -561,19 +578,26 @@ class _Expander:
         # ⚑ A nested KeyStore referent is degenerate, but it MUST route through
         # ``_expand_node``: a bare ``resolved = raw`` would ALIAS the input tree
         # (S19) and would leave the subtree's own tokens unexpanded.
-        if isinstance(raw, KeyStore):
-            resolved: StoreValue | _Absent = self._expand_node(
-                raw, path=tuple(dotted.split("."))
-            )
-        elif isinstance(raw, Bind):
-            resolved = self._expand_bind(raw, chain=chain)
-        elif isinstance(raw, BindEntry):
-            # The entry alone: its destination is the KEY, unreachable by value ref.
-            resolved = self._expand_bind_entry(raw, chain=chain)
-        elif isinstance(raw, str):
-            resolved = self._expand_str(raw, space="host", chain=chain)
-        else:
-            resolved = raw  # int / float / bool / None / list — verbatim terminal.
+        self._reading.append(set())
+        try:
+            if isinstance(raw, KeyStore):
+                resolved: StoreValue | _Absent = self._expand_node(
+                    raw, path=tuple(dotted.split("."))
+                )
+            elif isinstance(raw, Bind):
+                resolved = self._expand_bind(raw, chain=chain)
+            elif isinstance(raw, BindEntry):
+                # The entry alone: its destination is the KEY, unreachable by value ref.
+                resolved = self._expand_bind_entry(raw, chain=chain)
+            elif isinstance(raw, str):
+                resolved = self._expand_str(raw, space="host", chain=chain)
+            else:
+                resolved = raw  # int / float / bool / None / list — verbatim terminal.
+        finally:
+            deps = self._reading.pop()
+        self._deps[dotted] = frozenset(deps)
+        for reading in self._reading:
+            reading.update(deps)
         self._memo[dotted] = resolved
         return resolved
 
