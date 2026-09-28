@@ -102,11 +102,7 @@ class AgentSelection:
 
     @property
     def selection_level(self) -> "dict[str, object] | None":
-        """The §1A top-most level to install, or ``None`` for a NO-AGENT box.
-
-        ⚑ A no-agent box installs NOTHING, and in particular must NOT be pinned to
-        the ``"shell"`` slot — that would name a default nobody set.
-        """
+        """The §1A top-most level to install; a launch with no selection pins ``shell`` itself."""
         return {SELECTION_KEY: self.node} if self.node else None
 
 
