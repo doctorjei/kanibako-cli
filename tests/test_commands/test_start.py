@@ -350,6 +350,35 @@ class TestResolveBeforeImage:
             m.resolve_agent.assert_not_called()
 
 
+class TestBoxScalarsResolveAfterSelection:
+    """1E: the launch reads its box scalars under the agent it selected, so selection runs first."""
+
+    _kwargs = staticmethod(lambda **over: {**dict(
+        project_dir=None, entrypoint=None, image_override=None, new_session=False,
+        safe_mode=False, resume_mode=False, extra_args=[],
+    ), **over})
+
+    def test_a_selection_refusal_comes_before_a_box_scalar_refusal(self, start_mocks):
+        """Two faults, one in each read: ``select_agent``'s refusal is the one reported.
+        (Mutation: move the box-scalar resolve back above selection → the other error.)"""
+        from kanibako.errors import AgentNoDefaultError
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with start_mocks() as m:
+            m.resolve_agent.side_effect = AgentNoDefaultError("no default agent")
+            m.load_merged_config.side_effect = SettingsError("a config: table")
+            with pytest.raises(AgentNoDefaultError):
+                _run_container(**self._kwargs(project_dir="/box"))
+
+    def test_the_box_scalars_resolve_under_the_selected_agent(self, start_mocks):
+        with start_mocks() as m:
+            rc = _run_container(**self._kwargs(project_dir="/box"))
+        assert rc == 0
+        call = m.load_merged_config.call_args
+        assert call.kwargs["agent_name"] == "claude"
+        assert call.kwargs["inputs"].meta_identity.get("meta.agent.claude.name")
+
+
 class TestBootstrapNoneInRunContainer:
     """`none` opt-out at the _run_container consumer: the AGENT-scope ``bootstrap``
     value resolves to ``none`` (spec §2d) and forces a clean error under

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Literal, NamedTuple
 if TYPE_CHECKING:
     from kanibako.settings.agent_select import AgentSelection
     from kanibako.persona_store import PersonaBundle
-    from kanibako.settings.config import BootstrapConfig
+    from kanibako.settings.config import BootstrapConfig, KanibakoConfig
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.paths import ProjectPaths, StandardPaths
     from kanibako.settings.settings_launch import AuthSource
@@ -2668,22 +2668,16 @@ def _run_container(
     # Orphan reporting lives on ``kanibako box list`` (which names ``box
     # remap``/``box rm``); a create-time hint, if wanted, belongs on ``create``.
 
-    # Load merged config (global + workset + project). The box scalars resolve
-    # through the KEYSPACE inside the loader (B6); the two flags ride its §1A
-    # CLI level via this transport (translated by the ONE builder inside).
+    # The two flags ride the box-scalar resolve's §1A CLI level via this transport
+    # (translated by the ONE builder inside). That resolve runs once the agent is
+    # selected, below.
     _cli_scalar_overrides: "dict[str, object]" = {}
     if image_override:
         _cli_scalar_overrides["box_image"] = image_override
     if share_images:
         _cli_scalar_overrides["box_share_images"] = True
     project_toml, workset_path = box_workset_settings_paths(proj)
-    merged = load_merged_config(
-        project_toml,
-        workset_path=workset_path,
-        cli_overrides=_cli_scalar_overrides or None,
-    )
 
-    image = merged.box_image
     # ``bootstrap`` is AGENT-scope (spec §2d), so it cannot be read here — the agent
     # is not resolved yet.  The authoritative per-launch value, and its
     # ``none``-opt-out persistence guard, are resolved below once it is.
@@ -3020,6 +3014,11 @@ def _run_container(
     agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
     selection_level = _launch_selection_level(agent_selection)
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
+
+    # The box scalars (the image the rig prep below reads), resolved through the
+    # keyspace under the agent the launch snapshot uses, so the two cannot disagree.
+    merged = _box_scalars(std, proj, agent_id, system_settings_path, _cli_scalar_overrides)
+    image = merged.box_image
 
     # AGENT-scope ``bootstrap`` (spec §2d): the AUTHORITATIVE per-launch value,
     # resolved off the SAME settings snapshot the launch reads for ``model`` /
@@ -3466,10 +3465,8 @@ def _run_container(
         # EXISTING box the probe already had the real path; this recomputes the
         # same values — a harmless no-op.)
         project_toml, workset_path = box_workset_settings_paths(proj)
-        merged = load_merged_config(
-            project_toml,
-            workset_path=workset_path,
-            cli_overrides=_cli_scalar_overrides or None,
+        merged = _box_scalars(
+            std, proj, agent_id, system_settings_path, _cli_scalar_overrides,
         )
 
         # §1A CREATE EXCEPTION — the DEFERRED arm's call to the one seam (ruling
@@ -6726,6 +6723,20 @@ def _merge_default_categories(
                 )
             origins[(key, dest)] = family
             merged[dest] = entry
+
+
+def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig:
+    """The box scalars of *proj*'s launch, resolved under the selected *agent_id*."""
+    from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
+
+    return load_merged_config(
+        cli_overrides=cli_overrides or None,
+        inputs=resolve_inputs(
+            subject=ResolveSubject.BOX, std=std, proj=proj,
+            agent_name=agent_id, system_path=system_path,
+        ),
+        agent_name=agent_id,
+    )
 
 
 def _resolve_launch_snapshot(
