@@ -7,6 +7,7 @@ import pytest
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.errors import ConfigError
 from kanibako.settings.config import (
+    user_config_file,
     BOX_META_FILE,
     KanibakoConfig,
     _BOOL_FALSE,
@@ -16,7 +17,6 @@ from kanibako.settings.config import (
     coerce_bool,
     config_file_path,
     load_config,
-    load_merged_config,
     read_box_enable_vault,
     read_setup_completed,
     read_agent_settings,
@@ -25,6 +25,7 @@ from kanibako.settings.config import (
     write_project_config,
     write_agent_setting,
 )
+from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 
 from tests.support.filenames import CONFIG_FILENAME
@@ -54,7 +55,7 @@ class TestLoadConfig:
         path = tmp_path / "test.yaml"
         write_global_config(path)
         assert load_config(path).config_paths == {}
-        assert load_merged_config(path).box_image == KanibakoConfig().box_image
+        assert load_merged_config().box_image == KanibakoConfig().box_image
 
     def test_empty_file_resolves_identically_to_the_old_verbatim_defaults(
         self, tmp_path,
@@ -89,8 +90,8 @@ class TestLoadConfig:
         assert resolve_system_paths(load_config(sparse).config_paths, **kw) == \
             resolve_system_paths(load_config(verbose).config_paths, **kw)
         # ...and the merged scalar tier agrees too: the box defaults were the third copy.
-        assert load_merged_config(sparse).box_image == \
-            load_merged_config(verbose).box_image
+        assert load_merged_config().box_image == \
+            load_merged_config().box_image
 
     def test_the_old_three_table_file_refuses_and_names_both_tables(self, tmp_path):
         """The file as it was written until 2026-08-26 is now an ERROR, not an ignore.
@@ -137,14 +138,14 @@ class TestLoadConfig:
         """
         box_file = tmp_path / BOX_META_FILE
         box_file.write_text("box:\n  image: null\n")
-        merged = load_merged_config(tmp_path / CONFIG_FILENAME, box_file)
+        merged = load_merged_config(box_file)
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_empty_value_resolves_to_default(self, tmp_path):
         """An empty ``image:`` (None) resolves the key to its built-in default."""
         box_file = tmp_path / BOX_META_FILE
         box_file.write_text("box:\n  image:\n")
-        merged = load_merged_config(tmp_path / CONFIG_FILENAME, box_file)
+        merged = load_merged_config(box_file)
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_config_table_populates_config_paths(self, tmp_path):
@@ -173,10 +174,11 @@ class TestLayer1FileCannotHaveSettings:
 
     def test_a_box_table_in_the_layer1_file_refuses_and_names_it(self, tmp_path):
         """The planted table stops the read, naming the file and BOTH keys."""
-        cf = tmp_path / CONFIG_FILENAME
+        cf = user_config_file()
+        cf.parent.mkdir(parents=True, exist_ok=True)
         cf.write_text('box:\n  image: "layer1:planted"\n  share_images: true\n')
         with pytest.raises(ConfigError) as exc:
-            load_merged_config(cf)
+            load_merged_config()
         assert str(cf) in str(exc.value)
         assert "box.image" in str(exc.value)
         assert "box.share_images" in str(exc.value)
@@ -219,7 +221,7 @@ class TestLayer1FileCannotHaveSettings:
         write_global_config(cf)
         box_file = tmp_path / BOX_META_FILE
         box_file.write_text('box:\n  image: "from-the-box-tier"\n')
-        merged = load_merged_config(cf, box_file)
+        merged = load_merged_config(box_file)
         assert merged.box_image == "from-the-box-tier"
 
     def test_the_config_table_alone_is_accepted(self, tmp_path):
@@ -410,7 +412,7 @@ class TestBoxScalarDefaultsFloor:
         ``launch.shells.resolve_box_shell`` reads ``box_shell`` and runs it; a stringified
         ``None`` would launch a program called ``None``.
         """
-        cfg = load_merged_config(tmp_path / "kanibako.cfg")
+        cfg = load_merged_config()
         assert cfg.box_shell == ""
 
     def test_false_survives_because_it_is_a_value(self):
@@ -855,7 +857,7 @@ class TestMergedConfig:
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
 
-        merged = load_merged_config(global_path, project_path)
+        merged = load_merged_config(project_path)
         assert merged.box_image == "my-image:v2"
 
     def test_cli_overrides_all(self, tmp_path):
@@ -865,9 +867,7 @@ class TestMergedConfig:
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
 
-        merged = load_merged_config(
-            global_path,
-            project_path,
+        merged = load_merged_config(project_path,
             cli_overrides={"box_image": "cli-image:v3"},
         )
         assert merged.box_image == "cli-image:v3"
@@ -880,8 +880,8 @@ class TestMergedConfig:
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
 
-        baseline = load_merged_config(global_path, project_path)
-        with_none = load_merged_config(global_path, project_path, workset_path=None)
+        baseline = load_merged_config(project_path)
+        with_none = load_merged_config(project_path, workset_path=None)
         assert with_none == baseline
         assert with_none.box_image == "my-image:v2"
 
@@ -892,7 +892,7 @@ class TestMergedConfig:
         write_global_config(global_path)
         write_project_config(workset_path, "ws-image:v1")
 
-        merged = load_merged_config(global_path, workset_path=workset_path)
+        merged = load_merged_config(workset_path=workset_path)
         assert merged.box_image == "ws-image:v1"
 
     def test_project_overrides_workset(self, tmp_path):
@@ -904,8 +904,7 @@ class TestMergedConfig:
         write_project_config(workset_path, "ws-image:v1")
         write_project_config(project_path, "proj-image:v2")
 
-        merged = load_merged_config(
-            global_path, project_path, workset_path=workset_path
+        merged = load_merged_config(project_path, workset_path=workset_path
         )
         assert merged.box_image == "proj-image:v2"
 
@@ -916,9 +915,7 @@ class TestMergedConfig:
         write_global_config(global_path)
         write_project_config(workset_path, "ws-image:v1")
 
-        merged = load_merged_config(
-            global_path,
-            workset_path=workset_path,
+        merged = load_merged_config(workset_path=workset_path,
             cli_overrides={"box_image": "cli-image:v3"},
         )
         assert merged.box_image == "cli-image:v3"
@@ -932,9 +929,8 @@ class TestMergedConfig:
         write_global_config(global_path)
         write_project_config(project_path, "my-image:v2")
 
-        baseline = load_merged_config(global_path, project_path)
-        with_missing = load_merged_config(
-            global_path, project_path, workset_path=missing_workset
+        baseline = load_merged_config(project_path)
+        with_missing = load_merged_config(project_path, workset_path=missing_workset
         )
         assert with_missing == baseline
 
@@ -961,20 +957,17 @@ class TestScalarOverlayPrecedence:
         assert not hasattr(config_mod, "machine_config_path")
 
     def test_a_settings_tier_beats_builtin_defaults(self, tmp_path):
-        global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: user-image:v2\n")
-        merged = load_merged_config(global_path, workset_path=workset_path)
+        merged = load_merged_config(workset_path=workset_path)
         assert merged.box_image == "user-image:v2"
 
     def test_full_precedence_workset_project(self, tmp_path):
-        global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: ws:3\n  shell: bash\n")
         project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image: proj:4\n")
-        merged = load_merged_config(
-            global_path, project_path, workset_path=workset_path
+        merged = load_merged_config(project_path, workset_path=workset_path
         )
         # project wins for image; shell only set at the workset tier so it survives.
         # (⮕ P7: this used ``agent_name``, a key that no longer exists — the agent
@@ -985,20 +978,18 @@ class TestScalarOverlayPrecedence:
 
     def test_missing_global_file_is_empty_level(self, tmp_path):
         # No file at all → built-in defaults.
-        merged = load_merged_config(tmp_path / "absent.yaml")
+        merged = load_merged_config()
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_higher_layer_overrides_lower(self, tmp_path):
-        global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: img:workset\n")
-        merged = load_merged_config(global_path, workset_path=workset_path)
+        merged = load_merged_config(workset_path=workset_path)
         assert merged.box_image == "img:workset"
         # A box layer overrides the workset value (presence-based).
         project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image: img:box\n")
-        merged2 = load_merged_config(
-            global_path, project_path, workset_path=workset_path
+        merged2 = load_merged_config(project_path, workset_path=workset_path
         )
         assert merged2.box_image == "img:box"
 
@@ -1006,40 +997,34 @@ class TestScalarOverlayPrecedence:
         """A layer setting a field to the built-in default wins over a lower
         layer's non-default (presence beats the old ``!= default`` guard)."""
         default_img = "ghcr.io/doctorjei/kanibako-oci:latest"
-        global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / BOX_META_FILE
         # Explicitly set the built-in default — must win.
         project_path.write_text(f"box:\n  image: {default_img}\n")
-        merged = load_merged_config(
-            global_path, project_path, workset_path=workset_path
+        merged = load_merged_config(project_path, workset_path=workset_path
         )
         assert merged.box_image == default_img
 
     def test_null_resets_to_default(self, tmp_path):
         """A YAML ``null`` in a more-specific layer resets to the built-in
         default, discarding a lower layer's non-default value."""
-        global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image: null\n")
-        merged = load_merged_config(
-            global_path, project_path, workset_path=workset_path
+        merged = load_merged_config(project_path, workset_path=workset_path
         )
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
     def test_empty_value_resets_to_default(self, tmp_path):
         """An empty ``foo:`` (parses to None) also resets to the built-in
         default, same as an explicit ``null``."""
-        global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image:\n")
-        merged = load_merged_config(
-            global_path, project_path, workset_path=workset_path
+        merged = load_merged_config(project_path, workset_path=workset_path
         )
         assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
 
@@ -1050,28 +1035,24 @@ class TestScalarOverlayPrecedence:
 
         (⮕ P7: was written against ``box_agent_name``, retired with spec §2b; the
         SHAPE under test is the presence-based scalar overlay, not that key.)"""
-        global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text('box:\n  shell: foo\n')
         project_path = tmp_path / BOX_META_FILE
         # Quoted empty string is a real value, not null.
         project_path.write_text('box:\n  shell: ""\n')
-        merged = load_merged_config(
-            global_path, project_path, workset_path=workset_path
+        merged = load_merged_config(project_path, workset_path=workset_path
         )
         assert merged.box_shell == ""
         # Sanity: a non-empty lower value is what we are overriding away from.
-        merged_ws_only = load_merged_config(global_path, workset_path=workset_path)
+        merged_ws_only = load_merged_config(workset_path=workset_path)
         assert merged_ws_only.box_shell == "foo"
 
     def test_higher_layer_overrides_after_null(self, tmp_path):
         """A null reset is not terminal: a higher layer (CLI override) can set a
         concrete value afterward and it wins."""
-        global_path = tmp_path / "global.yaml"
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: null\n")
-        merged = load_merged_config(
-            global_path, workset_path=workset_path,
+        merged = load_merged_config(workset_path=workset_path,
             cli_overrides={"box_image": "img:cli"},
         )
         assert merged.box_image == "img:cli"
@@ -1295,8 +1276,7 @@ class TestTheTwoBoxScalarResolvesAgree:
         narrow = resolve_box_enable_vault(
             std.config_file, box_path=box_file, workset_path=ws_file,
         )
-        merged = load_merged_config(
-            std.config_file, box_file, workset_path=ws_file,
+        merged = load_merged_config(box_file, workset_path=ws_file,
         ).box_enable_vault
         assert narrow is expected
         assert narrow == merged, (
@@ -1523,61 +1503,60 @@ class TestMergedConfigKeyspaceResolve:
         """
         gp = self._global(tmp_path, monkeypatch)
         gp.write_text("")
-        merged = load_merged_config(gp, None)
+        merged = load_merged_config(None)
         assert merged.box_image == KanibakoConfig().box_image
 
         gp.write_text("box:\n  image: layer1:planted\n")
         with pytest.raises(ConfigError) as exc:
-            load_merged_config(gp, None)
+            load_merged_config(None)
         assert "box.image" in str(exc.value)
 
     def test_box_tier_beats_workset_beats_global(self, tmp_path, monkeypatch):
-        gp = self._global(tmp_path, monkeypatch)
+        self._global(tmp_path, monkeypatch)
         ws = tmp_path / "wconfig.yaml"
         ws.write_text("box:\n  image: ws-img:2\n")
         bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  image: box-img:3\n  shell: zsh\n")
-        assert load_merged_config(gp, None, workset_path=ws).box_image == "ws-img:2"
-        merged = load_merged_config(gp, bt, workset_path=ws)
+        assert load_merged_config(None, workset_path=ws).box_image == "ws-img:2"
+        merged = load_merged_config(bt, workset_path=ws)
         assert merged.box_image == "box-img:3"
         assert merged.box_shell == "zsh"  # box.shell rides the same resolve
 
     def test_system_settings_file_box_table_now_resolves(self, tmp_path, monkeypatch):
         """``kanibako system set box.image=…`` has always written the
         ``box:`` table of global/settings.yaml — stranded before B6, live now."""
-        gp = self._global(tmp_path, monkeypatch)
+        self._global(tmp_path, monkeypatch)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text("box:\n  image: sys-img:4\n")
-        assert load_merged_config(gp, None).box_image == "sys-img:4"
+        assert load_merged_config(None).box_image == "sys-img:4"
         # ...but every settings-file tier above it still wins.
         bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  image: box-img:3\n")
-        assert load_merged_config(gp, bt).box_image == "box-img:3"
+        assert load_merged_config(bt).box_image == "box-img:3"
 
     def test_cli_level_outranks_every_file(self, tmp_path, monkeypatch):
-        gp = self._global(tmp_path, monkeypatch)
+        self._global(tmp_path, monkeypatch)
         bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  image: box-img:3\n")
-        merged = load_merged_config(
-            gp, bt,
+        merged = load_merged_config(bt,
             cli_overrides={"box_image": "cli-img:9", "box_share_images": True},
         )
         assert merged.box_image == "cli-img:9"
         assert merged.box_share_images is True
 
     def test_share_images_resolves_as_a_bool_from_files(self, tmp_path, monkeypatch):
-        gp = self._global(tmp_path, monkeypatch)
+        self._global(tmp_path, monkeypatch)
         bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  share_images: true\n")
-        assert load_merged_config(gp, bt).box_share_images is True
+        assert load_merged_config(bt).box_share_images is True
 
     def test_agentless_resolve_without_any_agent(self, tmp_path, monkeypatch):
         """The resolve is AGENT-LESS by construction (the ``kanibako shell``
         requirement): nothing here selects or consults an agent, and a host with
         zero agents still resolves the box scalars."""
-        gp = self._global(tmp_path, monkeypatch)
-        merged = load_merged_config(gp, None)
+        self._global(tmp_path, monkeypatch)
+        merged = load_merged_config(None)
         assert merged.box_image == KanibakoConfig().box_image
 
 
@@ -1654,7 +1633,7 @@ class TestMalformedSettingsFileIsNamed:
     def test_boxless_merged_resolve_raises_the_named_error(
         self, tmp_path, monkeypatch,
     ):
-        """The BOX-LESS shape (``load_merged_config(cf, None)``) — the one every
+        """The BOX-LESS shape (``load_merged_config(None)``) — the one every
         rig/setup/baseline call site uses — surfaces the named error."""
         from kanibako.errors import ConfigError
 
@@ -1668,7 +1647,7 @@ class TestMalformedSettingsFileIsNamed:
         ssp.write_text(self._CORRUPT)
 
         with pytest.raises(ConfigError) as exc:
-            load_merged_config(gp, None)
+            load_merged_config(None)
         assert str(ssp) in str(exc.value)
 
     def test_boxless_verb_exits_rc1_with_a_clean_message(
@@ -1676,7 +1655,7 @@ class TestMalformedSettingsFileIsNamed:
     ):
         """E2E through ``main(["rig", "list"])``: rc1 + ``Error: …``, no traceback.
 
-        ``rig list`` is a BOX-LESS verb whose ``load_merged_config(cf, None)``
+        ``rig list`` is a BOX-LESS verb whose ``load_merged_config(None)``
         reaches the corrupt system settings file; before the normalization it
         died with a ``yaml.parser.ParserError`` traceback.
         """

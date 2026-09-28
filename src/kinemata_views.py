@@ -500,7 +500,7 @@ def existing_box_termini(
     """
     from kanibako.commands import start as start_cmd
     from kanibako.settings.agent_select import AgentSelection
-    from kanibako.settings.config import load_merged_config
+    from kanibako.settings.settings_launch import load_merged_config
     from kanibako.settings.paths import box_workset_settings_paths
 
     box_path, workset_path = box_workset_settings_paths(proj)
@@ -519,9 +519,9 @@ def existing_box_termini(
                 collected.append((f"{label}#{offset}", snapshot, cli_level))
 
         # _run_container — every launch loads the merged config before anything else,
-        # and its box-scalar resolve (config._resolve_box_scalars) is a real resolve.
+        # and its box-scalar resolve (settings_launch.resolve_box_scalars) is a real resolve.
         drive("load_merged_config", lambda: load_merged_config(
-            config_file, box_path, workset_path=workset_path, cli_overrides=None,
+            box_path, workset_path=workset_path, cli_overrides=None,
         ))
         # _run_container's _bootstrap_choice / _effective_transform — the two focused
         # agent-behavior resolves (_agent_scalar_pick) a launch runs ahead of the main

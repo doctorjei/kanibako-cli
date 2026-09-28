@@ -477,10 +477,9 @@ def run_setup(args: argparse.Namespace) -> int:
     from kanibako.commands.diagnose import _check_image
 
     try:
-        from kanibako.settings.config import user_config_file, load_merged_config
+        from kanibako.settings.settings_launch import load_merged_config
 
-        cf = user_config_file()
-        merged = load_merged_config(cf, None)
+        merged = load_merged_config()
         status, detail = _check_image(merged)
         if status == "ok":
             print(f"  [ok] {detail}")

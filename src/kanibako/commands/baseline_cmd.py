@@ -155,7 +155,7 @@ def run_verify(args: argparse.Namespace) -> int:
 
     Exit code: 1 if any executable is missing in any probed image, else 0.
     """
-    from kanibako.settings.config import user_config_file, load_merged_config
+    from kanibako.settings.settings_launch import load_merged_config
     from kanibako.runtime.container import ContainerRuntime
     from kanibako.errors import ContainerError
 
@@ -180,8 +180,7 @@ def run_verify(args: argparse.Namespace) -> int:
     else:
         image = getattr(args, "image", None)
         if not image:
-            cf = user_config_file()
-            merged = load_merged_config(cf, None)
+            merged = load_merged_config()
             image = merged.box_image
         images = [image]
 

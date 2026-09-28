@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -295,7 +295,7 @@ def load_config(path: Path) -> BootstrapConfig:
     RULING: a Layer-1 read has no settings field to return.  It was a GENERAL document
     reader — the same call read the settings file — which is how the Layer-1 file came to
     hand back a ``box.image`` it may not carry.  The box scalars are read from SETTINGS
-    files by :func:`load_merged_config`; a settings file's ``system.*`` path set-values by
+    files by ``settings_launch.load_merged_config``; a settings file's ``system.*`` path set-values by
     :func:`system_path_set_values`.
     """
     return BootstrapConfig(config_paths=bootstrap_config_paths(path))
@@ -313,10 +313,8 @@ def box_scalar_defaults_floor() -> dict[str, object]:
     than deleted.  🛑 Do not delete the floor itself: ``@box.image`` resolves through it,
     and without it a stored ``@box.image`` dangles at launch AND at set time.
 
-    Three consumers, deliberately one recipe: ``settings_launch.build_launch_snapshot``
-    (every BOX resolve, :func:`_resolve_box_scalars` included),
-    :func:`_narrow_box_scalar_cascade`, and ``config_interface._category_set_lookups``
-    (the set-time E3 probe).
+    One recipe for ``settings_launch.fold_floor`` (every resolve),
+    :func:`_narrow_box_scalar_cascade` and ``config_interface._category_set_lookups``.
     """
     defaults = KanibakoConfig()
     floor: dict[str, object] = {}
@@ -326,129 +324,10 @@ def box_scalar_defaults_floor() -> dict[str, object]:
         # §2b ``box.shell | <None>``), and the floor SUPPLIES it as a present ``None``
         # ([R177]) — never ``""``, which is a value, and which a ``default_categories``
         # fold drops as a suppression, so ``@box.shell`` would dangle.  A present ``None`` does not
-        # reach the flat field: :func:`_resolve_box_scalars` skips it, leaving ``""``
+        # reach the flat field: ``settings_launch.resolve_box_scalars`` skips it, leaving ``""``
         # (auto-detect).  ⚑ ``False`` is a VALUE and survives — ``False == ""`` is False.
         floor[dotted] = None if value == "" else value
     return floor
-
-
-def _resolve_box_scalars(
-    global_path: Path,
-    *,
-    workset_path: Path | None,
-    box_path: Path | None,
-    cli_overrides: "dict[str, object] | None",
-) -> dict[str, object]:
-    """Resolve the box scalars through the KEYSPACE — the ONE resolve behind ``load_merged_config``.
-
-    ⚑ Lazy imports throughout: ``paths`` and ``settings_assemble`` both import
-    this module at module load, so hoisting any of these closes the cycle.
-    """
-    from kanibako.agent_ref import GENERAL_SLOT
-    from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.paths import load_system_config, host_xdg_map, xdg
-    from kanibako.settings.settings_cli_level import build_cli_level
-    from kanibako.settings.settings_launch import build_launch_snapshot
-    from kanibako.settings.settings_resolve import ResolveCtx
-
-    # Path resolution only, deliberately NOT load_std_paths (which materializes
-    # the store). ⚑ Not mkdir-free: an unset XDG_RUNTIME_DIR makes one dir here.
-    # ⚑ SPELLED HERE rather than through :func:`system_settings_path` because THIS
-    # caller is handed *global_path*; the shared helper derives the Layer-1 file from
-    # ``$XDG_CONFIG_HOME``, which would ignore the argument.
-    system_path = load_system_config(
-        global_path, data_home=xdg("XDG_DATA_HOME", ".local/share"),
-        home=Path.home(),
-    )["config.settings"]
-
-    # ⚑ THE DECLARED-DEFAULT FLOOR, not the Layer-1 file's ``box:`` table.  That table
-    # WAS this floor ("risk 1": values the settings cascade does not read would be
-    # STRANDED) until 2026-08-26, when Jei ruled the file cannot carry settings at all.
-    # With nothing settings-shaped stored there, there is nothing to strand.  It is
-    # folded by ``build_launch_snapshot`` itself, as for every BOX resolve.
-
-    overrides = cli_overrides or {}
-    image_val = overrides.get("box_image")
-    cli_level = build_cli_level(
-        image=str(image_val) if image_val else None,
-        share_images=bool(overrides.get("box_share_images", False)),
-    )
-
-    snapshot = build_launch_snapshot(
-        agent_name=GENERAL_SLOT,
-        ctx=ResolveCtx(
-            agent_name=GENERAL_SLOT, workset_name=None,
-            host_home=str(Path.home()), xdg=host_xdg_map(),
-        ),
-        system_path=system_path if system_path.exists() else None,
-        agent_path=None,
-        workset_path=workset_path,
-        box_path=box_path,
-        cli_level=cli_level,
-        # ⚑ NO PERSONA TIER, deliberately — this resolve is AGENT-LESS.
-    )
-
-    resolved: dict[str, object] = {}
-    for dotted in _BOX_SCALAR_FIELDS:
-        node: object = snapshot
-        for seg in dotted.split("."):
-            if not isinstance(node, KeyStore):
-                node = None
-                break
-            node = dict.get(node, seg)
-        if node is not None:
-            resolved[dotted] = node
-    return resolved
-
-
-def load_merged_config(
-    global_path: Path,
-    project_path: Path | None = None,
-    *,
-    workset_path: Path | None = None,
-    cli_overrides: "dict[str, object] | None" = None,
-) -> KanibakoConfig:
-    """Load global config, overlay workset then project then CLI, then run the B6 box-scalar resolve."""
-    defaults = KanibakoConfig()
-
-    def _overlay_scalars(cfg: KanibakoConfig, path: Path) -> None:
-        """Overlay one file layer's PRESENT scalar/bool fields onto *cfg*."""
-        for k, v in _present_scalar_fields(path).items():
-            if v is None:
-                setattr(cfg, k, getattr(defaults, k))
-            else:
-                setattr(cfg, k, v)
-
-    # ⚑⚑ THE LAYER-1 FILE IS NOT A SETTINGS SOURCE (Jei, 2026-08-26: "kanibako_config.yaml
-    # <-- cannot have settings. Period.").  It WAS the least-specific FILE source here, and
-    # its ``box:`` table overrode the declared defaults; now the scalars START at those
-    # defaults and the first thing that can move them is the WORKSET tier.
-    # ⚑ *global_path* is still a PARAMETER, and it is not dead: it is what
-    # :func:`_resolve_box_scalars` locates the SYSTEM tier from, below.  What is gone is the
-    # ``config_paths`` field this function used to fill from it — a settings object never
-    # carried Layer 1 legitimately (:class:`BootstrapConfig`, 2026-08-31).
-    cfg = KanibakoConfig()
-    if workset_path and workset_path.exists():
-        _overlay_scalars(cfg, workset_path)
-    if project_path and project_path.exists():
-        _overlay_scalars(cfg, project_path)
-    if cli_overrides:
-        valid_keys = {fld.name for fld in fields(cfg)}
-        for k, v in cli_overrides.items():
-            if k in valid_keys:
-                setattr(cfg, k, v)
-
-    # KEYSPACE resolve (B6): a resolved value wins; ABSENT keeps the flat value.
-    resolved = _resolve_box_scalars(
-        global_path,
-        workset_path=workset_path, box_path=project_path,
-        cli_overrides=cli_overrides,
-    )
-    for dotted, field_name in _BOX_SCALAR_FIELDS.items():
-        if dotted not in resolved:
-            continue
-        setattr(cfg, field_name, _typed_box_scalar(defaults, field_name, resolved[dotted]))
-    return cfg
 
 
 def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) -> object:
@@ -478,11 +357,7 @@ def resolve_box_enable_vault(global_path: Path, *, box_path: Path,
                              workset_path: Path | None) -> bool:
     """``box.enable_vault`` through the FULL cascade — base < system < workset < box.
 
-    ⚑ THE TIER FIX (2026-08-29).  :func:`read_box_enable_vault` opens two files and only
-    two, so the BASE floor and the SYSTEM tier were dropped in silence: a
-    ``kanibako system set box.enable_vault=false`` returned 0, persisted, was echoed back
-    by ``system get``, and every box still came up with the vault created and mounted.
-    Here they are cascade LEVELS.  ⚑ Called from the three ``paths.py`` resolvers rather
+    ⚑ Called from the three ``paths.py`` resolvers rather
     than off ``load_merged_config``, because those run BEFORE it and are what fill
     ``ProjectPaths.enable_vault``, which ``core_defaults`` reads to decide whether the vault
     bind rows exist at all — reading the finished snapshot to decide what goes into it is
@@ -490,7 +365,7 @@ def resolve_box_enable_vault(global_path: Path, *, box_path: Path,
     over two lines above each call.
 
     ⚑⚑ IT IS A NARROW RESOLVE (:func:`_narrow_box_scalar_cascade`), NOT
-    ``_resolve_box_scalars``, AND THE DIFFERENCE IS DELIBERATE — see that function.
+    ``settings_launch.resolve_box_scalars``, AND THE DIFFERENCE IS DELIBERATE — see that function.
 
     🛑 NOT for the AUTHORED value — that is :func:`read_box_enable_vault` on the box tier
     alone, and the cascade structurally cannot answer it (a merge does not record which
@@ -514,7 +389,7 @@ def _narrow_box_scalar_cascade(
 ) -> "KeyStore":
     """The box scalars' cascade WITHOUT the launch snapshot's whole-tree §0 audit.
 
-    ⚑⚑ WHY THIS IS NOT ``_resolve_box_scalars``, WHICH RESOLVES THE SAME KEYS OFF THE SAME
+    ⚑⚑ WHY THIS IS NOT ``settings_launch.resolve_box_scalars``, WHICH RESOLVES THE SAME KEYS OFF THE SAME
     FILES.  That function ends in ``build_launch_snapshot``, whose LAST step is
     ``_refuse_undeclared_snapshot`` — a whole-tree audit that RAISES when any settings file
     in the cascade carries an entry the keyspace does not declare.  That refusal is right
@@ -529,7 +404,7 @@ def _narrow_box_scalar_cascade(
     "narrow resolve that precedes the launch snapshot" — with the declared-default floor
     under the base file.  Nothing here is a second opinion about the cascade:
     ``assemble_levels``, ``merge`` and :func:`box_scalar_defaults_floor` are the same
-    single carriers ``_resolve_box_scalars`` uses, and
+    single carriers ``settings_launch.resolve_box_scalars`` uses, and
     ``test_the_narrow_cascade_agrees_with_the_merged_loader`` pins the two answers equal so
     they cannot drift apart.
 
@@ -556,7 +431,7 @@ def _narrow_box_scalar_cascade(
     )
     # ``assemble_levels`` returns MOST-SPECIFIC-FIRST: [box, workset, agent.<a>,
     # agent.default, system, base].  The two agent rungs are dropped, not skipped by
-    # accident: this resolve has no active agent, exactly as ``_resolve_box_scalars``
+    # accident: this resolve has no active agent, exactly as ``settings_launch.resolve_box_scalars``
     # passes ``agent_path=None``.
     return merge([base_levels[0], base_levels[1], base_levels[4], base_levels[5]])
 

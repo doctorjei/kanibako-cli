@@ -21,11 +21,11 @@ from kanibako.settings.config import (
     _LAYER1_TABLE,
     agent_settings_of,
     load_config,
-    load_merged_config,
     load_project_overrides,
     read_agent_settings,
     unset_project_config_key,
 )
+from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings.config_display import (
     _flatten_bind_map,
     _nested_settings_overrides,
@@ -610,7 +610,6 @@ def _set_time_snapshot(
     """
     # The COMMAND's TARGET (spec §2a): the launch's own first two phases over its inputs.
     if target is not None:
-        from kanibako.settings.config import box_scalar_defaults_floor
         from kanibako.settings.settings_launch import assemble_cascade, fold_floor
 
         cascade = assemble_cascade(
@@ -618,8 +617,7 @@ def _set_time_snapshot(
             floor=fold_floor(
                 subject=target.subject,
                 agent_name=agent_name,
-                # ``fold_floor`` floors the box scalars for BOX only; set time keeps them for all.
-                default_categories={**box_scalar_defaults_floor(), **target.system_floor},
+                default_categories=dict(target.system_floor),
                 auth_chain=target.auth_chain,
                 meta_runtime=target.meta_runtime,
                 meta_identity=target.meta_identity,
@@ -2123,10 +2121,12 @@ def show_config(
     category_ctx: Any = None,
     category_error: str | None = None,
     category_declared_by: Any = None,
+    inputs: Any = None,
 ) -> int:
     """Display config values — overrides only, or the full resolved view.  Returns an exit code.
 
     *command_scope* is the NOUN showing, and it fixes the level its settings file is judged at.
+    *inputs* are the noun's own resolve inputs, when it is not a box.
     """
     out = file or sys.stdout
     # The file agent SETTINGS are displayed from: the system settings file at SYSTEM, else the
@@ -2142,9 +2142,7 @@ def show_config(
         # ⚑ *config_path* is a BOX tier only for the box noun: the system and workset nouns
         # pass the Layer-1 ``.cfg`` there (keyspec §1), which is not a settings tier at all.
         box_tier = config_path if command_scope is ConfigLevel.box else None
-        cfg = load_merged_config(
-            global_config_path, box_tier, workset_path=workset_path,
-        )
+        cfg = load_merged_config(box_tier, workset_path=workset_path, inputs=inputs)
         overrides = load_project_overrides(config_path) if config_path else {}
         for fld in fields(cfg):
             val = getattr(cfg, fld.name)

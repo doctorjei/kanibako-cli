@@ -694,11 +694,9 @@ class TestRigUpdate:
     ):
         """update with no name resolves the configured box.image rig."""
         from kanibako.commands.image import run_update
-        from kanibako.settings.config import load_merged_config, config_file_path
-        from kanibako.settings.paths import xdg
+        from kanibako.settings.settings_launch import load_merged_config
 
-        config_file_p = config_file_path(xdg("XDG_CONFIG_HOME", ".config"))
-        expected_name = load_merged_config(config_file_p, None).box_image
+        expected_name = load_merged_config(None).box_image
 
         res = self._resolution(
             name=expected_name, kind="prefab",

@@ -39,10 +39,10 @@ from kanibako.settings.config import (
     coerce_bool,
     user_config_file,
     load_config,
-    load_merged_config,
     persist_creation_flags,
     read_system_agent,
 )
+from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings import core_defaults
 from kanibako.runtime.container import (
     ContainerRuntime,
@@ -2678,7 +2678,6 @@ def _run_container(
         _cli_scalar_overrides["box_share_images"] = True
     project_toml, workset_path = box_workset_settings_paths(proj)
     merged = load_merged_config(
-        config_file,
         project_toml,
         workset_path=workset_path,
         cli_overrides=_cli_scalar_overrides or None,
@@ -3468,7 +3467,6 @@ def _run_container(
         # same values — a harmless no-op.)
         project_toml, workset_path = box_workset_settings_paths(proj)
         merged = load_merged_config(
-            config_file,
             project_toml,
             workset_path=workset_path,
             cli_overrides=_cli_scalar_overrides or None,

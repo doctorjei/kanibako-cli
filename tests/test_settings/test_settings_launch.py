@@ -231,22 +231,15 @@ def test_a_CORE_ONLY_floor_with_no_descriptors_is_UNTOUCHED_by_the_split():
 
 
 @pytest.mark.parametrize("subject_name", ["BOX", "WORKSET", "SYSTEM"])
-def test_the_box_scalar_floor_is_folded_for_a_BOX_resolve_only(subject_name):
-    """Spec §0/§2b: a BOX resolve carries every box scalar at its declared default
-    (``box.shell`` a present ``None``, [R177]) off ``config.box_scalar_defaults_floor``;
-    a box-less resolve (WORKSET / SYSTEM subject) has no box and floors none."""
+def test_the_box_scalar_floor_is_folded_for_every_subject(subject_name):
+    """Spec §0/§2b: every resolve carries each box scalar at its declared default (``box.shell``
+    a present ``None``, [R177]); a system or workset file may set them downward (design 1D-b)."""
     from kanibako.settings.config import box_scalar_defaults_floor
-    from kanibako.settings.kb_store import __MISSING__
     from kanibako.settings.settings_launch import ResolveSubject, snapshot_leaf
 
-    subject = ResolveSubject[subject_name]
-    snap = _snap(agent_name="claude", subject=subject)
+    snap = _snap(agent_name="claude", subject=ResolveSubject[subject_name])
     for key, value in box_scalar_defaults_floor().items():
-        got = snapshot_leaf(snap, key)
-        if subject is ResolveSubject.BOX:
-            assert got is not __MISSING__ and got == value, key
-        else:
-            assert got is __MISSING__, key
+        assert snapshot_leaf(snap, key) == value, key
 
 
 def test_a_box_file_scalar_beats_the_box_scalar_floor(tmp_path: Path):

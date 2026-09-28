@@ -19,9 +19,9 @@ from kanibako.settings.config import (
     WORKSET_META_FILE,
     user_config_file,
     load_config,
-    load_merged_config,
     persist_creation_flags,
 )
+from kanibako.settings.settings_launch import load_merged_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, ProjectError
@@ -1875,7 +1875,6 @@ def run_info(args: argparse.Namespace) -> int:
     # The merged config, for the image row.
     project_toml, workset_path = box_workset_settings_paths(proj)
     merged = load_merged_config(
-        config_file,
         project_toml if project_toml.exists() else None,
         workset_path=workset_path,
     )

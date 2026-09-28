@@ -30,7 +30,6 @@ def config_base_path() -> Path
 def settings_base_path() -> Path
 def load_config(path: Path) -> BootstrapConfig
 def box_scalar_defaults_floor() -> dict[str, object]
-def load_merged_config(global_path: Path, project_path: Path | None=None, *, workset_path: Path | None=None, cli_overrides: 'dict[str, object] | None'=None) -> KanibakoConfig
 def resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path: Path | None) -> bool
 def write_global_config(path: Path) -> None
 def write_project_config(path: Path, image: str) -> None
@@ -55,7 +54,6 @@ def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> No
 def _layer1_settings_keys(data: dict) -> list[str]
 def _scalar_value(value: object) -> object
 def _present_scalar_fields(path: Path) -> dict[str, object]
-def _resolve_box_scalars(global_path: Path, *, workset_path: Path | None, box_path: Path | None, cli_overrides: 'dict[str, object] | None') -> dict[str, object]
 def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) -> object
 def _system_settings_path(global_path: Path) -> Path | None
 def _narrow_box_scalar_cascade(global_path: Path, *, workset_path: Path | None, box_path: Path | None) -> 'KeyStore'

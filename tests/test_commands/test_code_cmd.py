@@ -396,7 +396,7 @@ def test_image_resolution_failure_still_launches(mock_runtime):
     with (
         stack[0], stack[1], stack[2], stack[3], stack[4],
         patch(
-            "kanibako.settings.config.load_merged_config",
+            "kanibako.settings.settings_launch.load_merged_config",
             side_effect=RuntimeError("no config"),
         ),
         patch(
@@ -592,7 +592,7 @@ def test_non_kanibako_image_failure_stays_silent(
     with (
         stack[0], stack[1], stack[2], stack[3], stack[4],
         patch(
-            "kanibako.settings.config.load_merged_config",
+            "kanibako.settings.settings_launch.load_merged_config",
             side_effect=RuntimeError("no config"),
         ),
         patch(

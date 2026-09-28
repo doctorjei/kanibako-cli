@@ -534,7 +534,8 @@ def _check_vscode(config_home: Path | None = None) -> list[tuple[str, str, str]]
 
 def run_system_diagnose(args: object) -> int:
     """Run full system diagnostics."""
-    from kanibako.settings.config import user_config_file, load_config, load_merged_config
+    from kanibako.settings.config import user_config_file, load_config
+    from kanibako.settings.settings_launch import load_merged_config
     from kanibako.settings.paths import load_std_paths, xdg
 
     print("Kanibako System Diagnostics")
@@ -553,8 +554,7 @@ def run_system_diagnose(args: object) -> int:
     # Image
     merged = None
     try:
-        cf = user_config_file()
-        merged = load_merged_config(cf, None)
+        merged = load_merged_config()
         status, detail = _check_image(merged)
         print(_format_check(status, "Image", detail))
     except KanibakoError as e:
@@ -728,7 +728,7 @@ def run_box_diagnose(args: object) -> int:
 
 def run_rig_diagnose(args: object) -> int:
     """Run diagnostics for rig/image status."""
-    from kanibako.settings.config import user_config_file, load_merged_config
+    from kanibako.settings.settings_launch import load_merged_config
 
     print("Rig (Image) Diagnostics")
     print("=" * 40)
@@ -742,8 +742,7 @@ def run_rig_diagnose(args: object) -> int:
     print(_format_check(status, "Container runtime", detail))
 
     try:
-        cf = user_config_file()
-        merged = load_merged_config(cf, None)
+        merged = load_merged_config()
         status, detail = _check_image(merged)
         print(_format_check(status, "Configured image", detail))
     except KanibakoError as e:
@@ -790,7 +789,7 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
     body naming both checks.  The caller emits it.
     """
     from kanibako.runtime import baseline as baseline_mod
-    from kanibako.settings.config import user_config_file, load_merged_config
+    from kanibako.settings.settings_launch import load_merged_config
     from kanibako.runtime.container import ContainerRuntime
 
     only = getattr(args, "only", None)
@@ -822,7 +821,7 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
             return
     else:
         try:
-            merged = load_merged_config(user_config_file(), None)
+            merged = load_merged_config()
             images = [merged.box_image]
         except KanibakoError as e:
             _report_settings_error("  Baseline", e, errors)

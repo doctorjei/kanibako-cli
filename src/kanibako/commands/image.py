@@ -11,7 +11,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.settings.config import user_config_file, load_config, load_merged_config
+from kanibako.settings.config import user_config_file, load_config
+from kanibako.settings.settings_launch import load_merged_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.runtime.containerfiles import get_containerfile
 from kanibako.errors import ContainerError
@@ -214,7 +215,7 @@ def run_extend(args: argparse.Namespace) -> int:
     config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
-    merged = load_merged_config(config_file, None)
+    merged = load_merged_config()
     containers_dir = std.data_path / "containers"
 
     try:
@@ -353,7 +354,7 @@ def run_list(args: argparse.Namespace) -> int:
     config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
-    merged = load_merged_config(config_file, None)
+    merged = load_merged_config()
 
     quiet = getattr(args, "quiet", False)
 
@@ -490,7 +491,7 @@ def run_info(args: argparse.Namespace) -> int:
     config_file = user_config_file()
     config = load_config(config_file)
     std = load_std_paths(config)
-    merged = load_merged_config(config_file, None)
+    merged = load_merged_config()
 
     try:
         runtime = ContainerRuntime()
@@ -601,7 +602,7 @@ def run_rm(args: argparse.Namespace) -> int:
         print(f"Removed user template '{args.image}'.")
         return 0
 
-    merged = load_merged_config(config_file, None)
+    merged = load_merged_config()
     image = resolve_image_name(args.image, merged.box_image)
 
     if not args.force:
@@ -746,7 +747,7 @@ def run_prep(args: argparse.Namespace) -> int:
         print("error: rig name required (or use --all)", file=sys.stderr)
         return 1
 
-    merged = load_merged_config(config_file, None)
+    merged = load_merged_config()
     registry = load_registry(registry_path(std))
     res = resolve_rig(args.name, runtime, std, merged, registry=registry)
     force = getattr(args, "force", False)
@@ -844,7 +845,7 @@ def run_update(args: argparse.Namespace) -> int:
     if args.all_images:
         return _update_all(runtime, std)
 
-    merged = load_merged_config(config_file, None)
+    merged = load_merged_config()
 
     # Default target: the configured box.image rig (the current box's rig).
     name = args.name if args.name is not None else merged.box_image

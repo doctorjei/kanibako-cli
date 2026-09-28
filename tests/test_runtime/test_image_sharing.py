@@ -692,11 +692,12 @@ class TestImageSharingConfig:
 
     def test_loaded_from_a_settings_file(self, config_file, tmp_path):
         """``box.share_images: true`` in the BOX-tier settings file reaches the merged object."""
-        from kanibako.settings.config import BOX_META_FILE, load_merged_config
+        from kanibako.settings.config import BOX_META_FILE
+        from kanibako.settings.settings_launch import load_merged_config
 
         box_settings = tmp_path / BOX_META_FILE
         box_settings.write_text("box:\n  share_images: true\n")
-        cfg = load_merged_config(config_file, box_settings)
+        cfg = load_merged_config(box_settings)
         assert cfg.box_share_images is True
 
     def test_false_in_a_settings_file(self, config_file, tmp_path):
@@ -712,20 +713,18 @@ class TestImageSharingConfig:
         from kanibako.settings.config import (
             BOX_META_FILE,
             WORKSET_META_FILE,
-            load_merged_config,
         )
+        from kanibako.settings.settings_launch import load_merged_config
 
         workset_settings = tmp_path / WORKSET_META_FILE
         workset_settings.write_text("box:\n  share_images: true\n")
         # ⚑ SELF-EMPTINESS GUARD (P15): the floor has to be LIVE, or the ``False``
         # below is just the declared default and this case witnesses nothing.
-        assert load_merged_config(
-            config_file, workset_path=workset_settings,
+        assert load_merged_config(workset_path=workset_settings,
         ).box_share_images is True
 
         box_settings = tmp_path / BOX_META_FILE
         box_settings.write_text("box:\n  share_images: false\n")
-        cfg = load_merged_config(
-            config_file, box_settings, workset_path=workset_settings,
+        cfg = load_merged_config(box_settings, workset_path=workset_settings,
         )
         assert cfg.box_share_images is False

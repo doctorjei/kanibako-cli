@@ -557,7 +557,7 @@ class TestCreateImage:
     def test_create_persists_image(
         self, config_file, credentials_dir, project_dir, capsys,
     ):
-        from kanibako.settings.config import load_merged_config
+        from kanibako.settings.settings_launch import load_merged_config
         parser = build_parser()
         args = parser.parse_args([
             "box", "create", "--standalone", str(project_dir),
@@ -566,7 +566,7 @@ class TestCreateImage:
         run_create(args)
 
         box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
-        merged = load_merged_config(config_file, box_tier, workset_path=ws_tier)
+        merged = load_merged_config(box_tier, workset_path=ws_tier)
         assert merged.box_image == "kanibako-template-jvm-oci"
         # And it is the BOX tier that holds it, not the workset/root file.
         from kanibako.settings.config_io import load_doc
@@ -581,7 +581,7 @@ class TestCreateImage:
         resolves the LIVE cascade instead (single source: a later change to the
         stored default reaches this box; the pre-B6 bake froze it forever).
         """
-        from kanibako.settings.config import load_merged_config
+        from kanibako.settings.settings_launch import load_merged_config
         parser = build_parser()
         args = parser.parse_args(["box", "create", "--standalone", str(project_dir)])
         run_create(args)
@@ -591,7 +591,7 @@ class TestCreateImage:
         from kanibako.settings.config_io import load_doc
         assert "image" not in (load_doc(box_tier).get("box") or {})
         # ...and the merged resolve still yields the live default.
-        merged = load_merged_config(config_file, box_tier, workset_path=ws_tier)
+        merged = load_merged_config(box_tier, workset_path=ws_tier)
         assert "kanibako" in merged.box_image
 
     def test_create_follows_a_later_default_change(
@@ -599,7 +599,8 @@ class TestCreateImage:
     ):
         """The live-cascade payoff the no-bake decision buys: change the stored
         system default AFTER create and the existing no-flag box follows it."""
-        from kanibako.settings.config import load_config, load_merged_config
+        from kanibako.settings.config import load_config
+        from kanibako.settings.settings_launch import load_merged_config
         from kanibako.settings.config_io import write_nested_key
         from kanibako.settings.paths import load_std_paths
 
@@ -614,7 +615,7 @@ class TestCreateImage:
         ssp = load_std_paths(load_config(config_file)).settings
         write_nested_key(ssp, ("box",), "image", "changed-later:1")
         box_tier, ws_tier = _standalone_tiers(config_file, project_dir)
-        merged = load_merged_config(config_file, box_tier, workset_path=ws_tier)
+        merged = load_merged_config(box_tier, workset_path=ws_tier)
         assert merged.box_image == "changed-later:1"
 
 
