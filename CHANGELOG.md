@@ -242,6 +242,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A trailing `/` and a leading `~` in a mask destination now name the same path as the bare
   spelling, as they already did for binds.
 
+- **`kanibako agent <verb> default` and `agent <verb> self` say why instead of "not found".** In
+  v1.7.2 and 1.8.0-rc2, `agent set`, `get`, `show`, `info` and `reset` given `default` or `self`
+  answered `Error: agent 'default' not found (…/agents/default/…)`, as if the agent were merely
+  missing. `default` now reports that it is the reserved any-agent tier, with the cure for what
+  was asked: `set` and `reset` of a key say to set the any-agent default with the bare key (for
+  example `label`); an `env.<VAR>` or `secret_path.<VAR>` entry is named as the system-scope key
+  `agent.default.<entry>`, with the `kanibako system get` command that reads it; a key with
+  neither spelling is sent to the `agent: default:` table of the system settings file; `get`
+  names `kanibako system get agent.default.<key>`; and `show`, `info` and `reset --all` name that
+  same `agent: default:` table. A key that is not declared is refused as undeclared, with no
+  cure. `self` reports that it is the per-agent settings file's alias, not an agent. An agent that
+  simply does not exist still says "not found", and the exit status is 1 as before.
+  `agent reset self --all` still clears a leftover `agents/self/` folder.
+
 - **Setting `box.bindings.ro` to `null` no longer removes kanibako's own binds from the box.** In
   1.8.0-rc2, `bindings: {ro: null}` in a box's or working set's settings file dropped every
   read-only bind, including the ones kanibako delivers itself: the in-box `kanibako` command

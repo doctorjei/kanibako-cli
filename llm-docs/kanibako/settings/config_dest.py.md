@@ -162,6 +162,25 @@ branch on `agent_default_tier_leaf` alone and that function declines the dotted 
 guard asks `is_agent_default_tier_key` now — both halves of the tier's vocabulary — so the read
 falls through to `_read_dest` and lands on the slot `set` wrote.
 
+### `_reserved_tier_read_refusal`, `_reserved_tier_category_refusal`, `_reserved_tier_store_refusal` — the other cures
+
+The `agent` noun (`agent_cmd._missing_store_error`) refuses `default` BEFORE any route is asked when
+there is no `agents/default/` folder, and it must say what the engine says when a stray folder
+exists: two messages for one refusal is the defect (P10). So the refusal text has ONE home here,
+with one subject (`_RESERVED_TIER_HEAD`) and four cures, picked by what the verb asked:
+
+* a key WRITTEN or RESET — `_reserved_tier_refusal(tail)`, the engine's own tail-aware choice;
+  EXCEPT the tier's category entries (`env.<VAR>`, `secret_path.<VAR>`), which the engine routes
+  AHEAD of that refusal (`config_keys.agent_default_tier_category`). A caller asking before the
+  engine's dispatch must take the same branch, so they get `_reserved_tier_category_refusal(tail)`,
+  naming their working system-scope key `agent.default.<tail>`;
+* a key READ (`agent get default <tail>`) — `_reserved_tier_read_refusal(tail)`. A write cure is
+  wrong there. The read that works is `kanibako system get agent.default.<tail>`, because
+  `get_config_value` sends that spelling to the tier's slot (above); the command is
+  `config_keys._SCOPE_READ_COMMAND["system"]`, not a new spelling;
+* no key (`show`, `info`, `reset --all`) — `_reserved_tier_store_refusal()`: the tier has no store,
+  and `_AGENT_DEFAULT_TIER_CURE` names the file that holds it.
+
 ### `_node_bind_target` — READ-ONLY since R-9
 
 It resolves `agent.<node>.bindings.{ro,rw}.<name>` (item-0) to its FILE READ location, and it was
