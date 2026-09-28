@@ -236,6 +236,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A value that references a key a `pref:` request supplies is accepted by `set`.** In 1.8.0-rc2,
+  with `pref: {agent: {claude: {model: opus}}}` in a working set's settings file,
+  `kanibako workset set <ws> workset.env.X=@agent.claude.model/x` was refused as a dangling
+  `@`-reference, although a launch in that working set resolves it to `opus/x`. `workset set`
+  and `box set` now check a value against the same `pref:` requests the launch reads for that
+  target.
+
 - **A mask destination is canonicalized like every other box destination.** In 1.8.0-rc2 a
   `masks` entry kept its spelling as a key, so `/m/` and `/m` were two entries: a `null` at
   `/m` in a box's settings file did not unmask a working set's `/m/`, and the path stayed masked.

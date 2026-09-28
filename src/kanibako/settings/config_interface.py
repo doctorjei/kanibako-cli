@@ -608,6 +608,35 @@ def _set_time_snapshot(
     With a *target* (:func:`_set_time_target`), its tier files, anchors and context are
     the ones the snapshot reads, and the file arguments after *agent_path* are unused.
     """
+    # The COMMAND's TARGET (spec §2a): the launch's own first two phases over its inputs.
+    if target is not None:
+        from kanibako.settings.config import box_scalar_defaults_floor
+        from kanibako.settings.settings_launch import assemble_cascade, fold_floor
+
+        cascade = assemble_cascade(
+            agent_name=agent_name,
+            floor=fold_floor(
+                subject=target.subject,
+                agent_name=agent_name,
+                # ``fold_floor`` floors the box scalars for BOX only; set time keeps them for all.
+                default_categories={**box_scalar_defaults_floor(), **target.system_floor},
+                auth_chain=target.auth_chain,
+                meta_runtime=target.meta_runtime,
+                meta_identity=target.meta_identity,
+                workset_anchor=target.workset_anchor,
+            ),
+            system_path=target.system_path,
+            agent_path=agent_path,
+            workset_path=target.cascade_workset_path,
+            box_path=target.cascade_box_path,
+            prefs=target.prefs,
+            agent_partial=None,
+            agent_state=None,
+            persona_values=None,
+            cli_level=None,
+        )
+        return cascade.snapshot, target.ctx
+
     from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_merge import merge
 
@@ -650,35 +679,6 @@ def _set_time_snapshot(
 
     if agent_name:
         floor.update(meta_agent_path_floor(agent_name))
-
-    # The COMMAND's TARGET (spec §2a, "Build the full cascade snapshot for the COMMAND's
-    # target"): its tier files, its context and the floor fragments the launch folds —
-    # in the builder's order — so ``@meta.workset.path/<leaf>``, which [R147] tells the
-    # user to write instead of a bare relative, resolves here as it will at launch. A
-    # root the target lacks (a working set's box, the system scope's working set) is
-    # OMITTED by ``resolve_inputs``, never derived here from a settings file's parent.
-    # ⚑ P10 — A SECOND CARRIER OF THIS ORDER, ON PURPOSE: the fold below restates
-    # ``settings_launch.build_launch_snapshot``'s floor order (auth chain, runtime,
-    # identity, workset anchor). That builder cannot serve here — it EXPANDS STRICTLY and
-    # runs ``refuse_read_time_faults``, while set time needs the merged UNEXPANDED
-    # snapshot, so it can splice the candidate value in and expand leniently. Change one
-    # order and change the other; a shared helper belongs to a pass that opens
-    # ``settings_launch.py``.
-    if target is not None:
-        for fragment in (
-            target.auth_chain, target.meta_runtime, target.meta_identity,
-            target.workset_anchor,
-        ):
-            floor.update(fragment)
-        levels = assemble_levels(
-            agent_name=agent_name,
-            system_path=target.system_path,
-            agent_path=agent_path,
-            workset_path=target.cascade_workset_path,
-            box_path=target.cascade_box_path,
-            floor=floor,
-        )
-        return merge(levels), target.ctx
 
     ctx = _set_time_ctx(config=config_foundation)
 
