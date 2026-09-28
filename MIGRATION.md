@@ -5712,6 +5712,31 @@ error now names the agent (`agent.claude.<table>`) where v1.8.0-rc2 printed
 **What to do.** Delete the line the error names, or correct its spelling. `kanibako agent reset
 <agent> --all` also works on such a file, but it clears every other setting in the file too.
 
+### 2.96 A config file that writes the same key twice is refused instead of keeping the last
+
+**Read this if a command stops with `the config file <path> sets '<key>' twice (line N and line
+M)`.** kanibako never writes such a file, so it only reaches you through a hand edit — often a
+table pasted in a second time.
+
+**What changed.** v1.7.2 and v1.8.0-rc2 read a key written twice in one file as its LAST spelling
+and dropped the first without a word, so
+
+```yaml
+# a box settings file
+box:
+  image: mine
+box:
+  env: {A: "1"}
+```
+
+read as `box: {env: {A: "1"}}` — the image setting was gone. The same held at any depth
+(`box.env.A` twice) and under `self:` in an agent file. It is now refused, naming the file, the
+key's dotted path, and both lines. A key beside a YAML merge (`<<: *base`) still overrides the
+merged one; that is YAML's own rule, not a repeat.
+
+**What to do.** Open the named file, keep the one spelling you meant (merging the two tables if
+both held settings you need), and delete the other.
+
 ---
 
 ## 3. For plugin authors

@@ -1700,3 +1700,90 @@ class TestMalformedSettingsFileIsNamed:
         assert err.startswith("Error: ")
         assert str(ssp) in err
         assert "not valid YAML" in err
+
+
+class TestRepeatedKeyIsRefused:
+    """Q103 / S4 I17: a settings file that writes one key twice is refused, naming both lines.
+
+    PyYAML keeps the LAST of a repeated key without a word (``box: {a: 1}`` then ``box: {b: 2}``
+    loads as ``{'box': {'b': 2}}``), so the refusal lives in ``load_doc``'s loader.
+    MUTATION: load with ``yaml.safe_load`` again and every refusal case reds.
+    """
+
+    @pytest.mark.parametrize("text, dotted, first, second", [
+        ("box: {a: 1}\nbox: {b: 2}\n", "box", 1, 2),
+        ("box:\n  env:\n    A: '1'\n    A: '2'\n", "box.env.A", 3, 4),
+        ("self:\n  model: opus\n  model: sonnet\n", "self.model", 2, 3),
+        ("list:\n  - {k: 1}\n  - k: 1\n    k: 2\n", "list[1].k", 3, 4),
+        ("=: x\n=: y\n", "=", 1, 2),
+        ("x:\n  <<:\n    a: 1\n    a: 2\n", "x.<<.a", 3, 4),
+        ("x:\n  <<:\n    - {b: 1}\n    - a: 1\n      a: 2\n", "x.<<[1].a", 4, 5),
+    ])
+    def test_repeated_key_names_file_path_and_both_lines(
+        self, tmp_path, text, dotted, first, second,
+    ):
+        """Top level, nested, inside ``self:``, and inside a list item: file + dotted path + lines."""
+        bad = tmp_path / "settings.yaml"
+        bad.write_text(text)
+
+        with pytest.raises(ConfigError) as exc:
+            load_doc(bad)
+        assert str(exc.value) == (
+            f"the config file {bad} sets '{dotted}' twice (line {first} and line {second}). "
+            "Remove one of the two, then retry."
+        )
+
+    def test_clean_file_loads_unchanged(self, tmp_path):
+        """The control: the same keys once each load exactly as ``yaml.safe_load`` reads them."""
+        import yaml
+
+        text = (
+            "box:\n  image: ok:1\n  env: {A: '1', B: '2'}\n"
+            "self:\n  model: opus\nagent:\n  claude: {model: sonnet}\n"
+        )
+        good = tmp_path / "settings.yaml"
+        good.write_text(text)
+        assert load_doc(good) == yaml.safe_load(text)
+
+    def test_a_repeat_on_one_line_names_the_columns(self, tmp_path):
+        """A flow map repeating a key on one line: the lines alone cannot tell them apart."""
+        bad = tmp_path / "settings.yaml"
+        bad.write_text("box: {a: 1, a: 2}\n")
+
+        with pytest.raises(ConfigError) as exc:
+            load_doc(bad)
+        assert "sets 'box.a' twice (line 1, column 7 and line 1, column 13)" in str(exc.value)
+
+    def test_a_bare_equals_key_loads_as_the_string(self, tmp_path):
+        """``=`` is YAML's ``value`` tag; ``yaml.safe_load`` reads it as ``"="`` and so must this."""
+        good = tmp_path / "settings.yaml"
+        good.write_text("a:\n  =: x\n")
+        assert load_doc(good) == {"a": {"=": "x"}}
+
+    def test_merge_key_override_is_not_a_repeat(self, tmp_path):
+        """A key beside ``<<:`` overrides the merged one by YAML's own rule; that is not a repeat."""
+        good = tmp_path / "settings.yaml"
+        good.write_text("base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n")
+        assert load_doc(good) == {"base": {"a": 1}, "box": {"a": 2}}
+
+    def test_boxless_verb_exits_rc1_naming_the_repeat(self, tmp_path, monkeypatch, capsys):
+        """Through ``main(["rig", "list"])``: a repeated key in the system settings file is rc1."""
+        from unittest.mock import patch
+
+        from kanibako.cli import main
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        (tmp_path / "config").mkdir(exist_ok=True)
+        write_global_config(tmp_path / "config" / CONFIG_FILENAME)
+        ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True)
+        ssp.write_text("box:\n  image: a\nbox:\n  image: b\n")
+
+        with patch("kanibako.cli._ensure_initialized"):
+            with pytest.raises(SystemExit) as exc:
+                main(["rig", "list", "-q"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert err.startswith("Error: ")
+        assert f"{ssp} sets 'box' twice (line 1 and line 3)" in err
