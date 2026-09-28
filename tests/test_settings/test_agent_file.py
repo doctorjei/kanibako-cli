@@ -1194,6 +1194,31 @@ class TestTheForwardCompatPassthroughIsClosed:
         path = self._file(tmp_path, {"provider": "ollama"})
         assert load(path, node="goose").state == {"provider": "ollama"}
 
+    def test_a_persona_file_is_judged_by_its_harness(self, tmp_path):
+        """A persona node (``<pid>℘<hid>``) takes its HARNESS's vocabulary (spec §2d, ``[R150]``).
+
+        ``nav℘claude`` is persona ``nav`` on harness ``claude``, so an undeclared leaf refuses
+        exactly as it does on ``claude``'s own file, and a declared one loads.  The launch reads
+        the file through this same ``load`` (``start.py``), so it inherits both halves.
+        """
+        refused = self._file(tmp_path, {"model": "opus", "zippity": 1})
+        with pytest.raises(SettingsError) as exc:
+            load(refused, node="nav℘claude")
+        assert "'zippity'" in str(exc.value)
+        assert "agent.nav℘claude" in str(exc.value)
+
+        declared = self._file(tmp_path, {"model": "opus", "endpoint": "https://e"})
+        assert load(declared, node="nav℘claude").state == {
+            "model": "opus", "endpoint": "https://e",
+        }
+
+    def test_a_persona_on_an_uninstalled_harness_concedes(self, tmp_path):
+        # ``[R150]``: where the harness plugin is not here its vocabulary is unreadable, so a
+        # leaf it might declare is CONCEDED, never refused — for a persona as for a bare agent.
+        # ⚑ ``claude+work`` is THIS case (persona ``claude`` on harness ``work``), not a hole.
+        path = self._file(tmp_path, {"zippity": "1"})
+        assert load(path, node="nav℘nosuchharness").state == {"zippity": "1"}
+
     def test_the_repair_door_does_not_go_through_here(self, tmp_path):
         # ⚑ A poisoned file must still be clearable: ``clear_overrides`` reads raw YAML and
         # never calls ``load``, so this is the escape hatch, pinned rather than assumed.
