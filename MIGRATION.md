@@ -5817,6 +5817,23 @@ mounted on top of it.
 **What to do.** Delete the named entry. To mount something of your own, give it a destination of
 its own. To hide a directory that contains one of these binds, mask narrower paths beside it.
 
+### 2.98 A `set` refuses to write under a section the file holds as a value instead of replacing it
+
+**Read this if a `set` stops with `the config file <path> holds <value> at '<section>', where a
+table of keys belongs`.** Such a value usually comes from a hand edit.
+
+**What changed.** v1.7.2 and v1.8.0-rc2 wrote a key under its section even when the file held that
+section as a single value, a list, or an empty line (`box:` with nothing under it): the value was
+replaced by a table holding the new key, and the command reported success. In v1.8.0-rc2, with
+`system: /x` in the system settings file, `kanibako system set system.agent=shell` answered `Set`
+and left `system: {agent: shell}`, and `/x` was gone without a word. The write now stops and
+leaves the file as it was. An empty section line is refused too: the section is a namespace, and
+a value there, an empty one included, is not a setting kanibako accepts, so writing a table over it
+would silently discard an invalid entry.
+
+**What to do.** Open the named file and fix or delete the named section, then run the `set` again.
+No `reset` reaches it: `reset --all` leaves it in place.
+
 ---
 
 ## 3. For plugin authors

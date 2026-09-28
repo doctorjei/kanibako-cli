@@ -157,14 +157,24 @@ def remove_root_key(path: Path, key: str) -> bool:
 def write_nested_key(
     path: Path, sections: tuple[str, ...], key: str, value: object,
 ) -> None:
-    """Write *key* into a nested table (e.g. ``("system", "path")``), creating intermediates."""
+    """Write *key* into a nested table (e.g. ``("system", "path")``), creating ABSENT intermediates.
+
+    Raises ConfigError when an intermediate is present but not a table, ``null`` included: every
+    section walked is a namespace, where no value is a setting the closed keyspace accepts (spec §0).
+    """
     data = load_doc(path)
     node = data
-    for sec in sections:
-        child = node.get(sec)
+    for depth, sec in enumerate(sections):
+        if sec not in node:
+            node[sec] = {}
+        child = node[sec]
         if not isinstance(child, dict):
-            child = {}
-            node[sec] = child
+            dotted = ".".join(sections[:depth + 1])
+            raise ConfigError(
+                f"the config file {path} holds {render_stored_scalar(child)} at '{dotted}', "
+                f"where a table of keys belongs, so '{dotted}.' keys cannot be written under it. "
+                f"Fix or delete '{dotted}' in that file by hand, then retry."
+            )
         node = child
     node[key] = value
     dump_doc(path, data)

@@ -1787,3 +1787,70 @@ class TestRepeatedKeyIsRefused:
         err = capsys.readouterr().err
         assert err.startswith("Error: ")
         assert f"{ssp} sets 'box' twice (line 1 and line 3)" in err
+
+
+class TestNestedWriteRefusesANonTableSection:
+    """S2e: ``write_nested_key`` refuses a present non-table section instead of replacing it.
+
+    Spec §0: a write must not silently discard what the user wrote. A present ``null`` is refused
+    too — the section is a namespace, and no value there (empty included) is an accepted setting.
+    MUTATION: restore ``if not isinstance(child, dict): child = {}`` and every refusal case reds.
+    """
+
+    @pytest.mark.parametrize("text, sections, dotted, found", [
+        ("system: /x\n", ("system",), "system", "/x"),
+        ("box: 7\n", ("box",), "box", "7"),
+        ("box:\n  env: [a, b]\n", ("box", "env"), "box.env", "['a', 'b']"),
+        ("system:\n", ("system",), "system", "null"),
+    ])
+    def test_non_table_section_is_refused_and_kept(
+        self, tmp_path, text, sections, dotted, found,
+    ):
+        """String, int, list, and a bare ``null``: named with file + path + value; file unchanged."""
+        from kanibako.settings.config_io import write_nested_key
+
+        path = tmp_path / "settings.yaml"
+        path.write_text(text)
+
+        with pytest.raises(ConfigError) as exc:
+            write_nested_key(path, sections, "leaf", "v")
+        assert str(exc.value) == (
+            f"the config file {path} holds {found} at '{dotted}', where a table of keys "
+            f"belongs, so '{dotted}.' keys cannot be written under it. "
+            f"Fix or delete '{dotted}' in that file by hand, then retry."
+        )
+        assert path.read_text() == text
+
+    def test_absent_sections_are_still_created(self, tmp_path):
+        """The control: missing intermediates are created, other content kept."""
+        from kanibako.settings.config_io import write_nested_key
+
+        path = tmp_path / "settings.yaml"
+        path.write_text("box:\n  image: ok:1\n")
+        write_nested_key(path, ("box", "env"), "FOO", "bar")
+        assert load_doc(path) == {"box": {"image": "ok:1", "env": {"FOO": "bar"}}}
+
+    # The verb resolves the cascade before writing, so the census sees the fixture's ``box.env: 7``.
+    @pytest.mark.writes_undeclared("box.env")
+    def test_set_verb_exits_rc1_and_keeps_the_value(self, tmp_path, monkeypatch, capsys):
+        """Through ``main(["system", "set", …])``: rc1 + ``Error: …``, the stored value untouched."""
+        from unittest.mock import patch
+
+        from kanibako.cli import main
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        (tmp_path / "config").mkdir(exist_ok=True)
+        write_global_config(tmp_path / "config" / CONFIG_FILENAME)
+        ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True)
+        ssp.write_text("box:\n  env: 7\n")
+
+        with patch("kanibako.cli._ensure_initialized"):
+            with pytest.raises(SystemExit) as exc:
+                main(["system", "set", "box.env.FOO=bar"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert err.startswith("Error: ")
+        assert f"{ssp} holds 7 at 'box.env'" in err
+        assert ssp.read_text() == "box:\n  env: 7\n"

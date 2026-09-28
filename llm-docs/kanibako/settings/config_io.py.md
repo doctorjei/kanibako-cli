@@ -189,12 +189,23 @@ root-level `box_image:` is not read as that field at all — the on-disk shape i
 ```python
 def write_nested_key(path: Path, sections: tuple[str, ...], key: str, value: object) -> None
 ```
-Write *key* into a nested table (e.g. `("system", "path")`), creating intermediates.
+Write *key* into a nested table (e.g. `("system", "path")`), creating ABSENT intermediates.
 
-Preserves other content. Any missing — or present-but-not-a-dict — intermediate is replaced with a
-fresh table on the way down, so a scalar sitting where a section belongs does not raise; it is
-overwritten. This is the live write route for essentially every settable key, since every routing
-slot resolves to a non-empty `sections` prefix (see `write_root_key` above).
+Preserves other content. An ABSENT intermediate is created as a fresh table. A PRESENT intermediate
+that is not a table raises `ConfigError` naming the file, the dotted section path, and the value
+found; the file is left untouched. Until 2026-09-28 such a value was replaced by a table without a
+word (`system: /x` plus `system set system.agent=shell` answered `Set` and destroyed `/x`) — a
+silent discard spec §0 forbids.
+⚑ **A present `null` is refused too, deliberately.** Every section this function walks is a
+NAMESPACE, never a category: a category is always the leaf written, never walked through. A value
+at a namespace, an empty line included, is not a setting the closed keyspace accepts
+(`settings_keyspace.FINDING_VERDICTS` holds `NAMESPACE`), so writing a table over it would
+silently discard an invalid entry instead of reporting it.
+The cure the message names is a hand edit: no reset verb reaches a section that is not a table
+(`reset <leaf>` finds no table to remove from; `reset --all` leaves it in place, and
+`reset <scope>` refuses the scope name — all three probed). This is the live write route for
+essentially every settable key, since every routing slot resolves to a non-empty `sections`
+prefix (see `write_root_key` above).
 
 ```python
 def remove_nested_key(path: Path, sections: tuple[str, ...], key: str) -> bool
