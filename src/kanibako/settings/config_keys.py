@@ -1647,7 +1647,7 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     """The §0 reason *tail* is not a declared key of agent *node*, or ``None`` when it is.
 
     ⚑ ONE CONSTRUCTION, THREE CONSUMERS — the ``agent`` verb's write gate, its read gate, and the
-    LAUNCH boundary's passthrough refusal (``agent_file.state_level``).  A REASON rather than a
+    refusal as an agent file is read (``agent_file.load``, which every reader, the launch included, uses).  A REASON rather than a
     message, for the reason ``config_dest.NodeRouteRefusal`` gives: the rule is one, but a verb
     owes a cure and a refused launch owes a file to open.
 
@@ -1673,7 +1673,7 @@ def agent_key_reason(node: str, tail: str) -> str | None:
     ⚑⚑ AND THE MAP IS WHAT MAKES THIS GATE CAPABLE OF CONCEDING AT ALL.  ``key_validity`` took a
     FLAT leaf set and had no concession parameter, so this refused ``agent.goose.provider``
     wherever goose was not installed — measured on a simulated claude-only machine, and this is
-    the LAUNCH gate (``agent_file.state_level``), so a goose store on a machine where goose had
+    the gate every reader of an agent file passes, the launch included (``agent_file.load``), so a goose store on a machine where goose had
     been uninstalled would not start.  ``[R150]``: *"per-agent judgement applies where the
     vocabulary is readable; where it is not, the concession still governs."*
 

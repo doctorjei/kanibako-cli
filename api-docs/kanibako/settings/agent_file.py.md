@@ -40,7 +40,7 @@ def read_leaf(slot: AgentFileSlot) -> str | None
 def write_leaf(slot: AgentFileSlot, value: object) -> None
 def remove_leaf(slot: AgentFileSlot) -> bool
 def clear_overrides(path: Path) -> int
-def load(path: Path) -> AgentConfig
+def load(path: Path, *, node: str) -> AgentConfig
 def save(path: Path, cfg: AgentConfig) -> None
 def contributed_tables(raw: Any) -> dict
 def level_table(raw: Any, *, sub_key: str, node: str | None=None, path: Path | None=None) -> AgentFileLevel
@@ -53,7 +53,7 @@ def _refused_category(sub_tbl: dict) -> str | None
 def _refuse_nested_tables(root_tbl: dict, *, node: str | None, path: Path | None) -> None
 def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None
 def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict
-def _refuse_undeclared_state(state: 'Mapping[str, str | None]', *, node: str) -> None
+def _refuse_undeclared_state(state: 'Mapping[str, str | None]', *, node: str, path: Path) -> None
 ```
 
 ## Classes

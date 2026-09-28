@@ -358,30 +358,30 @@ class TestBuildEffectiveState:
         This asserted that "undeclared keys from agent state are passed through" — the *"old
         ``agent.<name>.<anyleaf>`` behaviour"* spec §0 SPECIFICALLY EXCLUDES. Together with the
         then-ungated ``agent set`` it meant stored garbage was not merely dead: it reached the
-        box. The refusal lives at the boundary that builds the level
-        (``agent_file.state_level``), so it fires wherever a level is built — here, and at every
-        launch. ⚑ ``agent list`` / ``info`` read ``cfg.state`` directly and never build a level,
-        so a poisoned file still LISTS and can still be repaired.
+        box. The refusal lives where the file is READ (``agent_file.load``), so it fires before
+        any record reaches this display — and before every launch, ``agent list`` and ``info``.
         """
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+        from kanibako.settings.agent_file import load
+        from kanibako.settings.config_io import dump_doc
         from kanibako.settings.settings_resolve import SettingsError
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         target = self._make_target(descriptors)
-        agent_cfg = AgentConfig(state={"model": "sonnet", "custom_key": "custom_value"})
         box_file = self._make_box_file(tmp_path)
+        path = tmp_path / "agent-file" / "agent.yaml"
+        dump_doc(path, {"self": {"model": "sonnet", "custom_key": "custom_value"}})
 
         with pytest.raises(SettingsError) as exc:
-            _build_effective_state(
-                target, agent_cfg, **box_file, system_settings_path=None
-            )
+            load(path, node="claude")
         assert "custom_key" in str(exc.value)
 
         # The CONTROL: the declared key alone still resolves, so the refusal is about
         # declaredness and not about having any agent state at all.
-        agent_cfg = AgentConfig(state={"model": "sonnet"})
+        dump_doc(path, {"self": {"model": "sonnet"}})
+        agent_cfg = load(path, node="claude")
         assert _build_effective_state(
             target, agent_cfg, **box_file, system_settings_path=None
         )["model"] == "sonnet"

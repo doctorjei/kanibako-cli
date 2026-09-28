@@ -53,7 +53,7 @@ class TestSecretPathSection:
             '  secret_path:\n'
             '    ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
         )
-        cfg = load(cfg_path)
+        cfg = load(cfg_path, node="claude")
         # Only the PATH is loaded (a pointer), never any secret value. secret_path
         # sits DIRECTLY under the root (self IS agent.<node>) and does NOT leak into
         # flat state (it is a dict, not a scalar knob).
@@ -65,7 +65,7 @@ class TestSecretPathSection:
     def test_load_missing_secret_path_section(self, tmp_path):
         cfg_path = self._node_file(tmp_path)
         cfg_path.write_text('self:\n  model: "opus"\n')
-        assert load(cfg_path).secret_path == {}
+        assert load(cfg_path, node="claude").secret_path == {}
 
     def test_load_present_null_secret_path_is_kept_as_none(self, tmp_path):
         # 2026-08-17 ruling: the token/key MAY hold an explicit null to mean "no
@@ -83,7 +83,7 @@ class TestSecretPathSection:
             '  secret_path:\n'
             '    ANTHROPIC_AUTH_TOKEN: null\n'
         )
-        cfg = load(cfg_path)
+        cfg = load(cfg_path, node="claude")
         assert "ANTHROPIC_AUTH_TOKEN" in cfg.secret_path
         assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] is None
         assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] != "None"
@@ -99,7 +99,7 @@ class TestSecretPathSection:
         content = path.read_text()
         assert "/secure/token" in content
         assert "env_file" not in content
-        loaded = load(path)
+        loaded = load(path, node="claude")
         assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": "/secure/token"}
 
     def test_round_trip_present_null_secret_path(self, tmp_path):
@@ -114,13 +114,13 @@ class TestSecretPathSection:
         save(path, original)
         content = path.read_text()
         assert "secret_path" in content
-        loaded = load(path)
+        loaded = load(path, node="claude")
         assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": None}
 
 
 class TestLoad:
     def test_nonexistent_file_returns_defaults(self, tmp_path):
-        cfg = load(tmp_path / "missing.yaml")
+        cfg = load(tmp_path / "missing.yaml", node="claude")
         # ⚑ ``None``, NOT ``[]``: the record is three-state and a file that does not
         # exist says NOTHING about the argv, which is not the same as saying "none".
         assert cfg.run_args is None
@@ -136,7 +136,7 @@ class TestLoad:
             '  env:\n'
             '    MY_VAR: "hello"\n'
         )
-        cfg = load(cfg_path)
+        cfg = load(cfg_path, node="claude")
         assert cfg.run_args == ["--verbose", "--debug"]
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.env == {"MY_VAR": "hello"}
@@ -154,7 +154,7 @@ class TestLoad:
             'self:\n'
             '  model: null\n'
         )
-        cfg = load(cfg_path)
+        cfg = load(cfg_path, node="claude")
         assert "model" in cfg.state
         assert cfg.state["model"] is None
         assert cfg.state["model"] != "None"
@@ -165,7 +165,7 @@ class TestLoad:
             'self:\n'
             '  run_args: ["--verbose"]\n'
         )
-        cfg = load(cfg_path)
+        cfg = load(cfg_path, node="claude")
         assert cfg.run_args == ["--verbose"]
         assert cfg.state == {}
         assert cfg.env == {}
@@ -177,7 +177,7 @@ class TestLoad:
             'self:\n'
             '  access: "safe"\n'
         )
-        cfg = load(cfg_path)
+        cfg = load(cfg_path, node="claude")
         assert cfg.state == {"access": "safe"}
 
     def test_load_missing_agent_section(self, tmp_path):
@@ -189,14 +189,14 @@ class TestLoad:
             '  env:\n'
             '    FOO: "bar"\n'
         )
-        cfg = load(cfg_path)
+        cfg = load(cfg_path, node="claude")
         assert cfg.state == {}
         assert cfg.env == {"FOO": "bar"}
 
     def test_load_empty_file(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text("")
-        cfg = load(cfg_path)
+        cfg = load(cfg_path, node="claude")
         assert cfg.run_args is None
         assert cfg.state == {}
 
@@ -215,7 +215,7 @@ class TestLoad:
             'self:\n'
             '  run_args: "--c --d"\n'
         )
-        assert load(cfg_path).run_args == ["--c", "--d"]
+        assert load(cfg_path, node="claude").run_args == ["--c", "--d"]
 
     def test_a_bare_run_args_is_no_arguments_not_the_word_None(self, tmp_path):
         """``run_args:`` parses to ``None``; coercing it through ``str`` would make
@@ -223,7 +223,7 @@ class TestLoad:
         above records."""
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text('self:\n  run_args:\n')
-        assert load(cfg_path).run_args == []
+        assert load(cfg_path, node="claude").run_args == []
 
 
 class TestSave:
@@ -248,7 +248,7 @@ class TestSave:
         )
         save(path, cfg)
 
-        loaded = load(path)
+        loaded = load(path, node="claude")
         assert loaded.run_args == ["--verbose"]
         assert loaded.state == {"access": "permissive"}
         assert loaded.env == {"FOO": "bar"}
@@ -261,7 +261,7 @@ class TestSave:
         content = path.read_text()
         # No separate state section; state knobs live under the root table.
         assert 'state:' not in content
-        loaded = load(path)
+        loaded = load(path, node="claude")
         assert loaded.state == {"access": "permissive"}
 
     def test_a_defaulted_run_args_is_not_materialized(self, tmp_path):
@@ -294,7 +294,7 @@ class TestSave:
         and still counts as the one override it is."""
         path = tmp_path / "agents" / "test.yaml"
         save(path, AgentConfig(run_args=["--verbose", "--debug"]))
-        assert load(path).run_args == ["--verbose", "--debug"]
+        assert load(path, node="claude").run_args == ["--verbose", "--debug"]
         assert clear_overrides(path) == 1
 
     def test_creates_parent_dirs(self, tmp_path):
@@ -312,7 +312,7 @@ class TestRoundTrip:
             env={"MY_VAR": "hello"},
         )
         save(path, original)
-        loaded = load(path)
+        loaded = load(path, node="claude")
 
         assert loaded.run_args == original.run_args
         assert loaded.state == original.state
@@ -326,14 +326,14 @@ class TestRoundTrip:
         save(path, original)
         content = path.read_text()
         assert "model:" in content
-        loaded = load(path)
+        loaded = load(path, node="claude")
         assert loaded.state == {"model": None}
 
     def test_round_trip_empty_config(self, tmp_path):
         path = tmp_path / "test.yaml"
         original = AgentConfig()
         save(path, original)
-        loaded = load(path)
+        loaded = load(path, node="claude")
 
         assert loaded.run_args is None
         assert loaded.state == {}
@@ -354,7 +354,7 @@ class TestRoundTrip:
         assert 'run_args:' in content
         assert 'model: sonnet' in content
 
-        loaded = load(path)
+        loaded = load(path, node="claude")
         assert loaded.state == {"model": "sonnet"}
         assert loaded.run_args == ["--verbose"]
 
@@ -362,7 +362,7 @@ class TestRoundTrip:
         path = tmp_path / "test.yaml"
         original = AgentConfig(run_args=["--foo", "--bar", "baz"])
         save(path, original)
-        loaded = load(path)
+        loaded = load(path, node="claude")
         assert loaded.run_args == ["--foo", "--bar", "baz"]
 
 
@@ -388,7 +388,7 @@ class TestCategoryTablesCarryThrough:
     def test_load_captures_the_unmodelled_categories(self, tmp_path):
         path = tmp_path / "agent.yaml"
         path.write_text(self._FLAT_YAML)
-        cfg = load(path)
+        cfg = load(path, node="claude")
         assert cfg.category_tables == {
             "bindings": {"ro": {"/box/share": ["/host/share"]}}
         }
@@ -400,7 +400,7 @@ class TestCategoryTablesCarryThrough:
 
         path = tmp_path / "agent.yaml"
         path.write_text(self._FLAT_YAML)
-        cfg = load(path)
+        cfg = load(path, node="claude")
         cfg.state["endpoint"] = "https://e.example"  # a read-modify-write
         save(path, cfg)
 
@@ -420,7 +420,7 @@ class TestCategoryTablesCarryThrough:
             "  synced: {~/.config/x: [/store/x]}\n"
             "  masks: {~/.ssh: true}\n"
         )
-        assert set(load(path).category_tables) == {
+        assert set(load(path, node="claude").category_tables) == {
             "caches", "seeded", "common", "synced", "masks",
         }
 
@@ -435,7 +435,7 @@ class TestCategoryTablesCarryThrough:
             "  transform_settings:\n"
             "    theme: dark\n"
         )
-        cfg = load(path)
+        cfg = load(path, node="claude")
         assert cfg.category_tables == {}
 
     def test_empty_category_table_not_materialized(self, tmp_path):
@@ -458,7 +458,7 @@ class TestCategoryTablesCarryThrough:
             "  run_args:\n"
             "    weird: 2\n"
         )
-        cfg = load(path)
+        cfg = load(path, node="claude")
         assert cfg.category_tables == {}
 
     def test_write_guard_never_clobbers_modeled_tables(self, tmp_path):
@@ -476,7 +476,7 @@ class TestCategoryTablesCarryThrough:
         assert data["self"]["env"] == {"A": "b"}
         assert "nav℘codex" not in data["self"]
         # And what was written loads back without a refusal.
-        assert load(path).env == {"A": "b"}
+        assert load(path, node="claude").env == {"A": "b"}
 
     def test_transform_is_not_a_modelled_key(self):
         # ``transform`` (the tweakcc state knob) is NOT ``transform_settings``: it
@@ -667,7 +667,7 @@ class TestTheArgvSHAPEIsTheFileS:
     def test_what_write_leaf_STORES_is_what_load_READS(self, tmp_path):
         """The whole defect in one row: the write route and the record must agree."""
         write_leaf(self._slot(tmp_path), "--c --d")
-        assert load(tmp_path / "claude" / "agent.yaml").run_args == ["--c", "--d"]
+        assert load(tmp_path / "claude" / "agent.yaml", node="claude").run_args == ["--c", "--d"]
 
     def test_read_leaf_gives_back_the_line_that_was_typed(self, tmp_path):
         """⚑ NOT the Python repr.  ``kanibako system get agent.claude.run_args``
@@ -682,7 +682,7 @@ class TestTheArgvSHAPEIsTheFileS:
         path.parent.mkdir(parents=True)
         path.write_text('self:\n  run_args: "--c --d"\n')
         assert read_leaf(self._slot(tmp_path)) == "--c --d"
-        assert load(path).run_args == ["--c", "--d"]
+        assert load(path, node="claude").run_args == ["--c", "--d"]
 
     def test_the_next_save_normalises_a_legacy_string(self, tmp_path):
         """No migration step, and no second shape left on disk afterwards."""
@@ -691,7 +691,7 @@ class TestTheArgvSHAPEIsTheFileS:
         path = tmp_path / "claude" / "agent.yaml"
         path.parent.mkdir(parents=True)
         path.write_text('self:\n  run_args: "--c --d"\n')
-        save(path, load(path))
+        save(path, load(path, node="claude"))
         assert load_doc(path)["self"]["run_args"] == ["--c", "--d"]
 
     def test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not(self, tmp_path):
@@ -707,7 +707,7 @@ class TestTheArgvSHAPEIsTheFileS:
         assert read_leaf(slot) is None                    # absent
         write_leaf(slot, "")
         assert read_leaf(slot) == ""                      # present, no arguments
-        assert load(tmp_path / "claude" / "agent.yaml").run_args == []
+        assert load(tmp_path / "claude" / "agent.yaml", node="claude").run_args == []
         write_leaf(slot, "--c")
         assert read_leaf(slot) == "--c"                   # present, one argument
         assert remove_leaf(slot) is True
@@ -823,7 +823,7 @@ class TestLoadSurvivesAMalformedTable:
     def test_a_scalar_at_a_table_key_does_not_raise(self, key, tmp_path):
         path = tmp_path / "agent.yaml"
         path.write_text(f"self:\n  model: opus\n  {key}: oops\n")
-        cfg = load(path)          # must not raise
+        cfg = load(path, node="claude")          # must not raise
         assert cfg.state == {"model": "opus"}
         assert getattr(cfg, key) == {}
         # ...and the garbage does NOT ride into the launch as an agent-state knob.
@@ -875,7 +875,7 @@ class TestClearOverrides:
         path = tmp_path / "agent.yaml"
         path.write_text(f"self:\n  model: opus\n{stray}: x\n")
         with pytest.raises(SettingsError):
-            load(path)
+            load(path, node="claude")
         assert clear_overrides(path) == 1
         assert load_doc(path) == {stray: "x"}
 
@@ -994,7 +994,7 @@ class TestLevelTable:
         assert level.table == {"env": {"A": "b"}}
         path = tmp_path / "agent.yaml"
         dump_doc(path, raw)
-        assert load(path).env == {"A": "b"}
+        assert load(path, node="claude").env == {"A": "b"}
 
     @pytest.mark.parametrize("stray", ("model", "stray", "env", "config", "Self"))
     def test_load_refuses_the_stray_the_launch_refuses(self, stray, tmp_path):
@@ -1004,7 +1004,7 @@ class TestLevelTable:
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": {"env": {"A": "b"}}, stray: "foo"})
         with pytest.raises(SettingsError) as exc:
-            load(path)
+            load(path, node="claude")
         assert f"`{stray}` at the top level of {path}" in str(exc.value)
 
     def test_load_passes_every_table_the_cascade_drops(self, tmp_path):
@@ -1016,7 +1016,7 @@ class TestLevelTable:
         assert dropped, "an empty drop-set would pass this vacuously"
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": {"env": {"A": "b"}}, **{t: {"x": 1} for t in dropped}})
-        assert load(path).env == {"A": "b"}
+        assert load(path, node="claude").env == {"A": "b"}
 
     def test_a_bare_sub_key_leaf_is_not_a_table(self):
         # ``claude:`` with nothing under it parses to None. It carries nothing and
@@ -1124,25 +1124,45 @@ class TestTheForwardCompatPassthroughIsClosed:
     verbatim (forward-compat)" — which is the *"old ``agent.<name>.<anyleaf>`` behaviour"* spec §0
     SPECIFICALLY EXCLUDES. Together with the ungated ``agent set`` (D-5) it meant stored garbage
     was not merely dead: it reached the box.
+
+    ⚑ The refusal runs as the file is READ (:func:`load`, Q101 option 1), so every reader —
+    ``agent show`` / ``info`` / ``list`` / ``get`` and the launch — refuses it by name.
     """
 
-    def test_an_undeclared_scalar_refuses_the_launch_by_name(self):
+    @staticmethod
+    def _file(tmp_path, state: dict):
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": state})
+        return path
+
+    def test_an_undeclared_scalar_refuses_the_read_by_name(self, tmp_path):
+        path = self._file(tmp_path, {"model": "opus", "junk": "x"})
         with pytest.raises(SettingsError) as exc:
-            state_level(AgentConfig(state={"model": "opus", "junk": "x"}), node="claude")
+            load(path, node="claude")
         message = str(exc.value)
         assert "'junk'" in message
-        assert "agents/claude/agent.yaml" in message
-        # The repair route stays NAMED — the verb that still works on a poisoned file.
-        assert "agent info claude" in message
+        assert "'claude'" in message
+        assert str(path) in message
+        # The repair route stays NAMED — the one verb that still works on a poisoned file.
+        assert "agent reset claude --all" in message
+        # The old cure sent the user to a reader that now refuses too.
+        assert "agent info" not in message
 
-    def test_the_self_alias_cannot_ride_in_either(self):
+    def test_the_self_alias_cannot_ride_in_either(self, tmp_path):
         # ruling 55: nothing past the parse boundary recognises ``self``. A hand-authored
         # ``self.model:`` root leaf is a scalar the loader sweeps into state — and it stops
         # here rather than becoming ``agent.claude.self.model`` in the snapshot.
+        path = self._file(tmp_path, {"self.model": "opus"})
         with pytest.raises(SettingsError, match=r"self\.model"):
-            state_level(AgentConfig(state={"self.model": "opus"}), node="claude")
+            load(path, node="claude")
 
-    def test_every_core_declared_leaf_still_launches(self):
+    def test_state_level_judges_nothing(self):
+        # A SECOND CARRIER RETIRED: the refusal lives in ``load`` alone, so building a level
+        # from a record is not a second verdict on the same file.
+        level = state_level(AgentConfig(state={"junk": "x"}), node="claude")
+        assert level is not None and level.table == {"junk": "x"}
+
+    def test_every_core_declared_leaf_still_loads(self, tmp_path):
         # The CONTROL. A refusal that also refused the real keys would be caught by the
         # rest of the suite, but not by anything that says WHY this list is the list.
         state = {
@@ -1150,9 +1170,10 @@ class TestTheForwardCompatPassthroughIsClosed:
             "allow_helpers": "true", "continue_mode": "true", "bootstrap": "x",
             "template": "t", "canon": "c", "transform": "tweakcc",
         }
-        assert state_level(AgentConfig(state=state), node="claude").table == state
+        cfg = load(self._file(tmp_path, state), node="claude")
+        assert state_level(cfg, node="claude").table == state
 
-    def test_a_plugin_declared_leaf_still_launches(self):
+    def test_a_plugin_declared_leaf_still_loads(self, tmp_path):
         """THE POSITIVE CONTROL, and the mutation proof for the per-agent vocabulary.
 
         ``provider`` is declared by the goose target via ``setting_descriptors()``, not by core's
@@ -1170,23 +1191,21 @@ class TestTheForwardCompatPassthroughIsClosed:
         leaves = default_valid_agents().leaf_map.get("goose", ())
         if "provider" not in leaves:
             pytest.skip("the goose plugin does not declare 'provider' in this environment")
-        assert state_level(
-            AgentConfig(state={"provider": "ollama"}), node="goose",
-        ).table == {
-            "provider": "ollama",
-        }
+        path = self._file(tmp_path, {"provider": "ollama"})
+        assert load(path, node="goose").state == {"provider": "ollama"}
 
-    def test_the_repair_verbs_do_not_go_through_here(self, tmp_path):
-        # ⚑ WHY THE REFUSAL IS AT THE LAUNCH BOUNDARY AND NOT IN ``load``: a poisoned file
-        # must still be clearable. ``clear_overrides`` reads raw YAML and never builds a
-        # level, so this is the escape hatch, pinned rather than assumed.
+    def test_the_repair_door_does_not_go_through_here(self, tmp_path):
+        # ⚑ A poisoned file must still be clearable: ``clear_overrides`` reads raw YAML and
+        # never calls ``load``, so this is the escape hatch, pinned rather than assumed.
         # ⚑ ``name`` IS ONE OF THE UNDECLARED ENTRIES NOW (D8b), and the case is the live one:
         # every file `kanibako setup` ever wrote carries that line, so this IS the poisoned
-        # file a user meets. It still SHOWS, and it still clears.
+        # file a user meets. Every reader refuses it, and it still clears.
         path = tmp_path / "agent.yaml"
         path.write_text("self:\n  name: Nav\n  junk: x\n")
-        assert load(path).state == {"name": "Nav", "junk": "x"}   # the SHOW verbs see it
+        with pytest.raises(SettingsError, match="'name'"):
+            load(path, node="claude")
         assert clear_overrides(path) == 2
+        assert load(path, node="claude").state == {}
 
 
 class TestFileSpelling:
@@ -1220,7 +1239,7 @@ class TestLoadSharesTheRefusal:
             "      EDITOR: vim\n"
         )
         with pytest.raises(SettingsError) as exc:
-            load(path)
+            load(path, node="claude")
         message = str(exc.value)
         assert "self.claude.env" in message
         assert str(path) in message
@@ -1237,6 +1256,6 @@ class TestLoadSharesTheRefusal:
             "    ro:\n"
             "      /box/x: [/h/x]\n"
         )
-        cfg = load(path)
+        cfg = load(path, node="claude")
         assert cfg.env == {"EDITOR": "vim"}
         assert cfg.category_tables == {"bindings": {"ro": {"/box/x": ["/h/x"]}}}

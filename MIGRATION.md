@@ -2631,9 +2631,9 @@ answer with the same vocabulary the settings engine uses everywhere else:
   otherwise delete the line by hand (see *"2.37 An agent's settings file has ONE level: everything
   sits directly under `self:`"*).
 - **The launch snapshot's "forward-compat" passthrough is closed.** An undeclared scalar already
-  sitting in an agent file used to ride into the box unread; it now refuses the LAUNCH by name.
-  `agent list` and `agent info` still display such a file, so you can see what to fix without
-  starting anything.
+  sitting in an agent file used to ride into the box unread; it now refuses the LAUNCH by name,
+  and every other `agent` verb that reads the file refuses it too (see *"2.95 The `agent` verbs
+  refuse an agent file with an undeclared key, as the launch does"*).
 
 Also fixed in the same pass: **a dotted destination reads back whole** — `agent get claude
 "bindings.ro.~/.cache/uv"` prints the same entry `kanibako system get
@@ -4708,11 +4708,13 @@ keyspace replaced.
 
 ```
 Error: the agent settings file for 'claude' carries 'name', which is not a settings key: 'name' is not a declared agent key of 'agent.claude' …
-  Fix: remove `self.name` from agents/claude/agent.yaml (or correct the spelling); 'kanibako agent info claude' still lists what the file holds.
+  Fix: remove `self.name` from <data>/agents/claude/agent.yaml (or correct the spelling), or clear every override with 'kanibako agent reset claude --all'.
 ```
 
-⚑ **`kanibako agent info` and `agent show` still read and display such a file** — the repair verbs
-keep working on a file the launch will not start, so you can see the line before you delete it.
+⚑ **`kanibako agent info`, `show`, `list` and `get` refuse such a file with the same message**
+(see *"2.95 The `agent` verbs refuse an agent file with an undeclared key, as the launch does"*).
+The error names the line to delete; `kanibako agent reset claude --all` also clears it, with every
+other setting in the file.
 
 **What else moves.**
 
@@ -5673,6 +5675,36 @@ directory, or set `workset.workspaces` to the directory you want. To keep the `n
 working set, connect a directory outside it instead. A workspace that v1.8.0-rc2 created while the `null`
 was set is under `<workset>/workspaces/`, and kanibako still uses it: until a later release, a box
 still starts with the default workspace directory when the key is `null`.
+
+### 2.95 The `agent` verbs refuse an agent file with an undeclared key, as the launch does
+
+**Read this if an agent's settings file (`<data>/agents/<agent>/agent.yaml`) has a line under
+`self:` that is not a key of that agent** — a typo, or a key another agent's plugin declares. (A
+`name:` line from an older kanibako refuses too, but v1.8.0-rc2 accepted it everywhere as the file's
+name; see *"2.73 An agent's description is a settings key, and the agent file's `name:` is gone"*.)
+This covers an agent's own file; a persona agent's file (`claude+work`) is not yet checked for
+undeclared keys, by these verbs or by the launch.
+
+**What changed.** In v1.8.0-rc2 such a file was refused only where kanibako resolved a box's settings — starting a box,
+or `box show --effective`. `kanibako agent show`,
+`info`, `list` and `get` read it and displayed the line: on `self: {model: opus, zippity: 1}`,
+`agent show claude` listed `zippity = 1` with exit 0. Every settings file is now checked for
+unknown keys as it is read, so each of those verbs stops with exit 1 and the error the launch gives:
+
+```
+Error: the agent settings file for 'claude' carries 'zippity', which is not a settings key: …
+  Fix: remove `self.zippity` from <data>/agents/claude/agent.yaml (or correct the spelling), or clear every override with 'kanibako agent reset claude --all'.
+```
+
+`agent list` (without `-q`, which reads no file) stops at the first such file instead of listing
+the others. It also stops on a folder under `<data>/agents/` whose name is not a legal agent name —
+a `claude.bak` backup, say — which v1.8.0-rc2 listed; the error names the folder, and the cure is
+to rename it or move it out of `<data>/agents/`. When these verbs refuse a table nested under `self:`, the
+error now names the agent (`agent.claude.<table>`) where v1.8.0-rc2 printed
+`agent.<agent>.<table>`.
+
+**What to do.** Delete the line the error names, or correct its spelling. `kanibako agent reset
+<agent> --all` also works on such a file, but it clears every other setting in the file too.
 
 ---
 

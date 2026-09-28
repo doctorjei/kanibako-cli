@@ -111,7 +111,7 @@ class TestRootViaConstant:
         # ⚑ THROUGH the constant, never a literal: a rename that misses a site must
         # fail HERE rather than be re-blessed by editing this line.
         assert set(load_doc(path)) == {agent_file.ROOT_SECTIONS[0]}
-        assert agent_file.load(path).state == {"model": "opus"}
+        assert agent_file.load(path, node="claude").state == {"model": "opus"}
 
     def test_leaf_round_trip_through_the_slot(self, tmp_path: Path) -> None:
         from kanibako.settings.config_io import load_doc

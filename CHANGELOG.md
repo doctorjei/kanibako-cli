@@ -26,6 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as an unknown agent, and the refusal names the lowercase spelling. See *An agent's store
   directory and cascade slot are its name in lowercase* in [MIGRATION.md](MIGRATION.md).
 
+- **`agent show`, `info`, `list` and `get` refuse an agent settings file with an undeclared key,
+  as the launch does.** In 1.8.0-rc2 a scalar under `self:` that is not a key of that agent
+  (`zippity: 1`) was refused only where kanibako resolved a box's settings — starting a box, or
+  `box show --effective`; `agent show`, `info`, `list` and `get` listed it (`zippity = 1`, rc 0).
+  Each of them now stops with rc 1, naming the file, the agent and the key, and `agent list`
+  (without `-q`, which reads no file) stops at the first such file. This holds for an agent's own
+  file; a persona agent's file (`claude+work`) is not yet checked for undeclared keys, by these
+  verbs or by the launch. Their refusal of a table nested under `self:` now names the agent
+  (`agent.claude.<table>`) where 1.8.0-rc2 printed `agent.<agent>.<table>`. `agent list` (without `-q`)
+  also refuses a folder under `agents/` whose name is not a legal agent name (`claude.bak`, `bad
+  name`), where 1.8.0-rc2 listed it: the error names the folder's path and says to rename it or
+  move it out. `kanibako agent reset <agent> --all` still clears a refused file, and the message
+  names it (see *The `agent` verbs refuse an agent file with an undeclared key, as the launch
+  does* in `MIGRATION.md`).
+
 - **A bare agent key refused at workset scope names the exception to "all agents".** `workset set
   <ws> transform=…` (and every other bare agent key, for `set`, `get` and `reset`) still refuses and
   still points at system scope for all agents, or `pref.agent.<agent>.<key>` per box. It now adds

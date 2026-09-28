@@ -193,13 +193,34 @@ def run_list(args: argparse.Namespace) -> int:
             print(display_agent_ref(f.parent.name))
         return 0
 
+    # ⚑ One refused file stops the listing, by name, before anything prints: no list verb here
+    # reports an error per row, and printing the row anyway would be the silent accept the
+    # closed keyspace bars.
+    rows = [(f.parent.name, load(f, node=_store_node(f.parent))) for f in settings_files]
     print(f"{'NAME':<20} {'MODEL'}")
-    for f in settings_files:
-        cfg = load(f)
-        name = display_agent_ref(f.parent.name)
+    for dirname, cfg in rows:
         model = cfg.state.get("model", "-")
-        print(f"{name:<20} {model}")
+        print(f"{display_agent_ref(dirname):<20} {model}")
     return 0
+
+
+def _store_node(store: Path) -> str:
+    """The agent NODE an agent store folder names; refuses a folder that names no agent.
+
+    ⚑ The ref grammar's refusal says only which name is illegal; this one names the folder and
+    the cure, because the user put the folder there and must be told where it is.
+    """
+    from kanibako.errors import ConfigError
+    from kanibako.settings.config_keys import agent_key_node
+
+    try:
+        return agent_key_node(store.name)
+    except ConfigError as e:
+        raise ConfigError(
+            f"{store} is not an agent store: {e}.\n"
+            f"  Fix: rename the folder to the agent's name, or move it out of "
+            f"{store.parent}."
+        ) from None
 
 
 def run_info(args: argparse.Namespace) -> int:
@@ -227,7 +248,7 @@ def run_info(args: argparse.Namespace) -> int:
         )
         return 1
 
-    cfg = load(path)
+    cfg = load(path, node=agent_id)
     # ⚑ THE §2d KEY, RESOLVED — not a field of the file. The line is spelled for the key it
     # prints, so a reader can reach it: `kanibako agent set <agent> label=…`.
     print(f"Label:        {_agent_label(std, agent_id)}")
@@ -487,7 +508,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # Parse key/value argument
     if key_value is None:
         # Show mode — read the config only where the READ paths need it.
-        cfg = load(path)
+        cfg = load(path, node=agent_id)
         # ⚑ RESOLVED HERE, where ``std`` is in scope; the formatter stays a formatter.
         return _show_agent_config(
             cfg, _agent_label(std, agent_id), effective=args.effective,
@@ -551,7 +572,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     if read_err is not None:
         print(read_err, file=sys.stderr)
         return 1
-    val = _get_agent_key(load(path), key)
+    val = _get_agent_key(load(path, node=agent_id), key)
     if val is None:
         # ⚑ D-6: THE RECORD FIRST, THE FILE SECOND.  ``AgentConfig`` models a
         # SUBSET of what the file may hold — no field answers for the CATEGORY
@@ -918,7 +939,7 @@ def run_reauth(args: argparse.Namespace) -> int:
         _resolve_box_launch_decisions,
     )
     agent_cfg_path = agent_settings_path(std.agents, agent_name)
-    reauth_agent_cfg = load(agent_cfg_path) if agent_cfg_path.exists() else None
+    reauth_agent_cfg = load(agent_cfg_path, node=agent_name) if agent_cfg_path.exists() else None
     auth_src, active_endpoint, _active_model = _resolve_box_launch_decisions(
         std=std,
         proj=proj,

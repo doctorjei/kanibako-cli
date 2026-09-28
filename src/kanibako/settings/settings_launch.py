@@ -2740,8 +2740,9 @@ def _agent_state_partial(level: AgentFileLevel | None) -> KeyStore | None:
     DROPS its behavior; this wraps it into the DISCRIMINATED slot (§2d / §0).
 
     ⚑ IT NEEDS NO GATE OF ITS OWN, AND THAT IS DELIBERATE (P4).  The undeclared keys it
-    used to ride through verbatim are refused at the BOUNDARY that builds the level
-    (``agent_file.state_level``), so nothing undeclared can reach this function to be
+    used to ride through verbatim are refused as the file is read (``agent_file.load``),
+    and every record reaching this function comes from ``load`` or from a plugin's
+    generated config, whose state is empty — so nothing undeclared can reach it to be
     gated.  A second check here would be a rule spelled twice, and the one downstream
     would be the one that rots.
 

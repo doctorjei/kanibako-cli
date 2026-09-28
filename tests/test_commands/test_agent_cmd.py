@@ -463,7 +463,7 @@ class TestRunConfig:
 
         # Verify the file was updated
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        cfg = load_agent_config(path, node="claude")
         assert cfg.state["model"] == "sonnet"
 
     def test_config_set_resolves_against_the_system_scope(self, agent_env, monkeypatch):
@@ -551,7 +551,7 @@ class TestRunConfig:
         ))
         assert rc == 0
         assert "Set model=whatever" in capsys.readouterr().out
-        cfg = load_agent_config(agent_config_path(agent_env, "claude"))
+        cfg = load_agent_config(agent_config_path(agent_env, "claude"), node="claude")
         assert cfg.state["model"] == "whatever"
 
     def test_config_set_env_key(self, agent_env, capsys):
@@ -565,7 +565,7 @@ class TestRunConfig:
         assert "Set env.PAGER=less" in capsys.readouterr().out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        cfg = load_agent_config(path, node="claude")
         assert cfg.env["PAGER"] == "less"
 
     def test_config_set_secret_path_key(self, agent_env, capsys):
@@ -584,7 +584,7 @@ class TestRunConfig:
         assert "Set secret_path.ANTHROPIC_AUTH_TOKEN=" in capsys.readouterr().out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        cfg = load_agent_config(path, node="claude")
         assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] == "~/.config/claude/nav/token"
         # It must NOT have leaked into the plain env map.
         assert "ANTHROPIC_AUTH_TOKEN" not in cfg.env
@@ -617,7 +617,7 @@ class TestRunConfig:
         assert "Cleared secret_path.TOKEN set on the agent scope" in out
         assert "falls back through the cascade" in out
         assert "Reset secret_path.TOKEN" not in out
-        cfg = load_agent_config(agent_config_path(agent_env, "claude"))
+        cfg = load_agent_config(agent_config_path(agent_env, "claude"), node="claude")
         assert "TOKEN" not in cfg.secret_path
 
     def test_config_shell_is_no_longer_a_key_at_all(self, agent_env, capsys):
@@ -658,7 +658,7 @@ class TestRunConfig:
         assert "Reset model" not in out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        cfg = load_agent_config(path, node="claude")
         assert "model" not in cfg.state
 
     def test_config_reset_env_key(self, agent_env, capsys):
@@ -677,7 +677,7 @@ class TestRunConfig:
         assert "Reset env.EDITOR" not in out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        cfg = load_agent_config(path, node="claude")
         assert "EDITOR" not in cfg.env
 
     def test_config_reset_unset_declared_key(self, agent_env, capsys):
@@ -708,7 +708,7 @@ class TestRunConfig:
         assert "Reset 3 override(s)." in capsys.readouterr().out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path)
+        cfg = load_agent_config(path, node="claude")
         assert cfg.state == {}
         assert cfg.env == {}
         # ``reset --all`` REWRITES the file without the key, so the record reads the
@@ -863,7 +863,7 @@ class TestSparseWrites:
 
             assert by_verb == by_config == ["--c", "--d"], (leaf, by_verb, by_config)
             # ...and the shape the record actually reads is that one.
-            assert getattr(load_agent_config(path), leaf) == ["--c", "--d"]
+            assert getattr(load_agent_config(path, node="claude"), leaf) == ["--c", "--d"]
 
     def test_reset_key_prunes_empty_table_leaves_siblings(self, agent_env):
         """reset removes the one entry, prunes the now-empty table, and leaves
@@ -982,6 +982,53 @@ class TestSparseWrites:
         with pytest.raises(SettingsError) as exc:
             getattr(agent_cmd, verb)(args)
         assert f"`model` at the top level of {path}" in str(exc.value)
+        # The refusal names the agent whose file it read, not a placeholder.
+        assert "`agent.claude`" in str(exc.value)
+        assert "<agent>" not in str(exc.value)
+
+    @pytest.mark.parametrize("folder", ("claude.bak", "bad name"))
+    def test_list_refuses_a_store_folder_that_names_no_agent(self, agent_env, folder):
+        """A folder under ``agents/`` whose name is not a legal agent name stops the listing,
+        naming the folder's PATH and the cure — not the bare ref-grammar refusal, which names
+        neither. (Mutation: drop ``_store_node``'s re-raise → the path is missing → RED.)"""
+        from kanibako.commands import agent_cmd
+        from kanibako.errors import ConfigError
+
+        good = _write_sparse(agent_env, "claude", {"self": {"model": "opus"}})
+        bad = good.parent.parent / folder
+        bad.mkdir()
+        (bad / good.name).write_text("self: {}\n")
+        with pytest.raises(ConfigError) as exc:
+            agent_cmd.run_list(argparse.Namespace(quiet=False))
+        message = str(exc.value)
+        assert f"{bad} is not an agent store" in message
+        assert f"invalid agent name '{folder}'" in message
+        assert "rename the folder" in message
+
+    @pytest.mark.parametrize("verb, key_value", [
+        ("run_info", None), ("run_show", None), ("run_list", None),
+        ("run_get", "model"),
+    ])
+    def test_the_show_verbs_refuse_an_undeclared_leaf(self, agent_env, verb, key_value):
+        """Every reader gets the verdict the launch gets (Q101 option 1): an undeclared leaf
+        under ``self:`` is refused by name, never listed. (Mutation: drop the
+        ``_refuse_undeclared_state`` call from ``agent_file.load`` → ``zippity = 1`` is shown
+        at rc 0 → RED.)"""
+        from kanibako.commands import agent_cmd
+        from kanibako.settings.settings_resolve import SettingsError
+
+        path = _write_sparse(
+            agent_env, "claude", {"self": {"model": "opus", "zippity": 1}},
+        )
+        args = argparse.Namespace(
+            agent_id="claude", effective=False, quiet=False, key=key_value,
+        )
+        with pytest.raises(SettingsError) as exc:
+            getattr(agent_cmd, verb)(args)
+        message = str(exc.value)
+        assert "'claude' carries 'zippity'" in message
+        assert str(path) in message
+        assert "kanibako agent reset claude --all" in message
 
     def test_reset_all_confirm_gates_destructive_write(self, agent_env, capsys):
         """Without --force, a declined confirm aborts and leaves the file
@@ -1759,8 +1806,8 @@ class TestAgentSetRoutesThroughTheOneSetter:
         """The set-time snapshot must NOT read the node's OWN file, and this is why.
 
         A nested ``self.<sub>:`` sub-table is refused by ``agent_file``'s cascade reader, and the
-        repair verbs deliberately never go through it — a poisoned file still lists, still
-        displays, and can still be fixed from the command line.  MEASURED: threading the agent
+        repair verbs deliberately never go through it — a poisoned file can still be fixed
+        from the command line.  MEASURED: threading the agent
         tier into the set-time cascade raises ``SettingsError`` out of ``assemble_levels``, which
         would both break ``set_config_value``'s never-raises contract and take the repair path
         away on the one file that needs it.  MUTATION PROOF: add ``cascade_agent_path=path`` to
@@ -2038,7 +2085,6 @@ class TestAgentGetReadsWhatTheFileCarries:
 
         path = agent_settings_path(agents_dir(agent_env), "claude")
         dump_doc(path, {"self": {
-            "name": "claude",
             "bindings": {"ro": {
                 "/box/share": ["/host/share"],
                 self._DOTTED: ["/store/uv"],
@@ -2122,6 +2168,6 @@ class TestAgentGetReadsWhatTheFileCarries:
 
         dump_doc(
             agent_settings_path(agents_dir(agent_env), "claude"),
-            {"self": {"name": "claude", "transform_settings": "oops"}},
+            {"self": {"model": "opus", "transform_settings": "oops"}},
         )
         assert run_info(argparse.Namespace(agent_id="claude")) == 0
