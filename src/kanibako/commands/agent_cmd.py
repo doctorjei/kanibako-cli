@@ -157,6 +157,74 @@ def _load_std() -> StandardPaths:
     return load_std_paths(load_config(_config_file()))
 
 
+def _missing_store_error(agent_id: str, path: Path, reserved: str) -> str:
+    """Why *agent_id* has no store at *path* — the node gate's refusal first, else "not found".
+
+    *reserved* is the refusal to print for the reserved ``default`` tier; the caller picks it
+    (:func:`_reserved_tier_refusal_for`), because its cure depends on the verb and key.
+    ⚑ ASKED ONLY WHEN THE STORE IS MISSING, never ahead of the path lookup: the gate refuses
+    ``self`` (the file alias — the ``malformed`` arm), and ``agent reset self --all`` must still
+    clear a leftover ``agents/self/`` (the repair door).  A present store keeps its own refusals
+    (``agent_file.load`` for ``self``, the engine's reserved-tier route for ``default``).
+    """
+    from kanibako.settings.config_dest import check_agent_node
+
+    refusal = check_agent_node(agent_id)
+    if refusal is None:
+        return f"Error: agent '{display_agent_ref(agent_id)}' not found ({path})"
+    if refusal.reason == "reserved":
+        return reserved
+    return f"Error: {refusal.detail}"
+
+
+def _reserved_tier_refusal_for(args: argparse.Namespace) -> str:
+    """The reserved-tier refusal for the verb *args* spells, in ``config_dest``'s words.
+
+    ⚑ THE KEY IS JUDGED FIRST, BY THE VERB'S OWN GATE: an undeclared key gets the closed-keyspace
+    refusal it gets when a store exists, never a cure that names it (spec §0).  Then, for a key
+    that is set or reset, the tier's category entries take their system-scope route's cure and
+    every other tail the SAME write refusal the engine gives (``config_dest._reserved_tier_refusal``),
+    so a missing ``agents/default/`` and a leftover one cure alike; a READ cure for ``get``; the
+    store refusal for a verb that names no key.  The branch order is
+    :func:`_run_agent_config`'s own dispatch.
+    """
+    from kanibako.settings.config_dest import (
+        _reserved_tier_category_refusal,
+        _reserved_tier_read_refusal,
+        _reserved_tier_refusal,
+        _reserved_tier_store_refusal,
+    )
+    from kanibako.settings.config_keys import (
+        AGENT_DEFAULT_SUB,
+        agent_default_tier_category,
+        agent_read_key_error,
+    )
+
+    key_value = getattr(args, "key_value", None)
+    if getattr(args, "reset", None) is not None:
+        if getattr(args, "all_keys", False) or not key_value:
+            return _reserved_tier_store_refusal()
+        tail, verb = key_value.strip(), "reset"
+    elif key_value is None:
+        return _reserved_tier_store_refusal()
+    elif getattr(args, "null", False) or "=" in key_value:
+        tail, verb = key_value.partition("=")[0].strip(), "set"
+    else:
+        tail = key_value.strip()
+        return (
+            agent_read_key_error(AGENT_DEFAULT_SUB, tail)
+            or _reserved_tier_read_refusal(tail)
+        )
+    key_err = _agent_write_vocab_error(AGENT_DEFAULT_SUB, tail, verb=verb)
+    if key_err is not None:
+        return key_err
+    # The engine's own dispatch order: the tier's category entries are routed ahead of its
+    # reserved-node refusal, so they take their route's cure, not that refusal's.
+    if agent_default_tier_category(f"agent.{AGENT_DEFAULT_SUB}.{tail}") is not None:
+        return _reserved_tier_category_refusal(tail)
+    return _reserved_tier_refusal(tail)
+
+
 def run_list(args: argparse.Namespace) -> int:
     """List configured agents."""
     from kanibako.settings.agent_file import load
@@ -241,11 +309,13 @@ def run_info(args: argparse.Namespace) -> int:
     from kanibako.settings.config_keys import agent_key_node
 
     agent_id = agent_key_node(args.agent_id)
-    agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)
     if not path.exists():
+        from kanibako.settings.config_dest import _reserved_tier_store_refusal
+
         print(
-            f"Error: agent '{agent_display}' not found ({path})", file=sys.stderr
+            _missing_store_error(agent_id, path, _reserved_tier_store_refusal()),
+            file=sys.stderr,
         )
         return 1
 
@@ -370,7 +440,8 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     path = agent_settings_path(std.agents, agent_id)
     if not path.exists():
         print(
-            f"Error: agent '{agent_display}' not found ({path})", file=sys.stderr
+            _missing_store_error(agent_id, path, _reserved_tier_refusal_for(args)),
+            file=sys.stderr,
         )
         return 1
 
@@ -613,6 +684,20 @@ def _agent_key_gate(
     3. the VALUE SHAPE (D-7) — a declared key whose value is a TABLE takes no scalar.
     """
     from kanibako.settings.agent_file import table_value_error
+
+    key_err = _agent_write_vocab_error(agent_id, key, verb=verb)
+    if key_err is not None:
+        return key_err
+    return table_value_error(key, path=path, verb=verb)
+
+
+def _agent_write_vocab_error(agent_id: str, key: str, *, verb: str) -> str | None:
+    """Steps 1–2 of :func:`_agent_key_gate` — the retired route, then the closed keyspace.
+
+    Split out for the one caller with no file to judge a value shape against: the missing-store
+    refusal (:func:`_reserved_tier_refusal_for`), which must refuse an undeclared key exactly as
+    the gate does when the store exists.
+    """
     from kanibako.settings.config_keys import (
         agent_node_bind_retired_error,
         agent_write_key_error,
@@ -621,10 +706,7 @@ def _agent_key_gate(
     retired = agent_node_bind_retired_error(f"agent.{agent_id}.{key}", verb=verb)
     if retired is not None:
         return retired
-    key_err = agent_write_key_error(agent_id, key, verb=verb)
-    if key_err is not None:
-        return key_err
-    return table_value_error(key, path=path, verb=verb)
+    return agent_write_key_error(agent_id, key, verb=verb)
 
 
 def _label_floor(agent_id: str) -> dict[str, object]:

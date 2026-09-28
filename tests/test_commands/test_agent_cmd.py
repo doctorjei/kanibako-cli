@@ -1193,6 +1193,126 @@ class TestSparseWrites:
 
 
 # ---------------------------------------------------------------------------
+# A missing store says WHY: the node gate's refusal before "not found"
+# ---------------------------------------------------------------------------
+
+
+_EVERY_AGENT_VERB = [
+    ("run_set", {"key_value": "label=x"}),
+    ("run_get", {"key": "label"}),
+    ("run_show", {"effective": False}),
+    ("run_info", {}),
+    ("run_reset", {"key": "label", "all_keys": False, "force": True}),
+    ("run_reset", {"key": None, "all_keys": True, "force": True}),
+]
+
+
+class TestAMissingStoreSaysWhy:
+    """Board conformance S1: ``agent set default label=x`` said "agent 'default' not found".
+
+    (Mutation: make ``_missing_store_error`` skip ``check_agent_node`` → every verb prints
+    "not found" for ``default`` and ``self`` → RED.)
+    """
+
+    # The cure each verb owes the reserved tier: the engine's WRITE cure where a key is set or
+    # reset, a READ cure for ``get``, and the tier's file where the verb names no key.
+    _RESERVED_CURES = [
+        "set the any-agent default with the bare key (e.g. 'label') instead.",
+        "read the any-agent default with 'kanibako system get agent.default.label' instead.",
+        "'agent: default:' table of the system settings file",
+        "'agent: default:' table of the system settings file",
+        "set the any-agent default with the bare key (e.g. 'label') instead.",
+        "'agent: default:' table of the system settings file",
+    ]
+
+    @pytest.mark.parametrize(
+        "verb,extra,cure",
+        [(v, e, c) for (v, e), c in zip(_EVERY_AGENT_VERB, _RESERVED_CURES)],
+    )
+    def test_default_is_the_reserved_tier(self, agent_env, capsys, verb, extra, cure):
+        from kanibako.commands import agent_cmd
+
+        rc = getattr(agent_cmd, verb)(argparse.Namespace(agent_id="default", **extra))
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "'default' is the reserved any-agent tier" in err, err
+        assert cure in err, err
+        assert "not found" not in err, err
+
+    @pytest.mark.parametrize("tail", ["env.FOO", "secret_path.TOK"])
+    @pytest.mark.parametrize("verb,extra", [
+        ("run_set", lambda t: {"key_value": f"{t}=/x"}),
+        ("run_get", lambda t: {"key": t}),
+        ("run_reset", lambda t: {"key": t, "all_keys": False, "force": True}),
+    ])
+    def test_a_tier_category_entry_is_sent_to_its_system_key(
+        self, agent_env, capsys, verb, extra, tail,
+    ):
+        """``env.<VAR>``/``secret_path.<VAR>`` are CLI-settable at the tier as
+        ``agent.default.<tail>``, so no verb may say they have no CLI route.
+        (Mutation: drop the ``agent_default_tier_category`` branch from
+        ``_reserved_tier_refusal_for`` → the set/reset rows print the file cure → RED.)"""
+        from kanibako.commands import agent_cmd
+
+        rc = getattr(agent_cmd, verb)(
+            argparse.Namespace(agent_id="default", **extra(tail)),
+        )
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert f"'kanibako system get agent.default.{tail}'" in err, err
+        assert "no bare CLI spelling" not in err, err
+        assert "'agent: default:' table" not in err, err
+
+    @pytest.mark.parametrize("verb,extra,closed", [
+        ("run_set", {"key_value": "label=x"}, False),
+        ("run_reset", {"key": "label", "all_keys": False, "force": True}, False),
+        ("run_set", {"key_value": "bogus=1"}, True),
+        ("run_get", {"key": "bogus"}, True),
+        ("run_reset", {"key": "bogus", "all_keys": False, "force": True}, True),
+    ])
+    def test_a_leftover_default_folder_gets_the_same_refusal(
+        self, agent_env, capsys, verb, extra, closed,
+    ):
+        """ONE carrier of the reserved-tier refusal: with no ``agents/default/`` this verb
+        answers; with a leftover one the engine does — and they must say the same thing.
+        An undeclared key is refused by the closed keyspace either way, never cured.
+        (Mutations: give ``_reserved_tier_refusal_for`` a fixed file-table cure → RED; drop
+        its key-gate calls → the ``bogus`` rows RED.)"""
+        from kanibako.commands import agent_cmd
+
+        assert getattr(agent_cmd, verb)(
+            argparse.Namespace(agent_id="default", **extra),
+        ) == 1
+        missing = capsys.readouterr().err
+        _write_sparse(agent_env, "default", {"self": {}})
+        assert getattr(agent_cmd, verb)(
+            argparse.Namespace(agent_id="default", **extra),
+        ) == 1
+        leftover = capsys.readouterr().err
+        assert missing.strip() == leftover.strip(), (missing, leftover)
+        assert ("the keyspace is CLOSED" in missing) is closed, missing
+
+    @pytest.mark.parametrize("verb,extra", _EVERY_AGENT_VERB)
+    def test_self_is_the_file_alias(self, agent_env, capsys, verb, extra):
+        from kanibako.commands import agent_cmd
+
+        rc = getattr(agent_cmd, verb)(argparse.Namespace(agent_id="self", **extra))
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "'self' is not an agent" in err, err
+        assert "not found" not in err, err
+
+    @pytest.mark.parametrize("verb,extra", _EVERY_AGENT_VERB)
+    def test_an_absent_agent_is_still_not_found(self, agent_env, capsys, verb, extra):
+        from kanibako.commands import agent_cmd
+
+        rc = getattr(agent_cmd, verb)(argparse.Namespace(agent_id="nosuch", **extra))
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "Error: agent 'nosuch' not found (" in err, err
+
+
+# ---------------------------------------------------------------------------
 # agent reauth
 # ---------------------------------------------------------------------------
 

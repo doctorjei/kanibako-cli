@@ -24,6 +24,7 @@ from kanibako.settings.agent_file import AgentFileSlot, slot_for
 from kanibako.settings.settings_keyspace import file_alias_reason
 from kanibako.settings.config_keys import (
     _AGENT_DEFAULT_TIER_CURE,
+    _SCOPE_READ_COMMAND,
     AGENT_DEFAULT_SUB,
     _is_agent_setting,
     _parse_agent_node_secret_key,
@@ -91,6 +92,11 @@ def check_agent_node(node: str) -> "NodeRouteRefusal | None":
     return None
 
 
+#: The subject of every refusal at the RESERVED ``agent.default`` tier — ONE spelling for the
+#: write, read and store refusals below, which differ only in the cure.
+_RESERVED_TIER_HEAD = "Error: 'default' is the reserved any-agent tier, not a persona node"
+
+
 def _reserved_tier_refusal(tail: str) -> str:
     """Refuse a write at the RESERVED ``agent.default`` tier, with the cure for *tail*.
 
@@ -106,7 +112,7 @@ def _reserved_tier_refusal(tail: str) -> str:
     ⚑ The cure SENTENCE is ``config_keys``' (P10) — this module was its third carrier.
     Reasoning: ``llm-docs/kanibako/settings/config_dest.py.md``.
     """
-    head = "Error: 'default' is the reserved any-agent tier, not a persona node"
+    head = _RESERVED_TIER_HEAD
     if _is_agent_setting(tail):
         return (
             f"{head}; set the any-agent default with the bare key "
@@ -116,6 +122,40 @@ def _reserved_tier_refusal(tail: str) -> str:
         f"{head}, and '{tail}' has no bare CLI spelling. "
         f"{_AGENT_DEFAULT_TIER_CURE}"
     )
+
+
+def _reserved_tier_read_refusal(tail: str) -> str:
+    """Refuse a read of ``default`` as a persona NODE, curing it with the tier's own read.
+
+    ⚑ A READ CURE, NOT :func:`_reserved_tier_refusal`'s write cure: the tier's values are read
+    at the system scope as ``agent.default.<tail>`` (``config_interface.get_config_value``
+    routes that spelling to the tier's slot), in ``config_keys``' read-command spelling.
+    """
+    return (
+        f"{_RESERVED_TIER_HEAD}; read the any-agent default with "
+        f"'{_SCOPE_READ_COMMAND['system']} agent.default.{tail}' instead."
+    )
+
+
+def _reserved_tier_category_refusal(tail: str) -> str:
+    """Refuse a write of a tier CATEGORY entry (``env.<VAR>``/``secret_path.<VAR>``) addressed
+    through ``default`` as a persona NODE, curing it with the tier key's own system-scope route.
+
+    ⚑ FOR THE CALLER THAT ASKS BEFORE THE ENGINE'S DISPATCH: the engine routes these tails
+    ahead of :func:`_reserved_tier_refusal` (``config_keys.agent_default_tier_category``), whose
+    file cure would be the wrong answer here, since both are CLI-settable at the tier.
+    """
+    key = f"agent.{AGENT_DEFAULT_SUB}.{tail}"
+    return (
+        f"{_RESERVED_TIER_HEAD}; '{key}' is a system-scope key: set or reset it at the system "
+        f"scope, and read it with '{_SCOPE_READ_COMMAND['system']} {key}'."
+    )
+
+
+def _reserved_tier_store_refusal() -> str:
+    """Refuse ``default`` where a verb needs a persona's STORE and names no key (show, info,
+    reset --all): the tier has none, and its settings file is where it is authored."""
+    return f"{_RESERVED_TIER_HEAD}, and has no agent store. {_AGENT_DEFAULT_TIER_CURE}"
 
 
 def _persona_agent_target(
