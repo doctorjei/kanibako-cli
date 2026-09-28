@@ -5682,8 +5682,8 @@ still starts with the default workspace directory when the key is `null`.
 `self:` that is not a key of that agent** — a typo, or a key another agent's plugin declares. (A
 `name:` line from an older kanibako refuses too, but v1.8.0-rc2 accepted it everywhere as the file's
 name; see *"2.73 An agent's description is a settings key, and the agent file's `name:` is gone"*.)
-This covers an agent's own file; a persona agent's file (`claude+work`) is not yet checked for
-undeclared keys, by these verbs or by the launch.
+This covers a persona agent's file (`<data>/agents/nav+claude/agent.yaml`) too, judged against its
+harness's keys.
 
 **What changed.** In v1.8.0-rc2 such a file was refused only where kanibako resolved a box's settings — starting a box,
 or `box show --effective`. `kanibako agent show`,

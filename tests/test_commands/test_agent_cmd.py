@@ -1657,6 +1657,44 @@ class TestAgentVerbKeyspaceGate:
         assert "keyspace is CLOSED" in capsys.readouterr().err
         assert _stored_doc(agent_env) == before
 
+    def test_a_persona_agent_takes_its_harness_vocabulary(self, agent_env, capsys):
+        """A persona node (``nav+claude`` = persona ``nav`` on harness ``claude``) is gated on
+        its HARNESS's declared keys (spec §2d, ``[R150]``): ``set`` refuses an undeclared leaf
+        and writes nothing, takes a declared one, and ``show`` / ``get`` refuse a hand-written
+        undeclared leaf by name."""
+        from kanibako.commands import agent_cmd
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.settings_resolve import SettingsError
+
+        path = _write_sparse(agent_env, "nav+claude", {"self": {"model": "opus"}})
+        before = load_doc(path)
+        assert agent_cmd.run_set(
+            argparse.Namespace(agent_id="nav+claude", key_value="zippity=1"),
+        ) == 1
+        assert "keyspace is CLOSED" in capsys.readouterr().err
+        assert load_doc(path) == before
+        assert agent_cmd.run_set(
+            argparse.Namespace(agent_id="nav+claude", key_value="model=sonnet"),
+        ) == 0
+
+        _write_sparse(agent_env, "nav+claude", {"self": {"zippity": 2}})
+        for verb, key in (("run_show", None), ("run_get", "model")):
+            args = argparse.Namespace(
+                agent_id="nav+claude", effective=False, quiet=False, key=key,
+            )
+            with pytest.raises(SettingsError, match="carries 'zippity'"):
+                getattr(agent_cmd, verb)(args)
+
+    def test_a_persona_on_an_uninstalled_harness_concedes(self, agent_env, capsys):
+        # ``[R150]``: no plugin here declares harness ``nosuchharness``, so its vocabulary is
+        # unreadable and a leaf is CONCEDED rather than refused (``claude+work`` is this case).
+        from kanibako.commands.agent_cmd import run_set
+
+        _write_sparse(agent_env, "nav+nosuchharness", {"self": {}})
+        assert run_set(argparse.Namespace(
+            agent_id="nav+nosuchharness", key_value="zippity=1",
+        )) == 0
+
     def test_the_self_alias_is_refused_on_the_command_line(self, agent_env, capsys):
         """RULING 55, at the one surface that could still accept it.
 

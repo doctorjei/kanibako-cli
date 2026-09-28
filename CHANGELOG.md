@@ -38,9 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`zippity: 1`) was refused only where kanibako resolved a box's settings — starting a box, or
   `box show --effective`; `agent show`, `info`, `list` and `get` listed it (`zippity = 1`, rc 0).
   Each of them now stops with rc 1, naming the file, the agent and the key, and `agent list`
-  (without `-q`, which reads no file) stops at the first such file. This holds for an agent's own
-  file; a persona agent's file (`claude+work`) is not yet checked for undeclared keys, by these
-  verbs or by the launch. Their refusal of a table nested under `self:` now names the agent
+  (without `-q`, which reads no file) stops at the first such file. This holds for a persona
+  agent's file (`nav+claude`) too, judged against its harness's keys. Their refusal of a table
+  nested under `self:` now names the agent
   (`agent.claude.<table>`) where 1.8.0-rc2 printed `agent.<agent>.<table>`. `agent list` (without `-q`)
   also refuses a folder under `agents/` whose name is not a legal agent name (`claude.bak`, `bad
   name`), where 1.8.0-rc2 listed it: the error names the folder's path and says to rename it or
