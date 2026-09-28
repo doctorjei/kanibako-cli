@@ -795,7 +795,7 @@ def run_create(args: argparse.Namespace) -> int:
     # then claims already existed.
     if _already and not is_recovery:
         print(
-            f"Error: project already initialized in {_probe.project_path}",
+            f"Error: project already initialized in {_probe.project_path or '<None>'}",
             file=sys.stderr,
         )
         return 1
@@ -908,9 +908,9 @@ def run_create(args: argparse.Namespace) -> int:
         "from its path (or add a path argument)."
     )
     if is_recovery:
-        print(f"Resumed interrupted {mode} project in {proj.project_path}")
+        print(f"Resumed interrupted {mode} project in {proj.project_path or '<None>'}")
     else:
-        print(f"Created {mode} project in {proj.project_path}")
+        print(f"Created {mode} project in {proj.project_path or '<None>'}")
     print(start_hint)
     # ⚑ The behavior signal for the §D4a flip: v1.7.2 registered here and said nothing,
     # so silence would report the OLD outcome.  ⚑ Gated on the registry STATE, not on
@@ -1854,7 +1854,7 @@ def run_info(args: argparse.Namespace) -> int:
     has_data = proj.metadata_path.is_dir()
 
     if not has_data:
-        print(f"No project data found for: {proj.project_path}")
+        print(f"No project data found for: {proj.project_path or '<None>'}")
         print()
         # ⚑ DEFER to the launch's own refusal rather than restating it — otherwise
         # ``info`` and a launch can name DIFFERENT cures for the same box.
@@ -1921,7 +1921,7 @@ def run_info(args: argparse.Namespace) -> int:
     rows: list[tuple[str, str]] = [
         ("Name", proj.name or "(unnamed)"),
         ("Mode", mode_display),
-        ("Project", str(proj.project_path)),
+        ("Project", str(proj.project_path or "<None>")),
         ("Hash", short_hash(proj.project_hash)),
         ("Metadata", str(proj.metadata_path)),
         ("Shell", str(proj.shell_path)),

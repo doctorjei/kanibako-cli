@@ -896,6 +896,23 @@ class TestWorksetWorkspacesResolved:
                 == tmp_path / "workspaces"
             )
 
+    def test_a_null_workspaces_resolves_to_none_in_both_modes(self, tmp_path):
+        """[R177]: a present ``<None>`` is no dir, never the default leaf (Q106 review)."""
+        from kanibako.project.workset import resolve_workset_workspaces
+
+        doc = {"workset": {"workspaces": None}}
+        assert resolve_workset_workspaces(tmp_path, doc) is None
+        assert resolve_workset_workspaces(tmp_path, doc, standalone=True) is None
+
+    def test_the_locator_finds_members_at_the_default_under_a_null(self, tmp_path):
+        """Detection still looks where pre-null in-tree members sit; nothing else reads it."""
+        from kanibako.project.workset import resolve_workspaces_locator
+
+        assert (resolve_workspaces_locator(tmp_path, {"workset": {"workspaces": None}})
+                == tmp_path / "workspaces")
+        doc = {"workset": {"workspaces": "/srv/pods"}}
+        assert resolve_workspaces_locator(tmp_path, doc) == Path("/srv/pods")
+
     def test_boxes_and_logs_resolvers_default_to_the_spec_formula(self, tmp_path):
         """⚑ ``workset.boxes``/``workset.logs`` are declared keys and resolve exactly
         like ``workspaces``: default ``@meta.workset.path/<leaf>``, an ``@``-ref

@@ -363,6 +363,7 @@ def _resolve_workset_state(
     proj = resolve_workset_project(
         WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
     )
+    assert proj.project_path is not None  # only a standalone box can lack a workspace
     # EXTERNAL == the live workspace lies outside the workset root.
     is_external = True
     try:
@@ -387,6 +388,11 @@ def _state_from_paths(
     # the box authored, so a lifecycle op never persists the workset's default as a
     # box-scope override (see ``ProjectState.box_authored_vault``).
     box_tier, _ = box_workset_settings_paths(proj)
+    if proj.project_path is None:
+        # A standalone root that nulls ``workset.workspaces``: no workspace to move or copy.
+        refuse_null_workspaces(proj.metadata_path, f"a workspace for '{proj.name}'",
+                               standalone=True)
+    assert proj.project_path is not None  # refused on the line above
     return ProjectState(
         owner=owner,
         mode=proj.mode,
@@ -1402,8 +1408,16 @@ _STANDALONE_FIXED_ARTIFACTS = frozenset({
 def _resolve_standalone_workspaces(
     root: Path, doc: Mapping[str, Any] | None,
 ) -> Path:
-    """``workset.workspaces`` for a STANDALONE root — the SINGULAR ``workspace`` default."""
-    return resolve_workset_workspaces(root, doc, standalone=True)
+    """``workset.workspaces`` for a STANDALONE root — the SINGULAR ``workspace`` default.
+
+    Only a convert INTO the root reaches here, and it refused a nulling root first; the
+    refusal below keeps a null from ever reading as the default.
+    """
+    workspaces = resolve_workset_workspaces(root, doc, standalone=True)
+    if workspaces is None:
+        refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True)
+    assert workspaces is not None  # refused on the line above
+    return workspaces
 
 
 #: The ``workset.*`` DIRECTORY keys a STANDALONE root materializes UNDER ITSELF, each paired

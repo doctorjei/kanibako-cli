@@ -33,10 +33,11 @@ _VAULT_RW_LEAF = f'{_VAULT_LEAF}/{bootstrap.RW_PATH}'
 ## Functions
 ```
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
-def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
+def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path | None
+def resolve_workspaces_locator(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
 def workset_workspaces_nulled(workset_root: Path) -> bool
 def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool=False) -> None
-def refuse_null_box_workspace(workset_root: Path, workspace: Path, box: str, *, standalone: bool) -> None
+def refuse_null_box_workspace(workset_root: Path, workspace: Path | None, box: str, *, standalone: bool) -> None
 def resolve_workset_boxes(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
 def resolve_workset_logs(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path | None
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
@@ -89,7 +90,6 @@ class Workset:
     root: Path
     projects: list[WorksetProject] = field(default_factory=list)
     is_default: bool = False
-    workspaces_repoint: str | None = None
 
     @property
     def projects_dir(self) -> Path

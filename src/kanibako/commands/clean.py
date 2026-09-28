@@ -72,7 +72,7 @@ def _unregister_purged(std, proj) -> None:
     try:
         if proj.mode is BoxMode.standalone:
             name = registry_store.standalone_name_for_root(
-                std.registry, proj.project_path,
+                std.registry, proj.metadata_path,
             ) or proj.name
             if name:
                 registry_store.unregister_standalone(std.registry, name)
@@ -140,14 +140,14 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     # session data" means no box_data/ marker dir (the root always exists).
     if proj.mode is BoxMode.standalone:
         if not (proj.metadata_path / STANDALONE_META_DIR).is_dir():
-            print(f"No session data found for project {proj.project_path}")
+            print(f"No session data found for project {proj.project_path or '<None>'}")
             return 0
     elif not proj.metadata_path.is_dir():
         print(f"No session data found for project {proj.project_path}")
         return 0
 
     if not force:
-        print(f"Project: {proj.project_path}")
+        print(f"Project: {proj.project_path or '<None>'}")
         if proj.name:
             print(f"Name: {proj.name}")
         print()
@@ -202,7 +202,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     _unregister_purged(std, proj)
 
     print("done.")
-    print(f"Session data removed for {proj.project_path}")
+    print(f"Session data removed for {proj.project_path or '<None>'}")
     return 0
 
 

@@ -454,7 +454,7 @@ def box_address_args(addr: "BoxChannelAddresses") -> BoxAddressArgs:
 def meta_identity_floor(
     *,
     box_name: str,
-    project_path: str,
+    project_path: str | None,
     inbox: str,
     share_global: str,
     share_workset: str | None,
@@ -473,7 +473,8 @@ def meta_identity_floor(
     (JC-B2-4 equivalence bar).
 
     *share_workset* is ``None`` for STANDALONE (no workset-local channels, §2c) →
-    a whole-value ``None`` terminal, and the ONLY standalone ``None`` terminal here.
+    a whole-value ``None`` terminal.  *project_path* is ``None`` for a standalone box
+    whose root nulls ``workset.workspaces`` (Q106) → ``meta.box.workspace`` is ``<None>``.
     *box_settings* is the RO box-TIER settings-file anchor, UNIFORM in EVERY mode and
     single-sourced with the cascade's own box-tier path so the two cannot drift; it
     stays optional for narrow resolves that materialize no box tier.
@@ -1516,6 +1517,9 @@ def _workset_workspaces_floor_value(
     ⚑ PRIMARY RETURNS ``None`` — nothing to hand over: the manifest declares
     ``{primary: null, …}``, and :func:`workset_anchor_floor` supplies that present
     ``None`` itself and REFUSES a caller's primary value, so the arm has one carrier.
+    A root that NULLS the key also returns ``None`` (no floor value): the root's own
+    workset tier carries that ``<None>`` into the snapshot, and the default leaf would
+    be a path the user said does not exist.
 
     *ws_root_literal* is the SAME string ``meta.runtime.ws_root`` is built from
     (``proj.group.root`` named / ``proj.metadata_path`` standalone), so the workspaces
@@ -1532,9 +1536,10 @@ def _workset_workspaces_floor_value(
             f"workset.workspaces floor: mode {mode!r} has no workset root literal"
         )
     root = Path(ws_root_literal)
-    return str(resolve_workset_workspaces(
+    workspaces = resolve_workset_workspaces(
         root, load_workset_settings_doc(root), standalone=(mode == "standalone"),
-    ))
+    )
+    return str(workspaces) if workspaces is not None else None
 
 
 class _LaunchInputKwargs(TypedDict):
@@ -1920,7 +1925,7 @@ def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> Laun
     cascade_box_path, cascade_workset_path = box_workset_settings_paths(proj)
     meta_identity = meta_identity_floor(
         box_name=proj.name or "",
-        project_path=str(proj.project_path),
+        project_path=str(proj.project_path) if proj.project_path is not None else None,
         **address,
         box_settings=str(cascade_box_path),
     )

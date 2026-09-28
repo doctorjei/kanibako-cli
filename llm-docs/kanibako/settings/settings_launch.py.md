@@ -406,7 +406,9 @@ meta.box.name           | the box name (proj.name; primary/named = box name,
                           standalone = <kuid>_%leaf% — already composed LIVE and carried on
                           proj.name, JC-B2-2: reuse, do not regen)
 meta.box.workspace      | the resolved in-box workspace SOURCE (str(proj.project_path)) —
-                          routed to box.bindings.rw.workspace
+                          routed to box.bindings.rw.workspace; None for a standalone box
+                          whose root nulls workset.workspaces (Q106), so the bind's
+                          source is <None> and the collapse omits it
 meta.box.inbox          | this box's own mailbox dir (str(addr.inbox)) —
                           routed to box.bindings.rw.inbox
 meta.box.share_global   | this box's system-scope share dir (str(addr.share_global))
@@ -707,6 +709,12 @@ only; at PRIMARY, whose manifest arm is `null`, the floor supplies the present `
 (2026-08-29): the row had real named/standalone defaults that no floor emitted, so
 `@workset.workspaces` was `__MISSING__` in every launch snapshot, and its dependent
 `meta.box.workspace` `@`-referenced a key that answered at no terminus.
+
+A named or standalone root that NULLS the key hands the floor nothing (`_workset_workspaces_floor_value`
+returns `None`, as at primary): the root's own workset tier carries that `<None>` into the
+snapshot, and the default leaf the resolver used to collapse to would be a path the user said does
+not exist (Q106 review). The detection readers keep finding pre-null members at the default through
+`project.workset.resolve_workspaces_locator`, which nothing binds.
 
 ⚑ **A LITERAL, AND MORE STRONGLY SO THAN `channelroot`.** `settings/workset_dirkeys.py` names
 `workset.workspaces` FIRST among the keys read on the DETECTION side, and four readers run before any

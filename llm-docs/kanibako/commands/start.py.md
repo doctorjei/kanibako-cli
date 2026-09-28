@@ -1882,3 +1882,6 @@ disk; every launch door reaches it there (`start`, bare `kanibako`, `shell`, `co
 `metadata_path`; named: `group.root`) and hands off to `project.workset.refuse_null_box_workspace`,
 which owns the rule and the message; the `WorksetError` propagates to the CLI's rc-1 handler.
 Primary returns at once: its workspace is the project dir, not a workset key.
+⚑ A standalone box under a null carries `project_path = None`, so this is the one refusal for it;
+past the probe, `_run_container` narrows the type (`assert`) before the bind-shadow check and
+`ContainerRuntime.run`.

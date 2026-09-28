@@ -5677,6 +5677,11 @@ opens the box to log in), with exit 1, before changing anything, naming the box,
 file. That covers a standalone box, and a box inside a named working set. A box connected from a
 directory outside the working set still starts, and so does a box in the primary working set.
 
+A standalone box under the `null` has no workspace, and kanibako no longer names one for it.
+v1.8.0-rc2 showed the default `<root>/workspace` as its workspace; now `box info` shows
+`Project: <None>`, `box show --effective` lists no `~/workspace` bind, and `box move`,
+`box remap`, and `box convert` of the box stop with exit 1, naming the key and the file.
+
 **What to do.** To create the workspace, delete the `workspaces:` line to use the default
 directory, or set `workset.workspaces` to the directory you want. To keep the `null` in a named
 working set, connect a directory outside it instead. A workspace that v1.8.0-rc2 created while the `null`

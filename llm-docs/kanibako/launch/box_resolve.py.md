@@ -116,6 +116,8 @@ Widening the skip to the whole workset root is not: the registry's `boxes:` memb
 authoritative name → workspace store, and a member registered under an OLD composition (in-root,
 before a `workset.workspaces` repoint) is invisible to the workspaces walk. It has to resolve HERE,
 by its REGISTERED path. The root-wide skip stranded exactly those members — bifrost A0, 2026-08-02.
+Under a null `workset.workspaces` the skip still uses the default leaf
+(`project.workset.resolve_workspaces_locator`), where members connected before the null sit.
 
 The scan does not need its own mapping check: `settings` comes from `config_io.load_doc`, which
 returns a mapping or refuses the file by name.

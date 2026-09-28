@@ -1594,7 +1594,7 @@ def _refuse_null_workspace_bind(proj: ProjectPaths) -> None:
         root = proj.group.root
     else:
         return
-    refuse_null_box_workspace(root, proj.project_path, proj.name or str(proj.project_path),
+    refuse_null_box_workspace(root, proj.project_path, proj.name or str(proj.project_path or root),
                               standalone=proj.mode is BoxMode.standalone)
 
 
@@ -4805,6 +4805,8 @@ def _run_container(
             print(virtiofs_msg, file=sys.stderr)
             return 1
 
+        # Q106: a box with no workspace (a null ``workset.workspaces``) refused on the probe.
+        assert proj.project_path is not None
         # Warn about binds that will shadow pre-existing host content under the
         # box home (best-effort; persisted now and reprinted after the session).
         _shadowed = detect_shadowed_mounts(

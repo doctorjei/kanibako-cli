@@ -114,7 +114,7 @@ def find_connected_external_box(
     NOT "under the workset root".  Widening it strands members registered under an
     OLD composition — bifrost A0, 2026-08-02.  Reasoning: the llm-doc.
     """
-    from kanibako.project.workset import resolve_workset_workspaces
+    from kanibako.project.workset import resolve_workspaces_locator
 
     target = project_dir.resolve()
     best: _OwnedBox | None = None
@@ -128,7 +128,7 @@ def find_connected_external_box(
             root, settings
         )
         # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
-        workspaces_resolved = resolve_workset_workspaces(root, settings).resolve()
+        workspaces_resolved = resolve_workspaces_locator(root, settings).resolve()
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():
             box_path = Path(box_path_str).resolve()

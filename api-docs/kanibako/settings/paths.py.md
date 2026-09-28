@@ -154,7 +154,7 @@ class ProjectGroup:
 
 @dataclass
 class ProjectPaths:
-    project_path: Path
+    project_path: Path | None
     project_hash: str
     metadata_path: Path
     shell_path: Path

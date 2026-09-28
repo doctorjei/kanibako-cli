@@ -53,27 +53,29 @@ def run(args: argparse.Namespace) -> int:
 def _archive_one(std, config, proj, *, output_file, args) -> int:
     """Archive session data for a single project."""
     if not proj.metadata_path.is_dir():
-        print(f"Error: No session data found for project {proj.project_path}", file=sys.stderr)
+        print(f"Error: No session data found for project {proj.project_path or '<None>'}",
+              file=sys.stderr)
         return 1
 
     # Generate default archive filename
     archive_file = output_file
     if not archive_file:
-        label = proj.name or proj.project_path.name
+        label = proj.name or (proj.project_path or proj.metadata_path).name
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         archive_file = f"kanibako-{label}-{timestamp}.txz"
 
     # Prepare metadata
     info_file = proj.metadata_path / "kanibako-archive-info.txt"
     lines = [
-        f"Project path: {proj.project_path}",
+        f"Project path: {proj.project_path or '<None>'}",
         f"Project hash: {proj.project_hash}",
         f"Archive date: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
         "",
     ]
 
-    # Git checks (only if project path exists on disk)
-    if proj.project_path.is_dir() and is_git_repo(proj.project_path):
+    # Git checks (only if project path exists on disk; a box with no workspace has none)
+    workspace = proj.project_path
+    if workspace is not None and workspace.is_dir() and is_git_repo(workspace):
         if not args.allow_uncommitted:
             try:
                 check_uncommitted(proj.project_path)
@@ -97,7 +99,7 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
             for name, url in meta.remotes:
                 lines.append(f"  {name}: {url}")
     else:
-        if proj.project_path.is_dir():
+        if workspace is not None and workspace.is_dir():
             print(
                 f"Warning: No git repository detected in {proj.project_path}",
                 file=sys.stderr,

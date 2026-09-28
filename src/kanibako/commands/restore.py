@@ -190,7 +190,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
         info = _parse_info(info_file)
         archive_path = info.get("Project path", "")
         archive_basename = Path(archive_path).name if archive_path else ""
-        current_basename = proj.project_path.name
+        current_basename = proj.project_path.name if proj.project_path is not None else ""
 
         # Validate hash match
         hash_match = (
@@ -202,7 +202,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             print("Warning: Project path mismatch")
             print()
             print(f"Archive from: {archive_path}")
-            print(f"Restoring to: {proj.project_path}")
+            print(f"Restoring to: {proj.project_path or '<None>'}")
             print()
             try:
                 confirm_prompt("Continue anyway? Type 'yes' to confirm: ")
@@ -303,7 +303,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             return 1
 
         print("done.")
-        print(f"Session data restored to {proj.project_path}")
+        print(f"Session data restored to {proj.project_path or '<None>'}")
         print(f"  box: {proj.name} ({proj.mode.value})")
         return 0
 
@@ -407,7 +407,8 @@ def _parse_info(info_file: Path) -> dict[str, str]:
 
 def _validate_git_state(proj, info: dict[str, str], force: bool) -> int:
     """Validate git state between archive and workspace. Returns 0 to continue."""
-    if not is_git_repo(proj.project_path):
+    # A box with no workspace (a null ``workset.workspaces``) has no repo to compare.
+    if proj.project_path is None or not is_git_repo(proj.project_path):
         if not force:
             print(
                 "Warning: Archive came from a git repository, "
