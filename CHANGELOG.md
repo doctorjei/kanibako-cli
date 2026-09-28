@@ -438,6 +438,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the merged one. See `MIGRATION.md` § *2.96 A config file that writes the same key twice is
   refused instead of keeping the last*.
 
+- **A `set` no longer replaces a section the file holds as a value.** In v1.7.2 and v1.8.0-rc2, a
+  `set` whose key belongs under a section that the file held as a single value, a list, or an empty
+  line replaced it with a table and reported success. In v1.8.0-rc2, with `system: /x` in the
+  system settings file, `kanibako system set system.agent=shell` answered `Set` and left `system:
+  {agent: shell}`: the `/x` was dropped with no message. The same held at any depth (`box.env:
+  7`). The command now stops, exit code 1, with `the config file <path> holds /x at 'system',
+  where a table of keys belongs`, and the file is left as it was. See `MIGRATION.md` § *2.98 A
+  `set` refuses to write under a section the file holds as a value instead of replacing it*.
+
 - **`kanibako workset show` and `kanibako system show` printed a declaration's sources as a Python
   list, under the destination as the file spelled it.** A `caches: {~/.cache/uv/: [uv]}` entry in a
   working set's file printed `workset.caches.~/.cache/uv/ = ['uv']`. It now prints
