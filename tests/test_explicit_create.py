@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 
+import pytest
+
 from kanibako.commands.start import (
     _no_box_error,
     _resolve_existing_box,
@@ -556,3 +558,128 @@ class TestBrokenStandaloneNoBoxError:
         assert (
             f"kanibako box rm {name} && kanibako create --standalone --register"
         ) in err
+
+
+# ---------------------------------------------------------------------------
+# Q106: a launch REFUSES a box whose workspace resolves through a null
+# ``workset.workspaces`` — the workspace bind is mounted at every launch
+# ---------------------------------------------------------------------------
+
+def _null_workspaces(root):
+    """Set ``workset.workspaces: null`` in *root*'s workset.yaml, keeping what is there."""
+    from kanibako.settings.config_io import dump_doc, load_doc
+
+    path = root / "workset.yaml"
+    doc = dict(load_doc(path)) if path.is_file() else {}
+    doc["workset"] = {**doc.get("workset", {}), "workspaces": None}
+    dump_doc(path, doc)
+    return path
+
+
+def _tree(root):
+    return sorted(root.rglob("*"))
+
+
+def _assert_launch_passes_the_gate(target, monkeypatch, capsys):
+    """Launch *target* with no container runtime: reaching that error means the gate passed."""
+    from kanibako.commands import start
+    from kanibako.errors import ContainerError
+
+    def _no_runtime():
+        raise ContainerError("no runtime (test)")
+
+    monkeypatch.setattr(start, "ContainerRuntime", _no_runtime)
+    capsys.readouterr()
+    assert _launch(target) == 1
+    assert "No container runtime found" in capsys.readouterr().err
+
+
+class TestLaunchRefusesNullWorkspaceBind:
+    """His Q106 answer: *"if a critical bind is <None>, launch should fail"*.
+
+    Named in-tree and standalone boxes refuse on the probe, before anything is created;
+    primary and an external named member resolve their workspace through no workset key.
+    """
+
+    def test_standalone_refuses_naming_the_key_and_file_and_creates_nothing(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import WorksetError
+
+        root = (tmp_home / "sa-null").resolve()
+        root.mkdir()
+        ns = argparse.Namespace(
+            path=str(root), standalone=True, no_vault=True,
+            name=None, image=None, agent=None, allow_home=False, register=True,
+        )
+        assert run_create(ns) == 0
+        settings = _null_workspaces(root)
+        before = _tree(tmp_home)
+
+        with pytest.raises(WorksetError) as exc:
+            _launch(str(root))
+        message = str(exc.value)
+        assert "workset.workspaces" in message
+        assert str(settings) in message
+        assert "~/workspace" in message
+        assert "Delete that line" in message
+        assert _tree(tmp_home) == before
+        assert not any(p.name == "None" for p in before)
+
+    def test_named_in_tree_member_refuses_and_creates_nothing(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.errors import WorksetError
+        from kanibako.project.workset import add_project, create_workset
+
+        _config, std = _std(config_file)
+        root = (tmp_home / "worksets" / "nullws").resolve()
+        ws = create_workset("nullws", root, std)
+        add_project(ws, "app", root / "workspaces" / "app", std)
+        settings = _null_workspaces(root)
+        before = _tree(tmp_home)
+
+        # By path and by qualified name: the one chokepoint either way.
+        for target in (str(root / "workspaces" / "app"), "nullws/app"):
+            with pytest.raises(WorksetError) as exc:
+                _launch(target)
+            assert "Cannot launch box 'app'" in str(exc.value)
+            assert str(settings) in str(exc.value)
+        assert _tree(tmp_home) == before
+
+    def test_named_external_member_is_untouched(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        from kanibako.commands.start import _refuse_null_workspace_bind
+        from kanibako.project.workset import add_project, create_workset
+
+        config, std = _std(config_file)
+        root = (tmp_home / "worksets" / "extws").resolve()
+        ws = create_workset("extws", root, std)
+        source = (tmp_home / "ext-src").resolve()
+        source.mkdir()
+        add_project(ws, "ext", source, std)
+        _null_workspaces(root)
+
+        proj = _resolve_existing_box(std, config, str(source))
+        assert proj is not None and proj.name == "ext"
+        assert proj.project_path == source
+        _refuse_null_workspace_bind(proj)  # no raise
+        _assert_launch_passes_the_gate(str(source), monkeypatch, capsys)
+
+    def test_primary_is_untouched(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.commands.start import _refuse_null_workspace_bind
+
+        config, std = _std(config_file)
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        # Primary's ``workset.workspaces`` IS <None> (spec §2c); a file value changes nothing.
+        _null_workspaces(std.primary_workset)
+
+        proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
+        assert proj is not None and proj.name == "project"
+        _refuse_null_workspace_bind(proj)  # no raise
+        _assert_launch_passes_the_gate(str(tmp_home / "project"), monkeypatch, capsys)

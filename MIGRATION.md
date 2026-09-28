@@ -5649,7 +5649,7 @@ includes `box create` and `box list`.
 the directory you want. A box that v1.8.0-rc2 connected while the `null` was set lives under
 `<workset>/boxes/`, so deleting the line finds it again.
 
-### 2.94 A `workset.workspaces` of `null` refuses to create a workspace
+### 2.94 A `workset.workspaces` of `null` refuses to create a workspace or launch a box in it
 
 **Read this if a `<workset>/workset.yaml` sets `workset.workspaces` to `null`** — a named
 workset's, or a standalone box's root file. A `null` written by `--null` counts.
@@ -5670,11 +5670,17 @@ and name the key and the file:
 `workset connect` of a directory outside the working set still works; it no longer creates the
 `workspaces/<name>` link.
 
+A launch stops too. v1.8.0-rc2 started such a box with the default workspace directory mounted at
+`~/workspace`; every box mounts its workspace there, so a box whose workspace comes from a `null`
+`workset.workspaces` now refuses to start (`start`, `shell`, `code`, and `agent reauth` when it
+opens the box to log in), with exit 1, before changing anything, naming the box, the key and the
+file. That covers a standalone box, and a box inside a named working set. A box connected from a
+directory outside the working set still starts, and so does a box in the primary working set.
+
 **What to do.** To create the workspace, delete the `workspaces:` line to use the default
 directory, or set `workset.workspaces` to the directory you want. To keep the `null` in a named
 working set, connect a directory outside it instead. A workspace that v1.8.0-rc2 created while the `null`
-was set is under `<workset>/workspaces/`, and kanibako still uses it: until a later release, a box
-still starts with the default workspace directory when the key is `null`.
+was set is still under `<workset>/workspaces/`; to start its box again, delete the `workspaces:` line.
 
 ### 2.95 The `agent` verbs refuse an agent file with an undeclared key, as the launch does
 

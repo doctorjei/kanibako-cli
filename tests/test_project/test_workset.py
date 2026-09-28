@@ -1409,6 +1409,62 @@ class TestWorksetWorkspacesPresentNone:
         assert not (root / "workspaces" / "ext").exists()
         assert not (root / "workspaces" / "ext").is_symlink()
 
+    def test_workspaces_dir_is_none_never_the_default_leaf(self, std, tmp_home):
+        ws, root = self._null_workspaces(std, tmp_home, "nodir")
+        assert ws.workspaces_dir is None
+        assert load_workset(root, "nodir").workspaces_dir is None
+        with pytest.raises(WorksetError) as exc:
+            ws.require_workspaces_dir("a workspace for 'app'")
+        assert "workset.workspaces" in str(exc.value)
+        assert str(root / "workset.yaml") in str(exc.value)
+
+    def test_an_external_member_disconnects(self, std, tmp_home):
+        ws, root = self._null_workspaces(std, tmp_home, "extrm")
+        source = (tmp_home / "ext-rm").resolve()
+        source.mkdir()
+        add_project(ws, "ext", source, std)
+        remove_project(load_workset(root, "extrm"), "ext", remove_files=True)
+        assert load_workset(root, "extrm").projects == []
+        assert source.is_dir()  # an external source dir is never touched
+
+    def test_remove_files_deletes_an_in_tree_members_recorded_leaf(self, std, tmp_home):
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "inrm").resolve()
+        ws = create_workset("inrm", root, std)
+        add_project(ws, "app", root / "workspaces" / "app", std)
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
+        remove_project(load_workset(root, "inrm"), "app", remove_files=True)
+        assert not (root / "workspaces" / "app").exists()
+
+    def test_a_link_made_before_the_null_is_unlinked_on_disconnect(self, std, tmp_home):
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "oldlink").resolve()
+        ws = create_workset("oldlink", root, std)
+        source = (tmp_home / "ext-old").resolve()
+        source.mkdir()
+        add_project(ws, "ext", source, std)
+        assert (root / "workspaces" / "ext").is_symlink()
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
+        remove_project(load_workset(root, "oldlink"), "ext")
+        assert not (root / "workspaces" / "ext").is_symlink()
+        assert source.is_dir()
+
+    def test_remove_files_never_deletes_the_workset_root(self, std, tmp_home):
+        # A hand-edited record naming the root itself is not a leaf to delete.
+        from kanibako.settings.config_io import dump_doc
+
+        root = (tmp_home / "worksets" / "rootrm").resolve()
+        ws = create_workset("rootrm", root, std)
+        add_project(ws, "app", root / "workspaces" / "app", std)
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
+        loaded = load_workset(root, "rootrm")
+        loaded.projects[0].source_path = root
+        remove_project(loaded, "app", remove_files=True)
+        assert root.is_dir()
+        assert (root / "workset.yaml").is_file()
+
     def test_an_unset_workspaces_still_holds_in_tree_members(self, std, tmp_home):
         root = (tmp_home / "worksets" / "plainws").resolve()
         ws = create_workset("plainws", root, std)

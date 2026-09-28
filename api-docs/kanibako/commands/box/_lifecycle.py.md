@@ -63,7 +63,7 @@ def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path
 def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths) -> None
 def _safe_unregister(std: StandardPaths, name: str) -> None
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
-def _member_leaves(ws: Workset, name: str) -> tuple[Path, Path, Path, Path]
+def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path, Path]
 def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]
 def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None
 def _dispose_stash(stash: Path) -> None

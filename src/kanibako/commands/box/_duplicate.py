@@ -531,7 +531,7 @@ def _duplicate_to_workset(args, std, config) -> int:
     # duplicate never deletes a leaf that was there before it (``copy_into_workset``).
     occupied = [ws.projects_dir / proj_name]
     if not args.bare:
-        occupied.insert(0, ws.workspaces_dir / proj_name)
+        occupied.insert(0, ws.require_workspaces_dir(f"a workspace for '{proj_name}'") / proj_name)
     for leaf in occupied:
         if (leaf.exists() or leaf.is_symlink()) and not args.force:
             print(f"Error: destination already exists: {leaf}", file=sys.stderr)

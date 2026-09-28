@@ -36,6 +36,7 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
 def resolve_workset_workspaces(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
 def workset_workspaces_nulled(workset_root: Path) -> bool
 def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool=False) -> None
+def refuse_null_box_workspace(workset_root: Path, workspace: Path, box: str, *, standalone: bool) -> None
 def resolve_workset_boxes(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
 def resolve_workset_logs(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path | None
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
@@ -56,7 +57,7 @@ def resolve_workset_name(name: str, std: StandardPaths) -> Workset
 def delete_workset(name: str, std: StandardPaths, *, remove_files: bool=False) -> Path
 def source_in_tree(ws: Workset, source_path: Path) -> bool
 def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False) -> WorksetProject
-def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> bool
+def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None
 def release_project(ws: Workset, name: str) -> WorksetProject
 def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, Path, Path] | None=None) -> None
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
@@ -67,6 +68,7 @@ def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset
 def _load_workset(root: Path, name: str) -> Workset
 def _load_registry(std: StandardPaths) -> dict[str, Path]
 def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]
+def _path_in_tree(path: Path, root: Path) -> bool
 def _detach_project(ws: Workset, name: str) -> None
 def _find_member(ws: Workset, name: str) -> WorksetProject
 def _unfollowed(path: Path) -> Path
@@ -92,7 +94,8 @@ class Workset:
     @property
     def projects_dir(self) -> Path
     @property
-    def workspaces_dir(self) -> Path
+    def workspaces_dir(self) -> Path | None
+    def require_workspaces_dir(self, what: str) -> Path
     @property
     def vault_dir(self) -> Path
     @property

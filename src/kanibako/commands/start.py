@@ -1579,6 +1579,25 @@ def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
     )
 
 
+def _refuse_null_workspace_bind(proj: ProjectPaths) -> None:
+    """RAISE when *proj*'s workspace bind resolves through a null ``workset.workspaces`` (Q106).
+
+    Called by ``_run_container`` on its NON-materializing probe, before anything is created.
+    Primary is never refused: its workspace is the project dir, not a workset key.
+    """
+    from kanibako.project.workset import refuse_null_box_workspace
+    from kanibako.settings.paths import BoxMode
+
+    if proj.mode is BoxMode.standalone:
+        root = proj.metadata_path
+    elif proj.mode is BoxMode.named and proj.group is not None:
+        root = proj.group.root
+    else:
+        return
+    refuse_null_box_workspace(root, proj.project_path, proj.name or str(proj.project_path),
+                              standalone=proj.mode is BoxMode.standalone)
+
+
 # Sentinel returned by _check_launch_baseline when the launch-critical bootstrap
 # program is missing from the image (tier-1 hard-stop).
 _BOOTSTRAP_MISSING = object()
@@ -2606,6 +2625,9 @@ def _run_container(
     if _unbuilt is not None:
         print(_unbuilt, file=sys.stderr)
         return 1
+    # Q106: the workspace bind is mounted at every launch, so a box whose workspace resolves
+    # through a null ``workset.workspaces`` refuses here, on the probe, like MBR-6 above.
+    _refuse_null_workspace_bind(_existing)
 
     proj = resolve_box_target(
         std, config, project_dir,

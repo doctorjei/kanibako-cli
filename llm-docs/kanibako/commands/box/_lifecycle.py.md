@@ -911,9 +911,10 @@ The failure-window restore for **FIX1**: it writes the RAW membership entry dire
 cross-kind/same-kind guard, so restoring the source box's OWN prior registration is unconditional.
 Errors are swallowed — the unwind stack is best-effort restore.
 
-```def _member_leaves(ws: Workset, name: str) -> tuple[Path, Path, Path, Path]```
+```def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path, Path]```
 Member *name*'s four leaves: `workspaces/<name>`, `boxes/<name>`, and the per-box leaves under the
-RESOLVED vault arms, as `add_project` creates them.
+RESOLVED vault arms, as `add_project` creates them. The workspace leaf is `None` under a null
+`workset.workspaces` (no dir to hold it); `_existing_member_leaves` and `_unwind_target_member` skip it.
 
 ```def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]```
 Those of `_member_leaves` already on disk; a dangling link counts.
