@@ -31,6 +31,7 @@ from kanibako.settings.settings_categories import (
   MOUNT,
   SUPPRESS_THEN_ADD,
   CategoryEntry,
+  internal_bind_cure,
 )
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.settings.store_shape import StoreShape, StoreShapeSet
@@ -547,8 +548,18 @@ def _refuse_bind_over_bind(
     f"INSIDE another, never AT or OVER one - the mount order follows the path "
     f"value, not the declaration "
     f"order, so the subsumed binding could never be reached. {SUPPRESS_THEN_ADD}. "
-    f"Either declaration may be the one you keep."
+    f"{_which_to_keep([dest, *subsumed])}"
   )
+
+
+def _which_to_keep(dests: Sequence[str]) -> str:
+  """The bind-over-bind cure's last sentence: which declaration the reader may give up.
+
+  ⚑ :func:`~kanibako.settings.settings_categories.internal_bind_cure` when a
+  participant is an INTERNAL bind (spec §2c) - the one predicate every collision
+  remedy shares - else the two-peers hedge.
+  """
+  return internal_bind_cure(dests) or "Either declaration may be the one you keep."
 
 
 def _refuse_bind_under_mask(

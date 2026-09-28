@@ -98,6 +98,7 @@ from kanibako.settings.settings_expand import NullSources, expand
 from kanibako.settings.settings_keyspace import (
     KeyClass,
     entry_label,
+    is_terminal_category_key,
     pseudo_agent_fence,
     render_store_path,
     undeclared_store_paths,
@@ -107,7 +108,12 @@ from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_keyspace_probe import observe as observe_keyspace
 from kanibako.settings.settings_merge import merge
 from kanibako.settings.settings_prefs import PrefRequest, apply_prefs, collect_prefs
-from kanibako.settings.settings_resolve import ResolveCtx, SettingsError, expand_expr
+from kanibako.settings.settings_resolve import (
+    ResolveCtx,
+    SettingsError,
+    expand_expr,
+    normalize_bind_dest,
+)
 
 
 # The bind-shaped category tokens that ARE the terminal key — the snapshot's
@@ -1460,8 +1466,9 @@ def refuse_read_time_faults(
 
     The READ-TIME refusals, IN ORDER. Runs after ``expand``: [R147]'s bare-relative sweep
     (:func:`_refuse_ambiguous_path_values`, over *written*), then §0's undeclared-key
-    refusal (:func:`_refuse_undeclared_snapshot`, over *expanded*). ⚑ ONE CARRIER OF
-    THE ORDER: the launch (:func:`build_launch_snapshot`) and the workset preview
+    refusal (:func:`_refuse_undeclared_snapshot`, over *expanded*), then §2c's entry at
+    an internal bind's dest (:func:`_refuse_internal_bind_entries`, over *written*).
+    ⚑ ONE CARRIER OF THE ORDER: the launch (:func:`build_launch_snapshot`) and the workset preview
     (``commands/workset_cmd._workset_preview_entries``) both call this, so a resolve
     route cannot run one refusal and skip the other.
     *files* are the tiers the caller ACTUALLY read, most-specific first, the ``base``
@@ -1472,6 +1479,64 @@ def refuse_read_time_faults(
     """
     _refuse_ambiguous_path_values(written, expanded, ctx=ctx)
     _refuse_undeclared_snapshot(expanded, files=files, subject=subject)
+    _refuse_internal_bind_entries(written)
+
+
+def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
+    """RAISE naming EVERY settings-file entry that would repoint or remove an INTERNAL bind.
+
+    The internal binds (:func:`core_defaults.internal_bind_keys`) are not user keys and
+    not repointable (spec §2c).  Two shapes reach one, and both refuse:
+    an entry AT an internal dest — a source list or a ``None``, in ANY dest-keyed
+    category — which the post-merge re-impose would otherwise override silently; and a
+    MASK (present, not ``None``) AT or ABOVE one, which the collapse would let swallow it.
+    A mount or copy entry at a PARENT dir is not refused: the collapse folds binds
+    parent-first, so the internal bind still mounts on top (measured, every category).
+    ⚑ Judged per WRITTEN level, like the path sweep: a ``base`` entry still equal to the
+    folded floor's is the floor's own internal bind, not the file's.
+    ⚑ A dest spelled through an ``@``-ref or ``$VAR`` is compared as written, unexpanded.
+    """
+    from kanibako.settings.store_collapse import is_within
+
+    internal = sorted({dest for _arm, dest in core_defaults.internal_bind_keys()})
+    refusals = []
+    for level, path, floor_store in written:
+        for segments, is_node in walk_store_paths(level):
+            if not is_node or any("." in seg for seg in segments):
+                continue
+            arm = ".".join(segments)
+            if not is_terminal_category_key(arm):
+                continue
+            entries = snapshot_leaf(level, arm)
+            if not isinstance(entries, dict):
+                continue
+            floor_entries = (
+                snapshot_leaf(floor_store, arm) if floor_store is not None else None
+            )
+            is_mask = segments[-1] == "masks"
+            where = str(path) if path is not None else "a settings file"
+            for dest, value in dict.items(entries):
+                if isinstance(floor_entries, dict) and (
+                    dict.get(floor_entries, dest, __MISSING__) == value
+                ):
+                    continue
+                norm = normalize_bind_dest(dest)
+                if norm in internal:
+                    refusals.append(
+                        f"{entry_label(arm, dest)} in {where} is at the destination of an "
+                        f"internal kanibako bind (spec §2c), not repointable; remove the entry."
+                    )
+                    continue
+                if not is_mask or value is None:
+                    continue
+                refusals.extend(
+                    f"{entry_label(arm, dest)} in {where} would remove the internal "
+                    f"kanibako bind at {hidden} (spec §2c), which is not suppressible; mask a "
+                    f"narrower path."
+                    for hidden in internal if is_within(hidden, norm)
+                )
+    if refusals:
+        raise SettingsError("\n".join(refusals))
 
 
 def _workset_channel_floor_values(

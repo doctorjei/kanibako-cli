@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A settings entry at the destination of one of kanibako's internal binds is refused.** In
+  1.8.0-rc2 a `box.bindings.ro` entry at `/opt/kanibako/kanibako` replaced the in-box `kanibako`
+  command with whatever it mounted, and an entry at another internal destination (the secrets
+  snippet, the kickoff file, the packaged canon, the generated `storage.conf`) was accepted the
+  same way, and a `box.masks` entry on a parent directory (`/opt/kanibako`, `~/canon`) removed the
+  bind without a word. Such an entry, in any dest-keyed category and whether a source or `null`,
+  now stops the command, naming the entry and its file, and so does a mask above one of these
+  destinations, naming the bind it would remove. A mount collision that involves one of these binds no
+  longer offers to suppress it. See *An entry at the destination of one of kanibako's internal
+  binds is refused* in [MIGRATION.md](MIGRATION.md).
+
 - **kanibako's own text uses American spelling.** Printed and raised messages, identifiers,
   comments and documentation now read *behavior*, *recognized*, *canceled*. One message shipped in
   v1.7.2 changes: declining the confirmation of `kanibako rig rm` printed `Cancelled.` and now
@@ -228,9 +239,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1.8.0-rc2, `bindings: {ro: null}` in a box's or working set's settings file dropped every
   read-only bind, including the ones kanibako delivers itself: the in-box `kanibako` command
   (`/opt/kanibako/kanibako` and `~/.local/bin/kanibako`), the secrets profile snippet, the kickoff
-  file, the packaged charter and, with image sharing, the generated `storage.conf`. An entry at one
-  of those destinations also replaced or removed it. These binds are not settings keys, so a
-  launch now always delivers them as shipped. A `null` arm still omits every other read-only
+  file, the packaged charter and, with image sharing, the generated `storage.conf`. These binds are
+  not settings keys, so a launch now always delivers them as shipped; an entry at one of their
+  destinations is refused (see *Changed*). A `null` arm still omits every other read-only
   bind, and your own entries still merge.
 
 - **`box set` and the other `set` verbs accept a reference to `@box.shell` instead of refusing it as

@@ -39,7 +39,7 @@ from __future__ import annotations
 import re
 import textwrap
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Final, Literal, Mapping, NoReturn
+from typing import TYPE_CHECKING, Any, Final, Literal, Mapping, NoReturn, Sequence
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from kanibako.settings.kb_store import Bind
@@ -697,7 +697,9 @@ def raise_binding_vs_binding(
             "configuration that\nlaunched before can refuse to launch now. "
             "Your files did not change; the rule did."
         )
-        + _suppress_then_add(concrete[0].key_segments, ambiguous=True),
+        + _suppress_then_add_or_keep_internal(
+            box_dest, concrete[0].key_segments, ambiguous=True,
+        ),
         kind="binding_vs_binding",
         box_dest=box_dest,
         entries=tuple((e.label, e.host_src) for e in concrete),
@@ -727,7 +729,7 @@ def raise_extension_onto_occupied(
             "abstractions, two opposite silent\noutcomes. Both are now "
             "refused."
         )
-        + _suppress_then_add(base.key_segments),
+        + _suppress_then_add_or_keep_internal(box_dest, base.key_segments),
         kind="extension_onto_occupied",
         box_dest=box_dest,
         entries=tuple((e.label, e.host_src) for e in (extension, base)),
@@ -792,6 +794,39 @@ SUPPRESS_THEN_ADD: Final[str] = (
 #: the source line length: the block below sits under a key path a reader must be able
 #: to read as one unit.
 _REMEDY_WRAP: Final[int] = 80
+
+
+def internal_bind_cure(dests: Sequence[str]) -> str | None:
+    """The cure for a collision at an INTERNAL bind's dest, or ``None`` if none is one.
+
+    ⚑ THE ONE PREDICATE for "is a collision participant internal" (spec §2c), shared by
+    every collision remedy here and in ``store_collapse``: an internal bind is not
+    repointable and not suppressible, so :data:`SUPPRESS_THEN_ADD` would name an edit
+    the resolve refuses.  Judged on the RESOLVED dest, so an ``@``-ref spelling that
+    passed the resolve's written-dest check still meets it.
+    """
+    from kanibako.settings.core_defaults import internal_bind_keys
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    internal = {dest for _arm, dest in internal_bind_keys()}
+    held = sorted({normalize_bind_dest(d) for d in dests} & internal)
+    if not held:
+        return None
+    what = "is an internal kanibako bind" if len(held) == 1 else "are internal kanibako binds"
+    return (
+        f"{', '.join(repr(d) for d in held)} {what} (spec §2c), not repointable and not "
+        f"suppressible: keep it, and change the other declaration."
+    )
+
+
+def _suppress_then_add_or_keep_internal(
+    box_dest: str, occupant_segments: tuple[str, ...], *, ambiguous: bool = False,
+) -> str:
+    """:func:`internal_bind_cure` at an internal *box_dest*, else :func:`_suppress_then_add`."""
+    cure = internal_bind_cure([box_dest])
+    if cure is not None:
+        return textwrap.fill(cure, _REMEDY_WRAP) + "\n"
+    return _suppress_then_add(occupant_segments, ambiguous=ambiguous)
 
 
 def _rule_changed(body: str) -> str:

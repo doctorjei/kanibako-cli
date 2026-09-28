@@ -1093,15 +1093,17 @@ omitted the whole arm, kanibako's own `/opt/kanibako/kanibako` included. So the 
 null at an internal dest, and a user entry repointing one all leave the internal bind as the floor
 spelled it, while the arm's STANDARD entries still follow the user (a null arm still omits them, with
 the [R185] warning). A narrow resolve re-imposes only what its own floor carries (the image resolve:
-`storage.conf`).
+`storage.conf`). ⚑ A user ENTRY at an internal dest no longer reaches this silently:
+`refuse_read_time_faults` refuses it (below). The re-impose stays for the NULL/empty arm, which
+names no internal dest and so is not refused.
 
 After `merge` + `expand`, `_materialize_box_agent_mirror` runs, and the box-root assertion runs when
 the caller supplied the anchor.
 
 ### The tail of the seam: measure, then enforce, then choose the message
 
-Four calls close `build_launch_snapshot`. The probe goes FIRST and the message choice goes LAST,
-and both of those positions are load-bearing. (2) and (3) are reached through ONE public entry,
+Five calls close `build_launch_snapshot`. The probe goes FIRST and the message choice goes LAST,
+and both of those positions are load-bearing. (2), (3) and (5) are reached through ONE public entry,
 `refuse_read_time_faults(written, expanded, *, ctx, files, subject)`, which the workset preview
 (`commands/workset_cmd._workset_preview_entries`) calls too — so the order below has one carrier and
 a resolve route cannot run one refusal and skip the other. *files* are the tiers the caller ACTUALLY
@@ -1129,6 +1131,15 @@ entry inside that noun's own table, by dropping the whole table (measured), so t
    keys). `UNROOTED` is the census's FRAGMENT verdict and never arises here; before that split a
    top-level stray in a system, workset or box file built silently and rode the snapshot.
 4. `_refuse_retired_spelling`, called BY the refusal once it has findings — the message CHOICE.
+5. `_refuse_internal_bind_entries` — spec §2c. A settings-file entry (source list or `None`) in ANY
+   dest-keyed category whose normalized dest is an internal bind's (`core_defaults.internal_bind_keys`)
+   refuses, every offender named with its file; so does a present MASK at an ANCESTOR of an internal
+   dest, naming each internal bind it would swallow (the collapse lets a mask sweep a bind nested
+   under it). A mount or copy entry at a parent is NOT refused: binds fold parent-first, so the
+   internal bind still mounts on top (probed in every category). Judged over *written*, like (2): a `base` entry equal
+   to the folded floor's is kanibako's own bind. A dest spelled through an `@`-ref or `$VAR` is
+   compared unexpanded. There is no set-time twin because no `set` verb writes a dest-keyed entry
+   (`config_keys.terminal_category_write_error`).
 
 ⚑ **Before the resolve, beside the `config:`-table refusal, `_refuse_retired_behavior` scans the same
 files** (`cascade_view` of each, most-specific first) for a RETIRED behavior spelling (R-41/RQ-2:

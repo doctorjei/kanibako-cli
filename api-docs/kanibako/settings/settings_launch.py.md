@@ -77,6 +77,7 @@ def _refuse_retired_behavior(files: Sequence[_TierFile], *, agent_name: str, box
 def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[_TierFile], subject: ResolveSubject) -> None
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
+def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None
 def _workset_channel_floor_values(part: 'WorksetPartition', wch: 'WorksetChannels | None') -> 'tuple[str | None, dict[str, str]]'
 def _workset_workspaces_floor_value(mode: str, ws_root_literal: 'str | None') -> 'str | None'
 def _box_less_omits(key: str, *, in_workset: bool) -> bool

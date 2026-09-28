@@ -58,6 +58,7 @@ def _binds_under(combined: CollapsedBindings, dest: str) -> list[str]
 def _masks_over(combined: CollapsedBindings, dest: str) -> list[str]
 def _sweep(combined: CollapsedBindings, declared_by: DeclaringKeys, dest: str) -> None
 def _refuse_bind_over_bind(combined: CollapsedBindings, declared_by: DeclaringKeys, dest: str, entry: BindEntry, key: str | None) -> None
+def _which_to_keep(dests: Sequence[str]) -> str
 def _refuse_bind_under_mask(combined: CollapsedBindings, declared_by: DeclaringKeys, dest: str, entry: BindEntry, key: str | None) -> None
 def _refuse_mask_on_mask(combined: CollapsedBindings, declared_by: DeclaringKeys, dest: str, key: str | None) -> None
 def _refuse_mask_over_home(dest: str, key: str | None) -> None

@@ -1573,6 +1573,20 @@ class TestTheRefusalsCarryTheCure:
     # may be the keeper. Both mask refusals have a DETERMINED occupant.
     assert "Either declaration may be the one you keep" in keyed
 
+  def test_bind_over_bind_never_offers_to_suppress_an_INTERNAL_bind(self):
+    """Spec §2c: an internal bind is not repointable, and the resolve refuses a settings
+    entry at its dest — so a collision with one names it and drops the hedge."""
+    keyed, bare = live_refusal_both({
+      "workset.bindings.ro": {"~/canon/charter/box/mine": ("/h/mine",)},
+      "box.bindings.ro": {"~/canon/charter/box": ("/rom/charter/box",)},
+    })
+    for message in (keyed, bare):
+      assert "Either declaration may be the one you keep" not in message
+      assert (
+        f"'{GUEST}/canon/charter/box' is an internal kanibako bind (spec §2c)" in message
+      )
+      assert "change the other declaration" in message
+
   def test_the_mask_refusals_do_NOT_hedge_over_which_side_to_keep(self):
     for floor in (self.BIND_UNDER_MASK, self.MASK_ON_MASK):
       keyed, _bare = live_refusal_both(floor)

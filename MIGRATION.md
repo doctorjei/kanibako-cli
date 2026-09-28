@@ -5771,6 +5771,32 @@ merged one; that is YAML's own rule, not a repeat.
 **What to do.** Open the named file, keep the one spelling you meant (merging the two tables if
 both held settings you need), and delete the other.
 
+### 2.97 An entry at the destination of one of kanibako's internal binds is refused
+
+**Read this if a command stops with `… is at the destination of an internal kanibako bind (spec
+§2c), not repointable; remove the entry.` or `… would remove the internal kanibako bind at <dest>
+(spec §2c), which is not suppressible; mask a narrower path.`**
+
+**What changed.** kanibako delivers some binds for itself: the in-box `kanibako` command
+(`/opt/kanibako/kanibako` and `~/.local/bin/kanibako`), the secrets profile snippet
+(`/etc/profile.d/kanibako-secrets.sh`), the kickoff file (`~/.config/kanibako/kickoff.md`), the
+packaged charter under `~/canon/` and, with image sharing, the generated
+`~/.config/containers/storage.conf`. They are not settings keys and cannot be repointed.
+v1.8.0-rc2 accepted an entry at one of these destinations in a settings file (its packaged canon
+sat under `~/canon/bible/`, not `~/canon/charter/`), and a `box.bindings.ro` entry at
+`/opt/kanibako/kanibako` replaced kanibako's own bind — the box ran whatever you mounted as its
+`kanibako` command. Such an entry is now refused, in any of `bindings.ro`, `bindings.rw`,
+`masks`, `caches`, `common`, `seeded` and `synced`, whether its value is a source or `null`. The
+message names each entry and the file that holds it. A `box.masks` entry on a directory ABOVE one
+of these destinations (for example `/opt/kanibako` or `~/canon`) hid kanibako's bind in v1.8.0-rc2
+with no message. A mask above one of these destinations, at any scope, is now refused, naming the
+bind it would remove. A `null` mask entry there (an
+unmask) is still accepted, and so is a bind or copy entry at a parent directory: kanibako's bind is
+mounted on top of it.
+
+**What to do.** Delete the named entry. To mount something of your own, give it a destination of
+its own. To hide a directory that contains one of these binds, mask narrower paths beside it.
+
 ---
 
 ## 3. For plugin authors

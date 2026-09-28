@@ -707,6 +707,11 @@ remedy text is the drift this extraction exists to prevent.
 * **`raise_extension_onto_occupied`** — §0's refusal of an extension onto a base's `box_dest`. The
   BASE always survives, so the remedy names it without the two-peers "either one may be the one you
   keep" hedge.
+* **`internal_bind_cure`** — both refusals above, and `store_collapse._refuse_bind_over_bind`, end
+  with it INSTEAD of the SUPPRESS-THEN-ADD block when the collision's resolved dest is an internal
+  bind's (spec §2c: not suppressible, so nulling it is an edit the resolve refuses). ONE predicate
+  and ONE sentence for every collision remedy. It judges the RESOLVED dest because an `@`-ref dest
+  passes `settings_launch`'s written-dest refusal and still lands here.
 
 **`_rule_changed`** renders the migration-grade paragraph (M-7), and ONLY on a rule whose
 outcome changed. Putting it on a rule that did NOT change trains a reader to skip it, so a rule
