@@ -71,9 +71,8 @@ AGENT_ENTRY_POINT_GROUP = "kanibako.agents"
 # carried their own value; ``tests/test_agent_ref.py`` pins the VALUE, & the spelling is a
 # fact about a user's store — rename it & the on-disk dir moves.
 # ⚑ A PSEUDO-AGENT, NOT A TEMPLATE FALLBACK (keyspec ``agent.shell.*``).  Nothing
-# SELECTS it implicitly —
-# :attr:`kanibako.settings.agent_select.AgentSelection.selection_level` installs NOTHING for
-# a node-less box rather than pinning ``system.agent`` here.  It reaches a slot only as the
+# SELECTS it implicitly except a launch with no agent (``kanibako shell``, ``--entrypoint``),
+# which pins ``system.agent`` here (spec §2b D-M6).  It reaches a slot only as the
 # ``else`` arm where a resolved target would otherwise supply the name, or BY NAME
 # (``--agent shell``, ``pref.system.agent``, ``system.agent: shell`` — spec §2b).
 # ⚑ IN ``PSEUDO_AGENT_NAMES`` BY DESIGN, unlike its ``"general"`` predecessor:

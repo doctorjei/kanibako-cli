@@ -17,6 +17,7 @@ import logging
 
 import pytest
 
+from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.commands import start as start_cmd
 from kanibako.project.workset import add_project, create_workset
 from kanibako.settings.agent_select import AgentSelection
@@ -184,3 +185,26 @@ class TestEveryResolveFoldsTheChain:
       cli_level=_selection(),
     )
     assert snapshot_leaf(snapshot, BOX_AUTH_PATH) == _credential_source(std, proj)
+
+
+class TestANoAgentLaunchRunsTheShell:
+  """``kanibako shell`` / ``--entrypoint`` select no agent; §2b makes ``@system.agent`` ``shell``."""
+
+  def test_the_selection_pins_the_shell(self):
+    assert start_cmd._launch_selection_level(None) == {"system.agent": GENERAL_SLOT}
+    assert start_cmd._launch_selection_level(
+      AgentSelection(node=NODE, source="settings"),
+    ) == _selection()
+
+  def test_a_stored_agent_does_not_name_the_auth_dir(self, primary_proj, std, config):
+    """With ``system.agent: claude`` stored, the no-agent box's auth dir is the shell's."""
+    std.settings.parent.mkdir(parents=True, exist_ok=True)
+    std.settings.write_text(f"system:\n  agent: {NODE}\n")
+    snapshot, _deliveries = start_cmd._resolve_launch_snapshot(
+      std=std, proj=primary_proj, agent_name=GENERAL_SLOT,
+      system_settings_path=std.settings, agent_cfg_path=None,
+      desc=None, install=None, target=None, agent_cfg=None,
+      cli_level=start_cmd._launch_selection_level(None),
+    )
+    ws_auth = snapshot_leaf(snapshot, WS_AUTH_PATH)
+    assert snapshot_leaf(snapshot, BOX_AUTH_PATH) == f"{ws_auth}/{GENERAL_SLOT}"

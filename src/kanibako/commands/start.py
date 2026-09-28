@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 if TYPE_CHECKING:
+    from kanibako.settings.agent_select import AgentSelection
     from kanibako.persona_store import PersonaBundle
     from kanibako.settings.config import BootstrapConfig
     from kanibako.settings.keystore import KeyStore
@@ -64,7 +65,7 @@ from kanibako.settings.settings_keyspace import (
     pseudo_agent_fence,
 )
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
-from kanibako.settings.settings_cli_level import build_cli_level
+from kanibako.settings.settings_cli_level import SELECTION_KEY, build_cli_level
 from kanibako.settings.paths import (
     _upgrade_shell,
     box_workset_settings_paths,
@@ -2510,6 +2511,15 @@ def _persist_or_announce_flags(
     )
 
 
+def _launch_selection_level(
+    agent_selection: "AgentSelection | None",
+) -> "dict[str, object] | None":
+    """The launch's §1A selection; with no agent selected it runs ``shell`` (§2b D-M6)."""
+    if agent_selection is None:
+        return {SELECTION_KEY: GENERAL_SLOT}
+    return agent_selection.selection_level
+
+
 def _run_container(
     *,
     project_dir: str | None,
@@ -3009,6 +3019,7 @@ def _run_container(
     # an explicit entrypoint); a plain-shell BOX resolves ``ShellTarget`` and reaches
     # ``shell`` through the swap like any other agent.
     agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
+    selection_level = _launch_selection_level(agent_selection)
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
 
     # AGENT-scope ``bootstrap`` (spec §2d): the AUTHORITATIVE per-launch value,
@@ -3037,10 +3048,7 @@ def _run_container(
     if is_agent_mode:
         bootstrap = _bootstrap_choice(
             proj, system_settings_path, agent_id, std=std,
-            selection_level=(
-                agent_selection.selection_level
-                if agent_selection is not None else None
-            ),
+            selection_level=selection_level,
             agent_path=agent_cfg_path,
         )
     elif persistent:
@@ -3234,9 +3242,7 @@ def _run_container(
         system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
         persona_values=persona_values,
-        selection_level=(
-            agent_selection.selection_level if agent_selection is not None else None
-        ),
+        selection_level=selection_level,
     )
 
     # Plugin descriptor (None for legacy/shell targets).  Hoisted here so
@@ -3695,11 +3701,7 @@ def _run_container(
                 system_settings_path=system_settings_path,
                 auth_src=auth_src, logger=logger,
                 suppress_oauth=suppress_oauth,
-                selection_level=(
-                    agent_selection.selection_level
-                    if agent_selection is not None
-                    else None
-                ),
+                selection_level=selection_level,
             )
             # The create-time ``synced`` write — the seed's SIBLING, immediately
             # after it and BEFORE the canon skeleton (which makes that region 555).
@@ -3715,11 +3717,7 @@ def _run_container(
                 agent_config_path=agent_cfg_path,
                 persona_values=persona_values,
                 logger=logger, deliver_creds=auth_src.creds_shared,
-                selection_level=(
-                    agent_selection.selection_level
-                    if agent_selection is not None
-                    else None
-                ),
+                selection_level=selection_level,
             )
             # The canon skeleton (J-7), in the SAME position as ``run_create``'s:
             # after the seed, inside the journal window.  See that call site for why
@@ -3830,10 +3828,7 @@ def _run_container(
             _effective_transform(
                 proj, system_settings_path, agent_id, target, agent_cfg,
                 std=std,
-                selection_level=(
-                    agent_selection.selection_level
-                    if agent_selection is not None else None
-                ),
+                selection_level=selection_level,
                 agent_cfg_path=agent_cfg_path,
             )
             if target and install
@@ -3883,11 +3878,7 @@ def _run_container(
         # would install a flag value onto the shell tier, not fabricate an
         # undeclared key, and there is no flag to spell.
         _cli_level = build_cli_level(
-            selection=(
-                agent_selection.selection_level
-                if agent_selection is not None
-                else None
-            ),
+            selection=selection_level,
             active_agent=agent_id if target is not None else None,
             model=model_override,
             new_session=new_session,
@@ -4347,10 +4338,7 @@ def _run_container(
             auth_src=auth_src,
             extra_mounts=extra_mounts,
             logger=logger,
-            selection_level=(
-                agent_selection.selection_level
-                if agent_selection is not None else None
-            ),
+            selection_level=selection_level,
         )
 
         container_env, secret_export_vars = _assemble_launch_env(
@@ -4425,10 +4413,7 @@ def _run_container(
                 agent_cfg_path=agent_cfg_path,
                 auth_src=auth_src,
                 extra_mounts=extra_mounts,
-                selection_level=(
-                    agent_selection.selection_level
-                    if agent_selection is not None else None
-                ),
+                selection_level=selection_level,
             )
 
         # Pre-launch validation: warn about missing mount sources.
