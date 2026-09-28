@@ -301,6 +301,17 @@ import-resolved here and injected into each entry (the file names them SYMBOLICA
 UNCONDITIONAL (every box mode) — the YAML calls them the unconditional trio, which is why the
 kickoff bind, the one core bind with a gate, is its own family.
 
+### `internal_bind_keys() -> frozenset[tuple[str, str]]`
+
+Every INTERNAL bind (spec §2c: not a user key, not repointable) as `(arm key, normalized dest)`: every
+row of the `kani:` and `kickoff:` tables, the `images:` table's `images_conf` row, the packaged-canon
+siblings (`_rom_sibling_binds`, the same list `rom_default_categories` emits from) and the plugin
+charter chapter (`_rom_agent_chapter_dest`). `settings_launch.build_launch_snapshot` re-imposes the
+floor's entries at these keys after the merge, so no user arm value drops or repoints them. Read from
+the rows and constants that emit the binds, so a moved dest moves here too; a missing `images_conf`
+row RAISES. `tests/test_settings/test_manifest_conformance.py` pins the set equal to the manifest's
+`user_key: false` rows.
+
 ## The KICKOFF loader — the directive-chain entry slot
 
 Spec §2c, P-5.

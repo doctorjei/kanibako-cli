@@ -755,6 +755,17 @@ class TestB3ImagesStoreKey:
         assert by_dest["/var/lib/shared-images"] == str(custom)
         assert by_dest["/var/lib/shared-images"] != str(probed)
 
+    def test_a_null_ro_arm_keeps_the_internal_storage_conf(self, tmp_path):
+        """``box.bindings.ro: null`` omits the STANDARD store bind but not the INTERNAL
+        generated storage.conf (spec §2c: not a key, so no user arm may drop it)."""
+        _probed, by_dest = self._resolve_images_mounts(
+            tmp_path, box_yaml="box:\n  bindings:\n    ro: null\n",
+        )
+        assert "/var/lib/shared-images" not in by_dest
+        assert by_dest["/home/agent/.config/containers/storage.conf"] == str(
+            tmp_path / "storage.conf"
+        )
+
     def test_probe_fail_emits_no_floor_scalar(self):
         """Ruled 11a: a FAILED probe contributes no ``box.images_store`` default.
 

@@ -85,6 +85,7 @@ def _agent_identity(agent_name: str, project_path: Path | None) -> dict[str, obj
 def _workset_floors(std, *, mode: str, ws_token: str, ws_root: Path, local_channels: 'WorksetChannels | None', agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_workset_floors(std, proj, agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs
+def _internal_floor_binds(floor: Mapping[str, object]) -> dict[str, object]
 def _warn_once(message: str) -> None
 def _none_setter(written: Sequence[_WrittenLevel], key: str, dest: str | None) -> str | None
 def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]

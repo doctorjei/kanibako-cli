@@ -58,6 +58,7 @@ from kanibako.settings.agent_config import (
 )
 from kanibako.settings.bootstrap import SPAWN_BUDGET_DEFAULTS
 from kanibako.settings.agent_file import AgentFileLevel, stored_leaf_text
+from kanibako.settings import core_defaults
 from kanibako.settings.config import (
     AGENT_META_FILE,
     WORKSET_META_FILE,
@@ -2220,6 +2221,12 @@ def build_launch_snapshot(
     levels.append(base_levels[5])                       # base (+ folded floor)
 
     snapshot = merge(levels)
+    # The INTERNAL binds (spec §2c: not user keys, not repointable) sit OUTSIDE every
+    # user-resettable arm: re-imposed from the floor AFTER the merge, so a user's null or
+    # entry in the same arm can neither drop nor repoint kanibako's own delivery.
+    internal = _internal_floor_binds(floor)
+    if internal:
+        snapshot = merge([dotted_partial(internal), snapshot])
     null_sources: NullSources = {}
     expanded = expand(snapshot, ctx, null_sources=null_sources)
     # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
@@ -2274,6 +2281,19 @@ def build_launch_snapshot(
         snapshot, expanded, active_agent=agent_name, written=written, ctx=ctx,
     )
     return expanded
+
+
+def _internal_floor_binds(floor: Mapping[str, object]) -> dict[str, object]:
+    """The *floor*'s INTERNAL bind entries (:func:`core_defaults.internal_bind_keys`), by arm."""
+    keys = core_defaults.internal_bind_keys()
+    out: dict[str, object] = {}
+    for arm, entries in floor.items():
+        if not (_is_bind_floor_key(arm) and isinstance(entries, dict)):
+            continue
+        picked = {d: v for d, v in entries.items() if (arm, d) in keys}
+        if picked:
+            out[arm] = picked
+    return out
 
 
 #: The ``<None>`` warnings already given in this process ([R185] and the secret one), by

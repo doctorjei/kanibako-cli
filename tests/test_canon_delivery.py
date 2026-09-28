@@ -912,6 +912,50 @@ class TestLaunchWiring:
         assert by_dest[agent_dest].options == "ro"
         assert Path(by_dest[agent_dest].source) == chapter
 
+    @pytest.mark.parametrize("arm", [None, {}], ids=["null", "empty"])
+    def test_a_reset_user_ro_arm_keeps_every_internal_bind(
+        self, std, config, project_dir, tmp_path, arm,
+    ):
+        """Spec §2c: the INTERNAL binds are not user keys, so a user's
+        ``box.bindings.ro: null`` / ``{}`` still delivers every one — kanibako's own
+        CLI included. RED before the post-merge re-impose: a null arm dropped them all."""
+        chapter = _plant_plugin_chapter(tmp_path / "plugin-pkg" / "data" / "rom")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        self._write_box_settings(proj, {"bindings": {"ro": arm}})
+
+        by_dest = self._launch_mounts(std, proj, _WiringTarget(chapter))
+        internal = {
+            dest for arm_key, dest in core_defaults.internal_bind_keys()
+            if arm_key == "box.bindings.ro"
+        }
+        # storage.conf rides the conditional IMAGE resolve, not the main one.
+        internal.discard(f"{GUEST_HOME}/.config/containers/storage.conf")
+        assert {"/opt/kanibako/kanibako", f"{GUEST_HOME}/.local/bin/kanibako"} <= internal
+        for dest in internal:
+            assert dest in by_dest, (dest, sorted(by_dest))
+            assert by_dest[dest].options == "ro"
+
+    def test_a_user_ro_entry_merges_and_cannot_repoint_an_internal_bind(
+        self, std, config, project_dir, tmp_path,
+    ):
+        """A user entry still merges beside the internal binds; one written AT an
+        internal dest neither drops nor repoints it (spec §2c: not repointable)."""
+        import kanibako
+
+        mine = tmp_path / "mine"
+        mine.mkdir()
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        self._write_box_settings(proj, {"bindings": {"ro": {
+            "~/mine": [str(mine)], "/opt/kanibako/kanibako": [str(mine)],
+        }}})
+
+        by_dest = self._launch_mounts(std, proj, _WiringTarget())
+        assert Path(by_dest[f"{GUEST_HOME}/mine"].source) == mine
+        assert Path(by_dest["/opt/kanibako/kanibako"].source) == (
+            Path(kanibako.__file__).parent
+        )
+        assert f"{GUEST_HOME}/.local/bin/kanibako" in by_dest
+
     def test_gate_negative_yields_no_mount_but_the_skeleton_still_pre_created_it(
         self, std, config, project_dir, tmp_path,
     ):
