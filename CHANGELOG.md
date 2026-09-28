@@ -406,6 +406,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An empty file, or one holding only comments, is still read as empty. See `MIGRATION.md` § *2.87
   A config file that is one value or a list is refused instead of read as empty*.
 
+- **A config file that writes the same key twice is now refused, naming both lines.** In v1.7.2
+  and v1.8.0-rc2, `box: {a: 1}` followed in the same file by `box: {b: 2}` read as `box: {b:
+  2}`: the last spelling won and the first was dropped with no message. This held at any depth
+  (`box.env.A` twice, `self.model` twice) and in every file kanibako reads settings from. The
+  command now stops, exit code 1, with `the config file <path> sets 'box' twice (line 1 and line
+  2). Remove one of the two, then retry.` A key beside a YAML merge (`<<: *base`) still overrides
+  the merged one. See `MIGRATION.md` § *2.96 A config file that writes the same key twice is
+  refused instead of keeping the last*.
+
 - **`kanibako workset show` and `kanibako system show` printed a declaration's sources as a Python
   list, under the destination as the file spelled it.** A `caches: {~/.cache/uv/: [uv]}` entry in a
   working set's file printed `workset.caches.~/.cache/uv/ = ['uv']`. It now prints

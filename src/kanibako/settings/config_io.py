@@ -31,17 +31,78 @@ def _yaml_problem(exc: yaml.YAMLError) -> str:
     return " ".join(str(exc).split())
 
 
+class _DuplicateKey(Exception):
+    """A mapping in one document spells the same key twice."""
+
+    def __init__(self, dotted: str, first: yaml.Mark, second: yaml.Mark) -> None:
+        super().__init__(dotted)
+        self.dotted = dotted
+        # 1-based, as an editor shows them; the column only where the line cannot tell them apart.
+        same_line = first.line == second.line
+        self.first, self.second = (
+            f"line {m.line + 1}" + (f", column {m.column + 1}" if same_line else "")
+            for m in (first, second)
+        )
+
+
+_MERGE_TAG = "tag:yaml.org,2002:merge"
+_VALUE_TAG = "tag:yaml.org,2002:value"
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """``SafeLoader`` that refuses a mapping repeating a key, at any depth."""
+
+    def construct_document(self, node: yaml.Node) -> object:
+        # ⚑ Checked on the node tree, before construction, because PyYAML keeps the LAST of a
+        # repeated key without a word; the tree is also the only place the key's path and lines exist.
+        self._check_duplicates(node, "", set())
+        return super().construct_document(node)
+
+    def _check_duplicates(self, node: yaml.Node, where: str, seen_nodes: set[int]) -> None:
+        if id(node) in seen_nodes:  # an alias revisits a node (and can be recursive)
+            return
+        seen_nodes.add(id(node))
+        if isinstance(node, yaml.SequenceNode):
+            for i, item in enumerate(node.value):
+                self._check_duplicates(item, f"{where}[{i}]", seen_nodes)
+        elif isinstance(node, yaml.MappingNode):
+            first_mark: dict[object, yaml.Mark] = {}
+            for key_node, value_node in node.value:
+                if key_node.tag == _MERGE_TAG:
+                    # ``<<`` is YAML's own override mechanism, not a repeated key — but the maps it
+                    # merges are still maps, and a repeat inside one is still lost.
+                    self._check_duplicates(value_node, f"{where}.<<" if where else "<<", seen_nodes)
+                    continue
+                # A bare ``=`` key is tagged ``value``; SafeConstructor reads it as the string
+                # ``"="`` (``flatten_mapping``) but cannot construct it on its own.
+                key = "=" if key_node.tag == _VALUE_TAG else self.construct_object(key_node, deep=True)
+                dotted = f"{where}.{key}" if where else str(key)
+                try:
+                    if key in first_mark:
+                        raise _DuplicateKey(dotted, first_mark[key], key_node.start_mark)
+                    first_mark[key] = key_node.start_mark
+                except TypeError:  # unhashable key: SafeConstructor refuses it itself
+                    pass
+                self._check_duplicates(value_node, dotted, seen_nodes)
+
+
 def load_doc(path: Path | None) -> dict:
-    """Load a config document → dict. Missing/empty → {}; any other non-mapping raises."""
+    """Load a config document → dict. Missing/empty → {}; any other non-mapping or a repeated key raises."""
     if path is None or not path.exists():
         return {}
     text = path.read_text()
-    # ⚑ HOST-SAFETY GUARD, not a type nicety: a non-str fed to yaml.safe_load can OOM the box.
+    # ⚑ HOST-SAFETY GUARD, not a type nicety: a non-str fed to the yaml loader can OOM the box.
     if not isinstance(text, str):
         return {}
     # ⚑ THE PARSE-FAILURE NORMALIZATION BELONGS HERE — this is the one seam that knows the FILE.
     try:
-        data = yaml.safe_load(text)
+        data = yaml.load(text, Loader=_UniqueKeyLoader)  # a SafeLoader: no arbitrary objects
+    except _DuplicateKey as dup:
+        # ⚑ Spec §0: never a silent accept — PyYAML would keep the second and drop the first.
+        raise ConfigError(
+            f"the config file {path} sets '{dup.dotted}' twice ({dup.first} and "
+            f"{dup.second}). Remove one of the two, then retry."
+        ) from None
     except yaml.YAMLError as exc:
         raise ConfigError(
             f"the config file {path} is not valid YAML: {_yaml_problem(exc)}. "
