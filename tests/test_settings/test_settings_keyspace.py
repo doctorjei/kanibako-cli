@@ -1203,7 +1203,7 @@ class TestOneSetTwoPositions:
 
         from kanibako.settings import settings_keyspace as ks
         from kanibako.settings.settings_resolve import SettingsError
-        from kanibako.settings.settings_assemble import assemble_levels
+        from tests.support.assembly import assemble_levels_at
 
         box = tmp_path / "box.yaml"
         box.write_text(yaml.safe_dump({"box": {"env": {"items": "x"}}}))
@@ -1211,7 +1211,7 @@ class TestOneSetTwoPositions:
         base.write_text("{}\n")
 
         def _assemble():
-            assemble_levels(agent_name="claude", base_path=base, box_path=box)
+            assemble_levels_at(agent_name="claude", base_path=base, box_path=box)
 
         with pytest.raises(SettingsError) as before:
             _assemble()

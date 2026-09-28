@@ -24,7 +24,8 @@ import yaml
 from kanibako.settings.kb_store import Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
-from kanibako.settings.settings_assemble import assemble_levels, parse_bind_map
+from kanibako.settings.settings_assemble import parse_bind_map
+from tests.support.assembly import assemble_levels_at
 from kanibako.settings.settings_drops import (
     containing_scopes,
     upward_scope_drop_set,
@@ -63,7 +64,7 @@ def _marker_of(store: KeyStore, scope: str) -> object:
 
 
 def test_returns_six_levels_all_keystores() -> None:
-    levels = assemble_levels(agent_name="claude")
+    levels = assemble_levels_at(agent_name="claude")
     assert len(levels) == 6
     assert all(isinstance(lv, KeyStore) for lv in levels)
 
@@ -89,7 +90,7 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
     # launch seam (``agent_file.state_level`` → ``settings_launch._agent_state_partial``)
     # and never appears here. One value, one route — that is defect D-3 closed.
     agent = _write(tmp_path / "agent.yaml", {"self": {"env": {"MARKER": "aact"}}})
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude",
         base_path=base,
         system_path=sysf,
@@ -125,7 +126,7 @@ def test_order_is_most_specific_first(tmp_path: Path) -> None:
 
 def test_scope_token_kept_not_stripped(tmp_path: Path) -> None:
     box = _write(tmp_path / "box.yaml", {"box": {"image": "img"}})
-    box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+    box_level = assemble_levels_at(agent_name="claude", box_path=box)[BOX]
     # The partial keeps the scope token: box.image, NOT a stripped `image`.
     assert isinstance(dict.get(box_level, "box"), KeyStore)
     assert dict.get(box_level["box"], "image", __MISSING__) == "img"
@@ -145,7 +146,7 @@ def test_upward_scope_key_in_box_file_dropped_with_warning(
         {"box": {"image": "img"}, "system": {"masks": {"/x": None}}},
     )
     with caplog.at_level("WARNING"):
-        box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+        box_level = assemble_levels_at(agent_name="claude", box_path=box)[BOX]
     # The box's OWN-scope key survives; the upward system: table is GONE.
     assert dict.get(box_level["box"], "image", __MISSING__) == "img"
     assert dict.get(box_level, "system", __MISSING__) is __MISSING__
@@ -162,7 +163,7 @@ def test_downward_scope_key_in_workset_file_preserved(tmp_path: Path) -> None:
         tmp_path / "ws.yaml",
         {"workset": {"template": "w"}, "box": {"masks": {"/x": None}}},
     )
-    ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
+    ws_level = assemble_levels_at(agent_name="claude", workset_path=ws)[WORKSET]
     assert _marker_of(ws_level, "workset") == "w"
     assert isinstance(dict.get(ws_level, "box"), KeyStore)
     assert dict.get(ws_level["box"]["masks"], "/x", __MISSING__) is None
@@ -199,7 +200,7 @@ def test_upward_scope_dropped_and_warned(
          token: {"auth": {"share_allowed": False}}},
     )
     with caplog.at_level("WARNING"):
-        level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
+        level = assemble_levels_at(agent_name="claude", **{path_kw: f})[level_idx]
     # The own-scope contribution survives; the upward table is gone.
     assert _marker_of(level, own_scope) == "keep"
     assert dict.get(level, token, __MISSING__) is __MISSING__
@@ -225,7 +226,7 @@ def test_upward_drop_warns_once_per_agent_file(
         },
     )
     with caplog.at_level("WARNING"):
-        levels = assemble_levels(agent_name="claude", agent_path=agent)
+        levels = assemble_levels_at(agent_name="claude", agent_path=agent)
     # The two agent levels are intact and carry NO system node.
     assert (
         dict.get(levels[AGENT_ACTIVE]["agent"]["claude"]["env"], "M", __MISSING__) == "cm"
@@ -247,65 +248,40 @@ def test_one_file_read_twice_names_each_dropped_key_once(
 ) -> None:
     # spec §0: dropped "with a warning naming the file and key". One command reads one file
     # through several resolves; each dropped key in it is ONE warning for the process, across
-    # assembly AND cascade_view (the shared guard), and each of the file's keys gets its own.
+    # assembly AND the DISPLAY read (the shared guard), and each of the file's keys gets its own.
     # MUTATION: skip the ``_DROP_WARNED`` membership check in ``_warn_upward_drops`` → reds.
-    from kanibako.settings.config_io import load_doc
-    from kanibako.settings.settings_assemble import cascade_view
+    from tests.support.assembly import display_view
 
     box = _write(
         tmp_path / "box.yaml",
         {"box": {"image": "img"}, "system": {"canon": "/s"}, "meta": {"x": 1}},
     )
     with caplog.at_level("WARNING"):
-        assemble_levels(agent_name="claude", box_path=box)
-        assemble_levels(agent_name="claude", box_path=box)
-        view = cascade_view(load_doc(box), level="box", path=box)
+        assemble_levels_at(agent_name="claude", box_path=box)
+        assemble_levels_at(agent_name="claude", box_path=box)
+        view = display_view(box, "box")
     assert set(view) == {"box"}
     msgs = [r.getMessage() for r in caplog.records if str(box) in r.getMessage()]
     assert len([m for m in msgs if "'system'" in m]) == 1, msgs
     assert len([m for m in msgs if "'meta'" in m]) == 1, msgs
 
 
-def test_cascade_view_warns_only_when_named_the_file(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    # A verb that shows a file without assembling it passes *path* and is warned for; a
-    # path-less caller (the retirement scans) gets the same VIEW silently.
-    # MUTATION: drop the ``_warn_upward_drops`` call from ``cascade_view`` → the second half reds.
-    from kanibako.settings.settings_assemble import cascade_view
-
-    raw = {"box": {"image": "img"}, "workset": {"canon": "/w"}}
-    with caplog.at_level("WARNING"):
-        silent = cascade_view(raw, level="box", path=None)
-    assert set(silent) == {"box"}
-    assert not [r for r in caplog.records if r.levelname == "WARNING"]
-    named = tmp_path / "box.yaml"
-    with caplog.at_level("WARNING"):
-        assert cascade_view(raw, level="box", path=named) == silent
-    msgs = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-    assert len(msgs) == 1, msgs
-    assert msgs[0].startswith(
-        f"Dropping upward-scope key 'workset' from box settings file {named}"
-    ), msgs
-
-
 def test_a_dropped_pref_table_is_named_once_by_every_reader(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # spec §2h drops a ``pref:`` table outside a workset/box file; its warning shares the §0
-    # guard, so assembly twice plus a path-named cascade_view name it ONCE, text unchanged.
+    # guard, so assembly twice plus a DISPLAY read name it ONCE, text unchanged.
     # MUTATION: make ``refuse_pref_table`` warn without asking ``announce_drop_once`` → reds.
-    from kanibako.settings.config_io import load_doc
-    from kanibako.settings.settings_assemble import cascade_view
+    from tests.support.assembly import display_view
 
     sysf = _write(
         tmp_path / "settings.yaml",
         {"system": {"canon": "/s"}, "pref": {"agent": {"default": {"model": "x"}}}},
     )
     with caplog.at_level("WARNING"):
-        assemble_levels(agent_name="claude", system_path=sysf)
-        assemble_levels(agent_name="claude", system_path=sysf)
-        view = cascade_view(load_doc(sysf), level="system", path=sysf)
+        assemble_levels_at(agent_name="claude", system_path=sysf)
+        assemble_levels_at(agent_name="claude", system_path=sysf)
+        view = display_view(sysf, "system")
     assert set(view) == {"system"}
     msgs = [r.getMessage() for r in caplog.records if str(sysf) in r.getMessage()]
     assert msgs == [
@@ -324,9 +300,9 @@ def test_reset_drop_warnings_announces_again(
 
     box = _write(tmp_path / "box.yaml", {"box": {"image": "img"}, "system": {"canon": "/s"}})
     with caplog.at_level("WARNING"):
-        assemble_levels(agent_name="claude", box_path=box)
+        assemble_levels_at(agent_name="claude", box_path=box)
         reset_drop_warnings()
-        assemble_levels(agent_name="claude", box_path=box)
+        assemble_levels_at(agent_name="claude", box_path=box)
     msgs = [r.getMessage() for r in caplog.records if str(box) in r.getMessage()]
     assert len(msgs) == 2, msgs
 
@@ -342,7 +318,7 @@ def test_base_floor_is_exempt_from_upward_drop(
         tmp_path / "base.yaml", {"system": {"auth": {"share_allowed": True}}}
     )
     with caplog.at_level("WARNING"):
-        base_level = assemble_levels(agent_name="claude", base_path=base)[BASE]
+        base_level = assemble_levels_at(agent_name="claude", base_path=base)[BASE]
     # The base file's system.* survived (NOT dropped).
     assert isinstance(dict.get(base_level, "system"), KeyStore)
     assert (
@@ -386,7 +362,7 @@ def test_top_level_meta_in_box_file_dropped_with_warning(
         {"box": {"image": "img"}, "meta": {"box": {"mode": "standalone"}}},
     )
     with caplog.at_level("WARNING"):
-        box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+        box_level = assemble_levels_at(agent_name="claude", box_path=box)[BOX]
     # The box's own-scope key survives; the top-level meta table is GONE.
     assert dict.get(box_level["box"], "image", __MISSING__) == "img"
     assert dict.get(box_level, "meta", __MISSING__) is __MISSING__
@@ -422,7 +398,7 @@ def test_top_level_meta_dropped_across_scopes(
         {own_scope: {_MARKER_KEY[own_scope]: "keep"}, "meta": {"box": {"mode": "x"}}},
     )
     with caplog.at_level("WARNING"):
-        level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
+        level = assemble_levels_at(agent_name="claude", **{path_kw: f})[level_idx]
     assert _marker_of(level, own_scope) == "keep"
     assert dict.get(level, "meta", __MISSING__) is __MISSING__
     assert _meta_warns(caplog, f), [
@@ -446,7 +422,7 @@ def test_top_level_meta_in_base_file_drops_but_system_scope_survives(
         },
     )
     with caplog.at_level("WARNING"):
-        base_level = assemble_levels(agent_name="claude", base_path=base)[BASE]
+        base_level = assemble_levels_at(agent_name="claude", base_path=base)[BASE]
     # SCOPE key exempt: the base file's system.* floor survives.
     assert isinstance(dict.get(base_level, "system"), KeyStore)
     assert (
@@ -482,7 +458,7 @@ def test_nested_scope_meta_is_untouched(
          "box": {"image": "img", "meta": {"mode": "x"}}},
     )
     with caplog.at_level("WARNING"):
-        ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
+        ws_level = assemble_levels_at(agent_name="claude", workset_path=ws)[WORKSET]
     # The nested node survives verbatim; the sibling own-scope key too.
     assert _marker_of(ws_level, "workset") == "keep"
     assert dict.get(ws_level["box"], "image", __MISSING__) == "img"
@@ -508,7 +484,7 @@ def test_workset_meta_table_drops_and_warns_like_every_other_scope(
         {"workset": {"template": "keep"}, "meta": {"workset": {"name": "foo"}}},
     )
     with caplog.at_level("WARNING"):
-        ws_level = assemble_levels(agent_name="claude", workset_path=ws)[WORKSET]
+        ws_level = assemble_levels_at(agent_name="claude", workset_path=ws)[WORKSET]
     assert _marker_of(ws_level, "workset") == "keep"
     assert dict.get(ws_level, "meta", __MISSING__) is __MISSING__
     warns = _meta_warns(caplog, ws)
@@ -533,7 +509,7 @@ def test_top_level_meta_drop_warns_once_per_agent_file(
         },
     )
     with caplog.at_level("WARNING"):
-        levels = assemble_levels(agent_name="claude", agent_path=agent)
+        levels = assemble_levels_at(agent_name="claude", agent_path=agent)
     # The two agent levels are intact and carry NO meta node.
     assert (
         dict.get(levels[AGENT_ACTIVE]["agent"]["claude"]["env"], "M", __MISSING__) == "cm"
@@ -591,7 +567,7 @@ def test_top_level_binding_derivations_dropped_across_scopes(
          "binding_derivations": _FORGED_DERIVATIONS},
     )
     with caplog.at_level("WARNING"):
-        level = assemble_levels(agent_name="claude", **{path_kw: f})[level_idx]
+        level = assemble_levels_at(agent_name="claude", **{path_kw: f})[level_idx]
     assert _marker_of(level, own_scope) == "keep"
     assert dict.get(level, "binding_derivations", __MISSING__) is __MISSING__
     assert _derivations_warns(caplog, f), [
@@ -611,7 +587,7 @@ def test_top_level_binding_derivations_in_base_file_drops_too(
          "binding_derivations": _FORGED_DERIVATIONS},
     )
     with caplog.at_level("WARNING"):
-        base_level = assemble_levels(agent_name="claude", base_path=base)[BASE]
+        base_level = assemble_levels_at(agent_name="claude", base_path=base)[BASE]
     assert (
         dict.get(base_level["system"]["auth"], "share_allowed", __MISSING__) is True
     )
@@ -639,7 +615,7 @@ def test_nested_binding_derivations_is_untouched(
         {"box": {"binding_derivations": {"marker": "rides"}, "image": "img"}},
     )
     with caplog.at_level("WARNING"):
-        box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+        box_level = assemble_levels_at(agent_name="claude", box_path=box)[BOX]
     assert dict.get(box_level["box"], "image", __MISSING__) == "img"
     nested = dict.get(box_level["box"], "binding_derivations", __MISSING__)
     assert isinstance(nested, KeyStore)
@@ -663,7 +639,7 @@ def test_arbitrary_unknown_table_still_rides(
         {"box": {"image": "img"}, "zebra": {"stripes": 3}},
     )
     with caplog.at_level("WARNING"):
-        box_level = assemble_levels(agent_name="claude", box_path=box)[BOX]
+        box_level = assemble_levels_at(agent_name="claude", box_path=box)[BOX]
     zebra = dict.get(box_level, "zebra", __MISSING__)
     assert isinstance(zebra, KeyStore)
     assert dict.get(zebra, "stripes", __MISSING__) == 3
@@ -689,7 +665,7 @@ def test_agent_tiers_land_in_separate_levels_true_discriminated(tmp_path: Path) 
         tmp_path / "sys.yaml",
         {"agent": {"default": {"allow_helpers": True, "env": {"M": "dmodel"}}}},
     )
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude", agent_path=agent, system_path=sysf,
     )
     active = levels[AGENT_ACTIVE]["agent"]["claude"]
@@ -714,7 +690,7 @@ def test_active_override_not_in_default_and_vice_versa(tmp_path: Path) -> None:
     sysf = _write(
         tmp_path / "sys.yaml", {"agent": {"default": {"env": {"X": "d"}}}},
     )
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="goose", agent_path=agent, system_path=sysf,
     )
     active = levels[AGENT_ACTIVE]["agent"]["goose"]
@@ -734,7 +710,7 @@ def test_the_agent_file_is_read_under_whichever_node_is_active(tmp_path: Path) -
     # read under codex are codex's keys; a "wrong node" file is not a thing the cascade
     # can be handed.
     agent = _write(tmp_path / "agent.yaml", {"self": {"env": {"Y": "c"}}})
-    levels = assemble_levels(agent_name="codex", agent_path=agent)
+    levels = assemble_levels_at(agent_name="codex", agent_path=agent)
     assert dict.get(levels[AGENT_ACTIVE]["agent"]["codex"]["env"], "Y", __MISSING__) == "c"
     assert dict.get(levels[AGENT_ACTIVE]["agent"], "claude", __MISSING__) is __MISSING__
 
@@ -745,7 +721,7 @@ def test_agent_categories_under_true_discriminated_name(tmp_path: Path) -> None:
         tmp_path / "agent.yaml",
         {"self": {"bindings": {"ro": {"/g/s": ["/h/s"]}}}},
     )
-    active = assemble_levels(agent_name="claude", agent_path=agent)[AGENT_ACTIVE]
+    active = assemble_levels_at(agent_name="claude", agent_path=agent)[AGENT_ACTIVE]
     # DEST-KEYED (R-5/R-6): the arm is keyed by destination, the entry is (src[, opts]).
     bind = active["agent"]["claude"]["bindings"]["ro"]["/g/s"]
     assert bind == BindEntry("/h/s", None)
@@ -762,7 +738,7 @@ def test_agent_file_state_does_not_ride_the_file_cascade_level(tmp_path: Path) -
         tmp_path / "agent.yaml",
         {"self": {"model": "opus", "env": {"M": "v"}}},
     )
-    active = assemble_levels(agent_name="claude", agent_path=agent)[AGENT_ACTIVE]
+    active = assemble_levels_at(agent_name="claude", agent_path=agent)[AGENT_ACTIVE]
     assert dict.get(active["agent"]["claude"], "env", __MISSING__) is not __MISSING__
     assert dict.get(active["agent"]["claude"], "model", __MISSING__) is __MISSING__
 
@@ -779,7 +755,7 @@ def test_another_agents_sub_table_in_the_agent_file_refuses(tmp_path: Path) -> N
         {"self": {"env": {"M": "cm"}, "goose": {"env": {"M": "gm"}}}},
     )
     with pytest.raises(SettingsError) as exc:
-        assemble_levels(agent_name="claude", agent_path=agent)
+        assemble_levels_at(agent_name="claude", agent_path=agent)
     message = str(exc.value)
     assert "self.goose" in message
     assert "agent.claude.goose" in message
@@ -793,7 +769,7 @@ def test_another_agents_keys_ride_a_containing_scope_file(tmp_path: Path) -> Non
         tmp_path / "sys.yaml",
         {"agent": {"default": {"model": "dm"}, "goose": {"model": "gm"}}},
     )
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude", agent_path=agent, system_path=sysf,
     )
     assert dict.get(levels[AGENT_ACTIVE]["agent"], "goose", __MISSING__) is __MISSING__
@@ -811,14 +787,13 @@ def test_a_capital_node_in_a_file_is_read_as_its_node_with_one_warning(
 ) -> None:
     # Q87: a stored ``agent.Claude`` reaches ``agent.claude`` — it was silently never read —
     # and every reader of the file shares ONE warning naming the file and both spellings.
-    from kanibako.settings.config_io import load_doc
-    from kanibako.settings.settings_assemble import cascade_view
+    from tests.support.assembly import display_view
 
     sysf = _write(tmp_path / "settings.yaml", {"agent": {"Claude": {"model": "opus"}}})
     with caplog.at_level("WARNING"):
-        levels = assemble_levels(agent_name="claude", system_path=sysf)
-        assemble_levels(agent_name="claude", system_path=sysf)
-        view = cascade_view(load_doc(sysf), level="system", path=sysf)
+        levels = assemble_levels_at(agent_name="claude", system_path=sysf)
+        assemble_levels_at(agent_name="claude", system_path=sysf)
+        view = display_view(sysf, "system")
     assert list(levels[SYSTEM]["agent"]) == ["claude"]
     assert dict.get(levels[SYSTEM]["agent"]["claude"], "model") == "opus"
     assert view == {"agent": {"claude": {"model": "opus"}}}
@@ -854,7 +829,7 @@ def test_one_node_spelled_twice_in_one_file_is_refused_naming_both(
         {"agent": {first: {"model": "a"}, second: {"model": "b"}}},
     )
     with pytest.raises(SettingsError) as exc:
-        assemble_levels(agent_name="claude", system_path=sysf)
+        assemble_levels_at(agent_name="claude", system_path=sysf)
     msg = str(exc.value)
     assert f"'agent.{first}'" in msg and f"'agent.{second}'" in msg and str(sysf) in msg
 
@@ -864,16 +839,15 @@ def test_a_dropped_table_is_not_folded_or_judged(
 ) -> None:
     # A box file's ``agent:`` table is dropped (spec §0), so its spellings are no fact about
     # what merges: the drop is announced, the fold is not, and two spellings do not refuse.
-    from kanibako.settings.config_io import load_doc
-    from kanibako.settings.settings_assemble import cascade_view
+    from tests.support.assembly import display_view
 
     box = _write(
         tmp_path / "box.yaml",
         {"box": {"image": "i"}, "agent": {"Claude": {"model": "a"}, "claude": {"model": "b"}}},
     )
     with caplog.at_level("WARNING"):
-        assemble_levels(agent_name="claude", box_path=box)
-        view = cascade_view(load_doc(box), level="box", path=box)
+        assemble_levels_at(agent_name="claude", box_path=box)
+        view = display_view(box, "box")
     assert set(view) == {"box"}
     assert not [r for r in caplog.records if "lowercase" in r.getMessage()]
 
@@ -905,7 +879,7 @@ def test_every_bind_shaped_category_parses_to_dest_keyed_bind_entries(
             }
         },
     )
-    box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
+    box_scope = assemble_levels_at(agent_name="claude", box_path=box)[BOX]["box"]
     # R-11: the stored ``~/`` dest is canonicalized to the absolute guest home, so
     # ``~``, ``~/`` and ``/home/agent`` are ONE key rather than three.
     rw_home = box_scope["bindings"]["rw"]["/home/agent"]
@@ -934,7 +908,7 @@ def test_a_terminal_category_merges_per_entry_not_wholesale(tmp_path: Path) -> N
     # single-entry map would wipe the workset's.
     ws = _write(tmp_path / "ws.yaml", {"box": {"common": {"/g/ws": ["/h/ws"]}}})
     box = _write(tmp_path / "box.yaml", {"box": {"common": {"/g/box": ["/h/box"]}}})
-    levels = assemble_levels(agent_name="claude", box_path=box, workset_path=ws)
+    levels = assemble_levels_at(agent_name="claude", box_path=box, workset_path=ws)
     merged = merge(levels)["box"]["common"]
     assert set(dict.keys(merged)) == {"/g/ws", "/g/box"}
     assert merged["/g/ws"] == BindEntry("/h/ws", None)
@@ -946,7 +920,7 @@ def test_refs_left_raw_inside_bind(tmp_path: Path) -> None:
         tmp_path / "box.yaml",
         {"box": {"bindings": {"rw": {"$XDG_STATE_HOME/v": ["@workset.vault_rw/x"]}}}},
     )
-    box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
+    box_scope = assemble_levels_at(agent_name="claude", box_path=box)[BOX]["box"]
     node = box_scope["bindings"]["rw"]
     # NOT expanded — tokens preserved verbatim (S9 / spec §0), on BOTH sides: the
     # ``$XDG`` dest KEY is carried through too (R-11 expands a leading ``~`` only).
@@ -961,7 +935,7 @@ def test_malformed_bind_arity_raises(tmp_path: Path) -> None:
     )
     # A 3-element entry is the RETIRED name-keyed shape (spec §2a, R-8).
     with pytest.raises(SettingsError):
-        assemble_levels(agent_name="claude", box_path=box)
+        assemble_levels_at(agent_name="claude", box_path=box)
 
 
 # --------------------------------------------------------------------------- #
@@ -974,7 +948,7 @@ def test_masks_is_keyed_dict_three_state(tmp_path: Path) -> None:
         tmp_path / "box.yaml",
         {"box": {"masks": {"/secret": True, "/inherited": None}}},
     )
-    masks = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]["masks"]
+    masks = assemble_levels_at(agent_name="claude", box_path=box)[BOX]["box"]["masks"]
     assert isinstance(masks, KeyStore)
     assert dict.get(masks, "/secret", __MISSING__) is True
     # present-None survives as present-None (UNMASK), distinct from absent.
@@ -986,7 +960,7 @@ def test_masks_not_bind_parsed(tmp_path: Path) -> None:
     # A masks leaf is bool/None, never a bind — masks is dest-keyed like the six
     # bind-shaped categories but is NOT one of them; neither bind shape may appear.
     box = _write(tmp_path / "box.yaml", {"box": {"masks": {"/x": True}}})
-    masks = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]["masks"]
+    masks = assemble_levels_at(agent_name="claude", box_path=box)[BOX]["box"]["masks"]
     assert not isinstance(dict.get(masks, "/x"), (Bind, BindEntry))
 
 
@@ -996,14 +970,14 @@ def test_mask_dests_are_canonicalized_so_spellings_collapse(tmp_path: Path) -> N
     # ``/m/`` instead of both surviving as two keys. ``~`` expands like any guest dest.
     ws = _write(tmp_path / "ws.yaml", {"box": {"masks": {"/m/": True, "~/": True}}})
     box = _write(tmp_path / "box.yaml", {"box": {"masks": {"/m": None}}})
-    levels = assemble_levels(agent_name="claude", box_path=box, workset_path=ws)
+    levels = assemble_levels_at(agent_name="claude", box_path=box, workset_path=ws)
     assert set(dict.keys(levels[WORKSET]["box"]["masks"])) == {"/m", "/home/agent"}
     # The box's unmask of ``/m`` meets the workset's ``/m/`` mask: one entry, unmasked.
     assert set(dict.keys(merge(levels)["box"]["masks"])) == {"/home/agent"}
 
 
 def test_floor_mask_dests_are_canonicalized() -> None:
-    levels = assemble_levels(agent_name="claude", floor={"box.masks": {"/f/": True}})
+    levels = assemble_levels_at(agent_name="claude", floor={"box.masks": {"/f/": True}})
     assert set(dict.keys(levels[BASE]["box"]["masks"])) == {"/f"}
 
 
@@ -1013,7 +987,7 @@ def test_floor_mask_dests_are_canonicalized() -> None:
 
 
 def test_absent_files_yield_empty_partials() -> None:
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude",
         base_path=Path("/nonexistent/base.yaml"),
         system_path=Path("/nonexistent/sys.yaml"),
@@ -1028,7 +1002,7 @@ def test_absent_files_yield_empty_partials() -> None:
 def test_none_paths_yield_empty_partials() -> None:
     # None for every optional path (base falls back to /etc, absent in the
     # test env → empty too).
-    levels = assemble_levels(agent_name="claude")
+    levels = assemble_levels_at(agent_name="claude")
     assert len(levels) == 6
     for idx in (BOX, WORKSET, AGENT_ACTIVE, AGENT_DEFAULT, SYSTEM):
         assert len(levels[idx]) == 0
@@ -1044,7 +1018,7 @@ def test_base_uses_scoped_keyspace_no_wrapper(tmp_path: Path) -> None:
     # keys (agent/system/box…) exactly like every other file. Example:
     # base sets agent.default.model.
     base = _write(tmp_path / "base.yaml", {"agent": {"default": {"model": "bm"}}})
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude", base_path=base
     )
     # The base file's agent.default tier is read on the BASE level (scope kept),
@@ -1062,7 +1036,7 @@ def test_base_uses_scoped_keyspace_no_wrapper(tmp_path: Path) -> None:
 def test_floor_lands_on_base_level() -> None:
     # Floor keys are scope-qualified §2d forms (agent.default.* — NOT bare
     # agent.*); they explode to the nested keyspace on the BASE level.
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude",
         floor={"agent.default.allow_helpers": True, "agent.default.bootstrap": "tmux"},
     )
@@ -1074,7 +1048,7 @@ def test_floor_lands_on_base_level() -> None:
 
 
 def test_floor_dotted_keys_explode_to_nested() -> None:
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude",
         floor={"box.bindings.rw": {"~/": ["/h/home"]}},
     )
@@ -1085,7 +1059,7 @@ def test_floor_dotted_keys_explode_to_nested() -> None:
 
 def test_base_file_set_value_beats_floor_at_same_key(tmp_path: Path) -> None:
     base_file = _write(tmp_path / "base.yaml", {"agent": {"default": {"bootstrap": "none"}}})
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude",
         base_path=base_file,
         floor={"agent.default.bootstrap": "tmux"},
@@ -1102,7 +1076,7 @@ def test_overlay_preserves_sibling_floor_leaves(tmp_path: Path) -> None:
     base_file = _write(
         tmp_path / "base.yaml", {"agent": {"default": {"model": "file"}}}
     )
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude",
         base_path=base_file,
         floor={"agent.default.model": "floor", "agent.default.endpoint": "floorB"},
@@ -1125,7 +1099,7 @@ def test_no_machine_path_consulted() -> None:
     import kanibako.settings.config as cfg
 
     assert not hasattr(cfg, "machine_config_path")
-    levels = assemble_levels(agent_name="claude")
+    levels = assemble_levels_at(agent_name="claude")
     assert len(levels) == 6
 
 
@@ -1145,7 +1119,7 @@ def test_partial_holds_behavior_and_category_together(tmp_path: Path) -> None:
             }
         },
     )
-    box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
+    box_scope = assemble_levels_at(agent_name="claude", box_path=box)[BOX]["box"]
     assert dict.get(box_scope, "image", __MISSING__) == "ghcr.io/x:latest"
     assert isinstance(box_scope["bindings"], KeyStore)
     assert isinstance(box_scope["bindings"]["rw"]["/home/agent"], BindEntry)
@@ -1157,7 +1131,7 @@ def test_nested_subtrees_are_keystores(tmp_path: Path) -> None:
         tmp_path / "box.yaml",
         {"box": {"bindings": {"rw": {"home": ["/h", "~/"]}}}},
     )
-    box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
+    box_scope = assemble_levels_at(agent_name="claude", box_path=box)[BOX]["box"]
     assert isinstance(box_scope["bindings"], KeyStore)
     assert isinstance(box_scope["bindings"]["rw"], KeyStore)
 
@@ -1168,7 +1142,7 @@ def test_present_none_scalar_preserved(tmp_path: Path) -> None:
     # `box.model` would not be a key at all. `box.absent` below is only ever READ,
     # which is the point of it — nothing writes it.
     box = _write(tmp_path / "box.yaml", {"box": {"image": None}})
-    box_scope = assemble_levels(agent_name="claude", box_path=box)[BOX]["box"]
+    box_scope = assemble_levels_at(agent_name="claude", box_path=box)[BOX]["box"]
     assert dict.get(box_scope, "image", __MISSING__) is None
     assert dict.get(box_scope, "absent", __MISSING__) is __MISSING__
 
@@ -1197,7 +1171,7 @@ def _merged(
     """
     agent_p = _write(tmp_path / "agent.yaml", agent)
     system_p = _write(tmp_path / "system.yaml", system)
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name=agent_name, agent_path=agent_p, system_path=system_p
     )
     snap = merge(levels)
@@ -1270,14 +1244,14 @@ def test_p6c_standalone_box_key_resolves_via_workset_tier(tmp_path: Path) -> Non
 
     # P6c pair: box tier EMPTY (None), the file as the WORKSET tier.
     snap_p6c = merge(
-        assemble_levels(agent_name="claude", box_path=None, workset_path=f)
+        assemble_levels_at(agent_name="claude", box_path=None, workset_path=f)
     )
     assert _box_enable_vault(snap_p6c) is False
 
     # RESULT-EQUIVALENCE vs the pre-P6c read (file as the BOX tier): a lone box has
     # exactly ONE file, so box-vs-workset tier picks the same resolved box scope.
     snap_old = merge(
-        assemble_levels(agent_name="claude", box_path=f, workset_path=None)
+        assemble_levels_at(agent_name="claude", box_path=f, workset_path=None)
     )
     assert _box_enable_vault(snap_old) == _box_enable_vault(snap_p6c)
 
@@ -1286,7 +1260,7 @@ def test_p6c_standalone_box_key_resolves_via_workset_tier(tmp_path: Path) -> Non
     # to the floor/default downstream), NOT False. Proves the assert above is not
     # vacuously satisfied by some other source.
     snap_dropped = merge(
-        assemble_levels(agent_name="claude", box_path=None, workset_path=None)
+        assemble_levels_at(agent_name="claude", box_path=None, workset_path=None)
     )
     assert _box_enable_vault(snap_dropped) is __MISSING__
 
@@ -1300,7 +1274,7 @@ def test_p6c_standalone_workset_scope_key_also_resolves(tmp_path: Path) -> None:
         {"box": {"enable_vault": False}, "workset": {"template": "w"}},
     )
     snap = merge(
-        assemble_levels(agent_name="claude", box_path=None, workset_path=f)
+        assemble_levels_at(agent_name="claude", box_path=None, workset_path=f)
     )
     assert isinstance(dict.get(snap, "workset", __MISSING__), KeyStore)
     assert _marker_of(snap, "workset") == "w"
@@ -1337,7 +1311,7 @@ class TestPrefTableWriteSiteAtAssembly:
             {"pref": {"system": {"agent": "goose"}}, "system": {"cache": "/c"}},
         )
         with caplog.at_level("WARNING"):
-            levels = assemble_levels(agent_name="claude", base_path=base)
+            levels = assemble_levels_at(agent_name="claude", base_path=base)
         assert "pref" not in levels[BASE]
         assert levels[BASE].system.cache == "/c"   # the rest of the file survives
         assert "workset or box settings file" in caplog.text
@@ -1348,7 +1322,7 @@ class TestPrefTableWriteSiteAtAssembly:
             tmp_path / "system.yaml", {"pref": {"system": {"agent": "goose"}}},
         )
         with caplog.at_level("WARNING"):
-            levels = assemble_levels(agent_name="claude", system_path=sysf)
+            levels = assemble_levels_at(agent_name="claude", system_path=sysf)
         assert "pref" not in levels[SYSTEM]
         assert "workset or box settings file" in caplog.text
 
@@ -1362,7 +1336,7 @@ class TestPrefTableWriteSiteAtAssembly:
              "self": {"env": {"M": "opus"}}},
         )
         with caplog.at_level("WARNING"):
-            levels = assemble_levels(agent_name="claude", agent_path=agentf)
+            levels = assemble_levels_at(agent_name="claude", agent_path=agentf)
         assert "pref" not in levels[AGENT_ACTIVE]
         assert levels[AGENT_ACTIVE].agent.claude.env["M"] == "opus"
         assert "workset or box settings file" in caplog.text
@@ -1376,7 +1350,7 @@ class TestPrefTableWriteSiteAtAssembly:
             tmp_path / "ws.yaml", {"pref": {"agent": {"claude": {"model": "opus"}}}},
         )
         with caplog.at_level("WARNING"):
-            levels = assemble_levels(
+            levels = assemble_levels_at(
                 agent_name="claude", box_path=box, workset_path=ws,
             )
         assert levels[BOX].pref.system.agent == "goose"
@@ -1396,7 +1370,7 @@ class TestPrefTableWriteSiteAtAssembly:
             tmp_path / "box.yaml",
             {"pref": {"agent": {"claude": {"common": {"~/d": ["/s"]}}}}},
         )
-        levels = assemble_levels(agent_name="claude", box_path=box)
+        levels = assemble_levels_at(agent_name="claude", box_path=box)
         node = levels[BOX].pref.agent.claude.common
         assert isinstance(node, KeyStore)
         # R-11 canonicalizes the dest on read, in a pref exactly as in its target.
@@ -1681,7 +1655,7 @@ class TestRefuseRetiredBehaviorKeys:
             tmp_path / "system.yaml",
             {"agent": {"default": {"auto_approve": False}}},
         )
-        levels = assemble_levels(agent_name="claude", system_path=path)
+        levels = assemble_levels_at(agent_name="claude", system_path=path)
         assert levels is not None
 
 
@@ -1739,7 +1713,7 @@ def test_the_file_path_now_parses_bindings_to_bind_entry(tmp_path: Path) -> None
         tmp_path / "box.yaml",
         {"box": {"bindings": {"rw": {"~/home": ["/h/src"]}}}},
     )
-    levels = assemble_levels(agent_name="claude", box_path=path)
+    levels = assemble_levels_at(agent_name="claude", box_path=path)
     entry = levels[BOX]["box"]["bindings"]["rw"]["/home/agent/home"]
     assert type(entry) is BindEntry
     assert entry == BindEntry("/h/src")
@@ -1759,7 +1733,7 @@ def test_the_other_four_categories_flipped_at_the_category_token(
         tmp_path / "box.yaml",
         {"box": {"seeded": {"/g/t": ["/h/t"]}, "caches": {"/g/c": ["/h/c", "z"]}}},
     )
-    box_scope = assemble_levels(agent_name="claude", box_path=path)[BOX]["box"]
+    box_scope = assemble_levels_at(agent_name="claude", box_path=path)[BOX]["box"]
     assert type(box_scope["seeded"]["/g/t"]) is BindEntry
     assert box_scope["seeded"]["/g/t"] == BindEntry("/h/t", None)
     assert box_scope["caches"]["/g/c"] == BindEntry("/h/c", "z")
@@ -1777,14 +1751,14 @@ def test_a_stale_name_keyed_entry_in_the_four_is_refused_loudly(
         {"box": {"seeded": {"t": ["/h/t", "/g/t", "ro"]}}},
     )
     with pytest.raises(SettingsError):
-        assemble_levels(agent_name="claude", box_path=path)
+        assemble_levels_at(agent_name="claude", box_path=path)
     # And the retired sub-table form, at the category token depth.
     nested = _write(
         tmp_path / "box2.yaml",
         {"box": {"common": {"p": {"src": "/h/p", "dest": "/g/p"}}}},
     )
     with pytest.raises(SettingsError) as exc:
-        assemble_levels(agent_name="claude", box_path=nested)
+        assemble_levels_at(agent_name="claude", box_path=nested)
     assert "sub-table" in str(exc.value)
 
 
@@ -1794,7 +1768,7 @@ def test_a_floor_key_deeper_than_the_arm_is_refused() -> None:
     # destinations — a name where a path belongs, which nothing downstream can tell
     # apart. So the floor refuses it by name (R-5/R-10).
     with pytest.raises(SettingsError) as exc:
-        assemble_levels(
+        assemble_levels_at(
             agent_name="claude",
             floor={"box.bindings.rw.home": ["/h/home", "~/"]},
         )
@@ -1848,7 +1822,7 @@ def test_a_reserved_leaf_name_refusal_NAMES_THE_FILE(
     # ``assemble_levels`` and this row goes red on the filename assert alone.
     path = _write(tmp_path / f"{kwarg}.yaml", {scope: {"get": "x"}})
     with pytest.raises(SettingsError) as exc:
-        assemble_levels(agent_name="claude", **_clean_base(tmp_path, kwarg, path))
+        assemble_levels_at(agent_name="claude", **_clean_base(tmp_path, kwarg, path))
     msg = str(exc.value)
     assert "key 'get' is reserved" in msg      # the KEY, as before
     assert str(path) in msg                    # ...and now the FILE
@@ -1868,7 +1842,7 @@ def test_the_retired_shape_refusal_NAMES_THE_FILE(
         {scope: {"common": {"~/dest": {"entryname": {"src": "/h/a"}}}}},
     )
     with pytest.raises(SettingsError) as exc:
-        assemble_levels(agent_name="claude", **_clean_base(tmp_path, kwarg, path))
+        assemble_levels_at(agent_name="claude", **_clean_base(tmp_path, kwarg, path))
     msg = str(exc.value)
     assert "sub-table" in msg                  # the retired SHAPE, as before
     assert str(path) in msg                    # ...and now the FILE
@@ -1882,7 +1856,7 @@ def test_a_clean_file_at_the_same_scope_assembles(
     the rows above pin the refusal and not a broken fixture."""
     marker = _MARKER_KEY.get(scope, "image")
     path = _write(tmp_path / f"{kwarg}.yaml", {scope: {marker: "ok"}})
-    levels = assemble_levels(
+    levels = assemble_levels_at(
         agent_name="claude", **_clean_base(tmp_path, kwarg, path)
     )
     assert len(levels) == 6
@@ -1941,7 +1915,7 @@ def test_an_agent_file_parse_refusal_NAMES_THE_FILE(
     agent = _agent_probe(tmp_path, doc)
     base = _write(tmp_path / "clean_base.yaml", {})
     with pytest.raises(SettingsError) as exc:
-        assemble_levels(agent_name="claude", agent_path=agent, base_path=base)
+        assemble_levels_at(agent_name="claude", agent_path=agent, base_path=base)
     msg = str(exc.value)
     assert needle in msg                       # the DEFECT, as before
     assert str(agent) in msg                   # ...and now the FILE
@@ -1956,5 +1930,70 @@ def test_a_clean_agent_file_still_assembles(tmp_path: Path) -> None:
     above pin the refusal and not a broken fixture."""
     agent = _agent_probe(tmp_path, {"self": {"env": {"OK": "v"}}})
     base = _write(tmp_path / "clean_base.yaml", {})
-    levels = assemble_levels(agent_name="claude", agent_path=agent, base_path=base)
+    levels = assemble_levels_at(agent_name="claude", agent_path=agent, base_path=base)
     assert dict.get(levels[AGENT_ACTIVE]["agent"]["claude"]["env"], "OK", __MISSING__) == "v"
+
+
+# --------------------------------------------------------------------------- #
+# The reader: each ReadPurpose keeps its route's checks and their order (2A).
+# --------------------------------------------------------------------------- #
+
+
+def _read(purpose_name: str, **paths: Path):
+    from kanibako.settings.settings_assemble import ReadPurpose, cascade_files
+
+    kw = {k: paths.get(k) for k in ("system_path", "agent_path", "workset_path", "box_path")}
+    return cascade_files(
+        purpose=ReadPurpose[purpose_name], base_path=paths.get("base_path"), **kw,
+    )
+
+
+def test_resolve_refuses_every_config_table_before_any_retired_behavior(tmp_path: Path) -> None:
+    """``RESOLVE`` is check-major: a ``config:`` table in ``workset.yaml`` is reported before a
+    retired ``auto_approve`` in ``box.yaml``, although the box file is read first.
+    (Mutation: run the two checks per file → the box's retired key comes first → RED.)"""
+    box = _write(tmp_path / "box.yaml", {"pref": {"agent": {"claude": {"auto_approve": True}}}})
+    ws = _write(tmp_path / "workset.yaml", {"config": {"agents": "/x"}})
+    with pytest.raises(Exception) as exc:
+        _read("RESOLVE", box_path=box, workset_path=ws, base_path=tmp_path / "no-base.yaml")
+    assert str(ws) in str(exc.value) and "auto_approve" not in str(exc.value), exc.value
+
+
+def test_select_walks_from_the_base_file_to_the_box(tmp_path: Path) -> None:
+    """``SELECT`` reads base → system → workset → box, so the system file's retired spelling
+    is the one reported. (Mutation: reverse the order → the box's comes first → RED.)"""
+    system = _write(tmp_path / "settings.yaml", {"agent": {"default": {"default_agent": "x"}}})
+    box = _write(tmp_path / "box.yaml", {"box": {"agent_name": "claude"}})
+    with pytest.raises(SettingsError) as exc:
+        _read("SELECT", system_path=system, box_path=box, base_path=tmp_path / "no-base.yaml")
+    assert str(system) in str(exc.value) and str(box) not in str(exc.value), exc.value
+
+
+def test_narrow_reports_the_box_files_node_fault_first(tmp_path: Path) -> None:
+    """``NARROW`` folds agent nodes as it builds each partial, box first: two spellings of one
+    node in ``box.yaml``'s ``pref:`` and in the system file report the box's."""
+    box = _write(tmp_path / "box.yaml", {"pref": {"agent": {"Claude": {"model": "a"},
+                                                            "claude": {"model": "b"}}}})
+    system = _write(tmp_path / "settings.yaml", {"agent": {"Claude": {"model": "a"},
+                                                           "claude": {"model": "b"}}})
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels_at(
+            agent_name="claude", box_path=box, system_path=system,
+            base_path=tmp_path / "no-base.yaml",
+        )
+    assert str(box) in str(exc.value) and str(system) not in str(exc.value), exc.value
+
+
+@pytest.mark.parametrize("purpose, doc", [
+    ("SELECT", {"box": {"image": "i"}, "agent": {"default": {"default_agent": "x"}}}),
+    ("RESOLVE", {"box": {"image": "i"}, "agent": {"claude": {"auto_approve": True}}}),
+])
+def test_a_retired_spelling_in_a_dropped_table_is_not_refused(
+    tmp_path: Path, purpose: str, doc: dict,
+) -> None:
+    """Both retired checks judge the view: ``box.yaml``'s ``agent:`` table is dropped (spec §0),
+    so a retired spelling inside it does nothing and gets no cure."""
+    box = _write(tmp_path / "box.yaml", doc)
+    (read,) = [f for f in _read(purpose, box_path=box, base_path=tmp_path / "no-base.yaml")
+               if f.level == "box"]
+    assert set(read.view) == {"box"}

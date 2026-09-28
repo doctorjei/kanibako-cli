@@ -34,7 +34,6 @@ _MIRROR_SEGMENTS: tuple[str, ...] = ('meta', 'box', 'agent')
 ## Types
 ```
 AuthTier = Literal['workset', 'global', 'box']
-_TierFile = tuple[str, Path | None]
 _WrittenLevel = tuple[KeyStore, Path | None, KeyStore | None]
 
 ```
@@ -51,7 +50,7 @@ def meta_identity_floor(*, box_name: str, project_path: str | None, inbox: str, 
 def meta_agent_identity_floor(agent_name: str, agent_real_name: str | None, agent_auth_share_support: bool) -> dict[str, object]
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
-def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[_TierFile], subject: ResolveSubject) -> None
+def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[SettingsFile], subject: ResolveSubject) -> None
 def internal_bind_refusals(arm: str, entries: dict[str, object], *, where: str, floor_entries: dict[str, object] | None=None) -> list[str]
 def depends_on_the_box(refs: Collection[str], *, in_workset: bool) -> bool
 @overload
@@ -62,7 +61,7 @@ def resolve_inputs(*, subject: Literal[ResolveSubject.WORKSET], std, agent_name:
 def resolve_inputs(*, subject: Literal[ResolveSubject.SYSTEM], std, agent_name: str, system_path: Path | None, proj: None=None, ws: None=None) -> LaunchInputs
 def resolve_inputs(*, subject: ResolveSubject, std, agent_name: str, system_path: Path | None, proj=None, ws: Workset | None=None) -> LaunchInputs
 def fold_floor(*, subject: ResolveSubject, agent_name: str, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None) -> dict[str, object]
-def assemble_cascade(*, agent_name: str, floor: dict[str, object], system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> Cascade
+def assemble_cascade(*, agent_name: str, floor: dict[str, object], files: Sequence[SettingsFile], agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None) -> Cascade
 def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, behavior_floor: Mapping[str, object] | None=None, agent_behavior_floor: Mapping[str, object] | None=None, default_categories: Mapping[str, object] | None=None, agent_partial: KeyStore | None=None, agent_state: AgentFileLevel | None=None, persona_values: Mapping[str, str] | None=None, auth_chain: Mapping[str, object] | None=None, meta_runtime: Mapping[str, object] | None=None, meta_identity: Mapping[str, object] | None=None, workset_anchor: Mapping[str, object] | None=None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None, cli_level: Mapping[str, object] | None=None, subject: ResolveSubject=ResolveSubject.BOX, refs_read: RefsRead | None=None) -> KeyStore
 def reset_none_warnings() -> None
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
@@ -78,10 +77,8 @@ def load_merged_config(project_path: Path | None=None, *, workset_path: Path | N
 def _is_bind_floor_key(key: str) -> bool
 def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
 def _materialize_auth_active(snapshot: KeyStore) -> None
-def _loaded_tiers(files: Sequence[_TierFile]) -> tuple[tuple[str, Path], ...]
-def _refuse_retired_spelling(tiers: Sequence[tuple[str, Path]]) -> None
-def _refuse_retired_behavior(files: Sequence[_TierFile], *, agent_name: str, box_name: object) -> None
-def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[_TierFile], subject: ResolveSubject) -> None
+def _loaded_tiers(files: Sequence[SettingsFile]) -> tuple[SettingsFile, ...]
+def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[SettingsFile], subject: ResolveSubject) -> None
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None

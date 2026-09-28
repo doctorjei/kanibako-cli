@@ -610,6 +610,7 @@ def _set_time_snapshot(
     """
     # The COMMAND's TARGET (spec §2a): the launch's own first two phases over its inputs.
     if target is not None:
+        from kanibako.settings.settings_assemble import ReadPurpose, cascade_files
         from kanibako.settings.settings_launch import assemble_cascade, fold_floor
 
         cascade = assemble_cascade(
@@ -623,10 +624,13 @@ def _set_time_snapshot(
                 meta_identity=target.meta_identity,
                 workset_anchor=target.workset_anchor,
             ),
-            system_path=target.system_path,
-            agent_path=agent_path,
-            workset_path=target.cascade_workset_path,
-            box_path=target.cascade_box_path,
+            files=cascade_files(
+                purpose=ReadPurpose.NARROW,
+                system_path=target.system_path,
+                agent_path=agent_path,
+                workset_path=target.cascade_workset_path,
+                box_path=target.cascade_box_path,
+            ),
             prefs=target.prefs,
             agent_partial=None,
             agent_state=None,
@@ -635,7 +639,7 @@ def _set_time_snapshot(
         )
         return cascade.snapshot, target.ctx
 
-    from kanibako.settings.settings_assemble import assemble_levels
+    from kanibako.settings.settings_assemble import ReadPurpose, assemble_levels, cascade_files
     from kanibako.settings.settings_merge import merge
 
     # The box scalars' DECLARED-DEFAULT floor, so an ``@box.image`` ref RESOLVES at set
@@ -724,10 +728,10 @@ def _set_time_snapshot(
     # Assemble the FULL cascade with the SAME ``assemble_levels`` the launch uses, then merge.
     levels = assemble_levels(
         agent_name=agent_name,
-        system_path=sys_p,
-        agent_path=agent_p,
-        workset_path=ws_p,
-        box_path=box_p,
+        files=cascade_files(
+            purpose=ReadPurpose.NARROW, system_path=sys_p, agent_path=agent_p,
+            workset_path=ws_p, box_path=box_p,
+        ),
         floor=floor,
     )
     return merge(levels), ctx
@@ -1800,6 +1804,7 @@ def effective_value(
     from kanibako.settings.kb_store import Bind
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_expand import expand
+    from kanibako.settings.settings_assemble import ReadPurpose, cascade_files
     from kanibako.settings.settings_launch import (
         ResolveSubject,
         assemble_cascade,
@@ -1839,10 +1844,10 @@ def effective_value(
     cascade = assemble_cascade(
         agent_name=agent_name,
         floor=folded,
-        system_path=system_path,
-        agent_path=agent_path,
-        workset_path=workset_path,
-        box_path=box_path,
+        files=cascade_files(
+            purpose=ReadPurpose.NARROW, system_path=system_path, agent_path=agent_path,
+            workset_path=workset_path, box_path=box_path,
+        ),
         prefs=inputs.prefs if inputs is not None else None,
     )
     key_path = (*sections, leaf)
@@ -1991,7 +1996,7 @@ def reset_all(
 def _noun_stored_view(path: "Path | None", command_scope: ConfigLevel) -> dict:
     """The noun's settings file AS THE CASCADE READS IT — the one read :func:`show_config` makes.
 
-    ⚑ ONE CARRIER OF THE VERDICT. ``settings_assemble.cascade_view`` is what the launch's own
+    ⚑ ONE CARRIER OF THE VERDICT. The reader's ``DISPLAY`` view is what the launch's own
     seams judge a file by, and it READS the drop rules ``assemble_levels`` applies rather than
     restating them.  Re-reading the raw file here gave a table directional enforcement drops a
     second verdict: an ``agent:`` table in a ``box.yaml`` printed as overrides and, for a
@@ -2002,9 +2007,12 @@ def _noun_stored_view(path: "Path | None", command_scope: ConfigLevel) -> dict:
     ``assemble_levels``'s once-per-``(file, key)`` guard, so a verb that also assembles the file
     (every box verb, and every ``--effective`` view) still names each dropped key once.
     """
-    from kanibako.settings.settings_assemble import cascade_view
+    from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
 
-    return cascade_view(load_doc(path), level=command_scope.value, path=path)
+    (read,) = read_settings_files(
+        ((command_scope.value, path),), purpose=ReadPurpose.DISPLAY,
+    )
+    return read.view
 
 
 def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]:

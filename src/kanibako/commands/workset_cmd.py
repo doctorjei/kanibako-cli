@@ -1114,15 +1114,18 @@ def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
     from kanibako.settings.kb_store import BindEntry
     from kanibako.settings.kb_store import __MISSING__
     from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_assemble import assemble_levels
+    from kanibako.settings.settings_assemble import (
+        ReadPurpose,
+        assemble_levels,
+        read_settings_files,
+    )
     from kanibako.settings.settings_resolve import SettingsError
 
     # ⚑ assemble_levels returns [box, workset, agent.<active>, agent.default, system,
-    # base] — index 1 is the workset partial, the only file passed.
+    # base] — index 1 is the workset partial, the only file read.
     levels = assemble_levels(
         agent_name=GENERAL_SLOT,
-        base_path=ws_config.parent / "__absent_base__",
-        workset_path=ws_config,
+        files=read_settings_files((("workset", ws_config),), purpose=ReadPurpose.NARROW),
     )
     workset_partial = levels[1]
     out: dict[tuple[str, str], object] = {}

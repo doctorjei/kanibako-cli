@@ -418,15 +418,15 @@ def _narrow_box_scalar_cascade(
     ``resolve_selected_agent`` had to go LENIENT to avoid — an unrelated defective leaf
     aborting a resolve that never needed it.
     """
-    from kanibako.settings.settings_assemble import assemble_levels
+    from kanibako.settings.settings_assemble import ReadPurpose, assemble_levels, cascade_files
     from kanibako.settings.settings_merge import merge
 
     base_levels = assemble_levels(
         agent_name="",
-        system_path=_system_settings_path(global_path),
-        agent_path=None,
-        workset_path=workset_path,
-        box_path=box_path,
+        files=cascade_files(
+            purpose=ReadPurpose.NARROW, system_path=_system_settings_path(global_path),
+            agent_path=None, workset_path=workset_path, box_path=box_path,
+        ),
         floor=box_scalar_defaults_floor(),
     )
     # ``assemble_levels`` returns MOST-SPECIFIC-FIRST: [box, workset, agent.<a>,
@@ -685,7 +685,7 @@ def agent_settings_of(data: dict, agent_name: str) -> dict[str, str]:
     """:func:`read_agent_settings` over a settings doc already in hand.
 
     ⚑ FOR A READER THAT MUST JUDGE A FILE BY WHAT THE CASCADE READS FROM IT —
-    ``config_interface.show_config`` hands in ``settings_assemble.cascade_view``'s output,
+    ``config_interface.show_config`` hands in the reader's ``DISPLAY`` view,
     because re-reading the path would see an ``agent:`` table directional enforcement drops.
     """
     # ⚑ FUNCTION-SCOPE, AND IT MUST STAY THAT WAY: ``agent_file`` imports

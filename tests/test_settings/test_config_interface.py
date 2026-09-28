@@ -4351,7 +4351,7 @@ class TestCoreFloorStillMergesAtLaunch:
     def test_written_box_tuple_overrides_floor_at_launch(self, tmp_path):
         # Take-effect (reconcile precedence): a box-scope written tuple sits at the
         # box level and BEATS the base floor when the launch cascade merges.
-        from kanibako.settings.settings_assemble import assemble_levels
+        from tests.support.assembly import assemble_levels_at
         from kanibako.settings.settings_merge import merge
 
         # ⚑ DEST-KEYED on BOTH sides (R-3/R-5): the box file's arm and the floor's
@@ -4366,13 +4366,13 @@ class TestCoreFloorStillMergesAtLaunch:
             "~/": ["/BOXWIN", "Z,U"],
         }}}})
         floor = {"box.bindings.rw": {"~": ("/FLOOR", "Z,U")}}
-        snap = merge(assemble_levels(agent_name="", box_path=box, floor=floor))
+        snap = merge(assemble_levels_at(agent_name="", box_path=box, floor=floor))
         node = snap
         for seg in ("box", "bindings", "rw", "/home/agent"):
             node = dict.get(node, seg)
         assert node.src == "/BOXWIN"  # box beats the base floor
         # And with NO box file the floor value is the fallback (proves reachability).
-        snap2 = merge(assemble_levels(agent_name="", floor=floor))
+        snap2 = merge(assemble_levels_at(agent_name="", floor=floor))
         n2 = snap2
         for seg in ("box", "bindings", "rw", "/home/agent"):
             n2 = dict.get(n2, seg)
@@ -6402,7 +6402,7 @@ class TestAgentDefaultTierScalarCategories:
         A get/set pair that agrees with itself proves nothing about delivery — the
         question is whether the table ``set`` wrote is the table the launch reads.
         """
-        from kanibako.settings.settings_assemble import assemble_levels
+        from tests.support.assembly import assemble_levels_at
 
         cf, ssp = self._files(tmp_path)
         for key, value in (
@@ -6413,7 +6413,7 @@ class TestAgentDefaultTierScalarCategories:
                 key, value, config_path=cf, system_settings_path=ssp,
                 command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
             )
-        system_rung = assemble_levels(agent_name="claude", system_path=ssp)[4]
+        system_rung = assemble_levels_at(agent_name="claude", system_path=ssp)[4]
         agent_tier = dict.__getitem__(
             dict.__getitem__(system_rung, "agent"), "default",
         )
@@ -6937,14 +6937,14 @@ class TestStoredViewMarksUndeclaredEntries:
     def test_a_table_the_cascade_drops_gets_no_row_at_any_noun(
         self, tmp_path, capsys, noun, table,
     ):
-        """The launch drops *table* from *noun*'s file (``settings_assemble.cascade_view``), so
+        """The launch drops *table* from *noun*'s file (the reader's view), so
         the stored view lists nothing from it — not as an override, not as undeclared.
 
         The noun's own ``zippity`` is the control: it is still marked undeclared.
         MUTATION: return the raw ``load_doc(path)`` from ``_noun_stored_view`` and every case
         reds.
         """
-        from kanibako.settings.settings_assemble import cascade_view
+        from tests.support.assembly import display_view
 
         global_cfg = tmp_path / CONFIG_FILENAME
         global_cfg.write_text("")
@@ -6954,7 +6954,9 @@ class TestStoredViewMarksUndeclaredEntries:
             noun.value: {"zippity": "KEPT"},
         }
         dump_doc(settings, doc)
-        assert table not in cascade_view(doc, level=noun.value, path=None)  # the case IS a drop
+        probe = tmp_path / "probe.yaml"
+        dump_doc(probe, doc)
+        assert table not in display_view(probe, noun.value)  # the case IS a drop
         if noun is ConfigLevel.box:
             show_config(
                 command_scope=noun, global_config_path=global_cfg, config_path=settings,
