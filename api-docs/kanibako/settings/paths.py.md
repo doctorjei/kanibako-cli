@@ -29,6 +29,7 @@ def workset_settings_path(group: _WorksetRooted | None) -> Path | None
 def box_tree_materialized(proj: ProjectPaths) -> bool
 def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path
 def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]
+def resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path: Path | None) -> bool
 def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path
 def xdg(env_var: str, default_suffix: str) -> Path
 def user_config_home() -> Path
@@ -70,6 +71,7 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig, proj
 def _default_project_group(std: StandardPaths) -> ProjectGroup
 def _standalone_settings_files(root: Path) -> tuple[Path, Path]
 def _box_settings_files(mode: BoxMode, metadata_path: Path, group: '_WorksetRooted | None') -> tuple[Path, Path | None]
+def _narrow_box_scalar_cascade(global_path: Path, *, workset_path: Path | None, box_path: Path | None) -> 'KeyStore'
 def _fallback_runtime_dir(var_name: str) -> Path
 def _runtime_base_usable(base: Path) -> bool
 def _refuse_bare_relative(key: str, raw: object, default: str, *, ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> None
@@ -162,9 +164,12 @@ class ProjectPaths:
     vault_rw_path: Path
     is_new: bool = field(default=False)
     mode: BoxMode = field(default=BoxMode.primary)
-    enable_vault: bool = field(default=True)
     name: str = field(default='')
     group: ProjectGroup | None = field(default=None)
+    _config_path: Path | None = field(default=None, repr=False)
+    _enable_vault: bool | None = field(default=None, repr=False)
+
+    def vault_enabled(self) -> bool
 
 @dataclass(frozen=True)
 class WorksetSpec:

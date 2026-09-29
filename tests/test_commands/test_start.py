@@ -2106,7 +2106,7 @@ class TestPluginsAndCacheShares:
         # the @config.primary_workset @-ref so project_path is unused here).
         proj.mode = BoxMode.primary
         proj.project_path = std.data
-        proj.enable_vault = False
+        proj.vault_enabled.return_value = False
         # B2: meta.box.* identity anchors need a real box name (proj.name) for the
         # channel partition addresses (box_channel_addresses).
         proj.name = "claudebox"
@@ -7804,6 +7804,75 @@ class TestPersonaLoadOrErrorIntegration:
             assert not (probe_dir / "box.yaml").exists()
 
 
+    def test_a_deferred_probe_never_asks_the_placeholder_for_the_vault_flag(
+        self, start_mocks, tmp_path, monkeypatch,
+    ):
+        """2R / U3 — the deferred path never resolves the vault flag off the placeholder.
+
+        ``vault_enabled()`` anchors its files to the object it is called on, so the one
+        way a DEFERRED launch could hand a consumer the wrong value is by asking the
+        PROBE object — built on ``boxes/__unregistered__`` — after the box materializes.
+        It cannot: the deferred probe passes ``warn=not _defer_box``, so the
+        missing-vault advisory never reads the probe, and the materialize resolve answers
+        eagerly from the real box.  This pins that wiring.  Turn the advisory back on for
+        the deferred probe, or put a vault consumer between the two resolves, and it
+        reddens.
+        """
+        probe_dir = tmp_path / "boxes" / "__unregistered__"
+        probe_dir.mkdir(parents=True)
+        real = tmp_path / "boxes" / "navigator-box"
+        real.mkdir(parents=True)
+        with start_mocks() as m:
+            cfg = self._drive_persona(m)
+            self._configured_persona(
+                cfg, tmp_path, monkeypatch, base_url="https://nav.example/v1",
+                token="sk-nav-bearer\n",
+            )
+
+            seen: list = []
+
+            def _resolve(*a, **kw):
+                seen.append((bool(kw.get("initialize")), bool(kw.get("warn", True))))
+                if kw.get("initialize") is True:
+                    m.proj.metadata_path = real
+                    m.proj.is_new = True
+                else:
+                    m.proj.metadata_path = probe_dir
+                    m.proj.is_new = False
+                return m.proj
+
+            m.resolve_any_project.side_effect = _resolve
+            with (
+                patch(
+                    "kanibako.commands.start._resolve_box_launch_decisions",
+                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None),
+                ),
+                patch("kanibako.settings.agent_file.save"),
+                patch("kanibako.commands.start.credsync") as m_credsync,
+            ):
+                m_credsync.selected_source_root = m.credsync.selected_source_root
+                rc = _run_container(
+                    project_dir=None, entrypoint=None, image_override="custom:img",
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], explicit_agent="navigator+claude",
+                )
+            assert rc == 0
+
+            materialized_at = next(
+                (i for i, (init, _w) in enumerate(seen) if init), None,
+            )
+            assert materialized_at is not None, "the materialize resolve never ran"
+            deferred_probes = [c for c in seen[:materialized_at] if not c[0]]
+            assert deferred_probes, "the deferred probe resolve never ran"
+            assert all(not warned for _init, warned in deferred_probes), (
+                f"a pre-materialize probe ran with the advisory on: {deferred_probes}"
+            )
+            assert not [
+                c for c in seen[materialized_at + 1:]
+                if not c[0] and c[1]
+            ], "a probe-with-advisory ran AFTER materialization"
+
+
 class TestPersonaLoadOrErrorUnmasked:
     """UNMASKED real-path regression for F5/F7 (Director F5+F7 ruling, 2026-07-03).
 
@@ -8588,7 +8657,7 @@ class TestPersonaLiveTierWiring:
         )
         proj.mode = BoxMode.primary
         proj.project_path = std.data
-        proj.enable_vault = False
+        proj.vault_enabled.return_value = False
         proj.name = "navigatorbox"
         return proj
 

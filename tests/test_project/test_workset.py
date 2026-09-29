@@ -1165,7 +1165,7 @@ class TestWorksetBoxesAndLogsResolved:
             metadata_path=ws.projects_dir / "b",
             shell_path=ws.projects_dir / "b" / "home",
             vault_ro_path=ws.vault_ro_dir / "b", vault_rw_path=ws.vault_rw_dir / "b",
-            is_new=False, mode=BoxMode.named, enable_vault=False, name="b",
+            is_new=False, mode=BoxMode.named, _enable_vault=False, name="b",
             group=ProjectGroup(name="logmove", root=root, is_default=False,
                                local_shared_base=root),
         )
@@ -1282,7 +1282,7 @@ class TestWorksetLogsPresentNone:
             metadata_path=ws.projects_dir / "b",
             shell_path=ws.projects_dir / "b" / "home",
             vault_ro_path=ws.vault_ro_dir / "b", vault_rw_path=ws.vault_rw_dir / "b",
-            is_new=False, mode=BoxMode.named, enable_vault=False, name="b",
+            is_new=False, mode=BoxMode.named, _enable_vault=False, name="b",
             group=ProjectGroup(name="nolog2", root=root, is_default=False,
                                local_shared_base=root),
         )

@@ -30,7 +30,6 @@ def config_base_path() -> Path
 def settings_base_path() -> Path
 def load_config(path: Path) -> BootstrapConfig
 def box_scalar_defaults_floor() -> dict[str, object]
-def resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path: Path | None) -> bool
 def write_global_config(path: Path) -> None
 def write_project_config(path: Path, image: str) -> None
 def persist_creation_flags(box_settings_path: Path, *, materializing: bool, image: str | None=None, share_images: bool | None=None) -> None
@@ -56,7 +55,6 @@ def _scalar_value(value: object) -> object
 def _present_scalar_fields(path: Path) -> dict[str, object]
 def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) -> object
 def _system_settings_path(global_path: Path) -> Path | None
-def _narrow_box_scalar_cascade(global_path: Path, *, workset_path: Path | None, box_path: Path | None) -> 'KeyStore'
 def _split_config_key(flat_key: str) -> tuple[str, str]
 def _flatten_leaves(data: dict, prefix: str='') -> dict[str, object]
 def _flatten_dotted(data: dict, prefix: str='') -> dict[str, str]

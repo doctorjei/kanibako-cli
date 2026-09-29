@@ -27,15 +27,15 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import NamedTuple, Protocol, overload
+from typing import TYPE_CHECKING, NamedTuple, Protocol, overload
 
 from kanibako.identifiers import find_identifier
 from kanibako.log import get_logger
 
-from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, BootstrapConfig, config_file_path,
-                                      load_config, read_box_enable_vault, read_workset_kuid,
-                                      read_workset_skip_kuid_check, resolve_box_enable_vault,
-                                      write_box_enable_vault)
+from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, BootstrapConfig, KanibakoConfig,
+                                      _system_settings_path, _typed_box_scalar, box_scalar_defaults_floor,
+                                      config_file_path, load_config, read_box_enable_vault, read_workset_kuid,
+                                      read_workset_skip_kuid_check, write_box_enable_vault)
 
 from kanibako.errors import ConfigError, ProjectError, WorksetError
 from kanibako.settings.agent_config import (ambiguous_path_value_error,
@@ -53,6 +53,9 @@ from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          UNREGISTERED_MARKER, VAULT_PATH, XDG_CACHE_HOME,
                                          XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_RUNTIME_DIR,
                                          XDG_SPEC_DEFAULTS, XDG_STATE_HOME)
+
+if TYPE_CHECKING:
+    from kanibako.settings.keystore import KeyStore
 
 
 class BoxMode(Enum):
@@ -163,9 +166,20 @@ class ProjectPaths:
     vault_rw_path: Path      # → /home/agent/vault/rw
     is_new: bool = field(default=False)
     mode: BoxMode = field(default=BoxMode.primary)
-    enable_vault: bool = field(default=True)
     name: str = field(default="")
     group: ProjectGroup | None = field(default=None)
+    _config_path: Path | None = field(default=None, repr=False)
+    _enable_vault: bool | None = field(default=None, repr=False)
+
+    def vault_enabled(self) -> bool:
+        """Resolve ``box.enable_vault`` only when a consumer needs it."""
+        if self._enable_vault is None:
+            assert self._config_path is not None
+            box_path, workset_path = box_workset_settings_paths(self)
+            self._enable_vault = resolve_box_enable_vault(
+                self._config_path, box_path=box_path, workset_path=workset_path,
+            )
+        return self._enable_vault
 
 
 def box_tree_materialized(proj: ProjectPaths) -> bool:
@@ -197,6 +211,40 @@ def _box_settings_files(mode: BoxMode, metadata_path: Path,
 def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]:
     """The :class:`ProjectPaths` ADAPTER over :func:`_box_settings_files` (no logic of its own)."""
     return _box_settings_files(proj.mode, proj.metadata_path, proj.group)
+
+
+def resolve_box_enable_vault(global_path: Path, *, box_path: Path,
+                             workset_path: Path | None) -> bool:
+    """Resolve ``box.enable_vault`` through its base-to-box cascade."""
+    from kanibako.settings.kb_store import __MISSING__
+    from kanibako.settings.settings_launch import snapshot_leaf
+
+    snapshot = _narrow_box_scalar_cascade(
+        global_path, workset_path=workset_path, box_path=box_path,
+    )
+    defaults = KanibakoConfig()
+    value = snapshot_leaf(snapshot, "box.enable_vault")
+    if value is __MISSING__ or value is None:
+        return defaults.box_enable_vault
+    return bool(_typed_box_scalar(defaults, "box_enable_vault", value))
+
+
+def _narrow_box_scalar_cascade(
+    global_path: Path, *, workset_path: Path | None, box_path: Path | None,
+) -> "KeyStore":
+    """Build the pre-selection cascade for ``box.enable_vault``."""
+    from kanibako.settings.settings_assemble import ReadPurpose, assemble_levels, cascade_files
+    from kanibako.settings.settings_merge import merge
+
+    base_levels = assemble_levels(
+        agent_name="",
+        files=cascade_files(
+            purpose=ReadPurpose.NARROW, system_path=_system_settings_path(global_path),
+            agent_path=None, workset_path=workset_path, box_path=box_path,
+        ),
+        floor=box_scalar_defaults_floor(),
+    )
+    return merge([base_levels[0], base_levels[1], base_levels[4], base_levels[5]])
 
 
 class _WorksetLike(Protocol):
@@ -904,23 +952,11 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
                                                      primary_group)
     shell_path, vault_ro_path, vault_rw_path = _primary_box_paths(std, metadata_path,
                                                                project_name or metadata_path.name)
-    # enable_vault (P5a): explicit param wins, else THE CASCADE — base < system < workset
-    # < box (absent everywhere ⇒ the declared ``True``).
-    # ⚑ The workset tier applies HERE TOO.  The primary workset is a workset — spec §2c
-    # gives PRIMARY and NAMED the same ``meta.workset.settings`` — so spec §0 "Directional
-    # view/set across CONTAINMENT levels" makes a ``box.*`` key stored there an OVERRIDABLE
-    # DEFAULT for the boxes it contains.  That it goes live for EVERY default-mode box is
-    # what a workset-tier default MEANS, not a reason to drop the tier: this module already
-    # honors that same file for ``workset.registry`` (see ``load_primary_boxes``).
-    actual_vault_enabled = (enable_vault if enable_vault is not None
-                            else resolve_box_enable_vault(std.config_file,
-                                                          box_path=project_toml,
-                                                          workset_path=workset_toml))
-    # ⚑ What the create branch PERSISTS is the BOX-AUTHORED value, NOT the resolved one —
-    # ``box.enable_vault`` is "sparse — absent from the settings file unless THE USER sets
-    # it" (spec ``:868``).  Mirrors the NAMED resolver; see it for the full reasoning.
-    box_authored_vault = (enable_vault if enable_vault is not None
-                          else read_box_enable_vault(project_toml))
+    resolved_vault = enable_vault
+    if initialize and resolved_vault is None:
+        resolved_vault = resolve_box_enable_vault(
+            std.config_file, box_path=project_toml, workset_path=workset_toml,
+        )
 
     is_new = False
     if initialize and not project_dir_path.is_dir():
@@ -953,12 +989,13 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
         # merges into the dir, so the unwind never deletes a pre-existing box's ``home/``.
         _dir_existed = project_dir_path.is_dir()
 
+        assert resolved_vault is not None
         _init_project(std, metadata_path, shell_path, vault_ro_path,
-                      vault_rw_path, project_path, enable_vault=actual_vault_enabled)
-
-        # Sparse create (P8b/Option A): only a NON-default ``box.enable_vault`` is persisted,
-        # and only when the BOX authored it (see ``box_authored_vault`` above).
-        write_box_enable_vault(project_toml, box_authored_vault)
+                      vault_rw_path, project_path, enable_vault=resolved_vault)
+        write_box_enable_vault(
+            project_toml,
+            enable_vault if enable_vault is not None else read_box_enable_vault(project_toml),
+        )
         # Register the PRIMARY membership (name → workspace) — the SOLE store, idempotent.
         # The except-arm is the belt-and-suspenders unwind for a Guard-1 refusal.
         if register:
@@ -983,8 +1020,9 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
     return ProjectPaths(project_path=project_path, project_hash=phash, metadata_path=metadata_path,
                         shell_path=shell_path, vault_ro_path=vault_ro_path,
                         vault_rw_path=vault_rw_path,
-                        is_new=is_new, mode=BoxMode.primary, enable_vault=actual_vault_enabled,
-                        name=project_name, group=_default_project_group(std))
+                        is_new=is_new, mode=BoxMode.primary, name=project_name,
+                        group=_default_project_group(std), _config_path=std.config_file,
+                        _enable_vault=resolved_vault)
 
 
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]:
@@ -1570,24 +1608,7 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
     # the workspace override above is a SEPARATE concern and STAYS.
     shell_path, vault_ro_path, vault_rw_path = _workset_box_paths(
         metadata_path, ws.vault_ro_dir, ws.vault_rw_dir, project_name)
-    # enable_vault (P5a): explicit param wins, else THE CASCADE — base < system < workset
-    # < box (absent everywhere ⇒ the declared ``True``).
-    # ⚑ The workset tier is REQUIRED, not optional: ``workset create --no-vault`` writes
-    # ``box.enable_vault`` at the workset tier, and spec §0 "Directional view/set across
-    # CONTAINMENT levels" makes a ``box.*`` key stored there an OVERRIDABLE DEFAULT for the
-    # boxes the workset contains — the contained scope still wins (spec §2 cascade bracket
-    # ``… < workset < box``).  Without it the flag is a silent no-op for every named box.
-    actual_vault_enabled = (enable_vault if enable_vault is not None
-                            else resolve_box_enable_vault(std.config_file,
-                                                          box_path=project_toml,
-                                                          workset_path=workset_toml))
-    # ⚑ What the create branch PERSISTS is the BOX-AUTHORED value, NOT the resolved one.
-    # ``box.enable_vault`` is "sparse — absent from the settings file unless THE USER sets
-    # it" (spec ``:868``), and setting it at the workset tier is not setting it here.
-    # Persisting the inherited default would PIN it, silently converting an overridable
-    # workset default into a box-scope override that later workset edits cannot reach.
-    box_authored_vault = (enable_vault if enable_vault is not None
-                          else read_box_enable_vault(project_toml))
+    resolved_vault = enable_vault
 
     # Hash the resolved workspace path for container naming.
     phash = project_hash(str(project_path.resolve()))
@@ -1595,9 +1616,10 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
     is_new = False
     if initialize and not shell_path.is_dir():
         _init_workset_project(std, metadata_path, shell_path)
-        # Sparse create (P8b/Option A): only a NON-default ``box.enable_vault`` is persisted,
-        # and only when the BOX authored it (see ``box_authored_vault`` above).
-        write_box_enable_vault(project_toml, box_authored_vault)
+        write_box_enable_vault(
+            project_toml,
+            enable_vault if enable_vault is not None else read_box_enable_vault(project_toml),
+        )
         # P5a dual-register (idempotent): the SOLE on-disk identity record.  Sourced from the
         # RESOLVED *project_path* so an external-connect override seeds the external dir.
         _register_workset_box_membership(ws.root, project_name, project_path)
@@ -1621,9 +1643,10 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
     return ProjectPaths(project_path=project_path, project_hash=phash, metadata_path=metadata_path,
                         shell_path=shell_path, vault_ro_path=vault_ro_path,
                         vault_rw_path=vault_rw_path, is_new=is_new, mode=BoxMode.named,
-                        enable_vault=actual_vault_enabled, name=project_name,
-                        group=ProjectGroup(name=ws.name, root=ws.root, is_default=False,
-                                           local_shared_base=ws.root))
+                        name=project_name, group=ProjectGroup(name=ws.name, root=ws.root,
+                                                              is_default=False,
+                                                              local_shared_base=ws.root),
+                        _config_path=std.config_file, _enable_vault=resolved_vault)
 
 
 def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: Path) -> None:
@@ -1877,9 +1900,12 @@ def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths:
 
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
     """Advisory (never fatal): warn when a box that EXPECTS a vault has none on disk (spec D5)."""
-    if proj.enable_vault and not proj.vault_rw_path.is_dir():
-        get_logger(__name__).warning(WARN_BOX_NO_VAULT, proj.name or str(proj.project_path or "<None>"),
-                                     proj.vault_rw_path)
+    try:
+        if proj.vault_enabled() and not proj.vault_rw_path.is_dir():
+            get_logger(__name__).warning(WARN_BOX_NO_VAULT, proj.name or str(proj.project_path or "<None>"),
+                                         proj.vault_rw_path)
+    except SettingsError:
+        pass
 
     return proj
 
@@ -1937,15 +1963,11 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
     # ⚑ STANDALONE paths derive from the CURRENT root, never stored absolutes — that is
     # what makes a default-shaped tree drop-in portable BY CONSTRUCTION.
     shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
-    # enable_vault (P5a): explicit param wins, else THE CASCADE — base < system < workset
-    # < box.  ⚑ The workset tier is LIVE DESIGN, not migration: spec §2c's STANDALONE
-    # block declares it — "Box values (box.enable_vault, workset.kuid, …) still resolve
-    # from the workset tier @meta.workset.settings as downward defaults when no box file
-    # exists."  All three resolvers pass it, for that one reason.
-    actual_vault_enabled = (enable_vault if enable_vault is not None
-                            else resolve_box_enable_vault(std.config_file,
-                                                          box_path=box_settings,
-                                                          workset_path=project_toml))
+    resolved_vault = enable_vault
+    if initialize and resolved_vault is None:
+        resolved_vault = resolve_box_enable_vault(
+            std.config_file, box_path=box_settings, workset_path=project_toml,
+        )
 
     # Box identity name (P8a): composed LIVE by ``box_resolve`` for a MATERIALIZED standalone;
     # a not-yet-materialized root yields "" and the create block below assigns it.
@@ -1991,11 +2013,12 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
 
         check_workset_template(std, root, canon_only=True)
         install_workset_template(std, root, canon_only=True)
+        assert resolved_vault is not None
         _init_standalone_project(std, box_data, shell_path, vault_ro_path, vault_rw_path,
-                                 project_path, enable_vault=actual_vault_enabled)
+                                 project_path, enable_vault=resolved_vault)
         # Identity + meta + registration via the shared establish core (fresh identity here).
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
-            std, root, enable_vault=actual_vault_enabled, name=requested_name, register=register)
+            std, root, enable_vault=resolved_vault, name=requested_name, register=register)
         is_new = True
 
     if initialize:
@@ -2009,7 +2032,8 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
     return ProjectPaths(project_path=project_path, project_hash=phash, metadata_path=metadata_path,
                         shell_path=shell_path, vault_ro_path=vault_ro_path,
                         vault_rw_path=vault_rw_path, is_new=is_new, mode=BoxMode.standalone,
-                        enable_vault=actual_vault_enabled, name=box_name)
+                        name=box_name, _config_path=std.config_file,
+                        _enable_vault=resolved_vault)
 
 
 def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path,

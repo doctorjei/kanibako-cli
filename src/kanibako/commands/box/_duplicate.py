@@ -330,7 +330,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     # ROOT workset.yaml — nothing above copies one there, and nothing should: the
     # source's root file is the SOURCE's workset tier.
     # ⚑⚑ ``enable_vault`` is the BOX-AUTHORED value — ``src_box`` alone, NEVER
-    # ``src_proj.enable_vault`` (which is RESOLVED, box tier over the source workset's
+    # ``src_proj.vault_enabled()`` (which is RESOLVED, box tier over the source workset's
     # downward default).  ``establish_standalone`` read-modify-writes this straight into
     # the destination's BOX tier, so the resolved value would undo the carry above and pin
     # the SOURCE workset's default as an override of a box that never left with it — the

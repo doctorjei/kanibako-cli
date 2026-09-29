@@ -32,7 +32,6 @@ from kanibako.settings.config import (
     WORKSET_META_FILE,
     BootstrapConfig,
     read_box_enable_vault,
-    resolve_box_enable_vault,
     write_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
@@ -54,6 +53,7 @@ from kanibako.settings.paths import (
     detect_project_mode,
     primary_box_name_for_workspace,
     register_primary_box_name,
+    resolve_box_enable_vault,
     resolve_project,
     resolve_standalone_project,
     resolve_workset_project,
@@ -384,7 +384,7 @@ def _state_from_paths(
     ws: Workset | None,
     is_external: bool = False,
 ) -> ProjectState:
-    # ⚑ ``proj.enable_vault`` is the RESOLVED value; re-read the BOX TIER alone for what
+    # ⚑ ``proj.vault_enabled()`` is the RESOLVED value; re-read the BOX TIER alone for what
     # the box authored, so a lifecycle op never persists the workset's default as a
     # box-scope override (see ``ProjectState.box_authored_vault``).
     box_tier, _ = box_workset_settings_paths(proj)
@@ -404,7 +404,7 @@ def _state_from_paths(
         vault_rw=proj.vault_rw_path,
         is_external=is_external,
         ws=ws,
-        enable_vault=proj.enable_vault,
+        enable_vault=proj.vault_enabled(),
         box_authored_vault=read_box_enable_vault(box_tier),
     )
 

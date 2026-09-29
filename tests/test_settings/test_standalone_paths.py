@@ -590,7 +590,7 @@ class TestMissingVaultAdvisory:
             vault_ro_path=vault_ro,
             vault_rw_path=vault_rw,
             mode=BoxMode.standalone,
-            enable_vault=enable_vault,
+            _enable_vault=enable_vault,
             name="aaaaa_box",
         )
 

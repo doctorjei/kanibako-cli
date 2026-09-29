@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
-
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (CONFIG_FILE, CONFIG_PATH_DEFAULTS, SITE_CONFIG_DIR,
@@ -15,12 +13,6 @@ from kanibako.settings.bootstrap import (CONFIG_FILE, CONFIG_PATH_DEFAULTS, SITE
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
                                         ERR_CONFIG_LAYER1_UNDECLARED, ERR_CONFIG_NULL_PATH)
-
-if TYPE_CHECKING:
-    # ⚑ TYPE-ONLY: ``keystore`` imports this module transitively, so a runtime import
-    # here closes the cycle the whole file's lazy-import style exists to avoid.
-    from kanibako.settings.keystore import KeyStore
-
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -314,7 +306,7 @@ def box_scalar_defaults_floor() -> dict[str, object]:
     and without it a stored ``@box.image`` dangles at launch AND at set time.
 
     One recipe for ``settings_launch.fold_floor`` (every resolve),
-    :func:`_narrow_box_scalar_cascade` and ``config_interface._category_set_lookups``.
+    ``paths._narrow_box_scalar_cascade`` and ``config_interface._category_set_lookups``.
     """
     defaults = KanibakoConfig()
     floor: dict[str, object] = {}
@@ -351,88 +343,6 @@ def _system_settings_path(global_path: Path) -> Path | None:
         global_path, data_home=xdg("XDG_DATA_HOME", ".local/share"), home=Path.home(),
     )["config.settings"]
     return path if path.exists() else None
-
-
-def resolve_box_enable_vault(global_path: Path, *, box_path: Path,
-                             workset_path: Path | None) -> bool:
-    """``box.enable_vault`` through the FULL cascade — base < system < workset < box.
-
-    ⚑ Called from the three ``paths.py`` resolvers rather
-    than off ``load_merged_config``, because those run BEFORE it and are what fill
-    ``ProjectPaths.enable_vault``, which ``core_defaults`` reads to decide whether the vault
-    bind rows exist at all — reading the finished snapshot to decide what goes into it is
-    circular.  A narrow resolve needs only FILE PATHS, which ``_box_settings_files`` hands
-    over two lines above each call.
-
-    ⚑⚑ IT IS A NARROW RESOLVE (:func:`_narrow_box_scalar_cascade`), NOT
-    ``settings_launch.resolve_box_scalars``, AND THE DIFFERENCE IS DELIBERATE — see that function.
-
-    🛑 NOT for the AUTHORED value — that is :func:`read_box_enable_vault` on the box tier
-    alone, and the cascade structurally cannot answer it (a merge does not record which
-    tier carried a leaf).
-    """
-    from kanibako.settings.kb_store import __MISSING__
-    from kanibako.settings.settings_launch import snapshot_leaf
-
-    snapshot = _narrow_box_scalar_cascade(
-        global_path, workset_path=workset_path, box_path=box_path,
-    )
-    defaults = KanibakoConfig()
-    value = snapshot_leaf(snapshot, "box.enable_vault")
-    if value is __MISSING__ or value is None:
-        return defaults.box_enable_vault
-    return bool(_typed_box_scalar(defaults, "box_enable_vault", value))
-
-
-def _narrow_box_scalar_cascade(
-    global_path: Path, *, workset_path: Path | None, box_path: Path | None,
-) -> "KeyStore":
-    """The box scalars' cascade WITHOUT the launch snapshot's whole-tree §0 audit.
-
-    ⚑⚑ WHY THIS IS NOT ``settings_launch.resolve_box_scalars``, WHICH RESOLVES THE SAME KEYS OFF THE SAME
-    FILES.  That function ends in ``build_launch_snapshot``, whose LAST step is
-    ``_refuse_undeclared_snapshot`` — a whole-tree audit that RAISES when any settings file
-    in the cascade carries an entry the keyspace does not declare.  That refusal is right
-    for a LAUNCH and for ``box show --effective`` (its own message says so, by name).  It
-    is wrong HERE, because this resolve runs inside ``paths.resolve_project`` — the PATH
-    resolver every verb goes through, including plain ``kanibako box show``, which is the
-    ONE surface designed to still work on a box whose file carries an undeclared entry so
-    it can print the offending line.  Routing path resolution through the launch audit
-    turned that diagnostic into a refusal.
-
-    ⚑ THE SHAPE IS ``settings_launch.resolve_selected_agent``'s — the module's own named
-    "narrow resolve that precedes the launch snapshot" — with the declared-default floor
-    under the base file.  Nothing here is a second opinion about the cascade:
-    ``assemble_levels``, ``merge`` and :func:`box_scalar_defaults_floor` are the same
-    single carriers ``settings_launch.resolve_box_scalars`` uses, and
-    ``test_the_narrow_cascade_agrees_with_the_merged_loader`` pins the two answers equal so
-    they cannot drift apart.
-
-    ⚑ NO PREF RUNGS, and that is MEASURED, not an omission: ``settings_keyspace.PREF_ALLOWLIST`` is
-    ``("system.agent", "agent.*.**")``, so no §2h request can name a ``box.*`` key at all.
-    Splicing the overlays in would move no answer and would import ``apply_prefs``' raise —
-    a resolve that refuses an unrelated bad pref, from inside PATH resolution.
-
-    ⚑ NO ``expand``: ``box.enable_vault`` is ``type: bool`` in the manifest, so it cannot
-    carry an ``@``-ref, and a whole-tree expansion here would import exactly the failure
-    ``resolve_selected_agent`` had to go LENIENT to avoid — an unrelated defective leaf
-    aborting a resolve that never needed it.
-    """
-    from kanibako.settings.settings_assemble import ReadPurpose, assemble_levels, cascade_files
-    from kanibako.settings.settings_merge import merge
-
-    base_levels = assemble_levels(
-        agent_name="",
-        files=cascade_files(
-            purpose=ReadPurpose.NARROW, system_path=_system_settings_path(global_path),
-            agent_path=None, workset_path=workset_path, box_path=box_path,
-        ),
-        floor=box_scalar_defaults_floor(),
-    )
-    # ``assemble_levels`` returns MOST-SPECIFIC-FIRST: [box, workset, agent.<a>,
-    # agent.default, system, base].  The two agent rungs are dropped: the path resolve
-    # precedes agent selection, so there is no active agent to read.
-    return merge([base_levels[0], base_levels[1], base_levels[4], base_levels[5]])
 
 
 def write_global_config(path: Path) -> None:
@@ -517,7 +427,7 @@ def read_box_enable_vault(path: Path) -> bool:
     """What the BOX ITSELF authored for ``box.enable_vault`` at *path* — one file, no cascade.
 
     ⚑⚑ THIS IS THE **AUTHORED** READER, AND ONLY THAT (2026-08-29).  The RESOLVED value is
-    :func:`resolve_box_enable_vault`, which runs the real cascade and therefore honors the
+    ``paths.resolve_box_enable_vault``, which runs the real cascade and therefore honors the
     BASE and SYSTEM tiers this function cannot see.  What survives here is the question a
     MERGE STRUCTURALLY CANNOT ANSWER — *which tier carried it* — and that is what all three
     remaining callers want (``commands/box/_lifecycle.py`` ×2, ``commands/box/_duplicate.py``
@@ -529,7 +439,7 @@ def read_box_enable_vault(path: Path) -> bool:
     prevent.  ⚑ It HAD a *default_from* parameter until 2026-08-29 — the R2 downward
     default (spec §0 "Directional view/set across CONTAINMENT levels") that made
     ``workset create --no-vault`` reach contained boxes.  That capability did not go: it
-    MOVED to :func:`resolve_box_enable_vault`, where the workset tier is one cascade level
+    MOVED to ``paths.resolve_box_enable_vault``, where the workset tier is one cascade level
     among four rather than a second hand-opened file.  The parameter went with it because
     the only remaining thing it could do here is the corruption above.
     """
@@ -540,7 +450,7 @@ def read_box_enable_vault(path: Path) -> bool:
         # ⚑ COERCED IN PLACE, through the SAME :func:`_typed_box_scalar` the resolved
         # reader uses (2026-08-29).  A settings file is hand-editable, so the stored leaf
         # can be the STRING ``"false"`` — truthy — and returning it raw made the AUTHORED
-        # answer contradict :func:`resolve_box_enable_vault`'s for the one command that
+        # answer contradict ``paths.resolve_box_enable_vault``'s for the one command that
         # ran before the next write normalized the file.  The coercion goes HERE and not
         # through the cascade: the docstring's two prohibitions above still hold.
         return bool(_typed_box_scalar(KanibakoConfig(), "box_enable_vault",

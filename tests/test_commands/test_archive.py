@@ -337,3 +337,43 @@ class TestArchiveWorkset:
         rc = run(args)
         assert rc == 0
         assert Path(archive_path).exists()
+
+
+class TestArchiveReadsNoVaultCascade:
+    """2R / T4 — ``archive`` never resolves the vault flag.
+
+    ``_archive_one`` reads neither vault field, and the stub ``ProjectPaths`` a gone-path
+    box gets leaves ``_enable_vault`` UNSET.  Before 2R that unset WAS the dataclass
+    default ``True``; after 2R it means "not yet resolved", and because nothing asks, R3
+    never runs and no fabricated ``True`` is needed.  The spy pins the property rather
+    than the current value: a later consumer that starts asking reddens this instead of
+    quietly putting a cascade read on the archive path.
+    """
+
+    def test_archiving_a_primary_box_reads_no_vault_cascade(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        from kanibako.commands.archive import run
+        from kanibako.settings import paths as paths_mod
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        (proj.metadata_path / "payload.txt").write_text("x")
+
+        calls: list = []
+        monkeypatch.setattr(
+            paths_mod, "resolve_box_enable_vault",
+            lambda *a, **k: calls.append((a, k)) or False,
+        )
+
+        archive_path = str(tmp_home / "no-cascade.txz")
+        rc = run(argparse.Namespace(
+            path=project_dir, file=archive_path, all_projects=False,
+            allow_uncommitted=True, allow_unpushed=True, force=True,
+        ))
+        assert rc == 0
+        assert calls == [], f"archive read the vault cascade {len(calls)}x"

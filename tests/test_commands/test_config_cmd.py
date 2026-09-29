@@ -231,12 +231,6 @@ class TestBoxConfigGet:
         assert "hello" in capsys.readouterr().out
 
 
-_DOTTED_REASON = (
-    "a DOTTED entry name inside the box table is the subject, so the fixture has to write "
-    "one; it reaches a KeyStore through ``paths.resolve_project``'s cascade read."
-)
-
-
 class TestBoxGetIsWiredToTheClosedKeyspace:
     """spec §0 at the ``box`` noun: an undeclared name is REFUSED, not "(not set)".
 
@@ -349,14 +343,6 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "transform_settings" in captured.err
         assert "kanibako agent get" in captured.err
 
-    @pytest.mark.writes_undeclared(
-        "box.zippity",
-        reason="the surface under test EXISTS for a file that carries an undeclared "
-               "entry, so the fixture has to write one. It reaches a KeyStore because "
-               "``paths.resolve_project`` resolves ``box.enable_vault`` through the "
-               "cascade as of 2026-08-29 — the narrow, non-refusing one, deliberately, "
-               "so this diagnostic still answers where ``--effective`` refuses.",
-    )
     def test_box_show_marks_a_hand_written_undeclared_entry(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
@@ -394,7 +380,6 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "undeclared" in out, out
         assert "    box.env.X = 1" in out, out
 
-    @pytest.mark.writes_undeclared("box.env.X", reason=_DOTTED_REASON)
     def test_box_show_marks_a_dotted_name_inside_the_box_table(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
@@ -413,11 +398,6 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "undeclared" in out, out
         assert "    box | env.X = 1" in out, out
 
-    @pytest.mark.writes_undeclared(
-        "box.zippity",
-        reason="the CONTROL is an undeclared entry the stored view must still mark; it "
-               "reaches a KeyStore through ``paths.resolve_project``'s narrow cascade read.",
-    )
     def test_box_show_gives_an_agent_table_the_launchs_verdict(
         self, config_file, tmp_home, credentials_dir, capsys, caplog,
     ):
@@ -837,6 +817,92 @@ class TestBoxConfigReset:
         rc = run_reset(args)
         assert rc == 1
         assert "requires a key" in capsys.readouterr().err
+
+
+class TestRepairDoorReadsNoVaultCascade:
+    """2R / B2 — ``reset --all`` resolves no ``box.enable_vault`` cascade.
+
+    ``reset --all`` is how a file that the §0 audit refuses gets repaired.  If R3 came
+    back onto the resolve this verb performs, 2B-ii would make the cure REFUSE on the
+    very entry it exists to remove (S4 C1b: "``reset --all`` never refuses").  The spy
+    is on R3 itself, not on a message, so a re-eager resolve reddens these with every
+    string still reading correctly.
+    """
+
+    @staticmethod
+    def _spy_on_cascade(monkeypatch):
+        from kanibako.settings import paths as paths_mod
+
+        calls: list = []
+
+        def _spy(*args, **kwargs):
+            calls.append((args, kwargs))
+            return False
+
+        monkeypatch.setattr(paths_mod, "resolve_box_enable_vault", _spy)
+        return calls
+
+    @staticmethod
+    def _plant_unknown_keys(std, proj):
+        """An undeclared key in BOTH files a box-config verb walks.
+
+        After 2B-ii each of these is a §0 refusal for a READING verb; the repair door
+        has to clear the file anyway.
+        """
+        from pathlib import Path
+
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        box_yaml = proj.metadata_path / "box.yaml"
+        doc = load_doc(box_yaml)
+        doc["zippity"] = "not a declared key"
+        dump_doc(box_yaml, doc)
+
+        workset_yaml = Path(std.primary_workset) / "workset.yaml"
+        wdoc = load_doc(workset_yaml)
+        wdoc["zappity"] = "also not declared"
+        dump_doc(workset_yaml, wdoc)
+
+    def test_reset_all_never_reads_the_vault_cascade(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        from kanibako.commands.box._parser import run_reset
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        self._plant_unknown_keys(std, proj)
+
+        calls = self._spy_on_cascade(monkeypatch)
+        rc = run_reset(argparse.Namespace(
+            args=[project_dir], reset_all=True, force=True,
+        ))
+        assert rc == 0, capsys.readouterr().err
+        assert calls == [], f"reset --all read the vault cascade {len(calls)}x"
+
+    def test_a_per_key_reset_never_reads_the_vault_cascade(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys,
+    ):
+        """The per-key door is a repair verb too — same resolve, same rule."""
+        from kanibako.commands.box._parser import run_reset
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        self._plant_unknown_keys(std, proj)
+
+        calls = self._spy_on_cascade(monkeypatch)
+        rc = run_reset(argparse.Namespace(
+            args=[project_dir, "box.image"], reset_all=False, force=False,
+        ))
+        assert rc == 0, capsys.readouterr().err
+        assert calls == [], f"per-key reset read the vault cascade {len(calls)}x"
 
 
 class TestBoxConfigRefusesThePhantomBox:
