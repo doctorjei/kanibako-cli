@@ -1167,6 +1167,51 @@ class TestAVarNamedByBothScalarFamiliesRefusesTheLaunch:
         assert deliveries.secrets == []
 
 
+class TestANullWorkspaceNeverBecomesTheWordNone:
+    """``ProjectPaths.project_path`` is ``None`` for a standalone box whose root nulls
+    ``workset.workspaces`` (Q106). ``str()`` of it is the WORD ``"None"``, and a bind
+    carrying that word would mount a path nobody chose.
+
+    ⚑ No shipped core entry reads the symbolic ``project_path`` source — each supplies
+    ``meta_ref``/``mode_meta_ref`` — so the defect was LATENT, not live. These pins hold
+    the line for the entry that eventually does name it.
+    """
+
+    class _P:
+        enable_vault = True
+
+        def __init__(self, root):
+            self.shell_path = root / "box_data" / "home"
+            self.project_path = None
+            self.vault_ro_path = root / "vault" / "ro"
+            self.vault_rw_path = root / "vault" / "rw"
+
+    def test_no_emitted_bind_sources_the_word_none(self, tmp_path):
+        from kanibako.settings import core_defaults
+
+        binds = core_defaults.core_default_categories(
+            None, self._P(tmp_path), enable_vault=True, mode="standalone",
+            guarantee_create=False,
+        )
+        for arm_key, arms in binds.items():
+            for dest, arm in arms.items():
+                assert arm[0] != "None", f"{arm_key} at {dest} sources the word 'None'"
+
+    def test_an_entry_naming_an_unprobed_source_is_refused(self, tmp_path, monkeypatch):
+        """A core entry that names a source this box has no value for STOPS."""
+        from kanibako.settings import core_defaults
+
+        monkeypatch.setattr(core_defaults, "_load_doc", lambda: {"core": [{
+            "key": "workspace", "category": "bindings.rw",
+            "source": "project_path", "box_dest": "~/workspace", "options": "Z,U",
+        }]})
+        with pytest.raises(RuntimeError, match="no value for that source"):
+            core_defaults.core_default_categories(
+                None, self._P(tmp_path), enable_vault=True, mode="standalone",
+                guarantee_create=False,
+            )
+
+
 class TestGuaranteeCreateIsALaunchGuaranteeNotAReadOne:
     """A DISPLAY verb must not write to disk.
 
