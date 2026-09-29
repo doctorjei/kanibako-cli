@@ -180,6 +180,40 @@ class TestResolveSystemPathsOverrides:
             )
 
 
+class TestAPresentNoneIsRefusedAsNoneNotAsTheWordNone:
+    """A present ``<None>`` at a path key is reported as ``<None>``, never as a string.
+
+    ``str(None)`` is the word ``"None"``, which is a bare relative, so a null used to
+    reach the user as *"``config.data`` is set to ``'None'``"* — a refusal quoting a
+    string nobody wrote, over a value they did write.  [R177]/§2h: a present ``<None>``
+    is a value that does NOT fall back to the default, so the message names what it is
+    and the cure that follows from that.
+
+    ⚑ Corpus derived from both path tables (P13), as the class below does.
+    """
+
+    def test_the_corpus_is_not_empty(self):
+        assert CONFIG_PATH_DEFAULTS and SYSTEM_PATH_DEFAULTS
+
+    @pytest.mark.parametrize("key", sorted(CONFIG_PATH_DEFAULTS))
+    def test_a_present_none_is_refused_as_none(self, key, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            resolve_config_paths({key: None}, data_home=tmp_path, home=tmp_path)
+        message = str(exc.value)
+        assert key in message
+        assert "<None>" in message
+        assert "'None'" not in message
+
+    @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
+    def test_a_present_none_is_refused_as_none_for_system_keys(self, key, tmp_path):
+        with pytest.raises(SettingsError) as exc:
+            resolve_system_paths({key: None}, data_home=tmp_path, home=tmp_path)
+        message = str(exc.value)
+        assert key in message
+        assert "<None>" in message
+        assert "'None'" not in message
+
+
 class TestBareRelativeIsRefusedNotAnchored:
     """[R147] over the WHOLE of both path tables, not over a hand-picked key.
 

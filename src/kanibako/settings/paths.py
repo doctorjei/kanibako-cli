@@ -425,7 +425,18 @@ def _refuse_bare_relative(key: str, raw: object, default: str, *,
     ⚑ The other candidate root is DERIVED from this key's own declared *default* (P13),
     never listed: it is the default's leading token, so a key added to either table
     carries its own anchor into this message.
+    ⚑ A PRESENT ``<None>`` IS REFUSED BEFORE THE STRINGIFY, not by it.  ``str(None)``
+    is the word ``"None"``, which is a bare relative, so the null used to reach the
+    user as *"``config.data`` is set to ``'None'``"* — a message quoting a string
+    nobody wrote.  [R177]/§2h: a present ``<None>`` is a value that does NOT fall
+    back to the key's default, so the cure named here is the real one.
     """
+    if raw is None:
+        raise SettingsError(
+            f"{key} is set to <None>, which is not a path. A <None> is a value: "
+            f"it does not fall back to the default. Delete the line to take the "
+            f"default ({default}), or set a path."
+        )
     value = str(raw)
     if not value or is_unambiguous_path_value(value):
         return
