@@ -312,8 +312,13 @@ def core_default_categories(
     assembly seam off ``meta.box.home`` (spec ``:1015``), never declared here.
     """
     # Symbolic source name -> runtime-probed host path off ``ProjectPaths``.
-    sources: dict[str, str] = {
-        "project_path": str(proj.project_path),
+    # ⚑ ``project_path`` is ``None`` for a standalone box whose root nulls
+    # ``workset.workspaces`` (Q106).  ``str()`` would turn that into the WORD
+    # ``"None"`` and a bind would carry it as a host path, so the symbol is left
+    # UNPROBED here and an entry that actually names it is refused below.  Every
+    # shipped entry supplies ``meta_ref``/``mode_meta_ref`` and never reads it.
+    sources: dict[str, str | None] = {
+        "project_path": None if proj.project_path is None else str(proj.project_path),
         "vault_ro_path": str(proj.vault_ro_path),
         "vault_rw_path": str(proj.vault_rw_path),
     }
@@ -343,6 +348,13 @@ def core_default_categories(
             host_src = mode_ref[mode]
         else:
             host_src = entry.get("meta_ref", sources[entry["source"]])
+            if host_src is None:
+                raise RuntimeError(
+                    f"{CORE_DEFAULTS_FILENAME} declares 'source: {entry['source']}' "
+                    f"with no 'meta_ref', and this box has no value for that "
+                    f"source — refusing rather than binding the text 'None' as a "
+                    f"host path."
+                )
         add_bind(
             binds, category, str(entry["box_dest"]), host_src,
             str(entry["options"]),
