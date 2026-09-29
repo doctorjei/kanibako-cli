@@ -1969,6 +1969,14 @@ def test_select_walks_from_the_base_file_to_the_box(tmp_path: Path) -> None:
     assert str(system) in str(exc.value) and str(box) not in str(exc.value), exc.value
 
 
+@pytest.mark.parametrize("purpose_name", ("NARROW", "DISPLAY"))
+def test_base_to_box_reader_order_derives_from_scope_containment(purpose_name: str) -> None:
+    """Both readers walk the declared scope order after the base file."""
+    from kanibako.settings.settings_assemble import ReadPurpose
+
+    assert ReadPurpose[purpose_name].order == ("base", *SCOPE_CONTAINMENT)
+
+
 def test_narrow_reports_the_box_files_node_fault_first(tmp_path: Path) -> None:
     """``NARROW`` folds agent nodes as it builds each partial, box first: two spellings of one
     node in ``box.yaml``'s ``pref:`` and in the system file report the box's."""

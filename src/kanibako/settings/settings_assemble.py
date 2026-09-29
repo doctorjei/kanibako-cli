@@ -46,6 +46,7 @@ from kanibako.settings.kb_store import (
     BINDING_DERIVATIONS_NODE,
     Bind,
     BindEntry,
+    SCOPE_CONTAINMENT,
 )
 from kanibako.settings.keystore import KeyStore, ReservedKeyError
 from kanibako.settings.settings_categories import (
@@ -98,6 +99,7 @@ BIND_CATEGORY_TOKENS: frozenset[str] = frozenset(
 
 # The agent sub-table that supplies the all-agents ``agent.default`` cascade level.
 _AGENT_DEFAULT_SUB = "default"
+_BASE_TO_BOX_LEVELS: tuple[str, ...] = ("base", *SCOPE_CONTAINMENT)
 
 
 # ---------------------------------------------------------------------------
@@ -790,8 +792,8 @@ class ReadPurpose(Enum):
 
     RESOLVE = ("resolve", ("box", "workset", "agent", "system", "base"))
     SELECT = ("select", ("base", "system", "workset", "box"))
-    NARROW = ("narrow", ("base", "system", "agent", "workset", "box"))
-    DISPLAY = ("display", ("base", "system", "agent", "workset", "box"))
+    NARROW = ("narrow", _BASE_TO_BOX_LEVELS)
+    DISPLAY = ("display", _BASE_TO_BOX_LEVELS)
 
     def __init__(self, _name: str, order: tuple[str, ...]) -> None:
         #: The file order this read walks, one level per file. (The name keeps two members
