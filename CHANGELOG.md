@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A settings path key set to `<None>` is reported as `<None>`, not as the word "None".** In
+  1.8.0-rc2 a `config.*` or `system.*` path key written with an empty value (`config.data:`) was
+  refused as *"config.data is set to 'None', which is a BARE RELATIVE path"* — the message quoted
+  the word `None` as though it were a path you had typed, over the value you had actually written.
+  It now reads *"config.data is set to `<None>`, which is not a path"*, and names the cure that
+  follows from what `<None>` means: delete the line to take the default, or set a path.
+
 - **A settings entry at the destination of one of kanibako's internal binds is refused.** In
   1.8.0-rc2 a `box.bindings.ro` entry at `/opt/kanibako/kanibako` replaced the in-box `kanibako`
   command with whatever it mounted, and an entry at another internal destination (the secrets
