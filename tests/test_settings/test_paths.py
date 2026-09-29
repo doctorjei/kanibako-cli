@@ -1864,7 +1864,49 @@ class TestP5aCreateThenResolve:
         proj2 = resolve_project(
             std, config, project_dir=project_dir, initialize=False,
         )
-        assert proj2.enable_vault is False
+        assert proj2.vault_enabled() is False
+
+    def test_resolution_defers_and_caches_the_vault_cascade(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        from kanibako.settings import paths as paths_mod
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+        calls = []
+        monkeypatch.setattr(
+            paths_mod,
+            "resolve_box_enable_vault",
+            lambda *args, **kwargs: calls.append((args, kwargs)) or False,
+        )
+
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=False)
+        assert calls == []
+        assert proj.vault_enabled() is False
+        assert len(calls) == 1
+        assert proj.vault_enabled() is False
+        assert len(calls) == 1
+
+    def test_an_explicit_vault_value_skips_the_cascade_at_create(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        from kanibako.settings import paths as paths_mod
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        monkeypatch.setattr(
+            paths_mod,
+            "resolve_box_enable_vault",
+            lambda *args, **kwargs: pytest.fail("explicit create read the cascade"),
+        )
+
+        proj = resolve_project(
+            std, config, project_dir=str(tmp_home / "project"), initialize=True,
+            enable_vault=False,
+        )
+        assert proj.vault_enabled() is False
 
     def test_iter_projects_prefers_registry_over_settings(
         self, config_file, tmp_home, credentials_dir
@@ -1932,6 +1974,60 @@ class TestP5aCreateThenResolve:
         # No registry membership → no resolvable workspace → None (NOT settings_ws).
         assert box_dir in results
         assert results[box_dir] is None
+
+
+class TestMissingVaultAdvisoryIsGuarded:
+    """2R / N-b — the missing-vault advisory is LAZY and GUARDED, never skipped.
+
+    "Only warn when the value is already known" would DELETE the advisory: at
+    ``resolve_box_target`` time nothing has computed the vault flag yet, so such a rule
+    could never fire — a capability removed to satisfy a design.  So the advisory asks,
+    and if asking raises the §0 refusal it prints nothing, because it has no answer to
+    advise on.  Whether the VERB stops is the verb's own read, never this one's.
+    """
+
+    def test_a_refusing_cascade_does_not_make_the_advisory_fatal(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        from kanibako.settings import paths as paths_mod
+        from kanibako.settings.config import load_config
+        from kanibako.settings.settings_resolve import SettingsError
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        def _refuse(*args, **kwargs):
+            raise SettingsError("§0: undeclared key in this box's files")
+
+        monkeypatch.setattr(paths_mod, "resolve_box_enable_vault", _refuse)
+
+        # warn=True is the advisory path — every one of the 12 src callers passes it.
+        assert paths_mod.resolve_box_target(
+            std, config, project_dir, initialize=False,
+        ) is not None
+
+    def test_a_quiet_resolve_runs_no_advisory_and_so_no_cascade(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        from kanibako.settings import paths as paths_mod
+        from kanibako.settings.config import load_config
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        calls: list = []
+        monkeypatch.setattr(
+            paths_mod, "resolve_box_enable_vault",
+            lambda *a, **k: calls.append((a, k)) or False,
+        )
+        assert paths_mod.resolve_box_target(
+            std, config, project_dir, initialize=False, warn=False,
+        ) is not None
+        assert calls == [], f"a warn=False resolve still ran the advisory ({len(calls)}x)"
 
 
 class TestP5aStandalonePresenceSwitch:
@@ -2187,7 +2283,7 @@ class TestStandaloneEnableVaultTier:
             box_file.unlink(missing_ok=True)
         return resolve_standalone_project(
             std, config, str(root), initialize=False,
-        ).enable_vault
+        ).vault_enabled()
 
     def test_box_tier_wins_over_the_root_file(
         self, config_file, tmp_home, credentials_dir,
@@ -2244,7 +2340,7 @@ class TestStandaloneEnableVaultTier:
         proj2 = resolve_project(
             std, config, project_dir=str(tmp_home / "project"), initialize=False,
         )
-        assert proj2.enable_vault is False
+        assert proj2.vault_enabled() is False
 
     @staticmethod
     def _write_system_tier(std, value: bool) -> None:
@@ -2278,7 +2374,7 @@ class TestStandaloneEnableVaultTier:
         proj = resolve_project(
             std, config, project_dir=str(tmp_home / "project"), initialize=True,
         )
-        assert proj.enable_vault is False
+        assert proj.vault_enabled() is False
         assert not proj.vault_rw_path.is_dir(), (
             "the vault was materialized for a box whose resolved box.enable_vault is False"
         )
@@ -2301,7 +2397,7 @@ class TestStandaloneEnableVaultTier:
         proj2 = resolve_project(
             std, config, project_dir=str(tmp_home / "project"), initialize=False,
         )
-        assert proj2.enable_vault is True
+        assert proj2.vault_enabled() is True
 
     def test_a_system_tier_value_reaches_a_standalone_box(
         self, config_file, tmp_home, credentials_dir,
@@ -2321,7 +2417,7 @@ class TestStandaloneEnableVaultTier:
         root = tmp_home / "sa-system-tier"
         root.mkdir()
         proj = resolve_standalone_project(std, config, str(root), initialize=True)
-        assert proj.enable_vault is False
+        assert proj.vault_enabled() is False
 
 
 def _code_string_literals(path: Path):

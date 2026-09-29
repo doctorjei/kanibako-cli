@@ -557,7 +557,7 @@ def refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None:
     refused is the FILE carrying it.
     ⚑ CALLED FROM THE LAUNCH SEAM (``settings_launch.build_launch_snapshot``), NOT from
     :func:`assemble_levels`: that also serves the narrow, non-refusing ``box.enable_vault``
-    resolve every box verb runs (``config.resolve_box_enable_vault``), and a raise there
+    resolve every box verb runs (``paths.resolve_box_enable_vault``), and a raise there
     would stop ``box show`` — the one surface that shows the user the line to delete.
     """
     entries = stored_config_entries(raw)

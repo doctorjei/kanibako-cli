@@ -3633,7 +3633,7 @@ def _run_container(
 
     try:
         # Auto-snapshot vault share-rw before launch.
-        if proj.enable_vault and proj.vault_rw_path.is_dir():
+        if proj.vault_enabled() and proj.vault_rw_path.is_dir():
             from kanibako.snapshots import auto_snapshot, detect_snapshot_strategy
             strategy = detect_snapshot_strategy(proj.vault_rw_path)
             snap = auto_snapshot(proj.vault_rw_path, strategy=strategy)
@@ -4790,7 +4790,7 @@ def _run_container(
         # Warn about binds that will shadow pre-existing host content under the
         # box home (best-effort; persisted now and reprinted after the session).
         _shadowed = detect_shadowed_mounts(
-            proj.shell_path, proj.project_path, extra_mounts or None, proj.enable_vault
+            proj.shell_path, proj.project_path, extra_mounts or None, proj.vault_enabled()
         )
         _persist_shadow_issues(std, container_name, _shadowed)
 
@@ -4804,7 +4804,7 @@ def _run_container(
                 vault_rw_path=proj.vault_rw_path,
                 extra_mounts=extra_mounts or None,
                 tmpfs_masks=tmpfs_masks or None,
-                enable_vault=proj.enable_vault,
+                enable_vault=proj.vault_enabled(),
                 env=container_env,
                 name=container_name,
                 entrypoint=entrypoint,
@@ -9360,11 +9360,11 @@ def _core_default_categories(
     runtime-probed host sources off ``ProjectPaths``.  Injected through the category
     resolver (D-B1 precedence + depth-sort + L7 guarantee-create) exactly like
     masks/common/channels.  home + workspace are unconditional; the vault binds are
-    gated on ``proj.enable_vault`` AND the source dir existing (reproducing the old
+    gated on ``proj.vault_enabled()`` AND the source dir existing (reproducing the old
     hardwired ``if enable_vault and path.is_dir()`` skip-if-missing behavior).
     """
     return core_defaults.core_default_categories(
-        std, proj, enable_vault=proj.enable_vault, mode=proj.mode.value,
+        std, proj, enable_vault=proj.vault_enabled(), mode=proj.mode.value,
         guarantee_create=guarantee_create,
     )
 
@@ -9484,7 +9484,7 @@ def _run_setup_command(
         vault_rw_path=proj.vault_rw_path,
         extra_mounts=extra_mounts or None,
         tmpfs_masks=tmpfs_masks or None,
-        enable_vault=proj.enable_vault,
+        enable_vault=proj.vault_enabled(),
         env=container_env,
         name=container_name,
         entrypoint=setup_entrypoint,

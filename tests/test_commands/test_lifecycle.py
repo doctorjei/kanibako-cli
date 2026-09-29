@@ -1713,7 +1713,7 @@ class TestWorksetTierVaultDefaultIsNotPinned:
         # The duplicate's own root workset.yaml carries only ``workset.kuid``, so the
         # RESOLVED answer is the default — the value stayed with the workset it belonged to.
         dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
-        assert dup.enable_vault is True
+        assert dup.vault_enabled() is True
 
     def test_duplicate_from_a_standalone_source_leaves_its_root_default_behind(self, env):
         """The source's ROOT file is its WORKSET tier; its ``box.*`` default does not travel."""
@@ -1742,7 +1742,7 @@ class TestWorksetTierVaultDefaultIsNotPinned:
         stored = load_doc(dst / "box_data" / "box.yaml").get("box", {})
         assert stored.get("enable_vault") is False
         dup = resolve_standalone_project(std, config, project_dir=str(dst), initialize=False)
-        assert dup.enable_vault is False
+        assert dup.vault_enabled() is False
 
     def test_duplicate_creates_no_vault_either_way(self, env):
         """Resolved governs CREATION, and on this path nothing is created — before or after."""

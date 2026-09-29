@@ -1207,7 +1207,7 @@ class TestBoxEnableVault:
         with the value present at the BOX tier and nowhere else those are the same value,
         and a coercion on only one side is exactly how they drifted.
         """
-        from kanibako.settings.config import resolve_box_enable_vault
+        from kanibako.settings.paths import resolve_box_enable_vault
 
         box_file = tmp_home / "box.yaml"
         box_file.write_text('box:\n  enable_vault: "false"\n')
@@ -1262,7 +1262,7 @@ class TestTheTwoBoxScalarResolvesAgree:
     def test_the_narrow_cascade_agrees_with_the_merged_loader(
         self, config_file, tmp_home, credentials_dir, system, workset, box, expected,
     ):
-        from kanibako.settings.config import resolve_box_enable_vault
+        from kanibako.settings.paths import resolve_box_enable_vault
 
         std = self._std(config_file)
         ws_file = tmp_home / "ws.yaml"

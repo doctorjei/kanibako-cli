@@ -316,7 +316,7 @@ class TestNamedWorksetEnableVaultDownwardDefault:
         ws, name = workset_env
         self._write_workset_enable_vault(ws, False)
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
-        assert proj.enable_vault is False
+        assert proj.vault_enabled() is False
 
     def test_box_tier_true_overrides_workset_tier_false(self, workset_env, std, config):
         """The contained scope always wins per the cascade (spec §0)."""
@@ -329,20 +329,20 @@ class TestNamedWorksetEnableVaultDownwardDefault:
         box_tier.parent.mkdir(parents=True, exist_ok=True)
         dump_doc(box_tier, {"box": {"enable_vault": True}})
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
-        assert proj.enable_vault is True
+        assert proj.vault_enabled() is True
 
     def test_explicit_param_still_wins(self, workset_env, std, config):
         ws, name = workset_env
         self._write_workset_enable_vault(ws, False)
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config,
                                        enable_vault=True)
-        assert proj.enable_vault is True
+        assert proj.vault_enabled() is True
 
     def test_absent_everywhere_still_defaults_true(self, workset_env, std, config):
         """MUTATION-GUARD: the False above comes from the workset tier, not a moved floor."""
         ws, name = workset_env
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config)
-        assert proj.enable_vault is True
+        assert proj.vault_enabled() is True
 
     def test_create_does_not_pin_the_inherited_default(self, workset_env, std, config,
                                                        credentials_dir):
@@ -358,7 +358,7 @@ class TestNamedWorksetEnableVaultDownwardDefault:
         self._write_workset_enable_vault(ws, False)
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config,
                                        initialize=True)
-        assert proj.enable_vault is False
+        assert proj.vault_enabled() is False
 
         box_tier = ws.projects_dir / name / BOX_META_FILE
         stored = (load_doc(box_tier).get("box") or {}) if box_tier.is_file() else {}
@@ -373,7 +373,7 @@ class TestNamedWorksetEnableVaultDownwardDefault:
         ws, name = workset_env
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), name, std, config,
                                        initialize=True, enable_vault=False)
-        assert proj.enable_vault is False
+        assert proj.vault_enabled() is False
 
         box_tier = ws.projects_dir / name / BOX_META_FILE
         assert load_doc(box_tier)["box"]["enable_vault"] is False

@@ -124,7 +124,7 @@ class TestVaultOptional:
             initialize=True, enable_vault=False,
         )
 
-        assert proj.enable_vault is False
+        assert proj.vault_enabled() is False
         assert not proj.vault_ro_path.exists()
         assert not proj.vault_rw_path.exists()
 
@@ -138,7 +138,7 @@ class TestVaultOptional:
             std, config, project_dir=project_dir, initialize=True,
         )
 
-        assert proj.enable_vault is True
+        assert proj.vault_enabled() is True
         assert proj.vault_ro_path.is_dir()
         assert proj.vault_rw_path.is_dir()
 
@@ -164,7 +164,7 @@ class TestVaultOptional:
         proj2 = resolve_project(
             std, config, project_dir=project_dir, initialize=False,
         )
-        assert proj2.enable_vault is False
+        assert proj2.vault_enabled() is False
 
     def test_standalone_vault_disabled(self, config_file, tmp_home, credentials_dir):
         """Standalone project with enable_vault=False skips vault dirs."""
@@ -178,7 +178,7 @@ class TestVaultOptional:
             initialize=True, enable_vault=False,
         )
 
-        assert proj.enable_vault is False
+        assert proj.vault_enabled() is False
         assert not proj.vault_ro_path.exists()
         assert not proj.vault_rw_path.exists()
 
@@ -215,7 +215,7 @@ class TestPrimaryEnableVaultDownwardDefault:
 
         proj = resolve_project(std, config, project_dir=str(tmp_home / "project"),
                                initialize=True)
-        assert proj.enable_vault is False
+        assert proj.vault_enabled() is False
         assert not proj.vault_rw_path.exists()
 
     def test_box_tier_true_overrides_primary_workset_false(self, config_file, tmp_home,
@@ -233,7 +233,7 @@ class TestPrimaryEnableVaultDownwardDefault:
         self._write_primary_enable_vault(std, False)
 
         proj2 = resolve_project(std, config, project_dir=project_dir, initialize=False)
-        assert proj2.enable_vault is True
+        assert proj2.vault_enabled() is True
 
     def test_explicit_param_still_wins(self, config_file, tmp_home, credentials_dir):
         config = load_config(config_file)
@@ -242,7 +242,7 @@ class TestPrimaryEnableVaultDownwardDefault:
 
         proj = resolve_project(std, config, project_dir=str(tmp_home / "project"),
                                initialize=True, enable_vault=True)
-        assert proj.enable_vault is True
+        assert proj.vault_enabled() is True
 
     def test_absent_everywhere_still_defaults_true(self, config_file, tmp_home,
                                                    credentials_dir):
@@ -251,7 +251,7 @@ class TestPrimaryEnableVaultDownwardDefault:
         std = load_std_paths(config)
         proj = resolve_project(std, config, project_dir=str(tmp_home / "project"),
                                initialize=True)
-        assert proj.enable_vault is True
+        assert proj.vault_enabled() is True
 
     def test_create_does_not_pin_the_inherited_default(self, config_file, tmp_home,
                                                        credentials_dir):
@@ -265,7 +265,7 @@ class TestPrimaryEnableVaultDownwardDefault:
 
         proj = resolve_project(std, config, project_dir=str(tmp_home / "project"),
                                initialize=True)
-        assert proj.enable_vault is False
+        assert proj.vault_enabled() is False
 
         box_tier = proj.metadata_path / BOX_META_FILE
         stored = (load_doc(box_tier).get("box") or {}) if box_tier.is_file() else {}
