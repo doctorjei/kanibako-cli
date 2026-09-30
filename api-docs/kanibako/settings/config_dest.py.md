@@ -9,6 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_dest.py.md`.
 
 ```
 _RESERVED_TIER_HEAD = "Error: 'default' is the reserved any-agent tier, not a persona node"
+_ERROR_PREFIX = 'Error: '
 _NOUN, _SCOPED, _CATEGORY = ('noun', 'scoped', 'category')
 ```
 
@@ -24,6 +25,7 @@ def _agent_node_route(node: str, tail: str, agents_root: 'Path | None') -> 'Agen
 def _reserved_tier_refusal(tail: str) -> str
 def _reserved_tier_read_refusal(tail: str) -> str
 def _reserved_tier_category_refusal(tail: str) -> str
+def _reserved_tier_store_sentence() -> str
 def _reserved_tier_store_refusal() -> str
 def _persona_agent_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | str | None'
 def _node_bind_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | None'

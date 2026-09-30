@@ -243,6 +243,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A leftover `agents/default/` folder is refused instead of read as an agent's store.** In
+  1.8.0-rc2 a folder named for the reserved any-agent tier, sitting beside your real agents, was
+  read at exit 0 by `agent get`, `agent show`, `agent info` and `agent list`; `agent set default
+  <key>=…` then sent you to edit `self.<key>` inside that folder, while the same command with no
+  folder names the system file's `agent: default:` table — and every write to that node was
+  refused either way. `default` is the reserved all-agents tier, whose settings live in the
+  system file, so a folder is never its store. Each of those verbs now stops and names the
+  folder, and `agent reset default --all` still clears what the folder holds.
+
 - **A launch reports an agent-selection problem before a problem in the box's settings.** In
   1.8.0-rc2, when both were wrong (for example no default agent, and a `config:` table in the working
   set's file), `kanibako start` reported the settings problem first. It now reports the selection
