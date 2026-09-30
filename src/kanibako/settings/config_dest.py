@@ -152,10 +152,26 @@ def _reserved_tier_category_refusal(tail: str) -> str:
     )
 
 
+#: The stderr prefix the print sites put in FRONT of a refusal, and the reason the store
+#: sentence below is split out of :func:`_reserved_tier_store_refusal`: a caller that EMBEDS
+#: the refusal inside a longer message of its own (``agent_file.load``'s store gate, which
+#: names the folder first) would otherwise print "is not an agent store: Error: 'default' …".
+_ERROR_PREFIX = "Error: "
+
+
+def _reserved_tier_store_sentence() -> str:
+    """``default``'s no-store refusal as a SENTENCE — the wording carrier, no stderr prefix.
+
+    ONE spelling for the read, the write and the store doors, which differ only in the cure.
+    """
+    head = _RESERVED_TIER_HEAD.removeprefix(_ERROR_PREFIX)
+    return f"{head}, and has no agent store. {_AGENT_DEFAULT_TIER_CURE}"
+
+
 def _reserved_tier_store_refusal() -> str:
     """Refuse ``default`` where a verb needs a persona's STORE and names no key (show, info,
     reset --all): the tier has none, and its settings file is where it is authored."""
-    return f"{_RESERVED_TIER_HEAD}, and has no agent store. {_AGENT_DEFAULT_TIER_CURE}"
+    return _ERROR_PREFIX + _reserved_tier_store_sentence()
 
 
 def _persona_agent_target(

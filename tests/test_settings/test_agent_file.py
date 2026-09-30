@@ -1244,6 +1244,43 @@ class TestTheAgentTable:
         assert f"{path.parent} is not an agent store" in str(exc.value)
         assert "'self' is not an agent" in str(exc.value)
 
+    def test_the_reserved_tier_is_no_store_for_any_reader(self, tmp_path):
+        """A leftover ``agents/default/`` is refused by ``load``, beside the alias above.
+
+        The tier's settings live in the SYSTEM file's ``agent: default:`` table, so a
+        folder beside the real agents is never one -- yet it was read at rc 0 by every
+        reader here (``agent get/show/info``, ``agent list``), while the WRITE route
+        refused the same node. ``config_dest._missing_store_error``'s docstring already
+        named ``load`` as the PRESENT-store route for this refusal; that route did not
+        exist until this pin.
+
+        MUTATION: drop the ``node == AGENT_DEFAULT_SUB`` gate from ``load`` and this
+        returns a record built from the folder instead of raising.
+        """
+        path = tmp_path / "default" / "agent.yaml"
+        path.parent.mkdir()
+        dump_doc(path, {"self": {"label": "y"}})
+        with pytest.raises(SettingsError) as exc:
+            load(path, node="default")
+        message = str(exc.value)
+        assert f"{path.parent} is not an agent store" in message
+        assert "'default' is the reserved any-agent tier" in message
+        # ⚑ THE PREFIX IS SPLIT OUT FOR THIS CALLER, AND THE DOUBLED ONE IS THE BUG IT
+        # EXISTED FOR: an embedded sentence carrying the stderr ``Error:`` reads
+        # "is not an agent store: Error: 'default' …".
+        assert "Error:" not in message
+
+    def test_an_absent_reserved_tier_store_is_not_a_refusal(self, tmp_path):
+        """The gate is a STORE LOOKUP, not a second key-space one.
+
+        ``default`` is a legal ``agent.<HERE>`` segment -- it addresses the tier -- so a
+        reader that asks for a store that is not there still gets the empty record, and
+        only a folder that EXISTS is the refusal. Pinning the other half keeps the gate
+        from widening into ``file_alias_reason``'s job.
+        """
+        path = tmp_path / "default" / "agent.yaml"
+        assert load(path, node="default") == AgentConfig()
+
     @pytest.mark.parametrize("scope", (
         {"nosuchharness": {"x": 1}},            # conceded: no readable vocabulary ([R150])
         {"claude": {"run_args": ["-x"], "transform_settings": {"a": 1}}},

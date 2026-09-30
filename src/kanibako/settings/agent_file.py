@@ -560,7 +560,16 @@ def load(path: Path, *, node: str) -> AgentConfig:
     could not name its agent could not judge a leaf at all.  The file's alias (``self``) is
     never a *node* (``settings_keyspace.file_alias_reason``), so a store folder named after it
     is refused here, for every reader at once.
+
+    ⚑ THE SAME SHAPE, THE OTHER WAY, FOR THE RESERVED TIER.  ``default`` IS a legal
+    ``agent.<HERE>`` segment — it addresses the all-agents tier, whose settings live in the
+    system file — so the alias gate above must keep passing it, and a store folder carrying
+    that name is refused here instead, once the folder is found to EXIST.  Two gates, two
+    questions: whether a name is a legal KEY SEGMENT, and whether a folder is that agent's
+    STORE.  ``config_dest._missing_store_error`` answers the second for an absent store and
+    pointed here for a present one; this is that route.
     """
+    from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
     from kanibako.settings.settings_keyspace import file_alias_reason
 
     alias = file_alias_reason(node)
@@ -573,6 +582,27 @@ def load(path: Path, *, node: str) -> AgentConfig:
     cfg = AgentConfig()
     if not path.exists():
         return cfg
+    # ⚑⚑ THE RESERVED ANY-AGENT TIER HAS NO STORE, AND A FOLDER NAMED FOR IT IS NOT ONE
+    # (spec §2d). ``_missing_store_error`` already refuses the tier when the store is
+    # ABSENT, and its docstring names this module as the route that refuses one when the
+    # store is PRESENT -- that route did not exist, so a leftover ``agents/default/`` was
+    # read at rc 0 by every reader below (``agent get/show/info``, ``agent list``, the
+    # launch's own load), while the WRITE route refused the same node. One node, two
+    # verdicts. This is the route the docstring promised, beside the alias refusal above
+    # and for the same reason: one file, one verdict, at the reader every verb shares.
+    # ⚑ ASKED ONLY WHEN THE STORE IS THERE, which is what makes it a STORE-LOOKUP gate and
+    # not a second key-space one: ``default`` is a legal ``agent.<HERE>`` segment (it
+    # addresses the tier), so ``settings_keyspace.file_alias_reason`` must keep passing it
+    # and the writes must keep routing to the tier's own file.
+    if node == AGENT_DEFAULT_SUB:
+        from kanibako.settings.config_dest import _reserved_tier_store_sentence
+
+        raise SettingsError(
+            f"{path.parent} is not an agent store: {_reserved_tier_store_sentence()}.\n"
+            f"  Fix: move {path.parent} out of {path.parent.parent}, or delete it -- the "
+            f"tier's settings live in the system file's 'agent: {AGENT_DEFAULT_SUB}:' "
+            f"table, never in a folder."
+        )
 
     data = load_doc(path)
 
