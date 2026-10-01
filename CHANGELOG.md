@@ -250,6 +250,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A bad path setting on the very first run is refused with the usual message, not a Python
+  traceback.** In 1.8.0-rc2, if the global `settings.yaml` set a `system.*` path key to `<None>`
+  before kanibako had ever run, the refusal escaped as a traceback. It now prints the same
+  `Error:` message a later run prints, naming the file and the key, and exits 1 as before.
+
 - **A canon import call that shares its line with other text is reported.** In 1.8.0-rc2 a line
   such as `See __IMPORTSECTION__("notebook.md").` was copied into the agent's instructions as
   text, so the file it named never loaded, and nothing was printed. The call is still not run, but

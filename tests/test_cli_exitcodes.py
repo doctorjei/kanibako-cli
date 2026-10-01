@@ -169,6 +169,35 @@ class TestLazyInit:
         loaded = load_config(config_file)
         assert loaded.config_paths["config.agents"] == "/custom/agents"
 
+    def test_first_run_layer2_path_refusal_exits_1_without_traceback(self, tmp_home, capsys):
+        """A first-run ``null`` ``system.*`` path key is a clean rc1 refusal, not a traceback.
+
+        MUTATION: move ``_ensure_initialized()`` back out of ``main``'s ``KanibakoError``
+        handler and the ConfigError escapes ``main`` instead of a ``SystemExit(1)``.
+        """
+        from kanibako.cli import main
+
+        settings = tmp_home / "data" / "kanibako" / "global" / "settings.yaml"
+        settings.parent.mkdir(parents=True)
+        settings.write_text("system:\n  state: null\n")
+
+        with (
+            patch("kanibako.cli.build_parser") as mock_bp,
+            patch("kanibako.cli._setup_nudge"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            args = MagicMock()
+            args.command = "box"
+            args.box_command = "list"
+            mock_bp.return_value.parse_args.return_value = args
+            main(["box", "list"])
+        assert exc_info.value.code == 1
+        args.func.assert_not_called()
+        err = capsys.readouterr().err
+        assert f"Error: {settings} sets these path keys to null:" in err
+        assert "system.state" in err
+        assert "Traceback" not in err
+
     def test_agent_exempt_from_lazy_init(self):
         """'agent' command does not trigger lazy init."""
         from kanibako.cli import main
