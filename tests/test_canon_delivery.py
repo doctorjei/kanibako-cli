@@ -413,7 +413,7 @@ class TestDisjointness:
         core_defaults.assert_canon_bind_seed_disjoint(
             CANON_SEED_DENY_PREFIXES,
             {
-                "canon/notebook/MY_CONTENTS.md",
+                "canon/notebook/LOCAL_CONTENTS.md",
                 "canon/workbook/state/devnotes.md",
                 "canon/charters-of-mine/x.md",
                 "canon/COLLECTION.md.bak",
@@ -442,7 +442,7 @@ class TestDisjointness:
         assert home_root != base
         rels = {rel for rel, _ in templates.walk_shipped_files(home_root)}
         # Home-relative: the notebook the seed deposits at ~/canon/notebook.
-        assert "canon/notebook/MY_CONTENTS.md" in rels, rels
+        assert "canon/notebook/LOCAL_CONTENTS.md" in rels, rels
 
     def test_emitter_raises_on_a_colliding_template(self, monkeypatch):
         """Driven through the real emitter: a template seed under ``canon/charter``
@@ -1489,7 +1489,7 @@ class TestBaseTemplateSeedsTheNotebook:
     def test_packaged_source_carries_the_notebook(self):
         home_root = packaged_box_home_template()
         assert home_root is not None
-        assert (home_root / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
+        assert (home_root / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
         assert (home_root / "canon" / "workbook" / "state" / "devnotes.md").is_file()
         assert (home_root / "canon" / "workbook" / "state" / "status.md").is_file()
         assert (home_root / "canon" / "workbook" / "tasks" / "main.md").is_file()
@@ -1503,11 +1503,11 @@ class TestBaseTemplateSeedsTheNotebook:
     def test_install_stages_the_box_mold(self, std):
         install_packaged_templates(std, ["claude"])
         assert (
-            std.template / "box" / "home" / "canon" / "notebook" / "MY_CONTENTS.md"
+            std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
         ).is_file()
 
     def test_seed_lands_the_notebook_at_home(self, std, config, project_dir):
-        """End-to-end: the base layer seeds ``~/canon/notebook/MY_CONTENTS.md`` at
+        """End-to-end: the base layer seeds ``~/canon/notebook/LOCAL_CONTENTS.md`` at
         box create through the single keystore-routed seed (create-if-absent)."""
         from kanibako.commands.start import _apply_init_seeds
 
@@ -1525,7 +1525,7 @@ class TestBaseTemplateSeedsTheNotebook:
             selection_level=AgentSelection(node="claude", source="settings").selection_level,
         )
         assert (
-            proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"
+            proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md"
         ).is_file()
         assert (
             proj.shell_path / "canon" / "workbook" / "state" / "devnotes.md"

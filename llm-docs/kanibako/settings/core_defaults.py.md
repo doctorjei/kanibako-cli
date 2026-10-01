@@ -481,7 +481,7 @@ everything else.
 ```assert_canon_bind_seed_disjoint(bind_dests: Iterable[str], seed_rels: Iterable[str]) -> None```
 RAISE if any template SEED lands at or under a MANAGED `~/canon` path.
 
-Both arguments are `~`-RELATIVE posix paths (`canon/charter`, `canon/notebook/MY_CONTENTS.md`, …):
+Both arguments are `~`-RELATIVE posix paths (`canon/charter`, `canon/notebook/LOCAL_CONTENTS.md`, …):
 *bind_dests* are the managed canon prefixes (:data:`CANON_SEED_DENY_PREFIXES` — the BOOK ROOTS,
 which under J-7's sibling binds are a superset of the literal bind dests; see that constant for
 why), *seed_rels* the files a seed layer would copy to the box home.

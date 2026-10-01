@@ -297,14 +297,16 @@ inside boxes. In order of likely impact:
     spelling, so this only bites a value you wrote by hand.
 
 29. **Only if you ran a `1.8.0` prerelease: the packaged canon book was renamed `bible` →
-    `charter`, and two things you own still spell the old path** (§2.70). A claude box made by
+    `charter`, and two things you own still spell the old path** (see *2.70 The packaged canon
+    book is `charter`, and the handbook lost a level*). A claude box made by
     `1.8.0rc2` has eight hook commands under `~/canon/bible/general/scripts/hooks/` in its own
     `~/.claude/settings.json` — that file is the box's, seeded once at create, so the upgrade
     does not touch it and those hooks stop running. One `sed` per box fixes it. Any
     `bindings.ro` entry of yours pointing under `~/canon/bible/` now names a place nothing
     reads, and nothing warns about it. In the same section: the handbook's per-scope entry
-    files moved up out of `directives/`. **Upgrading from v1.7.2 you have none of this** — the
-    canon books are new in v1.8.0.
+    files moved up out of `directives/`, and a prerelease box's notebook stops loading until you
+    rename its entry file and add one import to your handbook index. **Upgrading from v1.7.2 you
+    have none of this** — the canon books are new in v1.8.0.
 
 30. **If `config.data` points anywhere but `$XDG_DATA_HOME/kanibako`, your own file-drop plugins
     are now discovered in it — and stop being discovered in the default store** (§2.72). The
@@ -655,11 +657,11 @@ What a v1.7.2 user needs to know:
 - **Existing boxes keep launching** (including on LXC — the launch self-heals missing canon
   mountpoints rather than dying on crun's mkdir limitation), and they receive the new charter +
   `COLLECTION.md` automatically at their next launch after the upgrade, because those are
-  package binds. **But** the directive chain now *enters* at `~/canon/COLLECTION.md`, whose
-  notebook import points at `~/canon/notebook` — which an existing box never had seeded. Net
-  effect: an existing box gains the new charter/handbook and **silently stops loading its own
-  `~/playbook`/`~/notebook` directives.** Nothing errors; you will see an
-  `unresolved import` warning per launch on stderr for the missing notebook (and one more
+  package binds. **But** the directive chain now *enters* at `~/canon/COLLECTION.md`, and the
+  handbook it reaches imports the notebook from `~/canon/notebook` — which an existing box never
+  had seeded. Net effect: an existing box gains the new charter/handbook and **silently stops
+  loading its own `~/playbook`/`~/notebook` directives.** Nothing errors, and the missing
+  notebook is skipped without a warning (an `unresolved import` warning per launch does appear
   while base/plugin versions are mixed — §2.6).
 - **Migrating an existing box is a hand job, deliberately.** The recipe:
 
@@ -4544,7 +4546,7 @@ refuses.
 
 **Upgrading from v1.7.2, only part (a) concerns you, and it needs nothing done:** the canon books
 are new in v1.8.0 (§2.4), so you have no file, box or settings entry that spells the old paths.
-Parts (b) to (d) are for anyone who ran **`1.8.0rc1` or `rc2`**, which shipped the book as `bible`
+Parts (b) to (e) are for anyone who ran **`1.8.0rc1` or `rc2`**, which shipped the book as `bible`
 and the handbook one level deeper.
 
 **(a) `~/canon/bible/` is now `~/canon/charter/`.** The same book with the same chapters —
@@ -4617,6 +4619,27 @@ box:
 Nothing warns about it and no verb cleans it up, because from kanibako's side it is an ordinary
 bind at an ordinary destination. Grep your settings files for `canon/bible` and delete what you
 find.
+
+**(e) The notebook entry file is `~/canon/notebook/LOCAL_CONTENTS.md`, imported by the handbook
+index.** The prereleases seeded it as `MY_CONTENTS.md` and imported it from `COLLECTION.md`; now
+`SYS_CONTENTS.md` imports `LOCAL_CONTENTS.md`. Three old copies survive the upgrade, and nothing
+replaces them: the system handbook store is create-if-absent, a `kanibako setup` refresh of the
+staged box mold adds and overwrites files but never removes one the package stopped shipping, and a
+box's notebook is seeded once, at create. Without steps 1 and 3 the notebook silently does not load;
+without step 2 every new box is seeded with the stale `MY_CONTENTS.md` beside `LOCAL_CONTENTS.md`.
+
+1. Host-side, add these two lines to the end of `<data>/global/canon/handbook/SYS_CONTENTS.md`.
+   The import must be alone on its line, or it is copied through as text:
+
+   ```
+   The Lower Canon:
+   __IMPORTSECTION__("~/canon/notebook/LOCAL_CONTENTS.md")
+   ```
+
+2. Host-side, delete `<data>/global/template/box/home/canon/notebook/MY_CONTENTS.md`.
+3. In each box: if `~/canon/notebook/LOCAL_CONTENTS.md` does not exist, run
+   `mv ~/canon/notebook/MY_CONTENTS.md ~/canon/notebook/LOCAL_CONTENTS.md`. If it exists, carry
+   anything you wrote in `MY_CONTENTS.md` into it, then delete `MY_CONTENTS.md`.
 
 ### 2.71 A store set up by `1.8.0rc2` has a broken comms hook, and upgrading does not replace it
 

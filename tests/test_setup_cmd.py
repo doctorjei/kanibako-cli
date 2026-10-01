@@ -538,12 +538,12 @@ def _resolve_std():
 def _staged_marker(std):
     """One packaged file whose STAGED host path proves the install ran.
 
-    ``@system.template/box/home/canon/notebook/MY_CONTENTS.md`` — the box mold's
+    ``@system.template/box/home/canon/notebook/LOCAL_CONTENTS.md`` — the box mold's
     notebook entry point, chosen because it is in the SYSTEM-OWNED staging (the only
     tier ``refresh=True`` may rewrite), not in a user-owned store.
     """
     return (
-        std.template / "box" / "home" / "canon" / "notebook" / "MY_CONTENTS.md"
+        std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
     )
 
 

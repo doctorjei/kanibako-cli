@@ -46,7 +46,7 @@ def protected_box_home(box_dir: Path) -> Path:
     (home / "canon" / "charter" / "ROM_CONTENTS.md").touch()
     # The seeded books stay agent-owned + writable (undeletable only via the parent).
     (home / "canon" / "notebook").mkdir()
-    (home / "canon" / "notebook" / "MY_CONTENTS.md").write_text("mine\n")
+    (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").write_text("mine\n")
     (box_dir / "box.yaml").write_text("box: {}\n")
 
     for p in sorted((home / "canon").rglob("*"), reverse=True):
