@@ -2235,6 +2235,33 @@ class TestTemplateFailureModes:
         assert "__IMPORT__(child)" in out
         assert "must be a literal" in capsys.readouterr().err
 
+    @pytest.mark.parametrize("name", sorted(flattener._TEMPLATE_CALLS))
+    def test_a_call_not_alone_on_its_line_warns_and_stays_literal(
+        self, home, capsys, name
+    ):
+        """Only a whole-line call runs; one inside prose would otherwise pass
+        through as text with its content silently missing."""
+        line = f'Found in {name}("child.md").'
+        out = _body(_run(home, {
+            "root.md": f"# Root\n\n{line}\n", "child.md": "# Child\n\nchild-body\n",
+        }))
+        assert line in out and "child-body" not in out
+        err = capsys.readouterr().err
+        assert f"{name} in {home / 'root.md'} line 3" in err
+        assert "must stand alone on its line" in err
+
+    @pytest.mark.parametrize("name", sorted(flattener._TEMPLATE_CALLS))
+    def test_a_quoted_call_in_code_stays_quiet(self, home, capsys, name):
+        """Documentation that QUOTES a call, in a code span, a fence or an HTML
+        comment, is legitimate and must not warn."""
+        _run(home, {"root.md": (
+            f'# Root\n\nQuote `{name}("x.md")` here.\n\n'
+            f'```\nsee {name}("x.md")\n```\n\n'
+            f'Text <!-- see {name}("x.md") --> more.\n\n'
+            f'<!--\nsee {name}("x.md")\n-->\n'
+        )})
+        assert capsys.readouterr().err == ""
+
     def test_a_bad_title_format_warns_and_stays_literal(self, home, capsys):
         out = _body(_run(home, {
             "root.md": '# Root\n\n__IMPORT__("child.md", "1", ".", "no slot")\n',
