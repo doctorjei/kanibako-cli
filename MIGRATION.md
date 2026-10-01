@@ -4621,7 +4621,7 @@ bind at an ordinary destination. Grep your settings files for `canon/bible` and 
 find.
 
 **(e) The notebook entry file is `~/canon/notebook/LOCAL_CONTENTS.md`, imported by the handbook
-index.** The prereleases seeded it as `MY_CONTENTS.md` and imported it from `COLLECTION.md`; now
+index.** The prereleases seeded it as `~/canon/notebook/MY_CONTENTS.md` and imported it from `COLLECTION.md`; now
 `SYS_CONTENTS.md` imports `LOCAL_CONTENTS.md`. Three old copies survive the upgrade, and nothing
 replaces them: the system handbook store is create-if-absent, a `kanibako setup` refresh of the
 staged box mold adds and overwrites files but never removes one the package stopped shipping, and a
@@ -4639,7 +4639,7 @@ without step 2 every new box is seeded with the stale `MY_CONTENTS.md` beside `L
 2. Host-side, delete `<data>/global/template/box/home/canon/notebook/MY_CONTENTS.md`.
 3. In each box: if `~/canon/notebook/LOCAL_CONTENTS.md` does not exist, run
    `mv ~/canon/notebook/MY_CONTENTS.md ~/canon/notebook/LOCAL_CONTENTS.md`. If it exists, carry
-   anything you wrote in `MY_CONTENTS.md` into it, then delete `MY_CONTENTS.md`.
+   anything you wrote in the old file into it, then delete the old file.
 
 ### 2.71 A store set up by `1.8.0rc2` has a broken comms hook, and upgrading does not replace it
 
