@@ -26,7 +26,7 @@ texts. These are the standard, recognized Kanibako canon paths:
 
 | Path (`~/canon/notebook/`) | Description | Loaded at start by default? |
 |------------------|---------------------------------------------------------------------|-----|
-| `MY_CONTENTS.md` | Read into context at start; notebook entry point | Yes |
+| `LOCAL_CONTENTS.md` | Read into context at start; notebook entry point | Yes |
 | `archives/` | Completed plans & historical devnotes, documents, & information (i.e., "the archive" or "archives"); **authoritative historical record** | No |
 | `directives/CONVENTIONS.md` | Technical expectations (coding, architecture, commands, etc) | Typically (requires reference) |
 | `directives/` | Local directive files, as needed | Typically (requires reference) |

@@ -29,4 +29,5 @@ __IMPORTSECTION__("agent/SYS_AGENT.md")
 __IMPORTSECTION__("workset/SYS_WORKSET.md")
 __IMPORTSECTION__("box/SYS_BOX.md")
 
-The Lower Canon can be found in __IMPORTSECTION__("/home/agent/canon/notebook/LOCAL_CONTENTS.md").
+The Lower Canon:
+__IMPORTSECTION__("~/canon/notebook/LOCAL_CONTENTS.md")

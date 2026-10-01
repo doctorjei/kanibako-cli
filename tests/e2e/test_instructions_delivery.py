@@ -143,10 +143,11 @@ CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon", f"{GUEST_HOME}/canon/charter")
 # The SIXTH canon bind — the resolved plugin's own charter chapter (``canon_charter_agent``).
 # ⚑ C-CANON R2: every first-party plugin now ships ``data/rom/ROM_AGENT.md``,
 # so this bind is EMITTED on a real agent box and the charter's
-# ``agent/ROM_AGENT.md`` import resolves instead of dangling.  ⚑ The
-# ``@notebook/MY_CONTENTS.md`` import RESOLVES from the seeds half onward (the notebook
-# is seeded into the box home at create); the kickoff's pre-canon transition import is
-# the one remaining expected ``unresolved import`` line, until M-12's window closes.
+# ``agent/ROM_AGENT.md`` import resolves instead of dangling.  ⚑ The handbook
+# ``SYS_CONTENTS.md``'s ``~/canon/notebook/LOCAL_CONTENTS.md`` import RESOLVES from the
+# seeds half onward (the notebook is seeded into the box home at create); the kickoff's
+# pre-canon transition import is the one remaining expected ``unresolved import`` line,
+# until M-12's window closes.
 CANON_AGENT_DEST = f"{GUEST_HOME}/canon/charter/agent"
 
 # The HANDBOOK book's SIBLING binds (spec §2c, the seeds half).  ⚑ Only the two SYSTEM
@@ -309,7 +310,7 @@ def assert_canon_books_writable(box: str) -> None:
     )
     seeded = podman_exec(
         container_name(box),
-        ["sh", "-c", "cat ~/canon/notebook/MY_CONTENTS.md"],
+        ["sh", "-c", "cat ~/canon/notebook/LOCAL_CONTENTS.md"],
     ).stdout
     assert "Notebook" in seeded, (
         f"the seeded notebook entry point is missing in-box, got {seeded!r}"
@@ -348,7 +349,8 @@ def assert_flatten_resolves_every_import(
     M-12 dropped the kickoff's pre-canon line; that line was the last import in the
     chain pointing at a tree the box does not have.  THREE mechanisms had to land:
 
-    * the box's NOTEBOOK is seeded, so ``@notebook/MY_CONTENTS.md`` resolves;
+    * the box's NOTEBOOK is seeded, so the handbook ``SYS_CONTENTS.md``'s
+      ``~/canon/notebook/LOCAL_CONTENTS.md`` import resolves;
     * the skeleton's 0-byte IMPORT-FALLBACK files (F1) make ``SYS_CONTENTS.md``'s
       UNCONDITIONAL chapter imports resolve-to-empty on a box that supplies no
       workset/box chapter — skip-if-absent governs the BIND, not the INDEX, so

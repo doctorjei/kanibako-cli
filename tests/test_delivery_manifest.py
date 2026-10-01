@@ -177,8 +177,8 @@ WORKSET_PLANT_DEST = "home/workset-layer-marker.md"
 
 SEED_MANIFEST: tuple[SeedFile, ...] = (
     # ---- base: the box's own NOTEBOOK (agent-editable directives) ----
-    SeedFile("base", "box/home/canon/notebook/MY_CONTENTS.md",
-             "home/canon/notebook/MY_CONTENTS.md"),
+    SeedFile("base", "box/home/canon/notebook/LOCAL_CONTENTS.md",
+             "home/canon/notebook/LOCAL_CONTENTS.md"),
     SeedFile("base", "box/home/canon/notebook/directives/CONVENTIONS.md",
              "home/canon/notebook/directives/CONVENTIONS.md"),
     # ---- base: the box's own WORKBOOK (process / progress / state) ----
@@ -244,8 +244,8 @@ STORE_MANIFEST: tuple[tuple[str, str], ...] = (
      "canon:handbook/general/directives/INTERACTION.md"),
     ("agent/canon/handbook/SYS_AGENT.md",
      "agents:default/canon/handbook/SYS_AGENT.md"),
-    ("box/home/canon/notebook/MY_CONTENTS.md",
-     "template:box/home/canon/notebook/MY_CONTENTS.md"),
+    ("box/home/canon/notebook/LOCAL_CONTENTS.md",
+     "template:box/home/canon/notebook/LOCAL_CONTENTS.md"),
     ("workset/canon/handbook/SYS_WORKSET.md",
      "template:workset/canon/handbook/SYS_WORKSET.md"),
 )

@@ -211,7 +211,7 @@ class TestSeedRoutesThroughTheOneGuestTranslator:
 
         # (3) ...and the seed content is on disk there.
         assert (
-            proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"
+            proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md"
         ).is_file()
 
 

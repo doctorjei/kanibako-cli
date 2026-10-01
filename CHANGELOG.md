@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The box notebook's entry file is `~/canon/notebook/LOCAL_CONTENTS.md`, imported by the
+  handbook index `SYS_CONTENTS.md`.** In 1.8.0-rc2 it was `MY_CONTENTS.md`, imported from
+  `COLLECTION.md`. A prerelease leaves old copies in each box, in the system handbook, and in the
+  staged box mold, so the notebook does not load and new boxes get both entry files until you
+  update them; see *2.70 The packaged canon book is `charter`, and the handbook lost a level* in
+  [MIGRATION.md](MIGRATION.md).
+
 - **A settings path key set to `<None>` is reported as `<None>`, not as the word "None".** In
   1.8.0-rc2 a `config.*` or `system.*` path key written with an empty value (`config.data:`) was
   refused as *"config.data is set to 'None', which is a BARE RELATIVE path"* — the message quoted

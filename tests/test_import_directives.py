@@ -1741,7 +1741,7 @@ class TestPreplink:
         ("templates/system/canon/handbook/SYS_CONTENTS.md", "# Handbook (System Tome)"),
         ("templates/system/canon/handbook/general/SYS_GENERAL.md",
          "## System-Wide Information"),
-        ("templates/box/home/canon/notebook/MY_CONTENTS.md", "# Notebook"),
+        ("templates/box/home/canon/notebook/LOCAL_CONTENTS.md", "# Notebook"),
         ("rom/canon/charter/general/ROM_GENERAL.md", "## The Canon"),
     ]
 
@@ -2279,3 +2279,29 @@ class TestTemplateFailureModes:
             "a.md": '# A\n\n__IMPORTSECTION__("root.md")\n',
         })
         assert "import cycle" in capsys.readouterr().err
+
+
+class TestShippedCanonChain:
+    """The packaged books flattened from ``COLLECTION.md``, laid out as a box
+    sees them under ``~/canon``. ⚑ The notebook is reached ONLY through the
+    handbook's ``SYS_CONTENTS.md``; a call there that is not alone on its line
+    is copied through as prose and the notebook silently stops loading."""
+
+    BOOKS = {
+        "canon/COLLECTION.md": "rom/canon/COLLECTION.md",
+        "canon/charter": "rom/canon/charter",
+        "canon/handbook": "templates/system/canon/handbook",
+    }
+
+    def test_the_handbook_imports_the_notebook(self, home):
+        files = {"canon/notebook/LOCAL_CONTENTS.md": "# Notebook\n\nnotebook-sentinel\n"}
+        for dest, rel in self.BOOKS.items():
+            src = Path(_canon_data(rel))
+            if src.is_file():
+                files[dest] = src.read_text(encoding="utf-8")
+                continue
+            for md in src.rglob("*.md"):
+                files[f"{dest}/{md.relative_to(src)}"] = md.read_text(encoding="utf-8")
+        out = _body(_run(home, files, source="canon/COLLECTION.md"))
+        assert "notebook-sentinel" in out
+        assert "__IMPORTSECTION__" not in out

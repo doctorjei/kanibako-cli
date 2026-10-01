@@ -433,7 +433,7 @@ class TestLayeredHomeSeed:
         _seed(std, primary_proj)
         home = primary_proj.shell_path
         # Base layer — the packaged notebook AND the custom marker.
-        assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
+        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
         assert (home / "canon" / "workbook" / "state" / "devnotes.md").is_file()
         assert (home / "canon" / "workbook" / "state" / "status.md").is_file()
         assert (home / "canon" / "workbook" / "tasks" / "main.md").is_file()
@@ -507,7 +507,7 @@ class TestLayeredHomeSeed:
         # Deliberately do NOT create std.primary_workset/template.
         _seed(std, primary_proj)
         home = primary_proj.shell_path
-        assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
+        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
         assert (home / ".claude.json").is_file()
 
     def test_standalone_has_no_workset_layer(self, std, config, standalone_proj):
@@ -515,7 +515,7 @@ class TestLayeredHomeSeed:
         install_packaged_templates(std, ["claude"])
         _seed(std, standalone_proj)
         home = standalone_proj.shell_path
-        assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
+        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
         assert (home / ".claude.json").is_file()
 
     def test_a_standalone_launch_carries_its_none_workset_leaves(
@@ -619,7 +619,7 @@ class TestLayeredHomeSeed:
         (std.template / "box" / "home" / "base-only.txt").write_text("base")
         _seed(std, primary_proj, agent="")
         home = primary_proj.shell_path
-        assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
+        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
         assert (home / "base-only.txt").is_file()
         # No agent template layer.
         assert not (home / ".claude.json").exists()
@@ -978,7 +978,7 @@ class TestLayeredHomeSeed:
         self._populate(std, primary_proj)
         _seed(std, primary_proj, deliver_creds=False)
         home = primary_proj.shell_path
-        assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
+        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
         assert (home / ".claude.json").is_file()
         assert (home / "workset-only.txt").is_file()
 
@@ -1204,7 +1204,7 @@ class TestPersonaTemplateLayerThroughTheLink:
         assert not (home / "persona-layer2.txt").exists()
         assert not (home / ".claude.json").exists()
         # ...and the create still succeeded: layer 1 landed.
-        assert (home / "canon" / "notebook" / "MY_CONTENTS.md").is_file()
+        assert (home / "canon" / "notebook" / "LOCAL_CONTENTS.md").is_file()
 
     def test_a_persona_owned_template_dir_beats_the_link(
         self, std, config, primary_proj,
@@ -1612,7 +1612,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         )
         # ...and the create still succeeded: the box HOME seed landed regardless.
         assert (
-            primary_proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"
+            primary_proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md"
         ).is_file()
 
     def test_a_box_canon_repointed_inside_the_box_store_still_creates(
@@ -1644,7 +1644,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         assert (hb / "workset-only.md").read_text() == "workset"
         # The create completed: the box home seed landed too.
         assert (
-            primary_proj.shell_path / "canon" / "notebook" / "MY_CONTENTS.md"
+            primary_proj.shell_path / "canon" / "notebook" / "LOCAL_CONTENTS.md"
         ).is_file()
 
         # Step 3 ALONE also accepts the repointed dest.
@@ -1703,7 +1703,7 @@ class TestInstallPackagedTemplates:
         """``template/{box,workset}`` → ``@system.template/{box,workset}`` (STAGING)."""
         install_packaged_templates(std, ["claude", "goose", "codex"])
         assert (
-            std.template / "box" / "home" / "canon" / "notebook" / "MY_CONTENTS.md"
+            std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
         ).is_file()
         assert (
             std.template / "box" / "home" / "canon" / "workbook" / "state" / "devnotes.md"
@@ -2664,7 +2664,7 @@ class TestInstallPackagedTemplatesRefresh:
 
     def test_refresh_overwrites_changed_staged_file(self, std):
         install_packaged_templates(std, ["claude"])
-        rel = ("box", "home", "canon", "notebook", "MY_CONTENTS.md")
+        rel = ("box", "home", "canon", "notebook", "LOCAL_CONTENTS.md")
         shipped = std.template.joinpath(*rel)
         shipped.write_text("STALE USER EDIT")
         install_packaged_templates(std, ["claude"], refresh=True)
@@ -2676,7 +2676,7 @@ class TestInstallPackagedTemplatesRefresh:
         """A never-installed host: refresh ADDS every shipped file."""
         install_packaged_templates(std, ["claude"], refresh=True)
         assert (
-            std.template / "box" / "home" / "canon" / "notebook" / "MY_CONTENTS.md"
+            std.template / "box" / "home" / "canon" / "notebook" / "LOCAL_CONTENTS.md"
         ).is_file()
         assert (
             std.agents / "claude" / "template" / "box" / "home" / ".claude.json"
@@ -2735,13 +2735,13 @@ class TestPlanTemplateRefresh:
     """``plan_template_refresh`` → (added, overwritten, kept); files that are
     byte-equal OR EQUIVALENT, and user-only files, never appear."""
 
-    _STAGED = ("box", "home", "canon", "notebook", "MY_CONTENTS.md")
+    _STAGED = ("box", "home", "canon", "notebook", "LOCAL_CONTENTS.md")
 
     def test_all_added_on_empty_host(self, std):
         added, overwritten, kept = plan_template_refresh(std, ["claude"])
         assert overwritten == []
         assert kept == []
-        assert any(p.name == "MY_CONTENTS.md" for p in added)
+        assert any(p.name == "LOCAL_CONTENTS.md" for p in added)
         assert any(p.name == "SYS_CONTENTS.md" for p in added)
 
     def test_unchanged_after_install_is_empty(self, std):
