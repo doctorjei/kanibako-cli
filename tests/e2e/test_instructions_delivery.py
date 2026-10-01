@@ -145,9 +145,8 @@ CANON_UNBOUND_ROOTS = (f"{GUEST_HOME}/canon", f"{GUEST_HOME}/canon/charter")
 # so this bind is EMITTED on a real agent box and the charter's
 # ``agent/ROM_AGENT.md`` import resolves instead of dangling.  ⚑ The handbook
 # ``SYS_CONTENTS.md``'s ``~/canon/notebook/LOCAL_CONTENTS.md`` import RESOLVES from the
-# seeds half onward (the notebook is seeded into the box home at create); the kickoff's
-# pre-canon transition import is the one remaining expected ``unresolved import`` line,
-# until M-12's window closes.
+# seeds half onward (the notebook is seeded into the box home at create).  M-12 removed the
+# kickoff's pre-canon transition import, so a launch expects NO ``unresolved import`` line.
 CANON_AGENT_DEST = f"{GUEST_HOME}/canon/charter/agent"
 
 # The HANDBOOK book's SIBLING binds (spec §2c, the seeds half).  ⚑ Only the two SYSTEM

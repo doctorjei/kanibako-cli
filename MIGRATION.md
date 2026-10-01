@@ -105,12 +105,14 @@ inside boxes. In order of likely impact:
    setup wrote — §2.73 has the table). If you had changed that line to a description of your own,
    it goes back as the key: `kanibako agent set <agent> label="My Claude"`.
 5. **Upgrade the agent plugins WITH the base — never the base alone.** Upgrading only
-   `kanibako-cli` while keeping v1.7.2-era agent plugins silently deletes your boxes' entire
-   instruction/directive chain (no error is printed). Upgrade via the `kanibako` meta package,
-   or upgrade the plugins first (§2.6). ⚑ A pre-1.8.0 plugin also **will not load at all** on
-   this base — the flat core modules it imports are deleted, so kanibako skips that agent with a
-   named warning (§3.1 lists the affected plugin versions). Every plugin published **before**
-   v1.8.0 pins no upper bound on `kanibako-cli`, so this is what an unpinned
+   `kanibako-cli` while keeping v1.7.2-era agent plugins leaves those agents unusable: every
+   pre-1.8.0 plugin except `kanibako-agent-goose` `0.4.0` and `0.5.0` **will not load at all** on
+   this base, so kanibako skips that agent with a named warning (`Warning: '<plugin>' failed to
+   load and is being SKIPPED`) and the agent is unavailable (*Core module paths moved
+   (package-ification) — the flat compatibility shims are DELETED* lists the affected plugin
+   versions and why each fails). Upgrade via the `kanibako` meta package, or upgrade the plugins
+   first (see *The kickoff — upgrade base and plugins TOGETHER*). Every plugin published
+   **before** v1.8.0 pins no upper bound on `kanibako-cli`, so this is what an unpinned
    `pip install --upgrade kanibako-cli` gives you. ⚑ From v1.8.0 the plugins declare
    `kanibako-cli>=1.8.0.dev0,<2.0`, so pip refuses the mismatch instead of installing it — but that
    only protects you once the v1.8.0 plugins are the ones being resolved.
@@ -661,8 +663,7 @@ What a v1.7.2 user needs to know:
   handbook it reaches imports the notebook from `~/canon/notebook` — which an existing box never
   had seeded. Net effect: an existing box gains the new charter/handbook and **silently stops
   loading its own `~/playbook`/`~/notebook` directives.** Nothing errors, and the missing
-  notebook is skipped without a warning (an `unresolved import` warning per launch does appear
-  while base/plugin versions are mixed — §2.6).
+  notebook is skipped without a warning.
 - **Migrating an existing box is a hand job, deliberately.** The recipe:
 
   | from (box home, still on disk) | to |
@@ -835,10 +836,11 @@ the one remaining import already reaches — nothing is lost by its removal.
 What that costs you, and what to avoid:
 
 - **Base and plugins must move together.** A plugin now needs a base that binds the canon
-  (`kanibako-cli` 1.8.0 or newer), and the base needs plugins whose kickoff points at the canon.
-  Either half alone leaves a box whose kickoff resolves nothing: **every directive in every box
-  silently stops loading**, no error anywhere. The plugins do not pin a base version, so
-  `pip install -U kanibako-cli` alone puts you exactly there.
+  (`kanibako-cli` 1.8.0 or newer), and the base needs plugins built against it. A v1.7.2-era
+  plugin beside a 1.8.0 base **does not load**: kanibako skips it with a named `failed to load
+  and is being SKIPPED` warning, and that agent is unavailable. The v1.7.2 plugins pin no base
+  version, so `pip install -U kanibako-cli` alone puts you exactly there. The 1.8.0 plugins pin
+  `kanibako-cli>=1.8.0.dev0,<2.0`, so pip refuses the reverse mix.
   **Cure: upgrade via the `kanibako` meta package, or upgrade the three agent plugins and the
   base in one step.**
 - **No more launch warning.** A mid-transition install used to print one `unresolved import`
@@ -5867,9 +5869,10 @@ updating, and one of them fails at IMPORT time:**
 
 - **`probe_verdict` is REMOVED** from `kanibako.targets.base`, replaced by `probe_outcome`. It was
   public in released 1.7.2 and the published `kanibako-agent-claude` 1.7.2 imports it at module
-  scope, so an OLD plugin wheel against the NEW base raises `ImportError` out of every command that
-  resolves an agent — not just persona ones. This is why the publish ORDER below matters; upgrade
-  the plugins with the base.
+  scope, so an OLD plugin wheel fails to import on the NEW base: kanibako skips that agent with a
+  named warning (`Warning: '<plugin>' failed to load and is being SKIPPED`) and the agent is
+  unavailable — persona or not. This is why the publish ORDER below matters; upgrade the plugins
+  with the base.
 - **`Target.read_persona_settings`** returns `PersonaReadOutcome` (a tri-state: usable config ·
   present-but-unusable with a named cause · this harness has no persona reader) instead of
   `PersonaSettings | None`.
@@ -5959,22 +5962,25 @@ rows in Python and gives `model` any default — a string, `""` or `None` — no
 `agent.default.model` with it; write `default=UNSET` to let the user's value through.
 
 The three agent plugins (`kanibako-agent-claude`, `-codex`, `-goose`) version and publish
-independently of the base and depend on **`kanibako-cli`** with **no version pin**; only the
-`kanibako` meta package moves the set together. That makes ordering load-bearing:
+independently of the base and depend on **`kanibako-cli`** — with **no version pin** through
+v1.7.2, and pinned to `kanibako-cli>=1.8.0.dev0,<2.0` from v1.8.0; only the `kanibako` meta
+package moves the set together. That makes ordering load-bearing:
 
 1. **At the v1.8.0 (canon) release: publish the three plugins FIRST, then the base.** A new
-   base beside an old published plugin delivers the plugin's legacy-only kickoff, which
-   resolves nothing — every box's directive chain silently gone. Publishing plugins first
-   makes that combination unreachable for anyone tracking releases.
-2. **v1.8.0-era plugins keep shipping their kickoff** (`data/KICKOFF.md`, with both the canon
-   and legacy imports) and the `managed_pointer` binding. The base's new kickoff bind
-   **yields** whenever the resolved target declares a delivery at that destination (keyed on
-   the destination, not the key name), so the overlap cannot collide.
+   base cannot load most old published plugins (see *Core module paths moved (package-ification)
+   — the flat compatibility shims are DELETED*): kanibako skips that agent with a named warning
+   (`Warning: '<plugin>' failed to load and is being SKIPPED`) and the agent is unavailable.
+   Publishing plugins first makes that combination unreachable for anyone tracking releases.
+2. **v1.8.0-era plugins keep shipping their kickoff** (`data/KICKOFF.md`, carrying the one
+   canon import `@~/canon/COLLECTION.md`) and the `managed_pointer` binding. The base's new
+   kickoff bind **yields** whenever the resolved target declares a delivery at that destination
+   (keyed on the destination, not the key name), so the overlap cannot collide.
 3. **The deletion release — the release after v1.8.0:** delete `data/KICKOFF.md` +
-   `managed_pointer` from the plugin **and, in the same release, pin `kanibako-cli >= 1.8.0`**
-   in the plugin's `pyproject.toml`. The pin is not optional: without it, a plugin-only
-   upgrade against an older base ships **no kickoff at all** — total, silent directive loss.
-   With the pin, the worst case is a loud pip resolution failure. Only after those releases
+   `managed_pointer` from the plugin. The pin this needs **already shipped** with v1.8.0: each
+   plugin's `pyproject.toml` declares `dependencies = ["kanibako-cli>=1.8.0.dev0,<2.0"]` (goose
+   adds `"PyYAML>=6.0"`). The pin is not optional: without it, a plugin-only upgrade against an
+   older base ships **no kickoff at all** — total, silent directive loss. With the pin, the worst
+   case is a loud pip resolution failure. Only after those releases
    are *published* may the base's transition gate (and the `data/template` fallback arm, item
    4) be removed.
 4. **Data layout in the plugin packages (shipped):** the payload dir is now `data/base/`
