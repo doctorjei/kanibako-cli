@@ -667,9 +667,11 @@ _TEMPLATE_CALLS: dict[str, tuple[bool, str | None]] = {
 # call site sits alone on its own line, and a line-anchored test cannot mistake
 # prose, a table row or a quoted example for a call. Leading whitespace is kept
 # and put back in front of every line the call expands to.
+_TEMPLATE_NAME = "(?:" + "|".join(map(re.escape, _TEMPLATE_CALLS)) + ")"
 _TEMPLATE_CALL_RE = re.compile(
-    r"^(?P<indent>[ \t]*)(?P<name>__(?:IMPORT|LINK)(?:SECTION)?__)\s*\(.*\)\s*$"
+    rf"^(?P<indent>[ \t]*)(?P<name>{_TEMPLATE_NAME})\s*\(.*\)\s*$"
 )
+_TEMPLATE_MENTION_RE = re.compile(rf"(?P<name>{_TEMPLATE_NAME})\s*\(")
 
 
 def _template_literal(node: ast.expr, param: str, name: str) -> object:
@@ -740,6 +742,22 @@ def parse_template_call(line: str) -> tuple[str, str, dict[str, object]] | None:
     if "target" not in args:
         raise TemplateCallError(f"{name}: no target")
     return name, m.group("indent"), args
+
+
+def misplaced_template_call(line: str) -> str | None:
+    """The name of a call on *line* that is NOT the whole line, else ``None``.
+
+    Such a call is never run -- only a whole-line call is -- so it would pass
+    through as literal prose with the content it names silently missing. One
+    inside a code span is a QUOTED example and does not count.
+    """
+    if _TEMPLATE_CALL_RE.match(line):
+        return None
+    spans = code_span_ranges(line)
+    for m in _TEMPLATE_MENTION_RE.finditer(line):
+        if not any(s <= m.start() < e for s, e in spans):
+            return m.group("name")
+    return None
 
 
 def split_trailing_punct(text: str) -> tuple[str, str]:
@@ -1345,7 +1363,7 @@ class Flattener:
         # they neither share a shallowest depth nor renumber into each other.
         enclosing: int | None = None
         listing = 0
-        for raw_line in text.splitlines():
+        for lineno, raw_line in enumerate(text.splitlines(), 1):
             if in_fence:
                 # Inside a fence everything is literal -- including any comment
                 # delimiters, which is why comment state is not touched here --
@@ -1380,6 +1398,12 @@ class Flattener:
             if hm:
                 enclosing = len(hm.group("hashes"))
                 listing += 1
+            misplaced = misplaced_template_call(line)
+            if misplaced is not None:
+                self.warnings.append(
+                    f"{misplaced} in {importing_file} line {lineno} was NOT run: "
+                    "a template call must stand alone on its line"
+                )
             processed, import_only = self._process_line(
                 line, importing_file, enclosing, listing
             )

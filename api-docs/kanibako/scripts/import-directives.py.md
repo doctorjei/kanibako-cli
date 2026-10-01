@@ -27,7 +27,9 @@ _TRAILING_PUNCT = '.,;:!?)]}\'"'
 _GLOB_MAGIC_RE = re.compile('[*?\\[]')
 _TEMPLATE_PARAMS = ('target', 'source', 'sep', 'title_fmt')
 _TEMPLATE_CALLS: dict[str, tuple[bool, str | None]] = {'__IMPORT__': (True, None), '__LINK__': (False, None), '__IMPORTSECTION__': (True, SECTION_TITLE_FMT), '__LINKSECTION__': (False, SECTION_TITLE_FMT)}
-_TEMPLATE_CALL_RE = re.compile('^(?P<indent>[ \\t]*)(?P<name>__(?:IMPORT|LINK)(?:SECTION)?__)\\s*\\(.*\\)\\s*$')
+_TEMPLATE_NAME = '(?:' + '|'.join(map(re.escape, _TEMPLATE_CALLS)) + ')'
+_TEMPLATE_CALL_RE = re.compile(f'^(?P<indent>[ \\t]*)(?P<name>{_TEMPLATE_NAME})\\s*\\(.*\\)\\s*$')
+_TEMPLATE_MENTION_RE = re.compile(f'(?P<name>{_TEMPLATE_NAME})\\s*\\(')
 _USAGE = "usage: import-directives.py SOURCE DEST [--manifest PATH]   (DEST '-' = stdout)\n       import-directives.py --additional-context SOURCE\n"
 ```
 
@@ -44,6 +46,7 @@ def super_of(entry: str, sep: str='.') -> str
 def evaluate_expression(expr: str, scope: dict[str, object]) -> object
 def render_format(fmt: str, title: str, scope: dict[str, object]) -> str
 def parse_template_call(line: str) -> tuple[str, str, dict[str, object]] | None
+def misplaced_template_call(line: str) -> str | None
 def split_trailing_punct(text: str) -> tuple[str, str]
 def build_manifest(fl: Flattener, seed: Path, dest: Path, output: str) -> dict
 def flatten(source: str, dest: str | None, *, additional_context: bool=False, manifest: str | None=None) -> int

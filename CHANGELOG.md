@@ -250,6 +250,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A canon import call that shares its line with other text is reported.** In 1.8.0-rc2 a line
+  such as `See __IMPORTSECTION__("notebook.md").` was copied into the agent's instructions as
+  text, so the file it named never loaded, and nothing was printed. The call is still not run, but
+  each launch now warns on stderr, naming the file and line: a call must stand alone on its line.
+  A call quoted in a code span, a code block or an HTML comment is not reported.
+
 - **A leftover `agents/default/` folder is refused instead of read as an agent's store.** In
   1.8.0-rc2 a folder named for the reserved any-agent tier, sitting beside your real agents, was
   read at exit 0 by `agent get`, `agent show`, `agent info` and `agent list`; `agent set default
