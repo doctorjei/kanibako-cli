@@ -522,8 +522,21 @@ def main(argv: list[str] | None = None) -> None:
         # bands raise ConfigError (a KanibakoError), which we convert to the same
         # clean rc1 every other KanibakoError path produces (mirrors the func()
         # handler below — this call is OUTSIDE that try block).
+        #
+        # Lazy init: create config + data dirs on first run.
+        # Skip for agent (config-facing) and setup, and for the runtime
+        # box subcommands helper/fork (which run inside containers).
+        # ⚑ The init shares this handler: its ``load_std_paths()`` read refuses a bad
+        # Layer-2 path key (a ``null`` ``system.*`` path) with a ConfigError, and on a
+        # first run nothing else catches it.
+        skip_init = args.command in ("agent", "setup") or (
+            args.command == "box"
+            and getattr(args, "box_command", None) in ("helper", "fork")
+        )
         try:
             _setup_nudge(args)
+            if not skip_init:
+                _ensure_initialized()
         except KanibakoError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
@@ -532,16 +545,6 @@ def main(argv: list[str] | None = None) -> None:
             args.agent_args = post_dash or []
         elif args.command == "shell":
             args.shell_args = post_dash or []
-
-        # Lazy init: create config + data dirs on first run.
-        # Skip for agent (config-facing) and setup, and for the runtime
-        # box subcommands helper/fork (which run inside containers).
-        skip_init = args.command in ("agent", "setup") or (
-            args.command == "box"
-            and getattr(args, "box_command", None) in ("helper", "fork")
-        )
-        if not skip_init:
-            _ensure_initialized()
 
     func = getattr(args, "func", None)
     if func is None:
