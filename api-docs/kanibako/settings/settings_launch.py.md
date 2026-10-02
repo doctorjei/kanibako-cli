@@ -51,7 +51,7 @@ def meta_agent_identity_floor(agent_name: str, agent_real_name: str | None, agen
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
 def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[SettingsFile], subject: ResolveSubject) -> None
-def internal_bind_refusals(arm: str, entries: dict[str, object], *, where: str, floor_entries: dict[str, object] | None=None) -> list[str]
+def internal_bind_refusals(arm: str, entries: dict[str, object], *, where: str, when: Literal['write', 'stored'], floor_entries: dict[str, object] | None=None) -> list[str]
 def depends_on_the_box(refs: Collection[str], *, in_workset: bool) -> bool
 @overload
 def resolve_inputs(*, subject: Literal[ResolveSubject.BOX], std, agent_name: str, system_path: Path | None, proj, ws: None=None) -> LaunchInputs

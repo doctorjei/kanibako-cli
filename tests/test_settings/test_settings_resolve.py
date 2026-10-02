@@ -911,19 +911,62 @@ class TestADestinationIsFullyCanonicalized:
     def test_internal_bind_dest_spelled_with_dot_dot_is_refused(self) -> None:
         # Before this change: dotdot and doubleslash returned [] (the raw-text
         # comparison missed them); plain returned 1 refusal line.
+        # ⚑ ``when="stored"`` is REQUIRED and has no default: these entries are ALREADY
+        # IN a file, so this is the resolve's STORED-time judgment, not a verb's.
         from kanibako.settings.settings_launch import internal_bind_refusals
 
-        plain = internal_bind_refusals("box.bindings.ro", {"/opt/kanibako/kanibako": ["/x"]}, where="t.yaml")
+        plain = internal_bind_refusals(
+            "box.bindings.ro", {"/opt/kanibako/kanibako": ["/x"]}, where="t.yaml", when="stored"
+        )
         dotdot = internal_bind_refusals(
-            "box.bindings.ro", {"/opt/./kanibako/kanibako/../kanibako": ["/x"]}, where="t.yaml"
+            "box.bindings.ro", {"/opt/./kanibako/kanibako/../kanibako": ["/x"]},
+            where="t.yaml", when="stored",
         )
         doubleslash = internal_bind_refusals(
-            "box.bindings.ro", {"/opt/kanibako//kanibako": ["/x"]}, where="t.yaml"
+            "box.bindings.ro", {"/opt/kanibako//kanibako": ["/x"]},
+            where="t.yaml", when="stored",
         )
         # All three now produce exactly one refusal line.
         assert len(plain) == 1
         assert len(dotdot) == 1
         assert len(doubleslash) == 1
+
+    def test_mask_arm_carries_both_wordings_and_when_picks_one(self) -> None:
+        """⚑ THE MASK ARM ANSWERS BOTH ``when`` VALUES, and this is the only place either
+        one is pinned directly. ``share add`` cannot reach the write form — it writes
+        only ``bindings``, and a mask is not a dest-keyed entry it can be handed — so a
+        direct call is what keeps that arm from being untested text waiting for a verb
+        that does not exist yet.
+
+        The STORED text is pinned END-TO-END elsewhere, through the resolve rather than
+        this carrier: ``tests/test_canon_delivery.py``
+        ``TestInternalBindEntryRefusal::test_a_mask_above_an_internal_bind_refuses_naming_what_it_would_remove``
+        drives ``_refuse_internal_bind_entries`` and asserts the same sentence. This test
+        pins what that one cannot reach — the ``when="write"`` half, and the claim that
+        ``when`` changes the WORDING and nothing else.
+        """
+        from kanibako.settings.settings_launch import internal_bind_refusals
+
+        mask = {"/opt/kanibako": True}
+        stored = internal_bind_refusals("box.masks", mask, where="t.yaml", when="stored")
+        write = internal_bind_refusals("box.masks", mask, where="t.yaml", when="write")
+
+        # ⚑ THE JUDGMENT IS IDENTICAL either way — one entry refuses, and it is the same
+        # entry — so a change that made the write form refuse MORE (or less) is red here
+        # even when the words still look right.
+        assert len(stored) == len(write) == 1
+        assert stored[0] == (
+            "box.masks[/opt/kanibako] in t.yaml would remove the internal kanibako bind "
+            "at /opt/kanibako/kanibako (spec §2c), which is not suppressible; mask a "
+            "narrower path."
+        )
+        # ⚑ The cure the write form must NOT give, for the same reason the dest-keyed
+        # arm has one: nothing was written, so there is nothing to mask away.
+        assert write[0] == (
+            "box.masks[/opt/kanibako] cannot be added to t.yaml: it would remove the "
+            "internal kanibako bind at /opt/kanibako/kanibako (spec §2c), which is not "
+            "suppressible. Nothing was written; mask a narrower path."
+        )
 
     def test_controls_unchanged(self) -> None:
         from kanibako.settings.settings_resolve import GUEST_HOME, normalize_bind_dest

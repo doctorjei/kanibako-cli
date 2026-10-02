@@ -1424,6 +1424,7 @@ def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
             refusals.extend(internal_bind_refusals(
                 arm, entries,
                 where=str(path) if path is not None else "a settings file",
+                when="stored",
                 floor_entries=floor_entries if isinstance(floor_entries, dict) else None,
             ))
     if refusals:
@@ -1432,6 +1433,7 @@ def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
 
 def internal_bind_refusals(
     arm: str, entries: dict[str, object], *, where: str,
+    when: Literal["write", "stored"],
     floor_entries: dict[str, object] | None = None,
 ) -> list[str]:
     """One refusal line per entry of the dest-keyed map *entries* at key *arm* that would
@@ -1441,6 +1443,14 @@ def internal_bind_refusals(
     (:func:`_refuse_internal_bind_entries`) and a WRITE verb (``workset share add``) both call
     it, so a verb cannot store what the next resolve refuses.  *where* names the file.  An
     entry equal to its *floor_entries* counterpart is the floor's own bind and is skipped.
+
+    ⚑ *when* is REQUIRED and has NO DEFAULT: it says whether *entries* are being WRITTEN NOW
+    or are ALREADY STORED, which decides the WORDING and nothing else — the judgment and the
+    set of refusing entries are identical either way.  ``"stored"`` is the resolve's text,
+    byte for byte.  ``"write"`` cannot repeat it: ``workset share add`` runs here BEFORE it
+    writes, so "remove the entry" would name an entry that was never written, in a file that
+    may not exist, and a user cannot follow it.  The write form says nothing was written
+    instead, and names the choice the user still has.
     """
     from kanibako.settings.store_collapse import is_within
 
@@ -1454,12 +1464,38 @@ def internal_bind_refusals(
             continue
         norm = normalize_bind_dest(dest)
         if norm in internal:
+            # ⚑ THE WRITE FORM of the arm below, and the reason *when* exists. Same
+            # refusal, told to the person who has not written yet.
+            if when == "write":
+                refusals.append(
+                    f"{entry_label(arm, dest)} cannot be added to {where}: its "
+                    f"destination is that of an internal kanibako bind (spec §2c), which "
+                    f"is not repointable. Nothing was written; choose another destination."
+                )
+                continue
             refusals.append(
                 f"{entry_label(arm, dest)} in {where} is at the destination of an "
                 f"internal kanibako bind (spec §2c), not repointable; remove the entry."
             )
             continue
         if not is_mask or value is None:
+            continue
+        # ⚑ THE SAME SPLIT ON THE MASK ARM. Unreachable from ``share add``, which writes
+        # only ``bindings`` — a mask is not a dest-keyed entry it can be handed — so the
+        # write form stands for the day a verb does write one: the arm must not answer it
+        # with a cure for an entry that was never written. BOTH wordings are pinned
+        # directly by ``tests/test_settings/test_settings_resolve.py``
+        # (``TestADestinationIsFullyCanonicalized::test_mask_arm_carries_both_wordings_and_when_picks_one``),
+        # which is the only test that reaches this arm's write form; the STORED text below
+        # is pinned end-to-end through the resolve by ``tests/test_canon_delivery.py``
+        # (``TestInternalBindEntryRefusal::test_a_mask_above_an_internal_bind_refuses_naming_what_it_would_remove``).
+        if when == "write":
+            refusals.extend(
+                f"{entry_label(arm, dest)} cannot be added to {where}: it would remove "
+                f"the internal kanibako bind at {hidden} (spec §2c), which is not "
+                f"suppressible. Nothing was written; mask a narrower path."
+                for hidden in internal if is_within(hidden, norm)
+            )
             continue
         refusals.extend(
             f"{entry_label(arm, dest)} in {where} would remove the internal "

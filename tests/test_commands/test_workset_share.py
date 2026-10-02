@@ -97,12 +97,23 @@ class TestShareAdd:
     def test_add_at_an_internal_bind_dest_is_refused_before_writing(
         self, config_file, tmp_home, workset, capsys, mode, suffix
     ):
-        """An internal bind's dest is not repointable (spec §2c): the WRITE refuses with
-        the resolve's own message, so ``share list --effective`` never meets it later.
+        """An internal bind's dest is not repointable (spec §2c): the WRITE refuses from the
+        SAME carrier, and with its OWN wording — nothing was written, so there is nothing
+        to remove — so ``share list --effective`` never meets it later.
+
+        The write form exists because the resolve's "remove the entry" is an instruction
+        the user cannot follow here: the entry was never written, and the file may not
+        exist. The STORED wording is untouched by this arm, and it is pinned — byte for
+        byte — by ``tests/test_canon_delivery.py``
+        ``TestLaunchWiring::test_a_user_entry_at_an_internal_dest_refuses_naming_it_and_its_file``
+        ("not repointable; remove the entry"), which reaches it through the resolve, not
+        through this verb.
 
         DERIVED from ``internal_bind_keys`` (P13); a trailing ``/`` spelling is the same dest.
         MUTATION: drop the ``internal_bind_refusals`` call in ``run_share_add`` -> rc 0 and
-        the file gains the entry.
+        the file gains the entry. Mutate only ``when="write"`` on that call -> rc 1 with
+        the resolve's "remove the entry" for an entry this verb never wrote, which this
+        test catches on the "remove the entry" assertion below.
         """
         from kanibako.settings.core_defaults import internal_bind_keys
 
@@ -115,9 +126,12 @@ class TestShareAdd:
             assert rc == 1
             err = capsys.readouterr().err
             assert (
-                f"workset.bindings.{mode}[{dest}] in {ws_file} is at the destination "
-                "of an internal kanibako bind (spec §2c)"
+                f"workset.bindings.{mode}[{dest}] cannot be added to {ws_file}: its "
+                "destination is that of an internal kanibako bind (spec §2c), which is "
+                "not repointable. Nothing was written; choose another destination."
             ) in err
+            # ⚑ The resolve's cure, which the WRITE must not give: nothing was written.
+            assert "remove the entry" not in err
         after = ws_file.read_bytes() if ws_file.exists() else None
         assert after == before
 
