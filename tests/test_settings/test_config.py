@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -1469,26 +1470,7 @@ class TestMergedConfigKeyspaceResolve:
     through the KEYSPACE — one resolve behind every consumer, agent-lessly.
     """
 
-    def _global(self, tmp_path, monkeypatch):
-        """An EMPTY Layer-1 file + the XDG env the resolve reads.
-
-        ⚑ It used to write ``box.image=global-img:1`` in here, because the config
-        file's ``[box]`` table was the resolve's FLOOR. Jei retired that on
-        2026-08-26 ("kanibako_config.yaml <-- cannot have settings. Period."), so the
-        helper plants nothing and the cases below name their own tier.
-        """
-        from kanibako.settings.config import write_global_config
-
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        (tmp_path / "config").mkdir(exist_ok=True)
-        gp = tmp_path / "config" / CONFIG_FILENAME
-        write_global_config(gp)
-        return gp
-
-    def test_floor_is_the_declared_default_not_the_layer1_file(
-        self, tmp_path, monkeypatch,
-    ):
+    def test_floor_is_the_declared_default_not_the_layer1_file(self, config_file):
         """The resolve's floor is the DECLARED DEFAULT — and a ``[box]`` table in the
         Layer-1 file does not displace it.
 
@@ -1503,7 +1485,7 @@ class TestMergedConfigKeyspaceResolve:
         the floor is measured on a CLEAN file. Which value the planted one loses to is
         no longer a question the code can be asked.
         """
-        gp = self._global(tmp_path, monkeypatch)
+        gp = config_file
         gp.write_text("")
         merged = load_merged_config(None)
         assert merged.box_image == KanibakoConfig().box_image
@@ -1513,8 +1495,7 @@ class TestMergedConfigKeyspaceResolve:
             load_merged_config(None)
         assert "box.image" in str(exc.value)
 
-    def test_box_tier_beats_workset_beats_global(self, tmp_path, monkeypatch):
-        self._global(tmp_path, monkeypatch)
+    def test_box_tier_beats_workset_beats_global(self, tmp_path, config_file):
         ws = tmp_path / "wconfig.yaml"
         ws.write_text("box:\n  image: ws-img:2\n")
         bt = tmp_path / BOX_META_FILE
@@ -1524,10 +1505,9 @@ class TestMergedConfigKeyspaceResolve:
         assert merged.box_image == "box-img:3"
         assert merged.box_shell == "zsh"  # box.shell rides the same resolve
 
-    def test_system_settings_file_box_table_now_resolves(self, tmp_path, monkeypatch):
+    def test_system_settings_file_box_table_now_resolves(self, tmp_path, config_file):
         """``kanibako system set box.image=…`` has always written the
         ``box:`` table of global/settings.yaml — stranded before B6, live now."""
-        self._global(tmp_path, monkeypatch)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text("box:\n  image: sys-img:4\n")
@@ -1537,8 +1517,7 @@ class TestMergedConfigKeyspaceResolve:
         bt.write_text("box:\n  image: box-img:3\n")
         assert load_merged_config(bt).box_image == "box-img:3"
 
-    def test_cli_level_outranks_every_file(self, tmp_path, monkeypatch):
-        self._global(tmp_path, monkeypatch)
+    def test_cli_level_outranks_every_file(self, tmp_path, config_file):
         bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  image: box-img:3\n")
         merged = load_merged_config(bt,
@@ -1547,17 +1526,16 @@ class TestMergedConfigKeyspaceResolve:
         assert merged.box_image == "cli-img:9"
         assert merged.box_share_images is True
 
-    def test_share_images_resolves_as_a_bool_from_files(self, tmp_path, monkeypatch):
-        self._global(tmp_path, monkeypatch)
+    def test_share_images_resolves_as_a_bool_from_files(self, tmp_path, config_file):
         bt = tmp_path / BOX_META_FILE
         bt.write_text("box:\n  share_images: true\n")
         assert load_merged_config(bt).box_share_images is True
 
-    def test_agentless_resolve_without_any_agent(self, tmp_path, monkeypatch):
+    def test_agentless_resolve_without_any_agent(self, config_file, tmp_path):
         """The resolve is AGENT-LESS by construction (the ``kanibako shell``
         requirement): nothing here selects or consults an agent, and a host with
         zero agents still resolves the box scalars."""
-        self._global(tmp_path, monkeypatch)
+        assert Path.home() == tmp_path / "home"
         merged = load_merged_config(None)
         assert merged.box_image == KanibakoConfig().box_image
 
@@ -1633,17 +1611,12 @@ class TestMalformedSettingsFileIsNamed:
         assert load_doc(good) == {"box": {"image": "ok:1"}}
 
     def test_boxless_merged_resolve_raises_the_named_error(
-        self, tmp_path, monkeypatch,
+        self, tmp_path, config_file,
     ):
         """The BOX-LESS shape (``load_merged_config(None)``) — the one every
         rig/setup/baseline call site uses — surfaces the named error."""
         from kanibako.errors import ConfigError
 
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        (tmp_path / "config").mkdir(exist_ok=True)
-        gp = tmp_path / "config" / CONFIG_FILENAME
-        write_global_config(gp)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text(self._CORRUPT)
@@ -1653,7 +1626,7 @@ class TestMalformedSettingsFileIsNamed:
         assert str(ssp) in str(exc.value)
 
     def test_boxless_verb_exits_rc1_with_a_clean_message(
-        self, tmp_path, monkeypatch, capsys,
+        self, tmp_path, config_file, capsys,
     ):
         """E2E through ``main(["rig", "list"])``: rc1 + ``Error: …``, no traceback.
 
@@ -1665,10 +1638,6 @@ class TestMalformedSettingsFileIsNamed:
 
         from kanibako.cli import main
 
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        (tmp_path / "config").mkdir(exist_ok=True)
-        write_global_config(tmp_path / "config" / CONFIG_FILENAME)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text(self._CORRUPT)
@@ -1780,16 +1749,12 @@ class TestRepeatedKeyIsRefused:
         good.write_text("base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n")
         assert load_doc(good) == {"base": {"a": 1}, "box": {"a": 2}}
 
-    def test_boxless_verb_exits_rc1_naming_the_repeat(self, tmp_path, monkeypatch, capsys):
+    def test_boxless_verb_exits_rc1_naming_the_repeat(self, tmp_path, config_file, capsys):
         """Through ``main(["rig", "list"])``: a repeated key in the system settings file is rc1."""
         from unittest.mock import patch
 
         from kanibako.cli import main
 
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        (tmp_path / "config").mkdir(exist_ok=True)
-        write_global_config(tmp_path / "config" / CONFIG_FILENAME)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text("box:\n  image: a\nbox:\n  image: b\n")
@@ -1846,16 +1811,12 @@ class TestNestedWriteRefusesANonTableSection:
 
     # The verb resolves the cascade before writing, so the census sees the fixture's ``box.env: 7``.
     @pytest.mark.writes_undeclared("box.env")
-    def test_set_verb_exits_rc1_and_keeps_the_value(self, tmp_path, monkeypatch, capsys):
+    def test_set_verb_exits_rc1_and_keeps_the_value(self, tmp_path, config_file, capsys):
         """Through ``main(["system", "set", …])``: rc1 + ``Error: …``, the stored value untouched."""
         from unittest.mock import patch
 
         from kanibako.cli import main
 
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        (tmp_path / "config").mkdir(exist_ok=True)
-        write_global_config(tmp_path / "config" / CONFIG_FILENAME)
         ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
         ssp.parent.mkdir(parents=True)
         ssp.write_text("box:\n  env: 7\n")
