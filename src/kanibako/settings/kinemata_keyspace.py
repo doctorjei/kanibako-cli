@@ -32,7 +32,7 @@ from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.settings_resolve import SettingsError, match_ref
 
 if TYPE_CHECKING:
-  from kinemata.contract import Entry  # type: ignore[import-not-found]
+  from kinemata.contract import Entry  # type: ignore[import-not-found, import-untyped]
 
 #: One identifier segment, shared by the candidate syntax and the VAR matchers.
 _SEG = r"[A-Za-z_][A-Za-z0-9_]*"
