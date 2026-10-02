@@ -459,20 +459,26 @@ pseudo-agent -- `--agent shell`, or `kanibako box set pref.system.agent=shell`
 -- and the box launches `box.shell` with no agent binary and no credentials.
 `shell` ships with `kanibako-cli` itself, so it resolves on every install.
 
-Both spellings can run a command, and what you get back differs.
-`kanibako shell -- '<cmd>'` is the **one-off**: it is ephemeral and returns the
-command's exit status. `kanibako start --agent shell -- '<cmd>'` is
-**persistent**, as `--agent shell` always is -- the tmux pane closes when the
-command ends and the launch exits 0 whatever the command returned, so reach for
-the one-off when the status or the output matters. No subcommand is needed:
-`kanibako --agent shell -- '<cmd>'` dispatches to `start` and behaves as that
-spelling does. Adding `--detach` runs the command as the keep-alive, so
-`--agent shell --detach -- '<cmd>'` stops the box when the command ends, where a
-bare `--detach` box stays up.
+This resolution is **uniform** across every agent-requiring command (`start`,
+`box start`, `agent reauth`, ...). `kanibako shell` is the **sole** exception: it
+needs no agent and never errors on resolution -- the way to reach a box's container
+when no agent is configured.
+
+`kanibako shell -- '<cmd>'` and `kanibako start --agent shell -- '<cmd>'` both run
+a command, and what you get back differs. `kanibako shell -- '<cmd>'` is the
+**one-off**: it is ephemeral and returns the command's exit status.
+`kanibako start --agent shell -- '<cmd>'` is **persistent**, as `--agent shell`
+always is -- the tmux pane closes when the command ends and the launch exits 0
+whatever the command returned, so reach for the one-off when the status or the
+output matters. No subcommand is needed: `kanibako --agent shell -- '<cmd>'`
+dispatches to `start` and behaves as that spelling does. Adding `--detach` runs
+the command as the keep-alive, so `--agent shell --detach -- '<cmd>'` stops the
+box when the command ends, where a bare `--detach` box stays up.
 
 Shell syntax must be **one quoted word**: `kanibako shell -- ls '|' wc` passes
 `|` to `ls`, so write `kanibako shell -- 'ls | wc'`. Several words are joined the
-way a shell would quote them, and nothing is stored.
+way a shell would quote them, and that joined command is handed to the box as an
+argument -- it is not written to a file.
 
 Every `shell` launch (`--agent shell`, `kanibako shell`, `--entrypoint`) renders
 the canon into `~/AGENTS.md`, as a real agent renders it into its own
@@ -483,11 +489,6 @@ move it, or name a different file with the key
 See [MIGRATION.md](MIGRATION.md) for both: *"A plain-shell box writes the canon
 to `~/AGENTS.md`"* and *"`kanibako shell -- <cmd>` runs your box's login shell,
 and `--agent shell -- <cmd>` runs the command"*.
-
-This resolution is **uniform** across every agent-requiring command (`start`,
-`box start`, `agent reauth`, ...). `kanibako shell` is the **sole** exception: it
-needs no agent and never errors on resolution -- the way to reach a box's container
-when no agent is configured.
 
 ### Choosing a default agent
 
@@ -1059,7 +1060,7 @@ is `.yaml`.
 | `model` | platform default | Agent model name |
 | `access` | `full` | Permission tier -- `restricted`, `editing` or `full` |
 | `box.image` | `kanibako-oci:latest` | Container rig |
-| `box.shell` | (auto-detect) | Login shell for a launch that runs no agent program -- `kanibako shell`, or `kanibako start` at a box whose agent has no entrypoint of its own (`--agent shell`). An explicit `--entrypoint` runs *that* instead. Resolved `box.shell` → the image's recorded login shell → `sh`. The value is a **program path** (`/bin/bash`) and one word, so `bash -l` is refused on a persistent launch. With `-- <cmd>` the command runs as `<shell> -lc "<cmd>"`, so a shell that rejects `-lc` (csh, tcsh) needs `box.shell: /bin/sh` |
+| `box.shell` | (auto-detect) | Login shell for a launch that runs no agent program -- `kanibako shell`, or `kanibako start` at a box whose agent has no entrypoint of its own (`--agent shell`). An explicit `--entrypoint` runs *that* instead. Resolved `box.shell` → the image's recorded login shell → `sh`. The value is a **program path** (`/bin/bash`) and one word: on a persistent launch a `box.shell` carrying arguments (`bash -l`) **fails**, because the render step runs that value as one program word (`exec "$@"`) and the box finds no program *named* `bash -l`. With `-- <cmd>` the command runs as `<shell> -lc "<cmd>"`, so a shell that rejects `-lc` (csh, tcsh) needs `box.shell: /bin/sh` |
 | `pref.system.agent` | (unset) | Agent target plugin requested for this box or workset; part of the resolution cascade (see [Agent Selection](#agent-selection)) |
 | `box.share_images` | | Share host images into the box |
 | `box.auth.global_enabled` | `true` | The box's host-global credential-share opt-in (`true`) vs. per-box (`false`) |
