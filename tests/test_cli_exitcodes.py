@@ -198,6 +198,121 @@ class TestLazyInit:
         assert "system.state" in err
         assert "Traceback" not in err
 
+    def test_refused_first_run_leaves_no_config_so_next_run_initializes(self, tmp_home, capsys):
+        """A first-run refusal leaves no kanibako.cfg; fixing settings.yaml lets the next run initialize.
+
+        Regression test: before the fix, _ensure_initialized() wrote kanibako.cfg BEFORE calling
+        load_std_paths(), so a ConfigError on first run left the file on disk.  The next run then
+        returned early at the "already initialized" check and never installed templates or shell
+        completion.
+        """
+        from kanibako.cli import main
+        from kanibako.launch.templates import PACKAGED_BOX_TEMPLATE
+
+        settings = tmp_home / "data" / "kanibako" / "global" / "settings.yaml"
+        settings.parent.mkdir(parents=True)
+        settings.write_text("system:\n  state: null\n")
+
+        config_file = tmp_home / "config" / CONFIG_FILENAME
+
+        # First run: refused with exit 1, no config file left behind.
+        with (
+            patch("kanibako.cli.build_parser") as mock_bp,
+            patch("kanibako.cli._setup_nudge"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            args = MagicMock()
+            args.command = "box"
+            args.box_command = "list"
+            mock_bp.return_value.parse_args.return_value = args
+            main(["box", "list"])
+        assert exc_info.value.code == 1
+        assert not config_file.exists(), "kanibako.cfg must not exist after a refused first run"
+
+        # Fix the bad settings key.
+        settings.write_text("system:\n  state: ~/.local/state/kanibako\n")
+
+        # Second run: succeeds and creates the config file AND installs templates.
+        install_completion = patch("kanibako.commands.install._install_completion")
+        with (
+            patch("kanibako.cli.build_parser") as mock_bp,
+            patch("kanibako.cli._setup_nudge"),
+            install_completion as mock_completion,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            args = MagicMock()
+            args.command = "box"
+            args.box_command = "list"
+            args.func.return_value = 0
+            mock_bp.return_value.parse_args.return_value = args
+            main(["box", "list"])
+        assert exc_info.value.code == 0
+        assert config_file.exists(), "kanibako.cfg must exist after a successful run"
+        # Must have called completion setup and installed at least one packaged template.
+        mock_completion.assert_called_once()
+        # std.template resolves to .../kanibako/global/template (system.template path).
+        data_kanibako = tmp_home / "data" / "kanibako"
+        assert (data_kanibako / "global" / "template" / PACKAGED_BOX_TEMPLATE).exists(), \
+            "packaged box template must be installed after successful init"
+
+    def test_oserror_during_init_leaves_no_config(self, tmp_home, capsys):
+        """Any exception during init removes the config file so the next run retries.
+
+        Regression test for fix 4: install_packaged_templates (or any step after
+        write_global_config) raising OSError must also clean up the config file,
+        not just ConfigError.
+        """
+        from kanibako.cli import main
+
+        config_file = tmp_home / "config" / CONFIG_FILENAME
+
+        with (
+            patch("kanibako.cli.build_parser") as mock_bp,
+            patch("kanibako.cli._setup_nudge"),
+            patch("kanibako.launch.templates.install_packaged_templates",
+                  side_effect=OSError("simulated disk error")),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            args = MagicMock()
+            args.command = "box"
+            args.box_command = "list"
+            mock_bp.return_value.parse_args.return_value = args
+            main(["box", "list"])
+        assert exc_info.value.code == 1
+        assert not config_file.exists(), \
+            "kanibako.cfg must not exist after an OSError during init"
+
+    def test_oserror_in_early_init_step_leaves_no_config(self, tmp_home):
+        """An OSError in an EARLY init step (discover_targets) also removes kanibako.cfg.
+
+        Regression test: the cleanup handler used to start at ``load_std_paths()``, so
+        the steps between ``write_global_config(cf)`` and that call ran unprotected.  A
+        failure in one of those — here ``discover_targets()`` — raised AND left
+        ``kanibako.cfg`` on disk, so the next run returned early at the "already
+        initialized" check and never installed templates or shell completion.
+        """
+        from kanibako.cli import main
+
+        config_file = tmp_home / "config" / CONFIG_FILENAME
+
+        # Patch where the name is DEFINED: _ensure_initialized imports it inside the
+        # function, so patching kanibako.cli would do nothing.
+        with (
+            patch("kanibako.cli.build_parser") as mock_bp,
+            patch("kanibako.cli._setup_nudge"),
+            patch("kanibako.targets.discover_targets",
+                  side_effect=OSError("simulated disk error")),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            args = MagicMock()
+            args.command = "box"
+            args.box_command = "list"
+            mock_bp.return_value.parse_args.return_value = args
+            main(["box", "list"])
+        assert exc_info.value.code == 1
+        assert not config_file.exists(), \
+            "kanibako.cfg must not exist after an OSError in an early init step"
+
     def test_agent_exempt_from_lazy_init(self):
         """'agent' command does not trigger lazy init."""
         from kanibako.cli import main
