@@ -84,8 +84,8 @@ More ways to launch:
 
 ```bash
 kanibako -N                            # start a fresh conversation
-kanibako shell                         # plain bash shell, no agent
-kanibako shell -- echo hello           # run a one-shot command in the box
+kanibako shell                         # a plain shell (the box's login shell), no agent
+kanibako shell -- 'ls | wc -l'         # run a one-shot command in the box
 kanibako --agent codex                 # choose the agent for this run
 kanibako --image kanibako-min:latest   # launch on a specific rig
 ```
@@ -146,7 +146,7 @@ shortcuts for common operations:
 |----------|---------|-------------|
 | `kanibako [start] [project]` | `box start` | Launch agent session (default command) |
 | `kanibako stop [project\|--all]` | `box stop` | Stop running container(s) |
-| `kanibako shell [project] [-- cmd]` | `box shell` | Open a bash shell or run a one-shot command |
+| `kanibako shell [project] [-- cmd]` | `box shell` | Open a plain shell (the box's login shell) or run a one-shot command |
 | `kanibako list [-a] [-q]` | `box list` | List all projects |
 | `kanibako ps [-a] [-q]` | `box ps` | List active (running) boxes |
 | `kanibako create [path]` | `box create` | Create a new project |
@@ -173,7 +173,7 @@ shortcuts for common operations:
 |------------|-------------|
 | `box start [project]` | Launch agent session (agent flags + infra flags + `-- args`) |
 | `box stop [project]` | Stop container (`--all` stops all, `--force` skips confirm) |
-| `box shell [project]` | Open bash or run one-shot command (infra flags + `-- cmd`) |
+| `box shell [project]` | Open a plain shell (the box's login shell) or run one-shot command (infra flags + `-- cmd`) |
 | `box ps` | List active (running) boxes (`--all` includes stopped, `-q` names only) |
 
 **Standard lifecycle:**
@@ -381,13 +381,14 @@ context.
 ⚑ **Against a box that is already RUNNING, most of these are refused, not applied.** A running
 container keeps the creation-time settings and the agent session it was launched with, so
 `--image`, `-e` (except where something in the box will actually apply it, below), `--no-helpers`,
-`--no-auto-auth`, `--browser`, `--share-images`, an explicit `--persistent`/`--ephemeral`, and the
-agent flags `-N -C -R -M -A -S` produce an error naming the cure rather than being silently
+`--no-auto-auth`, `--browser`, `--share-images`, an explicit `--persistent`/`--ephemeral`, a
+`-- <command>` on an agent launch (`--agent shell` included), and the agent flags
+`-N -C -R -M -A -S` produce an error naming the cure rather than being silently
 dropped. Use `kanibako --restart [box]` to stop and relaunch with them in force. Two exceptions:
 `--detach`/`--print-container`/`--warm-only` are honored; and anything that starts a **second
-process inside the running box** — `--entrypoint CMD`, or `kanibako shell --persistent` at a box
-that is running an agent — runs with `-e` applied, so `-e` is refused only where nothing would
-apply it.
+process inside the running box** — `--entrypoint CMD`, `kanibako shell -- <cmd>`, or
+`kanibako shell --persistent` at a box that is running an agent — runs with `-e` applied, so `-e`
+is refused only where nothing would apply it.
 
 ### Global Flags
 
@@ -457,6 +458,31 @@ A plain-shell box is a **choice**, not a fallback. Name the built-in `shell`
 pseudo-agent -- `--agent shell`, or `kanibako box set pref.system.agent=shell`
 -- and the box launches `box.shell` with no agent binary and no credentials.
 `shell` ships with `kanibako-cli` itself, so it resolves on every install.
+
+Both spellings can run a command, and what you get back differs.
+`kanibako shell -- '<cmd>'` is the **one-off**: it is ephemeral and returns the
+command's exit status. `kanibako start --agent shell -- '<cmd>'` is
+**persistent**, as `--agent shell` always is -- the tmux pane closes when the
+command ends and the launch exits 0 whatever the command returned, so reach for
+the one-off when the status or the output matters. No subcommand is needed:
+`kanibako --agent shell -- '<cmd>'` dispatches to `start` and behaves as that
+spelling does. Adding `--detach` runs the command as the keep-alive, so
+`--agent shell --detach -- '<cmd>'` stops the box when the command ends, where a
+bare `--detach` box stays up.
+
+Shell syntax must be **one quoted word**: `kanibako shell -- ls '|' wc` passes
+`|` to `ls`, so write `kanibako shell -- 'ls | wc'`. Several words are joined the
+way a shell would quote them, and nothing is stored.
+
+Every `shell` launch (`--agent shell`, `kanibako shell`, `--entrypoint`) renders
+the canon into `~/AGENTS.md`, as a real agent renders it into its own
+instruction file. A `~/AGENTS.md` already in the box home is **overwritten**;
+move it, or name a different file with the key
+`agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`, which defaults to `~/AGENTS.md`.
+
+See [MIGRATION.md](MIGRATION.md) for both: *"A plain-shell box writes the canon
+to `~/AGENTS.md`"* and *"`kanibako shell -- <cmd>` runs your box's login shell,
+and `--agent shell -- <cmd>` runs the command"*.
 
 This resolution is **uniform** across every agent-requiring command (`start`,
 `box start`, `agent reauth`, ...). `kanibako shell` is the **sole** exception: it
@@ -1033,7 +1059,7 @@ is `.yaml`.
 | `model` | platform default | Agent model name |
 | `access` | `full` | Permission tier -- `restricted`, `editing` or `full` |
 | `box.image` | `kanibako-oci:latest` | Container rig |
-| `box.shell` | (auto-detect) | Login shell for a launch that runs no agent program -- `kanibako shell`, or `kanibako start` at a box whose agent has no entrypoint of its own (`--agent shell`). An explicit `--entrypoint` runs *that* instead. Resolved `box.shell` → the image's recorded login shell → `sh` |
+| `box.shell` | (auto-detect) | Login shell for a launch that runs no agent program -- `kanibako shell`, or `kanibako start` at a box whose agent has no entrypoint of its own (`--agent shell`). An explicit `--entrypoint` runs *that* instead. Resolved `box.shell` → the image's recorded login shell → `sh`. The value is a **program path** (`/bin/bash`) and one word, so `bash -l` is refused on a persistent launch. With `-- <cmd>` the command runs as `<shell> -lc "<cmd>"`, so a shell that rejects `-lc` (csh, tcsh) needs `box.shell: /bin/sh` |
 | `pref.system.agent` | (unset) | Agent target plugin requested for this box or workset; part of the resolution cascade (see [Agent Selection](#agent-selection)) |
 | `box.share_images` | | Share host images into the box |
 | `box.auth.global_enabled` | `true` | The box's host-global credential-share opt-in (`true`) vs. per-box (`false`) |

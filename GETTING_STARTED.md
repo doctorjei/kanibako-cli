@@ -114,8 +114,8 @@ kanibako -N       # or start a fresh conversation
 | `kanibako` | Start or resume the agent session in the current directory |
 | `kanibako -N` | Start a **new** conversation |
 | `kanibako -C` | **Continue** the most recent conversation (the default) |
-| `kanibako shell` | Open a plain bash shell in the box (no agent) |
-| `kanibako shell -- <cmd>` | Run a one-shot command in the box, e.g. `kanibako shell -- echo hi` |
+| `kanibako shell` | Open a plain shell (the box's login shell) in the box (no agent) |
+| `kanibako shell -- <cmd>` | Run a one-shot command and return its status — one quoted word: `kanibako shell -- 'ls \| wc -l'` |
 | `kanibako stop` | Stop the running container (`--all` stops every box) |
 | `kanibako list` | List all your projects (`-a` includes orphans, `-q` names only) |
 | `kanibako ps` | List active (running) boxes |
