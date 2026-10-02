@@ -2288,8 +2288,10 @@ def build_launch_snapshot(
 
     # The settings files this resolve reads, MOST-SPECIFIC-FIRST, read ONCE for the launch
     # (``ReadPurpose.RESOLVE``): a ``config:`` table (spec §1) and a retired behavior spelling
-    # refuse here, before the resolve. The cure names the agent (unless it is the ``shell``
-    # slot) and, at the box tier, the box.
+    # refuse here, before the resolve. The cure names the agent, except under ``GENERAL_SLOT``:
+    # that name is also the agent-less system, workset, and box-scalar resolves
+    # (``resolve_box_scalars``, ``workset_cmd``), so it cannot tell a selected ``shell`` from
+    # no agent, and ``<agent>`` is right for both — and, at the box tier, the box.
     box_name = (meta_identity or {}).get("meta.box.name")
     files = cascade_files(
         purpose=ReadPurpose.RESOLVE,
