@@ -25,7 +25,7 @@ from kanibako.settings.settings_launch import load_merged_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, ProjectError
-from kanibako.project.names import read_names, unregister_name
+from kanibako.project.names import read_names
 from kanibako.settings.paths import (
     BoxMode,
     _box_settings_files,
@@ -309,15 +309,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         aliases=["delete"],
         help="Unregister a project (optionally purge its metadata)",
         description=(
-            "Unregister a project from the default workset, a standalone box\n"
-            "from the global registry, or an entire workset from the worksets\n"
-            "index.  A box that belongs to a named workset cannot be found and\n"
-            "errors accordingly.  The project's own files are never deleted;\n"
-            "without --purge, kanibako metadata is kept so the box can be\n"
-            "restored with 'kanibako box register <name>'.  With --purge, also\n"
-            "delete kanibako metadata (shell config, box.yaml, vault symlinks,\n"
-            "logs).  For a standalone box kanibako's metadata lives in the\n"
-            "box_data/ folder inside the project, and --purge deletes it."
+            "Unregister a project from the default workset or a standalone box\n"
+            "from the global registry.  A box that belongs to a named workset\n"
+            "cannot be found and errors accordingly.  ⚑ A WORKSET is not a box:\n"
+            "remove one with 'kanibako workset rm <name>'.  The project's own\n"
+            "files are never deleted; without --purge, kanibako metadata is\n"
+            "kept so the box can be restored with 'kanibako box register\n"
+            "<name>'.  With --purge, also delete kanibako metadata (shell\n"
+            "config, box.yaml, vault symlinks, logs).  For a standalone box\n"
+            "kanibako's metadata lives in the box_data/ folder inside the\n"
+            "project, and --purge deletes it."
         ),
     )
     rm_p.add_argument(
@@ -1529,11 +1530,13 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
 
 
 def run_rm(args: argparse.Namespace) -> int:
-    """Unregister a project/workset from the registry, optionally purging metadata."""
+    """Unregister a BOX (primary or standalone), optionally purging metadata.
+
+    ⚑ NEVER a workset: ``workset rm`` is the one carrier for workset removal.
+    """
     from datetime import datetime, timezone
 
     from kanibako.project import registry_store
-    from kanibako.project.names import lookup_by_path
     from kanibako.utils import confirm_prompt
 
     config_file = user_config_file()
@@ -1545,9 +1548,17 @@ def run_rm(args: argparse.Namespace) -> int:
     if not target:
         print("Error: no box specified to remove.", file=sys.stderr)
         return 1
-    names = read_names(std.registry)
-    # ⚑ ``section`` is "projects" for a PRIMARY box (its membership drives the unregister
-    # below) or "worksets" — the global ``projects:`` section is retired.
+    # ⚑ ``section`` is "projects" — a PRIMARY box (its membership drives the
+    # unregister below).
+    # ⚑ THE ``worksets`` SECTION IS NOT RESOLVED HERE, EVER.  ``box rm`` is a BOX
+    # verb: a target that names only a workset falls through to the ordinary
+    # not-found refusal, which is what a workset name now gets.  ``workset rm``
+    # (kanibako.commands.workset_cmd) is the ONE carrier for workset removal.
+    # The branch this removed unregisters the workset and then tore down
+    # ``std.boxes / <name>`` — the data dir of a PRIMARY box that merely shared
+    # the name (DATA LOSS).  A registered primary box always wins the lookup
+    # below, so the loss landed on a box whose membership entry was absent —
+    # the orphan / retained-metadata state (``box list --orphans``).
     primary_boxes = load_primary_boxes(std.primary_workset)
 
     # Resolve the target: as a registered name first, then as a path.
@@ -1558,22 +1569,14 @@ def run_rm(args: argparse.Namespace) -> int:
     # ⚑ Case-blind (spec §0), and *name* takes the STORED spelling — it drives the
     # unregister below, which must address the key the registry actually holds.
     primary_hit_name = find_identifier(target, primary_boxes)
-    workset_hit_name = find_identifier(target, names["worksets"])
     if primary_hit_name is not None:
         name, section, path = primary_hit_name, "projects", primary_boxes[primary_hit_name]
-    elif workset_hit_name is not None:
-        name, section, path = workset_hit_name, "worksets", names["worksets"][workset_hit_name]
 
     if name is None:
-        # Reverse path lookup: the primary membership first, then the worksets index.
+        # Reverse path lookup: the primary membership.
         primary_hit = primary_box_name_for_workspace(std.primary_workset, target)
         if primary_hit is not None:
             name, section, path = primary_hit, "projects", primary_boxes.get(primary_hit)
-        else:
-            result = lookup_by_path(std.registry, target)
-            if result is not None:
-                name, section = result
-                path = names[section][name]
 
     if name is None:
         # ⚑ STANDALONE boxes are not in the name index — resolve them separately.
@@ -1594,17 +1597,13 @@ def run_rm(args: argparse.Namespace) -> int:
             )
 
     if name is None or section is None:
-        print(f"Error: '{target}' is not a registered project or workset.", file=sys.stderr)
+        print(f"Error: '{target}' is not a registered box.", file=sys.stderr)
         return 1
 
-    kind = "workset" if section == "worksets" else "project"
-    print(f"Removing {kind}: {name} ({path})")
+    print(f"Removing project: {name} ({path})")
 
-    # ⚑ A PRIMARY box unregisters from the MEMBERSHIP, a workset from the global index.
-    if section == "worksets":
-        unregister_name(std.registry, name, section="worksets")
-    else:
-        unregister_primary_box_name(std.primary_workset, name)
+    # ⚑ A PRIMARY box unregisters from the MEMBERSHIP.
+    unregister_primary_box_name(std.primary_workset, name)
     print(f"Removed '{name}' from the registry")
 
     if args.purge:
@@ -1629,9 +1628,9 @@ def run_rm(args: argparse.Namespace) -> int:
             print(f"No metadata directory found at {metadata_dir}")
     else:
         # No --purge: retain the metadata and park a ``deregistered`` entry, so a later
-        # `rm --purge` / `register` finds it BY NAME.  ⚑ Worksets are NEVER parked here.
+        # `rm --purge` / `register` finds it BY NAME.
         metadata_dir = std.boxes / name
-        if section != "worksets" and metadata_dir.is_dir():
+        if metadata_dir.is_dir():
             registry_store.register_deregistered(
                 std.registry,
                 name,
