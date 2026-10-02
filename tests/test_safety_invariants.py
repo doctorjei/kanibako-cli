@@ -343,10 +343,10 @@ class TestDetectionFalsePositives:
         assert result.mode is not BoxMode.standalone
 
 
-# ── Stale names.yaml safety ────────────────────────────────────────────
+# ── Stale primary-workset box-list safety ──────────────────────────────
 
-class TestStaleNameSafety:
-    """Stale names.yaml entries pointing at $HOME must not trigger local detection."""
+class TestStalePrimaryWorksetBoxListSafety:
+    """A stale default-workset box-list entry pointing at $HOME must not trigger local detection."""
 
     def test_stale_home_entry_ignored_by_detection(self, config_file, tmp_home):
         """Stale entry at $HOME (no boxes dir) → detection falls through to default."""

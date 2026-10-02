@@ -380,7 +380,7 @@ class TestLoadStdPathsParity:
 
 class TestBoxesOverrideConsumers:
     """A ``system.data`` override is honored consistently by both project
-    creation/listing AND the names.yaml reverse-lookup helpers (the transitional
+    creation/listing AND the registry-based reverse-lookup helpers (the
     box store hangs off the resolved data dir).
     """
 

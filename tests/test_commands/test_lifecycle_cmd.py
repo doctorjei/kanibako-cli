@@ -268,7 +268,7 @@ class TestConvert:
         assert rc == 0
         proj = resolve_project(std, config, project_dir=str(pdir), initialize=False)
         assert proj.metadata_path.parent == std.boxes
-        # P8b/Option A: primary identity is the names.yaml registration, not disk.
+        # P8b/Option A: primary identity is the primary membership, not disk.
         assert proj.mode == BoxMode.primary
         assert "project" not in load_doc(proj.metadata_path / "box.yaml")
         assert str(pdir) in load_primary_boxes(std.primary_workset).values()

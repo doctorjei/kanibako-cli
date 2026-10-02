@@ -309,8 +309,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         aliases=["delete"],
         help="Unregister a project (optionally purge its metadata)",
         description=(
-            "Remove a project from names.yaml without touching the workspace.\n"
-            "With --purge, also delete kanibako metadata (shell config, box.yaml, vault symlinks, logs)."
+            "Unregister a project from the default workset, a standalone box\n"
+            "from the global registry, or an entire workset from the worksets\n"
+            "index.  A box that belongs to a named workset cannot be found and\n"
+            "errors accordingly.  The project's own files are never deleted;\n"
+            "without --purge, kanibako metadata is kept so the box can be\n"
+            "restored with 'kanibako box register <name>'.  With --purge, also\n"
+            "delete kanibako metadata (shell config, box.yaml, vault symlinks,\n"
+            "logs).  For a standalone box kanibako's metadata lives in the\n"
+            "box_data/ folder inside the project, and --purge deletes it."
         ),
     )
     rm_p.add_argument(
@@ -951,7 +958,7 @@ def run_list(args: argparse.Namespace) -> int:
 
     projects = iter_projects(std, config)
     ws_data = iter_workset_projects(std, config)
-    # ⚑ STANDALONE boxes are NOT in names.yaml / iter_projects — list them explicitly.
+    # ⚑ STANDALONE boxes are NOT in iter_projects — list them explicitly.
     from kanibako.project import registry_store
     standalone = registry_store.load_standalone(std.registry)
     # DEREGISTERED boxes are never active, so they are skipped under an active-only filter.

@@ -83,7 +83,8 @@ class TestRmLifecycle:
         """create → start → stop → rm --purge --force removes the box dir.
 
         NOTE on real behavior (box/_parser.py ``run_rm``): ``rm`` unregisters
-        the project from names.yaml and, with ``--purge``, deletes the
+        the project from its workset's box list (primary membership or standalone
+        registry) and, with ``--purge``, deletes the
         metadata dir under ``boxes/<name>``.  It does NOT remove the
         container — ``stop`` already stops AND removes it (stop.py
         ``_stop_one`` calls runtime.stop then runtime.rm).  ``--force`` skips

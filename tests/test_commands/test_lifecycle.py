@@ -275,14 +275,14 @@ class TestConvertInPlace:
         """BUG#4: converting a PRIMARY box --standalone must ESTABLISH the box
         uniformly with create/duplicate — detected as standalone, REGISTERED in
         registry.standalone with a fresh canonical <kuid>_<leaf> identity,
-        and the OLD primary names.yaml entry must be gone (no dangle)."""
+        and the OLD primary membership entry must be gone (no dangle)."""
         from kanibako.project.registry_store import load_standalone
 
         config, std, tmp_home = env
         pdir = _make_default(env)
         src_state = resolve_lifecycle_target(str(pdir), std, config)
         src_name = src_state.name
-        # The primary source is registered in names.yaml at the project path.
+        # The primary source is registered in the primary membership at the project path.
         assert str(pdir) in load_primary_boxes(std.primary_workset).values()
 
         new = execute_lifecycle(
@@ -310,7 +310,7 @@ class TestConvertInPlace:
         assert new_name in standalone
         assert standalone[new_name] == str(pdir)
 
-        # (4) The old primary names.yaml entry is gone (no dangling registration).
+        # (4) The old primary membership entry is gone (no dangling registration).
         assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
         assert src_name not in load_primary_boxes(std.primary_workset)
 
@@ -399,7 +399,7 @@ class TestConvertInPlace:
         assert new.metadata_path.is_dir()
         assert new.metadata_path.parent == std.boxes
         # P8b/Option A: a primary box no longer self-describes on disk — identity
-        # is the names.yaml registration (asserted below); no ``project:`` on disk.
+        # is the primary membership (asserted below); no ``project:`` on disk.
         assert "project" not in load_doc(new.metadata_path / "box.yaml")
         # old in-tree metadata gone.
         assert not (pdir / "box_data").exists()
@@ -575,12 +575,12 @@ class TestMoveSameOwner:
         assert dest.is_dir()
         assert (dest / "file.txt").read_text() == "movecontent"
         assert not pdir.exists()
-        # P8b/Option A: the moved box's workspace is the names.yaml registration
+        # P8b/Option A: the moved box's workspace is the primary membership
         # (updated below), not an on-disk ``resolved.workspace``.  The returned
         # state carries the new location; no ``project:`` on disk.
         assert "project" not in load_doc(new.metadata_path / "box.yaml")
         assert new.workspace_path == dest.resolve()
-        # names.yaml updated.
+        # primary membership updated.
         assert str(dest) in load_primary_boxes(std.primary_workset).values()
         assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
 
