@@ -556,7 +556,7 @@ class TestCoreBehaviorDefaults:
 
     def test_a_none_behavior_row_stays_a_present_none(self, monkeypatch):
         """A ``null`` row is a PRESENT ``None``, never the text ``"None"`` (spec §2d
-        ``agent.default.model | <None>``), as ``shell_tier_defaults`` keeps one.
+        ``agent.default.model | <None>``), as ``pseudo_tier_defaults`` keeps one.
 
         MUTATION: restore ``str(value)`` in ``behavior_defaults`` and ``model`` reads
         ``"None"``.

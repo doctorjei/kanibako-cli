@@ -148,7 +148,7 @@ def test_the_SHELL_label_ignores_a_users_agent_default_label(tmp_path: Path):
     ``agent.default.label`` reaches no shell box, while a true agent with no plugin
     row still reads it (the negative half: the same snapshot, a different pick).
     """
-    from kanibako.settings.core_defaults import behavior_defaults, shell_tier_defaults
+    from kanibako.settings.core_defaults import behavior_defaults, pseudo_tier_defaults
 
     system_file = tmp_path / "settings.yaml"
     system_file.write_text("agent:\n  default:\n    label: Mine\n")
@@ -156,7 +156,7 @@ def test_the_SHELL_label_ignores_a_users_agent_default_label(tmp_path: Path):
         agent_name="shell",
         system_path=system_file,
         behavior_floor=behavior_defaults(),
-        default_categories=shell_tier_defaults(),
+        default_categories=pseudo_tier_defaults(),
     )
     assert effective_behavior(snap, active_agent="shell")["label"] == "Command Line Shell (shell)"
     assert effective_behavior(snap, active_agent="other")["label"] == "Mine"
@@ -3170,14 +3170,14 @@ def test_the_shell_LAUNCH_shape_mirrors_the_shell_tier_alone():
     The auth capability key is materialized by the FLOOR (pre-expand) and must
     survive the copy either way.
     """
-    from kanibako.settings.core_defaults import shell_tier_defaults
+    from kanibako.settings.core_defaults import pseudo_tier_defaults
 
     snap = build_launch_snapshot(
         agent_name="shell",
         ctx=_ctx(),
         system_path=None, agent_path=None, workset_path=None, box_path=None,
         behavior_floor={"model": "opus", "allow_helpers": "true", "endpoint": "e"},
-        default_categories=shell_tier_defaults(),
+        default_categories=pseudo_tier_defaults(),
         auth_chain=auth_chain_floor(mode="primary", agent_name=""),
     )
     mirror = snap.meta.box.agent
@@ -3250,10 +3250,42 @@ def test_a_shell_boxs_declared_bool_floor_is_its_own_tier(monkeypatch):
     from kanibako.commands.start import _declared_behavior_bool
     from kanibako.settings import core_defaults
 
-    monkeypatch.setattr(core_defaults, "shell_tier_default", lambda key: "false")
+    monkeypatch.setattr(core_defaults, "pseudo_tier_default", lambda agent_id, key: "false")
     monkeypatch.setattr(core_defaults, "behavior_default", lambda key: "true")
     assert _declared_behavior_bool("allow_helpers", "shell") is False
     assert _declared_behavior_bool("allow_helpers", "claude") is True
+
+
+def test_pseudo_tier_default_reads_the_named_tier_and_fails_closed():
+    """``pseudo_tier_default(agent_id, key)`` reads ``agent.<agent_id>.<key>``; an
+    undeclared tier, an undeclared key, and a ``<None>`` row each RAISE."""
+    from kanibako.settings import core_defaults
+
+    assert core_defaults.pseudo_tier_default("shell", "label") == "Command Line Shell (shell)"
+    with pytest.raises(RuntimeError, match="not an addressable pseudo-agent"):
+        core_defaults.pseudo_tier_default("default", "label")
+    with pytest.raises(RuntimeError, match="not an addressable pseudo-agent"):
+        core_defaults.pseudo_tier_default("claude", "label")
+    with pytest.raises(RuntimeError, match="declares no 'agent_shell.no_such_key'"):
+        core_defaults.pseudo_tier_default("shell", "no_such_key")
+    with pytest.raises(RuntimeError, match="as <None>"):
+        core_defaults.pseudo_tier_default("shell", "model")
+
+
+def test_pseudo_tier_defaults_is_the_shell_table_while_the_set_holds_only_shell():
+    """While ``ADDRESSABLE_PSEUDO_AGENTS == {"shell"}``, the union is EXACTLY the
+    ``agent_shell:`` table keyed ``agent.shell.<key>`` — the output the retired
+    shell-only read produced, ``<None>`` rows kept PRESENT."""
+    from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
+    from kanibako.settings import core_defaults
+
+    assert ADDRESSABLE_PSEUDO_AGENTS == {"shell"}
+    table = core_defaults._load_doc()["agent_shell"]
+    assert table
+    assert core_defaults.pseudo_tier_defaults() == {
+        f"agent.shell.{key}": None if value is None else str(value)
+        for key, value in table.items()
+    }
 
 
 def test_shell_category_entries_carry_no_agent_default_entry():
@@ -3273,17 +3305,20 @@ def test_shell_category_entries_carry_no_agent_default_entry():
 def test_the_shell_floor_supplies_every_universal_row():
     """§2d: *"all pseudo-agents must explicitly define values for any universal keys"*
     — with no fallback, a fence row missing from the floor would answer nothing."""
-    from kanibako.settings.core_defaults import env_default_categories, shell_tier_defaults
+    from kanibako.settings.core_defaults import env_default_categories, pseudo_tier_defaults
     from kanibako.settings.settings_keyspace import pseudo_agent_fence
 
     fence = pseudo_agent_fence("shell")
     assert fence is not None
-    floored = {k.removeprefix("agent.shell.") for k in shell_tier_defaults()}
+    floored = {
+        k.removeprefix("agent.shell.") for k in pseudo_tier_defaults()
+        if k.startswith("agent.shell.")
+    }
     # ``transform_settings`` is ``{}`` (an empty category start); ``template`` and
     # ``canon`` have their own producers (``launch.templates``, the canon arm).
     assert fence.leaves - floored == {"transform_settings", "template", "canon"}
     for key in ("continue_mode", "model", "endpoint"):
-        assert shell_tier_defaults()[f"agent.shell.{key}"] is None
+        assert pseudo_tier_defaults()[f"agent.shell.{key}"] is None
     assert env_default_categories()["agent.shell.env.TERM"] == "$TERM"
 
 
@@ -3293,7 +3328,7 @@ def test_a_users_agent_default_values_reach_no_shell_launch(tmp_path: Path):
     from kanibako.settings.core_defaults import (
         behavior_defaults,
         env_default_categories,
-        shell_tier_defaults,
+        pseudo_tier_defaults,
     )
 
     system_file = tmp_path / "settings.yaml"
@@ -3304,7 +3339,7 @@ def test_a_users_agent_default_values_reach_no_shell_launch(tmp_path: Path):
         agent_name="shell",
         system_path=system_file,
         behavior_floor=behavior_defaults(),
-        default_categories={**shell_tier_defaults(), **env_default_categories()},
+        default_categories={**pseudo_tier_defaults(), **env_default_categories()},
     )
     assert "model" not in effective_behavior(snap, active_agent="shell")
     envs = {

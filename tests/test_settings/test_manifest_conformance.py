@@ -242,7 +242,7 @@ _BEHAVIOR_KEYS = (
 )
 
 #: The ``agent.shell.*`` tier floor (spec §2d fence, D2) — the shell tier's OWN values,
-#: installed unconditionally by ``core_defaults.shell_tier_defaults``.  Values: the
+#: installed unconditionally by ``core_defaults.pseudo_tier_defaults``.  Values: the
 #: ``shell-tier-behavior`` and ``shell-tier-fence`` views, which split the table between
 #: them.  Kept for the ``type:`` column case below.
 _SHELL_TIER_KEYS = (
