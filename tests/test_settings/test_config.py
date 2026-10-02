@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from kanibako.settings.config_io import dump_doc, load_doc
@@ -1679,6 +1681,39 @@ class TestMalformedSettingsFileIsNamed:
         assert err.startswith("Error: ")
         assert str(ssp) in err
         assert "not valid YAML" in err
+
+    def test_unreadable_file_raises_config_error(self, tmp_path):
+        """A chmod 000 file raises ConfigError with OSError as cause."""
+        if os.geteuid() == 0:
+            pytest.skip("root can read chmod 000 files")
+        bad = tmp_path / "unreadable.yaml"
+        bad.write_text("key: value\n")
+        os.chmod(bad, 0o000)
+        with pytest.raises(ConfigError) as exc_info:
+            load_doc(bad)
+        assert str(bad) in str(exc_info.value)
+        assert exc_info.value.__cause__ is not None
+        assert isinstance(exc_info.value.__cause__, OSError)
+
+    def test_non_utf8_file_raises_config_error(self, tmp_path):
+        """A file containing invalid UTF-8 raises ConfigError with UnicodeDecodeError as cause."""
+        bad = tmp_path / "non_utf8.yaml"
+        bad.write_bytes(b"\x80\x81\x82")
+        with pytest.raises(ConfigError) as exc_info:
+            load_doc(bad)
+        assert str(bad) in str(exc_info.value)
+        assert exc_info.value.__cause__ is not None
+        assert isinstance(exc_info.value.__cause__, UnicodeDecodeError)
+
+    def test_directory_raises_config_error(self, tmp_path):
+        """A directory at the config path raises ConfigError with IsADirectoryError as cause."""
+        subdir = tmp_path / "subdir"
+        subdir.mkdir()
+        with pytest.raises(ConfigError) as exc_info:
+            load_doc(subdir)
+        assert str(subdir) in str(exc_info.value)
+        assert exc_info.value.__cause__ is not None
+        assert isinstance(exc_info.value.__cause__, IsADirectoryError)
 
 
 class TestRepeatedKeyIsRefused:

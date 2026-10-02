@@ -250,6 +250,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An unreadable config file is refused with a clean error, not a Python traceback.** In
+  1.8.0-rc2 a file that was not valid UTF-8, or was permission-denied, or was a directory
+  where a file was expected, escaped as a traceback through `load_doc`'s unguarded
+  `path.read_text()`. Each now raises `ConfigError` with the file named and tells you to
+  fix or remove the file; an unreadable file (permission denied, directory) also names the
+  OS reason.
+
 - **A bad path setting on the very first run is refused with the usual message, not a Python
   traceback.** In 1.8.0-rc2, if the global `settings.yaml` set a `system.*` path key to `<None>`
   before kanibako had ever run, the refusal escaped as a traceback. It now prints the same
