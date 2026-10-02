@@ -2892,6 +2892,13 @@ def _run_container(
                 _rejected.append("--browser")
             if share_images:
                 _rejected.append("--share-images")
+            # ⚑ A command is a second process, which neither the attach nor the
+            # detach door runs, so an agent launch would drop it (keyspec §2d
+            # ``shell``).  ``kanibako shell -- cmd`` and ``--entrypoint X -- y``
+            # are not agent launches: they exec their words, so are never here.
+            if (is_agent_mode and extra_args
+                    and running_door in ("attach", "detach")):
+                _rejected.append("-- <command>")
             if is_agent_mode:
                 _rejected += [
                     _flag for _flag, _given in (

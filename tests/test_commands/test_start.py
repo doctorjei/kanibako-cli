@@ -11540,6 +11540,59 @@ class TestALiveShellBoxReattaches(_RunningBoxDriver):
                 self._start(explicit_agent="claude")
 
 
+class TestACommandAtALiveBox(_RunningBoxDriver):
+    """``-- <command>`` at a running box (keyspec §2d ``shell``): ``kanibako shell``
+    runs it as a second process; an agent launch, whose attach or detach door would
+    drop it, is refused by the override gate, for every agent."""
+
+    def _assert_refused(self, m, rc, err):
+        assert rc == 1
+        assert "-- <command>" in err
+        assert "already running" in err
+        m.runtime.exec.assert_not_called()
+
+    def test_a_claude_launch_refuses_the_command(self, start_mocks, capsys):
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(extra_args=["x"])
+        self._assert_refused(m, rc, capsys.readouterr().err)
+
+    def test_an_agent_shell_launch_refuses_the_command(self, start_mocks, capsys):
+        with start_mocks() as m:
+            TestALiveShellBoxReattaches()._shell(m)
+            rc = self._start(explicit_agent="shell", extra_args=["x"])
+        self._assert_refused(m, rc, capsys.readouterr().err)
+
+    def test_a_detach_launch_refuses_the_command(self, start_mocks, capsys):
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(detach=True, extra_args=["x"])
+        self._assert_refused(m, rc, capsys.readouterr().err)
+
+    def test_an_entrypoint_command_still_execs(self, start_mocks, capsys):
+        """§2b: these words are the program's arguments, not a ``shell`` command."""
+        with start_mocks() as m:
+            self._running(m)
+            rc = self._start(entrypoint="/bin/echo", extra_args=["y"])
+        assert rc == 0
+        assert "cannot be applied" not in capsys.readouterr().err
+        assert m.runtime.exec.call_args.args[1] == ["/bin/echo", "y"]
+
+    @pytest.mark.parametrize("persistent", [False, True])
+    def test_kanibako_shell_still_execs_the_command(self, persistent, start_mocks):
+        """The ratified exception: ``kanibako shell <box> -- cmd`` at a running box
+        runs the command as a second process, persistent or not."""
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m, TestShellRunsTheCommand._shell_resolver():
+            self._running(m)
+            rc = run_shell(TestRunShellBoxShell()._args(
+                shell_args=["x"], persistent=persistent,
+            ))
+        assert rc == 0
+        m.runtime.run.assert_not_called()
+        assert m.runtime.exec.call_args.args[1] == ["/bin/zsh", "-lc", "x"]
+
+
 class TestReattachComparesNodesNotSpellings(_RunningBoxDriver):
     """A live box's stamp and ``--agent`` are compared as NODES ([R173]).
 
