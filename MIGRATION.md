@@ -360,6 +360,10 @@ inside boxes. In order of likely impact:
     from v1.7.2 no shipped agent's key changes — see *An agent plugin's own default beats
     `agent.default`*.
 
+35. **A plain-shell box now writes the canon to `~/AGENTS.md`, overwriting a file already there,
+    and a `box.shell` with arguments (`bash -l`) stops working on a persistent plain-shell box** —
+    see *A plain-shell box writes the canon to `~/AGENTS.md`*.
+
 ---
 
 ## 2. Per-area detail
@@ -5859,6 +5863,24 @@ would silently discard an invalid entry.
 
 **What to do.** Open the named file and fix or delete the named section, then run the `set` again.
 No `reset` reaches it: `reset --all` leaves it in place.
+
+### A plain-shell box writes the canon to `~/AGENTS.md`
+
+**Read this if you keep your own `~/AGENTS.md` in a box home, or if your `box.shell` has
+arguments.**
+
+**What changed.** Every `shell` launch (`--agent shell`, `kanibako shell`, `--entrypoint`) now
+renders the canon into `~/AGENTS.md`, as a real agent renders it into its own instruction file. A
+`~/AGENTS.md` already in the box home is OVERWRITTEN. The file is named by the new key
+`agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`, default `~/AGENTS.md`.
+
+A `box.shell` with arguments now fails on a persistent plain-shell box. The render step runs
+`box.shell` as ONE program word (`exec "$@"`), where tmux used to run a single argument through
+`sh -c`, so a `box.shell` of `bash -l` stops working on the persistent path.
+
+**What to do.** To keep your own `~/AGENTS.md`, move it, or point
+`agent.shell.env.KANIBAKO_DIRECTIVE_FINAL` elsewhere. Set `box.shell` to a program path
+(`/bin/bash`); a login shell is what the image's shell already is.
 
 ---
 

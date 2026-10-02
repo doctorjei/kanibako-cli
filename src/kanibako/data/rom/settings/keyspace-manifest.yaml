@@ -1741,6 +1741,19 @@ keys:
            inherit agent.default.env.TERM (§2d). Same family contract as its
            agent.default twin."
     spec: "§2d (shell fence)"
+  agent.shell.env.KANIBAKO_DIRECTIVE_FINAL:
+    scope: agent
+    type: str
+    set: cli+file
+    default: "~/AGENTS.md"
+    note: "the file a plain-shell launch renders the canon into (fence row;
+           `~/AGENTS.md`) — shipped in core-defaults.yaml's `env: agent.shell:`
+           table as `$GUEST_HOME/AGENTS.md`; the default here is the value after
+           env_default_categories expands that leading `$GUEST_HOME`.
+           A resolved FINAL in the container env is the directive-flatten shim's
+           launch gate, the same as each agent plugin's own FINAL; an ordinary
+           env-family key, so a nearer file overrides it."
+    spec: "§2d (shell fence)"
 
   ## ---- meta.* — TOP-LEVEL protected RO namespace (§0) ---------------------
   ## Materialized ONLY by construct-time / plugin / runtime derivation.

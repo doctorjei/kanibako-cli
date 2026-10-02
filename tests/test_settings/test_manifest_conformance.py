@@ -201,8 +201,8 @@ class TestManifestLoader:
         for section in ("registry", "policy", "categories", "keys",
                         "bind_default_entries", "not_keys"):
             assert section in doc, f"manifest section {section!r} is missing"
-        assert len(doc["keys"]) == 129, (
-            f"the manifest declares {len(doc['keys'])} key rows, not the 129 this "
+        assert len(doc["keys"]) == 130, (
+            f"the manifest declares {len(doc['keys'])} key rows, not the 130 this "
             f"file's counts were measured against — re-measure, do not adjust blindly"
         )
 
@@ -1761,13 +1761,13 @@ class TestDefaultsCoverage:
             f"this file classifies rows the manifest no longer declares a default for: "
             f"{sorted(stale)}"
         )
-        assert len(declared) == 83, (
-            f"the manifest gives {len(declared)} rows a default, not the 83 measured — "
+        assert len(declared) == 84, (
+            f"the manifest gives {len(declared)} rows a default, not the 84 measured — "
             f"re-classify, do not adjust the count"
         )
 
     def test_the_split_is_the_measured_split(self):
-        """0 pinned, 75 carried, 8 exempted — stated so a silent migration between them reds.
+        """0 pinned, 76 carried, 8 exempted — stated so a silent migration between them reds.
 
         ⚑ Was 41/24 until the seven-row channel family moved from E1 to a real oracle
         (2026-08-25), then 48/17 until ``workset.registry`` followed it out of E1
@@ -1827,9 +1827,11 @@ class TestDefaultsCoverage:
         left E3 for the ``shell-tier-fence`` view (a shell pick has no ``agent.default``
         fallback, so the floor supplies their ``<None>``), and the new
         ``agent.shell.env.TERM`` row arrived carried by ``env-defaults``.
+        ⚑ 0+75/8 → 0+76/8: ``agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`` (``~/AGENTS.md``)
+        arrived carried by ``env-defaults``, through its ``~/`` ``translate`` hop.
         """
         assert len(PINNED_DEFAULT_KEYS) == 0
-        assert len(CARRIED_DEFAULT_KEYS) == 75
+        assert len(CARRIED_DEFAULT_KEYS) == 76
         assert len(EXEMPT_DEFAULT_KEYS) == 8
         assert not (PINNED_DEFAULT_KEYS & EXEMPT_DEFAULT_KEYS)
         assert not (PINNED_DEFAULT_KEYS & CARRIED_DEFAULT_KEYS), (
@@ -1918,8 +1920,8 @@ class TestDefaultsCoverage:
         )
 
     def test_the_default_value_neither_cells_partition_the_registry(self):
-        """83 + 36 + 10 == 129, disjoint — no row carries both cells, none carries
-        neither unnoticed.  The 129 is the loader's own count, re-stated here as the
+        """84 + 36 + 10 == 130, disjoint — no row carries both cells, none carries
+        neither unnoticed.  The 130 is the loader's own count, re-stated here as the
         arithmetic the three coverage cases must sum to."""
         keys = _keys()
         defaulted = {
@@ -1936,7 +1938,7 @@ class TestDefaultsCoverage:
             f"rows carrying BOTH cells: {sorted(defaulted & valued)}"
         )
         assert defaulted | valued | neither == {str(k) for k in keys}
-        assert (len(defaulted), len(valued), len(neither)) == (83, 36, 10)
+        assert (len(defaulted), len(valued), len(neither)) == (84, 36, 10)
 
 
 # --------------------------------------------------------------------------- #
@@ -2156,6 +2158,7 @@ class TestKeySetConformance:
         assert leftover & category_rows == {
             "box.bindings.ro", "box.bindings.rw", "box.masks", "box.env.COLORTERM",
             "agent.default.env.TERM", "agent.shell.env.TERM",
+            "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL",
         }
         assert leftover & parametric_agent == {
             "agent.<agent>.access", "agent.<agent>.template", "agent.<agent>.canon",

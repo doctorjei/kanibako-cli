@@ -1777,6 +1777,9 @@ class TestInstructionDeliveryActivation:
         m.target.name = "goose"
         m.target.descriptor = _GOOSE_DESCRIPTOR
         m.target.default_entrypoint = "goose"
+        # The real plugin's env, FINAL slot included: the shim gate reads it.
+        from kanibako.plugins.goose.target import GooseTarget
+        m.target.default_envs.return_value = GooseTarget().default_envs()
         m.target.setting_descriptors.return_value = []
         m.agent_cfg.state = {}
         m.load_agent_config.return_value = m.agent_cfg
@@ -1834,6 +1837,103 @@ class TestInstructionDeliveryActivation:
             cli_args = kw.get("cli_args") or []
             # claude now gets the launch-flatten too (no more goose-only gate).
             assert any("import-directives.py" in str(a) for a in cli_args)
+
+
+class TestTheFlattenGateIsTheFinalSlot:
+    """The directive-flatten shim wraps a launch iff its resolved ``container_env``
+    carries ``KANIBAKO_DIRECTIVE_FINAL`` — the supervisor watch's own predicate — so a
+    plain-shell launch, whose core env floor names ``~/AGENTS.md``, is wrapped too.
+
+    ⚑ conftest's snapshot stub folds the DERIVED core env table only; the orchestrator
+    also folds the STATIC ``core-defaults.yaml env:`` table, first, so the derived one
+    wins a shared VAR.  ``_static_env_floor`` restores that fold by CALLING the one
+    emitter, so the FINAL these tests see is the shipped declaration.
+    """
+
+    _AGENTS_MD = "/home/agent/AGENTS.md"
+    _kwargs = staticmethod(lambda **over: {**dict(
+        project_dir=None, entrypoint=None, image_override=None, new_session=False,
+        safe_mode=False, resume_mode=False, extra_args=[],
+    ), **over})
+
+    @contextmanager
+    def _static_env_floor(self):
+        from kanibako.commands import start as start_mod
+        from kanibako.settings.core_defaults import env_default_categories
+
+        derived = start_mod._core_env_default_categories
+
+        def _both(**kw):
+            return {**env_default_categories(), **derived(**kw)}
+
+        with patch.object(start_mod, "_core_env_default_categories", _both):
+            yield
+
+    @staticmethod
+    def _shell_target(m):
+        # The production ShellTarget's shape: no descriptor, no default entrypoint.
+        m.target.name = "shell"
+        m.target.descriptor = None
+        m.target.default_entrypoint = None
+        m.target.has_binary = False
+        m.target.detect.return_value = None
+
+    @staticmethod
+    def _mode(persistent: bool) -> dict:
+        if persistent:
+            return {"persistent": True, "explicit_persistent": True}
+        return {"persistent": False, "explicit_ephemeral": True}
+
+    @staticmethod
+    def _wrapped(m) -> bool:
+        kw = m.runtime.run.call_args.kwargs
+        argv = [kw.get("entrypoint"), *(kw.get("cli_args") or [])]
+        return any("import-directives.py" in str(a) for a in argv)
+
+    @pytest.mark.parametrize("persistent", [True, False])
+    def test_an_agent_shell_launch_is_wrapped_and_writes_agents_md(
+        self, persistent, start_mocks,
+    ):
+        """``--agent shell``: both shim sites (persistent inner, ephemeral outer)."""
+        with start_mocks() as m, self._static_env_floor():
+            m.resolve_agent.return_value = _sel("shell")
+            self._shell_target(m)
+            over = self._mode(persistent)
+            assert _run_container(**self._kwargs(explicit_agent="shell", **over)) == 0
+            env = m.runtime.run.call_args.kwargs["env"]
+            assert env["KANIBAKO_DIRECTIVE_FINAL"] == self._AGENTS_MD
+            assert self._wrapped(m)
+
+    @pytest.mark.parametrize("persistent", [True, False])
+    def test_a_kanibako_shell_launch_is_wrapped_and_writes_agents_md(
+        self, persistent, start_mocks,
+    ):
+        """``kanibako shell`` (``box_shell_mode``) resolves the ``shell`` node too."""
+        with start_mocks() as m, self._static_env_floor():
+            over = self._mode(persistent)
+            assert _run_container(**self._kwargs(box_shell_mode=True, **over)) == 0
+            env = m.runtime.run.call_args.kwargs["env"]
+            assert env["KANIBAKO_DIRECTIVE_FINAL"] == self._AGENTS_MD
+            assert self._wrapped(m)
+
+    @pytest.mark.parametrize("persistent", [True, False])
+    def test_a_launch_with_no_final_is_not_wrapped(self, persistent, start_mocks):
+        """No FINAL in the env (the stub's floor alone gives a shell launch none) ⇒
+        no shim, at either site."""
+        with start_mocks() as m:
+            over = self._mode(persistent)
+            assert _run_container(**self._kwargs(box_shell_mode=True, **over)) == 0
+            assert "KANIBAKO_DIRECTIVE_FINAL" not in m.runtime.run.call_args.kwargs["env"]
+            assert not self._wrapped(m)
+
+    def test_an_agent_launch_whose_final_is_blanked_is_not_wrapped(self, start_mocks):
+        """The gate is the FINAL slot, not the agent: claude with ``-e
+        KANIBAKO_DIRECTIVE_FINAL=`` is a real agent with no slot, and is not wrapped."""
+        with start_mocks() as m:
+            assert _run_container(
+                **self._kwargs(cli_env=["KANIBAKO_DIRECTIVE_FINAL="]),
+            ) == 0
+            assert not self._wrapped(m)
 
 
 class TestTheMissingSourcePolicyIsWiredIntoTheLaunch:
@@ -4935,7 +5035,11 @@ class TestBoxShellLaunch:
             assert call.kwargs.get("entrypoint") == "tmux"
             cli_args = call.kwargs.get("cli_args") or []
             assert "--" in cli_args
-            assert cli_args[cli_args.index("--") + 1] == "/bin/bash"
+            # The env carries a FINAL slot, so the flatten shim wraps the shell and
+            # ``exec "$@"`` runs it as ONE program word (§9 R-4).
+            inner = cli_args[cli_args.index("--") + 1:]
+            assert inner[:2] == ["sh", "-c"] and "import-directives.py" in inner[2]
+            assert inner[3:5] == ["sh", "/bin/bash"]
 
     def test_shell_persistent_uses_resolved_zsh(self, start_mocks):
         """box.shell=/bin/zsh (resolver result) is the launched inner command."""
@@ -4956,7 +5060,8 @@ class TestBoxShellLaunch:
                     persistent=True,
                 )
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert cli_args[cli_args.index("--") + 1] == "/bin/zsh"
+            inner = cli_args[cli_args.index("--") + 1:]
+            assert inner[:2] == ["sh", "-c"] and inner[3:5] == ["sh", "/bin/zsh"]
 
     def test_shell_nonpersistent_uses_resolved_shell_as_entrypoint(self, start_mocks):
         """No-agent ephemeral launch passes the resolved shell as entrypoint."""
@@ -4976,7 +5081,11 @@ class TestBoxShellLaunch:
                     extra_args=[],
                     persistent=False,
                 )
-            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/zsh"
+            kw = m.runtime.run.call_args.kwargs
+            assert kw.get("entrypoint") == "sh"
+            cli_args = kw.get("cli_args") or []
+            # The flatten shim's ``sh -c <script> sh <program>`` (§9 R-4).
+            assert cli_args[0] == "-c" and cli_args[2:4] == ["sh", "/bin/zsh"]
 
     def test_shell_passes_runtime_and_image_to_resolver(self, start_mocks):
         """The resolver is given runtime+image so lazy image-shell backfill works."""

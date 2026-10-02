@@ -4537,9 +4537,10 @@ def _run_container(
         # Persistent mode: wrap command with the configured bootstrap program
         if persistent:
             # Shim application shared by the persistent paths: the SECRET export
-            # shim (iff the box has secret_path winners) and the goose directive-
-            # flatten shim (iff goose), nested INNERMOST so they wrap the actual
-            # program (agent or box.shell) before any tmux/bootstrap/supervisor wrap.
+            # shim (iff the box has secret_path winners) and the directive-flatten
+            # shim (iff the env carries a FINAL slot), nested INNERMOST so they
+            # wrap the actual program (agent or box.shell) before any
+            # tmux/bootstrap/supervisor wrap.
             def _apply_persistent_shims(
                 prog: str, prog_args: list[str],
             ) -> "tuple[str, list[str]]":
@@ -4547,19 +4548,16 @@ def _run_container(
                     prog, prog_args = _secret_export_shim(
                         prog, prog_args, secret_export_vars,
                     )
-                # Instruction-delivery launch-flatten for AGENT launches (all
-                # agents; NO per-agent name gate): flatten the directive SEED into
-                # the agent's native FINAL slot before exec, so the full guide
+                # Instruction-delivery launch-flatten: flatten the directive SEED
+                # into the launch's FINAL slot before exec, so the full guide
                 # reaches the native (uncapped) instruction file rather than the
-                # 2K/10K-capped additionalContext hook.  Gated on is_agent_mode so
-                # plain-shell / no-agent launches (nothing to deliver) are NOT
-                # wrapped; the shim ALSO self-skips in-shell when no
-                # KANIBAKO_DIRECTIVE_FINAL is set.  Nests OUTSIDE any secret shim.
-                if (
-                    is_agent_mode
-                    and target is not None
-                    and target.default_entrypoint is not None
-                ):
+                # 2K/10K-capped additionalContext hook.  NO per-agent gate: a
+                # launch is wrapped iff its resolved env carries
+                # KANIBAKO_DIRECTIVE_FINAL — every real agent's own slot, and
+                # ``~/AGENTS.md`` for a plain-shell launch — the same predicate
+                # as the supervisor's directive watch.  Nests OUTSIDE any secret
+                # shim.
+                if container_env.get("KANIBAKO_DIRECTIVE_FINAL"):
                     prog, prog_args = _directive_flatten_shim(prog, prog_args)
                 return prog, prog_args
 
@@ -4759,15 +4757,9 @@ def _run_container(
                 entrypoint, cli_args = _secret_export_shim(
                     entrypoint, list(cli_args or []), secret_export_vars,
                 )
-            # Instruction-delivery launch-flatten for AGENT launches (see the
-            # persistent path).  Gated on is_agent_mode (NOT a per-agent name) so
-            # plain-shell / no-agent launches are not wrapped.
-            if (
-                is_agent_mode
-                and entrypoint
-                and target is not None
-                and target.default_entrypoint is not None
-            ):
+            # Instruction-delivery launch-flatten (see the persistent path):
+            # wrapped iff the resolved env carries KANIBAKO_DIRECTIVE_FINAL.
+            if entrypoint and container_env.get("KANIBAKO_DIRECTIVE_FINAL"):
                 entrypoint, cli_args = _directive_flatten_shim(
                     entrypoint, list(cli_args or []),
                 )
@@ -5425,7 +5417,8 @@ def _directive_flatten_shim(
     mode — ``python3 <flattener> "$KANIBAKO_DIRECTIVE_SEED" "$KANIBAKO_DIRECTIVE_FINAL"``
     — writing the flattened ``@import`` directive chain to the agent's native slot
     (``$KANIBAKO_DIRECTIVE_FINAL``: claude ``~/.claude/CLAUDE.md``, codex
-    ``~/.codex/AGENTS.md``, goose ``~/.config/goose/.additionalContext.md``).  This
+    ``~/.codex/AGENTS.md``, goose ``~/.config/goose/.additionalContext.md``, a
+    plain-shell launch ``~/AGENTS.md``).  This
     lands the FULL guide in the native, always-loaded instruction file — the strong,
     uncapped channel — instead of the 2K/10K-capped ``additionalContext`` hook (kept
     as a secondary/future channel).
@@ -5438,8 +5431,8 @@ def _directive_flatten_shim(
     command in :mod:`kanibako.vscode.vscode_config`; the two must move TOGETHER,
     because a one-sided change is SILENT (``|| true`` swallows the failure and the box
     just loses its directives).  SILENT-SAFE (``|| true``) and GUARDED on
-    ``$KANIBAKO_DIRECTIVE_FINAL`` being set, so a launch with NO directive slot (e.g. a
-    no-agent shell) skips the flatten cleanly.
+    ``$KANIBAKO_DIRECTIVE_FINAL`` being set, so a launch with NO directive slot skips
+    the flatten cleanly.
 
     The flatten also writes its MANIFEST (:data:`DIRECTIVE_MANIFEST_RELPATH`) — the
     receipt naming every source this render read.  It is written HERE, by the render

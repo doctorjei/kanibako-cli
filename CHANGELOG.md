@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `shell` writes `~/AGENTS.md`; a `box.shell` with arguments no longer works on a persistent
+  plain-shell box. See *A plain-shell box writes the canon to `~/AGENTS.md`* in
+  [MIGRATION.md](MIGRATION.md).
 - **The box notebook's entry file is `~/canon/notebook/LOCAL_CONTENTS.md`, imported by the
   handbook index `SYS_CONTENTS.md`.** In 1.8.0-rc2 it was `MY_CONTENTS.md`, imported from
   `COLLECTION.md`. A prerelease leaves old copies in each box, in the system handbook, and in the

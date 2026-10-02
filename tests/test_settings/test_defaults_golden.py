@@ -836,15 +836,21 @@ class TestCoreStaticEnvDefaults:
     #: host has none) while ``$COLORTERM`` is a PASSTHROUGH that can answer nothing,
     #: dropping the key so the box gets no such variable. Only the host can claim a
     #: 24-bit display; the retired literal ``truecolor`` claimed it for them.
+    #: ⚑ ``agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`` (§2d shell fence) is the file a
+    #: plain-shell launch renders the canon into; its ``$GUEST_HOME`` is expanded by
+    #: the emitter, so the emitted value is the guest path.
     _SHIPPED_ENV = {
         "agent.default": {"TERM": "$TERM"},
         # A pseudo-agent does not inherit agent.default (§2d shell fence).
-        "agent.shell": {"TERM": "$TERM"},
+        "agent.shell": {
+            "TERM": "$TERM",
+            "KANIBAKO_DIRECTIVE_FINAL": "$GUEST_HOME/AGENTS.md",
+        },
         "box": {"COLORTERM": "$COLORTERM"},
     }
 
     def test_the_shipped_env_section_is_exactly_the_declared_content(self):
-        """The section IS those three entries, as strings, and nothing else.
+        """The section IS those four entries, as strings, and nothing else.
 
         ``COLORTERM`` is at BOX scope deliberately (it describes the terminal a box
         runs, not the host install) and a WRONG scope here is not cosmetic: a
@@ -874,6 +880,7 @@ class TestCoreStaticEnvDefaults:
         assert core_defaults.env_default_categories() == {
             "agent.default.env.TERM": "$TERM",
             "agent.shell.env.TERM": "$TERM",
+            "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/AGENTS.md",
             "box.env.COLORTERM": "$COLORTERM",
         }, "the emitter must hand back the file's declaration under its dotted key"
 
