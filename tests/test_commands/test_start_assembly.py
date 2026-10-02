@@ -482,8 +482,8 @@ class TestTheEnvConsumerReadsTheLeaf:
         "KANIBAKO_AGENT_MARKERS_DIR",
     }
 
-    @staticmethod
-    def _core_file_env_vars() -> set[str]:
+    @classmethod
+    def _core_file_env_vars(cls) -> set[str]:
         """The VARs core DECLARES in ``core-defaults.yaml``'s ``env:`` section (D1-4).
 
         Core's OTHER env source, beside the derived stamps above: values a file can
@@ -496,14 +496,32 @@ class TestTheEnvConsumerReadsTheLeaf:
         claim — no channel BESIDE the leaf — not at all.
         ⚑ The match cannot be ``None``: ``env_default_categories`` refuses to emit
         a key this same regex does not accept.
+        ⚑ ONLY THE ROWS THAT REACH THIS LAUNCH: ``_resolve`` launches ``claude``, so an
+        ``agent.<other>`` tier (the shell's own ``KANIBAKO_DIRECTIVE_FINAL``) is not
+        its env and must not be expected here.
         """
+        return {
+            name for key, name in cls._core_file_env_rows().items()
+            if cls._row_reaches_the_launch(key)
+        }
+
+    @staticmethod
+    def _core_file_env_rows() -> dict[str, str]:
+        """Every core ``env:`` key → the VAR it delivers."""
         from kanibako.settings import core_defaults
         from kanibako.settings.settings_categories import ENV_KEY_RE
 
         return {
-            ENV_KEY_RE.match(key).group("name")
+            key: ENV_KEY_RE.match(key).group("name")
             for key in core_defaults.env_default_categories()
         }
+
+    @staticmethod
+    def _row_reaches_the_launch(key: str) -> bool:
+        """A core env row applies to ``_resolve``'s ``claude`` launch unless it sits
+        at ANOTHER agent's tier (``agent.default`` reaches every real agent)."""
+        scope = key.split(".env.", 1)[0]
+        return not scope.startswith("agent.") or scope in ("agent.default", "agent.claude")
 
     @staticmethod
     def _core_file_env_passthroughs() -> dict[str, str]:

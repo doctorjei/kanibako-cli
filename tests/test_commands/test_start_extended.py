@@ -2862,6 +2862,8 @@ class TestDetachedSupervisor:
             m.target.name = "goose"
             m.target.default_entrypoint = "goose"
             m.target.descriptor = GooseTarget().descriptor
+            # The real plugin's env, FINAL slot included: the shim gate reads it.
+            m.target.default_envs.return_value = GooseTarget().default_envs()
             m.target.has_resumable_session.return_value = True
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -3351,6 +3353,8 @@ class TestForegroundSupervisor:
             m.target.name = "goose"
             m.target.default_entrypoint = "goose"
             m.target.descriptor = GooseTarget().descriptor
+            # The real plugin's env, FINAL slot included: the shim gate reads it.
+            m.target.default_envs.return_value = GooseTarget().default_envs()
             m.target.has_resumable_session.return_value = True
             rc = _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
