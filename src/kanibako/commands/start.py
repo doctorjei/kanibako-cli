@@ -4394,9 +4394,7 @@ def _run_container(
         # no-agent launch (the main entrypoint), or any helper spawn (helpers
         # need a shell fallback even under a real-agent director).  A real-agent
         # launch with helpers off never needs it, so skip the resolve there.
-        # ⚑ ``has_plugin`` is the ONE reading of "no plugin" (P3) — it used to be
-        # spelled here off ``default_entrypoint`` and off ``descriptor`` in
-        # ``runs_box_shell``, with nothing keeping the two in step.
+        # ``has_plugin`` is the ONE reading of "no plugin" (P3) — see its docstring.
         shell_launch = not entrypoint and not has_plugin(target)
         # DETACH also needs the resolved box shell: its PID-1 keep-alive runs a
         # bare SHELL (not the agent), so resolve box.shell even for an agent
@@ -5113,10 +5111,8 @@ def _run_container(
             writeback_session_credentials(target, proj, auth_src=auth_src)
 
             # Hint when agent exits non-zero and --continue/--resume was used.
-            # ⚑ ``has_plugin`` and not ``is_agent_mode`` alone: ``is_agent_mode`` is
-            # ``entrypoint is None and not box_shell_mode``, which is TRUE for
-            # ``--agent shell`` — and the shell has no conversation to continue, so
-            # advising ``-N`` there told the user to fix a problem they cannot have.
+            # ``has_plugin`` (see its docstring) and not ``is_agent_mode`` alone: that
+            # is also TRUE for ``--agent shell``, which has no conversation to continue.
             if rc != 0 and is_agent_mode and not new_session and has_plugin(target):
                 print(
                     "hint: if the agent exited because there was no conversation "
