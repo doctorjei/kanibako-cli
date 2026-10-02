@@ -324,12 +324,12 @@ def remove_helper_dirs(
 # helper-init.sh template
 # ---------------------------------------------------------------------------
 
-_INIT_SCRIPT_NAME = "helper-init.sh"
+INIT_SCRIPT_NAME = "helper-init.sh"
 
 
 def bundled_init_script() -> Path:
     """Return the path to the bundled default ``helper-init.sh``."""
-    resource = importlib.resources.files("kanibako.scripts").joinpath(_INIT_SCRIPT_NAME)
+    resource = importlib.resources.files("kanibako.scripts").joinpath(INIT_SCRIPT_NAME)
     return Path(str(resource))
 
 
@@ -340,7 +340,7 @@ def resolve_init_script(parent_scripts_dir: Path | None) -> Path:
     first, then falls back to the bundled default.
     """
     if parent_scripts_dir is not None:
-        custom = parent_scripts_dir / _INIT_SCRIPT_NAME
+        custom = parent_scripts_dir / INIT_SCRIPT_NAME
         if custom.is_file():
             return custom
     return bundled_init_script()

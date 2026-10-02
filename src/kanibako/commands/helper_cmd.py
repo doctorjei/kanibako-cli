@@ -10,6 +10,7 @@ from pathlib import Path
 
 from kanibako.channels.helpers import (
     HELPER_SCRIPTS_RELPATH,
+    INIT_SCRIPT_NAME,
     PARENT_SCRIPTS_RELPATH,
     SPAWN_CONFIG_FILENAME,
     SpawnBudget,
@@ -273,7 +274,7 @@ def run_spawn(args: argparse.Namespace) -> int:
         Path.home() / PARENT_SCRIPTS_RELPATH,
     )
     dest_scripts = helpers_dir / str(helper_num) / HELPER_SCRIPTS_RELPATH
-    dest_init = dest_scripts / "helper-init.sh"
+    dest_init = dest_scripts / INIT_SCRIPT_NAME
     if not dest_init.exists():
         shutil.copy2(init_script, dest_init)
 

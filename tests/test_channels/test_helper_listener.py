@@ -6,7 +6,7 @@ import json
 import socket
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -17,6 +17,7 @@ from kanibako.channels.helper_listener import (
     _build_helper_mounts,
     _send_json,
 )
+import kanibako.channels.helper_listener as helper_listener
 
 
 @pytest.fixture
@@ -792,3 +793,28 @@ class TestHelperDefaultCategories:
             if e.name == "/home/agent/.kanibako/state/helpers.jsonl"
         )
         assert log_mount.host_src == str(log)
+
+
+class TestInitScriptNameExecSite:
+    """Pins the exec site to INIT_SCRIPT_NAME."""
+
+    def test_exec_site_entrypoint_follows_init_script_name(self, hub_and_sock):
+        """The exec site in helper_listener builds its entrypoint path from INIT_SCRIPT_NAME."""
+        hub, sock_path, ctx = hub_and_sock
+        ctx.entrypoint = None
+
+        helper_root = ctx.helpers_dir / "1"
+        helper_root.mkdir(parents=True)
+        (helper_root / "workspace").mkdir()
+        (helper_root / "vault" / "ro").mkdir(parents=True)
+        (helper_root / "vault" / "rw").mkdir(parents=True)
+
+        with patch.object(helper_listener, "INIT_SCRIPT_NAME", "init-check.sh"):
+            _connect_and_send(sock_path, {
+                "action": "spawn",
+                "helper_num": 1,
+                "helpers_dir": str(ctx.helpers_dir),
+            })
+
+        call_kwargs = ctx.runtime.run.call_args[1]
+        assert call_kwargs["entrypoint"].endswith("/init-check.sh")
