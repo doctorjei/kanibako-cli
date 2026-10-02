@@ -34,5 +34,10 @@ def setup_logging(verbose: bool = False, *, timestamps: bool = False) -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Return a child logger under ``kanibako``."""
+    """Return a logger under ``kanibako``, from a short name or a module ``__name__``."""
+    # ``__name__`` inside the package already carries the ``kanibako.`` prefix, so
+    # prefixing it again would nest the real module under a phantom ``kanibako.``.
+    # The dot is the boundary: ``kanibakox`` is a short name, not the package.
+    if name == "kanibako" or name.startswith("kanibako."):
+        return logging.getLogger(name)
     return logging.getLogger(f"kanibako.{name}")

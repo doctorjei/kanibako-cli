@@ -29,6 +29,7 @@ from unittest.mock import patch
 
 import pytest
 
+from kanibako.log import get_logger
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.commands.start import (
     _bind_map_from_mounts,
@@ -426,7 +427,20 @@ class TestARefusalStopsTheResolve:
         line is gone as well.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        with caplog.at_level(logging.DEBUG, logger="kanibako.kanibako.commands.start"):
+        with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
+            # ⚑ THE FLOOR, AND WHY IT IS HERE. Everything this test asserts is an
+            # absence, so without a floor it passes against a logger that emitted
+            # NOTHING AT ALL — which is exactly what watching the doubled name
+            # ``kanibako.kanibako.commands.start`` used to be. One probe record,
+            # emitted inside the same block, pins that the watched logger is live
+            # and that ``caplog`` is seeing it, so the absence below means something.
+            # Its message carries no ``not folded`` substring, so it cannot itself
+            # satisfy — or contaminate — the real assertion.
+            _PROBE = "probe: this logger is watched and does emit"
+            get_logger("kanibako.commands.start").debug(_PROBE)
+            assert _PROBE in [r.getMessage() for r in caplog.records], [
+                r.getMessage() for r in caplog.records
+            ]
             with pytest.raises(SettingsError):
                 _resolve(std, proj, extra_default_categories=_SUBSUMING)
 
