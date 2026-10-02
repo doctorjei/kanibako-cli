@@ -19,6 +19,7 @@ FENCE_RE = re.compile('^\\s{0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$')
 COMMENT_OPEN = '<!--'
 COMMENT_CLOSE = '-->'
 MAX_HEADING_DEPTH = 6
+PLUGIN_CHAPTER_REL = 'canon/charter/agent'
 DEFAULT_TITLE_FMT = '@'
 SECTION_TITLE_FMT = '{__SECTION__(source, sep)} @'
 _TOKEN = '\x00kanibako-row:{}\x00'
@@ -51,6 +52,8 @@ def split_trailing_punct(text: str) -> tuple[str, str]
 def build_manifest(fl: Flattener, seed: Path, dest: Path, output: str) -> dict
 def flatten(source: str, dest: str | None, *, additional_context: bool=False, manifest: str | None=None) -> int
 def main(argv: list[str]) -> int
+def _in_plugin_chapter(path: Path) -> bool
+def _anchor(raw: str, importing_file: Path) -> Path
 def _count_title_slots(fmt: str) -> int
 def _template_literal(node: ast.expr, param: str, name: str) -> object
 ```
@@ -75,14 +78,14 @@ class Flattener:
     def collect(self, path: Path) -> None
     def render(self, source: Path) -> str
 
-    def _template_entries(self, target: str, source: str, sep: str, title_fmt: str | None, importing_file: Path, current: str) -> list[tuple[tuple[Path, str, str, str], str | None]]
+    def _template_entries(self, target: str, source: str, sep: str, title_fmt: str | None, importing_file: Path, current: str, lineno: int=0, name: str='') -> list[tuple[tuple[Path, str, str, str], str | None]]
     def _retitle(self, path: Path, old_title: str, new_line: str) -> bool
-    def _run_template_call(self, line: str, call: tuple[str, str, dict[str, object]], importing_file: Path, enclosing: int | None, listing: int) -> str
+    def _run_template_call(self, line: str, call: tuple[str, str, dict[str, object]], importing_file: Path, enclosing: int | None, listing: int, lineno: int=0) -> str
     def _slugify(self, path: Path) -> str
     def _unique_anchor(self, base: str) -> str
     def _record_misses(self, tried: list[Path]) -> None
     def _process_text(self, text: str, importing_file: Path) -> tuple[str, str]
-    def _process_line(self, line: str, importing_file: Path, enclosing: int | None=None, listing: int=0) -> tuple[str, bool]
+    def _process_line(self, line: str, importing_file: Path, enclosing: int | None=None, listing: int=0, lineno: int=0) -> tuple[str, bool]
     def _finalize_links(self) -> None
     def _emit(self, path: Path) -> str
 

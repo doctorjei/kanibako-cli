@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.settings import core_defaults
+
 
 def _load_flattener():
     # The flattener is MACHINERY, not canon content: it ships in ``kanibako.scripts``
@@ -2332,3 +2334,104 @@ class TestShippedCanonChain:
         out = _body(_run(home, files, source="canon/COLLECTION.md"))
         assert "notebook-sentinel" in out
         assert "__IMPORTSECTION__" not in out
+
+
+class TestPluginChapterMissingImport:
+    """Step 5: warn when an import inside the plugin chapter names a missing file
+    that is also inside the chapter. Every other missing template target stays silent."""
+
+    @pytest.mark.parametrize("name", ["__IMPORT__", "__IMPORTSECTION__"])
+    def test_a_missing_import_target_inside_the_chapter_warns_naming_file_line_and_target(
+        self, home, capsys, name
+    ):
+        """The warning names the call name, the file, the line number, and the
+        missing absolute path."""
+        chapter_dir = home / "canon" / "charter" / "agent"
+        chapter_dir.mkdir(parents=True)
+        (chapter_dir / "ROM_AGENT.md").write_text(
+            f"# Agent\n\n{name}(\"notes.md\")\n", encoding="utf-8"
+        )
+        rc = flattener.flatten(
+            str(chapter_dir / "ROM_AGENT.md"), str(home / "out.md")
+        )
+        assert rc == 0
+        err = capsys.readouterr().err
+        assert f"{name} in {chapter_dir / 'ROM_AGENT.md'} line 3:" in err
+        assert f"{chapter_dir / 'notes.md'} does not exist" in err
+        assert "the plugin chapter imports a file it does not ship" in err
+
+    def test_a_missing_target_outside_the_chapter_stays_silent(self, home, capsys):
+        """A call inside the chapter that names a path outside the chapter is silent."""
+        chapter_dir = home / "canon" / "charter" / "agent"
+        chapter_dir.mkdir(parents=True)
+        (chapter_dir / "ROM_AGENT.md").write_text(
+            '# Agent\n\n__IMPORT__("../general/missing.md")\n',
+            encoding="utf-8",
+        )
+        rc = flattener.flatten(
+            str(chapter_dir / "ROM_AGENT.md"), str(home / "out.md")
+        )
+        assert rc == 0
+        assert capsys.readouterr().err == ""
+
+    def test_a_call_from_outside_the_chapter_naming_a_missing_chapter_file_stays_silent(
+        self, home, capsys
+    ):
+        """The shipped ``__IMPORTSECTION__("agent/ROM_AGENT.md")`` call, with no
+        chapter present, produces no warning."""
+        canon_dir = home / "canon" / "charter"
+        canon_dir.mkdir(parents=True)
+        (canon_dir / "ROM_CONTENTS.md").write_text(
+            '# Charter\n\n__IMPORTSECTION__("agent/ROM_AGENT.md")\n',
+            encoding="utf-8",
+        )
+        rc = flattener.flatten(
+            str(canon_dir / "ROM_CONTENTS.md"), str(home / "out.md")
+        )
+        assert rc == 0
+        assert capsys.readouterr().err == ""
+
+    def test_an_empty_ROM_AGENT_md_is_valid_and_silent(self, home, capsys):
+        """An empty ``ROM_AGENT.md`` reached via ``__IMPORTSECTION__`` is valid
+        and produces no warning -- a zero-byte chapter file is a valid no-op."""
+        chapter_dir = home / "canon" / "charter" / "agent"
+        chapter_dir.mkdir(parents=True)
+        (chapter_dir / "ROM_AGENT.md").write_text("", encoding="utf-8")  # zero bytes
+        canon_dir = home / "canon" / "charter"
+        (canon_dir / "ROM_CONTENTS.md").write_text(
+            '# Charter\n\n__IMPORTSECTION__("agent/ROM_AGENT.md")\n',
+            encoding="utf-8",
+        )
+        rc = flattener.flatten(
+            str(canon_dir / "ROM_CONTENTS.md"), str(home / "out.md")
+        )
+        assert rc == 0
+        assert capsys.readouterr().err == ""
+
+    def test_link_forms_and_empty_globs_inside_the_chapter_stay_silent(
+        self, home, capsys
+    ):
+        """D6: ``__LINK__``, ``__LINKSECTION__``, and a glob matching nothing are
+        all silent inside the chapter, as they are everywhere."""
+        chapter_dir = home / "canon" / "charter" / "agent"
+        chapter_dir.mkdir(parents=True)
+        (chapter_dir / "ROM_AGENT.md").write_text(
+            "# Agent\n\n"
+            '__LINK__("gone.md")\n'
+            '__LINKSECTION__("also-gone.md")\n'
+            '__IMPORT__("parts/*.md")\n',
+            encoding="utf-8",
+        )
+        rc = flattener.flatten(
+            str(chapter_dir / "ROM_AGENT.md"), str(home / "out.md")
+        )
+        assert rc == 0
+        assert capsys.readouterr().err == ""
+
+    def test_the_flattener_chapter_root_is_cores_chapter_dest(self):
+        """D7 parity: the flattener's ``PLUGIN_CHAPTER_REL`` must spell the same
+        path as ``core_defaults._rom_agent_chapter_dest()``."""
+        assert (
+            "~/" + flattener.PLUGIN_CHAPTER_REL
+            == core_defaults._rom_agent_chapter_dest()
+        )

@@ -346,11 +346,36 @@ def home_relative(path: Path) -> str:
         return path.as_posix()
 
 
+def _in_plugin_chapter(path: Path) -> bool:
+    """True when *path* is at or under the plugin chapter root."""
+    try:
+        chapter_root = Path.home() / PLUGIN_CHAPTER_REL
+        resolved = path.resolve()
+        resolved.relative_to(chapter_root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _anchor(raw: str, importing_file: Path) -> Path:
+    """*raw* with ``~`` expanded, made absolute, or joined onto *importing_file*."""
+    text = os.path.expanduser(raw)
+    if os.path.isabs(text):
+        return Path(text)
+    return importing_file.parent / text
+
+
 #: Markdown has no ``#######``. A generated heading is clamped here rather than
 #: emitted invalid: past six levels of nesting an included section stops getting
 #: DEEPER and sits alongside its parent instead. Depth is a reading aid; a
 #: heading that renders as literal text is not.
 MAX_HEADING_DEPTH = 6
+
+#: The plugin chapter root, relative to home. ⚑ Spelled here (D7) so the
+#: flattener -- which cannot import kanibako -- carries the same path as
+#: ``core_defaults._rom_agent_chapter_dest()``. The parity test in the test suite
+#: is what keeps them in sync.
+PLUGIN_CHAPTER_REL = "canon/charter/agent"
 
 
 def assign_section_numbers(
@@ -1042,6 +1067,8 @@ class Flattener:
         title_fmt: str | None,
         importing_file: Path,
         current: str,
+        lineno: int = 0,
+        name: str = "",
     ) -> list[tuple[tuple[Path, str, str, str], str | None]]:
         """:meth:`preplink`'s entries, each paired with the id it was minted.
 
@@ -1059,6 +1086,18 @@ class Flattener:
         spelling to invent for it.
         """
         if not _GLOB_MAGIC_RE.search(target) and self.resolve(target, importing_file) is None:
+            # Warn when inside the plugin chapter AND the missing target is also
+            # inside the chapter AND the call form is an import (D6).
+            if name and _in_plugin_chapter(importing_file):
+                missing = _anchor(target, importing_file)
+                if _in_plugin_chapter(missing):
+                    does_import, _ = _TEMPLATE_CALLS[name]
+                    if does_import:
+                        self.warnings.append(
+                            f"{name} in {importing_file} line {lineno}: {missing} "
+                            "does not exist; the plugin chapter imports a file "
+                            "it does not ship"
+                        )
             return []
         results = self.preplink(
             target, source, sep, title_fmt,
@@ -1178,6 +1217,7 @@ class Flattener:
         importing_file: Path,
         enclosing: int | None,
         listing: int,
+        lineno: int = 0,
     ) -> str:
         """Run one recognized call; return the text that replaces its line.
 
@@ -1197,7 +1237,7 @@ class Flattener:
         try:
             entries = self._template_entries(
                 target, source, sep, None if fmt is None else str(fmt),
-                importing_file, current,
+                importing_file, current, lineno, name,
             )
         except Exception as exc:
             # SAY SO and leave the line as written. A flatten that died here would
@@ -1287,10 +1327,7 @@ class Flattener:
         trailing = ""
         tried: list[Path] = []
         while True:
-            candidate = os.path.expanduser(text)
-            p = Path(candidate)
-            if not p.is_absolute():
-                p = importing_file.parent / candidate
+            p = _anchor(text, importing_file)
             if p.is_file():
                 return p.resolve(), text, trailing
             tried.append(p)
@@ -1405,7 +1442,7 @@ class Flattener:
                     "a template call must stand alone on its line"
                 )
             processed, import_only = self._process_line(
-                line, importing_file, enclosing, listing
+                line, importing_file, enclosing, listing, lineno
             )
             out.append(processed)
             if import_only:
@@ -1436,6 +1473,7 @@ class Flattener:
         importing_file: Path,
         enclosing: int | None = None,
         listing: int = 0,
+        lineno: int = 0,
     ) -> tuple[str, bool]:
         """Rewrite the imports in *line*; report whether the line is IMPORT-ONLY.
 
@@ -1468,7 +1506,7 @@ class Flattener:
             call = None
         if call is not None:
             return self._run_template_call(
-                line, call, importing_file, enclosing, listing
+                line, call, importing_file, enclosing, listing, lineno
             ), False
 
         spans = code_span_ranges(line)
