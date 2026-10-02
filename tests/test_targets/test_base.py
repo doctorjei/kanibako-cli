@@ -25,6 +25,7 @@ from kanibako.targets.base import (
     SettingArg,
     Target,
     _validate_agent_binary,
+    has_plugin,
 )
 
 
@@ -585,3 +586,83 @@ class TestPluginDescriptorDataclasses:
                 pass
 
         assert NoDescTarget().descriptor is None
+
+
+class TestHasPlugin:
+    """``has_plugin`` is the ONE reading of "this target has no plugin" (P3).
+
+    A refactor, not a behavior change: the value it pins is that the predicate
+    is a MODULE FUNCTION a third-party subclass cannot override, and that it
+    answers the three cases the three former call-site readings each got right
+    by their own route — no target, the built-in shell, a plugin.
+    """
+
+    def test_no_target_has_no_plugin(self):
+        assert has_plugin(None) is False
+
+    def test_the_builtin_shell_has_no_plugin(self):
+        from kanibako.targets.shell import ShellTarget
+
+        assert has_plugin(ShellTarget()) is False
+
+    def test_a_descriptor_bearing_target_has_a_plugin(self):
+        class PluginTarget(Target):
+            @property
+            def name(self) -> str:
+                return "pt"
+
+            @property
+            def display_name(self) -> str:
+                return "Plugin Target"
+
+            @property
+            def descriptor(self) -> PluginDescriptor:
+                return PluginDescriptor(
+                    command=("pt",),
+                    bindings=(
+                        Binding(
+                            key="binary",
+                            origin=HostSrcOrigin.BINARY,
+                            box_dest="/usr/local/bin/pt",
+                            kind=BindKind.FILE,
+                            scope=BindScope.AGENT_CRITICAL,
+                        ),
+                    ),
+                    mode={"start": ()},
+                )
+
+            @property
+            def default_entrypoint(self) -> str | None:
+                return "pt"
+
+            def detect(self):
+                return None
+
+        assert has_plugin(PluginTarget()) is True
+
+    def test_it_is_a_module_function_not_a_Target_attribute(self):
+        """P3: a method or property would be one more thing a subclass overrides."""
+        assert not hasattr(Target, "has_plugin")
+        import kanibako.targets.base as base_mod
+
+        assert callable(base_mod.has_plugin)
+
+    def test_a_subclass_cannot_make_the_built_in_shell_look_like_a_plugin(self):
+        """The override a ``Target`` method would have allowed, and did not.
+
+        A subclass that answers ``descriptor`` with a real descriptor and
+        ``default_entrypoint`` with a name IS a plugin by the rule, and the
+        predicate says so. What it must not be able to do is redefine the
+        predicate itself to disagree with the reading every other site uses.
+        """
+        from kanibako.targets.shell import ShellTarget
+
+        class LyingShell(ShellTarget):
+            @property
+            def descriptor(self):
+                return PluginDescriptor(command=("ls",), bindings=(), mode={})
+
+        # The override lands on the SUBCLASS, which is the whole reason the
+        # predicate reads the attribute rather than asking the object.
+        assert has_plugin(ShellTarget()) is False
+        assert LyingShell().descriptor is not None
