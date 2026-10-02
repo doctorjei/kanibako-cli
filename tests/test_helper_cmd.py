@@ -24,6 +24,7 @@ from kanibako.commands.helper_cmd import (
     run_spawn,
     run_stop,
 )
+import kanibako.commands.helper_cmd as helper_cmd
 from kanibako.channels.helpers import SpawnBudget, write_spawn_budget
 from tests.support.filenames import CONFIG_FILENAME
 
@@ -736,6 +737,17 @@ class TestSocketWiring:
         assert rc == 0
         state = _read_state(helpers_env / "helpers", 1)
         assert state["status"] == "running"
+
+
+class TestInitScriptNameCopySite:
+    """Pins the copy site to INIT_SCRIPT_NAME."""
+
+    def test_copy_site_follows_init_script_name(self, helpers_env):
+        """The copy site in helper_cmd uses INIT_SCRIPT_NAME for the destination filename."""
+        with patch.object(helper_cmd, "INIT_SCRIPT_NAME", "init-check.sh"):
+            run_spawn(_make_args(depth=None, breadth=None, model=None))
+        init = helpers_env / "helpers" / "1" / "scripts" / "init-check.sh"
+        assert init.is_file()
 
 
 def _make_args(**kwargs):
