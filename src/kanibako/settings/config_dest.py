@@ -189,9 +189,7 @@ def _persona_agent_target(
     An :class:`AgentFileSlot`, an ``"Error: ..."`` string for a refused node, or
     ``None`` when it is not a persona key / *agents_root* was not supplied.
 
-    ⚑ *verb* is REQUIRED and keyword-only, and is passed straight to
-    :func:`_reserved_tier_refusal` — the refusal is the caller's VERB's, so this
-    cannot answer "set" on a caller's behalf.
+    ⚑ *verb* goes straight to :func:`_reserved_tier_refusal`, whose docstring states its contract.
 
     ⚑ The node is taken VERBATIM from *canonical* and only VALIDATED here, never
     re-swapped — canonicalization happened once, at :func:`resolve_key`.

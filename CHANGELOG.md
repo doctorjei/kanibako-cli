@@ -256,6 +256,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako <scope> set` on an undeclared key now names the key and the §0 reason** (e.g.
+  `Error: 'agent.default.provider' cannot be set: 'provider' is not a declared agent key of
+  'agent.default' (declared: …) (spec §0 — the keyspace is CLOSED).`), the same reason `reset`
+  already gave, instead of `Error: unknown config key: …`. The same keys are refused; nothing is
+  written.
+- **A refused `reset` at the reserved `agent.default` tier now answers in its own verb**
+  ("reset the any-agent default with the bare key (e.g. 'model') instead.") instead of telling you
+  to "set" one.
 - **The launch refusal for a plugin whose access realization has no tier rows no longer blames
   plugin version skew.** It names the real causes — an `access_realization:` block with a missing
   or empty `tiers:` table, or a hand-built `AccessRealization` with no rows — and says to upgrade
