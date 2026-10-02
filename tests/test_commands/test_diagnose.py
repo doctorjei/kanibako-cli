@@ -273,7 +273,6 @@ class TestCheckAgents:
         """Each resolver source token maps to the right friendly label."""
         cases = {
             "box.shell": ("/bin/zsh", "box.shell"),
-            "$KANIBAKO_SHELL": ("/usr/bin/fish", "$KANIBAKO_SHELL"),
             "image": ("/bin/bash", "image default"),
             "sh": ("sh", "fallback"),
         }

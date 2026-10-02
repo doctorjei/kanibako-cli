@@ -1033,7 +1033,7 @@ is `.yaml`.
 | `model` | platform default | Agent model name |
 | `access` | `full` | Permission tier -- `restricted`, `editing` or `full` |
 | `box.image` | `kanibako-oci:latest` | Container rig |
-| `box.shell` | `$KANIBAKO_SHELL` | Login shell for a launch that runs no agent program -- `kanibako shell`, or `kanibako start` at a box whose agent has no entrypoint of its own (`--agent shell`). An explicit `--entrypoint` runs *that* instead. Resolved `box.shell` → `$KANIBAKO_SHELL` → the image's recorded login shell → `sh` |
+| `box.shell` | `<None>` (auto-detect) | Login shell for a launch that runs no agent program -- `kanibako shell`, or `kanibako start` at a box whose agent has no entrypoint of its own (`--agent shell`). An explicit `--entrypoint` runs *that* instead. Resolved `box.shell` → the image's recorded login shell → `sh` |
 | `pref.system.agent` | (unset) | Agent target plugin requested for this box or workset; part of the resolution cascade (see [Agent Selection](#agent-selection)) |
 | `box.share_images` | | Share host images into the box |
 | `box.auth.global_enabled` | `true` | The box's host-global credential-share opt-in (`true`) vs. per-box (`false`) |

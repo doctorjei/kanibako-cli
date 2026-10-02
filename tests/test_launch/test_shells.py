@@ -220,21 +220,37 @@ class TestCaptureImageShell:
 
 
 class TestResolveBoxShell:
-    def test_config_box_shell_wins(self, std, monkeypatch):
-        monkeypatch.setenv("KANIBAKO_SHELL", "/bin/zsh")
+    def test_config_box_shell_wins(self, std):
         cfg = KanibakoConfig(box_shell="/usr/bin/fish")
         assert resolve_box_shell(cfg, std, image="img", runtime=_Runtime()) == (
             "/usr/bin/fish",
             "box.shell",
         )
 
-    def test_env_var_when_no_config(self, std, monkeypatch):
+    def test_env_var_is_ignored_no_store(self, std, monkeypatch):
+        """``$KANIBAKO_SHELL`` is no longer read; with nothing else set the chain floors at sh."""
         monkeypatch.setenv("KANIBAKO_SHELL", "/bin/zsh")
         cfg = KanibakoConfig(box_shell="")
-        assert resolve_box_shell(cfg, std) == ("/bin/zsh", "$KANIBAKO_SHELL")
+        assert resolve_box_shell(cfg, std) == ("sh", "sh")
+
+    def test_env_var_is_ignored_image_wins(self, std, monkeypatch):
+        """The set env var must not pre-empt the image's recorded login shell."""
+        monkeypatch.setenv("KANIBAKO_SHELL", "/bin/zsh")
+        cfg = KanibakoConfig(box_shell="")
+        rt = _Runtime(digest="sha256:aaa")
+        save_image_shell(std, "sha256:aaa", "/bin/bash")
+
+        # Ensure no probe happens: any subprocess.run call would error the test.
+        def _boom(*a, **k):
+            raise AssertionError("probe should not run when store has a hit")
+
+        monkeypatch.setattr(subprocess, "run", _boom)
+        assert resolve_box_shell(cfg, std, image="img", runtime=rt) == (
+            "/bin/bash",
+            "image",
+        )
 
     def test_stored_image_shell_no_probe(self, std, monkeypatch):
-        monkeypatch.delenv("KANIBAKO_SHELL", raising=False)
         cfg = KanibakoConfig(box_shell="")
         rt = _Runtime(digest="sha256:aaa")
         save_image_shell(std, "sha256:aaa", "/bin/bash")
@@ -250,7 +266,6 @@ class TestResolveBoxShell:
         )
 
     def test_lazy_probe_and_persist(self, std, monkeypatch):
-        monkeypatch.delenv("KANIBAKO_SHELL", raising=False)
         cfg = KanibakoConfig(box_shell="")
         rt = _Runtime(digest="sha256:aaa")
 
@@ -263,13 +278,11 @@ class TestResolveBoxShell:
         # Persisted for next time.
         assert load_image_shells(std) == {"sha256:aaa": "/bin/dash"}
 
-    def test_no_runtime_falls_to_sh(self, std, monkeypatch):
-        monkeypatch.delenv("KANIBAKO_SHELL", raising=False)
+    def test_no_runtime_falls_to_sh(self, std):
         cfg = KanibakoConfig(box_shell="")
         assert resolve_box_shell(cfg, std, image="img", runtime=None) == ("sh", "sh")
 
     def test_probe_none_falls_to_sh(self, std, monkeypatch):
-        monkeypatch.delenv("KANIBAKO_SHELL", raising=False)
         cfg = KanibakoConfig(box_shell="")
         rt = _Runtime(digest="sha256:aaa")
 

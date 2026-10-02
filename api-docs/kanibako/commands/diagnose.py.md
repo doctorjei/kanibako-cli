@@ -8,7 +8,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 _PROBE_HIT_PREFIX = 'KANIBAKO_HAS:'
-_SHELL_SOURCE_LABELS = {'box.shell': 'box.shell', '$KANIBAKO_SHELL': '$KANIBAKO_SHELL', 'image': 'image default', 'sh': 'fallback'}
+_SHELL_SOURCE_LABELS = {'box.shell': 'box.shell', 'image': 'image default', 'sh': 'fallback'}
 _DEVCONTAINERS_EXT_ID = 'ms-vscode-remote.remote-containers'
 ```
 

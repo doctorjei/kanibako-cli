@@ -214,7 +214,6 @@ def _check_image(config: object) -> tuple[str, str]:
 # kanibako.launch.shells.resolve_box_shell), used in the no-agent "Shell" detail line.
 _SHELL_SOURCE_LABELS = {
     "box.shell": "box.shell",
-    "$KANIBAKO_SHELL": "$KANIBAKO_SHELL",
     "image": "image default",
     "sh": "fallback",
 }
