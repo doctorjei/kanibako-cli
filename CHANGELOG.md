@@ -40,8 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   including one spelled with `.`, `..`, or a doubled `/`, now stops the command, naming the entry
   and its file, and so does a mask above one of these destinations, naming the bind it would
   remove. A mount collision that involves one of these binds no
-  longer offers to suppress it. `kanibako workset share add` refuses such a destination with the same
-  message and writes nothing; in 1.8.0-rc2 it answered `Added`. See *An entry at the destination of
+  longer offers to suppress it. `kanibako workset share add` refuses such a destination too, and
+  writes nothing; in 1.8.0-rc2 it answered `Added`. It refuses in its own words rather than the
+  resolve's, because the resolve's cure — *remove the entry* — asks you to delete something that was
+  never written, in a file that may not exist yet. It names the destination you gave and tells you
+  to choose another. The refusal a settings file meets is unchanged. See *An entry at the destination of
   one of kanibako's internal binds is refused* in [MIGRATION.md](MIGRATION.md).
 
 - **kanibako's own text uses American spelling.** Printed and raised messages, identifiers,
@@ -254,7 +257,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than left absent. See `MIGRATION.md` § *An agent plugin's own default beats
   `agent.default`*.
 
+- An agent plugin that declares no `descriptor` or no `default_entrypoint` is now skipped at
+  discovery with a warning naming the missing half; every other agent and `kanibako setup` still
+  work. In 1.8.0-rc2 a plugin with an entrypoint but no descriptor (a 1.7.x hook plugin) launched
+  its own program with no arguments.
+
 ### Fixed
+
+- **A broken or incomplete kanibako install prints one `Error:` line and exits 1 instead of a
+  Python traceback.** This covers missing or malformed rows in the packaged `core-defaults.yaml`
+  and keyspace manifest: the behavior floor, pseudo-agent tiers, the `env:` section, the kickoff
+  entry and its loader, the core and internal bind rows, and a template seed that lands in the
+  managed canon region.
+
+- `kanibako start --agent shell` no longer prints the `start -N` hint when the shell exits
+  non-zero.
 
 - **kanibako no longer leaks a temporary directory on every run when `XDG_RUNTIME_DIR` is unset or
   unusable.** With no usable `/run/user/<uid>`, it now reuses one private

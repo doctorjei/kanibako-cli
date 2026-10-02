@@ -1464,8 +1464,6 @@ def internal_bind_refusals(
             continue
         norm = normalize_bind_dest(dest)
         if norm in internal:
-            # ⚑ THE WRITE FORM of the arm below, and the reason *when* exists. Same
-            # refusal, told to the person who has not written yet.
             if when == "write":
                 refusals.append(
                     f"{entry_label(arm, dest)} cannot be added to {where}: its "
@@ -1480,15 +1478,7 @@ def internal_bind_refusals(
             continue
         if not is_mask or value is None:
             continue
-        # ⚑ THE SAME SPLIT ON THE MASK ARM. Unreachable from ``share add``, which writes
-        # only ``bindings`` — a mask is not a dest-keyed entry it can be handed — so the
-        # write form stands for the day a verb does write one: the arm must not answer it
-        # with a cure for an entry that was never written. BOTH wordings are pinned
-        # directly by ``tests/test_settings/test_settings_resolve.py``
-        # (``TestADestinationIsFullyCanonicalized::test_mask_arm_carries_both_wordings_and_when_picks_one``),
-        # which is the only test that reaches this arm's write form; the STORED text below
-        # is pinned end-to-end through the resolve by ``tests/test_canon_delivery.py``
-        # (``TestInternalBindEntryRefusal::test_a_mask_above_an_internal_bind_refuses_naming_what_it_would_remove``).
+        # The write form here has no caller yet: ``share add`` writes only ``bindings``.
         if when == "write":
             refusals.extend(
                 f"{entry_label(arm, dest)} cannot be added to {where}: it would remove "
@@ -3192,10 +3182,6 @@ def snapshot_category_entries(
     ⚑ THE ``host_dest_keys`` COMPANION IS GONE (2026-08-08c). Every destination is
     GUEST-spelled now, copies included (spec §0 "ONE DEST SPACE, TWO DELIVERIES"), so
     there is no second namespace for a key set to select. Do not reintroduce one.
-
-    ⚑ THE ``optional_keys`` COMPANION IS GONE WITH IT. Skip-if-absent is the
-    DESTINATION policy's decision over the ``canon:`` rows (:func:`canon_silent_dests`),
-    not a per-entry flag this walk could carry — so there is nothing to thread here.
     """
     collected: list[tuple[tuple[int, str, str], CategoryEntry]] = []
     scope_order = {s: i for i, s in enumerate(_SCOPES)}

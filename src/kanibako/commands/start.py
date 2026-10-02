@@ -3014,10 +3014,9 @@ def _run_container(
 
     # The ONE conversion of ``-- <words>`` into the box shell's ``-lc S`` (keyspec
     # §2d ``shell``).  It applies when this launch's program is the box shell:
-    # ``kanibako shell``, or a target with no plugin — the ONE reading of that
-    # fact (``targets.base.has_plugin``), so this site cannot drift from the
-    # others.  It sits ahead of the rig, flag, and image-shell writes so an
-    # over-long command (``shell_command_string`` raises) refuses before them.
+    # ``kanibako shell``, or a target with no plugin (``has_plugin``).  It sits
+    # ahead of the rig, flag, and image-shell writes so an over-long command
+    # (``shell_command_string`` raises) refuses before them.
     from kanibako.launch.shells import shell_command_string
     runs_box_shell = box_shell_mode or (
         target is not None
@@ -4147,16 +4146,8 @@ def _run_container(
                 # call here would be a second producer of the same variables, above
                 # the channel, which is precisely the layer the fold deleted.
             else:
-                # THE NO-PLUGIN ARM — and discovery GUARANTEES it is ``ShellTarget``:
-                # ``targets._register`` refuses a plugin with no ``descriptor``, and
-                # the built-in is SEEDED rather than discovered ([R175]), so no
-                # registered target reaches here.  It launches a plain shell with
-                # no agent argv and no realized variables.  The legacy
-                # build_cli_args / apply_state hook dispatch was removed for the
-                # public release (descriptor-only plugin system); a no-agent box
-                # needs neither.  Its only argv is a ``-- <command>`` as ``-lc S``.
-                # ⚑ This arm reads the descriptor's CONTENT, not "has a plugin", so
-                # it is deliberately NOT routed through ``has_plugin`` (P3).
+                # The no-plugin arm (``ShellTarget`` only; see ``has_plugin``): a plain
+                # shell whose only argv is a ``-- <command>`` as ``-lc S``.
                 cli_args = ["-lc", shell_command] if shell_command is not None else []
         else:
             cli_args = list(extra_args)
@@ -4394,7 +4385,6 @@ def _run_container(
         # no-agent launch (the main entrypoint), or any helper spawn (helpers
         # need a shell fallback even under a real-agent director).  A real-agent
         # launch with helpers off never needs it, so skip the resolve there.
-        # ``has_plugin`` is the ONE reading of "no plugin" (P3) — see its docstring.
         shell_launch = not entrypoint and not has_plugin(target)
         # DETACH also needs the resolved box shell: its PID-1 keep-alive runs a
         # bare SHELL (not the agent), so resolve box.shell even for an agent
@@ -5110,9 +5100,7 @@ def _run_container(
             # Clean/ephemeral exit: writeback project -> host (FIX 1 helper).
             writeback_session_credentials(target, proj, auth_src=auth_src)
 
-            # Hint when agent exits non-zero and --continue/--resume was used.
-            # ``has_plugin`` (see its docstring) and not ``is_agent_mode`` alone: that
-            # is also TRUE for ``--agent shell``, which has no conversation to continue.
+            # Hint when a plugin agent (not ``--agent shell``) fails in continue mode.
             if rc != 0 and is_agent_mode and not new_session and has_plugin(target):
                 print(
                     "hint: if the agent exited because there was no conversation "

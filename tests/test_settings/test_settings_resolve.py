@@ -960,8 +960,6 @@ class TestADestinationIsFullyCanonicalized:
             "at /opt/kanibako/kanibako (spec §2c), which is not suppressible; mask a "
             "narrower path."
         )
-        # ⚑ The cure the write form must NOT give, for the same reason the dest-keyed
-        # arm has one: nothing was written, so there is nothing to mask away.
         assert write[0] == (
             "box.masks[/opt/kanibako] cannot be added to t.yaml: it would remove the "
             "internal kanibako bind at /opt/kanibako/kanibako (spec §2c), which is not "

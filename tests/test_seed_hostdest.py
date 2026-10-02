@@ -257,10 +257,8 @@ def _entry(**kw) -> CategoryEntry:
 class TestSkipIfAbsentEmission:
     """The skip-if-absent policy reaches the emitter as a DEST SET, not as a field.
 
-    ⚑ Cutover step 3 (producer DESIGN §9.1): ``CategoryEntry.optional`` cannot
-    survive the fold into ``CollapsedBind(src, opts)``, so the decision travels as
-    a parameter spelled in the one thing the collapsed map keeps — the destination.
-    Step 3 then retired the key-form route that used to shadow it.
+    A collapsed bind is ``CollapsedBind(src, opts)``, so the decision travels in the
+    one thing the collapsed map keeps — the destination.
     """
 
     _DEST = f"{GUEST_HOME}/canon/x"

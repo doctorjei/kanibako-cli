@@ -526,15 +526,7 @@ def pytest_configure(config: "pytest.Config") -> None:
   bases would still read the host's config file.
   (Both are pinned by ``tests/test_census_configure_isolation.py``.)
 
-  ⚑ THE WINDOW IS THE PRIMING CALL, AND NOTHING ELSE.  ``throwaway_user_dirs`` here
-  is a CONFIGURE-TIME WINDOW, not a session-wide redirect: it covers that one call
-  and restores the environment in a ``finally``, on the success path and the
-  exception path alike. It is deliberately NOT extended to the session —
-  ``integration`` / ``e2e`` tests are SUPPOSED to see the real ``HOME``, because the
-  rootless image store they drive lives there (see ``_isolate_user_dirs``' docstring,
-  which describes a DIFFERENT isolation doing a DIFFERENT job: per-test FRESHNESS).
-  Do not merge the two, and do not delete either as the other's duplicate. All they
-  share is the variable list, and that is carried once in ``tests._user_dirs``.
+  ⚑ ``throwaway_user_dirs`` covers that one call only; see ``tests._user_dirs``.
 
   ⚑ THE ORDER IS LOAD-BEARING.  The priming call stays FIRST, before the funnel is
   captured: ``_discover``'s memo is what every later test reads, and it must be

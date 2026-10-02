@@ -1211,7 +1211,6 @@ class TestLazyInitExemptions:
 
     def test_box_helper_skips_lazy_init(self, tmp_path, monkeypatch):
         """'box helper' command should not trigger lazy init."""
-        # Point XDG_CONFIG_HOME to an empty dir (no kanibako.cfg)
         monkeypatch.setattr(
             "kanibako.commands.helper_cmd._helpers_dir",
             lambda: tmp_path / "helpers",
@@ -1223,16 +1222,15 @@ class TestLazyInitExemptions:
             main(["box", "helper", "list"])
         assert exc_info.value.code == 0
 
-    def test_agent_skips_lazy_init(self, tmp_path, monkeypatch):
+    def test_agent_skips_lazy_init(self):
         """'agent' command (config-facing) should not trigger lazy init."""
-
         from kanibako.cli import main
         # 'agent list' should not crash with "not set up yet"
         with pytest.raises(SystemExit) as exc_info:
             main(["agent", "list"])
         assert exc_info.value.code == 0
 
-    def test_box_fork_skips_lazy_init(self, tmp_path, monkeypatch):
+    def test_box_fork_skips_lazy_init(self):
         """'box fork' command should not trigger lazy init."""
         # fork will fail with "no socket" but should NOT fail with lazy init
         from kanibako.cli import main

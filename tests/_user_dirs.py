@@ -66,10 +66,7 @@ def throwaway_user_dirs(
 ) -> Iterator[Path]:
   """Substitute a fresh ``mkdtemp`` tree for the user dirs for the BODY only.
 
-  ⚑ THE WINDOW IS THE BODY, AND NOTHING ELSE.  This exists for code that runs
-  BEFORE any fixture — the census's plugin-discovery priming — where the autouse
-  ``_isolate_user_dirs`` cannot have reached. It deliberately does not last the
-  session: ``integration`` / ``e2e`` tests are supposed to see the real ``HOME``.
+  The configure-time window of the module docstring.
 
   ⚑ THE RESTORE IS IN A ``finally`` AND RECORDS UNSET AS UNSET.  A restore that
   only ran on the success path would leak the throwaway tree into every later test

@@ -197,8 +197,7 @@ class TestIsCanonicalStandaloneName:
 class TestLeafGrammarTracksGenerator:
     """The leaf grammar is DERIVED from the generator's cap and survivor set.
 
-    Nothing is wrong in the module today — this pins the derivation, so that
-    changing :data:`box_identity._LEAF_CAP` or the safe character set stays a
+    Changing :data:`box_identity._LEAF_CAP` or the safe character set stays a
     one-line edit.  Both expectations are read off the generator
     (:func:`sanitize_cap` / the module constants) rather than respelled here;
     a hard-coded ``32`` in this class would reintroduce the very drift it guards.

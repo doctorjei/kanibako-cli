@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from kanibako.vscode.vscode_config import CodexModelProvider
 
 # The map stored at ANY terminal bind-shaped key: `{box_dest: (host_src[, options])}`.
-# ⚑ `BindDefault`, the NAME-keyed tuple, IS GONE — a plugin emitting one is refused BY NAME.
+# ⚑ A plugin emitting a NAME-keyed `BindDefault` tuple is refused BY NAME.
 BindArm = dict[str, tuple[str, ...]]
 
 # What `Target.default_category_binds` / `default_common` / `default_seeds` return.
@@ -837,8 +837,7 @@ def _validate_agent_binary(binary: Path) -> str | None:
 class Target(ABC):
     """Abstract base class for agent targets — ALL agent knowledge lives in implementations.
 
-    ⚑ The legacy per-METHOD launch hooks (`binary_mounts`, `init_home`, `build_cli_args`,
-    `resource_mappings`, `apply_state`) are GONE — the launch is assembled from `descriptor`.
+    The launch is assembled from `descriptor`; there are no per-method launch hooks.
     """
 
     @property
@@ -878,14 +877,7 @@ class Target(ABC):
 
     @property
     def descriptor(self) -> "PluginDescriptor | None":
-        """Declarative plugin descriptor; None only for the built-in ShellTarget.
-
-        ⚑ NOT A HOPE, THE RULE: discovery (``targets._register``) REFUSES a plugin
-        that returns None, with a stderr warning, so every REGISTERED target answers
-        one way — this default is reachable only by the seeded built-in. Read "does
-        this target have a plugin" through :func:`has_plugin`; do not re-derive it
-        from a second attribute and hope the two agree.
-        """
+        """Declarative plugin descriptor; None only for ShellTarget (see :func:`has_plugin`)."""
         return None
 
     def check_auth(self) -> bool:
@@ -956,11 +948,10 @@ class Target(ABC):
         """Return a default AgentConfig for this target.
 
         ⚑ EMPTY by default, and that is the FILE-PURITY invariant: the per-agent settings
-        file holds USER INTENT only, so a freshly generated one has nothing in it.  It used
-        to carry ``name=self.display_name``; that field was not a settings key and is gone
-        (2026-09-15).  Declare your agent's description as a ``label`` row in your defaults
-        file's ``behavior:`` section — ``agent.<agent>.label``, spec §2d — which is what
-        ``kanibako agent info`` prints.
+        file holds USER INTENT only, so a freshly generated one has nothing in it.
+        Declare your agent's description as a ``label`` row in your defaults file's
+        ``behavior:`` section (``agent.<agent>.label``, spec §2d); ``kanibako agent info``
+        prints it.
         """
         from kanibako.settings.agent_config import AgentConfig as _AgentConfig
 
@@ -1120,22 +1111,11 @@ class Target(ABC):
 
 
 def has_plugin(target: Target | None) -> bool:
-    """True when *target* is a harness plugin; False for no target and for the built-in ShellTarget.
+    """True when *target* is a harness plugin: it has a ``PluginDescriptor`` (keyspec §2d).
 
-    ⚑ A MODULE FUNCTION, NOT A ``Target`` METHOD (P3): the plugin system is
-    third-party, so a ``Target`` method here would be one more thing a subclass can
-    override, and the four ``start.py`` call sites would then read the override.
-
-    "This target has no plugin" is ONE fact (keyspec §2d): the target is the built-in
-    ``ShellTarget``, or there is no target at all. A plugin is a ``Target`` with a
-    ``PluginDescriptor``, so the descriptor IS the test.
-
-    ⚑ ONE PREDICATE, NOT A RECIPE. :func:`kanibako.targets.discover_targets` REFUSES a
-    plugin whose ``descriptor`` or ``default_entrypoint`` is ``None``, which is what makes
-    ``descriptor is None`` ⇔ ``default_entrypoint is None`` true of every REGISTERED
-    target. So reading the entrypoint instead of the descriptor gives the same answer
-    today — and reading both as a conjunction is a second spelling of this fact that
-    nothing keeps in step. Callers that need "is there an agent" and no more should use
-    this, and not re-derive it.
+    ⚑ Discovery refuses a plugin whose ``descriptor`` or ``default_entrypoint`` is
+    ``None``, so only the built-in ``ShellTarget`` lacks either; read "is there an
+    agent" here, never from either attribute.  A module function, not a method (P3),
+    so a third-party subclass cannot override it.
     """
     return target is not None and target.descriptor is not None
