@@ -12,6 +12,7 @@ __all__ = ['AgentInstall', 'Mount', 'ShellTarget', 'Target', 'TargetSetting', 'd
 _EP_LOAD_FAILED: set[str] = set()
 _RESERVED_NAME_WARNED: set[str] = set()
 _COLLIDING_NAME_WARNED: set[str] = set()
+_NO_PLUGIN_SHAPE_WARNED: set[str] = set()
 ```
 
 ## Functions
