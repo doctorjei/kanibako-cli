@@ -1189,7 +1189,7 @@ def _remove_old_metadata(
         # composed default; and an UNRESOLVABLE repoint raises here, which must happen
         # while the source is still whole and the unwind still has something to restore.
         removable_vault, retained_vault = standalone_vault_teardown(root)
-        # ⚑ Standalone lives in registry.standalone, not names.yaml: drop that entry too,
+        # ⚑ Standalone lives in registry.standalone: drop that entry too,
         # or a standalone→standalone move strands the old name → root mapping.
         from kanibako.project import registry_store
         if state.name:

@@ -535,7 +535,7 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
 
     # Create a name file so container_name_for() gives a predictable name
     # We register via kanibako create later, but for name computation we
-    # need the names.yaml to exist.
+    # need the registry directory to exist.
     names_dir = data_home / "kanibako"
     names_dir.mkdir(parents=True, exist_ok=True)
 

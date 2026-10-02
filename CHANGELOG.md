@@ -257,6 +257,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fix or remove the file; an unreadable file (permission denied, directory) also names the
   OS reason.
 
+- **`kanibako box rm --help` no longer refers to the retired `names.yaml`.** In 1.8.0-rc2
+  the help text said "Remove a project from names.yaml without touching the workspace."
+  The updated text names the three actual targets (default-workset box list, standalone
+  registry entry, worksets index) and says the project's own files are never deleted; without
+  `--purge`, metadata is retained so the box can be restored with `kanibako box register`.
+
 - **A bad path setting on the very first run is refused with the usual message, not a Python
   traceback.** In 1.8.0-rc2, if the global `settings.yaml` set a `system.*` path key to `<None>`
   before kanibako had ever run, the refusal escaped as a traceback. It now prints the same

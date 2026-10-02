@@ -1484,7 +1484,7 @@ class TestBoxDuplicateCrossMode:
         standalone box — detected as standalone, registered in
         ``registry.standalone``, ``mode=standalone``, with a FRESH
         ``<kuid>_<leaf>`` name distinct from the source (which is unregistered
-        as a standalone, since primary boxes use ``names.yaml``)."""
+        as a standalone, since primary boxes use the primary membership)."""
         from kanibako.commands.box import run_duplicate
         from kanibako.settings.config import WORKSET_META_FILE
         from kanibako.settings.config_io import load_doc
