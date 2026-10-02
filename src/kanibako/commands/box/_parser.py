@@ -1737,9 +1737,15 @@ def run_register(args: argparse.Namespace) -> int:
     force = getattr(args, "force", False)
 
     # 1. DEREGISTERED readopt — a bare name resolves here FIRST; the blob's ``kind`` routes.
-    dereg = registry_store.lookup_deregistered(std.registry, target)
-    if dereg is not None:
-        return _readopt_deregistered(std, target, dereg, force=force)
+    # ⚑ Case-blind (spec §0), and the readopt takes the STORED spelling: it re-registers
+    # the box's name, membership entry, home and log paths, all of which a typed
+    # case-variant would miss — same rule as the ``rm --purge`` branch above.
+    deregistered = registry_store.load_deregistered(std.registry)
+    dereg_name = find_identifier(target, deregistered)
+    if dereg_name is not None:
+        return _readopt_deregistered(
+            std, dereg_name, dict(deregistered[dereg_name]), force=force,
+        )
 
     # 2. Already-ACTIVE guards — rc 0 no-op for a live box, a redirect for a workset.
     # ⚑ All three guards compare case-blind (spec §0) and report the STORED spelling —

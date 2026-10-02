@@ -1274,6 +1274,44 @@ class TestRmPurgeDeletesTheBoxLogsByName:
         assert run_rm(argparse.Namespace(target="PROJECT", purge=True, force=True)) == 0
         assert [log for log in logs if log.exists()] == []
 
+    def test_a_case_variant_readopts_the_stored_name(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """Spec §0: the twin of the purge case above, on the ``register`` verb. A
+        deregistered box is found case-blind, and the readopt RE-REGISTERS the name —
+        membership, home and logs are all keyed by it — so ``register PROJECT`` must
+        restore the STORED spelling ``project``, never the typed ``PROJECT``.
+
+        The purge fix only covers ``rm``: it names the log files. Here a typed
+        case-variant wrote the membership entry under the wrong spelling, leaving a
+        key that pointed at no box home at all.
+        """
+        from kanibako.commands.box._parser import run_register, run_rm
+        from kanibako.project.registry_store import load_deregistered
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import (
+            box_log_files, load_primary_boxes, load_std_paths, resolve_project,
+        )
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        resolve_project(std, config, project_dir=str(tmp_home / "project"), initialize=True)
+        assert run_rm(argparse.Namespace(target="project", purge=False, force=True)) == 0
+        assert "project" in load_deregistered(std.registry)
+
+        assert run_register(argparse.Namespace(target="PROJECT", box=None, force=False)) == 0
+
+        # The membership entry, the home it names, and the log names all agree on
+        # the STORED spelling; the typed variant is written nowhere.
+        boxes = load_primary_boxes(std.primary_workset)
+        assert sorted(boxes) == ["project"]
+        assert (std.boxes / "project").is_dir()
+        std.primary_logs.mkdir(parents=True, exist_ok=True)
+        assert [p.name for p in box_log_files(std.primary_logs, "project")] == [
+            "project.jsonl", "project.creds-watcher.log",
+        ]
+        assert load_deregistered(std.registry) == {}
+
 
 # ---------------------------------------------------------------------------
 # box lifecycle I4: purge-side stale-entry guard (belt-and-suspenders)
