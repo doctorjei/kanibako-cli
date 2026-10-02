@@ -5222,6 +5222,7 @@ class TestBoxShellLaunch:
         """No-agent ephemeral launch passes the resolved shell as entrypoint."""
         with start_mocks() as m:
             m.target.default_entrypoint = None
+            m.target.descriptor = None
             with patch(
                 "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
@@ -5246,6 +5247,7 @@ class TestBoxShellLaunch:
         """The resolver is given runtime+image so lazy image-shell backfill works."""
         with start_mocks() as m:
             m.target.default_entrypoint = None
+            m.target.descriptor = None
             with patch(
                 "kanibako.launch.shells.resolve_box_shell",
                 return_value=("sh", "sh"),
