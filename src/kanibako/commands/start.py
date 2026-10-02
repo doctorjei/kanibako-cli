@@ -4220,30 +4220,40 @@ def _run_container(
         # ``_build_channel_mounts``.
         _seed_channel_files(std, proj)
         launch_binds = _launch_bind_map(_snapshot)
-        # ⚑ The missing-source policy is passed at EVERY call site, not just this
-        # one: the narrow resolves read the user's cascade files too, so a policy
-        # that varied by call site would decide one dest two ways.
-        # ⚑ The AGENT best-effort dests join SKIP-IF-ABSENT: a missing or
-        # suppressed agent share is fine (``BindScope.AGENT``), which is the
-        # skip-if-absent behavior up to the log line. The CRITICAL dests are
-        # subtracted — must-exist wins its own dests outright.
+        # ⚑ THE MISSING-SOURCE POLICY IS PASSED WHERE CANON DESTINATIONS CAN OCCUR, which
+        # is the MAIN emit alone.  The narrow emits filter to their own table's dests
+        # first (``settings_categories.narrow_table_winners``), so a canon destination is
+        # never in the map they are handed and a policy there would decide nothing.
+        # ⚑ THREE POLICY SOURCES, each derived from what declares its binds: the AGENT
+        # descriptor's AGENT_CRITICAL dests and its best-effort ``BindScope.AGENT`` dests
+        # (:func:`_agent_critical_dests` / ``deliveries.agent_dests``), and core's own
+        # packaged canon (``rom_must_exist_dests`` / ``canon_silent_dests``).
+        # ⚑ The AGENT best-effort dests join SKIP-IF-ABSENT: a missing or suppressed
+        # agent share is fine (``BindScope.AGENT``), which is the skip-if-absent
+        # behavior up to the log line.
+        # ⚑⚑ MUST-EXIST IS SUBTRACTED FROM SKIP-IF-ABSENT, not merely listed first:
+        # the emitter consults ``must_exist`` first, so an overlapped dest would RAISE
+        # anyway and the overlap would look correct at the emitter while being a
+        # contradiction in the policy itself.  Subtract it where the set is BUILT.
+        must_exist = critical_dests | core_defaults.rom_must_exist_dests()
+        skip_if_absent = (
+            core_defaults.canon_silent_dests() | (agent_dests - critical_dests)
+        ) - must_exist
         try:
             category_mounts = _emit_category_mounts(
                 launch_binds,
                 label="category",
-                must_exist=critical_dests,
-                skip_if_absent=(
-                    core_defaults.canon_optional_bind_dests()
-                    | (agent_dests - critical_dests)
-                ),
+                must_exist=must_exist,
+                skip_if_absent=skip_if_absent,
             )
         except BindingSourceError as exc:
-            logger.error("Agent delivery binding unusable: %s", exc)
+            logger.error("Required mount source unusable: %s", exc)
             print(
                 f"Error: {target.display_name if target else 'agent'} mount "
                 f"source disappeared before launch: {exc}\n"
                 f"The host agent install changed while starting (e.g. "
-                f"an update pruned a version). Retry the launch.\n"
+                f"an update pruned a version), or kanibako's own packaged "
+                f"canon is missing or incomplete. Retry the launch.\n"
                 f"Run 'kanibako system diagnose' for a full health "
                 f"check.",
                 file=sys.stderr,

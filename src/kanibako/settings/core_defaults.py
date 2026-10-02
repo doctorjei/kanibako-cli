@@ -726,6 +726,59 @@ def canon_optional_bind_dests() -> frozenset[str]:
     )
 
 
+def rom_must_exist_dests() -> frozenset[str]:
+    """The CORE packaged-canon binds whose source MUST exist at emit time, as DESTS.
+
+    ⚑ THE FIVE ``_rom_sibling_binds()`` DESTINATIONS, CORE ONLY.  The plugin's
+    chapter (D5) is deliberately ABSENT: it is OPTIONAL under the ratified rule,
+    so a chapter source that vanishes between resolve and emit is omitted
+    silently, not refused.
+
+    :func:`rom_default_categories` already RAISES at RESOLVE time when the
+    packaged canon is missing, empty or incomplete (D3, resolve half).  This set
+    is the EMIT half: it catches the narrower race where a source that resolved
+    fine has vanished by the time the bind map is emitted — the same race
+    :class:`BindingSourceError` already covers for agent delivery binds.
+
+    Derived from the SAME ``_rom_sibling_binds()`` declaration that builds the
+    binds and that :func:`internal_bind_keys` re-derives, so the three cannot
+    drift; normalized with the SAME function that keys the emitter's map.
+    """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    return frozenset(
+        normalize_bind_dest(_canon_dest(rel))
+        for _key, rel, _is_dir in _rom_sibling_binds()
+    )
+
+
+def canon_silent_dests() -> frozenset[str]:
+    """The canon destinations whose ABSENT source is dropped SILENTLY, as DESTS (D5).
+
+    ⚑ EVERY ``canon:`` row's ``box_dest`` EXCEPT ``~/canon/handbook/SYS_CONTENTS.md``,
+    PLUS ``_rom_agent_chapter_dest()`` (the plugin's chapter).  Derived from the
+    ROWS rather than from a per-row flag, so adding a handbook row cannot
+    recreate the flag it retired.
+
+    ⚑⚑ ``SYS_CONTENTS.md`` SITS IN NEITHER SET and keeps L7's warn-and-drop
+    default ON PURPOSE (D5): it is the handbook's table of contents, so a box
+    that loses it silently loses the one file naming every chapter it has.  The
+    other rows are chapter CONTENT — absent is the normal case for most boxes,
+    and a warning there is the per-launch noise that trains users to ignore
+    warnings.
+    """
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    warns = {normalize_bind_dest(_canon_dest(HANDBOOK_CONTENTS_REL))}
+    return (
+        frozenset(
+            normalize_bind_dest(str(entry["box_dest"]))
+            for entry in _load_doc().get("canon", [])
+        )
+        - warns
+    ) | {normalize_bind_dest(_rom_agent_chapter_dest())}
+
+
 def canon_default_categories(
     std: StandardPaths, agent_name: str | None,
 ) -> dict[str, object]:
