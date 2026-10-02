@@ -144,15 +144,22 @@ def access_row(
     than substitute a neighboring one, which would be either silently permissive
     or silently stricter.  Both are lies about what the user asked for.
 
-    ⚑ ZERO rows is diagnosed SEPARATELY as PLUGIN VERSION SKEW, not as a capability
-    limit: the retired PRE-TIER BODY (``flag``/``secure_flag`` with no ``tiers:``)
-    loads to an empty :class:`AccessRealization`, and blaming the agent would send
-    the user looking for a limit that does not exist.
+    ⚑ ZERO rows is diagnosed SEPARATELY as a defect in the PLUGIN, not as a
+    capability limit, and exactly TWO producers reach it: a defaults file whose
+    ``access_realization:`` block carries a missing or empty ``tiers:`` table, and
+    an :class:`AccessRealization` built BY HAND in Python with no rows.  Neither is
+    a limit of the agent — the harness renders every tier fine, the plugin simply
+    declares none — so the generic capability-limit refusal ("this agent cannot
+    render that tier … Legal tiers: (none)") would blame the AGENT for a packaging
+    bug and send the user looking for a limit that does not exist.
 
     ⚑ A descriptor spelling the OLD KEY (``safe_bypass:``) never reaches here — it
     is refused at descriptor load by
-    :func:`~kanibako.settings.agent_defaults.load_descriptor`.  Only the old BODY
-    under the NEW key survives this far, which is what the message below describes.
+    :func:`~kanibako.settings.agent_defaults.load_descriptor`.  The retired
+    PRE-TIER BODY under the NEW key is refused there too (``flag`` /
+    ``secure_flag`` are unknown fields now).  What DOES survive is a block that
+    loads to zero rows — the missing/empty ``tiers:`` above, or a hand-built
+    realization — which is what the message below names.
     """
     ar = descriptor.access_realization
     if ar is None:
@@ -164,13 +171,14 @@ def access_row(
         if not rendered:
             raise ConfigError(
                 f"access tier '{tier}' cannot be delivered for {who}: its "
-                f"plugin declares a permission surface with NO tier rows at "
-                f"all. That is PLUGIN VERSION SKEW, not a limit of the agent — "
-                f"a kanibako-agent-* package published before the 'access' "
-                f"tiers declares the retired PRE-TIER body (a realization block "
-                f"with no 'tiers:', formerly spelled 'safe_bypass:'), which "
-                f"carries no tiers. Upgrade the kanibako-agent-* packages to "
-                f"match the base (they are released together)."
+                f"plugin declares an access realization with NO tier rows, so "
+                f"no tier can be delivered. That is a defect in the plugin, "
+                f"not a limit of the agent: its 'access_realization' block has "
+                f"a missing or empty 'tiers:' table, or the plugin builds an "
+                f"AccessRealization with no rows in Python. Upgrade the "
+                f"kanibako-agent-* packages to match the base (they are "
+                f"released together); if that does not cure it, report it to "
+                f"the plugin's author."
             )
         raise ConfigError(
             f"access tier '{tier}' cannot be rendered by {who}: its harness has "
