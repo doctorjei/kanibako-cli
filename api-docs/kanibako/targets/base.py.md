@@ -33,6 +33,7 @@ def descriptor_floor(descriptors: Iterable[TargetSetting]) -> dict[str, str | No
 def http_probe(url: str, *, headers: dict[str, str], body: dict, timeout: float) -> ProbeResponse
 def probe_outcome(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
 def probe_outcome_no_model(response: ProbeResponse, sent: ProbeEvidence) -> PersonaProbeOutcome
+def has_plugin(target: Target | None) -> bool
 def _request_secrets(headers: Mapping[str, str]) -> tuple[str, ...]
 def _scrub(text: str, secrets: tuple[str, ...]) -> str
 def _compact(node: object) -> str
