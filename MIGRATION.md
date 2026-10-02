@@ -398,7 +398,7 @@ inside boxes. In order of likely impact:
 | `kanibako workset get <workset> <stale key>` | **loud** — refused naming the key and why, rc 1 (§2.48) |
 | `kanibako box get <stale key>` (no box argument) | `Error: Unknown project or workset: '<key>'` — the unknown key is taken for a project name |
 | `kanibako system get <stale key>` (typed) | **loud** — refused naming the key and why, rc 1 (§2.48) |
-| `kanibako system set <stale key>` (typed) | **loud** — `Error: unknown config key: …`, rc 1 |
+| `kanibako system set <stale key>` (typed) | **loud** — refused naming the key and why, rc 1; nothing is written |
 | `box.agent_name` / `box.agent` / `system.default_agent` stored anywhere in the cascade | **hard refusal** at launch and in `box info`, carrying that key's OWN message and cure (below) |
 | `auto_approve` stored in the system settings file | **hard refusal**, likewise with its own message and cure (below) |
 
@@ -628,8 +628,9 @@ What you must do, **before your first launch on v1.8.0**:
    workset.channels.commons=<path>`, or `kanibako system set system.channels.commons=<path>`):
    the stored value is now **orphaned** — the launch silently ignores it and reverts to the
    default location. Edit the settings file and rename the nested `channels: commons:` slot to
-   `common:`. (Typing the *old key* at the CLI is loud — `Error: unknown config key:
-   workset.channels.commons` — but nothing at launch tells you about a stored one.)
+   `common:`. (Typing the *old key* at the CLI is loud — `Error: 'workset.channels.commons'
+   cannot be set: 'workset.channels.commons' is not a declared key`, followed by the declared
+   slots — but nothing at launch tells you about a stored one.)
 3. Fix your own boxes' notes/scripts that reference `~/channels/commons` — they break silently.
 
 The packaged agent guide (now the canon charter) is updated by the upgrade itself.
@@ -773,8 +774,8 @@ To carry customizations forward, note the packaged payload also **restructured**
 Then remove `global/base_template/` when you have taken what you want.
 
 If you had *set* `system.base_template` explicitly: the key is gone (typed `set`/`get` refuse
-with `unknown config key`, and a stored value stops the resolve — §2.47). Re-point via the new
-key, and note it names the **root** (`…/template`), not the box dir.
+it by name as `not a declared system key`, and a stored value stops the resolve — §2.47).
+Re-point via the new key, and note it names the **root** (`…/template`), not the box dir.
 
 Agent-level and workset-level template dirs restructure the same way: the seed sources are now
 `<data>/agents/<agent>/template/box/home/` and `<workset>/template/box/home/`. `kanibako
@@ -3905,11 +3906,11 @@ changes; nothing that worked stops working. If you scripted around the failures 
 correct now — keep it if you prefer it.
 
 ⚑ **The BARE spelling of a plugin-declared setting is not settable, and that is now a decision
-rather than an open question.** `kanibako system set provider=x` answers `unknown config key`, and
-`kanibako system set agent.default.provider=x` is refused as an undeclared key, listing the leaves
-core itself declares. The bare form addresses the all-agents tier, which is the *universal*
-vocabulary — a leaf there is a key on every agent — and a plugin's setting belongs to the agent
-whose plugin declared it. Set it on the agent: `kanibako agent set goose provider=…`, or the full
+rather than an open question.** `kanibako system set provider=x` is refused because `provider`
+is not a declared namespace, and `kanibako system set agent.default.provider=x` is refused as an
+undeclared key, listing the leaves core itself declares. The bare form addresses the all-agents
+tier, which is the *universal* vocabulary — a leaf there is a key on every agent — and a plugin's
+setting belongs to the agent whose plugin declared it. Set it on the agent: `kanibako agent set goose provider=…`, or the full
 `kanibako system set agent.goose.provider=…`, which is where it takes effect either way.
 **If a settings file of yours already carries the `agent.default` spelling, read
 *`agent.default.<plugin-leaf>` is no longer a key* below — that value needs moving.**

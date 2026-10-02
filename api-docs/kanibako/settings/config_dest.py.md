@@ -22,12 +22,12 @@ def noun_settings_file(config_path: Path, settings_path: 'Path | None') -> Path
 def noun_settings_file(config_path: None, settings_path: 'Path | None') -> 'Path | None'
 def noun_settings_file(config_path: 'Path | None', settings_path: 'Path | None') -> 'Path | None'
 def _agent_node_route(node: str, tail: str, agents_root: 'Path | None') -> 'AgentFileSlot | NodeRouteRefusal | None'
-def _reserved_tier_refusal(tail: str) -> str
+def _reserved_tier_refusal(tail: str, *, verb: str) -> str
 def _reserved_tier_read_refusal(tail: str) -> str
 def _reserved_tier_category_refusal(tail: str) -> str
 def _reserved_tier_store_sentence() -> str
 def _reserved_tier_store_refusal() -> str
-def _persona_agent_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | str | None'
+def _persona_agent_target(canonical: str, agents_root: 'Path | None', *, verb: str) -> 'AgentFileSlot | str | None'
 def _node_bind_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | None'
 def _node_secret_target(canonical: str, agents_root: 'Path | None') -> 'AgentFileSlot | str | None'
 def _category_segments(canonical: str) -> tuple[str, ...]

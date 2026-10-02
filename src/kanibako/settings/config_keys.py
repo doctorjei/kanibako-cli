@@ -754,7 +754,8 @@ AGENT_DEFAULT_SUB = "default"
 #: source — add a fourth CONSUMER here, never a fourth SPELLING.
 #: ⚑ AND ITS DESTINATION IS ITSELF NAMED (P10): the ``reset`` cure in ``config_dest`` sends the
 #: user to the SAME table to REMOVE a key rather than author one, so the location lives here
-#: and the two cures above/below are both built from it. A fourth SPELLING is still the bug.
+#: and both cures — :data:`_AGENT_DEFAULT_TIER_CURE` below and that ``reset`` cure — are built
+#: from it. A fourth SPELLING is still the bug.
 _AGENT_DEFAULT_TIER_TABLE: Final = "'agent: default:' table of the system settings file"
 
 _AGENT_DEFAULT_TIER_CURE: Final = (
@@ -776,8 +777,8 @@ def _parse_persona_agent_key(key: str) -> "tuple[str, str] | None":
 
     🛑 IT IS NOT PURELY STRUCTURAL, AND MUST NOT BECOME SO.  Returning
     ``("claude", "zippity")`` for an undeclared tail flips :func:`_is_persona_agent_key`
-    to True and turns ``config_interface``'s ``set`` dispatch from "unknown config key"
-    into "write the file" — a §0 breach on a first-class write path.  ``None`` here is
+    to True and turns ``config_interface``'s ``set`` dispatch from a §0 refusal naming
+    the key into "write the file" — a §0 breach on a first-class write path.  ``None`` here is
     the closed keyspace's answer, not a parse failure.
     ⚑⚑ BOTH ARMS JUDGE, AND ONLY SINCE 2026-09-09: the rule above was written for the
     leaf arm and the ``env.`` arm below simply did not obey it, so the §0 breach it
@@ -2023,8 +2024,9 @@ def scope_key_refusal(
     """The file-scope nouns' refusal of a name §0 declares no key — ``Error: '<key>' cannot
     be <verb>: <reason>.`` plus the cure.
 
-    ONE message, two verbs: :func:`scope_read_key_error` (``get``) and
-    ``config_interface.reset_config_value`` (its ``pref.*`` branch and its generic tail).
+    ONE message, three verbs: :func:`scope_read_key_error` (``get``), ``config_interface.
+    reset_config_value`` (its ``pref.*`` branch and generic tail), and ``set_config_value``'s
+    tail, which passes an EMPTY *cure* (a refused ``set`` stored nothing to remove).
     *reason* is :func:`scope_key_reason`'s.  With no *cure* the cure is the HAND EDIT,
     pointing at the stored view that lists the entry as undeclared — the one way to remove
     that entry ALONE.  (One inside a scope table the noun may write also goes with
