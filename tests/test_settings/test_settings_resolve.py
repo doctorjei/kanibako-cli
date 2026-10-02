@@ -15,6 +15,7 @@ from kanibako.settings.settings_resolve import (
     ResolvedValue,
     SettingsError,
     expand_expr,
+    expand_guest_home,
     literal_expr,
     match_ref,
     match_var,
@@ -885,3 +886,24 @@ def test_the_two_unpackers_read_one_2_element_list_oppositely() -> None:
     assert unpack_bind(raw) == ("/left", "/right", None)
     assert unpack_bind_entry(raw) == ("/left", "/right")
     # i.e. "/right" is a DESTINATION to one and MOUNT OPTIONS to the other.
+
+
+# ---------------------------------------------------------------------------
+# expand_guest_home — the one ``$GUEST_HOME`` prefix expander
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("$GUEST_HOME/x", f"{GUEST_HOME}/x"),
+        ("$GUEST_HOME", GUEST_HOME),
+        ("~/x", "~/x"),
+        ("/etc/x", "/etc/x"),
+        ("$TERM", "$TERM"),
+        ("a/$GUEST_HOME/x", "a/$GUEST_HOME/x"),
+        ("", ""),
+    ],
+)
+def test_expand_guest_home_substitutes_only_a_leading_token(value: str, expected: str) -> None:
+    assert expand_guest_home(value) == expected

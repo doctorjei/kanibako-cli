@@ -181,7 +181,11 @@ def env_default_categories() -> dict[str, str]:
     VAR that is not an env-name RAISES, naming the file and the head.  It used to be
     a silent no-op: the bad key entered ``default_categories``, matched nothing
     downstream and simply never reached a box.
+    ⚑ A leading ``$GUEST_HOME`` is expanded HERE, as the plugin loader does: left to
+    the snapshot it would resolve from the HOST and drop the key.
     """
+    from kanibako.settings.settings_resolve import expand_guest_home
+
     table: dict[str, str] = {}
     section = _load_doc().get("env") or {}
     if not isinstance(section, dict):
@@ -200,7 +204,7 @@ def env_default_categories() -> dict[str, str]:
             )
         for var, value in entries.items():
             _check_env_key(str(scope), str(var))
-            table[f"{scope}.env.{var}"] = str(value)
+            table[f"{scope}.env.{var}"] = expand_guest_home(str(value))
     return table
 
 
