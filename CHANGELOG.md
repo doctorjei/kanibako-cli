@@ -264,6 +264,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako box rm <name>` no longer removes a workset of that name, or, with `--purge`,
+  deletes the data of a box that shares it.** `box rm` now acts only on boxes: a box named `<name>` is unregistered
+  (with `--purge`, its data is deleted too), and a workset of the same name is untouched. A name
+  that is only a workset is refused with `Error: '<name>' is not a registered box.`; remove a
+  workset with `kanibako workset rm <name>`.
+
 - **A broken or incomplete kanibako install prints one `Error:` line and exits 1 instead of a
   Python traceback.** This covers missing or malformed rows in the packaged `core-defaults.yaml`
   and keyspace manifest: the behavior floor, pseudo-agent tiers, the `env:` section, the kickoff

@@ -925,14 +925,9 @@ class TestBoxRm:
         assert (project_dir / "important.txt").read_text() == "keep me"
 
     def test_rm_workset_name_is_refused(self, config_file, tmp_home, credentials_dir, capsys):
-        """``box rm`` never acts on a workset — the ordinary refusal, rc 1.
+        """A name that is only a workset is refused (rc 1) and the workset stays.
 
-        ⚑ THIS USED TO ASSERT THE OPPOSITE (``rc == 0``, workset unregistered).
-        ``box rm <workset-name> --purge`` unregistered the workset and then tore
-        down ``std.boxes / <name>`` — the data of a primary box that merely shared
-        the name.  The maintainer called it "obviously a bug": ``box rm`` deletes
-        the BOX in that case, and a name that is only a workset gets the ordinary
-        not-found refusal.  ``workset rm`` owns workset removal.
+        ``workset rm`` owns workset removal.
         """
         from kanibako.commands.box._parser import run_rm
         from kanibako.settings.config import load_config

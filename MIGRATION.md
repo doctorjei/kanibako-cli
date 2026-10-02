@@ -369,7 +369,8 @@ inside boxes. In order of likely impact:
     plugin's own default now beats your `agent.default.<key>` — for the shipped agents, from
     v1.8.0-rc2 only, claude's `transform` (and each agent's new `label`), so set those per agent;
     from v1.7.2 no shipped agent's key changes — see *An agent plugin's own default beats
-    `agent.default`*.
+    `agent.default`*; and `box rm` no longer removes a workset — use `workset rm` — see *2.102
+    `kanibako box rm <name>` no longer removes a workset*.
 
 ---
 
@@ -5951,6 +5952,22 @@ system set box.shell=/usr/bin/fish` for every box, `kanibako workset set <workse
 box.shell=/usr/bin/fish` for a working set's boxes, or `kanibako box set box.shell=/usr/bin/fish`
 for one box. Give a program path with no arguments (see *2.99 A plain-shell box writes the canon to
 `~/AGENTS.md`*). Then remove `KANIBAKO_SHELL` from your shell profile.
+
+### 2.102 `kanibako box rm <name>` no longer removes a workset
+
+**Read this if you remove worksets with `kanibako box rm`.**
+
+**What changed.** `box rm <name>` used to resolve a workset's name too: it unregistered the
+workset and, with `--purge`, deleted the data of a box that had the same name. It now acts only on
+boxes. A name that is only a workset is refused as not a registered box, rc 1, and nothing changes:
+
+```
+Error: 'foo' is not a registered box.
+```
+
+When a box and a workset share the name, `box rm` removes the box and leaves the workset alone.
+
+**What to do.** Remove a workset with `kanibako workset rm <name>`.
 
 ---
 

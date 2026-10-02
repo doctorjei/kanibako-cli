@@ -1530,10 +1530,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
 
 
 def run_rm(args: argparse.Namespace) -> int:
-    """Unregister a BOX (primary or standalone), optionally purging metadata.
-
-    ⚑ NEVER a workset: ``workset rm`` is the one carrier for workset removal.
-    """
+    """Unregister a box (primary or standalone), optionally purging metadata."""
     from datetime import datetime, timezone
 
     from kanibako.project import registry_store
@@ -1548,17 +1545,8 @@ def run_rm(args: argparse.Namespace) -> int:
     if not target:
         print("Error: no box specified to remove.", file=sys.stderr)
         return 1
-    # ⚑ ``section`` is "projects" — a PRIMARY box (its membership drives the
-    # unregister below).
-    # ⚑ THE ``worksets`` SECTION IS NOT RESOLVED HERE, EVER.  ``box rm`` is a BOX
-    # verb: a target that names only a workset falls through to the ordinary
-    # not-found refusal, which is what a workset name now gets.  ``workset rm``
-    # (kanibako.commands.workset_cmd) is the ONE carrier for workset removal.
-    # The branch this removed unregisters the workset and then tore down
-    # ``std.boxes / <name>`` — the data dir of a PRIMARY box that merely shared
-    # the name (DATA LOSS).  A registered primary box always wins the lookup
-    # below, so the loss landed on a box whose membership entry was absent —
-    # the orphan / retained-metadata state (``box list --orphans``).
+    # Boxes only, never the ``worksets`` section: a name that is only a workset
+    # is refused as not found below.  ``workset rm`` removes worksets.
     primary_boxes = load_primary_boxes(std.primary_workset)
 
     # Resolve the target: as a registered name first, then as a path.
@@ -1573,7 +1561,6 @@ def run_rm(args: argparse.Namespace) -> int:
         name, section, path = primary_hit_name, "projects", primary_boxes[primary_hit_name]
 
     if name is None:
-        # Reverse path lookup: the primary membership.
         primary_hit = primary_box_name_for_workspace(std.primary_workset, target)
         if primary_hit is not None:
             name, section, path = primary_hit, "projects", primary_boxes.get(primary_hit)
@@ -1602,7 +1589,6 @@ def run_rm(args: argparse.Namespace) -> int:
 
     print(f"Removing project: {name} ({path})")
 
-    # ⚑ A PRIMARY box unregisters from the MEMBERSHIP.
     unregister_primary_box_name(std.primary_workset, name)
     print(f"Removed '{name}' from the registry")
 
