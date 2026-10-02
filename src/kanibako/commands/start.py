@@ -84,7 +84,7 @@ from kanibako.agent_ref import (
 )
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
-from kanibako.targets.base import descriptor_floor
+from kanibako.targets.base import descriptor_floor, has_plugin
 from kanibako.utils import container_name_for, short_hash
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
 # :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker
@@ -3014,14 +3014,14 @@ def _run_container(
 
     # The ONE conversion of ``-- <words>`` into the box shell's ``-lc S`` (keyspec
     # §2d ``shell``).  It applies when this launch's program is the box shell:
-    # ``kanibako shell``, or a target with neither a descriptor nor its own
-    # entrypoint.  It sits ahead of the rig, flag, and image-shell writes so an
+    # ``kanibako shell``, or a target with no plugin — the ONE reading of that
+    # fact (``targets.base.has_plugin``), so this site cannot drift from the
+    # others.  It sits ahead of the rig, flag, and image-shell writes so an
     # over-long command (``shell_command_string`` raises) refuses before them.
     from kanibako.launch.shells import shell_command_string
     runs_box_shell = box_shell_mode or (
         target is not None
-        and target.descriptor is None
-        and target.default_entrypoint is None
+        and not has_plugin(target)
     )
     shell_command = shell_command_string(extra_args) if runs_box_shell else None
     if shell_command is not None:
@@ -4147,12 +4147,16 @@ def _run_container(
                 # call here would be a second producer of the same variables, above
                 # the channel, which is precisely the layer the fold deleted.
             else:
-                # Descriptor-less target: the only one is ShellTarget (the
-                # `kanibako shell` fallback), which launches a plain shell with
+                # THE NO-PLUGIN ARM — and discovery GUARANTEES it is ``ShellTarget``:
+                # ``targets._register`` refuses a plugin with no ``descriptor``, and
+                # the built-in is SEEDED rather than discovered ([R175]), so no
+                # registered target reaches here.  It launches a plain shell with
                 # no agent argv and no realized variables.  The legacy
                 # build_cli_args / apply_state hook dispatch was removed for the
                 # public release (descriptor-only plugin system); a no-agent box
                 # needs neither.  Its only argv is a ``-- <command>`` as ``-lc S``.
+                # ⚑ This arm reads the descriptor's CONTENT, not "has a plugin", so
+                # it is deliberately NOT routed through ``has_plugin`` (P3).
                 cli_args = ["-lc", shell_command] if shell_command is not None else []
         else:
             cli_args = list(extra_args)
@@ -4390,21 +4394,21 @@ def _run_container(
         # no-agent launch (the main entrypoint), or any helper spawn (helpers
         # need a shell fallback even under a real-agent director).  A real-agent
         # launch with helpers off never needs it, so skip the resolve there.
-        shell_launch = not entrypoint and (
-            target is None or target.default_entrypoint is None
-        )
+        # ⚑ ``has_plugin`` is the ONE reading of "no plugin" (P3) — it used to be
+        # spelled here off ``default_entrypoint`` and off ``descriptor`` in
+        # ``runs_box_shell``, with nothing keeping the two in step.
+        shell_launch = not entrypoint and not has_plugin(target)
         # DETACH also needs the resolved box shell: its PID-1 keep-alive runs a
         # bare SHELL (not the agent), so resolve box.shell even for an agent
         # launch (where shell_launch is False).  E2c: a SUPERVISED foreground
         # agent (persistent, not detach) likewise needs it — the supervisor PID-1's
         # forward-compat FALLBACK is the same bare-shell keep-alive.  is_agent_mode
         # guarantees entrypoint becomes target.default_entrypoint below, so a target
-        # with a default entrypoint is exactly the supervised case.
+        # WITH A PLUGIN is exactly the supervised case.
         supervised_agent_launch = (
             persistent
             and is_agent_mode
-            and target is not None
-            and target.default_entrypoint is not None
+            and has_plugin(target)
         )
         if shell_launch or helpers_enabled or detach or supervised_agent_launch:
             from kanibako.launch.shells import resolve_box_shell
@@ -5108,8 +5112,12 @@ def _run_container(
             # Clean/ephemeral exit: writeback project -> host (FIX 1 helper).
             writeback_session_credentials(target, proj, auth_src=auth_src)
 
-            # Hint when agent exits non-zero and --continue/--resume was used
-            if rc != 0 and is_agent_mode and not new_session:
+            # Hint when agent exits non-zero and --continue/--resume was used.
+            # ⚑ ``has_plugin`` and not ``is_agent_mode`` alone: ``is_agent_mode`` is
+            # ``entrypoint is None and not box_shell_mode``, which is TRUE for
+            # ``--agent shell`` — and the shell has no conversation to continue, so
+            # advising ``-N`` there told the user to fix a problem they cannot have.
+            if rc != 0 and is_agent_mode and not new_session and has_plugin(target):
                 print(
                     "hint: if the agent exited because there was no conversation "
                     "to continue, use 'kanibako start -N' to start fresh.",

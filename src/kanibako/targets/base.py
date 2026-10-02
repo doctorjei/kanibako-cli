@@ -882,7 +882,9 @@ class Target(ABC):
 
         ⚑ NOT A HOPE, THE RULE: discovery (``targets._register``) REFUSES a plugin
         that returns None, with a stderr warning, so every REGISTERED target answers
-        one way — this default is reachable only by the seeded built-in.
+        one way — this default is reachable only by the seeded built-in. Read "does
+        this target have a plugin" through :func:`has_plugin`; do not re-derive it
+        from a second attribute and hope the two agree.
         """
         return None
 
@@ -1115,3 +1117,26 @@ class Target(ABC):
         is the contract.
         """
         return None
+
+
+def has_plugin(target: Target | None) -> bool:
+    """True when *target* is a harness plugin; False for no target and for the built-in ShellTarget.
+
+    ⚑ A MODULE FUNCTION, NOT A ``Target`` METHOD, and that is the whole point (P3): the
+    plugin system is third-party, so a ``Target`` method or property here would be one more
+    thing a subclass can override — and an overridden ``has_plugin`` would put the three
+    call sites back to disagreeing, which is the defect this function exists to remove.
+
+    "This target has no plugin" is ONE fact (keyspec §2d): the target is the built-in
+    ``ShellTarget``, or there is no target at all. A plugin is a ``Target`` with a
+    ``PluginDescriptor``, so the descriptor IS the test.
+
+    ⚑ ONE PREDICATE, NOT A RECIPE. :func:`kanibako.targets.discover_targets` REFUSES a
+    plugin whose ``descriptor`` or ``default_entrypoint`` is ``None``, which is what makes
+    ``descriptor is None`` ⇔ ``default_entrypoint is None`` true of every REGISTERED
+    target. So reading the entrypoint instead of the descriptor gives the same answer
+    today — and reading both as a conjunction is a second spelling of this fact that
+    nothing keeps in step. Callers that need "is there an agent" and no more should use
+    this, and not re-derive it.
+    """
+    return target is not None and target.descriptor is not None

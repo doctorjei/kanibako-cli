@@ -1477,6 +1477,46 @@ class TestNoConversationHint:
         captured = capsys.readouterr()
         assert "start -N" not in captured.err
 
+    def test_no_hint_for_a_target_with_no_plugin(self, start_mocks, capsys):
+        """``--agent shell`` has no conversation, so it must not be advised to use ``-N``.
+
+        The hint is about CONTINUING a conversation, and it is printed on
+        ``is_agent_mode`` alone — which is ``entrypoint is None and not
+        box_shell_mode``, TRUE for the agent-less shell. So a non-zero exit of a
+        target with no plugin told the user to start fresh with ``-N`` to fix a
+        problem only a continuing agent can have.
+
+        ⚑ The mock's ``descriptor``/``default_entrypoint`` are set to ``None`` to
+        give it the built-in ``ShellTarget``'s shape, exactly as ``tests/conftest.py``
+        prescribes for a descriptor-less target; ``entrypoint=None`` and
+        ``new_session=False`` are the other two terms of the printed condition, so
+        this is the one case where all of them are true and the hint must still be
+        withheld.
+        """
+        with start_mocks() as m:
+            m.target.descriptor = None
+            m.target.default_entrypoint = None
+            m.runtime.run.return_value = 1
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+        captured = capsys.readouterr()
+        assert "start -N" not in captured.err
+
+    def test_a_plugin_still_gets_the_hint(self, start_mocks, capsys):
+        """Non-vacuity: the guard is ``has_plugin``, not "silence the hint"."""
+        with start_mocks() as m:
+            m.runtime.run.return_value = 1
+            _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+        captured = capsys.readouterr()
+        assert "start -N" in captured.err
+
 
 class TestInteractivePersistentGuard:
     """Interactive mode rejects launch when a container already exists.
