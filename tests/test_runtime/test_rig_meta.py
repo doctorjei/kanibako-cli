@@ -91,6 +91,50 @@ def test_missing_name_raises():
         load_rig_meta("kind: extended\nreproducible: false\n")
 
 
+def test_repeated_name_raises_naming_the_key_and_both_lines():
+    """``load_rig_meta("name: a\\nname: b\\n").name`` used to answer ``'b'`` — the first
+    name vanished with no message. Spec §0: an undeclared reading is an ERROR that NAMES
+    the offending key, never a silent accept of the second value over the first."""
+    with pytest.raises(ValueError) as exc:
+        load_rig_meta("name: a\nname: b\n")
+    assert str(exc.value) == "rig.yaml sets 'name' twice (line 1 and line 2)"
+
+
+def test_repeated_key_nested_in_a_flow_map_raises():
+    with pytest.raises(ValueError) as exc:
+        load_rig_meta("name: myhack\nparent: {a: 1, a: 2}\n")
+    assert str(exc.value) == (
+        "rig.yaml sets 'parent.a' twice (line 2, column 10 and line 2, column 16)"
+    )
+
+
+def test_invalid_yaml_raises_value_error_naming_the_file():
+    """A raw ``yaml`` error used to escape this function; its callers catch ``ValueError``,
+    so the contract was already broken — an unparseable rig.yaml was a traceback."""
+    with pytest.raises(ValueError) as exc:
+        load_rig_meta("name: [a\n")
+    assert str(exc.value).startswith("rig.yaml ")
+    assert "expected" in str(exc.value)
+
+
+def test_a_self_referential_anchor_raises_value_error():
+    with pytest.raises(ValueError) as exc:
+        load_rig_meta("name: &a {x: *a}\n")
+    assert str(exc.value) == (
+        "rig.yaml refers to itself at 'name.x' (a YAML alias inside its own anchor)"
+    )
+
+
+def test_path_source_reports_rig_yaml_too(tmp_path):
+    """The refusal names ``rig.yaml`` for a file source as well as a raw string."""
+    path = tmp_path / "rig.yaml"
+    path.write_text("name: a\nname: b\n")
+
+    with pytest.raises(ValueError) as exc:
+        load_rig_meta(path)
+    assert str(exc.value) == "rig.yaml sets 'name' twice (line 1 and line 2)"
+
+
 def test_empty_document_raises():
     with pytest.raises(ValueError):
         load_rig_meta("")

@@ -9,8 +9,10 @@ Because the metadata lives at a fixed path inside the rootfs, it rides
 ``podman save`` / ``load`` / ``push`` natively -- whoever ends up with the image
 also ends up with its ``rig.yaml``, no side-channel required.
 
-All on-disk serialization goes through PyYAML (``yaml.safe_load`` /
-``yaml.safe_dump``); there is no hand-rolled serializer here.
+All on-disk serialization goes through PyYAML: writing with ``yaml.safe_dump``,
+reading through :func:`kanibako.settings.config_io.parse_doc_text`, which is a
+SafeLoader with kanibako's document refusals on top. There is no hand-rolled
+serializer or parser here.
 """
 
 from __future__ import annotations
@@ -21,16 +23,17 @@ from pathlib import Path
 import yaml  # type: ignore[import-untyped]
 
 from kanibako._atomic import atomic_write_text
+from kanibako.settings.config_io import parse_doc_text, yaml_problem
 
 
 @dataclass
 class RigMeta:
     """In-image metadata for an extended rig.
 
-    ``name`` is the short rig name; ``parent`` and ``foundation_source`` are
-    arbitrary image references / source descriptors (not validated here).
-    ``recipe`` is an optional captured shell history of the steps that built
-    the rig (informational only -- extended rigs are not reproducible).
+    ``name`` is the short rig name; ``parent`` and ``foundation_source`` are arbitrary
+    image references / source descriptors (not validated here). ``recipe`` is an optional
+    captured shell history of the steps that built the rig -- informational only, because
+    extended rigs are not reproducible.
     """
 
     name: str
@@ -75,14 +78,19 @@ def write_rig_meta(meta: RigMeta, path: Path) -> None:
 def load_rig_meta(source: str | Path) -> RigMeta:
     """Load a :class:`RigMeta` from a file *path* or a raw YAML *string*.
 
-    A :class:`~pathlib.Path` is read from disk; a ``str`` is parsed directly as
-    YAML text. Unknown keys are ignored defensively (only known fields are
-    passed to the constructor). Raises :class:`ValueError` if the document is
-    empty/invalid or is missing the required ``name`` field.
+    A :class:`~pathlib.Path` is read from disk; a ``str`` is parsed directly as YAML text.
+    Unknown keys are ignored defensively (only known fields reach the constructor). Raises
+    :class:`ValueError` if the document is empty/invalid or is missing ``name``.
+
+    ⚑ Read through :func:`parse_doc_text`, the one entry point for a YAML document, and
+    render through :func:`yaml_problem`: a repeated key is never silently kept LAST.
     """
     text = source.read_text() if isinstance(source, Path) else source
 
-    data = yaml.safe_load(text)
+    try:
+        data = parse_doc_text(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"rig.yaml {yaml_problem(exc)}") from exc
     if not isinstance(data, dict):
         raise ValueError("rig.yaml must be a non-empty YAML mapping")
 

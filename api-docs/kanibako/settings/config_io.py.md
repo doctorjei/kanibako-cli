@@ -8,6 +8,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_io.py.md`.
 ## Variables
 
 ```
+MAX_DOC_DEPTH = 64
 _PACKAGED_LOADER = getattr(yaml, 'CSafeLoader', yaml.SafeLoader)
 _MERGE_TAG = 'tag:yaml.org,2002:merge'
 _VALUE_TAG = 'tag:yaml.org,2002:value'
@@ -17,6 +18,8 @@ _ABSENT = object()
 ## Functions
 ```
 def parse_packaged(text: str) -> object
+def yaml_problem(exc: yaml.YAMLError) -> str
+def parse_doc_text(text: str) -> object
 def load_doc(path: Path | None) -> dict
 def dump_doc(path: Path, data: dict) -> None
 def write_root_key(path: Path, key: str, value: object) -> None
@@ -29,14 +32,26 @@ def stored_leaf_object(noun_file: 'Path | None', sections: tuple[str, ...], leaf
 def read_stored_leaf(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_scalar) -> str | None
 def render_stored_pref(v: object) -> str
 def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_pref) -> str | None
-def _yaml_problem(exc: yaml.YAMLError) -> str
+def _guard_document(data: object) -> None
 ```
 
 ## Classes
 
 ```
-class _DuplicateKey(Exception):
+class DuplicateKeyError(yaml.YAMLError):
     def __init__(self, dotted: str, first: yaml.Mark, second: yaml.Mark) -> None
+
+    def __str__(self) -> str
+
+class CyclicAnchorError(yaml.YAMLError):
+    def __init__(self, dotted: str) -> None
+
+    def __str__(self) -> str
+
+class DocumentTooDeepError(yaml.YAMLError):
+    def __init__(self, dotted: str, limit: int) -> None
+
+    def __str__(self) -> str
 
 class _UniqueKeyLoader(yaml.SafeLoader):
     def construct_document(self, node: yaml.Node) -> object
