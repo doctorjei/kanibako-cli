@@ -4665,11 +4665,14 @@ the automatic first-run install fires on a first run only and you already have a
 people who never ran `kanibako setup` at all, because the first kanibako command you run on a fresh
 install lays the templates down for you.
 
-**`rc2` shipped the hook with two defects.** (`rc1` did not ship this file at all.) It watched
+**`rc2` shipped the hook with five defects.** (`rc1` did not ship this file at all.) It watched
 `chat/broadcast.log`, a name retired in **1.6.0** when broadcasts moved to `chat/broadcast.md`, so **broadcast alerts never
-fired at all**; and a directory-read error inside your mailbox could abort it with no message,
+fired at all**; a directory-read error inside your mailbox could abort it with no message,
 stopping mail detection **for as long as that condition lasted** and printing a bare hook failure on
-every tool call meanwhile. Both are fixed in this release.
+every tool call meanwhile; its alert went only to `systemMessage`, which Claude Code shows to you,
+so **the agent never saw its mail alerts**; it announced a dot-file (`.name.tmp`) as mail while the
+sender was still writing it; and it garbled a mail file name containing a quote or a backslash. All
+five are fixed in this release.
 
 **Upgrading the package does not give you the fix, and neither does making a new box.** The hook is
 delivered from one store-wide directory — `global/canon/handbook/general/` under your kanibako data
