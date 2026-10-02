@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (CONFIG_FILE, CONFIG_PATH_DEFAULTS, SITE_CONFIG_DIR,
@@ -89,9 +90,20 @@ class BootstrapConfig:
     put a settings value, so the filter is not weakened here — it is DELETED, because
     nothing it could have removed can be built.  A settings table in that file now REFUSES,
     naming the file and the keys (:func:`bootstrap_config_paths`).
+
+    ⚑ ``config_paths`` is a read-only COPY: ``__post_init__`` copies what it was handed and
+    wraps it in a :class:`~types.MappingProxyType`, so ``frozen`` is finally true.
     """
 
-    config_paths: dict[str, str] = field(default_factory=dict)
+    config_paths: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # ⚑ THE COPY, THEN THE PROXY (P3/P8). ``frozen`` alone blocked only the REBIND: the
+        # dict stayed live and the constructor kept the caller's own dict, so a frozen
+        # instance was mutated from outside (P8, "copy OUT at the boundary"). ``dict(...)``
+        # breaks the alias; the proxy then refuses item assignment. ``object.__setattr__``
+        # is the documented way to write a field of a frozen dataclass.
+        object.__setattr__(self, "config_paths", MappingProxyType(dict(self.config_paths)))
 
 
 #: The Layer-1 file's ONE legal top-level table (spec §1). Everything else in that document
