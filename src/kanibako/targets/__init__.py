@@ -37,6 +37,10 @@ _RESERVED_NAME_WARNED: set[str] = set()
 # Declared names already refused as CASE-COLLIDING, warned once per process, identically.
 _COLLIDING_NAME_WARNED: set[str] = set()
 
+# Names already refused as NOT-HAVING-THE-PLUGIN-SHAPE (no descriptor / no entrypoint),
+# warned once per process, for the same reason as the two sets above.
+_NO_PLUGIN_SHAPE_WARNED: set[str] = set()
+
 
 def _register(
     targets: dict[str, type[Target]],
@@ -73,6 +77,19 @@ def _register(
     tiers the precedence rule above is a documented answer, not an accident, and it is
     left alone: a file-drop plugin still replaces an installed one.
 
+    ⚑ THE PLUGIN-SHAPE GATE, right below the reservation and ABOVE the case-collision
+    check: a plugin that returns no ``descriptor`` (or no ``default_entrypoint``) is
+    refused, because the plugin system is descriptor-only and it is the descriptor that
+    supplies an agent's default settings, credentials and interactive mode (keyspec
+    §2d) — what makes a pseudo-agent a true agent.  Such a plugin would otherwise
+    register and then launch as a PLAIN SHELL, and because ``_run_container`` read
+    "has a plugin" three ways from three different attributes, the answers disagreed at
+    different sites for the SAME registered target.  Refusing it HERE is what makes
+    ``descriptor is None`` ⇔ ``default_entrypoint is None`` true for every registered
+    target, so ``targets.base.has_plugin`` has one fact to read.  Ordering is
+    deliberate: a rogue RESERVED name is reported as reserved even if its shape is also
+    wrong, which is the more actionable of the two.
+
     ⚑ SKIP-AND-WARN, NEVER RAISE, for the reason the ``ep.load()`` guard in
     :func:`discover_targets` states at length: discovery runs on every command, so one
     third-party plugin's bad name must not take the CLI down. The refusal costs that ONE
@@ -91,6 +108,33 @@ def _register(
                 f"Warning: {why}.{spelling} The agent plugin registering it ({source}) "
                 f"is being SKIPPED; every other agent, and 'kanibako setup', still "
                 f"work. The plugin's author must give it a name of its own.",
+                file=sys.stderr,
+            )
+        return
+    # THE PLUGIN-SHAPE GATE (see the docstring): a plugin is a descriptor, and an
+    # interactive mode is a program.  Probe BOTH inside one ``try`` so a plugin that
+    # raises on either read is reported once, as one refusal.
+    try:
+        probe = cls()
+        missing = [
+            what for what, value in (
+                ("plugin descriptor", probe.descriptor),
+                ("default_entrypoint", probe.default_entrypoint),
+            ) if value is None
+        ]
+    except Exception as exc:
+        missing = [f"usable descriptor ({type(exc).__name__}: {exc})"]
+    if missing:
+        if name not in _NO_PLUGIN_SHAPE_WARNED:
+            _NO_PLUGIN_SHAPE_WARNED.add(name)
+            print(
+                f"Warning: the agent plugin '{name}' ({source}) declares no "
+                f"{' or '.join(missing)}: kanibako plugins are descriptor-only, "
+                f"and a plugin supplies its agent's default settings, credentials, "
+                f"and interactive mode (keyspec §2d). Without them it would launch "
+                f"as a plain shell. '{name}' is being SKIPPED; every other agent, "
+                f"and 'kanibako setup', still work. The plugin's author must "
+                f"implement 'descriptor' and 'default_entrypoint'.",
                 file=sys.stderr,
             )
         return

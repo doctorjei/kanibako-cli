@@ -308,10 +308,60 @@ class TestAnOldPluginDegradesInsteadOfBricking:
 
     @staticmethod
     def _healthy_plugin(agent: str) -> MagicMock:
+        """An entry point that loads a REAL, registrable plugin.
+
+        ⚑ Not ``object``: ``targets._register`` refuses a plugin with no
+        ``descriptor`` (the plugin system is descriptor-only, keyspec §2d), so a
+        healthy neighbour that is not a plugin at all would be skipped by the shape
+        gate and this suite would assert the WRONG reason for the stale one landing
+        alone.  The class is built per call because ``ep.load()`` must return a
+        distinct class whose ``name`` is this agent.
+        """
+        from kanibako.targets.base import (
+            BindKind,
+            Binding,
+            BindScope,
+            HostSrcOrigin,
+            PluginDescriptor,
+            Target,
+        )
+
+        class _Healthy(Target):
+            @property
+            def name(self) -> str:
+                return agent
+
+            @property
+            def display_name(self) -> str:
+                return agent
+
+            @property
+            def descriptor(self) -> PluginDescriptor:
+                return PluginDescriptor(
+                    command=(agent,),
+                    bindings=(
+                        Binding(
+                            key="binary",
+                            origin=HostSrcOrigin.BINARY,
+                            box_dest=f"/usr/local/bin/{agent}",
+                            kind=BindKind.FILE,
+                            scope=BindScope.AGENT_CRITICAL,
+                        ),
+                    ),
+                    mode={"start": ()},
+                )
+
+            @property
+            def default_entrypoint(self) -> str | None:
+                return agent
+
+            def detect(self):
+                return None
+
         ep = MagicMock()
         ep.name = agent
         ep.dist.name = f"kanibako-agent-{agent}"
-        ep.load.return_value = object
+        ep.load.return_value = _Healthy
         return ep
 
     @pytest.mark.parametrize("legacy,new,names", _SHIMS, ids=_IDS)
