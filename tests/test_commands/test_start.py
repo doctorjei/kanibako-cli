@@ -5808,19 +5808,22 @@ class TestRunShellBoxShell:
             m_resolve.assert_not_called()
             assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/usr/bin/fish"
 
-    def test_shell_args_use_one_off_sh_path(self, start_mocks):
-        """`kanibako shell -- <cmd>` still uses /bin/sh -c, not the resolver."""
+    def test_shell_args_run_the_box_shell_with_lc(self, start_mocks):
+        """`kanibako shell -- echo hi` runs the RESOLVED box shell as ``-lc S``,
+        after the flattener, which appears once and earlier in the argv."""
         from kanibako.commands.start import run_shell
-        with start_mocks() as m:
+        with start_mocks() as m, TestTheFlattenGateIsTheFinalSlot()._static_env_floor():
             with patch(
                 "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
             ) as m_resolve:
                 run_shell(self._args(shell_args=["echo", "hi"]))
-            m_resolve.assert_not_called()
-            assert m.runtime.run.call_args.kwargs.get("entrypoint") == "/bin/sh"
-            cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
-            assert cli_args == ["-c", "echo hi"]
+            m_resolve.assert_called_once()
+            kw = m.runtime.run.call_args.kwargs
+            argv = [kw.get("entrypoint"), *(kw.get("cli_args") or [])]
+            assert argv[-3:] == ["/bin/zsh", "-lc", "echo hi"]
+            flatten = [i for i, a in enumerate(argv) if "import-directives.py" in str(a)]
+            assert len(flatten) == 1 and flatten[0] < len(argv) - 3
 
     def test_interactive_resolver_gets_runtime_and_image(self, start_mocks):
         """`kanibako shell` resolves the box.shell IMAGE-AWARE (runtime+image)."""
@@ -11734,3 +11737,368 @@ class TestSupervisorDirectiveFreshnessWiring:
         argv = self._supervisor_argv(m)
         assert "--directive-manifest" not in argv
         assert "--directive-dest" not in argv
+
+
+class TestShellRunsTheCommand:
+    """``-- <words>`` on a box-shell launch runs ``<shell> -lc S`` (keyspec §2d
+    ``shell``), and a persistent one reports its end as an end (design §2.7)."""
+
+    _M1 = (
+        "Note: the session ended before it could attach (the command after '--' "
+        "exited). A persistent box does not report the command's exit status; for "
+        "a one-off, use 'kanibako shell -- <command>'."
+    )
+    _M2 = (
+        "Note: box '{box}' ran the command after '--', which has already exited; "
+        "the box has stopped."
+    )
+    _M3 = (
+        "Box '{box}' started in the background, running the command after '--'; "
+        "it stops when the command ends."
+    )
+    _FG_ERROR = "Error: Container exited before session could attach."
+    _BG_ERROR = "Error: the background box failed to start."
+
+    @staticmethod
+    def _launch(**over):
+        kw = dict(
+            project_dir=None, entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False, extra_args=[],
+        )
+        kw.update(over)
+        return _run_container(**kw)
+
+    @staticmethod
+    def _shell_agent(m):
+        m.resolve_agent.return_value = _sel("shell")
+        TestTheFlattenGateIsTheFinalSlot._shell_target(m)
+        m.target.setting_descriptors.return_value = []
+
+    @staticmethod
+    def _argv(m) -> list:
+        kw = m.runtime.run.call_args.kwargs
+        return [kw.get("entrypoint"), *(kw.get("cli_args") or [])]
+
+    @staticmethod
+    def _shell_resolver(shell="/bin/zsh"):
+        return patch(
+            "kanibako.launch.shells.resolve_box_shell",
+            return_value=(shell, "box.shell"),
+        )
+
+    @staticmethod
+    def _exit_code(code):
+        """Patch ``_container_exit_code``: *code* when readable, else the caller's
+        ``undeterminable`` (``code=None`` models an ``inspect`` that fails)."""
+        def _read(_rt, _name, *, undeterminable=0):
+            return undeterminable if code is None else code
+        return patch(
+            "kanibako.commands.start._container_exit_code", side_effect=_read,
+        )
+
+    # ── the argv ──────────────────────────────────────────────────────────────
+
+    @pytest.mark.parametrize("mode", ["foreground", "detach", "ephemeral"])
+    def test_an_agent_shell_command_ends_the_argv(self, mode, start_mocks):
+        over = {
+            "foreground": dict(persistent=True),
+            "detach": dict(persistent=True, detach=True),
+            "ephemeral": dict(persistent=False, explicit_ephemeral=True),
+        }[mode]
+        with start_mocks() as m, self._shell_resolver():
+            self._shell_agent(m)
+            assert self._launch(
+                explicit_agent="shell", extra_args=["echo", "hi"], **over,
+            ) == 0
+            argv = self._argv(m)
+            assert argv[-3:] == ["/bin/zsh", "-lc", "echo hi"]
+            text = " ".join(str(a) for a in argv)
+            assert "box_supervisor" not in text and "self-heal" not in text
+
+    def test_an_agent_shell_without_words_stays_interactive(self, start_mocks):
+        with start_mocks() as m, self._shell_resolver():
+            self._shell_agent(m)
+            assert self._launch(explicit_agent="shell", persistent=True) == 0
+            assert self._argv(m)[-1] == "/bin/zsh"
+
+    def test_a_stored_run_args_is_never_read_for_shell(self, start_mocks):
+        """``agent.shell.run_args`` is declared and never read: no words, no argv."""
+        with start_mocks() as m, self._shell_resolver():
+            self._shell_agent(m)
+            m.agent_cfg.run_args = ["--stored"]
+            m.load_agent_config.return_value = m.agent_cfg
+            assert self._launch(
+                explicit_agent="shell", persistent=False, explicit_ephemeral=True,
+            ) == 0
+            argv = self._argv(m)
+            assert "--stored" not in argv and argv[-1] == "/bin/zsh"
+
+    @pytest.mark.parametrize("command", ["start", "shell"])
+    def test_an_entrypoint_keeps_its_raw_words(self, command, start_mocks):
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m, self._shell_resolver() as m_resolve:
+            if command == "shell":
+                run_shell(TestRunShellBoxShell()._args(
+                    entrypoint="/bin/bash", shell_args=["-l"],
+                ))
+            else:
+                self._launch(entrypoint="/bin/bash", extra_args=["-l"])
+            m_resolve.assert_not_called()
+            argv = self._argv(m)
+            assert argv[-2:] == ["/bin/bash", "-l"] and "-lc" not in argv
+
+    def test_an_entrypoint_detach_keeps_the_bare_keep_alive(self, start_mocks):
+        with start_mocks() as m, self._shell_resolver():
+            self._launch(
+                entrypoint="/bin/x", extra_args=["y"], persistent=True, detach=True,
+            )
+            argv = self._argv(m)
+            assert argv[-1] == "/bin/zsh" and "y" not in argv and "-lc" not in argv
+
+    def test_a_real_agent_keeps_its_words(self, start_mocks):
+        with start_mocks() as m:
+            self._launch(extra_args=["--foo"], persistent=False)
+            argv = self._argv(m)
+            assert argv[-1] == "--foo" and "-lc" not in argv
+
+    # ── a live box ────────────────────────────────────────────────────────────
+
+    @pytest.mark.parametrize("persistent, stamp", [
+        (False, "claude"), (True, None), (True, "shell"),
+    ])
+    def test_kanibako_shell_execs_the_command_into_a_live_box(
+        self, persistent, stamp, start_mocks,
+    ):
+        """Ephemeral → the exec door; persistent at an UNSTAMPED box → exec, not
+        ``tmux attach`` (the door conjunct); at a stamped box → the box-shell door."""
+        from kanibako.commands.start import run_shell
+        with start_mocks() as m, self._shell_resolver():
+            m.runtime.is_running.return_value = True
+            m.runtime.inspect_env.return_value = stamp
+            run_shell(TestRunShellBoxShell()._args(
+                shell_args=["x"], persistent=persistent,
+            ))
+            m.runtime.run.assert_not_called()
+            assert m.runtime.exec.call_args.args[1] == ["/bin/zsh", "-lc", "x"]
+
+    # ── the size limits ───────────────────────────────────────────────────────
+
+    def test_an_over_long_join_refuses_before_any_write(self, start_mocks):
+        from kanibako.commands import start as start_mod
+        from kanibako.errors import KanibakoError
+        for words, refused in ((["a" * 70000, "b" * 70000], True), (["x"], False)):
+            with start_mocks() as m, self._shell_resolver(), \
+                    patch.object(
+                        start_mod, "resolve_rig", wraps=start_mod.resolve_rig,
+                    ) as m_rig, \
+                    patch.object(start_mod, "_persist_or_announce_flags") as m_flags, \
+                    patch("kanibako.launch.shells.capture_image_shell") as m_capture:
+                if refused:
+                    with pytest.raises(KanibakoError, match="131071"):
+                        self._launch(
+                            box_shell_mode=True, extra_args=words,
+                            explicit_ephemeral=True,
+                        )
+                    for mock in (m_rig, m_flags, m_capture):
+                        mock.assert_not_called()
+                    m.runtime.run.assert_not_called()
+                else:
+                    self._launch(
+                        box_shell_mode=True, extra_args=words, explicit_ephemeral=True,
+                    )
+                    # The control: the same launch reaches all three writes.
+                    for mock in (m_rig, m_flags, m_capture):
+                        mock.assert_called()
+
+    def test_the_tmux_budget_is_16300_bytes(self, start_mocks, capsys):
+        from kanibako.launch.shells import TMUX_COMMAND_BUDGET, tmux_command_bytes
+        assert TMUX_COMMAND_BUDGET == 16300
+        with start_mocks() as m, self._shell_resolver():
+            self._shell_agent(m)
+            self._launch(explicit_agent="shell", extra_args=["x"], persistent=True)
+            overhead = tmux_command_bytes(m.runtime.run.call_args.kwargs["cli_args"]) - 1
+        fits = "y" * (TMUX_COMMAND_BUDGET - overhead)
+        for command, rc in ((fits, 0), (fits + "y", 1)):
+            with start_mocks() as m, self._shell_resolver():
+                self._shell_agent(m)
+                capsys.readouterr()
+                assert self._launch(
+                    explicit_agent="shell", extra_args=[command], persistent=True,
+                ) == rc
+                err = capsys.readouterr().err
+                if rc:
+                    m.runtime.run.assert_not_called()
+                    assert "(this one needs 16301)" in err and "16300" in err
+                else:
+                    assert tmux_command_bytes(
+                        m.runtime.run.call_args.kwargs["cli_args"],
+                    ) == TMUX_COMMAND_BUDGET
+
+    # ── a persistent command that ends (design §2.7) ─────────────────────────
+
+    def _end(self, m, capsys, *, site, words=("x",), agent="shell", run_rc=0):
+        """Drive one §2.7 site; return ``(rc, stderr, stdout)``."""
+        if agent == "shell":
+            self._shell_agent(m)
+        over: dict = dict(persistent=True, extra_args=list(words))
+        if agent == "shell":
+            over["explicit_agent"] = "shell"
+        if site in ("detach-gone", "detach-up"):
+            over.update(detach=True, print_container=True)
+
+        def _exec_then_exit(*_a, **_k):
+            m.runtime.is_running.return_value = False
+            return 0
+
+        def _run(*_a, **_k):
+            # The box is not running before the launch; this sets what the host
+            # sees once ``podman run`` has returned.
+            if site in ("detach-up", "fg-attached"):
+                m.runtime.is_running.return_value = True
+            if site == "fg-attached":
+                m.runtime.exec.side_effect = _exec_then_exit
+            if site == "fg-dies":
+                states = iter([True])
+                m.runtime.is_running.side_effect = lambda *_a: next(states, False)
+                m.runtime.exec_ready.side_effect = lambda *_a, **_k: False
+            return run_rc
+
+        m.runtime.is_running.return_value = False
+        m.runtime.run.side_effect = _run
+        capsys.readouterr()
+        rc = self._launch(**over)
+        out = capsys.readouterr()
+        return rc, out.err, out.out
+
+    @staticmethod
+    def _ended(err: str) -> bool:
+        """Whether *err* carries any of M1-M3."""
+        return any(
+            f in err for f in (
+                "the command after '--' exited", "ran the command after '--'",
+                "running the command after '--'",
+            )
+        )
+
+    def _todays_error(self, site) -> str:
+        # A box that dies between the poll and the attach has no message of its
+        # own today: the log echo and rc 1 are what it reports.
+        return {
+            "fg-gone": self._FG_ERROR, "detach-gone": self._BG_ERROR,
+            "fg-dies": "BOXLOG",
+        }[site]
+
+    @contextmanager
+    def _site(self, start_mocks, code):
+        with start_mocks() as m, self._shell_resolver(), self._exit_code(code), \
+                patch("time.sleep"), \
+                patch("kanibako.commands.start._interactive_host", return_value=True), \
+                patch("kanibako.commands.start._restore_host_terminal"), \
+                patch("kanibako.commands.start._container_logs", return_value="BOXLOG"), \
+                patch("kanibako.commands.start._teardown_persistent_box") as m_down:
+            m.teardown = m_down
+            yield m
+
+    @pytest.mark.parametrize("site", ["fg-gone", "fg-dies"])
+    def test_a_foreground_end_before_attach_is_an_end(self, site, start_mocks, capsys):
+        with self._site(start_mocks, 0) as m:
+            rc, err, _ = self._end(m, capsys, site=site)
+            assert rc == 0
+            assert "BOXLOG" in err and self._M1 in err and "Error:" not in err
+            m.teardown.assert_called()
+            if site == "fg-dies":
+                m.runtime.exec.assert_not_called()
+
+    def test_a_foreground_end_after_attach_is_unchanged(self, start_mocks, capsys):
+        with self._site(start_mocks, 0) as m:
+            rc, err, _ = self._end(m, capsys, site="fg-attached")
+            assert rc == 0 and "BOXLOG" not in err and self._M1 not in err
+
+    def test_a_detached_end_before_the_poll_is_an_end(self, start_mocks, capsys):
+        with self._site(start_mocks, 0) as m:
+            rc, err, out = self._end(m, capsys, site="detach-gone")
+            assert rc == 0
+            assert "BOXLOG" in err and "Error:" not in err
+            assert self._M2.format(box=m.proj.name) in err
+            assert out == ""
+
+    def test_a_detached_command_box_says_it_stops_with_the_command(
+        self, start_mocks, capsys,
+    ):
+        with self._site(start_mocks, 0) as m:
+            rc, err, _ = self._end(m, capsys, site="detach-up")
+            assert rc == 0
+            lines = err.splitlines()
+            box = m.proj.name
+            assert self._M3.format(box=box) in lines and "(keep-alive)" not in err
+            first = lines.index(self._M3.format(box=box))
+            assert lines[first + 1:first + 4] == [
+                f"  Attach:    kanibako start {box}",
+                f"  VS Code:   kanibako code {box}",
+                f"  Stop it:   kanibako stop {box}",
+            ]
+
+    @pytest.mark.parametrize("site, code, run_rc", [
+        ("fg-gone", 1, 0), ("fg-dies", 1, 0), ("detach-gone", 1, 0),
+        # inspect cannot read the code although ``podman run`` succeeded
+        ("fg-gone", None, 0), ("fg-dies", None, 0), ("detach-gone", None, 0),
+        # ``podman run`` failed; the code is undeterminable
+        ("fg-gone", None, 1), ("detach-gone", None, 1),
+    ])
+    def test_anything_but_a_read_zero_after_a_good_run_is_an_error(
+        self, site, code, run_rc, start_mocks, capsys,
+    ):
+        with self._site(start_mocks, code) as m:
+            rc, err, _ = self._end(m, capsys, site=site, run_rc=run_rc)
+            assert rc == 1 and "BOXLOG" in err and not self._ended(err)
+            assert self._todays_error(site) in err
+
+    def test_a_non_zero_code_after_attach_keeps_its_rc(self, start_mocks, capsys):
+        with self._site(start_mocks, 1) as m:
+            rc, err, _ = self._end(m, capsys, site="fg-attached")
+            assert rc == 1 and "BOXLOG" in err and self._M1 not in err
+
+    @pytest.mark.parametrize("agent", ["shell", "claude"])
+    @pytest.mark.parametrize("site", ["fg-gone", "fg-dies", "detach-gone", "detach-up"])
+    def test_a_launch_without_a_command_is_unchanged(
+        self, agent, site, start_mocks, capsys,
+    ):
+        with self._site(start_mocks, 0) as m:
+            rc, err, _ = self._end(m, capsys, site=site, words=(), agent=agent)
+            assert not self._ended(err)
+            if site == "detach-up":
+                assert rc == 0 and "(keep-alive)" in err
+            else:
+                assert rc == 1 and self._todays_error(site) in err
+
+
+class TestContainerExitCodeUndeterminable:
+    """``undeterminable`` replaces the literal 0 on each could-not-read path."""
+
+    @pytest.mark.parametrize("outcome", ["oserror", "nonzero", "garbage"])
+    def test_each_unreadable_path_returns_the_given_value(self, outcome):
+        import subprocess
+
+        from kanibako.commands.start import _container_exit_code
+
+        def _run(cmd, **_k):
+            if outcome == "oserror":
+                raise OSError("no podman")
+            if outcome == "nonzero":
+                return subprocess.CompletedProcess(cmd, 125, stdout="", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="n/a\n", stderr="")
+
+        runtime = MagicMock(cmd="podman")
+        with patch("kanibako.commands.start.subprocess.run", side_effect=_run):
+            assert _container_exit_code(runtime, "box") == 0
+            assert _container_exit_code(runtime, "box", undeterminable=None) is None
+
+    def test_a_readable_code_is_returned_either_way(self):
+        import subprocess
+
+        from kanibako.commands.start import _container_exit_code
+
+        done = subprocess.CompletedProcess([], 0, stdout="3\n", stderr="")
+        runtime = MagicMock(cmd="podman")
+        with patch("kanibako.commands.start.subprocess.run", return_value=done):
+            assert _container_exit_code(runtime, "box", undeterminable=None) == 3

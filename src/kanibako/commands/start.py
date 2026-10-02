@@ -12,7 +12,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple, overload
 
 if TYPE_CHECKING:
     from kanibako.settings.agent_select import AgentSelection
@@ -771,21 +771,10 @@ def run_shell(args: argparse.Namespace) -> int:
     shell_args = getattr(args, "shell_args", [])
 
     entrypoint = getattr(args, "entrypoint", None)
-    box_shell_mode = False
-    if not entrypoint:
-        if shell_args:
-            # One-off command exec: /bin/sh -c "<cmd>" (not the interactive shell).
-            entrypoint = "/bin/sh"
-        else:
-            # Interactive shell: defer to _run_container's image-aware box.shell
-            # resolution.  We leave entrypoint=None and flag box_shell_mode so
-            # _run_container resolves the shell *with* the runtime/image handle
-            # (box.shell -> $KANIBAKO_SHELL -> stored image login shell -> sh)
-            # without engaging an agent.
-            box_shell_mode = True
-    # Wrap shell_args as -c "cmd" so /bin/sh executes them as a command
-    if shell_args and not getattr(args, "entrypoint", None):
-        shell_args = ["-c", " ".join(shell_args)]
+    # Without --entrypoint the program is the box shell: _run_container resolves
+    # it with the runtime/image handle (box.shell -> $KANIBAKO_SHELL -> stored
+    # image login shell -> sh) and turns any ``-- <words>`` into ``-lc S``.
+    box_shell_mode = not entrypoint
 
     image_override = getattr(args, "image", None)
     no_helpers = getattr(args, "no_helpers", False)
@@ -2822,7 +2811,8 @@ def _run_container(
     # ⚑ ``stored_agent`` — the LIVE box's ``KANIBAKO_AGENT`` stamp — is
     # LOAD-BEARING in the "box-shell" row, not a redundant narrowing of
     # ``box_shell_mode``: a live NO-AGENT box's PID-1 tmux session IS the user's
-    # own shell, so it must keep reattaching.
+    # own shell, so it must keep reattaching.  A ``-- <command>`` is the other
+    # way in: a command is a second process, which attaching cannot run.
     #
     # ⚑ IT READS TYPED VALUES, AND IT MUST STAY HERE TO DO SO.  ``entrypoint``,
     # ``no_helpers`` and ``explicit_agent`` are all rebound further down; this
@@ -2839,7 +2829,9 @@ def _run_container(
     if reattach_running:
         if detach:
             running_door = "detach"
-        elif box_shell_mode and typed_entrypoint is None and stored_agent:
+        elif box_shell_mode and typed_entrypoint is None and (
+            stored_agent or extra_args
+        ):
             running_door = "box-shell"
         elif typed_entrypoint is not None:
             running_door = "entrypoint"
@@ -3012,6 +3004,21 @@ def _run_container(
     # an explicit entrypoint); a plain-shell BOX resolves ``ShellTarget`` and reaches
     # ``shell`` through the swap like any other agent.
     agent_id = with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT
+
+    # The ONE conversion of ``-- <words>`` into the box shell's ``-lc S`` (keyspec
+    # §2d ``shell``).  It applies when this launch's program is the box shell:
+    # ``kanibako shell``, or a target with neither a descriptor nor its own
+    # entrypoint.  It sits ahead of the rig, flag, and image-shell writes so an
+    # over-long command (``shell_command_string`` raises) refuses before them.
+    from kanibako.launch.shells import shell_command_string
+    runs_box_shell = box_shell_mode or (
+        target is not None
+        and target.descriptor is None
+        and target.default_entrypoint is None
+    )
+    shell_command = shell_command_string(extra_args) if runs_box_shell else None
+    if shell_command is not None:
+        extra_args = ["-lc", shell_command]
     selection_level = _launch_selection_level(agent_selection)
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
 
@@ -4138,8 +4145,8 @@ def _run_container(
                 # no agent argv and no realized variables.  The legacy
                 # build_cli_args / apply_state hook dispatch was removed for the
                 # public release (descriptor-only plugin system); a no-agent box
-                # needs neither.
-                cli_args = []
+                # needs neither.  Its only argv is a ``-- <command>`` as ``-lc S``.
+                cli_args = ["-lc", shell_command] if shell_command is not None else []
         else:
             cli_args = list(extra_args)
 
@@ -4725,8 +4732,13 @@ def _run_container(
                 # session runs a bare shell as PID-1; separate `podman exec`
                 # processes (VS Code terminals, the panel) don't touch it, so they
                 # never stop the box.  box_shell is resolved above for any detach.
+                # A ``-- <command>`` runs AS the keep-alive, so the box stops when
+                # it ends; ``--entrypoint X --detach`` keeps the bare shell.
                 assert box_shell is not None
-                inner_cmd, inner_args = _apply_persistent_shims(box_shell, [])
+                inner_cmd, inner_args = _apply_persistent_shims(
+                    box_shell,
+                    ["-lc", shell_command] if shell_command is not None else [],
+                )
                 entrypoint, cli_args = _bootstrap_wrap(
                     bootstrap_program, inner_cmd, inner_args,
                 )
@@ -4787,6 +4799,26 @@ def _run_container(
         _persist_shadow_issues(std, container_name, _shadowed)
 
         try:
+            if (
+                persistent and shell_command is not None
+                and bootstrap_program == "tmux"
+            ):
+                from kanibako.launch.shells import (
+                    TMUX_COMMAND_BUDGET, tmux_command_bytes,
+                )
+                _tmux_bytes = tmux_command_bytes(list(cli_args or []))
+                if _tmux_bytes > TMUX_COMMAND_BUDGET:
+                    print(
+                        f"Error: The command after '--' is "
+                        f"{len(shell_command.encode())} bytes; a persistent box "
+                        f"starts it through tmux, and kanibako allows at most "
+                        f"{TMUX_COMMAND_BUDGET} bytes for the whole session "
+                        f"command (this one needs {_tmux_bytes}). Put it in a "
+                        f"workspace script and run that, or launch with "
+                        f"--ephemeral.",
+                        file=sys.stderr,
+                    )
+                    return 1
             # Run the container
             rc = runtime.run(
                 image,
@@ -4833,14 +4865,29 @@ def _run_container(
                 logs = _container_logs(runtime, container_name)
                 if logs:
                     print(logs, file=sys.stderr)
+                if _persistent_command_ended(
+                    shell_command, rc, runtime, container_name,
+                ):
+                    print(
+                        f"Note: box '{proj.name}' ran the command after '--', "
+                        f"which has already exited; the box has stopped.",
+                        file=sys.stderr,
+                    )
+                    return 0
                 print(
                     "Error: the background box failed to start.\n"
                     "Check the logs above, or run 'kanibako system diagnose'.",
                     file=sys.stderr,
                 )
                 return 1
+            _started = (
+                f"Box '{proj.name}' started in the background, running the "
+                f"command after '--'; it stops when the command ends."
+                if shell_command is not None else
+                f"Box '{proj.name}' started in the background (keep-alive)."
+            )
             print(
-                f"Box '{proj.name}' started in the background (keep-alive).\n"
+                f"{_started}\n"
                 f"  Attach:    kanibako start {proj.name}\n"
                 f"  VS Code:   kanibako code {proj.name}\n"
                 f"  Stop it:   kanibako stop {proj.name}",
@@ -4877,6 +4924,10 @@ def _run_container(
                 logs = _container_logs(runtime, container_name)
                 if logs:
                     print(logs, file=sys.stderr)
+                # Read before the teardown below removes the container.
+                _command_ended = _persistent_command_ended(
+                    shell_command, rc, runtime, container_name,
+                )
                 # FIX 2 (launch-validation): the launched session is GROUND TRUTH
                 # for a bootable config.  If its logs say the agent is still not
                 # configured/authenticated, the in-box setup did NOT take.  This is
@@ -4906,6 +4957,9 @@ def _run_container(
                 # immediately if the container came back up, and the logs above were
                 # already printed, so nothing diagnosable is thrown away.
                 _teardown_persistent_box(runtime, container_name)
+                if _command_ended:
+                    print(_COMMAND_ENDED_BEFORE_ATTACH, file=sys.stderr)
+                    return 0
                 if target and logs and target.should_run_setup(logs):
                     _print_setup_did_not_take(target)
                     return 1
@@ -4938,6 +4992,15 @@ def _run_container(
                         # crash-on-launch surfaces as a non-zero kanibako exit
                         # instead of a misleading success.
                         # Fall through to the log-showing path below.
+                        if _persistent_command_ended(
+                            shell_command, rc, runtime, container_name,
+                        ):
+                            logs = _container_logs(runtime, container_name)
+                            if logs:
+                                print(logs, file=sys.stderr)
+                            print(_COMMAND_ENDED_BEFORE_ATTACH, file=sys.stderr)
+                            _teardown_persistent_box(runtime, container_name)
+                            return 0
                         rc = _container_exit_code(runtime, container_name) or 1
                         break
                     # Still running but not yet ready: transient startup race.
@@ -9500,13 +9563,49 @@ def _container_logs(runtime: ContainerRuntime, name: str) -> str:
     return (result.stdout + result.stderr).strip() if result.returncode == 0 else ""
 
 
-def _container_exit_code(runtime: ContainerRuntime, name: str) -> int:
-    """Return the container's last exit code, or 0 if undeterminable.
+# M1: a persistent ``-- <command>`` that ended before the host could attach.
+_COMMAND_ENDED_BEFORE_ATTACH = (
+    "Note: the session ended before it could attach (the command after '--' "
+    "exited). A persistent box does not report the command's exit status; for "
+    "a one-off, use 'kanibako shell -- <command>'."
+)
+
+
+def _persistent_command_ended(
+    shell_command: str | None, rc: int, runtime: ContainerRuntime, name: str,
+) -> bool:
+    """True iff a STOPPED persistent box ran its ``-- <command>`` and ended normally.
+
+    Both must hold: ``podman run`` returned 0 (*rc*), and the box's exit code was
+    READ as 0.  tmux exits 0 whatever the command returned, so this says the
+    session machinery worked, not that the command succeeded.  Read it before a
+    teardown removes the container: an unreadable code is never an end.
+    """
+    return (
+        shell_command is not None
+        and rc == 0
+        and _container_exit_code(runtime, name, undeterminable=None) == 0
+    )
+
+
+@overload
+def _container_exit_code(runtime: ContainerRuntime, name: str) -> int: ...
+@overload
+def _container_exit_code(
+    runtime: ContainerRuntime, name: str, *, undeterminable: int | None,
+) -> int | None: ...
+
+
+def _container_exit_code(
+    runtime: ContainerRuntime, name: str, *, undeterminable: int | None = 0,
+) -> int | None:
+    """Return the container's last exit code, or *undeterminable* if it cannot be read.
 
     Best-effort: a runtime whose ``inspect`` fails to run (missing binary /
-    ``OSError``), returns non-zero, or emits unparseable output all resolve to 0
-    (undeterminable) — this reads a code for error surfacing (E2d) and must never
+    ``OSError``), returns non-zero, or emits unparseable output all resolve to
+    *undeterminable* — this reads a code for error surfacing (E2d) and must never
     itself raise, so a callers' ``_container_exit_code(...) or rc`` fallback holds.
+    Pass ``undeterminable=None`` where "could not read" must not pass for 0.
     """
     try:
         result = subprocess.run(
@@ -9514,13 +9613,13 @@ def _container_exit_code(runtime: ContainerRuntime, name: str) -> int:
             capture_output=True, text=True,
         )
     except OSError:
-        return 0
+        return undeterminable
     if result.returncode != 0:
-        return 0
+        return undeterminable
     try:
         return int(result.stdout.strip())
     except ValueError:
-        return 0
+        return undeterminable
 
 
 def _interactive_host() -> bool:

@@ -344,7 +344,10 @@ inside boxes. In order of likely impact:
     `--entrypoint` given as one word with arguments (`--entrypoint "bash -l"`), stops working** —
     see *A plain-shell box writes the canon to `~/AGENTS.md`*.
 
-35. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
+35. **`kanibako shell -- <cmd>` now runs `<box shell> -lc <cmd>`, not `/bin/sh -c`, and several
+    words are quoted as written, so a pipe or `$VAR` must be one quoted word** — see *`kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command*.
+
+36. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
     keeps the old one's credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44);
@@ -5885,6 +5888,29 @@ program by that name.
 `agent.shell.env.KANIBAKO_DIRECTIVE_FINAL` elsewhere. Set `box.shell` to a program path
 (`/bin/bash`); a login shell is what the image's shell already is. Give `--entrypoint` a program
 path and pass its arguments after `--`: `kanibako start --entrypoint /bin/bash -- -l`.
+
+### `kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command
+
+**Read this if you run `kanibako shell -- <cmd>`, or `kanibako start --agent shell -- <cmd>`.**
+
+**What changed.** `kanibako shell -- <words>` used to run `/bin/sh -c "<words joined by spaces>"`,
+and `--agent shell -- <words>` dropped the words silently. Both now run the box's shell (`box.shell`,
+else the image's login shell, else `sh`) as `<shell> -lc S`. `S` is a single word as given, or
+several words quoted as `shlex.join` quotes them. Nothing is stored.
+
+- **Shell syntax must be one quoted word.** `kanibako shell -- ls '|' wc` passes `|` to `ls`; write
+  `kanibako shell -- 'ls | wc'`.
+- **It is a login shell.** Your profiles and the secrets snippet are sourced first, so secrets reach
+  the command and any profile output prints before it.
+- **It is your box's shell.** csh and tcsh reject `-lc`; set `box.shell: /bin/sh` for such a box.
+- **`kanibako start --agent shell -- <cmd>` is persistent**, as `--agent shell` always is. The tmux
+  pane closes when the command ends, and the launch exits 0 whatever the command returned: a
+  persistent box does not report the command's exit status. For a one-off whose status or output
+  matters, use `kanibako shell -- <cmd>`, which is ephemeral and returns the command's status.
+- **`kanibako start --agent shell --detach -- <cmd>` runs the command as the keep-alive**, so the
+  box stops when the command ends, where a bare `--detach` box stays up.
+
+`--entrypoint X -- <words>` is unchanged: the words are `X`'s arguments.
 
 ---
 

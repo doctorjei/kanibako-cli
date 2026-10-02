@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `kanibako shell -- <cmd>` runs `<box shell> -lc <cmd>` instead of `/bin/sh -c`. See *`kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command* in
+  [MIGRATION.md](MIGRATION.md).
 - `shell` writes `~/AGENTS.md`; on any persistent shell launch, a `box.shell` with arguments or
   an `--entrypoint` given as one word with arguments no longer works. See *A plain-shell box writes the canon to `~/AGENTS.md`* in
   [MIGRATION.md](MIGRATION.md).
@@ -259,6 +261,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A missing, empty, or incomplete packaged canon stops `start`/`create` with an error naming the
   path.** In 1.8.0-rc2 it surfaced as a Python traceback, or an empty canon root let the box start
   with no canon. It is now `Error: …` with exit 1, before any container runs.
+- `kanibako start --agent shell -- <cmd>` no longer drops the command.
 - **An unreadable config file is refused with a clean error, not a Python traceback.** In
   1.8.0-rc2 a file that was not valid UTF-8, or was permission-denied, or was a directory
   where a file was expected, escaped as a traceback through `load_doc`'s unguarded
