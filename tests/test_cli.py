@@ -1212,7 +1212,6 @@ class TestLazyInitExemptions:
     def test_box_helper_skips_lazy_init(self, tmp_path, monkeypatch):
         """'box helper' command should not trigger lazy init."""
         # Point XDG_CONFIG_HOME to an empty dir (no kanibako.cfg)
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         monkeypatch.setattr(
             "kanibako.commands.helper_cmd._helpers_dir",
             lambda: tmp_path / "helpers",
@@ -1226,7 +1225,6 @@ class TestLazyInitExemptions:
 
     def test_agent_skips_lazy_init(self, tmp_path, monkeypatch):
         """'agent' command (config-facing) should not trigger lazy init."""
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
         from kanibako.cli import main
         # 'agent list' should not crash with "not set up yet"
@@ -1236,7 +1234,6 @@ class TestLazyInitExemptions:
 
     def test_box_fork_skips_lazy_init(self, tmp_path, monkeypatch):
         """'box fork' command should not trigger lazy init."""
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         # fork will fail with "no socket" but should NOT fail with lazy init
         from kanibako.cli import main
         with pytest.raises(SystemExit) as exc_info:
@@ -1247,7 +1244,6 @@ class TestLazyInitExemptions:
     def test_system_triggers_lazy_init(self, tmp_path, monkeypatch):
         """'system' command triggers lazy init (creates config)."""
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         (tmp_path / "home").mkdir(parents=True, exist_ok=True)
 
