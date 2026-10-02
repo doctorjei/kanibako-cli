@@ -2291,7 +2291,7 @@ def build_launch_snapshot(
     # refuse here, before the resolve. The cure names the agent, except under ``GENERAL_SLOT``:
     # that name is also the agent-less system, workset, and box-scalar resolves
     # (``resolve_box_scalars``, ``workset_cmd``), so it cannot tell a selected ``shell`` from
-    # no agent, and ``<agent>`` is right for both — and, at the box tier, the box.
+    # no agent, and ``<agent>`` is right for both; at the box tier the subject is the box.
     box_name = (meta_identity or {}).get("meta.box.name")
     files = cascade_files(
         purpose=ReadPurpose.RESOLVE,

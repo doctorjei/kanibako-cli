@@ -79,16 +79,14 @@ def _register(
 
     ⚑ THE PLUGIN-SHAPE GATE, right below the reservation and ABOVE the case-collision
     check: a plugin that returns no ``descriptor`` (or no ``default_entrypoint``) is
-    refused, because the plugin system is descriptor-only and it is the descriptor that
-    supplies an agent's default settings, credentials and interactive mode (keyspec
-    §2d) — what makes a pseudo-agent a true agent.  Such a plugin would otherwise
-    register and then launch as a PLAIN SHELL, and because ``_run_container`` read
-    "has a plugin" three ways from three different attributes, the answers disagreed at
-    different sites for the SAME registered target.  Refusing it HERE is what makes
-    ``descriptor is None`` ⇔ ``default_entrypoint is None`` true for every registered
-    target, so ``targets.base.has_plugin`` has one fact to read.  Ordering is
-    deliberate: a rogue RESERVED name is reported as reserved even if its shape is also
-    wrong, which is the more actionable of the two.
+    refused, because the plugin system is descriptor-only — the descriptor supplies an
+    agent's default settings, credentials and interactive mode (keyspec §2d), an
+    entrypoint is the program it runs, and neither half alone makes a pseudo-agent a
+    true agent.  Refusing it HERE is what makes ``descriptor is None`` ⇔
+    ``default_entrypoint is None`` true of every REGISTERED target; that invariant and
+    the one predicate it serves are stated in ``targets.base.has_plugin``'s docstring.
+    Ordering is deliberate: a rogue RESERVED name is reported as reserved even if its
+    shape is also wrong, which is the more actionable of the two.
 
     ⚑ SKIP-AND-WARN, NEVER RAISE, for the reason the ``ep.load()`` guard in
     :func:`discover_targets` states at length: discovery runs on every command, so one
@@ -131,10 +129,11 @@ def _register(
                 f"Warning: the agent plugin '{name}' ({source}) declares no "
                 f"{' or '.join(missing)}: kanibako plugins are descriptor-only, "
                 f"and a plugin supplies its agent's default settings, credentials, "
-                f"and interactive mode (keyspec §2d). Without them it would launch "
-                f"as a plain shell. '{name}' is being SKIPPED; every other agent, "
-                f"and 'kanibako setup', still work. The plugin's author must "
-                f"implement 'descriptor' and 'default_entrypoint'.",
+                f"and interactive mode (keyspec §2d). Neither half is optional: "
+                f"only the built-in shell is meant to launch without a plugin, "
+                f"and 'kanibako shell' is how you get one. '{name}' is being SKIPPED; "
+                f"every other agent, and 'kanibako setup', still work. The plugin's "
+                f"author must implement 'descriptor' and 'default_entrypoint'.",
                 file=sys.stderr,
             )
         return

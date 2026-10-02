@@ -18,7 +18,12 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
-from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence, descriptor_floor
+from kanibako.targets.base import (
+    PersonaProbeOutcome,
+    ProbeEvidence,
+    descriptor_floor,
+    has_plugin,
+)
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 from tests.support.filenames import CONFIG_FILENAME
 
@@ -5157,18 +5162,28 @@ class TestApplyInitSeeds:
 
 
 class TestBoxShellLaunch:
-    """Verify the no-agent launch shell comes from resolve_box_shell (Phase 3).
+    """The NO-PLUGIN launch takes its shell from resolve_box_shell (Phase 3).
 
-    The no-agent case is when ``target.default_entrypoint`` is None (ShellTarget):
-    ``_run_container`` then resolves the shell via ``resolve_box_shell`` instead of
-    a hardcoded ``/bin/bash``.  A real agent (non-None default_entrypoint) keeps
-    using its own entrypoint.
+    "This target has no plugin" is ONE fact, read through
+    ``targets.base.has_plugin`` — the descriptor.  A target with no
+    descriptor (the built-in ``ShellTarget``) is the no-plugin case:
+    ``_run_container`` resolves its shell via ``resolve_box_shell`` instead
+    of a hardcoded ``/bin/bash``, and launches the shell as the WHOLE
+    program.  A target WITH a plugin keeps its own entrypoint and argv.
+
+    ⚑ A MagicMock target is descriptor-bearing by default, so a test that
+    means "no plugin" must null ``descriptor`` and not only
+    ``default_entrypoint`` — otherwise it is silently exercising the
+    supervised-agent arm.  ``assert inner[5:] == []`` is what tells the two
+    apart: the agent arm appends its argv after the shell.
     """
 
     def test_shell_persistent_uses_resolved_shell(self, start_mocks):
-        """No-agent persistent launch wraps the resolved shell, not /bin/bash."""
+        """No-plugin persistent launch wraps the resolved shell, not /bin/bash."""
         with start_mocks() as m:
             m.target.default_entrypoint = None  # ShellTarget
+            m.target.descriptor = None  # has_plugin reads the descriptor
+            assert has_plugin(m.target) is False
             with patch(
                 "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/bash", "image"),
@@ -5195,11 +5210,17 @@ class TestBoxShellLaunch:
             inner = cli_args[cli_args.index("--") + 1:]
             assert inner[:2] == ["sh", "-c"] and "import-directives.py" in inner[2]
             assert inner[3:5] == ["sh", "/bin/bash"]
+            # THE NO-PLUGIN BRANCH. The supervised-agent arm (has_plugin true)
+            # appends the agent's argv after the shell; a no-plugin launch must
+            # append nothing, so the resolved shell is the whole program.
+            assert inner[5:] == []
 
     def test_shell_persistent_uses_resolved_zsh(self, start_mocks):
         """box.shell=/bin/zsh (resolver result) is the launched inner command."""
         with start_mocks() as m:
             m.target.default_entrypoint = None
+            m.target.descriptor = None  # has_plugin reads the descriptor
+            assert has_plugin(m.target) is False
             with patch(
                 "kanibako.launch.shells.resolve_box_shell",
                 return_value=("/bin/zsh", "box.shell"),
@@ -5217,6 +5238,9 @@ class TestBoxShellLaunch:
             cli_args = m.runtime.run.call_args.kwargs.get("cli_args") or []
             inner = cli_args[cli_args.index("--") + 1:]
             assert inner[:2] == ["sh", "-c"] and inner[3:5] == ["sh", "/bin/zsh"]
+            # Same no-plugin proof as the bash case above: nothing after the
+            # shell, so this is the shell-launch arm and not the agent's.
+            assert inner[5:] == []
 
     def test_shell_nonpersistent_uses_resolved_shell_as_entrypoint(self, start_mocks):
         """No-agent ephemeral launch passes the resolved shell as entrypoint."""

@@ -312,7 +312,7 @@ class TestAnOldPluginDegradesInsteadOfBricking:
 
         ⚑ Not ``object``: ``targets._register`` refuses a plugin with no
         ``descriptor`` (the plugin system is descriptor-only, keyspec §2d), so a
-        healthy neighbour that is not a plugin at all would be skipped by the shape
+        healthy neighbor that is not a plugin at all would be skipped by the shape
         gate and this suite would assert the WRONG reason for the stale one landing
         alone.  The class is built per call because ``ep.load()`` must return a
         distinct class whose ``name`` is this agent.

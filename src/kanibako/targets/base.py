@@ -1122,10 +1122,9 @@ class Target(ABC):
 def has_plugin(target: Target | None) -> bool:
     """True when *target* is a harness plugin; False for no target and for the built-in ShellTarget.
 
-    ⚑ A MODULE FUNCTION, NOT A ``Target`` METHOD, and that is the whole point (P3): the
-    plugin system is third-party, so a ``Target`` method or property here would be one more
-    thing a subclass can override — and an overridden ``has_plugin`` would put the three
-    call sites back to disagreeing, which is the defect this function exists to remove.
+    ⚑ A MODULE FUNCTION, NOT A ``Target`` METHOD (P3): the plugin system is
+    third-party, so a ``Target`` method here would be one more thing a subclass can
+    override, and the four ``start.py`` call sites would then read the override.
 
     "This target has no plugin" is ONE fact (keyspec §2d): the target is the built-in
     ``ShellTarget``, or there is no target at all. A plugin is a ``Target`` with a

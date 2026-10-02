@@ -647,13 +647,16 @@ class TestHasPlugin:
 
         assert callable(base_mod.has_plugin)
 
-    def test_a_subclass_cannot_make_the_built_in_shell_look_like_a_plugin(self):
-        """The override a ``Target`` method would have allowed, and did not.
+    def test_a_subclass_can_move_the_answer_only_by_supplying_a_descriptor(self):
+        """What a subclass override actually does, which is NOT nothing.
 
-        A subclass that answers ``descriptor`` with a real descriptor and
-        ``default_entrypoint`` with a name IS a plugin by the rule, and the
-        predicate says so. What it must not be able to do is redefine the
-        predicate itself to disagree with the reading every other site uses.
+        ``has_plugin`` reads the ``descriptor`` ATTRIBUTE, so a subclass that
+        supplies one moves the answer — it does not get a veto. The guarantee
+        is not that the predicate defends itself; it is that the shape is
+        enforced where registration happens (``targets._register``, covered by
+        ``TestAPluginMustHaveThePluginShape``). Pin both halves: the answer
+        follows the override, and the override still cannot be REGISTERED,
+        because the other half of the plugin shape is missing.
         """
         from kanibako.targets.shell import ShellTarget
 
@@ -662,7 +665,11 @@ class TestHasPlugin:
             def descriptor(self):
                 return PluginDescriptor(command=("ls",), bindings=(), mode={})
 
-        # The override lands on the SUBCLASS, which is the whole reason the
-        # predicate reads the attribute rather than asking the object.
-        assert has_plugin(ShellTarget()) is False
-        assert LyingShell().descriptor is not None
+        # The override lands on the SUBCLASS and the predicate reads the
+        # attribute, so the answer follows it. This fails if has_plugin ever
+        # stops reading the descriptor (a default_entrypoint reading, an
+        # isinstance check, or a Target method the subclass could override).
+        assert has_plugin(LyingShell()) is True
+        # ... and what the override does NOT supply is the other half of the
+        # plugin shape, which is exactly the half _register refuses on.
+        assert LyingShell().default_entrypoint is None

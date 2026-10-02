@@ -23,6 +23,22 @@ from kanibako.targets.shell import ShellTarget
 from tests.support.filenames import CONFIG_FILENAME
 
 
+def _isolate_config(tmp_path, monkeypatch) -> None:
+    """Pin the CONFIG side of the user plugin dir, which is ``config.data``/plugins.
+
+    ⚑ ``XDG_DATA_HOME`` alone no longer determines where the scan looks ([R155]), so an
+    unisolated ``XDG_CONFIG_HOME`` — or the site base under ``/etc`` — would let whatever
+    config happens to be on the box running the suite move the directory away from the one
+    these tests write into.  The two classes that need this floor
+    (``TestAPluginMustHaveThePluginShape``, ``TestDirectoryPluginDiscovery``) each keep an
+    ``autouse`` wrapper so the floor stays scoped to the tests that write plugin files.
+    """
+    import kanibako.settings.config as cfg_mod
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.cfg")
+
+
 def _minimal_descriptor(command: tuple[str, ...] = ("fake-bin",)) -> PluginDescriptor:
     """The smallest descriptor a REGISTRABLE plugin can declare.
 
@@ -473,18 +489,7 @@ class MyNoDescPlugin(Target):
 
     @pytest.fixture(autouse=True)
     def _isolate_config(self, tmp_path, monkeypatch):
-        """Pin the CONFIG side of the user plugin dir — the file-drop tests need it.
-
-        ⚑ Same floor as ``TestDirectoryPluginDiscovery._isolate_config`` and for the
-        same reason ([R155]): the file-drop scan follows ``config.data``, not the XDG
-        base plus a leaf, so an unpinned ``XDG_CONFIG_HOME`` — or the site base under
-        ``/etc`` — would let the box's own config move the directory out from under
-        the plugin this test just wrote.
-        """
-        import kanibako.settings.config as cfg_mod
-
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.cfg")
+        _isolate_config(tmp_path, monkeypatch)
 
     @staticmethod
     def _no_descriptor_target(name: str) -> type:
@@ -563,7 +568,7 @@ class MyNoDescPlugin(Target):
         assert "nodesc" not in targets
         assert "'nodesc'" in err
         assert "SKIPPED" in err
-        # The well-shaped neighbour still lands — the gate costs ONE plugin.
+        # The well-shaped neighbor still lands — the gate costs ONE plugin.
         assert "okplugin" in targets
 
     def test_a_plugin_with_no_default_entrypoint_is_skipped(self, capsys):
@@ -590,7 +595,7 @@ class MyNoDescPlugin(Target):
         assert "kanibako setup" in err  # what still works
         assert "'descriptor'" in err and "'default_entrypoint'" in err  # the cure
 
-    def test_a_plugin_that_raises_on_instantiation_is_skipped_not_fatal(self, capsys):
+    def test_a_plugin_that_fails_the_shape_probe_is_skipped_not_fatal(self, capsys):
         """Reading the shape must not be able to take the CLI down either.
 
         ``ep.load()`` already returns whatever the plugin hands back, with no
@@ -791,17 +796,7 @@ class TestDirectoryPluginDiscovery:
 
     @pytest.fixture(autouse=True)
     def _isolate_config(self, tmp_path, monkeypatch):
-        """Pin the CONFIG side of the user plugin dir, which is ``config.data``/plugins.
-
-        ⚑ ``XDG_DATA_HOME`` alone no longer determines where the scan looks ([R155]), so an
-        unisolated ``XDG_CONFIG_HOME`` — or the site base under ``/etc`` — would let whatever
-        config happens to be on the box running the suite move the directory away from the one
-        these tests write into.
-        """
-        import kanibako.settings.config as cfg_mod
-
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.cfg")
+        _isolate_config(tmp_path, monkeypatch)
 
     def test_user_dir_follows_repointed_config_data(self, tmp_path, monkeypatch):
         """[R155]: the user scan follows ``config.data``, never the XDG base plus a leaf.
