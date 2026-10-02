@@ -245,7 +245,7 @@ def test_workset_rm_still_removes_the_workset_of_a_shared_name(
     """`workset rm` is the one carrier for workset removal — it still works."""
     env = _make_env(tmp_path, monkeypatch)
     boxes = _make_box("foo", tmp_path / "box" / "foo")
-    ws_root = _make_workset("foo", tmp_path / "ws" / "foo", force=True)
+    _make_workset("foo", tmp_path / "ws" / "foo", force=True)
     marker = boxes / "MARKER.txt"
     marker.write_text("box data\n")
 
