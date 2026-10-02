@@ -346,10 +346,11 @@ class TestContinueMode:
 
     def test_start_mode_bare_set_refused_as_unknown(self, tmp_path):
         """A bare ``start_mode`` set no longer takes the agent.default route — it
-        is refused as an unknown key and nothing is written."""
+        is refused by name, with the §0 reason, and nothing is written."""
         project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("start_mode", "fresh", config_path=project_toml)
-        assert msg == "Error: unknown config key: start_mode"
+        assert msg.startswith("Error: 'start_mode' cannot be set: "), msg
+        assert "'start_mode' is not a declared namespace" in msg, msg
         assert not project_toml.exists()
 
     def test_set_and_get_continue_mode_agent_default_tier(self, tmp_path):
@@ -1521,12 +1522,12 @@ class TestH1NoCrashOnAdvertisedKeys:
         """``mode`` is no longer settable via config set (block B1, spec §2b /
         §0): the project mode is the RO identity anchor ``meta.box.mode``, set by
         the bootstrap layer at box creation, NOT overridable. ``config set mode``
-        is now an unknown-key error; nothing is written.
+        is refused by name with the §0 reason; nothing is written.
         """
         project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("mode", "primary", config_path=project_toml)
-        assert msg.startswith("Error:")
-        assert "unknown config key" in msg
+        assert msg.startswith("Error: 'mode' cannot be set: "), msg
+        assert "'mode' is not a declared namespace" in msg, msg
         # The bootstrap [project].mode identity write is untouched, but config set
         # never created one.
         assert not project_toml.exists() or "mode" not in load_doc(project_toml).get(
@@ -1534,18 +1535,18 @@ class TestH1NoCrashOnAdvertisedKeys:
         )
 
     def test_set_dead_layout_key_rejected(self, tmp_path):
-        """W4: layout is a deleted dead key — now an unknown-key error."""
+        """W4: layout is a deleted dead key — refused by name with the §0 reason."""
         project_toml = tmp_path / BOX_META_FILE
         msg = set_config_value("layout", "robust", config_path=project_toml)
-        assert msg.startswith("Error:")
-        assert "unknown config key" in msg
+        assert msg.startswith("Error: 'layout' cannot be set: "), msg
+        assert "'layout' is not a declared namespace" in msg, msg
 
     def test_set_unknown_key_returns_error_not_raise(self, tmp_path):
         project_toml = tmp_path / BOX_META_FILE
         # No exception: an UNKNOWN key returns an error string.
         msg = set_config_value("totally-bogus-key", "x", config_path=project_toml)
-        assert msg.startswith("Error:")
-        assert "unknown config key" in msg
+        assert msg.startswith("Error: 'totally-bogus-key' cannot be set: "), msg
+        assert "'totally-bogus-key' is not a declared namespace" in msg, msg
         # Nothing was written.
         assert not project_toml.exists() or "totally-bogus-key" not in load_doc(project_toml)
 
@@ -1590,9 +1591,17 @@ class TestH2BoolCoercion:
         data = load_doc(project_toml)
         assert data["box"]["share_images"] is False
 
+        # ⚑ THE ``true`` FLOOR: ``False`` is ALSO this key's declared default, so
+        # the read below would pass with this file ignored outright.
+        workset_toml = tmp_path / WORKSET_META_FILE
+        workset_toml.write_text("box:\n  share_images: true\n")
+        assert load_merged_config(
+            workset_path=workset_toml,
+        ).box_share_images is True
+
         # ⚑ Read back through the MERGED settings load — ``load_config`` is the Layer-1
         # reader, and a box.yaml is a settings file.
-        cfg = load_merged_config(project_toml)
+        cfg = load_merged_config(project_toml, workset_path=workset_toml)
         assert cfg.box_share_images is False
         assert not cfg.box_share_images  # consumer disable-check honored
 
@@ -1664,7 +1673,7 @@ class TestH2BoolCoercion:
     def test_retired_autonomous_and_auto_approve_do_not_route(self, tmp_path):
         """The dead ``autonomous`` leaf and the RETIRED ``auto_approve`` spelling
         (R-41: superseded by ``access``) are neither known keys; a bare set of
-        either is refused as unknown (never lands in agent.default).
+        either is refused by name with the §0 reason (never lands in agent.default).
 
         ⚑ ``access`` moved the OTHER way in the same ruling — it is now the
         declared key, so it is asserted KNOWN here, in the same test, so the two
@@ -1675,7 +1684,8 @@ class TestH2BoolCoercion:
         project_toml = tmp_path / BOX_META_FILE
         for dead in ("autonomous", "auto_approve"):
             msg = set_config_value(dead, "true", config_path=project_toml)
-            assert msg == f"Error: unknown config key: {dead}", dead
+            assert msg.startswith(f"Error: '{dead}' cannot be set: "), dead
+            assert f"'{dead}' is not a declared namespace" in msg, dead
             assert not project_toml.exists()
 
     def test_bool_key_rejects_garbage(self, tmp_path):
@@ -1853,12 +1863,13 @@ class TestSystemConfigFileOnly:
 
     def test_retired_system_key_is_unknown_not_structural(self, tmp_path):
         """``system.data`` was RENAMED to ``config.data`` (block #3a): it is
-        not in the structural family, so it is an unknown key — pointing a
-        user at the config file for a key the resolver drops would be the
-        exact wrong-file advice F2 eliminates."""
+        not in the structural family, so it is refused by name with the §0
+        reason — pointing a user at the config file for a key the resolver drops
+        would be the exact wrong-file advice F2 eliminates."""
         cf = tmp_path / CONFIG_FILENAME
         msg = set_config_value("system.data", "x", config_path=cf)
-        assert msg.startswith("Error: unknown config key"), msg
+        assert msg.startswith("Error: 'system.data' cannot be set: "), msg
+        assert "'data' is not a declared system key" in msg, msg
         assert not cf.exists()
 
     def test_set_config_foundation_key_refused_every_scope(self, tmp_path):
@@ -3116,14 +3127,15 @@ class TestScopeDirectionGuard:
 
     def test_downward_unknown_key_still_rejected_by_registry(self, tmp_path):
         """A downward write of an UNREGISTERED key passes the guard but is
-        still rejected as an unknown config key (registry rejection is not
+        still refused by name with the §0 reason (registry rejection is not
         relaxed by the containment rule)."""
         f = tmp_path / "ws-settings.yaml"
         msg = set_config_value(
             "box.no_such_key", "x",
             config_path=f, command_scope=ConfigLevel.workset,
         )
-        assert msg.startswith("Error: unknown config key"), msg
+        assert msg.startswith("Error: 'box.no_such_key' cannot be set: "), msg
+        assert "'no_such_key' is not a declared box key" in msg, msg
         assert not f.exists()
 
     # --- meta.* is read-only from EVERY scope -----------------------------
@@ -3279,9 +3291,9 @@ class TestScopeDirectionGuard:
     def test_removed_bare_vault_keys_are_unknown(self, tmp_path):
         # Bug 4: the old bare ``vault.ro``/``vault.rw`` keys routed to the
         # ``project:`` section P8 DELETED — a silent dead write. They are REMOVED;
-        # a set/flat-form now returns the unknown-key error, a reset ``get``'s §0
-        # refusal, and neither writes anything (the vault override surface is
-        # ``box.bindings.{ro,rw}.vault``).
+        # a set/flat-form now names the key and gives the §0 reason, a reset
+        # ``get``'s §0 refusal, and neither writes anything (the vault override
+        # surface is ``box.bindings.{ro,rw}.vault``).
         from kanibako.settings.config_keys import scope_key_reason, scope_key_refusal
 
         f = tmp_path / BOX_META_FILE
@@ -3289,8 +3301,8 @@ class TestScopeDirectionGuard:
             msg = set_config_value(
                 key, "/x", config_path=f, command_scope=ConfigLevel.box,
             )
-            assert msg.startswith("Error:"), (key, msg)
-            assert "unknown config key" in msg, (key, msg)
+            assert msg.startswith(f"Error: '{key}' cannot be set: "), (key, msg)
+            assert "the keyspace is CLOSED (spec §0)" in msg, (key, msg)
         rmsg = reset_config_value("vault.ro", config_path=f)
         reason = scope_key_reason("vault.ro")
         assert reason is not None
@@ -5107,21 +5119,22 @@ class TestSetTimeResolutionProbe:
         """SHOULD-3 / spec §0: the error must NAME the key.
 
         Probing first would diagnose the VALUE of a key that does not exist —
-        ``Unknown variable: $BAR`` instead of ``unknown config key: …`` — which
-        sends the reader after the wrong thing entirely.
+        ``Unknown variable: $BAR`` instead of the §0 refusal — which sends the
+        reader after the wrong thing entirely.
 
         ⚑ THE SPECIMEN WAS ``run_args`` UNTIL 2026-08-23, and swapping it is the
         saying-so: ``run_args`` is a DECLARED ``agent.default`` leaf (spec §2d) that
         the bare surface had simply never admitted, so this case was proving the
-        unknown-key rule with a key that is not unknown — and it went red the moment
-        the surface was derived from ``DECLARED_AGENT_LEAVES`` rather than hand-kept.
-        ``auto_approve`` is genuinely undeclared (R-41 RETIRED it) and is the same
-        SHAPE: a bare, plausible-looking agent behavior spelling.
+        undeclared-key rule with a key that is not undeclared — and it went red the
+        moment the surface was derived from ``DECLARED_AGENT_LEAVES`` rather than
+        hand-kept.  ``auto_approve`` is genuinely undeclared (R-41 RETIRED it) and is
+        the same SHAPE: a bare, plausible-looking agent behavior spelling.
         """
         msg = set_config_value(
             "auto_approve", "--env FOO=$BAR", config_path=tmp_path / BOX_META_FILE,
         )
-        assert msg == "Error: unknown config key: auto_approve"
+        assert msg.startswith("Error: 'auto_approve' cannot be set: "), msg
+        assert "'auto_approve' is not a declared namespace" in msg, msg
 
 
 class TestSetDispatchCoverage:
@@ -6472,6 +6485,26 @@ class TestAgentDefaultTierScalarCategories:
             command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
         )
         assert "set the any-agent default with the bare key" in msg, msg
+
+    def test_an_undeclared_tier_leaf_is_refused_with_the_reason(self, tmp_path):
+        """``set`` answers an undeclared ``agent.default`` leaf the way ``reset`` does.
+
+        ``provider`` is not a declared agent key, so §0 refuses it — but ``set`` used
+        to fall through to "unknown config key", which is a SECOND vocabulary for the
+        same rule ``reset`` already states in full.
+        """
+        cf, ssp = self._files(tmp_path)
+        msg = set_config_value(
+            "agent.default.provider", "x", config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
+        )
+        assert "cannot be set" in msg, msg
+        assert "'provider' is not a declared agent key" in msg, msg
+        # ⚑ THE DEFAULT CURE IS WRONG HERE: it deletes a STORED entry, and this
+        # ``set`` was refused, so nothing was ever stored.
+        assert "removing it means editing" not in msg, msg
+        assert not ssp.exists()
+        assert not cf.exists()
 
 
 class TestNodeSecretRouteNamesItsRefusal:

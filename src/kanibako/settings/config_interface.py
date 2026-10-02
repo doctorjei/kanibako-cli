@@ -1478,6 +1478,12 @@ def set_config_value(
     # so it falls out here as the unknown key it is, named in the refusal.
     route = _KEY_ROUTES.get(canonical)
     if route is None:
+        # ⚑ MIRRORS ``reset_config_value``'s tail: a name §0 declares no key gets the
+        # reason, in THIS verb. ``cure=""`` — the default cure deletes a STORED entry,
+        # and a ``set`` that was refused stored nothing.
+        reason = scope_key_reason(canonical)
+        if reason is not None:
+            return scope_key_refusal(key, reason, command_scope, verb="set", cure="")
         return f"Error: unknown config key: {key}"
     typed = _coerce_value(canonical, value)  # the H2 fix (real bool/etc.)
     if isinstance(typed, CoercionError):
