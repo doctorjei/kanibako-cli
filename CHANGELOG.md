@@ -253,6 +253,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`--box <name>` picks the registered box over a same-named folder.** In 1.8.0-rc2, run in a
+  directory holding a folder with the box's name, `--box <name>` used the folder; the README says a
+  box name is resolved first. It now resolves the name first, and `./<name>` still names the folder.
+- **A missing, empty, or incomplete packaged canon stops `start`/`create` with an error naming the
+  path.** In 1.8.0-rc2 it surfaced as a Python traceback, or an empty canon root let the box start
+  with no canon. It is now `Error: …` with exit 1, before any container runs.
 - **An unreadable config file is refused with a clean error, not a Python traceback.** In
   1.8.0-rc2 a file that was not valid UTF-8, or was permission-denied, or was a directory
   where a file was expected, escaped as a traceback through `load_doc`'s unguarded
@@ -1268,6 +1274,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A missing import inside a plugin's charter chapter now warns.** Inside `~/canon/charter/agent/`,
+  an `__IMPORT__` or `__IMPORTSECTION__` whose target is a file inside the chapter that does not
+  exist now prints a warning on stderr naming the file, the line, and the missing path.
+  `__LINK__`, `__LINKSECTION__`, and a glob that matches nothing stay silent, and a plugin that
+  ships no chapter gets no warning.
 - **A setting can refer to the files kanibako reads its configuration from.** Three read-only
   keys name them: `@meta.runtime.user.config` is your `kanibako.cfg` (under `$XDG_CONFIG_HOME`,
   or `~/.config` when that is unset or not absolute), `@meta.runtime.admin.config` is
