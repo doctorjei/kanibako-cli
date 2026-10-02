@@ -6264,9 +6264,12 @@ package moves the set together. That makes ordering load-bearing:
    **If you do nothing:** a defaults file still spelling `safe_bypass:` is **refused by name** at
    descriptor load, naming the file and the replacement. Descriptor keys are read one at a time, so
    an unread `safe_bypass:` would have loaded your plugin with no permission realization at all and
-   launched it with nothing emitted — which on the ENV channel *is* the bypass. ⚑ A hand-built
-   `AccessRealization` carrying no rows is not caught there; it reaches the launch, which names it
-   as plugin version skew rather than as a limit of your agent.
+   launched it with nothing emitted — which on the ENV channel *is* the bypass. ⚑ A realization
+   carrying no rows is **not** caught there: an `access_realization:` block with a missing or empty
+   `tiers:` table loads cleanly, and so does an `AccessRealization` you build in Python by hand.
+   Either reaches the launch, which names it as a **defect in the plugin** — not a limit of your
+   agent — and asks you to upgrade the `kanibako-agent-*` packages to match the base first, then to
+   report it to the plugin's author if that does not cure it.
 
 ### 3.1 Core module paths moved (package-ification) — the flat compatibility shims are DELETED
 

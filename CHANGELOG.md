@@ -256,6 +256,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The launch refusal for a plugin whose access realization has no tier rows no longer blames
+  plugin version skew.** It names the real causes — an `access_realization:` block with a missing
+  or empty `tiers:` table, or a hand-built `AccessRealization` with no rows — and says to upgrade
+  the `kanibako-agent-*` packages, then report it to the plugin's author.
+
 - **The comms hook's mail alert now reaches the agent, not only the user.** `check-comms.sh` put its
   alert only in `systemMessage`, which Claude Code shows to the user and never to the model; it now
   also sends it as `hookSpecificOutput.additionalContext`. It also ignores dot-files in the inbox
