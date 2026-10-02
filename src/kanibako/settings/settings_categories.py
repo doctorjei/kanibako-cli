@@ -252,10 +252,12 @@ class CategoryEntry:
 
     *is_credential* is what :func:`gate_credential_delivery` (D-M4) keys off.
 
-    *optional* marks a MOUNT whose SOURCE may legitimately not exist, so the emitter
-    DROPS it SILENTLY (spec §2c "SKIP-IF-ABSENT").  ⚑ Set by KEY NAME at the emitter,
-    never by a resolve-time ``exists()`` probe: this module is PURE.  🛑 **NOTHING
-    READS IT ANY MORE** (cutover step 3); its retirement is 5's.
+    ⚑⚑ THERE IS NO ``optional`` FIELD, AND ITS ABSENCE IS THE DESIGN: a mount whose
+    source may legitimately not exist (spec §2c "SKIP-IF-ABSENT") is decided by the
+    DESTINATION policy at the emitter, over the ``canon:`` rows — ONE rule, not a
+    second carrier riding on the entry.  🛑 Do not reintroduce it as a field or as a
+    snapshot parameter: this module is PURE, so a per-key flag here could only ever be
+    a declaration echo of a decision that already has a home.
 
     ⚑⚑ THERE IS NO ``dest_space`` FIELD, AND ITS ABSENCE IS THE DESIGN: ``box_dest``
     is a GUEST path for EVERY category, spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.
@@ -277,7 +279,6 @@ class CategoryEntry:
     name: str
     key_segments: tuple[str, ...]
     is_credential: bool = False
-    optional: bool = False
 
     @property
     def key(self) -> str:

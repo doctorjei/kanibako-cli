@@ -62,7 +62,6 @@ def kickoff_default_categories(descriptor: 'PluginDescriptor | None'=None) -> Bi
 def assert_canon_bind_seed_disjoint(bind_dests: Iterable[str], seed_rels: Iterable[str]) -> None
 def rom_default_categories() -> BindArmTable
 def rom_agent_default_categories(target: 'Target') -> BindArmTable
-def canon_optional_bind_keys() -> frozenset[str]
 def canon_optional_bind_dests() -> frozenset[str]
 def rom_must_exist_dests() -> frozenset[str]
 def canon_silent_dests() -> frozenset[str]

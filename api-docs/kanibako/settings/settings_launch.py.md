@@ -71,7 +71,7 @@ def behavior_slot(snapshot: KeyStore, *, active_agent: str, key: str) -> 'str | 
 def effective_behavior(snapshot: KeyStore, *, active_agent: str, keys: 'list[str] | None'=None) -> dict[str, str]
 def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
 def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str
-def snapshot_category_entries(snapshot: KeyStore, *, active_agent: str, box_ctx: ResolveCtx, optional_keys: frozenset[str]=frozenset()) -> list[CategoryEntry]
+def snapshot_category_entries(snapshot: KeyStore, *, active_agent: str, box_ctx: ResolveCtx) -> list[CategoryEntry]
 def resolve_box_scalars(*, workset_path: Path | None, box_path: Path | None, cli_overrides: 'dict[str, object] | None', inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT) -> dict[str, object]
 def load_merged_config(project_path: Path | None=None, *, workset_path: Path | None=None, cli_overrides: 'dict[str, object] | None'=None, inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT) -> KanibakoConfig
 def _is_bind_floor_key(key: str) -> bool
@@ -109,9 +109,9 @@ def _fallback_node(agent_node: KeyStore, active_agent: str) -> object
 def _overlay_into(base: KeyStore, top: KeyStore) -> None
 def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None
 def _require_category_node(key_prefix: str, category: str, node: object) -> KeyStore
-def _emit_scope_node(collected: list[tuple[tuple[int, str, str], CategoryEntry]], scope_node: KeyStore, *, order: int, scope: str, box_dest_fn, decl_scope_fn, optional_keys: frozenset[str]=frozenset()) -> None
-def _emit_bind_map(collected: list[tuple[tuple[int, str, str], CategoryEntry]], map_node: KeyStore, *, order: int, scope: str, category: str, box_dest_fn, decl_scope_fn, optional_keys: frozenset[str]=frozenset()) -> None
-def _emit_bind(collected: list[tuple[tuple[int, str, str], CategoryEntry]], order: int, scope: str, category: str, name: str, host_src: str, box_dest_raw: str, opts: str | None, box_dest_fn, *, key_segments: tuple[str, ...], optional_keys: frozenset[str]=frozenset()) -> None
+def _emit_scope_node(collected: list[tuple[tuple[int, str, str], CategoryEntry]], scope_node: KeyStore, *, order: int, scope: str, box_dest_fn, decl_scope_fn) -> None
+def _emit_bind_map(collected: list[tuple[tuple[int, str, str], CategoryEntry]], map_node: KeyStore, *, order: int, scope: str, category: str, box_dest_fn, decl_scope_fn) -> None
+def _emit_bind(collected: list[tuple[tuple[int, str, str], CategoryEntry]], order: int, scope: str, category: str, name: str, host_src: str, box_dest_raw: str, opts: str | None, box_dest_fn, *, key_segments: tuple[str, ...]) -> None
 def _no_lookup(ref: str, chain: tuple[str, ...]) -> str
 ```
 

@@ -90,7 +90,6 @@ class CategoryEntry:
     name: str
     key_segments: tuple[str, ...]
     is_credential: bool = False
-    optional: bool = False
 
     @property
     def key(self) -> str

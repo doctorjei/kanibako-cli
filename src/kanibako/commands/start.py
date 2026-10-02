@@ -7195,11 +7195,6 @@ def _resolve_launch_snapshot(
             )
         entries = settings_launch.snapshot_category_entries(
             snapshot, active_agent=agent_name, box_ctx=ctx,
-            # SKIP-IF-ABSENT declarations, read from the SAME ``canon:`` rows that
-            # declare the binds — applied unconditionally at this ONE site so a
-            # display resolve and a launch resolve cannot disagree about which binds
-            # may legitimately be missing.
-            optional_keys=core_defaults.canon_optional_bind_keys(),
         )
     except SettingsError as exc:
         # A malformed CATEGORY shape raises here naming the DECLARATION key

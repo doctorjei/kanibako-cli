@@ -49,6 +49,8 @@ Host-side only; no podman.  The physical mount is the e2e's job.
 
 from __future__ import annotations
 
+import dataclasses
+import inspect
 import logging
 from pathlib import Path
 
@@ -252,17 +254,18 @@ def _entry(**kw) -> CategoryEntry:
 # ===========================================================================
 
 
-class TestOptionalBindEmission:
+class TestSkipIfAbsentEmission:
     """The skip-if-absent policy reaches the emitter as a DEST SET, not as a field.
 
     ⚑ Cutover step 3 (producer DESIGN §9.1): ``CategoryEntry.optional`` cannot
     survive the fold into ``CollapsedBind(src, opts)``, so the decision travels as
     a parameter spelled in the one thing the collapsed map keeps — the destination.
+    Step 3 then retired the key-form route that used to shadow it.
     """
 
     _DEST = f"{GUEST_HOME}/canon/x"
 
-    def _emit(self, *, skip_if_absent, caplog, optional: bool = False):
+    def _emit(self, *, skip_if_absent, caplog):
         from kanibako.commands.start import (
             _bind_map_from_mounts,
             _emit_category_mounts,
@@ -277,7 +280,6 @@ class TestOptionalBindEmission:
             # test reads as precedent (CONVENTIONS §0).
             name=self._DEST,
             key_segments=("box", "bindings", "ro", self._DEST),
-            optional=optional,
         )
         with caplog.at_level(logging.WARNING):
             mounts = _emit_category_mounts(
@@ -317,15 +319,15 @@ class TestOptionalBindEmission:
             ) == []
         assert any("does not exist" in r.message for r in caplog.records)
 
-    def test_the_entry_FIELD_no_longer_decides(self, caplog):
-        """⚑ MUTATION GUARD. ``optional=True`` with the dest outside the set must
-        WARN — if this goes green the emitter is still reading the field, and the
-        guard will vanish the moment the fold drops it."""
-        emitted = self._emit(
-            skip_if_absent=frozenset(), caplog=caplog, optional=True,
-        )
-        assert emitted == []
-        assert any("does not exist" in r.message for r in caplog.records)
+    def test_category_entry_carries_no_optional_field(self):
+        """⚑ THE KEY-FORM CARRIER IS GONE.  The skip-if-absent decision is made ONCE,
+        over the ``canon:`` rows, at the destination policy; nothing carries it on the
+        entry or through the snapshot.  RED if either half comes back.
+        """
+        assert "optional" not in {f.name for f in dataclasses.fields(CategoryEntry)}
+        assert "optional_keys" not in inspect.signature(
+            snapshot_category_entries
+        ).parameters
 
     def test_a_key_spelled_skip_set_matches_NOTHING(self, caplog):
         """⚑⚑ THE HISTORICAL BUG, in its second home. ``critical_keys`` was once
@@ -503,20 +505,6 @@ class TestCanonDefaultCategories:
         # omission rather than an empty table.
         assert len(cats["box.bindings.ro"]) == 4
         assert not any(k.startswith("agent.") for k in cats)
-
-    def test_only_the_three_chapters_are_optional(self):
-        """H6 — the optional set holds FULL declared keys, now DEST-spelled.
-
-        ``settings_launch._emit_bind`` matches this frozenset against the key it
-        builds for each entry, so re-spelling the producer without re-spelling this
-        set would silently make every chapter non-optional (a missing workset or
-        box handbook would start warning on every launch).
-        """
-        assert core_defaults.canon_optional_bind_keys() == {
-            f"box.bindings.ro.{GUEST_HOME}/canon/handbook/agent",
-            f"box.bindings.ro.{GUEST_HOME}/canon/handbook/workset",
-            f"box.bindings.ro.{GUEST_HOME}/canon/handbook/box",
-        }
 
     def test_the_same_three_chapters_are_the_skip_if_absent_DESTS(self):
         """The EMITTER's view of the same rows (cutover step 3, producer §9.1).
