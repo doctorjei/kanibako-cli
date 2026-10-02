@@ -878,7 +878,12 @@ class Target(ABC):
 
     @property
     def descriptor(self) -> "PluginDescriptor | None":
-        """Declarative plugin descriptor; None ONLY for the built-in no-agent shell."""
+        """Declarative plugin descriptor; None only for the built-in ShellTarget.
+
+        ⚑ NOT A HOPE, THE RULE: discovery (``targets._register``) REFUSES a plugin
+        that returns None, with a stderr warning, so every REGISTERED target answers
+        one way — this default is reachable only by the seeded built-in.
+        """
         return None
 
     def check_auth(self) -> bool:

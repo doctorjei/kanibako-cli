@@ -9,10 +9,43 @@ import pytest
 
 from kanibako.agent_ref import PSEUDO_AGENT_NAMES
 from kanibako.targets import discover_targets, get_target, resolve_target
-from kanibako.targets.base import AgentInstall, Target
+from kanibako.targets.base import (
+    AgentInstall,
+    BindKind,
+    Binding,
+    BindScope,
+    HostSrcOrigin,
+    PluginDescriptor,
+    Target,
+)
 from kanibako.targets.shell import ShellTarget
 
 from tests.support.filenames import CONFIG_FILENAME
+
+
+def _minimal_descriptor(command: tuple[str, ...] = ("fake-bin",)) -> PluginDescriptor:
+    """The smallest descriptor a REGISTRABLE plugin can declare.
+
+    One shared shape for every fixture in this file.  ``targets._register`` refuses a
+    plugin whose ``descriptor`` is None (the plugin system is descriptor-only,
+    keyspec §2d), so a fixture that wants to test a different refusal — a reserved
+    name, a case collision — has to be a well-shaped plugin FIRST, or it would be
+    skipped by the shape gate before the gate under test ever saw it.  Field-for-field
+    the shape of ``test_plugin_descriptor_frozen`` in ``tests/test_targets/test_base.py``.
+    """
+    return PluginDescriptor(
+        command=command,
+        bindings=(
+            Binding(
+                key="binary",
+                origin=HostSrcOrigin.BINARY,
+                box_dest="/usr/local/bin/fake-bin",
+                kind=BindKind.FILE,
+                scope=BindScope.AGENT_CRITICAL,
+            ),
+        ),
+        mode={"start": ()},
+    )
 
 
 class _FakeTarget(Target):
@@ -27,6 +60,14 @@ class _FakeTarget(Target):
     @property
     def display_name(self) -> str:
         return "Fake Agent"
+
+    @property
+    def descriptor(self) -> PluginDescriptor:
+        return _minimal_descriptor()
+
+    @property
+    def default_entrypoint(self) -> str | None:
+        return "fake-bin"
 
     def detect(self):
         return self._detect_result
@@ -375,6 +416,231 @@ class TestACaseCollidingSecondPluginIsRefused:
         assert "collides" not in capsys.readouterr().err
 
 
+class TestAPluginMustHaveThePluginShape:
+    """A plugin with no descriptor is not a plugin — it is refused AT DISCOVERY.
+
+    Keyspec §2d: *"A pseudo-agent […] lacks the elements a harness plugin provides:
+    default settings, credential mechanism(s), interactive modes, & customized
+    settings."*  The plugin system is descriptor-only, so those elements ARE the
+    descriptor, and ``default_entrypoint`` is the program an interactive mode runs.
+    A plugin declaring neither has nothing to supply and would launch as a plain
+    shell — and because ``_run_container`` read "has a plugin" three ways from three
+    attributes, the same registered target got DIFFERENT answers at different sites.
+
+    So the refusal belongs at the ONE registration gate, and the built-in
+    ``ShellTarget`` is safe: it is SEEDED, never discovered ([R175]), so this gate
+    never sees the one target that legitimately has no plugin.
+    """
+
+    #: A file-drop plugin with no descriptor — the same class ``_PLUGIN_SOURCE``
+    #: builds, minus the plugin's shape.
+    _NO_DESCRIPTOR_SOURCE = '''\
+from kanibako.targets.base import Target
+
+
+class MyNoDescPlugin(Target):
+    @property
+    def name(self):
+        return "{name}"
+
+    @property
+    def display_name(self):
+        return "No Descriptor {name}"
+
+    def detect(self):
+        return None
+
+    def binary_mounts(self, install):
+        return []
+
+    def refresh_credentials(self, home):
+        pass
+
+    def writeback_credentials(self, home):
+        pass
+
+    def build_cli_args(self, **kwargs):
+        return []
+'''
+
+    @pytest.fixture(autouse=True)
+    def _clear_warn_dedupe(self):
+        from kanibako.targets import _NO_PLUGIN_SHAPE_WARNED
+
+        _NO_PLUGIN_SHAPE_WARNED.clear()
+        yield
+        _NO_PLUGIN_SHAPE_WARNED.clear()
+
+    @pytest.fixture(autouse=True)
+    def _isolate_config(self, tmp_path, monkeypatch):
+        """Pin the CONFIG side of the user plugin dir — the file-drop tests need it.
+
+        ⚑ Same floor as ``TestDirectoryPluginDiscovery._isolate_config`` and for the
+        same reason ([R155]): the file-drop scan follows ``config.data``, not the XDG
+        base plus a leaf, so an unpinned ``XDG_CONFIG_HOME`` — or the site base under
+        ``/etc`` — would let the box's own config move the directory out from under
+        the plugin this test just wrote.
+        """
+        import kanibako.settings.config as cfg_mod
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+        monkeypatch.setattr(cfg_mod, "config_base_path", lambda: tmp_path / "etc_absent.cfg")
+
+    @staticmethod
+    def _no_descriptor_target(name: str) -> type:
+        """A ``Target`` subclass declaring NO descriptor and NO entrypoint."""
+        from kanibako.targets.base import Target as _T
+
+        class _NoDesc(_T):
+            @property
+            def name(self) -> str:
+                return name
+
+            @property
+            def display_name(self) -> str:
+                return f"No Descriptor {name}"
+
+            def detect(self):
+                return None
+
+        return _NoDesc
+
+    @staticmethod
+    def _no_entrypoint_target(name: str) -> type:
+        """A ``Target`` subclass with a descriptor but NO ``default_entrypoint``.
+
+        The OTHER half of the invariant ``has_plugin`` rests on: discovery refuses
+        this too, so a registered target cannot hold one without the other.
+        """
+        from kanibako.targets.base import Target as _T
+
+        class _NoEntry(_T):
+            @property
+            def name(self) -> str:
+                return name
+
+            @property
+            def display_name(self) -> str:
+                return f"No Entrypoint {name}"
+
+            @property
+            def descriptor(self):
+                return _minimal_descriptor(command=(f"{name}-bin",))
+
+            def detect(self):
+                return None
+
+        return _NoEntry
+
+    def test_an_entry_point_plugin_with_no_descriptor_is_absent(self, capsys):
+        bad = _mock_entry_point("nodesc", self._no_descriptor_target("nodesc"))
+        good = _mock_entry_point("fake", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[bad, good]):
+            targets = discover_targets()
+        err = capsys.readouterr().err
+
+        assert "nodesc" not in targets
+        # SKIPPED, not fatal: discovery runs on every command.
+        assert targets["fake"] is _FakeTarget
+        assert "'nodesc'" in err
+        assert "SKIPPED" in err
+
+    def test_a_file_drop_plugin_with_no_descriptor_is_absent(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        plugins = tmp_path / "kanibako" / "plugins"
+        plugins.mkdir(parents=True, exist_ok=True)
+        (plugins / "nodesc.py").write_text(
+            self._NO_DESCRIPTOR_SOURCE.format(name="nodesc")
+        )
+        (plugins / "okplugin.py").write_text(_PLUGIN_SOURCE.format(name="okplugin"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+
+        with patch("kanibako.targets.entry_points", return_value=[]):
+            targets = discover_targets()
+        err = capsys.readouterr().err
+
+        assert "nodesc" not in targets
+        assert "'nodesc'" in err
+        assert "SKIPPED" in err
+        # The well-shaped neighbour still lands — the gate costs ONE plugin.
+        assert "okplugin" in targets
+
+    def test_a_plugin_with_no_default_entrypoint_is_skipped(self, capsys):
+        bad = _mock_entry_point("noentry", self._no_entrypoint_target("noentry"))
+        with patch("kanibako.targets.entry_points", return_value=[bad]):
+            targets = discover_targets()
+        err = capsys.readouterr().err
+
+        assert "noentry" not in targets
+        assert "'noentry'" in err
+        assert "SKIPPED" in err
+        # The message names WHICH half is missing, so the author knows what to add.
+        assert "default_entrypoint" in err
+
+    def test_the_warning_names_the_missing_half(self, capsys):
+        """What a plugin author acts on: which attribute, and that it is required."""
+        bad = _mock_entry_point("nodesc", self._no_descriptor_target("nodesc"))
+        with patch("kanibako.targets.entry_points", return_value=[bad]):
+            discover_targets()
+        err = capsys.readouterr().err
+
+        assert "plugin descriptor" in err
+        assert "descriptor-only" in err
+        assert "kanibako setup" in err  # what still works
+        assert "'descriptor'" in err and "'default_entrypoint'" in err  # the cure
+
+    def test_a_plugin_that_raises_on_instantiation_is_skipped_not_fatal(self, capsys):
+        """Reading the shape must not be able to take the CLI down either.
+
+        ``ep.load()`` already returns whatever the plugin hands back, with no
+        ``issubclass`` filter, so a non-``Target`` object reaches this gate. It
+        still gets a warning, not a traceback.
+        """
+        bad = _mock_entry_point("notap", object)
+        good = _mock_entry_point("fake", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[bad, good]):
+            targets = discover_targets()
+        err = capsys.readouterr().err
+
+        assert "notap" not in targets
+        assert targets["fake"] is _FakeTarget
+        assert "'notap'" in err
+        assert "SKIPPED" in err
+        # The refusal carries the reason, not just the verdict.
+        assert "usable descriptor" in err
+        assert "AttributeError" in err
+
+    def test_the_warning_is_emitted_once_per_process(self, capsys):
+        bad = _mock_entry_point("nodesc", self._no_descriptor_target("nodesc"))
+        with patch("kanibako.targets.entry_points", return_value=[bad]):
+            discover_targets()
+            discover_targets()
+            discover_targets()
+        assert capsys.readouterr().err.count("SKIPPED") == 1
+
+    def test_the_seeded_shell_target_is_unaffected(self, capsys):
+        """The ONE target that legitimately has no plugin ([R175]).
+
+        It is SEEDED, not discovered, so it never passes through the gate; a gate
+        that ran on it would empty the registry of the very slot the reservation
+        refusal above protects.
+        """
+        with patch("kanibako.targets.entry_points", return_value=[]):
+            targets = discover_targets()
+        assert targets["shell"] is ShellTarget
+        assert ShellTarget().descriptor is None
+        assert capsys.readouterr().err == ""  # the gate never saw it
+
+    def test_a_well_shaped_plugin_still_registers_unchanged(self, capsys):
+        """Non-vacuity: the gate refuses on the SHAPE, not on every plugin."""
+        ep = _mock_entry_point("wellshaped", _FakeTarget)
+        with patch("kanibako.targets.entry_points", return_value=[ep]):
+            targets = discover_targets()
+        assert targets["wellshaped"] is _FakeTarget
+        assert "SKIPPED" not in capsys.readouterr().err
+
+
 class TestGetTarget:
     def test_found(self):
         ep = _mock_entry_point("fake", _FakeTarget)
@@ -456,7 +722,14 @@ class TestResolveTarget:
 # ── Helpers for file-drop plugin tests ──────────────────────────────
 
 _PLUGIN_SOURCE = '''\
-from kanibako.targets.base import Target
+from kanibako.targets.base import (
+    BindKind,
+    Binding,
+    BindScope,
+    HostSrcOrigin,
+    PluginDescriptor,
+    Target,
+)
 
 
 class MyFilePlugin(Target):
@@ -467,6 +740,29 @@ class MyFilePlugin(Target):
     @property
     def display_name(self):
         return "File Plugin {name}"
+
+    @property
+    def descriptor(self):
+        # The plugin system's own floor (keyspec §2d): no descriptor, no plugin.
+        # ``targets._register`` refuses one that returns None, so a file-drop
+        # fixture built to test a DIFFERENT refusal must carry this shape too.
+        return PluginDescriptor(
+            command=("file-bin",),
+            bindings=(
+                Binding(
+                    key="binary",
+                    origin=HostSrcOrigin.BINARY,
+                    box_dest="/usr/local/bin/file-bin",
+                    kind=BindKind.FILE,
+                    scope=BindScope.AGENT_CRITICAL,
+                ),
+            ),
+            mode={{"start": ()}},
+        )
+
+    @property
+    def default_entrypoint(self):
+        return "file-bin"
 
     def detect(self):
         return None
