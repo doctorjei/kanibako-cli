@@ -99,7 +99,18 @@ def load_doc(path: Path | None) -> dict:
     """Load a config document → dict. Missing/empty → {}; any other non-mapping or a repeated key raises."""
     if path is None or not path.exists():
         return {}
-    text = path.read_text()
+    try:
+        text = path.read_text()
+    except OSError as exc:
+        raise ConfigError(
+            f"the config file {path} could not be read ({exc.strerror}). "
+            "Fix or remove the file, then retry."
+        ) from exc
+    except UnicodeDecodeError as exc:
+        raise ConfigError(
+            f"the config file {path} is not valid UTF-8 text. "
+            "Fix or remove the file, then retry."
+        ) from exc
     # ⚑ HOST-SAFETY GUARD, not a type nicety: a non-str fed to the yaml loader can OOM the box.
     if not isinstance(text, str):
         return {}
