@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 import re
 
@@ -974,6 +975,43 @@ class TestParser:
         assert not hasattr(cli_mod, "_COMMAND_ALIASES")
 
 
+def _arity_conflicts(parser: argparse.ArgumentParser) -> dict[str, dict[int, list[str]]]:
+    """Option strings whose ``_take_for`` arity is not the same everywhere in the tree.
+
+    Walks the tree the way :func:`kanibako.cli._option_nargs` does -- ``id()``
+    dedupe, because top-level aliases share one parser object, and subparser
+    discovery through ``kanibako.commands.flags._find_subparsers_action`` rather
+    than a second implementation of it.  The one deliberate difference: instead
+    of letting the last parser walked overwrite the earlier ones, this KEEPS
+    every arity per option string, with one command path per arity.
+
+    The arity class is the consumer's own, ``_take_for`` from
+    ``kanibako.commands.flags``, so ``None`` and ``1`` count as one arity and any
+    other arity counts as ``_BAIL``.
+
+    Returns ``{option_string: {_take_for value: [command path, ...]}}`` for the
+    option strings that have more than one class, and nothing for the rest.
+    """
+    from kanibako.commands.flags import _find_subparsers_action, _take_for
+
+    seen: set[int] = set()
+    classes: dict[str, dict[int, list[str]]] = {}
+    stack = [(parser, parser.prog)]
+    while stack:
+        p, path = stack.pop()
+        if id(p) in seen:
+            continue
+        seen.add(id(p))
+        for action in p._actions:
+            for opt in action.option_strings:
+                per_opt = classes.setdefault(opt, {})
+                per_opt.setdefault(_take_for(action.nargs), []).append(path)
+        sub = _find_subparsers_action(p)
+        if sub is not None:
+            stack.extend((child, f"{path} {name}") for name, child in sub.choices.items())
+    return {opt: per_opt for opt, per_opt in sorted(classes.items()) if len(per_opt) > 1}
+
+
 class TestNormalizeCommand:
     """Dispatcher reorder: a leading flag must not swallow a later subcommand."""
 
@@ -1058,6 +1096,63 @@ class TestNormalizeCommand:
         # Bare switches take no value.
         for opt in ("-A", "-N", "--restart"):
             assert nargs[opt] == 0
+
+    def test_no_option_string_changes_arity_across_the_tree(self):
+        # _option_nargs flattens the whole tree into ONE {option_string: nargs}
+        # table in which the last parser walked wins.  That is only correct while
+        # no option string is a value option in one command and a bare switch in
+        # another -- the assumption its own docstring states and that nothing
+        # pinned: test_option_nargs_derived_from_parser above is a hand-picked
+        # inventory, not the rule.  _BAIL is a third class, not a free pass:
+        # _normalize_command leaves argv alone for it, so agreeing on it is as
+        # load-bearing as agreeing on 0 vs 1.
+        from kanibako.commands.flags import _BAIL
+
+        labels = {
+            0: "a bare switch, 0 extra argv tokens",
+            1: "a value option, 1 extra argv token",
+            _BAIL: "an arity the leading-flag scan bails on",
+        }
+        conflicts = _arity_conflicts(build_parser())
+        where = "; ".join(
+            "{}: {}".format(
+                opt,
+                " | ".join(
+                    "{} e.g. at `{}`".format(labels[take], paths[0])
+                    for take, paths in sorted(per_opt.items())
+                ),
+            )
+            for opt, per_opt in conflicts.items()
+        )
+        assert not conflicts, (
+            "option string(s) with more than one _take_for arity in the parser "
+            "tree. _option_nargs keeps only the last one walked, so a leading "
+            "flag would swallow or skip the subcommand instead of erroring: "
+            + where
+        )
+
+    def test_arity_conflicts_helper_reports_a_planted_conflict(self):
+        # The rule test above can only pass, so it proves nothing on its own
+        # (P15): prove the helper that decides it can SEE a conflict.  `setup` is
+        # a real subparser on base, is a different parser object from `start`
+        # (which carries --restart as a bare switch), and does not define
+        # --restart itself, so this adds an option rather than colliding with
+        # argparse's own conflict check.
+        from kanibako.commands.flags import _find_subparsers_action
+
+        parser = build_parser()
+        sub = _find_subparsers_action(parser)
+        assert sub is not None
+        target = sub.choices["setup"]
+        assert target is not sub.choices["start"]
+        assert not any("--restart" in a.option_strings for a in target._actions)
+        # No `action=` -> a plain store, nargs None -> _take_for says 1, against
+        # the 0 that `kanibako start --restart` means.
+        target.add_argument("--restart", dest="planted_restart")
+
+        conflicts = _arity_conflicts(parser)
+        assert list(conflicts) == ["--restart"]
+        assert sorted(conflicts["--restart"]) == [0, 1]
 
 
 class TestLeadingFlagDispatch:
