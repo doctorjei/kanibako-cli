@@ -191,6 +191,46 @@ class TestIsCanonicalStandaloneName:
 
 
 # ---------------------------------------------------------------------------
+# leaf grammar <-> generator coupling (_LEAF_CAP, _LEAF_CHARS)
+# ---------------------------------------------------------------------------
+
+class TestLeafGrammarTracksGenerator:
+    """The leaf grammar is DERIVED from the generator's cap and survivor set.
+
+    Nothing is wrong in the module today — this pins the derivation, so that
+    changing :data:`box_identity._LEAF_CAP` or the safe character set stays a
+    one-line edit.  Both expectations are read off the generator
+    (:func:`sanitize_cap` / the module constants) rather than respelled here;
+    a hard-coded ``32`` in this class would reintroduce the very drift it guards.
+    """
+
+    def test_grammar_admits_exactly_the_generators_cap(self) -> None:
+        cap = box_identity._LEAF_CAP
+        assert box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_" + "x" * cap)
+        assert not box_identity.is_canonical_standalone_name(
+            f"{_VALID_KUID}_" + "x" * (cap + 1)
+        )
+        # ...and the generator never emits past that cap, so the two agree.
+        assert len(box_identity.sanitize_cap("x" * 200)) == cap
+
+    def test_grammar_admits_exactly_the_generators_survivor_set(self) -> None:
+        survivors = 0
+        for cp in range(0x20, 0x7F):  # ASCII printable — the survivor set's range
+            ch = chr(cp)
+            kept = box_identity.sanitize_cap(ch) == ch
+            accepted = box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_{ch}")
+            assert accepted == kept, f"{ch!r} (U+{cp:04X}): sanitize kept={kept}"
+            survivors += kept
+        assert survivors > 0  # the scan really did find the survivor set
+
+    def test_non_ascii_letters_are_replaced_and_then_refused(self) -> None:
+        # Same rule as the scan above, outside the range it covers.
+        for ch in ("é", "日"):
+            assert box_identity.sanitize_cap(ch) == "_"
+            assert not box_identity.is_canonical_standalone_name(f"{_VALID_KUID}_{ch}")
+
+
+# ---------------------------------------------------------------------------
 # resolve_standalone_name
 # ---------------------------------------------------------------------------
 
