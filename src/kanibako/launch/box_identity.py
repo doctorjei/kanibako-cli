@@ -27,8 +27,13 @@ from kanibako.identifiers import find_identifier
 _LEAF_CAP = 32
 # Fallback leaf when the project basename sanitizes to empty.
 _EMPTY_LEAF_FALLBACK = "box"
+# The characters sanitization KEEPS, spelled ONCE.  Both _SAFE_CHAR_RE and
+# _LEAF_RE below are compiled from this string (and from _LEAF_CAP), so the
+# generator's survivor set and the leaf grammar cannot drift apart.  A trailing
+# '-' is literal inside the class.
+_LEAF_CHARS = r"A-Za-z0-9._-"
 # Characters that are NOT replaced during sanitization.
-_SAFE_CHAR_RE = re.compile(r"[^A-Za-z0-9._-]")
+_SAFE_CHAR_RE = re.compile(rf"[^{_LEAF_CHARS}]")
 # Bound on collision-regeneration attempts before giving up.
 _MAX_REGEN_ATTEMPTS = 1000
 
@@ -36,12 +41,14 @@ _MAX_REGEN_ATTEMPTS = 1000
 # :func:`kanibako.kuid.is_valid`.  It is the verbatim shape the generator emits,
 # so it is also the grammar a user may assert with a fully-formed ``--name``.
 # ⚑ The prefix alphabet is the kuid's Crockford set, NOT RFC-4648 ``[a-z2-7]``.
-# ⚑ UPPERCASE IS ADMITTED IN THE LEAF (spec §0, ⚑ NAMING RULES).  It is exactly
-# :data:`_SAFE_CHAR_RE`'s survivor set, so the grammar now accepts precisely what
-# :func:`sanitize_cap` emits — while the kuid half stays lowercase.  The two halves
-# are opposite BY DESIGN: a leaf carries the source directory's case, a kuid has one
-# canonical spelling of its own.
-_LEAF_RE = re.compile(r"^[A-Za-z0-9._-]{1,32}$")
+# ⚑ UPPERCASE IS ADMITTED IN THE LEAF (spec §0, ⚑ NAMING RULES) — its ``A-Z``
+# is part of :data:`_LEAF_CHARS` — while the kuid half stays lowercase.  This
+# pattern and :data:`_SAFE_CHAR_RE` are BOTH compiled from :data:`_LEAF_CHARS`
+# and :data:`_LEAF_CAP`, so "admits precisely what :func:`sanitize_cap` emits"
+# holds by construction rather than by this comment staying true.  The two
+# halves are opposite BY DESIGN: a leaf carries the source directory's case, a
+# kuid has one canonical spelling of its own.
+_LEAF_RE = re.compile(rf"^[{_LEAF_CHARS}]{{1,{_LEAF_CAP}}}$")
 
 # ---------------------------------------------------------------------------
 # Box-name BLOCKLIST validation (W1 Phase D, §Design 8).  A name is rejected only
