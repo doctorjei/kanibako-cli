@@ -12,7 +12,7 @@ from typing import Mapping
 
 import pytest
 
-from kanibako.agent_ref import PSEUDO_AGENT_NAMES
+from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS, PSEUDO_AGENT_NAMES
 from kanibako.settings.keyspace_manifest import manifest_doc
 from kanibako.settings.settings_keyspace import (
     DECLARED_AGENT_LEAVES,
@@ -547,6 +547,14 @@ def test_a_pseudo_agent_tier_judges_like_a_real_one(name):
 def test_every_pseudo_agent_has_a_fence():
     """The fence table and the reservation name ONE set of pseudo-agents."""
     assert set(PSEUDO_AGENT_FENCES) == PSEUDO_AGENT_NAMES
+
+
+def test_the_addressable_pseudo_agents_are_the_fences_that_declare_settings():
+    """A ref may ADDRESS exactly the pseudo-agents whose §2d fence declares an agent
+    settings file (``meta.agent.<name>.settings``); ``default`` declares none."""
+    assert ADDRESSABLE_PSEUDO_AGENTS == {
+        n for n, f in PSEUDO_AGENT_FENCES.items() if "settings" in f.meta_leaves
+    }
 
 
 @pytest.mark.parametrize("key", [

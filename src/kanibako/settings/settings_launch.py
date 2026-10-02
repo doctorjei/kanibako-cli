@@ -50,7 +50,9 @@ if TYPE_CHECKING:
     from kanibako.targets.base import PluginDescriptor
 
 from kanibako import kuid
-from kanibako.agent_ref import GENERAL_SLOT, harness_of, with_harness
+from kanibako.agent_ref import (
+    ADDRESSABLE_PSEUDO_AGENTS, GENERAL_SLOT, harness_of, with_harness,
+)
 from kanibako.settings.agent_config import (
     ambiguous_path_value_error,
     is_unambiguous_path_value,
@@ -434,7 +436,7 @@ def meta_agent_grammar_floor(
     (``meta.agent.shell.mode | {}``, §2d fence).
     """
     if descriptor is None:
-        if agent_name == GENERAL_SLOT:
+        if agent_name in ADDRESSABLE_PSEUDO_AGENTS:
             # ⚑ D2/D4: absence would say "no grammar was materialized" (and the
             # reader raises on it); ``{}`` says "the grammar IS empty".  The
             # shell box takes the plain-shell path either way — the difference

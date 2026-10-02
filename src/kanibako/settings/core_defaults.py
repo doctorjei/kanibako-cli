@@ -24,7 +24,7 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from kanibako.agent_ref import GENERAL_SLOT
+from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.config_io import parse_packaged
 
@@ -729,20 +729,21 @@ def canon_default_categories(
         out[f"agent.{agent_name}.canon"] = (
             store_canon if node_store.is_dir() else "@agent.default.canon"
         )
-        # ⚑ THE SHELL ARM RIDES THE SAME GATE (D2): the pseudo-agent's tier is
-        # materialized wherever an agent context exists — every production launch
-        # carries a named agent now, so the leaf ANSWERS in every snapshot (P)
+        # ⚑ THE PSEUDO-AGENT ARM RIDES THE SAME GATE (D2): each addressable
+        # pseudo-agent's tier is materialized wherever an agent context exists —
+        # every production launch carries a named agent now, so the leaf ANSWERS in every snapshot (P)
         # while a blank-agent narrow resolve still emits no agent tier at all.
         # Spelled as the FENCE LITERAL (== the default arm above), not the
         # one-hop indirection the per-node arm uses: the shell store ships no
         # canon dir, so the store branch would never fire for it anyway, and the
         # literal is what the manifest row pins.  The store branch is KEPT for
         # honesty — a user who creates the dir gets it bound, like any node.
-        shell_store = std.agents / store_dirname(GENERAL_SLOT) / "canon"
-        out["agent.shell.canon"] = (
-            f"@config.agents/{store_dirname(GENERAL_SLOT)}/canon"
-            if shell_store.is_dir() else "@config.agents/default/canon"
-        )
+        for pseudo in sorted(ADDRESSABLE_PSEUDO_AGENTS):
+            pseudo_store = std.agents / store_dirname(pseudo) / "canon"
+            out[f"agent.{pseudo}.canon"] = (
+                f"@config.agents/{store_dirname(pseudo)}/canon"
+                if pseudo_store.is_dir() else "@config.agents/default/canon"
+            )
 
     for entry in _load_doc().get("canon", []):
         ref = str(entry["meta_ref"])

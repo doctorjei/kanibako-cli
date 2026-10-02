@@ -81,6 +81,15 @@ AGENT_ENTRY_POINT_GROUP = "kanibako.agents"
 # ([R175]: built-in is a category, not a carve-out).
 GENERAL_SLOT = "shell"
 
+# The pseudo-agents a ref may ADDRESS — select by name (``--agent``, ``system.agent``) and
+# configure — as distinct from :data:`PSEUDO_AGENT_NAMES`, every name the spec reserves.
+# A member is a pseudo-agent whose §2d fence declares an agent settings file
+# (``meta.agent.<name>.settings``); ``default`` is the any-agent fallback tier, not an agent.
+# Every site that treats an addressed pseudo-agent as a launchable agent tests membership
+# here, never equality with one name.  ``tests/test_settings/test_settings_keyspace.py``
+# holds this set equal to the fences that declare ``settings``.
+ADDRESSABLE_PSEUDO_AGENTS = frozenset({GENERAL_SLOT})
+
 
 def _is_segment_safe(segment: str) -> bool:
   """A non-empty segment of only letters/digits (any language) plus ``-``/``_``."""
@@ -175,20 +184,22 @@ def parse_agent_address(raw: str) -> tuple[str, str]:
   ``kanibako agent <agent>`` positional, a ``KANIBAKO_AGENT`` stamp read back — may name
   the built-in shell pseudo-agent: keyspec §2b invokes it *"as any other agent"*, and
   its §2d fence declares its own settings file.  Such a ref parses to
-  ``(GENERAL_SLOT, GENERAL_SLOT)``; every other ref goes through
+  ``(name, name)`` for that member of :data:`ADDRESSABLE_PSEUDO_AGENTS`; every other ref goes through
   :func:`parse_agent_ref` unchanged.
 
   ⚑ THE §2d RESERVATION STILL HOLDS for everything that would CLAIM the name — a plugin,
   a persona segment, a harness segment ([R175]: the built-in is the owner, so
   addressing it claims nothing).  ``shell`` inside a composite ref is refused as
   before, since a persona cannot ride a pseudo-agent ([R178]).
-  ⚑ ONLY ``shell``, not every pseudo-agent: ``default`` is the any-agent fallback tier,
+  ⚑ ONLY :data:`ADDRESSABLE_PSEUDO_AGENTS`, not every pseudo-agent: ``default`` is the any-agent fallback tier,
   not an agent a ref can select, and its §2d fence declares no settings file.
   ⚑ FOLDS FOR COMPARISON ([R172]): ``Shell`` addresses the same agent, and the node
   returned is the lowercase slot.
   """
-  if isinstance(raw, str) and find_identifier(raw.strip(), {GENERAL_SLOT}) is not None:
-    return GENERAL_SLOT, GENERAL_SLOT
+  if isinstance(raw, str):
+    pseudo = find_identifier(raw.strip(), ADDRESSABLE_PSEUDO_AGENTS)
+    if pseudo is not None:
+      return pseudo, pseudo
   return parse_agent_ref(raw)
 
 
