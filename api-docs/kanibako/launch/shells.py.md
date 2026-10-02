@@ -8,6 +8,8 @@ Prose for these symbols lives in `llm-docs/kanibako/launch/shells.py.md`.
 ## Variables
 
 ```
+ARG_STRLEN_LIMIT = 131071
+TMUX_COMMAND_BUDGET = 16300
 _STORE_SECTION = 'image_shells'
 _PROBE_SCRIPT = 'u=$(id -un); getent passwd "$u" 2>/dev/null | cut -d: -f7 || grep "^$u:" /etc/passwd 2>/dev/null | cut -d: -f7'
 ```
@@ -20,5 +22,7 @@ def image_store_key(runtime, image: str) -> str
 def probe_image_user_shell(runtime, image: str) -> str | None
 def capture_image_shell(runtime, image: str, std) -> None
 def resolve_box_shell(config, std, *, runtime=None, image=None) -> tuple[str, str]
+def shell_command_string(words: list[str]) -> str | None
+def tmux_command_bytes(args: list[str]) -> int
 def _store_path(std)
 ```

@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 
 import pytest
 
+from kanibako.errors import KanibakoError
 from kanibako.settings.config import KanibakoConfig
 from kanibako.launch.shells import (
+    ARG_STRLEN_LIMIT,
     capture_image_shell,
     image_store_key,
     load_image_shells,
     probe_image_user_shell,
     resolve_box_shell,
     save_image_shell,
+    shell_command_string,
+    tmux_command_bytes,
 )
 
 
@@ -273,3 +278,38 @@ class TestResolveBoxShell:
 
         monkeypatch.setattr(subprocess, "run", _run)
         assert resolve_box_shell(cfg, std, image="img", runtime=rt) == ("sh", "sh")
+
+
+class TestShellCommandString:
+    """``-- <words>`` → the ``S`` of ``<shell> -lc S`` (keyspec §2d ``shell``)."""
+
+    def test_no_words_is_no_command(self):
+        assert shell_command_string([]) is None
+
+    def test_one_word_is_verbatim(self):
+        word = "echo $HOME && x\nsecond line"
+        assert shell_command_string([word]) == word
+
+    def test_an_empty_word_is_an_empty_command(self):
+        assert shell_command_string([""]) == ""
+
+    def test_several_words_round_trip_through_shlex(self):
+        words = ["printf", "%s|", "a b", "it's", "$HOME"]
+        command = shell_command_string(words)
+        assert command is not None
+        assert shlex.split(command) == words
+        assert "$HOME" in command
+
+    def test_a_join_over_the_argument_limit_is_refused(self):
+        with pytest.raises(KanibakoError) as exc:
+            shell_command_string(["a" * 70000, "b" * 70000])
+        text = str(exc.value)
+        assert str(ARG_STRLEN_LIMIT) in text and "140001 bytes" in text
+
+    def test_one_word_at_the_limit_passes(self):
+        word = "a" * ARG_STRLEN_LIMIT
+        assert shell_command_string([word]) == word
+
+
+def test_tmux_command_bytes_counts_each_argument_and_its_nul():
+    assert tmux_command_bytes(["ab", "é"]) == 3 + 3

@@ -9,8 +9,10 @@ it once doubled as was dropped.  Design notes:
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 
+from kanibako.errors import KanibakoError
 from kanibako.project import registry_store
 
 # ---------------------------------------------------------------------------
@@ -159,3 +161,40 @@ def resolve_box_shell(config, std, *, runtime=None, image=None) -> tuple[str, st
                 return shell, "image"
 
     return "sh", "sh"
+
+
+# ---------------------------------------------------------------------------
+# The ``-- <words>`` command string (keyspec §2d ``shell``)
+# ---------------------------------------------------------------------------
+
+# Linux MAX_ARG_STRLEN less the NUL: the most one program argument can hold.
+ARG_STRLEN_LIMIT = 131071
+
+# The most a persistent launch hands tmux as its session command.  Measured
+# ceiling 16364 bytes on tmux 3.5a; the rest is a 64-byte margin.
+TMUX_COMMAND_BUDGET = 16300
+
+
+def shell_command_string(words: list[str]) -> str | None:
+    """None for no words; one word verbatim; several joined as ``shlex.join`` does.
+
+    Raises ``KanibakoError`` when the string exceeds ``ARG_STRLEN_LIMIT`` bytes.
+    Only a join of several words can: each word arrived through ``execve``.
+    """
+    if not words:
+        return None
+    command = words[0] if len(words) == 1 else shlex.join(words)
+    size = len(command.encode())
+    if size > ARG_STRLEN_LIMIT:
+        raise KanibakoError(
+            f"The command after '--' is {size} bytes once its words are joined; "
+            f"one program argument can hold at most {ARG_STRLEN_LIMIT} bytes "
+            f"(Linux MAX_ARG_STRLEN). Pass it as one quoted word, or put it in a "
+            f"workspace script and run that."
+        )
+    return command
+
+
+def tmux_command_bytes(args: list[str]) -> int:
+    """Bytes tmux holds for the session command *args*: each argument plus its NUL."""
+    return sum(len(a.encode()) + 1 for a in args)

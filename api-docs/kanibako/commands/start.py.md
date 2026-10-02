@@ -22,6 +22,7 @@ _ASSEMBLY_ENV: 'tuple[str, ...]' = ('meta', 'assembly', 'env')
 _HOME_OPTIONS: 'str' = 'Z,U'
 _COLLISION_WARNED: 'set[tuple[str, str]]' = set()
 _UNIX_SOCKET_PATH_LIMIT = 104
+_COMMAND_ENDED_BEFORE_ATTACH = "Note: the session ended before it could attach (the command after '--' exited). A persistent box does not report the command's exit status; for a one-off, use 'kanibako shell -- <command>'."
 _ROTATE_MAX_BYTES = 1048576
 _SOCKET_HASH_LEN = 16
 ```
@@ -160,7 +161,12 @@ def _canon_reprotect_hook(proj, logger)
 def _kanibako_mounts()
 def _run_setup_command(*, runtime: ContainerRuntime, image: str, proj, container_name: str, setup_entrypoint: str, setup_args: list[str], extra_mounts: list, tmpfs_masks, container_env: dict[str, str]) -> int
 def _container_logs(runtime: ContainerRuntime, name: str) -> str
+def _persistent_command_ended(shell_command: str | None, rc: int, runtime: ContainerRuntime, name: str) -> bool
+@overload
 def _container_exit_code(runtime: ContainerRuntime, name: str) -> int
+@overload
+def _container_exit_code(runtime: ContainerRuntime, name: str, *, undeterminable: int | None) -> int | None
+def _container_exit_code(runtime: ContainerRuntime, name: str, *, undeterminable: int | None=0) -> int | None
 def _interactive_host() -> bool
 def _restore_host_terminal() -> None
 def _validate_mounts(mounts: list, logger) -> None
