@@ -1781,7 +1781,7 @@ def _nested_tables(depth: int) -> str:
 
 
 def _aliased_levels(levels: int, fanout: int = 9) -> str:
-    """The BILLION-LAUGS shape: *levels* nested lists, each *fanout* aliases to the one below.
+    """The BILLION-LAUGHS shape: *levels* nested lists, each *fanout* aliases to the one below.
 
     ``fanout`` defaults to 9 because that is the published shape; the document stays a few
     hundred bytes at any *levels*, which is the point of the test that uses it.
@@ -1846,7 +1846,7 @@ class TestSelfReferentialDocumentIsRefused:
         assert load_doc(good) == {"base": {"a": 1}, "box": {"a": 2}}
 
     def test_shared_aliases_walk_in_time_proportional_to_containers(self, tmp_path):
-        """⚑ BILLION-LAUGS IS A HOST-SAFETY PROBLEM, NOT A SLOW TEST.
+        """⚑ BILLION-LAUGHS IS A HOST-SAFETY PROBLEM, NOT A SLOW TEST.
 
         ``rig.yaml`` and a baseline overlay arrive inside image bundles, so a crafted
         document reaches this walk before any user sees it. Eight levels of nine aliases

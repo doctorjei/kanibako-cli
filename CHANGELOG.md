@@ -256,6 +256,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **kanibako no longer leaks a temporary directory on every run when `XDG_RUNTIME_DIR` is unset or
+  unusable.** With no usable `/run/user/<uid>`, it now reuses one private
+  `<tempdir>/kanibako-runtime-<uid>` directory; if that path is a symlink, not a directory, not owned
+  by you, not writable by you, or open to group or others, it falls back to a fresh private temp dir.
+  Either way it warns. Directories leaked by earlier versions are not removed.
+- **A YAML file that refers to itself or nests without bound is refused instead of crashing.** In
+  v1.8.0-rc2 a cyclic anchor (`a: &x {b: *x}`) in a settings file crashed with a raw `RecursionError`
+  traceback, and a few hundred bytes of shared aliases could burn minutes of CPU. Any file read
+  through kanibako's YAML loader, including a bundle's `rig.yaml`, now stops with an error naming the
+  file. The `image-baseline.yaml` overlays now go through the same loader: an overlay that is a list
+  or a single value, or that repeats a package, stops `start` and `rig diagnose` instead of being read
+  as empty or keeping the last value, and invalid YAML in an overlay is an `Error:` line instead of a
+  traceback.
 - **`kanibako <scope> set` on an undeclared key now names the key and the §0 reason** (e.g.
   `Error: 'agent.default.provider' cannot be set: 'provider' is not a declared agent key of
   'agent.default' (declared: …) (spec §0 — the keyspace is CLOSED).`), the same reason `reset`
@@ -272,8 +285,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The comms hook's mail alert now reaches the agent, not only the user.** `check-comms.sh` put its
   alert only in `systemMessage`, which Claude Code shows to the user and never to the model; it now
   also sends it as `hookSpecificOutput.additionalContext`. It also ignores dot-files in the inbox
-  (`.name.tmp`), which are messages still being written, and reports a file name containing a quote
-  or a backslash as written instead of garbling it.
+  (`.name.tmp`), which are messages still being written, and reports a file name containing a quote,
+  a backslash, or any other control character (U+0001–U+001F) as written, including on a box without
+  `jq`, instead of garbling it.
 - **`--box <name>` picks the registered box over a same-named folder.** In 1.8.0-rc2, run in a
   directory holding a folder with the box's name, `--box <name>` used the folder; the README says a
   box name is resolved first. It now resolves the name first, and `./<name>` still names the folder.
