@@ -8,7 +8,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from kanibako.agent_ref import (
-    GENERAL_SLOT,
+    ADDRESSABLE_PSEUDO_AGENTS,
     display_agent_ref,
     harness_of,
 )
@@ -727,12 +727,12 @@ def _label_floor(agent_id: str) -> dict[str, object]:
     from kanibako.targets import get_target
     from kanibako.targets.base import descriptor_floor
 
-    if agent_id == GENERAL_SLOT:
+    if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
         # ⚑ The built-in's tier declaration (D2): no descriptor to read, so the
-        # shell floor's own label IS the declaration — the same artifact the
+        # pseudo-agent's own tier label IS the declaration — the same artifact the
         # launch folds, keeping `agent show` and the box in agreement.  No
         # ``agent.default.label`` floor: only true agents inherit from it (§2d).
-        return {f"agent.{agent_id}.label": core_defaults.shell_tier_default("label")}
+        return {f"agent.{agent_id}.label": core_defaults.pseudo_tier_default(agent_id, "label")}
     floor: dict[str, object] = {
         f"agent.{AGENT_DEFAULT_SUB}.label": core_defaults.behavior_default("label"),
     }
@@ -810,7 +810,7 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
 
     floor = _label_floor(agent_id)
     doors: tuple[tuple[str, str], ...] = (("agent", agent_id),)
-    if agent_id != GENERAL_SLOT:
+    if agent_id not in ADDRESSABLE_PSEUDO_AGENTS:
         doors += (("agent", AGENT_DEFAULT_SUB),)
     own = f"agent.{agent_id}.label"
     fallback = str(floor[own] if own in floor else floor[f"agent.{AGENT_DEFAULT_SUB}.label"])

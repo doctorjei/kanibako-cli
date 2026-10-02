@@ -138,7 +138,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # `agent_shell:` leaf arrives here on its own. `canon` is NOT in this set:
     # its shell arm is dynamic and is classified with its producer below.
     ("core-defaults.yaml (agent_shell:)", frozenset(
-      core_defaults.shell_tier_defaults())),
+      core_defaults.pseudo_tier_defaults())),
     # The ``env:`` table's own keys, intersected with the registry: the file may ship an
     # env default the registry has not (yet) enumerated, and only the enumerated ones
     # are section-1 rows. ⚑ The label is the SAME string section 3 prints, deliberately

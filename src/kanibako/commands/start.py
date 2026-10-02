@@ -1018,20 +1018,20 @@ def _declared_behavior(key: str) -> str:
 def _declared_behavior_bool(key: str, agent_id: str) -> bool:
     """*agent_id*'s DECLARED BOOLEAN ``<key>`` floor, through the shared truth table.
 
-    ⚑ A plain-shell box's floor is its OWN tier's (``agent.shell.<key>``,
-    :func:`core_defaults.shell_tier_default`), never ``agent.default.<key>``: only true
+    ⚑ A pseudo-agent box's floor is its OWN tier's (``agent.<agent_id>.<key>``,
+    :func:`core_defaults.pseudo_tier_default`), never ``agent.default.<key>``: only true
     agents inherit from ``agent.default`` (keyspec §2d; ``settings_launch._fallback_node``).
     ⚑ Fail-closed on an uncoercible value too: letting ``coerce_bool``'s ``None``
     through would read as FALSE at every consumer, i.e. a typo in the shipped file
     would silently disable a feature instead of naming itself.
     """
     # ``pseudo_agent_fence``, the predicate ``settings_launch._fallback_node`` uses; it takes
-    # a NODE, already lowercase — [R173]'s fold is where a NAME becomes one.  ``shell`` is the
-    # only pseudo-agent a launch can run: ``default`` is reserved and refused as an agent
-    # name (§2d).
-    tier = "shell" if pseudo_agent_fence(agent_id) is not None else "default"
+    # a NODE, already lowercase — [R173]'s fold is where a NAME becomes one.  A launch runs
+    # only an addressable pseudo-agent: ``default`` is reserved and refused as an agent
+    # name (§2d), and ``pseudo_tier_default`` raises for any name without a tier.
+    tier = agent_id if pseudo_agent_fence(agent_id) is not None else "default"
     raw = (
-        core_defaults.shell_tier_default(key) if tier == "shell"
+        core_defaults.pseudo_tier_default(agent_id, key) if tier == agent_id
         else _declared_behavior(key)
     )
     value = coerce_bool(raw)
@@ -1168,7 +1168,7 @@ def _agent_scalar_pick(
         # only a shell pick reads ``agent.shell``.
         # The resolved ``system.*`` tier rides beside it, as in every box resolve.
         default_categories={
-            **core_defaults.shell_tier_defaults(), **inputs.system_floor,
+            **core_defaults.pseudo_tier_defaults(), **inputs.system_floor,
         },
         agent_state=agent_state,
         # ⚑ NO PERSONA TIER, deliberately (the six-call-site audit). Not an
@@ -6901,7 +6901,7 @@ def _resolve_launch_snapshot(
         # overlays.  (``canon`` rides the producer above, whose arm is dynamic.)
         _merge_default_categories(
             default_categories,
-            core_defaults.shell_tier_defaults(),
+            core_defaults.pseudo_tier_defaults(),
             family="shell tier", origins=cat_origins,
         )
         # The AGENT-tier ``template`` SOURCE keys (spec §2d) — the direct sibling of

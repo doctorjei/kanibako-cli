@@ -82,7 +82,7 @@ def behavior_defaults() -> dict[str, str | None]:
     STRINGS: the consumers run them through ``coerce_bool`` and
     ``effective_behavior`` stringifies, so a YAML bool would arrive as ``"True"``.
     ⚑ Except a ``<None>`` row, which stays a PRESENT ``None``, as in
-    :func:`shell_tier_defaults`: ``str()`` would ship the text ``"None"``.
+    :func:`pseudo_tier_defaults`: ``str()`` would ship the text ``"None"``.
     """
     return {
         str(key): None if value is None else str(value)
@@ -100,7 +100,7 @@ def behavior_default(key: str) -> str:
     read would bind the value at IMPORT time, before any patch.
     ⚑ An absent declaration RAISES — it is a PACKAGING defect, and re-materializing a
     literal here would be exactly the consumer-side default this read replaced.
-    ⚑ A ``<None>`` row RAISES too, as in :func:`shell_tier_default`: its consumers
+    ⚑ A ``<None>`` row RAISES too, as in :func:`pseudo_tier_default`: its consumers
     need a string.
     """
     defaults = behavior_defaults()
@@ -118,45 +118,55 @@ def behavior_default(key: str) -> str:
     return value
 
 
-def shell_tier_defaults() -> dict[str, str | None]:
-    """Return the declared ``agent.shell.<key>`` tier floor (spec §2d fence).
+def pseudo_tier_defaults() -> dict[str, str | None]:
+    """Return every addressable pseudo-agent's declared ``agent.<name>.<key>`` tier floor (spec §2d fence).
 
-    The shell pseudo-agent's OWN tier values, read off the ``agent_shell:`` table
-    the way :func:`behavior_defaults` reads ``agent_default:``.  Folded into the
-    base floor UNCONDITIONALLY (every snapshot carries the tier; only a shell
-    pick reads it), so the fence defaults ANSWER for a box that already exists
-    (P) whatever that box runs.  ⚑ Values are STRINGS, same convention, same
-    reason — except a fence ``<None>`` row (``model``, ``run_args``, …), which
-    stays a PRESENT ``None`` (``str()`` would ship the text ``"None"``).  Why every
-    row must be supplied: the ``agent_shell:`` header in ``core-defaults.yaml``.
+    The union, over :data:`~kanibako.agent_ref.ADDRESSABLE_PSEUDO_AGENTS`, of each
+    name's OWN tier values, read off its ``agent_<name>:`` table the way
+    :func:`behavior_defaults` reads ``agent_default:``.  Folded into the base floor
+    UNCONDITIONALLY (every snapshot carries every tier; only that pseudo-agent's pick
+    reads it), so the fence defaults ANSWER for a box that already exists (P)
+    whatever that box runs.  ⚑ Values are STRINGS, same convention, same reason —
+    except a fence ``<None>`` row (``model``, ``run_args``, …), which stays a PRESENT
+    ``None`` (``str()`` would ship the text ``"None"``).  Why every row must be
+    supplied: the ``agent_shell:`` header in ``core-defaults.yaml``.
     ⚑ ``canon`` is NOT here — its arm is dynamic and lives in
     :func:`canon_default_categories`.
     """
+    doc = _load_doc()
     return {
-        f"agent.shell.{key}": None if value is None else str(value)
-        for key, value in (_load_doc().get("agent_shell") or {}).items()
+        f"agent.{name}.{key}": None if value is None else str(value)
+        for name in sorted(ADDRESSABLE_PSEUDO_AGENTS)
+        for key, value in (doc.get(f"agent_{name}") or {}).items()
     }
 
 
-def shell_tier_default(key: str) -> str:
-    """ONE declared STRING ``agent.shell.<key>`` value — the FAIL-CLOSED single-key read.
+def pseudo_tier_default(agent_id: str, key: str) -> str:
+    """ONE declared STRING ``agent.<agent_id>.<key>`` value — the FAIL-CLOSED single-key read.
 
-    The shell-tier twin of :func:`behavior_default`: one spelling, re-read per
-    call, absent declaration RAISES as a packaging defect.  ⚑ A ``<None>`` row
-    RAISES too: this read serves a consumer that needs a string (``label``), and
-    handing it ``None`` would move the defect to wherever the string is used.
+    The pseudo-agent-tier twin of :func:`behavior_default`: one spelling, re-read per
+    call, absent declaration RAISES as a packaging defect.  ⚑ An *agent_id* outside
+    :data:`~kanibako.agent_ref.ADDRESSABLE_PSEUDO_AGENTS` RAISES: no other name has a
+    tier here.  ⚑ A ``<None>`` row RAISES too: this read serves a consumer that needs
+    a string (``label``), and handing it ``None`` would move the defect to wherever
+    the string is used.
     """
-    defaults = shell_tier_defaults()
-    shell_key = f"agent.shell.{key}"
-    if shell_key not in defaults:
+    if agent_id not in ADDRESSABLE_PSEUDO_AGENTS:
         raise RuntimeError(
-            f"{CORE_DEFAULTS_FILENAME} declares no 'agent_shell.{key}' — the shell "
-            f"tier floor (spec §2d agent.shell.{key}) lives there and nowhere else."
+            f"{agent_id!r} is not an addressable pseudo-agent — only "
+            f"{sorted(ADDRESSABLE_PSEUDO_AGENTS)} declare a tier in {CORE_DEFAULTS_FILENAME}."
         )
-    value = defaults[shell_key]
+    defaults = pseudo_tier_defaults()
+    tier_key = f"agent.{agent_id}.{key}"
+    if tier_key not in defaults:
+        raise RuntimeError(
+            f"{CORE_DEFAULTS_FILENAME} declares no 'agent_{agent_id}.{key}' — the {agent_id} "
+            f"tier floor (spec §2d agent.{agent_id}.{key}) lives there and nowhere else."
+        )
+    value = defaults[tier_key]
     if value is None:
         raise RuntimeError(
-            f"{CORE_DEFAULTS_FILENAME} declares 'agent_shell.{key}' as <None>, "
+            f"{CORE_DEFAULTS_FILENAME} declares 'agent_{agent_id}.{key}' as <None>, "
             f"but this read serves a string value."
         )
     return value
