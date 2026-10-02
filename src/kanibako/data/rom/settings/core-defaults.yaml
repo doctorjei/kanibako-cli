@@ -559,10 +559,17 @@ agent_shell:
 # dispatch and the `xterm` fallback are `settings_resolve._host_term`.
 # ⚑ `agent.shell` states it again because a pseudo-agent does not inherit
 # `agent.default` (spec §2d shell fence, `agent.shell.env.TERM | $TERM`).
+#
+# `KANIBAKO_DIRECTIVE_FINAL` (spec §2d shell fence, `~/AGENTS.md`): the file a
+# plain-shell launch renders the canon into.  Its presence in the resolved
+# container env is what wraps the launch in the directive-flatten shim
+# (`start._directive_flatten_shim`), as it does for every real agent's own FINAL.
+# A leading `$GUEST_HOME` is expanded by `env_default_categories`.
 env:
   agent.default:
     TERM: "$TERM"
   agent.shell:
     TERM: "$TERM"
+    KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/AGENTS.md"
   box:
     COLORTERM: "$COLORTERM"

@@ -61,13 +61,14 @@ def test_env_floor_expands_a_guest_home_value_and_leaves_the_rest(monkeypatch):
   }
 
 
-def test_env_floor_is_unchanged_for_the_shipped_table():
-  """No shipped core env row starts with ``$GUEST_HOME``, so expansion changes nothing today."""
+def test_the_shipped_shell_final_comes_back_as_agents_md():
+  """The shell tier's FINAL slot is declared ``$GUEST_HOME/AGENTS.md`` and emitted expanded."""
   raw = core_defaults._load_doc()["env"]
-  expected = {
-    f"{scope}.env.{var}": str(value)
-    for scope, entries in raw.items() if entries
-    for var, value in entries.items()
-  }
-  assert not any(v.startswith("$GUEST_HOME") for v in expected.values())
-  assert core_defaults.env_default_categories() == expected
+  assert raw["agent.shell"]["KANIBAKO_DIRECTIVE_FINAL"] == "$GUEST_HOME/AGENTS.md"
+  emitted = core_defaults.env_default_categories()
+  assert emitted["agent.shell.env.KANIBAKO_DIRECTIVE_FINAL"] == "/home/agent/AGENTS.md"
+  # It is the one shipped ``$GUEST_HOME`` row; every other value passes through.
+  for scope, entries in raw.items():
+    for var, value in entries.items():
+      if var != "KANIBAKO_DIRECTIVE_FINAL":
+        assert emitted[f"{scope}.env.{var}"] == value

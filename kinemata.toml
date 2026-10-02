@@ -3951,6 +3951,7 @@ extract = '(?m)^kanibako-env-default: ([^\s=]+)=(.+)$'
 field = "default"
 format = "json"
 authority = "declared"
+translate = { pattern = '^~/', replacement = "/home/agent/" }
 
 # ⚑ THE LAUNCH FLOOR ONLY. The in-box spawn FALLBACK
 # (`channels.helpers.resolve_spawn_budget`) is the second carrier the test pins
