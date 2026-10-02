@@ -40,6 +40,10 @@ class ContainerError(KanibakoError):
     """Container runtime or image operation failed."""
 
 
+class PackagingError(KanibakoError):
+    """kanibako's packaged data is missing or incomplete; the install is broken."""
+
+
 class ArchiveError(KanibakoError):
     """Archive creation, extraction, or validation failed (no in-tree raiser)."""
 

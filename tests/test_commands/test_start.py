@@ -4050,6 +4050,61 @@ class TestRuntimeRootReachesTheHelperHub:
         assert all(c.kwargs["log_path"] is None for c in m_table.call_args_list)
 
 
+class TestPackagedCanonSafeFail:
+    """A missing packaged canon source -> clean PackagingError, no container."""
+
+    def test_a_missing_core_rom_root_exits_1_naming_it_without_running_a_container(
+        self, start_mocks, capsys, tmp_path,
+    ):
+        """When the packaged canon root is absent, rom_default_categories raises
+        PackagingError before any container runtime is invoked.
+
+        The test drives cli.main under start_mocks and verifies the error surfaces
+        as a clean Error: line with exit 1, without calling the container runtime.
+        """
+        from kanibako.settings import core_defaults
+        from kanibako.settings.core_defaults import ROM_ROOT_PARTS
+
+        with start_mocks() as m:
+            # Monkeypatch packaged_data_dir so ROM_ROOT_PARTS resolves to a missing path.
+            missing_rom = tmp_path / "nope_rom_root"
+            real_packaged_data_dir = core_defaults.packaged_data_dir
+
+            def _fake_packaged_data_dir(*parts):
+                if tuple(parts) == tuple(ROM_ROOT_PARTS):
+                    return missing_rom
+                return real_packaged_data_dir(*parts)
+
+            # Wrap the stub so it first calls the real rom_default_categories.
+            # Without the wrap, start_mocks' pre-built snapshot never reaches it.
+            _real_rom_cats = core_defaults.rom_default_categories
+            _original_side_effect = m.resolve_launch_snapshot.side_effect
+
+            def _wrapped_side_effect(*a, **kw):
+                # Exercise the real rom_default_categories before the stub runs.
+                _real_rom_cats()
+                return _original_side_effect(*a, **kw)
+
+            with patch.object(
+                core_defaults, "packaged_data_dir", _fake_packaged_data_dir,
+            ), patch.object(
+                m.resolve_launch_snapshot, "side_effect", _wrapped_side_effect,
+            ), patch(
+                "kanibako.launch.templates.install_packaged_templates",
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    from kanibako import cli
+                    cli.main(["start"])
+
+                assert exc_info.value.code == 1, "start must exit 1 over broken install"
+                err = capsys.readouterr().err
+                assert "Error:" in err, f"expected clean Error: in output, got: {err}"
+                assert str(missing_rom) in err, (
+                    f"error must name the missing ROM root {missing_rom}, got: {err}"
+                )
+                m.runtime.run.assert_not_called()
+
+
 class TestBinaryMountSafeFail:
     """A binary mount source missing at mount time -> clean kanibako error."""
 
