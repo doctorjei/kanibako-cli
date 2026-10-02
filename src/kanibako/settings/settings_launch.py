@@ -3131,7 +3131,6 @@ def snapshot_category_entries(
     *,
     active_agent: str,
     box_ctx: ResolveCtx,
-    optional_keys: frozenset[str] = frozenset(),
 ) -> list[CategoryEntry]:
     """Walk the snapshot's category subtrees → the ONE ``list[CategoryEntry]``.
 
@@ -3152,16 +3151,13 @@ def snapshot_category_entries(
     :func:`resolve_box_dest` against *box_ctx*, so every seam keys on the SAME
     absolute guest path. Reads via the UNBOUND ``dict`` protocol (S3).
 
-    *optional_keys* is matched against the FULL DISCRIMINATED ``CategoryEntry.key``
-    and sets :attr:`~kanibako.settings.settings_categories.CategoryEntry.optional`. It
-    defaults EMPTY, so every caller that does not pass it gets byte-identical output.
-    ⚑ It is a DECLARATION fact, never a heuristic on the VALUE. 🛑 DECLARATION-ONLY
-    since cutover step 3 — the emitter now takes the same policy as a DEST SET,
-    because a dest is the one thing the collapsed bind map keeps.
-
     ⚑ THE ``host_dest_keys`` COMPANION IS GONE (2026-08-08c). Every destination is
     GUEST-spelled now, copies included (spec §0 "ONE DEST SPACE, TWO DELIVERIES"), so
     there is no second namespace for a key set to select. Do not reintroduce one.
+
+    ⚑ THE ``optional_keys`` COMPANION IS GONE WITH IT. Skip-if-absent is the
+    DESTINATION policy's decision over the ``canon:`` rows (:func:`canon_silent_dests`),
+    not a per-entry flag this walk could carry — so there is nothing to thread here.
     """
     collected: list[tuple[tuple[int, str, str], CategoryEntry]] = []
     scope_order = {s: i for i, s in enumerate(_SCOPES)}
@@ -3205,7 +3201,6 @@ def snapshot_category_entries(
         _emit_scope_node(
             collected, scope_node, order=order, scope=scope,
             box_dest_fn=_box_dest, decl_scope_fn=decl_scope_fn,
-            optional_keys=optional_keys,
         )
 
     collected.sort(key=lambda pair: pair[0])
@@ -3430,7 +3425,6 @@ def _emit_scope_node(
     scope: str,
     box_dest_fn,
     decl_scope_fn,
-    optional_keys: frozenset[str] = frozenset(),
 ) -> None:
     """Emit every category entry under ONE (bare) scope NODE.
 
@@ -3456,7 +3450,7 @@ def _emit_scope_node(
                 _emit_bind_map(
                     collected, mode_node, order=order, scope=scope,
                     category=f"bindings.{mode}", box_dest_fn=box_dest_fn,
-                    decl_scope_fn=decl_scope_fn, optional_keys=optional_keys,
+                    decl_scope_fn=decl_scope_fn,
                 )
 
     # caches / seeded / common / synced — the map is AT the category token.
@@ -3466,7 +3460,7 @@ def _emit_scope_node(
             _emit_bind_map(
                 collected, cat_node, order=order, scope=scope,
                 category=category, box_dest_fn=box_dest_fn,
-                decl_scope_fn=decl_scope_fn, optional_keys=optional_keys,
+                decl_scope_fn=decl_scope_fn,
             )
 
     # masks — a keyed dict[box_dest → bool] (present-None unmasks were dropped at
@@ -3597,7 +3591,6 @@ def _emit_bind_map(
     category: str,
     box_dest_fn,
     decl_scope_fn,
-    optional_keys: frozenset[str] = frozenset(),
 ) -> None:
     """Emit every entry of ONE terminal DEST-KEYED category map.
 
@@ -3644,7 +3637,7 @@ def _emit_bind_map(
         _emit_bind(
             collected, order, scope, category, dest,
             entry.src, dest, entry.opts, box_dest_fn,
-            key_segments=key_segments, optional_keys=optional_keys,
+            key_segments=key_segments,
         )
 
 
@@ -3660,7 +3653,6 @@ def _emit_bind(
     box_dest_fn,
     *,
     key_segments: tuple[str, ...],
-    optional_keys: frozenset[str] = frozenset(),
 ) -> None:
     """Append one bind-shaped :class:`CategoryEntry` (MOUNT or COPY).
 
@@ -3679,8 +3671,7 @@ def _emit_bind(
     relative source cannot reach here to tempt anyone into prefixing one.
     *box_dest_raw* is the UNRESOLVED destination, which *box_dest_fn*
     resolves box-side. *opts* is the per-entry options override. *key_segments* is the
-    DISCRIMINATED declaration key plus the entry's DEST as the last segment;
-    *optional_keys* is matched on its DOTTED spelling.
+    DISCRIMINATED declaration key plus the entry's DEST as the last segment.
 
     ⚑⚑ EVERY DEST IS GUEST-SPELLED, COPIES INCLUDED (spec §0 "ONE DEST SPACE, TWO
     DELIVERIES", 2026-08-08c) — so there is ONE resolution here and no space
@@ -3723,7 +3714,6 @@ def _emit_bind(
             options=options,
             name=name,
             key_segments=key_segments,
-            optional=".".join(key_segments) in optional_keys,
         ),
     ))
 

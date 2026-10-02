@@ -697,20 +697,12 @@ def rom_agent_default_categories(
 CANON_ACTIVE_AGENT_TOKEN = "<active>"
 
 
-def canon_optional_bind_keys() -> frozenset[str]:
-    """The SKIP-IF-ABSENT canon bind KEYS — ``snapshot_category_entries(optional_keys=…)``."""
-    from kanibako.settings.settings_resolve import normalize_bind_dest
-
-    # ⚑ H6 — RE-DERIVED FROM THE DESTINATION (R-10/R-11), and normalized with the SAME
-    # function the producer uses; matching on ``entry['key']`` would silently never hit.
-    return frozenset(
-        f"box.{entry['category']}.{normalize_bind_dest(str(entry['box_dest']))}"
-        for entry in _canon_optional_rows()
-    )
-
-
 def _canon_optional_rows() -> list[Any]:
-    """The ``canon:`` rows carrying ``optional: true`` — ONE filter, two views."""
+    """The ``canon:`` rows carrying ``optional: true`` — ONE filter, one view.
+
+    ⚑ The KEY view that sat beside this one is GONE: the emitter's policy is stated
+    in DESTINATIONS, so there is exactly one consumer left.
+    """
     return [e for e in _load_doc().get("canon", []) if e.get("optional")]
 
 

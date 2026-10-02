@@ -840,11 +840,9 @@ class TestLaunchWiring:
         )
 
     def _launch_entries(self, std, proj, target):
-        """The DECLARATIONS a real launch resolve produced, optional flags and all.
+        """The DECLARATIONS a real launch resolve produced.
 
-        Re-adapted from the resolved snapshot by the SAME call the seam makes,
-        including the ``optional_keys`` the seam passes — the flag is a declaration
-        fact and no delivery seam carries it.
+        Re-adapted from the resolved snapshot by the SAME call the seam makes.
         """
         from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
@@ -855,7 +853,6 @@ class TestLaunchWiring:
         ).ctx
         return snapshot_category_entries(
             snapshot, active_agent="claude", box_ctx=ctx,
-            optional_keys=core_defaults.canon_optional_bind_keys(),
         )
 
     def _main_source_policy(self, deliveries):
@@ -1129,22 +1126,6 @@ class TestLaunchWiring:
             assert dest not in by_dest, "the fixture must have no chapter to bind"
             assert any(dest in m for m in omitted), (dest, omitted)
             assert not any(dest in m for m in warned), (dest, warned)
-
-    def test_the_skip_set_matches_what_the_declaration_marks_optional(
-        self, std, config, project_dir,
-    ):
-        """⚑ THE TWO SPELLINGS, PINNED AGAINST EACH OTHER.
-
-        ``canon_optional_bind_keys()`` is matched against the full discriminated
-        KEY when the entries are built; ``canon_optional_bind_dests()`` is matched
-        against the box DEST when they are emitted. Both are derived from the same
-        ``canon:`` rows, and this is the only place their agreement is observable.
-        """
-        proj = resolve_project(std, config, str(project_dir), initialize=True)
-        entries = self._launch_entries(std, proj, _WiringTarget())
-
-        flagged = {e.box_dest for e in entries if e.optional}
-        assert flagged == core_defaults.canon_optional_bind_dests()
 
     def test_a_missing_core_rom_source_at_emit_raises_BindingSourceError(
         self, std, config, project_dir, fake_rom,
