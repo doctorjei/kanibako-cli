@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, TYPE_CHECKING
 from pathlib import Path
 
-from kanibako.agent_ref import GENERAL_SLOT
+from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.core_defaults import HANDBOOK_REL, ROM_ROOT_PARTS, packaged_data_dir
 
@@ -91,7 +91,7 @@ def agent_template_defaults(agent_id: str | None) -> dict[str, object]:
     defs["agent.default.template"] = (
         f"@config.agents/default/{AGENT_TEMPLATE_STORE_REL}"
     )
-    if agent_id == GENERAL_SLOT:
+    if agent_id in ADDRESSABLE_PSEUDO_AGENTS:
         # ⚑ A PRESENT ``None``, NEVER ABSENT.  §2d's shell fence declares
         # ``agent.shell.template | <None>`` — a SUPPLIED value ([R177]; omitting the
         # key is the rejected shape: a pseudo-agent has no ``agent.default`` fallback,

@@ -7,6 +7,7 @@ import re
 import pytest
 
 from kanibako.agent_ref import (
+    ADDRESSABLE_PSEUDO_AGENTS,
     CANONICAL_SEP,
     GENERAL_SLOT,
     PLUS_SEP,
@@ -428,6 +429,12 @@ def test_an_address_may_name_the_shell_pseudo_agent(variant):
     INVERT: route it through ``parse_agent_ref`` and every variant raises.
     """
     assert parse_agent_address(variant) == (GENERAL_SLOT, GENERAL_SLOT)
+
+
+@pytest.mark.parametrize("name", sorted(ADDRESSABLE_PSEUDO_AGENTS))
+def test_every_addressable_pseudo_agent_parses_to_its_own_node(name):
+    """Each member of ``ADDRESSABLE_PSEUDO_AGENTS`` addresses itself, case-blind."""
+    assert parse_agent_address(name.upper()) == (name, name)
 
 
 def test_default_is_not_addressable_as_an_agent():

@@ -803,7 +803,9 @@ def resolve_agent(
     two states mean different things and must not print the same sentence.
     """
     # ⚑ Lazy: kanibako.targets imports paths/config indirectly (cycle risk).
-    from kanibako.agent_ref import GENERAL_SLOT, parse_agent_address, with_harness
+    from kanibako.agent_ref import (
+        ADDRESSABLE_PSEUDO_AGENTS, parse_agent_address, with_harness,
+    )
     from kanibako.errors import AgentNotInstalledError, AgentUnsetError
     from kanibako.identifiers import find_identifier
     from kanibako.install_method import install_command
@@ -836,7 +838,7 @@ def resolve_agent(
         # WITHOUT consulting the installed set.  ``default`` stays a reservation
         # refusal: the any-agent tier is not a launchable agent.
         node, harness = parse_agent_address(raw_resolved)
-        if node == GENERAL_SLOT:
+        if node in ADDRESSABLE_PSEUDO_AGENTS:
             return node
         # ⚑⚑ THE INSTALLED SET IS READ *ONLY INSIDE THIS BRANCH*, AND THAT IS THE
         # POINT (P3/P4): it answers "is this NAME installed?" and is not in scope on
