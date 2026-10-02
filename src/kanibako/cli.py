@@ -239,7 +239,40 @@ _SUBCOMMANDS = {
 }
 
 
-def _normalize_command(effective: list[str]) -> list[str]:
+def _option_nargs(parser: argparse.ArgumentParser) -> dict[str, object]:
+    """Map every option string in *parser*'s whole tree to its ``nargs``.
+
+    Walks each distinct subparser (aliases share one parser object), so
+    ``--agent``/``--box`` (injected by
+    :func:`~kanibako.commands.flags.inject_blanket_flags`), ``-e``, ``--image``,
+    ``--entrypoint`` and the rest are covered without a hand-kept list.  A leading
+    flag has not met its subcommand yet, so the union across commands is the
+    honest table; no option string is a value option in one command and a bare
+    switch in another.
+    """
+    from kanibako.commands.flags import _find_subparsers_action
+
+    found: dict[str, object] = {}
+    seen: set[int] = set()
+    stack = [parser]
+    while stack:
+        p = stack.pop()
+        if id(p) in seen:
+            continue
+        seen.add(id(p))
+        for action in p._actions:
+            for opt in action.option_strings:
+                found[opt] = action.nargs
+        sub = _find_subparsers_action(p)
+        if sub is not None:
+            stack.extend(sub.choices.values())
+    return found
+
+
+def _normalize_command(
+    effective: list[str],
+    parser: argparse.ArgumentParser | None = None,
+) -> list[str]:
     """Reorder argv so a leading global-style flag doesn't swallow a subcommand.
 
     The dispatcher's fallback rule ``effective[0] not in _SUBCOMMANDS -> prepend
@@ -254,11 +287,14 @@ def _normalize_command(effective: list[str]) -> list[str]:
     subcommand token to the front, preserving the relative order of everything
     else.  ``--agent goose shell`` -> ``["shell", "--agent", "goose"]``.
 
-    Heuristic (kept simple, matches the documented design where flags normally
-    follow the subcommand): scan for the first token that is a ``_SUBCOMMANDS``
-    member.  A flag VALUE that happens to equal a subcommand name (e.g.
-    ``--box shell start`` where a box is literally named "shell") would be
-    matched as the subcommand; this is an accepted edge case.
+    The scan reads options the way argparse will, through
+    :func:`~kanibako.commands.flags._option_take` over :func:`_option_nargs` of
+    *parser* (built when not given).  The value of a value-taking option is never
+    a subcommand, so ``--agent shell -- x`` and ``--box shell start`` keep
+    ``shell`` as the value (``--agent=shell`` carries it in one token).  An option
+    of any other arity (``?``, ``+``, ``*``) leaves argv alone.  The scan stops at
+    the first ``--``: everything after it belongs to the agent, so ``--agent
+    claude -- ps aux`` is not reordered.
 
     The genuinely-no-subcommand cases are left untouched here so the caller's
     existing ``prepend "start"`` rule still handles them: ``kanibako myproject``
@@ -267,10 +303,24 @@ def _normalize_command(effective: list[str]) -> list[str]:
     """
     if not effective or not effective[0].startswith("-"):
         return effective
-    sub_idx = next(
-        (i for i, tok in enumerate(effective) if tok in _SUBCOMMANDS),
-        None,
-    )
+    from kanibako.commands.flags import _BAIL, _option_take
+
+    if parser is None:
+        parser = build_parser()
+    option_nargs = _option_nargs(parser)
+    sub_idx: int | None = None
+    i = 0
+    while i < len(effective):
+        tok = effective[i]
+        if tok == "--":
+            break
+        take = _option_take(option_nargs, parser, tok)
+        if take == _BAIL:
+            return effective
+        if take is None and tok in _SUBCOMMANDS:
+            sub_idx = i
+            break
+        i += 1 + (take or 0)
     if sub_idx is None:
         return effective
     sub = effective[sub_idx]
@@ -484,7 +534,7 @@ def main(argv: list[str] | None = None) -> None:
         # `kanibako --agent goose shell` dispatches as `shell` (not `start` with
         # project="shell").  Must run BEFORE the prepend-"start" fallback and the
         # `--` split below.
-        effective = _normalize_command(effective)
+        effective = _normalize_command(effective, parser)
 
         # If the first arg isn't a known subcommand, default to "start".
         if not effective or effective[0] not in _SUBCOMMANDS:

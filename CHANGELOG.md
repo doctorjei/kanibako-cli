@@ -262,6 +262,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path.** In 1.8.0-rc2 it surfaced as a Python traceback, or an empty canon root let the box start
   with no canon. It is now `Error: …` with exit 1, before any container runs.
 - `kanibako start --agent shell -- <cmd>` no longer drops the command.
+- `kanibako --agent shell -- <cmd>` runs the command instead of printing the `shell` usage. A
+  leading option's value (`--agent shell`, `--box shell`) is no longer taken for a subcommand,
+  and nothing after `--` is: `kanibako --agent claude -- ps aux` starts the agent with `ps aux`.
 - `kanibako start -- <cmd>` at a box that is already running is refused by name instead of
   silently dropping the command, for every agent; `kanibako shell <box> -- <cmd>` still runs it
   there. See *Reattaching to a running box: flags are now refused instead of ignored* in
