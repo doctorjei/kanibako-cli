@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.errors import ConfigError
+from kanibako.settings.agent_defaults import _build_access_realization
 from kanibako.targets.assembly import (
     BindingSourceError,
     access_row,
@@ -358,17 +359,20 @@ def test_access_row_refuses_an_unknown_tier() -> None:
 
 
 @pytest.mark.parametrize("tier", ["restricted", "editing", "full"])
-def test_access_row_zero_rows_is_diagnosed_as_plugin_version_skew(tier: str) -> None:
-    """A ``access_realization`` with NO rows means PLUGIN VERSION SKEW — say so.
+def test_access_row_zero_rows_names_the_empty_tiers_table(tier: str) -> None:
+    """A ``access_realization`` with NO rows is a PLUGIN defect — name which one.
 
-    This is exactly the shape a kanibako-agent-* wheel published BEFORE the
-    ``access`` tiers produces: its defaults file carries the retired
-    ``flag``/``secure_flag`` block with no ``tiers:``, which loads to a
-    :class:`AccessRealization` whose every row is ``None``.  The generic refusal would
-    read "this agent cannot render that tier … Legal tiers: (none)", blaming the
-    HARNESS for an install problem and pointing the user at a capability limit
-    that does not exist.  No tier is renderable, so the message must name the
-    real cause and the real cure.
+    Exactly TWO producers reach zero rows, and the message names BOTH: a defaults
+    file whose ``access_realization:`` block carries a missing or empty ``tiers:``
+    table, and an :class:`AccessRealization` built BY HAND in Python.  This test
+    pins the hand-built one; the loader route is
+    ``test_access_row_zero_rows_from_an_empty_tiers_table``.
+
+    The generic refusal would read "this agent cannot render that tier … Legal
+    tiers: (none)", blaming the HARNESS for a packaging bug and pointing the user
+    at a capability limit that does not exist.  No tier is renderable, so the
+    message must name the real cause and the real cure: upgrade the packages, and
+    failing that, report it to the plugin's author.
     """
     d = PluginDescriptor(
         command=("claude",),
@@ -379,12 +383,48 @@ def test_access_row_zero_rows_is_diagnosed_as_plugin_version_skew(tier: str) -> 
     with pytest.raises(ConfigError) as exc:
         access_row(d, tier, agent="claude")
     msg = str(exc.value)
-    assert "VERSION SKEW" in msg
+    assert "NO tier rows" in msg
+    assert "'tiers:'" in msg
     assert "kanibako-agent-" in msg
     assert "claude" in msg
     # ...and NOT the capability-limit wording, which would misdirect.
     assert "no realization for it" not in msg
     assert "(none)" not in msg
+
+
+def test_access_row_zero_rows_from_an_empty_tiers_table() -> None:
+    """The LOADER route the retired "version skew" story got wrong.
+
+    ``tiers: {}`` is a block the loader ACCEPTS: it reads ``tiers`` with
+    ``raw.get("tiers") or {}`` and builds an :class:`AccessRealization` whose every
+    row is ``None``.  So a DEFAULTS FILE — not only a hand-built Python object —
+    reaches the launch with zero rows, and the message has to name the
+    missing/empty ``'tiers:'`` table.  The pre-tier body the old text chased is
+    refused at load instead (``flag``/``secure_flag`` are unknown fields now), so
+    that story could not produce this state.
+    """
+    ar = _build_access_realization(
+        {"channel": "flag", "tiers": {}}, source="x-defaults.yaml",
+    )
+    assert ar is not None
+    assert ar.rendered_tiers() == ()          # the state under test
+    d = PluginDescriptor(
+        command=("x",),
+        bindings=(),
+        mode={"start": ()},
+        access_realization=ar,
+    )
+    with pytest.raises(ConfigError) as exc:
+        access_row(d, "full", agent="x")
+    msg = str(exc.value)
+    assert "NO tier rows" in msg
+    assert "'tiers:'" in msg
+    assert "x" in msg
+    assert "report it to the plugin's author" in msg
+    # ...and NOT the capability-limit wording, nor the retired diagnosis.
+    assert "no realization for it" not in msg
+    assert "(none)" not in msg
+    assert "VERSION SKEW" not in msg
 
 
 # --------------------------------------------------------------------------- #
