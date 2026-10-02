@@ -159,7 +159,7 @@ def _guard_document(data: object) -> None:
     over shared aliases — the billion-laughs shape, each level nine aliases to the level
     below — reaches one table by 9**n PATHS, and walking every path turned a few hundred
     bytes of a user's ``rig.yaml`` into minutes of host CPU, on a file that arrives inside
-    an image bundle, from whoever built the bundle.  ``reached`` memoises each container at
+    an image bundle, from whoever built the bundle.  ``reached`` memoizes each container at
     the DEEPEST depth the walk reached it at, so a container already walked at this depth
     or deeper is not walked again; the work is bounded by the number of distinct containers
     times the number of distinct depths one can reach each at.
