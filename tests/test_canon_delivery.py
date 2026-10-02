@@ -398,8 +398,11 @@ class TestFailClosed:
 
         target = fake_rom / rel
         shutil.rmtree(target) if target.is_dir() else target.unlink()
-        with pytest.raises(PackagingError, match="canon .* is incomplete"):
+        with pytest.raises(PackagingError, match="canon .* is incomplete") as excinfo:
             core_defaults.rom_default_categories()
+        # ⚑ The dead "no-rom" vocabulary is retired: the refusal speaks of the
+        # PACKAGING defect it is, in the house style of the kickoff loader's.
+        assert "no-rom" not in str(excinfo.value), str(excinfo.value)
 
     def test_packaged_agent_chapter_is_NOT_required(self, fake_rom):
         """⚑ THE INVERTED R1 ASSERTION. R1 REQUIRED a packaged ``charter/agent/``
@@ -444,13 +447,13 @@ class TestDisjointness:
         """A managed prefix covers a SUBTREE: a seed does not have to hit an exact
         path to be refused. The message pins the PRIMARY reason (spec §2c): the
         region is root-owned at create, so the copy fails with EACCES."""
-        with pytest.raises(RuntimeError, match="EACCES AT CREATE"):
+        with pytest.raises(PackagingError, match="EACCES AT CREATE"):
             core_defaults.assert_canon_bind_seed_disjoint(
                 {"canon/charter"}, {"canon/charter/general/ROM_GENERAL.md"},
             )
 
     def test_exact_collision_raises(self):
-        with pytest.raises(RuntimeError, match="managed canon path"):
+        with pytest.raises(PackagingError, match="managed canon path"):
             core_defaults.assert_canon_bind_seed_disjoint(
                 {"canon/COLLECTION.md"}, {"canon/COLLECTION.md"},
             )
@@ -464,7 +467,7 @@ class TestDisjointness:
         than merely being shadowed at launch. RED if someone narrows the deny list back
         to the dests.
         """
-        with pytest.raises(RuntimeError, match="EACCES AT CREATE"):
+        with pytest.raises(PackagingError, match="EACCES AT CREATE"):
             core_defaults.assert_canon_bind_seed_disjoint(
                 CANON_SEED_DENY_PREFIXES,
                 {"canon/charter/agent/ROM_AGENT.md"},
@@ -523,7 +526,7 @@ class TestDisjointness:
             return real_walk(root)
 
         monkeypatch.setattr(templates, "walk_shipped_files", _walk)
-        with pytest.raises(RuntimeError, match="EACCES AT CREATE"):
+        with pytest.raises(PackagingError, match="EACCES AT CREATE"):
             core_defaults.rom_default_categories()
 
 

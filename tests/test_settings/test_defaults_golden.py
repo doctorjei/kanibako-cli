@@ -51,6 +51,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from kanibako.errors import PackagingError
 from kanibako.settings import agent_defaults, core_defaults
 from kanibako.settings.settings_resolve import GUEST_HOME
 from kanibako.targets.base import (
@@ -551,7 +552,7 @@ class TestCoreBehaviorDefaults:
         import pytest
 
         monkeypatch.setattr(core_defaults, "_load_doc", lambda: {"agent_default": {}})
-        with pytest.raises(RuntimeError, match="agent_default.access"):
+        with pytest.raises(PackagingError, match="agent_default.access"):
             core_defaults.behavior_default("access")
 
     def test_a_none_behavior_row_stays_a_present_none(self, monkeypatch):
@@ -571,7 +572,7 @@ class TestCoreBehaviorDefaults:
 
         monkeypatch.setattr(core_defaults, "_load_doc", lambda: {
             "agent_default": {"model": None}})
-        with pytest.raises(RuntimeError, match="agent_default.model"):
+        with pytest.raises(PackagingError, match="agent_default.model"):
             core_defaults.behavior_default("model")
 
     def test_a_descriptor_default_still_beats_the_core_behavior_floor(
@@ -893,7 +894,7 @@ class TestCoreStaticEnvDefaults:
         store, and an unrecognized key there is not an error, it is nobody's.
         """
         self._patch_env_section(monkeypatch, {"sytem": {self.PROBE_VAR: "x"}})
-        with pytest.raises(RuntimeError) as excinfo:
+        with pytest.raises(PackagingError) as excinfo:
             core_defaults.env_default_categories()
         message = str(excinfo.value)
         assert "core-defaults.yaml" in message
@@ -910,7 +911,7 @@ class TestCoreStaticEnvDefaults:
         self._patch_env_section(monkeypatch, {"agent": {self.PROBE_VAR: "x"}})
         # The HEAD branch of the message, not merely the word "agent" — which the
         # allowed-heads sentence contains no matter which half is wrong.
-        with pytest.raises(RuntimeError, match=r"'agent' is not a scope"):
+        with pytest.raises(PackagingError, match=r"'agent' is not a scope"):
             core_defaults.env_default_categories()
 
     def test_a_declared_agent_tier_head_is_accepted(self, monkeypatch):
@@ -931,13 +932,13 @@ class TestCoreStaticEnvDefaults:
     def test_a_var_that_is_not_an_env_name_refuses(self, monkeypatch):
         """The VAR half of the same rule, and the message says WHICH half is wrong."""
         self._patch_env_section(monkeypatch, {"box": {"1BAD-NAME": "x"}})
-        with pytest.raises(RuntimeError, match="env-var name"):
+        with pytest.raises(PackagingError, match="env-var name"):
             core_defaults.env_default_categories()
 
     def test_a_scope_table_that_is_not_a_table_refuses(self, monkeypatch):
         """``box: "truecolor"`` — a VAR written at the scope level, named not crashed."""
         self._patch_env_section(monkeypatch, {"box": "truecolor"})
-        with pytest.raises(RuntimeError, match="env.box"):
+        with pytest.raises(PackagingError, match="env.box"):
             core_defaults.env_default_categories()
 
 

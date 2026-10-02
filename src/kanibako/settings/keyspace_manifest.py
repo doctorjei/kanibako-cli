@@ -20,6 +20,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from kanibako.errors import PackagingError
 from kanibako.settings.config_io import parse_packaged
 from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_data_dir
 
@@ -38,7 +39,7 @@ def _parse_manifest() -> dict[str, Any]:
   ref = packaged_data_dir(*PACKAGED_SETTINGS_PARTS, KEYSPACE_MANIFEST_FILENAME)
   raw = parse_packaged(Path(str(ref)).read_text())
   if not isinstance(raw, dict):
-    raise RuntimeError(
+    raise PackagingError(
       f"{KEYSPACE_MANIFEST_FILENAME} is empty or is not a YAML mapping "
       f"(read from {ref}) — the keyspace registry is packaged data, so this "
       f"is a PACKAGING defect, not a configuration one"

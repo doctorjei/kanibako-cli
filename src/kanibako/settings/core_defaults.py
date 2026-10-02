@@ -106,13 +106,13 @@ def behavior_default(key: str) -> str:
     """
     defaults = behavior_defaults()
     if key not in defaults:
-        raise RuntimeError(
+        raise PackagingError(
             f"{CORE_DEFAULTS_FILENAME} declares no 'agent_default.{key}' — the core "
             f"behavior floor (spec §2d agent.default.{key}) lives there and nowhere else."
         )
     value = defaults[key]
     if value is None:
-        raise RuntimeError(
+        raise PackagingError(
             f"{CORE_DEFAULTS_FILENAME} declares 'agent_default.{key}' as <None>, "
             f"but this read serves a string value."
         )
@@ -160,13 +160,13 @@ def pseudo_tier_default(agent_id: str, key: str) -> str:
     defaults = pseudo_tier_defaults()
     tier_key = f"agent.{agent_id}.{key}"
     if tier_key not in defaults:
-        raise RuntimeError(
+        raise PackagingError(
             f"{CORE_DEFAULTS_FILENAME} declares no 'agent_{agent_id}.{key}' — the {agent_id} "
             f"tier floor (spec §2d agent.{agent_id}.{key}) lives there and nowhere else."
         )
     value = defaults[tier_key]
     if value is None:
-        raise RuntimeError(
+        raise PackagingError(
             f"{CORE_DEFAULTS_FILENAME} declares 'agent_{agent_id}.{key}' as <None>, "
             f"but this read serves a string value."
         )
@@ -200,7 +200,7 @@ def env_default_categories() -> dict[str, str]:
     table: dict[str, str] = {}
     section = _load_doc().get("env") or {}
     if not isinstance(section, dict):
-        raise RuntimeError(
+        raise PackagingError(
             f"{CORE_DEFAULTS_FILENAME} 'env:' must be scope-keyed tables, got "
             f"{type(section).__name__} — see the section's own comment for the shape."
         )
@@ -208,7 +208,7 @@ def env_default_categories() -> dict[str, str]:
         if entries is None:
             continue
         if not isinstance(entries, dict):
-            raise RuntimeError(
+            raise PackagingError(
                 f"{CORE_DEFAULTS_FILENAME} declares 'env.{scope}' as "
                 f"{type(entries).__name__}, not a table of <VAR>: \"<value>\" — a "
                 f"variable belongs under the scope that owns it."
@@ -241,7 +241,7 @@ def _check_env_key(scope: str, var: str) -> None:
         else f"'{scope}' is not a scope the env family is declared at — spec §2a "
              f"allows system, workset, box and agent.<node> (bare 'agent' is not a key)"
     )
-    raise RuntimeError(
+    raise PackagingError(
         f"{CORE_DEFAULTS_FILENAME} declares 'env.{scope}.{var}', which is not a "
         f"key: {detail}."
     )
@@ -364,7 +364,7 @@ def core_default_categories(
         else:
             host_src = entry.get("meta_ref", sources[entry["source"]])
             if host_src is None:
-                raise RuntimeError(
+                raise PackagingError(
                     f"{CORE_DEFAULTS_FILENAME} declares 'source: {entry['source']}' "
                     f"with no 'meta_ref', and this box has no value for that "
                     f"source — refusing rather than binding the text 'None' as a "
@@ -422,7 +422,7 @@ def _kickoff_entry() -> dict[str, Any]:
     """The one declarative ``kickoff:`` entry, or RAISE if the shipped file lost it."""
     entries = _load_doc().get("kickoff") or []
     if not isinstance(entries, list) or len(entries) != 1:
-        raise RuntimeError(
+        raise PackagingError(
             f"{CORE_DEFAULTS_FILENAME} must declare EXACTLY ONE 'kickoff:' entry "
             f"(got {entries!r}) — the directive-chain entry slot (spec §2c "
             "box.bindings.ro[~/.config/kanibako/kickoff.md]) is declared there and "
@@ -462,7 +462,7 @@ def kickoff_default_categories(
     src = sources[str(entry["source"])]
     # ⚑ FAIL-CLOSED: a missing loader means NO directive chain at all, silently.
     if not src.is_file():
-        raise RuntimeError(
+        raise PackagingError(
             f"the packaged kickoff loader is missing at {src} — it is the entry "
             "point of the whole directive chain (spec §2c "
             "box.bindings.ro[~/.config/kanibako/kickoff.md]), "
@@ -555,7 +555,7 @@ def assert_canon_bind_seed_disjoint(
                     f"{rel!r} is at/under the managed canon path {dest!r}"
                 )
     if violations:
-        raise RuntimeError(
+        raise PackagingError(
             "template seed lands in the MANAGED canon region (box create "
             "materializes that region ROOT-OWNED, so the copy FAILS WITH EACCES "
             "AT CREATE — it does not silently lose, it stops the create with an "
@@ -643,8 +643,7 @@ def rom_default_categories() -> BindArmTable:
         raise PackagingError(
             f"the packaged canon under rom root {rom_root} is incomplete — missing "
             f"{sorted(set(missing))}. The rom root is populated, so this is a "
-            "PACKAGING defect, not a no-rom install; refusing to launch a box with a "
-            "partial canon."
+            "PACKAGING defect; refusing to launch a box with a partial canon."
         )
 
     # DISJOINTNESS.  ⚑ RE-ANCHORED to the BOX-HOME template root, NOT the template ROOT: a
@@ -1092,7 +1091,7 @@ def internal_bind_keys() -> frozenset[tuple[str, str]]:
     for table, key in _INTERNAL_BIND_ROWS:
         found = [e for e in doc.get(table) or [] if e.get("key") == key]
         if not found:
-            raise RuntimeError(
+            raise PackagingError(
                 f"{CORE_DEFAULTS_FILENAME} has no {table!r} row keyed {key!r} — an "
                 "INTERNAL bind (spec §2c) this module re-imposes after every merge"
             )
