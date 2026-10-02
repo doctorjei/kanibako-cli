@@ -348,81 +348,94 @@ def _ensure_initialized() -> None:
     # signal this function returns early on above (Jei, 2026-08-26).
     write_global_config(cf)
 
-    # Create data directories.
-    # ⚑ NO SET-VALUES, spelled as the empty mapping: the file was just written EMPTY two
-    # lines above, so the Layer-1 foundation here is the DECLARED DEFAULTS and nothing else.
-    # It used to read ``KanibakoConfig().config_paths``, which was the same ``{}`` wearing a
-    # settings object's name.
-    data_home = xdg("XDG_DATA_HOME", ".local/share")
-    sys_paths = resolve_system_paths(
-        {}, data_home=data_home, home=Path.home(),
-    )
-    data_path = sys_paths["config.data"]
-    (data_path / "containers").mkdir(parents=True, exist_ok=True)
-    sys_paths["_primary_boxes"].mkdir(parents=True, exist_ok=True)
+    # ⚑ ONE handler for the WHOLE first run.  Everything from here through
+    # ``install_packaged_templates(...)`` at the bottom is a step that can fail AFTER
+    # the config file exists: ``xdg``/``resolve_system_paths``, the three ``mkdir``
+    # calls, ``discover_targets()``, ``save_agent_file``, ``load_std_paths()`` and
+    # ``install_packaged_templates``.  ANY exception (ConfigError, OSError, anything
+    # else) from ANY of them removes the config file, so the next run re-initializes
+    # from scratch instead of returning early at the "already initialized" check above
+    # and leaving a half-built data tree.  The early ``if cf.exists(): return`` is what
+    # guarantees this run created the file, so cleanup is always safe here.
+    try:
+        # Create data directories.
+        # ⚑ NO SET-VALUES, spelled as the empty mapping: the file was just written EMPTY two
+        # lines above, so the Layer-1 foundation here is the DECLARED DEFAULTS and nothing else.
+        # It used to read ``KanibakoConfig().config_paths``, which was the same ``{}`` wearing a
+        # settings object's name.
+        data_home = xdg("XDG_DATA_HOME", ".local/share")
+        sys_paths = resolve_system_paths(
+            {}, data_home=data_home, home=Path.home(),
+        )
+        data_path = sys_paths["config.data"]
+        (data_path / "containers").mkdir(parents=True, exist_ok=True)
+        sys_paths["_primary_boxes"].mkdir(parents=True, exist_ok=True)
 
-    # NOTE (block #3a, JC-3): the channel type-root skeleton is NO LONGER
-    # pre-created here.  ``channelroot`` moved to Layer 2 (a ``system.*`` settings
-    # key), and the launch path already creates the full skeleton — the L7
-    # guarantee-create for the type-root bind sources + ``_seed_channel_files``
-    # for the chat logs (start.py).  No host-side pre-launch consumer of the
-    # skeleton exists (audit: every reader is on the box-launch path), so the
-    # setup/init pre-creation was redundant and is dropped.
+        # NOTE (block #3a, JC-3): the channel type-root skeleton is NO LONGER
+        # pre-created here.  ``channelroot`` moved to Layer 2 (a ``system.*`` settings
+        # key), and the launch path already creates the full skeleton — the L7
+        # guarantee-create for the type-root bind sources + ``_seed_channel_files``
+        # for the chat logs (start.py).  No host-side pre-launch consumer of the
+        # skeleton exists (audit: every reader is on the box-launch path), so the
+        # setup/init pre-creation was redundant and is dropped.
 
-    # Create agents directory and generate default per-agent settings files.
-    # Each agent's settings live INSIDE its store dir as
-    # agents/<agent>/agent.yaml (the per-agent store dir is created on
-    # demand by ``agent_file.save``).
-    from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.settings.agent_file import save as save_agent_file
-    from kanibako.targets import discover_targets
+        # Create agents directory and generate default per-agent settings files.
+        # Each agent's settings live INSIDE its store dir as
+        # agents/<agent>/agent.yaml (the per-agent store dir is created on
+        # demand by ``agent_file.save``).
+        from kanibako.settings.agent_config import agent_settings_path
+        from kanibako.settings.agent_file import save as save_agent_file
+        from kanibako.targets import discover_targets
 
-    agents_path = sys_paths["config.agents"]
-    agents_path.mkdir(parents=True, exist_ok=True)
+        agents_path = sys_paths["config.agents"]
+        agents_path.mkdir(parents=True, exist_ok=True)
 
-    # ⚑ NO standalone slot write (D2): the plain-shell file is the built-in's
-    # OWN dir (``agents/shell/agent.yaml``), written by the loop below like
-    # every other target's — a second write here would be the two-carriers
-    # defect the old ``general`` slot needed this block for.
-    target_names = list(discover_targets())
-    for target_name, cls in discover_targets().items():
-        target_toml = agent_settings_path(agents_path, target_name)
-        if not target_toml.exists():
-            save_agent_file(target_toml, cls().generate_agent_config())
+        # ⚑ NO standalone slot write (D2): the plain-shell file is the built-in's
+        # OWN dir (``agents/shell/agent.yaml``), written by the loop below like
+        # every other target's — a second write here would be the two-carriers
+        # defect the old ``general`` slot needed this block for.
+        target_names = list(discover_targets())
+        for target_name, cls in discover_targets().items():
+            target_toml = agent_settings_path(agents_path, target_name)
+            if not target_toml.exists():
+                save_agent_file(target_toml, cls().generate_agent_config())
 
-    # Packaged content → the host stores.  The content ships as static package data
-    # and is installed here into its ENUMERATED destinations (@system.template's box
-    # + workset molds, @system.canon/handbook, and every agent store under
-    # @config.agents), create-if-absent so user edits survive an upgrade.  The
-    # layered seed-once apply (the three ``<scope>.seeded[~/]`` keystore keys, staged by
-    # ``commands.start._apply_init_seeds`` via ``templates.stage_layers``) then copies
-    # the box HOME molds into each new box store at creation; the box handbook chapter
-    # is a SEPARATE host-side copy (``templates.install_box_handbook_template``) and is
-    # not a ``seeded`` entry.
-    #
-    # ⚑ THIS IS THE LAZY BACKSTOP of J-6's agent-store A-action (the "two paths, one
-    # action" pair), and it runs the SAME full per-file mold stamp the deliberate
-    # SETUP trigger does — ``install_packaged_templates`` calls
-    # ``ensure_agent_stores``, which is the one implementation.  The bare per-agent
-    # mkdir this used to be is gone.
-    #
-    # ⚑ It fires on FIRST RUN ONLY (this whole function returns early once the config
-    # file exists), and since R-38 retired the template-staleness stamp NOTHING
-    # detects packaged-content drift on an already-initialized host automatically.
-    # A template change that RIDES A RELEASE is announced by the setup bands
-    # (``SETUP_FCV`` nudge / ``SETUP_BCV`` hard block in ``setup_compat_gate``); a
-    # plugin pip-installed LATER at the SAME kanibako version is the ruled ACCEPTED
-    # LOSS — its store materializes at the next ``kanibako setup``, the deliberate
-    # trigger.  Verified 2026-08-02: ``install_packaged_templates`` has exactly two
-    # callers, this first-run backstop and ``setup_cmd._run_template_refresh``.
-    # Recorded as migrations M-18 (superseded in part) and M-23.
-    from kanibako.settings.paths import load_std_paths
-    from kanibako.launch.templates import install_packaged_templates
+        # Packaged content → the host stores.  The content ships as static package data
+        # and is installed here into its ENUMERATED destinations (@system.template's box
+        # + workset molds, @system.canon/handbook, and every agent store under
+        # @config.agents), create-if-absent so user edits survive an upgrade.  The
+        # layered seed-once apply (the three ``<scope>.seeded[~/]`` keystore keys, staged by
+        # ``commands.start._apply_init_seeds`` via ``templates.stage_layers``) then copies
+        # the box HOME molds into each new box store at creation; the box handbook chapter
+        # is a SEPARATE host-side copy (``templates.install_box_handbook_template``) and is
+        # not a ``seeded`` entry.
+        #
+        # ⚑ THIS IS THE LAZY BACKSTOP of J-6's agent-store A-action (the "two paths, one
+        # action" pair), and it runs the SAME full per-file mold stamp the deliberate
+        # SETUP trigger does — ``install_packaged_templates`` calls
+        # ``ensure_agent_stores``, which is the one implementation.  The bare per-agent
+        # mkdir this used to be is gone.
+        #
+        # ⚑ It fires on FIRST RUN ONLY (this whole function returns early once the config
+        # file exists), and since R-38 retired the template-staleness stamp NOTHING
+        # detects packaged-content drift on an already-initialized host automatically.
+        # A template change that RIDES A RELEASE is announced by the setup bands
+        # (``SETUP_FCV`` nudge / ``SETUP_BCV`` hard block in ``setup_compat_gate``); a
+        # plugin pip-installed LATER at the SAME kanibako version is the ruled ACCEPTED
+        # LOSS — its store materializes at the next ``kanibako setup``, the deliberate
+        # trigger.  Verified 2026-08-02: ``install_packaged_templates`` has exactly two
+        # callers, this first-run backstop and ``setup_cmd._run_template_refresh``.
+        # Recorded as migrations M-18 (superseded in part) and M-23.
+        from kanibako.settings.paths import load_std_paths
+        from kanibako.launch.templates import install_packaged_templates
 
-    # ⚑ NO ARGUMENT: the config file was written above, so the default read finds it — and
-    # a Layer-1 read carries no settings for this call to have wanted.
-    std_paths = load_std_paths()
-    install_packaged_templates(std_paths, target_names)
+        # ⚑ NO ARGUMENT: the config file was written above, so the default read finds it — and
+        # a Layer-1 read carries no settings for this call to have wanted.
+        std_paths = load_std_paths()
+        install_packaged_templates(std_paths, target_names)
+    except Exception:
+        cf.unlink(missing_ok=True)
+        raise
 
     # ⚑ NOTHING SEEDS ``COLORTERM`` HERE ANY MORE (MBR-2/D1-4).  It was a
     # create-if-absent first-run write of ``box.env.COLORTERM=truecolor`` into the
@@ -484,8 +497,9 @@ def _setup_nudge(args: argparse.Namespace) -> None:
         # ⚑ ``load_system_config``, deliberately NOT ``load_std_paths``: the latter
         # resolves through the Layer-2 store, and a non-blocking advisory answers from
         # Layer-1 alone.
-        # ⚑ A resolve failure here is caught by this function's own ``except`` and
-        # degrades to "no gate ran" — the documented never-break-a-command contract.
+        # ⚑ A resolve failure here is caught by this function's own ``except`` — a
+        # ``KanibakoError`` (including ``ConfigError``) propagates to ``main`` and exits 1;
+        # any other exception degrades to "no gate ran" per the never-break-a-command contract.
         settings_path = load_system_config(
             cf, data_home=xdg("XDG_DATA_HOME", ".local/share"), home=Path.home(),
         )["config.settings"]
@@ -587,7 +601,7 @@ def main(argv: list[str] | None = None) -> None:
             _setup_nudge(args)
             if not skip_init:
                 _ensure_initialized()
-        except KanibakoError as e:
+        except (KanibakoError, OSError) as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
