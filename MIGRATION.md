@@ -339,7 +339,12 @@ inside boxes. In order of likely impact:
     delete `$XDG_DATA_HOME/kanibako/vscode-remote/`. A JSONC `settings.json` needs the line pasted by
     hand — see *2.83 The `code --remote` wrapper moved from the data store to the cache root*.
 
-34. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
+34. **A plain-shell box now writes the canon to `~/AGENTS.md`, overwriting a file already there,
+    and on any persistent shell launch a `box.shell` with arguments (`bash -l`), or an
+    `--entrypoint` given as one word with arguments (`--entrypoint "bash -l"`), stops working** —
+    see *A plain-shell box writes the canon to `~/AGENTS.md`*.
+
+35. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
     keeps the old one's credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44);
@@ -359,10 +364,6 @@ inside boxes. In order of likely impact:
     v1.8.0-rc2 only, claude's `transform` (and each agent's new `label`), so set those per agent;
     from v1.7.2 no shipped agent's key changes — see *An agent plugin's own default beats
     `agent.default`*.
-
-35. **A plain-shell box now writes the canon to `~/AGENTS.md`, overwriting a file already there,
-    and a `box.shell` with arguments (`bash -l`) stops working on a persistent plain-shell box** —
-    see *A plain-shell box writes the canon to `~/AGENTS.md`*.
 
 ---
 
@@ -5866,21 +5867,24 @@ No `reset` reaches it: `reset --all` leaves it in place.
 
 ### A plain-shell box writes the canon to `~/AGENTS.md`
 
-**Read this if you keep your own `~/AGENTS.md` in a box home, or if your `box.shell` has
-arguments.**
+**Read this if you keep your own `~/AGENTS.md` in a box home, or if your `box.shell` or an
+`--entrypoint` you pass is one word that carries arguments.**
 
 **What changed.** Every `shell` launch (`--agent shell`, `kanibako shell`, `--entrypoint`) now
 renders the canon into `~/AGENTS.md`, as a real agent renders it into its own instruction file. A
 `~/AGENTS.md` already in the box home is OVERWRITTEN. The file is named by the new key
 `agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`, default `~/AGENTS.md`.
 
-A `box.shell` with arguments now fails on a persistent plain-shell box. The render step runs
-`box.shell` as ONE program word (`exec "$@"`), where tmux used to run a single argument through
-`sh -c`, so a `box.shell` of `bash -l` stops working on the persistent path.
+On any persistent shell launch (`kanibako shell`, `--agent shell`, or `--entrypoint`), a
+`box.shell` with arguments, or an `--entrypoint` given as one word with arguments, now fails. The
+render step runs that value as ONE program word (`exec "$@"`), where tmux used to run a single
+argument through `sh -c`, so a `box.shell` of `bash -l` or `--entrypoint "bash -l"` finds no
+program by that name.
 
 **What to do.** To keep your own `~/AGENTS.md`, move it, or point
 `agent.shell.env.KANIBAKO_DIRECTIVE_FINAL` elsewhere. Set `box.shell` to a program path
-(`/bin/bash`); a login shell is what the image's shell already is.
+(`/bin/bash`); a login shell is what the image's shell already is. Give `--entrypoint` a program
+path and pass its arguments after `--`: `kanibako start --entrypoint /bin/bash -- -l`.
 
 ---
 
