@@ -772,8 +772,8 @@ def run_shell(args: argparse.Namespace) -> int:
 
     entrypoint = getattr(args, "entrypoint", None)
     # Without --entrypoint the program is the box shell: _run_container resolves
-    # it with the runtime/image handle (box.shell -> $KANIBAKO_SHELL -> stored
-    # image login shell -> sh) and turns any ``-- <words>`` into ``-lc S``.
+    # it with the runtime/image handle (box.shell -> stored image login shell ->
+    # sh) and turns any ``-- <words>`` into ``-lc S``.
     box_shell_mode = not entrypoint
 
     image_override = getattr(args, "image", None)
@@ -3343,9 +3343,9 @@ def _run_container(
             # variable can name a different image than the live box.  When the
             # inspect yields nothing (podman failure; Docker has no
             # ``.ImageName``) we drop the image tier entirely rather than
-            # substitute a wrong one, leaving ``box.shell`` -> ``$KANIBAKO_SHELL``
-            # -> ``sh``.  Degrading a tier we cannot read is honest; reading one
-            # off the wrong image is not.
+            # substitute a wrong one, leaving ``box.shell`` -> ``sh``.  Degrading
+            # a tier we cannot read is honest; reading one off the wrong image is
+            # not.
             from kanibako.launch.shells import resolve_box_shell
             live_image = runtime.container_image(container_name)
             exec_program, _live_shell_src = resolve_box_shell(
@@ -4375,8 +4375,8 @@ def _run_container(
         # into both the helper context (below) and the main launch decision
         # (further down).  The resolver is cheap/idempotent (reads the stored
         # image shell; no container spin-up once captured) and follows the
-        # single-source-of-truth chain: box.shell -> $KANIBAKO_SHELL -> image's
-        # recorded login shell -> sh.  Resolve it whenever it could be used: a
+        # single-source-of-truth chain: box.shell -> image's recorded login
+        # shell -> sh.  Resolve it whenever it could be used: a
         # no-agent launch (the main entrypoint), or any helper spawn (helpers
         # need a shell fallback even under a real-agent director).  A real-agent
         # launch with helpers off never needs it, so skip the resolve there.

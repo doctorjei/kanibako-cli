@@ -347,7 +347,10 @@ inside boxes. In order of likely impact:
 35. **`kanibako shell -- <cmd>` now runs `<box shell> -lc <cmd>`, not `/bin/sh -c`, and several
     words are quoted as written, so a pipe or `$VAR` must be one quoted word** — see *2.100 `kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command*.
 
-36. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
+36. **`$KANIBAKO_SHELL` is no longer read, and a host that still sets it gets no warning; set
+    `box.shell` instead** — see *2.101 `$KANIBAKO_SHELL` is no longer read; set `box.shell` instead*.
+
+37. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
     keeps the old one's credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44);
@@ -5912,6 +5915,22 @@ several words quoted as `shlex.join` quotes them. Nothing is stored.
   box stops when the command ends, where a bare `--detach` box stays up.
 
 `--entrypoint X -- <words>` is unchanged: the words are `X`'s arguments.
+
+### 2.101 `$KANIBAKO_SHELL` is no longer read; set `box.shell` instead
+
+**Read this if you set `KANIBAKO_SHELL` in your host environment to choose the shell for
+`kanibako shell` or a `--agent shell` box.**
+
+**What changed.** The shell for a launch that runs no agent program was `box.shell`, else
+`$KANIBAKO_SHELL`, else the image's recorded login shell, else `sh`. It is now `box.shell`, else
+the image's recorded login shell, else `sh`. A `KANIBAKO_SHELL` still set on the host is ignored
+without a warning, and `kanibako diagnose` no longer reports it as a source of the shell.
+
+**What to do.** Set `box.shell` at the scope that matches where you set the variable: `kanibako
+system set box.shell=/usr/bin/fish` for every box, `kanibako workset set <workset>
+box.shell=/usr/bin/fish` for a working set's boxes, or `kanibako box set box.shell=/usr/bin/fish`
+for one box. Give a program path with no arguments (see *2.99 A plain-shell box writes the canon to
+`~/AGENTS.md`*). Then remove `KANIBAKO_SHELL` from your shell profile.
 
 ---
 

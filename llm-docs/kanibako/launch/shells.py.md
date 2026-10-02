@@ -5,7 +5,7 @@ it run? `resolve_box_shell` is the single source of that answer, and both caller
 `commands/start.py` at launch and `commands/diagnose.py` for its "Shell" detail line — go through
 it, so what a user is told matches what they will get.
 
-Around the resolver sits the machinery that makes step 3 of its precedence possible: a probe that
+Around the resolver sits the machinery that makes step 2 of its precedence possible: a probe that
 reads an image's own login shell, a per-image store that remembers the result, and an install-time
 capture hook so the resolver reads instead of probing in the hot path.
 
@@ -14,23 +14,21 @@ selector picking a template subdirectory; that axis was DROPPED — the template
 `@agent.<agent>.template` with no variant subdir, which is precisely what freed `box.shell` to
 mean only this. Do not read a variant dimension back into this module.
 
-## The precedence — four steps, first defined wins
+## The precedence — three steps, first defined wins
 
 `resolve_box_shell` returns `(shell, source)`; *source* names the step that won, and
 `commands/diagnose.py` maps those tokens to friendly labels.
 
 1. **`config.box_shell`** — the `box.shell` setting, an explicit user choice. There is no
    auto-fallback behind it: if the user named a shell, that is the shell.
-2. **`$KANIBAKO_SHELL`** — a host environment variable, read at resolve time rather than captured
-   earlier, so it reflects the environment the command was actually run in.
-3. **The image's recorded login shell** — only consulted when an *image* is supplied. The stored
+2. **The image's recorded login shell** — only consulted when an *image* is supplied. The stored
    value is used if present; otherwise, when a *runtime* is also supplied, the image is probed
    lazily and the result persisted. That lazy branch is what self-heals images pulled before this
    feature existed.
-4. **`sh`** — the universal floor. Every POSIX image has it, so the resolver always returns
+3. **`sh`** — the universal floor. Every POSIX image has it, so the resolver always returns
    something.
 
-Step 3 is the only step with two arguments' worth of preconditions. With no *image* it is skipped
+Step 2 is the only step with two arguments' worth of preconditions. With no *image* it is skipped
 entirely; with an *image* but no *runtime* there is no way to compute a store key, so only the
 "nothing more to read" path remains and the resolver drops to `sh`.
 

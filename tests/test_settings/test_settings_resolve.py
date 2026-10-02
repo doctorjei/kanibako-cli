@@ -883,7 +883,7 @@ def test_unpack_bind_entry_refuses_wrong_arity() -> None:
 
 
 class TestADestinationIsFullyCanonicalized:
-    """New conformance (2026-10-02): a bind dest is fully canonicalized.
+    """A bind dest is fully canonicalized.
 
     Before this change ``normalize_bind_dest`` only expanded ``~`` and dropped a
     trailing ``/``, so ``/opt/./kanibako/kanibako/../kanibako`` and
@@ -934,15 +934,13 @@ class TestADestinationIsFullyCanonicalized:
         assert normalize_bind_dest("/") == "/"
 
     def test_tilde_expansion_before_at_check(self) -> None:
-        # Regression: the @/$ guard was placed BEFORE ~ expansion, so ~/x@y/
-        # returned '~/x@y/' literally instead of expanding ~ first.
+        # ``~`` is expanded even when the rest of the dest holds an ``@``.
         from kanibako.settings.settings_resolve import GUEST_HOME, normalize_bind_dest
 
         assert normalize_bind_dest("~/x@y/") == f"{GUEST_HOME}/x@y"
 
     def test_at_ref_trailing_slash_stripped(self) -> None:
-        # Regression: the @/$ guard was placed BEFORE the trailing-/ drop, so
-        # @meta.box.home/ returned '@meta.box.home/' with the slash still on.
+        # An @-reference dest still loses its trailing ``/``.
         from kanibako.settings.settings_resolve import normalize_bind_dest
 
         assert normalize_bind_dest("@meta.box.home/") == "@meta.box.home"

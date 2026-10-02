@@ -10742,12 +10742,11 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
         assert kwargs["runtime"] is None
 
     def test_the_degraded_resolve_never_probes_the_configured_rig(
-        self, start_mocks, monkeypatch,
+        self, start_mocks,
     ):
         """The same case through the REAL resolver: with no readable live image
-        it falls ``box.shell`` -> ``$KANIBAKO_SHELL`` -> ``sh`` and touches no
-        image at all (an image probe here would be probing the WRONG one)."""
-        monkeypatch.delenv("KANIBAKO_SHELL", raising=False)
+        it falls ``box.shell`` -> ``sh`` and touches no image at all (an image
+        probe here would be probing the WRONG one)."""
         with start_mocks() as m:
             m.merged.box_shell = ""
             m.runtime.container_image.return_value = None

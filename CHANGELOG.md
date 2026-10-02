@@ -36,9 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command with whatever it mounted, and an entry at another internal destination (the secrets
   snippet, the kickoff file, the packaged canon, the generated `storage.conf`) was accepted the
   same way, and a `box.masks` entry on a parent directory (`/opt/kanibako`, `~/canon`) removed the
-  bind without a word. Such an entry, in any dest-keyed category and whether a source or `null`,
-  now stops the command, naming the entry and its file, and so does a mask above one of these
-  destinations, naming the bind it would remove. A mount collision that involves one of these binds no
+  bind without a word. Such an entry, in any dest-keyed category, whether a source or `null`, and
+  including one spelled with `.`, `..`, or a doubled `/`, now stops the command, naming the entry
+  and its file, and so does a mask above one of these destinations, naming the bind it would
+  remove. A mount collision that involves one of these binds no
   longer offers to suppress it. `kanibako workset share add` refuses such a destination with the same
   message and writes nothing; in 1.8.0-rc2 it answered `Added`. See *An entry at the destination of
   one of kanibako's internal binds is refused* in [MIGRATION.md](MIGRATION.md).
@@ -286,6 +287,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   traceback.** In 1.8.0-rc2, if the global `settings.yaml` set a `system.*` path key to `<None>`
   before kanibako had ever run, the refusal escaped as a traceback. It now prints the same
   `Error:` message a later run prints, naming the file and the key, and exits 1 as before.
+
+- **A first run that fails partway no longer leaves kanibako half-initialized.** In 1.8.0-rc2 a
+  first run stopped by a bad `system.*` path setting, or by a disk error while creating the data
+  directories, agent settings, or packaged templates, left `kanibako.cfg` behind, so later runs
+  never installed the templates or shell completion. The file is now removed, so the next run sets
+  everything up, and a disk error during that first run prints `Error:` and exits 1 instead of a
+  traceback.
+
+- **A bind destination spelled with `.`, `..`, or a doubled `/` is the same destination as its
+  plain spelling.** In 1.8.0-rc2 such a spelling in `bindings`, `masks`, `caches`, `seeded`,
+  `common`, or `synced` was a different destination from the plain path. It is now resolved first.
+  A destination containing an `@`-reference or `$VAR` is not resolved this way. If two entries in
+  one map now resolve to the same path, the later one wins; remove one.
 
 - **A canon import call that shares its line with other text is reported.** In 1.8.0-rc2 a line
   such as `See __IMPORTSECTION__("notebook.md").` was copied into the agent's instructions as
@@ -960,7 +974,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   handed and not the keys it searched. Names now compare **without regard to case** wherever they
   are compared — creation, registration, resolution, removal and the shadow warnings — through a
   single helper that hands back the spelling actually stored, so the matched key is the one the
-  registry holds. ⚑ **Nothing about what is stored changed**: a name is written in the case it was
+  registry holds, and `box register` readopts a deregistered box under its stored spelling, whatever
+  case is typed. ⚑ **Nothing about what is stored changed**: a name is written in the case it was
   typed, and the one place that still lowercases on entry (`box create`) is unchanged here.
   Two consequences worth stating. A name that was accepted before may now be refused —
   `workset create Foo` when `foo` is taken, `box register FOO` when `foo` is registered — and the
@@ -1942,6 +1957,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plugin/base version pairing; upgrade the `kanibako-agent-*` packages with the base.
 
 ### Removed
+
+- **`$KANIBAKO_SHELL`.** kanibako no longer reads this host environment variable when it picks the
+  shell for a launch that runs no agent program. The shell is now `box.shell`, else the image's
+  recorded login shell, else `sh`. See *2.101 `$KANIBAKO_SHELL` is no longer read; set `box.shell`
+  instead* in [MIGRATION.md](MIGRATION.md).
 
 - **The agent settings file's `name:` field, and the allowlist that kept it working.** It was the
   agent's human-readable description and it was not a settings key — a field of the record, outside
