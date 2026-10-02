@@ -2825,6 +2825,48 @@ class TestRefreshEquivalenceTiers:
         dst.write_text("a: [1, 2\n")
         assert not _equivalent(src, dst)
 
+    def test_a_repeated_key_is_different_not_equivalent(self, tmp_path):
+        """``"k: 1\\nk: 2\\n"`` and ``"k: 2\\n"`` read as the same document ONLY under
+        last-wins, which is a silent accept of the second value over the first (spec §0).
+        Both sides now go through ``parse_doc_text``, so the repeat is a parse failure and
+        the existing "a YAML parse failure ⇒ different" rule covers it with no new branch."""
+        from kanibako.launch.templates import _equivalent
+
+        src = tmp_path / "a.yaml"
+        dst = tmp_path / "b.yaml"
+        src.write_text("k: 1\nk: 2\n")
+        dst.write_text("k: 2\n")
+        assert not _equivalent(src, dst)
+
+    def test_a_repeated_key_on_one_side_is_different(self, tmp_path):
+        from kanibako.launch.templates import _equivalent
+
+        src = tmp_path / "a.yaml"
+        dst = tmp_path / "b.yaml"
+        src.write_text("k: 1\nk: 1\n")
+        dst.write_text("k: 1\n")
+        assert not _equivalent(src, dst)
+
+    def test_a_shared_alias_is_still_equivalent(self, tmp_path):
+        """⚑ THE CONTROL: sharing one table across two keys is legal YAML, not a repeat —
+        it must not be read as a difference, or every aliased file reports as overwritten."""
+        from kanibako.launch.templates import _equivalent
+
+        src = tmp_path / "a.yaml"
+        dst = tmp_path / "b.yaml"
+        src.write_text("x: &s {q: 1}\ny: *s\n")
+        dst.write_text("x: {q: 1}\ny: {q: 1}\n")
+        assert _equivalent(src, dst)
+
+    def test_a_self_referential_anchor_is_different(self, tmp_path):
+        from kanibako.launch.templates import _equivalent
+
+        src = tmp_path / "a.yaml"
+        dst = tmp_path / "b.yaml"
+        src.write_text("x: &s {q: 1, self: *s}\n")
+        dst.write_text("x: {q: 1}\n")
+        assert not _equivalent(src, dst)
+
     def test_fenced_code_whitespace_is_significant(self, tmp_path):
         """CONSERVATIVE normalization: inside a fence, whitespace is CONTENT."""
         from kanibako.launch.templates import _equivalent

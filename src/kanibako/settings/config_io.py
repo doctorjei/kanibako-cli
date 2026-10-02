@@ -22,14 +22,27 @@ from kanibako.errors import ConfigError
 #: libyaml where PyYAML has it, else pure Python; both are SafeLoaders.
 _PACKAGED_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
+#: The deepest table/list nesting one document may hold, counted so the outermost
+#: mapping is 1.  ⚑ A HOST-SAFETY FLOOR, NOT A TASTE CALL: the loader composes and the
+#: key-check walks the node tree by recursion, so a document that outruns Python's stack
+#: reaches the user as a bare ``RecursionError`` traceback from whatever walked it next.
+#: No declared key path comes near this — the keyspace's deepest route is a handful.
+MAX_DOC_DEPTH = 64
+
 
 def parse_packaged(text: str) -> object:
     """Parse a YAML file kanibako SHIPS (never a user's file) with the fastest safe loader."""
     return yaml.load(text, Loader=_PACKAGED_LOADER)
 
 
-def _yaml_problem(exc: yaml.YAMLError) -> str:
-    """One-line rendering of a YAML parse failure (the problem + where)."""
+def yaml_problem(exc: yaml.YAMLError) -> str:
+    """One-line rendering of a YAML parse failure (the problem + where).
+
+    ⚑ THE ONE RENDERER, AND IT IS PUBLIC BECAUSE IT HAS A SECOND READER: a file's own
+    loader (``rig.yaml``'s, an overlay's) wraps the failure in its own error type, and a
+    private helper would leave that reader re-spelling the same failure in different words —
+    one rule, one place that knows it.
+    """
     if isinstance(exc, yaml.MarkedYAMLError) and exc.problem:
         mark = exc.problem_mark
         where = (
@@ -40,8 +53,13 @@ def _yaml_problem(exc: yaml.YAMLError) -> str:
     return " ".join(str(exc).split())
 
 
-class _DuplicateKey(Exception):
-    """A mapping in one document spells the same key twice."""
+class DuplicateKeyError(yaml.YAMLError):
+    """A mapping in one document spells the same key twice.
+
+    ⚑ A ``yaml.YAMLError``, so every caller's existing ``except yaml.YAMLError`` already
+    means "this document is not readable" — a reader that forgot this subclass would read
+    the repeat as last-wins again.
+    """
 
     def __init__(self, dotted: str, first: yaml.Mark, second: yaml.Mark) -> None:
         super().__init__(dotted)
@@ -52,6 +70,39 @@ class _DuplicateKey(Exception):
             f"line {m.line + 1}" + (f", column {m.column + 1}" if same_line else "")
             for m in (first, second)
         )
+
+    def __str__(self) -> str:
+        return f"sets '{self.dotted}' twice ({self.first} and {self.second})"
+
+
+class CyclicAnchorError(yaml.YAMLError):
+    """A mapping or list is reachable from inside itself (an alias inside its own anchor)."""
+
+    def __init__(self, dotted: str) -> None:
+        super().__init__(dotted)
+        self.dotted = dotted
+
+    def __str__(self) -> str:
+        return (
+            f"refers to itself at '{self.dotted}' "
+            "(a YAML alias inside its own anchor)"
+        )
+
+
+class DocumentTooDeepError(yaml.YAMLError):
+    """A document nests deeper than :data:`MAX_DOC_DEPTH`.
+
+    *dotted* is the path of the offending table, or ``""`` when the refusal belongs to
+    the document as a whole (a flow collection the loader gave up composing).
+    """
+
+    def __init__(self, dotted: str, limit: int) -> None:
+        super().__init__(dotted)
+        self.dotted, self.limit = dotted, limit
+
+    def __str__(self) -> str:
+        at = f" at '{self.dotted}'" if self.dotted else ""
+        return f"nests deeper than {self.limit} levels{at}"
 
 
 _MERGE_TAG = "tag:yaml.org,2002:merge"
@@ -88,15 +139,91 @@ class _UniqueKeyLoader(yaml.SafeLoader):
                 dotted = f"{where}.{key}" if where else str(key)
                 try:
                     if key in first_mark:
-                        raise _DuplicateKey(dotted, first_mark[key], key_node.start_mark)
+                        raise DuplicateKeyError(dotted, first_mark[key], key_node.start_mark)
                     first_mark[key] = key_node.start_mark
                 except TypeError:  # unhashable key: SafeConstructor refuses it itself
                     pass
                 self._check_duplicates(value_node, dotted, seen_nodes)
 
 
+def _guard_document(data: object) -> None:
+    """Refuse a document that CONTAINS ITSELF, or that nests deeper than MAX_DOC_DEPTH.
+
+    ⚑⚑ ITERATIVE, WITH AN EXPLICIT STACK, and that is the whole point: the recursion a
+    recursive guard would use is exactly what a cyclic anchor drives to the stack limit.
+    ⚑ AN ANCESTOR, NOT A SIBLING.  Two keys MAY name one table — the ``<<`` merge key
+    does it by name, and ``a: &x {…}`` + ``b: *x`` does it by alias — so sharing is legal
+    and loads; only a path back INTO ITSELF is a document that never finishes.
+
+    ⚑⚑ THE WALK IS LINEAR IN DISTINCT CONTAINERS, NOT IN PATHS.  A document that fans out
+    over shared aliases — the billion-laughs shape, each level nine aliases to the level
+    below — reaches one table by 9**n PATHS, and walking every path turned a few hundred
+    bytes of a user's ``rig.yaml`` into minutes of host CPU, on a file that arrives inside
+    an image bundle, from whoever built the bundle.  ``reached`` memoises each container at
+    the DEEPEST depth the walk reached it at, so a container already walked at this depth
+    or deeper is not walked again; the work is bounded by the number of distinct containers
+    times the number of distinct depths one can reach each at.
+
+    ⚑ DEEPEST, NOT FIRST, AND THAT IS THE CYCLE GUARD.  The memo may decide only how many
+    times a container is walked, never whether it is CHECKED: the ancestor test runs when a
+    child is pushed, before the child is popped, so it fires for every sighting. And a loop
+    can only close by reaching a container DEEPER than some earlier sighting of it, so a
+    memo that remembered the first sighting would skip exactly the re-walk that finds the
+    loop. ``MAX_DOC_DEPTH`` bounds how deep that can go, which is why a walk that keeps
+    failing to settle ends at one of the two refusals rather than loading a cycle.
+    """
+    stack: list[tuple[object, str, int, frozenset[int]]] = [(data, "", 1, frozenset())]
+    reached: dict[int, int] = {}  # id(container) -> the deepest depth it was walked at
+    while stack:
+        value, dotted, depth, ancestors = stack.pop()
+        # Scalars are leaves: a table's own depth is what the limit is about.
+        if isinstance(value, dict):
+            kids: list[tuple[str, object]] = [
+                (f"{dotted}.{k}" if dotted else str(k), v) for k, v in value.items()
+            ]
+        elif isinstance(value, list):
+            kids = [(f"{dotted}[{i}]", item) for i, item in enumerate(value)]
+        else:
+            continue
+        # Measured BEFORE the memo: a memo entry only ever holds a depth this check passed,
+        # so a container arriving past the limit can never be one this walk already covered.
+        if depth > MAX_DOC_DEPTH:
+            raise DocumentTooDeepError(dotted, MAX_DOC_DEPTH)
+        # `id` is a stable identity here: the whole document is alive and reachable from
+        # `data` for the length of the walk, so no two live containers can share one.
+        walked_at = reached.get(id(value))
+        if walked_at is not None and walked_at >= depth:
+            continue  # this subtree was walked at this depth or deeper already
+        reached[id(value)] = depth
+        chain = ancestors | {id(value)}
+        for child_path, child in kids:
+            if isinstance(child, (dict, list)) and id(child) in chain:
+                raise CyclicAnchorError(child_path)
+            stack.append((child, child_path, depth + 1, chain))
+
+
+def parse_doc_text(text: str) -> object:
+    """Parse ONE document from *text* under kanibako's reading rules.
+
+    ⚑ THE TEXT DOOR :func:`load_doc` ALSO OPENS, so a caller holding YAML instead of a
+    file gets the SAME refusals in the SAME words; a second reader is a second, quieter
+    opinion on what a document means.  The three refusals — :class:`DuplicateKeyError`,
+    :class:`CyclicAnchorError`, :class:`DocumentTooDeepError` — are
+    :class:`yaml.YAMLError`\\ s, so one ``except yaml.YAMLError`` covers all of them.
+    """
+    try:
+        data = yaml.load(text, Loader=_UniqueKeyLoader)  # a SafeLoader: no arbitrary objects
+    except RecursionError as exc:
+        # ⚑ A flow collection long enough to outrun the Python stack is the SAME refusal
+        # the depth guard makes by measurement; the loader cannot say where it gave up.
+        raise DocumentTooDeepError("", MAX_DOC_DEPTH) from exc
+    _guard_document(data)
+    return data
+
+
 def load_doc(path: Path | None) -> dict:
-    """Load a config document → dict. Missing/empty → {}; any other non-mapping or a repeated key raises."""
+    """Load a config document → dict. Missing/empty → {}; any other non-mapping, a repeated key,
+    a self-reference, or unbounded nesting raises."""
     if path is None or not path.exists():
         return {}
     try:
@@ -116,16 +243,20 @@ def load_doc(path: Path | None) -> dict:
         return {}
     # ⚑ THE PARSE-FAILURE NORMALIZATION BELONGS HERE — this is the one seam that knows the FILE.
     try:
-        data = yaml.load(text, Loader=_UniqueKeyLoader)  # a SafeLoader: no arbitrary objects
-    except _DuplicateKey as dup:
+        data = parse_doc_text(text)
+    except DuplicateKeyError as dup:
         # ⚑ Spec §0: never a silent accept — PyYAML would keep the second and drop the first.
         raise ConfigError(
             f"the config file {path} sets '{dup.dotted}' twice ({dup.first} and "
             f"{dup.second}). Remove one of the two, then retry."
         ) from None
+    except (CyclicAnchorError, DocumentTooDeepError) as exc:
+        raise ConfigError(
+            f"the config file {path} {exc}. Fix or remove the file, then retry."
+        ) from None
     except yaml.YAMLError as exc:
         raise ConfigError(
-            f"the config file {path} is not valid YAML: {_yaml_problem(exc)}. "
+            f"the config file {path} is not valid YAML: {yaml_problem(exc)}. "
             "Fix or remove the file, then retry."
         ) from exc
     if data is None:

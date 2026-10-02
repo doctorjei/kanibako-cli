@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pytest
 
+from kanibako.errors import ConfigError
 from kanibako.runtime import baseline
 
 
@@ -132,6 +133,62 @@ class TestReadDoc:
         assert baseline._read_doc(p) == {}
 
     def test_read_non_dict(self, tmp_path) -> None:
+        """A list document REFUSES instead of reading ``{}``.
+
+        Reading a non-mapping as ``{}`` drops the whole overlay without a word, and a
+        baseline that silently installs nothing is a silent accept of the wrong answer
+        (spec §0). ``_read_doc`` goes through ``load_doc``, the one entry point for a
+        user's YAML, and is refused BY NAME. An EMPTY or MISSING file still reads ``{}``;
+        only a document that is not a mapping refuses.
+        """
         p = tmp_path / "list.yaml"
         p.write_text("- a\n- b\n")
-        assert baseline._read_doc(p) == {}
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == (
+            f"the config file {p} is a list, not a mapping of keys. "
+            "Fix or remove the file, then retry."
+        )
+
+    def test_repeated_key_is_refused_naming_the_file(self, tmp_path) -> None:
+        """A package listed twice used to keep the LAST list and lose the first in silence."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("mypkg: [aaa]\nmypkg: [bbb]\n")
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == (
+            f"the config file {p} sets 'mypkg' twice (line 1 and line 2). "
+            "Remove one of the two, then retry."
+        )
+
+    def test_invalid_yaml_is_refused_not_a_traceback(self, tmp_path) -> None:
+        """An unterminated flow sequence used to raise a raw ``yaml`` error out of the CLI."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("mypkg: [aaa\n")
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value).startswith(
+            f"the config file {p} is not valid YAML: "
+        )
+        assert str(exc.value).endswith("Fix or remove the file, then retry.")
+
+    def test_a_self_referential_anchor_is_refused_naming_the_file(self, tmp_path) -> None:
+        """A package list that contains itself is a document hazard, not an executable list."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("mypkg: &a [x, *a]\n")
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert f"{p} refers to itself at 'mypkg[1]'" in str(exc.value)
+
+    def test_values_still_normalize(self, tmp_path) -> None:
+        """⚑ THE CONTROL: the reader's own normalization is unchanged by the reroute."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("bare: rg\nnulled:\nlisted: [a, 2]\n")
+
+        assert baseline._read_doc(p) == {
+            "bare": ["rg"], "nulled": [], "listed": ["a", "2"],
+        }

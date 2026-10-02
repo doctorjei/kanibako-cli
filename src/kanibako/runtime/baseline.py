@@ -19,9 +19,8 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-import yaml
-
 from kanibako.settings.bootstrap import SITE_CONFIG_DIR
+from kanibako.settings.config_io import load_doc
 from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_data_dir
 from kanibako.settings.paths import user_config_home
 
@@ -32,14 +31,14 @@ BASELINE_FILENAME = "image-baseline.yaml"
 def _read_doc(path: Path) -> dict[str, list[str]]:
     """Parse a baseline YAML file into ``{package: [executables]}``.
 
-    Tolerates a missing/empty file (returns ``{}``).  Normalizes each value to
-    a list of strings; a bare string value becomes a single-element list.
+    Tolerates a missing/empty file (returns ``{}``).  Normalizes each value to a list of
+    strings; a bare string value becomes a single-element list.  ⚑ Read through
+    :func:`load_doc`, the one entry point for a user's YAML: a repeated key or a
+    non-mapping document is REFUSED BY NAME (ConfigError).
     """
     if not path.is_file():
         return {}
-    raw = yaml.safe_load(path.read_text()) or {}
-    if not isinstance(raw, dict):
-        return {}
+    raw = load_doc(path)
     result: dict[str, list[str]] = {}
     for pkg, exes in raw.items():
         if exes is None:
@@ -69,10 +68,8 @@ def _overlay_paths() -> list[Path]:
 def load_baseline() -> dict[str, list[str]]:
     """Return the merged baseline ``{package: [executables]}``.
 
-    Starts from the shipped default, then additively merges the machine
-    (``/etc``) and user (``~/.config``) overlays if present: a later layer adds
-    a new package or replaces an existing package's executable list.  Missing
-    overlay files are treated as empty levels.
+    Starts from the shipped default, then additively merges the machine (``/etc``) and
+    user (``~/.config``) overlays: a later layer adds a package or replaces its list.
     """
     merged = _shipped_default()
     for path in _overlay_paths():
@@ -98,8 +95,7 @@ def executables() -> list[tuple[str, str]]:
 def verify(probe: Callable[[str], bool]) -> list[tuple[str, str]]:
     """Return the ``(package, executable)`` pairs whose executable is missing.
 
-    *probe* answers "is this executable present?" (typically a ``command -v``
-    check inside an image).  An empty result means the baseline is satisfied.
+    *probe* answers "is this present?" (a ``command -v`` check); empty means satisfied.
     """
     return [(pkg, exe) for pkg, exe in executables() if not probe(exe)]
 
@@ -107,9 +103,8 @@ def verify(probe: Callable[[str], bool]) -> list[tuple[str, str]]:
 def install_command(pkgs: list[str]) -> list[str]:
     """Build the apt-get install argv for *pkgs* (debian).
 
-    Returns the full argv (``apt-get install -y --no-install-recommends ...``).
-    The caller decides where it runs (host vs. in-box) and on non-debian
-    systems should skip it (see :func:`warn_non_debian`).
+    Returns ``apt-get install -y --no-install-recommends <pkgs>``.  The caller decides
+    where it runs (host vs. in-box); skip it on non-debian (:func:`warn_non_debian`).
     """
     return [
         "apt-get", "install", "-y", "--no-install-recommends", *pkgs,

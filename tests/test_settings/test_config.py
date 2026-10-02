@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 import pytest
 
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import MAX_DOC_DEPTH, dump_doc, load_doc
 from kanibako.errors import ConfigError
 from kanibako.settings.config import (
     user_config_file,
@@ -1766,6 +1767,198 @@ class TestRepeatedKeyIsRefused:
         err = capsys.readouterr().err
         assert err.startswith("Error: ")
         assert f"{ssp} sets 'box' twice (line 1 and line 3)" in err
+
+
+def _nested_tables(depth: int) -> str:
+    """A block document of *depth* nested tables, the outermost at depth 1.
+
+    ⚑ DERIVED, NOT LITERAL: the boundary is ``MAX_DOC_DEPTH``, so the numbers come from
+    the constant under test and a change to it moves the pair with it.
+    """
+    lines = ["  " * i + f"k{i}:" for i in range(depth - 1)]
+    lines.append("  " * (depth - 1) + "leaf: 1")
+    return "\n".join(lines) + "\n"
+
+
+def _aliased_levels(levels: int, fanout: int = 9) -> str:
+    """The BILLION-LAUGS shape: *levels* nested lists, each *fanout* aliases to the one below.
+
+    ``fanout`` defaults to 9 because that is the published shape; the document stays a few
+    hundred bytes at any *levels*, which is the point of the test that uses it.
+    """
+    lines = ["seed: &a ['x']"]
+    previous = "a"
+    for i in range(1, levels):
+        name = chr(ord("a") + i)
+        aliases = ",".join(["*" + previous] * fanout)
+        lines.append(f"{name}: &{name} [{aliases}]")
+        previous = name
+    lines.append(f"top: *{previous}")
+    return "\n".join(lines) + "\n"
+
+
+class TestSelfReferentialDocumentIsRefused:
+    """A document that contains ITSELF, or nests past ``MAX_DOC_DEPTH``, is refused by name.
+
+    ⚑ THE REFUSAL BELONGS WHERE A DOCUMENT ENTERS: a guard in one reader would leave the
+    same trap open in the next one, and the crash would land later as a raw
+    ``RecursionError`` traceback out of whatever walked it next.
+
+    MUTATION: drop the ``_guard_document`` call in ``parse_doc_text`` and every refusal
+    here reds (the cycle becomes a ``RecursionError``, the deep one loads).
+    """
+
+    def test_a_cycle_names_the_file_and_the_path(self, tmp_path):
+        """``box.x`` is the same table as ``box``: named as a self-reference, not a crash."""
+        bad = tmp_path / "box.yaml"
+        bad.write_text("box: &a {image: ok:1, x: *a}\n")
+
+        with pytest.raises(ConfigError) as exc:
+            load_doc(bad)
+        assert str(exc.value) == (
+            f"the config file {bad} refers to itself at 'box.x' "
+            "(a YAML alias inside its own anchor). Fix or remove the file, then retry."
+        )
+
+    def test_a_cycle_through_a_list_is_refused_too(self, tmp_path):
+        """A list is a container like any other: ``box.items[0]`` closes the same loop."""
+        bad = tmp_path / "box.yaml"
+        bad.write_text("box: &a {items: [*a]}\n")
+
+        with pytest.raises(ConfigError) as exc:
+            load_doc(bad)
+        assert "refers to itself at 'box.items[0]'" in str(exc.value)
+
+    def test_a_shared_sibling_alias_still_loads(self, tmp_path):
+        """⚑ THE CONTROL: two keys may NAME one table. Only a path back into itself is a cycle."""
+        good = tmp_path / "box.yaml"
+        good.write_text("a: &x {k: 1}\nb: *x\n")
+
+        data = load_doc(good)
+        assert data == {"a": {"k": 1}, "b": {"k": 1}}
+        # They really are ONE object — sharing is what the guard must NOT read as a cycle.
+        assert data["a"] is data["b"]
+
+    def test_a_merge_key_still_loads(self, tmp_path):
+        """``<<`` shares by name; YAML's own override rule is untouched by the guard."""
+        good = tmp_path / "box.yaml"
+        good.write_text("base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n")
+        assert load_doc(good) == {"base": {"a": 1}, "box": {"a": 2}}
+
+    def test_shared_aliases_walk_in_time_proportional_to_containers(self, tmp_path):
+        """⚑ BILLION-LAUGS IS A HOST-SAFETY PROBLEM, NOT A SLOW TEST.
+
+        ``rig.yaml`` and a baseline overlay arrive inside image bundles, so a crafted
+        document reaches this walk before any user sees it. Eight levels of nine aliases
+        is a few hundred bytes and nine-to-the-eighth distinct PATHS to the same handful of
+        tables: a guard that walks each path is exponential in a number the attacker picks.
+        The bound is generous (1 s for a walk that must finish in microseconds) so the test
+        cannot flake on a loaded box while still failing by four orders of magnitude.
+        """
+        good = tmp_path / "laugh.yaml"
+        good.write_text(_aliased_levels(8))
+
+        start = time.perf_counter()
+        data = load_doc(good)
+        elapsed = time.perf_counter() - start
+
+        assert "top" in data
+        assert elapsed < 1.0, (
+            f"the guard took {elapsed:.1f}s on a {len(good.read_text())}-byte document "
+            f"of shared aliases"
+        )
+
+    def test_a_cycle_reachable_only_through_a_shared_alias_is_still_refused(self, tmp_path):
+        """⚑ THE MEMO MUST NOT BLIND THE CYCLE CHECK.
+
+        ``c`` holds ``d``, ``d`` points back at ``c``, and ``e.z`` is a SECOND, shallower
+        sighting of the very table ``d`` — the sharing the guard is required to tolerate
+        and the loop it is required to refuse, in one document. The memo may only ever
+        decide how many times a container is walked, never whether it is checked, so this
+        document refuses on the first sighting of the loop.
+
+        ⚑ THE CONTROL IS THE SAME SHAPE WITHOUT THE LOOP (``y: *d`` instead of ``y: *c``):
+        one table named twice is legal, so what is refused below is the loop, not the
+        sharing.
+        """
+        bad = tmp_path / "box.yaml"
+        bad.write_text("c: &c\n  x: &d\n    y: *c\ne: &e\n  z: *d\n")
+
+        with pytest.raises(ConfigError) as exc:
+            load_doc(bad)
+        assert str(exc.value) == (
+            f"the config file {bad} refers to itself at 'e.z.y.x' "
+            "(a YAML alias inside its own anchor). Fix or remove the file, then retry."
+        )
+
+    def test_the_same_shape_without_the_loop_still_loads(self, tmp_path):
+        """⚑ THE CONTROL for the test above: one table, two names, no loop — it loads."""
+        good = tmp_path / "box.yaml"
+        good.write_text("c: &c\n  x: &d\n    y: 1\ne: &e\n  z: *d\n")
+
+        data = load_doc(good)
+        assert data["c"]["x"] is data["e"]["z"]
+
+    def test_depth_at_the_limit_loads_and_one_past_it_is_refused(self, tmp_path):
+        """``MAX_DOC_DEPTH`` tables load; ``MAX_DOC_DEPTH + 1`` is refused, naming the path."""
+        ok = tmp_path / "ok.yaml"
+        ok.write_text(_nested_tables(MAX_DOC_DEPTH))
+        node = load_doc(ok)
+        for i in range(MAX_DOC_DEPTH - 1):  # walk to the INNERMOST table, not just the root
+            node = node[f"k{i}"]
+        assert node == {"leaf": 1}
+
+        bad = tmp_path / "bad.yaml"
+        bad.write_text(_nested_tables(MAX_DOC_DEPTH + 1))
+        with pytest.raises(ConfigError) as exc:
+            load_doc(bad)
+        assert str(exc.value) == (
+            f"the config file {bad} nests deeper than {MAX_DOC_DEPTH} levels at "
+            f"{'.'.join(f'k{i}' for i in range(MAX_DOC_DEPTH))!r}. "
+            "Fix or remove the file, then retry."
+        )
+
+    def test_a_flow_collection_too_deep_for_the_loader_is_the_same_refusal(self, tmp_path):
+        """⚑ The loader composes a huge flow collection in the Python stack: ``RecursionError``
+        out of ``yaml.load`` is the SAME document hazard the depth guard measures, so it is
+        reported as that refusal — still a ConfigError naming the file, never a traceback."""
+        bad = tmp_path / "box.yaml"
+        bad.write_text("k: " + "[" * 4000 + "]" * 4000 + "\n")
+
+        with pytest.raises(ConfigError) as exc:
+            load_doc(bad)
+        assert str(exc.value) == (
+            f"the config file {bad} nests deeper than {MAX_DOC_DEPTH} levels. "
+            "Fix or remove the file, then retry."
+        )
+
+    def test_boxless_verb_exits_rc1_naming_the_cycle(self, tmp_path, monkeypatch, capsys):
+        """Through ``main(["rig", "list"])``: a cyclic settings file is rc1 with no traceback."""
+        from unittest.mock import patch
+
+        from kanibako.cli import main
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        # ⚑ HERMETIC, unlike the neighbor above: with XDG_RUNTIME_DIR unset and no
+        # /run/user/<uid> (a container), kanibako.paths warns on stderr FIRST and this
+        # test's subject — that the USER's error is the only thing on stderr — goes untested.
+        (tmp_path / "run").mkdir()
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
+        (tmp_path / "config").mkdir(exist_ok=True)
+        write_global_config(tmp_path / "config" / CONFIG_FILENAME)
+        ssp = tmp_path / "data" / "kanibako" / "global" / "settings.yaml"
+        ssp.parent.mkdir(parents=True)
+        ssp.write_text("box: &a {image: a, x: *a}\n")
+
+        with patch("kanibako.cli._ensure_initialized"):
+            with pytest.raises(SystemExit) as exc:
+                main(["rig", "list", "-q"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert err.startswith("Error: ")
+        assert f"{ssp} refers to itself at 'box.x'" in err
+        assert "Traceback" not in err
 
 
 class TestNestedWriteRefusesANonTableSection:
