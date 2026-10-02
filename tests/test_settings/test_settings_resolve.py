@@ -877,6 +877,105 @@ def test_unpack_bind_entry_refuses_wrong_arity() -> None:
     assert "DESTINATION is the map key" in str(exc.value)
 
 
+# --------------------------------------------------------------------------- #
+# normalize_bind_dest — full canonicalization of a bind destination            #
+# --------------------------------------------------------------------------- #
+
+
+class TestADestinationIsFullyCanonicalized:
+    """New conformance (2026-10-02): a bind dest is fully canonicalized.
+
+    Before this change ``normalize_bind_dest`` only expanded ``~`` and dropped a
+    trailing ``/``, so ``/opt/./kanibako/kanibako/../kanibako`` and
+    ``/opt/kanibako//kanibako`` passed the internal-bind refusal and the
+    peer-collision check as DIFFERENT paths from ``/opt/kanibako/kanibako``.
+    """
+
+    def test_dot_dot_under_home_is_one_destination(self) -> None:
+        from kanibako.settings.settings_resolve import GUEST_HOME, normalize_bind_dest
+
+        assert normalize_bind_dest("~/a/../b") == normalize_bind_dest("~/b") == f"{GUEST_HOME}/b"
+
+    def test_leading_double_slash_collapses(self) -> None:
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+
+        assert normalize_bind_dest("//x") == "/x"
+        assert normalize_bind_dest("///x") == "/x"
+
+    def test_dot_segment_and_inner_double_slash(self) -> None:
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+
+        assert normalize_bind_dest("/a/./b") == "/a/b"
+        assert normalize_bind_dest("/opt/kanibako//kanibako") == "/opt/kanibako/kanibako"
+
+    def test_internal_bind_dest_spelled_with_dot_dot_is_refused(self) -> None:
+        # Before this change: dotdot and doubleslash returned [] (the raw-text
+        # comparison missed them); plain returned 1 refusal line.
+        from kanibako.settings.settings_launch import internal_bind_refusals
+
+        plain = internal_bind_refusals("box.bindings.ro", {"/opt/kanibako/kanibako": ["/x"]}, where="t.yaml")
+        dotdot = internal_bind_refusals(
+            "box.bindings.ro", {"/opt/./kanibako/kanibako/../kanibako": ["/x"]}, where="t.yaml"
+        )
+        doubleslash = internal_bind_refusals(
+            "box.bindings.ro", {"/opt/kanibako//kanibako": ["/x"]}, where="t.yaml"
+        )
+        # All three now produce exactly one refusal line.
+        assert len(plain) == 1
+        assert len(dotdot) == 1
+        assert len(doubleslash) == 1
+
+    def test_controls_unchanged(self) -> None:
+        from kanibako.settings.settings_resolve import GUEST_HOME, normalize_bind_dest
+
+        assert normalize_bind_dest("~") == GUEST_HOME
+        assert normalize_bind_dest("~/") == GUEST_HOME
+        assert normalize_bind_dest("/m/") == "/m"
+        assert normalize_bind_dest("/") == "/"
+
+    def test_tilde_expansion_before_at_check(self) -> None:
+        # Regression: the @/$ guard was placed BEFORE ~ expansion, so ~/x@y/
+        # returned '~/x@y/' literally instead of expanding ~ first.
+        from kanibako.settings.settings_resolve import GUEST_HOME, normalize_bind_dest
+
+        assert normalize_bind_dest("~/x@y/") == f"{GUEST_HOME}/x@y"
+
+    def test_at_ref_trailing_slash_stripped(self) -> None:
+        # Regression: the @/$ guard was placed BEFORE the trailing-/ drop, so
+        # @meta.box.home/ returned '@meta.box.home/' with the slash still on.
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+
+        assert normalize_bind_dest("@meta.box.home/") == "@meta.box.home"
+
+    def test_at_ref_and_dollar_var_unchanged(self) -> None:
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+
+        assert normalize_bind_dest("@meta.box.home/../x") == "@meta.box.home/../x"
+        assert normalize_bind_dest("$HOME/./x") == "$HOME/./x"
+
+    def test_idempotent(self) -> None:
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+
+        cases = [
+            "~/a/../b",
+            "~/b",
+            "//x",
+            "///x",
+            "/a/./b",
+            "/opt/kanibako//kanibako",
+            "/opt/./kanibako/kanibako/../kanibako",
+            "~",
+            "~/",
+            "/m/",
+            "/",
+            "@meta.box.home/../x",
+            "$HOME/./x",
+            "///a@b",
+        ]
+        for c in cases:
+            assert normalize_bind_dest(normalize_bind_dest(c)) == normalize_bind_dest(c), f"idempotence failed for {c!r}"
+
+
 def test_the_two_unpackers_read_one_2_element_list_oppositely() -> None:
     # ⚑⚑ THE ARITY TRAP, pinned. The SAME raw value is legal to BOTH unpackers and
     # means opposite things: name-keyed ``[a, b]`` is (host, box); dest-keyed
