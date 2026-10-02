@@ -44,6 +44,7 @@ from unittest.mock import patch
 
 import pytest
 
+from kanibako.errors import PackagingError
 from kanibako.settings import core_defaults
 from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_resolve import GUEST_HOME
@@ -416,7 +417,7 @@ class TestCoreKickoffBind:
             return real(*parts)
 
         with patch.object(core_defaults, "packaged_data_dir", _fake):
-            with pytest.raises(RuntimeError, match="packaged kickoff loader is missing"):
+            with pytest.raises(PackagingError, match="packaged kickoff loader is missing"):
                 core_defaults.kickoff_default_categories(None)
 
 

@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.errors import PackagingError
 from kanibako.settings.config_keys import ConfigLevel
 from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_resolve import (
@@ -1205,7 +1206,7 @@ class TestANullWorkspaceNeverBecomesTheWordNone:
             "key": "workspace", "category": "bindings.rw",
             "source": "project_path", "box_dest": "~/workspace", "options": "Z,U",
         }]})
-        with pytest.raises(RuntimeError, match="no value for that source"):
+        with pytest.raises(PackagingError, match="no value for that source"):
             core_defaults.core_default_categories(
                 None, self._P(tmp_path), enable_vault=True, mode="standalone",
                 guarantee_create=False,

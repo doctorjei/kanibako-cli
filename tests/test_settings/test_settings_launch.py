@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.commands.start import _bind_map_from_mounts, _emit_category_mounts
+from kanibako.errors import PackagingError
 from kanibako.settings.agent_file import _FLAT_AGENT_CATEGORIES
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
@@ -3266,9 +3267,9 @@ def test_pseudo_tier_default_reads_the_named_tier_and_fails_closed():
         core_defaults.pseudo_tier_default("default", "label")
     with pytest.raises(RuntimeError, match="not an addressable pseudo-agent"):
         core_defaults.pseudo_tier_default("claude", "label")
-    with pytest.raises(RuntimeError, match="declares no 'agent_shell.no_such_key'"):
+    with pytest.raises(PackagingError, match="declares no 'agent_shell.no_such_key'"):
         core_defaults.pseudo_tier_default("shell", "no_such_key")
-    with pytest.raises(RuntimeError, match="as <None>"):
+    with pytest.raises(PackagingError, match="as <None>"):
         core_defaults.pseudo_tier_default("shell", "model")
 
 
