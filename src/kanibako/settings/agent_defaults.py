@@ -51,7 +51,7 @@ from kanibako.settings.settings_keyspace import (
     is_terminal_category_tail,
     key_validity,
 )
-from kanibako.settings.settings_resolve import GUEST_HOME, UNSET, SettingsError
+from kanibako.settings.settings_resolve import UNSET, SettingsError, expand_guest_home
 from kanibako.targets.base import (
     AccessRealization,
     AccessTierRow,
@@ -70,19 +70,6 @@ from kanibako.targets.base import (
     SettingArg,
     TargetSetting,
 )
-
-
-def _expand(value: str) -> str:
-    """Expand a ``$GUEST_HOME`` prefix in a box-side path expression.
-
-    The defaults files write every in-box destination as a ``$GUEST_HOME``
-    expression so the guest-home literal lives in exactly one place (the
-    :data:`~kanibako.settings.settings_resolve.GUEST_HOME` constant, single SoT).  Only the
-    leading ``$GUEST_HOME`` token is substituted; the rest is left verbatim.
-    """
-    if value.startswith("$GUEST_HOME"):
-        return GUEST_HOME + value[len("$GUEST_HOME"):]
-    return value
 
 
 def _load_doc(package: str, filename: str) -> dict[str, Any]:
@@ -121,7 +108,7 @@ def _build_binding(entry: dict[str, Any], package: str) -> Binding:
     return Binding(
         key=entry["key"],
         origin=HostSrcOrigin(entry["origin"]),
-        box_dest=_expand(entry["box_dest"]),
+        box_dest=expand_guest_home(entry["box_dest"]),
         kind=BindKind(entry["kind"]),
         scope=BindScope(entry["scope"]),
         ro=bool(entry.get("ro", True)),
@@ -693,7 +680,7 @@ def load_category_binds(
                 f"bind-shaped categories are 'caches' / 'seeded' / 'common' / "
                 f"'synced' (spec §0 — the keyspace is CLOSED)."
             )
-        box_dest = _expand(entry["box_dest"])
+        box_dest = expand_guest_home(entry["box_dest"])
         host_src = entry["meta_ref"]
         options = "ro" if entry.get("ro", False) else None
 
@@ -754,7 +741,7 @@ def _env_values(doc: dict[str, Any], filename: str) -> dict[str, str]:
                 f"{type(value).__name__} value; an environment variable is a "
                 f'STRING — quote it (e.g. "1", "true")'
             )
-        values[str(var)] = _expand(value)
+        values[str(var)] = expand_guest_home(value)
     return values
 
 
@@ -844,7 +831,7 @@ def load_common(package: str, filename: str, agent: str) -> "dict[str, BindArm]"
         host_src = root_relative_source(entry["host_src"], root_ref)
         try:
             add_bind(
-                binds, "common", _expand(entry["box_dest"]), host_src,
+                binds, "common", expand_guest_home(entry["box_dest"]), host_src,
                 entry.get("options"), scope=f"agent.{agent}",
             )
         except ValueError as exc:

@@ -7,6 +7,7 @@ import yaml
 
 from kanibako.settings import core_defaults
 from kanibako.settings.settings_launch import load_merged_config
+from kanibako.settings.settings_resolve import GUEST_HOME
 
 
 @pytest.fixture
@@ -48,3 +49,25 @@ def test_mutating_a_returned_doc_does_not_reach_the_next(cold_parse):
   assert second["core"][0] == original
   assert second["agent_default"]
   assert core_defaults._parse_doc()["core"][0] == original
+
+
+def test_env_floor_expands_a_guest_home_value_and_leaves_the_rest(monkeypatch):
+  """A ``$GUEST_HOME/…`` env value comes back as a guest path; a ``$VAR`` value is left for the snapshot."""
+  doc = {"env": {"agent.shell": {"FINAL": "$GUEST_HOME/AGENTS.md", "TERM": "$TERM"}}}
+  monkeypatch.setattr(core_defaults, "_load_doc", lambda: doc)
+  assert core_defaults.env_default_categories() == {
+    "agent.shell.env.FINAL": f"{GUEST_HOME}/AGENTS.md",
+    "agent.shell.env.TERM": "$TERM",
+  }
+
+
+def test_env_floor_is_unchanged_for_the_shipped_table():
+  """No shipped core env row starts with ``$GUEST_HOME``, so expansion changes nothing today."""
+  raw = core_defaults._load_doc()["env"]
+  expected = {
+    f"{scope}.env.{var}": str(value)
+    for scope, entries in raw.items() if entries
+    for var, value in entries.items()
+  }
+  assert not any(v.startswith("$GUEST_HOME") for v in expected.values())
+  assert core_defaults.env_default_categories() == expected

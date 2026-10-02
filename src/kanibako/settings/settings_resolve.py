@@ -30,6 +30,20 @@ GUEST_HOME = "/home/agent"
 GUEST_UID = 1000
 GUEST_GID = 1000
 
+
+def expand_guest_home(value: str) -> str:
+    """Expand a ``$GUEST_HOME`` prefix in a box-side path expression.
+
+    The defaults files write every in-box destination as a ``$GUEST_HOME``
+    expression so the guest-home literal lives in exactly one place (the
+    :data:`~kanibako.settings.settings_resolve.GUEST_HOME` constant, single SoT).  Only the
+    leading ``$GUEST_HOME`` token is substituted; the rest is left verbatim.
+    """
+    if value.startswith("$GUEST_HOME"):
+        return GUEST_HOME + value[len("$GUEST_HOME"):]
+    return value
+
+
 # The GUEST workspace/vault leaves, in the two forms their consumers need: a RELPATH to join onto
 # a host ``Path`` and an absolute to compare a box-side dest against.
 # ⚑ GUEST-SIDE ONLY. ``bootstrap.WORKSPACE_PATH`` is a HOST leaf spelled identically and the
