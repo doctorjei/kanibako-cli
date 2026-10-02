@@ -262,6 +262,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path.** In 1.8.0-rc2 it surfaced as a Python traceback, or an empty canon root let the box start
   with no canon. It is now `Error: …` with exit 1, before any container runs.
 - `kanibako start --agent shell -- <cmd>` no longer drops the command.
+- `kanibako start -- <cmd>` at a box that is already running is refused by name instead of
+  silently dropping the command, for every agent; `kanibako shell <box> -- <cmd>` still runs it
+  there. See *Reattaching to a running box: flags are now refused instead of ignored* in
+  [MIGRATION.md](MIGRATION.md).
 - **An unreadable config file is refused with a clean error, not a Python traceback.** In
   1.8.0-rc2 a file that was not valid UTF-8, or was permission-denied, or was a directory
   where a file was expected, escaped as a traceback through `load_doc`'s unguarded

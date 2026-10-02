@@ -1181,6 +1181,7 @@ by name, with a nonzero exit**, where most of them were previously accepted and 
 | `-N`, `-C`, `-R`, `-M`, `-A`, `-S` | **silently ignored** — `kanibako start -N <running box>` reattached to the OLD conversation | error |
 | `--persistent`, `--ephemeral` (typed explicitly) | reattached / hit a generic error | error, leaving the running session untouched |
 | `--entrypoint` | silently ignored; you got the agent session instead | **runs the command as a second process in the box** |
+| `-- <command>` on `kanibako start`, for any agent, `--agent shell` included, with or without `--detach` | silently ignored; you were attached to the running session (with `--detach`, told the box was already running) | error. `kanibako shell <box> -- <command>` is unchanged: it runs the command as a second process in the box |
 | `--attach`, `--detach`, `--print-container`, `--warm-only` | honored | unchanged |
 
 ⚑ **If you script `kanibako start` with flags, check whether the box may already be running.** A
