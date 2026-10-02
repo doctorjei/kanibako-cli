@@ -1862,7 +1862,11 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
                                          register=register))
 
     # NAME-first: the standalone-name domain, which resolve_any_project does NOT cover.
-    if "/" not in value:
+    # ``.`` and ``..`` are PATH syntax, never box names, so they are excluded from
+    # every name lookup below and fall through to the path route — same as base.
+    # resolve_name's first step accepts any directory under the workspaces dir, so
+    # inside a workset it would swallow ``.`` and mis-resolve it.
+    if "/" not in value and value not in (".", ".."):
         from kanibako.project import registry_store
 
         standalone = registry_store.load_standalone(std.registry)
@@ -1873,6 +1877,24 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
         if stored is not None:
             return _flag(resolve_standalone_project(std, config, standalone[stored],
                                                     initialize=initialize, register=register))
+
+        # NAME resolution for workset members and primary boxes: the name lookup in
+        # resolve_any_project is skipped when the bare token matches an existing path
+        # (e.g. ./myproj), but a registered box name should win over a same-named folder
+        # (README: "box name (precedence) or path").  Try the full name resolution here
+        # before falling back to path resolution.  Only for real name tokens: ``.`` and
+        # ``..`` are excluded by the guard above and stay on the path route.
+        try:
+            resolved, kind = resolve_name(std.registry, value, cwd=Path.cwd(),
+                                          primary_workset=std.primary_workset)
+        except ProjectError:
+            pass
+        else:
+            if kind == KIND_PROJECT:
+                # Hand the resolved workspace path to detect_project_mode, which
+                # correctly routes named/standalone/primary from there.
+                return _flag(resolve_any_project(std, config, resolved,
+                                                initialize=initialize, register=register))
 
     # Else: NAME (projects/worksets/qualified) or PATH, both via the existing resolver.
     return _flag(resolve_any_project(std, config, value, initialize=initialize, register=register))
