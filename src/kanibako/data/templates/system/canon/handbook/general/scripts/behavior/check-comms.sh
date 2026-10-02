@@ -39,8 +39,13 @@ emit() {
     else
         # Backslashes FIRST: reversing the two turns \" into \\" and ends the
         # JSON string early.  A trailing backslash is the reachable case.
+        # Then the raw control characters JSON forbids inside a string: a tab is
+        # legal in a file name, so it is reachable too.
         local escaped=${1//\\/\\\\}
         escaped=${escaped//\"/\\\"}
+        escaped=${escaped//$'\t'/\\t}
+        escaped=${escaped//$'\r'/\\r}
+        escaped=${escaped//$'\n'/\\n}
         echo "{\"continue\": true, \"systemMessage\": \"${escaped}\"," \
             "\"hookSpecificOutput\": {\"hookEventName\": \"PostToolUse\"," \
             "\"additionalContext\": \"${escaped}\"}}"

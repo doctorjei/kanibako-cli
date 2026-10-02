@@ -144,3 +144,27 @@ def test_awkward_file_names_are_reported_verbatim(box):
     # The script runs with no LANG/LC_* set, so `sort` orders bytes, as sorted() does.
     expected = f"NEW MAIL (2): {', '.join(sorted(names))}"
     assert _assert_one_alert(result.stdout, names[0]) == expected
+
+
+def test_fallback_keeps_json_valid_for_a_tab_in_a_name(box, tmp_path):
+    """With ``jq`` hidden, a tab in a mail file name still yields JSON that parses."""
+    home, inbox, name = box
+    filename = "t\tab.md"
+    (inbox / filename).write_text("hi\n")
+    result = _run(home, name, path=_no_jq_path(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert _assert_one_alert(result.stdout, filename) == f"NEW MAIL (1): {filename}"
+
+
+def test_fallback_escapes_tab_carriage_return_and_newline(tmp_path):
+    """``emit``'s hand escaping turns raw tab, CR, and LF into JSON escapes."""
+    msg = "a\tb\rc\nd \\"
+    snippet = (
+        f"eval \"$(sed -n '/^emit() {{/,/^}}/p' '{SCRIPT}')\"\n"
+        'emit "$1"\n'
+    )
+    result = subprocess.run(["bash", "-c", snippet, "bash", msg],
+                            env={"PATH": _no_jq_path(tmp_path)},
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert _assert_one_alert(result.stdout, msg) == msg
