@@ -41,7 +41,7 @@ emit() {
         # JSON string early.  A trailing backslash is the reachable case.
         # Then the raw control characters JSON forbids inside a string.  It
         # forbids ALL of U+0000-U+001F, not only the three escaped next: a mail
-        # file name can hold any of them, so BEL, or an ESC out of a colourised
+        # file name can hold any of them, so BEL, or an ESC out of a colorized
         # subject, is as reachable as a tab.  Tab, CR and LF keep the short
         # escapes because those are the readable ones; every OTHER code point
         # becomes \u00XX in the loop below.  U+0000 is out of reach here — a bash

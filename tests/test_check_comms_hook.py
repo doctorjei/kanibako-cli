@@ -37,7 +37,7 @@ _TOOLS = (
 )
 
 # EVERY code point JSON forbids raw inside a string, 0x01-0x1F, as ONE list: the
-# parametrised tests below sweep it instead of pasting 31 near-identical tests out.
+# parametrized tests below sweep it instead of pasting 31 near-identical tests out.
 # A mail file name can hold any of them, and the no-jq branch builds its JSON by
 # hand, so each one has to survive the escaping AND still parse.  0x00 is absent
 # because a bash string cannot hold NUL — see the comment in ``emit``.
