@@ -13,6 +13,7 @@ SEGMENT_CHAR_CLASS = '\\w' + ''.join((re.escape(ch) for ch in sorted(_SAFE_EXTRA
 PSEUDO_AGENT_NAMES = frozenset({'default', 'shell'})
 AGENT_ENTRY_POINT_GROUP = 'kanibako.agents'
 GENERAL_SLOT = 'shell'
+ADDRESSABLE_PSEUDO_AGENTS = frozenset({GENERAL_SLOT})
 _SAFE_EXTRA = frozenset('-_')
 _DOT_HINT = "; '.' is reserved as settings key-path separator and cannot appear in an agent name"
 ```
