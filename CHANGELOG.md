@@ -256,6 +256,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The comms hook's mail alert now reaches the agent, not only the user.** `check-comms.sh` put its
+  alert only in `systemMessage`, which Claude Code shows to the user and never to the model; it now
+  also sends it as `hookSpecificOutput.additionalContext`. It also ignores dot-files in the inbox
+  (`.name.tmp`), which are messages still being written.
 - **`--box <name>` picks the registered box over a same-named folder.** In 1.8.0-rc2, run in a
   directory holding a folder with the box's name, `--box <name>` used the folder; the README says a
   box name is resolved first. It now resolves the name first, and `./<name>` still names the folder.

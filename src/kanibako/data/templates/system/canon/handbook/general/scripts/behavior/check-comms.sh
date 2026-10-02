@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # check-comms.sh — PostToolUse hook that monitors ~/channels/ for new messages.
 #
+# An alert is ONE JSON object on stdout that reaches both readers: `systemMessage` is
+# shown to the user, and `hookSpecificOutput.additionalContext` is what puts it in the
+# model's context — `systemMessage` alone never reaches the model.
+#
 # Install: run it IN PLACE from canon — do NOT copy it anywhere.  ~/.claude/hooks/
 # was retired 2026-08-08c and must never be pointed at again.
 #
@@ -23,18 +27,23 @@ MAILBOX_DIR="$COMMS_DIR/inbox"
 CHAT_DIR="$COMMS_DIR/chat"
 BROADCAST="$CHAT_DIR/broadcast.md"
 
-# This JSON on stdout is the hook's only voice to the user, which is why the failure
-# trap below speaks through it too rather than through an exit status.
+# This JSON on stdout is the hook's only voice to the user AND the model, which is
+# why the failure trap below speaks through it too rather than through an exit status.
+# The same message goes in both fields: one copy for each reader.
 emit() {
     if command -v jq &>/dev/null; then
         jq -n --arg msg "$1" \
-            '{"continue": true, "systemMessage": $msg}'
+            '{"continue": true, "systemMessage": $msg,
+              "hookSpecificOutput": {"hookEventName": "PostToolUse",
+                                     "additionalContext": $msg}}'
     else
         # Backslashes FIRST: reversing the two turns \" into \\" and ends the
         # JSON string early.  A trailing backslash is the reachable case.
         local escaped=${1//\\/\\\\}
         escaped=${escaped//\"/\\\"}
-        echo "{\"continue\": true, \"systemMessage\": \"${escaped}\"}"
+        echo "{\"continue\": true, \"systemMessage\": \"${escaped}\"," \
+            "\"hookSpecificOutput\": {\"hookEventName\": \"PostToolUse\"," \
+            "\"additionalContext\": \"${escaped}\"}}"
     fi
 }
 
@@ -77,8 +86,10 @@ if [[ -d "$MAILBOX_DIR" ]]; then
     # means "no new mail" only when the scan also SUCCEEDED; on a partial read it means
     # "could not look", and the two must never collapse into one answer.
     scan_rc=0
+    # Dot-files are skipped: a sender writes `.name.tmp` and renames it into place,
+    # so a dot-file is a message still being written, never one to announce.
     new_mail=$(find "$MAILBOX_DIR" -type f -newer "$MAIL_MARKER" ! -name '*.replied.*' \
-        2>"$SCAN_STDERR") || scan_rc=$?
+        ! -name '.*' 2>"$SCAN_STDERR") || scan_rc=$?
     if [[ -n "$new_mail" ]]; then
         count=$(echo "$new_mail" | wc -l)
         files=$(echo "$new_mail" | xargs -I{} basename {} | sort)
