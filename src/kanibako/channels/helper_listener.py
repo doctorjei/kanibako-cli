@@ -293,8 +293,8 @@ class HelperHub:
         # Use helper-init.sh as entrypoint wrapper — it registers with the
         # hub, sources broadcast scripts, then execs the agent command.
         init_script = f"{GUEST_HOME}/{HELPER_SCRIPTS_RELPATH}/{INIT_SCRIPT_NAME}"
-        # Fall back to the resolved box.shell (box.shell -> $KANIBAKO_SHELL ->
-        # image's recorded login shell -> sh) rather than a hardcoded /bin/bash,
+        # Fall back to the resolved box.shell (box.shell -> image's recorded
+        # login shell -> sh) rather than a hardcoded /bin/bash,
         # so a no-agent helper honors the same shell-resolution chain as the
         # main launch path.  A real-agent helper keeps winning on entrypoint /
         # default_entrypoint; box_shell only covers the no-agent case.  The

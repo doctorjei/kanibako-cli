@@ -8,7 +8,6 @@ it once doubled as was dropped.  Design notes:
 
 from __future__ import annotations
 
-import os
 import shlex
 import subprocess
 
@@ -131,17 +130,13 @@ def capture_image_shell(runtime, image: str, std) -> None:
 def resolve_box_shell(config, std, *, runtime=None, image=None) -> tuple[str, str]:
     """Resolve the launch shell for a no-agent box → ``(shell, source)``.
 
-    Precedence, first defined wins: ``box.shell`` → ``$KANIBAKO_SHELL`` → the
-    image's recorded login shell (stored, else lazily probed and persisted when
-    *runtime* is given) → ``sh``.
+    Precedence, first defined wins: ``box.shell`` → the image's recorded login
+    shell (stored, else lazily probed and persisted when *runtime* is given) →
+    ``sh``.
     """
     box_shell = getattr(config, "box_shell", "") or ""
     if box_shell:
         return box_shell, "box.shell"
-
-    env_shell = os.environ.get("KANIBAKO_SHELL")
-    if env_shell:
-        return env_shell, "$KANIBAKO_SHELL"
 
     if image is not None:
         if runtime is not None:
