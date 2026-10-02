@@ -14,7 +14,8 @@ _SUBCOMMANDS = {'start', 'stop', 'shell', 'code', 'ps', 'list', 'create', 'rm', 
 ```
 def build_parser() -> argparse.ArgumentParser
 def main(argv: list[str] | None=None) -> None
-def _normalize_command(effective: list[str]) -> list[str]
+def _option_nargs(parser: argparse.ArgumentParser) -> dict[str, object]
+def _normalize_command(effective: list[str], parser: argparse.ArgumentParser | None=None) -> list[str]
 def _ensure_initialized() -> None
 def _setup_nudge(args: argparse.Namespace) -> None
 ```

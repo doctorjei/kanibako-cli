@@ -1021,6 +1021,95 @@ class TestNormalizeCommand:
         assert args.command == "shell"
         assert args.agent == "goose"
 
+    def test_agent_value_shell_is_not_a_subcommand(self):
+        from kanibako.cli import _normalize_command
+        # `--agent shell`: "shell" is the VALUE of --agent, not the subcommand.
+        assert _normalize_command(["--agent", "shell", "--", "curl x"]) == [
+            "--agent", "shell", "--", "curl x",
+        ]
+
+    def test_agent_equals_form_value_is_not_a_subcommand(self):
+        from kanibako.cli import _normalize_command
+        assert _normalize_command(["--agent=shell", "--", "x"]) == [
+            "--agent=shell", "--", "x",
+        ]
+
+    def test_box_value_named_shell_before_start(self):
+        from kanibako.cli import _normalize_command
+        # A box literally named "shell": the later `start` is the subcommand.
+        argv = _normalize_command(["--box", "shell", "start"])
+        assert argv == ["start", "--box", "shell"]
+        args = build_parser().parse_args(argv)
+        assert args.command == "start"
+        assert args.box == "shell"
+
+    def test_scan_stops_at_double_dash(self):
+        from kanibako.cli import _normalize_command
+        # `ps` after `--` belongs to the agent; nothing is reordered.
+        assert _normalize_command(["--agent", "claude", "--", "ps", "aux"]) == [
+            "--agent", "claude", "--", "ps", "aux",
+        ]
+
+    def test_option_nargs_derived_from_parser(self):
+        from kanibako.cli import _option_nargs
+        nargs = _option_nargs(build_parser())
+        for opt in ("--agent", "--box", "-e", "--image", "--rig", "--entrypoint"):
+            assert nargs[opt] in (None, 1)
+        # Bare switches take no value.
+        for opt in ("-A", "-N", "--restart"):
+            assert nargs[opt] == 0
+
+
+class TestLeadingFlagDispatch:
+    """`main()` routes a leading-flag argv to the right command and agent args."""
+
+    def _dispatch(self, monkeypatch, argv):
+        captured = {}
+
+        def fake(args):
+            captured["args"] = args
+            return 0
+
+        monkeypatch.setattr("kanibako.commands.start.run_start", fake)
+        monkeypatch.setattr("kanibako.commands.start.run_shell", fake)
+        monkeypatch.setattr("kanibako.cli._setup_nudge", lambda args: None)
+        monkeypatch.setattr("kanibako.cli._ensure_initialized", lambda: None)
+        from kanibako.cli import main
+        with pytest.raises(SystemExit) as exc_info:
+            main(argv)
+        assert exc_info.value.code == 0
+        return captured["args"]
+
+    def test_agent_shell_with_command_dispatches_as_start(self, monkeypatch):
+        # `kanibako --agent shell -- "curl x"` == `kanibako start --agent shell -- "curl x"`.
+        args = self._dispatch(monkeypatch, ["--agent", "shell", "--", "curl x"])
+        assert args.command == "start"
+        assert args.agent == "shell"
+        assert args.agent_args == ["curl x"]
+        ref = self._dispatch(
+            monkeypatch, ["start", "--agent", "shell", "--", "curl x"],
+        )
+        assert (ref.command, ref.agent, ref.agent_args) == (
+            args.command, args.agent, args.agent_args,
+        )
+
+    def test_agent_equals_shell_dispatches_as_start(self, monkeypatch):
+        args = self._dispatch(monkeypatch, ["--agent=shell", "--", "x"])
+        assert args.command == "start"
+        assert args.agent == "shell"
+        assert args.agent_args == ["x"]
+
+    def test_post_dash_subcommand_name_is_agent_args(self, monkeypatch):
+        args = self._dispatch(monkeypatch, ["--agent", "claude", "--", "ps", "aux"])
+        assert args.command == "start"
+        assert args.agent == "claude"
+        assert args.agent_args == ["ps", "aux"]
+
+    def test_agent_goose_shell_still_dispatches_as_shell(self, monkeypatch):
+        args = self._dispatch(monkeypatch, ["--agent", "goose", "shell"])
+        assert args.command == "shell"
+        assert args.agent == "goose"
+
 
 class TestLazyInitExemptions:
     """Commands that skip lazy initialization."""
