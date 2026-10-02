@@ -10,6 +10,7 @@ See ``llm-docs/kanibako/settings/settings_resolve.py.md``.
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -292,13 +293,16 @@ def unpack_bind_entry(value: object) -> tuple[str, str | None]:
 
 
 def normalize_bind_dest(dest: str) -> str:
-    """Canonicalize a binding DESTINATION (leading ``~`` → GUEST_HOME, trailing ``/`` dropped).
+    """Canonicalize a binding DESTINATION (fully resolved, idempotent).
+
+    ``~`` is EXPANDED, ``.`` / ``..`` / repeated ``/`` are RESOLVED, and a trailing ``/``
+    is DROPPED. An ``@``-ref or ``$var`` dest is carried VERBATIM after ``~`` expansion
+    and trailing-``/`` stripping; only the ``normpath`` step is skipped for them.
 
     ⚑⚑ DESTINATIONS ONLY. NEVER CALL THIS ON A ``host_src`` — a dest is a GUEST path (fixed
     machinery); a source's ``~`` is the INVOKING USER's home and must stay UNRESOLVED.
     ⚑ IDEMPOTENT, and applied at every producer AND again on read, deliberately.
-    ⚑ Everything else — including an ``@``-ref or ``$var`` dest — is carried VERBATIM, and
-    nothing is REFUSED here; the RESOLVED-``box_dest`` collision check downstream stays.
+    ⚑ Nothing is REFUSED here; the RESOLVED-``box_dest`` collision check downstream stays.
     """
     out = dest
     if out == "~":
@@ -307,6 +311,12 @@ def normalize_bind_dest(dest: str) -> str:
         out = GUEST_HOME + out[1:]
     if len(out) > 1 and out.endswith("/"):
         out = out.rstrip("/") or "/"
+    if "@" in out or "$" in out:
+        return out
+    if posixpath.isabs(out):
+        out = posixpath.normpath(out)
+        if out.startswith("//"):
+            out = out[1:]
     return out
 
 
