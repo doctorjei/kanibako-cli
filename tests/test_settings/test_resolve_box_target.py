@@ -7,6 +7,7 @@ path, with box-NAME precedence in ambiguous cases (§Design 8).
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -185,6 +186,93 @@ class TestNamePrecedence:
         proj = resolve_box_target(std, config, box_name)
         assert proj.mode is BoxMode.standalone
         assert proj.metadata_path == sa_root.resolve()
+
+    def test_workset_member_name_wins_over_folder(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """A registered workset-member box name wins over a same-named folder in cwd.
+
+        Regression: bare-name resolution in resolve_any_project is skipped when
+        the token matches an existing path (e.g. ./myproj), but a registered box
+        name should still be found first (README: "box name (precedence) or path").
+        """
+        from kanibako.settings.paths import WorksetSpec, resolve_workset_project
+        from kanibako.project.workset import add_project, create_workset
+
+        ws_root = tmp_home / "worksets" / "cluster"
+        ws = create_workset("cluster", ws_root, std)
+        source = tmp_home / "cluster-src"
+        source.mkdir()
+        add_project(ws, "myproj", source)
+        resolve_workset_project(
+            WorksetSpec.from_workset(ws), "myproj", std, config,
+            initialize=True,
+        )
+
+        # A plain directory of the same name exists in cwd.
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        clash_dir = cwd / "myproj"
+        clash_dir.mkdir()
+        monkeypatch.chdir(cwd)
+
+        # The box NAME resolves to the registered workset member, NOT ./myproj.
+        proj = resolve_box_target(std, config, "myproj", initialize=False)
+        assert proj.mode is BoxMode.named
+        assert proj.name == "myproj"
+
+    def test_dot_from_member_workspace_is_the_path_not_a_name(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """``--box .`` inside a member workspace resolves to THAT member.
+
+        Pairs with test_workset_member_name_wins_over_folder: the name route
+        must not swallow path syntax.  ``.`` has no ``/``, so a bare "try
+        resolve_name first" would send it to resolve_name, whose first step
+        accepts any directory under the workspaces dir — and ``.`` from a
+        member workspace is one.  Mutation proof: dropping the ``.``/``..``
+        guard in resolve_box_target makes this raise WorksetError
+        ("Inside workset ... but not in a specific project workspace").
+        """
+        from kanibako.settings.paths import WorksetSpec, resolve_workset_project
+        from kanibako.project.workset import add_project, create_workset
+
+        ws_root = tmp_home / "worksets" / "cluster"
+        ws = create_workset("cluster", ws_root, std)
+        source = tmp_home / "cluster-src"
+        source.mkdir()
+        add_project(ws, "alpha", source)
+        resolve_workset_project(
+            WorksetSpec.from_workset(ws), "alpha", std, config,
+            initialize=True,
+        )
+        member_workspace = Path(ws.workspaces_dir) / "alpha"
+
+        # cwd IS the member workspace -- the `stop .` / `box info .` case.
+        monkeypatch.chdir(member_workspace)
+
+        proj = resolve_box_target(std, config, ".", initialize=False)
+        assert proj.mode is BoxMode.named
+        assert proj.name == "alpha"
+        assert proj.project_path == member_workspace.resolve()
+
+    def test_unregistered_bare_folder_name_still_resolves_as_a_path(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """A bare token that is NOT a registered box but IS a folder -> the folder.
+
+        The other half of the pairing: excluding ``.``/``..`` from the name
+        route must not send EVERY bare token down it — an unregistered name is
+        still a path, and the name route must fall through to path resolution.
+        """
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        folder = cwd / "justafolder"
+        folder.mkdir()
+        monkeypatch.chdir(cwd)
+
+        proj = resolve_box_target(std, config, "justafolder", initialize=False)
+        assert proj.project_path == folder.resolve()
 
 
 # ---------------------------------------------------------------------------
