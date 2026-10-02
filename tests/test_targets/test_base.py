@@ -654,9 +654,9 @@ class TestHasPlugin:
         supplies one moves the answer — it does not get a veto. The guarantee
         is not that the predicate defends itself; it is that the shape is
         enforced where registration happens (``targets._register``, covered by
-        ``TestAPluginMustHaveThePluginShape``). Pin both halves: the answer
-        follows the override, and the override still cannot be REGISTERED,
-        because the other half of the plugin shape is missing.
+        ``TestAPluginMustHaveThePluginShape``). This pins that the answer
+        follows the override, and that the override leaves ``default_entrypoint``
+        ``None`` — the half registration refuses on.
         """
         from kanibako.targets.shell import ShellTarget
 

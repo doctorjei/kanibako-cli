@@ -77,16 +77,9 @@ def _register(
     tiers the precedence rule above is a documented answer, not an accident, and it is
     left alone: a file-drop plugin still replaces an installed one.
 
-    ⚑ THE PLUGIN-SHAPE GATE, right below the reservation and ABOVE the case-collision
-    check: a plugin that returns no ``descriptor`` (or no ``default_entrypoint``) is
-    refused, because the plugin system is descriptor-only — the descriptor supplies an
-    agent's default settings, credentials and interactive mode (keyspec §2d), an
-    entrypoint is the program it runs, and neither half alone makes a pseudo-agent a
-    true agent.  Refusing it HERE is what makes ``descriptor is None`` ⇔
-    ``default_entrypoint is None`` true of every REGISTERED target; that invariant and
-    the one predicate it serves are stated in ``targets.base.has_plugin``'s docstring.
-    Ordering is deliberate: a rogue RESERVED name is reported as reserved even if its
-    shape is also wrong, which is the more actionable of the two.
+    ⚑ THE PLUGIN-SHAPE GATE refuses a plugin with no ``descriptor`` or no
+    ``default_entrypoint`` (the invariant this serves: ``targets.base.has_plugin``).  It
+    runs after the reservation check, so a reserved name is reported as reserved.
 
     ⚑ SKIP-AND-WARN, NEVER RAISE, for the reason the ``ep.load()`` guard in
     :func:`discover_targets` states at length: discovery runs on every command, so one
@@ -109,9 +102,7 @@ def _register(
                 file=sys.stderr,
             )
         return
-    # THE PLUGIN-SHAPE GATE (see the docstring): a plugin is a descriptor, and an
-    # interactive mode is a program.  Probe BOTH inside one ``try`` so a plugin that
-    # raises on either read is reported once, as one refusal.
+    # One ``try`` for both reads, so a plugin that raises on either is one refusal.
     try:
         probe = cls()
         missing = [

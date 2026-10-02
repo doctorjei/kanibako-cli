@@ -697,21 +697,16 @@ CANON_ACTIVE_AGENT_TOKEN = "<active>"
 
 
 def _canon_optional_rows() -> list[Any]:
-    """The ``canon:`` rows carrying ``optional: true`` — ONE filter, one view.
-
-    ⚑ The KEY view that sat beside this one is GONE: the emitter's policy is stated
-    in DESTINATIONS, so there is exactly one consumer left.
-    """
+    """The ``canon:`` rows carrying ``optional: true``."""
     return [e for e in _load_doc().get("canon", []) if e.get("optional")]
 
 
 def canon_optional_bind_dests() -> frozenset[str]:
-    """The SKIP-IF-ABSENT canon binds as normalized box DESTS — the EMITTER's view."""
+    """The SKIP-IF-ABSENT canon binds as normalized box DESTS."""
     from kanibako.settings.settings_resolve import normalize_bind_dest
 
-    # ⚑ The DEST basis, not the key basis, and normalized with the SAME function that keys the
-    # arm — the drift ``critical_keys`` already paid for, where a key-spelled set matched
-    # NOTHING and silently degraded every entry to the default policy.
+    # ⚑ Normalized with the SAME function that keys the arm: a set spelled any other way
+    # matches NOTHING and silently degrades every entry to the default policy.
     return frozenset(
         normalize_bind_dest(str(entry["box_dest"])) for entry in _canon_optional_rows()
     )

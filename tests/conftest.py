@@ -29,7 +29,7 @@ from kanibako.settings.config import KanibakoConfig, load_config, write_global_c
 from kanibako.commands.start import (
     _resolve_launch_snapshot as _REAL_RESOLVE_LAUNCH_SNAPSHOT,
 )
-from tests._user_dirs import USER_DIR_VARS, user_dir_tree
+from tests._user_dirs import user_dir_tree
 from tests.support.filenames import CONFIG_FILENAME
 
 
@@ -1120,15 +1120,6 @@ def _scrub_delivered_host_signals(monkeypatch):
     yield
 
 
-#: The user-dir variables ``_isolate_user_dirs`` redirects. ⚑ THE LIST IS CARRIED BY
-#: ``tests._user_dirs``, not defined here: the census's configure-time window reads the
-#: same tuple, and a literal pasted into both callers is the pair that drifts. This
-#: name is that carrier's, so ``is`` comparisons between the two still hold.
-#: ``XDG_RUNTIME_DIR`` is absent: it holds no store, and its unset/invalid fallback is
-#: itself under test.
-_USER_DIR_VARS = USER_DIR_VARS
-
-
 @pytest.fixture(autouse=True)
 def _isolate_user_dirs(request, tmp_path_factory, monkeypatch):
     """Point ``HOME`` and every ``XDG_*`` base dir at a fresh tree for EVERY test.
@@ -1145,16 +1136,7 @@ def _isolate_user_dirs(request, tmp_path_factory, monkeypatch):
     hides the session's ``pulled_image`` from the test that asked for it. They isolate
     kanibako's own dirs with ``integration_home`` instead.
 
-    ⚑⚑ NOT THE CENSUS'S CONFIGURE-TIME WINDOW, AND NOT REDUNDANT WITH IT.  Two
-    redirections, two jobs, one variable list. THIS one is PER-TEST FRESHNESS: a new
-    tree for each test, undone by ``monkeypatch``. The other is
-    ``tests._keystore_census``'s CONFIGURE-TIME WINDOW around its one priming call,
-    which this fixture structurally cannot serve — ``pytest_configure`` runs before
-    ANY fixture, so by the time it fires nothing here has redirected yet, and the
-    plugin-discovery memo it primes is fixed for the whole process. Neither subsumes
-    the other, so neither may be merged into the other or deleted as its duplicate;
-    extending the census's window to the session would also break the tests above.
-    What they share is ``tests._user_dirs.USER_DIR_VARS`` and nothing else.
+    ⚑ Not redundant with the census's configure-time window; see ``tests._user_dirs``.
     """
     if request.node.get_closest_marker("integration") or request.node.get_closest_marker("e2e"):
         yield

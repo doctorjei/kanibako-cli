@@ -22,10 +22,8 @@ contribute vocabulary to the census and mask the leak it exists to reveal.
 ⚑⚑ THE SENTINEL CREATES ITS OWN PARENT, and that is load-bearing rather than tidy.
 ``_scan_directory_plugins`` wraps every ``exec_module`` in ``except Exception:
 continue`` — deliberately, so one broken plugin cannot take discovery down. A
-sentinel that wrote into a directory that did not yet exist therefore raised
-``FileNotFoundError``, was swallowed, and the test went GREEN having proved nothing:
-the first version of this file passed against the defect. A probe that can fail
-quietly is worse than no probe, because it looks like a fix.
+sentinel that wrote into a directory that did not yet exist would raise
+``FileNotFoundError``, be swallowed, and leave the test GREEN having proved nothing.
 """
 
 from __future__ import annotations
@@ -37,7 +35,7 @@ from pathlib import Path
 
 from kanibako.settings.bootstrap import CONFIG_FILE, KANIBAKO_PATH
 
-from tests._user_dirs import HOME_VAR, USER_DIR_VARS, user_dir_env_vars, user_dir_tree
+from tests._user_dirs import HOME_VAR, user_dir_env_vars, user_dir_tree
 
 #: One small, fast, already-green file for the child to collect and run. The child's
 #: own work is incidental — the assertion is about what its CONFIGURE did.
@@ -270,10 +268,7 @@ def test_throwaway_user_dirs_restores_the_environment_on_the_exception_path():
 
 
 def test_throwaway_user_dirs_redirects_exactly_the_shared_variable_list():
-  """⚑ ONE CARRIER. Two isolations that do DIFFERENT jobs may not each carry their own
-  copy of the variable list — the copy that drifts is the defect this module exists to
-  prevent. Redirecting the XDG bases without ``HOME`` would still reach the host's
-  store through the ``~/.local/share`` default for ``config.data``."""
+  """The window moves exactly the shared list of ``tests._user_dirs``, ``HOME`` included."""
   from tests._user_dirs import throwaway_user_dirs
 
   env: dict[str, str] = {name: f"/host/{name}" for name in user_dir_env_vars()}
@@ -285,13 +280,3 @@ def test_throwaway_user_dirs_redirects_exactly_the_shared_variable_list():
       assert Path(env[var]) == user_dir_tree(root)[var]
 
   assert env == before
-
-
-def test_isolate_user_dirs_and_the_census_read_one_variable_list():
-  """⚑ THE CONFTEST SIDE OF THE SAME RULE, pinned where the fork would show up."""
-  from tests import conftest as suite_conftest
-
-  assert suite_conftest._USER_DIR_VARS is USER_DIR_VARS, (
-    "tests/conftest.py's _USER_DIR_VARS is no longer the same object as "
-    "tests._user_dirs.USER_DIR_VARS: the two isolations have forked"
-  )

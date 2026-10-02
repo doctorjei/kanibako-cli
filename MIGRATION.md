@@ -5843,8 +5843,10 @@ empty overlay is still fine.
 ### 2.97 An entry at the destination of one of kanibako's internal binds is refused
 
 **Read this if a command stops with `… is at the destination of an internal kanibako bind (spec
-§2c), not repointable; remove the entry.` or `… would remove the internal kanibako bind at <dest>
-(spec §2c), which is not suppressible; mask a narrower path.`**
+§2c), not repointable; remove the entry.`, `… would remove the internal kanibako bind at <dest>
+(spec §2c), which is not suppressible; mask a narrower path.`, or — from `kanibako workset share
+add` — `… cannot be added to <file>: its destination is that of an internal kanibako bind (spec
+§2c), which is not repointable.`**
 
 **What changed.** kanibako delivers some binds for itself: the in-box `kanibako` command
 (`/opt/kanibako/kanibako` and `~/.local/bin/kanibako`), the secrets profile snippet
@@ -5856,16 +5858,22 @@ sat under `~/canon/bible/`, not `~/canon/charter/`), and a `box.bindings.ro` ent
 `/opt/kanibako/kanibako` replaced kanibako's own bind — the box ran whatever you mounted as its
 `kanibako` command. Such an entry is now refused, in any of `bindings.ro`, `bindings.rw`,
 `masks`, `caches`, `common`, `seeded` and `synced`, whether its value is a source or `null`. The
-message names each entry and the file that holds it. A `box.masks` entry on a directory ABOVE one
+message names each entry and the file that holds it. The `workset share add` message below names
+the entry you asked to write instead, and says nothing was written. A `box.masks` entry on a directory ABOVE one
 of these destinations (for example `/opt/kanibako` or `~/canon`) hid kanibako's bind in v1.8.0-rc2
 with no message. A mask above one of these destinations, at any scope, is now refused, naming the
 bind it would remove. A `null` mask entry there (an
 unmask) is still accepted, and so is a bind or copy entry at a parent directory: kanibako's bind is
 mounted on top of it. `kanibako workset share add` at one of these destinations, which answered
-`Added` in v1.8.0-rc2, now stops with the first message above and writes nothing.
+`Added` in v1.8.0-rc2, now stops and writes nothing. It refuses the same set, by the same rule, but
+in its own words: the first message above tells you to remove an entry from a file, and `share add`
+has not written the entry, in a file that may not exist yet. Its message says nothing was written and asks you to
+choose another destination.
 
 **What to do.** Delete the named entry. To mount something of your own, give it a destination of
-its own. To hide a directory that contains one of these binds, mask narrower paths beside it.
+its own. To hide a directory that contains one of these binds, mask narrower paths beside it. If
+the refusal came from `kanibako workset share add`, nothing was written and there is no entry to
+delete — run it again with another destination.
 
 ### 2.98 A `set` refuses to write under a section the file holds as a value instead of replacing it
 
@@ -5947,6 +5955,10 @@ for one box. Give a program path with no arguments (see *2.99 A plain-shell box 
 ---
 
 ## 3. For plugin authors
+
+A plugin must return a `PluginDescriptor` from `descriptor` and a program from
+`default_entrypoint`. A plugin that returns `None` for either is skipped at discovery with a
+warning; implement both.
 
 ⚑ **THE PERSONA SURFACES ON `Target` CHANGED SHAPE in 1.8.0 — a plugin built against 1.7.x needs
 updating, and one of them fails at IMPORT time:**

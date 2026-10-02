@@ -980,9 +980,6 @@ def run_share_add(args: argparse.Namespace) -> int:
     # never is (its ``~`` is the invoking user's home). Do not make these symmetric.
     guest_dest = normalize_bind_dest(guest_dest)
     # ⚑ The resolve's own §2c refusal, run BEFORE the write: never store what it refuses.
-    # ``when="write"`` is what makes the MESSAGE about the write — the same carrier, the
-    # same judgment, but "remove the entry" would name an entry this verb has not written
-    # yet, in a file that may not exist, so the verb says nothing was written instead.
     refusals = internal_bind_refusals(
         f"workset.bindings.{args.mode}", {guest_dest: [host_src]}, where=str(ws_config),
         when="write",

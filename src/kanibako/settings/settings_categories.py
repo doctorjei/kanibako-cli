@@ -252,12 +252,8 @@ class CategoryEntry:
 
     *is_credential* is what :func:`gate_credential_delivery` (D-M4) keys off.
 
-    ⚑⚑ THERE IS NO ``optional`` FIELD, AND ITS ABSENCE IS THE DESIGN: a mount whose
-    source may legitimately not exist (spec §2c "SKIP-IF-ABSENT") is decided by the
-    DESTINATION policy at the emitter, over the ``canon:`` rows — ONE rule, not a
-    second carrier riding on the entry.  🛑 Do not reintroduce it as a field or as a
-    snapshot parameter: this module is PURE, so a per-key flag here could only ever be
-    a declaration echo of a decision that already has a home.
+    Skip-if-absent (spec §2c) is not an entry field: the emitter decides it by
+    DESTINATION over the ``canon:`` rows.
 
     ⚑⚑ THERE IS NO ``dest_space`` FIELD, AND ITS ABSENCE IS THE DESIGN: ``box_dest``
     is a GUEST path for EVERY category, spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.
