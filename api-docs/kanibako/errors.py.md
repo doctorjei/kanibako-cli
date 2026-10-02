@@ -21,6 +21,8 @@ class ProjectError(KanibakoError):
 
 class ContainerError(KanibakoError):
 
+class PackagingError(KanibakoError):
+
 class ArchiveError(KanibakoError):
 
 class GitError(KanibakoError):

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
+from kanibako.errors import PackagingError
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.config_io import parse_packaged
 
@@ -593,12 +594,18 @@ def rom_default_categories() -> BindArmTable:
     ⚑⚑ SIBLINGS, NOT A WHOLE-DIR BOOK: every entry lands on a mountpoint
     :func:`materialize_canon_skeleton` already made, so no mountpoint lives inside a bind SOURCE.
     ⚑ ``charter/agent/`` is deliberately NOT required and must NOT ship.
+
+    ⚑ RAISES :class:`PackagingError` when the packaged canon is MISSING, EMPTY, or INCOMPLETE:
+    each is a PACKAGING defect, and a box whose canon cannot be fully bound is refused rather
+    than launched.
     """
     from kanibako.launch import templates
 
     rom_root = Path(str(packaged_data_dir(*ROM_ROOT_PARTS)))
     if not rom_root.is_dir():
-        return {}
+        raise PackagingError(
+            f"kanibako's packaged canon root is missing: {rom_root}"
+        )
 
     rom_files = templates.walk_shipped_files(rom_root)
     rom_rels = {rel for rel, _ in rom_files}
@@ -607,17 +614,19 @@ def rom_default_categories() -> BindArmTable:
     # list — that is what catches the over-broad-filter / empty-glob / broken-walk class.
     guide_shipped = (rom_root / ROM_GUIDE_REL).is_file()
     if guide_shipped and ROM_GUIDE_REL not in rom_rels:
-        raise RuntimeError(
+        raise PackagingError(
             "rom shipped-file walk is missing the load-bearing box guide "
             f"{ROM_GUIDE_REL!r} (the guide file ships under rom root {rom_root} but "
             f"the walk produced {sorted(rom_rels)}); refusing to launch a box "
             "without the guide."
         )
 
-    # A genuinely empty rom root is a no-rom install — emit nothing.  Reached only when the
-    # guide is NOT on disk (guard (a) above already raised if it was).
+    # ⚑ An EMPTY rom root is a BROKEN install, not a supported state — it is refused, never
+    # tolerated as a no-canon box.
     if not rom_files:
-        return {}
+        raise PackagingError(
+            f"kanibako's packaged canon root is empty: {rom_root}"
+        )
 
     binds = _rom_sibling_binds()
 
@@ -631,7 +640,7 @@ def rom_default_categories() -> BindArmTable:
     present.append((ROM_GUIDE_REL, guide_shipped))
     missing = [rel for rel, ok in present if not ok]
     if missing:
-        raise RuntimeError(
+        raise PackagingError(
             f"the packaged canon under rom root {rom_root} is incomplete — missing "
             f"{sorted(set(missing))}. The rom root is populated, so this is a "
             "PACKAGING defect, not a no-rom install; refusing to launch a box with a "

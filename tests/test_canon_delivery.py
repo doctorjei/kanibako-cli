@@ -34,6 +34,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.errors import PackagingError
 from kanibako.settings.agent_select import AgentSelection
 from kanibako.settings import core_defaults
 from kanibako.launch import templates
@@ -321,14 +322,14 @@ class TestFailClosed:
             return [("other.md", Path("/pkg/rom/other.md"))]
 
         monkeypatch.setattr(templates, "walk_shipped_files", _no_guide)
-        with pytest.raises(RuntimeError, match="missing the load-bearing box guide"):
+        with pytest.raises(PackagingError, match="missing the load-bearing box guide"):
             core_defaults.rom_default_categories()
 
     def test_raises_when_walk_returns_empty(self, monkeypatch):
         """The empty-glob class: the guide is physically on disk but the walk yields
         ZERO files — RAISE, never mistake an empty enumeration for a no-rom install."""
         monkeypatch.setattr(templates, "walk_shipped_files", lambda root: [])
-        with pytest.raises(RuntimeError, match="missing the load-bearing box guide"):
+        with pytest.raises(PackagingError, match="missing the load-bearing box guide"):
             core_defaults.rom_default_categories()
 
     def test_fake_rom_fixture_is_itself_valid(self, fake_rom):
@@ -345,7 +346,7 @@ class TestFailClosed:
 
         target = fake_rom / rel
         shutil.rmtree(target) if target.is_dir() else target.unlink()
-        with pytest.raises(RuntimeError, match="canon .* is incomplete"):
+        with pytest.raises(PackagingError, match="canon .* is incomplete"):
             core_defaults.rom_default_categories()
 
     def test_packaged_agent_chapter_is_NOT_required(self, fake_rom):
@@ -356,14 +357,29 @@ class TestFailClosed:
         assert not (fake_rom / ROM_CHARTER_REL / CHARTER_AGENT_CHAPTER).exists()
         assert set(core_defaults.rom_default_categories()[_ARM]) == set(_CORE_DESTS)
 
-    def test_absent_rom_root_is_a_no_rom_install(self, tmp_path, monkeypatch):
+    def test_absent_rom_root_refuses_naming_the_packaged_path(self, tmp_path, monkeypatch):
         real = core_defaults.packaged_data_dir
         monkeypatch.setattr(
             core_defaults, "packaged_data_dir",
             lambda *p: (tmp_path / "nope") if tuple(p) == tuple(ROM_ROOT_PARTS)
             else real(*p),
         )
-        assert core_defaults.rom_default_categories() == {}
+        with pytest.raises(PackagingError, match=str(tmp_path / "nope")):
+            core_defaults.rom_default_categories()
+
+    def test_an_empty_rom_root_refuses(self, tmp_path, monkeypatch):
+        empty_rom = tmp_path / "empty_rom"
+        empty_rom.mkdir()
+        real = core_defaults.packaged_data_dir
+
+        def _fake(*p):
+            if tuple(p) == tuple(ROM_ROOT_PARTS):
+                return empty_rom
+            return real(*p)
+
+        monkeypatch.setattr(core_defaults, "packaged_data_dir", _fake)
+        with pytest.raises(PackagingError, match="empty"):
+            core_defaults.rom_default_categories()
 
 
 # ===========================================================================
