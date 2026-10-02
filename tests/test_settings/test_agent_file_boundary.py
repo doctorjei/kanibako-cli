@@ -133,18 +133,23 @@ class TestRouteCarriesNoAddress:
     """(c) A per-node route is a SLOT: it cannot carry a file ADDRESS at all."""
 
     _CASES = (
-        ("_persona_agent_target", "agent.claude.model"),
-        ("_node_bind_target", "agent.claude.bindings.ro.share"),
-        ("_node_secret_target", "agent.claude.secret_path.TOK"),
+        ("_persona_agent_target", "agent.claude.model", "set"),
+        ("_node_bind_target", "agent.claude.bindings.ro.share", None),
+        ("_node_secret_target", "agent.claude.secret_path.TOK", None),
     )
 
-    @pytest.mark.parametrize("fn_name,key", _CASES, ids=[c[0] for c in _CASES])
+    @pytest.mark.parametrize("fn_name,key,verb", _CASES, ids=[c[0] for c in _CASES])
     def test_returns_a_slot_not_a_tuple(
-        self, fn_name: str, key: str, tmp_path: Path
+        self, fn_name: str, key: str, verb: str | None, tmp_path: Path
     ) -> None:
         from kanibako.settings import config_dest
 
-        route = getattr(config_dest, fn_name)(key, tmp_path)
+        target = getattr(config_dest, fn_name)
+        # ⚑ THE VERB IS PER-CASE: `_persona_agent_target` takes one, keyword-only and with
+        # NO DEFAULT, so omitting it is a loud TypeError rather than a silent "set".  The
+        # other two helpers have no `verb` parameter at all, so their row carries None —
+        # passing one there would raise instead of proving the slot-not-tuple pin.
+        route = target(key, tmp_path) if verb is None else target(key, tmp_path, verb=verb)
         assert isinstance(route, AgentFileSlot), (
             f"{fn_name} returned {type(route).__name__}; a per-node route is an "
             f"AgentFileSlot so no caller can hold a `self`-rooted address."
