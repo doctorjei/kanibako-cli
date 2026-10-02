@@ -86,3 +86,30 @@ class TestGetLogger:
         setup_logging(verbose=False)
         child = get_logger("test")
         assert child.getEffectiveLevel() == logging.WARNING
+
+    def test_module_name_is_not_prefixed_twice(self):
+        logger = get_logger("kanibako.commands.start")
+        assert logger.name == "kanibako.commands.start"
+
+    def test_package_root_name_is_not_prefixed(self):
+        logger = get_logger("kanibako")
+        assert logger.name == "kanibako"
+
+    def test_prefix_lookalike_without_a_dot_is_still_prefixed(self):
+        """The boundary is the dot, not the letters ``kanibako``.
+
+        A bare ``startswith("kanibako")`` would pass ``kanibakox`` through unchanged and
+        hand it a logger outside the ``kanibako`` tree ``setup_logging`` configures.
+        """
+        logger = get_logger("kanibakox")
+        assert logger.name == "kanibako.kanibakox"
+
+    def test_short_name_is_idempotent(self):
+        first = get_logger("foo")
+        assert get_logger(first.name) is first
+
+    def test_module_name_is_idempotent(self):
+        """``f(f(x)) == f(x)`` in logger form: re-prefixing must not deepen the name."""
+        first = get_logger("kanibako.commands.start")
+        assert first.name == "kanibako.commands.start"
+        assert get_logger(first.name) is first

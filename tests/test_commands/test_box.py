@@ -2826,10 +2826,7 @@ class TestCheckPersonaStoreForCreate:
         broken = CodexTarget()
         broken.verify_persona = _boom  # type: ignore[method-assign]
 
-        # ⚑ ``log.get_logger`` PREFIXES its argument, so ``get_logger(__name__)``
-        # here is the logger ``kanibako.kanibako.commands.box._parser``.  Level is
-        # set on the ``kanibako`` parent, which is the one ``setup_logging``
-        # configures and the one every call site inherits from.
+        # Level is set on ``kanibako``, the parent ``setup_logging`` configures.
         self._store(tmp_home)
         with caplog.at_level("DEBUG", logger="kanibako"):
             err = self._call(tmp_home, "navigator+codex", monkeypatch, target=broken)
