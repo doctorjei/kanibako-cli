@@ -73,5 +73,7 @@ class KanibakoConfig:
 
 @dataclass(frozen=True)
 class BootstrapConfig:
-    config_paths: dict[str, str] = field(default_factory=dict)
+    config_paths: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None
 ```
