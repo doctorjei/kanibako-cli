@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -508,6 +509,227 @@ class TestResolveXdg:
         first = resolve_xdg("XDG_RUNTIME_DIR", None)
         second = resolve_xdg("XDG_RUNTIME_DIR", None)
         assert first == second
+
+
+class TestRuntimeDirFallbackReusesOneStableDir:
+    """The last resort reuses ONE stable per-uid temp dir instead of minting a new
+    ``mkdtemp`` dir on every process and never removing it.
+
+    ⚑ Every case here is hermetic in the same two moves, because the branch under test
+    is otherwise taken only on a host with no usable ``/run/user/<uid>``:
+    :attr:`tempfile.tempdir` is repointed at a fresh ``tmp_path`` dir (the real ``/tmp``
+    is never touched), and :data:`RUN_USER_UID_PATH` is repointed at a path that does
+    not exist under ``tmp_path`` so the ``/run/user`` arm cannot win on a dev box.
+    Clearing :data:`_runtime_fallback_cache` is what stands in for a new process.
+
+    ⚑ The hostile cases all assert THREE things, not two: the result is not the planted
+    path, it IS a fresh 0700 dir we own, and the planted object is UNCHANGED — not
+    created, not chmodded, not written through. The third is the security property; the
+    first two alone would also pass an implementation that fixed itself by damaging
+    what it found.
+    """
+
+    def _force_the_temp_branch(self, tmp_path, monkeypatch) -> Path:
+        """Unset ``XDG_RUNTIME_DIR`` and pin BOTH the temp root and the ``/run/user``
+        base, then clear the process cache. Returns the pinned temp root."""
+        import kanibako.settings.paths as paths_mod
+
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        temp_root = tmp_path / "temp"
+        temp_root.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
+        monkeypatch.setattr(
+            paths_mod, "RUN_USER_UID_PATH", str(tmp_path / "absent-run-user" / "%d"),
+        )
+        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+        return temp_root
+
+    def _assert_fresh_private_own_dir(self, result: Path, temp_root: Path) -> None:
+        """A directory we own, 0700, directly under the pinned temp root."""
+        assert result.parent == temp_root
+        assert result.is_dir()
+        assert not result.is_symlink()
+        st = result.stat()
+        assert st.st_uid == os.getuid()
+        assert (st.st_mode & 0o777) == 0o700
+
+    def test_stable_across_processes(self, tmp_path, monkeypatch):
+        """THE REPAIR.  Clearing the cache simulates a new process: the second resolve
+        must return the FIRST one's path — the per-uid stable name — and the temp root
+        must hold exactly one ``kanibako-runtime-*`` entry.  On the base the second call
+        minted a second dir, so this is the case that reads red there."""
+        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+        stable_name = f"kanibako-runtime-{os.getuid()}"
+
+        first = resolve_xdg("XDG_RUNTIME_DIR", None)
+        # A new process: the process-lifetime cache is empty again.
+        import kanibako.settings.paths as paths_mod
+        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+        second = resolve_xdg("XDG_RUNTIME_DIR", None)
+
+        assert first == second
+        assert first == temp_root / stable_name
+        # Exactly one entry — the whole defect was "one more dir per run".
+        assert sorted(p.name for p in temp_root.iterdir()) == [stable_name]
+
+    def test_reused_dir_stays_0700_on_the_second_process(self, tmp_path, monkeypatch):
+        """The reuse must not be a license to relax the mode: the second process adopts
+        the existing dir and leaves it 0700."""
+        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+        import kanibako.settings.paths as paths_mod
+
+        first = resolve_xdg("XDG_RUNTIME_DIR", None)
+        assert (first.stat().st_mode & 0o777) == 0o700
+        monkeypatch.setattr(paths_mod, "_runtime_fallback_cache", {})
+        second = resolve_xdg("XDG_RUNTIME_DIR", None)
+        assert second == first
+        self._assert_fresh_private_own_dir(second, temp_root)
+
+    def test_refuses_a_symlinked_stable_path(self, tmp_path, monkeypatch):
+        """A symlink planted at the stable name is refused, and the link is left alone:
+        its target is neither created, chmodded, nor written through, and the link still
+        points where it did."""
+        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+        stable = temp_root / f"kanibako-runtime-{os.getuid()}"
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir(mode=0o700)
+        target_mode_before = elsewhere.stat().st_mode
+        stable.symlink_to(elsewhere)
+
+        result = resolve_xdg("XDG_RUNTIME_DIR", None)
+
+        # 1. Not the planted path, and not anything reached THROUGH it.
+        assert result != stable
+        assert result != elsewhere
+        # 2. A fresh 0700 dir we own.
+        self._assert_fresh_private_own_dir(result, temp_root)
+        assert result != stable
+        # 3. The planted object is unchanged.
+        assert stable.is_symlink()
+        assert os.readlink(stable) == str(elsewhere)
+        assert elsewhere.stat().st_mode == target_mode_before
+        assert list(elsewhere.iterdir()) == []
+
+    def test_refuses_a_group_readable_stable_dir(self, tmp_path, monkeypatch):
+        """A 0755 dir at the stable name is refused — and, the part a fix could get
+        wrong in the other direction, it is NOT chmodded on the way past. We only chmod
+        a directory we just created."""
+        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+        stable = temp_root / f"kanibako-runtime-{os.getuid()}"
+        stable.mkdir(mode=0o755)
+        mode_before = stable.stat().st_mode
+
+        result = resolve_xdg("XDG_RUNTIME_DIR", None)
+
+        # 1. Not the planted path.
+        assert result != stable
+        # 2. A fresh 0700 dir we own.
+        self._assert_fresh_private_own_dir(result, temp_root)
+        # 3. The planted dir is unchanged — still 0755, byte-for-byte the same mode.
+        assert stable.is_dir()
+        assert not stable.is_symlink()
+        assert stable.stat().st_mode == mode_before
+        assert (stable.stat().st_mode & 0o777) == 0o755
+
+    def test_refuses_a_regular_file_at_the_stable_path(self, tmp_path, monkeypatch):
+        """A regular file at the stable name is refused, and is neither truncated nor
+        written through — the ``mkdir`` that hits ENOTDIR must not reach past it."""
+        temp_root = self._force_the_temp_branch(tmp_path, monkeypatch)
+        stable = temp_root / f"kanibako-runtime-{os.getuid()}"
+        stable.write_text("planted by someone else")
+        mode_before = stable.stat().st_mode
+
+        result = resolve_xdg("XDG_RUNTIME_DIR", None)
+
+        # 1. Not the planted path.
+        assert result != stable
+        # 2. A fresh 0700 dir we own.
+        self._assert_fresh_private_own_dir(result, temp_root)
+        # 3. The planted file is unchanged.
+        assert stable.is_file()
+        assert not stable.is_symlink()
+        assert stable.read_text() == "planted by someone else"
+        assert stable.stat().st_mode == mode_before
+
+    def test_stable_prefix_is_spelled_once(self):
+        """P10: the ``kanibako-runtime-`` prefix lives in exactly one module constant,
+        shared by the reused name and the ``mkdtemp`` arm."""
+        import kanibako.settings.paths as paths_mod
+
+        assert paths_mod._RUNTIME_TMP_PREFIX == "kanibako-runtime-"
+        source = Path(paths_mod.__file__).read_text()
+        # One declaration, and no second literal anywhere in the module.
+        assert source.count('"kanibako-runtime-"') == 1
+        assert 'mkdtemp(prefix="kanibako-runtime-")' not in source
+
+
+class TestRuntimeBaseUsableTrustSeam:
+    """⚑ A DIFFERENT-OWNER DIRECTORY CANNOT BE PLANTED WITHOUT ROOT, so the owner
+    clause has no filesystem case here and is covered through the helper instead:
+    the directory really is ours and ``os.getuid`` is made to report another uid,
+    which is the shape of a root-planted or otherwise-foreign directory. Without
+    root this is the only honest way to reach that branch.
+
+    These are guards on the one check both arms share, plus the defaults the
+    ``/run/user`` call site depends on.
+    """
+
+    def test_rejects_a_foreign_owner(self, tmp_path, monkeypatch):
+        import kanibako.settings.paths as paths_mod
+
+        not_ours = tmp_path / "not-ours"
+        not_ours.mkdir(mode=0o700)
+        real_uid = not_ours.stat().st_uid
+
+        monkeypatch.setattr(os, "getuid", lambda: real_uid + 1)
+        assert paths_mod._runtime_base_usable(not_ours) is False
+        assert paths_mod._runtime_base_usable(
+            not_ours, follow_symlinks=False, require_private=True,
+        ) is False
+
+        # Anti-vacuity: the same directory, reported as ours, is accepted — so the two
+        # assertions above are about the OWNER and not about a broken path or a mode.
+        monkeypatch.setattr(os, "getuid", lambda: real_uid)
+        assert paths_mod._runtime_base_usable(
+            not_ours, follow_symlinks=False, require_private=True,
+        ) is True
+
+    def test_defaults_leave_the_run_user_call_unchanged(self, tmp_path):
+        """The ``/run/user`` call site passes NEITHER keyword, so it must keep both of
+        its old answers: ``stat`` follows a symlink, and no mode test applies. A silent
+        tightening there would be a regression on that path, not a cleanup."""
+        import kanibako.settings.paths as paths_mod
+
+        target = tmp_path / "target"
+        target.mkdir(mode=0o700)
+        link = tmp_path / "link"
+        link.symlink_to(target)
+        # Default: the link reads as its target, and a 0755 dir is acceptable.
+        assert paths_mod._runtime_base_usable(link) is True
+        open_dir = tmp_path / "open"
+        open_dir.mkdir(mode=0o755)
+        assert paths_mod._runtime_base_usable(open_dir) is True
+
+        # The new branch's spelling refuses both — which is why it passes the keywords.
+        assert paths_mod._runtime_base_usable(
+            link, follow_symlinks=False, require_private=True,
+        ) is False
+        assert paths_mod._runtime_base_usable(
+            open_dir, follow_symlinks=False, require_private=True,
+        ) is False
+
+    def test_missing_path_and_regular_file_are_not_usable(self, tmp_path):
+        """The pre-existing answers, pinned: an absent path and a regular file are both
+        refused, and neither raises."""
+        import kanibako.settings.paths as paths_mod
+
+        assert paths_mod._runtime_base_usable(tmp_path / "absent") is False
+        regular = tmp_path / "file"
+        regular.write_text("x")
+        assert paths_mod._runtime_base_usable(regular) is False
+        assert paths_mod._runtime_base_usable(
+            regular, follow_symlinks=False, require_private=True,
+        ) is False
 
 
 class TestHostXdgMap:
