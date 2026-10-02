@@ -342,10 +342,10 @@ inside boxes. In order of likely impact:
 34. **A plain-shell box now writes the canon to `~/AGENTS.md`, overwriting a file already there,
     and on any persistent shell launch a `box.shell` with arguments (`bash -l`), or an
     `--entrypoint` given as one word with arguments (`--entrypoint "bash -l"`), stops working** —
-    see *A plain-shell box writes the canon to `~/AGENTS.md`*.
+    see *2.99 A plain-shell box writes the canon to `~/AGENTS.md`*.
 
 35. **`kanibako shell -- <cmd>` now runs `<box shell> -lc <cmd>`, not `/bin/sh -c`, and several
-    words are quoted as written, so a pipe or `$VAR` must be one quoted word** — see *`kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command*.
+    words are quoted as written, so a pipe or `$VAR` must be one quoted word** — see *2.100 `kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command*.
 
 36. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
     keeps the old one's credential files in its home (§2.10); several never-released or
@@ -5869,7 +5869,7 @@ would silently discard an invalid entry.
 **What to do.** Open the named file and fix or delete the named section, then run the `set` again.
 No `reset` reaches it: `reset --all` leaves it in place.
 
-### A plain-shell box writes the canon to `~/AGENTS.md`
+### 2.99 A plain-shell box writes the canon to `~/AGENTS.md`
 
 **Read this if you keep your own `~/AGENTS.md` in a box home, or if your `box.shell` or an
 `--entrypoint` you pass is one word that carries arguments.**
@@ -5890,7 +5890,7 @@ program by that name.
 (`/bin/bash`); a login shell is what the image's shell already is. Give `--entrypoint` a program
 path and pass its arguments after `--`: `kanibako start --entrypoint /bin/bash -- -l`.
 
-### `kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command
+### 2.100 `kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command
 
 **Read this if you run `kanibako shell -- <cmd>`, or `kanibako start --agent shell -- <cmd>`.**
 

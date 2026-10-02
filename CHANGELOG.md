@@ -12,10 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `kanibako shell -- <cmd>` runs `<box shell> -lc <cmd>` instead of `/bin/sh -c`. See *`kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command* in
+- `kanibako shell -- <cmd>` runs `<box shell> -lc <cmd>` instead of `/bin/sh -c`. See *2.100 `kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command* in
   [MIGRATION.md](MIGRATION.md).
 - `shell` writes `~/AGENTS.md`; on any persistent shell launch, a `box.shell` with arguments or
-  an `--entrypoint` given as one word with arguments no longer works. See *A plain-shell box writes the canon to `~/AGENTS.md`* in
+  an `--entrypoint` given as one word with arguments no longer works. See *2.99 A plain-shell box writes the canon to `~/AGENTS.md`* in
   [MIGRATION.md](MIGRATION.md).
 - **The box notebook's entry file is `~/canon/notebook/LOCAL_CONTENTS.md`, imported by the
   handbook index `SYS_CONTENTS.md`.** In 1.8.0-rc2 it was `MY_CONTENTS.md`, imported from
