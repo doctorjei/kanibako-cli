@@ -57,7 +57,12 @@ from kanibako.settings.core_defaults import (
 from kanibako.settings.paths import resolve_project
 from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_launch import build_launch_snapshot, snapshot_category_entries
-from kanibako.settings.settings_resolve import GUEST_HOME, ResolveCtx, SettingsError
+from kanibako.settings.settings_resolve import (
+    GUEST_HOME,
+    ResolveCtx,
+    SettingsError,
+    normalize_bind_dest,
+)
 from kanibako.targets import resolve_target
 from kanibako.targets.shell import ShellTarget
 from kanibako.launch.templates import (
@@ -307,6 +312,53 @@ class TestCanonBinds:
             assert m.scope == "box"
             assert m.category == "bindings.ro"
             assert m.options == "ro"
+
+
+class TestTheDestinationPolicySets:
+    """⚑ THE TWO SOURCE-DERIVED SETS the main emitter's missing-source policy is
+    built from (D3/D5).
+
+    ``_emit_category_mounts`` cannot tell a dest-spelled set that matches NOTHING
+    from an empty policy — both emit the same mounts — so a set that drifts from
+    what declares its binds is invisible at the emitter. These pin the SETS
+    themselves, against the row families they are derived from.
+    """
+
+    def test_the_must_exist_set_is_the_five_core_sibling_dests(self):
+        assert core_defaults.rom_must_exist_dests() == {
+            normalize_bind_dest(dest) for dest in _CORE_DESTS
+        }
+
+    def test_the_must_exist_set_is_CORE_ONLY(self):
+        """⚑ The plugin's chapter is OPTIONAL under the ratified rule (D5): it must
+        NOT be in the must-exist set, or a plugin whose chapter vanishes between
+        resolve and emit is refused instead of silently omitted."""
+        assert normalize_bind_dest(_CHARTER_AGENT_DEST) not in (
+            core_defaults.rom_must_exist_dests()
+        )
+
+    def test_the_silent_set_is_every_canon_row_but_SYS_CONTENTS_plus_the_chapter(self):
+        assert core_defaults.canon_silent_dests() == {
+            normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{chapter}")
+            for chapter in HANDBOOK_CHAPTERS
+        } | {normalize_bind_dest(_CHARTER_AGENT_DEST)}
+
+    def test_SYS_CONTENTS_is_in_NEITHER_set_so_it_still_warns(self):
+        """⚑⚑ D5, the one exception: the handbook's table of contents keeps L7's
+        warn-and-drop default. A box that loses it silently loses the one file
+        naming every chapter it has."""
+        contents = normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md")
+        assert contents not in core_defaults.canon_silent_dests()
+        assert contents not in core_defaults.rom_must_exist_dests()
+
+    def test_both_sets_are_NORMALIZED_dests_not_tilde_spellings(self):
+        """The emitter's map is keyed by ``normalize_bind_dest`` output, so a
+        ``~``-spelled member would match nothing — the ``critical_keys`` defect."""
+        for members in (
+            core_defaults.rom_must_exist_dests(), core_defaults.canon_silent_dests(),
+        ):
+            assert members
+            assert all(d.startswith("/") for d in members), sorted(members)
 
 
 # ===========================================================================
@@ -806,22 +858,35 @@ class TestLaunchWiring:
             optional_keys=core_defaults.canon_optional_bind_keys(),
         )
 
+    def _main_source_policy(self, deliveries):
+        """The MAIN emit's missing-source policy, spelled as ``commands/start.py``
+        spells it, as the ``(must_exist, skip_if_absent)`` pair it hands over.
+
+        ⚑ THE SPELLING IS THE POINT (N3): ``_emit_category_mounts`` cannot tell a
+        set that matches nothing from an empty one, so a differently-spelled copy
+        here would test the harness rather than the launch.
+        ⚑ ``_launch_resolve`` passes ``desc=None`` and ``install=None`` here, so the
+        AGENT_CRITICAL arm is the EMPTY set by the call site's OWN guard — the same
+        value ``start.py`` computes for this launch.
+        """
+        critical_dests: frozenset[str] = frozenset()
+        must_exist = critical_dests | core_defaults.rom_must_exist_dests()
+        return must_exist, (
+            core_defaults.canon_silent_dests() | (deliveries.agent_dests - critical_dests)
+        ) - must_exist
+
     def _launch_mounts(self, std, proj, target) -> dict:
         from kanibako.commands.start import (
             _emit_category_mounts,
             _launch_bind_map,
         )
 
-        # ⚑ The missing-source policy is spelled EXACTLY as the live call sites
-        # spell it (``commands/start.py``) — a different spelling here would test
-        # the harness rather than the launch.
         snapshot, deliveries = self._launch_resolve(std, proj, target)
+        must_exist, skip_if_absent = self._main_source_policy(deliveries)
         mounts = _emit_category_mounts(
             _launch_bind_map(snapshot), label="canon-wiring",
-            skip_if_absent=(
-                core_defaults.canon_optional_bind_dests()
-                | deliveries.agent_dests
-            ),
+            must_exist=must_exist,
+            skip_if_absent=skip_if_absent,
         )
         return {m.destination: m for m in mounts}
 
@@ -1080,6 +1145,173 @@ class TestLaunchWiring:
 
         flagged = {e.box_dest for e in entries if e.optional}
         assert flagged == core_defaults.canon_optional_bind_dests()
+
+    def test_a_missing_core_rom_source_at_emit_raises_BindingSourceError(
+        self, std, config, project_dir, fake_rom,
+    ):
+        """⚑⚑ D3, THE EMIT HALF, at the real launch seam.
+
+        ``rom_default_categories()`` already RAISES at RESOLVE time on a broken
+        packaged install, which is the same guarantee ``TestFailClosed`` pins. That
+        cannot see the narrower race this pins: a source that resolved fine and
+        then VANISHED before the bind map was emitted. Warn-and-drop would answer it
+        with a per-launch warning and a box quietly short one chapter of its own
+        directives — the exact loss the resolve-time guard exists to prevent.
+        """
+        import shutil
+
+        from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
+        from kanibako.targets.assembly import BindingSourceError
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
+        # Resolve SUCCEEDED — the fake rom is complete — and only then does one
+        # emitted source go missing.
+        shutil.rmtree(fake_rom / ROM_CHARTER_REL / "box")
+
+        must_exist, skip_if_absent = self._main_source_policy(deliveries)
+        with pytest.raises(BindingSourceError) as excinfo:
+            _emit_category_mounts(
+                _launch_bind_map(snapshot), label="canon-wiring",
+                must_exist=must_exist, skip_if_absent=skip_if_absent,
+            )
+        assert f"{GUEST_HOME}/canon/charter/box" in str(excinfo.value)
+
+    def test_an_absent_general_chapter_is_SILENT_and_SYS_CONTENTS_still_warns(
+        self, std, config, project_dir, caplog,
+    ):
+        """⚑⚑ D5, THE ONE SPLIT IN THE ``canon:`` TABLE, on the real launch seam.
+
+        Every handbook ``canon:`` destination except ``SYS_CONTENTS.md`` is silent,
+        the chapter CONTENT, whose absence is the normal case for most boxes. The
+        table of contents keeps L7's warn-and-drop default, because a box that
+        loses it silently loses the one file naming every chapter it has.
+
+        ⚑ RED before this change on the ``general`` half alone: it carries no
+        ``optional: true`` flag, so it fell to warn-and-drop and warned on every
+        launch of every box whose system canon has no ``handbook/general``.
+        """
+        from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
+        bind_map = _launch_bind_map(snapshot)
+
+        general = f"{GUEST_HOME}/canon/handbook/general"
+        contents = f"{GUEST_HOME}/canon/handbook/SYS_CONTENTS.md"
+        general_src = Path(bind_map[general].src)
+        contents_src = Path(bind_map[contents].src)
+        assert not general_src.exists(), "the fixture must have no general chapter"
+        assert not contents_src.exists(), "nor a system handbook table of contents"
+
+        must_exist, skip_if_absent = self._main_source_policy(deliveries)
+        with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
+            by_dest = {
+                m.destination: m for m in _emit_category_mounts(
+                    bind_map, label="canon-wiring",
+                    must_exist=must_exist, skip_if_absent=skip_if_absent,
+                )
+            }
+
+        assert general not in by_dest
+        assert contents not in by_dest
+        warned = [
+            r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
+        ]
+        assert not any(general in m for m in warned), warned
+        sys_warnings = [m for m in warned if "SYS_CONTENTS.md" in m]
+        assert len(sys_warnings) == 1, warned
+        # ⚑ AND the drop happened BEFORE the rw guarantee-create: an absent source
+        # at a silent dest is not manufactured into an empty directory, which would
+        # make a box LOOK as though it had the chapter.
+        assert not general_src.exists()
+        assert not contents_src.exists()
+
+    def test_a_plugin_chapter_source_vanished_before_emit_is_SILENT(
+        self, std, config, project_dir, tmp_path, caplog,
+    ):
+        """⚑⚑ D5, THE PLUGIN CHAPTER. ``_rom_agent_chapter_dest()`` is in the SILENT
+        set and NOT in the must-exist set, so a chapter source that disappears
+        between resolve and emit is omitted silently — not refused, not warned.
+
+        A gate-false plugin (no ``ROM_AGENT.md``) emits no bind at all, so this is
+        the ONLY way the chapter dest can reach the emitter with a missing source.
+        RED before this change: the dest took L7's warn-and-drop default, so every
+        plugin that momentarily lost its chapter warned on that launch.
+        """
+        import shutil
+
+        from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
+
+        chapter = _plant_plugin_chapter(tmp_path / "plugin-pkg" / "data" / "rom")
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget(chapter))
+        agent_dest = f"{GUEST_HOME}/canon/charter/agent"
+        assert agent_dest in _launch_bind_map(snapshot), "the gate must be TRUE here"
+
+        shutil.rmtree(chapter)  # vanishes AFTER the resolve emitted its bind
+
+        must_exist, skip_if_absent = self._main_source_policy(deliveries)
+        assert agent_dest in skip_if_absent
+        assert agent_dest not in must_exist
+        with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
+            mounts = _emit_category_mounts(
+                _launch_bind_map(snapshot), label="canon-wiring",
+                must_exist=must_exist, skip_if_absent=skip_if_absent,
+            )
+
+        assert agent_dest not in {m.destination for m in mounts}
+        warned = [
+            r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
+        ]
+        assert not any(agent_dest in m for m in warned), warned
+
+    def test_a_dest_in_BOTH_policy_sets_RAISES_rather_than_being_skipped(
+        self, std, config, project_dir, fake_rom,
+    ):
+        """🛑 THE OVERLAP, CONSTRUCTED, WITH ITS OUTCOME SHOWN.
+
+        The shipped ``rom_must_exist_dests()`` and ``canon_silent_dests()`` are
+        DISJOINT (asserted above), so the overlap the main emit's ``-
+        must_exist`` exists to prevent cannot be reached from the shipped rows.
+        This builds one: a core rom destination is added to the SILENT set, which is
+        exactly what a future ``canon:`` row at a core rom destination — or a plugin
+        declaring one — would produce.
+
+        The outcome is a RAISE, and that is the point in both directions. Left
+        unsplit the emitter would STILL raise, because it consults ``must_exist``
+        first: the overlap is therefore invisible at the emitter and only the
+        call-site set arithmetic proves the subtraction is there. This test pins the
+        BEHAVIOUR half so a future reordering of the emitter's two policy checks
+        cannot silently turn an overlapped dest into a silent skip.
+        """
+        import shutil
+
+        from kanibako.commands.start import _emit_category_mounts, _launch_bind_map
+        from kanibako.targets.assembly import BindingSourceError
+
+        proj = resolve_project(std, config, str(project_dir), initialize=True)
+        snapshot, deliveries = self._launch_resolve(std, proj, _WiringTarget())
+        bind_map = _launch_bind_map(snapshot)
+
+        planted = f"{GUEST_HOME}/canon/charter/box"
+        must_exist = core_defaults.rom_must_exist_dests()
+        silent_plus = core_defaults.canon_silent_dests() | {planted}
+        assert planted in must_exist & silent_plus, "the overlap must be real"
+
+        shutil.rmtree(fake_rom / ROM_CHARTER_REL / "box")
+        with pytest.raises(BindingSourceError):
+            _emit_category_mounts(
+                bind_map, label="canon-wiring",
+                must_exist=must_exist, skip_if_absent=silent_plus,
+            )
+
+        # ⚑ AND the SUBTRACTED policy the call site actually builds has no overlap,
+        # which is what makes the raise above a decided outcome rather than an
+        # accident of the emitter's check order.
+        built_must, built_skip = self._main_source_policy(deliveries)
+        assert not (built_must & built_skip), sorted(built_must & built_skip)
+        assert built_must, "and the must-exist half is not empty"
 
 
 # ===========================================================================

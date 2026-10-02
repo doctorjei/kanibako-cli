@@ -2014,18 +2014,35 @@ class TestTheMissingSourcePolicyIsWiredIntoTheLaunch:
         the SPELLING has to be pinned at the call site that builds it — testing the
         emitter proves nothing about what it is handed
         [[same-arity-shape-flip-passes-silently]].
+
+        ⚑⚑ THE SET IS NO LONGER AGENT_CRITICAL-ONLY (Step 2, D3). It is the UNION of
+        the descriptor's AGENT_CRITICAL delivery destinations and core's five
+        packaged-canon destinations, so a core rom source that vanished between
+        resolve and emit is refused rather than dropped with a per-launch warning.
+        The ``b.key``-vs-destination spelling below is load-bearing for BOTH halves:
+        the ROM half is derived from the same ``_rom_sibling_binds()`` rows that
+        ``rom_default_categories()`` emits, so the two cannot drift.
         """
         from kanibako.commands import start as start_mod
         from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.settings import core_defaults
         from kanibako.settings.settings_resolve import normalize_bind_dest
         from kanibako.targets.base import BindScope
 
-        expected = frozenset(
+        critical_dests = frozenset(
             normalize_bind_dest(b.box_dest)
             for b in ClaudeTarget().descriptor.bindings
             if b.scope is BindScope.AGENT_CRITICAL
         )
-        assert expected, "claude must declare SOME AGENT_CRITICAL delivery bind"
+        rom_dests = core_defaults.rom_must_exist_dests()
+        # ⚑ BOTH HALVES non-empty, SEPARATELY. A single ``assert expected`` over the
+        # union would still pass if EITHER half went empty, which is the exact
+        # silent-degradation shape this test exists to catch.
+        assert critical_dests, "claude must declare SOME AGENT_CRITICAL delivery bind"
+        assert rom_dests, "core must ship SOME packaged-canon must-exist destination"
+        # ⚑ The ROM half is DERIVED from ``rom_must_exist_dests()``, never hand-typed
+        # literal paths, so this assertion cannot drift away from the policy it pins.
+        expected = critical_dests | rom_dests
 
         with start_mocks(), patch.object(
             start_mod, "_emit_category_mounts",
@@ -2041,15 +2058,87 @@ class TestTheMissingSourcePolicyIsWiredIntoTheLaunch:
             call.kwargs["label"]: call.kwargs.get("must_exist")
             for call in m_emit.call_args_list
         }
+        # 🛑 EXACT EQUALITY, NOT A SUBSET — the set must not grow past its two
+        # declared sources either, or a dest becomes must-exist by accident.
         assert passed["category"] == expected, passed
         # And they are DESTS, not key names: every member is an absolute box path.
         assert all(d.startswith("/") for d in passed["category"]), passed
-        # ⚑ The narrow resolves state NO must-exist policy — a delivery bind is the
-        # main path's to guarantee, and a narrow caller raising on it would fail a
+        # ⚑ The narrow resolves state NO must-exist policy — a must-exist bind is the
+        # main path's to guarantee, and a narrow caller raising on one would fail a
         # launch over a bind it does not own.
         assert all(
             not p for label, p in passed.items() if label != "category"
         ), passed
+
+    def test_the_live_launch_SUBTRACTS_must_exist_from_skip_if_absent(
+        self, start_mocks, monkeypatch,
+    ):
+        """⚑⚑ THE SUBTRACTION IS NOT REDUNDANT WITH THE EMITTER'S ORDER.
+
+        ``_emit_category_mounts`` tests ``must_exist`` BEFORE ``skip_if_absent``, so
+        a dest in both RAISES whether or not the subtraction is there: drop
+        ``- must_exist`` and every behavioral test in the suite stays green, because
+        the overlap is answered by the order the emitter happens to check the two
+        policies in. What the subtraction protects is the POLICY's own consistency —
+        a dest that is simultaneously "must exist" and "skip if absent" is a
+        contradiction, and the emitter's ordering would be the only thing hiding it.
+
+        🛑 THE OVERLAP IS CONSTRUCTED, because the SHIPPED sets are disjoint:
+        ``rom_must_exist_dests()`` is core-only (``~/canon/charter/*``,
+        ``~/canon/COLLECTION.md``) and ``canon_silent_dests()`` is the handbook rows
+        plus ``~/canon/charter/agent`` — so an assertion over the real sets would
+        pass with the subtraction deleted. Here a genuine silent destination is
+        planted INTO the must-exist set, which is what a future ``canon:`` row at a
+        core rom destination (or a plugin declaring one) would produce. Without the
+        subtraction the planted dest lands in BOTH policies and the last assertion
+        fails.
+        """
+        from kanibako.commands import start as start_mod
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.settings import core_defaults
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+        from kanibako.targets.base import BindScope
+
+        silent = core_defaults.canon_silent_dests()
+        planted = normalize_bind_dest("/home/agent/canon/handbook/box")
+        assert planted in silent, "the planted dest must be a REAL silent dest"
+        assert planted not in core_defaults.rom_must_exist_dests()
+        # ⚑ Patched where the name is DEFINED (``kanibako.settings.core_defaults``),
+        # not where it is imported: ``start.py`` reaches it as a module attribute, so
+        # patching ``kanibako.commands.start`` would do nothing.
+        monkeypatch.setattr(
+            core_defaults, "rom_must_exist_dests", lambda: frozenset({planted}),
+        )
+
+        with start_mocks(), patch.object(
+            start_mod, "_emit_category_mounts",
+            wraps=start_mod._emit_category_mounts,
+        ) as m_emit:
+            assert _run_container(
+                project_dir=None, entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            ) == 0
+
+        calls = {c.kwargs["label"]: c.kwargs for c in m_emit.call_args_list}
+        must_exist = calls["category"]["must_exist"]
+        skip_if_absent = calls["category"]["skip_if_absent"]
+
+        critical = frozenset(
+            normalize_bind_dest(b.box_dest)
+            for b in ClaudeTarget().descriptor.bindings
+            if b.scope is BindScope.AGENT_CRITICAL
+        )
+        assert must_exist == critical | {planted}, sorted(must_exist)
+        # 🛑 THE PROOF.  With `- must_exist` deleted from the expression, the planted
+        # dest is in BOTH policies and this fails.
+        assert planted not in skip_if_absent, sorted(skip_if_absent)
+        # ⚑ AND IT IS A SUBTRACTION, NOT A REPLACEMENT: the rest of the silent set
+        # survives, and so do the agent's best-effort dests.
+        assert silent - must_exist <= skip_if_absent, sorted(
+            silent - must_exist - skip_if_absent
+        )
+        assert not (must_exist & skip_if_absent), sorted(must_exist & skip_if_absent)
 
 
 class TestTheMainPathEmitsFromTheCollapse:
@@ -4109,11 +4198,19 @@ class TestBinaryMountSafeFail:
     """A binary mount source missing at mount time -> clean kanibako error."""
 
     def test_missing_bind_source_fails_clean(self, start_mocks, capsys, tmp_path):
-        """An AGENT_CRITICAL bind whose source vanished aborts with a clean error.
+        """A REQUIRED bind whose source vanished aborts with a clean error.
 
-        descriptor_mounts raises BindingSourceError when a critical source no
-        longer exists; start.py catches it, prints the "mount source
+        ``_emit_category_mounts`` raises BindingSourceError when a must-exist
+        source no longer exists; start.py catches it, prints the "mount source
         disappeared" message, and returns 1 (no crun crash).
+
+        ⚑ Step 2 (D4): the FIRST line still names the agent — MIGRATION and
+        ``TestBinaryMountSafeFail``'s siblings quote it — but the SECOND now
+        generalizes from "the host agent install changed" to cover kanibako's own
+        PACKAGED CANON too, because the core rom dests joined ``must_exist`` and a
+        vanished core chapter source reaches this same handler. A user whose box
+        refuses to launch over a missing chapter must not be sent to reinstall the
+        agent.
         """
         from kanibako.targets.base import AgentInstall
         with start_mocks() as m:
@@ -4135,6 +4232,9 @@ class TestBinaryMountSafeFail:
             assert rc == 1
             err = capsys.readouterr().err
             assert "mount source disappeared" in err
+            # ⚑ D4, the SECOND line: BOTH causes named, in one sentence-pair.
+            assert "The host agent install changed while starting" in err, err
+            assert "kanibako's own packaged canon is missing or incomplete" in err, err
             # Clean kanibako error, not a crun crash -> container never run.
             m.runtime.run.assert_not_called()
 

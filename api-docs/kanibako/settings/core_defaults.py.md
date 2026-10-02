@@ -64,6 +64,8 @@ def rom_default_categories() -> BindArmTable
 def rom_agent_default_categories(target: 'Target') -> BindArmTable
 def canon_optional_bind_keys() -> frozenset[str]
 def canon_optional_bind_dests() -> frozenset[str]
+def rom_must_exist_dests() -> frozenset[str]
+def canon_silent_dests() -> frozenset[str]
 def canon_default_categories(std: StandardPaths, agent_name: str | None) -> dict[str, object]
 def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]
 def materialize_canon_skeleton(shell_path: Path, *, logger: 'logging.Logger | None'=None, quiet: bool=False) -> None
