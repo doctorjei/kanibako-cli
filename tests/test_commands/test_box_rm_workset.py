@@ -1,28 +1,18 @@
-"""``box rm`` must NEVER act on a workset — the data-loss cure.
+"""``box rm`` acts only on boxes, never on a workset of the same name.
 
-⚑⚑ WHY THE COMMAND UNDER TEST RUNS IN A SUBPROCESS.  The defect was DATA LOSS:
-``box rm <workset-name> --purge`` resolved the ``worksets`` section, unregistered
-the workset, and then tore down ``std.boxes / <name>`` — a PRIMARY box's data
-dir.  A test that patches the teardown helper proves nothing about the files on
-disk, so each test below runs the REAL CLI (``python -m kanibako``, the real
-entry point) against an isolated ``HOME``/``XDG_*`` tree and then asserts on the
-FILESYSTEM.
+⚑ The command under test runs in a subprocess: the real CLI (``python -m
+kanibako``) against an isolated ``HOME``/``XDG_*`` tree, with assertions on the
+FILESYSTEM.  Patching the teardown helper would not show which files survive.
 
-⚑ SETUP GOES THROUGH THE PRODUCT'S OWN WRITERS, never through hand-built
-directories: ``resolve_project`` (real box + real metadata under ``std.boxes``),
-``create_workset`` (real workset tree + real registry entry),
-``unregister_primary_box_name`` (a real membership drop).  The orphan state in
-the first test is the one the product itself names — ``box list --orphans``: a
-populated box data dir whose membership entry is gone.
+⚑ Setup goes through the product's own writers, never hand-built directories:
+``resolve_project`` (real box + metadata under ``std.boxes``), ``create_workset``
+(real workset tree + registry entry), and ``unregister_primary_box_name`` (a real
+membership drop).
 
-⚑ WHY THE LOSS NEEDS THAT STATE.  A *registered* primary box always wins the
-name lookup in ``run_rm`` (the membership is consulted first), so with both
-live the old code took the box branch and no workset data was touched.  The
-branch destroyed ``std.boxes / <name>`` for a name that resolved to a workset,
-which is a box dir whose membership entry is missing.
-
-Before the cure the first test failed: rc 0, the workset unregistered, and
-``MARKER.txt`` deleted.
+⚑ The first test pins the hardest case: a populated ``std.boxes/<name>`` whose
+membership entry is gone, next to a registered workset named ``<name>``.  A
+registered primary box wins the name lookup, so only this state routes the name
+past the box branch.
 """
 
 from __future__ import annotations
@@ -136,7 +126,7 @@ def _snapshot(root: Path) -> list[str]:
 def _drop_membership(name: str) -> None:
     """Drop the box's PRIMARY membership entry, leaving its data in place.
 
-    The real orphan state. Uses the product's own writer — the same call
+    Uses the product's own writer — the same call
     ``run_rm`` makes — so nothing here is a hand-built directory.
     """
     from kanibako.settings.paths import unregister_primary_box_name
@@ -147,14 +137,11 @@ def _drop_membership(name: str) -> None:
 def test_rm_of_a_workset_name_refuses_and_keeps_the_box_data_sharing_the_name(
     tmp_path, monkeypatch,
 ):
-    """DATA LOSS pin: `box rm <workset> --purge` must not touch `std.boxes/<name>`.
-
-    Before the cure: rc 0, the workset unregistered, and the marker DELETED.
-    """
+    """`box rm <workset> --purge` refuses and leaves `std.boxes/<name>` intact."""
     env = _make_env(tmp_path, monkeypatch)
     boxes = _make_box("foo", tmp_path / "box" / "foo")
     ws_root = _make_workset("foo", tmp_path / "ws" / "foo", force=True)
-    _drop_membership("foo")                       # -> the orphan state
+    _drop_membership("foo")                       # box data, no membership
     marker = boxes / "MARKER.txt"
     marker.write_text("user data a workset rm must not delete\n")
     ws_files = _snapshot(ws_root)
@@ -173,11 +160,7 @@ def test_rm_of_a_workset_name_refuses_and_keeps_the_box_data_sharing_the_name(
 def test_rm_of_a_deregistered_box_purges_it_and_leaves_the_workset_alone(
     tmp_path, monkeypatch,
 ):
-    """The name routes to the BOX: retained data goes, the workset stays put.
-
-    Before the cure this printed "Removing workset: foo" and unregistered the
-    workset while purging the box — the wrong carrier for both halves.
-    """
+    """The name routes to the BOX: retained data goes, the workset stays put."""
     env = _make_env(tmp_path, monkeypatch)
     boxes = _make_box("foo", tmp_path / "box" / "foo")
     ws_root = _make_workset("foo", tmp_path / "ws" / "foo", force=True)
@@ -200,8 +183,7 @@ def test_rm_of_a_workset_only_name_is_the_ordinary_not_found_refusal(
 ):
     """A name that is only a workset: the plain refusal, rc 1, nothing changed.
 
-    No workset lookup and no ``workset rm`` hint — the maintainer ruled the
-    existing not-found path is the whole answer.
+    The refusal carries no ``workset rm`` hint.
     """
     env = _make_env(tmp_path, monkeypatch)
     ws_root = _make_workset("bar", tmp_path / "ws" / "bar")
