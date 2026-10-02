@@ -36,6 +36,13 @@ _TOOLS = (
     "sort", "md5sum", "cut", "sed",
 )
 
+# EVERY code point JSON forbids raw inside a string, 0x01-0x1F, as ONE list: the
+# parametrised tests below sweep it instead of pasting 31 near-identical tests out.
+# A mail file name can hold any of them, and the no-jq branch builds its JSON by
+# hand, so each one has to survive the escaping AND still parse.  0x00 is absent
+# because a bash string cannot hold NUL — see the comment in ``emit``.
+_CONTROL_CHARS = [chr(c) for c in range(0x01, 0x20)]
+
 
 @pytest.fixture
 def box(tmp_path):
@@ -65,6 +72,20 @@ def _no_jq_path(tmp_path: Path) -> str:
         assert real, f"{tool} is not installed"
         (shim / tool).symlink_to(real)
     return str(shim)
+
+
+def _run_lifted_emit(msg: str, path: str) -> subprocess.CompletedProcess:
+    """``emit`` lifted out of the script and called on an exact message.
+
+    ``path`` decides which branch runs: the no-jq shim reaches the hand-escaped
+    fallback, the inherited PATH reaches ``jq``.
+    """
+    snippet = (
+        f"eval \"$(sed -n '/^emit() {{/,/^}}/p' '{SCRIPT}')\"\n"
+        'emit "$1"\n'
+    )
+    return subprocess.run(["bash", "-c", snippet, "bash", msg], env={"PATH": path},
+                          capture_output=True, text=True, timeout=30)
 
 
 def _assert_one_alert(stdout: str, expected_in_msg: str) -> str:
@@ -168,3 +189,60 @@ def test_fallback_escapes_tab_carriage_return_and_newline(tmp_path):
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
     assert _assert_one_alert(result.stdout, msg) == msg
+
+
+@pytest.mark.parametrize("use_jq", [False, True], ids=["no-jq", "jq"])
+@pytest.mark.parametrize("ch", _CONTROL_CHARS, ids=lambda c: f"U+{ord(c):04X}")
+def test_every_json_control_character_survives_both_branches(tmp_path, ch, use_jq):
+    """All 0x01-0x1F, on BOTH branches: valid JSON, and both fields unchanged.
+
+    ``emit``'s comment used to claim it escaped "the raw control characters JSON
+    forbids inside a string" while handling only tab, CR and LF — so ESC, BEL and
+    the other 28 produced a stdout line that no JSON parser would accept, and the
+    hook's only voice to both readers was lost.  The message carries a backslash and
+    a quote too, because escaping backslash FIRST is what keeps the other escapes
+    from being re-escaped.
+    """
+    if use_jq and shutil.which("jq") is None:
+        pytest.skip("jq is not installed; the jq branch cannot be exercised here")
+    path = os.environ["PATH"] if use_jq else _no_jq_path(tmp_path)
+    # Prove which branch this case actually ran, instead of trusting the PATH.
+    probe = subprocess.run(["bash", "-c", "command -v jq"], env={"PATH": path},
+                           capture_output=True, text=True)
+    assert (probe.returncode == 0) is use_jq, "the branch under test did not run"
+    msg = f"a{ch}b \\ \"c\""
+    result = _run_lifted_emit(msg, path)
+    assert result.returncode == 0, result.stderr
+    assert _assert_one_alert(result.stdout, msg) == msg
+
+
+@pytest.mark.parametrize("use_jq", [False, True], ids=["no-jq", "jq"])
+def test_control_character_in_a_mail_name_yields_parseable_json(box, tmp_path, use_jq):
+    """The whole script, an ESC in a mail file name, on both branches.
+
+    ``find -printf '%f'`` hands the name to ``emit`` unaltered, so the hook's alert
+    is exactly where an unescaped ESC would land.  Same name and same expectation
+    on the ``jq`` path, which is what proves the fallback fix did not regress it.
+    """
+    if use_jq and shutil.which("jq") is None:
+        pytest.skip("jq is not installed; the jq branch cannot be exercised here")
+    home, inbox, name = box
+    path = os.environ["PATH"] if use_jq else _no_jq_path(tmp_path)
+    filename = "e\x1b[31m-alert.md"
+    (inbox / filename).write_text("hi\n")
+    result = _run(home, name, path=path)
+    assert result.returncode == 0, result.stderr
+    assert _assert_one_alert(result.stdout, filename) == f"NEW MAIL (1): {filename}"
+
+
+def test_del_is_left_alone_because_json_allows_it(tmp_path):
+    """DEL (0x7F) is legal raw in a JSON string, so it is not escaped.
+
+    A guard against over-escaping: the sweep is for 0x01-0x1F, and widening it
+    would make the alert text differ from the mail name for no reason.
+    """
+    msg = "a\x7fb"
+    result = _run_lifted_emit(msg, _no_jq_path(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert _assert_one_alert(result.stdout, msg) == msg
+    assert "\x7f" in result.stdout and "\\u007f" not in result.stdout

@@ -39,13 +39,32 @@ emit() {
     else
         # Backslashes FIRST: reversing the two turns \" into \\" and ends the
         # JSON string early.  A trailing backslash is the reachable case.
-        # Then the raw control characters JSON forbids inside a string: a tab is
-        # legal in a file name, so it is reachable too.
+        # Then the raw control characters JSON forbids inside a string.  It
+        # forbids ALL of U+0000-U+001F, not only the three escaped next: a mail
+        # file name can hold any of them, so BEL, or an ESC out of a colourised
+        # subject, is as reachable as a tab.  Tab, CR and LF keep the short
+        # escapes because those are the readable ones; every OTHER code point
+        # becomes \u00XX in the loop below.  U+0000 is out of reach here — a bash
+        # string cannot hold NUL.  DEL (U+007F) is legal raw in JSON, so it is
+        # deliberately left alone and the alert still reads as the name that
+        # actually arrived.
         local escaped=${1//\\/\\\\}
         escaped=${escaped//\"/\\\"}
         escaped=${escaped//$'\t'/\\t}
         escaped=${escaped//$'\r'/\\r}
         escaped=${escaped//$'\n'/\\n}
+        # ``printf`` is a bash builtin, which is load-bearing HERE: this branch
+        # exists for boxes that have no jq, so it may not reach for a tool to
+        # name a byte either.
+        local i hex ctl
+        for ((i = 1; i <= 31; i++)); do
+            case $i in
+                9|10|13) continue ;;
+            esac
+            printf -v hex '%02x' "$i"
+            printf -v ctl '%b' "\\x$hex"
+            escaped=${escaped//"$ctl"/\\u00$hex}
+        done
         echo "{\"continue\": true, \"systemMessage\": \"${escaped}\"," \
             "\"hookSpecificOutput\": {\"hookEventName\": \"PostToolUse\"," \
             "\"additionalContext\": \"${escaped}\"}}"
