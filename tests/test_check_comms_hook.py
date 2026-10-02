@@ -32,7 +32,7 @@ SCRIPT = (
 # Every external command the script runs (plus ``sed``, which lifts ``emit`` out),
 # minus ``jq`` — the no-jq PATH gets these.
 _TOOLS = (
-    "bash", "cat", "mkdir", "touch", "find", "head", "wc", "xargs", "basename",
+    "bash", "cat", "mkdir", "touch", "find", "head", "wc",
     "sort", "md5sum", "cut", "sed",
 )
 
@@ -113,9 +113,8 @@ def test_fallback_without_jq_emits_the_same_valid_json(box, tmp_path):
 def test_fallback_escapes_quote_and_trailing_backslash(tmp_path):
     """``emit``'s hand escaping, fed a quote and a trailing backslash directly.
 
-    The function is lifted out of the script and called with ``jq`` hidden, because
-    the script's own callers cannot deliver this message: ``xargs`` rewrites quotes
-    and backslashes in mail file names before they reach ``emit``.
+    The function is lifted out of the script and called with ``jq`` hidden, so the
+    fallback's escaping is checked on an exact message, apart from the mail scan.
     """
     path = _no_jq_path(tmp_path)
     msg = 'say "hi" \\'
@@ -128,3 +127,20 @@ def test_fallback_escapes_quote_and_trailing_backslash(tmp_path):
     assert result.returncode == 0, result.stderr
     assert msg.endswith("\\") and '"' in msg
     assert _assert_one_alert(result.stdout, msg) == msg
+
+
+def test_awkward_file_names_are_reported_verbatim(box):
+    """A quote, a trailing backslash, and a space survive into both keys unchanged.
+
+    Names come straight from ``find -printf '%f'``; nothing between ``find`` and
+    ``emit`` may reinterpret quotes or backslashes, as ``xargs`` did.
+    """
+    home, inbox, name = box
+    names = ['from-"x"\\', "from a b.md"]
+    for n in names:
+        (inbox / n).write_text("hi\n")
+    result = _run(home, name)
+    assert result.returncode == 0, result.stderr
+    # The script runs with no LANG/LC_* set, so `sort` orders bytes, as sorted() does.
+    expected = f"NEW MAIL (2): {', '.join(sorted(names))}"
+    assert _assert_one_alert(result.stdout, names[0]) == expected

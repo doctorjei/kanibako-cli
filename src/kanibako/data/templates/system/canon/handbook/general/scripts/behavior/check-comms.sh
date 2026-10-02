@@ -88,11 +88,13 @@ if [[ -d "$MAILBOX_DIR" ]]; then
     scan_rc=0
     # Dot-files are skipped: a sender writes `.name.tmp` and renames it into place,
     # so a dot-file is a message still being written, never one to announce.
+    # Names come from `-printf '%f'` (GNU find), not `xargs basename`: xargs applies
+    # its own quote and backslash rules and garbles a name holding either.
     new_mail=$(find "$MAILBOX_DIR" -type f -newer "$MAIL_MARKER" ! -name '*.replied.*' \
-        ! -name '.*' 2>"$SCAN_STDERR") || scan_rc=$?
+        ! -name '.*' -printf '%f\n' 2>"$SCAN_STDERR") || scan_rc=$?
     if [[ -n "$new_mail" ]]; then
         count=$(echo "$new_mail" | wc -l)
-        files=$(echo "$new_mail" | xargs -I{} basename {} | sort)
+        files=$(echo "$new_mail" | sort)
         alerts="NEW MAIL (${count}): ${files//$'\n'/, }"
     fi
     if (( scan_rc != 0 )); then
