@@ -11,7 +11,6 @@ def load_behavior(package: str, filename: str) -> 'tuple[TargetSetting, ...]'
 def load_category_binds(package: str, filename: str, agent: str) -> CategoryBindDefaults
 def load_envs(package: str, filename: str, agent: str) -> 'dict[str, str]'
 def load_common(package: str, filename: str, agent: str) -> 'dict[str, BindArm]'
-def _expand(value: str) -> str
 def _load_doc(package: str, filename: str) -> dict[str, Any]
 def _build_binding(entry: dict[str, Any], package: str) -> Binding
 def _build_access_row(tier: str, raw: dict[str, Any] | None, *, channel: Channel, source: str='') -> AccessTierRow

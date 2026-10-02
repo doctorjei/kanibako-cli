@@ -3361,7 +3361,7 @@ where = { id_matches = '^(meta\.)?agent\.[a-z_]+\.(auth\.)?[a-z_]+$' }
 # stringified.
 # AUTHORITY: `declared`. The manifest rows, sourced from the §2d fence, are the
 # expected values; `core-defaults.yaml`'s `agent_shell:` table, read by
-# `core_defaults.shell_tier_defaults`, is the code on trial.
+# `core_defaults.pseudo_tier_defaults`, is the code on trial.
 # CATCHES: a row OMITTED from `agent_shell:` -- the shape [R177] rejects: a shell
 # pick has no `agent.default` fallback (§2d), so the fence row would answer nothing;
 # a `<None>` row stringified to `"None"`; a value that drifted from the fence; AND
@@ -3415,8 +3415,8 @@ where = { id_matches = '^agent\.shell\.(bootstrap|continue_mode|model|endpoint|r
 registry = "shell-tier-fence"
 command = ["{python}", "-c", """
 import json
-from kanibako.settings.core_defaults import shell_tier_defaults
-for key, value in sorted(shell_tier_defaults().items()):
+from kanibako.settings.core_defaults import pseudo_tier_defaults
+for key, value in sorted(pseudo_tier_defaults().items()):
     if key.rsplit(".", 1)[-1] in (
         "bootstrap", "continue_mode", "model", "endpoint", "run_args", "transform",
     ):
@@ -3920,8 +3920,8 @@ authority = "declared"
 [[parity]]
 registry = "shell-tier-behavior"
 command = ["{python}", "-c", """
-from kanibako.settings.core_defaults import shell_tier_defaults
-for key, value in sorted(shell_tier_defaults().items()):
+from kanibako.settings.core_defaults import pseudo_tier_defaults
+for key, value in sorted(pseudo_tier_defaults().items()):
     if key.rsplit(".", 1)[-1] not in (
         "bootstrap", "continue_mode", "model", "endpoint", "run_args", "transform",
     ):
@@ -5215,7 +5215,7 @@ authority = "declared"
 #   code, `core-defaults.yaml` `agent_default.model` null -> "opus": `agent.default.model`
 #   code, `config._DEFAULTS["box_shell"]` "" -> "zsh": `box.shell` (the
 #     `load_merged_config` terminus)
-#   code, `shell_tier_defaults()` gains `agent.shell.endpoint`: `agent.shell.endpoint`
+#   code, `pseudo_tier_defaults()` gains `agent.shell.endpoint`: `agent.shell.endpoint`
 #   manifest, `box.image`'s default -> null: `box.image`
 #   the CLI-level filter removed: `system.agent` (the selection the launch installs)
 # VACUITY, the `print` removed: `BLOCKED: claims no identifier is both declared and
