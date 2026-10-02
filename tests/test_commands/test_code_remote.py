@@ -113,7 +113,6 @@ def test_settings_prompt_accept_updates_and_proceeds(
     tmp_path, monkeypatch, _both_present, capsys,
 ):
     sp = _settings_path(tmp_path, monkeypatch)
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     wrapper = str(vr.dispatch_wrapper_path())
 
     # Accept the prompt; then stub the rest of the remote flow so it stops early.
@@ -136,7 +135,6 @@ def test_settings_prompt_decline_aborts(
     tmp_path, monkeypatch, _both_present, capsys,
 ):
     _settings_path(tmp_path, monkeypatch)
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     with (
         patch("sys.stdin.isatty", return_value=True),
         patch("builtins.input", return_value="n"),
@@ -150,7 +148,6 @@ def test_settings_non_tty_prints_snippet_and_aborts(
     tmp_path, monkeypatch, _both_present, capsys,
 ):
     _settings_path(tmp_path, monkeypatch)
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     with patch("sys.stdin.isatty", return_value=False):
         rc = run_code(_args(project="mybox", remote="host"))
     assert rc == 1
@@ -161,7 +158,6 @@ def test_settings_unparseable_never_clobbers(
     tmp_path, monkeypatch, _both_present, capsys,
 ):
     sp = _settings_path(tmp_path, monkeypatch)
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     sp.parent.mkdir(parents=True, exist_ok=True)
     original = "{ this is not json ][ "
     sp.write_text(original)
@@ -179,7 +175,6 @@ def test_settings_already_wired_jsonc_proceeds(
     # A JSONC settings.json (comments) that ALREADY points at the wrapper must
     # proceed — the wired-check read is JSONC-tolerant (Editor MAJOR-1).
     sp = _settings_path(tmp_path, monkeypatch)
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(
         "{\n"
@@ -201,7 +196,6 @@ def test_settings_jsonc_needing_write_aborts_never_rewrites(
     # A JSONC settings.json NOT yet wired: rewriting would drop the comments →
     # abort with the manual snippet, file untouched.
     sp = _settings_path(tmp_path, monkeypatch)
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     sp.parent.mkdir(parents=True, exist_ok=True)
     original = '{\n  // my settings\n  "editor.fontSize": 14,\n}\n'
     sp.write_text(original)
@@ -218,7 +212,6 @@ def test_settings_already_wired_proceeds(
     tmp_path, monkeypatch, _both_present,
 ):
     sp = _settings_path(tmp_path, monkeypatch)
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(json.dumps(
         {"dev.containers.dockerPath": str(vr.dispatch_wrapper_path())}
@@ -237,8 +230,6 @@ def test_settings_already_wired_proceeds(
 def _wire_ok(tmp_path, monkeypatch):
     """Pre-wire settings.json so _wire_docker_path is a no-op."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     sp = tmp_path / "cfg" / "Code" / "User" / "settings.json"
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(json.dumps(
