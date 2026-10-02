@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 import yaml
 
@@ -6485,6 +6487,48 @@ class TestAgentDefaultTierScalarCategories:
             command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
         )
         assert "set the any-agent default with the bare key" in msg, msg
+
+    def test_a_reset_is_cured_in_the_reset_verb(self, tmp_path):
+        """A ``reset`` refused at the reserved tier must not be told to ``set``.
+
+        The refusal used to have no verb at all, so a user who asked to REMOVE a value was
+        sent to author one.  The two are word-boundary distinct: "reset" CONTAINS "set", so a
+        bare ``not in`` on "set" would pass on the fixed message and prove nothing.
+        """
+        cf, ssp = self._files(tmp_path)
+        msg = reset_config_value(
+            "agent.default.model", config_path=cf, system_settings_path=ssp,
+            command_scope=ConfigLevel.system, agents_root=tmp_path / "agents",
+        )
+        assert "reset the any-agent default with the bare key" in msg, msg
+        assert not re.search(r"\bset\b", msg), msg
+        assert not ssp.exists()
+        assert not cf.exists()
+
+    def test_a_reset_of_a_tier_tail_with_no_bare_spelling_is_told_to_remove_it(self):
+        """The no-bare-spelling arm of a ``reset`` sends the user to REMOVE, not to author.
+
+        ⚑ PROBED ON THE FUNCTION, NOT END TO END, and honestly: this arm has NO live
+        member.  ``env.<VAR>``/``secret_path.<VAR>`` are routed ahead of it and
+        ``transform_settings`` is intercepted by ``agent_leaf_table_error`` (both measured,
+        in ``test_config_dest_parity``'s witness note), so no ``reset_config_value`` call can
+        reach it today.  It is kept for a FUTURE declared leaf with no bare spelling, so the
+        wording is pinned where it is decided.
+        """
+        from kanibako.settings.config_dest import _reserved_tier_refusal
+        from kanibako.settings.config_keys import _AGENT_DEFAULT_TIER_TABLE
+
+        tail = "future_table_leaf"
+        msg = _reserved_tier_refusal(tail, verb="reset")
+        assert "no bare CLI spelling" in msg, msg
+        assert f"Remove it from the {_AGENT_DEFAULT_TIER_TABLE} by hand." in msg, msg
+        # ⚑ THE SET CURE IS THE WRONG ONE HERE: it says AUTHOR the key, and a ``reset``
+        # was refused, so there is nothing to author.
+        assert "Author it in" not in msg, msg
+        # ⚑ ONE SPELLING OF THE DESTINATION (P10): both cures name the SAME table, taken
+        # from the one constant — a second literal here is exactly the drift P10 records.
+        set_msg = _reserved_tier_refusal(tail, verb="set")
+        assert f"Author it in the {_AGENT_DEFAULT_TIER_TABLE};" in set_msg, set_msg
 
     def test_an_undeclared_tier_leaf_is_refused_with_the_reason(self, tmp_path):
         """``set`` answers an undeclared ``agent.default`` leaf the way ``reset`` does.
