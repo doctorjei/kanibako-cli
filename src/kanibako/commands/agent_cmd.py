@@ -222,7 +222,7 @@ def _reserved_tier_refusal_for(args: argparse.Namespace) -> str:
     # reserved-node refusal, so they take their route's cure, not that refusal's.
     if agent_default_tier_category(f"agent.{AGENT_DEFAULT_SUB}.{tail}") is not None:
         return _reserved_tier_category_refusal(tail)
-    return _reserved_tier_refusal(tail)
+    return _reserved_tier_refusal(tail, verb=verb)
 
 
 def run_list(args: argparse.Namespace) -> int:

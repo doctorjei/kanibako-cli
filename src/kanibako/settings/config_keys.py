@@ -752,9 +752,13 @@ AGENT_DEFAULT_SUB = "default"
 #: ⚑ THE THIRD CARRIER WAS FOLDED IN (2026-09-19): ``config_dest._reserved_tier_refusal``
 #: interpolates this constant rather than spelling the sentence. THREE consumers, ONE
 #: source — add a fourth CONSUMER here, never a fourth SPELLING.
+#: ⚑ AND ITS DESTINATION IS ITSELF NAMED (P10): the ``reset`` cure in ``config_dest`` sends the
+#: user to the SAME table to REMOVE a key rather than author one, so the location lives here
+#: and the two cures above/below are both built from it. A fourth SPELLING is still the bug.
+_AGENT_DEFAULT_TIER_TABLE: Final = "'agent: default:' table of the system settings file"
+
 _AGENT_DEFAULT_TIER_CURE: Final = (
-    "Author it in the 'agent: default:' table of the system settings file; the "
-    "launch reads it from there."
+    f"Author it in the {_AGENT_DEFAULT_TIER_TABLE}; the launch reads it from there."
 )
 
 

@@ -1033,7 +1033,7 @@ def get_config_value(
     # tier's two SCALAR CATEGORY families are now WRITTEN through the same routed slot, so
     # ``is_agent_default_tier_key`` covers both halves of the tier here.
     if _is_persona_agent_key(canonical) and not is_agent_default_tier_key(canonical):
-        target = _persona_agent_target(canonical, agents_root)
+        target = _persona_agent_target(canonical, agents_root, verb="read")
         if isinstance(target, AgentFileSlot):
             return _read_slot(canonical, target)
         return None
@@ -1423,7 +1423,7 @@ def set_config_value(
     # ``agent.<node>.<key>`` — the PER-PERSONA key (B1): a VERBATIM write to the node's OWN
     # ``agents/<node>/agent.yaml``, sparse by construction (``write_nested_key`` is RMW).
     if _is_persona_agent_key(canonical):
-        target = _persona_agent_target(canonical, agents_root)
+        target = _persona_agent_target(canonical, agents_root, verb="set")
         if isinstance(target, str):
             return target  # malformed node ref
         if target is None:
@@ -1642,7 +1642,7 @@ def reset_config_value(
     # ``agent.<node>.<key>`` — remove the stored override from the node's OWN settings file
     # (``remove_nested_key`` prunes now-empty tables, keeping the file sparse).
     if _is_persona_agent_key(canonical):
-        target = _persona_agent_target(canonical, agents_root)
+        target = _persona_agent_target(canonical, agents_root, verb="reset")
         if isinstance(target, str):
             return target  # malformed node ref
         if target is None:

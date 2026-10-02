@@ -24,6 +24,7 @@ from kanibako.settings.agent_file import AgentFileSlot, slot_for
 from kanibako.settings.settings_keyspace import file_alias_reason
 from kanibako.settings.config_keys import (
     _AGENT_DEFAULT_TIER_CURE,
+    _AGENT_DEFAULT_TIER_TABLE,
     _SCOPE_READ_COMMAND,
     AGENT_DEFAULT_SUB,
     _is_agent_setting,
@@ -97,8 +98,12 @@ def check_agent_node(node: str) -> "NodeRouteRefusal | None":
 _RESERVED_TIER_HEAD = "Error: 'default' is the reserved any-agent tier, not a persona node"
 
 
-def _reserved_tier_refusal(tail: str) -> str:
-    """Refuse a write at the RESERVED ``agent.default`` tier, with the cure for *tail*.
+def _reserved_tier_refusal(tail: str, *, verb: str) -> str:
+    """Refuse a write at the RESERVED ``agent.default`` tier, in *verb*, with the cure for *tail*.
+
+    ⚑ THE VERB IS SPELLED, NOT ASSUMED: a ``reset`` told "set the any-agent default" sends a
+    user who asked to REMOVE a value to write one.  Keyword-only, with NO DEFAULT, so a new
+    caller cannot inherit the wrong verb by omission.
 
     ⚑ TWO CURES, PICKED BY ``_is_agent_setting`` — the SAME predicate
     ``config_interface`` dispatches its bare-key write on, so the bare key this names
@@ -109,19 +114,21 @@ def _reserved_tier_refusal(tail: str) -> str:
     could still reach that arm is a declared NON-scalar leaf, and the one that exists,
     ``transform_settings``, is intercepted a branch earlier by ``agent_leaf_table_error``
     — which names the SAME file, so the arm and its interceptor agree.
-    ⚑ The cure SENTENCE is ``config_keys``' (P10) — this module was its third carrier.
+    ⚑ The cure SENTENCE is ``config_keys``' (P10) — this module was its third carrier.  A
+    ``reset`` there REMOVES a key instead of authoring one, so it takes the same table
+    location by a different verb: a second SPELLING of the destination is the old bug.
     Reasoning: ``llm-docs/kanibako/settings/config_dest.py.md``.
     """
     head = _RESERVED_TIER_HEAD
     if _is_agent_setting(tail):
         return (
-            f"{head}; set the any-agent default with the bare key "
+            f"{head}; {verb} the any-agent default with the bare key "
             f"(e.g. '{tail}') instead."
         )
-    return (
-        f"{head}, and '{tail}' has no bare CLI spelling. "
-        f"{_AGENT_DEFAULT_TIER_CURE}"
-    )
+    spelled = f"{head}, and '{tail}' has no bare CLI spelling. "
+    if verb == "reset":
+        return f"{spelled}Remove it from the {_AGENT_DEFAULT_TIER_TABLE} by hand."
+    return f"{spelled}{_AGENT_DEFAULT_TIER_CURE}"
 
 
 def _reserved_tier_read_refusal(tail: str) -> str:
@@ -175,12 +182,16 @@ def _reserved_tier_store_refusal() -> str:
 
 
 def _persona_agent_target(
-    canonical: str, agents_root: "Path | None",
+    canonical: str, agents_root: "Path | None", *, verb: str,
 ) -> "AgentFileSlot | str | None":
     """Resolve a canonical persona key to its FILE write/read location.
 
     An :class:`AgentFileSlot`, an ``"Error: ..."`` string for a refused node, or
     ``None`` when it is not a persona key / *agents_root* was not supplied.
+
+    ⚑ *verb* is REQUIRED and keyword-only, and is passed straight to
+    :func:`_reserved_tier_refusal` — the refusal is the caller's VERB's, so this
+    cannot answer "set" on a caller's behalf.
 
     ⚑ The node is taken VERBATIM from *canonical* and only VALIDATED here, never
     re-swapped — canonicalization happened once, at :func:`resolve_key`.
@@ -192,7 +203,7 @@ def _persona_agent_target(
     route = _agent_node_route(node, tail, agents_root)
     if isinstance(route, NodeRouteRefusal):
         if route.reason == "reserved":
-            return _reserved_tier_refusal(tail)
+            return _reserved_tier_refusal(tail, verb=verb)
         return f"Error: {route.detail}"
     return route
 

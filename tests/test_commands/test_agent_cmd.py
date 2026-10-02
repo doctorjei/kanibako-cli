@@ -1261,12 +1261,14 @@ class TestAMissingStoreSaysWhy:
 
     # The cure each verb owes the reserved tier: the engine's WRITE cure where a key is set or
     # reset, a READ cure for ``get``, and the tier's file where the verb names no key.
+    # ⚑ THE ``run_reset`` ROW NAMES THE VERB: a reset told to "set the any-agent default"
+    # sends a user who asked to remove a value to write one.
     _RESERVED_CURES = [
         "set the any-agent default with the bare key (e.g. 'label') instead.",
         "read the any-agent default with 'kanibako system get agent.default.label' instead.",
         "'agent: default:' table of the system settings file",
         "'agent: default:' table of the system settings file",
-        "set the any-agent default with the bare key (e.g. 'label') instead.",
+        "reset the any-agent default with the bare key (e.g. 'label') instead.",
         "'agent: default:' table of the system settings file",
     ]
 
