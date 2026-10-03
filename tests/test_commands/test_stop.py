@@ -545,3 +545,357 @@ class TestStopWriteback:
             m_resolve.return_value = MagicMock()
             _stop_one(mock_runtime, project_dir=None)
             m_wb.assert_not_called()
+
+
+class TestStopWithMalformedBoxSettings:
+    """Q137a: a malformed ``box.yaml`` must not lock the user out of their own box.
+
+    🛑 THE LOCKOUT.  ``resolve_box_target``'s advisory pass reads the box's
+    ``box.enable_vault`` through the whole settings cascade, so a ``box.yaml``
+    that is not a mapping raised ``ConfigError`` out of ``stop`` — a box the user
+    is inside could then only be stopped with ``podman stop``.
+
+    Nothing that NAMES the container is on that read: the name is the box's
+    IDENTITY (``kanibako.utils.container_name_for`` — mode, metadata root,
+    registry name, project hash).  So these pin the three behaviors together: the
+    stop HAPPENS, under the name identity gives it, and the refusal is SAID with
+    the refusal's own text.
+
+    ⚑ THE FRONT DOOR IS ``run()`` — the argparse entry — with the container
+    runtime stubbed, so nothing here needs podman.  Everything else is REAL: a
+    real box on disk in an isolated ``HOME``, a real ``box.yaml`` (corrupted in
+    place by the parametrization), and the real resolve chain beneath.
+    """
+
+    #: ``(label, file body)`` — the three shapes ``config_io.load_doc`` refuses.
+    _MALFORMED = [
+        ("invalid-yaml", "box: [unclosed\n  bad: :\n"),
+        ("a-list", "- one\n- two\n"),
+        ("a-scalar", "just a string\n"),
+    ]
+
+    @pytest.fixture
+    def live_runtime(self):
+        """A LIVE box whose stop succeeds, with no agent stamp (no writeback)."""
+        rt = MagicMock()
+        rt.stop.return_value = True
+        rt.is_running.return_value = True
+        rt.inspect_env.return_value = None
+        rt.container_exists.return_value = False
+        rt.rm.return_value = True
+        return rt
+
+    @staticmethod
+    def _drive(live_runtime, target):
+        """``kanibako stop <target>`` through the command's own entry point."""
+        import argparse
+
+        args = argparse.Namespace(
+            all_containers=False, project=str(target), force=False,
+        )
+        with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
+            return run(args)
+
+    @staticmethod
+    def _primary_box(std, config, tmp_home):
+        """A real PRIMARY box + its ``box.yaml``; return ``(workspace, name, file)``."""
+        from kanibako.settings.paths import resolve_project
+
+        workspace = tmp_home / "work" / "myapp"
+        workspace.mkdir(parents=True)
+        proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        box_yaml = proj.metadata_path / "box.yaml"
+        box_yaml.parent.mkdir(parents=True, exist_ok=True)
+        box_yaml.write_text("box:\n  enable_vault: false\n")
+        return workspace, proj.name, box_yaml
+
+    @staticmethod
+    def _standalone_box(std, tmp_home):
+        """A real STANDALONE box + its ``box.yaml``; return ``(root, name, file)``."""
+        from kanibako.settings.paths import establish_standalone
+
+        root = tmp_home / "sa"
+        (root / "box_data").mkdir(parents=True)
+        name, *_ = establish_standalone(std, root, enable_vault=True, name="sa")
+        box_yaml = root / "box_data" / "box.yaml"
+        box_yaml.write_text("box:\n  enable_vault: false\n")
+        return root, name, box_yaml
+
+    @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
+    def test_primary_box_stops_with_a_malformed_box_yaml(
+        self, std, config, tmp_home, live_runtime, capsys, shape,
+    ):
+        """A PRIMARY box: stopped, under its identity name, with the refusal said."""
+        _label, text = shape
+        target, name, box_yaml = self._primary_box(std, config, tmp_home)
+        box_yaml.write_text(text)
+        capsys.readouterr()  # drain the box creation's one-time-setup notice
+
+        assert self._drive(live_runtime, target) == 0
+
+        # The stop HAPPENED, on the name identity gives it — the box name, and
+        # nothing the unreadable file could have said about it.
+        live_runtime.stop.assert_called_once_with(f"kanibako-{name}")
+        err = capsys.readouterr().err
+        assert err.startswith("Warning: ")
+        # …carrying the REFUSAL'S OWN TEXT, which names the file and the problem
+        # (P10: one wording, not a second one written for the warning).
+        assert str(box_yaml) in err
+        assert "Fix or remove the file, then retry." in err
+
+    @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
+    def test_standalone_box_stops_with_a_malformed_box_yaml(
+        self, std, tmp_home, live_runtime, capsys, shape,
+    ):
+        """A STANDALONE box: its container is keyed by its ROOT — identity too."""
+        from kanibako.utils import container_name_for_standalone_root
+
+        _label, text = shape
+        root, _name, box_yaml = self._standalone_box(std, tmp_home)
+        box_yaml.write_text(text)
+        capsys.readouterr()  # drain the box creation's one-time-setup notice
+
+        assert self._drive(live_runtime, root) == 0
+
+        live_runtime.stop.assert_called_once_with(
+            container_name_for_standalone_root(root.resolve())
+        )
+        err = capsys.readouterr().err
+        assert err.startswith("Warning: ")
+        assert str(box_yaml) in err
+        assert "Fix or remove the file, then retry." in err
+
+    def test_the_refusal_is_said_once_when_the_writeback_hits_it_too(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        """🛑 ONE REFUSAL, ONE SENTENCE — even when the writeback hits the same file.
+
+        A live, agent-stamped box runs the on-stop credential writeback, and that
+        auth resolve reads the SAME malformed ``box.yaml``.  Both renders are
+        legitimate (the stop degraded; the writeback was skipped), but printing
+        the refusal's sentence twice is the duplicate-renderer defect this
+        project has already been dinged for — so the second one keeps its
+        "credential writeback skipped" fact and drops the repeated text.
+        """
+        live_runtime.inspect_env.return_value = "claude"  # stamped -> writeback runs
+        _label, text = self._MALFORMED[1]
+        target, _name, box_yaml = self._primary_box(std, config, tmp_home)
+        box_yaml.write_text(text)
+        capsys.readouterr()  # drain the box creation's one-time-setup notice
+
+        assert self._drive(live_runtime, target) == 0
+
+        err = capsys.readouterr().err
+        sentence = "Fix or remove the file, then retry."
+        assert err.count(sentence) == 1, err
+        # Both facts survive: the refusal, and the skipped writeback.
+        assert "Warning: the config file" in err
+        assert "credential writeback skipped" in err
+
+    def test_a_writeback_refusal_about_another_file_is_still_said_whole(
+        self, mock_runtime, capsys,
+    ):
+        """The dedup is by TEXT, so a DIFFERENT file's refusal is never swallowed.
+
+        The box's ``box.yaml`` is fine here and only ``agent.yaml`` is malformed —
+        the writeback's warning must still carry that file's own refusal sentence,
+        or the user would never learn which file to fix.
+        """
+        from kanibako.errors import ConfigError
+
+        refusal = ("the config file /cfg/agents/claude/agent.yaml is not valid "
+                   "YAML: line 2. Fix or remove the file, then retry.")
+        mock_runtime.is_running.return_value = True
+        mock_runtime.inspect_env.return_value = "claude"
+        with (
+            patch("kanibako.commands.stop.load_config"),
+            patch("kanibako.commands.stop.load_std_paths"),
+            patch("kanibako.commands.stop.resolve_box_target") as m_resolve,
+            patch("kanibako.targets.resolve_target"),
+            patch(
+                "kanibako.commands.start._resolve_box_auth_source",
+                side_effect=ConfigError(refusal),
+            ),
+        ):
+            m_resolve.return_value = MagicMock()
+            assert _stop_one(mock_runtime, project_dir=None) == 0
+
+        err = capsys.readouterr().err
+        assert "credential writeback skipped" in err
+        assert refusal in err
+
+    def test_the_stop_is_still_reported(self, std, config, tmp_home, live_runtime, capsys):
+        """The action is complete: rc 0 AND the box is named as stopped.
+
+        The ruling is "proceeds and WARNS", so a warning that arrives with a
+        refusal — or a stop that happens without being reported — is the defect
+        this pins shut.
+        """
+        _label, text = self._MALFORMED[0]
+        target, name, box_yaml = self._primary_box(std, config, tmp_home)
+        box_yaml.write_text(text)
+        capsys.readouterr()  # drain the box creation's one-time-setup notice
+
+        assert self._drive(live_runtime, target) == 0
+
+        assert f"Stopped kanibako-{name}" in capsys.readouterr().out
+
+    def test_a_valid_box_yaml_still_stops_without_a_warning(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        """The control: the healthy path is silent, and resolves EXACTLY once.
+
+        The degraded arm is a SECOND resolve, so the guard against "always retry
+        and always warn" is the call count: one resolve, no warning.
+        """
+        import kanibako.settings.paths as paths
+
+        target, name, _box_yaml = self._primary_box(std, config, tmp_home)
+        capsys.readouterr()  # drain the box creation's one-time-setup notice
+
+        with patch(
+            "kanibako.commands.stop.resolve_box_target",
+            wraps=paths.resolve_box_target,
+        ) as m_resolve:
+            assert self._drive(live_runtime, target) == 0
+
+        assert m_resolve.call_count == 1
+        assert capsys.readouterr().err == ""
+        live_runtime.stop.assert_called_once_with(f"kanibako-{name}")
+
+
+
+class TestStopWithMalformedGlobalSettings:
+    """The GLOBAL settings tier degrades the same way the box tier does.
+
+    ⚑ TWO TIERS, ONE CONTRACT.  ``box.yaml`` and ``<data>/global/settings.yaml``
+    both reach ``stop`` through :func:`load_std_paths` and
+    :func:`resolve_box_target`, and a file that is not a mapping of keys raises
+    ``ConfigError`` out of the settings read.  Neither file names the container:
+    the name is the box's identity (mode, metadata root, registry name, project
+    hash), and identity resolves without a settings file.
+
+    ⚑ THE FRONT DOOR IS ``run()`` — the argparse entry — with the container
+    runtime stubbed, so nothing here needs podman.  The box, the settings file
+    and the whole resolve chain are real.
+    """
+
+    _MALFORMED = [
+        ("invalid-yaml", "system: [unclosed\n  bad: :\n"),
+        ("a-list", "- one\n- two\n"),
+    ]
+
+    @pytest.fixture
+    def live_runtime(self):
+        rt = MagicMock()
+        rt.stop.return_value = True
+        rt.is_running.return_value = True
+        rt.inspect_env.return_value = None
+        rt.container_exists.return_value = False
+        rt.rm.return_value = True
+        return rt
+
+    @staticmethod
+    def _primary_box(std, config, tmp_home):
+        """A real PRIMARY box; return ``(workspace, name)``."""
+        from kanibako.settings.paths import resolve_project
+
+        workspace = tmp_home / "work" / "myapp"
+        workspace.mkdir(parents=True)
+        proj = resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        return workspace, proj.name
+
+    @staticmethod
+    def _drive(live_runtime, target):
+        import argparse
+
+        args = argparse.Namespace(
+            all_containers=False, project=str(target), force=False,
+        )
+        with patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime):
+            return run(args)
+
+    @pytest.mark.parametrize("shape", _MALFORMED, ids=[s[0] for s in _MALFORMED])
+    def test_stops_with_a_malformed_global_settings_file(
+        self, std, config, tmp_home, live_runtime, capsys, shape,
+    ):
+        """Stopped under the identity name, with the refusal said as a ``Warning:``."""
+        _label, text = shape
+        workspace, name = self._primary_box(std, config, tmp_home)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        std.settings.write_text(text)
+        capsys.readouterr()  # drain the box creation's one-time-setup notice
+
+        assert self._drive(live_runtime, workspace) == 0
+
+        # The stop HAPPENED, on the name identity gives it.
+        live_runtime.stop.assert_called_once_with(f"kanibako-{name}")
+        err = capsys.readouterr().err
+        assert err.startswith("Warning: "), err
+        # …carrying the REFUSAL'S OWN TEXT (P10: one wording, not a second one).
+        assert str(std.settings) in err
+        assert "Fix or remove the file, then retry." in err
+
+    def test_the_refusal_is_said_exactly_once(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        """One refusal, one sentence, one place."""
+        _label, text = self._MALFORMED[1]
+        workspace, _name = self._primary_box(std, config, tmp_home)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        std.settings.write_text(text)
+        capsys.readouterr()
+
+        assert self._drive(live_runtime, workspace) == 0
+        err = capsys.readouterr().err
+        assert err.count("Fix or remove the file, then retry.") == 1, err
+        assert "Error: " not in err, err
+
+
+class TestStopRefusalIsNotPrecededByADeceptiveWarning:
+    """A refusal the degraded resolve cannot route around is reported once.
+
+    The degraded resolve drops the ADVISORY settings reads only.  A file the
+    identity resolve itself needs — the registry carrying the registered name —
+    still refuses, and then the command must say exactly what ``main`` says: the
+    ``Error:`` line, rc 1, and no ``Warning:`` announcing a stop that never
+    happened.
+    """
+
+    @pytest.fixture
+    def live_runtime(self):
+        rt = MagicMock()
+        rt.stop.return_value = True
+        rt.is_running.return_value = True
+        rt.inspect_env.return_value = None
+        rt.container_exists.return_value = False
+        rt.rm.return_value = True
+        return rt
+
+    def test_a_malformed_registry_is_one_error_line_and_rc_1(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        from kanibako.cli import main
+        from kanibako.settings.paths import resolve_project
+
+        workspace = tmp_home / "work" / "myapp"
+        workspace.mkdir(parents=True)
+        resolve_project(std, config, project_dir=str(workspace), initialize=True)
+        std.registry.parent.mkdir(parents=True, exist_ok=True)
+        std.registry.write_text("- one\n- two\n")
+        capsys.readouterr()
+
+        with (
+            patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime),
+            pytest.raises(SystemExit) as excinfo,
+        ):
+            main(["stop", workspace.name])
+
+        assert excinfo.value.code == 1
+        err = capsys.readouterr().err
+        # The warning the stop did NOT earn must be absent.
+        assert "Warning: " not in err, err
+        # …and the refusal is said exactly once, on the Error: line.
+        assert err.startswith("Error: "), err
+        assert err.count("Fix or remove the file, then retry.") == 1, err
+        live_runtime.stop.assert_not_called()

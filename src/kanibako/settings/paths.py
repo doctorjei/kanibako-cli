@@ -728,7 +728,8 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
 
 
 def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path,
-                          xdg_vars: Mapping[str, str]) -> dict[str, str]:
+                          xdg_vars: Mapping[str, str],
+                          tolerate_bad_settings: bool = False) -> dict[str, str]:
     """The path tier's merged SET-VALUES: ``/etc`` config base < user config < SETTINGS file.
 
     ⚑⚑ THE SETTINGS FILE IS THE TOP LAYER, AND IT IS THE WHOLE POINT OF THE THIRD
@@ -762,6 +763,9 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
     ``bootstrap_config_paths`` walks the ``config:`` table and REFUSES anything else in the
     file, while ``system_path_set_values`` walks the ``system:`` table.  The one filter left
     below is the P13 path-tier selection, which is a different question.
+
+    ⚑ *tolerate_bad_settings* lets a SETTINGS file that will not parse contribute
+    nothing; the CONFIG files above are still read strictly.
     """
     # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist.
     from kanibako.settings.config import (bootstrap_config_paths, config_base_path,
@@ -779,15 +783,22 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
         raw.update(bootstrap_config_paths(path))
 
     config = resolve_config_paths(raw, data_home=data_home, home=home, xdg_vars=xdg_vars)
-    stored = system_path_set_values(Path(config["config.settings"]))
+    try:
+        stored = system_path_set_values(Path(config["config.settings"]))
+    except ConfigError:
+        if not tolerate_bad_settings:
+            raise
+        stored = {}
     raw.update({k: v for k, v in stored.items() if k in SYSTEM_PATH_DEFAULTS})
     return raw
 
 
-def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]:
+def load_system_config(user_config_path: Path, *, data_home: Path, home: Path,
+                       tolerate_bad_settings: bool = False) -> dict[str, Path]:
     """Resolve the whole path tier to concrete host paths, from the files that set it."""
     raw = _path_tier_set_values(user_config_path, data_home=data_home, home=home,
-                                xdg_vars=host_xdg_map(data_home))
+                                xdg_vars=host_xdg_map(data_home),
+                                tolerate_bad_settings=tolerate_bad_settings)
     return resolve_system_paths(raw, data_home=data_home, home=home)
 
 
@@ -908,7 +919,8 @@ def resolve_cache_path(*, config_home: Path | None = None,
         return Path(xdg_vars[XDG_CACHE_HOME]) / KANIBAKO_PATH
 
 
-def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
+def load_std_paths(config: BootstrapConfig | None = None, *,
+                   tolerate_bad_settings: bool = False) -> StandardPaths:
     """Compute all standard kanibako directories, resolving them ONLY.
 
     ⚑ RESOLVE-ONLY: this function creates NOTHING.  An ``Ensure directories
@@ -934,7 +946,8 @@ def load_std_paths(config: BootstrapConfig | None = None) -> StandardPaths:
         config = load_config(config_file)
 
     # Resolve the system-level path tier from the CONFIG file set: /etc base < user-global.
-    resolved = load_system_config(config_file, data_home=data_home, home=Path.home())
+    resolved = load_system_config(config_file, data_home=data_home, home=Path.home(),
+                                  tolerate_bad_settings=tolerate_bad_settings)
     data_path = resolved["config.data"]
 
     return StandardPaths(config_home=config_home, data_home=data_home, state_home=state_home,

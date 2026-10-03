@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import sys
 
-from kanibako.settings.config import user_config_file, load_config
+from kanibako.settings.config import user_config_file, load_config, BootstrapConfig
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.errors import ConfigError, ContainerError
 from kanibako.settings.paths import (
+    ProjectPaths,
+    StandardPaths,
     load_std_paths,
     resolve_box_target,
 )
@@ -60,6 +62,7 @@ def run(args: argparse.Namespace) -> int:
 
 def _writeback_on_stop(
     runtime, proj, container_name: str, *, std, config, box_is_live: bool,
+    already_said: tuple[ConfigError | SettingsError, ...] = (),
 ) -> None:
     """Run project -> host credential writeback for a box about to be stopped.
 
@@ -78,6 +81,12 @@ def _writeback_on_stop(
     the message then calls stopped, or the reverse.  Only a LIVE box is written
     back from; the box's home is a host mount, so the creds are readable while
     the container is still up.
+
+    ⚑ ``already_said`` is the refusals :func:`_stop_one` already printed, matched
+    by TEXT so one refusal is never rendered twice (P10); a refusal naming a file
+    the user has not been told about is still printed whole.  The writeback is
+    said either way — dropping it would be the silent credential loss it exists
+    to prevent.
 
     Auth 3-tier SHARING: the writeback tier/source is the resolved AuthSource,
     resolved through the auth chain (single-route, the same launch-snapshot
@@ -144,9 +153,11 @@ def _writeback_on_stop(
                 selection_level={"system.agent": agent},
             )
         except (SettingsError, ConfigError) as exc:
+            detail = "" if any(str(prior) == str(exc) for prior in already_said) \
+                else f"\n{exc}"
             print(
                 f"Warning: credential writeback skipped for {container_name}: its "
-                f"settings did not resolve.\n{exc}",
+                f"settings did not resolve.{detail}",
                 file=sys.stderr,
             )
             return
@@ -156,13 +167,56 @@ def _writeback_on_stop(
         pass
 
 
+def _warn_settings(exc: ConfigError) -> None:
+    """A settings refusal, in its OWN words (P10), under an advisory prefix."""
+    print(f"Warning: {exc}", file=sys.stderr)
+
+
+def _load_paths(config: BootstrapConfig) -> tuple[StandardPaths, ConfigError | None]:
+    """Standard paths, degrading a global SETTINGS file that will not parse.
+
+    ⚑ The refusal is RETURNED, not printed; :func:`_stop_one` says it once.
+    """
+    try:
+        return load_std_paths(config), None
+    except ConfigError as exc:
+        return load_std_paths(config, tolerate_bad_settings=True), exc
+
+
+def _resolve_target(
+    std: StandardPaths, config: BootstrapConfig, project_dir: str | None,
+) -> tuple[ProjectPaths, ConfigError | None]:
+    """The box resolve, degrading the ADVISORY read a malformed ``box.yaml`` kills.
+
+    ⚑ The retry drops the three advisories (``warn=False``) — the nicety that
+    could not be computed — and keeps the identity, which is what names the
+    container.  A file the retry NEEDS still refuses and propagates.
+    """
+    try:
+        return resolve_box_target(std, config, project_dir, initialize=False), None
+    except ConfigError as exc:
+        return resolve_box_target(
+            std, config, project_dir, initialize=False, warn=False,
+        ), exc
+
+
 def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     """Stop the container for a single project."""
     config_file = user_config_file()
     config = load_config(config_file)
-    std = load_std_paths(config)
+    std, paths_refusal = _load_paths(config)
 
-    proj = resolve_box_target(std, config, project_dir, initialize=False)
+    proj, box_refusal = _resolve_target(std, config, project_dir)
+
+    # ⚑ SAID ONLY NOW, ONCE, BY TEXT: a refusal that re-raised out of its own
+    # retry propagated instead, and one bad file can refuse both reads.
+    said: list[ConfigError] = []
+    for refusal in (paths_refusal, box_refusal):
+        if refusal is None or any(str(prior) == str(refusal) for prior in said):
+            continue
+        said.append(refusal)
+        _warn_settings(refusal)
+
     container_name = container_name_for(proj)
 
     lock_file = proj.metadata_path / ".kanibako.lock"
@@ -179,6 +233,7 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     _writeback_on_stop(
         runtime, proj, container_name,
         std=std, config=config, box_is_live=box_is_live,
+        already_said=tuple(said),
     )
 
     if runtime.stop(container_name):
