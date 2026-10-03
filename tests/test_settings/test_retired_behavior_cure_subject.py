@@ -76,8 +76,8 @@ def test_the_box_cure_still_carries_the_box_positional_the_caller_knows() -> Non
 
 
 def test_the_system_cure_names_the_node_it_omitted_entirely() -> None:
-    """RED at base: it printed a bare ``system set access=``, which names no node and
-    is not a system key at all."""
+    """RED at base: it printed a bare ``system set access=``, which sets the any-agent
+    ``default`` tier, not the tier of the agent the entry is stored under."""
     assert _cure(
         {"agent": {"claude": {"auto_approve": False}}},
         level="system", subject="shell",
@@ -154,7 +154,7 @@ def test_the_system_cure_prints_a_key_the_keyspace_accepts() -> None:
     )
     target = cure.split()[-1].split("=", 1)[0]
     assert key_validity(target, valid_agents=AGENTS) is None, target
-    # ⚑ A bare ``access`` is not a system key at all; it needs its §2d node.
+    # ⚑ ``key_validity`` judges the canonical key, not the system verb's bare shorthand.
     assert key_validity("access", valid_agents=AGENTS) is not None
     assert _node(target) in _KNOWN_NODES, target
 

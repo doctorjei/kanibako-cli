@@ -307,6 +307,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A retired `auto_approve` refusal now names, in its cure, the agent the entry is stored under**
+  rather than the agent being resolved. Before, a box carrying another agent's retired entry was
+  told to write the tier to the wrong agent. At the system level, the cure named no agent at all and
+  set the any-agent default.
+- **The retired-`auto_approve` refusal now prints its steps in an order that works when run as
+  printed:** delete the stale entry first, then run the `set`. Before, at the box and workset levels,
+  the `set` came first and was refused without writing anything, so following the message left the
+  box on the default tier.
+
 - **Ctrl-C during first-run setup now cleans up and exits 130, instead of printing a traceback
   and leaving a half-initialized tree.** An interrupt during first run is a `BaseException`, so it
   skipped the cleanup that removes `kanibako.cfg` when a step after its creation fails; the config
