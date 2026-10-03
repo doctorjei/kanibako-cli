@@ -217,17 +217,64 @@ _SESSION_START_COMMAND = (
     '--additional-context "$KANIBAKO_DIRECTIVE_SEED" || true'
 )
 
+# ⚑ A JOB's retired commands — the exact strings this job's command was before the
+# current one, so a re-seed REPLACES them instead of stranding them beside the new
+# command forever.  ⚑ CHANGING a command above MEANS adding its predecessor here: the
+# set is the only thing that lets the next box drop it, and a spelling nobody lists is
+# a spelling nobody removes.  ⚑ Removal is EXACT-match — never a substring (that would
+# take a user's hand-edited variant) and never keyed on the MATCHER (the matchers
+# overlap across jobs, so that would take a sibling job's hooks).
+_SESSION_START_RETIRED_COMMANDS: "frozenset[str]" = frozenset({
+    'python3 "$HOME/playbook/kanibako/scripts/import-directives.py" '
+    '--additional-context "$KANIBAKO_DIRECTIVE_SEED" || true',
+})
+
+
+def _is_retired_command(entry: object, retired: "frozenset[str]") -> bool:
+    """``True`` iff *entry* is a ``type:command`` hook running one of *retired*."""
+    return (
+        isinstance(entry, dict)
+        and isinstance(entry.get("command"), str)
+        and entry["command"] in retired
+    )
+
+
+def _drop_retired_hooks(groups: list, retired: "frozenset[str]") -> list:
+    """Return *groups* minus the *retired* hook entries; a group they emptied goes too."""
+    if not retired:
+        return list(groups)
+    kept: list = []
+    for group in groups:
+        if not (isinstance(group, dict) and isinstance(group.get("hooks"), list)):
+            kept.append(group)
+            continue
+        entries = [h for h in group["hooks"] if not _is_retired_command(h, retired)]
+        if len(entries) == len(group["hooks"]):
+            kept.append(group)
+        elif entries:
+            kept.append({**group, "hooks": entries})
+        # ⚑ A group left with NOTHING was carried solely by the retired command, so
+        # dropping the command drops the group.  One that still holds a sibling entry
+        # keeps its other keys (``matcher``) and merely loses the retired entry.
+    return kept
+
 
 def _merge_managed_command_hook(
     settings: dict, *, event: str, matcher: str | None, command: str,
+    retired: "frozenset[str]",
 ) -> dict:
-    """UNION-MERGE ONE kanibako-managed ``type:command`` hook into ``hooks.<event>``."""
+    """UNION-MERGE ONE kanibako-managed ``type:command`` hook into ``hooks.<event>``.
+
+    *retired* is that job's own earlier spellings; they are replaced here, and nothing
+    else is — a hook kanibako never wrote is never removed.
+    """
     merged = copy.deepcopy(settings)
     current_hooks = merged.get("hooks")
     hooks = dict(current_hooks) if isinstance(current_hooks, dict) else {}
     current = hooks.get(event)
     groups = list(current) if isinstance(current, list) else []
     # ⚑ Keyed on the COMMAND, not the matcher — each managed command keeps its OWN group.
+    groups = _drop_retired_hooks(groups, retired)
     already = any(
         isinstance(g, dict)
         and isinstance(g.get("hooks"), list)
@@ -254,6 +301,7 @@ def merge_session_start_hook(settings: dict) -> dict:
         event="SessionStart",
         matcher=_SESSION_START_MATCHER,
         command=_SESSION_START_COMMAND,
+        retired=_SESSION_START_RETIRED_COMMANDS,
     )
 
 
@@ -301,6 +349,19 @@ _PID_SCRIPT_DIR = "~/canon/charter/general/scripts/util"
 _AGENT_MARKER_WRITE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-add.sh "$PPID" || true'
 _AGENT_MARKER_REMOVE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-rm.sh "$PPID" || true'
 
+# ⚑ Both retired sets are EXACT historical strings, never derived from a live constant:
+# the point of a retired command is that the value it was built from no longer exists.
+_AGENT_MARKER_WRITE_RETIRED_COMMANDS: "frozenset[str]" = frozenset({
+    '~/canon/bible/general/scripts/util/pid-add.sh "$PPID" || true',
+    'd="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; '
+    'mkdir -p "$d" && printf %s "$PPID" > "$d/$PPID" || true',
+})
+_AGENT_MARKER_REMOVE_RETIRED_COMMANDS: "frozenset[str]" = frozenset({
+    '~/canon/bible/general/scripts/util/pid-rm.sh "$PPID" || true',
+    'd="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; '
+    'rm -f "$d/$PPID" || true',
+})
+
 
 def merge_marker_write_hook(settings: dict) -> dict:
     """UNION-MERGE the per-PID marker-WRITE ``SessionStart`` hook (its own managed group)."""
@@ -309,6 +370,7 @@ def merge_marker_write_hook(settings: dict) -> dict:
         event="SessionStart",
         matcher=_SESSION_START_MATCHER,
         command=_AGENT_MARKER_WRITE_COMMAND,
+        retired=_AGENT_MARKER_WRITE_RETIRED_COMMANDS,
     )
 
 
@@ -319,6 +381,7 @@ def merge_marker_remove_hook(settings: dict) -> dict:
         event="SessionEnd",
         matcher=_SESSION_END_MATCHER,
         command=_AGENT_MARKER_REMOVE_COMMAND,
+        retired=_AGENT_MARKER_REMOVE_RETIRED_COMMANDS,
     )
 
 
