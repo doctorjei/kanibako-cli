@@ -327,6 +327,7 @@ class TestRunInfo:
         # Mock target so credential_check_path returns the Claude path
         # regardless of whether the Claude plugin is installed.
         mock_target = MagicMock()
+        mock_target.name = "claude"  # the node the image row resolves under
         mock_target.credential_check_path.return_value = creds
         args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(
@@ -349,6 +350,7 @@ class TestRunInfo:
         creds = initialized_project.proj.shell_path / ".claude" / ".credentials.json"
         # Mock target so credential_check_path returns a path that doesn't exist.
         mock_target = MagicMock()
+        mock_target.name = "claude"
         mock_target.credential_check_path.return_value = creds
         args = argparse.Namespace(path=initialized_project.project_dir)
         with patch(

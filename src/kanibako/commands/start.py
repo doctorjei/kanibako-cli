@@ -6877,7 +6877,10 @@ def _merge_default_categories(
 
 
 def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig:
-    """The box scalars of *proj*'s launch, resolved under the selected *agent_id*."""
+    """The box scalars of *proj*'s launch, resolved under the selected *agent_id*.
+
+    Reads *agent_id*'s settings file, as the launch snapshot does.
+    """
     from kanibako.settings.settings_launch import ResolveSubject, resolve_inputs
 
     return load_merged_config(
@@ -6887,6 +6890,7 @@ def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> Kaniba
             agent_name=agent_id, system_path=system_path,
         ),
         agent_name=agent_id,
+        agent_path=agent_settings_path(std.agents, agent_id),
     )
 
 

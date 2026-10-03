@@ -383,6 +383,61 @@ class TestBoxScalarsResolveAfterSelection:
         assert call.kwargs["agent_name"] == "claude"
         assert call.kwargs["inputs"].meta_identity.get("meta.agent.claude.name")
 
+    @pytest.mark.parametrize("box_file_image", [None, "boxfile/rig:2"])
+    def test_the_launch_image_is_the_snapshots_box_image(
+        self, config_file, tmp_home, credentials_dir, capsys, box_file_image,
+    ):
+        """An agent file's ``box: {image: …}`` reaches the launch image (``_box_scalars``),
+        the launch snapshot and ``box info`` alike; the box's own file still outranks it.
+
+        MUTATION: ``_box_scalars`` drops its ``agent_path`` → the launch image is the
+        declared default while the snapshot holds the agent file's → RED.
+        """
+        from kanibako import cli
+        from kanibako.commands.start import _box_scalars, _resolve_launch_snapshot
+        from kanibako.settings.agent_config import agent_settings_path
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import load_std_paths, resolve_box_target
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+        from kanibako.settings.settings_launch import snapshot_leaf
+        from kanibako.targets import resolve_target
+
+        box_dir = tmp_home / "imgbox"
+        box_dir.mkdir()
+        with pytest.raises(SystemExit) as created:
+            cli.main(["create", str(box_dir), "--agent", "claude"])
+        assert created.value.code == 0, capsys.readouterr().err
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        agent_file = agent_settings_path(std.agents, "claude")
+        agent_file.parent.mkdir(parents=True, exist_ok=True)
+        agent_file.write_text("self: {}\nbox:\n  image: agentfile/rig:1\n")
+        if box_file_image is not None:
+            box_file = std.boxes / "imgbox" / "box.yaml"
+            doc = load_doc(box_file)
+            doc.setdefault("box", {})["image"] = box_file_image
+            dump_doc(box_file, doc)
+        expected = box_file_image or "agentfile/rig:1"
+
+        proj = resolve_box_target(std, config, str(box_dir), initialize=False)
+        launch_image = _box_scalars(std, proj, "claude", std.settings, None).box_image
+        snapshot, _ = _resolve_launch_snapshot(
+            std=std, proj=proj, agent_name="claude", system_settings_path=std.settings,
+            agent_cfg_path=agent_file, desc=None, install=None,
+            target=resolve_target("claude", proj.project_path),
+            agent_cfg=agent_record(agent_file, node="claude", purpose=ReadPurpose.RESOLVE),
+            guarantee_create=False, cli_level=None,
+        )
+        assert launch_image == snapshot_leaf(snapshot, "box.image") == expected
+
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as info:
+            cli.main(["box", "info", str(box_dir)])
+        out = capsys.readouterr().out
+        assert info.value.code == 0, out
+        assert f"Image:        {expected}" in out
+
 
 class TestAnUndeclaredBoxKeyGetsTheLaunchsOwnRefusal:
     """A merge-visible undeclared key reaches the launch's §0 audit, whose text is the one
