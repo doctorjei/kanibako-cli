@@ -1463,14 +1463,17 @@ def test_a_WHOLE_store_judges_its_top_level_where_a_FRAGMENT_declines_to():
     a scope-local fragment from a whole store, and must keep answering ``UNROOTED``:
     reddening there would report every fragment's contents as fabricated.
 
+    A finding UNDER another finding is not named: the parent names the fix.
+
     MUTATION: route ``undeclared_store_paths`` through ``classify_store_path`` and
-    the first three assertions red (the top-level strays vanish); drop the root gate
+    the first three assertions red (the top-level strays vanish); drop the
+    parent-only skip and the second reds (``zzz.a`` comes back); drop the root gate
     from ``classify_store_path`` and the last two red.
     """
     from kanibako.settings.settings_keyspace import Verdict
 
     assert _findings({"zzz": "foo"}) == {"zzz"}
-    assert _findings({"zzz": {"a": 1}}) == {"zzz", "zzz.a"}
+    assert _findings({"zzz": {"a": 1}}) == {"zzz"}
     assert _findings({"box.env.X": "1"}) == {"box.env.X"}
     # The control: the roots themselves, carrying declared keys, stay clean.
     assert _findings({"box": {"env": {"X": "1"}}, "meta": {}, "config": {}}) == set()

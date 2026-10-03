@@ -1948,6 +1948,21 @@ def _read(purpose_name: str, **paths: Path):
     )
 
 
+def _launch(**paths: Path):
+    """One real launch resolve, the seam stage (h) actually runs on for RESOLVE."""
+    from kanibako.settings.settings_launch import build_launch_snapshot
+    from kanibako.settings.settings_resolve import ResolveCtx
+
+    return build_launch_snapshot(
+        agent_name="claude", valid_agents=("claude",),
+        ctx=ResolveCtx(
+            agent_name="claude", workset_name=None,
+            host_home="/home/host", xdg={"XDG_DATA_HOME": "/data"},
+        ),
+        **{k: paths.get(k) for k in ("system_path", "agent_path", "workset_path", "box_path")},
+    )
+
+
 def test_resolve_refuses_every_config_table_before_any_retired_behavior(tmp_path: Path) -> None:
     """``RESOLVE`` is check-major: a ``config:`` table in ``workset.yaml`` is reported before a
     retired ``auto_approve`` in ``box.yaml``, although the box file is read first.
@@ -2005,3 +2020,151 @@ def test_a_retired_spelling_in_a_dropped_table_is_not_refused(
     (read,) = [f for f in _read(purpose, box_path=box, base_path=tmp_path / "no-base.yaml")
                if f.level == "box"]
     assert set(read.view) == {"box"}
+
+
+# --------------------------------------------------------------------------- #
+# Stage (h): per-file §0 audit — undeclared entries named with the file path    #
+# --------------------------------------------------------------------------- #
+
+class TestEachFileIsAuditedOnItsOwn:
+    """Stage (h) — the §0 undeclared check runs on each file's own view separately."""
+
+    def test_the_carrier_file_is_named_not_the_carrier(
+        self, tmp_path: Path,
+    ) -> None:
+        # An unknown key only in the box file names the box file, not the workset file,
+        # and the cure is a hand-edit of that file.
+        from kanibako.settings.settings_assemble import refuse_undeclared_per_file
+
+        box = _write(tmp_path / "box.yaml", {"box": {"frob": "nope"}})
+        workset = _write(tmp_path / "workset.yaml", {"workset": {"template": "/x"}})
+        with pytest.raises(SettingsError) as exc:
+            refuse_undeclared_per_file(_read("NARROW", workset_path=workset, box_path=box))
+        msg = str(exc.value)
+        assert "box.frob" in msg
+        assert str(box) in msg
+        assert str(workset) not in msg
+        assert f"Fix: remove it BY HAND from {box}" in msg
+
+    def test_legal_null_category_reset_in_workset_file_is_accepted(
+        self, tmp_path: Path,
+    ) -> None:
+        # A null at a CATEGORY is a legal reset, so (h) has nothing to refuse.
+        from kanibako.settings.settings_assemble import refuse_undeclared_per_file
+
+        workset = _write(tmp_path / "workset.yaml", {"box": {"caches": None}})
+        box = _write(
+            tmp_path / "box.yaml",
+            {"box": {"bindings": {"ro": {"/c": ["/host/c"]}}}},
+        )
+        refuse_undeclared_per_file(_read("NARROW", workset_path=workset, box_path=box))
+
+    @pytest.mark.writes_undeclared(
+        "box.env",
+        reason="the scalar under the env NAMESPACE is the entry under test, and the "
+               "launch merge writes it into the store before (h) refuses it.",
+    )
+    def test_a_scalar_env_in_the_workset_file_is_refused(self, tmp_path: Path) -> None:
+        """``{"box": {"env": 5}}`` beside a box file's ``env`` table.
+
+        ``env`` is a NAMESPACE, not a key (§2a), so a scalar under it is undeclared however
+        the box file spells its own ``env``. MUTATION: audit only the merged result → the
+        workset file's scalar is hidden by the box table → nothing raised → RED.
+        ⚑ Driven through the LAUNCH, which is where (h) runs for a ``RESOLVE`` read: the
+        merge carries the box table over the workset scalar, so this is the one fault a
+        check on the merged snapshot cannot see.
+        """
+        workset = _write(tmp_path / "workset.yaml", {"box": {"env": 5}})
+        box = _write(tmp_path / "box.yaml", {"box": {"env": {"FOO": "bar"}}})
+        with pytest.raises(SettingsError) as exc:
+            _launch(workset_path=workset, box_path=box)
+        msg = str(exc.value)
+        assert "box.env" in msg
+        assert str(workset) in msg
+
+    @pytest.mark.writes_undeclared(
+        "box.bindings",
+        reason="the null at the bindings NAMESPACE is the entry under test, and the "
+               "launch merge writes it into the store before (h) refuses it.",
+    )
+    def test_a_null_bindings_namespace_in_the_workset_file_is_refused_at_the_launch(
+        self, tmp_path: Path,
+    ) -> None:
+        """``{"box": {"bindings": null}}`` in the workset file, behind a box ``bindings`` table.
+
+        The merge carries the box table over the workset null, so only a per-file audit
+        sees it, and the launch is where it runs: the ``SELECT`` read hands the same files
+        back unrefused (``test_a_read_hands_back_a_merge_hidden_key_unrefused``).
+        MUTATION: drop the launch's ``refuse_undeclared_per_file`` call → nothing raised
+        → RED.
+        """
+        workset = _write(tmp_path / "workset.yaml", {"box": {"bindings": None}})
+        box = _write(
+            tmp_path / "box.yaml",
+            {"box": {"bindings": {"ro": {"/c": ["/host/c"]}}}},
+        )
+        with pytest.raises(SettingsError) as exc:
+            _launch(workset_path=workset, box_path=box)
+        msg = str(exc.value)
+        assert "box.bindings" in msg
+        assert str(workset) in msg
+
+    @pytest.mark.parametrize("purpose", ["RESOLVE", "SELECT", "NARROW", "DISPLAY"])
+    def test_a_read_hands_back_a_merge_hidden_key_unrefused(
+        self, tmp_path: Path, purpose: str,
+    ) -> None:
+        """No read runs (h): a caller runs it after its own refusals, and ``DISPLAY`` (plain
+        ``show``) never does (Q5). ``SELECT`` included: agent selection's best-effort
+        callers would otherwise drop the agent instead of refusing.
+
+        MUTATION: run (h) inside the read for this purpose → this raises → RED.
+        """
+        workset = _write(tmp_path / "workset.yaml", {"box": {"bindings": None}})
+        box = _write(
+            tmp_path / "box.yaml",
+            {"box": {"bindings": {"ro": {"/c": ["/host/c"]}}}},
+        )
+        reads = _read(purpose, workset_path=workset, box_path=box)
+        ws_read = next(r for r in reads if r.level == "workset")
+        assert ws_read.view == {"box": {"bindings": None}}
+
+    def test_the_more_specific_files_key_is_the_one_reported(
+        self, tmp_path: Path,
+    ) -> None:
+        """(h) walks MOST-SPECIFIC FIRST, not ``purpose.order``.
+
+        Both files carry an undeclared key and ``NARROW`` reads base→box, so walking the
+        read order would name the WORKSET file. MUTATION: iterate the read's files instead
+        of ``_H_AUDITED_LEVELS`` → the workset file is named → RED.
+        """
+        from kanibako.settings.settings_assemble import refuse_undeclared_per_file
+
+        workset = _write(tmp_path / "workset.yaml", {"workset": {"frob": 1}})
+        box = _write(tmp_path / "box.yaml", {"box": {"frob": 1}})
+        with pytest.raises(SettingsError) as exc:
+            refuse_undeclared_per_file(_read("NARROW", workset_path=workset, box_path=box))
+        msg = str(exc.value)
+        assert str(box) in msg
+        assert str(workset) not in msg
+        assert "box.frob" in msg
+
+    def test_a_retired_spelling_keeps_its_tailored_cure(
+        self, tmp_path: Path,
+    ) -> None:
+        """``retired_cure`` runs INSIDE (h), before the generic closed-keyspace text.
+
+        The same file carries a RETIRED spelling and an undeclared key, so (h) refuses
+        either way; the retired spelling is the more specific fault and must be the one the
+        user reads. MUTATION: delete the ``retired_cure`` call → the generic
+        "not a settings key" text is raised instead → RED on the ``RETIRED`` assert.
+        """
+        from kanibako.settings.settings_assemble import refuse_undeclared_per_file
+
+        box = _write(
+            tmp_path / "box.yaml", {"box": {"agent": "claude", "frob": 1}},
+        )
+        with pytest.raises(SettingsError) as exc:
+            refuse_undeclared_per_file(_read("NARROW", box_path=box))
+        msg = str(exc.value)
+        assert "RETIRED" in msg
+        assert "not a settings key" not in msg

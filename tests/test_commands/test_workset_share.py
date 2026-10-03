@@ -739,3 +739,49 @@ class TestAPreviewRowTheBoxDecides:
         out = capsys.readouterr().out
         assert f"{DEPENDS_ON_THE_BOX} -> /home/agent/dep" in out
         assert "/srv/data -> /home/agent/plain" in out
+
+
+class TestRawListingRunsStageHLast:
+    """The raw ``share list`` runs stage (h) AFTER its own refusals
+    (``settings_assemble.ReadPurpose``)."""
+
+    @staticmethod
+    def _add_undeclared(workset) -> None:
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        path = workset.root / "workset.yaml"
+        data = load_doc(path) if path.exists() else {}
+        data.setdefault("workset", {})["zzz_not_a_key"] = 1
+        dump_doc(path, data)
+
+    @pytest.mark.writes_undeclared(
+        "workset.zzz_not_a_key",
+        reason="the undeclared entry IS the input under test: the listing assembles the "
+               "file before stage (h) refuses it.",
+    )
+    def test_an_undeclared_entry_is_refused_naming_the_file(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """MUTATION: drop the ``refuse_undeclared_per_file`` call in ``run_share_list``
+        → rc 0, "No bindings configured" → RED."""
+        self._add_undeclared(workset)
+        assert run_share_list(_list_args()) == 1
+        err = capsys.readouterr().err
+        assert "workset.zzz_not_a_key" in err
+        assert f"remove it BY HAND from {workset.root / 'workset.yaml'}" in err
+
+    @pytest.mark.writes_undeclared(
+        "workset.zzz_not_a_key",
+        reason="the undeclared entry rides beside the retired one, so the order of the "
+               "two refusals is what is under test.",
+    )
+    def test_the_listings_own_refusal_answers_first(
+        self, config_file, tmp_home, workset, capsys
+    ):
+        """MUTATION: run (h) before ``_workset_raw_shares`` → the generic text → RED."""
+        _write_legacy_named_entry(workset, "data", "/host/data", "/home/agent/data")
+        self._add_undeclared(workset)
+        assert run_share_list(_list_args()) == 1
+        err = capsys.readouterr().err
+        assert "RETIRED name-keyed shape" in err
+        assert "not a settings key" not in err

@@ -41,7 +41,10 @@ from kanibako.project.workset import (
 if TYPE_CHECKING:
     # ⚑ TYPE-ONLY, deliberately: every ``settings`` import in this module is deferred
     # into a function body, and a runtime one here would undo that.
+    from collections.abc import Sequence
+
     from kanibako.errors import CategoryCollisionError
+    from kanibako.settings.settings_assemble import SettingsFile
     from kanibako.settings.settings_categories import CategoryEntry
     from kanibako.settings.settings_resolve import SettingsError
     from kanibako.settings.store_collapse import CollapsedStore
@@ -1069,15 +1072,27 @@ def run_share_remove(args: argparse.Namespace) -> int:
 
 def run_share_list(args: argparse.Namespace) -> int:
     """List a workset's bindings: raw DEST/MODE/SOURCE, or ARBITRATED mounts if ``--effective``."""
+    from kanibako.settings.settings_assemble import (
+        ReadPurpose,
+        read_settings_files,
+        refuse_undeclared_per_file,
+    )
     from kanibako.settings.settings_resolve import SettingsError
 
     ws, std = _resolve_share_workset(args.workset)
     if ws is None:
         return 1
 
-    ws_config = _workset_config_path(ws)
+    effective = getattr(args, "effective", False)
     try:
-        raw_shares = _workset_raw_shares(ws_config)
+        files = read_settings_files(
+            (("workset", _workset_config_path(ws)),), purpose=ReadPurpose.NARROW,
+        )
+        raw_shares = _workset_raw_shares(files)
+        # Stage (h) LAST, after this listing's own refusals; the preview's launch runs it
+        # after the launch's.
+        if not effective:
+            refuse_undeclared_per_file(files)
     except SettingsError as e:
         # A malformed bindings table must not leave a traceback out of a listing command.
         print(f"Error: {e}", file=sys.stderr)
@@ -1087,7 +1102,7 @@ def run_share_list(args: argparse.Namespace) -> int:
     # preview runs the launch's refusals, and a working set with NO shares can still
     # carry a value every box in it refuses (``workset: {frob: 1}``); returning "No
     # bindings" first answered rc 0 for it.
-    if getattr(args, "effective", False):
+    if effective:
         return _print_effective_shares(ws, std)
 
     if not raw_shares:
@@ -1113,26 +1128,20 @@ def _print_no_shares(ws) -> None:
     print(f"No bindings configured for working set '{ws.name}'.")
 
 
-def _workset_raw_shares(ws_config: Path) -> dict[tuple[str, str], object]:
-    """The file's ``workset.bindings.{ro,rw}`` as a ``{(mode, dest): raw}`` map (the RAW view)."""
+def _workset_raw_shares(files: Sequence[SettingsFile]) -> dict[tuple[str, str], object]:
+    """The workset file's ``workset.bindings.{ro,rw}`` as a ``{(mode, dest): raw}`` map (the
+    RAW view); *files* is its ``NARROW`` read."""
     from kanibako.agent_ref import GENERAL_SLOT
     from kanibako.settings.agent_config import is_self_resolving
     from kanibako.settings.kb_store import BindEntry
     from kanibako.settings.kb_store import __MISSING__
     from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_assemble import (
-        ReadPurpose,
-        assemble_levels,
-        read_settings_files,
-    )
+    from kanibako.settings.settings_assemble import assemble_levels
     from kanibako.settings.settings_resolve import SettingsError
 
     # ⚑ assemble_levels returns [box, workset, agent.<active>, agent.default, system,
     # base] — index 1 is the workset partial, the only file read.
-    levels = assemble_levels(
-        agent_name=GENERAL_SLOT,
-        files=read_settings_files((("workset", ws_config),), purpose=ReadPurpose.NARROW),
-    )
+    levels = assemble_levels(agent_name=GENERAL_SLOT, files=files)
     workset_partial = levels[1]
     out: dict[tuple[str, str], object] = {}
     ws_node = dict.get(workset_partial, "workset", __MISSING__)

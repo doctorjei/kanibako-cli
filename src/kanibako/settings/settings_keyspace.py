@@ -2258,7 +2258,21 @@ def undeclared_store_paths(
         judged[segments] = judgment
         nodes[segments] = StoreNode(judgment.verdict, is_node)
     rescued = container_notes(nodes)
+    # Paths under an already-reported undeclared prefix are skipped so the report
+    # names only the shallowest violation (e.g. ``box.frob`` and ``box.frob.nard``
+    # report as ``box.frob`` only — spec §0: an undeclared key is an ERROR that NAMES
+    # the offending key; naming the parent names the fix).
+    findings = {
+        seg for seg, jgm in sorted(judged.items())
+        if jgm.verdict in FINDING_VERDICTS and seg not in rescued
+    }
+    skip_under = {
+        seg for seg in findings
+        if any(seg[: len(r)] == r and len(seg) > len(r) for r in findings)
+    }
     return [
         (segments, judgment) for segments, judgment in sorted(judged.items())
-        if judgment.verdict in FINDING_VERDICTS and segments not in rescued
+        if judgment.verdict in FINDING_VERDICTS
+        and segments not in rescued
+        and segments not in skip_under
     ]

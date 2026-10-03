@@ -93,7 +93,9 @@ from kanibako.settings.settings_assemble import (
     assemble_levels,
     cascade_files,
     dotted_partial,
+    refuse_undeclared_per_file,
     retired_cure,
+    undeclared_listing,
 )
 from kanibako.settings.settings_categories import (
     _DELIVERY,
@@ -111,7 +113,6 @@ from kanibako.settings.settings_keyspace import (
     entry_label,
     is_terminal_category_key,
     pseudo_agent_fence,
-    render_store_path,
     undeclared_store_paths,
     walk_store_paths,
 )
@@ -1194,23 +1195,20 @@ def _refuse_undeclared_snapshot(
 
     ⚑ EVERY offending path, not the first. A user hand-edits the cure, and a
     refusal that names one entry per attempt turns one edit into N launches.
-    (``agent_file._refuse_undeclared_state`` names every entry too, as ONE agent
-    file is read and before any snapshot exists; this names the whole cascade's.)
+    (``agent_file._refuse_undeclared_state`` does the same for ONE agent file, before
+    any snapshot exists.)
 
     ⚑ THE CURE IS A HAND-EDIT AND THE MESSAGE MUST SAY SO. ``box reset <key>``
     cannot remove what is not a key, and ``box show --effective`` resolves through
     this very seam, so it refuses too — leaving a user who is told "reset it" with
     no working move. *subject* picks the noun those verbs carry
     (:class:`ResolveSubject`, which says why the per-key form is the one named).
-    ⚑ BOTH SPELLINGS ARE MEASURED, and they have to be: an earlier
-    revision of this message named ``config unset`` / ``config show``, and there is
-    no ``config`` noun at all (``config_keys._SCOPE_READ_COMMAND`` says so, off its
-    own measurement). A cure a user cannot type is worse than no cure.
+    ⚑ BOTH SPELLINGS ARE MEASURED: there is no ``config`` noun
+    (``config_keys._SCOPE_READ_COMMAND``), and a cure a user cannot type is worse
+    than no cure.
     *files* are the tiers the resolve READ, MOST-SPECIFIC FIRST; :func:`_loaded_tiers`
     turns them into the list this message names and the retirement choice judges — the
-    SAME list, which is the fix for a message
-    that once pointed at a file the resolve had read and not at the one that carried
-    the entry. Which of them carried it is not knowable here, because the snapshot
+    SAME list. Which of them carried it is not knowable here, because the snapshot
     is the MERGE of all of them.
 
     ⚑ A RETIRED SPELLING GETS ITS OWN MESSAGE, NOT THIS ONE
@@ -1227,21 +1225,12 @@ def _refuse_undeclared_snapshot(
         return
     tiers = _loaded_tiers(files)
     retired_cure(tiers)
-    named = "\n".join(
-        f"  - {render_store_path(segments, judgment.key_len)}: {judgment.note}"
-        for segments, judgment in findings
-    )
+    named, entries, them = undeclared_listing(findings)
     loaded = [str(f.path) for f in tiers]
     where = (
         "\n".join(f"    - {path}" for path in loaded) if loaded
         else f"    - {_SETTINGS_FILE_NAMES}"
     )
-    count = len(findings)
-    entries = (
-        "1 entry that is not a settings key" if count == 1
-        else f"{count} entries that are not settings keys"
-    )
-    them = "it" if count == 1 else "them"
     raise SettingsError(
         f"the settings resolved for {subject.what} carry {entries} "
         f"(spec §0 — the keyspace is CLOSED):\n"
@@ -2371,6 +2360,7 @@ def build_launch_snapshot(
     refuse_read_time_faults(
         written, expanded, ctx=ctx, files=files, subject=subject,
     )
+    refuse_undeclared_per_file(files)
     _warn_lone_none_standard_binds(
         floor, snapshot, expanded, null_sources=null_sources, written=written, ctx=ctx,
     )
