@@ -509,39 +509,41 @@ def _tilde(path: Path) -> str:
 def _scrub_endpoint_userinfo(endpoint: str) -> str:
     """*endpoint* with a URL userinfo (``user[:password]@``) replaced by `_REDACTED`.
 
-    Host, port, path, query and fragment print UNCHANGED: a refusal must keep
-    the endpoint legible (WHERE it pointed) while losing the credential, and
-    only the authority-section userinfo is a credential by construction.  An
-    ``@`` in the path, query or fragment is not userinfo and is left alone.
-    The whole userinfo span is dropped structurally, so no re-encoding of it
-    can survive the way one can defeat `_provider_text`.
+    🛑 After ``scheme://`` an ``@`` ends the userinfo WHEREVER it sits — path,
+    query or fragment included — and the span runs to the LAST one.  Nothing
+    bounds it before that: a credential is under no obligation to be
+    delimiter-free (a base64 token can carry ``/``), so a span that stopped at a
+    ``/``, ``?`` or ``#`` printed the credential whole.  The span is dropped
+    structurally, so no re-encoding of it can survive the way one can defeat
+    `_provider_text`.
+
+    ⚑ The accepted cost is OVER-REDACTION in printed text.  A legitimate ``@`` is
+    not told apart from a credential, so ``https://gw/team@corp/v1`` and
+    ``https://gw.example.com/v1?notify=ops@example.com`` both lose what precedes
+    it: legibility is the currency here, a secret never is.  Only a span is
+    deleted, so no URL is invented.  The endpoint CHECK runs on the raw string,
+    so none of this can refuse a box that works.
 
     ⚑ A MALFORMED endpoint is scrubbed too: it is the one most likely to be
-    printed, by the error refusing it.  Where ``urlsplit`` raises or finds no
-    authority (``user:pw@host/v1``, ``https:///tok@host``), the would-be
-    authority starts past the first run of ``/`` ahead of the first ``@`` (else
-    at the start) and ends at the next ``/``, ``?`` or ``#`` — where urllib ends
-    a netloc; everything before its LAST ``@`` is dropped.  That can take a
-    leading scheme, or a first path segment, too (``https:tok@host`` →
-    ``<redacted>@host``, ``gw.example.com/team@corp/v1`` →
+    printed, by the error refusing it.  With no ``://`` there is no authority to
+    measure, so the span starts past the first run of ``/`` ahead of the first
+    ``@`` (else at the start) and ends at the next ``/``, ``?`` or ``#`` — where
+    urllib ends a netloc.  That can take a leading scheme, or a first path
+    segment, too (``https:tok@host`` → ``<redacted>@host``, ``gw.example.com/team@corp/v1`` →
     ``gw.example.com/<redacted>@corp/v1``): over-redaction of a string that is
-    not a usable URL, never a credential printed.  Only a span is deleted, so
-    no URL is invented.
+    not a usable URL, never a credential printed.
     """
-    import urllib.parse as _urlparse
-
-    try:
-        parts: _urlparse.SplitResult | None = _urlparse.urlsplit(endpoint)
-    except ValueError:
-        parts = None
-    if parts is not None and parts.netloc:
-        if "@" not in parts.netloc:
+    marker = endpoint.find("://")
+    if marker != -1:
+        # ⚑ Past the scheme, and past any ``/`` run that follows it — a typo'd
+        # ``///`` opens the authority just as wide, and the span starts at the
+        # first character of it either way.
+        tail = endpoint[marker + 3:]
+        start = marker + 3 + len(tail) - len(tail.lstrip("/"))
+        last_at = endpoint.rfind("@", start)
+        if last_at == -1:
             return endpoint
-        hostport = parts.netloc.rpartition("@")[2]
-        return _urlparse.urlunsplit((
-            parts.scheme, _REDACTED + "@" + hostport,
-            parts.path, parts.query, parts.fragment,
-        ))
+        return endpoint[:start] + _REDACTED + endpoint[last_at:]
     stop = min(
         (i for i in (endpoint.find("?"), endpoint.find("#")) if i != -1),
         default=len(endpoint),
