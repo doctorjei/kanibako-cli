@@ -196,6 +196,13 @@ jobs:
       # satisfy its own inventory. An advisory line is not a gate: `claims` still
       # exits 0 while printing it and this job still reads green, so keep this
       # list and `kinemata.toml`'s `[[gate]]` blocks together.
+      # The specs live in the public project wiki, and the `spec-2g-*` parity
+      # views read §2g from them. The latest default branch: the code must match
+      # the CURRENT spec. KANI_CANON names the canon root holding workbook/specs/.
+      - name: Fetch the specs from the wiki
+        run: |
+          git clone --depth 1 https://github.com/doctorjei/kanibako-cli.wiki.git "$RUNNER_TEMP/kanibako-wiki"
+          echo "KANI_CANON=$RUNNER_TEMP/kanibako-wiki" >> "$GITHUB_ENV"
       - run: kinemata check
       - run: kinemata parity
       - run: kinemata shape
