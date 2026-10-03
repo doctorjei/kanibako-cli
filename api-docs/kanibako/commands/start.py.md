@@ -54,7 +54,10 @@ def _bootstrap_default() -> str
 def _is_no_bootstrap(program: str | None) -> bool
 def _effective_agent_scalar(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'str | None'
 def _agent_scalar_pick(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'tuple[str | None, str | None]'
+def _focused_agent_snapshot(proj, system_settings_path: 'Path | None', agent_id: str, *, std, selection_level: 'Mapping[str, object] | None', key: str, floor: str | None, agent_floor: 'Mapping[str, str | None] | None'=None, agent_state: 'agent_file.AgentFileLevel | None'=None, agent_path: 'Path | None'=None) -> 'KeyStore'
 def _effective_transform(proj, system_settings_path: 'Path | None', agent_id: str, target, agent_cfg, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> 'str | None'
+def _effective_transform_settings(proj, system_settings_path: 'Path | None', agent_id: str, agent_cfg, *, std, selection_level: 'Mapping[str, object] | None', agent_cfg_path: 'Path | None'=None) -> dict
+def _plain_table(table: dict) -> dict
 def _resolve_bootstrap_program(project_dir: str | None=None, explicit_agent: str | None=None) -> BootstrapChoice
 def _bootstrap_available(program: str | None=None) -> bool
 def _check_box_components(proj) -> str | None
@@ -74,7 +77,7 @@ def _env_flag_enabled(value: str | None) -> bool
 def _build_supervisor_pid1(supervisor_argv: list[str], fallback_argv: list[str]) -> tuple[str, list[str]]
 def _bootstrap_attach(program: str) -> list[str]
 def _tweakcc_cache_dir(std, agent_id: str) -> Path
-def _apply_tweakcc(install, agent_cfg, cache_dir, image, runtime_cmd, logger)
+def _apply_tweakcc(install, transform_settings, cache_dir, image, runtime_cmd, logger)
 def _parse_cli_env(cli_env: list[str] | None) -> dict[str, str]
 def _deliver_panel_permissions(*, target, proj, access, provider, logger)
 def _assemble_image_sharing_mounts(*, merged, proj, runtime, std, agent_id, system_settings_path, agent_cfg_path, auth_src, extra_mounts, logger, selection_level)

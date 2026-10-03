@@ -395,6 +395,10 @@ def start_mocks():
                 # cascade behavior is covered by TestEffectiveTransformResolution
                 # with a REAL proj.
                 _effective_transform=DEFAULT,
+                # Its CONFIG INPUT, ``transform_settings``: stubbed to the record the
+                # launch read (the 4th argument), so a test sets it on the agent config
+                # as before; the REAL cascade read is TestEffectiveTransformSettings.
+                _effective_transform_settings=DEFAULT,
                 # run_start's EARLY persistence-mode heuristic resolves the box +
                 # agent to read the agent-scope bootstrap; stub it to the ``tmux``
                 # default so a run_start unit test does not double-resolve the box.
@@ -493,6 +497,9 @@ def start_mocks():
             # Default agent-scope transform = what the fixture's claude target
             # declares (spec §2d ``agent.claude.transform | tweakcc``).
             m_launch_mount_stubs["_effective_transform"].return_value = "tweakcc"
+            m_launch_mount_stubs["_effective_transform_settings"].side_effect = (
+                lambda *args, **_kw: dict(args[3].transform_settings)
+            )
 
             proj = MagicMock()
             proj.is_new = False

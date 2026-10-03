@@ -1091,6 +1091,55 @@ class TestEffectiveTransformResolution:
         ) is None
 
 
+@pytest.mark.usefixtures("config_file")
+class TestEffectiveTransformSettings:
+    """2D: tweakcc's CONFIG INPUT, ``agent.<active>.transform_settings``, is the cascade's
+    answer, not the agent file record's (spec §2d)."""
+
+    def _resolve(self, tmp_path, *, system=None, agent=None):
+        from kanibako.commands.start import _effective_transform_settings
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+
+        system_path = agent_path = None
+        if system is not None:
+            system_path = tmp_path / "system.yaml"
+            dump_doc(system_path, system)
+        cfg = None
+        if agent is not None:
+            agent_path = tmp_path / "agents" / "claude" / "agent.yaml"
+            agent_path.parent.mkdir(parents=True)
+            dump_doc(agent_path, agent)
+            cfg = agent_record(agent_path, node="claude", purpose=ReadPurpose.RESOLVE)
+        return _effective_transform_settings(
+            _focused_box(tmp_path), system_path, "claude", cfg, **_focused(),
+            agent_cfg_path=agent_path,
+        )
+
+    def test_a_system_file_value_applies(self, tmp_path):
+        # The row's case: the system file's value reached the snapshot and was IGNORED.
+        # (Mutation: read ``agent_cfg.transform_settings`` again → ``{}`` → RED.)
+        system = {"agent": {"claude": {"transform_settings": {"enabled": True}}}}
+        assert self._resolve(tmp_path, system=system) == {"enabled": True}
+
+    def test_the_agent_file_outranks_the_system_file(self, tmp_path):
+        # ``self.transform_settings`` now reaches the cascade (``state_level``), where the
+        # agent file's tier is the more specific. (Mutation: drop it from ``state_level``
+        # → the system value wins → RED.)
+        system = {"agent": {"claude": {"transform_settings": {"enabled": True}}}}
+        agent = {"self": {"transform_settings": {"enabled": False}}}
+        assert self._resolve(tmp_path, system=system, agent=agent) == {"enabled": False}
+
+    def test_the_agent_files_default_node_applies(self, tmp_path):
+        # The focused resolve reads the agent file as the main snapshot does, so its
+        # ``agent: default:`` table reaches it. (Mutation: ``agent_path=None`` → ``{}`` → RED.)
+        agent = {"agent": {"default": {"transform_settings": {"enabled": True}}}}
+        assert self._resolve(tmp_path, agent=agent) == {"enabled": True}
+
+    def test_nothing_set_is_empty(self, tmp_path):
+        assert self._resolve(tmp_path) == {}
+
+
 class TestImageReferenceResolution:
     """Verify a bare configured image is resolved before ensure_image (#81)."""
 
@@ -4297,7 +4346,7 @@ class TestApplyTweakcc:
 
         install = MagicMock()
         agent_cfg = AgentConfig(transform_settings={})
-        result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
+        result = _apply_tweakcc(install, agent_cfg.transform_settings, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
     def test_enabled_but_empty_returns_none(self, tmp_path):
@@ -4306,7 +4355,7 @@ class TestApplyTweakcc:
 
         install = MagicMock()
         agent_cfg = AgentConfig(transform_settings={"enabled": False})
-        result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
+        result = _apply_tweakcc(install, agent_cfg.transform_settings, tmp_path, "kanibako-oci:latest", "podman", MagicMock())
         assert result is None
 
     def test_bun_sea_error_returns_none(self, tmp_path):
@@ -4320,7 +4369,7 @@ class TestApplyTweakcc:
 
         with patch("kanibako.bun_sea.cli_js_hash") as mock_hash:
             mock_hash.side_effect = BunSEAError("bad binary")
-            result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", logger)
+            result = _apply_tweakcc(install, agent_cfg.transform_settings, tmp_path, "kanibako-oci:latest", "podman", logger)
             assert result is None
             logger.warning.assert_called_once()
 
@@ -4345,7 +4394,7 @@ class TestApplyTweakcc:
             cache_instance.cache_key.return_value = "testkey"
             cache_instance.get.return_value = fake_entry
 
-            result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", logger)
+            result = _apply_tweakcc(install, agent_cfg.transform_settings, tmp_path, "kanibako-oci:latest", "podman", logger)
 
             assert result is not None
             patched_install, entry, cache = result
@@ -4381,7 +4430,7 @@ class TestApplyTweakcc:
             cache_instance.get.return_value = None  # miss
             cache_instance.put.return_value = fake_entry
 
-            result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", logger)
+            result = _apply_tweakcc(install, agent_cfg.transform_settings, tmp_path, "kanibako-oci:latest", "podman", logger)
 
             assert result is not None
             cache_instance.put.assert_called_once()
@@ -4411,7 +4460,7 @@ class TestApplyTweakcc:
             cache_instance.cache_key.return_value = "k"
             cache_instance.get.return_value = fake_entry
 
-            result = _apply_tweakcc(install, agent_cfg, tmp_path, "kanibako-oci:latest", "podman", logger)
+            result = _apply_tweakcc(install, agent_cfg.transform_settings, tmp_path, "kanibako-oci:latest", "podman", logger)
             _, _, cache_obj = result
             assert cache_obj is cache_instance
             MockCache.assert_called_once_with(tmp_path)

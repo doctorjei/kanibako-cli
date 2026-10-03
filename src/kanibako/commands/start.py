@@ -1110,8 +1110,8 @@ def _agent_scalar_pick(
     plugin's declared row for *key*, if any (``agent.<active>.<key>``, [Q91]).
     *agent_state* is the per-agent file's flat behavior state as an
     ``AgentFileLevel`` — the table WITH the node it merges under, attached at the
-    boundary (C-2) — when the caller already holds it; *agent_path* loads it from
-    ``agents/<node>/agent.yaml`` instead.  Both ``None`` = no per-agent tier (the
+    boundary (C-2) — when the caller already holds it; *agent_path* is the file, read
+    as the main snapshot reads it (:func:`_focused_agent_snapshot`).  Both ``None`` = no per-agent tier (the
     scope-file cascade still resolves).  Returns ``None`` when no scope and no floor
     sets *key*, and when the §2d pick lands on a present ``None`` (a supplied
     ``<None>`` such as the shell fence's ``run_args``/``transform``, or a user
@@ -1123,6 +1123,40 @@ def _agent_scalar_pick(
     :func:`~kanibako.settings.settings_launch.resolve_inputs`, the launch's own, so
     a value spelled ``@meta.workset.path/…`` answers here as it does there;
     *selection_level* is the §1A selection their auth chain needs (REQUIRED, P7).
+    """
+    from kanibako.settings import settings_launch
+
+    snapshot = _focused_agent_snapshot(
+        proj, system_settings_path, agent_id, std=std,
+        selection_level=selection_level, key=key, floor=floor,
+        agent_floor=agent_floor, agent_state=agent_state, agent_path=agent_path,
+    )
+    value = settings_launch.effective_behavior(
+        snapshot, active_agent=agent_id, keys=[key],
+    ).get(key) or None
+    return value, settings_launch.behavior_slot(
+        snapshot, active_agent=agent_id, key=key,
+    )
+
+
+def _focused_agent_snapshot(
+    proj,
+    system_settings_path: "Path | None",
+    agent_id: str,
+    *,
+    std,
+    selection_level: "Mapping[str, object] | None",
+    key: str,
+    floor: str | None,
+    agent_floor: "Mapping[str, str | None] | None" = None,
+    agent_state: "agent_file.AgentFileLevel | None" = None,
+    agent_path: "Path | None" = None,
+) -> "KeyStore":
+    """The focused launch snapshot :func:`_agent_scalar_pick` reads *key* off (see there).
+
+    *agent_path* is read as the main snapshot reads it: its categories and its ``agent:``
+    table (``agent: default:`` included) reach this snapshot, and its record's state too
+    when *agent_state* is not given.
     """
     from kanibako.settings import settings_launch
 
@@ -1139,10 +1173,10 @@ def _agent_scalar_pick(
             ),
             node=agent_id, path=agent_path,
         )
-    snapshot = settings_launch.build_launch_snapshot(
+    return settings_launch.build_launch_snapshot(
         **inputs.as_kwargs(),
         agent_name=agent_id,
-        agent_path=None,
+        agent_path=agent_path,
         # Seed the behavior FLOOR with just *key* (→ agent.default.<key>) so the
         # snapshot's ``agent`` node ALWAYS exists.  Without it, a box whose SOLE
         # agent-scope setting is its ``pref.agent.<agent>.<key>`` request (§2h; e.g.
@@ -1179,12 +1213,6 @@ def _agent_scalar_pick(
         # value that could not change.
         # The SELECTION only (P8): no ephemeral flag reaches this read.
         cli_level=selection_level,
-    )
-    value = settings_launch.effective_behavior(
-        snapshot, active_agent=agent_id, keys=[key],
-    ).get(key) or None
-    return value, settings_launch.behavior_slot(
-        snapshot, active_agent=agent_id, key=key,
     )
 
 
@@ -1231,7 +1259,48 @@ def _effective_transform(
             agent_file.state_level(agent_cfg, node=agent_id, path=agent_cfg_path)
             if agent_cfg is not None else None
         ),
+        agent_path=agent_cfg_path,
     )
+
+
+def _effective_transform_settings(
+    proj,
+    system_settings_path: "Path | None",
+    agent_id: str,
+    agent_cfg,
+    *,
+    std,
+    selection_level: "Mapping[str, object] | None",
+    agent_cfg_path: "Path | None" = None,
+) -> dict:
+    """Resolve ``agent.<active>.transform_settings`` (§2d, active over default) — the transform's
+    CONFIG INPUT — off the cascade, as :func:`_effective_transform` resolves the transform.
+
+    The cascade, not the agent file's record: a system file's ``agent.claude.transform_settings``
+    and the agent file's ``agent: claude:`` spelling apply too. ``{}`` when nothing sets it.
+    """
+    from kanibako.settings import settings_launch
+
+    snapshot = _focused_agent_snapshot(
+        proj, system_settings_path, agent_id, std=std,
+        selection_level=selection_level, key="transform_settings", floor=None,
+        agent_state=(
+            agent_file.state_level(agent_cfg, node=agent_id, path=agent_cfg_path)
+            if agent_cfg is not None else None
+        ),
+        agent_path=agent_cfg_path,
+    )
+    _slot, value = settings_launch.behavior_pick(
+        snapshot, active_agent=agent_id, key="transform_settings",
+    )
+    return _plain_table(value) if isinstance(value, dict) else {}
+
+
+def _plain_table(table: dict) -> dict:
+    """*table* (a resolved ``KeyStore`` subtree) as plain nested dicts."""
+    return {
+        k: _plain_table(v) if isinstance(v, dict) else v for k, v in dict.items(table)
+    }
 
 
 def _resolve_bootstrap_program(
@@ -1913,8 +1982,8 @@ def _tweakcc_cache_dir(std, agent_id: str) -> Path:
     )
 
 
-def _apply_tweakcc(install, agent_cfg, cache_dir, image, runtime_cmd, logger):
-    """Apply tweakcc patching if enabled in agent config.
+def _apply_tweakcc(install, transform_settings, cache_dir, image, runtime_cmd, logger):
+    """Apply tweakcc patching if enabled by the resolved *transform_settings*.
 
     Patching runs inside a throwaway container (``<runtime> run --rm``) on the
     same image the agent will use.  The patched binary is cached on disk with
@@ -1931,7 +2000,7 @@ def _apply_tweakcc(install, agent_cfg, cache_dir, image, runtime_cmd, logger):
     from kanibako.tweakcc import build_merged_config, resolve_tweakcc_config, write_merged_config
     from kanibako.tweakcc_cache import TweakccCache, TweakccCacheError, config_hash
 
-    tweakcc_cfg = resolve_tweakcc_config(agent_cfg.transform_settings)
+    tweakcc_cfg = resolve_tweakcc_config(transform_settings)
     if not tweakcc_cfg.enabled:
         return None
 
@@ -3850,9 +3919,19 @@ def _run_container(
             if target and install
             else None
         )
+        transform_settings = (
+            _effective_transform_settings(
+                proj, system_settings_path, agent_id, agent_cfg,
+                std=std,
+                selection_level=selection_level,
+                agent_cfg_path=agent_cfg_path,
+            )
+            if target and install and active_transform in (_TWEAKCC_TRANSFORM, None)
+            else {}
+        )
         if active_transform == _TWEAKCC_TRANSFORM:
             result = _apply_tweakcc(
-                install, agent_cfg, _tweakcc_cache_dir(std, agent_id),
+                install, transform_settings, _tweakcc_cache_dir(std, agent_id),
                 image, runtime.cmd, logger,
             )
             if result:
@@ -3863,7 +3942,7 @@ def _run_container(
                 "implement (known: %r) — no binary transform applied.",
                 agent_id, active_transform, _TWEAKCC_TRANSFORM,
             )
-        elif target and install and agent_cfg.transform_settings:
+        elif transform_settings:
             logger.warning(
                 "agent.%s.transform_settings is set but agent.%s.transform names "
                 "no transform — the settings are an INPUT, not a switch, so "
@@ -6493,8 +6572,7 @@ def _effective_behavior_for_display(
     # (so a behavior value spelled ``@meta.workset.path/…`` or ``@workset.auth.path/…``
     # answers here as it does at launch); the floors fold in as ``agent.default.*``
     # and ``agent.<active>.*``, the per-agent file state into the ``agent.<active>``
-    # slot. No category
-    # tables beyond the resolved ``system.*`` tier (display reads behavior only).
+    # slot, and the file itself as the launch reads it (its ``agent: default:`` too).
     inputs = settings_launch.resolve_inputs(
         subject=settings_launch.ResolveSubject.BOX, std=std, proj=proj,
         agent_name=active, system_path=system_settings_path,
@@ -6502,7 +6580,7 @@ def _effective_behavior_for_display(
     snapshot = settings_launch.build_launch_snapshot(
         **inputs.as_kwargs(),
         agent_name=active,
-        agent_path=None,
+        agent_path=agent_cfg_path,
         behavior_floor=behavior_floor,
         agent_behavior_floor=agent_behavior_floor,
         default_categories=dict(inputs.system_floor),
