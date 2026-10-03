@@ -1454,6 +1454,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   beside it, as before. See *`create` refuses an interrupted create; finish it with `--recover`* in
   [MIGRATION.md](MIGRATION.md).
 
+- **`kanibako workset connect` refuses a source that is not an existing directory.** In 1.8.0-rc2,
+  `workset connect <ws> <dir>` registered any path you gave it. A directory that did not exist, a
+  regular file, and a dangling symlink each answered `Added project '<name>'`, wrote
+  `<ws>/workspaces/<name>`, and recorded the path as the box's workspace, so `workset info` listed a
+  project no box could ever run on. A source that is not an existing directory is now refused —
+  *`Cannot connect '<path>': no such directory.`*, or *`it is not a directory.`* for a file or a
+  dangling symlink — and nothing is written. `--force` does not bypass it: `--force` absorbs a
+  standalone box, and nothing else. Connecting a directory **inside** the working set is unchanged, as
+  is connecting the current directory. See *2.106 `workset connect` refuses a source that is not an
+  existing directory* in [MIGRATION.md](MIGRATION.md).
+
 ### Added
 
 - **A missing import inside a plugin's charter chapter now warns.** Inside `~/canon/charter/agent/`,
