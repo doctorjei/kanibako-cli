@@ -1155,6 +1155,9 @@ def state_level(
     ``agent.default.run_args``.  A truthy test folds it in with the absent key and silently
     hands that agent the default it wrote the empty list to refuse.
 
+    ⚑ ``transform_settings`` (a TABLE-valued agent key, §2d) rides here too, so its consumers
+    read the cascade's answer, not the record's.
+
     ⚑ IT JUDGES NOTHING: an undeclared scalar in the file is refused when the file is READ
     (:func:`record`), so every reader — not the launch alone — refuses it by name.  The record
     arriving here from anywhere else is a plugin's generated one, whose state is empty.
@@ -1164,6 +1167,8 @@ def state_level(
     table: dict[str, object] = dict(cfg.state or {})
     if cfg.run_args is not None:
         table["run_args"] = list(cfg.run_args)
+    if cfg.transform_settings:
+        table["transform_settings"] = dict(cfg.transform_settings)
     if not table:
         return None
     return AgentFileLevel(node, table, path)
