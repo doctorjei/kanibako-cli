@@ -229,3 +229,30 @@ class TestReadDoc:
         with pytest.raises(ConfigError) as exc:
             baseline._read_doc(p)
         assert str(exc.value) == self._value_refusal(p, "git")
+
+    def test_null_item_in_a_list_is_refused_naming_the_package(self, tmp_path) -> None:
+        """``git: [~, true]`` items are YAML keywords; ``str`` would invent "None"/"True"."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("git: [~, true]\n")
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == self._value_refusal(p, "git")
+
+    def test_yaml_yes_item_in_a_list_is_refused(self, tmp_path) -> None:
+        """A bare ``yes`` is a YAML 1.1 boolean, so it never means the executable "yes"."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("git: [yes]\n")
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == self._value_refusal(p, "git")
+
+    def test_bare_true_item_alone_is_refused(self, tmp_path) -> None:
+        """A single boolean item is refused on its own, not only beside a null one."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("git: [x, false]\n")
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == self._value_refusal(p, "git")

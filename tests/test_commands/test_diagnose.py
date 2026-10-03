@@ -838,6 +838,48 @@ class TestProbeMissingExecutables:
             missing = probe_missing_executables(mock_runtime, "img", ["a", "b"])
         assert missing == ["a", "b"]
 
+    def test_quote_in_name_runs_nothing(self, tmp_path) -> None:
+        """A name carrying a double quote must not close the quoting and run the rest."""
+        from tests.support.probe_shim import local_sh_runtime
+
+        canary = tmp_path / "PWNED"
+        payload = f'x" ; touch {canary} ; echo "'
+
+        missing = probe_missing_executables(
+            local_sh_runtime(tmp_path), "img", [payload]
+        )
+        assert missing == [payload]
+        assert not canary.exists()
+
+    def test_semicolon_in_name_runs_nothing(self, tmp_path) -> None:
+        """The quoting also holds a bare ``;``, which double quotes already covered."""
+        from tests.support.probe_shim import local_sh_runtime
+
+        canary = tmp_path / "PWNED"
+        payload = f"x; touch {canary}"
+
+        missing = probe_missing_executables(
+            local_sh_runtime(tmp_path), "img", [payload]
+        )
+        assert missing == [payload]
+        assert not canary.exists()
+
+    def test_name_is_quoted_in_the_probe_script(self, tmp_path) -> None:
+        """Both the lookup and the hit marker carry the name as one shell word."""
+        from tests.support.probe_shim import local_sh_runtime
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            probe_missing_executables(
+                local_sh_runtime(tmp_path), "img", ['we"ird; name']
+            )
+
+        script = mock_run.call_args[0][0][-1]
+        assert script == (
+            "command -v 'we\"ird; name' >/dev/null 2>&1 "
+            "&& echo 'KANIBAKO_HAS:we\"ird; name'"
+        )
+
 
 class TestDiagnoseBaseline:
     """_diagnose_baseline filtering (--only/--skip), image selection, and a bad overlay.

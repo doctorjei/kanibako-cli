@@ -234,6 +234,44 @@ class TestRunVerify:
         assert used_images == ["ghcr.io/x/kanibako-oci:latest"]
 
 
+class TestProbeTreatsNameAsOneWord:
+    """A baseline executable name is quoted into ONE shell word: nothing else runs."""
+
+    def test_semicolon_in_name_runs_nothing(self, tmp_path) -> None:
+        from kanibako.commands.baseline_cmd import _make_probe
+        from tests.support.probe_shim import local_sh_runtime
+
+        canary = tmp_path / "PWNED"
+        probe = _make_probe(local_sh_runtime(tmp_path), "img")
+
+        # Not a hit: the whole string is one word, so there is no such command.
+        assert probe(f"x; touch {canary}") is False
+        assert not canary.exists()
+
+    def test_quote_in_name_runs_nothing(self, tmp_path) -> None:
+        from kanibako.commands.baseline_cmd import _make_probe
+        from tests.support.probe_shim import local_sh_runtime
+
+        canary = tmp_path / "PWNED"
+        probe = _make_probe(local_sh_runtime(tmp_path), "img")
+
+        assert probe(f'x" ; touch {canary} ; echo "') is False
+        assert not canary.exists()
+
+    def test_name_is_quoted_in_the_probe_argv(self, tmp_path) -> None:
+        from kanibako.commands.baseline_cmd import _make_probe
+        from tests.support.probe_shim import local_sh_runtime
+
+        probe = _make_probe(local_sh_runtime(tmp_path), "img")
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)) as mrun:
+            probe("weird name;rm -rf /")
+
+        script = mrun.call_args[0][0][-1]
+        assert script == "command -v 'weird name;rm -rf /'"
+        # Still a LOGIN shell: -l is what makes the probe see a session's PATH.
+        assert mrun.call_args[0][0][-3:-1] == ["sh", "-lc"]
+
+
 class TestRunInstall:
     def test_install_dry_run(self, capsys) -> None:
         args = argparse.Namespace(only=["tmux"], skip=None, dry_run=True)

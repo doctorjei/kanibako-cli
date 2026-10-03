@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import shutil
 from pathlib import Path
 
@@ -145,11 +146,11 @@ def probe_missing_executables(
 
     if not executables:
         return []
-    # Build a portable POSIX-sh loop: for each exe, emit the hit marker iff
-    # `command -v` succeeds. Executable names are baseline-controlled (no shell
-    # metacharacters), so plain interpolation is safe here.
+    # One portable POSIX-sh command per exe, each name `shlex.quote`d into a
+    # single literal word, emitting the hit marker iff `command -v` succeeds.
     checks = "; ".join(
-        f'command -v "{exe}" >/dev/null 2>&1 && echo "{_PROBE_HIT_PREFIX}{exe}"'
+        f"command -v {shlex.quote(exe)} >/dev/null 2>&1 "
+        f"&& echo {shlex.quote(_PROBE_HIT_PREFIX + exe)}"
         for exe in executables
     )
     try:
