@@ -8,12 +8,14 @@ from pathlib import Path
 from types import MappingProxyType
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
-from kanibako.settings.bootstrap import (CONFIG_FILE, CONFIG_PATH_DEFAULTS, SITE_CONFIG_DIR,
-                                         SITE_CONFIG_FILE, SITE_SETTINGS_FILE,
-                                         SYSTEM_PATH_DEFAULTS)
+from kanibako.settings.bootstrap import (BOXES_PATH, CONFIG_FILE, CONFIG_PATH_DEFAULTS,
+                                         SITE_CONFIG_DIR, SITE_CONFIG_FILE,
+                                         SITE_SETTINGS_FILE, SYSTEM_PATH_DEFAULTS)
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
-                                        ERR_CONFIG_LAYER1_UNDECLARED, ERR_CONFIG_NULL_PATH)
+                                        ERR_CONFIG_LAYER1_UNDECLARED,
+                                        ERR_CONFIG_NULL_PATH_CURE,
+                                        ERR_CONFIG_NULL_PATH_HEAD)
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -936,9 +938,51 @@ def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
     return {key: str(v) for key, v in _flatten_leaves(data, prefix).items()}
 
 
+def null_path_keys_error(
+    path: Path, keys: Iterable[str], *, cure: str = ERR_CONFIG_NULL_PATH_CURE,
+    head: "str | None" = None,
+) -> "str | None":
+    """THE carrier for "these path keys are ``null``" (spec §2a) — ``None`` when none are.
+
+    ⚑ ONE CARRIER, EVERY DOOR (P10): both path tiers raise through it via
+    :func:`_refuse_null_paths` and the ``set`` door calls it.  Every offender is named in
+    full, sorted.
+    """
+    nulls = sorted(keys)
+    if not nulls:
+        return None
+    keys_block = "\n  ".join(nulls)
+    lead = ERR_CONFIG_NULL_PATH_HEAD % (path, keys_block) if head is None else head % keys_block
+    return lead + cure
+
+
+def refuses_null_path_key(canonical: str) -> bool:
+    """True iff the LAUNCH refuses a present ``null`` at *canonical* (spec §2a).
+
+    ⚑ THE MEMBERSHIP, DERIVED FROM THE READERS (P13), not a second list beside them.  Both
+    path tiers refuse every key of their own defaults table (:func:`_refuse_null_paths`),
+    so a key added to either lands here too; the ``config.*`` rows are ``set: file`` with
+    no CLI write route, carried only for the WHOLE rule.
+
+    🛑 THE WORKSET DIR KEYS ARE A MIX, so the membership is the readers' answer and not
+    "is this a path key".  ``workset.boxes`` is one — no table carries it, it refuses a
+    null on its own reader on the launch path (``project.workset.resolve_workset_boxes``);
+    its leaf is :data:`BOXES_PATH`.  The others are not:
+    ``workset.workspaces: null`` MEANS "no workspace dir" (spec §2c), ``workset.logs:
+    null`` "no logs dir".
+    """
+    return (
+        canonical in SYSTEM_PATH_DEFAULTS
+        or canonical in CONFIG_PATH_DEFAULTS
+        or canonical == f"workset.{BOXES_PATH}"
+    )
+
+
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None:
     """Refuse a ``null`` at any of *path_keys* in *table*, naming *path* and the keys."""
     leaves = _flatten_leaves(table, prefix)
-    nulls = sorted(key for key in path_keys if key in leaves and leaves[key] is None)
-    if nulls:
-        raise ConfigError(ERR_CONFIG_NULL_PATH % (path, "\n  ".join(nulls)))
+    error = null_path_keys_error(
+        path, (key for key in path_keys if key in leaves and leaves[key] is None),
+    )
+    if error is not None:
+        raise ConfigError(error)

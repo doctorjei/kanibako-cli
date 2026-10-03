@@ -22,10 +22,16 @@ from kanibako.settings.config import (
     agent_settings_of,
     load_config,
     load_project_overrides,
+    null_path_keys_error,
     read_agent_settings,
+    refuses_null_path_key,
     unset_project_config_key,
 )
 from kanibako.settings.settings_launch import load_merged_config
+from kanibako.settings.messages import (
+    ERR_CONFIG_NULL_PATH_REASON,
+    ERR_CONFIG_NULL_PATH_SET_HEAD,
+)
 from kanibako.settings.config_display import (
     _flatten_bind_map,
     _nested_settings_overrides,
@@ -1122,6 +1128,42 @@ def _set_confirmation(display_key: str, value: object) -> str:
     return f"Set {display_key}={'null' if value is None else value}"
 
 
+def _null_path_key_error(
+    canonical: str,
+    value: "str | None",
+    *,
+    command_scope: "ConfigLevel | None",
+    config_path: Path,
+    system_settings_path: "Path | None",
+) -> "str | None":
+    """§2a — refuse a ``--null`` at a path key the LAUNCH refuses a null at, or ``None``.
+
+    ⚑ ONE CARRIER, CALLED — NOT A SECOND PREDICATE (P10).  The membership is
+    :func:`config.refuses_null_path_key` and the wording is
+    :func:`config.null_path_keys_error`, both derived from the very readers that refuse; a
+    copied check here is the duplicate-renderer defect one layer down.
+
+    ⚑ THE LEAD AND THE CUE ARE THIS DOOR'S, and :mod:`messages` says why they differ.
+    ``reset <key>`` reaches the same place the read-time cue reaches by hand.
+    """
+    if value is not None or not refuses_null_path_key(canonical):
+        return None
+    dest = _write_dest(
+        canonical, command_scope=command_scope,
+        config_path=config_path, settings_path=system_settings_path,
+    )
+    assert dest is not None  # every member of the membership has a routing-table slot
+    error = null_path_keys_error(
+        dest.file, (canonical,), head=ERR_CONFIG_NULL_PATH_SET_HEAD,
+        cure=(
+            f"{ERR_CONFIG_NULL_PATH_REASON} Nothing was written: to use {canonical}'s "
+            f"default, run 'reset {canonical}', or set the path you mean."
+        ),
+    )
+    assert error is not None  # one key is never an empty list
+    return "Error: " + error
+
+
 def set_config_value(
     key: str,
     value: "str | None",
@@ -1307,6 +1349,17 @@ def set_config_value(
     state_err = _unusable_store_root_error(canonical, value)
     if state_err is not None:
         return state_err
+
+    # ⚑ A ``--null`` at a PATH KEY THE LAUNCH REFUSES A NULL AT (spec §2a); see
+    # :func:`_null_path_key_error`.  This call sits AFTER every NAME-level refusal above,
+    # so a retired or wrong-scope spelling still gets its own.
+    null_err = _null_path_key_error(
+        canonical, value,
+        command_scope=command_scope, config_path=config_path,
+        system_settings_path=system_settings_path,
+    )
+    if null_err is not None:
+        return null_err
 
     # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9); see
     # :func:`_probes_at_set_time` for which keys qualify. It blocks ONLY on the edited value's
