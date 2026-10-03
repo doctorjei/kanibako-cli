@@ -282,6 +282,60 @@ class TestLazyInit:
         assert not config_file.exists(), \
             "kanibako.cfg must not exist after an OSError during init"
 
+    def test_interrupt_during_init_exits_130_and_leaves_no_config(
+        self, tmp_home, capsys
+    ):
+        """A Ctrl-C during first run is a clean rc130 that leaves no config behind.
+
+        Pinned: the interrupt is mapped to the same newline + 130 the verb handler
+        produces, no traceback reaches stderr, ``kanibako.cfg`` is removed, and the
+        next run initializes from scratch.
+        """
+        from kanibako.cli import main
+        from kanibako.launch.templates import PACKAGED_BOX_TEMPLATE
+
+        config_file = tmp_home / "config" / CONFIG_FILENAME
+
+        with (
+            patch("kanibako.cli.build_parser") as mock_bp,
+            patch("kanibako.cli._setup_nudge"),
+            patch("kanibako.launch.templates.install_packaged_templates",
+                  side_effect=KeyboardInterrupt()),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            args = MagicMock()
+            args.command = "box"
+            args.box_command = "list"
+            mock_bp.return_value.parse_args.return_value = args
+            main(["box", "list"])
+        assert exc_info.value.code == 130
+        args.func.assert_not_called()
+        assert "Traceback" not in capsys.readouterr().err
+        assert not config_file.exists(), \
+            "kanibako.cfg must not exist after an interrupt during init"
+
+        # Next run: un-interrupted, so the first run completes and installs templates.
+        install_completion = patch("kanibako.commands.install._install_completion")
+        with (
+            patch("kanibako.cli.build_parser") as mock_bp,
+            patch("kanibako.cli._setup_nudge"),
+            install_completion as mock_completion,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            args = MagicMock()
+            args.command = "box"
+            args.box_command = "list"
+            args.func.return_value = 0
+            mock_bp.return_value.parse_args.return_value = args
+            main(["box", "list"])
+        assert exc_info.value.code == 0
+        assert config_file.exists(), \
+            "kanibako.cfg must exist after the run following an interrupt"
+        mock_completion.assert_called_once()
+        data_kanibako = tmp_home / "data" / "kanibako"
+        assert (data_kanibako / "global" / "template" / PACKAGED_BOX_TEMPLATE).exists(), \
+            "packaged box template must be installed after successful init"
+
     def test_oserror_in_early_init_step_leaves_no_config(self, tmp_home):
         """An OSError in an EARLY init step (discover_targets) also removes kanibako.cfg.
 
