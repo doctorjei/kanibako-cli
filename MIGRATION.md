@@ -1085,11 +1085,9 @@ replace the symlink with a real file (`cp --dereference`), or deliver the conten
   them. Every subcommand now accepts its flags in any position; a `--` still ends flag
   parsing.
 - **`kanibako agent set --null <key>` performed a silent read** — it printed the current value
-  and exited 0 without writing anything. It is now an explicit refusal naming both cures:
-  `agent reset <agent> <key>` to clear the agent's own value, or `--null
-  pref.agent.<agent>.<key>` from a box or workset to suppress what the agent declares.
-  (Suppression at agent scope is not supported: the per-agent settings file is read back with
-  every value coerced to a string, so a null there would return as the text `None`.)
+  and exited 0 without writing. It now writes a present `null` to the agent's own file, as
+  `system set --null agent.<agent>.<key>` does. A `--null` token is a key, never `key=value`,
+  and a bind-shaped category is still refused by name.
 
 ### 2.15 Personas: the store is read live, and stray values in the agent file now win
 

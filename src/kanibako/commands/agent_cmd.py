@@ -436,7 +436,6 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     from kanibako.settings.config_keys import agent_key_node
 
     agent_id = agent_key_node(args.agent_id)
-    agent_display = display_agent_ref(agent_id)
     path = agent_settings_path(std.agents, agent_id)
     if not path.exists():
         print(
@@ -533,52 +532,29 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             print(f"No override for {key}")
         return 0
 
-    # ``--null`` at AGENT scope — REFUSED, honestly and by name.
-    #
-    # ⚑ Handled BEFORE the ``=`` split and the get fallback, because a bare key
-    # with no ``=`` falls through to GET: the flag PARSED (it is on this parser)
-    # and the command then READ a value and printed it, exit 0, writing nothing.
-    # An accepted-and-ignored flag is the worse failure — the user is told the
-    # write happened by the absence of any error.
-    #
-    # 🛑 THE REFUSAL IS KEPT; BOTH REASONS IT USED TO REST ON ARE GONE, and saying so is
-    # the point — an obsolete justification left standing is how a rule gets a NEW one
-    # invented for it later.
-    #
-    # It read: (1) this file's reader coerces with ``str(v)``, so a YAML ``null`` would
-    # come back as the TEXT ``"None"`` — for ``access``, not a legal tier at all, so a
-    # flag promising "suppress this" would leave the box REFUSING to launch; and (2) this
-    # verb has its own writer, so writing here would put two disagreeing spellings of one
-    # idea in the tree. Neither holds now. ``agent_file.load`` KEEPS a present-``None`` in
-    # ``cfg.state``, ``cfg.env`` and ``cfg.secret_path`` alike, and the ``=`` arm below
-    # routes through ``set_config_value`` — the one setter, with the closed-keyspace check
-    # and the per-route null refusals (the retired bare ``env.<VAR>``; every bind-shaped
-    # CATEGORY, whose write route DS-BL1 = (a) retired outright, so ``--null`` on one gets
-    # THAT refusal, not a null-mechanism one).
-    #
-    # ⚑ WHETHER AGENT SCOPE SHOULD NOW ACCEPT ``--null`` IS A PRODUCT QUESTION, not a
-    # leftover to tidy: it asks what an agent writing a present-``None`` at its OWN level
-    # means to the launch, which is the consumer's side of §2h and nobody's to settle in a
-    # rendering pass. Until it is settled the message below is the honest answer: the
-    # ``agent reset`` cure it names is measured working, and the pref cure is §2h's own.
-    if getattr(args, "null", False):
-        if key_value is None:
-            print("Error: --null requires a key", file=sys.stderr)
-            return 1
-        # ``partition`` so a mistaken ``--null key=value`` still names the KEY in
-        # the cure rather than echoing the whole token back.
-        null_key = key_value.partition("=")[0].strip()
-        print(
-            f"Error: --null is not supported at agent scope. To clear the "
-            f"agent's OWN value use 'agent reset {agent_display} {null_key}'; "
-            f"to suppress what this agent declares, request it from a box or "
-            f"workset with '--null pref.agent.{agent_id}.{null_key}' (spec §2h).",
-            file=sys.stderr,
-        )
+    # ⚑ ``--null`` (B-6) IS ONE OF THE TWO WRITE SPELLINGS, not a third: the positional
+    # is handed to ``parse_config_arg`` — THE ONE PARSER every other scope gives its own
+    # positional to — and the result takes the SAME gate and the SAME ``set_config_value``
+    # call as ``key=value``, carrying ``None`` as its value, so every refusal the engine
+    # owes a route is owed here too.  A ``--null`` token is a KEY, never ``key=value``: that
+    # parser takes the WHOLE token as the key under ``set_null``, so ``--null model=sonnet``
+    # is refused here for the same reason and in the same words as at system scope, rather
+    # than writing a null and dropping the value without a word — a flag that parses and
+    # writes something other than what was asked is the worse failure, because the user is
+    # told the write happened by the absence of any error.
+    # It is read HERE, BEFORE the get fallback, because a bare key with no ``=`` falls
+    # through to GET: the flag PARSED (it is on this parser) and the command then READ a
+    # value and printed it, exit 0, writing nothing.
+    from kanibako.settings.config_interface import ConfigAction, parse_config_arg
+
+    is_null = getattr(args, "null", False)
+    action, key, value = parse_config_arg(key_value, set_null=is_null)
+    if is_null and not key:
+        print("Error: --null requires a key", file=sys.stderr)
         return 1
 
     # Parse key/value argument
-    if key_value is None:
+    if action == ConfigAction.show:
         # Show mode — read the config only where the READ paths need it.
         cfg = load(path, node=agent_id)
         # ⚑ RESOLVED HERE, where ``std`` is in scope; the formatter stays a formatter.
@@ -586,10 +562,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             cfg, _agent_label(std, agent_id), effective=args.effective,
         )
 
-    if "=" in key_value:
-        key, _, value = key_value.partition("=")
-        key = key.strip()
-        value = value.strip()
+    if action == ConfigAction.set:
         # ⚑ THE NOUN'S OWN §0 GATE, ahead of the shared setter and NOT a duplicate of it: it
         # judges the tail against the KNOWN-GOOD node (the canonical ``℘`` node), which is the one
         # thing ``set_config_value`` cannot do — that engine reads the node OUT of the key, so
@@ -614,7 +587,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         # ``system set``'s, with ONE datum that verb does not have (P7): the NODE being
         # written, which anchors ``@meta.agent.<node>.path`` in the set-time snapshot. A
         # legal value spelled against the agent's own store root dangles without it.
-        from kanibako.settings.config_interface import set_config_value
+        from kanibako.settings.config_interface import _set_confirmation, set_config_value
         from kanibako.settings.config_keys import ConfigLevel
 
         msg = set_config_value(
@@ -635,11 +608,13 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         # setter echoes: this noun takes a BARE tail on the command line, and its ``reset``
         # twin already answers in that spelling (``_honest_reset_message(key, …)``). A
         # confirmation is a lesson, and the form it teaches must be the form this verb accepts.
-        print(f"Set {key}={value}")
+        # ⚑ …AND THE ENGINE'S OWN RENDERER, which is what spells a present-``None`` ``null``
+        # rather than ``None`` — the same line ``system set`` prints for the same write.
+        print(_set_confirmation(key, value))
         return 0
 
     # Get mode
-    key = key_value.strip()
+    # (``parse_config_arg`` already returned the stripped key for this action.)
     read_err = agent_read_key_error(agent_id, key)
     if read_err is not None:
         print(read_err, file=sys.stderr)
