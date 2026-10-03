@@ -109,10 +109,12 @@ from kanibako.settings.settings_cli_level import build_cli_level, guard_cli_leve
 from kanibako.settings.settings_expand import NullSources, RefsRead, expand
 from kanibako.settings.settings_keyspace import (
     BIND_LEAF_CATEGORIES,
+    Judgment,
     KeyClass,
     entry_label,
     is_terminal_category_key,
     pseudo_agent_fence,
+    render_store_path,
     undeclared_store_paths,
     walk_store_paths,
 )
@@ -1112,15 +1114,6 @@ def resolve_auth_source(
     )
 
 
-#: Where to look when the resolve loaded NO settings file — a narrow resolve, or one
-#: whose offending entry arrived on a floor or a partial. The four tier-named files
-#: (R140), so the message still points somewhere rather than trailing off.
-_SETTINGS_FILE_NAMES: Final[str] = (
-    "the box's box.yaml, the workset's workset.yaml, the agent's agent.yaml, "
-    "or the system settings.yaml"
-)
-
-
 
 class ResolveSubject(Enum):
     """WHAT a resolve is FOR — the words its §0 refusal speaks in.
@@ -1184,7 +1177,11 @@ def _loaded_tiers(files: Sequence[SettingsFile]) -> tuple[SettingsFile, ...]:
 
 
 def _refuse_undeclared_snapshot(
-    store: KeyStore, *, files: Sequence[SettingsFile], subject: ResolveSubject,
+    store: KeyStore,
+    *,
+    files: Sequence[SettingsFile],
+    written: Sequence[_WrittenLevel],
+    subject: ResolveSubject,
 ) -> None:
     """RAISE naming EVERY resolved path the CLOSED keyspace does not declare (§0).
 
@@ -1207,9 +1204,11 @@ def _refuse_undeclared_snapshot(
     (``config_keys._SCOPE_READ_COMMAND``), and a cure a user cannot type is worse
     than no cure.
     *files* are the tiers the resolve READ, MOST-SPECIFIC FIRST; :func:`_loaded_tiers`
-    turns them into the list this message names and the retirement choice judges — the
-    SAME list. Which of them carried it is not knowable here, because the snapshot
-    is the MERGE of all of them.
+    turns them into the list the retirement choice judges. ⚑ EACH ENTRY IS FILED UNDER
+    THE FILE THAT CARRIES IT (:func:`_carrying_files`, over the per-file *written*
+    levels), never under every file the resolve loaded: a list of innocent files is a
+    hand-edit the user cannot aim. An entry no file carries came from a non-file input,
+    and the message says so instead of naming files.
 
     ⚑ A RETIRED SPELLING GETS ITS OWN MESSAGE, NOT THIS ONE
     (``settings_assemble.retired_cure``) — the generic text is the FALLBACK for an
@@ -1223,14 +1222,22 @@ def _refuse_undeclared_snapshot(
     findings = undeclared_store_paths(store, oracle=keyspace_verdict)
     if not findings:
         return
-    tiers = _loaded_tiers(files)
-    retired_cure(tiers)
+    retired_cure(_loaded_tiers(files))
     named, entries, them = undeclared_listing(findings)
-    loaded = [str(f.path) for f in tiers]
-    where = (
-        "\n".join(f"    - {path}" for path in loaded) if loaded
-        else f"    - {_SETTINGS_FILE_NAMES}"
+    carriers = _carrying_files(findings, written, files)
+    filed = {seg for keys in carriers.values() for seg in keys}
+    where = "\n".join(
+        f"    - {path}: " + ", ".join(_finding_name(seg, findings) for seg in keys)
+        for path, keys in carriers.items()
     )
+    stray = [seg for seg, _ in findings if seg not in filed]
+    if stray:
+        where += ("\n" if where else "") + (
+            "    - " + ", ".join(_finding_name(seg, findings) for seg in stray)
+            + ": in no settings file this resolve read — it came from an input that is "
+            "not a settings file (the command line, the persona store, or an agent "
+            "plugin's or kanibako's own defaults)"
+        )
     raise SettingsError(
         f"the settings resolved for {subject.what} carry {entries} "
         f"(spec §0 — the keyspace is CLOSED):\n"
@@ -1238,10 +1245,42 @@ def _refuse_undeclared_snapshot(
         f"kanibako will not resolve settings that carry {them}: an undeclared key "
         f"has no meaning to give the box, and passing it through would be the very "
         f"'anything goes' behavior the closed keyspace replaces.\n"
-        f"  Fix: remove {them} BY HAND from the settings file that carries {them} — "
-        f"this resolve loaded:\n{where}\n"
+        f"  Fix: remove {them} BY HAND, each from the file listed with it:\n"
+        f"{where}\n"
         f"  {subject.cure_note}"
     )
+
+
+def _finding_name(
+    segments: tuple[str, ...], findings: Sequence[tuple[tuple[str, ...], Judgment]],
+) -> str:
+    """*segments* rendered as :func:`undeclared_listing` renders that finding."""
+    key_len = next(j.key_len for seg, j in findings if seg == segments)
+    return render_store_path(segments, key_len)
+
+
+def _carrying_files(
+    findings: Sequence[tuple[tuple[str, ...], Judgment]],
+    written: Sequence[_WrittenLevel],
+    files: Sequence[SettingsFile],
+) -> dict[str, list[tuple[str, ...]]]:
+    """``{file: [finding, ...]}`` — each finding under EVERY written file that holds its path.
+
+    *written* is most-specific-first and so is the result. The ``base`` level has the
+    floor folded in, so the base FILE's own view (from *files*) decides what it holds:
+    a floor-only entry is never filed there, and an entry the file writes at a path the
+    floor also holds still is.
+    """
+    base_view: object = next((f.view for f in files if f.level == "base" and f.loaded), {})
+    carriers: dict[str, list[tuple[str, ...]]] = {}
+    for level, path, floor_store in written:
+        if path is None:
+            continue
+        own = base_view if floor_store is not None else level
+        held = {seg for seg, _ in walk_store_paths(own)} if isinstance(own, dict) else set()
+        keys = carriers.setdefault(str(path), [])
+        keys.extend(seg for seg, _ in findings if seg in held and seg not in keys)
+    return {path: keys for path, keys in carriers.items() if keys}
 
 
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]:
@@ -1377,7 +1416,9 @@ def refuse_read_time_faults(
     and the undeclared entry on the next run.
     """
     _refuse_ambiguous_path_values(written, expanded, ctx=ctx)
-    _refuse_undeclared_snapshot(expanded, files=files, subject=subject)
+    _refuse_undeclared_snapshot(
+        expanded, files=files, written=written, subject=subject,
+    )
     _refuse_internal_bind_entries(written)
 
 

@@ -57,6 +57,7 @@ from kanibako.settings.settings_categories import (
 from kanibako.settings.settings_drops import cascade_drop_set, upward_scope_drop_set
 from kanibako.settings.settings_keyspace import (
     BIND_LEAF_CATEGORIES,
+    SCALAR_AGENT_LEAVES,
     TERMINAL_CATEGORY_TAILS,
     Judgment,
     render_store_path,
@@ -686,7 +687,8 @@ def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any:
     Q87: a user-written capital node is ACCEPTED with a loud warning naming the file and both
     spellings, once per ``(file, key)`` (:func:`announce_drop_once`); code gets no such relief,
     because the keyspace verdict does not fold. Two spellings of ONE node in one file are
-    REFUSED, naming both: neither may silently win. Copies only what it changes.
+    REFUSED, naming both: neither may silently win. A table where a node's SCALAR leaf goes
+    (:func:`_refuse_table_at_scalar_leaf`) is REFUSED too. Copies only what it changes.
     """
     if not isinstance(raw, dict):
         return raw
@@ -699,6 +701,7 @@ def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any:
         if not isinstance(table, dict):
             continue
         folded = _fold_node_table(table, prefix=".".join(address), path=path)
+        _refuse_table_at_scalar_leaf(folded, prefix=".".join(address), path=path)
         if folded is table:
             continue
         if len(address) == 1:
@@ -706,6 +709,30 @@ def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any:
         else:
             out = {**out, address[0]: {**out[address[0]], address[1]: folded}}
     return out
+
+
+def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None) -> None:
+    """RAISE naming every ``<prefix>.<node>.<leaf>`` holding a table where a SCALAR goes (spec §0).
+
+    ⚑ The undeclared audit judges key NAMES, and ``model`` is one, so a table under it rode in
+    silently; the leaf's SHAPE is the fault. Every node, ``default`` included: a category is a
+    table in any node, a scalar leaf (:data:`SCALAR_AGENT_LEAVES`) is one in none.
+    """
+    found = sorted(
+        f"{prefix}.{node}.{leaf}"
+        for node, sub in table.items() if isinstance(sub, dict)
+        for leaf, value in sub.items()
+        if leaf in SCALAR_AGENT_LEAVES and isinstance(value, dict)
+    )
+    if not found:
+        return
+    where = path if path is not None else "<settings>"
+    named = "\n".join(f"  - {key}" for key in found)
+    raise SettingsError(
+        f"the settings file {where} holds a table where a single value belongs "
+        f"(spec §0 — the keyspace is CLOSED):\n{named}\n"
+        f"  Fix: give each key one value BY HAND in {where}, or delete it."
+    )
 
 
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict:
@@ -787,8 +814,8 @@ def _file_view(raw: Any, *, level: str, path: Path | None, fold: bool = True) ->
     return fold_agent_nodes(view, path=path) if fold else view
 
 
-#: The levels stage (h) audits (design 2B-ii).
-_H_AUDITED_LEVELS: tuple[str, ...] = ("box", "workset")
+#: The levels stage (h) audits, MOST-SPECIFIC FIRST (design 2B-ii, 2B-iii).
+_H_AUDITED_LEVELS: tuple[str, ...] = ("box", "workset", "system", "base")
 
 
 class ReadPurpose(Enum):
@@ -913,7 +940,7 @@ def refuse_undeclared_entries(
 ) -> None:
     """RAISE when *view* carries an undeclared entry, naming EVERY such key and *path*.
 
-    Stage (h) — the per-file §0 audit for the ``workset`` and ``box`` files. Each file's own
+    Stage (h) — the per-file §0 audit for every :data:`_H_AUDITED_LEVELS` file. Each file's own
     view is judged (after its upward-scope drops), so a lower file's undeclared key is
     caught even when a higher file supplies that table; the refusal names the file.
 

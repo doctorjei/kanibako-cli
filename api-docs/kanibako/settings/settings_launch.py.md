@@ -19,7 +19,6 @@ _SYSTEM_SHARE_ALLOWED_KEY = 'system.auth.share_allowed'
 _BOX_MODES: frozenset[str] = frozenset((mode.value for mode in BoxMode))
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset({'common', 'chat', 'broadcast', 'share', 'mailboxes', 'share_global'})
 _WORKSET_LOCAL_CHANNEL_LEAVES: frozenset[str] = _WORKSET_CHANNEL_LEAVES - {'mailboxes', 'share_global'}
-_SETTINGS_FILE_NAMES: Final[str] = "the box's box.yaml, the workset's workset.yaml, the agent's agent.yaml, or the system settings.yaml"
 _BOX_NAME_KEYS: Final = ('meta.box.name', 'meta.box.inbox', 'meta.box.share_global', 'meta.box.share_workset')
 _BOX_ONLY_PREFIXES: Final = ('meta.box.',)
 _WORKSET_ONLY_PREFIXES: Final = ('meta.workset.', 'workset.')
@@ -78,7 +77,9 @@ def _is_bind_floor_key(key: str) -> bool
 def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
 def _materialize_auth_active(snapshot: KeyStore) -> None
 def _loaded_tiers(files: Sequence[SettingsFile]) -> tuple[SettingsFile, ...]
-def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[SettingsFile], subject: ResolveSubject) -> None
+def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[SettingsFile], written: Sequence[_WrittenLevel], subject: ResolveSubject) -> None
+def _finding_name(segments: tuple[str, ...], findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> str
+def _carrying_files(findings: Sequence[tuple[tuple[str, ...], Judgment]], written: Sequence[_WrittenLevel], files: Sequence[SettingsFile]) -> dict[str, list[tuple[str, ...]]]
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None

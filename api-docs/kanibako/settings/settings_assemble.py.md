@@ -25,7 +25,7 @@ _BEHAVIOR_TABLE_SHAPES: 'tuple[tuple[tuple[str, ...], int], ...]' = ((('agent',)
 _DROP_WARNED: 'set[tuple[str, str]]' = set()
 _AGENT_NODE_TABLES: tuple[tuple[str, ...], ...] = (('agent',), (PREF_ROOT, 'agent'))
 _AGENT_FILE_LEVEL: str = 'agent'
-_H_AUDITED_LEVELS: tuple[str, ...] = ('box', 'workset')
+_H_AUDITED_LEVELS: tuple[str, ...] = ('box', 'workset', 'system', 'base')
 ```
 
 ## Functions
@@ -57,6 +57,7 @@ def _nested_present(raw: Any, parts: 'tuple[str, ...]') -> Any
 def _behavior_leaf_sites(raw: Any, leaf: str) -> 'list[tuple[tuple[str, ...], Any]]'
 def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None) -> str
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
+def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None) -> None
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict
 def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict
 def _file_view(raw: Any, *, level: str, path: Path | None, fold: bool=True) -> Any
