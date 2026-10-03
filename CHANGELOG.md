@@ -293,8 +293,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An `image-baseline.yaml` entry whose value is not an executable name, or a list of them, is
   refused instead of read.** In v1.8.0-rc2 a package mapped to a number crashed with a bare
   `TypeError` traceback, and one mapped to a table or a nested list was accepted silently, so its
-  keys or the stringified inner list were probed as executable names. Each is now refused with an
-  error naming the file and the package.
+  keys or the stringified inner list were probed as executable names; a null or boolean list item
+  (`git: [~, true]`, or a bare YAML 1.1 `yes`/`no`/`on`/`off`) was probed as an executable named
+  `None`, `True`, or `False`. Each is now refused with an error naming the file and the package. A
+  number in a list is still read as a name (`[a, 2]` gives `a` and `2`).
 
 - **A box name that belongs to more than one workset is refused instead of silently resolving to
   the wrong target.** `box info`, `stop`, the box lifecycle commands (`remap`, `convert`, `move`),
@@ -1398,6 +1400,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sets nothing, a binding or `seeded` entry sourced at `@workset.auth.path/notes` is left out, and
   a `secret_path` sourced there is left out with a warning (see *A setting set to `null` inside a
   path no longer turns the path into one under the host's root*).
+
+- **`set --null` at a path key the launch refuses a null at is now refused at the door and writes
+  nothing.** In 1.8.0-rc2 `kanibako system set --null system.canon` answered
+  `Set system.canon=null` and wrote the value, and every later command refused the file it had
+  just written. Any `system.*` path key, and `workset.boxes` at any scope, is now refused before
+  the write, and the refusal carries the same reason the launch gives; it names no file, because
+  the `set` door wrote none. A `null` with a meaning (`system.agent`, `workset.logs`,
+  `workset.workspaces`, `<scope>.env.<VAR>`) is still accepted, and so is every value that is not
+  a null. See *A `workset.boxes` of `null` is refused* and *`set --null` at a path key is refused
+  at the door* in [MIGRATION.md](MIGRATION.md).
+
+- **A crafted executable name in an `image-baseline.yaml` overlay can no longer run commands
+  during a baseline probe.** `kanibako baseline verify` put each name into its `sh -lc` probe
+  unquoted, and `rig diagnose` and the launch-time baseline check wrapped it in double quotes, so
+  a name carrying `;` or `"` ran the rest as shell commands inside the probe container. Each name
+  is now passed as one quoted shell word. The probe still runs a login shell, so a tool on a login
+  `PATH` is still found.
 
 ### Added
 

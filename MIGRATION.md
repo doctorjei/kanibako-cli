@@ -370,9 +370,11 @@ inside boxes. In order of likely impact:
     v1.8.0-rc2 only, claude's `transform` (and each agent's new `label`), so set those per agent;
     from v1.7.2 no shipped agent's key changes — see *An agent plugin's own default beats
     `agent.default`*; `box rm` no longer removes a workset — use `workset rm` — see *2.102
-    `kanibako box rm <name>` no longer removes a workset*; and a plugin row built in Python with
-    no `default` now inherits your `agent.default.<key>` instead of shadowing it with `""` — see
-    *2.103 A `TargetSetting` built in Python with no `default` inherits `agent.default`*.
+    `kanibako box rm <name>` no longer removes a workset*; a plugin row built in Python with no
+    `default` now inherits your `agent.default.<key>` instead of shadowing it with `""` — see
+    *2.103 A `TargetSetting` built in Python with no `default` inherits `agent.default`*; and `set
+    --null` at a path key exits 1 and writes nothing — see *2.104 `set --null` at a path key is
+    refused at the door*.
 
 ---
 
@@ -5754,7 +5756,9 @@ If you meant to keep the bind, remove the `null` instead.
 ### 2.93 A `workset.boxes` of `null` is refused
 
 **Read this if a `<workset>/workset.yaml` sets `workset.boxes` to `null`** — the primary
-workset's, a named workset's, or a standalone box's root file. A `null` written by `--null` counts.
+workset's, a named workset's, or a standalone box's root file. A `null` written by `--null` in
+v1.8.0-rc2 counts; `set --null workset.boxes` now refuses at the door with exit 1 and writes
+nothing.
 
 **What changed.** In v1.8.0-rc2 a `null` `workset.boxes` was read as if the key were not set, so
 `workset connect` put the box under the default directory (`<workset>/boxes/`), while starting
@@ -6021,6 +6025,24 @@ either form: they skip the plugin's rows and show core's `agent.default.label`.
 this change gives it no floor. Such a row must carry an explicit default, a string or `None`
 (`null` in a defaults file), and a row that omits it is refused by name, whether it was written in
 a defaults file or built in Python.
+
+### 2.104 `set --null` at a path key is refused at the door
+
+**Read this if you run `set --null` at a `system.*` path key or at `workset.boxes`.**
+
+**What changed.** In v1.8.0-rc2 `set --null` at one of these keys answered `Set <key>=null`, wrote
+the null, and every later command refused the file it had written. It now exits 1 and writes
+nothing. This covers every `system.*` path key, and `workset.boxes` at any scope.
+
+**What you see.**
+
+```
+Error: the launch refuses a null at these path keys, so this set is refused too:
+  system.canon
+kanibako gives a null path key no meaning. Nothing was written: to use system.canon's default, run 'reset system.canon', or set the path you mean.
+```
+
+**What to do.** Run `reset <key>` to take the default, or set the path you mean.
 
 ---
 
