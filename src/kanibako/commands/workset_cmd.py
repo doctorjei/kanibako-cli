@@ -547,15 +547,20 @@ def run_connect(args: argparse.Namespace) -> int:
     source = Path(args.source) if args.source else Path(os.getcwd())
     project_name = args.project_name or source.resolve().name
 
-    # ⚑ Refused BEFORE the journal bracket below, so a null ``workset.workspaces`` leaves no
-    # pending ``connect`` entry behind (``add_project`` refuses the same case for its other
-    # callers).
+    # ⚑ BOTH REFUSALS BELOW FIRE BEFORE THE JOURNAL BRACKET, so a refused connect leaves
+    # no pending ``connect`` entry behind (``add_project`` refuses the same null case for
+    # its other callers).
     if source_in_tree(ws, source):
         try:
             refuse_null_workspaces(ws.root, f"a workspace for '{project_name}'")
         except WorksetError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
+    elif not source.is_dir():
+        # ⚑ ``connect`` REGISTERS an EXTERNAL dir; a dangling symlink is PRESENT, not missing.
+        present = "it is not a directory." if os.path.lexists(source) else "no such directory."
+        print(f"Error: Cannot connect '{source.resolve()}': {present}", file=sys.stderr)
+        return 1
 
     # ⚑ THE J2 WRITE-AHEAD BRACKET, AND IT BELONGS HERE, NOT IN ``add_project``: entry
     # BEFORE the membership write, cleared immediately after (HARD INVARIANT: registered
