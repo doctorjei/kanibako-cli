@@ -3791,12 +3791,14 @@ def resolve_box_scalars(
     cli_overrides: "dict[str, object] | None",
     inputs: LaunchInputs | None = None,
     agent_name: str = GENERAL_SLOT,
+    agent_path: Path | None = None,
 ) -> dict[str, object]:
     """The box scalars resolved through the keyspace, as ``{dotted key: value}``.
 
     With *inputs*, the resolve is theirs (its subject, files and anchors), under
-    *agent_name*; the agent's own settings file is not read. Without, a box or working-set
-    file is read as a BOX resolve over those paths, and neither means SYSTEM.
+    *agent_name*, reading *agent_path* as that agent's settings file — a launch passes
+    the file its snapshot reads, or the two disagree on ``box.image``. Without, a box or
+    working-set file is read as a BOX resolve over those paths, and neither means SYSTEM.
     """
 
     overrides = cli_overrides or {}
@@ -3813,7 +3815,7 @@ def resolve_box_scalars(
         )
     if inputs is not None:
         snapshot = build_launch_snapshot(
-            **inputs.as_kwargs(), agent_name=agent_name, agent_path=None,
+            **inputs.as_kwargs(), agent_name=agent_name, agent_path=agent_path,
             cli_level=cli_level,
         )
     else:
@@ -3844,8 +3846,12 @@ def load_merged_config(
     cli_overrides: "dict[str, object] | None" = None,
     inputs: LaunchInputs | None = None,
     agent_name: str = GENERAL_SLOT,
+    agent_path: Path | None = None,
 ) -> KanibakoConfig:
-    """The box scalars as a :class:`KanibakoConfig`: each file's present values, then the keyspace resolve."""
+    """The box scalars as a :class:`KanibakoConfig`: each file's present values, then the keyspace resolve.
+
+    *agent_path* is read only with *inputs* (:func:`resolve_box_scalars`).
+    """
     if inputs is not None:
         workset_path, project_path = inputs.cascade_workset_path, inputs.cascade_box_path
     defaults = KanibakoConfig()
@@ -3862,7 +3868,7 @@ def load_merged_config(
     resolved = resolve_box_scalars(
         workset_path=workset_path, box_path=project_path,
         cli_overrides=cli_overrides, inputs=inputs,
-        agent_name=agent_name,
+        agent_name=agent_name, agent_path=agent_path,
     )
     for dotted, field_name in _BOX_SCALAR_FIELDS.items():
         if dotted in resolved:

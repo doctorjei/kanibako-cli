@@ -21,7 +21,6 @@ from kanibako.settings.config import (
     load_config,
     persist_creation_flags,
 )
-from kanibako.settings.settings_launch import load_merged_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, ProjectError
@@ -2050,13 +2049,6 @@ def run_info(args: argparse.Namespace) -> int:
             print("This directory has not been initialized.")
         return 1
 
-    # The merged config, for the image row.
-    project_toml, workset_path = box_workset_settings_paths(proj)
-    merged = load_merged_config(
-        project_toml if project_toml.exists() else None,
-        workset_path=workset_path,
-    )
-
     lock_file = proj.metadata_path / ".kanibako.lock"
     lock_held = lock_file.exists()
 
@@ -2065,6 +2057,7 @@ def run_info(args: argparse.Namespace) -> int:
     # ⚑ INFORMATIONAL, not a launch: a resolution failure DEGRADES rather than errors.
     # Selection still goes through the ONE seam (:func:`select_agent`).
     agent_display = "n/a (unresolved)"
+    target = None
     try:
         from kanibako.agent_ref import display_agent_ref
         from kanibako.settings.agent_select import select_agent
@@ -2091,6 +2084,14 @@ def run_info(args: argparse.Namespace) -> int:
         # "unresolved" — `box info` is where a user looks when a box will not start.
         agent_display = f"n/a ({exc})" if "RETIRED" in str(exc) else agent_display
     cred_age = _format_credential_age(creds_file) if creds_file else "n/a (no target)"
+
+    # The image row: the box scalars the launch resolves, under the agent it selects.
+    from kanibako.commands.start import _box_scalars
+    merged = _box_scalars(
+        std, proj,
+        with_harness(agent_name, agent_node_case(target.name)) if target else GENERAL_SLOT,
+        std.settings, None,
+    )
 
     # Dashes read better than underscores in the mode row.
     mode_display = proj.mode.value.replace("_", "-")
