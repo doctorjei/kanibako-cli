@@ -397,27 +397,27 @@ class TestBoxScalarDefaultsFloor:
         assert floor["box.share_images"] is False
 
     def test_box_shell_is_a_present_none(self):
-        """``box.shell``'s ``""`` field default is floored as the declared ``<None>``.
+        """``box.shell``'s field default IS the declared ``<None>``, floored PRESENT.
 
-        Spec §2b ``box.shell | <None>``: a declared ``<None>`` is SUPPLIED ([R177]), so a
+        Spec §2b ``box.shell | <None>``: a declared ``<None>`` is SUPPLIED, so a
         whole-value ``@box.shell`` resolves instead of dangling.  ``""`` would not do:
         ``build_launch_snapshot`` drops a ``""`` default as a suppression.
         """
         from kanibako.settings.config import box_scalar_defaults_floor
 
-        assert KanibakoConfig().box_shell == ""
+        assert KanibakoConfig().box_shell is None
         floor = box_scalar_defaults_floor()
         assert "box.shell" in floor
         assert floor["box.shell"] is None
 
     def test_a_floored_none_leaves_the_flat_shell_to_auto_detect(self, tmp_path):
-        """The present ``None`` never reaches the flat field as ``"None"``.
+        """The present ``None`` lands AS ``None``, never as the string ``"None"``.
 
         ``launch.shells.resolve_box_shell`` reads ``box_shell`` and runs it; a stringified
         ``None`` would launch a program called ``None``.
         """
         cfg = load_merged_config()
-        assert cfg.box_shell == ""
+        assert cfg.box_shell is None
 
     def test_false_survives_because_it_is_a_value(self):
         """⚑ ``False == ""`` is False — the suppression must not eat a real bool."""

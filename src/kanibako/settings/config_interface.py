@@ -2432,8 +2432,10 @@ def show_config(
         overrides = load_project_overrides(config_path) if config_path else {}
         for fld in fields(cfg):
             val = getattr(cfg, fld.name)
+            # ⚑ ``<None>`` PRINTS as ``<None>`` (spec §2b), not as Python's ``None``.
+            shown = "<None>" if val is None else val
             marker = " (override)" if fld.name in overrides else ""
-            print(f"  {fld.name} = {val}{marker}", file=out)
+            print(f"  {fld.name} = {shown}{marker}", file=out)
 
         # Agent settings: render a supplied box-view ``agent_state``, else fall back to the
         # project-level overrides.  ⚑ *agent_state* is UNMARKED: a box file cannot set an agent
