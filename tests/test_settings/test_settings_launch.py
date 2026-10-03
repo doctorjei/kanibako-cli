@@ -4701,7 +4701,7 @@ class TestCliLevelPrecedence:
             system_path=None, agent_path=agent_file,
             workset_path=None, box_path=None,
             agent_state=agent_file_state_level(
-                agent_file_load(agent_file, node="claude"), node="claude",
+                agent_file_load(agent_file, node="claude", purpose=ReadPurpose.RESOLVE), node="claude",
             ),
             cli_level=cli_level,
         )
@@ -4863,9 +4863,9 @@ def _agent_file_contender(key, value):
 # parameter literally named ``agent_file`` (the agent settings FILE it writes).
 from kanibako.settings.agent_config import AgentConfig  # noqa: E402
 from kanibako.settings.agent_file import (  # noqa: E402
-    load as agent_file_load,
     state_level as agent_file_state_level,
 )
+from kanibako.settings.settings_assemble import ReadPurpose, agent_record as agent_file_load  # noqa: E402
 
 
 def _persona_snap(
@@ -5032,7 +5032,7 @@ def test_persona_loses_to_the_agent_file_flat_state(tmp_path, key, path):
     """The agent file's FLAT ``[agent]`` state rung also beats the persona.
 
     ⚑ Only the two BARE classes are exercised, and that is structural, not an
-    omission: ``agent_file.load`` builds ``cfg.state`` from the file's SCALAR
+    omission: ``agent_file.record`` builds ``cfg.state`` from the file's SCALAR
     entries only — a dict-valued ``env:`` / ``secret_path:`` table is explicitly
     excluded there and rides ``_agent_partial`` (the ``agent.<active>`` table,
     covered above) instead. So the flat channel cannot carry a dotted class at all.
@@ -6732,6 +6732,23 @@ class TestNullRefSecretPath:
 # --------------------------------------------------------------------------- #
 
 
+class TestAgentFileCategoryReset:
+    """2C: a category key in the agent file reaches the cascade whatever it holds."""
+
+    def test_a_null_category_resets_the_system_files_table(self, tmp_path):
+        # §2a: ``caches: null`` at the agent file's tier RESETS the category the system file
+        # supplies — the capability the old ``isinstance(flat, dict) and flat`` filter lost.
+        # (INVERT: the control file says nothing about ``caches`` and ``/c`` stands.)
+        from kanibako.settings.settings_launch import snapshot_leaf
+
+        system = {"agent": {"claude": {"caches": {"/c": ["/h/c"]}}}}
+        snap = TestAgentFileAgentTable._snap(tmp_path, {"self": {"caches": None}}, system=system)
+        reset = snapshot_leaf(snap, "agent.claude.caches")
+        assert not isinstance(reset, dict) or "/c" not in reset
+        control = TestAgentFileAgentTable._snap(tmp_path, {"self": {}}, system=system)
+        assert "/c" in snapshot_leaf(control, "agent.claude.caches")
+
+
 class TestAgentFileAgentTable:
     """What "by construction" means for Q92, pinned on the launch snapshot: the file is read
     only while its agent is active, so its ``agent:`` nodes apply only then."""
@@ -6745,7 +6762,7 @@ class TestAgentFileAgentTable:
             system_path=system_file, agent_path=agent_file,
             workset_path=None, box_path=None,
             agent_state=agent_file_state_level(
-                agent_file_load(agent_file, node="claude"), node="claude",
+                agent_file_load(agent_file, node="claude", purpose=ReadPurpose.RESOLVE), node="claude",
             ),
         )
 
@@ -6826,7 +6843,7 @@ class TestTheAgentFileGetsOneVerdict:
             self._launch(tmp_path, doc)
         path = _yaml(tmp_path / "agent.yaml", doc)
         with pytest.raises(SettingsError) as loaded:
-            agent_file_load(path, node="claude")
+            agent_file_load(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert expected in str(launched.value)
         assert str(loaded.value) == str(launched.value)
 
@@ -6837,7 +6854,7 @@ class TestTheAgentFileGetsOneVerdict:
     def test_the_declared_shapes_pass_both(self, tmp_path, doc):
         # The CONTROL: the new judgment refuses the shapes above, not the category tables.
         self._launch(tmp_path, doc)
-        agent_file_load(_yaml(tmp_path / "agent.yaml", doc), node="claude")
+        agent_file_load(_yaml(tmp_path / "agent.yaml", doc), node="claude", purpose=ReadPurpose.RESOLVE)
 
     @pytest.mark.writes_undeclared(
         "agent.self", "agent.self.model",

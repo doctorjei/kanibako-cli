@@ -57,9 +57,9 @@ class AgentConfig:
     env: dict[str, str | None] = field(default_factory=dict)
     secret_path: dict[str, str | None] = field(default_factory=dict)
     transform_settings: dict = field(default_factory=dict)
-    # ⚑ Carried OPAQUELY through load→write; no live producer today.  A guard
-    # against a shape change, not dead code.
-    category_tables: dict[str, dict] = field(default_factory=dict)
+    # ⚑ Carried OPAQUELY through read→write; no live producer
+    # today.  A guard against a shape change, not dead code.
+    category_tables: dict[str, object] = field(default_factory=dict)
 
 
 def agents_dir(data_path: Path, paths_agents: str = "agents") -> Path:

@@ -161,7 +161,7 @@ def _reserved_tier_category_refusal(tail: str) -> str:
 
 #: The stderr prefix the print sites put in FRONT of a refusal, and the reason the store
 #: sentence below is split out of :func:`_reserved_tier_store_refusal`: a caller that EMBEDS
-#: the refusal inside a longer message of its own (``agent_file.load``'s store gate, which
+#: the refusal inside a longer message of its own (``agent_record``'s store gate, which
 #: names the folder first) would otherwise print "is not an agent store: Error: 'default' …".
 _ERROR_PREFIX = "Error: "
 

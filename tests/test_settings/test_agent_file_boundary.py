@@ -22,6 +22,7 @@ import pytest
 from kanibako.settings import agent_file
 from kanibako.settings.agent_config import AgentConfig
 from kanibako.settings.agent_file import AgentFileSlot
+from kanibako.settings.settings_assemble import ReadPurpose, agent_record
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -111,7 +112,8 @@ class TestRootViaConstant:
         # ⚑ THROUGH the constant, never a literal: a rename that misses a site must
         # fail HERE rather than be re-blessed by editing this line.
         assert set(load_doc(path)) == {agent_file.ROOT_SECTIONS[0]}
-        assert agent_file.load(path, node="claude").state == {"model": "opus"}
+        record = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+        assert record.state == {"model": "opus"}
 
     def test_leaf_round_trip_through_the_slot(self, tmp_path: Path) -> None:
         from kanibako.settings.config_io import load_doc

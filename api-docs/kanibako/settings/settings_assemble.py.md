@@ -46,6 +46,7 @@ def retired_cure(files: Iterable[SettingsFile]) -> None
 def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None) -> KeyStore
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
 def assemble_levels(*, agent_name: str, files: Iterable[SettingsFile], floor: dict[str, object] | None=None) -> list[KeyStore]
+def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig
 def cascade_files(*, purpose: ReadPurpose, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, base_path: Path | None=None, subject: str | None=None, box_name: str | None=None) -> tuple[SettingsFile, ...]
 def _declaration_root_ref(path: tuple[str, ...], category: str) -> str | None
 def _stored_spelling(raw: Any) -> str
@@ -69,6 +70,7 @@ def _file_partial(raw: dict, *, path: Path | None=None) -> KeyStore
 def _agent_partial(raw: dict, *, sub_key: str, path: Path | None=None, node: str | None=None) -> KeyStore
 def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore
 def _insert_dotted(store: KeyStore, dotted: str, value: Any) -> None
+def _agent_shape_input(agent_file: SettingsFile | None) -> Any
 def _overlay(base: KeyStore, top: KeyStore) -> None
 ```
 

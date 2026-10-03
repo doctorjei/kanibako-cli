@@ -6603,7 +6603,7 @@ class TestSeedNewBoxCreateEntry:
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 return_value=(_SHARED_AUTH, None, None),
             ),
-            patch("kanibako.settings.agent_file.load"),
+            patch("kanibako.settings.settings_assemble.agent_record"),
             patch("kanibako.commands.start._seed_box_home") as m_seed,
             patch("kanibako.commands.start._sync_box_at_create"),
         ):
@@ -6645,7 +6645,7 @@ class TestSeedNewBoxCreateEntry:
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 return_value=(_SHARED_AUTH, None, None),
             ),
-            patch("kanibako.settings.agent_file.load"),
+            patch("kanibako.settings.settings_assemble.agent_record"),
             patch(
                 "kanibako.commands.start._seed_box_home",
                 side_effect=lambda **kw: order.append("seed"),
@@ -9402,8 +9402,8 @@ class TestPersonaLiveTierWiring:
         path = agent_settings_path(std.agents, self._NODE)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('self:\n  model: null\n')
-        from kanibako.settings.agent_file import load as load_agent_config
-        agent_cfg = load_agent_config(path, node=self._NODE)
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
+        agent_cfg = load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE)
 
         _auth, endpoint, model = _resolve_box_launch_decisions(
             std=std,
@@ -9714,9 +9714,9 @@ class TestPersonaLiveTierWiring:
             agent_settings_path,
         )
         from kanibako.settings.agent_file import (
-            load as load_agent_config,
             save as write_agent_config,
         )
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         # The store's resolved token pointer is an ABSOLUTE path, so feed *raw*
         # through both routes as the SAME literal: the store's ``.secret_path``
@@ -9742,7 +9742,7 @@ class TestPersonaLiveTierWiring:
         via_file = self._leaf_outcome(
             std, tmp_home, target=target,
             category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
-            agent_cfg=load_agent_config(path, node=self._NODE), agent_cfg_path=path,
+            agent_cfg=load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE), agent_cfg_path=path,
         )
         assert via_store == via_file, (
             f"store and agent-file secret_path disagree for {raw!r}: "
@@ -9776,9 +9776,9 @@ class TestPersonaLiveTierWiring:
             agent_settings_path,
         )
         from kanibako.settings.agent_file import (
-            load as load_agent_config,
             save as write_agent_config,
         )
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         monkeypatch.setenv("NAV_TOKEN_DIR", "/from/the/process/env")
         self._store(tmp_home)
@@ -9801,7 +9801,7 @@ class TestPersonaLiveTierWiring:
         via_file = self._leaf_outcome(
             std, tmp_home, target=target,
             category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
-            agent_cfg=load_agent_config(path, node=self._NODE), agent_cfg_path=path,
+            agent_cfg=load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE), agent_cfg_path=path,
         )
         # kanibako's namespace does not carry it: REFUSED, not silently wrong.
         assert via_file[0] == "raised"
@@ -9857,16 +9857,16 @@ class TestPersonaLiveTierWiring:
             agent_settings_path,
         )
         from kanibako.settings.agent_file import (
-            load as load_agent_config,
             save as write_agent_config,
         )
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         target = self._target()
         path = agent_settings_path(std.agents, self._NODE)
         write_agent_config(path, AgentConfig(env={"NAV_X": raw}))
         via_file = self._leaf_outcome(
             std, tmp_home, target=target, category="env", var="NAV_X",
-            agent_cfg=load_agent_config(path, node=self._NODE), agent_cfg_path=path,
+            agent_cfg=load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE), agent_cfg_path=path,
         )
         via_keyspace = self._leaf_outcome(
             std, tmp_home, target=target, category="env", var="NAV_X",

@@ -41,7 +41,7 @@ def read_leaf(slot: AgentFileSlot) -> str | None
 def write_leaf(slot: AgentFileSlot, value: object) -> None
 def remove_leaf(slot: AgentFileSlot) -> bool
 def clear_overrides(path: Path) -> int
-def load(path: Path, *, node: str) -> AgentConfig
+def record(level: AgentFileLevel, *, node: str) -> AgentConfig
 def save(path: Path, cfg: AgentConfig) -> None
 def contributed_tables(raw: Any) -> dict
 def refuse_node_spelled_twice(table: dict, *, prefix: str, path: Path | None) -> None
@@ -62,7 +62,7 @@ def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) ->
 def _refuse_two_spellings(tables: dict, *, node: str | None, path: Path | None) -> None
 def _node_identity(segment: Any) -> Any
 def _setting_leaves(table: dict, trail: tuple[str, ...]=()) -> dict[tuple[str, ...], str]
-def _refuse_undeclared_state(entries: 'Iterable[tuple[str, str, str]]', *, node: str, path: Path) -> None
+def _refuse_undeclared_state(entries: 'Iterable[tuple[str, str, str]]', *, node: str, path: Path | None) -> None
 def _node_tables(own: Any, scope: Any, *, node: str) -> 'list[tuple[str, dict, Callable[..., str]]]'
 def _scope_spelling(seg: Any, *tail: str) -> str
 def _undeclared_entries(own: Any, scope: Any, *, node: str) -> 'Iterator[tuple[str, str, str]]'
@@ -84,4 +84,5 @@ class AgentFileLevel:
     table: dict
     path: Path | None = None
     scope: dict = field(default_factory=dict)
+    state: dict = field(default_factory=dict)
 ```

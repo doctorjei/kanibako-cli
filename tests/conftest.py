@@ -416,7 +416,7 @@ def start_mocks():
                 # CALL (order / not-called) re-patch it locally, which still wins.
                 ensure_persona_share_symlinks=DEFAULT,
             ) as m_launch_mount_stubs,
-            patch("kanibako.settings.agent_file.load") as m_load_agent_cfg,
+            patch("kanibako.settings.settings_assemble.agent_record") as m_load_agent_cfg,
             patch("kanibako.commands.start.fcntl") as m_fcntl,
             patch("builtins.open", MagicMock()) as m_open,
             patch("kanibako.commands.start.load_registry", return_value={}) as m_load_registry,

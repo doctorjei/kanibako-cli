@@ -22,6 +22,7 @@ from typing import Any, Iterable, Sequence
 
 from kanibako.agent_ref import agent_segment_case
 from kanibako.settings.agent_config import (
+    AgentConfig,
     category_root_ref,
     is_self_resolving,
     root_relative_source,
@@ -31,6 +32,7 @@ from kanibako.settings.agent_file import (
     ROOT_SECTIONS,
     contributed_tables,
     level_table,
+    record,
     refuse_node_spelled_twice,
 )
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS
@@ -1385,11 +1387,7 @@ def assemble_levels(
     # The agent file's SHAPE checks (``agent_file.level_table``: a stray root, a nested
     # ``self:``) judge the file minus its dropped tables, not the contributed view, so a stray
     # still refuses by name.
-    agent_file = by_level.get(_AGENT_FILE_LEVEL)
-    raw_agent: Any = {}
-    if agent_file is not None and isinstance(agent_file.stored, dict):
-        drop_set = cascade_drop_set(_AGENT_FILE_LEVEL)
-        raw_agent = {k: v for k, v in agent_file.stored.items() if str(k) not in drop_set}
+    raw_agent = _agent_shape_input(by_level.get(_AGENT_FILE_LEVEL))
     agent_path = _path(_AGENT_FILE_LEVEL)
 
     # The floor is inserted FIRST and the base-file leaves overlay it, so a base-file entry wins
@@ -1417,6 +1415,58 @@ def assemble_levels(
         _file_partial(_view("system"), path=_path("system")),
         base_partial,
     ]
+
+
+def _agent_shape_input(agent_file: SettingsFile | None) -> Any:
+    """What ``agent_file.level_table`` judges: the stored agent file minus its dropped tables."""
+    if agent_file is None or not isinstance(agent_file.stored, dict):
+        return {}
+    drop_set = cascade_drop_set(_AGENT_FILE_LEVEL)
+    return {k: v for k, v in agent_file.stored.items() if str(k) not in drop_set}
+
+
+def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig:
+    """Read agent *node*'s settings file at *path* for *purpose* and return its record.
+
+    THE ONE READER of the agent file (design 2C): one :func:`read_settings_files` read, the
+    file's shape judged by ``agent_file.level_table`` — the same view the launch's
+    :func:`_agent_partial` takes — and the record built from that level
+    (``agent_file.record``, which refuses every undeclared entry). Every reader — the launch,
+    ``agent show`` / ``info`` / ``list`` / ``get`` — takes the record from here, so one file
+    gets one verdict. The repair door (``agent_file.clear_overrides``) never calls this.
+    Returns an empty record if the file does not exist.
+
+    *node* is the agent whose file this is; a store folder named after the file's alias
+    (``self``) is refused, and so is a present folder named for the reserved all-agents tier
+    (``default``, spec §2d), whose settings live in the system file. Two questions: whether a
+    name is a legal KEY SEGMENT (``default`` is), and whether a folder is that agent's STORE.
+    ``config_dest._missing_store_error`` answers the second for an ABSENT store.
+    """
+    from kanibako.settings.config_dest import _reserved_tier_store_sentence
+    from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
+    from kanibako.settings.settings_keyspace import file_alias_reason
+
+    alias = file_alias_reason(node)
+    if alias is not None:
+        raise SettingsError(
+            f"{path.parent} is not an agent store: {alias}.\n"
+            f"  Fix: rename the folder to the agent's name, or move it out of "
+            f"{path.parent.parent}."
+        )
+    if not path.exists():
+        return AgentConfig()
+    if node == AGENT_DEFAULT_SUB:
+        raise SettingsError(
+            f"{path.parent} is not an agent store: {_reserved_tier_store_sentence()}.\n"
+            f"  Fix: move {path.parent} out of {path.parent.parent}, or delete it -- the "
+            f"tier's settings live in the system file's 'agent: {AGENT_DEFAULT_SUB}:' "
+            f"table, never in a folder."
+        )
+    (read,) = read_settings_files(
+        ((_AGENT_FILE_LEVEL, path),), purpose=purpose, subject=node,
+    )
+    level = level_table(_agent_shape_input(read), sub_key=node, node=node, path=path)
+    return record(level, node=node)
 
 
 def cascade_files(
