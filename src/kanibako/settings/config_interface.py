@@ -15,7 +15,7 @@ import sys
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping, NamedTuple
 
 from kanibako.settings.config import (
     _LAYER1_TABLE,
@@ -1976,10 +1976,15 @@ def write_system_value(system_settings_path: Path, leaf: str, value: object) -> 
 
 def _clear_writable_tables(
     path: Path, command_scope: "ConfigLevel | None",
-) -> int:
-    """Drop the top-level tables *command_scope* may write from *path*; count the leaves."""
+) -> dict[str, int]:
+    """Drop the top-level tables *command_scope* may write from *path*; ``token → leaves``.
+
+    ⚑ IT RETURNS WHICH TABLES WENT, not only how many leaves they held: the caller has
+    to name the undeclared entries its sweep removed, and the pass that dropped them is
+    the honest source of that.
+    """
     if command_scope is None or not path.exists():
-        return 0
+        return {}
     allowed = _SCOPE_WRITE_ALLOWED.get(command_scope, frozenset())
     # ⚑ The ``pref:`` table is cleared where ``reset pref.<key>`` may clear one entry — the
     # SAME site rule (:func:`_pref_level`, spec §2h: workset and box only). Elsewhere a
@@ -1987,9 +1992,8 @@ def _clear_writable_tables(
     if _pref_level(command_scope) is not None:
         allowed = allowed | {PREF_ROOT}
     data = load_doc(path)
-    removed = 0
-    # ⚑ Written whenever a table is DROPPED, not only when a leaf was counted: a table of
-    # empty leaves (``pref: {system: {}}``) counts 0 and must still leave the file.
+    removed: dict[str, int] = {}
+    # ⚑ Written whenever a table is DROPPED, not only when a leaf was counted.
     dropped = False
     # ⚑ Only tokens the command scope may WRITE are candidates; ``agent`` is handled
     # elsewhere and ``meta`` is never in ``_SCOPE_WRITE_ALLOWED`` (it is not a containment scope).
@@ -1999,7 +2003,7 @@ def _clear_writable_tables(
         table = data.get(token)
         if not isinstance(table, dict):
             continue
-        removed += count_leaves(table)
+        removed[token] = count_leaves(table)
         data.pop(token, None)
         dropped = True
     if dropped:
@@ -2015,25 +2019,47 @@ def reset_all(
     system_settings_path: Path | None = None,
     command_scope: "ConfigLevel | None" = None,
 ) -> str:
-    """Remove all overrides at this config level.  Confirms unless *force*."""
+    """Remove all overrides at this config level.  Confirms unless *force*.
+
+    ⚑ WHAT ELSE WENT IS SAID, IN ITS OWN WORDS: everything the sweep removed that no
+    row carried is tallied here, from the passes' own removals, so a file that shrank by
+    more than N says so.  The count itself is the one :func:`_shown_entries` defines.
+    """
     if not force:
         try:
             confirm_prompt("Remove all config overrides? Type 'yes' to proceed: ")
         except UserCanceled:
             return "Aborted."
 
-    count = 0
+    settings_dest = noun_settings_file(config_path, system_settings_path)
+    # ⚑ Taken FIRST — see :func:`_quiet_drop_announcements`.
+    _quiet_drop_announcements(settings_dest, command_scope)
+    # ⚑ THE ROWS, READ ONCE, BEFORE ANY REMOVAL, from the file as it stands rather
+    # than after the sweep has emptied it.  ⚑ WITH NO *command_scope* there is no noun
+    # and no cascade verdict, so the raw doc is the whole truth.
+    shown = _shown_entries(
+        config_path=config_path,
+        settings_path=settings_dest,
+        command_scope=command_scope,
+    )
+    count = len(shown.overrides)
+    # ⚑ A SECOND TALLY, AND IT IS NOT THE COUNT: only the SECOND CLAUSE is derived
+    # from what the passes actually took.
+    removed = 0
+    # The top-level tokens this sweep emptied, for the second clause's undeclared arm.
+    swept: set[str] = set()
 
-    # Clear project-level config overrides (always from config_path).
-    # ⚑ COUNT ONLY WHAT WAS ACTUALLY REMOVED (F2): an unconditional ``count += 1`` over-reported
-    # (a file with only a ``[system]`` table said "Reset 1" while removing nothing).
-    overrides = load_project_overrides(config_path)
-    for key in overrides:
-        if unset_project_config_key(config_path, key):
-            count += 1
+    # ⚑ THE SAME TEST AS THE FLAT ROWS (:func:`_shown_entries`), because they are one
+    # carrier: the flat pass writes *config_path*, which at a noun that keeps its
+    # settings apart is the Layer-1 ``.cfg`` — not a settings tier.
+    if not _keeps_settings_apart(command_scope):
+        # ⚑ COUNT ONLY WHAT WAS ACTUALLY REMOVED (F2).
+        overrides = load_project_overrides(config_path)
+        for key in overrides:
+            if unset_project_config_key(config_path, key):
+                removed += 1
 
     # Clear the agent settings — SYSTEM keeps these in the system settings file.
-    settings_dest = noun_settings_file(config_path, system_settings_path)
     if settings_dest is not None and settings_dest.exists():
         data = load_doc(settings_dest)
         agent_tbl = data.get("agent")
@@ -2041,30 +2067,74 @@ def reset_all(
             # The agent table is agent-keyed; clear every agent's subsection, "default" included.
             for agent, sec in list(agent_tbl.items()):
                 if isinstance(sec, dict):
+                    # ⚑ COUNTED PER NODE, ONCE, and BEFORE the removals, and NOT INTO
+                    # *count*: no verb lists a persona node.
+                    swept.add("agent")
+                    removed += count_leaves(sec)
                     for k in list(sec):
                         remove_nested_key(settings_dest, ("agent", agent), k)
-                        count += count_leaves(sec[k])
 
-    # ⚑ The nested SCOPE tables and the ``pref:`` table need their own pass: the flat
-    # ``load_project_overrides`` one only reaches the ``KanibakoConfig`` dataclass fields.
-    count += _clear_writable_tables(settings_dest, command_scope)
+    # ⚑ The nested SCOPE tables and the ``pref:`` table need their own pass.
+    cleared = _clear_writable_tables(settings_dest, command_scope)
+    removed += sum(cleared.values())
+    swept |= set(cleared)
 
-    return f"Reset {count} override(s)." if count else "No overrides to reset."
+    # ⚑ THE SECOND CLAUSE: what the sweep took that no row carried.  ⚑ The root
+    # token decides: an entry in a table no pass emptied is not a removal.  ⚑ AN EMPTY
+    # TABLE IS NOT AN ENTRY: ``count_leaves`` reads 0 for it.  ⚑ A ``config.*`` entry
+    # cannot arrive here — ``config`` is no scope token, so no pass drops that table.
+    undeclared = sum(
+        1 for segs in shown.undeclared
+        if segs and segs[0] in swept
+        and not isinstance(_stored_at(shown.stored, segs), dict)
+    )
+    # ⚑ CLAMPED, because a row the sweep did not reach would otherwise subtract.
+    unlisted = max(0, removed - count - undeclared)
+    return _reset_all_message(count, undeclared=undeclared, unlisted=unlisted)
+
+
+def _stored_at(stored: object, segments: "tuple[str, ...]") -> object:
+    """The raw value at *segments* inside the doc *stored* — its own shape, unrendered.
+
+    ⚑ UNRENDERED, because the only question asked of it here is WHETHER IT IS A
+    ``dict``: a rendered ``{}`` would make an empty table look like a leaf.
+    """
+    node = stored
+    for seg in segments:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(seg)
+    return node
+
+
+def _reset_all_message(count: int, *, undeclared: int, unlisted: int) -> str:
+    """``reset --all``'s one line: the override count, then what ELSE it cleared.
+
+    ⚑ THE SECOND CLAUSE IS NOT PART OF THE COUNT.  ⚑ WITH NEITHER, the plain shape.
+    """
+    if not (undeclared or unlisted):
+        return f"Reset {count} override(s)." if count else "No overrides to reset."
+    head = f"Reset {count} override(s)" if count else "No overrides to reset"
+    parts = [
+        _entry_phrase(n, word) for n, word in ((undeclared, "undeclared"), (unlisted, "unlisted"))
+        if n
+    ]
+    return f"{head}; also removed {' and '.join(parts)}."
+
+
+def _entry_phrase(count: int, adjective: str) -> str:
+    """``"1 undeclared entry"`` / ``"2 unlisted entries"`` — the tally's own singular."""
+    return f"{count} {adjective} {'entry' if count == 1 else 'entries'}"
 
 
 def _noun_stored_view(path: "Path | None", command_scope: ConfigLevel) -> dict:
     """The noun's settings file AS THE CASCADE READS IT — the one read :func:`show_config` makes.
 
     ⚑ ONE CARRIER OF THE VERDICT. The reader's ``DISPLAY`` view is what the launch's own
-    seams judge a file by, and it READS the drop rules ``assemble_levels`` applies rather than
-    restating them.  Re-reading the raw file here gave a table directional enforcement drops a
-    second verdict: an ``agent:`` table in a ``box.yaml`` printed as overrides and, for a
-    dotted entry inside it, as undeclared — under the launch's warning that it is ignored.
-    ⚑ IT NAMES THE FILE, so the dropped table is ANNOUNCED here (spec §0: *"with a warning naming
-    the file and key"*) — plain ``workset show`` and ``system show`` assemble nothing else, and
-    printed nothing for such a table until this passed *path*.  The warning shares
-    ``assemble_levels``'s once-per-``(file, key)`` guard, so a verb that also assembles the file
-    (every box verb, and every ``--effective`` view) still names each dropped key once.
+    seams judge a file by, and it READS the drop rules ``assemble_levels`` applies rather
+    than restating them.  ⚑ IT NAMES THE FILE, so the dropped table is ANNOUNCED here
+    (spec §0: *"with a warning naming the file and key"*), and it shares
+    ``assemble_levels``'s once-per-``(file, key)`` guard.
     """
     from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
 
@@ -2074,16 +2144,44 @@ def _noun_stored_view(path: "Path | None", command_scope: ConfigLevel) -> dict:
     return read.view
 
 
+def _quiet_drop_announcements(
+    path: "Path | None", command_scope: "ConfigLevel | None",
+) -> None:
+    """Take the §0 drop announcements for *path* WITHOUT speaking them.
+
+    ⚑ THE RESET PATH IS SILENT, AND NOT ONLY ABOUT A KEY IT IS ABOUT TO DELETE.  It
+    silences what it RETAINS too — the tokens this sweep never empties, the upward
+    ``system:`` table at the workset noun and ``pref:`` at the system noun — and no
+    plain ``show`` runs here to hear them.
+
+    ⚑ IT CONSUMES THE SHARED ``(file, key)`` MEMO, WHICH IS THE POINT, not a side
+    effect.  ⚑ IT SILENCES A WARNING, NEVER A RULE — the drop still happens in
+    :func:`_file_view`; only the line is withheld.
+    """
+    from kanibako.settings.settings_assemble import announce_drop_once
+    from kanibako.settings.settings_drops import upward_scope_drop_set
+
+    if command_scope is None or path is None:
+        return
+    raw = load_doc(path)
+    if not isinstance(raw, dict):
+        return
+    # ⚑ THE PREF ARM IS :func:`_clear_writable_tables`' OWN TEST, INVERTED (spec §2h).
+    drop_set = upward_scope_drop_set(command_scope.value)
+    if _pref_level(command_scope) is None:
+        drop_set = drop_set | {PREF_ROOT}
+    for token in (str(k) for k in raw):
+        if token in drop_set:
+            announce_drop_once(path, token)
+
+
 def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]:
     """Entries STORED in a settings doc that the keyspace does not declare —
     ``segments → (shown, value)``.
 
     ⚑⚑ *data* IS THE FILE AS THE CASCADE READS IT (:func:`_noun_stored_view`), and that is
-    what gives this view the launch's verdict rather than a second one.  Walked raw, an
-    ``agent:`` table in a ``box.yaml`` — which directional enforcement drops WHOLE, with a
-    warning naming the file and key (spec §0) — had a dotted entry inside it listed here as
-    undeclared: one file, two readers, two answers.  A table the cascade drops is not
-    walked, so nothing in it is marked.
+    what gives this view the launch's verdict rather than a second one: a table the
+    cascade drops whole is not walked, so nothing in it is marked.
 
     ⚑ SEGMENTS, NOT A JOINED NAME: a dotted entry name (``box: {"env.X": 1}``) joins to a
     declared key it is not. *shown* is the display spelling: a dotted entry name is
@@ -2207,6 +2305,91 @@ def _abstract_declarations(data: dict, scope: str) -> dict[str, str]:
     return out
 
 
+class _ShownEntries(NamedTuple):
+    """What ``show`` LISTS for one noun — the rows, in the order it prints them.
+
+    ⚑ ``stored`` IS THE CASCADE'S VIEW (:func:`_noun_stored_view`), so a table
+    directional enforcement drops whole is in none of these entries — not as a row,
+    not as undeclared.
+    """
+
+    overrides: "list[tuple[str, object]]"
+    undeclared: "dict[tuple[str, ...], tuple[str, str]]"
+    misplaced: "dict[str, str]"
+    stored: dict
+
+
+def _keeps_settings_apart(command_scope: "ConfigLevel | None") -> bool:
+    """Whether *command_scope*'s noun keeps its settings in a file of its own."""
+    return command_scope in (ConfigLevel.system, ConfigLevel.workset)
+
+
+def _shown_entries(
+    *,
+    config_path: "Path | None",
+    settings_path: "Path | None",
+    command_scope: "ConfigLevel | None",
+    stored: "dict | None" = None,
+) -> _ShownEntries:
+    """The entries ``show`` lists for *command_scope* — overrides, undeclared, misplaced.
+
+    ⚑ ONE CARRIER, TWO COUNTS, AND EVERY ENTRY IN EXACTLY ONE OF THEM.  ``show``
+    PRINTS ``overrides`` and ``reset --all`` COUNTS ``len(overrides)``, so there is one
+    definition of "an override at this noun" in the module.  What the sweep took that no
+    row carried is named in the SECOND clause, in its own terms, rather than promoted
+    into N — so an entry is either a row or a named removal, never both.  Two independent
+    counts that agree today are the same defect one layer down.
+
+    ⚑ *stored* IS THE CASCADE'S VIEW (:func:`_noun_stored_view`), so a table
+    directional enforcement drops whole is in none of these rows.  It is PASSED IN by a
+    caller that already holds it, because reading it twice would emit §0's
+    per-``(file, key)`` drop warning TWICE for one ``show``.
+    """
+    if stored is None:
+        stored = (
+            _noun_stored_view(settings_path, command_scope)
+            if command_scope is not None
+            else load_doc(settings_path)
+        )
+    undeclared = _undeclared_stored_entries(stored)
+    misplaced = _misplaced_config_entries(stored)
+    # The JOINED spelling, for the subtraction ONLY: every row below is subtracted in
+    # the same spelling.
+    not_overrides = {".".join(segs) for segs in undeclared} | set(misplaced)
+
+    # ⚑ Its OWN loop names: the box scalars are ``object`` (two of the four are
+    # real bools), while the rest are the string agent settings.
+    rows: "list[tuple[str, object]]" = []
+    if config_path and not _keeps_settings_apart(command_scope):
+        rows += sorted(load_project_overrides(config_path).items())
+    # ⚑ RE-JOINED FOR THE SUBTRACTION: these rows are spelled RELATIVE to the
+    # ``default`` node (``flatten_under`` strips the prefix) and *not_overrides* holds
+    # the joined spelling.
+    rows += [
+        (k, v) for k, v in sorted(agent_settings_of(stored, "default").items())
+        if f"agent.default.{k}" not in not_overrides
+    ]
+
+    # A NOUN THAT KEEPS ITS SETTINGS APART: the nested settings-tier overrides ARE
+    # overrides at this level.
+    if _keeps_settings_apart(command_scope):
+        nested = _nested_settings_overrides(stored)
+        rows += [(k, v) for k, v in sorted(nested.items()) if k not in not_overrides]
+    else:
+        # THE BOX NOUN, whose settings file IS its config file.  A whole-file
+        # flatten here would print the box scalars and the ``pref`` requests a
+        # SECOND time, so it is NARROWED to the ABSTRACT declarations, which
+        # nothing else in this branch can see.
+        rows += sorted(_abstract_declarations(stored, ConfigLevel.box.value).items())
+        # ``pref`` REQUESTS stored at this noun (§2h) ARE overrides at this level —
+        # the ones that are KEYS.  ⚑ SUBTRACTED like the nested block above.
+        rows += [
+            (k, v) for k, v in sorted(_pref_overrides(config_path).items())
+            if k not in not_overrides
+        ]
+    return _ShownEntries(rows, undeclared, misplaced, stored)
+
+
 def show_config(
     *,
     global_config_path: Path,
@@ -2305,70 +2488,21 @@ def show_config(
 
     else:
         # Show only overrides
-        has_output = False
+        # ⚑ NOT NAMED ``shown``: the undeclared block below iterates
+        # ``for shown, v in …``, and one name for a group of entries and for the
+        # whole list is a collision waiting to happen.
+        listed = _shown_entries(
+            config_path=config_path,
+            settings_path=settings_src,
+            command_scope=command_scope,
+            stored=stored,
+        )
+        undeclared = listed.undeclared
+        misplaced = listed.misplaced
 
-        # Resolved FIRST because the override blocks below subtract it: an entry the
-        # keyspace does not declare is not an override, and printing it in both places
-        # would say two different things about one line (Convention 0).
-        undeclared = _undeclared_stored_entries(stored)
-        misplaced = _misplaced_config_entries(stored)
-        # The JOINED spelling, for the subtraction ONLY: the flattens below join a dotted
-        # entry name into the key it spells, and it has to be subtracted all the same.
-        not_overrides = {".".join(segs) for segs in undeclared} | set(misplaced)
-
-        overrides = load_project_overrides(config_path) if config_path else {}
-        # ⚑ Its OWN loop names: the box scalars are ``object`` (two of the four are real
-        # bools), while the ``k, v`` below are the string agent settings.
-        for okey in sorted(overrides):
-            print(f"  {okey} = {overrides[okey]}", file=out)
-            has_output = True
-
-        for k, v in sorted(agent_settings_of(stored, "default").items()):
-            print(f"  {k} = {v}", file=out)
-            has_output = True
-
-        # A NOUN THAT KEEPS ITS SETTINGS APART FROM ITS CONFIG FILE: the nested
-        # settings-tier overrides ARE overrides at this level.
-        # ⚑ This flatten has no key semantics (``config_display``'s own contract), so it
-        # cannot tell an override from junk; the subtraction is what keeps an undeclared
-        # entry out of a list whose heading claims everything in it is an override.
-        if system_settings_path is not None:
-            nested = _nested_settings_overrides(stored)
-            for k, v in sorted(nested.items()):
-                if k in not_overrides:
-                    continue
-                print(f"  {k} = {v}", file=out)
-                has_output = True
-        else:
-            # THE BOX NOUN, whose settings file IS its config file: the block above
-            # cannot run on it.  A whole-file flatten here would print the box scalars
-            # and the ``pref`` requests a SECOND time — the scalars under a second
-            # spelling (``box_image`` above, ``box.image`` from the flatten), which is
-            # the one thing worse than showing them once.  So it is NARROWED to the
-            # ABSTRACT declarations, which nothing else in this branch can see and
-            # spec §0 obliges ``config show`` to list.
-            # ⚑ SCOPED TO THE CLAUSE, not to the file: ``bindings.{ro,rw}``/``masks``/
-            # ``synced``/``env``/``secret_path`` stored at a box stay unlisted here, as
-            # they were — no clause obliges them, and for ``secret_path`` [R149] reads
-            # the other way ("you may not want your secret files - even just locations
-            # - being dumped to the terminal").
-            # ⚑ The noun's OWN scope, and the helper needs it: see its docstring.
-            declared = _abstract_declarations(stored, ConfigLevel.box.value)
-            for k, v in sorted(declared.items()):
-                print(f"  {k} = {v}", file=out)
-                has_output = True
-
-            # ``pref`` REQUESTS stored at this noun (§2h) ARE overrides at this level —
-            # the ones that are KEYS.  ⚑ BOX-ONLY: at a noun with a separate settings file
-            # the nested flatten above already walks its ``pref:`` table, and *config_path*
-            # there is the Layer-1 file, which holds none.  ⚑ SUBTRACTED like the nested
-            # block: a request off the §2h allowlist (``pref.box.image``) is no member of
-            # the family (spec §0), so it is listed once, as undeclared, below.
-            for k, v in sorted(_pref_overrides(config_path).items()):
-                if k in not_overrides:
-                    continue
-                print(f"  {k} = {v}", file=out)
-                has_output = True
+        for okey, oval in listed.overrides:
+            print(f"  {okey} = {oval}", file=out)
+        has_output = bool(listed.overrides)
 
         # ⚑ NO docker ``.env`` block, deliberately — those rows would name a refused spelling
         # AND assert an override that has no effect.
@@ -2389,6 +2523,11 @@ def show_config(
         # same string, and matching them would need this display to re-derive the agent
         # tier's key form — a second opinion about a key's spelling, which is the thing
         # this module is not allowed to hold.
+        # ⚑ SCOPED TO THE CLAUSE, not to the file: ``bindings.{ro,rw}``/``masks``/
+        # ``synced``/``env``/``secret_path`` stored at a box stay unlisted above, as
+        # they were — no clause obliges them, and for ``secret_path`` [R149] reads
+        # the other way ("you may not want your secret files - even just locations
+        # - being dumped to the terminal").
         if undeclared:
             print(
                 f"  (undeclared — stored in {settings_src}, not keys (spec §0); "

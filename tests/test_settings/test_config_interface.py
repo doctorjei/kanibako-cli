@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import re
 
 import pytest
@@ -1118,7 +1119,14 @@ class TestResetAll:
     def test_reset_all_counts_an_agent_tables_leaves(self, tmp_path):
         # ONE count unit for every ``reset --all``: an agent's category table in the system
         # file counts each entry, as a scope table's does (``config_io.count_leaves``).
-        # (Mutation: count ``+= 1`` per key again → "Reset 2" → RED.)
+        # (Mutation: count ``+= 1`` per key again → "2" → RED.)
+        #
+        # ⚑ THE UNIT IS UNCHANGED, THE BUCKET IS NOT.  A ``claude`` node is a PERSONA
+        # node, and no verb lists one, so these three leaves are reported in the second
+        # clause rather than among the overrides.  The claim this test has always made —
+        # an ``env:`` table of two variables is 2, not 1 — is kept, and the sibling case
+        # that IS listed (the ``default`` node) is the control in
+        # ``TestResetAllCountsWhatShowLists``.
         cf = tmp_path / "kanibako.cfg"
         ssp = tmp_path / "system.yaml"
         dump_doc(ssp, {"agent": {"claude": {"model": "opus", "env": {"A": "1", "B": "2"}}}})
@@ -1126,7 +1134,7 @@ class TestResetAll:
             config_path=cf, force=True, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
         )
-        assert msg == "Reset 3 override(s).", msg
+        assert msg == "No overrides to reset; also removed 3 unlisted entries.", msg
         assert "agent" not in load_doc(ssp), load_doc(ssp)
 
     def test_reset_all_without_scope_leaves_nested_tables(self, tmp_path):
@@ -1137,6 +1145,436 @@ class TestResetAll:
         dump_doc(box_file, {"box": {"auth": {"global_enabled": False}}})
         reset_all(config_path=box_file, force=True)  # no command_scope
         assert load_doc(box_file)["box"]["auth"]["global_enabled"] is False
+
+
+def _override_rows(out: str) -> list[str]:
+    """The OVERRIDE rows ``show`` printed — everything before the first block
+    HEADING (``(no overrides)``, ``(undeclared — …)``, ``(config.* — …)``), each
+    of which labels a GROUP of the file rather than an override of it.
+
+    ⚑ THE STOP, NOT A FILTER: the rows after a heading are the entries of a group
+    the heading names as something else, and counting them as overrides is the
+    confusion these tests exist to catch.
+    """
+    rows: list[str] = []
+    for line in out.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("("):
+            break
+        rows.append(stripped)
+    return rows
+
+
+class TestResetAllCountsWhatShowLists:
+    """``reset --all``'s number IS the list ``show`` just printed, and it says so
+    in its own words when the sweep removed MORE than that list held.
+
+    ⚑ THE PAIR, NOT EITHER ALONE: each case runs the two verbs over ONE file and
+    compares the number in the message against the rows on the screen, so the
+    assertion is the agreement rather than a number copied from today's output.
+    """
+
+    def test_a_persona_node_is_removed_but_never_listed(self, tmp_path):
+        """A persona node (``agent.claude``) is not a row at any noun:
+        :func:`~kanibako.settings.config.agent_settings_of` renders the ``default``
+        node alone, and the nested flatten skips ``agent`` outright, so ``show``
+        says "(no overrides)" over exactly these three leaves — yet the sweep
+        removes them, and the message must claim no override for them.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        ssp = tmp_path / "settings.yaml"
+        dump_doc(ssp, {
+            "agent": {"claude": {"model": "opus", "env": {"A": "1", "B": "2"}}},
+        })
+
+        buf = io.StringIO()
+        show_config(
+            global_config_path=global_cfg, config_path=global_cfg,
+            system_settings_path=ssp, command_scope=ConfigLevel.system, file=buf,
+        )
+        out = buf.getvalue()
+        assert _override_rows(out) == [], out
+        assert "(no overrides)" in out, out
+
+        msg = reset_all(
+            config_path=global_cfg, force=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        # ⚑ NO OVERRIDE IS CLAIMED, AND THE SHRINK IS STILL VISIBLE.
+        assert msg == "No overrides to reset; also removed 3 unlisted entries.", msg
+        # ⚑ WHAT IT CLEARS IS UNCHANGED: the node went with the rest.
+        assert load_doc(ssp) == {}, load_doc(ssp)
+
+    @pytest.mark.parametrize(("scope", "doc", "as_settings_file"), (
+        (ConfigLevel.system,
+         {"agent": {"claude": {"model": "opus", "env": {"A": "1", "B": "2"}}}}, True),
+        (ConfigLevel.system, {"agent": {"default": {"model": "opus"}}}, True),
+        (ConfigLevel.system, {"system": {"auth": {"share_allowed": True}}}, True),
+        (ConfigLevel.system,
+         {"system": {"auth": {"share_allowed": True}, "bogus": "junk"}}, True),
+        (ConfigLevel.box, {"box": {"image": "custom", "bogus": "junk"}}, False),
+        (ConfigLevel.box, {"box": {"image": "custom"},
+                           "agent": {"default": {"model": "opus", "tweakcc": "1"}}}, False),
+        (ConfigLevel.workset,
+         {"workset": {"vault_ro": "/ro"}, "pref": {"box": {"image": "x"}}}, True),
+        (ConfigLevel.workset,
+         {"workset": {"vault_ro": "/ro"},
+          "agent": {"default": {"model": "opus", "tweakcc": "1"}}}, True),
+    ))
+    def test_the_count_is_the_length_of_the_shared_rows(
+        self, tmp_path, scope, doc, as_settings_file,
+    ):
+        """⚑ THE NUMBERS ARE DERIVED, NEVER COPIED: the printed N is compared with
+        ``len(_shown_entries(...).overrides)`` — the rows themselves — at every
+        noun, over a document that mixes overrides, an undeclared entry, a table
+        the cascade drops and a persona node.  A second sum in :func:`reset_all`
+        satisfies every other assertion in this class for as long as the two
+        agree, which is exactly the agreement that is not the point.
+        """
+        from kanibako.settings.config_interface import _shown_entries
+        from kanibako.settings.config_dest import noun_settings_file
+
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        noun_file = tmp_path / BOX_META_FILE
+        dump_doc(noun_file, doc)
+        # A noun that keeps its settings apart is shown through the Layer-1 file
+        # plus its own settings file, and reset through its own file alone — the
+        # threading the two handlers really use.
+        config_path = noun_file if not as_settings_file else global_cfg
+        ssp = noun_file if as_settings_file else None
+
+        listed = _shown_entries(
+            config_path=config_path,
+            settings_path=noun_settings_file(config_path, ssp),
+            command_scope=scope,
+        )
+        buf = io.StringIO()
+        show_config(
+            global_config_path=global_cfg, config_path=config_path,
+            system_settings_path=ssp, command_scope=scope, file=buf,
+        )
+        assert len(_override_rows(buf.getvalue())) == len(listed.overrides), buf.getvalue()
+
+        msg = reset_all(
+            config_path=config_path, force=True, system_settings_path=ssp,
+            command_scope=scope,
+        )
+        if listed.overrides:
+            assert msg.startswith(f"Reset {len(listed.overrides)} override(s)"), msg
+        else:
+            assert msg.startswith("No overrides to reset"), msg
+
+    def test_a_persona_nodes_leaves_are_counted_entry_by_entry(self, tmp_path):
+        """⚑ THE UNIT IS THE ENTRY, at every noun and for every table: the node
+        above holds one model and an ``env:`` table of two variables, and the
+        sweep reports three — never one per KEY of the node.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        ssp = tmp_path / "system.yaml"
+        dump_doc(ssp, {
+            "agent": {"claude": {"model": "opus", "env": {"A": "1", "B": "2"}}},
+        })
+        msg = reset_all(
+            config_path=global_cfg, force=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert msg == "No overrides to reset; also removed 3 unlisted entries.", msg
+        assert "agent" not in load_doc(ssp), load_doc(ssp)
+
+    def test_box_a_dropped_agent_table_is_not_counted_as_overrides(self, tmp_path):
+        """A ``box.yaml`` cannot set agent keys (spec §0 directional enforcement),
+        so the launch drops that table whole and ``show`` gives it no line — the
+        leaves the sweep takes are named apart, never sold as box overrides.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        box_file = tmp_path / BOX_META_FILE
+        dump_doc(box_file, {
+            "box": {"image": "custom"},
+            "agent": {"default": {"model": "opus", "tweakcc": "1"}},
+        })
+
+        buf = io.StringIO()
+        show_config(
+            global_config_path=global_cfg, config_path=box_file,
+            command_scope=ConfigLevel.box, file=buf,
+        )
+        rows = _override_rows(buf.getvalue())
+        assert len(rows) == 1, rows
+        assert "box_image = custom" in rows[0], rows
+
+        msg = reset_all(
+            config_path=box_file, force=True, command_scope=ConfigLevel.box,
+        )
+        # The override count IS the row count, and the extra two are named apart.
+        assert msg == "Reset 1 override(s); also removed 2 unlisted entries.", msg
+        assert msg.startswith(f"Reset {len(rows)} override(s)"), msg
+        # ⚑ WHAT IT CLEARS IS UNCHANGED: the dropped table went with the rest.
+        assert load_doc(box_file) == {}, load_doc(box_file)
+
+    def test_workset_a_dropped_agent_table_is_not_counted_as_overrides(self, tmp_path):
+        """The working set's own parameters, as its handler threads them: ``show`` is
+        given the Layer-1 ``.cfg`` as the config file and the working set's file as
+        the settings file, while ``reset --all`` is handed the working set's file
+        alone.
+
+        ⚑ THE BRANCH IS THE NOUN'S, NOT THE DATA'S: the tier follows
+        :func:`_keeps_settings_apart`, so ``show`` and ``reset --all`` list and count
+        the same rows of one file whichever parameters a handler threads.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        ws_file = tmp_path / WORKSET_META_FILE
+        dump_doc(ws_file, {
+            "workset": {"vault_ro": "/ro"},
+            "agent": {"default": {"model": "opus", "tweakcc": "1"}},
+        })
+
+        buf = io.StringIO()
+        show_config(
+            global_config_path=global_cfg, config_path=global_cfg,
+            system_settings_path=ws_file,
+            command_scope=ConfigLevel.workset, file=buf,
+        )
+        rows = _override_rows(buf.getvalue())
+        assert len(rows) == 1, rows
+        assert "workset.vault_ro = /ro" in rows[0], rows
+
+        msg = reset_all(
+            config_path=ws_file, force=True, command_scope=ConfigLevel.workset,
+        )
+        assert msg == "Reset 1 override(s); also removed 2 unlisted entries.", msg
+        assert msg.startswith(f"Reset {len(rows)} override(s)"), msg
+        assert "agent" not in load_doc(ws_file), load_doc(ws_file)
+
+    def test_an_undeclared_agent_entry_is_listed_once_and_named_undeclared(self, tmp_path):
+        """⚑ AN ENTRY IS IN EXACTLY ONE OF THE TWO PLACES.  ``bogus`` is not a
+        declared key (spec §0), so it is an UNDECLARED entry — printed in that
+        block and named in the second clause, and nowhere else.
+
+        ⚑ THE WORD IS THE PIN, not the total: ``undeclared`` and ``unlisted``
+        carry the same tally here, so a sweep that stopped recording that the
+        ``agent`` table went would still total two.  What separates them is the
+        root token, so the assertion names the category the second clause used.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        ssp = tmp_path / "settings.yaml"
+        dump_doc(ssp, {"agent": {"default": {"model": "opus", "bogus": "x"}}})
+
+        buf = io.StringIO()
+        show_config(
+            global_config_path=global_cfg, config_path=global_cfg,
+            system_settings_path=ssp, command_scope=ConfigLevel.system, file=buf,
+        )
+        out = buf.getvalue()
+        rows = _override_rows(out)
+        assert len(rows) == 1, rows
+        assert "model = opus" in rows[0], rows
+        # ⚑ LISTED ONCE: the leaf is in the undeclared block and nowhere else.
+        assert "agent.default.bogus = x" in out, out
+        assert out.count("bogus") == 1, out
+
+        msg = reset_all(
+            config_path=global_cfg, force=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert msg == f"Reset {len(rows)} override(s); also removed 1 undeclared entry.", msg
+        assert load_doc(ssp) == {}, load_doc(ssp)
+
+    @pytest.mark.parametrize(("scope", "own_name", "own_doc", "reset_wiring"), (
+        # ``system_cmd`` hands the Layer-1 ``.cfg`` over as *config_path*.
+        (ConfigLevel.system, "system.yaml", {"system": {"channelroot": "/cr"}},
+         {"config_path": "cfg", "system_settings_path": "own"}),
+        # ``workset_cmd`` hands over the working set's own file, and no settings path.
+        (ConfigLevel.workset, "workset.yaml", {"workset": {"vault_ro": "/ro"}},
+         {"config_path": "own"}),
+    ))
+    def test_a_layer1_key_is_not_a_row_at_a_noun_that_passes_the_cfg(
+        self, tmp_path, scope, own_name, own_doc, reset_wiring,
+    ):
+        """⚑ THE ``.cfg`` IS NOT A SETTINGS TIER AT ALL (keyspec §1), and the two
+        nouns that pass it as *config_path* are the two that must not read it as one
+        nor write it as one.  ``box.image`` there is a key Layer 1 does not declare,
+        so it is no noun's override, and ``reset --all`` leaves the file
+        byte-identical — the message counts what went, and only what went.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        dump_doc(global_cfg, {"box": {"image": "fromcfg"}})
+        own = tmp_path / own_name
+        dump_doc(own, own_doc)
+        cfg_bytes = global_cfg.read_bytes()
+
+        buf = io.StringIO()
+        show_config(
+            global_config_path=global_cfg, config_path=global_cfg,
+            system_settings_path=own, command_scope=scope, file=buf,
+        )
+        rows = _override_rows(buf.getvalue())
+        assert len(rows) == 1, rows
+        assert not any("fromcfg" in r for r in rows), rows
+        assert not any("box_image" in r for r in rows), rows
+
+        # ⚑ THE HANDLER'S OWN ARGUMENTS, so this reds if a pass ever writes the
+        # ``.cfg`` at a noun that passes it.
+        files = {"cfg": global_cfg, "own": own}
+        msg = reset_all(
+            force=True, command_scope=scope,
+            **{key: files[value] for key, value in reset_wiring.items()},
+        )
+        assert msg == f"Reset {len(rows)} override(s).", msg
+        assert load_doc(own) == {}, load_doc(own)
+        assert global_cfg.read_bytes() == cfg_bytes, load_doc(global_cfg)
+
+    def test_system_an_agent_table_the_cascade_keeps_is_still_an_override(self, tmp_path):
+        """THE OTHER SIDE OF THE SPLIT, and the guard against over-correcting: the
+        SYSTEM noun may set agent keys, so its ``agent:`` table survives the
+        cascade, ``show`` DOES list it, and its leaves stay in the override count
+        with no second clause.  A second clause firing here would under-report a
+        file the user can see.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        ssp = tmp_path / "settings.yaml"
+        dump_doc(ssp, {"agent": {"default": {"model": "opus"}}})
+
+        buf = io.StringIO()
+        show_config(
+            global_config_path=global_cfg, config_path=global_cfg,
+            system_settings_path=ssp, command_scope=ConfigLevel.system, file=buf,
+        )
+        rows = _override_rows(buf.getvalue())
+        assert len(rows) == 1, rows
+
+        msg = reset_all(
+            config_path=global_cfg, force=True, system_settings_path=ssp,
+            command_scope=ConfigLevel.system,
+        )
+        assert msg == "Reset 1 override(s).", msg
+        assert msg.startswith(f"Reset {len(rows)} override(s)"), msg
+
+    def test_an_undeclared_entry_is_reported_as_undeclared_not_as_an_override(self, tmp_path):
+        """An undeclared entry is neither an override nor a cascade drop: ``show``
+        prints it in its own ``(undeclared — …)`` block because it overrides
+        nothing, so the sweep removing it says so in the SECOND clause and leaves
+        it out of the count.  Counting it as an override is what put a junk key
+        inside "Reset N override(s)".
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        box_file = tmp_path / BOX_META_FILE
+        dump_doc(box_file, {"box": {"image": "custom", "bogus": "junk"}})
+
+        buf = io.StringIO()
+        show_config(
+            global_config_path=global_cfg, config_path=box_file,
+            command_scope=ConfigLevel.box, file=buf,
+        )
+        out = buf.getvalue()
+        rows = _override_rows(out)
+        assert rows == ["box_image = custom"], rows
+        assert "(undeclared" in out, out
+        assert "box.bogus = junk" in out, out
+
+        msg = reset_all(
+            config_path=box_file, force=True, command_scope=ConfigLevel.box,
+        )
+        assert msg == "Reset 1 override(s); also removed 1 undeclared entry.", msg
+
+    def test_an_undeclared_entry_the_sweep_leaves_alone_is_not_reported(self, tmp_path):
+        """⚑ THE FENCE THE OTHER SIDE OF: an undeclared entry in a table no pass
+        drops is not a removal, and a second clause naming it would report a
+        shrink that did not happen.  ``meta`` is no scope's to write, so the sweep
+        passes it by — and the message stays the plain shape.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        ws_file = tmp_path / WORKSET_META_FILE
+        dump_doc(ws_file, {
+            "workset": {"vault_ro": "/ro"},
+            "junk_table": {"inner": "x"},
+        })
+
+        buf = io.StringIO()
+        show_config(
+            global_config_path=global_cfg, config_path=global_cfg,
+            system_settings_path=ws_file,
+            command_scope=ConfigLevel.workset, file=buf,
+        )
+        assert "junk_table" in buf.getvalue(), buf.getvalue()
+
+        msg = reset_all(
+            config_path=ws_file, force=True, command_scope=ConfigLevel.workset,
+        )
+        assert msg == "Reset 1 override(s).", msg
+        assert "junk_table" in load_doc(ws_file), load_doc(ws_file)
+
+    def test_a_file_whose_only_content_is_dropped_still_says_so(self, tmp_path):
+        """⚑ AN EMPTY COUNT WITH A REAL REMOVAL: the plain wording would have
+        printed "No overrides to reset." for a file this emptied, which is the one
+        sentence a user cannot act on.  The second clause is what makes the shrink
+        visible.
+        """
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        box_file = tmp_path / BOX_META_FILE
+        dump_doc(box_file, {"agent": {"default": {"model": "opus"}}})
+
+        msg = reset_all(
+            config_path=box_file, force=True, command_scope=ConfigLevel.box,
+        )
+        assert msg == "No overrides to reset; also removed 1 unlisted entry.", msg
+        assert load_doc(box_file) == {}, load_doc(box_file)
+
+    def test_reset_all_does_not_announce_a_drop_it_is_about_to_delete(self, tmp_path, caplog):
+        """⚑ SILENT ON THE RESET PATH ONLY, and the control is the point: reading
+        the cascade view for the count warns for a table directional enforcement
+        drops, so ``reset --all`` spoke "Dropping upward-scope key 'agent' … the
+        key is ignored" about a key its next lines deleted.  The same read through
+        ``show`` still announces it — the warning is not broken, only withheld
+        where it would name a state the command ends.
+        """
+        from kanibako.settings.settings_assemble import reset_drop_warnings
+
+        global_cfg = tmp_path / CONFIG_FILENAME
+        global_cfg.write_text("")
+        box_file = tmp_path / BOX_META_FILE
+        dump_doc(box_file, {
+            "box": {"image": "custom"},
+            "agent": {"default": {"model": "opus"}},
+        })
+
+        # ⚑ THE CONTROL FIRST, on the untouched file: the announcement is live,
+        # and ``show`` still gives the dropped table no row of its own.
+        reset_drop_warnings()
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
+            buf = io.StringIO()
+            show_config(
+                global_config_path=global_cfg, config_path=box_file,
+                command_scope=ConfigLevel.box, file=buf,
+            )
+        assert _override_rows(buf.getvalue()) == ["box_image = custom"], buf.getvalue()
+        assert [
+            r for r in caplog.messages if "Dropping upward-scope key 'agent'" in r
+        ], caplog.messages
+
+        # ⚑ AND THE RESET PATH, over a CLEARED MEMO, is silent.
+        reset_drop_warnings()
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
+            msg = reset_all(
+                config_path=box_file, force=True, command_scope=ConfigLevel.box,
+            )
+        assert msg == "Reset 1 override(s); also removed 1 unlisted entry.", msg
+        drops = [r for r in caplog.messages if "Dropping upward-scope key" in r]
+        assert drops == [], drops
+        assert load_doc(box_file) == {}, load_doc(box_file)
 
 
 # ---------------------------------------------------------------------------
