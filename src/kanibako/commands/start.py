@@ -3296,10 +3296,8 @@ def _run_container(
     # agents and store-less personas do zero work: the store is never touched
     # for a bare node, and a miss is a clean ``None``.
     #
-    # The BUNDLE is kept, not just the rendered values: the load-or-error
-    # pre-flight below needs the resolved token pointer, which the un-
-    # discriminated values mapping no longer distinguishes from any other
-    # ``secret_path`` entry.
+    # The BUNDLE is kept, not just the rendered values: it carries the store's
+    # reject verdict and the probe env, which the values mapping does not.
     persona_bundle = _persona_bundle_for(agent_id, target)
     persona_values = None
     if persona_bundle is not None:
@@ -5852,7 +5850,7 @@ def _persona_token_pointer(secret_paths: "Mapping[str, object]", var: str) -> ob
 
     *secret_paths* is the launch snapshot's ``agent.<node>.secret_path`` table
     (:func:`_resolve_box_launch_decisions`), so the agent file, the persona store and
-    the system file answer in the cascade's order — the value the launch MOUNTS.
+    the system file answer in the cascade's order — the resolved ``agent.<node>.secret_path`` table.
     Returns one of the THREE states a token key may hold (2026-08-17 ruling):
 
     * a ``str`` — a configured path;
@@ -6680,7 +6678,7 @@ def _resolve_box_launch_decisions(
     a stored value (*"EPHEMERAL, always"*), so ``-M`` rides the LAUNCH snapshot only.
 
     See ``llm-docs/kanibako/commands/start.py.md``,
-    "``_resolve_box_launch_decisions``", for the three returns and the tristate model.
+    "``_resolve_box_launch_decisions``", for the four returns and the tristate model.
     """
     from kanibako.settings import settings_launch
 
