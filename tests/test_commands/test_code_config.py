@@ -16,11 +16,14 @@ import yaml
 from kanibako.settings.core_defaults import ROM_ROOT_PARTS, _canon_dest, packaged_data_dir
 from kanibako.vscode.vscode_config import (
     _AGENT_MARKER_REMOVE_COMMAND,
+    _AGENT_MARKER_REMOVE_RETIRED_COMMANDS,
     _AGENT_MARKER_WRITE_COMMAND,
+    _AGENT_MARKER_WRITE_RETIRED_COMMANDS,
     _CODEX_EVENT_KEY,
     _SESSION_END_MATCHER,
     _SESSION_START_COMMAND,
     _SESSION_START_MATCHER,
+    _SESSION_START_RETIRED_COMMANDS,
     AGENT_MARKERS_DIR,
     CodexModelProvider,
     _encode_image_ref,
@@ -767,6 +770,151 @@ def test_seed_session_start_preserves_user_sessionend_and_is_idempotent(tmp_path
     ]
     assert data["hooks"]["SessionEnd"] == [user_se, _marker_remove_group()]
     assert seed_session_start_hook(path) is False
+
+
+# --- retired predecessors: a re-seed REPLACES a job's own earlier command -----
+#
+# A managed group is keyed on its command TEXT, so a command that CHANGED left its
+# old group behind for good: the re-seed added the current command and kept the
+# previous one, and both ran.  Each job declares the exact strings it shipped
+# before, and its merge drops those in place of adding the current one.
+
+def _command(groups: list, command: str) -> bool:
+    """``True`` iff *command* appears as a hook entry anywhere in *groups*."""
+    return any(
+        isinstance(h, dict) and h.get("command") == command
+        for g in groups if isinstance(g, dict) and isinstance(g.get("hooks"), list)
+        for h in g["hooks"]
+    )
+
+
+def _groups(settings: dict, event: str) -> list:
+    hooks = settings.get("hooks", {})
+    current = hooks.get(event, []) if isinstance(hooks, dict) else []
+    return list(current) if isinstance(current, list) else []
+
+
+def _job(merge, event: str, command: str, retired: "frozenset[str]"):
+    """One job's merge bound to its current command and its retired set."""
+    return merge, event, command, retired
+
+
+_DIRECTIVE_JOB = _job(
+    merge_session_start_hook, "SessionStart",
+    _SESSION_START_COMMAND, _SESSION_START_RETIRED_COMMANDS,
+)
+_MARKER_WRITE_JOB = _job(
+    merge_marker_write_hook, "SessionStart",
+    _AGENT_MARKER_WRITE_COMMAND, _AGENT_MARKER_WRITE_RETIRED_COMMANDS,
+)
+_MARKER_REMOVE_JOB = _job(
+    merge_marker_remove_hook, "SessionEnd",
+    _AGENT_MARKER_REMOVE_COMMAND, _AGENT_MARKER_REMOVE_RETIRED_COMMANDS,
+)
+
+
+@pytest.mark.parametrize(
+    "merge,event,command,retired",
+    [_DIRECTIVE_JOB, _MARKER_WRITE_JOB, _MARKER_REMOVE_JOB],
+    ids=["directive", "marker-write", "marker-remove"],
+)
+def test_every_retired_command_of_a_job_is_replaced(merge, event, command, retired):
+    """Each retired spelling of THIS job is gone and the current one is present,
+    whichever retired spelling the box happens to still carry."""
+    assert retired, "a job that shipped a command before must declare it retired"
+    for stale in retired:
+        pre = {"hooks": {event: [
+            {"matcher": "startup",
+             "hooks": [{"type": "command", "command": stale}]},
+        ]}}
+        groups = _groups(merge(pre), event)
+        assert not _command(groups, stale), f"{stale!r} was stranded"
+        assert _command(groups, command), f"{command!r} was not delivered"
+
+
+@pytest.mark.parametrize(
+    "merge,event,command,retired",
+    [_DIRECTIVE_JOB, _MARKER_WRITE_JOB, _MARKER_REMOVE_JOB],
+    ids=["directive", "marker-write", "marker-remove"],
+)
+def test_a_user_hook_and_an_edited_variant_survive_a_retirement(
+    merge, event, command, retired,
+):
+    """Only the EXACT retired strings go: a user's own hook and a hand-edited
+    variant of ours (here a superseded dir, there an extra argument) both stay."""
+    user = {"matcher": "startup", "hooks": [{"type": "command", "command": "echo mine"}]}
+    edited = {"hooks": [{"type": "command", "command": f"{command} --tag mine"}]}
+    pre = {"hooks": {event: [
+        user,
+        *({"hooks": [{"type": "command", "command": c}]} for c in sorted(retired)),
+        edited,
+    ]}}
+    groups = _groups(merge(pre), event)
+    assert groups[0] == user
+    assert edited in groups
+    assert not any(_command(groups, c) for c in retired)
+    assert _command(groups, command)
+
+
+def test_a_group_the_retirement_emptied_is_dropped():
+    """A group carried SOLELY by a retired command goes with it; one that still
+    holds a sibling entry keeps its ``matcher`` and loses only the retired entry."""
+    merge, event, command, retired = _MARKER_WRITE_JOB
+    stale = sorted(retired)[0]
+    keep = {"matcher": "resume", "hooks": [{"type": "command", "command": "echo kept"}]}
+    pre = {"hooks": {event: [
+        {"matcher": "startup", "hooks": [{"type": "command", "command": stale}]},
+        keep,
+    ]}}
+    groups = _groups(merge(pre), event)
+    assert groups == [keep, _marker_write_group()]
+
+
+def test_a_retirement_never_reaches_another_job_or_another_event():
+    """Removal is scoped to the job's OWN event: the marker-remove set is not
+    consulted for ``SessionStart``, and the two ``SessionStart`` jobs do not
+    consume each other's retired commands (their matchers overlap, the
+    commands do not)."""
+    _, write_event, _, write_retired = _MARKER_WRITE_JOB
+    remove_stale = sorted(_AGENT_MARKER_REMOVE_RETIRED_COMMANDS)[0]
+    pre = {"hooks": {write_event: [
+        {"hooks": [{"type": "command", "command": remove_stale}]},
+    ]}}
+    groups = _groups(merge_marker_write_hook(pre), write_event)
+    assert _command(groups, remove_stale), "a sibling job's command was consumed"
+    assert not set(write_retired) & set(_AGENT_MARKER_REMOVE_RETIRED_COMMANDS)
+
+
+def test_reseed_replaces_stale_predecessors_and_then_writes_nothing(tmp_path):
+    """End to end through the seeder: a box carrying a retired marker command per
+    event, a user hook and an edited variant keeps the last two, loses the first
+    two, and the re-seed that follows writes nothing at all."""
+    path = tmp_path / "settings.json"
+    stale_write = sorted(_AGENT_MARKER_WRITE_RETIRED_COMMANDS)[0]
+    stale_remove = sorted(_AGENT_MARKER_REMOVE_RETIRED_COMMANDS)[0]
+    user = {"matcher": "startup", "hooks": [{"type": "command", "command": "echo mine"}]}
+    edited = {"hooks": [{"type": "command", "command":
+                         f'{_AGENT_MARKER_WRITE_COMMAND} --tag mine'}]}
+    path.write_text(json.dumps({"hooks": {
+        "SessionStart": [
+            user,
+            {"matcher": _SESSION_START_MATCHER,
+             "hooks": [{"type": "command", "command": stale_write}]},
+            edited,
+        ],
+        "SessionEnd": [
+            {"matcher": _SESSION_END_MATCHER,
+             "hooks": [{"type": "command", "command": stale_remove}]},
+        ],
+    }}))
+    assert seed_session_start_hook(path) is True
+    data = json.loads(path.read_text())
+    ss, se = data["hooks"]["SessionStart"], data["hooks"]["SessionEnd"]
+    assert ss == [user, edited, _managed_group(), _marker_write_group()]
+    assert se == [_marker_remove_group()]
+    first = path.read_bytes()
+    assert seed_session_start_hook(path) is False
+    assert path.read_bytes() == first, "a re-seed rewrote a byte"
 
 
 # --- codex_trusted_hash (pure; oracle-pinned) ------------------------------
