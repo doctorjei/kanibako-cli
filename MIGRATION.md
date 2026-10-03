@@ -372,9 +372,11 @@ inside boxes. In order of likely impact:
     `agent.default`*; `box rm` no longer removes a workset — use `workset rm` — see *2.102
     `kanibako box rm <name>` no longer removes a workset*; a plugin row built in Python with no
     `default` now inherits your `agent.default.<key>` instead of shadowing it with `""` — see
-    *2.103 A `TargetSetting` built in Python with no `default` inherits `agent.default`*; and `set
+    *2.103 A `TargetSetting` built in Python with no `default` inherits `agent.default`*; `set
     --null` at a path key exits 1 and writes nothing — see *2.104 `set --null` at a path key is
-    refused at the door*.
+    refused at the door*; and a bare `create` over an interrupted create refuses, so finish it with
+    `create --recover` — see *2.105 `create` refuses an interrupted create; finish it with
+    `--recover`*.
 
 ---
 
@@ -1903,8 +1905,9 @@ did not find.
   the same safe-fail the agent's own binds have always had — a box whose agent binary did not mount
   is a box that cannot run its agent, and it is better to hear that than to be dropped into it.
 - **If `kanibako create` refuses over a missing packaged canon source**, repair the install and
-  re-run `kanibako create`. That re-run recovers the create the refusal interrupted, and picks up
-  where it stopped.
+  re-run it as `kanibako create --recover <path>` (`kanibako create --standalone --recover <root>`
+  for a standalone box). That re-run completes the create the refusal interrupted; a bare
+  `kanibako create` now refuses and names it.
 - **If a named workset box's first launch refuses this way**, the box is left without its canon
   skeleton, and no command recovers it yet.
 - **If you do not repoint them, nothing else changes.** Every destination not named above keeps the behavior it had:
@@ -6043,6 +6046,34 @@ kanibako gives a null path key no meaning. Nothing was written: to use system.ca
 ```
 
 **What to do.** Run `reset <key>` to take the default, or set the path you mean.
+
+### 2.105 `create` refuses an interrupted create; finish it with `--recover`
+
+**Read this if a `create` of yours was interrupted, or if `create` refuses over a box directory.**
+
+**What changed.** A bare `kanibako create` on a path carrying a pending create entry now refuses
+and names the box, the workspace, and when the attempt started, where it used to complete the
+create in silence. A bare primary `create` over a box home that no registration claims also
+refuses, instead of minting `<name>2`, and its message no longer advises `rm -rf`.
+
+**What to do.**
+
+- If a `create` of yours stopped working, or a half-finished `create` was completed in silence on
+  a re-run, re-run it as `kanibako create --recover <path>` (`kanibako create --standalone --recover
+  <root>` for a standalone box). A bare re-run now refuses and tells you what it found, and refuses
+  any flag that would initialize box state — attempt one already did, and nothing re-reads a flag
+  after that. To change a refused flag afterwards, use the `box set` key the refusal prints
+  (`--no-vault` → `box.enable_vault=false`).
+- **If you have a `std.boxes/<name>` directory that no registration claims**, a `create` for that
+  name now refuses instead of advising `rm -rf`. The registry is a rebuildable index, so that
+  directory may be a complete box whose registration was lost, with your work under its `home/`.
+  Read it before removing anything: `kanibako box list` shows what the index holds, `ls` the
+  directory. To get the box back, restore the registry that indexed it — a backup, or the machine
+  it was made on; no command re-registers a primary box by name. To leave it alone, pass a
+  different `--name`. Nothing is removed for you either way.
+- **If you relied on the old advice to delete such a directory by hand**, that advice was never
+  safe to follow blindly and this release stops printing it. A box deleted this way is not
+  recoverable from the registry, because the registry was never its source of truth.
 
 ---
 

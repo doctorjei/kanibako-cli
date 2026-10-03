@@ -266,9 +266,8 @@ class TestReadDoc:
         """A name the shell cannot look up whole is refused, not probed.
 
         The probe runs one shell over every name at once and reads the result one
-        line at a time, so a name carrying a control character decides the verdict
-        for every other name in the same run -- a NUL in one name blanks the whole
-        probe, and a newline makes a marker that can only ever mis-split. The
+        line at a time, so a NUL in one name blanks the whole probe, and a newline
+        in a name that resolves splits its hit marker across two lines. The
         character arrives as a YAML ESCAPE: a raw one is the document's problem, not
         the value's, and several are not even legal inside a quoted scalar.
         """
