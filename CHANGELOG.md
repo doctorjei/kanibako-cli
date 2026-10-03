@@ -262,6 +262,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   work. In 1.8.0-rc2 a plugin with an entrypoint but no descriptor (a 1.7.x hook plugin) launched
   its own program with no arguments.
 
+- `kanibako agent set --null <key>` writes a present `null` to that agent's own file, the same
+  write `system set --null agent.<agent>.<key>` makes. In 1.8.0-rc2 it was refused.
+  `--null <key>=<value>` is refused and writes nothing, naming the whole token, as at system
+  scope. A bind-shaped category is still refused by name. See *2.14 Fixed: two `--null` CLI
+  bugs* in [MIGRATION.md](MIGRATION.md).
+
 ### Fixed
 
 - **`kanibako box rm <name>` no longer removes a workset of that name, or, with `--purge`,

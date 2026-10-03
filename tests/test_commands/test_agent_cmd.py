@@ -1811,19 +1811,14 @@ class TestAgentParser:
 
 
 class TestAgentSetNull:
-    """B-5: ``agent set`` ADVERTISES ``--null`` but never read it.
+    """B-6: ``agent set --null <key>`` WRITES a present ``None``, as every other scope does.
 
-    The flag parsed (it is on the parser) and the bare key then fell through to
-    the GET fallback, so ``kanibako agent set claude --null model`` PRINTED the
-    current model and exited 0 — an accepted, silently-ignored write.
-
-    It is REFUSED rather than wired, because this file's reader coerces what it
-    loads (``agent_file.load`` builds ``cfg.state``/``cfg.env`` with
-    ``str(v)``): a YAML null here would read back as the TEXT ``"None"``, and
-    for ``access`` that is not a legal tier at all — a suppression flag that
-    would leave the box refusing to launch (and, before R-41 made the resolver
-    exact, would have launched it PERMISSIVE).  Agent-file null semantics need
-    the reader to change with them.
+    The positional is handed to ``config_interface.parse_config_arg`` — the parser every
+    other scope gives its own positional to — and the write goes to the SAME
+    ``set_config_value`` call the ``=`` arm makes, carrying ``None`` as its value, so there
+    is no second copy of the null logic here to drift from the first: the key gate, the
+    engine's per-route refusals and the confirmation are the same code for ``key=value`` and
+    ``--null key``.
     """
 
     def _stored(self, agent_env):
@@ -1831,62 +1826,195 @@ class TestAgentSetNull:
 
         return load_doc(agent_settings_path(agents_dir(agent_env), "claude"))
 
-    def test_null_is_refused_and_names_both_cures(self, agent_env, capsys):
+    def _set(self, capsys, key_value, *, null):
+        """``agent set claude [--null] <key_value>`` → ``(rc, stdout, stderr)``."""
         from kanibako.commands.agent_cmd import run_set
 
         rc = run_set(argparse.Namespace(
-            agent_id="claude", key_value="model", null=True,
+            agent_id="claude", key_value=key_value, null=null,
         ))
-        assert rc == 1
         cap = capsys.readouterr()
-        # INVERT: with the refusal removed this is the GET fallback — rc 0 and
-        # the stored value on stdout, which is the silent-read bug itself.
-        assert "opus" not in cap.out
-        assert "not supported at agent scope" in cap.err
-        assert "'agent reset claude model'" in cap.err
-        assert "'--null pref.agent.claude.model'" in cap.err
+        return rc, cap.out, cap.err
 
-    def test_refusal_writes_nothing(self, agent_env, capsys):
-        """The whole point of refusing: the file is untouched, so nothing reads
-        back as the string 'None' later."""
-        from kanibako.commands.agent_cmd import run_set
+    def _set_null(self, capsys, key_value):
+        """``agent set claude --null <key_value>`` → ``(rc, stdout, stderr)``."""
+        return self._set(capsys, key_value, null=True)
 
-        before = self._stored(agent_env)
-        assert run_set(argparse.Namespace(
-            agent_id="claude", key_value="model", null=True,
-        )) == 1
-        assert run_set(argparse.Namespace(
-            agent_id="claude", key_value="env.EDITOR", null=True,
-        )) == 1
-        assert run_set(argparse.Namespace(
-            agent_id="claude", key_value="access", null=True,
-        )) == 1
-        assert self._stored(agent_env) == before
+    def test_null_writes_a_present_none(self, agent_env, capsys):
+        """THE CURE: rc 0, a ``null`` IN THE FILE (present, not absent), and the
+        engine's own confirmation — which is what makes the write visible at all.
+        """
+        rc, out, err = self._set_null(capsys, "model")
+        assert rc == 0, err
+        assert out == "Set model=null\n"
+        # ⚑ PRESENT and None — a removed key reads the same through the cascade,
+        # so ``"model" in …`` is half of what is pinned here.
+        state = self._stored(agent_env)["self"]
+        assert "model" in state
+        assert state["model"] is None
 
-    def test_null_with_a_value_names_the_key_alone_in_the_cure(
+    def test_null_output_matches_the_system_route_for_the_same_write(
         self, agent_env, capsys,
     ):
-        """``--null key=value`` supplies two values; the refusal still has to
-        name the KEY, not echo the whole token into an untypeable command."""
-        from kanibako.commands.agent_cmd import run_set
+        """⚑ THE COMPARISON, not a second rc-0 assertion: the two routes are run against
+        the same key and their OUTPUTS COMPARED, because "it exits 0" says nothing about
+        whether the two spellings agree.
 
-        rc = run_set(argparse.Namespace(
-            agent_id="claude", key_value="model=sonnet", null=True,
+        They differ in exactly the KEY SPELLING, and must: this noun takes a BARE tail on
+        the command line (``model``) where ``system set`` takes the canonical key
+        (``agent.claude.model``), and a confirmation may only teach a spelling its own verb
+        accepts — the rule its ``=`` arm and its ``reset`` twin already answer by.  The
+        VALUE half, the exit code and the bytes landed in the file are identical, and that
+        is what the assertions below hold.
+        """
+        from kanibako.commands.system_cmd import run_set as system_set
+
+        rc_a, out_a, err_a = self._set_null(capsys, "model")
+        assert rc_a == 0, err_a
+        doc_a = self._stored(agent_env)
+
+        # The same write through the other route: put the store back exactly as
+        # ``agent_env`` left it, so the two runs cannot flatter each other by
+        # sharing a write and the whole-doc comparison below is meaningful.
+        write_agent_config(
+            agent_settings_path(agents_dir(agent_env), "claude"),
+            AgentConfig(
+                run_args=["--no-helpers"],
+                state={"model": "opus"},
+                env={"EDITOR": "vim"},
+            ),
+        )
+        rc_b = system_set(argparse.Namespace(
+            key_value="agent.claude.model", null=True, force=True,
         ))
+        cap_b = capsys.readouterr()
+        assert rc_b == 0, cap_b.err
+        doc_b = self._stored(agent_env)
+
+        assert out_a == "Set model=null\n"
+        assert cap_b.out == "Set agent.claude.model=null\n"
+        # ⚑ The ONLY difference is the key each verb accepts: re-spelling this verb's
+        # key the way ``system set`` spells it makes the two lines identical.
+        assert out_a.replace("model", "agent.claude.model") == cap_b.out
+        # …and the two routes wrote the same bytes to the same file.
+        assert doc_a == doc_b
+        assert doc_a["self"]["model"] is None
+
+    def test_null_routes_through_the_one_setter(
+        self, agent_env, monkeypatch, capsys,
+    ):
+        """⚑ ONE CARRIER.  ``--null`` must reach ``config_interface.set_config_value``
+        with a ``None`` value — the same call, on the same canonical key, the ``=`` arm
+        makes — rather than being written by a second arm of this verb.  A copy of the
+        null logic in a command module is the duplicate-writer defect this file spent
+        ``name`` retiring.
+        """
+        from kanibako.settings import config_interface
+
+        seen: dict = {}
+
+        def spy(*args, **kwargs):
+            seen.update(kwargs)
+            seen["key"] = args[0]
+            seen["value"] = args[1]
+            return "Set spied"
+
+        monkeypatch.setattr(config_interface, "set_config_value", spy)
+        rc, _out, _err = self._set_null(capsys, "model")
+        assert rc == 0
+        assert seen["key"] == "agent.claude.model"
+        # ⚑ None, NOT the text ``"null"`` and NOT ``""`` — the value the engine
+        # renders back as ``null`` and writes as a YAML null.
+        assert seen["value"] is None
+
+    def test_category_key_still_refuses_with_its_own_message(
+        self, agent_env, capsys,
+    ):
+        """A bind-shaped CATEGORY takes no scalar, null or not, and is refused BY NAME —
+        the route's own message, byte-identical to the one the ``=`` arm gets, never a
+        generic "null is unsupported here" invented at this verb.
+        """
+        before = self._stored(agent_env)
+        rc, _out, err = self._set_null(capsys, "bindings")
         assert rc == 1
-        err = capsys.readouterr().err
-        assert "'agent reset claude model'" in err
-        assert "model=sonnet" not in err
-        assert self._stored(agent_env)["self"]["model"] == "opus"  # untouched
+        assert "is a namespace, not a key" in err
+
+        # ⚑ THE MESSAGE IS THE ROUTE'S, not this verb's: the ``=`` arm is refused in
+        # exactly these words for the same key.  ⚑ It is run as the ``=`` SPELLING —
+        # ``--null bindings=x`` would hand the closed-keyspace gate the whole token and
+        # be refused for that instead, which is a different question with its own answer.
+        rc_spell, _out_spell, err_spell = self._set(capsys, "bindings=x", null=False)
+        assert rc_spell == 1
+        assert err == err_spell
+        assert self._stored(agent_env) == before
+
+    def test_a_refused_route_writes_nothing(self, agent_env, capsys):
+        """The refusals still refuse, and a refusal still writes NOTHING: the doc is
+        identical before and after, so a rejected key can never leave a stray null behind
+        for the launch to read.
+        """
+        before = self._stored(agent_env)
+        assert self._set_null(capsys, "bindings")[0] == 1
+        # The closed keyspace (ruling 55) — ``self.model`` names a node, not a key.
+        assert self._set_null(capsys, "self.model")[0] == 1
+        assert self._stored(agent_env) == before
+
+    def test_a_null_with_a_value_is_refused_by_name_and_writes_nothing(
+        self, agent_env, capsys,
+    ):
+        """``--null key=value`` supplies two values, and this verb REFUSES it.  The
+        ``=``-bearing token is not a key, and a null written in its place would tell the
+        user their write happened by the absence of any error.
+
+        ``parse_config_arg(set_null=True)`` takes the WHOLE token as the key — the one
+        contract every other scope's ``--null`` obeys — so the closed-keyspace gate
+        answers for the token and the store is left exactly as it was.
+        """
+        before = self._stored(agent_env)
+        rc, out, err = self._set_null(capsys, "model=sonnet")
+        assert rc == 1, out
+        # ⚑ THE WHOLE TOKEN IS NAMED, so the user sees WHICH argument was refused and
+        # that the value half of it was not quietly stored.
+        assert "model=sonnet" in err
+        assert out == ""
+        assert "sonnet" not in out
+        # A refusal writes NOTHING — no stray null left for the launch to read.
+        assert self._stored(agent_env) == before
+
+    def test_a_null_with_a_value_is_refused_the_way_system_scope_refuses_it(
+        self, agent_env, capsys,
+    ):
+        """THE PARITY, measured rather than asserted: the same ``=``-bearing token is
+        refused at ``system set --null`` AND at ``agent set --null``, both refusals name
+        the token, and both answer with the same law.  The agent noun's own gate is
+        asked the same question the engine's is asked at system scope, and it answers
+        alike — which is the point of routing the positional through the shared parser
+        rather than splitting a second one here.
+        """
+        from kanibako.commands.system_cmd import run_set as system_set
+
+        before = self._stored(agent_env)
+        rc_sys = system_set(argparse.Namespace(
+            key_value="run_args=x", null=True, force=True,
+        ))
+        cap_sys = capsys.readouterr()
+        rc_agent, _out_agent, err_agent = self._set_null(capsys, "run_args=x")
+
+        assert rc_sys == 1, cap_sys.out
+        assert rc_agent == 1
+        # ⚑ BOTH NAME THE TOKEN THEY REFUSED…
+        assert "run_args=x" in cap_sys.err, cap_sys.err
+        assert "run_args=x" in err_agent, err_agent
+        # …and both cite the same law: the keyspace is CLOSED (spec §0).
+        assert "CLOSED" in cap_sys.err, cap_sys.err
+        assert "CLOSED" in err_agent, err_agent
+        # Neither route wrote anything into the agent's own store.
+        assert self._stored(agent_env) == before
 
     def test_null_without_a_key_is_refused(self, agent_env, capsys):
-        from kanibako.commands.agent_cmd import run_set
-
-        rc = run_set(argparse.Namespace(
-            agent_id="claude", key_value=None, null=True,
-        ))
+        rc, _out, err = self._set_null(capsys, None)
         assert rc == 1
-        assert "requires a key" in capsys.readouterr().err
+        assert "requires a key" in err
 
 
 # ---------------------------------------------------------------------------
