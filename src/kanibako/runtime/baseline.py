@@ -19,6 +19,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import SITE_CONFIG_DIR
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.core_defaults import PACKAGED_SETTINGS_PARTS, packaged_data_dir
@@ -34,7 +35,9 @@ def _read_doc(path: Path) -> dict[str, list[str]]:
     Tolerates a missing/empty file (returns ``{}``).  Normalizes each value to a list of
     strings; a bare string value becomes a single-element list.  ⚑ Read through
     :func:`load_doc`, the one entry point for a user's YAML: a repeated key or a
-    non-mapping document is REFUSED BY NAME (ConfigError).
+    non-mapping document is REFUSED BY NAME (ConfigError).  A package whose value is
+    neither a name nor a list of them is REFUSED BY NAME too, here: iterating it would
+    either raise a bare ``TypeError`` or accept a table's keys as executable names.
     """
     if not path.is_file():
         return {}
@@ -45,8 +48,16 @@ def _read_doc(path: Path) -> dict[str, list[str]]:
             result[str(pkg)] = []
         elif isinstance(exes, str):
             result[str(pkg)] = [exes]
-        else:
+        elif isinstance(exes, list) and not any(
+            isinstance(e, (list, dict)) for e in exes
+        ):
             result[str(pkg)] = [str(e) for e in exes]
+        else:
+            raise ConfigError(
+                f"the config file {path} sets '{pkg}' to a value that is not an "
+                "executable name or a list of them. Fix or remove that entry, "
+                "then retry."
+            )
     return result
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 
 import pytest
 
@@ -192,3 +193,39 @@ class TestReadDoc:
         assert baseline._read_doc(p) == {
             "bare": ["rg"], "nulled": [], "listed": ["a", "2"],
         }
+
+    @staticmethod
+    def _value_refusal(path: Path, pkg: str) -> str:
+        """The one message a value that is not an executable name, nor a list of them, gets."""
+        return (
+            f"the config file {path} sets '{pkg}' to a value that is not an "
+            "executable name or a list of them. Fix or remove that entry, "
+            "then retry."
+        )
+
+    def test_scalar_value_is_refused_naming_the_package(self, tmp_path) -> None:
+        """A package mapped to a number is REFUSED BY NAME rather than iterated."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("git: 5\n")
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == self._value_refusal(p, "git")
+
+    def test_table_value_is_refused_naming_the_package(self, tmp_path) -> None:
+        """A package mapped to a table is REFUSED: a table's KEYS are not executable names."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("git: {a: 1}\n")
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == self._value_refusal(p, "git")
+
+    def test_nested_list_value_is_refused_naming_the_package(self, tmp_path) -> None:
+        """A list holding a list is REFUSED: its inner value is not an executable name."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text("git: [[x]]\n")
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == self._value_refusal(p, "git")
