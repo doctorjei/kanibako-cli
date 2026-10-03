@@ -124,7 +124,7 @@ from kanibako.agent_ref import (
     canonicalize_agent_ref,
     harness_of,
 )
-from kanibako.errors import ConfigError
+from kanibako.errors import ConfigError, PackagingError
 from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE, SCOPE_CONTAINMENT
 from kanibako.settings.keystore import KeyStore
 # ⚑ MODULE SCOPE, and it closes no cycle: ``settings_categories`` is pure — it
@@ -335,7 +335,7 @@ def access_default() -> str:
 
     value = behavior_default("access")
     if value not in ACCESS_TIERS:
-        raise RuntimeError(
+        raise PackagingError(
             f"{CORE_DEFAULTS_FILENAME} declares 'agent_default.access' as {value!r}, "
             f"which is not one of {' | '.join(ACCESS_TIERS)} (spec §2d). Refusing "
             "rather than defaulting every unset box to an unrecognized tier."
