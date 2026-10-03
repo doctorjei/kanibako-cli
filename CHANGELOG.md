@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The undeclared-key refusal now lists each entry beside the settings file that carries it, instead
+  of every file the resolve loaded; an entry no settings file carries is said to come from a
+  non-file input. The system settings file and the site base file are now checked one file at a
+  time too, like the box and workset files. A table where a single value belongs under an agent
+  node (`agent: {claude: {model: {x: 1}}}`, or the same under `pref.agent:`) is now refused, naming
+  the key and the file, in the system, site base, workset, and box settings files. See *2.47 An
+  undeclared key in a settings file now stops the command, and the cure is a hand-edit* in
+  [MIGRATION.md](MIGRATION.md).
+
 - Undeclared keys in the box and workset settings files are now checked one file at a time, and the
   error names the file. That includes a key another file's table hides from the merged result, for
   example `box.bindings: null` in `workset.yaml` under a box `bindings` table. When a parent and its

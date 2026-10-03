@@ -3280,6 +3280,13 @@ box:
     rw: null
 ```
 
+**A table where a single value belongs is refused under an agent node too.** In the system settings
+file, the site base file, and a workset's or box's `pref.agent:` table, `agent: {claude: {model:
+{x: 1}}}` was silently dropped while the same shape under an agent file's `self:` was refused. It is
+now refused, naming each key (`agent.claude.model`) and the file; this covers every node, `default`
+included. Category tables (`env:`, `bindings:` and the rest) and `transform_settings` are tables by
+design and still resolve. An agent's own `agent.yaml` is not yet covered by this check.
+
 **A `config:` table is refused too, with a message of its own.** The `config.*` keys are the
 bootstrap paths and live only in the config file — `~/.config/kanibako.cfg` by default (site-wide,
 `/etc/kanibako/base.cfg`); a settings file cannot move the store. The message names the file, each
@@ -3323,10 +3330,9 @@ Error: the settings resolved for this box carry 2 entries that are not settings 
   - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
   - workset.frob: 'frob' is not a declared workset key (declared: boxes, canon, channelroot, kuid, logs, registry, skip_kuid_check, template, vault_ro, vault_rw, workspaces, plus the §2a categories)
 kanibako will not resolve settings that carry them: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behavior the closed keyspace replaces.
-  Fix: remove them BY HAND from the settings file that carries them — this resolve loaded:
-    - /home/you/.local/share/kanibako/worksets/demo/boxes/scratch/box.yaml
-    - /home/you/.local/share/kanibako/worksets/demo/workset.yaml
-    - /home/you/.local/share/kanibako/global/settings.yaml
+  Fix: remove them BY HAND, each from the file listed with it:
+    - /home/you/.local/share/kanibako/worksets/demo/boxes/scratch/box.yaml: box.zippity
+    - /home/you/.local/share/kanibako/worksets/demo/workset.yaml: workset.frob
   'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
 ```
 
@@ -3340,13 +3346,14 @@ key, and `box show --effective` resolves through the same seam, so it refuses as
 and `workset reset <workset> --all --force` one in the `workset:` table of the working set's — but
 each removes every other setting in that table with it, and every `pref.*` request in the same file,
 the agent choice `pref.system.agent` included. `--all` removes an undeclared entry under that
-file's `pref:` table the same way. The message lists
-the files this resolve loaded; which of them carried the entry it cannot say, because the snapshot
-is the merge of all of them. By tier those are a box's `box.yaml`, a workset's `workset.yaml`, an
-agent's `agent.yaml`, the system's `<data>/global/settings.yaml` (§2.45) and the machine-wide
-`/etc/kanibako/settings_base.yaml`. Only the files that are actually **there** are listed — most
-machines have no base file, and the sample above is from one of them — so a path in that list is
-always a path you can open.
+file's `pref:` table the same way. The message names, beside each entry, the settings file that
+carries it — a box's settings file, a workset's, an agent's, the system's
+`<data>/global/settings.yaml` (§2.45) or the machine-wide `/etc/kanibako/settings_base.yaml` — so
+every path it prints is a file you can open and a line you will find there. An entry no settings
+file carries came from elsewhere (the command line, the persona store, or an agent plugin's or
+kanibako's own defaults), and the message says so instead of naming a file. An entry that a more
+specific file's table hides from the merge — `system: {bindings: 5}` in the base file below a
+system file that sets `bindings: {ro: …}` — is refused too, and its message names that one file.
 
 **Two things this deliberately does not refuse.**
 
@@ -3509,8 +3516,8 @@ Step 3: Container Rig
 Error: the settings resolved for this box carry 1 entry that is not a settings key (spec §0 — the keyspace is CLOSED):
   - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
 kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behavior the closed keyspace replaces.
-  Fix: remove it BY HAND from the settings file that carries it — this resolve loaded:
-    - /home/you/.local/share/kanibako/global/settings.yaml
+  Fix: remove it BY HAND, each from the file listed with it:
+    - /home/you/.local/share/kanibako/global/settings.yaml: box.zippity
   'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
 ```
 
@@ -3544,8 +3551,8 @@ Settings errors:
         the settings resolved for this box carry 1 entry that is not a settings key (spec §0 — the keyspace is CLOSED):
           - box.zippity: 'zippity' is not a declared box key (declared: canon, enable_vault, image, images_store, share_images, shell, plus the §2a categories)
         kanibako will not resolve settings that carry it: an undeclared key has no meaning to give the box, and passing it through would be the very 'anything goes' behavior the closed keyspace replaces.
-          Fix: remove it BY HAND from the settings file that carries it — this resolve loaded:
-            - /home/you/.local/share/kanibako/global/settings.yaml
+          Fix: remove it BY HAND, each from the file listed with it:
+            - /home/you/.local/share/kanibako/global/settings.yaml: box.zippity
           'kanibako box reset <key>' cannot remove what is not a key, and 'kanibako box show --effective' resolves through this same seam, so it refuses too.
 ```
 
