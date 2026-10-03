@@ -9,6 +9,7 @@ code: the rules, and the contracts the type system cannot carry.
 from __future__ import annotations
 
 import os
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -497,6 +498,9 @@ class PersonaProbeVerdict(Enum):
 # ⚑ NOT "the token is bad" — neither code says WHICH input was at fault (llm-doc).
 _REFUSAL_STATUSES = (401, 403)
 
+#: RFC 3986 ``scheme``.  An authority marker is a ``://`` this ENDS, at index 0.
+_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*")
+
 
 def _tilde(path: Path) -> str:
     """*path* with the user's home abbreviated to `~` — DISPLAY only, never a resolve."""
@@ -509,39 +513,33 @@ def _tilde(path: Path) -> str:
 def _scrub_endpoint_userinfo(endpoint: str) -> str:
     """*endpoint* with a URL userinfo (``user[:password]@``) replaced by `_REDACTED`.
 
-    Host, port, path, query and fragment print UNCHANGED: a refusal must keep
-    the endpoint legible (WHERE it pointed) while losing the credential, and
-    only the authority-section userinfo is a credential by construction.  An
-    ``@`` in the path, query or fragment is not userinfo and is left alone.
-    The whole userinfo span is dropped structurally, so no re-encoding of it
-    can survive the way one can defeat `_provider_text`.
+    🛑 After ``scheme://`` an ``@`` ends the userinfo WHEREVER it sits — path, query or
+    fragment included — and the span runs to the LAST one, nothing bounding it sooner: a
+    credential need not be delimiter-free (a base64 token can carry ``/``), and no ``/``,
+    ``?`` or ``#`` bounds the span.  It goes whole, so no re-encoding of it survives the
+    way one can defeat `_provider_text`.
 
-    ⚑ A MALFORMED endpoint is scrubbed too: it is the one most likely to be
-    printed, by the error refusing it.  Where ``urlsplit`` raises or finds no
-    authority (``user:pw@host/v1``, ``https:///tok@host``), the would-be
-    authority starts past the first run of ``/`` ahead of the first ``@`` (else
-    at the start) and ends at the next ``/``, ``?`` or ``#`` — where urllib ends
-    a netloc; everything before its LAST ``@`` is dropped.  That can take a
-    leading scheme, or a first path segment, too (``https:tok@host`` →
-    ``<redacted>@host``, ``gw.example.com/team@corp/v1`` →
-    ``gw.example.com/<redacted>@corp/v1``): over-redaction of a string that is
-    not a usable URL, never a credential printed.  Only a span is deleted, so
-    no URL is invented.
+    ⚑ The accepted cost is OVER-REDACTION in printed text: a legitimate ``@`` is not told
+    from a credential.  Only a span goes, so no URL is invented — and the endpoint CHECK
+    runs on the raw string, so none of this can refuse a box that works.
+
+    ⚑ A MALFORMED endpoint is scrubbed too — the one most likely to be printed, by the
+    error refusing it.  The marker is a ``://`` ENDING A SCHEME THAT STARTS THE STRING
+    (RFC 3986), so one inside a query or fragment cannot pass a credential off.  With no
+    marker there is no authority to measure, so the span runs from past the first ``/``
+    run ahead of the first ``@`` (else the start) to the next ``/``, ``?`` or ``#``; a
+    leading scheme or first path segment can go with it.
     """
-    import urllib.parse as _urlparse
-
-    try:
-        parts: _urlparse.SplitResult | None = _urlparse.urlsplit(endpoint)
-    except ValueError:
-        parts = None
-    if parts is not None and parts.netloc:
-        if "@" not in parts.netloc:
+    marker = endpoint.find("://")
+    scheme = _SCHEME.match(endpoint)
+    if scheme is not None and scheme.end() == marker:
+        after_scheme = marker + len("://")
+        tail = endpoint[after_scheme:]
+        start = after_scheme + len(tail) - len(tail.lstrip("/"))
+        last_at = endpoint.rfind("@", start)
+        if last_at == -1:
             return endpoint
-        hostport = parts.netloc.rpartition("@")[2]
-        return _urlparse.urlunsplit((
-            parts.scheme, _REDACTED + "@" + hostport,
-            parts.path, parts.query, parts.fragment,
-        ))
+        return endpoint[:start] + _REDACTED + endpoint[last_at:]
     stop = min(
         (i for i in (endpoint.find("?"), endpoint.find("#")) if i != -1),
         default=len(endpoint),
@@ -584,8 +582,8 @@ class ProbeEvidence:
     def lines(self, indent: str = "  ", *, resolved_from: str = "") -> tuple[str, ...]:
         """The evidence block: one labeled line per input, then the provider's own words.
 
-        ⚑ The endpoint line is userinfo-scrubbed (`_scrub_endpoint_userinfo`):
-        host, path and provenance stay legible; the credential does not.
+        ⚑ The endpoint line is userinfo-scrubbed (`_scrub_endpoint_userinfo`), which
+        may over-redact it; no credential survives it.
         ⚑ The closing sentence is emitted for a REFUSAL status ONLY (llm-doc).
 
         ⚑ *resolved_from* names WHERE the caller got *endpoint* and *model* — a
