@@ -1565,7 +1565,7 @@ class TestDistinctAuth:
         """A PRIVATE box (auth_src.creds_shared False) -> refresh_credentials skipped."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None, None),
+            return_value=(_PRIVATE_AUTH, None, None, {}),
         ):
             rc = _run_container(
                 project_dir=None,
@@ -1584,7 +1584,7 @@ class TestDistinctAuth:
         """A PRIVATE box (auth_src.creds_shared False) -> check_auth skipped."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None, None),
+            return_value=(_PRIVATE_AUTH, None, None, {}),
         ):
             rc = _run_container(
                 project_dir=None,
@@ -3282,7 +3282,7 @@ class TestCredsyncRouting:
         (credsync.refresh/writeback never reached)."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None, None),
+            return_value=(_PRIVATE_AUTH, None, None, {}),
         ):
             self._drive_descriptor(m)
             # Seed-at-create path: a brand-new (just-registered) box seeds now.
@@ -4596,7 +4596,7 @@ class TestPrepareHostHook:
         """Distinct auth (PRIVATE box, auth_src.creds_shared False) -> auto_auth=False."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None, None),
+            return_value=(_PRIVATE_AUTH, None, None, {}),
         ):
             _run_container(
                 project_dir=None,
@@ -6458,7 +6458,7 @@ class TestWritebackAllPaths:
         )
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(workset_auth, None, None),
+            return_value=(workset_auth, None, None, {}),
         ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -6485,7 +6485,7 @@ class TestWritebackAllPaths:
         )
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(workset_auth, None, None),
+            return_value=(workset_auth, None, None, {}),
         ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -6566,7 +6566,7 @@ class TestWritebackAllPaths:
         any path."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_PRIVATE_AUTH, None, None),
+            return_value=(_PRIVATE_AUTH, None, None, {}),
         ):
             _run_container(
                 project_dir=None, entrypoint=None, image_override=None,
@@ -6705,7 +6705,7 @@ class TestSeedNewBoxCreateEntry:
             patch("kanibako.settings.agent_file.save"),
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
-                return_value=(_SHARED_AUTH, None, None),
+                return_value=(_SHARED_AUTH, None, None, {}),
             ),
             patch("kanibako.settings.settings_assemble.agent_record"),
             patch("kanibako.commands.start._seed_box_home") as m_seed,
@@ -6747,7 +6747,7 @@ class TestSeedNewBoxCreateEntry:
             patch("kanibako.settings.agent_file.save"),
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
-                return_value=(_SHARED_AUTH, None, None),
+                return_value=(_SHARED_AUTH, None, None, {}),
             ),
             patch("kanibako.settings.settings_assemble.agent_record"),
             patch(
@@ -7065,13 +7065,11 @@ class TestPreflightPersonaLoad:
         tok.write_text("sk-key\n")
         cfg.secret_path = {"ANTHROPIC_AUTH_TOKEN": str(tok)}
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘claude", cfg, "https://key.example", self._logger(),
+            "navigator℘claude", cfg.secret_path, "https://key.example", self._logger(),
         )
         assert (endpoint, err) == ("https://key.example", None)
         # A claude (ENV-delivery) persona carries NO config-file provider.
         assert provider is None
-        # The pre-flight never writes back into the config it was handed.
-        assert "endpoint" not in cfg.state
 
     def test_a_legacy_host_dir_is_IGNORED(self, tmp_path, monkeypatch):
         """⚑ B3 RETIRED (D3): a full legacy host dir buys the persona NOTHING.
@@ -7087,13 +7085,11 @@ class TestPreflightPersonaLoad:
         self._legacy_host_dir(tmp_path, monkeypatch, base_url="https://b3.example")
         cfg = self._cfg()
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘claude", cfg, None, self._logger(),
+            "navigator℘claude", cfg.secret_path, None, self._logger(),
         )
         assert endpoint is None and provider is None
         assert err is not None and "cannot be loaded" in err
         assert "no endpoint is configured" in err
-        # Nothing was adopted into the in-memory config.
-        assert cfg.state == {} and cfg.secret_path == {} and cfg.env == {}
         # ...and the message names the keyspace route, not the dead directory.
         assert "system set" in err and ".endpoint=" in err
         assert "settings.json" not in err
@@ -7114,11 +7110,10 @@ class TestPreflightPersonaLoad:
         )
         cfg = self._cfg()  # empty secret_path — nothing may supply it now.
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘claude", cfg, "https://key.example", self._logger(),
+            "navigator℘claude", cfg.secret_path, "https://key.example", self._logger(),
         )
         assert endpoint is None and provider is None
         assert err is not None and "no usable auth token" in err
-        assert cfg.secret_path == {}      # NOT adopted into the config.
         assert "/claude/navigator" not in err
 
     def test_unrecognized_persona_hard_errors(self, tmp_path, monkeypatch):
@@ -7127,14 +7122,13 @@ class TestPreflightPersonaLoad:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         cfg = self._cfg()
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘claude", cfg, None, self._logger(),
+            "navigator℘claude", cfg.secret_path, None, self._logger(),
         )
         assert endpoint is None
         assert err is not None and "cannot be loaded" in err
         assert "navigator+claude" in err  # user-facing '+' form
         # The claude ENV shape names its API-key route too, not just the endpoint.
         assert "ANTHROPIC_AUTH_TOKEN" in err
-        assert cfg.state == {}  # nothing written back
 
     def test_keyspace_endpoint_no_token_anywhere_errors(
         self, tmp_path, monkeypatch,
@@ -7146,7 +7140,7 @@ class TestPreflightPersonaLoad:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         cfg = self._cfg()
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘claude", cfg, "https://key.example", self._logger(),
+            "navigator℘claude", cfg.secret_path, "https://key.example", self._logger(),
         )
         assert endpoint is None
         assert err is not None and "no usable auth token" in err
@@ -7164,7 +7158,7 @@ class TestPreflightPersonaLoad:
         cfg = self._cfg()
         cfg.secret_path = {"SOME_OTHER_VAR": str(other)}
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘claude", cfg, "https://key.example", self._logger(),
+            "navigator℘claude", cfg.secret_path, "https://key.example", self._logger(),
         )
         assert endpoint is None
         assert err is not None and "no usable auth token" in err
@@ -7309,10 +7303,10 @@ class TestPreflightClaudeByteIdentical:
         tok.write_text("sk-key\n")
 
         res_none = _preflight_persona_load(
-            "navigator℘claude", self._cfg(tok), "https://key.example", MagicMock(),
+            "navigator℘claude", self._cfg(tok).secret_path, "https://key.example", MagicMock(),
         )
         res_claude = _preflight_persona_load(
-            "navigator℘claude", self._cfg(tok), "https://key.example", MagicMock(),
+            "navigator℘claude", self._cfg(tok).secret_path, "https://key.example", MagicMock(),
             target=ClaudeTarget(),
         )
         # Endpoint / error / provider all identical, provider None.
@@ -7327,16 +7321,15 @@ class TestPreflightClaudeByteIdentical:
         produce the SAME error — the legacy fallback shape and claude's declared
         shape no longer differ in anything the pre-flight branches on.
         """
-        from kanibako.settings.agent_config import AgentConfig
         from kanibako.commands.start import _preflight_persona_load
         from kanibako.plugins.claude.target import ClaudeTarget
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         res_none = _preflight_persona_load(
-            "navigator℘claude", AgentConfig(), None, MagicMock(),
+            "navigator℘claude", {}, None, MagicMock(),
         )
         res_claude = _preflight_persona_load(
-            "navigator℘claude", AgentConfig(), None, MagicMock(),
+            "navigator℘claude", {}, None, MagicMock(),
             target=ClaudeTarget(),
         )
         assert res_none == res_claude
@@ -7367,7 +7360,7 @@ class TestPreflightCodexPersona:
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
         # model is the CASCADE-resolved value (keyspace_model), NOT cfg.state (INC 3).
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
             target=self._codex(), keyspace_model="gemma-4-31b-it",
         )
         assert err is None
@@ -7394,7 +7387,7 @@ class TestPreflightCodexPersona:
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
         for missing in (__MISSING__, "", "   "):
             endpoint, err, provider = _preflight_persona_load(
-                "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+                "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
                 target=self._codex(), keyspace_model=missing,
             )
             assert endpoint is None and provider is None
@@ -7415,7 +7408,7 @@ class TestPreflightCodexPersona:
         key.write_text("nv-secret\n")
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
             target=self._codex(), keyspace_model=None,
         )
         assert endpoint is None and provider is None
@@ -7451,7 +7444,7 @@ class TestPreflightCodexPersona:
         key.write_text("nv-secret\n")
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
             target=self._codex(), keyspace_model=None,
         )
         assert endpoint is None and provider is None
@@ -7482,7 +7475,7 @@ class TestPreflightCodexPersona:
         key.write_text("nv-secret\n")
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
             target=self._codex(), keyspace_model=__MISSING__,
         )
         # Still refused — but on the DESCRIPTOR, not the missing model: a
@@ -7508,7 +7501,7 @@ class TestPreflightCodexPersona:
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", self._cfg(), None, MagicMock(),
+            "navigator℘codex", self._cfg().secret_path, None, MagicMock(),
             target=self._codex(),
         )
         assert endpoint is None
@@ -7522,7 +7515,7 @@ class TestPreflightCodexPersona:
         # the ambiguous / unusable-pointer messages below).
         from kanibako.commands.start import _preflight_persona_load
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", self._cfg(), "https://api.example/v1", MagicMock(),
+            "navigator℘codex", self._cfg().secret_path, "https://api.example/v1", MagicMock(),
             target=self._codex(), keyspace_model="m",
         )
         assert endpoint is None and provider is None
@@ -7541,7 +7534,7 @@ class TestPreflightCodexPersona:
         b.write_text("y\n")
         cfg = self._cfg(secret={"KEY_A": str(a), "KEY_B": str(b)})
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg, "https://api.example/v1", MagicMock(),
+            "navigator℘codex", cfg.secret_path, "https://api.example/v1", MagicMock(),
             target=self._codex(), keyspace_model="m",
         )
         assert endpoint is None and provider is None
@@ -7556,7 +7549,7 @@ class TestPreflightCodexPersona:
         from kanibako.commands.start import _preflight_persona_load
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(tmp_path / "absent")})
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg, "https://api.example/v1", MagicMock(),
+            "navigator℘codex", cfg.secret_path, "https://api.example/v1", MagicMock(),
             target=self._codex(), keyspace_model="m",
         )
         assert endpoint is None and provider is None
@@ -7573,7 +7566,7 @@ class TestPreflightCodexPersona:
         key.write_text("z\n")
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": str(key)})
         endpoint, err, _provider = _preflight_persona_load(
-            "navigator℘codex", cfg, "https://api.example/v1", MagicMock(),
+            "navigator℘codex", cfg.secret_path, "https://api.example/v1", MagicMock(),
             target=self._codex(), keyspace_model="m",
         )
         assert err is None
@@ -7592,7 +7585,7 @@ class TestPreflightCodexPersona:
 
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": None})
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
             target=self._codex(), keyspace_model="gemma-4-31b-it",
         )
         assert err is None
@@ -7627,7 +7620,7 @@ class TestPreflightCodexPersona:
 
         cfg = self._cfg(secret={"NAVIGATOR_API_KEY": None})
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘codex", cfg, "https://api.ai.example/v1", MagicMock(),
+            "navigator℘codex", cfg.secret_path, "https://api.ai.example/v1", MagicMock(),
             target=target, keyspace_model="gemma-4-31b-it", probe=True,
         )
         assert err is None
@@ -7665,13 +7658,12 @@ class TestPreflightGoosePersona:
         key.write_text("sk-openai\n")
         cfg = self._cfg(secret={"OPENAI_API_KEY": str(key)})
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘goose", cfg, "https://oai.example/v1", MagicMock(),
+            "navigator℘goose", cfg.secret_path, "https://oai.example/v1", MagicMock(),
             target=self._goose(), keyspace_model="gemma-4-31b-it",
         )
         assert err is None
         assert endpoint == "https://oai.example/v1"
         assert provider is None  # ENV harness → no config.toml provider.
-        assert "endpoint" not in cfg.state  # the pre-flight writes nothing back.
 
     def test_no_endpoint_goose_worded_error(self, tmp_path, monkeypatch):
         # Unset endpoint → keyspace error naming endpoint + the GOOSE token var's
@@ -7680,7 +7672,7 @@ class TestPreflightGoosePersona:
 
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘goose", self._cfg(), None, MagicMock(), target=self._goose(),
+            "navigator℘goose", self._cfg().secret_path, None, MagicMock(), target=self._goose(),
         )
         assert endpoint is None and provider is None
         assert err is not None and "cannot be loaded" in err
@@ -7693,7 +7685,7 @@ class TestPreflightGoosePersona:
         # the secret_path route, under its own declared token var.
         from kanibako.commands.start import _preflight_persona_load
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘goose", self._cfg(), "https://oai.example/v1", MagicMock(),
+            "navigator℘goose", self._cfg().secret_path, "https://oai.example/v1", MagicMock(),
             target=self._goose(), keyspace_model="m",
         )
         assert endpoint is None and provider is None
@@ -7712,7 +7704,7 @@ class TestPreflightGoosePersona:
         for missing in (__MISSING__, "", "   "):
             cfg = self._cfg(secret={"OPENAI_API_KEY": str(key)})
             endpoint, err, provider = _preflight_persona_load(
-                "navigator℘goose", cfg, "https://oai.example/v1", MagicMock(),
+                "navigator℘goose", cfg.secret_path, "https://oai.example/v1", MagicMock(),
                 target=self._goose(), keyspace_model=missing,
             )
             assert endpoint is None and provider is None
@@ -7732,7 +7724,7 @@ class TestPreflightGoosePersona:
         key.write_text("sk-openai\n")
         cfg = self._cfg(secret={"OPENAI_API_KEY": str(key)})
         endpoint, err, provider = _preflight_persona_load(
-            "navigator℘goose", cfg, "https://oai.example/v1", MagicMock(),
+            "navigator℘goose", cfg.secret_path, "https://oai.example/v1", MagicMock(),
             target=self._goose(), keyspace_model=None,
         )
         assert err is None
@@ -7900,7 +7892,7 @@ class TestPersonaCreateVerdict:
             ),
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
-                return_value=(_SHARED_AUTH, None, None),
+                return_value=(_SHARED_AUTH, None, None, {}),
             ),
         ):
             err = persona_create_verdict(
@@ -7997,7 +7989,7 @@ class TestPersonaLoadOrErrorIntegration:
                 ),
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, None, None),  # endpoint unresolved
+                    return_value=(_SHARED_AUTH, None, None, {}),  # endpoint unresolved
                 ),
                 patch(
                     "kanibako.settings.agent_file.save"
@@ -8048,7 +8040,7 @@ class TestPersonaLoadOrErrorIntegration:
             with (
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None),
+                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None, dict(cfg.secret_path)),
                 ),
                 # Nothing on this path writes the agent file back; patch the write
                 # so the real dump against the MagicMock agent path cannot leak a
@@ -8107,7 +8099,7 @@ class TestPersonaLoadOrErrorIntegration:
             with (
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None),
+                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None, dict(cfg.secret_path)),
                 ),
                 patch("kanibako.settings.agent_file.save") as m_write,
             ):
@@ -8161,7 +8153,7 @@ class TestPersonaLoadOrErrorIntegration:
                 ),
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, None, None),  # endpoint unresolved
+                    return_value=(_SHARED_AUTH, None, None, {}),  # endpoint unresolved
                 ),
                 patch("kanibako.settings.agent_file.save") as m_write,
             ):
@@ -8223,7 +8215,7 @@ class TestPersonaLoadOrErrorIntegration:
             with (
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None),
+                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None, dict(cfg.secret_path)),
                 ),
                 patch("kanibako.settings.agent_file.save"),
                 patch("kanibako.commands.start.credsync") as m_credsync,
@@ -8286,7 +8278,7 @@ class TestPersonaLoadOrErrorIntegration:
             with (
                 patch(
                     "kanibako.commands.start._resolve_box_launch_decisions",
-                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None),
+                    return_value=(_SHARED_AUTH, "https://nav.example/v1", None, dict(cfg.secret_path)),
                 ),
                 patch("kanibako.settings.agent_file.save"),
                 patch("kanibako.commands.start.credsync") as m_credsync,
@@ -9433,7 +9425,7 @@ class TestPersonaLiveTierWiring:
         target = self._target()
         agent_cfg = target.generate_agent_config()   # first use: state is EMPTY
 
-        _auth, endpoint, model = _resolve_box_launch_decisions(
+        _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
             std=std,
             proj=self._proj(std),
             target=target,
@@ -9509,7 +9501,7 @@ class TestPersonaLiveTierWiring:
         from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
         agent_cfg = load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE)
 
-        _auth, endpoint, model = _resolve_box_launch_decisions(
+        _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
             std=std,
             proj=self._proj(std),
             target=target,
@@ -9541,7 +9533,7 @@ class TestPersonaLiveTierWiring:
         target = self._target()
         agent_cfg = target.generate_agent_config()
 
-        _auth, endpoint, model = _resolve_box_launch_decisions(
+        _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
             std=std,
             proj=self._proj(std),
             target=target,
@@ -9570,7 +9562,7 @@ class TestPersonaLiveTierWiring:
         target = self._target()
         agent_cfg = target.generate_agent_config()
 
-        _auth, endpoint, model = _resolve_box_launch_decisions(
+        _auth, endpoint, model, _secrets = _resolve_box_launch_decisions(
             std=std,
             proj=self._proj(std),
             target=target,
@@ -9992,6 +9984,102 @@ class TestPersonaLiveTierWiring:
         assert not generated.secret_path
         assert not generated.env
 
+    # --- the token gate reads the resolved ``agent.<node>.secret_path`` (2D) --
+
+    def _token_gate(self, std, tmp_path, *, agent_file=None, system_file=None):
+        """``(secret_paths, gate error)`` through the launch's own resolve and gate."""
+        from kanibako.commands.start import (
+            _persona_values_for,
+            _preflight_persona_load,
+            _resolve_box_launch_decisions,
+        )
+        from kanibako.settings.agent_config import agent_settings_path
+        from kanibako.settings.config_io import dump_doc
+
+        target = self._target()
+        agent_path = agent_settings_path(std.agents, self._NODE)
+        if agent_file is not None:
+            dump_doc(agent_path, agent_file)
+        system_path = None
+        if system_file is not None:
+            system_path = tmp_path / "system-settings.yaml"
+            dump_doc(system_path, system_file)
+        _auth, endpoint, model, secret_paths = _resolve_box_launch_decisions(
+            std=std, proj=self._proj(std), target=target, agent_name=self._NODE,
+            agent_cfg=target.generate_agent_config(), system_settings_path=system_path,
+            agent_cfg_path=agent_path, selection_level=None,
+            persona_values=_persona_values_for(self._NODE, target),
+        )
+        _ep, err, _prov = _preflight_persona_load(
+            self._NODE, secret_paths, endpoint, MagicMock(), target=target,
+            keyspace_model=model,
+        )
+        return secret_paths, err
+
+    def _store_token(self, tmp_home):
+        persona_dir = self._store(tmp_home)
+        token = persona_dir / "token"
+        token.write_text("sk-store\n")
+        return str(token)
+
+    def _file_token(self, tmp_path, name="file-tok"):
+        token = tmp_path / name
+        token.write_text("sk-file\n")
+        return str(token)
+
+    def test_a_store_only_token_satisfies_the_gate(self, std, tmp_home, tmp_path):
+        """No file, no system value: the store's token reaches the resolved table."""
+        store_tok = self._store_token(tmp_home)
+        secret_paths, err = self._token_gate(std, tmp_path)
+        assert secret_paths == {"ANTHROPIC_AUTH_TOKEN": store_tok}
+        assert err is None
+
+    def test_the_agent_file_outranks_the_store(self, std, tmp_home, tmp_path):
+        """A BROKEN file value still wins the cascade, so the gate reports it (not rescued)."""
+        store_tok = self._store_token(tmp_home)
+        file_tok = self._file_token(tmp_path)
+        secret_paths, err = self._token_gate(
+            std, tmp_path, agent_file={"self": {"secret_path": {"ANTHROPIC_AUTH_TOKEN": file_tok}}},
+        )
+        assert secret_paths["ANTHROPIC_AUTH_TOKEN"] == file_tok != store_tok
+        assert err is None
+        _paths, err = self._token_gate(
+            std, tmp_path,
+            agent_file={"self": {"secret_path": {"ANTHROPIC_AUTH_TOKEN": "/nonexistent/tok"}}},
+        )
+        assert err is not None and "no usable auth token" in err
+
+    def test_a_store_var_unlike_the_files_adds_a_second_key(self, std, tmp_home, tmp_path):
+        store_tok = self._store_token(tmp_home)
+        file_tok = self._file_token(tmp_path)
+        secret_paths, _err = self._token_gate(
+            std, tmp_path, agent_file={"self": {"secret_path": {"OTHER_KEY": file_tok}}},
+        )
+        assert secret_paths == {"OTHER_KEY": file_tok, "ANTHROPIC_AUTH_TOKEN": store_tok}
+
+    def test_a_null_in_the_agent_file_is_a_keyless_declaration(self, std, tmp_home, tmp_path):
+        self._store_token(tmp_home)
+        secret_paths, err = self._token_gate(
+            std, tmp_path, agent_file={"self": {"secret_path": {"ANTHROPIC_AUTH_TOKEN": None}}},
+        )
+        assert secret_paths == {"ANTHROPIC_AUTH_TOKEN": None}
+        assert err is None
+
+    def test_the_system_file_is_read_below_the_store(self, std, tmp_home, tmp_path):
+        """The row's defect: a system-file ``agent.<node>.secret_path`` was never read by
+        the gate. It is now, and the store outranks it.
+        (Mutation: read the agent FILE record instead → the system token is missing → RED.)"""
+        sys_tok = self._file_token(tmp_path, "sys-tok")
+        system_file = {"agent": {self._NODE: {
+            "endpoint": self._ENDPOINT, "secret_path": {"ANTHROPIC_AUTH_TOKEN": sys_tok},
+        }}}
+        secret_paths, err = self._token_gate(std, tmp_path, system_file=system_file)
+        assert secret_paths == {"ANTHROPIC_AUTH_TOKEN": sys_tok}
+        assert err is None
+        store_tok = self._store_token(tmp_home)
+        secret_paths, _err = self._token_gate(std, tmp_path, system_file=system_file)
+        assert secret_paths == {"ANTHROPIC_AUTH_TOKEN": store_tok}
+
 
 class TestPersonaStoreDiagnostics:
     """The launch-path printer for a bundle's SOFT diagnostics.
@@ -10064,11 +10152,9 @@ class TestPersonaPreflightBundle:
 
     Three things meet here, and each is a rule rather than a detail:
 
-    * the TOKEN resolves from TWO sources — the agent FILE rung first, the
-      persona STORE below it.  Nothing persists the store any more, so without
-      the second source every store-only persona would fail its own token gate;
-      and with the order reversed, the gate would approve a token the cascade
-      does not actually mount.
+    * the TOKEN is read from the resolved ``agent.<node>.secret_path`` table, where
+      the store's token sits below the agent file (the cascade's order, pinned in
+      :class:`TestPersonaLiveTierWiring`); these tests hand the gate that table.
     * a ``reject_reason`` is a HARD ERROR (no last-known-good exists to keep),
       while ``no_reader`` is NOT — the whole reason D0 split them.
     * the PER-LAUNCH verify probe hard-errors on a positive auth reject, WARNS
@@ -10123,88 +10209,12 @@ class TestPersonaPreflightBundle:
         from kanibako.log import get_logger
 
         return _preflight_persona_load(
-            self._NODE, agent_cfg,
+            self._NODE, agent_cfg.secret_path,
             self._ENDPOINT if endpoint is None else endpoint,
             get_logger("test"),
             target=target if target is not None else self._Target(),
             keyspace_model=model, bundle=bundle, probe=probe,
         )
-
-    # --- the token gate's second source --------------------------------------
-
-    def test_a_store_only_token_satisfies_the_gate(self, tmp_path):
-        """⚑ The D1 breakage this closes: no persist, so no file token.
-
-        A store persona's token pointer exists ONLY in the bundle.  Before the
-        store became a live tier the verified swap had written it into
-        ``agents/<node>/agent.yaml``, and the gate read it from there.
-        """
-        from kanibako.persona_store import PersonaBundle
-
-        tok = self._token(tmp_path)
-        ep, err, _prov = self._run(
-            self._cfg(),
-            bundle=PersonaBundle(
-                endpoint=self._ENDPOINT, auth_env="ANTHROPIC_AUTH_TOKEN",
-                token_path=tok,
-            ),
-        )
-        assert err is None
-        assert ep == self._ENDPOINT
-
-    def test_the_agent_file_beats_the_store(self, tmp_path):
-        """The ruled cascade order — and the order the box actually mounts in."""
-        from kanibako.persona_store import PersonaBundle
-
-        file_tok = self._token(tmp_path, "file-tok")
-        store_tok = self._token(tmp_path, "store-tok")
-        target = self._Target()
-        _ep, err, _p = self._run(
-            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": str(file_tok)}),
-            bundle=PersonaBundle(
-                endpoint=self._ENDPOINT, auth_env="ANTHROPIC_AUTH_TOKEN",
-                token_path=store_tok,
-            ),
-            probe=True, target=target,
-        )
-        assert err is None
-        # The probe is handed the FILE token — the one that wins the cascade.
-        assert target.calls == [(self._ENDPOINT, file_tok, "gemma4")]
-
-    def test_an_unusable_FILE_token_is_not_rescued_by_the_store(self, tmp_path):
-        """⚑ The file rung wins even when it is BROKEN — so it must be reported.
-
-        Falling back to the store here would approve a token the cascade will
-        not mount: the file value still wins ``build_launch_snapshot``, so the
-        box would get the broken one while the gate passed on the good one.
-        """
-        from kanibako.persona_store import PersonaBundle
-
-        store_tok = self._token(tmp_path, "store-tok")
-        _ep, err, _p = self._run(
-            self._cfg(secret_path={"ANTHROPIC_AUTH_TOKEN": "/nonexistent/tok"}),
-            bundle=PersonaBundle(
-                endpoint=self._ENDPOINT, auth_env="ANTHROPIC_AUTH_TOKEN",
-                token_path=store_tok,
-            ),
-        )
-        assert err is not None
-        assert "no usable auth token" in err
-
-    def test_a_store_token_for_a_DIFFERENT_var_does_not_satisfy_the_gate(
-        self, tmp_path,
-    ):
-        """The token must be exported as the var the harness reads."""
-        from kanibako.persona_store import PersonaBundle
-
-        tok = self._token(tmp_path)
-        _ep, err, _p = self._run(
-            self._cfg(),
-            bundle=PersonaBundle(
-                endpoint=self._ENDPOINT, auth_env="SOME_OTHER_VAR", token_path=tok,
-            ),
-        )
-        assert err is not None
 
     # --- the token STATE, 2026-08-17 ruling (ABSENT / PRESENT-null / a path) --
 
@@ -10606,18 +10616,15 @@ class TestPersonaPreflightBundle:
 
 
 class TestCodexDynamicTokenVarWithStore:
-    """The DYNAMIC (codex) token var counted over the FILE **and** the STORE.
+    """The DYNAMIC (codex) token var is the SINGLE key of the resolved table.
 
-    codex has no fixed token var: the single configured ``secret_path`` key IS
-    the ``[model_providers.<id>].env_key``.  Once the store stopped being copied
-    into the agent file, "the single configured key" had to be counted over both
-    sources — a store-only persona has no file key at all and would otherwise
-    read as ZERO keys and be refused.
+    codex has no fixed token var: the single ``agent.<node>.secret_path`` key the
+    launch resolves IS the ``[model_providers.<id>].env_key``.  The store's key
+    reaches that table through the cascade (:class:`TestPersonaLiveTierWiring`), so a
+    store-only persona counts ONE key, and a store naming a different var than the
+    file makes TWO.
 
-    ⚑ The three sub-case errors must stay DISTINGUISHABLE.  "The store supplies
-    it" must not collapse into the ambiguous-multiple-keys arm, and the store
-    genuinely CAN create ambiguity (by naming a different var than the file) —
-    which is a real ambiguity and must still be reported as one.
+    ⚑ The three sub-case errors must stay DISTINGUISHABLE.
     """
 
     _ENDPOINT = "https://api.navigator.example/v1"
@@ -10628,94 +10635,42 @@ class TestCodexDynamicTokenVarWithStore:
 
         return CodexTarget()
 
-    def _bundle(self, tmp_path, var="NAVIGATOR_API_KEY", *, token=True):
-        from kanibako.persona_store import PersonaBundle
-
-        tok = None
-        if token:
-            tok = tmp_path / "store-tok"
-            tok.write_text("sk-test\n")
-        return PersonaBundle(
-            endpoint=self._ENDPOINT, model="gemma4", auth_env=var, token_path=tok,
-        )
-
-    def _run(self, agent_cfg, bundle):
+    def _run(self, secret_paths):
         from kanibako.commands.start import _preflight_persona_load
         from kanibako.log import get_logger
 
         return _preflight_persona_load(
-            self._NODE, agent_cfg, self._ENDPOINT, get_logger("test"),
-            target=self._target(), keyspace_model="gemma4",
-            bundle=bundle, probe=False,
+            self._NODE, secret_paths, self._ENDPOINT, get_logger("test"),
+            target=self._target(), keyspace_model="gemma4", probe=False,
         )
 
-    def _cfg(self, **kw):
-        from kanibako.settings.agent_config import AgentConfig
+    def _token(self, tmp_path):
+        tok = tmp_path / "tok"
+        tok.write_text("sk-test\n")
+        return str(tok)
 
-        return AgentConfig(**kw)
-
-    def test_a_store_only_key_resolves_the_env_key(self, tmp_path):
-        """ZERO file keys + one store key = ONE key, not zero."""
-        ep, err, provider = self._run(
-            self._cfg(), self._bundle(tmp_path, "NAVIGATOR_API_KEY"),
-        )
+    def test_one_resolved_key_is_the_env_key(self, tmp_path):
+        ep, err, provider = self._run({"NAVIGATOR_API_KEY": self._token(tmp_path)})
         assert err is None and ep == self._ENDPOINT
-        # …and the provider's env_key is the STORE's var, so the generated
-        # config.toml reads exactly the var kanibako exports.
+        # The provider's env_key is that var, so config.toml reads what kanibako exports.
         assert provider is not None
         assert provider.env_key == "NAVIGATOR_API_KEY"
 
-    def test_the_file_key_wins_when_both_name_the_same_var(self, tmp_path):
-        file_tok = tmp_path / "file-tok"
-        file_tok.write_text("sk-file\n")
-        ep, err, provider = self._run(
-            self._cfg(secret_path={"NAVIGATOR_API_KEY": str(file_tok)}),
-            self._bundle(tmp_path, "NAVIGATOR_API_KEY"),
-        )
-        assert err is None and ep == self._ENDPOINT
-        assert provider.env_key == "NAVIGATOR_API_KEY"
-
-    def test_a_store_key_that_DIFFERS_from_the_file_key_is_ambiguous(self, tmp_path):
-        """Two vars, and no way to pick the env_key — the ambiguous arm, correctly."""
-        file_tok = tmp_path / "file-tok"
-        file_tok.write_text("sk-file\n")
-        _ep, err, _p = self._run(
-            self._cfg(secret_path={"OTHER_KEY": str(file_tok)}),
-            self._bundle(tmp_path, "NAVIGATOR_API_KEY"),
-        )
+    def test_two_resolved_keys_are_ambiguous_naming_both(self, tmp_path):
+        tok = self._token(tmp_path)
+        _ep, err, _p = self._run({"OTHER_KEY": tok, "NAVIGATOR_API_KEY": tok})
         assert err is not None
         assert "ambiguous" in err
         assert "OTHER_KEY" in err and "NAVIGATOR_API_KEY" in err
 
-    def test_multiple_file_keys_stay_ambiguous(self, tmp_path):
-        """Unchanged behavior: the store is not what made this ambiguous."""
-        _ep, err, _p = self._run(
-            self._cfg(secret_path={"A_KEY": "/a", "B_KEY": "/b"}),
-            self._bundle(tmp_path, "A_KEY"),
-        )
-        assert err is not None and "ambiguous" in err
-
-    def test_no_key_anywhere_is_none_was_found_not_ambiguous(self, tmp_path):
-        """The ZERO sub-case stays its own message."""
-        _ep, err, _p = self._run(
-            self._cfg(), self._bundle(tmp_path, "NAVIGATOR_API_KEY", token=False),
-        )
+    def test_no_key_is_none_was_found_not_ambiguous(self):
+        _ep, err, _p = self._run({})
         assert err is not None
         assert "none was found" in err
         assert "ambiguous" not in err
 
-    def test_a_store_key_pointing_at_an_unusable_file_names_the_key(self, tmp_path):
-        """The UNUSABLE sub-case survives the second source."""
-        from kanibako.persona_store import PersonaBundle
-
-        _ep, err, _p = self._run(
-            self._cfg(),
-            PersonaBundle(
-                endpoint=self._ENDPOINT, model="gemma4",
-                auth_env="NAVIGATOR_API_KEY",
-                token_path=tmp_path / "does-not-exist",
-            ),
-        )
+    def test_a_key_pointing_at_an_unusable_file_names_the_key(self, tmp_path):
+        _ep, err, _p = self._run({"NAVIGATOR_API_KEY": str(tmp_path / "does-not-exist")})
         assert err is not None
         assert "unusable file" in err
         assert "NAVIGATOR_API_KEY" in err
@@ -10894,7 +10849,7 @@ class TestReattachFastPath(_RunningBoxDriver):
         last word — a third-party endpoint still drops the host OAuth sync."""
         with start_mocks() as m, patch(
             "kanibako.commands.start._resolve_box_launch_decisions",
-            return_value=(_SHARED_AUTH, "https://key.example", None),
+            return_value=(_SHARED_AUTH, "https://key.example", None, {}),
         ):
             self._running(m)
             assert self._start() == 0

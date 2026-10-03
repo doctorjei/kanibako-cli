@@ -1031,7 +1031,7 @@ def run_reauth(args: argparse.Namespace) -> int:
         agent_record(agent_cfg_path, node=agent_name, purpose=ReadPurpose.RESOLVE)
         if agent_cfg_path.exists() else None
     )
-    auth_src, active_endpoint, _active_model = _resolve_box_launch_decisions(
+    auth_src, active_endpoint, _active_model, _secret_paths = _resolve_box_launch_decisions(
         std=std,
         proj=proj,
         target=target,
