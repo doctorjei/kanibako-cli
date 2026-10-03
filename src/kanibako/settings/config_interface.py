@@ -24,11 +24,15 @@ from kanibako.settings.config import (
     load_project_overrides,
     null_path_keys_error,
     read_agent_settings,
+    refuses_box_store_value,
     refuses_null_path_key,
     unset_project_config_key,
 )
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings.messages import (
+    ERR_BOX_STORE_EMPTY_REASON,
+    ERR_BOX_STORE_SET_HEAD,
+    ERR_BOX_STORE_TRAILING_REASON,
     ERR_CONFIG_NULL_PATH_REASON,
     ERR_CONFIG_NULL_PATH_SET_HEAD,
 )
@@ -743,6 +747,69 @@ def _set_time_snapshot(
     return merge(levels), ctx
 
 
+def _snapshot_has(store: "Any", dotted: str) -> bool:
+    """Whether *dotted* names a node in *store* — the unbound walk (:func:`_clone_keystore`).
+
+    ⚑ A present-``None`` leaf COUNTS as seen: the expander resolves a ref to it rather than
+    reporting it absent, so a probe that disagreed here would refuse a value the launch takes.
+    """
+    from kanibako.settings.keystore import KeyStore
+
+    node: "Any" = store
+    for seg in dotted.split("."):
+        if not isinstance(node, KeyStore):
+            return False
+        node = dict.get(node, seg, __MISSING__)
+        if node is __MISSING__:
+            return False
+    return True
+
+
+def _floor_blind_default(
+    key: str, value: str, candidate: "Any", command_scope: "ConfigLevel | None",
+) -> bool:
+    """True iff *key* is a DOWNWARD DEFAULT and this floor's only objection is a ref it cannot see.
+
+    ⚑ SPEC §0: a scope's file may hold keys of the scopes it CONTAINS as overridable
+    defaults, and the set-time snapshot is the COMMAND's cascade — so a referent that lives
+    in the contained scope is absent from it BY CONSTRUCTION, and the expander's "no such
+    config key" is this floor's blindness rather than a dangling ref. A referent that is not
+    a DECLARED key IS a dangling ref, and is not forgiven. A defect that is not a missing
+    referent — a cycle, the depth cap, a reserved leaf — is not this function's business.
+    """
+    from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+    from kanibako.settings.settings_drops import writable_scopes
+    from kanibako.settings.settings_resolve import SettingsError, match_ref
+
+    if command_scope is None:
+        return False
+    namespace = key.split(".", 1)[0]
+    if namespace == command_scope.value or namespace not in writable_scopes(command_scope.value):
+        return False
+    unseen: list[str] = []
+    i = 0
+    while i < len(value):
+        char = value[i]
+        if char == "\\":
+            i += 2
+            continue
+        if char != "@":
+            i += 1
+            continue
+        try:
+            name, i = match_ref(value, i)
+        except SettingsError:
+            return False  # a malformed ref is the expander's own verdict; keep it
+        if _snapshot_has(candidate, name):
+            continue
+        if name.split(".", 1)[0] not in SCOPE_CONTAINMENT:
+            return False
+        unseen.append(name)
+    return bool(unseen) and all(
+        key_validity(name, valid_agents=()) is None for name in unseen
+    )
+
+
 def _category_set_lookups(
     config_path: Path,
     *,
@@ -783,6 +850,8 @@ def _category_set_lookups(
         assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
         errors = result[1]
         if key not in errors:
+            return None
+        if _floor_blind_default(key, value, candidate, command_scope):
             return None
         return errors[key]
 
@@ -1164,6 +1233,44 @@ def _null_path_key_error(
     return "Error: " + error
 
 
+def _box_store_value_error(
+    canonical: str,
+    value: "str | None",
+    *,
+    command_scope: "ConfigLevel | None",
+    config_path: Path,
+    system_settings_path: "Path | None",
+) -> "str | None":
+    """§0 — refuse a value at the BOX STORE key the LAUNCH refuses, or ``None``.
+
+    ⚑ THE SAME CARRIER AND MEMBERSHIP SHAPE AS :func:`_null_path_key_error`, one value
+    class apart: a present ``None`` is that function's, a string this one. The
+    membership is :func:`config.refuses_box_store_value` and the wording is
+    :func:`config.null_path_keys_error`, so the two doors build their text in one place.
+    """
+    if value is None or not refuses_box_store_value(canonical, value):
+        return None
+    dest = _write_dest(
+        canonical, command_scope=command_scope,
+        config_path=config_path, settings_path=system_settings_path,
+    )
+    assert dest is not None  # the box store key has a routing-table slot at every scope
+    reason = (
+        ERR_BOX_STORE_TRAILING_REASON
+        if value.endswith("/")
+        else ERR_BOX_STORE_EMPTY_REASON
+    )
+    error = null_path_keys_error(
+        dest.file, (canonical,), head=ERR_BOX_STORE_SET_HEAD,
+        cure=(
+            f"{reason}. Nothing was written: to use {canonical}'s default, run "
+            f"'reset {canonical}', or set the path you mean."
+        ),
+    )
+    assert error is not None  # one key is never an empty list
+    return "Error: " + error
+
+
 def set_config_value(
     key: str,
     value: "str | None",
@@ -1360,6 +1467,18 @@ def set_config_value(
     )
     if null_err is not None:
         return null_err
+
+    # ⚑ A value at the BOX STORE the LAUNCH refuses (spec §0, §2c); see
+    # :func:`_box_store_value_error`. AFTER the ``--null`` guard above, so a present
+    # ``None`` keeps that door's message, and BEFORE the E3 probe, which would splice an
+    # unusable value into a candidate store.
+    box_store_err = _box_store_value_error(
+        canonical, value,
+        command_scope=command_scope, config_path=config_path,
+        system_settings_path=system_settings_path,
+    )
+    if box_store_err is not None:
+        return box_store_err
 
     # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9); see
     # :func:`_probes_at_set_time` for which keys qualify. It blocks ONLY on the edited value's
