@@ -2,11 +2,12 @@
 
 A create is write-ahead journaled: ``write-entry -> seed -> register ->
 clear-entry``.  A crash before the entry is cleared leaves a pending ``create``
-journal entry; the next ``create`` (or auto-create-at-launch) DETECTS it and
-COMPLETES the create by replay (seed create-if-absent -> register-if-absent ->
-clear-entry).  The HARD INVARIANT — ``registered ==> no pending entry`` at rest —
-holds for PRIMARY and STANDALONE, both for an unregistered interrupted box and a
-register->clear-window crash (registered + stale entry).
+journal entry; a ``create`` on such a path REFUSES and names what it found, and
+``create --recover`` is what COMPLETES it by replay (seed create-if-absent ->
+register-if-absent -> clear-entry).  The HARD INVARIANT — ``registered ==> no
+pending entry`` at rest — holds for PRIMARY and STANDALONE, both for an
+unregistered interrupted box and a register->clear-window crash (registered +
+stale entry).
 
 This SUPERSEDES the B3 ``.seeding`` file-marker suite.  The journal create-entry
 helpers (``_write_create_entry`` / ``_clear_create_entry`` / ``_pending_create_
@@ -247,14 +248,54 @@ class TestDeferredCreateReservesDir:
 # ---------------------------------------------------------------------------
 
 def _create_args(path, **over):
+    # ⚑ ``no_vault=True`` is this suite's vault SUPPRESSION shorthand, and it is
+    # indistinguishable from a typed ``--no-vault`` — which is a SHAPING flag the
+    # recovery refusal must refuse.  A recovery or bare-refusal re-run therefore
+    # passes ``no_vault=False`` to spell the flag the way the CLI spells it when
+    # absent; that also matches ``_simulate_interrupted_create``, which resolves
+    # with the resolver's own (enabled) default.
     ns = argparse.Namespace(
         path=str(path), standalone=False, no_vault=True,
         name=None, image=None, agent=None, allow_home=False,
-        register=False,
+        register=False, recover=False,
     )
     for k, v in over.items():
         setattr(ns, k, v)
     return ns
+
+
+def _cure_lines(err: str, verb: str) -> "list[str]":
+    """Every ``kanibako <verb> …`` line in *err*, stripped.
+
+    Membership in this list is an END-OF-LINE anchor; a bare ``in err`` is a
+    substring test, and a standalone root's ``... {path}`` IS a substring of the
+    ``... {path}/workspace`` that is not the box.
+    """
+    return [ln.strip() for ln in err.splitlines()
+            if ln.strip().startswith(f"kanibako {verb} ")]
+
+
+def _printed_cure(err: str, verb: str) -> "list[str]":
+    """The argv of the ONE ``kanibako <verb> …`` line *err* printed.
+
+    Read off the refusal and whitespace-split with the leading ``kanibako``
+    dropped, so a caller can hand the result to the SHIPPED parser and RUN the
+    command the user was told to type.  A cure the CLI would reject must raise here
+    rather than at their terminal, which no string match can do.
+    """
+    import shlex
+
+    lines = _cure_lines(err, verb)
+    assert len(lines) == 1, f"expected exactly one 'kanibako {verb}' line, got {lines}"
+    return shlex.split(lines[0])[1:]
+
+
+def _run_printed_cure(err: str, verb: str) -> int:
+    """RUN the printed *verb* cure through the shipped parser; return its rc."""
+    from kanibako.cli import build_parser
+
+    parsed = build_parser().parse_args(_printed_cure(err, verb))
+    return parsed.func(parsed)
 
 
 class TestRunCreatePersonaGate:
@@ -669,8 +710,8 @@ class TestRecoveryPrimary:
         self, config_file, tmp_home, credentials_dir, monkeypatch, register_box
     ):
         """PRIMARY interrupted create (unregistered AND registered+stale-entry):
-        a re-run completes — registered exactly once, entry GONE, USER HOME EDIT
-        SURVIVES.  Asserted UNCONDITIONALLY (no rc-gated skip)."""
+        ``create --recover`` completes — registered exactly once, entry GONE, USER
+        HOME EDIT SURVIVES.  Asserted UNCONDITIONALLY (no rc-gated skip)."""
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
@@ -691,13 +732,13 @@ class TestRecoveryPrimary:
         if not register_box:
             assert _primary_names(std) == {}
 
-        # Recovery: re-run create (seed neutralized — assert the
+        # Recovery: re-run create --recover (seed neutralized — assert the
         # register+entry-clear completion + home untouched).
         monkeypatch.setattr(
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        rc = run_create(_create_args(path))
+        rc = run_create(_create_args(path, recover=True, no_vault=False))
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -719,8 +760,8 @@ class TestRecoveryStandalone:
         self, config_file, tmp_home, credentials_dir, monkeypatch, register_box
     ):
         """STANDALONE interrupted create (unregistered AND registered+stale-entry):
-        a re-run completes — registered exactly once, entry GONE, USER HOME EDIT
-        SURVIVES.  Asserted UNCONDITIONALLY.
+        ``create --recover`` completes — registered exactly once, entry GONE, USER
+        HOME EDIT SURVIVES.  Asserted UNCONDITIONALLY.
 
         ⚑ The re-run passes ``--register`` (I3/§D4a): registration at create is
         opt-in now, and this suite is about the JOURNAL, so it keeps asking for
@@ -750,7 +791,10 @@ class TestRecoveryStandalone:
             "kanibako.commands.start.seed_new_box",
             lambda std, config, proj, **kw: None,
         )
-        rc = run_create(_create_args(root, standalone=True, register=True))
+        rc = run_create(
+            _create_args(root, standalone=True, register=True,
+                         recover=True, no_vault=False)
+        )
 
         config = load_config(config_file)
         std = load_std_paths(config)
@@ -795,7 +839,9 @@ class TestRecoveryStandalone:
         )
         capsys.readouterr()
 
-        assert run_create(_create_args(root, standalone=True)) == 0
+        assert run_create(
+            _create_args(root, standalone=True, recover=True, no_vault=False)
+        ) == 0
 
         out = capsys.readouterr().out
         assert "Not registered" not in out
@@ -803,15 +849,14 @@ class TestRecoveryStandalone:
 
 
 class TestRecoveryAgentIdentity:
-    """A recovery re-run may not seed one agent while the box is configured for
-    another.
+    """A recovery may not seed one agent while the box is configured for another.
 
     ``--agent`` persists ``pref.system.agent`` under ``if proj.is_new:``, so a
-    recovery re-run — which is by definition NOT new — cannot adopt a new one.
-    The seed call sits OUTSIDE that guard, so a re-run carrying a different
-    ``--agent`` used to seed the box's home for the new agent while its settings
-    still named the old one: seeded for one, configured for the other, with no
-    way back (the home bind owns the content after create; nothing re-seeds).
+    recovery — which is by definition NOT new — cannot adopt a new one.  The seed
+    call sits OUTSIDE that guard, so it must resolve the agent the box's own
+    settings resolve to: seeded for one, configured for the other, has no way
+    back (the home bind owns the content after create; nothing re-seeds).  A
+    ``--agent`` typed on the recovery is REFUSED by name rather than dropped.
     """
 
     def _interrupt_create_with_agent(self, path, agent):
@@ -839,15 +884,14 @@ class TestRecoveryAgentIdentity:
     def test_recovery_seeds_the_agent_the_box_is_configured_for(
         self, config_file, tmp_home, credentials_dir, monkeypatch
     ):
-        """Re-run with a DIFFERENT ``--agent``: the seed must resolve the agent
-        the box's own settings resolve to, not the flag the re-run carried.
+        """``create --recover`` seeds the agent the box's own settings resolve to.
 
         ⚑ Asserted as the RULE — "what the seed resolves == what the box
         resolves" — not as "``explicit_agent`` is None", so the pin survives a
         change in HOW the two are kept together.
 
-        INVERT: hand ``seed_new_box`` the re-run's ``--agent`` again and the seed
-        resolves goose while the box stays claude.
+        INVERT: hand ``seed_new_box`` the recovery's ``--agent`` again and the
+        seed resolves goose while the box stays claude.
         """
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.agent_select import select_agent
@@ -879,13 +923,52 @@ class TestRecoveryAgentIdentity:
             ).node
 
         monkeypatch.setattr("kanibako.commands.start.seed_new_box", spy_seed)
-        assert run_create(_create_args(path, name="halfbox", agent="goose")) == 0
+        assert run_create(
+            _create_args(path, recover=True, no_vault=False)
+        ) == 0
 
         assert seen["configured"] == "claude"
         assert seen["seeded"] == seen["configured"]
         # The re-run's flag changed nothing on disk either (the ``is_new`` guard).
         assert load_doc(std.boxes / "halfbox" / "box.yaml") == box_yaml
         assert journal.pending_create(std.journal, box_key) is None
+
+    def test_a_recovery_refuses_a_second_agent_rather_than_dropping_it(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The refusal half: a second ``--agent`` on a recovery is REFUSED by name.
+
+        ``--agent`` and ``--name`` are SHAPING, so attempt one already wrote the
+        box's agent and the journal records no argument to compare the new one
+        against.  Dropping the flag silently is what this refuses; a refusal that
+        did not NAME it would leave the user with no way to know what was ignored.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        path = tmp_home / "halfbox"
+        path.mkdir()
+
+        self._interrupt_create_with_agent(path, "claude")
+        box_key = str(std.boxes / "halfbox")
+        before = load_doc(std.boxes / "halfbox" / "box.yaml")
+        capsys.readouterr()
+
+        rc = run_create(
+            _create_args(path, name="halfbox", agent="goose", no_vault=False)
+        )
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "--agent" in err and "--name" in err
+        assert "goose" not in err  # never echo the value; name the flag
+        # Refused BEFORE any write: settings untouched, entry still pending.
+        assert load_doc(std.boxes / "halfbox" / "box.yaml") == before
+        assert journal.pending_create(std.journal, box_key) is not None
+        assert "halfbox" not in _primary_names(std)
 
     def test_fresh_create_still_seeds_the_agent_the_flag_names(
         self, config_file, tmp_home, credentials_dir, monkeypatch
@@ -1433,11 +1516,18 @@ class TestConflictSafeCreate:
         assert "dup" not in _primary_names(std)
         assert sentinel.read_text() == "old-box-credentials"
 
-    def test_named_half_create_recovery_still_works(
-        self, config_file, tmp_home, credentials_dir, monkeypatch
+    def test_named_half_create_refuses_then_recover_completes(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys
     ):
-        """A --name box interrupted mid-create (pending journal entry) is RESUMED
-        by re-running `create --name <same>` — the I4 guard must NOT refuse it."""
+        """A ``--name`` box interrupted mid-create: the I4 guard must NOT call it
+        orphaned metadata, and ``create --recover`` must finish it.
+
+        Pinned in two halves because they answer different questions.  The
+        refusal must name the pending attempt rather than the box home (which is
+        exactly what the I4 orphan wording would claim); the recovery must then
+        complete under the name attempt one chose, which is the whole reason
+        ``--name`` is refused on a replay.
+        """
         from kanibako.commands import start as start_mod
         from kanibako.commands.box._parser import run_create
         from kanibako.errors import ProjectError
@@ -1465,9 +1555,652 @@ class TestConflictSafeCreate:
         box_key = str(std.boxes / "halfbox")
         assert journal.pending_create(std.journal, box_key) is not None
         assert (std.boxes / "halfbox").is_dir()
+        capsys.readouterr()
 
-        # Re-run: the guard sees the pending entry and ALLOWS the recovery re-entry.
-        rc = run_create(_create_args(path, name="halfbox"))
-        assert rc == 0
+        # Re-typing `create --name <same>` refuses and NAMES THE PENDING ATTEMPT,
+        # never the I4 orphan wording that would send the user to `rm -rf` their
+        # own half-built box.
+        assert run_create(_create_args(path, name="halfbox")) == 1
+        err = capsys.readouterr().err
+        assert "an interrupted 'create' is pending" in err
+        assert "orphaned metadata" not in err
+        assert "--name" in err
+        assert journal.pending_create(std.journal, box_key) is not None
+
+        # `create --recover` — no shaping flag — completes under that same name.
+        assert run_create(
+            _create_args(path, recover=True, no_vault=False)
+        ) == 0
         assert "halfbox" in _primary_names(std)
         assert journal.pending_create(std.journal, box_key) is None
+
+
+# ---------------------------------------------------------------------------
+# The recovery REFUSALS (A-E), PRIMARY and STANDALONE
+# ---------------------------------------------------------------------------
+
+class TestPendingCreateRefusal:
+    """A ``create`` on a path carrying a pending create entry REFUSES, and so
+    does a ``--recover`` with nothing to recover.
+
+    Each refusal is pinned three ways, because a refusal that changed the disk or
+    consumed the journal entry would be a refusal that destroyed the evidence it
+    names — the very thing the user is being told to go and inspect:
+
+    * ``rc == 1`` and the refusal reaches stderr,
+    * the box tree is byte-for-byte what it was (``rglob`` snapshot),
+    * the journal entry is still exactly what it was — pending for A/B/C, and
+      never minted for D/E.
+
+    The five cases, both modes:
+
+    ======  ======================================================  =================
+    case    invocation                                              refusal
+    ======  ======================================================  =================
+    A       ``create <path>``                                       pending, named
+    B       ``create <path> --image X``                             pending + the flag
+    C       ``create --recover <path> --image X``                   re-run without it
+    D       ``create --recover <path>`` on a COMPLETE box           nothing to recover
+    E       ``create --recover <path>`` with no box at all          no interrupted create
+    ======  ======================================================  =================
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_seed(self, monkeypatch):
+        # The home seed runs AFTER the refusal (and never for a refused create) —
+        # stub it so these are fast + fs-deterministic, matching the sibling suite.
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+    def _std(self, config_file):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+        return load_std_paths(load_config(config_file))
+
+    @staticmethod
+    def _disk(*roots: Path) -> "dict[str, int]":
+        """Every path under each of *roots* → its size; the "nothing was touched" snapshot.
+
+        Both roots always: a STANDALONE box keeps its tree under the box ROOT
+        (``<root>/box_data``) and a PRIMARY one under ``std.boxes``, so a snapshot
+        of ``std.boxes`` alone would be vacuous for half the parametrization.
+        """
+        snapshot: dict[str, int] = {}
+        for root in roots:
+            if not root.exists():
+                continue
+            snapshot.update({
+                f"{root}::{p.relative_to(root)}": p.stat().st_size
+                for p in sorted(root.rglob("*"))
+            })
+        return snapshot
+
+    def _interrupted(self, config_file, tmp_home, standalone):
+        """A half-built box + pending entry, and the box key it hangs off."""
+        from kanibako.settings.config import load_config
+
+        config = load_config(config_file)
+        std = self._std(config_file)
+        path = tmp_home / ("sa" if standalone else "project")
+        if standalone:
+            path.mkdir()
+        proj = _simulate_interrupted_create(
+            std, config, standalone=standalone, path=path, register_box=False,
+        )
+        assert journal.pending_create(std.journal, _box_journal_key(proj))
+        return std, path, _box_journal_key(proj)
+
+    def _complete_box(self, config_file, tmp_home, standalone):
+        """A box that finished its create: no pending entry anywhere."""
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        path = tmp_home / ("sa" if standalone else "project")
+        if standalone:
+            path.mkdir()
+        assert run_create(
+            _create_args(
+                path, standalone=standalone, no_vault=False,
+                register=standalone,
+            )
+        ) == 0
+        assert journal.read_journal(std.journal) == {}
+        return std, path
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_bare_create_refuses_and_names_the_pending_attempt(
+        self, standalone, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """Case A — the DEFAULT case: a bare re-run is what the ratification turned
+        from rc 0 to rc 1.  It names the box, the workspace and when the attempt
+        started, and hands back the one command that does finish it."""
+        from kanibako.commands.box._parser import run_create
+
+        std, path, box_key = self._interrupted(config_file, tmp_home, standalone)
+        before = self._disk(std.boxes, path)
+        capsys.readouterr()
+
+        assert run_create(
+            _create_args(path, standalone=standalone, no_vault=False)
+        ) == 1
+
+        err = capsys.readouterr().err
+        assert err.startswith("Error: ")
+        assert "an interrupted 'create' is pending" in err
+        assert "kanibako box diagnose" in err
+        # END-OF-LINE anchored — see the note in case C.
+        sa = " --standalone" if standalone else ""
+        assert f"kanibako create{sa} --recover {path}" in _cure_lines(err, "create")
+        # Untouched: disk identical, entry still pending for the user to finish.
+        assert self._disk(std.boxes, path) == before
+        assert journal.pending_create(std.journal, box_key) is not None
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_shaping_flags_refused_by_name_with_an_after_the_fact_cure(
+        self, standalone, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """Case B — a SHAPING flag on the re-run is refused BY NAME: attempt one
+        already wrote this box's settings, so the flag can be neither honored nor
+        compared.  The refusal names the flags AND the ``box set`` key that changes
+        each one afterwards."""
+        from kanibako.commands.box._parser import run_create
+
+        std, path, box_key = self._interrupted(config_file, tmp_home, standalone)
+        before = self._disk(std.boxes, path)
+        capsys.readouterr()
+
+        assert run_create(
+            _create_args(
+                path, standalone=standalone, no_vault=False,
+                image="ubuntu:24.04", agent="goose",
+            )
+        ) == 1
+
+        err = capsys.readouterr().err
+        assert "an interrupted 'create' is pending" in err
+        # The specific flags, in _CREATE_SHAPING_FLAGS order — never the value.
+        assert "--image, --agent" in err
+        assert "ubuntu:24.04" not in err and "goose" not in err
+        # Both have a `box set` spelling, so both get an after-the-fact cure.
+        assert "Or change them afterwards:" in err
+        assert "kanibako box set --box" in err
+        assert "box.image=<value>" in err
+        assert "pref.system.agent=<value>" in err
+        assert self._disk(std.boxes, path) == before
+        assert journal.pending_create(std.journal, box_key) is not None
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_recover_with_a_shaping_flag_refused_as_re_run_without_it(
+        self, standalone, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """Case C — ``--recover`` does not buy a SHAPING flag its way past the
+        refusal.  ``--recover`` is not a create flag to be classified (it selects
+        the behavior the classes are consulted FOR), so the refusal collapses to
+        the one command that does work."""
+        from kanibako.commands.box._parser import run_create
+
+        std, path, box_key = self._interrupted(config_file, tmp_home, standalone)
+        before = self._disk(std.boxes, path)
+        capsys.readouterr()
+
+        assert run_create(
+            _create_args(
+                path, standalone=standalone, recover=True, no_vault=False,
+                image="ubuntu:24.04",
+            )
+        ) == 1
+
+        err = capsys.readouterr().err
+        assert "--image" in err
+        assert "Re-run without them:" in err
+        # The cure is the one command, and it carries no flag.  END-OF-LINE
+        # anchored: a bare ``... --recover {path}`` match is a SUBSTRING of the
+        # standalone root's ``... --recover {path}/workspace``, which is a cure that
+        # does not run.
+        sa = " --standalone" if standalone else ""
+        assert f"kanibako create{sa} --recover {path}" in _cure_lines(err, "create")
+        assert self._disk(std.boxes, path) == before
+        assert journal.pending_create(std.journal, box_key) is not None
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_recover_on_a_complete_box_refuses_as_nothing_to_recover(
+        self, standalone, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """Case D — ``--recover`` on a box that is already complete refuses and
+        points at ``start``: there is no half-finished attempt, and the user asked
+        to finish one.  Nothing is minted, so the journal stays empty."""
+        from kanibako.commands.box._parser import run_create
+
+        std, path = self._complete_box(config_file, tmp_home, standalone)
+        before = self._disk(std.boxes, path)
+        capsys.readouterr()
+
+        assert run_create(
+            _create_args(path, standalone=standalone, recover=True, no_vault=False)
+        ) == 1
+
+        err = capsys.readouterr().err
+        assert "--recover found nothing to recover" in err
+        assert str(path) in err
+        # END-OF-LINE anchored — see the note in case C.
+        assert f"kanibako start {path}" in _cure_lines(err, "start")
+        assert self._disk(std.boxes, path) == before
+        assert journal.read_journal(std.journal) == {}
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_recover_with_no_interrupted_create_refuses_as_no_interrupted_create(
+        self, standalone, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """Case E — ``--recover`` where nothing was ever started refuses with the
+        inspect-first line and a plain ``create``: the flag is a request to finish
+        a specific attempt, and there is no attempt and no box."""
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        path = tmp_home / ("sa" if standalone else "project")
+        if standalone:
+            path.mkdir()
+        before = self._disk(std.boxes, path)
+        capsys.readouterr()
+
+        assert run_create(
+            _create_args(path, standalone=standalone, recover=True, no_vault=False)
+        ) == 1
+
+        err = capsys.readouterr().err
+        assert "--recover found no interrupted 'create'" in err
+        assert str(path) in err
+        assert "kanibako box diagnose" in err
+        # END-OF-LINE anchored, and it carries the mode: without ``--standalone``
+        # this line builds a PRIMARY box named after the workspace subdirectory.
+        sa = " --standalone" if standalone else ""
+        assert f"kanibako create{sa} {path}" in _cure_lines(err, "create")
+        # ⚑ THE PRE-FLIGHT HALF: the refusal ran before the materialize, so no box
+        # tree was built for the very invocation that refused to build one.
+        assert self._disk(std.boxes, path) == before
+        assert journal.read_journal(std.journal) == {}
+        assert (std.boxes / "project").exists() is False
+        assert (std.boxes / "project2").exists() is False
+
+
+class TestPreJournalForkRefused:
+    """A crash BEFORE the write-ahead entry leaves a ``std.boxes/<basename>`` dir
+    that no membership and no journal entry claims — and there is then nothing for
+    ``--recover`` to find.  The picker steps over it and mints ``<basename>2``,
+    splitting one workspace across two boxes and leaving the first half-written,
+    so the bare PRIMARY create refuses instead.
+
+    ``create --name`` reaches the same condition and refuses it with the same
+    wording (see ``test_create_over_orphaned_metadata_refused``); this pins the
+    spelling the user cannot type a ``--name`` for.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_seed(self, monkeypatch):
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+    def test_bare_create_over_an_unclaimed_box_home_refuses(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        path = tmp_home / "project"  # the tmp_home fixture made it and chdir'd in
+
+        # THE CRASH WINDOW: the deferred resolve materialized boxes/project, and
+        # the process died BEFORE `_write_create_entry` — so no journal entry.
+        proj = resolve_project(
+            std, config, project_dir=str(path), initialize=True, register=False,
+        )
+        assert (std.boxes / "project").is_dir()
+        assert journal.pending_create(
+            std.journal, str(Path(proj.shell_path).parent)
+        ) is None
+        before = {
+            str(p.relative_to(std.boxes)): p.stat().st_size
+            for p in sorted(std.boxes.rglob("*"))
+        }
+        capsys.readouterr()
+
+        assert run_create(_create_args(path, no_vault=False)) == 1
+
+        err = capsys.readouterr().err
+        assert "already has orphaned metadata" in err
+        assert str(std.boxes / "project") in err
+        # NO second tree: the picker did not get to mint 'project2', and the
+        # first one is byte-for-byte what the crash left.
+        assert sorted(p.name for p in std.boxes.iterdir()) == ["project"]
+        assert {
+            str(p.relative_to(std.boxes)): p.stat().st_size
+            for p in sorted(std.boxes.rglob("*"))
+        } == before
+        assert _primary_names(std) == {}
+
+
+class TestCuresAreRunnable:
+    """Every cure a ``create`` refusal prints is a command that RUNS.
+
+    A cure is the whole point of a refusal, and a string match cannot tell a
+    runnable one from an unreadable one: a STANDALONE box's journal records its
+    resolved ``<root>/workspace``, so naming that as the re-entry path reads like
+    a plausible cure while ``create`` treats the subdirectory as a fresh PRIMARY
+    workspace.  So each case is pinned twice — the FULL line, END-OF-LINE
+    anchored, and the line handed to the SHIPPED parser and executed.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_seed(self, monkeypatch):
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+    def _std(self, config_file):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+        return load_std_paths(load_config(config_file))
+
+    def _config(self, config_file):
+        from kanibako.settings.config import load_config
+        return load_config(config_file)
+
+    def _root(self, tmp_home, standalone):
+        path = tmp_home / ("sa" if standalone else "project")
+        if standalone:
+            path.mkdir()
+        return path
+
+    def _interrupted(self, config_file, tmp_home, standalone):
+        std = self._std(config_file)
+        path = self._root(tmp_home, standalone)
+        proj = _simulate_interrupted_create(
+            std, self._config(config_file), standalone=standalone, path=path,
+            register_box=False,
+        )
+        return std, path, _box_journal_key(proj)
+
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    @pytest.mark.parametrize(
+        "given", [{"image": "ubuntu:24.04"}, {}], ids=["flag_refused", "bare_rerun"],
+    )
+    def test_the_pending_create_cure_completes_the_box(
+        self, standalone, given, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """A/B and C: the cure is the re-entry at the path the user named, and
+        RUNNING it finishes the interrupted attempt — entry cleared, and the box
+        registered exactly where that mode registers at all."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.project import registry_store
+
+        std, path, box_key = self._interrupted(config_file, tmp_home, standalone)
+        capsys.readouterr()
+
+        assert run_create(_create_args(
+            path, standalone=standalone, no_vault=False, **given,
+        )) == 1
+        err = capsys.readouterr().err
+        sa = " --standalone" if standalone else ""
+        assert f"kanibako create{sa} --recover {path}" in _cure_lines(err, "create")
+
+        assert _run_printed_cure(err, "create") == 0
+        assert journal.pending_create(std.journal, box_key) is None
+        assert journal.read_journal(std.journal) == {}
+        if standalone:
+            assert (path / "box_data").is_dir()
+            assert _primary_names(std) == {}
+            assert registry_store.load_standalone(std.registry) == {}
+        else:
+            assert path.name in _primary_names(std)
+
+    def test_the_nothing_to_recover_cure_is_a_legal_start_of_this_box(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """D: ``--recover`` on a COMPLETE standalone box points ``start`` at the box
+        ROOT.  Pinned as a PARSE, because running ``start`` would launch a
+        container instead of exercising the spelling: the line must be a legal
+        command naming that box, which is what the user is being sent to."""
+        from kanibako.cli import build_parser
+        from kanibako.commands.box._parser import run_create
+        from kanibako.commands.start import _clear_create_entry, _register_new_box
+
+        std = self._std(config_file)
+        root = self._root(tmp_home, standalone=True)
+        proj = _simulate_interrupted_create(
+            std, self._config(config_file), standalone=True, path=root,
+            register_box=False,
+        )
+        _register_new_box(std, proj)
+        _clear_create_entry(std, proj)
+        assert journal.read_journal(std.journal) == {}
+        capsys.readouterr()
+
+        assert run_create(
+            _create_args(root, standalone=True, recover=True, no_vault=False)
+        ) == 1
+        err = capsys.readouterr().err
+        assert f"kanibako start {root}" in _cure_lines(err, "start")
+        parsed = build_parser().parse_args(_printed_cure(err, "start"))
+        assert parsed.project == str(root)
+        assert (root / "box_data").is_dir()
+
+    def test_the_no_vault_cure_turns_the_vault_off(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """B with ``--no-vault``: the cure is a ``box set`` that RUNS and leaves the
+        box's ``enable_vault`` FALSE — the value ``--no-vault`` itself asked for.
+
+        Asserting the printed string is what pinned the constant backwards once:
+        ``box.enable_vault=true`` reads as a plausible cure and sets the exact
+        opposite of the flag.  So the pin is the box's own resolved value after
+        the cure has been executed, read back through the shipped ``box get``
+        door rather than off the settings file the cure happened to write.
+
+        Built on the REGISTER->CLEAR crash window (registered + stale entry)
+        because ``box set`` resolves its subject through the registry, and an
+        unregistered half-create has no entry to resolve yet.
+        """
+        from kanibako.cli import build_parser
+        from kanibako.commands.box._parser import run_create
+        from kanibako.commands.start import _box_journal_key
+
+        def _door(*argv):
+            """RUN one argv through the shipped parser; return its rc."""
+            return build_parser().parse_args(list(argv)).func(
+                build_parser().parse_args(list(argv))
+            )
+
+        std = self._std(config_file)
+        path = self._root(tmp_home, standalone=False)
+        proj = _simulate_interrupted_create(
+            std, self._config(config_file), standalone=False, path=path,
+            register_box=True,
+        )
+        assert journal.pending_create(std.journal, _box_journal_key(proj))
+        capsys.readouterr()
+
+        # The sparse default: not set, which resolves to a vault that is ENABLED.
+        get = ("box", "get", "--box", "project", "box.enable_vault")
+        assert _door(*get) == 0
+        assert "(not set)" in capsys.readouterr().err
+
+        assert run_create(
+            _create_args(path, standalone=False, no_vault=True)
+        ) == 1
+        err = capsys.readouterr().err
+        assert "--no-vault" in err
+        assert "kanibako box set --box project box.enable_vault=false" in err
+
+        # ⚑ RUN THE PRINTED CURE, then read the box's own value back.  ``box get``
+        # answers a SET value on stdout and an absent one on stderr, so each read
+        # is taken from the stream the door actually used.
+        cure = _printed_cure(err, "box set")
+        assert cure == ["box", "set", "--box", "project", "box.enable_vault=false"]
+        assert _door(*cure) == 0
+        capsys.readouterr()
+        assert _door(*get) == 0
+        assert capsys.readouterr().out.strip() == "false"
+
+    def test_the_no_interrupted_create_cure_builds_the_standalone_box(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """E: with no attempt on record the cure is a plain standalone create at the
+        ROOT.  RUN, it produces that box's ``box_data`` in place and mints no
+        primary box — where the same path spelled without ``--standalone`` builds a
+        PRIMARY box named after the workspace subdirectory instead."""
+        from kanibako.commands.box._parser import run_create
+
+        std = self._std(config_file)
+        root = self._root(tmp_home, standalone=True)
+        capsys.readouterr()
+
+        assert run_create(
+            _create_args(root, standalone=True, recover=True, no_vault=False)
+        ) == 1
+        err = capsys.readouterr().err
+        assert f"kanibako create --standalone {root}" in _cure_lines(err, "create")
+
+        assert _run_printed_cure(err, "create") == 0
+        assert (root / "box_data").is_dir()
+        assert _primary_names(std) == {}
+        assert journal.read_journal(std.journal) == {}
+
+
+class TestBareCreateOverADeregisteredHome:
+    """A bare PRIMARY ``create`` steps OVER a ``std.boxes/<basename>`` that a
+    DEREGISTERED entry still claims — ``rm`` without ``--purge`` dropped the
+    membership and kept the data — and mints the next free name beside it.
+
+    The refusal D4 owes is owed to a home that NOTHING claims: no membership, no
+    journal entry, and no deregistered entry either.  A deregistered entry IS a
+    claim, and the box it names is one the user can readopt, so a plain re-run
+    must not become a deletion decision about it.  Pinned on the SAME workspace
+    and on ANOTHER one with the same basename, because in the second the name is
+    the only thing the two share.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_seed(self, monkeypatch):
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+
+    def _deregistered(self, config_file, where):
+        """A created box, then ``rm`` without ``--purge`` — a retained home."""
+        from kanibako.commands.box._parser import run_create, run_rm
+        from kanibako.project import registry_store
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        where.mkdir(parents=True)
+        assert run_create(_create_args(where)) == 0
+        std = load_std_paths(load_config(config_file))
+        sentinel = std.boxes / where.name / "home" / "KEEP.txt"
+        sentinel.parent.mkdir(parents=True, exist_ok=True)
+        sentinel.write_text("retained-box-data")
+        assert run_rm(
+            argparse.Namespace(target=where.name, purge=False, force=False)
+        ) == 0
+        assert registry_store.lookup_deregistered(std.registry, where.name) is not None
+        return std, sentinel
+
+    @pytest.mark.parametrize("same_workspace", [True, False], ids=["same", "other"])
+    def test_bare_create_steps_over_a_deregistered_home_and_mints_the_next_name(
+        self, same_workspace, config_file, tmp_home, credentials_dir, capsys
+    ):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.project import registry_store
+
+        # SAME: the re-create runs where the box was.  OTHER: a different workspace
+        # of the same basename, so the name is all the two share.
+        first = tmp_home / "wsA" / "dup"
+        std, sentinel = self._deregistered(config_file, first)
+        second = first if same_workspace else tmp_home / "wsB" / "dup"
+        second.mkdir(parents=True, exist_ok=True)
+        capsys.readouterr()
+
+        # rc 0, and the name it mints is the NEXT free one beside the claimed home.
+        assert run_create(_create_args(second)) == 0
+        assert "Error:" not in capsys.readouterr().err
+
+        assert _primary_names(std) == {"dup2": str(second)}
+        assert (std.boxes / "dup2").is_dir()
+
+        # ⚑ THE DATA-LOSS HALF: the create neither refused nor merged into the
+        # retained home, and the deregistered entry is untouched — the user can
+        # still readopt 'dup' and get their data back.
+        assert sentinel.read_text() == "retained-box-data"
+        assert registry_store.lookup_deregistered(std.registry, "dup") is not None
+        assert sorted(p.name for p in std.boxes.iterdir()) == ["dup", "dup2"]
+
+    def test_a_genuine_orphan_is_still_refused_and_never_offered_for_deletion(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The picker's OTHER branch is untouched by sharing the carrier: a home no
+        membership, no deregistered entry and no journal entry claims is the
+        orphan, and that is the one the bare create refuses — a silent ``<name>2``
+        fork is what the refusal is for.
+
+        Its CURE is the subject, though.  The registry is a derived, rebuildable
+        index, so an unclaimed home is not established to be junk: it may be a
+        complete box whose registration was lost.  So the message names the
+        directory, says so, and offers no way to delete it — every verb it prints
+        is RUN here, and the one that gets the box back is restoring the index.
+        """
+        import shlex
+        import subprocess
+
+        from kanibako.cli import build_parser
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        # A home no membership, no deregistered entry and no journal entry claims.
+        # The bare create meets it by BASENAME, so the workspace is named to match.
+        elsewhere = tmp_home / "orphan"
+        elsewhere.mkdir()
+        orphan = std.boxes / elsewhere.name
+        (orphan / "home").mkdir(parents=True)
+        (orphan / "home" / "KEEP.txt").write_text("orphaned")
+        capsys.readouterr()
+
+        assert run_create(_create_args(elsewhere)) == 1
+        err = capsys.readouterr().err
+        assert "orphaned metadata" in err
+        assert str(orphan) in err
+
+        # ⚑ NO DELETION IS EVER SUGGESTED.  A ``rm -rf`` or ``--purge`` spelled here
+        # is advice to destroy a box the user may still get back.
+        assert "rm -rf" not in err
+        assert "--purge" not in err
+        assert not [ln for ln in err.splitlines() if ln.strip().startswith("rm ")]
+        # It says what the directory may be, and where the work would be.
+        assert "COMPLETE box whose registration was lost" in err
+        assert f"{orphan / 'home'}" in err
+
+        # ⚑ EVERY PRINTED COMMAND RUNS ON THIS STATE.  ``box list`` is the index
+        # that lost the entry, so it is the diagnosis; ``ls`` is the only way to
+        # see what the unclaimed directory holds.  The restore-the-index cure is
+        # prose, so these two are the WHOLE command set.
+        cures = [ln.strip() for ln in err.splitlines() if ln.startswith("  ")]
+        assert cures == ["kanibako box list", f"ls {orphan}"]
+
+        parsed = build_parser().parse_args(shlex.split("box list"))
+        assert parsed.func(parsed) == 0
+        assert subprocess.run(  # noqa: S603 - the message's own line, verbatim
+            shlex.split(f"ls {orphan}"), capture_output=True,
+        ).returncode == 0
+
+        # Untouched throughout: still one unclaimed home, data intact.
+        assert (orphan / "home" / "KEEP.txt").read_text() == "orphaned"
+        assert sorted(p.name for p in std.boxes.iterdir()) == ["orphan"]
+        assert _primary_names(std) == {}

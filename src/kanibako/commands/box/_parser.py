@@ -537,14 +537,18 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _assert_primary_home_free_for_create(std, name: str) -> None:
-    """⚑ DATA-LOSS GUARD (I4): refuse a ``create --name`` that would reuse a box home."""
+    """⚑ DATA-LOSS GUARD (I4): refuse a ``create --name`` that would reuse a box home.
+
+    Also the orphan refusal a bare PRIMARY ``create`` owes the ``std.boxes/<basename>``
+    its picker stepped over, so both arms say one thing about one condition.
+    """
     from kanibako.project import registry_store
     from kanibako.launch import journal
 
     box_dir = std.boxes / name
 
-    # ⚑ ORDER: this refusal MUST precede the pending-create allow below — a STALE create
-    # entry would otherwise FALSE-ALLOW a merge into a deregistered box's retained home.
+    # ⚑ ORDER: this refusal MUST precede the pending-create allow below — a STALE
+    # create entry would FALSE-ALLOW a merge into a deregistered box's home.
     if registry_store.lookup_deregistered(std.registry, name) is not None:
         raise ProjectError(
             f"a box named '{name}' already exists as a deregistered box "
@@ -558,10 +562,23 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
         return
 
     if box_dir.is_dir():
+        # ⚑ THE CURE NEVER OFFERS TO DELETE THIS DIRECTORY.  The registry is a
+        # derived, rebuildable index and not the box, so an unclaimed home is not
+        # established to be junk: it may hold the user's work under ``home/``.
         raise ProjectError(
             f"a box named '{name}' already has orphaned metadata at {box_dir} "
-            f"(no active or deregistered registration); remove it (e.g. "
-            f"'rm -rf {box_dir}') or choose a different --name, then retry."
+            f"(no active or deregistered registration). That directory may be a "
+            f"COMPLETE box whose registration was lost — the registry is a "
+            f"rebuildable index, not the box — and whatever the box holds is under "
+            f"{box_dir / 'home'}.\n"
+            f"Look at both sides before touching anything:\n"
+            f"  kanibako box list\n"
+            f"  ls {box_dir}\n"
+            f"To get that box back, restore the registry that indexed it (a backup, "
+            f"or the machine it was made on), then retry: no command re-registers a "
+            f"primary box by name, and 'kanibako box register' reads back a "
+            f"DEREGISTERED box or a standalone tree, which this is not. To leave it "
+            f"alone, choose a different --name and retry."
         )
 
 
@@ -654,6 +671,144 @@ def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None:
     return None
 
 
+# ⚑ THE SHAPING FLAGS A ``box set`` CAN CHANGE AFTERWARDS.  ``--name`` is absent
+# because a box's name IS its directory.
+_SHAPING_SET_CURE = {
+    "image": ("box.image=<value>",),
+    "agent": ("pref.system.agent=<value>",),
+    "private": (
+        "box.auth.global_enabled=false", "box.auth.workset_enabled=false",
+    ),
+    "no_vault": ("box.enable_vault=false",),
+}
+
+
+def _create_recovery_refusal(
+    args, std, probe, *, already: bool, pending: dict | None,
+) -> "str | None":
+    """The refusal a ``create`` owes an interrupted attempt, or ``None`` to go on.
+
+    *pending* is the journal's pending ``create`` entry for this path, or ``None``;
+    *already* says whether the box tree is materialized — both read off the
+    non-materializing probe, before anything is written.
+    """
+    from kanibako.commands.start import _box_journal_key
+
+    recover = bool(getattr(args, "recover", False))
+    # ⚑ GIVEN, NEVER COMPARED: the journal records the INTENT, not the arguments, so
+    # there is no value on record to agree with.  The loop over the class IS the check;
+    # an unrolled chain would restate it and drift.
+    given = [flag for flag in _CREATE_SHAPING_FLAGS if getattr(args, flag, None)]
+
+    # ⚑ EVERY CURE LINE NAMES THE ROOT THE USER PASSED, NEVER THE RESOLVED
+    # WORKSPACE: a STANDALONE box's ``<root>/workspace`` is no ``create`` argument.
+    _standalone = probe.mode is BoxMode.standalone
+    mode_flag = " --standalone" if _standalone else ""
+    root = str(
+        probe.metadata_path if _standalone else probe.project_path or "<None>"
+    )
+
+    if pending is None:
+        if not recover:
+            return None
+        if already:
+            return (
+                f"Error: --recover found nothing to recover at {root} — the box "
+                f"there is complete.\n"
+                f"  kanibako start {root}"
+            )
+        return (
+            f"Error: --recover found no interrupted 'create' for {root}.\n"
+            f"  kanibako box diagnose\n"
+            f"  kanibako create{mode_flag} {root}"
+        )
+
+    if recover and not given:
+        return None
+
+    # ⚑ EVERYTHING BELOW NAMES THE JOURNAL'S OWN RECORD, so the box it names is
+    # the box on disk.
+    box_dir = _box_journal_key(probe)
+    name = pending.get("name") or probe.name
+    mode = "standalone" if pending.get("mode") == "standalone" else "default"
+    where = str(pending.get("workspace") or probe.project_path or "<None>")
+
+    if given:
+        header = (
+            "Error: an interrupted 'create' is pending for this path, and "
+            f"{', '.join('--' + f.replace('_', '-') for f in given)} would have "
+            "been ignored. Attempt one already wrote this box's settings; nothing "
+            "re-reads a flag after that."
+        )
+    else:
+        header = (
+            "Error: an interrupted 'create' is pending for this path. Completing "
+            "it silently is what this command used to do; it does not any more."
+        )
+    lines = [
+        header,
+        f"  workspace:  {where}",
+        f"  box:        '{name}' ({mode}) at {box_dir}",
+        f"  started:    {pending.get('started_at', '?')} "
+        f"on {pending.get('host', '?')}",
+    ]
+
+    # ⚑ ``--recover`` COLLAPSES THE CURE: the flags are refused precisely because
+    # attempt one wrote the state, so all that is left to say is how to re-run.
+    if recover:
+        lines += [
+            "Re-run without them:",
+            f"  kanibako create{mode_flag} --recover {root}",
+        ]
+        return "\n".join(lines)
+
+    lines += [
+        "Finish that attempt — the box keeps the name and the settings it "
+        "already has:",
+        f"  kanibako create{mode_flag} --recover {root}",
+    ]
+    if given:
+        if "name" in given:
+            lines.append(
+                f"The box keeps the name attempt one chose: '{name}'."
+            )
+        cures = [key for f in given for key in _SHAPING_SET_CURE.get(f, ())]
+        if cures:
+            lines.append("Or change them afterwards:")
+            lines += [
+                f"  kanibako box set --box {name} {key}" for key in cures
+            ]
+    lines += ["Inspect it first:", "  kanibako box diagnose"]
+    return "\n".join(lines)
+
+
+def _orphaned_primary_box_dir(args, std, probe) -> "Path | None":
+    """The ``std.boxes/<basename>`` a bare PRIMARY ``create`` just stepped over, else None."""
+    from kanibako.launch import journal
+    from kanibako.project import registry_store
+
+    if args.standalone or getattr(args, "name", None):
+        return None
+    basename = Path(str(probe.project_path)).name or "project"
+    if probe.name == basename:
+        return None
+    orphan = std.boxes / basename
+    if not orphan.is_dir():
+        return None
+    if find_identifier(
+        basename, load_primary_boxes(std.primary_workset)
+    ) is not None:
+        return None
+    # ⚑ A DEREGISTERED entry is a CLAIM, and this picker refuses only what NOTHING
+    # claims: ``rm`` without ``--purge`` kept the home, so the box is there to be
+    # readopted rather than refused away.
+    if registry_store.lookup_deregistered(std.registry, basename) is not None:
+        return None
+    if journal.pending_create(std.journal, str(orphan)) is not None:
+        return None
+    return orphan
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     config_file = user_config_file()
@@ -700,7 +855,6 @@ def run_create(args: argparse.Namespace) -> int:
 
     # ⚑ Cross-kind name guard, run HERE so it refuses BEFORE the box dir + seed materialize.
     if getattr(args, "name", None) and not args.standalone:
-        from kanibako.errors import ProjectError
         try:
             check_primary_box_name_free(
                 std.primary_workset, std.registry,
@@ -749,18 +903,39 @@ def run_create(args: argparse.Namespace) -> int:
     # ⚑ CAPTURE BEFORE ``_name_new_box_probe``, which mutates ``_probe.name``.
     _already = box_tree_materialized(_probe)
     _name_new_box_probe(std, _probe)
-    # ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.  Decided HERE — ahead of its
-    # own refusal below — because the agent normalization next needs it.
-    is_recovery = _already and _pending_create_entry(std, _probe) is not None
+    # ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.
+    _pending = _pending_create_entry(std, _probe)
+    # ⚑ RECOVERY IS NEVER IMPLICIT, and the refusal runs AHEAD OF EVERY DOOR BELOW:
+    # a flag about to be refused must not reach the persona pre-flight, the agent
+    # persist or the seed.
+    _refusal = _create_recovery_refusal(
+        args, std, _probe, already=_already, pending=_pending,
+    )
+    if _refusal is not None:
+        print(_refusal, file=sys.stderr)
+        return 1
+    # ⚑ THE PRE-JOURNAL FORK: a crash that left a dir behind but nothing for
+    # ``--recover`` to find.
+    _orphan = (
+        None if (_already or _pending is not None)
+        else _orphaned_primary_box_dir(args, std, _probe)
+    )
+    if _orphan is not None:
+        try:
+            _assert_primary_home_free_for_create(std, _orphan.name)
+        except ProjectError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+    is_recovery = _already and _pending is not None and bool(
+        getattr(args, "recover", False)
+    )
     # ⚑⚑ THE ONE ANSWER TO "which agent is this create steering" — the persona pre-flight,
     # the ``pref.system.agent`` persist and the seed all read it, and spelling
     # ``args.agent`` at any of them again reopens the defect (pinned by
-    # ``TestAgentFlagIsReadOnce``).  A recovery re-run normalizes it to ``None``: the
-    # persist is ``proj.is_new``-only and the seed is NOT, so a raw flag seeds the home
-    # for one agent while the box's settings name another, and nothing re-seeds.  ``None``
-    # here is "resolve from settings", NEVER "no agent": it routes each consumer to the
-    # ``pref.system.agent`` the persist wrote, so seed and settings cannot disagree.  The
-    # module's llm-doc carries the full reasoning.
+    # ``TestAgentFlagIsReadOnce``).  ``None`` here is "resolve from settings", NEVER
+    # "no agent": it routes each consumer to the ``pref.system.agent`` the persist
+    # wrote, so seed and settings cannot disagree.  The module's llm-doc carries the
+    # full reasoning.
     _agent_arg = None if is_recovery else getattr(args, "agent", None)
     # ⚑⚑ "GIVEN" IS ``is not None`` AT EVERY DOOR — argparse's own absent-vs-present
     # answer, and the ONE predicate both the store check here and the

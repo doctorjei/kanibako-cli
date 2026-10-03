@@ -11,6 +11,7 @@ Prose for these symbols lives in `llm-docs/kanibako/commands/box/_parser.py.md`.
 _MODE_CHOICES = [m.value for m in BoxMode]
 _CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
 _CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'force', 'register')
+_SHAPING_SET_CURE = {'image': ('box.image=<value>',), 'agent': ('pref.system.agent=<value>',), 'private': ('box.auth.global_enabled=false', 'box.auth.workset_enabled=false'), 'no_vault': ('box.enable_vault=false',)}
 ```
 
 ## Types
@@ -35,6 +36,8 @@ def run_show(args: argparse.Namespace) -> int
 def _add_target_group(parser: argparse.ArgumentParser, *, required: bool=False) -> None
 def _assert_primary_home_free_for_create(std, name: str) -> None
 def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None
+def _create_recovery_refusal(args, std, probe, *, already: bool, pending: dict | None) -> 'str | None'
+def _orphaned_primary_box_dir(args, std, probe) -> 'Path | None'
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
