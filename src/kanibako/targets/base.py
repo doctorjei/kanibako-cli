@@ -509,37 +509,27 @@ def _tilde(path: Path) -> str:
 def _scrub_endpoint_userinfo(endpoint: str) -> str:
     """*endpoint* with a URL userinfo (``user[:password]@``) replaced by `_REDACTED`.
 
-    🛑 After ``scheme://`` an ``@`` ends the userinfo WHEREVER it sits — path,
-    query or fragment included — and the span runs to the LAST one.  Nothing
-    bounds it before that: a credential is under no obligation to be
-    delimiter-free (a base64 token can carry ``/``), so a span that stopped at a
-    ``/``, ``?`` or ``#`` printed the credential whole.  The span is dropped
-    structurally, so no re-encoding of it can survive the way one can defeat
-    `_provider_text`.
+    🛑 After ``scheme://`` an ``@`` ends the userinfo WHEREVER it sits — path, query or
+    fragment included — and the span runs to the LAST one, nothing bounding it sooner: a
+    credential need not be delimiter-free (a base64 token can carry ``/``), so a span that
+    stopped at a ``/``, ``?`` or ``#`` printed it whole.  It goes whole, so no re-encoding
+    of it survives the way one can defeat `_provider_text`.
 
-    ⚑ The accepted cost is OVER-REDACTION in printed text.  A legitimate ``@`` is
-    not told apart from a credential, so ``https://gw/team@corp/v1`` and
-    ``https://gw.example.com/v1?notify=ops@example.com`` both lose what precedes
-    it: legibility is the currency here, a secret never is.  Only a span is
-    deleted, so no URL is invented.  The endpoint CHECK runs on the raw string,
-    so none of this can refuse a box that works.
+    ⚑ The accepted cost is OVER-REDACTION in printed text: a legitimate ``@`` is not told
+    from a credential.  Only a span goes, so no URL is invented — and the endpoint CHECK
+    runs on the raw string, so none of this can refuse a box that works.
 
-    ⚑ A MALFORMED endpoint is scrubbed too: it is the one most likely to be
-    printed, by the error refusing it.  With no ``://`` there is no authority to
-    measure, so the span starts past the first run of ``/`` ahead of the first
-    ``@`` (else at the start) and ends at the next ``/``, ``?`` or ``#`` — where
-    urllib ends a netloc.  That can take a leading scheme, or a first path
-    segment, too (``https:tok@host`` → ``<redacted>@host``, ``gw.example.com/team@corp/v1`` →
-    ``gw.example.com/<redacted>@corp/v1``): over-redaction of a string that is
-    not a usable URL, never a credential printed.
+    ⚑ A MALFORMED endpoint is scrubbed too — the one most likely to be printed, by the
+    error refusing it.  With no ``://`` there is no authority to measure, so the span runs
+    from past the first ``/`` run ahead of the first ``@`` (else the start) to the next
+    ``/``, ``?`` or ``#``, where urllib ends a netloc; a leading scheme or first path
+    segment can go with it.
     """
     marker = endpoint.find("://")
     if marker != -1:
-        # ⚑ Past the scheme, and past any ``/`` run that follows it — a typo'd
-        # ``///`` opens the authority just as wide, and the span starts at the
-        # first character of it either way.
-        tail = endpoint[marker + 3:]
-        start = marker + 3 + len(tail) - len(tail.lstrip("/"))
+        after_scheme = marker + len("://")
+        tail = endpoint[after_scheme:]
+        start = after_scheme + len(tail) - len(tail.lstrip("/"))
         last_at = endpoint.rfind("@", start)
         if last_at == -1:
             return endpoint
@@ -586,8 +576,8 @@ class ProbeEvidence:
     def lines(self, indent: str = "  ", *, resolved_from: str = "") -> tuple[str, ...]:
         """The evidence block: one labeled line per input, then the provider's own words.
 
-        ⚑ The endpoint line is userinfo-scrubbed (`_scrub_endpoint_userinfo`):
-        host, path and provenance stay legible; the credential does not.
+        ⚑ The endpoint line is userinfo-scrubbed (`_scrub_endpoint_userinfo`), which
+        may over-redact it; no credential survives it.
         ⚑ The closing sentence is emitted for a REFUSAL status ONLY (llm-doc).
 
         ⚑ *resolved_from* names WHERE the caller got *endpoint* and *model* — a
