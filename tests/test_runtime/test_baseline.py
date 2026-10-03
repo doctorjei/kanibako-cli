@@ -256,3 +256,41 @@ class TestReadDoc:
         with pytest.raises(ConfigError) as exc:
             baseline._read_doc(p)
         assert str(exc.value) == self._value_refusal(p, "git")
+
+    @pytest.mark.parametrize(
+        "escape", [r"\0", r"\t", r"\n", r"\r", r"\x1B", r"\x1F", r"\x7F"],
+    )
+    def test_control_character_in_a_name_is_refused_naming_the_package(
+        self, tmp_path, escape
+    ) -> None:
+        """A name the shell cannot look up whole is refused, not probed.
+
+        The probe runs one shell over every name at once and reads the result one
+        line at a time, so a name carrying a control character decides the verdict
+        for every other name in the same run -- a NUL in one name blanks the whole
+        probe, and a newline makes a marker that can only ever mis-split. The
+        character arrives as a YAML ESCAPE: a raw one is the document's problem, not
+        the value's, and several are not even legal inside a quoted scalar.
+        """
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text(f'git: ["rg{escape}sh"]\n')
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == self._value_refusal(p, "git")
+
+    def test_control_character_in_a_bare_scalar_value_is_refused(self, tmp_path) -> None:
+        """The bare-string form reaches the same refusal as the list form."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text('git: "rg\\nsh"\n')
+
+        with pytest.raises(ConfigError) as exc:
+            baseline._read_doc(p)
+        assert str(exc.value) == self._value_refusal(p, "git")
+
+    def test_a_name_holding_no_control_character_is_untouched(self, tmp_path) -> None:
+        """The guard on the guard: a space and a non-ASCII letter are still names."""
+        p = tmp_path / "image-baseline.yaml"
+        p.write_text('git: ["my tool", "café"]\n')
+
+        assert baseline._read_doc(p) == {"git": ["my tool", "café"]}

@@ -1066,6 +1066,35 @@ class TestDiagnoseBaseline:
         assert "Container runtime" in out
         assert "Baseline:" in out
 
+    def test_control_character_in_a_name_is_reported_not_fatal(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """A NUL in an overlay executable name names itself and leaves the rest of the run.
+
+        Real XDG overlay, real ``load_baseline``, real ``run_rig_diagnose`` -- so this
+        is the refusal the ``rig diagnose`` baseline section actually reports.
+        """
+        from kanibako.errors import ContainerError
+
+        overlay = self._break_baseline_overlay(tmp_home, 'git: ["rg\\0sh"]\n')
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            rc = run_rig_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        self._assert_overlay_is_reported(
+            out,
+            overlay,
+            f"the config file {overlay} sets 'git' to a value that is not an "
+            "executable name or a list of them.",
+        )
+        assert "Error:" not in out
+        assert "Rig (Image) Diagnostics" in out
+        assert "Container runtime" in out
+        assert "Baseline:" in out
+
 
 class TestCheckVscode:
     """_check_vscode: host prerequisites for VS Code "Attach to Running Container".
