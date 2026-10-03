@@ -377,7 +377,8 @@ inside boxes. In order of likely impact:
     refused at the door*; and a bare `create` over an interrupted create refuses, so finish it with
     `create --recover` — see *2.105 `create` refuses an interrupted create; finish it with
     `--recover`*; and `workset connect` exits 1 for a source that is not an existing directory — see
-    *2.106 `workset connect` refuses a source that is not an existing directory*.
+    *2.106 `workset connect` refuses a source that is not an existing directory*; and a box designation that
+    cannot be a box name (`.hidden`, `foo.`) is a path — see *2.107 A designation that cannot be a box name is a path*.
 
 ---
 
@@ -6090,6 +6091,34 @@ writes nothing. `--force` does not bypass it.
 
 **What to do.** A script that connected a path it had not created yet now fails at the connect step.
 Create the project directory first, then connect it.
+
+---
+
+### 2.107 A designation that cannot be a box name is a path
+
+**Read this if you name a box by a value that starts or ends with `.` or contains a space.**
+
+**What changed.** Wherever a command takes a box (`box info`, `start`, `stop`, `box rm`, `box
+register`, `box remap`, `box convert`, and the rest), a value that is a valid box name may be a box
+name or a relative path. A value that is
+not a valid box name, such as one that starts or ends with `.` or contains a space, is resolved only
+as a path. A value with a `/` is a qualified `<workset>/<box>` name only when both parts are valid
+box names; `./gone` or `a/b/c` is a path.
+
+**What you see.** A missing path now fails as a path, not as an unknown name:
+
+```
+Error: Project path '/home/you/work/.hidden' does not exist.
+```
+
+and at launch:
+
+```
+Error: no box at /home/you/work/.hidden. To create a new box, run 'kanibako create .hidden'
+```
+
+**What to do.** If you named a box by such a value before 1.8.0, address it by its path, or run the
+command from inside its workspace, and rename it.
 
 ---
 

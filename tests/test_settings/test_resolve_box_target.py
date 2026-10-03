@@ -18,6 +18,8 @@ from kanibako.settings.paths import (
     establish_standalone,
     load_primary_boxes,
     resolve_any_project,
+    DesignationRoute,
+    designation_route,
     resolve_box_target,
     resolve_project,
 )
@@ -317,15 +319,21 @@ class TestNonConformingNameFlagged:
         (root / WORKSET_META_FILE).write_text("")
         registry_store.register_standalone(std.registry, bad_name, root)
 
+        # A name that fails the box-name rule is a PATH designation, so the box is
+        # addressed by its root.
         with caplog.at_level(logging.WARNING):
-            proj = resolve_box_target(std, config, bad_name)
+            proj = resolve_box_target(std, config, str(root))
 
         # It STILL resolves (not rejected) ...
         assert proj.mode is BoxMode.standalone
+        assert proj.name == bad_name
         # ... but a warning was emitted flagging the non-conforming name.
         assert any(
             "does not meet the naming rules" in r.message for r in caplog.records
         )
+        # Its name is not looked up: it is a relative path, and none exists.
+        with pytest.raises(ProjectError, match="does not exist"):
+            resolve_box_target(std, config, bad_name)
 
     def test_conforming_name_emits_no_warning(
         self, std, config, tmp_home, caplog,
@@ -512,3 +520,57 @@ class TestAmbiguousNameNotShadowedByFolder:
 
         proj = resolve_any_project(std, config, "justafolder", initialize=False)
         assert proj.project_path == folder.resolve()
+
+
+# ---------------------------------------------------------------------------
+# Designation kind decides the route (system-design § Detection & import)
+# ---------------------------------------------------------------------------
+
+class TestDesignationRoute:
+    @pytest.mark.parametrize(
+        ("value", "name_first", "route"),
+        [
+            (None, False, DesignationRoute.CWD),
+            ("", True, DesignationRoute.CWD),
+            ("absent-name", False, DesignationRoute.NAME),
+            ("present", False, DesignationRoute.PATH),
+            ("present", True, DesignationRoute.NAME),
+            (".hidden", False, DesignationRoute.PATH),
+            (".hidden", True, DesignationRoute.PATH),
+            ("foo.", True, DesignationRoute.PATH),
+            ("ws/proj", False, DesignationRoute.QUALIFIED),
+            ("present/sub", False, DesignationRoute.PATH),
+            (".", True, DesignationRoute.PATH),
+            ("./gone", False, DesignationRoute.PATH),
+            ("../x/y", False, DesignationRoute.PATH),
+            ("a/b/c", False, DesignationRoute.PATH),
+            ("ws/.gone", False, DesignationRoute.PATH),
+            ("ws/", False, DesignationRoute.PATH),
+            ("foo\0", False, DesignationRoute.INVALID),
+        ],
+    )
+    def test_route(self, tmp_path, monkeypatch, value, name_first, route):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "present" / "sub").mkdir(parents=True)
+        assert designation_route(value, name_first=name_first) is route
+
+    def test_hidden_box_dir_resolves_as_a_path(self, std, config, tmp_home, monkeypatch):
+        """``.hidden`` cannot be a box name, so it is the relative path, never a lookup."""
+        monkeypatch.chdir(tmp_home)
+        hidden = tmp_home / ".hidden"
+        hidden.mkdir()
+        resolve_project(std, config, project_dir=str(hidden), initialize=True)
+
+        proj = resolve_box_target(std, config, ".hidden")
+        assert proj.project_path == hidden.resolve()
+
+    def test_missing_hidden_path_fails_as_a_path(self, std, config, tmp_home, monkeypatch):
+        """A missing PATH fails as a path; the registry is not consulted."""
+        monkeypatch.chdir(tmp_home)
+        with pytest.raises(ProjectError, match="does not exist") as excinfo:
+            resolve_box_target(std, config, ".hidden", initialize=False)
+        assert "Unknown project or workset" not in str(excinfo.value)
+
+    def test_nul_designation_is_refused(self, std, config):
+        with pytest.raises(ProjectError, match="neither a box name nor a path"):
+            resolve_box_target(std, config, "foo\0bar")

@@ -417,6 +417,25 @@ class TestNoBoxErrorMessage:
         )
         assert "box register" not in msg
 
+    @pytest.mark.parametrize("spec", [".gone", "gone.", "a b", "./gone", "a/b/c"])
+    def test_missing_path_designation_gets_the_path_message(
+        self, tmp_path, monkeypatch, spec,
+    ):
+        """A designation that cannot be a box name is a PATH, so a miss has no
+        registry story, whether or not it exists on disk."""
+        monkeypatch.chdir(tmp_path)
+        msg = _no_box_error(spec)
+        assert msg == (
+            f"Error: no box at {(tmp_path / spec).resolve()}. To create a new box, "
+            f"run 'kanibako create {spec}'"
+        )
+
+    def test_missing_qualified_designation_gets_the_name_message(
+        self, tmp_path, monkeypatch,
+    ):
+        monkeypatch.chdir(tmp_path)
+        assert "A bare name is resolved through the registry" in _no_box_error("ws/gone")
+
     def test_no_spec_suggests_bare_create(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         msg = _no_box_error(None)
@@ -497,6 +516,25 @@ class TestBrokenStandaloneNoBoxError:
             f"--register --name {name} {root}"
         ) in cure
         assert "your workspace/ and vault/ are not touched" in msg
+
+    def test_rule_breaking_standalone_name_is_not_looked_up(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """A designation that breaks the box-name rule is a PATH, so a standalone
+        box REGISTERED under such a name is not found by it."""
+        from kanibako.project import registry_store
+
+        _config, std = _std(config_file)
+        root = (tmp_home / "legacy").resolve()
+        root.mkdir()
+        registry_store.register_standalone(std.registry, "bad name", root)
+        monkeypatch.chdir(tmp_home)
+        msg = _no_box_error("bad name", std)
+        assert "registered as a standalone box" not in msg
+        assert msg == (
+            f"Error: no box at {tmp_home.resolve() / 'bad name'}. To create a new "
+            "box, run 'kanibako create bad name'"
+        )
 
     def test_by_path_names_the_ruled_cure(
         self, config_file, tmp_home, credentials_dir,

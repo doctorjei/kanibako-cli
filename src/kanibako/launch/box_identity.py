@@ -15,6 +15,7 @@ blocklist rule and the resolve branches.
 
 from __future__ import annotations
 
+import enum
 import re
 import string
 from pathlib import Path
@@ -108,6 +109,35 @@ def is_valid_box_name(name: str) -> bool:
     pre-existing non-conforming box still resolves, it just gets warned about.
     """
     return _box_name_violation(name) is None
+
+
+class Designation(enum.Enum):
+    """What a command's box designation is, by its shape alone."""
+
+    ABSENT = "absent"
+    """No designation: the current directory is the box's path."""
+    PATH = "path"
+    """Cannot be a box name but can be a path, so it is resolved as a path."""
+    IDENTIFIER = "identifier"
+    """A valid box name, which is also a relative path: ambiguous between the two."""
+    INVALID = "invalid"
+    """Neither a valid box name nor a valid path."""
+
+
+def classify_designation(value: str | None) -> Designation:
+    """Classify a box designation (system-design § Detection & import).
+
+    Every valid box name is also a relative path, never the reverse, so a string
+    that fails the box-name rule but can name a path is a PATH.  Shape only: the
+    filesystem is not consulted.  An empty string is ABSENT, like ``None``.
+    """
+    if not value:
+        return Designation.ABSENT
+    if "\0" in value:
+        return Designation.INVALID
+    if is_valid_box_name(value):
+        return Designation.IDENTIFIER
+    return Designation.PATH
 
 
 def box_name_reason(name: str) -> str | None:

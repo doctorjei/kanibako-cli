@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   See *2.47 An undeclared key in a settings file now stops the command, and the cure is a
   hand-edit* in [MIGRATION.md](MIGRATION.md).
 
+- **A box designation that cannot be a box name is a path.** A designation such as `.hidden`,
+  `foo.` or `a b` breaks the box-name rule, so it is resolved as a path and never looked up in the
+  registry, by any command that takes a box, `box rm` and `box register` included. A missing one
+  now fails with `Project path '<cwd>/<it>' does not exist.` (or, at launch, `no box at
+  <cwd>/<it>. To create a new box, run 'kanibako create <it>'`) instead of an unknown-name
+  error. A `/` designation is a qualified `<workset>/<box>` name only when both parts are valid
+  names, so `./gone` is a path too. A registered box whose name breaks the rule is reached by its
+  path or from its directory, not by that name. See *2.107 A designation that cannot be a box name is a
+  path* in [MIGRATION.md](MIGRATION.md).
 - `kanibako shell -- <cmd>` runs `<box shell> -lc <cmd>` instead of `/bin/sh -c`. See *2.100 `kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command* in
   [MIGRATION.md](MIGRATION.md).
 - `shell` writes `~/AGENTS.md`; on any persistent shell launch, a `box.shell` with arguments or

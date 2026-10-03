@@ -21,6 +21,7 @@ from pathlib import Path
 from kanibako.project import registry_store
 from kanibako.commands.box._parser import run_create, run_register, run_rm
 from kanibako.project.names import resolve_name, register_name
+from kanibako.settings.paths import load_primary_boxes
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +376,42 @@ class TestClearErrors:
         assert "workset" in err.lower()
         # Untouched.
         assert "myws" in registry_store.load_registry(std.registry)["worksets"]
+
+
+class TestPathDesignationIsNeverAName:
+    """A designation that breaks the box-name rule is a PATH (system-design §
+    Detection & import), so ``rm`` and ``register`` never look it up by name."""
+
+    def _hidden_box(self, config_file, tmp_home, monkeypatch):
+        """A primary box registered as ``.hidden``; cwd then moves to an empty dir."""
+        config, std = _std(config_file)
+        monkeypatch.chdir(tmp_home)
+        (tmp_home / ".hidden").mkdir()
+        assert run_create(_create_args(".hidden")) == 0
+        assert ".hidden" in load_primary_boxes(std.primary_workset)
+        empty = tmp_home / "empty"
+        empty.mkdir()
+        monkeypatch.chdir(empty)
+        return std
+
+    def test_rm_does_not_resolve_it_by_name(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        std = self._hidden_box(config_file, tmp_home, monkeypatch)
+        capsys.readouterr()
+        assert run_rm(_rm_args(".hidden")) == 1
+        assert "'.hidden' is not a registered box" in capsys.readouterr().err
+        assert ".hidden" in load_primary_boxes(std.primary_workset)
+
+    def test_register_does_not_resolve_it_by_name(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        self._hidden_box(config_file, tmp_home, monkeypatch)
+        capsys.readouterr()
+        assert run_register(_register_args(".hidden")) == 1
+        captured = capsys.readouterr()
+        assert "already registered" not in captured.out
+        assert "nothing to register" in captured.err.lower()
 
 
 # ---------------------------------------------------------------------------

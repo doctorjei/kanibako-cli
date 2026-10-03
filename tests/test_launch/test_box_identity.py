@@ -450,3 +450,28 @@ class TestValidateBoxName:
     def test_validate_raises_actionable_message(self) -> None:
         with pytest.raises(ProjectError, match=r"Invalid box name 'a/b'"):
             box_identity.validate_box_name("a/b")
+
+
+class TestClassifyDesignation:
+    """A box designation's kind, by shape (system-design § Detection & import)."""
+
+    @pytest.mark.parametrize("value", [None, ""])
+    def test_absent(self, value: str | None) -> None:
+        assert box_identity.classify_designation(value) is box_identity.Designation.ABSENT
+
+    @pytest.mark.parametrize("value", ["foo", "my.app", "MyApp", "a-b_c"])
+    def test_valid_box_name_is_an_ambiguous_identifier(self, value: str) -> None:
+        assert (box_identity.classify_designation(value)
+                is box_identity.Designation.IDENTIFIER)
+
+    @pytest.mark.parametrize(
+        "value",
+        [".hidden", "foo.", "..x", "a b", "ws/proj", "./foo", ".", "..", "/abs/dir",
+         "x" * 65],
+    )
+    def test_non_name_that_can_be_a_path_is_a_path(self, value: str) -> None:
+        assert box_identity.classify_designation(value) is box_identity.Designation.PATH
+
+    def test_nul_is_neither_name_nor_path(self) -> None:
+        assert (box_identity.classify_designation("foo\0bar")
+                is box_identity.Designation.INVALID)

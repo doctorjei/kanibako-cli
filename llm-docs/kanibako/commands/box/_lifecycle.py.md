@@ -451,22 +451,12 @@ directory. Builds on the existing detectors and resolvers, and honors `meta["wor
 (external-connected projects) so the descriptor reflects the **live** workspace location. Raises
 `ProjectError` / `WorksetError` when no project is found.
 
-Three resolution front doors run before the path-ify, each mirroring `resolve_any_project`:
-
-* ⚑ **Bare token** (no path separator) that does not exist in cwd may be a registered
-  project/workset name. **This is essential for `remap` / `convert`**, where the folder has already
-  moved: the on-disk path is stale but the NAME still resolves.
-* ⚑ `raw` is updated for **BOTH** kinds. A bare workset name resolves to the workset ROOT, which
-  `detect_project_mode` must see — without this the name path-ifies to `cwd/<name>` and resolution
-  fails misleadingly.
-* **Qualified `workset/project`** addressing — a token WITH a separator that is not an existing
-  path. This is the form the bare-workset rejection suggests, so it must resolve. A real relative
-  path that merely happens not to exist is left untouched and falls through to the path-ify,
-  failing exactly as before.
-
-A resolved bare WORKSET is then rejected outright: lifecycle ops act on a single project box, and a
-workset is not one. The message is actionable (name a project inside it, or run from a project
-workspace under it).
+The designation goes through `kanibako.settings.paths.resolve_designation`, the one front door the
+path resolvers share, with `unknown_name_is_path=True`: an identifier that names no box still
+path-ifies. **This is essential for `remap` / `convert`**, where the folder has already moved — a
+primary box is found by its registered path (`_default_state_from_meta`), not by a name, and an
+identifier is also a relative path. A bare WORKSET name is rejected there (lifecycle ops act on a
+single project box), and a qualified `workset/project` name resolves to its workspace.
 
 ```def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None```
 Build a default-mode `ProjectState` from registered metadata.

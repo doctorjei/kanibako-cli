@@ -15,6 +15,7 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
 
                                               ERR_SETTINGS_BAD_PATH, ERR_SETTINGS_BAD_REF,
                                               ERR_CONFIG_NO_FILE, ERR_PROJECT_NO_PATH,
+                                              ERR_PROJECT_BAD_DESIGNATION,
                                               ERR_PROJECT_NEW_HOME, ERR_PROJECT_REG_HOME,
                                               ERR_PROJECT_NAME_USED, ERR_PROJECT_DIR_IS_WS,
                                               ERR_WORKSET_NO_PROJECT, ERR_WORKSET_NO_WORKSET,
@@ -45,6 +46,7 @@ from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsE
                                                 _Unset, expand_expr, resolve_value)
 
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
+from kanibako.launch.box_identity import Designation, classify_designation
 from kanibako.utils import project_hash, short_hash
 from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          CREDS_WATCHER_LOG_SUFFIX, HOME_PATH,
@@ -976,18 +978,7 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
                     initialize: bool = False, enable_vault: bool | None = None,
                     name_override: str | None = None, register: bool = True) -> ProjectPaths:
     """Resolve (and optionally initialize) per-project paths (PRIMARY mode)."""
-    raw = project_dir or os.getcwd()
-    # A bare token that names no path in cwd may be a registered project name; miss falls through.
-    if raw and "/" not in raw and not Path(raw).exists():
-        try:
-            resolved, kind = resolve_name(std.registry, raw, cwd=Path.cwd(),
-                                          primary_workset=std.primary_workset)
-            if kind == KIND_PROJECT:
-                raw = resolved
-        except AmbiguousNameError:
-            raise
-        except ProjectError:
-            pass
+    raw = resolve_designation(std, project_dir, unknown_name_is_path=True)
     project_path = Path(raw).resolve()
 
     if not project_path.is_dir():
@@ -1859,43 +1850,96 @@ def _resolve_workset_or_connected(project_dir: Path,
     return ws, proj_name
 
 
+class DesignationRoute(Enum):
+    """The route a box designation is resolved by."""
+
+    CWD = "cwd"
+    PATH = "path"
+    NAME = "name"
+    QUALIFIED = "qualified"
+    INVALID = "invalid"
+
+
+def designation_route(value: str | None, *, name_first: bool = False) -> DesignationRoute:
+    """Decide how a box designation is resolved; the one place that decides it.
+
+    An IDENTIFIER is ambiguous between a box name and a relative path: it takes the
+    NAME route when *name_first* or when no such path exists, else the PATH route.  A
+    PATH of the form ``<workset>/<box>``, both segments IDENTIFIERs, that does not exist
+    takes the QUALIFIED route.  Reads the filesystem (``exists``), nothing else.
+    """
+    kind = classify_designation(value)
+    if kind is Designation.ABSENT:
+        return DesignationRoute.CWD
+    if kind is Designation.INVALID:
+        return DesignationRoute.INVALID
+    assert value is not None
+    on_disk = Path(value).exists()
+    if kind is Designation.IDENTIFIER:
+        return DesignationRoute.NAME if name_first or not on_disk else DesignationRoute.PATH
+    workset, sep, box = value.partition("/")
+    if (sep and not on_disk and classify_designation(workset) is Designation.IDENTIFIER
+            and classify_designation(box) is Designation.IDENTIFIER):
+        return DesignationRoute.QUALIFIED
+    return DesignationRoute.PATH
+
+
+def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_is_path: bool,
+                        name_first: bool = False) -> str:
+    """Turn a box designation into the path string the path route resolves.
+
+    A name lookup that hits a project returns its workspace; a miss on a name whose
+    path exists returns the path.  Raises :class:`ProjectError` for an INVALID
+    designation, :class:`AmbiguousNameError` for a name matching several boxes,
+    :class:`WorksetError` for a bare workset name with no such path, and
+    :class:`ProjectError` for an unknown name with no such path unless
+    *unknown_name_is_path*.  A QUALIFIED miss returns the designation unchanged.
+    """
+    route = designation_route(value, name_first=name_first)
+    if route is DesignationRoute.CWD:
+        return os.getcwd()
+    assert value is not None
+    if route is DesignationRoute.INVALID:
+        raise ProjectError(ERR_PROJECT_BAD_DESIGNATION % value)
+    if route is DesignationRoute.PATH:
+        return value
+    if route is DesignationRoute.QUALIFIED:
+        try:
+            return resolve_qualified_name(std.registry, value)[0]
+        except ProjectError:
+            return value
+    on_disk = Path(value).exists()
+    try:
+        resolved, kind = resolve_name(std.registry, value, cwd=Path.cwd(),
+                                      primary_workset=std.primary_workset)
+    except AmbiguousNameError:
+        raise
+    except ProjectError:
+        if on_disk or unknown_name_is_path:
+            return value
+        raise
+    if kind == KIND_PROJECT:
+        return resolved
+    if kind == KIND_WORKSET and not on_disk:
+        raise WorksetError(ERR_WORKSET_WS_NOT_BOX % (value, value))
+    return value
+
+
 def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None,
                         *, initialize: bool = False, register: bool = True,
                         name_override: str | None = None) -> ProjectPaths:
     """Auto-detect project mode and resolve paths accordingly."""
-    raw = project_dir or os.getcwd()
-    # ⚑ CLI front-door name lookup, which must run BEFORE Path(raw).resolve() path-ifies
-    # the token — otherwise detect_project_mode never sees the registered name.
-    named_workset = False
-    raw_name = raw
-    if raw and "/" not in raw and not Path(raw).exists():
-        try:
-            resolved, kind = resolve_name(std.registry, raw, cwd=Path.cwd(),
-                                          primary_workset=std.primary_workset)
-        except AmbiguousNameError:
-            raise
-        except ProjectError:
-            # An unknown bare token: on the READ path, refuse rather than path-ify it into
-            # a phantom ``kanibako-<hash>`` box.  The CREATE path still path-ifies.
-            if not initialize:
-                raise
-        else:
-            if kind in (KIND_PROJECT, KIND_WORKSET):
-                # Update `raw` for BOTH kinds; a bare WORKSET is still rejected below.
-                raw = resolved
-                named_workset = kind == KIND_WORKSET
+    # An unknown name on the READ path is refused rather than path-ified into a phantom
+    # ``kanibako-<hash>`` box; the CREATE path (*initialize*) still path-ifies it.
+    raw = resolve_designation(std, project_dir, unknown_name_is_path=initialize)
+    return _resolve_designated_path(std, config, raw, initialize=initialize,
+                                    register=register, name_override=name_override)
 
-    if named_workset:
-        # A workset is not a single box; fail with an actionable message, not the generic one.
-        raise WorksetError(ERR_WORKSET_WS_NOT_BOX % (raw_name, raw_name))
 
-    # Qualified ``workset/project`` addressing; a real relative path is left untouched.
-    if "/" in raw and not Path(raw).exists():
-        try:
-            project_workspace, _ws_name = resolve_qualified_name(std.registry, raw)
-            raw = project_workspace
-        except ProjectError:
-            pass
+def _resolve_designated_path(std: StandardPaths, config: BootstrapConfig, raw: str, *,
+                             initialize: bool, register: bool,
+                             name_override: str | None = None) -> ProjectPaths:
+    """Resolve the path a designation resolved to, by the mode detected there."""
     raw_dir = Path(raw).resolve()
     detection = detect_project_mode(raw_dir, std, config)
     root_str = str(detection.project_root)
@@ -1925,17 +1969,10 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
             _flag_missing_vault(proj)
         return proj
 
-    # Empty / None -> cwd resolution (same as a bare positional default).
-    if not value:
-        return _flag(resolve_any_project(std, config, value, initialize=initialize,
-                                         register=register))
-
-    # NAME-first: the standalone-name domain, which resolve_any_project does NOT cover.
-    # ``.`` and ``..`` are PATH syntax, never box names, so they are excluded from
-    # every name lookup below and fall through to the path route — same as base.
-    # resolve_name's first step accepts any directory under the workspaces dir, so
-    # inside a workset it would swallow ``.`` and mis-resolve it.
-    if "/" not in value and value not in (".", ".."):
+    # NAME-first: the standalone-name domain, which resolve_name does NOT cover.  Only an
+    # IDENTIFIER can be a name; ``.``, ``..`` and every other PATH skip it.
+    if classify_designation(value) is Designation.IDENTIFIER:
+        assert value is not None
         from kanibako.project import registry_store
 
         standalone = registry_store.load_standalone(std.registry)
@@ -1947,28 +1984,11 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
             return _flag(resolve_standalone_project(std, config, standalone[stored],
                                                     initialize=initialize, register=register))
 
-        # NAME resolution for workset members and primary boxes: the name lookup in
-        # resolve_any_project is skipped when the bare token matches an existing path
-        # (e.g. ./myproj), but a registered box name should win over a same-named folder
-        # (README: "box name (precedence) or path").  Try the full name resolution here
-        # before falling back to path resolution.  Only for real name tokens: ``.`` and
-        # ``..`` are excluded by the guard above and stay on the path route.
-        try:
-            resolved, kind = resolve_name(std.registry, value, cwd=Path.cwd(),
-                                          primary_workset=std.primary_workset)
-        except AmbiguousNameError:
-            raise
-        except ProjectError:
-            pass
-        else:
-            if kind == KIND_PROJECT:
-                # Hand the resolved workspace path to detect_project_mode, which
-                # correctly routes named/standalone/primary from there.
-                return _flag(resolve_any_project(std, config, resolved,
-                                                initialize=initialize, register=register))
-
-    # Else: NAME (projects/worksets/qualified) or PATH, both via the existing resolver.
-    return _flag(resolve_any_project(std, config, value, initialize=initialize, register=register))
+    # A registered box name wins over a same-named folder (README: "box name
+    # (precedence) or path"), hence *name_first*.
+    raw = resolve_designation(std, value, unknown_name_is_path=initialize, name_first=True)
+    return _flag(_resolve_designated_path(std, config, raw, initialize=initialize,
+                                          register=register))
 
 
 def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths:

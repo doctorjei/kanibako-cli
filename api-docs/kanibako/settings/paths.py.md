@@ -65,6 +65,8 @@ def unregister_primary_box_name(primary_workset: Path, name: str) -> None
 def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPaths, config: BootstrapConfig, *, initialize: bool=False, enable_vault: bool | None=None) -> ProjectPaths
 def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Path, Path | None]]
 def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _WorksetProjectRows
+def designation_route(value: str | None, *, name_first: bool=False) -> DesignationRoute
+def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_is_path: bool, name_first: bool=False) -> str
 def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, register: bool=True, name_override: str | None=None) -> ProjectPaths
 def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str | None=None, *, initialize: bool=False, register: bool=True, warn: bool=True) -> ProjectPaths
 def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool, name: str='', register: bool=True) -> tuple[str, Path, Path, Path]
@@ -99,6 +101,7 @@ def _primary_name_domain(primary_workset: Path, registry: Path) -> set[str]
 def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: Path) -> None
 def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
 def _resolve_workset_or_connected(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
+def _resolve_designated_path(std: StandardPaths, config: BootstrapConfig, raw: str, *, initialize: bool, register: bool, name_override: str | None=None) -> ProjectPaths
 def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths
 def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths
@@ -189,6 +192,13 @@ class WorksetSpec:
 class BoxLogFiles(NamedTuple):
     helper: Path
     creds_watcher: Path
+
+class DesignationRoute(Enum):
+    CWD = 'cwd'
+    PATH = 'path'
+    NAME = 'name'
+    QUALIFIED = 'qualified'
+    INVALID = 'invalid'
 
 class _WorksetRooted(Protocol):
     @property

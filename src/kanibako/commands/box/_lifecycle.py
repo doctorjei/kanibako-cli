@@ -35,7 +35,7 @@ from kanibako.settings.config import (
     write_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
-from kanibako.errors import AmbiguousNameError, ProjectError, WorksetError
+from kanibako.errors import ProjectError, WorksetError
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
@@ -54,6 +54,7 @@ from kanibako.settings.paths import (
     primary_box_name_for_workspace,
     register_primary_box_name,
     resolve_box_enable_vault,
+    resolve_designation,
     resolve_project,
     resolve_standalone_project,
     resolve_workset_project,
@@ -232,49 +233,11 @@ def resolve_lifecycle_target(
     config: BootstrapConfig | None = None,
 ) -> ProjectState:
     """Resolve an existing project (by path or name) to a :class:`ProjectState`."""
-    import os
-
     if config is None:
         from kanibako.settings.config import user_config_file, load_config
         config = load_config(user_config_file())
 
-    raw = old or os.getcwd()
-    # ⚑ Bare-token front door (mirrors resolve_any_project): ``remap``/``convert`` need it —
-    # the folder has already moved, so the path is stale but the NAME still resolves.
-    raw_name = raw
-    named_workset = False
-    if raw and "/" not in raw and not Path(raw).exists():
-        from kanibako.settings.paths import resolve_name
-        try:
-            resolved, kind = resolve_name(
-                std.registry, raw, cwd=Path.cwd(),
-                primary_workset=std.primary_workset,
-            )
-            if kind in ("project", "workset"):
-                # ⚑ BOTH kinds update `raw`: detect_project_mode must see the workset ROOT.
-                raw = resolved
-                named_workset = kind == "workset"
-        except AmbiguousNameError:
-            raise
-        except ProjectError:
-            pass
-    if named_workset:
-        # Lifecycle ops act on a single project box; a workset is not one.
-        raise WorksetError(
-            f"'{raw_name}' is a workset, not a single project box. "
-            f"Name a project inside it (e.g. '{raw_name}/<project>') or run the "
-            f"command from a project workspace under that workset."
-        )
-    # Qualified ``workset/project`` addressing — the form the rejection above suggests.
-    if raw and "/" in raw and not Path(raw).exists():
-        from kanibako.project.names import resolve_qualified_name
-        try:
-            project_workspace, _ws_name = resolve_qualified_name(
-                std.registry, raw,
-            )
-            raw = project_workspace
-        except ProjectError:
-            pass
+    raw = resolve_designation(std, old, unknown_name_is_path=True)
     raw_path = Path(raw).resolve()
 
     detection = detect_project_mode(raw_path, std, config)

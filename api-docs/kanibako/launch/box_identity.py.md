@@ -23,6 +23,7 @@ _NAME_MAX_LEN = 64
 ## Functions
 ```
 def is_valid_box_name(name: str) -> bool
+def classify_designation(value: str | None) -> Designation
 def box_name_reason(name: str) -> str | None
 def validate_box_name(name: str) -> None
 def sanitize_cap(leaf: str) -> str
@@ -36,4 +37,14 @@ def _box_name_violation(name: str) -> str | None
 def _canonical_name(supplied: str) -> str
 def _refuse_taken(stored: str) -> ProjectError
 def _generate_with_leaf(leaf: str, existing: set[str]) -> str
+```
+
+## Classes
+
+```
+class Designation(enum.Enum):
+    ABSENT = 'absent'
+    PATH = 'path'
+    IDENTIFIER = 'identifier'
+    INVALID = 'invalid'
 ```
