@@ -28,11 +28,13 @@ from kanibako.errors import ContainerError, ProjectError
 from kanibako.project.names import read_names
 from kanibako.settings.paths import (
     BoxMode,
+    DesignationRoute,
     _box_settings_files,
     _standalone_settings_files,
     box_tree_materialized,
     box_workset_settings_paths,
     check_primary_box_name_free,
+    designation_route,
     iter_projects,
     iter_workset_projects,
     load_primary_boxes,
@@ -1623,9 +1625,10 @@ def _resolve_standalone_target(
     # 1) Direct standalone-NAME lookup — case-blind (spec §0), returning the name as
     #    REGISTERED so everything downstream addresses the box the registry knows.
     entries = registry_store.load_standalone(std.registry)
-    stored = find_identifier(target, entries)
-    if stored is not None:
-        return stored, Path(entries[stored])
+    if designation_route(target, name_first=True) is DesignationRoute.NAME:
+        stored = find_identifier(target, entries)
+        if stored is not None:
+            return stored, Path(entries[stored])
 
     # 2) PATH target: detect the box by ancestor-walk, then match its registered root.
     candidate = Path(target)
@@ -1731,7 +1734,8 @@ def run_rm(args: argparse.Namespace) -> int:
 
     # ⚑ Case-blind (spec §0), and *name* takes the STORED spelling — it drives the
     # unregister below, which must address the key the registry actually holds.
-    primary_hit_name = find_identifier(target, primary_boxes)
+    by_name = designation_route(target, name_first=True) is DesignationRoute.NAME
+    primary_hit_name = find_identifier(target, primary_boxes) if by_name else None
     if primary_hit_name is not None:
         name, section, path = primary_hit_name, "projects", primary_boxes[primary_hit_name]
 
@@ -1746,7 +1750,7 @@ def run_rm(args: argparse.Namespace) -> int:
         if sa_name is not None:
             return _rm_standalone(std, sa_name, sa_root, args)
 
-    if name is None:
+    if name is None and by_name:
         # ⚑ Not active anywhere — a re-`rm` after a plain `rm` must resolve the retained
         # metadata HERE rather than erroring "not registered".
         # ⚑ Case-blind (spec §0), and the purge takes the STORED spelling: it names the
@@ -1900,8 +1904,9 @@ def run_register(args: argparse.Namespace) -> int:
     # ⚑ Case-blind (spec §0), and the readopt takes the STORED spelling: it re-registers
     # the box's name, membership entry, home and log paths, all of which a typed
     # case-variant would miss — same rule as the ``rm --purge`` branch above.
+    by_name = designation_route(target, name_first=True) is DesignationRoute.NAME
     deregistered = registry_store.load_deregistered(std.registry)
-    dereg_name = find_identifier(target, deregistered)
+    dereg_name = find_identifier(target, deregistered) if by_name else None
     if dereg_name is not None:
         return _readopt_deregistered(
             std, dereg_name, dict(deregistered[dereg_name]), force=force,
@@ -1912,17 +1917,17 @@ def run_register(args: argparse.Namespace) -> int:
     # a user told "'Foo' is already registered" who cannot find ``Foo`` anywhere learns
     # nothing.
     primary_boxes = load_primary_boxes(std.primary_workset)
-    held = find_identifier(target, primary_boxes)
+    held = find_identifier(target, primary_boxes) if by_name else None
     if held is not None:
         print(f"'{held}' is already registered (primary box at {primary_boxes[held]}).")
         return 0
     standalone = registry_store.load_standalone(std.registry)
-    held = find_identifier(target, standalone)
+    held = find_identifier(target, standalone) if by_name else None
     if held is not None:
         print(f"'{held}' is already registered (standalone box at {standalone[held]}).")
         return 0
     worksets = read_names(std.registry)["worksets"]
-    if find_identifier(target, worksets) is not None:
+    if by_name and find_identifier(target, worksets) is not None:
         print(
             f"Error: '{target}' is a workset, not a box. Worksets keep their own "
             "lifecycle; 'register' applies to primary and standalone boxes only.",

@@ -67,9 +67,11 @@ from kanibako.settings.settings_keyspace import (
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
 from kanibako.settings.settings_cli_level import SELECTION_KEY, build_cli_level
 from kanibako.settings.paths import (
+    DesignationRoute,
     _upgrade_shell,
     box_workset_settings_paths,
     creds_watcher_log_path,
+    designation_route,
     load_std_paths,
     resolve_box_target,
 )
@@ -1427,7 +1429,9 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     entries = registry_store.load_standalone(std.registry)
     # ⚑ Case-blind (spec §0), and *name* becomes the STORED spelling — it keys the
     # root lookup below.
-    name = find_identifier(project_dir, entries)
+    name: str | None = None
+    if designation_route(project_dir, name_first=True) is DesignationRoute.NAME:
+        name = find_identifier(project_dir, entries)
     if name is None:
         # Not a registered NAME — try the ROOT PATH grammar (``start <root>``).
         candidate = Path(project_dir)
@@ -1467,8 +1471,9 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
     ``kanibako create <spec>`` when they named a PATH, a bare ``kanibako create``
     from inside the project dir (no spec).
 
-    ⚑ THREE SHAPES, and only the first is that plain one-liner.  A NAME-shaped
-    token (a spec that is no path on disk) gets its own multi-line message: since
+    ⚑ THREE SHAPES, and only the first is that plain one-liner.  A designation
+    that takes the name route (:func:`designation_route`) gets its own
+    multi-line message: since
     I3/§D4a a standalone box created without ``--register`` is real and running
     but carries no registry entry, and the registry is the only thing a bare name
     can consult — so that population lands HERE, and for it ``create <name>``
@@ -1488,10 +1493,9 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
         if broken is not None:
             return broken
     if project_dir:
-        # A path that resolves on disk shows its resolved dir; a bare NAME (no
-        # such path) shows the spec verbatim — either way copy-pasteable.
-        candidate = Path(project_dir)
-        if not candidate.exists():
+        # A PATH shows its resolved dir; a NAME shows the spec verbatim — either way
+        # copy-pasteable.
+        if designation_route(project_dir) is not DesignationRoute.PATH:
             # NAME-SHAPED MISS.  Since I3/§D4a this is the UNREGISTERED-STANDALONE
             # population's message: a box created without ``--register`` is real,
             # on disk and addressable from its own directory, but has no registry
@@ -1509,7 +1513,7 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
                 "first:  kanibako box register <path-to-its-box-root>\n"
                 f"  Otherwise create a new box:  kanibako create {project_dir}"
             )
-        target = str(candidate.resolve())
+        target = str(Path(project_dir).resolve())
         suggest = f"kanibako create {project_dir}"
     else:
         target = os.getcwd()

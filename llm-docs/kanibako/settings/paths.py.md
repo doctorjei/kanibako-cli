@@ -621,9 +621,9 @@ other caller registers inline, unchanged).
 
 ### `resolve_project` — the bare-token front door
 
-If the user passed a bare token (no path separator) and no file/dir of that name exists in cwd, it
-is tried as a registered project name. Resolution falls through to path resolution on a miss so the
-eventual error stays informative.
+The designation goes through `resolve_designation` with `unknown_name_is_path=True`: an identifier
+with no file/dir of that name in cwd is tried as a registered name, and a miss falls through to path
+resolution so the eventual error stays informative.
 
 ### `resolve_project` — the registry reverse-lookup miss
 
@@ -1403,31 +1403,32 @@ is the caller that needs it (re-materializing an archived box under a chosen nam
 
 ### The CLI front door
 
-A bare token (no path separator) that doesn't exist in cwd may be a registered project/workset name.
-`resolve_project` also does this lookup, but `resolve_any_project` must do it FIRST — otherwise
-`Path(raw).resolve()` path-ifies the name before `detect_project_mode` sees it.
+The designation goes through `resolve_designation` before `Path(raw).resolve()` path-ifies it, so
+`detect_project_mode` sees a registered name's workspace. *initialize* is its `unknown_name_is_path`.
 
-**On a `ProjectError` miss:** a bare token that names NO known project/workset/workset-member box
-AND has no path of that name on disk. Refuse to path-ify it to a nonexistent cwd-relative path —
-doing so would resolve to an UNREGISTERED box with an empty name, minting a phantom
-`kanibako-<hash>` container that no `list`/`ps` row corresponds to. Surface an honest error on the
-READ path (`initialize` is False for stop/box/diagnose/…). The CREATE path (`initialize=True`) still
-path-ifies so a new box can be materialized at the resolved location; and an existing-path or
-qualified (`ws/proj`) spec never reaches here (guarded by the `"/" not in raw and not exists`
-condition).
+**On an unknown name with no such path:** on the READ path (`initialize` False) refuse rather than
+path-ify — a nonexistent cwd-relative path resolves to an UNREGISTERED box with an empty name,
+minting a phantom `kanibako-<hash>` container that no `list`/`ps` row corresponds to. The CREATE path
+(`initialize=True`) still path-ifies so a new box can be materialized at the resolved location.
 
-**On a hit:** `raw` is updated for BOTH kinds. A bare workset name resolves to the workset ROOT,
-which `detect_project_mode` must see — without this, the name path-ifies to `cwd/<name>` and
-resolution fails with a misleading "does not exist". A workset is not a single box, so it is still
-rejected below — but with a clear, actionable message rather than the generic "inside a workset, cd
-to a project" error: `box`/diagnose operate on a single project box, and a workset may contain zero
-or many; there is no unambiguous representative.
+**On a bare workset name:** a workset is not a single box, so it is rejected with an actionable
+message rather than the generic "inside a workset, cd to a project" error.
 
-**Qualified `workset/project` addressing:** a token containing a separator that is NOT an existing
-path may be a qualified name (the form the bare-workset rejection suggests). It is resolved to the
-project's workspace so `detect_project_mode` sees a single project box. A real relative path like
-`src/foo` that happens not to exist is left untouched — it falls through to the path-ify behavior
-and fails exactly as before.
+```python
+def designation_route(value: str | None, *, name_first: bool = False) -> DesignationRoute
+def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_is_path: bool,
+                        name_first: bool = False) -> str
+```
+The one place that decides how a box designation (system-design § Detection & import, "Box
+designation & workset path space") is resolved, and the one front door every path resolver
+(`resolve_project`, `resolve_any_project`, `resolve_box_target`, `resolve_lifecycle_target`) and the
+`start` no-box message share. The kind comes from `box_identity.classify_designation`: an
+IDENTIFIER (a valid box name) is ambiguous between a name and a relative path; anything else that
+can be a path is a PATH and is never looked up as a name, so `.hidden` or `foo.` resolve as paths. An
+IDENTIFIER takes the NAME route when *name_first* or when no such path exists. A PATH of the form
+`<workset>/<box>`, both segments IDENTIFIERs, that does not exist takes the QUALIFIED route; a
+qualified miss falls through to the path unchanged. `box rm` and `box register` consult the
+registry's name sections only on the NAME route (`name_first=True`). An INVALID designation (one containing NUL) raises `ProjectError`.
 
 ```python
 def resolve_box_target(
@@ -1441,27 +1442,26 @@ The single path-or-name resolver behind the `--box` selector and the
 `start`/`shell`/`refresh`/`workset disconnect` targeting (§Design 8). Returns the SAME `ProjectPaths`
 the positional-`project` path returns, so callers swap cleanly.
 
-*value* is EITHER a box NAME or a filesystem path. **Box NAME takes precedence in ambiguous cases** —
-names cannot contain `/` so true ambiguity is rare (a bare token that is both a registered name and
-a relative directory in cwd resolves to the NAME). Resolution order:
+*value* is EITHER a box NAME or a filesystem path. **Box NAME takes precedence in ambiguous cases**
+(`resolve_designation(..., name_first=True)`): an IDENTIFIER that is both a registered name and a
+relative directory in cwd resolves to the NAME. Resolution order:
 
-1. **NAME first.** A bare token (no path separator) is tried as a name:
+1. **NAME first.** An IDENTIFIER designation is tried as a name:
    * a **standalone box name** in `registry.standalone` (the canonical-id domain — closes the gap
      that `resolve_any_project` does NOT cover, since `resolve_name` only indexes the
      projects/worksets sections). Box names are lowercase (R2), so the query is case-folded for the
      lookup;
    * else the registry projects/worksets names + qualified `ws/project` names, which
      `resolve_any_project` already resolves.
-2. **PATH otherwise.** Anything that is not a name (contains `/`, or no name matched) is resolved as
-   a filesystem path via `resolve_any_project` — reusing the existing path-resolution + ancestor-walk
-   discovery (`detect_project_mode`). No detection is reimplemented here.
+2. **PATH otherwise.** A PATH designation, or an identifier no name matched, is resolved as a
+   filesystem path — reusing the existing path-resolution + ancestor-walk discovery
+   (`detect_project_mode`). No detection is reimplemented here.
 
-A pre-existing box whose name does not satisfy the §Design 8 blocklist still resolves (the matcher
-is structural, not policy-gated); FLAGGING that is the caller's job via
-`kanibako.launch.box_identity.is_valid_box_name` — this resolver does not reject on name shape.
+A pre-existing box whose name does not satisfy the §Design 8 blocklist is not addressable by that
+name — the name is a PATH designation — but resolves by its path and is FLAGGED
+(`_flag_nonconforming`); this resolver does not reject on name shape.
 
-`None` / empty *value* resolves the cwd box (delegates to `resolve_any_project`), matching the
-positional-`project` default.
+`None` / empty *value* resolves the cwd box, matching the positional-`project` default.
 
 *register* (B3) is forwarded to the PRIMARY/STANDALONE resolvers; `start` passes `register=False` so
 an auto-created box defers registration until after its home seed (journal entry → seed → register →

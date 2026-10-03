@@ -36,8 +36,8 @@ WARN_RUNDIR_UNUSABLE = ("%s not set & " + RUN_USER_UID_PATH + " unusable; fallin
 
 WARN_WS_NO_ROOT =       "Warning: workset '%s' root missing: %s" # workset name, root
 WARN_WS_BAD_LOAD =      "Warning: failed to load workset '%s': %s" # workset name, exception
-WARN_WS_BOX_BAD_NAME = ("box name '%s' does not meet the naming rules (%s); it still resolves, " +
-                        "but rename it when convenient.")           # box name, box_name_reason()
+WARN_WS_BOX_BAD_NAME = ("box name '%s' does not meet the naming rules (%s); it resolves by its " +
+                        "path only, not by that name. Rename it.")           # box name, box_name_reason()
 
 # ⚑ KUID FIRST, box name second — the reverse of every other advisory here.
 WARN_BOX_BAD_KUID =    ("Warning: invalid KUID '%s' for standalone box '%s' (invalid kuid); it " +
@@ -97,6 +97,7 @@ ERR_CONFIG_NULL_PATH_SET_HEAD = (
                         "the launch refuses a null at these path keys, so this set is refused too:\n  %s\n")
 ERR_CONFIG_NULL_PATH = ERR_CONFIG_NULL_PATH_HEAD + ERR_CONFIG_NULL_PATH_CURE
 ERR_PROJECT_NO_PATH =   "Project path '%s' does not exist." # the path that does not exist
+ERR_PROJECT_BAD_DESIGNATION = "Invalid box designation %r: it is neither a box name nor a path."
 # ⚑ The two $HOME-guard messages take NO arguments (raised bare).
 ERR_PROJECT_NEW_HOME = ("Refusing to create project rooted at $HOME: this would mount the " +
                         "entire home directory as the workspace.\n If you really want a " +
@@ -111,7 +112,7 @@ ERR_PROJECT_DIR_IS_WS = ("Name '%s' is already in use by a workset. Box and work
 
 ERR_WORKSET_NO_PROJECT = "Project '%s' not found in workset '%s'" # project name, workset name
 ERR_WORKSET_NO_WORKSET = "No workset found for path: %s" # project dir
-ERR_WORKSET_WS_NOT_BOX = ("%s is a workset, not a single project box. Name a project inside it " +
+ERR_WORKSET_WS_NOT_BOX = ("'%s' is a workset, not a single project box. Name a project inside it " +
                           "(e.g. '%s/<project>') or run the command from a project workspace " +
                           "under that workset.") # ⚑ the name TWICE — two args, one value
 ERR_WORKSET_NOT_IN_BOX = ("Inside workset '%s' but not in a specific project workspace. Change " +
