@@ -1516,12 +1516,15 @@ class TestRefuseRetiredBehaviorKeys:
     def test_the_cure_is_level_appropriate(self, tmp_path) -> None:
         """``access`` is an AGENT-scope key, so where it may be WRITTEN depends
         on the file it was found in (the same asymmetry the selection refusal
-        handles): system writes it directly, box/workset must use the §2h
-        request (a bare agent key there is an UPWARD write and is dropped).
+        handles): the system level writes ``agent.<node>.access`` directly,
+        box/workset must use the §2h request (a bare agent key there is an
+        UPWARD write and is dropped).
 
-        ⚑ *subject* names the AGENT; the verb's own SUBJECT POSITIONAL is a
-        separate argument (*box_name*, not passed here), so the pref-legal cures
-        carry the ``<box>`` / ``<workset>`` placeholder rather than dropping it.
+        ⚑ EVERY level's cure names the NODE THE ENTRY IS STORED UNDER — here
+        ``default``, which is not *subject*'s ``claude``; the verb's own SUBJECT
+        POSITIONAL is a separate argument (*box_name*, not passed here), so the
+        pref-legal cures carry the ``<box>`` / ``<workset>`` placeholder rather
+        than dropping it.
         """
         cures = {}
         for level in ("base", "system", "workset", "box"):
@@ -1531,13 +1534,13 @@ class TestRefuseRetiredBehaviorKeys:
                     level=level, path=tmp_path / "s.yaml", subject="claude",
                 )
             cures[level] = str(exc.value)
-        assert "kanibako system set access=full" in cures["base"]
-        assert "kanibako system set access=full" in cures["system"]
+        assert "kanibako system set agent.default.access=full" in cures["base"]
+        assert "kanibako system set agent.default.access=full" in cures["system"]
         assert (
-            "kanibako workset set <workset> pref.agent.claude.access=full"
+            "kanibako workset set <workset> pref.agent.default.access=full"
             in cures["workset"]
         )
-        assert "kanibako box set <box> pref.agent.claude.access=full" in cures["box"]
+        assert "kanibako box set <box> pref.agent.default.access=full" in cures["box"]
 
     def test_the_workset_cure_names_the_workset_verb_AND_a_subject(
         self, tmp_path,
@@ -1558,7 +1561,7 @@ class TestRefuseRetiredBehaviorKeys:
         assert cure.startswith("kanibako workset set <workset> ")
         # The subject sits BETWEEN the verb and the key — never the key alone.
         assert "kanibako workset set pref." not in cure
-        assert cure.endswith("pref.agent.claude.access=full")
+        assert cure.endswith("pref.agent.default.access=full")
 
     def test_the_box_cure_names_the_box_WHEN_THE_CALLER_KNOWS_IT(
         self, tmp_path,
