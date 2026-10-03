@@ -1158,16 +1158,17 @@ class TestProbeEvidence:
         silent = PersonaProbeOutcome.rejected(ProbeEvidence(endpoint=endpoint))
         assert silent.refusal_phrase(endpoint) == f"({endpoint}) refused the probe"
 
-    def test_an_at_sign_outside_the_authority_is_not_userinfo(self):
-        """Boundary pin: only the netloc userinfo is a credential by
-        construction — an ``@`` in the query prints unchanged, as does a string
-        with no ``@`` at all; a malformed string that does carry userinfo is
-        scrubbed (``test_persona_endpoint_scrub.py``).
+    def test_an_at_sign_after_the_scheme_is_A_userinfo_end(self):
+        """Boundary pin, stated contract: after ``scheme://`` an ``@`` ends the
+        userinfo WHEREVER it sits — query included — so a legitimate
+        ``ops@example.com`` notify address is over-redacted, and that cost is
+        accepted.  A string with no ``@`` at all is untouched; a malformed one is
+        pinned in ``test_persona_endpoint_scrub.py``.
         """
         from kanibako.targets.base import _scrub_endpoint_userinfo
 
         echoed = "https://gw.example.com/v1?notify=ops@example.com"
-        assert _scrub_endpoint_userinfo(echoed) == echoed
+        assert _scrub_endpoint_userinfo(echoed) == "https://<redacted>@example.com"
         assert _scrub_endpoint_userinfo("not a url at all") == "not a url at all"
 
     @pytest.mark.parametrize("target_cls", [ClaudeTarget, CodexTarget])
@@ -1209,6 +1210,166 @@ def slashed_token_file(tmp_path):
     tok = tmp_path / "slashed-token"
     tok.write_text("sk-abc/def+ghi=\n")
     return tok
+
+
+class TestTheEndpointUserinfoScrub:
+    """🛑 MANDATORY, through every printer.  A userinfo span ends at the LAST
+    ``@`` in the endpoint, and the only thing that varies is where it STARTS:
+    past the scheme and its ``/`` run after a ``://`` a scheme ends, and at index
+    0 with no authority to measure.  The span is dropped whole.
+
+    Pinned here, in PRINTED text: over-redaction is the accepted cost of never
+    printing a credential, and the endpoint CHECK runs on the raw string, so it
+    cannot refuse a box that works.
+    """
+
+    # Each specimen hides its credential behind one character a credential may
+    # itself carry: a path ``/``, a fragment ``#``, a query ``?``.
+    _LEAKS = [
+        ("https://ab/cd@host/v1", "https://<redacted>@host/v1"),
+        ("https://user:p#ss@host/v1", "https://<redacted>@host/v1"),
+        ("https://user:p?ss@host/v1", "https://<redacted>@host/v1"),
+    ]
+
+    # A ``://`` inside a query or a fragment is not an authority marker: no scheme
+    # ends it, so a credential sitting in front of it is the malformed shape.
+    _UNMARKED = [
+        ("FAKEUSR:FAKEPW@host/v1?next=https://x.example",
+         "<redacted>@host/v1?next=https://x.example", "FAKEUSR:FAKEPW", "has no recognized scheme"),
+        ("https:FAKETOK@host/v1?r=https://x.example",
+         "<redacted>@host/v1?r=https://x.example", "FAKETOK", "names no host after the scheme"),
+        ("FAKETOK@myhost:8080/v1#https://x.example",
+         "<redacted>@myhost:8080/v1#https://x.example", "FAKETOK", "has no recognized scheme"),
+    ]
+
+    @pytest.mark.parametrize(
+        "endpoint, shown, credential, cause", _UNMARKED,
+        ids=["later-scheme-in-query", "later-scheme-in-query-https", "later-scheme-in-fragment"],
+    )
+    def test_a_later_scheme_does_not_PASS_a_credential_off(
+        self, endpoint, shown, credential, cause,
+    ):
+        """A ``://`` a scheme does not end is not a marker, so the span is measured
+        from the MALFORMED arm and the credential before it goes.
+
+        Both carriers, and the third: ``validate_endpoint`` names the endpoint in
+        the refusal that rejected it, so a scrub that stops here prints the
+        credential to the user who typed it.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.persona_store import validate_endpoint
+        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+        with pytest.raises(ConfigError) as info:
+            validate_endpoint(endpoint)
+        message = str(info.value)
+        assert cause in message
+        assert credential not in message
+        assert f"'{shown}'" in message
+        block = ProbeEvidence(endpoint=endpoint, model="sonnet", status=403).block()
+        assert f"endpoint  {shown}" in block
+        assert endpoint not in block
+        phrase = PersonaProbeOutcome.rejected(
+            ProbeEvidence(endpoint=endpoint),
+        ).refusal_phrase(endpoint)
+        assert phrase == f"({shown}) refused the probe"
+
+    @pytest.mark.parametrize("endpoint, shown", _LEAKS, ids=["slash", "hash", "question"])
+    def test_a_credential_behind_a_delimiter_is_not_printed(self, endpoint, shown):
+        """BOTH carriers of the printed endpoint: the evidence block's endpoint
+        line, and the refusal sentence a status-less REJECTED falls back to.
+        """
+        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+        block = ProbeEvidence(
+            endpoint=endpoint, model="sonnet", status=403,
+        ).block()
+        assert f"endpoint  {shown}" in block
+        assert endpoint not in block
+        phrase = PersonaProbeOutcome.rejected(
+            ProbeEvidence(endpoint=endpoint),
+        ).refusal_phrase(endpoint)
+        assert phrase == f"({shown}) refused the probe"
+
+    def test_a_path_at_sign_is_over_redacted(self):
+        """Stated contract: a legitimate ``@`` in the path is not told apart
+        from a credential, so the span runs to it and the first segment goes with
+        it.  Legibility lost in printed text; nothing refused, nothing leaked.
+        """
+        from kanibako.targets.base import _scrub_endpoint_userinfo
+
+        assert (
+            _scrub_endpoint_userinfo("https://gw/team@corp/v1")
+            == "https://<redacted>@corp/v1"
+        )
+
+    def test_an_ordinary_userinfo_pair_still_redacts_whole(self):
+        """The ordinary shape is unaffected by the widening: both halves of
+        ``user:password@`` go, or redacting the username alone would leave the
+        password on the terminal.
+        """
+        from kanibako.targets.base import _scrub_endpoint_userinfo
+
+        assert (
+            _scrub_endpoint_userinfo("https://user:pw@host/v1")
+            == "https://<redacted>@host/v1"
+        )
+
+    def test_an_endpoint_with_no_at_sign_is_untouched(self):
+        """Legibility pin: nothing to hide, nothing dropped — path, query and
+        fragment all read as the user wrote them.
+        """
+        from kanibako.targets.base import _scrub_endpoint_userinfo
+
+        endpoint = "https://gw.example.com/v1/messages?retry=3#tail"
+        assert _scrub_endpoint_userinfo(endpoint) == endpoint
+
+    @pytest.mark.parametrize("endpoint, shown", [
+        ("FAKEUSR:FA/KEPW@host/v1", "<redacted>@host/v1"),
+        ("FAKEUSR:FAKEPW@host/KE/PW/v1", "<redacted>@host/KE/PW/v1"),
+    ], ids=["slash-in-the-credential", "slashes-after-the-at"])
+    def test_a_delimiter_inside_the_credential_does_not_end_the_span(self, endpoint, shown):
+        """The base64 shape, through ALL THREE printers: the ``/`` a token may
+        carry used to end the span, so the first half of the username printed
+        with the rest.  The span starts at index 0 here — no ``://`` a scheme
+        ends, so there is no authority to measure from.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.persona_store import validate_endpoint
+        from kanibako.targets.base import PersonaProbeOutcome, ProbeEvidence
+
+        with pytest.raises(ConfigError) as info:
+            validate_endpoint(endpoint)
+        message = str(info.value)
+        assert "has no recognized scheme" in message
+        assert "FAKEUSR" not in message
+        assert "FAKEPW" not in message
+        assert f"'{shown}'" in message
+        block = ProbeEvidence(endpoint=endpoint, model="sonnet", status=403).block()
+        assert f"endpoint  {shown}" in block
+        assert endpoint not in block
+        phrase = PersonaProbeOutcome.rejected(
+            ProbeEvidence(endpoint=endpoint),
+        ).refusal_phrase(endpoint)
+        assert phrase == f"({shown}) refused the probe"
+
+    @pytest.mark.parametrize("endpoint, shown", [
+        ("https://gw.example.com/v1", "https://gw.example.com/v1"),
+        ("http://gw.example.com:8080/v1/messages", "http://gw.example.com:8080/v1/messages"),
+        ("https://gw.example.com/v1?retry=3#tail", "https://gw.example.com/v1?retry=3#tail"),
+        ("https://gw.example.com/v1?notify=ops@example.com", "https://<redacted>@example.com"),
+    ], ids=["https", "port", "query-and-fragment", "over-redacted-in-display"])
+    def test_a_working_endpoint_is_still_ACCEPTED(self, endpoint, shown):
+        """🛑 The check runs on the RAW endpoint, so over-redaction can never cost
+        a launch: a live base URL passes this gate exactly as it did.  The last
+        row is the one that matters — the scrub over-redacts it for display and
+        the check accepts it anyway, which is what makes the cost acceptable.
+        """
+        from kanibako.persona_store import validate_endpoint
+        from kanibako.targets.base import _scrub_endpoint_userinfo
+
+        assert _scrub_endpoint_userinfo(endpoint) == shown
+        assert validate_endpoint(endpoint) is None
 
 
 class TestProviderTextScrub:
