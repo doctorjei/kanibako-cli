@@ -43,11 +43,17 @@ def _set_confirmation(display_key: str, value: object) -> str
 def _null_path_key_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
 def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> DestRoute
 def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
-def _clear_writable_tables(path: Path, command_scope: 'ConfigLevel | None') -> int
+def _clear_writable_tables(path: Path, command_scope: 'ConfigLevel | None') -> dict[str, int]
+def _stored_at(stored: object, segments: 'tuple[str, ...]') -> object
+def _reset_all_message(count: int, *, undeclared: int, unlisted: int) -> str
+def _entry_phrase(count: int, adjective: str) -> str
 def _noun_stored_view(path: 'Path | None', command_scope: ConfigLevel) -> dict
+def _quiet_drop_announcements(path: 'Path | None', command_scope: 'ConfigLevel | None') -> None
 def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]
 def _misplaced_config_entries(data: dict) -> dict[str, str]
 def _abstract_declarations(data: dict, scope: str) -> dict[str, str]
+def _keeps_settings_apart(command_scope: 'ConfigLevel | None') -> bool
+def _shown_entries(*, config_path: 'Path | None', settings_path: 'Path | None', command_scope: 'ConfigLevel | None', stored: 'dict | None'=None) -> _ShownEntries
 ```
 
 ## Classes
@@ -58,4 +64,10 @@ class ConfigAction(Enum):
     set = 'set'
     show = 'show'
     reset = 'reset'
+
+class _ShownEntries(NamedTuple):
+    overrides: 'list[tuple[str, object]]'
+    undeclared: 'dict[tuple[str, ...], tuple[str, str]]'
+    misplaced: 'dict[str, str]'
+    stored: dict
 ```
