@@ -504,19 +504,47 @@ class TestCanonDefaultCategories:
         assert len(cats["box.bindings.ro"]) == 4
         assert not any(k.startswith("agent.") for k in cats)
 
-    def test_the_same_three_chapters_are_the_skip_if_absent_DESTS(self):
-        """The EMITTER's view of the same rows (cutover step 3, producer §9.1).
+    def test_no_canon_row_carries_optional(self):
+        """⚑⚑ MISSING SOURCES IS A PROPERTY OF THE SOURCE FAMILY, not a per-row flag.
 
-        ⚑ Spelled as DESTS because that is what the collapsed bind map is keyed by;
-        a key-spelled set handed to ``_emit_category_mounts`` would match nothing
-        and every chapter-less workset would warn on every launch — the failure
-        ``critical_keys`` already paid for once.
+        Neither declaration that used to spell the policy is left: no ``canon:`` row
+        carries ``optional``, and no handbook entry in the manifest does either.  The
+        outcome is read off the ROWS by :func:`canon_silent_dests` and
+        :func:`rom_must_exist_dests`, so a row added tomorrow cannot opt out of it.
+
+        ⚑ The manifest's ``workset.seeded`` KEEPS ``skip_if_absent``: that is the
+        seed/copy LAYER's own skip, over a different source family, and retiring the
+        canon rows' flag does not reach it.
         """
-        assert core_defaults.canon_optional_bind_dests() == {
-            f"{GUEST_HOME}/canon/handbook/agent",
-            f"{GUEST_HOME}/canon/handbook/workset",
-            f"{GUEST_HOME}/canon/handbook/box",
+        from kanibako.settings.keyspace_manifest import manifest_doc
+
+        assert not [e for e in core_defaults._load_doc()["canon"] if "optional" in e]
+
+        entries = manifest_doc()["bind_default_entries"]["box.bindings.ro"]
+        handbook = {
+            dest: entry for dest, entry in entries.items()
+            if dest.startswith("~/canon/handbook/")
         }
+        assert set(handbook) == {"~/canon/handbook/SYS_CONTENTS.md"} | {
+            f"~/canon/handbook/{chapter}" for chapter in core_defaults.HANDBOOK_CHAPTERS
+        }, sorted(handbook)
+        assert not [d for d, e in handbook.items() if "optional" in e], sorted(handbook)
+
+        seeded = manifest_doc()["category_default_entries"]["workset.seeded"]
+        assert seeded["~/"]["optional"] == "skip_if_absent", seeded
+
+    def test_the_silent_set_is_every_handbook_dest_but_SYS_CONTENTS_plus_the_plugin_chapter(
+        self,
+    ):
+        """⚑ The silent set is DERIVED, so ``general`` is in it — a flag could never
+        put the global handbook there, which is what it takes to keep the per-launch
+        warning off every box that ships no chapter."""
+        from kanibako.settings.settings_resolve import normalize_bind_dest
+
+        assert core_defaults.canon_silent_dests() == {
+            normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{chapter}")
+            for chapter in core_defaults.HANDBOOK_CHAPTERS
+        } | {normalize_bind_dest(f"{GUEST_HOME}/canon/charter/agent")}
 
     def test_the_canon_binds_are_not_config_set_repointable(self, tmp_path):
         """Decision 3: the user's repoint route is the ``<scope>.canon`` KEY, never

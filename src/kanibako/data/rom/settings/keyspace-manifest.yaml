@@ -2395,23 +2395,24 @@ bind_default_entries:
     "~/canon/handbook/SYS_CONTENTS.md":
       user_key: true
       default: "(@system.canon/handbook/SYS_CONTENTS.md)"
-      note: "FILE bind; system store — user-editable on the HOST, ro in-box. NOT
-             skip-if-absent: install/setup materializes the system store, so a
-             missing source is a genuine defect. The blessed repoint ROUTE is the
-             SOURCE key system.canon (the bind spells itself against it)."
+      note: "FILE bind; system store — user-editable on the HOST, ro in-box. The ONE
+             handbook entry that is WARNED and omitted when its source is absent
+             (MISSING SOURCES): it is the handbook's table of contents, so a box that
+             loses it must hear about the one file naming every chapter it has. The
+             blessed repoint ROUTE is the SOURCE key system.canon (the bind spells
+             itself against it)."
       spec: "§2c (CANON books; R-10)"
     "~/canon/handbook/general":
       user_key: true
       default: "(@system.canon/handbook/general)"
       note: "dir ro; system store — the global handbook IS the general chapter (the
-             system store ships NO agent/workset/box chapter stubs). NOT
-             skip-if-absent (same rule as canon_hb_contents)."
-      see: "the note's `canon_hb_contents` is the retired NAME of this arm's
-            ~/canon/handbook/SYS_CONTENTS.md entry"
+             system store ships NO agent/workset/box chapter stubs). OMITTED SILENTLY
+             when the source is absent (MISSING SOURCES): the chapter is CONTENT, and
+             the silent drop is the default for every handbook chapter but
+             SYS_CONTENTS.md."
       spec: "§2c (CANON books; R-10)"
     "~/canon/handbook/agent":
       user_key: true
-      optional: skip_if_absent
       default: "(@agent.<active>.canon/handbook)"
       note: "source per the §2d fallback (agent.<agent>.canon -> agent.default.canon;
              exactly ONE is bound — override, not additive); dest carries NO agent
@@ -2426,13 +2427,11 @@ bind_default_entries:
       spec: "§2c (CANON books; R-10) / §2d (R-9 + R-13)"
     "~/canon/handbook/workset":
       user_key: true
-      optional: skip_if_absent
       default: "(@workset.canon/handbook)"
       note: "repoint route = workset.canon (R-9)"
       spec: "§2c (CANON books; R-10)"
     "~/canon/handbook/box":
       user_key: true
-      optional: skip_if_absent
       default: "(@box.canon/handbook)"
       note: "repoint route = box.canon (R-9); the SOURCE is filled at box create by
              the host-side box-handbook template copy (NOT a seed layer — those were

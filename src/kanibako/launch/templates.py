@@ -941,8 +941,8 @@ def install_box_handbook_template(
     this copy has no refusal to pre-flight.  Both contrasts are worked out in the
     llm-doc.
     """
-    # GUARANTEE-CREATE: unconditional, so the ``optional: true`` RO ``canon_hb_box``
-    # bind ALWAYS mounts — empty, if all three layers are.
+    # GUARANTEE-CREATE: unconditional, so the RO box-chapter bind ALWAYS mounts —
+    # empty, if all three layers are.
     dest.mkdir(parents=True, exist_ok=True)
     stage_layers(dest, [Path(root) / _SEED_SRC_HANDBOOK for root in layer_roots])
 

@@ -2187,7 +2187,6 @@ def _assemble_image_sharing_mounts(
         if resolved_store is not None:
             img_mounts = _emit_category_mounts(
                 _img_deliveries.narrow_bindings, label="images",
-                skip_if_absent=core_defaults.canon_optional_bind_dests(),
             )
             extra_mounts.extend(img_mounts)
             logger.info("Image sharing enabled: %d mounts added", len(img_mounts))
@@ -2405,7 +2404,6 @@ def _start_helper_hub(
     )
     helper_hub_mounts = _emit_category_mounts(
         _hub_deliveries.narrow_bindings, label="helper",
-        skip_if_absent=core_defaults.canon_optional_bind_dests(),
     )
     extra_mounts.extend(helper_hub_mounts)
     return hub
