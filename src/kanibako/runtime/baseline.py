@@ -49,7 +49,8 @@ def _read_doc(path: Path) -> dict[str, list[str]]:
         elif isinstance(exes, str):
             result[str(pkg)] = [exes]
         elif isinstance(exes, list) and not any(
-            isinstance(e, (list, dict)) for e in exes
+            isinstance(e, (list, dict)) or e is None or isinstance(e, bool)
+            for e in exes
         ):
             result[str(pkg)] = [str(e) for e in exes]
         else:

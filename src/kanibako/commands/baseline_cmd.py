@@ -10,6 +10,7 @@ names.
 from __future__ import annotations
 
 import argparse
+import shlex
 import subprocess
 import sys
 
@@ -127,7 +128,7 @@ def _make_probe(runtime, image: str):
         result = subprocess.run(
             [
                 runtime.cmd, "run", "--rm", image,
-                "sh", "-lc", f"command -v {exe}",
+                "sh", "-lc", f"command -v {shlex.quote(exe)}",
             ],
             capture_output=True,
             text=True,
