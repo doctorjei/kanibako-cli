@@ -1130,7 +1130,8 @@ def _equivalent(src_file: Path, target: Path) -> bool:
     case a report should surface.  ⚑ BOTH SIDES GO THROUGH ``parse_doc_text``, so a
     repeated key, a self-referential anchor, or unbounded nesting is a parse failure
     here too — a file that reads as a DIFFERENT ANSWER under last-wins is a difference,
-    and needs no new branch below to say so.
+    and needs no new branch below to say so.  ⚑ The YAML branch compares the two PARSED
+    documents with :func:`_same_doc`.
     """
     try:
         src_bytes = src_file.read_bytes()
@@ -1146,8 +1147,9 @@ def _equivalent(src_file: Path, target: Path) -> bool:
         from kanibako.settings.config_io import parse_doc_text
 
         try:
-            return parse_doc_text(src_bytes.decode()) == parse_doc_text(
-                target_bytes.decode()
+            return _same_doc(
+                parse_doc_text(src_bytes.decode()),
+                parse_doc_text(target_bytes.decode()),
             )
         except (yaml.YAMLError, UnicodeDecodeError):
             return False
@@ -1159,6 +1161,55 @@ def _equivalent(src_file: Path, target: Path) -> bool:
         except UnicodeDecodeError:
             return False
     return False
+
+
+def _same_doc(a: object, b: object) -> bool:
+    """True when two PARSED documents are equal, at a cost that follows CONTAINERS.
+
+    ⚑⚑ NOT PATHS.  A document fanned out over shared aliases reaches one table by
+    ``fanout ** levels`` PATHS, and two SEPARATE parses hand this function DISJOINT
+    objects — sharing inside one parse is an identity no comparison sees ACROSS the two
+    sides — so a walk that visits every path is exponential in a number the document's
+    own author picks.  ``proved`` holds the ``(id(x), id(y))`` container pairs ALREADY
+    SHOWN EQUAL, so each is walked once, the work is bounded by the distinct container
+    pairs reached, and the first difference returns at once.
+
+    ⚑ THE ANSWER IS ``==``'S.  Two mappings compare on the same key set and an equal
+    value under each key, two sequences on the same length and equal elements, and
+    EVERY other pair as ``==`` applies it: under a container ``x is y or x == y``, so a
+    shared ``.nan`` leaf is equal, while the TOP-LEVEL call is a plain ``x == y`` and a
+    document that IS a ``.nan`` is not one.  A DIFFERENT kind of container is a plain
+    difference, not a walk.
+
+    ⚑ AN ``id`` HERE IS THAT OBJECT'S FOR THE WHOLE CALL: both documents are this
+    call's arguments, so nothing is freed while ``proved`` is live.  ⚑ A pair JOINS it
+    only once it is equal, and a CYCLE cannot arrive — the loader refuses one at parse.
+    Recursion is bounded by ``MAX_DOC_DEPTH``.
+    """
+    proved: set[tuple[int, int]] = set()
+
+    def _walk(x: object, y: object, *, top: bool = False) -> bool:
+        if isinstance(x, dict) and isinstance(y, dict):
+            pair = (id(x), id(y))
+            if pair in proved:
+                return True
+            equal = x.keys() == y.keys() and all(
+                _walk(value, y[key]) for key, value in x.items()
+            )
+        elif isinstance(x, list) and isinstance(y, list):
+            pair = (id(x), id(y))
+            if pair in proved:
+                return True
+            equal = len(x) == len(y) and all(
+                _walk(value, other) for value, other in zip(x, y, strict=True)
+            )
+        else:
+            return x == y if top else x is y or x == y
+        if equal:
+            proved.add(pair)
+        return equal
+
+    return _walk(a, b, top=True)
 
 
 def plan_template_refresh(

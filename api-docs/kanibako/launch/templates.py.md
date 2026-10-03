@@ -59,6 +59,7 @@ def _is_shipped_content(entry: Path) -> bool
 def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]]
 def _normalize_markdown(text: str) -> str
 def _equivalent(src_file: Path, target: Path) -> bool
+def _same_doc(a: object, b: object) -> bool
 ```
 
 ## Classes
