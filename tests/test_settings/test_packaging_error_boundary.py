@@ -29,7 +29,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.errors import PackagingError
-from kanibako.settings import core_defaults
+from kanibako.settings import core_defaults, settings_keyspace
 
 
 def _proj_no_project_path(vault_root):
@@ -90,6 +90,13 @@ _MOVED_RAISES = [
         None,
         lambda: core_defaults.pseudo_tier_default("shell", "model"),
         "as <None>",
+    ),
+    (
+        "access_default_outside_the_tier_set",
+        {"agent_default": {"access": "fulll"}},
+        None,
+        lambda: settings_keyspace.access_default(),
+        "agent_default.access",
     ),
     (
         "env_section_is_not_a_mapping",
@@ -260,3 +267,46 @@ def test_a_packaging_defect_reaches_the_user_as_an_error_line_not_a_traceback(
     assert "Error: " in err, f"expected an Error: line, got stderr {err!r}"
     assert "agent_default.label" in err, err
     assert "Traceback" not in err, f"a traceback reached the user: {err!r}"
+
+
+def test_the_access_tier_defect_reaches_the_user_as_an_error_line_not_a_traceback(
+    monkeypatch, capsys,
+):
+    """The PERMISSION-AXIS packaging defect buys the same clean exit.  rc 1, one ``Error:``
+    line, NO traceback.
+
+    The reader under ``args.func`` is the REAL launch resolve, called with the argument an
+    UNSET ``access`` arrives as: ``start`` hands ``resolve_access_tier`` the cascade's
+    value, and ``None`` is the only one that reads the packaged default.  The value set is
+    CLOSED (spec §2d), so a packaged default outside it is a broken install — and
+    ``cli.main`` catches :class:`~kanibako.errors.KanibakoError` and only that.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from kanibako.cli import main
+    from kanibako.targets import assembly
+
+    # THE PACKAGING DEFECT: the shipped floor declares a tier outside the closed set.
+    monkeypatch.setattr(
+        core_defaults, "_load_doc", lambda: {"agent_default": {"access": "fulll"}}
+    )
+
+    with (
+        patch("kanibako.cli.build_parser") as mock_bp,
+        patch("kanibako.cli._setup_nudge"),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        args = MagicMock()
+        args.command = "start"
+        # The adapter is the only seam: below it the production read runs for real.
+        args.func = lambda _ns: assembly.resolve_access_tier(None)
+        mock_bp.return_value.parse_args.return_value = args
+        main(["start"])
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "Error: " in err, f"expected an Error: line, got stderr {err!r}"
+    assert "agent_default.access" in err, err
+    assert "fulll" in err, err
+    assert "Traceback" not in err, f"a traceback reached the user: {err!r}"
+
