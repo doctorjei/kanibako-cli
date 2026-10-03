@@ -18,7 +18,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from kanibako.agent_ref import agent_segment_case
 from kanibako.settings.agent_config import (
@@ -55,7 +55,14 @@ from kanibako.settings.settings_categories import (
     DECLARATION_ROOT_REF,
 )
 from kanibako.settings.settings_drops import cascade_drop_set, upward_scope_drop_set
-from kanibako.settings.settings_keyspace import BIND_LEAF_CATEGORIES, TERMINAL_CATEGORY_TAILS
+from kanibako.settings.settings_keyspace import (
+    BIND_LEAF_CATEGORIES,
+    TERMINAL_CATEGORY_TAILS,
+    Judgment,
+    render_store_path,
+    undeclared_store_paths,
+)
+from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_prefs import PREF_LEGAL_LEVELS, PREF_ROOT, refuse_pref_table
 from kanibako.settings.settings_resolve import (
     SettingsError,
@@ -780,14 +787,23 @@ def _file_view(raw: Any, *, level: str, path: Path | None, fold: bool = True) ->
     return fold_agent_nodes(view, path=path) if fold else view
 
 
+#: The levels stage (h) audits (design 2B-ii).
+_H_AUDITED_LEVELS: tuple[str, ...] = ("box", "workset")
+
+
 class ReadPurpose(Enum):
     """WHY a settings file is read — each member fixes its stages and their order (design 2A).
 
     ``RESOLVE``: the launch snapshot. Refuses a ``config:`` table (raw doc, non-agent files),
     then a retired behavior spelling (the view). ``SELECT``: agent selection; refuses a
-    retired selection or mirror spelling (the view). ``NARROW``: assembly alone; the node fold
-    and the agent file's shape run in :func:`assemble_levels`. ``DISPLAY``: plain ``show``; the
-    view and its warnings, no refusal.
+    retired selection or mirror spelling (the view). ``NARROW``: assembly alone; the node
+    fold and the agent file's shape run in :func:`assemble_levels`. ``DISPLAY``: plain
+    ``show``; the view and its warnings, no refusal.
+    ⚑ No purpose runs stage (h) (:func:`refuse_undeclared_per_file`) inside the read. A
+    caller that runs it does so AFTER its own refusals, so a caller's tailored cure is the
+    one a user reads (the launch runs it after its §0 audit). A set, reset or repair door
+    does not run it; a bad entry outside the edited value's chain is keyspec §2a's
+    set-time rule (an error unless ``--force``), not stage (h)'s.
     """
 
     RESOLVE = ("resolve", ("box", "workset", "agent", "system", "base"))
@@ -875,6 +891,71 @@ def read_settings_files(
         SettingsFile(level=level, path=by_level[level], stored=stored[level], view=views[level])
         for level in levels
     )
+
+
+def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None:
+    """RAISE for the first (most-specific) file whose OWN view carries an undeclared entry.
+
+    Stage (h)'s carrier, of ALREADY-READ files so each caller can place it after its own
+    refusals (:class:`ReadPurpose`). ⚑ The walk is MOST-SPECIFIC FIRST
+    (:data:`_H_AUDITED_LEVELS`), NOT a read's order: ``NARROW`` reads base→box, so its
+    order would name the WORKSET file when both files carry one.
+    """
+    by_level = {f.level: f for f in files}
+    for level in _H_AUDITED_LEVELS:
+        f = by_level.get(level)
+        if f is not None:
+            refuse_undeclared_entries(f.view, level=level, path=f.path, stored=f.stored)
+
+
+def refuse_undeclared_entries(
+    view: Any, *, level: str, path: Path | None, stored: Any = None,
+) -> None:
+    """RAISE when *view* carries an undeclared entry, naming EVERY such key and *path*.
+
+    Stage (h) — the per-file §0 audit for the ``workset`` and ``box`` files. Each file's own
+    view is judged (after its upward-scope drops), so a lower file's undeclared key is
+    caught even when a higher file supplies that table; the refusal names the file.
+
+    ⚑ ORDER, load-bearing: :class:`ReadPurpose` says why a caller's cure answers first —
+    and :func:`retired_cure` runs before the generic message for the same reason.
+    ``DISPLAY`` never reaches it: ``show`` still LISTS undeclared (Q5).
+    """
+    if not isinstance(view, dict):
+        return
+    found = undeclared_store_paths(view, oracle=keyspace_verdict)
+    if not found:
+        return
+    # ⚑ retired_cure FIRST: a retired spelling is the more specific fault.
+    retired_cure((SettingsFile(level=level, path=path, stored=stored, view=view),))
+    named, entries, them = undeclared_listing(found)
+    where = path if path is not None else "<settings>"
+    raise SettingsError(
+        f"the {level} settings file {where} carries {entries} "
+        f"(spec §0 — the keyspace is CLOSED):\n"
+        f"{named}\n"
+        f"  Fix: remove {them} BY HAND from {where}; a per-key reset cannot remove "
+        f"what is not a key."
+    )
+
+
+def undeclared_listing(
+    findings: Sequence[tuple[tuple[str, ...], Judgment]],
+) -> tuple[str, str, str]:
+    """``(listing, count phrase, pronoun)`` for *findings* (``undeclared_store_paths``).
+
+    The one listing stage (h) and the launch's §0 refusal both print (P10).
+    """
+    named = "\n".join(
+        f"  - {render_store_path(segments, judgment.key_len)}: {judgment.note}"
+        for segments, judgment in findings
+    )
+    count = len(findings)
+    entries = (
+        "1 entry that is not a settings key" if count == 1
+        else f"{count} entries that are not settings keys"
+    )
+    return named, entries, "it" if count == 1 else "them"
 
 
 def retired_cure(files: Iterable[SettingsFile]) -> None:

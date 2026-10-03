@@ -272,6 +272,38 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "(not set)" not in captured.err
         assert "box.zippity" in captured.err
 
+    @pytest.mark.writes_undeclared(
+        "box.frob",
+        reason="the unrelated undeclared entry is the condition under test; agent "
+               "selection reads it into the store unrefused.",
+    )
+    def test_an_unrelated_undeclared_entry_does_not_cost_the_bare_key_its_agent(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A bare agent key still redirects to ``pref.agent.<active>.<key>`` when the box
+        file carries an undeclared entry elsewhere: agent selection does not run the
+        per-file undeclared audit, so the best-effort selection here keeps its agent.
+
+        MUTATION: run ``refuse_undeclared_per_file`` inside the ``SELECT`` read → the
+        selection falls back to no agent → "'model' is not a declared namespace" → RED.
+        """
+        from kanibako.commands.box._parser import run_get
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        project_dir, proj = self._box(config_file, tmp_home)
+        self._merge(proj, {"frob": 1})
+        path = proj.metadata_path / "box.yaml"
+        doc = load_doc(path)
+        doc.setdefault("pref", {}).update(
+            system={"agent": "claude"}, agent={"claude": {"model": "opus"}},
+        )
+        dump_doc(path, doc)
+
+        rc = run_get(argparse.Namespace(args=[project_dir, "model"]))
+        captured = capsys.readouterr()
+        assert rc == 0, captured.err
+        assert "pref.agent.claude.model=opus" in captured.out
+
     def test_a_DECLARED_but_unset_key_still_answers_not_set_at_rc_0(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):

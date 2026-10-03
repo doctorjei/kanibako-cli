@@ -1831,7 +1831,7 @@ _R147_UNDECLARED_REASON = (
 
 @pytest.mark.parametrize("stored,named", [
     pytest.param(
-        {"agent": {"claude": {"nav": {"template": "x"}}}}, "agent.claude.nav.template",
+        {"agent": {"claude": {"nav": {"template": "x"}}}}, "agent.claude.nav",
         marks=pytest.mark.writes_undeclared(
             "agent.claude.nav", "agent.claude.nav.template",
             reason=_R147_UNDECLARED_REASON,
@@ -1840,7 +1840,7 @@ _R147_UNDECLARED_REASON = (
     ),
     pytest.param(
         {"agent": {"claude": {"nav": {"secret_path": {"X": "t"}}}}},
-        "agent.claude.nav.secret_path.X",
+        "agent.claude.nav",
         marks=pytest.mark.writes_undeclared(
             "agent.claude.nav", "agent.claude.nav.secret_path",
             "agent.claude.nav.secret_path.X",
@@ -1855,7 +1855,11 @@ _R147_UNDECLARED_REASON = (
 def test_R147_an_undeclared_path_shape_gets_the_closed_keyspace_refusal(
     tmp_path, stored, named,
 ):
-    """An undeclared path-shaped entry is refused by §0 by name — never as a BARE RELATIVE."""
+    """An undeclared path-shaped entry is refused by §0 by name — never as a BARE RELATIVE.
+
+    When a parent and its child are both undeclared, only the parent is named (spec §0: an
+    undeclared key is an ERROR that NAMES the offending key; naming the parent names the fix).
+    """
     # Mutation: drop the oracle test from ``_path_key_leaves`` → red (the [R147]
     # refusal fires first and names a key that does not exist).
     from kanibako.settings.settings_resolve import SettingsError
@@ -5245,16 +5249,22 @@ def test_the_refusal_names_every_undeclared_entry_not_just_the_first(tmp_path):
 
     A refusal that named one entry per attempt would turn a single edit into N
     launches, each revealing one more line to delete.
+
+    When a parent and its child are both undeclared, only the parent is named —
+    removing the parent cures the child too (spec §0: an undeclared key is an ERROR that
+    NAMES the offending key; naming the parent names the fix).
     """
     with pytest.raises(_SettingsError) as e:
         _snapshot(_box_yaml(
             tmp_path, "box:\n  zippity: wibble\n  frob:\n    nard: 1\n",
         ))
     msg = str(e.value)
-    for path in ("box.zippity", "box.frob", "box.frob.nard"):
+    for path in ("box.zippity", "box.frob"):
         assert path in msg
+    # box.frob.nard is skipped because it is under the already-reported box.frob
+    assert "box.frob.nard" not in msg
     # The count is stated, so a truncated reading of the list is visible as one.
-    assert "3 entries that are not settings keys" in msg
+    assert "2 entries that are not settings keys" in msg
 
 
 @pytest.mark.parametrize("scope", ["system", "workset", "box"])
@@ -5262,7 +5272,10 @@ def test_the_refusal_names_every_undeclared_entry_not_just_the_first(tmp_path):
     ({"zzz": "foo"}, ("zzz",)),
     ({"template": "foo"}, ("template",)),
     ({"canon": "/foo"}, ("canon",)),
-    ({"zzz": {"a": 1}}, ("zzz", "zzz.a")),
+    # A parent-and-child pair: the parent is named, the child is skipped as under it
+    # (spec §0: an undeclared key is an ERROR that NAMES the offending key; naming the
+    # parent names the fix).
+    ({"zzz": {"a": 1}}, ("zzz",)),
     ({"box.env.X": "1"}, ("box.env.X",)),
     # Relies on settings_merge classifying a category by position; a last-segment
     # rule would drop these before §0 sees them.
@@ -6697,9 +6710,12 @@ class TestTheAgentFileGetsOneVerdict:
                "the §0 audit then refuses — naming the alias as no agent.",
     )
     def test_the_system_file_refuses_self_as_a_node(self, tmp_path):
+        # When a parent and its child are both undeclared, only the parent is named
+        # (spec §0: an undeclared key is an ERROR that NAMES the offending key; naming the
+        # parent names the fix).
         with pytest.raises(SettingsError) as exc:
             self._launch(tmp_path, {"self": {}}, system={"agent": {"self": {"model": "x"}}})
-        assert "agent.self.model: 'self' is not an agent" in str(exc.value)
+        assert "agent.self: 'self' is not an agent" in str(exc.value)
 
     def test_the_own_node_value_reaches_the_launch_once(self, tmp_path):
         # The record now holds ``agent: <own>:`` too, so it rides the state level beside the

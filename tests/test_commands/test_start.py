@@ -384,6 +384,50 @@ class TestBoxScalarsResolveAfterSelection:
         assert call.kwargs["inputs"].meta_identity.get("meta.agent.claude.name")
 
 
+class TestAnUndeclaredBoxKeyGetsTheLaunchsOwnRefusal:
+    """A merge-visible undeclared key reaches the launch's §0 audit, whose text is the one
+    the user reads: agent selection does not run the per-file audit ahead of it."""
+
+    @pytest.mark.writes_undeclared(
+        "box.frob",
+        reason="the undeclared box key is the entry under test; selection and the "
+               "launch merge read it into the store before the launch refuses it.",
+    )
+    def test_start_reports_the_launch_audit_not_the_per_file_audit(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """Driven through :func:`kanibako.cli.main` on a box ``create`` made.
+
+        MUTATION: run ``refuse_undeclared_per_file`` inside the ``SELECT`` read →
+        ``select_agent`` raises first with "the box settings file …" → RED.
+        """
+        from kanibako import cli
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import load_std_paths
+
+        box_dir = tmp_home / "frobbox"
+        box_dir.mkdir()
+        with pytest.raises(SystemExit) as created:
+            cli.main(["create", str(box_dir), "--agent", "claude"])
+        assert created.value.code == 0, capsys.readouterr().err
+        box_file = load_std_paths(load_config(config_file)).boxes / "frobbox" / "box.yaml"
+        doc = load_doc(box_file)
+        doc.setdefault("box", {})["frob"] = 1
+        dump_doc(box_file, doc)
+        capsys.readouterr()
+
+        with patch("kanibako.commands.start.ContainerRuntime.run") as run:
+            with pytest.raises(SystemExit) as started:
+                cli.main(["start", str(box_dir)])
+        err = capsys.readouterr().err
+        assert started.value.code == 1, err
+        assert "the settings resolved for this box carry 1 entry" in err
+        assert "box.frob" in err
+        assert "the box settings file" not in err
+        run.assert_not_called()
+
+
 class TestBootstrapNoneInRunContainer:
     """`none` opt-out at the _run_container consumer: the AGENT-scope ``bootstrap``
     value resolves to ``none`` (spec §2d) and forces a clean error under

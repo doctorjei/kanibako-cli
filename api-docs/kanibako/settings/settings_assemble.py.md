@@ -25,6 +25,7 @@ _BEHAVIOR_TABLE_SHAPES: 'tuple[tuple[tuple[str, ...], int], ...]' = ((('agent',)
 _DROP_WARNED: 'set[tuple[str, str]]' = set()
 _AGENT_NODE_TABLES: tuple[tuple[str, ...], ...] = (('agent',), (PREF_ROOT, 'agent'))
 _AGENT_FILE_LEVEL: str = 'agent'
+_H_AUDITED_LEVELS: tuple[str, ...] = ('box', 'workset')
 ```
 
 ## Functions
@@ -38,6 +39,9 @@ def reset_drop_warnings() -> None
 def announce_drop_once(path: Path | None, token: str) -> bool
 def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any
 def read_settings_files(files: Iterable[tuple[str, Path | None]], *, purpose: ReadPurpose, subject: str | None=None, box_name: str | None=None) -> tuple[SettingsFile, ...]
+def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None
+def refuse_undeclared_entries(view: Any, *, level: str, path: Path | None, stored: Any=None) -> None
+def undeclared_listing(findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> tuple[str, str, str]
 def retired_cure(files: Iterable[SettingsFile]) -> None
 def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None) -> KeyStore
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
