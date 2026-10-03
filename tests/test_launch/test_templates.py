@@ -1387,7 +1387,7 @@ class TestInstallBoxHandbookTemplate:
 
     def test_all_layers_absent_still_guarantee_creates_the_dest(self, tmp_path):
         """GUARANTEE-CREATE, and the consequence is intended: because the dir always
-        exists after create, the ``optional: true`` RO bind ``canon_hb_box`` ALWAYS
+        exists after create, the RO box-chapter bind ``canon_hb_box`` ALWAYS
         mounts — a user who has emptied all three template subtrees gets an EMPTY
         read-only mount where the bind used to be omitted.
         ``install_workset_template`` guarantee-creates its chapter the same way."""

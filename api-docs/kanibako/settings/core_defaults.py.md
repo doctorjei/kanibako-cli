@@ -62,7 +62,6 @@ def kickoff_default_categories(descriptor: 'PluginDescriptor | None'=None) -> Bi
 def assert_canon_bind_seed_disjoint(bind_dests: Iterable[str], seed_rels: Iterable[str]) -> None
 def rom_default_categories() -> BindArmTable
 def rom_agent_default_categories(target: 'Target') -> BindArmTable
-def canon_optional_bind_dests() -> frozenset[str]
 def rom_must_exist_dests() -> frozenset[str]
 def canon_silent_dests() -> frozenset[str]
 def canon_default_categories(std: StandardPaths, agent_name: str | None) -> dict[str, object]
@@ -83,7 +82,6 @@ def _kickoff_entry() -> dict[str, Any]
 def _canon_dest(rel: str) -> str
 def _rom_sibling_binds() -> list[tuple[str, str, bool]]
 def _rom_agent_chapter_dest() -> str
-def _canon_optional_rows() -> list[Any]
 def _skeleton_logger() -> 'logging.Logger'
 def _protect_canon_skeleton(dirs: list[Path], files: list[Path], log: 'logging.Logger', *, quiet: bool=False) -> None
 def _warn_unprotected(root: Path, log: 'logging.Logger', reason: str, agent_owned: bool, quiet: bool=False) -> None

@@ -288,12 +288,14 @@ kickoff:
 # `SYS_CONTENTS.md` (the D2 cut), so an absent scope chapter shows an EMPTY
 # root-owned mountpoint, not the system's copy.
 #
-# ⚑ `optional: true` = SKIP-IF-ABSENT (spec §2c): the bind is DROPPED SILENTLY when
-# its source dir does not exist.  A workset or box that has written no chapter is
-# the NORMAL case; without this, almost every box would print two ro-drop WARNINGS
-# on every launch, which is exactly the noise that teaches users to ignore warnings.
-# `canon_hb_contents` + `canon_hb_general` are NOT optional: the system store is
-# materialized by install/setup, so a missing one means something is genuinely wrong.
+# ⚑⚑ MISSING SOURCES: ONE OUTCOME PER SOURCE FAMILY (spec §2c), NO PER-ROW FLAG.
+# An ABSENT source has one of three outcomes: the
+# packaged CORE ROM REFUSES the launch; `SYS_CONTENTS.md` WARNS and is dropped; and
+# every other handbook chapter — `general` and the three per-scope chapters alike —
+# is OMITTED SILENTLY, because a workset or box that has written no chapter is the
+# NORMAL case and a warning there is the per-launch noise that teaches users to
+# ignore warnings.  `rom_must_exist_dests()` + `canon_silent_dests()` carry that
+# split, so a new `canon:` row cannot opt out of it.
 #
 # ⚑⚑ THE NAMING TRAP, stated here because this is where both spellings meet: a box
 # store holds TWO different `canon` dirs.  `<box_dir>/home/canon` is the ASSEMBLED
@@ -329,25 +331,22 @@ canon:
     meta_ref: "@system.canon/handbook/general"
     box_dest: "~/canon/handbook/general"
     options: "ro"
-  # The three per-scope chapters (skip-if-absent).  `<active>` is interpolated.
+  # The three per-scope chapters.  `<active>` is interpolated.
   - key: canon_hb_agent
     category: bindings.ro
     meta_ref: "@agent.<active>.canon/handbook"
     box_dest: "~/canon/handbook/agent"
     options: "ro"
-    optional: true
   - key: canon_hb_workset
     category: bindings.ro
     meta_ref: "@workset.canon/handbook"
     box_dest: "~/canon/handbook/workset"
     options: "ro"
-    optional: true
   - key: canon_hb_box
     category: bindings.ro
     meta_ref: "@box.canon/handbook"
     box_dest: "~/canon/handbook/box"
     options: "ro"
-    optional: true
 
 # Helper hub binds (Phase B).  The live helper unix SOCKET + the per-box helper
 # message LOG, routed through the category resolver instead of the hardwired

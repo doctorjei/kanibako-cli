@@ -1104,19 +1104,32 @@ class TestLaunchWiring:
     def test_an_absent_chapter_is_SKIPPED_SILENTLY_at_a_real_launch(
         self, std, config, project_dir, caplog,
     ):
-        """⚑⚑ SPEC §2c SKIP-IF-ABSENT, on the REAL launch seam.
+        """⚑⚑ THE SILENT SET AT THE REAL LAUNCH SEAM.
 
         A box with no workset/box/agent handbook chapter is almost every box, so a
         warning here is the noise that trains users to ignore warnings.
 
+        The loop is over every HANDBOOK chapter the silent set holds — all four,
+        ``general`` included — so the set cannot quietly shrink past a chapter.  The
+        plugin's chapter is out of scope here: this fixture ships no ``rom_root``, so
+        the arm is never emitted and there is nothing to drop;
+        ``test_a_plugin_chapter_source_vanished_before_emit_is_SILENT`` plants a real
+        one to cover it.
+
         RED if ``skip_if_absent`` stops reaching ``_emit_category_mounts``, or
         reaches it KEY-spelled: a key-spelled set matches no destination, the debug
-        omission disappears and all three chapters start warning on every launch —
+        omission disappears and the chapters start warning on every launch —
         the silent degradation ``critical_keys`` already paid for once.
         """
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        optional = core_defaults.canon_optional_bind_dests()
-        assert optional, "the declaration must mark SOME chapter skip-if-absent"
+        silent = core_defaults.canon_silent_dests()
+        chapters = {
+            d for d in silent if d.startswith(f"{GUEST_HOME}/canon/handbook/")
+        }
+        assert chapters == {
+            normalize_bind_dest(f"{GUEST_HOME}/canon/handbook/{c}")
+            for c in HANDBOOK_CHAPTERS
+        }, sorted(chapters)
 
         with caplog.at_level(logging.DEBUG, logger="kanibako.commands.start"):
             by_dest = self._launch_mounts(std, proj, _WiringTarget())
@@ -1125,7 +1138,7 @@ class TestLaunchWiring:
         warned = [
             r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
         ]
-        for dest in optional:
+        for dest in chapters:
             assert dest not in by_dest, "the fixture must have no chapter to bind"
             assert any(dest in m for m in omitted), (dest, omitted)
             assert not any(dest in m for m in warned), (dest, warned)

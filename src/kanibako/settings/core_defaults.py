@@ -696,22 +696,6 @@ def rom_agent_default_categories(
 CANON_ACTIVE_AGENT_TOKEN = "<active>"
 
 
-def _canon_optional_rows() -> list[Any]:
-    """The ``canon:`` rows carrying ``optional: true``."""
-    return [e for e in _load_doc().get("canon", []) if e.get("optional")]
-
-
-def canon_optional_bind_dests() -> frozenset[str]:
-    """The SKIP-IF-ABSENT canon binds as normalized box DESTS."""
-    from kanibako.settings.settings_resolve import normalize_bind_dest
-
-    # ⚑ Normalized with the SAME function that keys the arm: a set spelled any other way
-    # matches NOTHING and silently degrades every entry to the default policy.
-    return frozenset(
-        normalize_bind_dest(str(entry["box_dest"])) for entry in _canon_optional_rows()
-    )
-
-
 def rom_must_exist_dests() -> frozenset[str]:
     """The CORE packaged-canon binds whose source MUST exist at emit time, as DESTS.
 
@@ -1019,7 +1003,7 @@ def _table_bind_dests(table: str) -> frozenset[str]:
     """The normalized box DESTS one declarative bind *table* names.
 
     Read from the SAME rows that declare the binds and normalized with the SAME
-    function that keys the emitter's map — the :func:`canon_optional_bind_dests`
+    function that keys the emitter's map — the :func:`canon_silent_dests`
     pattern, for the same reason: a dest spelled twice is a dest that can drift.
     """
     from kanibako.settings.settings_resolve import normalize_bind_dest

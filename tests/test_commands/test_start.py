@@ -1951,7 +1951,7 @@ class TestTheMissingSourcePolicyIsWiredIntoTheLaunch:
     warning on every launch, which is almost every box.
 
     The emitter's own behavior is pinned in
-    ``test_seed_hostdest.py::TestOptionalBindEmission``; this pins that the LAUNCH
+    ``test_seed_hostdest.py::TestSkipIfAbsentEmission``; this pins that the LAUNCH
     hands it the policy, DEST-spelled.
     """
 
@@ -1959,8 +1959,8 @@ class TestTheMissingSourcePolicyIsWiredIntoTheLaunch:
         from kanibako.commands import start as start_mod
         from kanibako.settings import core_defaults
 
-        expected = core_defaults.canon_optional_bind_dests()
-        assert expected, "the declaration must mark SOME chapter skip-if-absent"
+        expected = core_defaults.canon_silent_dests()
+        assert expected, "the canon rows must yield SOME silent destination"
 
         with start_mocks(), patch.object(
             start_mod, "_emit_category_mounts",
