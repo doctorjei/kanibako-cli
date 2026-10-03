@@ -30,7 +30,7 @@ from pathlib import Path
 from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE
-from kanibako.errors import ProjectError
+from kanibako.errors import AmbiguousNameError, ProjectError
 from kanibako.log import get_logger
 
 logger = get_logger("names")
@@ -236,8 +236,8 @@ def resolve_name(
        addressable from OUTSIDE its workset)
 
     *kind* is ``"project"`` or ``"workset"``.
-    Raises ``ProjectError`` if no match is found, or if the name is a member of
-    more than one workset (ambiguous when resolved from outside any workset).
+    Raises ``ProjectError`` if no match is found, or ``AmbiguousNameError`` if
+    the name is a member of more than one workset.
     """
     names = _load(registry)
 
@@ -327,7 +327,7 @@ def resolve_name(
         distinct = list(dict.fromkeys(str(Path(p).resolve()) for p in member_paths))
         if len(distinct) == 1:
             return member_paths[0], "project"
-        raise ProjectError(
+        raise AmbiguousNameError(
             f"Ambiguous box name '{name}': it is a member of multiple worksets "
             f"({', '.join(distinct)}). Qualify it as '<workset>/{name}' or run "
             f"the command from inside the intended workset."

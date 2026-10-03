@@ -270,6 +270,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A box name that belongs to more than one workset is refused instead of silently resolving to
+  the wrong target.** `box info`, `stop`, the box lifecycle commands (`remap`, `convert`, `move`),
+  and the create path now refuse with `Ambiguous box name '<name>' … Qualify it as
+  '<workset>/<name>'`, naming every candidate. Previously a same-named folder in the current
+  directory silently took its place (`stop` exited 0 against the wrong target), or the name was
+  turned into a nonexistent `<cwd>/<name>` path. Unknown names still resolve as paths. `start` and
+  `code` still print their generic no-box message for an ambiguous name.
+
 - **`kanibako stop` stops a box whose `box.yaml` or global `settings.yaml` is not valid YAML or not
   a mapping, and prints the file's problem as a warning.** Before, it exited 1 and the box could
   only be stopped with `podman stop`. Neither file names the container — the name is the box's

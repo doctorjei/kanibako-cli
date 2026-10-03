@@ -19,6 +19,8 @@ class TemplateScopeError(ConfigError):
 
 class ProjectError(KanibakoError):
 
+class AmbiguousNameError(ProjectError):
+
 class ContainerError(KanibakoError):
 
 class PackagingError(KanibakoError):

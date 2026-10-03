@@ -12,10 +12,12 @@ from pathlib import Path
 import pytest
 
 from kanibako.project import registry_store
-from kanibako.errors import ProjectError
+from kanibako.errors import AmbiguousNameError, ProjectError
 from kanibako.settings.paths import (
     BoxMode,
     establish_standalone,
+    load_primary_boxes,
+    resolve_any_project,
     resolve_box_target,
     resolve_project,
 )
@@ -34,6 +36,23 @@ def _make_standalone(std, tmp_home, leaf: str = "sa", name: str = ""):
         std, root, enable_vault=True, name=name,
     )
     return box_name, root
+
+
+def _make_member(std, config, tmp_home, workset: str, member: str) -> Path:
+    """Create a NAMED workset with one materialized member box; return its workspace."""
+    from kanibako.settings.paths import WorksetSpec, resolve_workset_project
+    from kanibako.project.workset import add_project, create_workset
+
+    ws = create_workset(workset, tmp_home / "worksets" / workset, std)
+    source = tmp_home / f"{workset}-src"
+    source.mkdir()
+    add_project(ws, member, source)
+    # Materialize it, so the membership lands in the workset's per-workset
+    # ``boxes:`` registry -- exactly what a first ``start`` does.
+    resolve_workset_project(
+        WorksetSpec.from_workset(ws), member, std, config, initialize=True,
+    )
+    return Path(ws.workspaces_dir) / member
 
 
 # ---------------------------------------------------------------------------
@@ -317,3 +336,179 @@ class TestNonConformingNameFlagged:
         assert not any(
             "does not meet the naming rules" in r.message for r in caplog.records
         )
+
+
+# ---------------------------------------------------------------------------
+# An AMBIGUOUS name is still a NAME: a same-named cwd folder must not shadow it
+# ---------------------------------------------------------------------------
+
+class TestAmbiguousNameNotShadowedByFolder:
+    def test_ambiguous_member_name_with_same_named_folder_raises(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """A name that is a member of TWO worksets errors, even beside a folder.
+
+        The defect this pins: ``alpha`` is registered in ``cluster-a`` AND
+        ``cluster-b``, and cwd also holds a plain ``./alpha`` directory.
+        ``resolve_box_target`` consults the NAME route for any real name token
+        (that is what makes a name beat a same-named folder), so the ambiguity
+        error is raised -- and then ``except ProjectError: pass`` discarded it,
+        handing back ``./alpha``.  The CLI then reported the wrong box with rc=0.
+
+        The discriminator is NOT "is it a folder" -- an unregistered name that IS
+        a folder is still a path (asserted by
+        test_unregistered_bare_folder_name_still_resolves_as_a_path).  It is
+        "did the NAME route raise AMBIGUITY specifically".
+        """
+        first = _make_member(std, config, tmp_home, "cluster-a", "alpha")
+        second = _make_member(std, config, tmp_home, "cluster-b", "alpha")
+
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        folder = cwd / "alpha"
+        folder.mkdir()
+        monkeypatch.chdir(cwd)
+
+        with pytest.raises(AmbiguousNameError) as excinfo:
+            resolve_box_target(std, config, "alpha", initialize=False)
+        # Actionable: it names BOTH candidates and the <workset>/<name> cure.
+        message = str(excinfo.value)
+        assert "Ambiguous box name" in message
+        assert str(first) in message
+        assert str(second) in message
+        assert "<workset>/alpha" in message
+
+    def test_unambiguous_member_name_with_same_named_folder_still_wins(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """The control half of the pairing: ONE workset is not ambiguous.
+
+        Mutation proof for the test above: exempting ``ProjectError`` broadly, or
+        keying the exemption on "the token is a folder" instead of on the
+        ambiguity TYPE, makes either this resolve raise or the folder-shadowing
+        case return ``./alpha``.
+        """
+        workspace = _make_member(std, config, tmp_home, "solo", "gamma")
+
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        folder = cwd / "gamma"
+        folder.mkdir()
+        monkeypatch.chdir(cwd)
+
+        proj = resolve_box_target(std, config, "gamma", initialize=False)
+        assert proj.mode is BoxMode.named
+        assert proj.name == "gamma"
+        assert proj.project_path == workspace.resolve()
+
+    def test_ambiguous_member_name_raises_through_resolve_any_project(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """The SECOND front door, which has its own swallowing handler.
+
+        ``resolve_any_project`` swallows ``ProjectError`` to fall through to the
+        path route, so it discarded the ambiguity error too.  Its name lookup is
+        guarded by ``not Path(raw).exists()``, so the folder cannot shadow the
+        name HERE -- the reachable form of this bug is the token with no folder
+        at all, which must still be refused rather than path-ified.
+        """
+        _make_member(std, config, tmp_home, "cluster-a", "beta")
+        _make_member(std, config, tmp_home, "cluster-b", "beta")
+
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        with pytest.raises(AmbiguousNameError, match="Ambiguous box name"):
+            resolve_any_project(std, config, "beta", initialize=False)
+
+    def test_ambiguous_member_name_on_the_create_path_is_not_pathified(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """The CREATE path (``initialize=True``) must refuse an ambiguous name too.
+
+        ``resolve_any_project`` re-raises a swallowed ``ProjectError`` only
+        ``if not initialize``, so on the create path an unknown bare token is
+        deliberately path-ified into a new box.  That is right for an UNKNOWN
+        name, but for an AMBIGUOUS one it yielded the strictly worse
+        ``Project path '<cwd>/beta' does not exist`` -- which names a directory
+        the user never asked for and hides the two boxes they must choose
+        between.  Same handler narrowing as the read path, so it is pinned here.
+        """
+        _make_member(std, config, tmp_home, "cluster-a", "beta")
+        _make_member(std, config, tmp_home, "cluster-b", "beta")
+
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        with pytest.raises(AmbiguousNameError, match="Ambiguous box name"):
+            resolve_any_project(std, config, "beta", initialize=True)
+        # The create path must NOT have registered the box it used to path-ify.
+        # Asserted on the MEMBERSHIP, the store ``register_primary_box_name``
+        # writes to -- not on ``cwd / "beta"``, a directory this path never
+        # created, so that assertion could not have failed.
+        assert "beta" not in load_primary_boxes(std.primary_workset)
+
+    def test_ambiguous_member_name_raises_through_resolve_project(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """The THIRD front door: ``resolve_project``'s own swallowing handler.
+
+        The last of the three ``except ProjectError:`` handlers that discarded the
+        ambiguity error, and the one nothing covered.  Its lookup is guarded by
+        ``not Path(raw).exists()``, so the reachable form is the bare token with no
+        folder -- which must surface the actionable error rather than the strictly
+        worse ``Project path '<cwd>/delta' does not exist``.
+        """
+        first = _make_member(std, config, tmp_home, "cluster-a", "delta")
+        second = _make_member(std, config, tmp_home, "cluster-b", "delta")
+
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        with pytest.raises(AmbiguousNameError) as excinfo:
+            resolve_project(std, config, project_dir="delta")
+        # Actionable, exactly like the other two front doors.
+        message = str(excinfo.value)
+        assert "Ambiguous box name" in message
+        assert str(first) in message
+        assert str(second) in message
+        assert "<workset>/delta" in message
+
+    def test_unknown_name_through_resolve_project_still_pathifies(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """The control: an UNKNOWN token is still path-resolved, not refused.
+
+        The discriminator is the exception TYPE.  A token that matched nothing must
+        keep falling through to the path route and end in the path-naming
+        ``ProjectError`` -- never in ``AmbiguousNameError``.
+        """
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        with pytest.raises(ProjectError) as excinfo:
+            resolve_project(std, config, project_dir="nosuchbox")
+        assert not isinstance(excinfo.value, AmbiguousNameError)
+        assert "nosuchbox" in str(excinfo.value)
+
+    def test_unregistered_folder_name_still_resolves_through_resolve_any_project(
+        self, std, config, tmp_home, monkeypatch,
+    ):
+        """The other control: an UNKNOWN name that is a folder is still a path.
+
+        Proves the narrowing above did not widen into refusing every name miss --
+        the behavior ``resolve_any_project`` exists to provide for a bare token
+        that is simply a directory.
+        """
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        folder = cwd / "justafolder"
+        folder.mkdir()
+        monkeypatch.chdir(cwd)
+
+        proj = resolve_any_project(std, config, "justafolder", initialize=False)
+        assert proj.project_path == folder.resolve()
