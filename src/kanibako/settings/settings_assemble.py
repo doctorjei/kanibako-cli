@@ -413,23 +413,27 @@ def _behavior_leaf_sites(
 
 def _retired_behavior_cure(
     successor: str, *, level: str, tier: str, subject: str | None,
-    box_name: str | None = None,
+    box_name: str | None = None, node: str | None = None,
 ) -> str:
-    """The LEVEL-APPROPRIATE fix for a retired BEHAVIOR key (M-22); per-level reasons in llm-docs."""
-    agent = subject or "<agent>"
+    """The LEVEL-APPROPRIATE fix for a retired BEHAVIOR key (M-22); per-level reasons in llm-docs.
+
+    ⚑ THE CURE'S AGENT IS THE NODE THE ENTRY IS STORED UNDER (*node*, read from the
+    entry's own path), never the agent being RESOLVED (*subject*) — a file may store
+    another agent's. Only the agent file's root stores no node and falls back to
+    *subject*. ``access`` is an AGENT-scope key (spec §2d), so every level writes it
+    under that node.
+    """
+    agent = node or subject or "<agent>"
     if level == "agent":
         return f"kanibako agent set {agent} {successor}={tier}"
     if level in PREF_LEGAL_LEVELS:
-        # ⚑ TWO subjects, and they are not the same one. *subject* names the AGENT inside the pref
-        # key; the verb's own required positional is the BOX or WORKSET, which is *box_name* where
-        # the caller knows it and a PLACEHOLDER where it does not (:func:`_cure_subject`). Emitting
-        # the pref key straight after the verb makes the KEY read as the positional and the command
-        # fails, or lands on the wrong box.
+        # ⚑ *agent* is the AGENT inside the key; the verb's own required positional is
+        # the BOX or WORKSET — *box_name*, or a PLACEHOLDER (:func:`_cure_subject`).
         return (
             f"kanibako {level} set {_cure_subject(level, box_name)} "
             f"pref.agent.{agent}.{successor}={tier}"
         )
-    return f"kanibako system set {successor}={tier}"
+    return f"kanibako system set agent.{agent}.{successor}={tier}"
 
 
 def refuse_retired_behavior_keys(
@@ -439,12 +443,12 @@ def refuse_retired_behavior_keys(
     """RAISE when *raw* still carries a RETIRED behavior key (R-41 / RQ-2) —
     :data:`RETIRED_BEHAVIOR_KEYS`.
 
-    *subject* is the agent node the cure should name; ``None`` renders the shape ``<agent>``.
-    *box_name* is the DIFFERENT subject the ``box set`` verb needs as its positional, passed
-    straight through to :func:`_retired_behavior_cure` → :func:`_cure_subject` — meaningful only at
+    *subject* is the agent being RESOLVED; only the agent file's root stores no node, and
+    it is the one shape cured under *subject*. *box_name* is the DIFFERENT subject the
+    ``box set`` verb needs as its positional, passed straight through to
+    :func:`_retired_behavior_cure` → :func:`_cure_subject` — meaningful only at
     ``level="box"``, and deliberately omitted by the identity-free resolve seam
-    (``settings_launch._refuse_retired_spelling``), which has no name to give. Never a warning and
-    never a silent drop; called at the LAUNCH's behavior tier (see block comment).
+    (``settings_launch._refuse_retired_spelling``), which has no name to give.
     """
     from kanibako.settings.config import coerce_bool
 
@@ -453,6 +457,8 @@ def refuse_retired_behavior_keys(
     for leaf, successor in RETIRED_BEHAVIOR_KEYS.items():
         for parts, found in _behavior_leaf_sites(raw, leaf):
             spelling = ".".join(parts)
+            # ⚑ Every shape but the root ends ``(..., <node>, leaf)``; the root stores no node.
+            node = None if parts[: len(ROOT_SECTIONS)] == ROOT_SECTIONS else parts[-2]
             raw_value = _stored_spelling(found)
             mapped = _RETIRED_BEHAVIOR_VALUE_MAP.get(leaf, {})
             as_bool = coerce_bool(raw_value) if raw_value else None
@@ -473,6 +479,7 @@ def refuse_retired_behavior_keys(
                 )
             cure = _retired_behavior_cure(
                 successor, level=level, tier=tier, subject=subject, box_name=box_name,
+                node=node,
             )
             raise SettingsError(
                 f"'{leaf}' is RETIRED and is still set in the {level} settings "
