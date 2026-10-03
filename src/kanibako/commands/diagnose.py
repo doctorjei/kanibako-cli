@@ -782,10 +782,9 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
     :func:`probe_missing_executables` so a single ephemeral container checks all
     baseline executables per image.
 
-    *errors* is the CALLER's collector, not one of our own: the resolve here
-    and the "Configured image" resolve in :func:`run_rig_diagnose` fail
-    together, and sharing the collector is what makes one refusal print one
-    body naming both checks.  The caller emits it.
+    *errors* is the CALLER's collector, not one of our own, so a load here and
+    one in :func:`run_rig_diagnose` that hit the same file print one body
+    naming every check it broke.  The caller emits it.
     """
     from kanibako.runtime import baseline as baseline_mod
     from kanibako.settings.settings_launch import load_merged_config
@@ -795,7 +794,12 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
     skip = getattr(args, "skip", None)
     all_images = getattr(args, "all_images", False)
 
-    baseline = baseline_mod.load_baseline()
+    print("Baseline:")
+    try:
+        baseline = baseline_mod.load_baseline()
+    except KanibakoError as e:
+        _report_settings_error("  Baseline", e, errors)
+        return
     pkgs = sorted(baseline)
     if only:
         only_set = set(only)
@@ -806,7 +810,6 @@ def _diagnose_baseline(args: object, errors: _SettingsErrorLog) -> None:
     wanted_exes: list[str] = [exe for p in pkgs for exe in baseline[p]]
     exe_to_pkg = {exe: p for p in pkgs for exe in baseline[p]}
 
-    print("Baseline:")
     try:
         runtime = ContainerRuntime()
     except Exception:

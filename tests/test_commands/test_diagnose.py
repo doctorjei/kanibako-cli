@@ -840,7 +840,11 @@ class TestProbeMissingExecutables:
 
 
 class TestDiagnoseBaseline:
-    """_diagnose_baseline filtering (--only/--skip) and single-vs-all images."""
+    """_diagnose_baseline filtering (--only/--skip), image selection, and a bad overlay.
+
+    A malformed overlay is refused by ``load_doc`` / ``_read_doc``, so the check
+    line reports it and the caller emits the body -- it must not stop the run.
+    """
 
     def _patch_baseline(self):
         # Three packages with one executable each.
@@ -951,6 +955,74 @@ class TestDiagnoseBaseline:
         out = capsys.readouterr().out
         assert "[!!]" in out
         assert "ripgrep:rg" in out
+
+    def _break_baseline_overlay(self, tmp_home: Path, text: str) -> Path:
+        """Write *text* as the USER image-baseline overlay and return its path.
+
+        The real XDG path, not a patched one, so these fail if the load stops
+        reaching ``load_baseline`` at all.
+        """
+        overlay = tmp_home / "config" / "kanibako" / "image-baseline.yaml"
+        overlay.parent.mkdir(parents=True, exist_ok=True)
+        overlay.write_text(text)
+        return overlay
+
+    def _assert_overlay_is_reported(
+        self, out: str, overlay: Path, refusal: str
+    ) -> None:
+        """The Baseline line carries the label; the section carries the body."""
+        assert f"[!!]   Baseline: {_SETTINGS_ERROR_DETAIL}" in out
+        assert "Settings errors:" in out
+        assert "affects: Baseline" in out
+        assert str(overlay) in out
+        assert refusal in out
+        # The refusal ends the probe -- there is nothing to probe against.
+        assert "all baseline executables present" not in out
+
+    def test_list_overlay_is_reported_not_fatal(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """A top-level YAML list overlay names itself and leaves the rest of the run."""
+        from kanibako.errors import ContainerError
+
+        overlay = self._break_baseline_overlay(tmp_home, "- a\n- b\n")
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            rc = run_rig_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        self._assert_overlay_is_reported(
+            out, overlay, f"the config file {overlay} is a list, not a mapping of keys."
+        )
+        assert "Error:" not in out
+        # The other checks still print, and the header the probe section owns.
+        assert "Rig (Image) Diagnostics" in out
+        assert "Container runtime" in out
+        assert "Baseline:" in out
+
+    def test_repeated_key_overlay_is_reported_not_fatal(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ) -> None:
+        """A repeated key in the overlay names itself and leaves the rest of the run."""
+        from kanibako.errors import ContainerError
+
+        overlay = self._break_baseline_overlay(tmp_home, "git: [rg]\ngit: [rg2]\n")
+        with patch(
+            "kanibako.runtime.container.ContainerRuntime",
+            side_effect=ContainerError("none"),
+        ):
+            rc = run_rig_diagnose(argparse.Namespace())
+        assert rc == 0
+        out = capsys.readouterr().out
+        self._assert_overlay_is_reported(
+            out, overlay, f"the config file {overlay} sets 'git' twice"
+        )
+        assert "Error:" not in out
+        assert "Rig (Image) Diagnostics" in out
+        assert "Container runtime" in out
+        assert "Baseline:" in out
 
 
 class TestCheckVscode:
