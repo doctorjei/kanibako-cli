@@ -931,20 +931,20 @@ def _refuse_scope_value(tables: dict, token: str, *, path: Path | None) -> None:
     """RAISE on a VALUE where the file's *token* scope table goes; absent passes.
 
     A scope holds tables, never a value (spec §0, closed keyspace) — merged as one, it would
-    replace every other file's tables of that scope. A bare ``agent:`` (``None``) passes, as
-    it always has; a bare ``workset:`` / ``box:`` is the value ``null`` and refuses (Q85, N7).
+    replace every other file's tables of that scope. A bare ``agent:`` / ``workset:`` /
+    ``box:`` is the value ``null`` and refuses, as the system file's ``agent: null`` does.
     """
     if token not in tables:
         return
     value = tables[token]
-    if isinstance(value, dict) or (value is None and token == FILE_SCOPE):
+    if isinstance(value, dict):
         return
     where = path if path is not None else "the agent settings file"
     held = "agent node tables (`agent: {<agent>: {…}}`)" if token == FILE_SCOPE else (
         f"`{token}.*` settings (`{token}: {{<key>: …}}`)"
     )
     raise SettingsError(
-        f"`{token}: {value!r}` at the top level of {where} is not a settings key: "
+        f"`{token}: {render_stored_scalar(value)}` at the top level of {where} is not a settings key: "
         f"`{token}` is a scope, and it holds {held}, never a value (spec §0, closed "
         f"keyspace).\n"
         f"  Fix: delete the `{token}` entry from {where}, or give it a table."
@@ -964,7 +964,7 @@ def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) ->
     where = path if path is not None else "the agent settings file"
     if _ROOT in tables and not isinstance(own, dict):
         raise SettingsError(
-            f"`{_ROOT}` in {where} holds {own!r}, but `{_ROOT}:` IS "
+            f"`{_ROOT}` in {where} holds {render_stored_scalar(own)}, but `{_ROOT}:` IS "
             f"`agent.{node or '<agent>'}`, which names an agent's settings table, not a key "
             f"(spec §2d).\n"
             f"  Fix: delete the `{_ROOT}` entry from {where}, or give it a table of this "
@@ -985,7 +985,7 @@ def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) ->
                 f"would replace every setting under `{_ROOT}:`."
             )
         raise SettingsError(
-            f"`{FILE_SCOPE}.{seg}` in {where} holds {other!r}, but `{FILE_SCOPE}.{seg}` names "
+            f"`{FILE_SCOPE}.{seg}` in {where} holds {render_stored_scalar(other)}, but `{FILE_SCOPE}.{seg}` names "
             f"an agent's settings table, not a key (spec §2d).{twice}\n"
             f"  Fix: delete the `{FILE_SCOPE}.{seg}` entry from {where}, or give it a table "
             f"of that agent's settings."

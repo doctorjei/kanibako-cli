@@ -952,15 +952,15 @@ class TestLevelTable:
         assert level.table == {"caches": None, "masks": {}, "env": 5}
         assert level.state == {"model": "opus"}
 
-    @pytest.mark.parametrize("value", (None, 5, "x", ["a"]))
-    def test_a_value_at_the_root_refuses_like_the_agent_table(self, value, tmp_path):
+    @pytest.mark.parametrize(("value", "shown"), ((None, "null"), (5, "5"), ("x", "x"), (["a"], "['a']")))
+    def test_a_value_at_the_root_refuses_like_the_agent_table(self, value, shown, tmp_path):
         # ``self:`` IS ``agent.<node>``, so a VALUE there is the system file's
         # ``agent: {claude: null}`` and gets that verdict, naming the file — at every reader.
         path = tmp_path / "agent.yaml"
         with pytest.raises(SettingsError) as exc:
             level_table({"self": value}, sub_key="claude", node="claude", path=path)
         message = str(exc.value)
-        assert f"`self` in {path} holds {value!r}" in message
+        assert f"`self` in {path} holds {shown}," in message
         assert "`agent.claude`" in message
         assert "spec §2d" in message
 
@@ -973,9 +973,9 @@ class TestLevelTable:
         assert level.contained == {"box": {"env": {"A": "1"}}, "workset": {"env": {"B": "2"}}}
         assert level_table(raw, sub_key="default", node="claude").contained == {}
 
-    @pytest.mark.parametrize(("token", "value"), (("box", None), ("workset", 5)))
+    @pytest.mark.parametrize(("token", "value", "shown"), (("box", None, "null"), ("workset", 5, "5")))
     def test_a_value_at_a_contained_scope_refuses_naming_file_and_key(
-        self, token, value, tmp_path,
+        self, token, value, shown, tmp_path,
     ):
         # N7: ``box: null`` gets the verdict any settings file gives a scope table holding a
         # value — refused, naming the file and key — at every reader of the file.
@@ -983,7 +983,7 @@ class TestLevelTable:
         with pytest.raises(SettingsError) as exc:
             level_table({"self": {}, token: value}, sub_key="claude", node="claude", path=path)
         message = str(exc.value)
-        assert f"`{token}: {value!r}` at the top level of {path}" in message
+        assert f"`{token}: {shown}` at the top level of {path}" in message
         assert f"`{token}` is a scope" in message
 
     def test_default_level_is_structurally_empty(self):
@@ -1395,16 +1395,22 @@ class TestTheAgentTable:
         with pytest.raises(SettingsError, match=r"`agent: 5` at the top level of"):
             agent_record(tmp_path / "agent.yaml", node="claude", purpose=ReadPurpose.RESOLVE)
 
-    def test_a_bare_agent_key_is_no_table(self, tmp_path):
-        (tmp_path / "agent.yaml").write_text("self:\n  env:\n    A: '1'\nagent:\n")
+    def test_a_bare_agent_key_refuses_as_a_null_scope(self, tmp_path):
+        # One shape, one verdict: a bare ``agent:`` is ``null``, refused like a bare
+        # ``box:`` here and ``agent: null`` in the system file.
+        # (Mutation: exempt a ``None`` ``agent:`` again → both reads pass → RED.)
+        path = tmp_path / "agent.yaml"
+        path.write_text("self:\n  env:\n    A: '1'\nagent:\n")
         from tests.support.assembly import assemble_levels_at
 
-        levels = assemble_levels_at(
-            agent_name="claude", base_path=tmp_path / "absent-base.yaml",
-            agent_path=tmp_path / "agent.yaml",
-        )
-        assert levels[2] == {"agent": {"claude": {"env": {"A": "1"}}}}
-        assert levels[3] == {}
+        for read in (
+            lambda: assemble_levels_at(
+                agent_name="claude", base_path=tmp_path / "absent-base.yaml", agent_path=path,
+            ),
+            lambda: agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE),
+        ):
+            with pytest.raises(SettingsError, match=r"`agent: null` at the top level of"):
+                read()
 
     def test_the_verbs_judge_the_table_the_cascade_merges(self, tmp_path):
         # The reader's view is what the retirement checks and ``config show`` judge: it must
