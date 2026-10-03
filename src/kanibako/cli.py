@@ -348,15 +348,15 @@ def _ensure_initialized() -> None:
     # signal this function returns early on above (Jei, 2026-08-26).
     write_global_config(cf)
 
-    # ⚑ ONE handler for the WHOLE first run.  Everything from here through
-    # ``install_packaged_templates(...)`` at the bottom is a step that can fail AFTER
+    # ⚑ ONE handler for the WHOLE first run.  Every step in this block can fail AFTER
     # the config file exists: ``xdg``/``resolve_system_paths``, the three ``mkdir``
     # calls, ``discover_targets()``, ``save_agent_file``, ``load_std_paths()`` and
-    # ``install_packaged_templates``.  ANY exception (ConfigError, OSError, anything
-    # else) from ANY of them removes the config file, so the next run re-initializes
-    # from scratch instead of returning early at the "already initialized" check above
-    # and leaving a half-built data tree.  The early ``if cf.exists(): return`` is what
-    # guarantees this run created the file, so cleanup is always safe here.
+    # ``install_packaged_templates``.  ANY exception from ANY of them — ConfigError,
+    # OSError, or a Ctrl-C, which is not an ``Exception`` — removes the config file,
+    # so the next run re-initializes from scratch instead of returning early at the
+    # "already initialized" check above and leaving a half-built data tree.  The early
+    # ``if cf.exists(): return`` guarantees this run created the file, so cleanup is
+    # always safe here.
     try:
         # Create data directories.
         # ⚑ NO SET-VALUES, spelled as the empty mapping: the file was just written EMPTY two
@@ -433,7 +433,7 @@ def _ensure_initialized() -> None:
         # a Layer-1 read carries no settings for this call to have wanted.
         std_paths = load_std_paths()
         install_packaged_templates(std_paths, target_names)
-    except Exception:
+    except BaseException:
         cf.unlink(missing_ok=True)
         raise
 
@@ -604,6 +604,9 @@ def main(argv: list[str] | None = None) -> None:
         except (KanibakoError, OSError) as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
+        except KeyboardInterrupt:
+            print()
+            sys.exit(130)
 
         if args.command == "start":
             args.agent_args = post_dash or []
