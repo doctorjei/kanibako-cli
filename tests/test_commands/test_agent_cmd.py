@@ -1484,7 +1484,7 @@ class TestRunReauth:
             target.descriptor = None
             mock_target.return_value = target
 
-            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -1528,7 +1528,7 @@ class TestRunReauth:
             target.descriptor = None
             mock_target.return_value = target
 
-            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -1604,7 +1604,7 @@ class TestRunReauth:
             target.descriptor = desc
             mock_target.return_value = target
 
-            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -1657,7 +1657,7 @@ class TestRunReauth:
             target.descriptor = desc
             mock_target.return_value = target
 
-            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -1695,7 +1695,7 @@ class TestRunReauth:
             target.display_name = "Claude Code"
             mock_target.return_value = target
 
-            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
                 proj = MagicMock()
                 # Distinct auth with credentials present returns 0 before check_auth
                 creds_path = MagicMock()
@@ -1738,7 +1738,7 @@ class TestRunReauth:
             target.display_name = "Goose"
             mock_target.return_value = target
 
-            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
@@ -1780,7 +1780,7 @@ class TestRunReauth:
             target.display_name = "Claude Code"
             mock_target.return_value = target
 
-            with patch("kanibako.settings.paths.resolve_any_project") as mock_proj:
+            with patch("kanibako.settings.paths.resolve_box_target") as mock_proj:
                 proj = MagicMock()
                 mock_proj.return_value = proj
 
