@@ -978,6 +978,19 @@ def refuses_null_path_key(canonical: str) -> bool:
     )
 
 
+def refuses_box_store_value(canonical: str, value: object) -> bool:
+    """True iff the LAUNCH refuses *value* at the BOX STORE key (spec §0, §2c).
+
+    ⚑ THE LAUNCH'S OWN TEST, one statement: ``_assert_box_root_resolved`` continues past a
+    value only when it is a NON-EMPTY ``str`` not ending in ``/``, the box root being what
+    every rooted key dereferences. 🛑 So whitespace-only is NOT a refusal — verbatim, no
+    ``strip()`` widening.
+    """
+    if canonical != f"workset.{BOXES_PATH}":
+        return False
+    return not (isinstance(value, str) and value != "" and not value.endswith("/"))
+
+
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None:
     """Refuse a ``null`` at any of *path_keys* in *table*, naming *path* and the keys."""
     leaves = _flatten_leaves(table, prefix)

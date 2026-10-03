@@ -96,6 +96,25 @@ ERR_CONFIG_NULL_PATH_CURE = (
 ERR_CONFIG_NULL_PATH_SET_HEAD = (
                         "the launch refuses a null at these path keys, so this set is refused too:\n  %s\n")
 ERR_CONFIG_NULL_PATH = ERR_CONFIG_NULL_PATH_HEAD + ERR_CONFIG_NULL_PATH_CURE
+# ⚑ The BOX STORE at a value the LAUNCH cannot use (spec §0, §2c) — the same
+# "one reason, one home" split, and the same carrier: ``config.refuses_box_store_value`` is
+# the membership and ``config.null_path_keys_error`` builds the text, so the ``--null`` and
+# empty-value doors share ONE builder. The two REASONs are the launch's own clauses.
+ERR_BOX_STORE_TRAILING_REASON = (
+                        "its trailing separator means the final path segment resolved to "
+                        "nothing (an empty @meta.box.name leaves the box root pointing at the "
+                        "SHARED box store, so every box in the workset would resolve the same "
+                        "home)")
+ERR_BOX_STORE_EMPTY_REASON = (
+                        "the box root 'meta.box.path' derives from '@workset.boxes', so a "
+                        'settings file that sets workset.boxes to null / "" — or removes it '
+                        "— leaves every key rooted at the box root pointing somewhere at the "
+                        "filesystem root")
+#: The SET door's lead — the key, and no file, because a ``set`` that refused wrote none.
+ERR_BOX_STORE_SET_HEAD = (
+                        "the launch refuses this value at the box store key, so this set is "
+                        "refused too:\n  %s\n")
+                                                    # the offending key
 ERR_PROJECT_NO_PATH =   "Project path '%s' does not exist." # the path that does not exist
 ERR_PROJECT_BAD_DESIGNATION = "Invalid box designation %r: it is neither a box name nor a path."
 # ⚑ The two $HOME-guard messages take NO arguments (raised bare).
