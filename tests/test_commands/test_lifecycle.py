@@ -7,6 +7,7 @@ remap / move / convert commands (Phase 1 — no CLI wiring yet).
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -21,7 +22,7 @@ from kanibako.commands.box._lifecycle import (
 )
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import load_doc
-from kanibako.errors import ProjectError, WorksetError
+from kanibako.errors import AmbiguousNameError, ProjectError, WorksetError
 from kanibako.settings.paths import load_primary_boxes
 from kanibako.settings.paths import (
     BoxMode,
@@ -107,6 +108,26 @@ def _make_workset(env, ws_name="ws", root_name="ws_root"):
 
 def _conf_yes():
     return lambda: True
+
+
+def _make_materialized_member(env, ws_name, member_name):
+    """Create a NAMED workset with one MATERIALIZED member box; return its workspace.
+
+    Materializing (not just ``add_project``) is what puts the membership in the
+    workset's per-workset ``boxes:`` registry -- the store ``resolve_name`` step 4
+    reads, and the only place a cross-workset AMBIGUITY can come from.
+    """
+    from kanibako.settings.paths import WorksetSpec, resolve_workset_project
+
+    config, std, tmp_home = env
+    ws = create_workset(ws_name, tmp_home / "worksets" / ws_name, std)
+    source = tmp_home / f"{ws_name}-src"
+    source.mkdir()
+    add_project(ws, member_name, source)
+    resolve_workset_project(
+        WorksetSpec.from_workset(ws), member_name, std, config, initialize=True,
+    )
+    return Path(ws.workspaces_dir) / member_name
 
 
 def _duplicate_to_standalone(src, dst):
@@ -210,6 +231,50 @@ class TestResolveTarget:
         _make_workset(env, ws_name="qw2", root_name="qw2_root")
         with pytest.raises((ProjectError, WorksetError)):
             resolve_lifecycle_target("qw2/nope", std, config)
+
+    def test_ambiguous_member_name_is_refused(self, env, monkeypatch):
+        """A bare name that matches boxes in TWO worksets must be refused.
+
+        The bare-token front door here swallows ``ProjectError`` to reach the path
+        route, so it discarded the ambiguity error too: the token fell through and
+        ``detect_project_mode`` was handed ``<cwd>/<name>`` -- a path for a name only
+        the user can qualify.  Same defect class as the three handlers in
+        settings/paths.py, fixed by excluding the type rather than the message.
+        """
+        config, std, tmp_home = env
+        first = _make_materialized_member(env, "cluster-a", "dup")
+        second = _make_materialized_member(env, "cluster-b", "dup")
+
+        # cwd OUTSIDE both worksets: that is the only context where the name is
+        # ambiguous at all (inside one, step 1 resolves it).
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        with pytest.raises(AmbiguousNameError) as excinfo:
+            resolve_lifecycle_target("dup", std, config)
+        message = str(excinfo.value)
+        assert "Ambiguous box name" in message
+        assert str(first) in message
+        assert str(second) in message
+        assert "<workset>/dup" in message
+
+    def test_unambiguous_member_name_still_resolves(self, env, monkeypatch):
+        """The control: ONE workset is not ambiguous, so the name still resolves.
+
+        Mutation proof for the test above -- exempting ``ProjectError`` broadly, or
+        keying the exemption on anything but the ambiguity TYPE, breaks this.
+        """
+        config, std, tmp_home = env
+        workspace = _make_materialized_member(env, "solo", "solo-box")
+
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        state = resolve_lifecycle_target("solo-box", std, config)
+        assert state.owner == "workset:solo"
+        assert state.workspace_path == workspace.resolve()
 
     def test_slash_token_not_qualified_unchanged(self, env):
         """A slash token that isn't a qualified name behaves as before.

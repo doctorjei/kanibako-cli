@@ -35,7 +35,7 @@ from kanibako.settings.config import (
     write_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
-from kanibako.errors import ProjectError, WorksetError
+from kanibako.errors import AmbiguousNameError, ProjectError, WorksetError
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
@@ -254,6 +254,8 @@ def resolve_lifecycle_target(
                 # ⚑ BOTH kinds update `raw`: detect_project_mode must see the workset ROOT.
                 raw = resolved
                 named_workset = kind == "workset"
+        except AmbiguousNameError:
+            raise
         except ProjectError:
             pass
     if named_workset:

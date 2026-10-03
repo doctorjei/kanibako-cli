@@ -37,7 +37,8 @@ from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, Bootstra
                                       config_file_path, load_config, read_box_enable_vault, read_workset_kuid,
                                       read_workset_skip_kuid_check, write_box_enable_vault)
 
-from kanibako.errors import ConfigError, ProjectError, WorksetError
+from kanibako.errors import (AmbiguousNameError, ConfigError, ProjectError,
+                             WorksetError)
 from kanibako.settings.agent_config import (ambiguous_path_value_error,
                                             is_unambiguous_path_value)
 from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsError,
@@ -983,6 +984,8 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
                                           primary_workset=std.primary_workset)
             if kind == KIND_PROJECT:
                 raw = resolved
+        except AmbiguousNameError:
+            raise
         except ProjectError:
             pass
     project_path = Path(raw).resolve()
@@ -1869,6 +1872,8 @@ def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir
         try:
             resolved, kind = resolve_name(std.registry, raw, cwd=Path.cwd(),
                                           primary_workset=std.primary_workset)
+        except AmbiguousNameError:
+            raise
         except ProjectError:
             # An unknown bare token: on the READ path, refuse rather than path-ify it into
             # a phantom ``kanibako-<hash>`` box.  The CREATE path still path-ifies.
@@ -1951,6 +1956,8 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
         try:
             resolved, kind = resolve_name(std.registry, value, cwd=Path.cwd(),
                                           primary_workset=std.primary_workset)
+        except AmbiguousNameError:
+            raise
         except ProjectError:
             pass
         else:

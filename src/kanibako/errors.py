@@ -36,6 +36,10 @@ class ProjectError(KanibakoError):
     """Project cannot be resolved, or its name/location is refused."""
 
 
+class AmbiguousNameError(ProjectError):
+    """A bare box NAME matched several boxes — exclude when catching ProjectError."""
+
+
 class ContainerError(KanibakoError):
     """Container runtime or image operation failed."""
 
