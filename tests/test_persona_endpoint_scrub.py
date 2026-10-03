@@ -3,9 +3,9 @@
 ``persona_store.validate_endpoint`` raises three ``ConfigError``s, and each one
 names the endpoint.  A malformed endpoint is still the user's, credential and
 all, so every message renders it through the ONE userinfo scrub
-(``targets.base._scrub_endpoint_userinfo``) that the probe evidence uses: the
-credential goes, the scheme and host stay legible where the scrub can tell
-them apart from userinfo.
+(``targets.base._scrub_endpoint_userinfo``) that the probe evidence uses.  The
+credential goes for certain; a scheme or host comes along with it wherever the
+scrub cannot tell the two apart.
 
 The helper's malformed-input branch is pinned here too, because these errors
 are what feeds it malformed input.  Its well-formed behavior is pinned beside
@@ -143,18 +143,22 @@ class TestTheStoreRejectReason:
 
 
 class TestTheScrubOnMalformedInput:
-    """The one helper's fallback, for strings ``urlsplit`` raises on or finds no
-    authority in."""
+    """The ONE helper on an endpoint with no authority to measure — no ``://``
+    that a scheme ends.  Every printer above reaches it through the store; these
+    are the shapes that get there."""
 
     @pytest.mark.parametrize("endpoint, shown", [
         ("https://tok@[::1", "https://<redacted>@[::1"),
         ("tok@myhost:8080/v1", "<redacted>@myhost:8080/v1"),
         ("user:pw@host/v1", "<redacted>@host/v1"),
-        ("https:/tok@host/v1", "https:/<redacted>@host/v1"),
-        ("//tok@host/v1", "//<redacted>@host/v1"),
+        ("https:/tok@host/v1", "<redacted>@host/v1"),
+        ("//tok@host/v1", "<redacted>@host/v1"),
         ("https://a:b@c@host/v1", "https://<redacted>@host/v1"),
+        ("FAKEUSR:FA/KEPW@host/v1", "<redacted>@host/v1"),
+        ("FAKEUSR:FAKEPW@host/KE/PW/v1", "<redacted>@host/KE/PW/v1"),
     ], ids=["unsplittable", "scheme-less", "user-password-no-slashes",
-            "single-slash-typo", "network-path", "last-at-wins"])
+            "single-slash-typo", "network-path", "last-at-wins",
+            "slash-inside-the-credential", "slashes-after-the-at"])
     def test_the_userinfo_span_is_dropped(self, endpoint, shown):
         assert _scrub_endpoint_userinfo(endpoint) == shown
 
@@ -163,21 +167,29 @@ class TestTheScrubOnMalformedInput:
         from ``user:pw@host``, so both lose everything before the ``@``."""
         assert _scrub_endpoint_userinfo("https:tok@host") == "<redacted>@host"
 
-    def test_a_first_path_segment_goes_with_the_userinfo(self):
-        """Over-redaction, by design: with no authority, an ``@`` in the first
-        path segment reads as userinfo there."""
+    def test_what_precedes_the_at_sign_goes_with_no_authority_to_measure(self):
+        """Over-redaction, by design: with no authority to measure, the span
+        starts at index 0, so the host and the first path segment go too."""
         assert (
             _scrub_endpoint_userinfo("gw.example.com/team@corp/v1")
-            == "gw.example.com/<redacted>@corp/v1"
+            == "<redacted>@corp/v1"
         )
 
-    @pytest.mark.parametrize("endpoint", [
-        "gw.example.com/v1?notify=ops@example.com",
-        "host?x=/a@b",
-        "host#/a@b",
-        "a/b/c@d",
-        "myhost:8080/v1",
-    ], ids=["query-at", "query-at-after-slash", "fragment-at", "later-path-segment",
-            "no-at"])
-    def test_an_at_outside_the_would_be_authority_is_left_alone(self, endpoint):
-        assert _scrub_endpoint_userinfo(endpoint) == endpoint
+    @pytest.mark.parametrize("endpoint, shown", [
+        ("gw.example.com/v1?notify=ops@example.com", "<redacted>@example.com"),
+        ("host?x=/a@b", "<redacted>@b"),
+        ("host#/a@b", "<redacted>@b"),
+        ("a/b/c@d", "<redacted>@d"),
+    ], ids=["query-at", "query-at-after-slash", "fragment-at", "later-path-segment"])
+    def test_an_at_after_a_delimiter_is_over_redacted_with_no_authority(self, endpoint, shown):
+        """Stated contract, the other start: an ``@`` past a ``/``, ``?`` or ``#``
+        ends the userinfo even with no authority in front of it, so the whole
+        prefix goes.  Over-redaction in PRINTED text, and the accepted cost of a
+        scrub that cannot tell a legitimate ``@`` from a credential.
+        """
+        assert _scrub_endpoint_userinfo(endpoint) == shown
+
+    def test_an_endpoint_with_no_at_sign_prints_as_written(self):
+        """The other edge of the same rule: nothing to hide, so path, port and
+        query all read as the user wrote them."""
+        assert _scrub_endpoint_userinfo("myhost:8080/v1") == "myhost:8080/v1"
