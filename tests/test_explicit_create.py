@@ -46,9 +46,14 @@ def _launch(project_dir, **over):
 
 
 def _create_args(path, **over):
+    # ⚑ ``no_vault=True`` is this suite's vault SUPPRESSION shorthand, and it is
+    # indistinguishable from a typed ``--no-vault`` — a SHAPING flag the recovery
+    # refusal must refuse.  A recovery re-run passes ``no_vault=False`` to spell
+    # the flag the way the CLI spells it when absent.
     ns = argparse.Namespace(
         path=str(path), standalone=False, no_vault=True,
         name=None, image=None, agent=None, allow_home=False,
+        recover=False,
     )
     for k, v in over.items():
         setattr(ns, k, v)
@@ -167,7 +172,7 @@ class TestInterruptedCreateBoundary:
     ):
         """An INTERRUPTED create (box dir + pending journal entry, but NOT yet
         registered) reads as "no box" on a launch — the launch errors rather than
-        silently completing someone's half-finished create.  Re-running ``create``
+        silently completing someone's half-finished create.  ``create --recover``
         is what completes it (forward-recovery belongs to create)."""
         from kanibako.commands.box._parser import run_create
         from kanibako.commands.start import _pending_create_entry, _write_create_entry
@@ -194,9 +199,12 @@ class TestInterruptedCreateBoundary:
         assert rc == 1
         assert "no box at" in capsys.readouterr().err
 
-        # Re-running `create` COMPLETES the interrupted create (forward-recovery),
-        # after which the box is registered and the launch gate resolves it.
-        rc_create = run_create(_create_args(tmp_home / "project"))
+        # Re-running `create --recover` COMPLETES the interrupted create
+        # (forward-recovery), after which the box is registered and the launch
+        # gate resolves it.
+        rc_create = run_create(
+            _create_args(tmp_home / "project", recover=True, no_vault=False)
+        )
         assert rc_create == 0
         assert _pending_create_entry(std, proj) is None
         assert load_primary_boxes(std.primary_workset).get("project") == project_dir
