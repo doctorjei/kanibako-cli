@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Undeclared keys in the box and workset settings files are now checked one file at a time, and the
+  error names the file. That includes a key another file's table hides from the merged result, for
+  example `box.bindings: null` in `workset.yaml` under a box `bindings` table. When a parent and its
+  child are both undeclared, only the parent is named. A key the launch's own audit can see keeps
+  the launch's message. Plain `workset share list` now refuses such a file instead of listing it.
+  See *2.47 An undeclared key in a settings file now stops the command, and the cure is a
+  hand-edit* in [MIGRATION.md](MIGRATION.md).
+
 - `kanibako shell -- <cmd>` runs `<box shell> -lc <cmd>` instead of `/bin/sh -c`. See *2.100 `kanibako shell -- <cmd>` runs your box's login shell, and `--agent shell -- <cmd>` runs the command* in
   [MIGRATION.md](MIGRATION.md).
 - `shell` writes `~/AGENTS.md`; on any persistent shell launch, a `box.shell` with arguments or
@@ -324,9 +332,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A broken or incomplete kanibako install prints one `Error:` line and exits 1 instead of a
   Python traceback.** This covers missing or malformed rows in the packaged `core-defaults.yaml`
-  and keyspace manifest: the behavior floor, pseudo-agent tiers, the `env:` section, the kickoff
-  entry and its loader, the core and internal bind rows, and a template seed that lands in the
-  managed canon region.
+  and keyspace manifest: the behavior floor, the access tier's declared default, pseudo-agent
+  tiers, the `env:` section, the kickoff entry and its loader, the core and internal bind rows,
+  and a template seed that lands in the managed canon region.
 
 - `kanibako start --agent shell` no longer prints the `start -N` hint when the shell exits
   non-zero.
