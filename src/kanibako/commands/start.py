@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from kanibako.vscode.vscode_config import CodexModelProvider
 
 from kanibako.settings import agent_file
+from kanibako.settings import settings_assemble
 from kanibako.settings.agent_config import (
     agent_category_dirname,
     agent_settings_path,
@@ -1133,7 +1134,10 @@ def _agent_scalar_pick(
     # ``effective_behavior`` reads for a per-agent override.  Absent file → empty.
     if agent_state is None and agent_path is not None and Path(agent_path).exists():
         agent_state = agent_file.state_level(
-            agent_file.load(agent_path, node=agent_id), node=agent_id, path=agent_path,
+            settings_assemble.agent_record(
+                agent_path, node=agent_id, purpose=settings_assemble.ReadPurpose.RESOLVE,
+            ),
+            node=agent_id, path=agent_path,
         )
     snapshot = settings_launch.build_launch_snapshot(
         **inputs.as_kwargs(),
@@ -3207,7 +3211,9 @@ def _run_container(
         # (the WRITE is deferred until after the pre-flight passes).
         agent_cfg = target.generate_agent_config()
     else:
-        agent_cfg = agent_file.load(agent_cfg_path, node=agent_id)
+        agent_cfg = settings_assemble.agent_record(
+            agent_cfg_path, node=agent_id, purpose=settings_assemble.ReadPurpose.RESOLVE,
+        )
 
     # PERSONA-GRATA STORE, read ONCE for this launch (the persona analog of
     # credsync — but a READ, not a sync).  For a PERSONA agent whose store entry
@@ -8194,7 +8200,9 @@ def persona_create_verdict(
         return None  # bare — no persona gate.
     agent_cfg_path = agent_settings_path(std.agents, agent_id)
     probe_cfg = (
-        agent_file.load(agent_cfg_path, node=agent_id)
+        settings_assemble.agent_record(
+            agent_cfg_path, node=agent_id, purpose=settings_assemble.ReadPurpose.RESOLVE,
+        )
         if agent_cfg_path.exists()
         else target.generate_agent_config()
     )
@@ -8280,7 +8288,9 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     agent_cfg_exists = bool(target) and agent_cfg_path.exists()
     if target is not None:
         seed_agent_cfg = (
-            agent_file.load(agent_cfg_path, node=agent_id)
+            settings_assemble.agent_record(
+                agent_cfg_path, node=agent_id, purpose=settings_assemble.ReadPurpose.RESOLVE,
+            )
             if agent_cfg_exists
             else target.generate_agent_config()
         )
@@ -8684,7 +8694,9 @@ def _apply_init_seeds(
     # ⚑ The agent file's scalars feed the seed sources (``agent.<a>.template``), read off
     # the same path as its tables.  Why: llm-docs, ``_resolve_launch_snapshot`` → *agent_cfg*.
     agent_cfg = (
-        agent_file.load(agent_config_path, node=agent_name)
+        settings_assemble.agent_record(
+            agent_config_path, node=agent_name, purpose=settings_assemble.ReadPurpose.RESOLVE,
+        )
         if agent_config_path is not None else None
     )
     snapshot, _ = _resolve_launch_snapshot(

@@ -21,7 +21,7 @@ import logging
 import pytest
 
 from kanibako.settings.agent_config import store_dirname
-from kanibako.settings.agent_file import load as load_agent_config
+from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 from kanibako.settings.config_keys import (
     ConfigLevel,
     is_known_key,
@@ -482,7 +482,7 @@ class TestPersonaLoadableEndToEnd:
         # Load the just-written persona file the way the launch does, then run the
         # SAME pre-flight the launch runs. The stored endpoint is the keyspace
         # endpoint; the secret_path token resolves → loadable (error is None).
-        agent_cfg = load_agent_config(_node_file(agents_root), node="navigator℘claude")
+        agent_cfg = load_agent_config(_node_file(agents_root), node="navigator℘claude", purpose=ReadPurpose.RESOLVE)
         assert agent_cfg.state["endpoint"] == _URL
         assert agent_cfg.state["model"] == "gemma-4-31b-it"
         assert agent_cfg.secret_path[_TOKEN_VAR] == str(token)
@@ -507,7 +507,7 @@ class TestPersonaLoadableEndToEnd:
             "agent.navigator+claude.endpoint", _URL, config_path=_cfg_path(tmp_path),
             command_scope=ConfigLevel.system, agents_root=agents_root,
         )
-        agent_cfg = load_agent_config(_node_file(agents_root), node="navigator℘claude")
+        agent_cfg = load_agent_config(_node_file(agents_root), node="navigator℘claude", purpose=ReadPurpose.RESOLVE)
         _ep, error, _provider = _preflight_persona_load(
             "navigator℘claude", agent_cfg, _URL, logging.getLogger("test"),
         )

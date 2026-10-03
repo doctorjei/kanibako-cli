@@ -167,7 +167,7 @@ class TestAgentConfigTweakcc:
     """
 
     def test_load_with_tweakcc(self, tmp_path):
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         yaml_content = """\
 self:
@@ -180,13 +180,13 @@ self:
 """
         path = tmp_path / "agent.yaml"
         path.write_text(yaml_content)
-        cfg = load_agent_config(path, node="claude")
+        cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.transform_settings == {
             "enabled": True, "config": "~/.tweakcc/config.json",
         }
 
     def test_load_without_tweakcc(self, tmp_path):
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         yaml_content = """\
 self:
@@ -194,15 +194,15 @@ self:
 """
         path = tmp_path / "agent.yaml"
         path.write_text(yaml_content)
-        cfg = load_agent_config(path, node="claude")
+        cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.transform_settings == {}
 
     def test_write_with_tweakcc(self, tmp_path):
         from kanibako.settings.agent_config import AgentConfig
         from kanibako.settings.agent_file import (
-            load as load_agent_config,
             save as write_agent_config,
         )
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         cfg = AgentConfig(
             transform_settings={"enabled": True, "config": "/path"},
@@ -211,16 +211,16 @@ self:
         write_agent_config(path, cfg)
 
         # Round-trip
-        loaded = load_agent_config(path, node="claude")
+        loaded = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert loaded.transform_settings["enabled"] is True
         assert loaded.transform_settings["config"] == "/path"
 
     def test_write_without_tweakcc(self, tmp_path):
         from kanibako.settings.agent_config import AgentConfig
         from kanibako.settings.agent_file import (
-            load as load_agent_config,
             save as write_agent_config,
         )
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         cfg = AgentConfig()
         path = tmp_path / "agent.yaml"
@@ -228,7 +228,7 @@ self:
         content = path.read_text()
         # Sparse write: an empty transform_settings is NOT materialized.
         assert "transform_settings:" not in content
-        loaded = load_agent_config(path, node="claude")
+        loaded = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert loaded.transform_settings == {}
 
 
@@ -237,7 +237,7 @@ class TestAgentConfigTransformKey:
     ``AgentConfig`` field.
 
     ⚑ It rides ``AgentConfig.state`` exactly like ``model`` / ``endpoint`` /
-    ``access`` / ``bootstrap``: ``agent_file.load`` captures every non-identity,
+    ``access`` / ``bootstrap``: ``agent_file.record`` captures every non-identity,
     non-dict root entry as state and ``agent_file.save`` re-emits it.  A
     dedicated field would be a SECOND copy of a value ``state`` already holds.
     That is also why it takes NO sparse-write exception: only a dict-valued
@@ -246,35 +246,35 @@ class TestAgentConfigTransformKey:
     """
 
     def test_load_captures_transform_as_state(self, tmp_path):
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         path = tmp_path / "agent.yaml"
         path.write_text('self:\n  transform: tweakcc\n')
-        cfg = load_agent_config(path, node="claude")
+        cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.state["transform"] == "tweakcc"
 
     def test_round_trip_through_state(self, tmp_path):
         from kanibako.settings.agent_config import AgentConfig
         from kanibako.settings.agent_file import (
-            load as load_agent_config,
             save as write_agent_config,
         )
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         path = tmp_path / "agent.yaml"
         write_agent_config(path, AgentConfig(state={"transform": "tweakcc"}))
-        assert load_agent_config(path, node="claude").state["transform"] == "tweakcc"
+        assert load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE).state["transform"] == "tweakcc"
 
     def test_unset_transform_is_absent_not_empty(self, tmp_path):
         from kanibako.settings.agent_config import AgentConfig
         from kanibako.settings.agent_file import (
-            load as load_agent_config,
             save as write_agent_config,
         )
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         path = tmp_path / "agent.yaml"
         write_agent_config(path, AgentConfig())
         assert "transform" not in path.read_text()
-        assert "transform" not in load_agent_config(path, node="claude").state
+        assert "transform" not in load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE).state
 
     def test_not_a_modeled_field(self):
         """A modeled ``AgentConfig.transform`` would duplicate the ``state`` entry."""

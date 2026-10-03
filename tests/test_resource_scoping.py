@@ -358,11 +358,11 @@ class TestBuildEffectiveState:
         This asserted that "undeclared keys from agent state are passed through" — the *"old
         ``agent.<name>.<anyleaf>`` behavior"* spec §0 SPECIFICALLY EXCLUDES. Together with the
         then-ungated ``agent set`` it meant stored garbage was not merely dead: it reached the
-        box. The refusal lives where the file is READ (``agent_file.load``), so it fires before
+        box. The refusal lives where the file is READ (``settings_assemble.agent_record``), so it fires before
         any record reaches this display — and before every launch, ``agent list`` and ``info``.
         """
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
-        from kanibako.settings.agent_file import load
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record
         from kanibako.settings.config_io import dump_doc
         from kanibako.settings.settings_resolve import SettingsError
 
@@ -375,13 +375,13 @@ class TestBuildEffectiveState:
         dump_doc(path, {"self": {"model": "sonnet", "custom_key": "custom_value"}})
 
         with pytest.raises(SettingsError) as exc:
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert "custom_key" in str(exc.value)
 
         # The CONTROL: the declared key alone still resolves, so the refusal is about
         # declaredness and not about having any agent state at all.
         dump_doc(path, {"self": {"model": "sonnet"}})
-        agent_cfg = load(path, node="claude")
+        agent_cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert _build_effective_state(
             target, agent_cfg, **box_file, system_settings_path=None
         )["model"] == "sonnet"

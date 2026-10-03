@@ -17,7 +17,6 @@ from kanibako.settings.agent_file import (
     clear_overrides,
     file_spelling,
     level_table,
-    load,
     read_leaf,
     remove_leaf,
     save,
@@ -26,6 +25,7 @@ from kanibako.settings.agent_file import (
     stored_leaf_text,
     write_leaf,
 )
+from kanibako.settings.settings_assemble import ReadPurpose, agent_record
 from kanibako.settings.config_io import dump_doc
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
 from kanibako.settings.settings_resolve import SettingsError
@@ -53,7 +53,7 @@ class TestSecretPathSection:
             '  secret_path:\n'
             '    ANTHROPIC_AUTH_TOKEN: "~/.config/claude/nav/token"\n'
         )
-        cfg = load(cfg_path, node="claude")
+        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
         # Only the PATH is loaded (a pointer), never any secret value. secret_path
         # sits DIRECTLY under the root (self IS agent.<node>) and does NOT leak into
         # flat state (it is a dict, not a scalar knob).
@@ -65,7 +65,7 @@ class TestSecretPathSection:
     def test_load_missing_secret_path_section(self, tmp_path):
         cfg_path = self._node_file(tmp_path)
         cfg_path.write_text('self:\n  model: "opus"\n')
-        assert load(cfg_path, node="claude").secret_path == {}
+        assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).secret_path == {}
 
     def test_load_present_null_secret_path_is_kept_as_none(self, tmp_path):
         # 2026-08-17 ruling: the token/key MAY hold an explicit null to mean "no
@@ -83,7 +83,7 @@ class TestSecretPathSection:
             '  secret_path:\n'
             '    ANTHROPIC_AUTH_TOKEN: null\n'
         )
-        cfg = load(cfg_path, node="claude")
+        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert "ANTHROPIC_AUTH_TOKEN" in cfg.secret_path
         assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] is None
         assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] != "None"
@@ -99,7 +99,7 @@ class TestSecretPathSection:
         content = path.read_text()
         assert "/secure/token" in content
         assert "env_file" not in content
-        loaded = load(path, node="claude")
+        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": "/secure/token"}
 
     def test_round_trip_present_null_secret_path(self, tmp_path):
@@ -114,13 +114,13 @@ class TestSecretPathSection:
         save(path, original)
         content = path.read_text()
         assert "secret_path" in content
-        loaded = load(path, node="claude")
+        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert loaded.secret_path == {"ANTHROPIC_AUTH_TOKEN": None}
 
 
 class TestLoad:
     def test_nonexistent_file_returns_defaults(self, tmp_path):
-        cfg = load(tmp_path / "missing.yaml", node="claude")
+        cfg = agent_record(tmp_path / "missing.yaml", node="claude", purpose=ReadPurpose.RESOLVE)
         # ⚑ ``None``, NOT ``[]``: the record is three-state and a file that does not
         # exist says NOTHING about the argv, which is not the same as saying "none".
         assert cfg.run_args is None
@@ -136,7 +136,7 @@ class TestLoad:
             '  env:\n'
             '    MY_VAR: "hello"\n'
         )
-        cfg = load(cfg_path, node="claude")
+        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.run_args == ["--verbose", "--debug"]
         assert cfg.state == {"model": "opus", "access": "permissive"}
         assert cfg.env == {"MY_VAR": "hello"}
@@ -154,7 +154,7 @@ class TestLoad:
             'self:\n'
             '  model: null\n'
         )
-        cfg = load(cfg_path, node="claude")
+        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert "model" in cfg.state
         assert cfg.state["model"] is None
         assert cfg.state["model"] != "None"
@@ -165,7 +165,7 @@ class TestLoad:
             'self:\n'
             '  run_args: ["--verbose"]\n'
         )
-        cfg = load(cfg_path, node="claude")
+        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.run_args == ["--verbose"]
         assert cfg.state == {}
         assert cfg.env == {}
@@ -177,7 +177,7 @@ class TestLoad:
             'self:\n'
             '  access: "safe"\n'
         )
-        cfg = load(cfg_path, node="claude")
+        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.state == {"access": "safe"}
 
     def test_load_missing_agent_section(self, tmp_path):
@@ -189,14 +189,14 @@ class TestLoad:
             '  env:\n'
             '    FOO: "bar"\n'
         )
-        cfg = load(cfg_path, node="claude")
+        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.state == {}
         assert cfg.env == {"FOO": "bar"}
 
     def test_load_empty_file(self, tmp_path):
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text("")
-        cfg = load(cfg_path, node="claude")
+        cfg = agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.run_args is None
         assert cfg.state == {}
 
@@ -215,7 +215,7 @@ class TestLoad:
             'self:\n'
             '  run_args: "--c --d"\n'
         )
-        assert load(cfg_path, node="claude").run_args == ["--c", "--d"]
+        assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--c", "--d"]
 
     def test_a_bare_run_args_is_no_arguments_not_the_word_None(self, tmp_path):
         """``run_args:`` parses to ``None``; coercing it through ``str`` would make
@@ -223,7 +223,7 @@ class TestLoad:
         above records."""
         cfg_path = tmp_path / "test.yaml"
         cfg_path.write_text('self:\n  run_args:\n')
-        assert load(cfg_path, node="claude").run_args == []
+        assert agent_record(cfg_path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == []
 
 
 class TestSave:
@@ -248,7 +248,7 @@ class TestSave:
         )
         save(path, cfg)
 
-        loaded = load(path, node="claude")
+        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert loaded.run_args == ["--verbose"]
         assert loaded.state == {"access": "permissive"}
         assert loaded.env == {"FOO": "bar"}
@@ -261,7 +261,7 @@ class TestSave:
         content = path.read_text()
         # No separate state section; state knobs live under the root table.
         assert 'state:' not in content
-        loaded = load(path, node="claude")
+        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert loaded.state == {"access": "permissive"}
 
     def test_a_defaulted_run_args_is_not_materialized(self, tmp_path):
@@ -294,7 +294,7 @@ class TestSave:
         and still counts as the one override it is."""
         path = tmp_path / "agents" / "test.yaml"
         save(path, AgentConfig(run_args=["--verbose", "--debug"]))
-        assert load(path, node="claude").run_args == ["--verbose", "--debug"]
+        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--verbose", "--debug"]
         assert clear_overrides(path) == 1
 
     def test_creates_parent_dirs(self, tmp_path):
@@ -312,7 +312,7 @@ class TestRoundTrip:
             env={"MY_VAR": "hello"},
         )
         save(path, original)
-        loaded = load(path, node="claude")
+        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
         assert loaded.run_args == original.run_args
         assert loaded.state == original.state
@@ -326,14 +326,14 @@ class TestRoundTrip:
         save(path, original)
         content = path.read_text()
         assert "model:" in content
-        loaded = load(path, node="claude")
+        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert loaded.state == {"model": None}
 
     def test_round_trip_empty_config(self, tmp_path):
         path = tmp_path / "test.yaml"
         original = AgentConfig()
         save(path, original)
-        loaded = load(path, node="claude")
+        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
         assert loaded.run_args is None
         assert loaded.state == {}
@@ -354,7 +354,7 @@ class TestRoundTrip:
         assert 'run_args:' in content
         assert 'model: sonnet' in content
 
-        loaded = load(path, node="claude")
+        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert loaded.state == {"model": "sonnet"}
         assert loaded.run_args == ["--verbose"]
 
@@ -362,7 +362,7 @@ class TestRoundTrip:
         path = tmp_path / "test.yaml"
         original = AgentConfig(run_args=["--foo", "--bar", "baz"])
         save(path, original)
-        loaded = load(path, node="claude")
+        loaded = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert loaded.run_args == ["--foo", "--bar", "baz"]
 
 
@@ -388,7 +388,7 @@ class TestCategoryTablesCarryThrough:
     def test_load_captures_the_unmodeled_categories(self, tmp_path):
         path = tmp_path / "agent.yaml"
         path.write_text(self._FLAT_YAML)
-        cfg = load(path, node="claude")
+        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.category_tables == {
             "bindings": {"ro": {"/box/share": ["/host/share"]}}
         }
@@ -400,7 +400,7 @@ class TestCategoryTablesCarryThrough:
 
         path = tmp_path / "agent.yaml"
         path.write_text(self._FLAT_YAML)
-        cfg = load(path, node="claude")
+        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         cfg.state["endpoint"] = "https://e.example"  # a read-modify-write
         save(path, cfg)
 
@@ -420,7 +420,7 @@ class TestCategoryTablesCarryThrough:
             "  synced: {~/.config/x: [/store/x]}\n"
             "  masks: {~/.ssh: true}\n"
         )
-        assert set(load(path, node="claude").category_tables) == {
+        assert set(agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).category_tables) == {
             "caches", "seeded", "common", "synced", "masks",
         }
 
@@ -435,7 +435,7 @@ class TestCategoryTablesCarryThrough:
             "  transform_settings:\n"
             "    theme: dark\n"
         )
-        cfg = load(path, node="claude")
+        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.category_tables == {}
 
     def test_empty_category_table_not_materialized(self, tmp_path):
@@ -458,7 +458,7 @@ class TestCategoryTablesCarryThrough:
             "  run_args:\n"
             "    weird: 2\n"
         )
-        cfg = load(path, node="claude")
+        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.category_tables == {}
 
     def test_write_guard_never_clobbers_modeled_tables(self, tmp_path):
@@ -476,7 +476,7 @@ class TestCategoryTablesCarryThrough:
         assert data["self"]["env"] == {"A": "b"}
         assert "nav℘codex" not in data["self"]
         # And what was written loads back without a refusal.
-        assert load(path, node="claude").env == {"A": "b"}
+        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).env == {"A": "b"}
 
     def test_transform_is_not_a_modeled_key(self):
         # ``transform`` (the tweakcc state knob) is NOT ``transform_settings``: it
@@ -667,7 +667,7 @@ class TestTheArgvSHAPEIsTheFileS:
     def test_what_write_leaf_STORES_is_what_load_READS(self, tmp_path):
         """The whole defect in one row: the write route and the record must agree."""
         write_leaf(self._slot(tmp_path), "--c --d")
-        assert load(tmp_path / "claude" / "agent.yaml", node="claude").run_args == ["--c", "--d"]
+        assert agent_record(tmp_path / "claude" / "agent.yaml", node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--c", "--d"]
 
     def test_read_leaf_gives_back_the_line_that_was_typed(self, tmp_path):
         """⚑ NOT the Python repr.  ``kanibako system get agent.claude.run_args``
@@ -682,7 +682,7 @@ class TestTheArgvSHAPEIsTheFileS:
         path.parent.mkdir(parents=True)
         path.write_text('self:\n  run_args: "--c --d"\n')
         assert read_leaf(self._slot(tmp_path)) == "--c --d"
-        assert load(path, node="claude").run_args == ["--c", "--d"]
+        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).run_args == ["--c", "--d"]
 
     def test_the_next_save_normalizes_a_legacy_string(self, tmp_path):
         """No migration step, and no second shape left on disk afterwards."""
@@ -691,7 +691,7 @@ class TestTheArgvSHAPEIsTheFileS:
         path = tmp_path / "claude" / "agent.yaml"
         path.parent.mkdir(parents=True)
         path.write_text('self:\n  run_args: "--c --d"\n')
-        save(path, load(path, node="claude"))
+        save(path, agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE))
         assert load_doc(path)["self"]["run_args"] == ["--c", "--d"]
 
     def test_an_EMPTY_value_is_a_value_and_an_ABSENT_one_is_not(self, tmp_path):
@@ -707,7 +707,7 @@ class TestTheArgvSHAPEIsTheFileS:
         assert read_leaf(slot) is None                    # absent
         write_leaf(slot, "")
         assert read_leaf(slot) == ""                      # present, no arguments
-        assert load(tmp_path / "claude" / "agent.yaml", node="claude").run_args == []
+        assert agent_record(tmp_path / "claude" / "agent.yaml", node="claude", purpose=ReadPurpose.RESOLVE).run_args == []
         write_leaf(slot, "--c")
         assert read_leaf(slot) == "--c"                   # present, one argument
         assert remove_leaf(slot) is True
@@ -822,7 +822,7 @@ class TestLoadSurvivesAMalformedTable:
     def test_a_scalar_at_a_table_key_does_not_raise(self, tmp_path):
         path = tmp_path / "agent.yaml"
         path.write_text("self:\n  model: opus\n  transform_settings: oops\n")
-        cfg = load(path, node="claude")          # must not raise
+        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)          # must not raise
         assert cfg.state == {"model": "opus"}
         assert cfg.transform_settings == {}
         # ...and the garbage does NOT ride into the launch as an agent-state knob.
@@ -836,7 +836,7 @@ class TestLoadSurvivesAMalformedTable:
         path = tmp_path / "agent.yaml"
         path.write_text(f"self:\n  model: opus\n  {key}: oops\n")
         with pytest.raises(SettingsError) as exc:
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert f"'agent.claude.{key}' is a namespace" in str(exc.value)
         assert f"remove `self.{key}`" in str(exc.value)
         assert clear_overrides(path) == 2
@@ -887,9 +887,23 @@ class TestClearOverrides:
         path = tmp_path / "agent.yaml"
         path.write_text(f"self:\n  model: opus\n{stray}: x\n")
         with pytest.raises(SettingsError):
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert clear_overrides(path) == 1
         assert load_doc(path) == {stray: "x"}
+
+    @pytest.mark.parametrize("value", ("null", "5"))
+    def test_a_value_at_the_root_is_removed_and_counted(self, value, tmp_path):
+        # ⚑ THE REPAIR DOOR REACHES WHAT THE READERS REFUSE: ``self: null`` stops every reader,
+        # so ``agent reset --all`` must remove it, counted as the one value it is.
+        # (Mutation: keep the ``isinstance(table, dict)`` guard → the entry stays → RED.)
+        from kanibako.settings.config_io import load_doc
+
+        path = tmp_path / "agent.yaml"
+        path.write_text(f"self: {value}\n")
+        with pytest.raises(SettingsError):
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+        assert clear_overrides(path) == 1
+        assert load_doc(path) == {}
 
     def test_no_overrides_is_zero(self, tmp_path):
         # ⚑ THE SHAPE :func:`save` WRITES FOR A FRESH AGENT since D8b — an empty root table.
@@ -918,6 +932,28 @@ class TestLevelTable:
         raw = {"self": {category: table}}
         level = level_table(raw, sub_key="claude", node="claude")
         assert level.table == {category: table}
+
+    def test_the_root_is_split_by_key_not_by_value(self):
+        # 2C: a category key goes to the category channel WHATEVER it holds — ``caches: null``
+        # is the §2a reset and must reach the cascade — and every other key to the state
+        # channel. (Mutation: restore the ``isinstance(flat, dict) and flat`` filter → the
+        # null and the empty table vanish → RED.)
+        raw = {"self": {"caches": None, "masks": {}, "env": 5, "model": "opus"}}
+        level = level_table(raw, sub_key="claude", node="claude")
+        assert level.table == {"caches": None, "masks": {}, "env": 5}
+        assert level.state == {"model": "opus"}
+
+    @pytest.mark.parametrize("value", (None, 5, "x", ["a"]))
+    def test_a_value_at_the_root_refuses_like_the_agent_table(self, value, tmp_path):
+        # ``self:`` IS ``agent.<node>``, so a VALUE there is the system file's
+        # ``agent: {claude: null}`` and gets that verdict, naming the file — at every reader.
+        path = tmp_path / "agent.yaml"
+        with pytest.raises(SettingsError) as exc:
+            level_table({"self": value}, sub_key="claude", node="claude", path=path)
+        message = str(exc.value)
+        assert f"`self` in {path} holds {value!r}" in message
+        assert "`agent.claude`" in message
+        assert "spec §2d" in message
 
     def test_default_level_is_structurally_empty(self):
         # The flat tables are THIS node's, never every agent's — and since the flatten
@@ -1013,7 +1049,7 @@ class TestLevelTable:
         dump_doc(path, raw)
         # The own node's ``agent:`` entry is the file's own settings too (Q92).
         expected_env = {"A": "b", "X": "1"} if scope == "agent" else {"A": "b"}
-        assert load(path, node="claude").env == expected_env
+        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).env == expected_env
 
     @pytest.mark.parametrize("stray", ("model", "stray", "env", "config", "Self"))
     def test_load_refuses_the_stray_the_launch_refuses(self, stray, tmp_path):
@@ -1023,7 +1059,7 @@ class TestLevelTable:
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": {"env": {"A": "b"}}, stray: "foo"})
         with pytest.raises(SettingsError) as exc:
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert f"`{stray}` at the top level of {path}" in str(exc.value)
 
     def test_load_passes_every_table_the_cascade_drops(self, tmp_path):
@@ -1035,7 +1071,7 @@ class TestLevelTable:
         assert dropped, "an empty drop-set would pass this vacuously"
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": {"env": {"A": "b"}}, **{t: {"x": 1} for t in dropped}})
-        assert load(path, node="claude").env == {"A": "b"}
+        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).env == {"A": "b"}
 
     def test_a_bare_sub_key_leaf_is_not_a_table(self):
         # ``claude:`` with nothing under it parses to None. It carries nothing and
@@ -1153,7 +1189,7 @@ class TestTheAgentTable:
         path = tmp_path / "agent.yaml"
         for read in (
             lambda: self._assemble(tmp_path, {"self": own, "agent": other}),
-            lambda: load(path, node="claude"),
+            lambda: agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE),
         ):
             with pytest.raises(SettingsError) as exc:
                 read()
@@ -1170,7 +1206,7 @@ class TestTheAgentTable:
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": own, "agent": other})
         with pytest.raises(SettingsError) as exc:
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert f"`{pair[0]}` and `{pair[1]}`" in str(exc.value)
 
     @pytest.mark.parametrize("other", ({"claude": 5}, {"claude": None}, {"Claude": "x"}))
@@ -1181,7 +1217,7 @@ class TestTheAgentTable:
         dump_doc(path, {"self": {"model": "a", "env": {"A": "1"}}, "agent": other})
         (seg,) = other
         with pytest.raises(SettingsError) as exc:
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         message = str(exc.value)
         assert f"`agent.{seg}` in {path}" in message
         assert "writes agent 'claude' a second time" in message
@@ -1191,7 +1227,7 @@ class TestTheAgentTable:
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"agent": {"bar": 5}})
         with pytest.raises(SettingsError, match=r"`agent\.bar` in .* holds 5"):
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
     @pytest.mark.parametrize(("scope", "shown"), (
         ({"claude": {"bogus": 1}}, "agent.claude.bogus"),
@@ -1207,7 +1243,7 @@ class TestTheAgentTable:
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": {"model": "a"}, "agent": scope})
         with pytest.raises(SettingsError) as exc:
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert f"carries '{shown}'" in str(exc.value)
 
     @pytest.mark.parametrize("scope", (
@@ -1220,14 +1256,14 @@ class TestTheAgentTable:
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"agent": scope})
         with pytest.raises(SettingsError, match="ONE agent node .* spelled twice"):
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
     def test_every_undeclared_entry_is_named_at_once(self, tmp_path):
         # The cure is a hand-edit: one refusal names every entry, as the launch does.
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": {"model": "a", "bogus": 1, "zippity": 2}})
         with pytest.raises(SettingsError) as exc:
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         message = str(exc.value)
         assert "has 2 entries that are not settings keys" in message
         assert "carries 'bogus'" in message and "carries 'zippity'" in message
@@ -1240,7 +1276,7 @@ class TestTheAgentTable:
         path.parent.mkdir()
         dump_doc(path, {"self": {"model": "a"}})
         with pytest.raises(SettingsError) as exc:
-            load(path, node="self")
+            agent_record(path, node="self", purpose=ReadPurpose.RESOLVE)
         assert f"{path.parent} is not an agent store" in str(exc.value)
         assert "'self' is not an agent" in str(exc.value)
 
@@ -1261,7 +1297,7 @@ class TestTheAgentTable:
         path.parent.mkdir()
         dump_doc(path, {"self": {"label": "y"}})
         with pytest.raises(SettingsError) as exc:
-            load(path, node="default")
+            agent_record(path, node="default", purpose=ReadPurpose.RESOLVE)
         message = str(exc.value)
         assert f"{path.parent} is not an agent store" in message
         assert "'default' is the reserved any-agent tier" in message
@@ -1279,7 +1315,7 @@ class TestTheAgentTable:
         from widening into ``file_alias_reason``'s job.
         """
         path = tmp_path / "default" / "agent.yaml"
-        assert load(path, node="default") == AgentConfig()
+        assert agent_record(path, node="default", purpose=ReadPurpose.RESOLVE) == AgentConfig()
 
     @pytest.mark.parametrize("scope", (
         {"nosuchharness": {"x": 1}},            # conceded: no readable vocabulary ([R150])
@@ -1290,7 +1326,7 @@ class TestTheAgentTable:
     def test_what_the_launch_concedes_load_concedes(self, tmp_path, scope):
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": {"model": "a"}, "agent": scope})
-        assert load(path, node="claude").state["model"] == "a"
+        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state["model"] == "a"
 
     def test_different_leaves_of_one_table_merge(self, tmp_path):
         # Two dests of one arm, two VARs of one family: different settings, as across files.
@@ -1315,7 +1351,7 @@ class TestTheAgentTable:
         with pytest.raises(SettingsError, match=r"`agent: 5` at the top level of"):
             self._assemble(tmp_path, {"self": {"model": "a"}, "agent": 5})
         with pytest.raises(SettingsError, match=r"`agent: 5` at the top level of"):
-            load(tmp_path / "agent.yaml", node="claude")
+            agent_record(tmp_path / "agent.yaml", node="claude", purpose=ReadPurpose.RESOLVE)
 
     def test_a_bare_agent_key_is_no_table(self, tmp_path):
         (tmp_path / "agent.yaml").write_text("self:\n  env:\n    A: '1'\nagent:\n")
@@ -1419,7 +1455,7 @@ class TestTheForwardCompatPassthroughIsClosed:
     SPECIFICALLY EXCLUDES. Together with the ungated ``agent set`` (D-5) it meant stored garbage
     was not merely dead: it reached the box.
 
-    ⚑ The refusal runs as the file is READ (:func:`load`, Q101 option 1), so every reader —
+    ⚑ The refusal runs as the file is READ (``settings_assemble.agent_record``, Q101 option 1), so every reader —
     ``agent show`` / ``info`` / ``list`` / ``get`` and the launch — refuses it by name.
     """
 
@@ -1432,7 +1468,7 @@ class TestTheForwardCompatPassthroughIsClosed:
     def test_an_undeclared_scalar_refuses_the_read_by_name(self, tmp_path):
         path = self._file(tmp_path, {"model": "opus", "junk": "x"})
         with pytest.raises(SettingsError) as exc:
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         message = str(exc.value)
         assert "'junk'" in message
         assert "'claude'" in message
@@ -1448,7 +1484,7 @@ class TestTheForwardCompatPassthroughIsClosed:
         # here rather than becoming ``agent.claude.self.model`` in the snapshot.
         path = self._file(tmp_path, {"self.model": "opus"})
         with pytest.raises(SettingsError, match=r"self\.model"):
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
     def test_state_level_judges_nothing(self):
         # A SECOND CARRIER RETIRED: the refusal lives in ``load`` alone, so building a level
@@ -1464,7 +1500,7 @@ class TestTheForwardCompatPassthroughIsClosed:
             "allow_helpers": "true", "continue_mode": "true", "bootstrap": "x",
             "template": "t", "canon": "c", "transform": "tweakcc",
         }
-        cfg = load(self._file(tmp_path, state), node="claude")
+        cfg = agent_record(self._file(tmp_path, state), node="claude", purpose=ReadPurpose.RESOLVE)
         assert state_level(cfg, node="claude").table == state
 
     def test_a_plugin_declared_leaf_still_loads(self, tmp_path):
@@ -1486,7 +1522,7 @@ class TestTheForwardCompatPassthroughIsClosed:
         if "provider" not in leaves:
             pytest.skip("the goose plugin does not declare 'provider' in this environment")
         path = self._file(tmp_path, {"provider": "ollama"})
-        assert load(path, node="goose").state == {"provider": "ollama"}
+        assert agent_record(path, node="goose", purpose=ReadPurpose.RESOLVE).state == {"provider": "ollama"}
 
     def test_a_persona_file_is_judged_by_its_harness(self, tmp_path):
         """A persona node (``<pid>℘<hid>``) takes its HARNESS's vocabulary (spec §2d, ``[R150]``).
@@ -1497,12 +1533,12 @@ class TestTheForwardCompatPassthroughIsClosed:
         """
         refused = self._file(tmp_path, {"model": "opus", "zippity": 1})
         with pytest.raises(SettingsError) as exc:
-            load(refused, node="nav℘claude")
+            agent_record(refused, node="nav℘claude", purpose=ReadPurpose.RESOLVE)
         assert "'zippity'" in str(exc.value)
         assert "agent.nav℘claude" in str(exc.value)
 
         declared = self._file(tmp_path, {"model": "opus", "endpoint": "https://e"})
-        assert load(declared, node="nav℘claude").state == {
+        assert agent_record(declared, node="nav℘claude", purpose=ReadPurpose.RESOLVE).state == {
             "model": "opus", "endpoint": "https://e",
         }
 
@@ -1511,7 +1547,7 @@ class TestTheForwardCompatPassthroughIsClosed:
         # leaf it might declare is CONCEDED, never refused — for a persona as for a bare agent.
         # ⚑ ``claude+work`` is THIS case (persona ``claude`` on harness ``work``), not a hole.
         path = self._file(tmp_path, {"zippity": "1"})
-        assert load(path, node="nav℘nosuchharness").state == {"zippity": "1"}
+        assert agent_record(path, node="nav℘nosuchharness", purpose=ReadPurpose.RESOLVE).state == {"zippity": "1"}
 
     def test_the_repair_door_does_not_go_through_here(self, tmp_path):
         # ⚑ A poisoned file must still be clearable: ``clear_overrides`` reads raw YAML and
@@ -1522,9 +1558,9 @@ class TestTheForwardCompatPassthroughIsClosed:
         path = tmp_path / "agent.yaml"
         path.write_text("self:\n  name: Nav\n  junk: x\n")
         with pytest.raises(SettingsError, match="'name'"):
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert clear_overrides(path) == 2
-        assert load(path, node="claude").state == {}
+        assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state == {}
 
 
 class TestFileSpelling:
@@ -1558,7 +1594,7 @@ class TestLoadSharesTheRefusal:
             "      EDITOR: vim\n"
         )
         with pytest.raises(SettingsError) as exc:
-            load(path, node="claude")
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         message = str(exc.value)
         assert "self.claude.env" in message
         assert str(path) in message
@@ -1575,7 +1611,7 @@ class TestLoadSharesTheRefusal:
             "    ro:\n"
             "      /box/x: [/h/x]\n"
         )
-        cfg = load(path, node="claude")
+        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.env == {"EDITOR": "vim"}
         assert cfg.category_tables == {"bindings": {"ro": {"/box/x": ["/h/x"]}}}
 
@@ -1595,7 +1631,7 @@ class TestOneNodeTwoSpellings:
                 "goose": {"model": "g"},
             },
         })
-        cfg = load(path, node="claude")
+        cfg = agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.state == {"label": "L", "model": "b"}
         assert cfg.env == {"A": "1", "B": "2"}
         assert cfg.run_args == ["--x"]
@@ -1625,10 +1661,10 @@ class TestOneNodeTwoSpellings:
         assert load_doc(slot.path) == {
             "agent": {"claude": {"env": {"OLD": "1"}}}, "self": {"env": {"NEW": "2"}},
         }
-        load(slot.path, node="claude")  # one setting per spelling: still reads
+        agent_record(slot.path, node="claude", purpose=ReadPurpose.RESOLVE)  # one setting per spelling: still reads
 
     def test_another_nodes_value_is_not_this_nodes(self, tmp_path):
         slot = slot_for(tmp_path, "claude", "model")
         dump_doc(slot.path, {"agent": {"goose": {"model": "g"}, "default": {"model": "d"}}})
         assert read_leaf(slot) is None
-        assert load(slot.path, node="claude").state == {}
+        assert agent_record(slot.path, node="claude", purpose=ReadPurpose.RESOLVE).state == {}

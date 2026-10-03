@@ -165,7 +165,8 @@ def _missing_store_error(agent_id: str, path: Path, reserved: str) -> str:
     ⚑ ASKED ONLY WHEN THE STORE IS MISSING, never ahead of the path lookup: the gate refuses
     ``self`` (the file alias — the ``malformed`` arm), and ``agent reset self --all`` must still
     clear a leftover ``agents/self/`` (the repair door).  A present store keeps its own refusals
-    (``agent_file.load`` for ``self``, the engine's reserved-tier route for ``default``).
+    (``settings_assemble.agent_record`` for ``self``, the engine's reserved-tier route for
+    ``default``).
     """
     from kanibako.settings.config_dest import check_agent_node
 
@@ -227,8 +228,8 @@ def _reserved_tier_refusal_for(args: argparse.Namespace) -> str:
 
 def run_list(args: argparse.Namespace) -> int:
     """List configured agents."""
-    from kanibako.settings.agent_file import load
     from kanibako.settings.config import AGENT_META_FILE
+    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
 
     try:
         std = _load_std()
@@ -264,7 +265,12 @@ def run_list(args: argparse.Namespace) -> int:
     # ⚑ One refused file stops the listing, by name, before anything prints: no list verb here
     # reports an error per row, and printing the row anyway would be the silent accept the
     # closed keyspace bars.
-    rows = [(f.parent.name, load(f, node=_store_node(f.parent))) for f in settings_files]
+    rows = [
+        (f.parent.name, agent_record(
+            f, node=_store_node(f.parent), purpose=ReadPurpose.RESOLVE,
+        ))
+        for f in settings_files
+    ]
     print(f"{'NAME':<20} {'MODEL'}")
     for dirname, cfg in rows:
         model = cfg.state.get("model", "-")
@@ -277,7 +283,8 @@ def _store_node(store: Path) -> str:
 
     ⚑ The ref grammar's refusal says only which name is illegal; this one names the folder and
     the cure, because the user put the folder there and must be told where it is.  A folder
-    named after the file's alias (``self``) is refused by ``agent_file.load``, as every reader is.
+    named after the file's alias (``self``) is refused by ``settings_assemble.agent_record``, as every
+    reader is.
     """
     from kanibako.errors import ConfigError
     from kanibako.settings.config_keys import agent_key_node
@@ -295,7 +302,8 @@ def _store_node(store: Path) -> str:
 def run_info(args: argparse.Namespace) -> int:
     """Show agent configuration details."""
     from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.settings.agent_file import load, stored_leaf_display
+    from kanibako.settings.agent_file import stored_leaf_display
+    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
 
     try:
         std = _load_std()
@@ -319,7 +327,7 @@ def run_info(args: argparse.Namespace) -> int:
         )
         return 1
 
-    cfg = load(path, node=agent_id)
+    cfg = agent_record(path, node=agent_id, purpose=ReadPurpose.RESOLVE)
     # ⚑ THE §2d KEY, RESOLVED — not a field of the file. The line is spelled for the key it
     # prints, so a reader can reach it: `kanibako agent set <agent> label=…`.
     print(f"Label:        {_agent_label(std, agent_id)}")
@@ -335,7 +343,7 @@ def run_info(args: argparse.Namespace) -> int:
     # like any other — and the line above already carries it, RESOLVED. Listing
     # both prints one key twice, with the stored value second, which reads as two
     # keys of the same name (the same cut ``_show_agent_config`` makes).
-    state_rows = {k: v for k, v in cfg.state.items() if k != "label"}
+    state_rows = {k: v for k, v in cfg.state.items() if k != "label"} | _category_resets(cfg)
     if state_rows:
         print("State:")
         for k, text in _stored_rows(state_rows):
@@ -419,10 +427,10 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     from kanibako.settings.agent_config import agent_settings_path
     from kanibako.settings.agent_file import (
         clear_overrides,
-        load,
         read_leaf,
         slot_for,
     )
+    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
     from kanibako.settings.config_keys import agent_read_key_error
 
     try:
@@ -556,7 +564,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     # Parse key/value argument
     if action == ConfigAction.show:
         # Show mode — read the config only where the READ paths need it.
-        cfg = load(path, node=agent_id)
+        cfg = agent_record(path, node=agent_id, purpose=ReadPurpose.RESOLVE)
         # ⚑ RESOLVED HERE, where ``std`` is in scope; the formatter stays a formatter.
         return _show_agent_config(
             cfg, _agent_label(std, agent_id), effective=args.effective,
@@ -619,7 +627,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
     if read_err is not None:
         print(read_err, file=sys.stderr)
         return 1
-    val = _get_agent_key(load(path, node=agent_id), key)
+    val = _get_agent_key(agent_record(path, node=agent_id, purpose=ReadPurpose.RESOLVE), key)
     if val is None:
         # ⚑ D-6: THE RECORD FIRST, THE FILE SECOND.  ``AgentConfig`` models a
         # SUBSET of what the file may hold — no field answers for the CATEGORY
@@ -817,6 +825,11 @@ def _agent_label(std: "StandardPaths", agent_id: str) -> str:
     return fallback
 
 
+def _category_resets(cfg: AgentConfig) -> dict[str, object]:
+    """The categories the file sets to a VALUE (``caches: null``, the §2a reset), as state rows."""
+    return {k: v for k, v in cfg.category_tables.items() if not isinstance(v, dict)}
+
+
 def _stored_rows(
     table: "Mapping[str, object]", prefix: str = "",
 ) -> list[tuple[str, str]]:
@@ -912,7 +925,7 @@ def _show_agent_config(
     # declared leaf, so a stored one rides ``cfg.state`` like any other — and the line
     # above already carries it, RESOLVED. Listing both prints one key twice, with the
     # stored value second, which reads as two keys of the same name.
-    state_rows = {k: v for k, v in cfg.state.items() if k != "label"}
+    state_rows = {k: v for k, v in cfg.state.items() if k != "label"} | _category_resets(cfg)
     if state_rows:
         for k, text in _stored_rows(state_rows):
             print(f"  {k} = {text}")
@@ -1008,13 +1021,16 @@ def run_reauth(args: argparse.Namespace) -> int:
     # custom-endpoint box never syncs the Anthropic token into a box pointed at a
     # third-party endpoint.
     from kanibako.settings.agent_config import agent_settings_path
-    from kanibako.settings.agent_file import load
+    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
     from kanibako.commands.start import (
         _persona_values_for,
         _resolve_box_launch_decisions,
     )
     agent_cfg_path = agent_settings_path(std.agents, agent_name)
-    reauth_agent_cfg = load(agent_cfg_path, node=agent_name) if agent_cfg_path.exists() else None
+    reauth_agent_cfg = (
+        agent_record(agent_cfg_path, node=agent_name, purpose=ReadPurpose.RESOLVE)
+        if agent_cfg_path.exists() else None
+    )
     auth_src, active_endpoint, _active_model = _resolve_box_launch_decisions(
         std=std,
         proj=proj,

@@ -122,7 +122,7 @@ _TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS
 #:
 #: ⚑⚑ WHY BOTH ENDS ARE IN ONE PLACE (P10).  The split used to live in ``agent set``'s own
 #: writer and nowhere else, so the file had two write routes disagreeing about one shape:
-#: ``config set agent.<node>.run_args="--c --d"`` stored the STRING, :func:`load` read a list
+#: ``config set agent.<node>.run_args="--c --d"`` stored the STRING, :func:`record` read a list
 #: or nothing, and the value was DISCARDED — reported set at rc 0, delivered to no launch.
 #: A reader who changes the split must see the join, and the reverse.
 _LIST_VALUED_KEYS: Final[frozenset[str]] = frozenset({"run_args"})
@@ -185,12 +185,16 @@ class AgentFileLevel:
 
     *scope* is the file's top-level ``agent:`` table, RAW (Q92: read like that table in any
     settings file), already judged by :func:`_contribution`; ``settings_assemble`` parses it.
+
+    The file's ROOT is split by KEY (:func:`level_table`): *table* holds every category key,
+    whatever it holds, and *state* every other key.
     """
 
     node: str
     table: dict
     path: Path | None = None
     scope: dict = field(default_factory=dict)
+    state: dict = field(default_factory=dict)
 
 
 def scalar_family_of(tail: str) -> str | None:
@@ -284,7 +288,7 @@ def table_value_error(tail: str, *, path: Path, verb: str) -> str | None:
     The VALUE-SHAPE half of the verb's gate (the D-7 cure): ``transform_settings``, ``masks`` and
     the dest-keyed category tables all hold a MAP, so a scalar written at one is a wrong SHAPE,
     not a wrong value — and until this refused, a scalar ``transform_settings`` crashed every
-    subsequent :func:`load`, i.e. every launch, list, info and show.
+    subsequent :func:`record`, i.e. every launch, list, info and show.
 
     ⚑ SET AND RESET TAKE IT ALIKE; the hand-edit is the honest cure for both.  (``agent reset
     --all`` still drops them wholesale — it is the file-wide verb, not a per-key one.)
@@ -437,7 +441,7 @@ def stored_leaf_display(tail: str, value: object) -> str:
     one of kanibako's empty idioms to a shape that is not it.
 
     ⚑ A STRING at a list-valued *tail* renders through the scalar convention UNCHANGED — that
-    is what the other write route stored before both routes agreed, and :func:`load` reads it
+    is what the other write route stored before both routes agreed, and :func:`record` reads it
     the same way.
     """
     text = stored_leaf_text(tail, value)
@@ -487,7 +491,7 @@ def write_leaf(slot: AgentFileSlot, value: object) -> None:
     ⚑ Through :func:`_write_address`, which is NARROWER than the read side and raises on a
     dest-keyed tail — the caller gates first.
     ⚑⚑ AND THROUGH :func:`stored_leaf_shape`, so EVERY write route lands the shape
-    :func:`load` reads.  A caller must NOT pre-split: a second copy of that rule is the
+    :func:`record` reads.  A caller must NOT pre-split: a second copy of that rule is the
     defect this closed.
     """
     sections, leaf = _write_address(slot.tail)
@@ -525,14 +529,14 @@ def clear_overrides(path: Path) -> int:
 
     The COUNT is part of the contract, in the unit every scope's ``reset --all`` reports:
     EACH REMOVED LEAF COUNTS ONCE (``config_io.count_leaves``) — a category table counts its
-    entries, a list counts as the one value it is.
+    entries, a list counts as the one value it is, and so does a VALUE where a table goes
+    (``self: null``), which the readers refuse and so must go too.
     """
     data = load_doc(path)
     count = 0
     for key, table in contributed_tables(data).items():
-        if isinstance(table, dict):
-            count += count_leaves(table)
-            del data[key]
+        count += count_leaves(table)
+        del data[key]
     dump_doc(path, data)
     return count
 
@@ -541,77 +545,22 @@ def clear_overrides(path: Path) -> int:
 # The WHOLE-FILE round trip (the ``agent`` verbs' own reads + the persona artifact)
 # ---------------------------------------------------------------------------
 
-def load(path: Path, *, node: str) -> AgentConfig:
-    """Read agent *node*'s settings file at *path* and return an AgentConfig.
+def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
+    """The :class:`AgentConfig` record of agent *node*'s file, built from its ACTIVE *level*.
 
-    Returns defaults if the file does not exist.
-
-    ⚑ IT RUNS EVERY REFUSAL THE FILE OWES, AS IT IS READ (spec §0, closed keyspace): the
-    top-level ones (:func:`_contribution`), the nested one (:func:`_refuse_nested_tables`)
-    and the undeclared-leaf one (:func:`_refuse_undeclared_state`), over ``self:`` AND the
-    ``agent:`` table's nodes (Q92), category contents included (:func:`_undeclared_entries`).
+    *level* is :func:`level_table`'s output for the file's own node, so the record and the
+    launch read ONE judged view of the file (``settings_assemble.agent_record`` reads it).
     The record holds BOTH spellings of the file's own node — ``self:`` and ``agent: <node>:``
-    (:func:`_own_node_settings`) — as the launch reads both.  Every reader — the launch,
-    ``agent show`` / ``info`` / ``list`` / ``get`` — takes the record from here, so one file gets
-    one verdict.  The repair door is :func:`clear_overrides`, which never calls this.
+    (:func:`_own_node_settings`) — as the launch reads both.
 
-    *node* is the agent whose file this is: the undeclared-leaf check judges against ITS
-    declared keys, and every refusal names ``agent.<node>``.  REQUIRED, because a check that
-    could not name its agent could not judge a leaf at all.  The file's alias (``self``) is
-    never a *node* (``settings_keyspace.file_alias_reason``), so a store folder named after it
-    is refused here, for every reader at once.
-
-    ⚑ THE SAME SHAPE, THE OTHER WAY, FOR THE RESERVED TIER.  ``default`` IS a legal
-    ``agent.<HERE>`` segment — it addresses the all-agents tier, whose settings live in the
-    system file — so the alias gate above must keep passing it, and a store folder carrying
-    that name is refused here instead, once the folder is found to EXIST.  Two gates, two
-    questions: whether a name is a legal KEY SEGMENT, and whether a folder is that agent's
-    STORE.  ``config_dest._missing_store_error`` answers the second for an absent store and
-    pointed here for a present one; this is that route.
+    ⚑ IT REFUSES every undeclared entry (:func:`_refuse_undeclared_state`, spec §0), over
+    ``self:`` AND the ``agent:`` table's nodes, category contents included, so every reader of
+    the record — ``agent show`` / ``info`` / ``list`` / ``get`` and the launch — gets the
+    launch's verdict. The repair door is :func:`clear_overrides`, which never comes here.
     """
-    from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
-    from kanibako.settings.settings_keyspace import file_alias_reason
-
-    alias = file_alias_reason(node)
-    if alias is not None:
-        raise SettingsError(
-            f"{path.parent} is not an agent store: {alias}.\n"
-            f"  Fix: rename the folder to the agent's name, or move it out of "
-            f"{path.parent.parent}."
-        )
     cfg = AgentConfig()
-    if not path.exists():
-        return cfg
-    # ⚑⚑ THE RESERVED ANY-AGENT TIER HAS NO STORE, AND A FOLDER NAMED FOR IT IS NOT ONE
-    # (spec §2d). ``_missing_store_error`` already refuses the tier when the store is
-    # ABSENT, and its docstring names this module as the route that refuses one when the
-    # store is PRESENT -- that route did not exist, so a leftover ``agents/default/`` was
-    # read at rc 0 by every reader below (``agent get/show/info``, ``agent list``, the
-    # launch's own load), while the WRITE route refused the same node. One node, two
-    # verdicts. This is the route the docstring promised, beside the alias refusal above
-    # and for the same reason: one file, one verdict, at the reader every verb shares.
-    # ⚑ ASKED ONLY WHEN THE STORE IS THERE, which is what makes it a STORE-LOOKUP gate and
-    # not a second key-space one: ``default`` is a legal ``agent.<HERE>`` segment (it
-    # addresses the tier), so ``settings_keyspace.file_alias_reason`` must keep passing it
-    # and the writes must keep routing to the tier's own file.
-    if node == AGENT_DEFAULT_SUB:
-        from kanibako.settings.config_dest import _reserved_tier_store_sentence
-
-        raise SettingsError(
-            f"{path.parent} is not an agent store: {_reserved_tier_store_sentence()}.\n"
-            f"  Fix: move {path.parent} out of {path.parent.parent}, or delete it -- the "
-            f"tier's settings live in the system file's 'agent: {AGENT_DEFAULT_SUB}:' "
-            f"table, never in a folder."
-        )
-
-    data = load_doc(path)
-
-    tables = _contribution(data, node=node, path=path)
-    agent_sec = tables.get(_ROOT, {})
-    if not isinstance(agent_sec, dict):
-        agent_sec = {}
-    _refuse_nested_tables(agent_sec, node=node, path=path)
-    agent_sec = _own_node_settings(agent_sec, tables.get(FILE_SCOPE), node=node)
+    own = {**level.table, **level.state}
+    agent_sec = _own_node_settings(own, level.scope, node=node)
     # ⚑ NO ``name`` READ, AND ITS ABSENCE IS THE POINT (D8b): the field is retired, so a
     # ``name:`` still in the file falls into ``cfg.state`` below like any other undeclared
     # entry and REFUSES by name at the end of this read.
@@ -657,7 +606,7 @@ def load(path: Path, *, node: str) -> AgentConfig:
     cfg.state = {
         k: (v if v is None else str(v))
         for k, v in agent_sec.items()
-        if k not in _MODELED_KEYS and not isinstance(v, dict)
+        if k not in _ROOT_TABLES and not isinstance(v, dict)
     }
     # env: VAR -> value, read DIRECTLY from the root's ``env`` table.  Carried for the
     # ``agent info`` / ``show`` / ``get`` READS; the launch reads the same table
@@ -698,13 +647,12 @@ def load(path: Path, *, node: str) -> AgentConfig:
     # user's binds.  ⚑ NO LIVE CALLER MAKES THAT ROUND TRIP TODAY (measured — see the
     # ``AgentConfig`` docstring); the carry is a guard, not a running guarantee.
     cfg.category_tables = {
-        k: dict(v)
+        k: dict(v) if isinstance(v, dict) else v
         for k, v in agent_sec.items()
-        if k in _CARRIED_CATEGORIES and isinstance(v, dict)
+        if k in _CARRIED_CATEGORIES
     }
     _refuse_undeclared_state(
-        _undeclared_entries(tables.get(_ROOT), tables.get(FILE_SCOPE), node=node),
-        node=node, path=path,
+        _undeclared_entries(own, level.scope, node=node), node=node, path=level.path,
     )
     return cfg
 
@@ -766,13 +714,13 @@ def save(path: Path, cfg: AgentConfig) -> None:
         agent_sec["transform_settings"] = dict(cfg.transform_settings)
     if cfg.env:
         agent_sec["env"] = dict(cfg.env)
-    # The opaquely-carried CATEGORY tables re-emitted — sparse; see :func:`load`.
+    # The opaquely-carried CATEGORY tables re-emitted — sparse; see :func:`record`.
     # ⚑ ONE set guards BOTH ends: a modeled table can neither be captured into the
     # carrier nor clobber its own emission from there, and nothing the carrier holds
-    # can be a shape :func:`load` would refuse.
+    # can be a shape :func:`record` would refuse. A VALUE (``caches: null``) is emitted as is.
     for category, table in cfg.category_tables.items():
-        if table and category in _CARRIED_CATEGORIES:
-            agent_sec[category] = dict(table)
+        if table != {} and category in _CARRIED_CATEGORIES:
+            agent_sec[category] = dict(table) if isinstance(table, dict) else table
 
     data: dict = {
         _ROOT: agent_sec,
@@ -852,7 +800,7 @@ def _refuse_nested_tables(
 
     ⚑ PRESENCE, not truthiness: an empty ``claude: {}`` sub-table is still the spelling being
     refused. A BARE ``claude:`` leaf parses to ``None`` and is NOT refused here — it is not a
-    table, carries nothing, and delivers nothing; ``load`` sweeps it into state as the scalar it
+    table, carries nothing, and delivers nothing; ``record`` sweeps it into state as the scalar it
     parsed to, and the undeclared-leaf check refuses it there by name.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
@@ -954,7 +902,7 @@ def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
     """:func:`contributed_tables`, after refusing a stray (:func:`_refuse_stray_roots`).
 
     ⚑⚑ EVERY READER THAT JUDGES THE FILE COMES THROUGH HERE — the launch (:func:`level_table`)
-    and the record (:func:`load`: ``agent show`` / ``info`` / ``list``) — so one file gets one
+    and the record (:func:`record`: ``agent show`` / ``info`` / ``list``) — so one file gets one
     verdict. The reset does not (:func:`clear_overrides`): it is the repair door.
 
     ⚑ THE FILE-SHAPE REFUSALS THE ``agent:`` TABLE BROUGHT (Q92) RUN HERE TOO, for that reason: a
@@ -993,7 +941,7 @@ def _refuse_scope_value(scope: Any, *, path: Path | None) -> None:
 
 
 def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) -> None:
-    """RAISE on a node of the ``agent:`` table that holds a VALUE (or nothing) instead of a table.
+    """RAISE on ``self:`` or a node of the ``agent:`` table holding a VALUE (or nothing), not a table.
 
     ``agent.<node>`` names an agent TIER, not a key (spec §2d) — the launch's §0 audit refuses it
     so — and this is where every other reader gets the same verdict. ⚑ The file's OWN node is the
@@ -1001,12 +949,20 @@ def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) ->
     or a bare ``claude:`` writes that node a second time, and merged it would replace every
     setting under ``self:`` without a word; the message says so.
     """
+    own = tables.get(_ROOT)
+    where = path if path is not None else "the agent settings file"
+    if _ROOT in tables and not isinstance(own, dict):
+        raise SettingsError(
+            f"`{_ROOT}` in {where} holds {own!r}, but `{_ROOT}:` IS "
+            f"`agent.{node or '<agent>'}`, which names an agent's settings table, not a key "
+            f"(spec §2d).\n"
+            f"  Fix: delete the `{_ROOT}` entry from {where}, or give it a table of this "
+            f"agent's settings."
+        )
     scope = tables.get(FILE_SCOPE)
     if not isinstance(scope, dict):
         return
-    own = tables.get(_ROOT)
     own_id = _node_identity(node) if node is not None else None
-    where = path if path is not None else "the agent settings file"
     for seg, other in scope.items():
         if isinstance(other, dict):
             continue
@@ -1142,6 +1098,7 @@ def level_table(
     and merge by their true §2d names — NO bare-``agent`` collapse. A missing root table yields an
     EMPTY *table* (its *scope* still rides). *path* only renders the refusal messages; *node*
     renders them too and is the node the two-spelling check matches (:func:`_contribution`).
+    The active tier's root is split by KEY (:class:`AgentFileLevel`).
 
     ⚑ THE REFUSALS RUN FIRST: over the file's TOP level (:func:`_contribution`), then over the
     WHOLE root (:func:`_refuse_nested_tables`).
@@ -1152,22 +1109,19 @@ def level_table(
     scope = tables.get(FILE_SCOPE) or {}
     agent = tables.get(_ROOT)
     if not isinstance(agent, dict):
-        return AgentFileLevel(sub_key, {}, scope=scope)
+        return AgentFileLevel(sub_key, {}, path, scope)
     _refuse_nested_tables(agent, node=node, path=path)
+    if sub_key == AGENT_DEFAULT_SUB:
+        return AgentFileLevel(sub_key, {}, path, scope)
     # ⚑ ``self`` IS ``agent.<active-node>``, so EVERY category lives at the file's TOP level —
-    # re-root them for the ACTIVE layer ONLY, never the all-agents ``default`` (they are THIS
-    # node's, not every agent's). Without this a category is not in the cascade at all: the
-    # launch secret export saw no agent-scope secret_path and mounted no token, and an
-    # ``agent.<node>.env.<VAR>`` was no snapshot leaf (llm-docs).
-    # ⚑ ``bindings`` rides as ONE table, ``{ro: …, rw: …}`` whole: the canonical
-    # ``agent.<node>.bindings`` key holds both arms, so re-rooting the token re-roots the pair.
-    node_tbl: dict = {}
-    if sub_key != AGENT_DEFAULT_SUB:
-        for category in _FLAT_AGENT_CATEGORIES:
-            flat = agent.get(category)
-            if isinstance(flat, dict) and flat:
-                node_tbl[category] = flat
-    return AgentFileLevel(sub_key, node_tbl, scope=scope)
+    # re-rooted for the ACTIVE layer ONLY, never the all-agents ``default`` (they are THIS
+    # node's, not every agent's). ``bindings`` rides as ONE table, ``{ro: …, rw: …}`` whole.
+    # ⚑⚑ SPLIT BY KEY, NOT BY VALUE: a category key holding a ``null`` or a scalar is still
+    # that category's, so it reaches the cascade (``caches: null`` RESETS the category,
+    # spec §2a) or the §0 refusal, the way the same value does in any other settings file.
+    table = {k: v for k, v in agent.items() if str(k) in _FLAT_AGENT_CATEGORIES}
+    state = {k: v for k, v in agent.items() if str(k) not in _FLAT_AGENT_CATEGORIES}
+    return AgentFileLevel(sub_key, table, path, scope, state)
 
 
 def state_level(
@@ -1202,7 +1156,7 @@ def state_level(
     hands that agent the default it wrote the empty list to refuse.
 
     ⚑ IT JUDGES NOTHING: an undeclared scalar in the file is refused when the file is READ
-    (:func:`load`), so every reader — not the launch alone — refuses it by name.  The record
+    (:func:`record`), so every reader — not the launch alone — refuses it by name.  The record
     arriving here from anywhere else is a plugin's generated one, whose state is empty.
     """
     if cfg is None:
@@ -1216,7 +1170,7 @@ def state_level(
 
 
 def _refuse_undeclared_state(
-    entries: "Iterable[tuple[str, str, str]]", *, node: str, path: Path,
+    entries: "Iterable[tuple[str, str, str]]", *, node: str, path: Path | None,
 ) -> None:
     """RAISE naming EVERY agent-file entry that is not a declared key (spec §0).
 
@@ -1252,7 +1206,7 @@ def _refuse_undeclared_state(
         f"kanibako will not start a box on the file or display it — an undeclared "
         f"key has no meaning to give a box, and carrying it through would be the "
         f"very 'anything goes' behavior the closed keyspace replaces.\n"
-        f"  Fix: remove {spelled} from {path} (or correct the "
+        f"  Fix: remove {spelled} from {path or 'the agent settings file'} (or correct the "
         f"spelling), or clear every override with "
         f"'kanibako agent reset {node} --all'."
     )
@@ -1294,7 +1248,7 @@ def _undeclared_entries(
     Two passes, each the launch's own verdict, so the file's readers refuse what the launch does:
 
     1. every KEY of a node table but a category holding a TABLE, through
-       ``config_keys.agent_key_reason`` — the verdict the launch takes from :func:`load`. A
+       ``config_keys.agent_key_reason`` — the verdict the launch takes from :func:`record`. A
        category holding a VALUE is judged as a key, so ``env: 5`` gets ``agent.<node>.env`` is a
        namespace, under ``self:`` as under ``agent: <node>:``;
     2. every PATH, category contents included, through the launch's whole-snapshot audit

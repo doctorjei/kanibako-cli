@@ -546,7 +546,7 @@ class TestRunConfig:
     def test_config_set_state_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set
         from kanibako.settings.agent_config import agent_config_path
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         args = argparse.Namespace(agent_id="claude", key_value="model=sonnet")
         rc = run_set(args)
@@ -555,7 +555,7 @@ class TestRunConfig:
 
         # Verify the file was updated
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path, node="claude")
+        cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.state["model"] == "sonnet"
 
     def test_config_set_resolves_against_the_system_scope(self, agent_env, monkeypatch):
@@ -636,20 +636,20 @@ class TestRunConfig:
         """
         from kanibako.commands.agent_cmd import run_set
         from kanibako.settings.agent_config import agent_config_path
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         rc = run_set(argparse.Namespace(
             agent_id="claude", key_value="model=whatever",
         ))
         assert rc == 0
         assert "Set model=whatever" in capsys.readouterr().out
-        cfg = load_agent_config(agent_config_path(agent_env, "claude"), node="claude")
+        cfg = load_agent_config(agent_config_path(agent_env, "claude"), node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.state["model"] == "whatever"
 
     def test_config_set_env_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set
         from kanibako.settings.agent_config import agent_config_path
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         args = argparse.Namespace(agent_id="claude", key_value="env.PAGER=less")
         rc = run_set(args)
@@ -657,7 +657,7 @@ class TestRunConfig:
         assert "Set env.PAGER=less" in capsys.readouterr().out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path, node="claude")
+        cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.env["PAGER"] == "less"
 
     def test_config_set_secret_path_key(self, agent_env, capsys):
@@ -665,7 +665,7 @@ class TestRunConfig:
         # under agent.<node>.secret_path (spec §2a; RENAMED from rc-only env_file).
         from kanibako.commands.agent_cmd import run_set
         from kanibako.settings.agent_config import agent_config_path
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude",
@@ -676,7 +676,7 @@ class TestRunConfig:
         assert "Set secret_path.ANTHROPIC_AUTH_TOKEN=" in capsys.readouterr().out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path, node="claude")
+        cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.secret_path["ANTHROPIC_AUTH_TOKEN"] == "~/.config/claude/nav/token"
         # It must NOT have leaked into the plain env map.
         assert "ANTHROPIC_AUTH_TOKEN" not in cfg.env
@@ -695,7 +695,7 @@ class TestRunConfig:
     def test_config_reset_secret_path_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_set, run_reset
         from kanibako.settings.agent_config import agent_config_path
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         run_set(argparse.Namespace(
             agent_id="claude", key_value="secret_path.TOKEN=/secure/token",
@@ -709,7 +709,7 @@ class TestRunConfig:
         assert "Cleared secret_path.TOKEN set on the agent scope" in out
         assert "falls back through the cascade" in out
         assert "Reset secret_path.TOKEN" not in out
-        cfg = load_agent_config(agent_config_path(agent_env, "claude"), node="claude")
+        cfg = load_agent_config(agent_config_path(agent_env, "claude"), node="claude", purpose=ReadPurpose.RESOLVE)
         assert "TOKEN" not in cfg.secret_path
 
     def test_config_shell_is_no_longer_a_key_at_all(self, agent_env, capsys):
@@ -735,7 +735,7 @@ class TestRunConfig:
     def test_config_reset_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
         from kanibako.settings.agent_config import agent_config_path
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude", key="model", all_keys=False, force=False,
@@ -750,13 +750,13 @@ class TestRunConfig:
         assert "Reset model" not in out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path, node="claude")
+        cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert "model" not in cfg.state
 
     def test_config_reset_env_key(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
         from kanibako.settings.agent_config import agent_config_path
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude", key="env.EDITOR", all_keys=False, force=False,
@@ -769,7 +769,7 @@ class TestRunConfig:
         assert "Reset env.EDITOR" not in out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path, node="claude")
+        cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert "EDITOR" not in cfg.env
 
     def test_config_reset_unset_declared_key(self, agent_env, capsys):
@@ -788,7 +788,7 @@ class TestRunConfig:
     def test_config_reset_all_forced(self, agent_env, capsys):
         from kanibako.commands.agent_cmd import run_reset
         from kanibako.settings.agent_config import agent_config_path
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
 
         args = argparse.Namespace(
             agent_id="claude", key=None, all_keys=True, force=True,
@@ -800,7 +800,7 @@ class TestRunConfig:
         assert "Reset 3 override(s)." in capsys.readouterr().out
 
         path = agent_config_path(agent_env, "claude")
-        cfg = load_agent_config(path, node="claude")
+        cfg = load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert cfg.state == {}
         assert cfg.env == {}
         # ``reset --all`` REWRITES the file without the key, so the record reads the
@@ -930,7 +930,7 @@ class TestSparseWrites:
         """
         from kanibako.commands.agent_cmd import run_set
         from kanibako.settings.agent_file import _LIST_VALUED_KEYS
-        from kanibako.settings.agent_file import load as load_agent_config
+        from kanibako.settings.settings_assemble import ReadPurpose, agent_record as load_agent_config
         from kanibako.settings.config_io import load_doc
         from kanibako.settings.config_keys import ConfigLevel
         from kanibako.settings.config_interface import set_config_value
@@ -955,7 +955,7 @@ class TestSparseWrites:
 
             assert by_verb == by_config == ["--c", "--d"], (leaf, by_verb, by_config)
             # ...and the shape the record actually reads is that one.
-            assert getattr(load_agent_config(path, node="claude"), leaf) == ["--c", "--d"]
+            assert getattr(load_agent_config(path, node="claude", purpose=ReadPurpose.RESOLVE), leaf) == ["--c", "--d"]
 
     def test_reset_key_prunes_empty_table_leaves_siblings(self, agent_env):
         """reset removes the one entry, prunes the now-empty table, and leaves
@@ -1190,7 +1190,7 @@ class TestSparseWrites:
         """A folder under ``agents/`` whose name is not a legal agent name stops the listing,
         naming the folder's PATH and the cure — not the bare ref-grammar refusal, which names
         neither. (Mutation: drop ``_store_node``'s re-raise → the path is missing → RED.) The
-        alias folder is refused by ``agent_file.load``, which every reader shares, so its error is
+        alias folder is refused by ``settings_assemble.agent_record``, which every reader shares, so its error is
         a ``SettingsError``; both are ``KanibakoError``s, which the CLI prints the same way."""
         from kanibako.commands import agent_cmd
         from kanibako.errors import KanibakoError
@@ -1213,7 +1213,7 @@ class TestSparseWrites:
     def test_the_show_verbs_refuse_an_undeclared_leaf(self, agent_env, verb, key_value):
         """Every reader gets the verdict the launch gets (Q101 option 1): an undeclared leaf
         under ``self:`` is refused by name, never listed. (Mutation: drop the
-        ``_refuse_undeclared_state`` call from ``agent_file.load`` → ``zippity = 1`` is shown
+        ``_refuse_undeclared_state`` call from ``settings_assemble.agent_record`` → ``zippity = 1`` is shown
         at rc 0 → RED.)"""
         from kanibako.commands import agent_cmd
         from kanibako.settings.settings_resolve import SettingsError
@@ -1235,7 +1235,7 @@ class TestSparseWrites:
     def test_the_show_verbs_refuse_the_alias_folder(self, agent_env, verb):
         """``agent info self`` / ``show self`` refuse a leftover ``agents/self/`` (review R2):
         ``self`` is the file's alias, never an agent. (``get self`` already refuses at its key
-        check.) (Mutation: drop the alias check from ``agent_file.load`` → the folder is shown
+        check.) (Mutation: drop the alias check from ``settings_assemble.agent_record`` → the folder is shown
         at rc 0 → RED.)"""
         from kanibako.commands import agent_cmd
         from kanibako.settings.settings_resolve import SettingsError

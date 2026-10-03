@@ -106,7 +106,7 @@ def test_fabrication_is_still_rejected():
 def test_the_agent_file_alias_is_never_an_agent_segment():
     """``self`` is the per-agent file's alias for its own node, never a key segment — refused
     even where the valid-agent set would CONCEDE an unheard-of name (``[R150]``), which is the
-    set every launch and ``agent_file.load`` judge with."""
+    set every launch and ``settings_assemble.agent_record`` judge with."""
     from kanibako.settings.agent_file import file_spelling
 
     alias = file_spelling()
