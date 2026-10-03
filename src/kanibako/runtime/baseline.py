@@ -43,9 +43,7 @@ def _read_doc(path: Path) -> dict[str, list[str]]:
     non-mapping document is REFUSED BY NAME (ConfigError).  A package whose value is
     neither a name nor a list of them is REFUSED BY NAME too, here: iterating it would
     either raise a bare ``TypeError`` or accept a table's keys as executable names.  So
-    is a name carrying a control character: the probe reads its result one line at a
-    time, and no shell can look such a name up whole, so one of them decides the
-    verdict for every other name probed alongside it.
+    is a name carrying a control character: no shell can look one up whole.
     """
     if not path.is_file():
         return {}
