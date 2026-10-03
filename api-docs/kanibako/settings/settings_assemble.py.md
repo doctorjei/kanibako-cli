@@ -55,7 +55,7 @@ def _retired_mirror_cure(*, level: str, box_name: str | None, table: 'dict[Any, 
 def _retired_key_cure(key: str, *, level: str, value: str, box_name: str | None=None, mirror: 'dict[Any, Any] | None'=None) -> str
 def _nested_present(raw: Any, parts: 'tuple[str, ...]') -> Any
 def _behavior_leaf_sites(raw: Any, leaf: str) -> 'list[tuple[tuple[str, ...], Any]]'
-def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None) -> str
+def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None, node: str | None=None) -> str
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
 def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None) -> None
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict
