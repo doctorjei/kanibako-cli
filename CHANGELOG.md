@@ -1393,8 +1393,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A missing import inside a plugin's charter chapter now warns.** Inside `~/canon/charter/agent/`,
   an `__IMPORT__` or `__IMPORTSECTION__` whose target is a file inside the chapter that does not
   exist now prints a warning on stderr naming the file, the line, and the missing path.
-  `__LINK__`, `__LINKSECTION__`, and a glob that matches nothing stay silent, and a plugin that
-  ships no chapter gets no warning.
+  `__LINK__`, `__LINKSECTION__`, and a glob that matches nothing stay silent, as does a missing
+  target outside that chapter, and a plugin that ships no chapter gets no warning.
 - **A setting can refer to the files kanibako reads its configuration from.** Three read-only
   keys name them: `@meta.runtime.user.config` is your `kanibako.cfg` (under `$XDG_CONFIG_HOME`,
   or `~/.config` when that is unset or not absolute), `@meta.runtime.admin.config` is
@@ -4101,17 +4101,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A missing bind source is handled by destination, not by who declared the bind.** There are three
   answers to "the host source is not there at launch": the launch stops with a clean error (the
-  agent's own delivery binds — its binary, launcher and shared install dir), the bind is dropped
-  silently (the optional canon chapters, and the agent's best-effort shares), or the bind is dropped
-  with a warning (everything else). Which one a bind got used to depend on how it was declared rather
-  than on where it lands: the agent's delivery binds were emitted by a separate emitter carrying its
-  own rule, and the silent case was a flag on the declaration. The whole mount set is assembled in one
-  place now, so the answer follows the **destination** and applies to whichever declaration wins that
+  agent's own delivery binds — its binary, launcher and shared install dir — and kanibako's
+  packaged core canon), the bind is dropped silently (every handbook chapter except
+  `SYS_CONTENTS.md`, and the agent's best-effort shares, and a plugin's charter chapter when the
+  plugin ships none), or the bind is dropped with a warning (everything else, `SYS_CONTENTS.md`
+  among them). Which one a bind got used to depend on how it was declared rather than on where it
+  lands: the agent's delivery binds were emitted by a separate emitter carrying its own rule, and
+  the silent case was a flag on the declaration. The whole mount set is assembled in one place
+  now, so the answer follows the **destination** and applies to whichever declaration wins that
   destination, at any scope. The practical difference: if you point one of the agent's delivery
   destinations at a source of your own (`box.bindings.ro` at `~/.local/bin/<agent>`, say) and that
   source is missing, the launch now stops with `Error: <agent> mount source disappeared before
-  launch` instead of warning and starting a box with no agent binary in it. See
-  [MIGRATION.md](MIGRATION.md) §2.28.
+  launch` instead of warning and starting a box with no agent binary in it. Over kanibako's
+  packaged core canon the refusal *A missing, empty, or incomplete packaged canon stops
+  `start`/`create` with an error naming the path* carries two recoveries: for a box
+  `kanibako create` made, repair the install and re-run `kanibako create`, and that re-run recovers
+  the interrupted create; a named workset box refused at its first launch is left without its
+  canon skeleton, and no command recovers it yet. No canon `optional:` declaration remains — what
+  a canon bind does about an absent source follows its destination. See
+  [MIGRATION.md](MIGRATION.md) *A missing bind source is handled by destination, not by who
+  declared it*.
 
 - **A `synced` entry lands inside the bind that covers its destination.** `<scope>.synced` files are
   re-copied into the box on every launch — this is how host credentials get there — and their
