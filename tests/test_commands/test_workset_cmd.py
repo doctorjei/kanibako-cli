@@ -567,6 +567,75 @@ class TestWorksetConnect:
         assert journal.read_journal(std.journal) == {}
         assert not (root / "workspaces" / "app").exists()
 
+    def _assert_connect_refused(self, config_file, tmp_home, capsys, source,
+                                name="nothere", force=False, expect=""):
+        """A refused EXTERNAL connect writes nothing and leaves no pending journal entry.
+
+        *expect* is the exact ``Error: `` line the refusal must print.
+        """
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+        from kanibako.project.workset import list_worksets, load_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_extmiss").resolve()
+        create_workset("extmiss", root, std)
+
+        args = argparse.Namespace(
+            workset="extmiss", source=str(source), project_name=name, force=force,
+        )
+        assert run_connect(args) == 1
+        assert capsys.readouterr().err.strip() == expect
+        assert not (root / "workspaces" / name).exists()
+        reloaded = load_workset(list_worksets(std)["extmiss"], "extmiss")
+        assert reloaded.projects == []
+        assert _workset_boxes(reloaded) == {}
+        assert journal.read_journal(std.journal) == {}
+
+    def test_connect_missing_external_source_refuses_before_the_journal(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``connect`` REGISTERS an existing dir, so a missing EXTERNAL source is refused."""
+        source = (tmp_home / "nothere").resolve()
+        self._assert_connect_refused(
+            config_file, tmp_home, capsys, source,
+            expect=f"Error: Cannot connect '{source}': no such directory.",
+        )
+
+    def test_connect_file_source_refuses_before_the_journal(
+        self, config_file, tmp_home, capsys,
+    ):
+        """An EXTERNAL source that is a regular file is refused as not-a-directory."""
+        source = (tmp_home / "afile").resolve()
+        source.write_text("not a project\n")
+        self._assert_connect_refused(
+            config_file, tmp_home, capsys, source, name="afile",
+            expect=f"Error: Cannot connect '{source}': it is not a directory.",
+        )
+
+    def test_connect_dangling_symlink_source_refuses_before_the_journal(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A dangling symlink is PRESENT but not a directory, so it reads as not-a-directory."""
+        target = tmp_home / "gone"
+        link = tmp_home / "dangling"
+        link.symlink_to(target)
+        self._assert_connect_refused(
+            config_file, tmp_home, capsys, link, name="gone",
+            expect=f"Error: Cannot connect '{target.resolve()}': it is not a directory.",
+        )
+
+    def test_connect_force_does_not_bypass_a_missing_external_source(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``--force`` absorbs a standalone box; it does not create a missing source dir."""
+        source = (tmp_home / "nothere").resolve()
+        self._assert_connect_refused(
+            config_file, tmp_home, capsys, source, force=True,
+            expect=f"Error: Cannot connect '{source}': no such directory.",
+        )
+
     def test_connect_duplicate_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_connect
 
