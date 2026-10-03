@@ -1700,6 +1700,14 @@ class TestKinemataCarrier:
                 ("keys",), ("bind_default_entries",), ("category_default_entries",),
             )
         }
+        # The `spec-2g-*` views compare the manifest with the SPEC, the authority, so a
+        # baselined finding there would accept spec drift silently.
+        spec_views = {
+            str(parity["registry"]) for parity in _kinemata_config().get("parity", [])
+            if str(parity["registry"]).startswith("spec-2g-")
+        }
+        assert spec_views == {"spec-2g-defaults", "spec-2g-keys", "spec-2g-not-keys"}, spec_views
+        views |= spec_views
         assert {"access-choices", "agent-seeded-layer"} <= views, sorted(views)
         # A parity finding is recorded under ``parity:<view>:<kind>``.
         waived = sorted(

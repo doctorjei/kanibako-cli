@@ -2576,16 +2576,18 @@ where = { id_matches = '^system\.' }
 
 # ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
-# produces and compares that set against what a registry above DECLARES.
+# produces and compares that set against what a registry above DECLARES. The
+# three `spec-2g-*` oracles are the exception: they print what the keyspace SPEC
+# states, the authority the manifest's `system.*` rows project.
 #
 # 🛑 NOTHING BELOW THIS LINE MAY BE A `[[registry]]`, AND THAT IS NOT COSMETIC.
 # These are TOML TABLES: every key after a `[[parity]]` or `[[gate]]` header
 # belongs to that table, not to the registry above it. Keep new `[[registry]]`
 # tables ABOVE this line and new `[claims]` keys up beside `[claims]`.
 #
-# ⚑ AN ORACLE READS THE CODE, NEVER THE FILE IT IS BEING CHECKED AGAINST. One
-# that parsed `keyspace-manifest.yaml` would compare that file with itself and
-# pass for a tree in any state -- and a vacuous run is indistinguishable from a
+# ⚑ AN ORACLE READS THE CODE (OR, FOR `spec-2g-*`, THE SPEC), NEVER THE FILE IT
+# IS BEING CHECKED AGAINST. One that parsed `keyspace-manifest.yaml` would
+# compare that file with itself and pass for a tree in any state -- and a vacuous run is indistinguishable from a
 # clean one, which is the failure mode this whole adoption exists to avoid.
 #
 # ⚑ `{python}` IS SUBSTITUTED WITH THE INTERPRETER KINEMATA IS RUNNING UNDER

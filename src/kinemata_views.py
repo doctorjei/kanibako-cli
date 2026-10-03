@@ -665,56 +665,68 @@ def system_value_row(entry: Any) -> bool:
     return entry.id.startswith("system.") and entry.extra.get("default") is not None
 
 
-#: The canon root holding `workbook/specs/`, spelled as `scripts/keyspec-extract.py`
-#: spells it. CI points it at a clone of the project wiki.
-SPEC_ROOT_ENV = "KANI_CANON"
+def _keyspec_extract() -> Any:
+    """`scripts/keyspec-extract.py`, the owner of the spec locator and the fence-aware
+    section parser (P10). Importing it reads no credential and opens no connection."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    name = "keyspec_extract"
+    if name in sys.modules:
+        return sys.modules[name]
+    # One literal: a bare "scripts" reads to `kinemata check` as HELPER_SCRIPTS_RELPATH.
+    script = Path(__file__).resolve().parents[1] / "scripts/keyspec-extract.py"
+    spec = importlib.util.spec_from_file_location(name, script)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load {script}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def spec_table(document: str, heading: str, columns: tuple[str, ...]) -> list[dict[str, str]]:
-    """The rows of the one table under the spec heading that starts with *heading*.
+def spec_table(section: str, columns: tuple[str, ...]) -> list[dict[str, str]]:
+    """The rows of the one table in keyspace spec section *section* (`"2g"`).
 
-    Read by heading and column, never by line number. It FAILS CLOSED, by raising:
-    a missing spec file, a heading matched zero or several times, a section holding
+    Read by section id and column, never by line number. It FAILS CLOSED, by raising:
+    a missing spec file, an absent section (or one declared twice), a section holding
     no table or several, a header row other than *columns*, or a row with a
     different cell count. A raise exits the oracle nonzero, which kinemata reports
     as a failure no baseline can accept.
     """
-    import os
     import re
-    from pathlib import Path
 
-    root = Path(os.environ.get(SPEC_ROOT_ENV, "~/canon")).expanduser()
-    path = root / "workbook" / "specs" / document
+    keyspec = _keyspec_extract()
+    path = keyspec._DEFAULT_SPEC
     if not path.is_file():
-        raise SystemExit(f"spec not found: {path} (set {SPEC_ROOT_ENV} to the canon root)")
+        raise SystemExit(f"spec not found: {path} (set KANI_CANON to the canon root)")
     lines = path.read_text(encoding="utf-8").splitlines()
-    headings = [(i, len(m[1])) for i, line in enumerate(lines)
-                if (m := re.match(r"(#+) (.*)$", line)) and m[2].startswith(heading)]
-    if len(headings) != 1:
-        raise SystemExit(f"{path}: {len(headings)} headings start with {heading!r}, want 1")
-    start, level = headings[0]
-    end = next((i for i in range(start + 1, len(lines))
-                if (m := re.match(r"(#+) ", lines[i])) and len(m[1]) <= level), len(lines))
+    found = keyspec.parse_sections(lines)
+    if section not in found:
+        raise SystemExit(f"{path}: no section {section!r}")
+    # 1-based, inclusive; skips the heading line.
+    body = lines[found[section].start:found[section].end]
     tables: list[list[str]] = []
-    for i in range(start + 1, end):
-        if lines[i].startswith("|"):
-            if not lines[i - 1].startswith("|"):
+    for i, line in enumerate(body):
+        if line.startswith("|"):
+            if i == 0 or not body[i - 1].startswith("|"):
                 tables.append([])
-            tables[-1].append(lines[i])
+            tables[-1].append(line)
     if len(tables) != 1:
-        raise SystemExit(f"{path}: {heading!r} holds {len(tables)} tables, want 1")
+        raise SystemExit(f"{path}: §{section} holds {len(tables)} tables, want 1")
 
     def cells(line: str) -> list[str]:
         parts = line.strip().removeprefix("|").split("|", len(columns) - 1)
         parts[-1] = parts[-1].removesuffix("|")
         return [part.strip() for part in parts]
 
-    header, rule, *body = tables[0]
+    header, rule, *rows = tables[0]
     if tuple(cells(header)) != columns or not re.fullmatch(r"[|\s:-]+", rule):
-        raise SystemExit(f"{path}: {heading!r} table header is {header!r}, want {columns}")
-    parsed = [cells(line) for line in body]
+        raise SystemExit(f"{path}: §{section} table header is {header!r}, want {columns}")
+    parsed = [cells(line) for line in rows]
     if not parsed or any(len(row) != len(columns) for row in parsed):
-        raise SystemExit(f"{path}: {heading!r} table has no rows or a short row")
+        raise SystemExit(f"{path}: §{section} table has no rows or a short row")
     return [dict(zip(columns, row)) for row in parsed]
 
 
@@ -728,8 +740,7 @@ def system_settings_rows() -> list[tuple[str, str, str]]:
     import re
 
     rows = []
-    for row in spec_table("settings-keyspace-1.8.0.md", "2g. `system.*`",
-                          ("Key", "Default", "Notes")):
+    for row in spec_table("2g", ("Key", "Default", "Notes")):
         key = re.fullmatch(r"`(system\.[a-z_.]+)`", row["Key"])
         value = re.fullmatch(r"`([^`]+)`", row["Default"])
         if key is None:
