@@ -3376,6 +3376,10 @@ always a path you can open.
 **Scope.** §2.38 closed this same passthrough for the per-agent `agent.yaml` file. This is the same
 rule applied to every settings file and to the whole resolved snapshot.
 
+This now also covers a key the merge hides. An undeclared entry in `workset.yaml` or `box.yaml` is
+refused even when another file's table covers it, and the message names the file to edit by hand.
+Plain `workset share list` refuses such a file too.
+
 ### 2.48 `box get` and `workset get` refuse a name that is not a key, and `show` marks the entry
 
 **Read this if a script calls `kanibako box get` or `kanibako workset get`, or if you have a
