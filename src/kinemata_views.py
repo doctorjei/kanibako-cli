@@ -657,3 +657,87 @@ def declares_no_floor_value(entry: Any) -> bool:
     this one asks every floor at once.
     """
     return "default" in entry.extra and entry.extra["default"] is None
+
+
+def system_value_row(entry: Any) -> bool:
+    """A `system.*` key row whose `default:` is a value, not `null` -- the rows the
+    keyspace spec's §2g table states a comparable default for."""
+    return entry.id.startswith("system.") and entry.extra.get("default") is not None
+
+
+#: The canon root holding `workbook/specs/`, spelled as `scripts/keyspec-extract.py`
+#: spells it. CI points it at a clone of the project wiki.
+SPEC_ROOT_ENV = "KANI_CANON"
+
+
+def spec_table(document: str, heading: str, columns: tuple[str, ...]) -> list[dict[str, str]]:
+    """The rows of the one table under the spec heading that starts with *heading*.
+
+    Read by heading and column, never by line number. It FAILS CLOSED, by raising:
+    a missing spec file, a heading matched zero or several times, a section holding
+    no table or several, a header row other than *columns*, or a row with a
+    different cell count. A raise exits the oracle nonzero, which kinemata reports
+    as a failure no baseline can accept.
+    """
+    import os
+    import re
+    from pathlib import Path
+
+    root = Path(os.environ.get(SPEC_ROOT_ENV, "~/canon")).expanduser()
+    path = root / "workbook" / "specs" / document
+    if not path.is_file():
+        raise SystemExit(f"spec not found: {path} (set {SPEC_ROOT_ENV} to the canon root)")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    headings = [(i, len(m[1])) for i, line in enumerate(lines)
+                if (m := re.match(r"(#+) (.*)$", line)) and m[2].startswith(heading)]
+    if len(headings) != 1:
+        raise SystemExit(f"{path}: {len(headings)} headings start with {heading!r}, want 1")
+    start, level = headings[0]
+    end = next((i for i in range(start + 1, len(lines))
+                if (m := re.match(r"(#+) ", lines[i])) and len(m[1]) <= level), len(lines))
+    tables: list[list[str]] = []
+    for i in range(start + 1, end):
+        if lines[i].startswith("|"):
+            if not lines[i - 1].startswith("|"):
+                tables.append([])
+            tables[-1].append(lines[i])
+    if len(tables) != 1:
+        raise SystemExit(f"{path}: {heading!r} holds {len(tables)} tables, want 1")
+
+    def cells(line: str) -> list[str]:
+        parts = line.strip().removeprefix("|").split("|", len(columns) - 1)
+        parts[-1] = parts[-1].removesuffix("|")
+        return [part.strip() for part in parts]
+
+    header, rule, *body = tables[0]
+    if tuple(cells(header)) != columns or not re.fullmatch(r"[|\s:-]+", rule):
+        raise SystemExit(f"{path}: {heading!r} table header is {header!r}, want {columns}")
+    parsed = [cells(line) for line in body]
+    if not parsed or any(len(row) != len(columns) for row in parsed):
+        raise SystemExit(f"{path}: {heading!r} table has no rows or a short row")
+    return [dict(zip(columns, row)) for row in parsed]
+
+
+def system_settings_rows() -> list[tuple[str, str, str]]:
+    """`(kind, key, default)` for every row of the keyspace spec's §2g table.
+
+    *kind* is `value` (a backticked default), `unset` (`(unset)`: membership only,
+    as the spec states no value) or `not-key` (`—`: a name the spec declares is NOT
+    a key). Any other Key or Default cell shape raises.
+    """
+    import re
+
+    rows = []
+    for row in spec_table("settings-keyspace-1.8.0.md", "2g. `system.*`",
+                          ("Key", "Default", "Notes")):
+        key = re.fullmatch(r"`(system\.[a-z_.]+)`", row["Key"])
+        value = re.fullmatch(r"`([^`]+)`", row["Default"])
+        if key is None:
+            raise SystemExit(f"§2g: unreadable Key cell {row['Key']!r}")
+        if value is not None:
+            rows.append(("value", key[1], value[1]))
+        elif row["Default"] in ("(unset)", "—"):
+            rows.append(("unset" if row["Default"] == "(unset)" else "not-key", key[1], ""))
+        else:
+            raise SystemExit(f"§2g: unreadable Default cell {row['Default']!r} for {key[1]}")
+    return rows

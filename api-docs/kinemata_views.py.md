@@ -8,6 +8,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 REF_WORKSET_PATH = '@meta.workset.path'
+SPEC_ROOT_ENV = 'KANI_CANON'
 _DELIVERY_HEADS = frozenset({'bindings', 'masks', 'caches', 'seeded', 'synced', 'common', 'env', 'secret_path'})
 _FIXED_SCOPES = frozenset({'config', 'system', 'workset', 'box'})
 _CLI_TYPED = frozenset({'bool', 'int', 'path'})
@@ -35,6 +36,9 @@ def existing_box_termini(std: Any, config_file: Any, proj: Any, target: Any, nod
 def fresh_launch_snapshots() -> Any
 def snapshot_paths(snapshot: Any) -> Any
 def declares_no_floor_value(entry: Any) -> bool
+def system_value_row(entry: Any) -> bool
+def spec_table(document: str, heading: str, columns: tuple[str, ...]) -> list[dict[str, str]]
+def system_settings_rows() -> list[tuple[str, str, str]]
 def _standalone_arm(entry: Any) -> tuple[bool, Any]
 def _root_or_decoy(mode: str, attribute: str) -> Any
 ```

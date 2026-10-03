@@ -1557,7 +1557,11 @@ def _kinemata_carried() -> dict[str, dict[str, tuple[str, ...]]]:
     ``[[registry]]`` reading the manifest's ``keys`` section, whose ``where`` selects the
     row, and the row holds the compared path.  A parity with no ``field`` compares
     MEMBERSHIP only (``auth-active-keys``, ``cli-routed-keys``), and one whose field is
-    another column (``key-types``' ``type``) carries no value: neither counts.
+    another column (``key-types``' ``type``) carries no value: neither counts.  Nor does
+    one with ``authority = "produced"``: there the oracle is the authority and the
+    manifest is on trial (the ``spec-2g-*`` views read the SPEC, not the code), so a
+    code carrier wrongly declared that way drops out of this ledger and reds the
+    defaults inventory instead.
     """
     config = _kinemata_config()
     registries = {str(r["name"]): r for r in config.get("registry", [])}
@@ -1565,7 +1569,7 @@ def _kinemata_carried() -> dict[str, dict[str, tuple[str, ...]]]:
     carried: dict[str, dict[str, list[str]]] = {cell: {} for cell in _CARRIED_CELLS}
     for parity in config.get("parity", []):
         path = _field_path(parity.get("field"))
-        if not path or path[0] not in carried:
+        if not path or path[0] not in carried or parity.get("authority") == "produced":
             continue
         registry = registries[str(parity["registry"])]
         if not _reads_manifest(registry) or _field_path(registry.get("section")) != ("keys",):
