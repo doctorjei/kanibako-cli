@@ -270,6 +270,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako stop` stops a box whose `box.yaml` or global `settings.yaml` is not valid YAML or not
+  a mapping, and prints the file's problem as a warning.** Before, it exited 1 and the box could
+  only be stopped with `podman stop`. Neither file names the container — the name is the box's
+  identity (mode, metadata root, registry name or project hash), which resolves without a settings
+  file — so the stop now degrades the advisory reads instead of refusing. A file the retry itself
+  needs, a malformed `registry.yaml`, still refuses and is reported as before.
+
 - **`kanibako box rm <name>` no longer removes a workset of that name, or, with `--purge`,
   deletes the data of a box that shares it.** `box rm` now acts only on boxes: a box named `<name>` is unregistered
   (with `--purge`, its data is deleted too), and a workset of the same name is untouched. A name

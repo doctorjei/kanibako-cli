@@ -40,11 +40,11 @@ def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home
 def resolve_system_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path) -> dict[str, Path]
 def host_config_map(std: StandardPaths) -> dict[str, str]
 def system_path_floor(std: StandardPaths) -> dict[str, str]
-def load_system_config(user_config_path: Path, *, data_home: Path, home: Path) -> dict[str, Path]
+def load_system_config(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> dict[str, Path]
 def resolve_data_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def resolve_state_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def resolve_cache_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
-def load_std_paths(config: BootstrapConfig | None=None) -> StandardPaths
+def load_std_paths(config: BootstrapConfig | None=None, *, tolerate_bad_settings: bool=False) -> StandardPaths
 def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name_override: str | None=None, register: bool=True) -> ProjectPaths
 def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
@@ -78,7 +78,7 @@ def _runtime_base_usable(base: Path, *, follow_symlinks: bool=True, require_priv
 def _refuse_bare_relative(key: str, raw: object, default: str, *, ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> None
 def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str]) -> tuple[dict[str, str], dict[str, Path]]
 def _floor_field(key: str) -> str
-def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path, xdg_vars: Mapping[str, str]) -> dict[str, str]
+def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path, xdg_vars: Mapping[str, str], tolerate_bad_settings: bool=False) -> dict[str, str]
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]
 def _primary_box_paths(std: StandardPaths, metadata_path: Path, box_name: str) -> tuple[Path, Path, Path]
 def _workset_box_paths(metadata_path: Path, vault_ro_base: Path, vault_rw_base: Path, box_name: str) -> tuple[Path, Path, Path]
