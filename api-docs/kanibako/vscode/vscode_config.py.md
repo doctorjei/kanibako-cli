@@ -14,10 +14,13 @@ _CLAUDE_MODE_BY_TIER: 'dict[str, str]' = {'editing': 'acceptEdits', 'full': 'byp
 _MANAGED_MODES: frozenset[str] = frozenset(_CLAUDE_MODE_BY_TIER.values())
 _SESSION_START_MATCHER = 'startup|resume|clear|compact'
 _SESSION_START_COMMAND = 'python3 "/opt/kanibako/kanibako/scripts/import-directives.py" --additional-context "$KANIBAKO_DIRECTIVE_SEED" || true'
+_SESSION_START_RETIRED_COMMANDS: 'frozenset[str]' = frozenset({'python3 "$HOME/playbook/kanibako/scripts/import-directives.py" --additional-context "$KANIBAKO_DIRECTIVE_SEED" || true'})
 _SESSION_END_MATCHER = 'clear|logout|prompt_input_exit|other'
 _PID_SCRIPT_DIR = '~/canon/charter/general/scripts/util'
 _AGENT_MARKER_WRITE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-add.sh "$PPID" || true'
 _AGENT_MARKER_REMOVE_COMMAND = f'{_PID_SCRIPT_DIR}/pid-rm.sh "$PPID" || true'
+_AGENT_MARKER_WRITE_RETIRED_COMMANDS: 'frozenset[str]' = frozenset({'~/canon/bible/general/scripts/util/pid-add.sh "$PPID" || true', 'd="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; mkdir -p "$d" && printf %s "$PPID" > "$d/$PPID" || true'})
+_AGENT_MARKER_REMOVE_RETIRED_COMMANDS: 'frozenset[str]' = frozenset({'~/canon/bible/general/scripts/util/pid-rm.sh "$PPID" || true', 'd="${KANIBAKO_AGENT_MARKERS_DIR:-/tmp/kanibako/agents}"; rm -f "$d/$PPID" || true'})
 _CODEX_EVENT_KEY = 'session_start'
 _CODEX_APPROVAL_POLICY_KEY = 'approval_policy'
 _CODEX_SANDBOX_MODE_KEY = 'sandbox_mode'
@@ -54,7 +57,9 @@ def _encode_image_ref(ref: str) -> str
 def _read_existing_config(path: Path) -> dict
 def _claude_managed_mode(access: str) -> 'str | None'
 def _write_if_changed(path: Path, existing: dict, merged: dict) -> bool
-def _merge_managed_command_hook(settings: dict, *, event: str, matcher: str | None, command: str) -> dict
+def _is_retired_command(entry: object, retired: 'frozenset[str]') -> bool
+def _drop_retired_hooks(groups: list, retired: 'frozenset[str]') -> list
+def _merge_managed_command_hook(settings: dict, *, event: str, matcher: str | None, command: str, retired: 'frozenset[str]') -> dict
 def _toml_basic_string(value: str) -> str
 def _first_table_index(lines: list[str]) -> int
 def _extract_delimited_region(text: str, begin: str, end: str) -> tuple[str, str | None]
