@@ -1058,8 +1058,9 @@ the block stays up rather than being cleared against a store setup never touched
 setup --refresh-templates` is the headless path that both refreshes and completes.
 
 In the window before setup runs, non-gated verbs (e.g. `shell`, config/list commands) still
-work; a launch in that window has no `@system.canon/handbook` yet, so the two non-optional
-handbook binds are dropped with one warning each and `~/canon/handbook` is empty in-box.
+work; a launch in that window has no `@system.canon/handbook` yet, so `SYS_CONTENTS.md` is
+dropped with one warning, the `general` chapter is dropped silently, and `~/canon/handbook` is
+empty in-box.
 Nothing is lost — run setup and relaunch. Setup reports what it added, what it refreshed in
 the shipped staging, and which files it KEPT because your copy differs from the shipped one
 (your own files are never overwritten; `--refresh-templates` consents to refreshing *shipped*
@@ -1854,8 +1855,8 @@ be quietly defeated.
 
 | what happens | which destinations |
 |---|---|
-| the launch stops with a clean error | the agent's own delivery binds — its binary, launcher and shared install dir |
-| the bind is dropped silently | the optional canon chapters, and the agent's best-effort shares |
+| the launch stops with a clean error | the agent's own delivery binds — its binary, launcher and shared install dir — and kanibako's packaged core canon |
+| the bind is dropped silently | every handbook chapter except `SYS_CONTENTS.md` (which warns), the agent's best-effort shares, and a plugin's charter chapter when the plugin ships none |
 | the bind is dropped with a warning | everything else |
 
 Which answer a bind got used to depend on how it was **declared** rather than on where it lands: the
@@ -1863,7 +1864,12 @@ agent's delivery binds were emitted separately, carrying their own rule, and the
 flag on the declaration itself. The whole mount set is assembled in one place now (§2.27), so the
 answer is attached to the **destination** and applies to whichever declaration wins it — at any scope.
 
-**⚠️ This changes one case, and it is one you would have to have gone looking for:** a bind of your
+**⚠️ A `general/` chapter you have not created is now silent rather than warned.** A `general/`
+chapter under `~/canon/handbook/` that you never made is dropped with no output at all, as the
+per-scope chapters already were: one rule now covers every handbook chapter, and a warning at every
+launch is the noise that trains you to ignore warnings. `SYS_CONTENTS.md` is the exception, and still warns.
+
+**⚠️ For the agent's delivery binds this changes one case, and it is one you would have to have gone looking for:** a bind of your
 own at one of the agent's delivery destinations. Repointing `~/.local/bin/<agent>` (or the agent's
 launcher or install dir) at a source that is not there no longer warns and starts the box anyway —
 it stops the launch:
@@ -1873,12 +1879,31 @@ Error: <agent> mount source disappeared before launch: binding '/home/agent/.loc
 source missing: /your/path
 ```
 
+**⚠️ And the clean error now covers kanibako's own packaged core canon, which refuses
+`kanibako create` too, not only the launch.** A box cannot be delivered a canon it was never given:
+`COLLECTION.md`, the charter's contents, and the charter's `general`, `workset` and `box` chapters are read
+straight out of the installed package, and a missing, empty or incomplete packaged canon root is a
+broken install rather than a canon-less box. `kanibako create` resolves the same bind table a launch
+does, so it stops at the same place, on stderr and with exit 1:
+
+```
+Error: kanibako's packaged canon root is missing: <path>/kanibako/data/rom/canon
+```
+
+An empty root refuses the same way, naming only the root; an incomplete one names the entries it
+did not find.
+
 **What you must do.**
 
 - **If you repoint one of the agent's delivery destinations**, make sure the source exists. That is
   the same safe-fail the agent's own binds have always had — a box whose agent binary did not mount
   is a box that cannot run its agent, and it is better to hear that than to be dropped into it.
-- **If you do not repoint them, nothing changes.** Every other destination keeps the behavior it had:
+- **If `kanibako create` refuses over a missing packaged canon source**, repair the install and
+  re-run `kanibako create`. That re-run recovers the create the refusal interrupted, and picks up
+  where it stopped.
+- **If a named workset box's first launch refuses this way**, the box is left without its canon
+  skeleton, and no command recovers it yet.
+- **If you do not repoint them, nothing else changes.** Every destination not named above keeps the behavior it had:
   a read-only bind with a missing source is dropped with a warning, a read-write one has its source
   directory created.
 
@@ -6107,7 +6132,11 @@ package moves the set together. That makes ordering load-bearing:
    The handbook chapter is copied into the agent store from wherever it sits, so a nested one is
    stamped normally — but `SYS_CONTENTS.md` names `agent/SYS_AGENT.md` and names nothing under
    `directives/`, so it is written and never named. Neither failure prints anything, at build time
-   or at launch. Move both files up one level and republish.
+   or at launch. Move both files up one level and republish. ⚑ Inside a chapter you *did* ship,
+   though, an `__IMPORT__` or `__IMPORTSECTION__` call that names a file within that chapter you did
+   not ship is now warned at every flatten, on stderr, naming the file, the line, and the missing
+   target, so a chapter that loads incomplete is no longer silent — while an import that points
+   outside the chapter stays silent.
    There is **no** transition arm: `templates._packaged_agent_store` reads `data/base` only, so
    a plugin still shipping `data/template` contributes NOTHING — silently, with no error.
    Republish against `data/base`. The `synced` credential destinations becoming host-side paths is
