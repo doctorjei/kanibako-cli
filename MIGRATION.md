@@ -376,7 +376,8 @@ inside boxes. In order of likely impact:
     --null` at a path key exits 1 and writes nothing — see *2.104 `set --null` at a path key is
     refused at the door*; and a bare `create` over an interrupted create refuses, so finish it with
     `create --recover` — see *2.105 `create` refuses an interrupted create; finish it with
-    `--recover`*.
+    `--recover`*; and `workset connect` exits 1 for a source that is not an existing directory — see
+    *2.106 `workset connect` refuses a source that is not an existing directory*.
 
 ---
 
@@ -6074,6 +6075,17 @@ refuses, instead of minting `<name>2`, and its message no longer advises `rm -rf
 - **If you relied on the old advice to delete such a directory by hand**, that advice was never
   safe to follow blindly and this release stops printing it. A box deleted this way is not
   recoverable from the registry, because the registry was never its source of truth.
+
+### 2.106 `workset connect` refuses a source that is not an existing directory
+
+**Read this if a script of yours runs `kanibako workset connect`.**
+
+**What changed.** `kanibako workset connect <workset> <source>` exits **1** instead of **0** when
+`<source>` is not an existing directory — a missing path, a regular file, or a dangling symlink — and
+writes nothing. `--force` does not bypass it.
+
+**What to do.** A script that connected a path it had not created yet now fails at the connect step.
+Create the project directory first, then connect it.
 
 ---
 
