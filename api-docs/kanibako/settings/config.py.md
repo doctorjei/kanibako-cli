@@ -50,6 +50,8 @@ def read_setup_completed(settings_path: Path | None) -> str | None
 def setup_compat_gate(settings_path: Path | None) -> str | None
 def resolve_agent(*, explicit_agent: str | None, requested: str | None=None, project_path: Path | None=None) -> str
 def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None
+def null_path_keys_error(path: Path, keys: Iterable[str], *, cure: str=ERR_CONFIG_NULL_PATH_CURE, head: 'str | None'=None) -> 'str | None'
+def refuses_null_path_key(canonical: str) -> bool
 def _layer1_settings_keys(data: dict) -> list[str]
 def _scalar_value(value: object) -> object
 def _present_scalar_fields(path: Path) -> dict[str, object]

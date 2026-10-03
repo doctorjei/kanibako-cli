@@ -80,15 +80,22 @@ ERR_CONFIG_LAYER1_TABLE = (
                         "It carries the config.* bootstrap paths as keys under it, e.g.\n" +
                         "  config:\n    data: /path/to/kanibako")
                                                     # the Layer-1 file path, the offending value
-# ⚑ A ``null`` path key was stringified to the four bytes ``None`` and then refused as a
-# bare relative path — a message about a directory the user never wrote. Both path
-# layers share this one: the ``config:`` read and the settings file's ``system:`` read;
-# so does a null ``workset.boxes`` (``project.workset.resolve_workset_boxes``).
-ERR_CONFIG_NULL_PATH = (
-                        "%s sets these path keys to null:\n  %s\n" +
-                        "kanibako gives a null path key no meaning. Delete those lines to use each key's " +
-                        "default, or set the path you mean.")
+# ⚑⚑ SPLIT PER DOOR: the REASON is one sentence with one home and every door shares it,
+# while the LEAD and the CUE differ — a hand-edited file HAS the lines the read-time lead
+# names, and a ``set`` that refused wrote none.  ``config.refuses_null_path_key`` is the
+# membership these doors all answer to.
+ERR_CONFIG_NULL_PATH_REASON = "kanibako gives a null path key no meaning."
+ERR_CONFIG_NULL_PATH_HEAD = (
+                        "%s sets these path keys to null:\n  %s\n")
                                                     # the file path, the offending keys
+#: The READ-TIME cue — the default, since the lines are already there.
+ERR_CONFIG_NULL_PATH_CURE = (
+                        ERR_CONFIG_NULL_PATH_REASON + " Delete those lines to use each key's " +
+                        "default, or set the path you mean.")
+#: The SET door's lead — the keys, and no file, because none holds them.
+ERR_CONFIG_NULL_PATH_SET_HEAD = (
+                        "the launch refuses a null at these path keys, so this set is refused too:\n  %s\n")
+ERR_CONFIG_NULL_PATH = ERR_CONFIG_NULL_PATH_HEAD + ERR_CONFIG_NULL_PATH_CURE
 ERR_PROJECT_NO_PATH =   "Project path '%s' does not exist." # the path that does not exist
 # ⚑ The two $HOME-guard messages take NO arguments (raised bare).
 ERR_PROJECT_NEW_HOME = ("Refusing to create project rooted at $HOME: this would mount the " +
