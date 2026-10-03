@@ -10,7 +10,8 @@ returns what the loader read.
 ⚑ Sibling of ``test_agent_envs.py``, which did the same for the plugins' env literals.
 The RULE (what the loader accepts and refuses) is pinned over synthetic files in
 ``tests/test_settings/test_agent_defaults.py::TestLoadBehavior``; what THIS file pins is
-the SHIPPED tables and the absence of a second declaration site.
+the SHIPPED tables, the absence of a second declaration site, and the row a Python-built
+``TargetSetting`` produces when it names no default.
 
 ⚑ These are the values the launch floors on: ``start.py`` places
 ``descriptor_floor(target.setting_descriptors())`` at ``agent.<active>`` (above the core
@@ -21,6 +22,7 @@ that agent.  A row that sets no value (``UNSET``, Q105) is left out of that floo
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 
 import pytest
@@ -29,11 +31,35 @@ from kanibako.commands.start import _LaunchRealizer
 from kanibako.plugins.claude import ClaudeTarget
 from kanibako.plugins.codex import CodexTarget
 from kanibako.plugins.goose import GooseTarget
-from kanibako.settings import core_defaults
+from kanibako.settings import agent_defaults, core_defaults
 from kanibako.settings.settings_launch import build_launch_snapshot, effective_behavior
-from kanibako.settings.settings_resolve import UNSET, ResolveCtx
+from kanibako.settings.settings_resolve import UNSET, ResolveCtx, SettingsError
 from kanibako.targets.assembly import assemble_argv
-from kanibako.targets.base import descriptor_floor
+from kanibako.targets.base import TargetSetting, descriptor_floor
+
+_PROBE_PKG = "kanibako_floor_probe"
+
+
+@pytest.fixture
+def declfile(tmp_path, monkeypatch):
+    """Write a synthetic ``<agent>-defaults.yaml`` into an importable package.
+
+    Returns a ``write(text) -> (package, filename)`` callable; the loader reads it
+    through the same ``importlib.resources`` route the shipped plugins use.
+    """
+    pkg_dir = tmp_path / _PROBE_PKG
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    def write(text: str, filename: str = "probe-defaults.yaml"):
+        sys.modules.pop(_PROBE_PKG, None)
+        (pkg_dir / filename).write_text(text)
+        return _PROBE_PKG, filename
+
+    yield write
+    sys.modules.pop(_PROBE_PKG, None)
+
 
 _TARGETS = {
     "claude": ClaudeTarget,
@@ -206,8 +232,8 @@ _INHERITED = {
 }
 
 
-def _snapshot(agent: str, system_file: Path):
-    """The launch's behavior snapshot for *agent* over its REAL floors, both tiers."""
+def _snapshot_over(agent: str, system_file: Path, descriptors):
+    """The launch's behavior snapshot for *agent* with *descriptors* as the plugin floor."""
     return build_launch_snapshot(
         agent_name=agent,
         ctx=ResolveCtx(
@@ -219,8 +245,13 @@ def _snapshot(agent: str, system_file: Path):
         workset_path=None,
         box_path=None,
         behavior_floor=core_defaults.behavior_defaults(),
-        agent_behavior_floor=descriptor_floor(_TARGETS[agent]().setting_descriptors()),
+        agent_behavior_floor=descriptor_floor(descriptors),
     )
+
+
+def _snapshot(agent: str, system_file: Path):
+    """The launch's behavior snapshot for *agent* over its REAL floors, both tiers."""
+    return _snapshot_over(agent, system_file, _TARGETS[agent]().setting_descriptors())
 
 
 @pytest.mark.parametrize("agent", sorted(_TARGETS))
@@ -339,3 +370,93 @@ def test_the_inherited_endpoint_keeps_suppress_and_delivery_in_step(
     delivered = effective_behavior(snapshot, active_agent=agent).get("endpoint")
     assert suppressing == "https://elsewhere.example"
     assert delivered == "https://elsewhere.example"
+
+
+def test_a_python_row_with_no_default_inherits_agent_default(tmp_path: Path) -> None:
+    """A Python-built row that names no default INHERITS ``agent.default``.
+
+    ⚑ ONE RULE PER DECLARATION: a row either carries a floor or it inherits, whichever
+    built it.  A ``""`` floor would instead sit at ``agent.<agent>.model`` and shadow
+    the user's value, so the assertion is on the SLOT being empty as well as on the
+    resolved value.
+
+    (Negative control: give the row ``default=""`` → RED on the ``not in slot``.)
+    """
+    system_file = tmp_path / "settings.yaml"
+    system_file.write_text("agent:\n  default:\n    model: m-default\n")
+    snap = _snapshot_over(
+        "claude", system_file, [TargetSetting(key="model", description="Model")],
+    )
+    assert "model" not in snap.agent.get("claude", {})
+    assert effective_behavior(snap, active_agent="claude")["model"] == "m-default"
+
+
+def test_the_python_and_yaml_declarations_of_a_row_resolve_alike(tmp_path: Path) -> None:
+    """The same row, built in Python and read from the shipped YAML, resolves alike.
+
+    One row on both sides — the shipped claude ``model`` row and the Python row for
+    that key — so the comparison is the declaration rule itself and not the rest of
+    claude's floor.
+    """
+    (yaml_row,) = [
+        d for d in ClaudeTarget().setting_descriptors() if d.key == "model"
+    ]
+    py_row = TargetSetting(key=yaml_row.key, description=yaml_row.description)
+    assert py_row.default == yaml_row.default
+    assert descriptor_floor([py_row]) == descriptor_floor([yaml_row])
+
+    system_file = tmp_path / "settings.yaml"
+    system_file.write_text("agent:\n  default:\n    model: m-default\n")
+    assert (
+        effective_behavior(
+            _snapshot_over("claude", system_file, [py_row]), active_agent="claude",
+        )["model"]
+        == effective_behavior(
+            _snapshot_over("claude", system_file, [yaml_row]), active_agent="claude",
+        )["model"]
+        == "m-default"
+    )
+
+
+class TestOneRulePerDeclaration:
+    """A row that names no default INHERITS or is REFUSED — never silently floorless.
+
+    ⚑ Pinned from BOTH declaration paths, because the rule is one rule: the YAML
+    loader and :func:`~kanibako.targets.base.descriptor_floor` share
+    :func:`~kanibako.settings.agent_defaults.refuse_floorless_default`, so a
+    plugin-only key (goose's ``provider``, which ``agent.default`` does not declare)
+    is refused by name whichever way it was written.
+    """
+
+    def test_a_python_plugin_only_row_with_no_default_is_refused_by_name(self) -> None:
+        """A Python-built row with no default is REFUSED, naming the key.
+
+        ⚑ Refused for EVERY caller, so the floor a box launches on is never built from
+        a row no tier below can supply.
+
+        (Mutation: return the row's ``UNSET`` instead of calling
+        ``refuse_floorless_default`` → RED on the first raise.)
+        """
+        descriptors = [TargetSetting(key="provider", description="LLM provider")]
+        with pytest.raises(SettingsError) as exc:
+            descriptor_floor(descriptors)
+        assert "provider" in str(exc.value)
+
+    def test_the_yaml_row_is_refused_by_the_same_rule(self, declfile) -> None:
+        """The shipped-file spelling of that row is refused the same way.
+
+        The loader half of the pair — :func:`descriptor_floor` is the Python half —
+        and both refusals carry the one message, differing only in the origin they
+        name: the file, or the plugin.
+        """
+        package, filename = declfile(
+            "behavior:\n"
+            "  - key: provider\n"
+            "    description: LLM provider\n"
+        )
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_behavior(package, filename)
+        msg = str(exc.value)
+        assert "provider" in msg
+        assert filename in msg
+        assert "declares no 'default'" in msg

@@ -369,8 +369,10 @@ inside boxes. In order of likely impact:
     plugin's own default now beats your `agent.default.<key>` — for the shipped agents, from
     v1.8.0-rc2 only, claude's `transform` (and each agent's new `label`), so set those per agent;
     from v1.7.2 no shipped agent's key changes — see *An agent plugin's own default beats
-    `agent.default`*; and `box rm` no longer removes a workset — use `workset rm` — see *2.102
-    `kanibako box rm <name>` no longer removes a workset*.
+    `agent.default`*; `box rm` no longer removes a workset — use `workset rm` — see *2.102
+    `kanibako box rm <name>` no longer removes a workset*; and a plugin row built in Python with
+    no `default` now inherits your `agent.default.<key>` instead of shadowing it with `""` — see
+    *2.103 A `TargetSetting` built in Python with no `default` inherits `agent.default`*.
 
 ---
 
@@ -5992,6 +5994,34 @@ When a box and a workset share the name, `box rm` removes the box and leaves the
 
 **What to do.** Remove a workset with `kanibako workset rm <name>`.
 
+### 2.103 A `TargetSetting` built in Python with no `default` inherits `agent.default`
+
+**What changed.** `TargetSetting.default` now defaults to `UNSET`
+(`kanibako.settings.settings_resolve.UNSET`) instead of `""`. In 1.8.0-rc2 a row a plugin built in
+Python without naming a `default` floored its key at `""` at `agent.<agent>.<key>`, which answers
+before a user's `agent.default.<key>`, so the user's value was shadowed by an empty string. Such a
+row now follows the rule a defaults-file row already follows: for a key `agent.default` declares
+(`model`, `endpoint`, `transform`, `label`, and the rest) it sets no floor, and the key inherits
+`agent.default.<key>`. An explicit `default=""` is still a floor you wrote, and still wins.
+
+**What you see.** Nothing, for a row that names its `default`. A row that names none for a key
+`agent.default` does not declare, such as goose's `provider`, is refused by name when a box launches:
+
+```
+Error: behavior entry 'provider' declares no 'default', and 'agent.default' declares no
+'provider' for it to inherit. Write the value, or 'default: null' if the key deliberately has
+none (goose pins no provider so its own config.yaml keeps owning it).
+```
+
+Built in Python, the message names the key only; read from a defaults file, it also names the file
+(`'provider' (goose-defaults.yaml)`). `kanibako agent info` and `kanibako agent show` do not refuse
+either form: they skip the plugin's rows and show core's `agent.default.label`.
+
+**What this does not cover.** A key with no `agent.default` counterpart has nothing to inherit, so
+this change gives it no floor. Such a row must carry an explicit default, a string or `None`
+(`null` in a defaults file), and a row that omits it is refused by name, whether it was written in
+a defaults file or built in Python.
+
 ---
 
 ## 3. For plugin authors
@@ -6090,12 +6120,15 @@ only for a value your harness really needs. For a key core's `agent.default` dec
 `endpoint`, `transform` and the rest), omit `default:` and the key inherits `agent.default.<key>`,
 as the shipped plugins do for `model` and `endpoint`. `default: null` on such a key is refused
 when `agent.default` already declares `<None>` for it, naming your defaults file and the key. A key
-only your plugin declares still needs its `default:`, a string or `null` (`<None>`), as goose's
-`provider` is. `TargetSetting.default` is `str | None | UNSET`, where `UNSET`
-(`kanibako.settings.settings_resolve.UNSET`) means no default; read the floor through
-`kanibako.targets.base.descriptor_floor()`, which leaves `UNSET` rows out. A plugin that builds its
-rows in Python and gives `model` any default — a string, `""` or `None` — now shadows a user's
-`agent.default.model` with it; write `default=UNSET` to let the user's value through.
+only your plugin declares must carry its own `default:`, a string or `null` (`<None>`), as goose's
+`provider` does; a row that omits it is refused by name, naming the key and your defaults file. In
+Python, `TargetSetting.default` is `str | None | UNSET` and defaults to `UNSET`
+(`kanibako.settings.settings_resolve.UNSET`), meaning no default.
+`kanibako.targets.base.descriptor_floor()` reads the floor: it leaves out an `UNSET` row for a key
+`agent.default` declares, and refuses one for any other key with the same message, naming the key
+only. A plugin that builds its rows in Python and gives `model` any default (a string, `""`, or
+`None`) shadows a user's `agent.default.model` with it; leave `default` out, or write
+`default=UNSET`, to let the user's value through.
 
 The three agent plugins (`kanibako-agent-claude`, `-codex`, `-goose`) version and publish
 independently of the base and depend on **`kanibako-cli`** — with **no version pin** through
