@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,12 +25,13 @@ from kanibako.settings.config import (
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
-from kanibako.errors import ContainerError, ProjectError
+from kanibako.errors import ContainerError, ProjectError, WorksetError
 from kanibako.project.names import read_names
 from kanibako.settings.paths import (
     BoxMode,
     DesignationRoute,
     _box_settings_files,
+    _find_workset_for_path,
     _standalone_settings_files,
     box_tree_materialized,
     box_workset_settings_paths,
@@ -811,6 +813,27 @@ def _orphaned_primary_box_dir(args, std, probe) -> "Path | None":
     return orphan
 
 
+def _named_workset_owning(path: Path, std) -> str | None:
+    """The named working set whose path space holds *path*, else ``None``."""
+    try:
+        ws, _project = _find_workset_for_path(path, std)
+    except WorksetError:
+        return None
+    return ws.name
+
+
+def _create_in_workset_space(workset: str, path: Path) -> str:
+    """The refusal for a ``create`` whose target sits in a named working set's tree."""
+    q_ws, q_path = shlex.quote(workset), shlex.quote(str(path))
+    return (
+        f"Error: Refusing to create a box in {path}: that path belongs to the "
+        f"working set '{workset}'.\n"
+        "  A box created there would be a PRIMARY box sitting in a named working "
+        "set's path space, which that working set does not own.\n"
+        f"  To add it to the working set:  kanibako workset connect {q_ws} {q_path}"
+    )
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     config_file = user_config_file()
@@ -854,6 +877,12 @@ def run_create(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    # ⚑ ``None`` = the PRIMARY path space; the default workset is unregistered.
+    _ws_name = _named_workset_owning(effective_path, std)
+    if _ws_name is not None:
+        print(_create_in_workset_space(_ws_name, effective_path), file=sys.stderr)
+        return 1
 
     # ⚑ Cross-kind name guard, run HERE so it refuses BEFORE the box dir + seed materialize.
     if getattr(args, "name", None) and not args.standalone:
