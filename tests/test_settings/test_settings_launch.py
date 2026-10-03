@@ -5530,8 +5530,7 @@ def test_the_refusal_points_at_the_files_it_loaded_not_at_a_cli_verb(tmp_path):
     ``kanibako box reset box.zippity`` cannot remove what is not a key, and
     ``kanibako box show --effective`` resolves through this same seam — so a user
     told to reach for either has no working move. The message names the settings
-    files this resolve loaded instead. WHICH of them carried the entry is not
-    knowable here: the snapshot is the merge of all of them.
+    file that carries the entry instead.
 
     ⚑ THE DISCLAIMER NAMES THE PER-KEY FORM: ``box reset --all --force`` DOES remove
     ``box.zippity`` (it drops the whole ``box`` table — measured), so a bare
@@ -5547,6 +5546,145 @@ def test_the_refusal_points_at_the_files_it_loaded_not_at_a_cli_verb(tmp_path):
     # to discover that both refuse.
     assert "'kanibako box reset <key>' cannot remove what is not a key" in msg
     assert "kanibako box show --effective" in msg
+
+
+@pytest.mark.writes_undeclared(
+    "system.bogus_sys", "system.bogus_base",
+    reason="the message under test names the file carrying each undeclared key, so "
+           "the fixtures have to write them.",
+)
+def test_the_refusal_files_each_entry_under_the_file_that_carries_it(tmp_path, monkeypatch):
+    """Each finding is named beside ITS file, not beside every file the resolve loaded.
+
+    Mutation: list every loaded file for every entry → red (the box.yaml line).
+    """
+    from kanibako.settings import settings_launch as _launch
+
+    system = tmp_path / "settings.yaml"
+    system.write_text("system:\n  bogus_sys: 1\n", encoding="utf-8")
+    base = tmp_path / SITE_SETTINGS_FILENAME
+    base.write_text("system:\n  bogus_base: 1\n", encoding="utf-8")
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+    box_path = _box_yaml(tmp_path, "box:\n  image: x\n")
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(box_path, system_path=system)
+    msg = str(e.value)
+    assert f"    - {system}: system.bogus_sys\n" in msg
+    assert f"    - {base}: system.bogus_base\n" in msg
+    assert str(box_path) not in msg
+    assert "in no settings file" not in msg
+
+
+@pytest.mark.writes_undeclared(
+    "agent.claude.zippity",
+    reason="the entry under test arrives on a non-file input, so the fixture has to "
+           "supply an undeclared one.",
+)
+def test_an_entry_no_file_carries_is_named_as_a_non_file_input(tmp_path):
+    """An entry from a partial is filed under no settings file; the message says so."""
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(
+            _box_yaml(tmp_path, "box:\n  image: x\n"),
+            agent_partial=KeyStore({"agent": {"claude": {"zippity": "x"}}}),
+        )
+    msg = str(e.value)
+    assert "agent.claude.zippity: in no settings file this resolve read" in msg
+    assert str(tmp_path / "box.yaml") not in msg
+
+
+@pytest.mark.writes_undeclared(
+    "system.helpers",
+    reason="the entry under test sits at a path kanibako's floor also holds, so the "
+           "base file has to write an undeclared scalar there.",
+)
+def test_a_base_file_entry_at_a_floor_held_path_is_filed_under_the_base_file(
+    tmp_path, monkeypatch,
+):
+    """The base FILE decides what it carries, not the floor folded into its level.
+
+    Mutation: subtract every floor path from the base level → red (filed nowhere).
+    """
+    from kanibako.settings import settings_launch as _launch
+
+    base = tmp_path / SITE_SETTINGS_FILENAME
+    base.write_text("system:\n  helpers: 5\n", encoding="utf-8")
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(None)
+    msg = str(e.value)
+    assert f"    - {base}: system.helpers\n" in msg, msg
+    assert "in no settings file" not in msg
+
+
+@pytest.mark.writes_undeclared(
+    "agent.default.zippity",
+    reason="the entry under test is a floor-only undeclared key, so the fixture's "
+           "floor has to carry one.",
+)
+def test_a_floor_only_entry_is_never_filed_under_the_base_file(tmp_path, monkeypatch):
+    """A loaded base file is not named for an entry only kanibako's floor carries."""
+    from kanibako.settings import settings_launch as _launch
+
+    base = tmp_path / SITE_SETTINGS_FILENAME
+    base.write_text("system:\n  setup_completed: 1.8.0\n", encoding="utf-8")
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(None, behavior_floor={"zippity": "x"})
+    msg = str(e.value)
+    assert "agent.default.zippity: in no settings file this resolve read" in msg, msg
+    assert str(base) not in msg
+
+
+@pytest.mark.writes_undeclared(
+    "system.bindings",
+    reason="the entry under test is an undeclared scalar the merge hides, so the base "
+           "file has to carry one.",
+)
+def test_an_entry_the_merge_hides_in_the_base_file_names_that_file(tmp_path, monkeypatch):
+    """Stage (h) audits the system and base files too (design 2B-iii).
+
+    The system file's ``bindings`` table hides the base file's scalar from the merge, so
+    only the per-file audit sees it. Mutation: drop ``base`` from the audited levels → red.
+    """
+    from kanibako.settings import settings_launch as _launch
+
+    system = tmp_path / "settings.yaml"
+    system.write_text("system:\n  bindings:\n    ro:\n      /x: [/tmp]\n", encoding="utf-8")
+    base = tmp_path / SITE_SETTINGS_FILENAME
+    base.write_text("system:\n  bindings: 5\n", encoding="utf-8")
+    monkeypatch.setattr(_launch, "settings_base_path", lambda: base)
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(None, system_path=system)
+    msg = str(e.value)
+    assert f"the base settings file {base} carries 1 entry" in msg
+    assert "system.bindings" in msg
+
+
+@pytest.mark.parametrize("node", ["claude", "default"])
+def test_a_table_at_a_node_scalar_leaf_in_the_system_file_refuses(tmp_path, node):
+    """``agent: {<node>: {model: {x: 1}}}`` is refused naming the key and file (spec §0).
+
+    The undeclared audit judges NAMES and ``model`` is one, so the table rode in
+    silently. Mutation: skip the shape check in ``fold_agent_nodes`` → red.
+    """
+    system = tmp_path / "settings.yaml"
+    system.write_text(f"agent:\n  {node}:\n    model:\n      x: 1\n", encoding="utf-8")
+    with pytest.raises(_SettingsError) as e:
+        _snapshot(None, system_path=system)
+    msg = str(e.value)
+    assert f"the settings file {system} holds a table where a single value belongs" in msg
+    assert f"  - agent.{node}.model\n" in msg
+
+
+def test_a_category_table_in_a_node_still_resolves(tmp_path):
+    """A category IS a table in every node; only a scalar leaf refuses one."""
+    system = tmp_path / "settings.yaml"
+    system.write_text(
+        "agent:\n  default:\n    env:\n      FOO: bar\n  claude:\n    model: opus\n",
+        encoding="utf-8",
+    )
+    snap = _snapshot(None, system_path=system)
+    assert snap.agent.claude.model == "opus"
 
 
 #: Every ``'kanibako …'`` spelling the refusal quotes. The message quotes a command
@@ -5703,7 +5841,7 @@ def _assert_names_only(msg: str, key: str, carrier: Path) -> None:
     assert "1 entry that is not a settings key" in msg, msg
     assert f"\n  - {key}: " in msg, msg
     assert "meta.box.agent" not in msg, msg
-    assert f"\n    - {carrier}\n" in msg, msg
+    assert f"\n    - {carrier}: {key}\n" in msg, msg
 
 
 @pytest.mark.writes_undeclared(
@@ -6082,12 +6220,10 @@ def test_the_generic_message_names_the_base_file_the_scan_reads(
         _snapshot(box_path)
     msg = str(e.value)
     assert "box.zippity" in msg
-    assert str(base) in msg, msg
-    # ⚑ AND THE BOX FILE IS STILL NAMED. Which tier carried the entry is not
-    # knowable from a merged snapshot, so this is a WIDENING of the list, never a
-    # swap — a fix that named base INSTEAD would be the same defect facing the
-    # other way.
-    assert str(box_path) in msg
+    assert f"    - {base}: box.zippity\n" in msg, msg
+    # ⚑ AND THE BOX FILE IS NOT NAMED: it does not carry the entry, and each entry
+    # is filed under the file that does.
+    assert str(box_path) not in msg
 
 
 @pytest.mark.writes_undeclared(
@@ -6099,10 +6235,9 @@ def test_a_tier_with_no_file_is_not_named_as_loaded(tmp_path, monkeypatch):
     """⚑ AN ABSENT FILE WAS NEVER LOADED, and must not be listed as one.
 
     ``/etc/kanibako/settings_base.yaml`` does not exist on most machines, so this
-    is the common case rather than a corner of it: listing it under "this resolve
-    loaded" would send every user who hits the refusal to open a file that is not
-    there. The scan half has always skipped a missing file; the naming half now
-    reads the same list, so it skips it for free.
+    is the common case rather than a corner of it: naming it in the cure would send
+    every user who hits the refusal to open a file that is not there. The cure names
+    only the file that carries each entry, so an absent file is never named.
     """
     from kanibako.settings import settings_assemble as _assemble
     from kanibako.settings import settings_launch as _launch
