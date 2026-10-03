@@ -1239,9 +1239,9 @@ def _agent_partial(
     """
     level = level_table(raw, sub_key=sub_key, node=node, path=path)
     scope = _scope_nodes(level.scope, sub_key=sub_key, path=path)
+    store = _file_partial(level.contained, path=path)
     if not level.table and not scope:
-        return KeyStore()
-    store = KeyStore()
+        return store
     agent_node = KeyStore()
     store["agent"] = agent_node
     if level.table:
@@ -1431,7 +1431,8 @@ def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig:
     THE ONE READER of the agent file (design 2C): one :func:`read_settings_files` read, the
     file's shape judged by ``agent_file.level_table`` — the same view the launch's
     :func:`_agent_partial` takes — and the record built from that level
-    (``agent_file.record``, which refuses every undeclared entry). Every reader — the launch,
+    (``agent_file.record``, which refuses every undeclared entry; its ``workset:`` / ``box:``
+    tables are audited as the scope files' are). Every reader — the launch,
     ``agent show`` / ``info`` / ``list`` / ``get`` — takes the record from here, so one file
     gets one verdict. The repair door (``agent_file.clear_overrides``) never calls this.
     Returns an empty record if the file does not exist.
@@ -1466,7 +1467,9 @@ def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig:
         ((_AGENT_FILE_LEVEL, path),), purpose=purpose, subject=node,
     )
     level = level_table(_agent_shape_input(read), sub_key=node, node=node, path=path)
-    return record(level, node=node)
+    cfg = record(level, node=node)
+    refuse_undeclared_entries(level.contained, level=_AGENT_FILE_LEVEL, path=path)
+    return cfg
 
 
 def cascade_files(

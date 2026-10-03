@@ -905,6 +905,15 @@ class TestClearOverrides:
         assert clear_overrides(path) == 1
         assert load_doc(path) == {}
 
+    def test_a_contained_scope_value_is_removed_and_counted(self, tmp_path):
+        # The repair door for a ``box: null`` the readers refuse (2E, N7).
+        from kanibako.settings.config_io import load_doc
+
+        path = tmp_path / "agent.yaml"
+        path.write_text("self: {}\nbox: null\nworkset:\n  env:\n    A: '1'\n")
+        assert clear_overrides(path) == 2
+        assert load_doc(path) == {}
+
     def test_no_overrides_is_zero(self, tmp_path):
         # ⚑ THE SHAPE :func:`save` WRITES FOR A FRESH AGENT since D8b — an empty root table.
         # It used to hold the one unconditional ``name`` line, which is why this case named
@@ -954,6 +963,28 @@ class TestLevelTable:
         assert f"`self` in {path} holds {value!r}" in message
         assert "`agent.claude`" in message
         assert "spec §2d" in message
+
+    def test_the_contained_scope_tables_ride_the_active_level(self):
+        # 2E (Q85): ``workset:`` / ``box:`` in an agent file are INPUTS, read defaults-down on
+        # the active tier only. (Mutation: leave them out of ``_CONTRIBUTED`` → the stray
+        # refusal fires → RED.)
+        raw = {"self": {}, "box": {"env": {"A": "1"}}, "workset": {"env": {"B": "2"}}}
+        level = level_table(raw, sub_key="claude", node="claude")
+        assert level.contained == {"box": {"env": {"A": "1"}}, "workset": {"env": {"B": "2"}}}
+        assert level_table(raw, sub_key="default", node="claude").contained == {}
+
+    @pytest.mark.parametrize(("token", "value"), (("box", None), ("workset", 5)))
+    def test_a_value_at_a_contained_scope_refuses_naming_file_and_key(
+        self, token, value, tmp_path,
+    ):
+        # N7: ``box: null`` gets the verdict any settings file gives a scope table holding a
+        # value — refused, naming the file and key — at every reader of the file.
+        path = tmp_path / "agent.yaml"
+        with pytest.raises(SettingsError) as exc:
+            level_table({"self": {}, token: value}, sub_key="claude", node="claude", path=path)
+        message = str(exc.value)
+        assert f"`{token}: {value!r}` at the top level of {path}" in message
+        assert f"`{token}` is a scope" in message
 
     def test_default_level_is_structurally_empty(self):
         # The flat tables are THIS node's, never every agent's — and since the flatten
@@ -1374,12 +1405,12 @@ class TestTheAgentTable:
             "self": {"model": "a"}, "agent": {"bar": {"model": "b"}}, "workset": {"x": 1},
         })
         assert display_view(path, "agent") == {
-            "self": {"model": "a"}, "agent": {"bar": {"model": "b"}},
+            "self": {"model": "a"}, "agent": {"bar": {"model": "b"}}, "workset": {"x": 1},
         }
 
     def test_reset_clears_the_table_and_counts_its_leaves(self, tmp_path):
-        # The table is a contribution, so it is an override the repair door clears; a
-        # contained-scope table (still unread, Q85) stays, uncounted.
+        # The table is a contribution, so it is an override the repair door clears; so is a
+        # contained-scope table, read since 2E (Q85).
         from kanibako.settings.config_io import load_doc
 
         path = tmp_path / "agent.yaml"
@@ -1388,8 +1419,8 @@ class TestTheAgentTable:
             "agent": {"bar": {"model": "b"}, "default": {"env": {"X": "1"}}},
             "workset": {"x": 1},
         })
-        assert clear_overrides(path) == 3
-        assert load_doc(path) == {"workset": {"x": 1}}
+        assert clear_overrides(path) == 4
+        assert load_doc(path) == {}
 
 
 class TestStateLevel:

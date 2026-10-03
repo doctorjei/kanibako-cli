@@ -42,11 +42,14 @@ _ROOT: Final[str] = "self"
 #: The SCOPE this file sits at: its root expands to ``agent.<node>`` [spec:15-21, "self"].
 FILE_SCOPE: Final[str] = "agent"
 
+#: The scopes the file CONTAINS (``workset``, ``box``): spec §0 makes their tables inputs,
+#: merged defaults-down (Q85), read like those tables in any other settings file.
+_CONTAINED: Final[tuple[str, ...]] = contained_scopes(FILE_SCOPE)
+
 #: The top-level tables the file CONTRIBUTES to the cascade — the ONE list every reader takes
-#: (:func:`contributed_tables`): its root, and (Q92) its own-scope ``agent:`` table, read like
-#: that table in any other settings file.  Spec §0 makes the contained-scope tables inputs too
-#: (``workset:``, ``box:``); each joins here when its read is built (Q85).
-_CONTRIBUTED: Final[frozenset[str]] = frozenset({_ROOT, FILE_SCOPE})
+#: (:func:`contributed_tables`): its root, its own-scope ``agent:`` table (Q92) and its
+#: contained-scope tables (Q85).
+_CONTRIBUTED: Final[frozenset[str]] = frozenset({_ROOT, FILE_SCOPE, *_CONTAINED})
 
 #: The root as a nested-walk PREFIX, for the ONE raw-walk site that needs it:
 #: ``settings_assemble._BEHAVIOR_TABLE_SHAPES``, whose rows are uniform ``(prefix, depth)`` pairs
@@ -185,6 +188,7 @@ class AgentFileLevel:
 
     *scope* is the file's top-level ``agent:`` table, RAW (Q92: read like that table in any
     settings file), already judged by :func:`_contribution`; ``settings_assemble`` parses it.
+    *contained* is the file's ``workset:`` / ``box:`` tables, RAW, likewise (Q85).
 
     The file's ROOT is split by KEY (:func:`level_table`): *table* holds every category key,
     whatever it holds, and *state* every other key.
@@ -195,6 +199,7 @@ class AgentFileLevel:
     path: Path | None = None
     scope: dict = field(default_factory=dict)
     state: dict = field(default_factory=dict)
+    contained: dict = field(default_factory=dict)
 
 
 def scalar_family_of(tail: str) -> str | None:
@@ -872,14 +877,12 @@ def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> No
     ``meta:``, ``binding_derivations:`` and ``pref:`` (§2h) drop with a warning at assembly
     (:func:`~kanibako.settings.settings_drops.cascade_drop_set`); the non-launch readers see them
     here before any drop, so this passes them rather than refuse what the launch drops.
-    ⚑ ``agent:`` IS NOT A STRAY EITHER: it is READ (Q92, :data:`_CONTRIBUTED`).
-    🛑 ``workset:`` / ``box:`` ARE PASSED OVER UNREAD, and that is a gap, not a rule: spec §0
-    makes the file's contained-scope tables INPUTS, merged defaults-down (Q85). Each stops being
-    passed over when it joins :data:`_CONTRIBUTED`.
+    ⚑ ``agent:``, ``workset:`` and ``box:`` ARE NOT STRAYS EITHER: they are READ (Q92, Q85,
+    :data:`_CONTRIBUTED`).
     """
     agent = node or "<agent>"
     where = path if path is not None else "the agent settings file"
-    passed = cascade_drop_set(FILE_SCOPE) | {FILE_SCOPE, *contained_scopes(FILE_SCOPE)}
+    passed = cascade_drop_set(FILE_SCOPE)
     for raw_key in raw:
         key = str(raw_key)
         if key in _CONTRIBUTED or key in passed:
@@ -888,8 +891,8 @@ def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> No
             f"`{key}` at the top level of {where} is not a settings key, so kanibako "
             f"will not read the file.\n"
             f"This file holds its settings under `{_ROOT}:` — an ALIAS for "
-            f"`agent.{agent}` — and nothing beside it is read but an `{FILE_SCOPE}:` "
-            f"table (spec §0, closed keyspace). Refusing rather than running: a key "
+            f"`agent.{agent}` — and nothing beside it is read but the "
+            f"`{FILE_SCOPE}:`, `workset:` and `box:` tables (spec §0, closed keyspace). Refusing rather than running: a key "
             f"here used to be ignored without a word, so whatever it set never reached "
             f"a box.\n"
             f"  Fix: if `{key}` is one of this agent's settings, move it under "
@@ -915,7 +918,8 @@ def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
     _refuse_stray_roots(raw, node=node, path=path)
     tables = contributed_tables(raw)
     scope = tables.get(FILE_SCOPE)
-    _refuse_scope_value(scope, path=path)
+    for token in (FILE_SCOPE, *_CONTAINED):
+        _refuse_scope_value(tables, token, path=path)
     if isinstance(scope, dict):
         refuse_node_spelled_twice(scope, prefix=FILE_SCOPE, path=path)
     _refuse_node_values(tables, node=node, path=path)
@@ -923,20 +927,27 @@ def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
     return tables
 
 
-def _refuse_scope_value(scope: Any, *, path: Path | None) -> None:
-    """RAISE on a VALUE where the file's ``agent:`` table goes; absent or bare (``None``) passes.
+def _refuse_scope_value(tables: dict, token: str, *, path: Path | None) -> None:
+    """RAISE on a VALUE where the file's *token* scope table goes; absent passes.
 
-    ``agent`` is a scope, and a scope holds node tables, never a value (spec §0, closed
-    keyspace) — merged as one, it would replace every other file's agent tables.
+    A scope holds tables, never a value (spec §0, closed keyspace) — merged as one, it would
+    replace every other file's tables of that scope. A bare ``agent:`` (``None``) passes, as
+    it always has; a bare ``workset:`` / ``box:`` is the value ``null`` and refuses (Q85, N7).
     """
-    if scope is None or isinstance(scope, dict):
+    if token not in tables:
+        return
+    value = tables[token]
+    if isinstance(value, dict) or (value is None and token == FILE_SCOPE):
         return
     where = path if path is not None else "the agent settings file"
+    held = "agent node tables (`agent: {<agent>: {…}}`)" if token == FILE_SCOPE else (
+        f"`{token}.*` settings (`{token}: {{<key>: …}}`)"
+    )
     raise SettingsError(
-        f"`{FILE_SCOPE}: {scope!r}` at the top level of {where} is not a settings key: "
-        f"`{FILE_SCOPE}` is a scope, and it holds agent node tables "
-        f"(`{FILE_SCOPE}: {{<agent>: {{…}}}}`), never a value (spec §0, closed keyspace).\n"
-        f"  Fix: delete the `{FILE_SCOPE}` entry from {where}, or give it node tables."
+        f"`{token}: {value!r}` at the top level of {where} is not a settings key: "
+        f"`{token}` is a scope, and it holds {held}, never a value (spec §0, closed "
+        f"keyspace).\n"
+        f"  Fix: delete the `{token}` entry from {where}, or give it a table."
     )
 
 
@@ -1107,9 +1118,13 @@ def level_table(
 
     tables = _contribution(raw, node=node, path=path)
     scope = tables.get(FILE_SCOPE) or {}
+    contained = (
+        {} if sub_key == AGENT_DEFAULT_SUB
+        else {k: tables[k] for k in _CONTAINED if k in tables}
+    )
     agent = tables.get(_ROOT)
     if not isinstance(agent, dict):
-        return AgentFileLevel(sub_key, {}, path, scope)
+        return AgentFileLevel(sub_key, {}, path, scope, contained=contained)
     _refuse_nested_tables(agent, node=node, path=path)
     if sub_key == AGENT_DEFAULT_SUB:
         return AgentFileLevel(sub_key, {}, path, scope)
@@ -1121,7 +1136,7 @@ def level_table(
     # spec §2a) or the §0 refusal, the way the same value does in any other settings file.
     table = {k: v for k, v in agent.items() if str(k) in _FLAT_AGENT_CATEGORIES}
     state = {k: v for k, v in agent.items() if str(k) not in _FLAT_AGENT_CATEGORIES}
-    return AgentFileLevel(sub_key, table, path, scope, state)
+    return AgentFileLevel(sub_key, table, path, scope, state, contained)
 
 
 def state_level(
