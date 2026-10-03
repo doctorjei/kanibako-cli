@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import shutil
+import time
 
 import pytest
 import yaml
@@ -2881,6 +2882,166 @@ class TestRefreshEquivalenceTiers:
         from kanibako.launch.templates import _normalize_markdown
 
         assert _normalize_markdown("one  \ntwo\n") == "one  \ntwo"
+
+
+def _shared_alias_levels(levels: int, fanout: int = 9) -> str:
+    """*levels* anchored lists, each *fanout* aliases to the one below, so the document
+    reaches its one leaf by ``fanout ** (levels - 1)`` DISTINCT PATHS.
+
+    ⚑ THE SAME SHAPE AS ``tests/test_settings/test_config.py::_aliased_levels``, which
+    is the document the loader's own bound is measured against.  The two bounds have to
+    hold on the SAME document, so a copy written here keeps them comparable instead of
+    letting each drift on its own.
+    """
+    lines = ["seed: &a ['x']"]
+    previous = "a"
+    for i in range(1, levels):
+        name = chr(ord("a") + i)
+        aliases = ",".join(["*" + previous] * fanout)
+        lines.append(f"{name}: &{name} [{aliases}]")
+        previous = name
+    lines.append(f"top: *{previous}")
+    return "\n".join(lines) + "\n"
+
+
+class TestEquivalenceOnSharedAliasDocuments:
+    """The COMPARE of two parsed documents is host-safety surface of its own.
+
+    ⚑ THE PARSE IS LINEAR IN CONTAINERS AND THE COMPARISON MUST BE TOO.  The loader's
+    own bound means both sides of a fanned-out document LOAD in microseconds — and a
+    comparison that walks every path then spends the exponential anyway, on a file of a
+    few hundred bytes, reached by ``setup``'s template refresh and by an install that
+    overwrites.
+    """
+
+    def test_equal_shared_alias_documents_are_equivalent_within_the_bound(self, tmp_path):
+        """Ten levels of nine aliases is 338 bytes and ``9 ** 9`` paths to one leaf.
+
+        The two sides differ only in a COMMENT, so the bytes differ, both parse, and the
+        values are equal — the whole question ``_equivalent`` exists to answer.  The
+        bound is generous for the same reason the loader's is (1 s for work that must
+        finish in microseconds) and it fails by more than an order of magnitude, not by
+        a margin a loaded box could eat: the two sides reach one leaf by 9**9 paths
+        between them, so a walk that follows paths cannot be near a second.
+        """
+        from kanibako.launch.templates import _equivalent
+
+        src = tmp_path / "a.yaml"
+        dst = tmp_path / "b.yaml"
+        document = _shared_alias_levels(10)
+        src.write_text(document)
+        dst.write_text("# a comment the other side does not have\n" + document)
+        assert src.read_bytes() != dst.read_bytes()
+
+        start = time.perf_counter()
+        result = _equivalent(src, dst)
+        elapsed = time.perf_counter() - start
+
+        assert result
+        assert elapsed < 1.0, (
+            f"the comparison took {elapsed:.1f}s on two "
+            f"{len(document)}-byte documents of shared aliases"
+        )
+
+    def test_one_deepest_leaf_that_differs_is_a_difference(self, tmp_path):
+        """The negative case the memo must not soften: ONE leaf, at the bottom, ``y``
+        instead of ``x`` — the two documents share a shape that is equal everywhere
+        else, and a comparison that remembers "these containers" instead of "these two
+        containers" answers ``True`` here."""
+        from kanibako.launch.templates import _equivalent
+
+        src = tmp_path / "a.yaml"
+        dst = tmp_path / "b.yaml"
+        document = _shared_alias_levels(10)
+        src.write_text(document)
+        dst.write_text(document.replace("seed: &a ['x']", "seed: &a ['y']", 1))
+
+        start = time.perf_counter()
+        result = _equivalent(src, dst)
+        elapsed = time.perf_counter() - start
+
+        assert not result
+        assert elapsed < 1.0, f"refusing one differing leaf took {elapsed:.1f}s"
+
+    def test_a_one_sided_memo_would_have_answered_these_two_the_same_way(self, tmp_path):
+        """⚑ THE PAIR IS THE KEY, NOT THE CONTAINER.
+
+        The left document names ONE table twice, so the two keys hold the same object;
+        the right document names TWO tables that are not equal.  A memo keyed on one
+        side alone walks the first key, decides the pair equal, and reports the second
+        key from that decision — accepting a document whose second key says something
+        different.  Every other pair of keys here is equal, so only a key that holds the
+        PAIR can tell the two apart.
+        """
+        from kanibako.launch.templates import _equivalent
+
+        for left, right in (
+            ("x: &s {k: 1}\ny: *s\n", "x: {k: 1}\ny: {k: 2}\n"),
+            ("x: &s [1, 2]\ny: *s\n", "x: [1, 2]\ny: [1, 3]\n"),
+            ("x: &s {k: 1}\ny: &t {k: 1}\nz: *s\n", "x: {k: 1}\ny: {k: 1}\nz: {k: 2}\n"),
+        ):
+            src = tmp_path / "a.yaml"
+            dst = tmp_path / "b.yaml"
+            src.write_text(left)
+            dst.write_text(right)
+            assert not _equivalent(src, dst), f"{left!r} vs {right!r}"
+
+    def test_the_answer_equals_python_equality_on_the_parsed_documents(self, tmp_path):
+        """The comparison must be ``==`` ON THE PARSED DOCUMENTS, not a nearer thing.
+
+        Each pair is checked against ``==`` itself, so a case nobody thought of is
+        covered by the same rule as one that is: key order is not a difference, ``1``
+        and ``1.0`` are, a list is not a mapping, a length is not an order, and an
+        absent key is not a null one.  Scalars keep Python's own semantics because that
+        is what ``==`` says — including the two that surprise people.
+        """
+        from kanibako.launch.templates import _equivalent
+        from kanibako.settings.config_io import parse_doc_text
+
+        corpus = [
+            ("key order", "a: 1\nb: 2\n", "b: 2\na: 1\n"),
+            ("1 vs 1.0", "a: 1\n", "a: 1.0\n"),
+            ("list vs dict", "a: [1, 2]\n", "a: {0: 1, 1: 2}\n"),
+            ("nested list length", "a: [[1, 2], [3]]\n", "a: [[1, 2], [3, 4]]\n"),
+            ("null vs absent", "a: ~\n", "{}\n"),
+            ("null vs null", "a: ~\n", "a: null\n"),
+            ("true vs 1", "a: true\n", "a: 1\n"),
+            ("nan vs nan", "a: .nan\n", "a: .nan\n"),
+            ("one extra key", "a: 1\n", "a: 1\nb: 2\n"),
+            ("one missing key", "a: 1\nb: 2\n", "b: 2\n"),
+            ("deep equal", "a:\n  b:\n    c: [1, {d: 2}]\n", "a:\n  b:\n    c: [1, {d: 2}]\n"),
+            ("deep unequal", "a:\n  b:\n    c: [1, {d: 2}]\n", "a:\n  b:\n    c: [1, {d: 3}]\n"),
+            ("top-level list", "- 1\n- 2\n", "- 1\n- 2\n"),
+            ("top-level list vs mapping", "- 1\n- 2\n", "0: 1\n1: 2\n"),
+            ("top-level scalar", "just a string\n", "just a string\n"),
+            ("top-level scalar vs mapping", "just a string\n", "a: 1\n"),
+            ("merge key", "base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n",
+             "base: &b {a: 1}\nbox:\n  <<: *b\n  a: 2\n"),
+            ("shared alias, equal", "x: &s {q: 1}\ny: *s\n", "x: {q: 1}\ny: {q: 1}\n"),
+            ("comment only", "a: 1  # note\n", "a: 1\n"),
+        ]
+        for why, left, right in corpus:
+            src = tmp_path / "a.yaml"
+            dst = tmp_path / "b.yaml"
+            src.write_text(left)
+            dst.write_text(right)
+            expected = parse_doc_text(left) == parse_doc_text(right)
+            assert _equivalent(src, dst) is expected, f"{why}: {left!r} vs {right!r}"
+
+    def test_a_shared_alias_document_that_differs_deeply_is_a_difference(self, tmp_path):
+        """A big document that is equal everywhere except the LAST key still has to be
+        reported, which is the case a comparison that returns at the first difference
+        gets right and a memo that decides too early gets wrong."""
+        from kanibako.launch.templates import _equivalent
+
+        src = tmp_path / "a.yaml"
+        dst = tmp_path / "b.yaml"
+        document = _shared_alias_levels(6)
+        src.write_text(document)
+        dst.write_text(document.replace("top: *f", "top: ['y']", 1))
+        assert src.read_bytes() != dst.read_bytes()
+
+        assert not _equivalent(src, dst)
 
 
 class TestStagingIsScoped:
