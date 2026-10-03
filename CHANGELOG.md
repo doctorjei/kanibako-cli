@@ -362,11 +362,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<tempdir>/kanibako-runtime-<uid>` directory; if that path is a symlink, not a directory, not owned
   by you, not writable by you, or open to group or others, it falls back to a fresh private temp dir.
   Either way it warns. Directories leaked by earlier versions are not removed.
-- **A YAML file that refers to itself or nests without bound is refused instead of crashing.** In
-  v1.8.0-rc2 a cyclic anchor (`a: &x {b: *x}`) in a settings file crashed with a raw `RecursionError`
-  traceback, and a few hundred bytes of shared aliases could burn minutes of CPU. Any file read
-  through kanibako's YAML loader, including a bundle's `rig.yaml`, now stops with an error naming the
-  file. The `image-baseline.yaml` overlays now go through the same loader: an overlay that is a list
+- **A YAML file that refers to itself or nests without bound is refused instead of crashing, and
+  two of them are no longer compared path by path.** In v1.8.0-rc2 a cyclic anchor
+  (`a: &x {b: *x}`) in a settings file crashed with a raw `RecursionError` traceback, and a few
+  hundred bytes of shared aliases could burn minutes of CPU. Any file read through kanibako's
+  YAML loader, including a bundle's `rig.yaml`, now stops with an error naming the file. The
+  comparison that decides whether two template files hold the same document is bounded the same
+  way: it walks each pair of containers once instead of every path to the same leaf, so a staged
+  file of shared aliases is still compared in milliseconds rather than minutes. The
+  `image-baseline.yaml` overlays now go through the same loader: an overlay that is a list
   or a single value, or that repeats a package, stops `start` and is reported by `rig diagnose` as a
   `[!!] Baseline` settings error instead of being read as empty or keeping the last value; invalid
   YAML in an overlay is an `Error:` line (a `rig diagnose` settings error) instead of a traceback.
