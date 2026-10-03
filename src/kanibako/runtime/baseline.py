@@ -29,6 +29,11 @@ from kanibako.settings.paths import user_config_home
 BASELINE_FILENAME = "image-baseline.yaml"
 
 
+def _has_control_char(name: str) -> bool:
+    """Whether *name* holds a control character, which no executable name does."""
+    return any(ord(c) <= 0x1F or ord(c) == 0x7F for c in name)
+
+
 def _read_doc(path: Path) -> dict[str, list[str]]:
     """Parse a baseline YAML file into ``{package: [executables]}``.
 
@@ -37,7 +42,10 @@ def _read_doc(path: Path) -> dict[str, list[str]]:
     :func:`load_doc`, the one entry point for a user's YAML: a repeated key or a
     non-mapping document is REFUSED BY NAME (ConfigError).  A package whose value is
     neither a name nor a list of them is REFUSED BY NAME too, here: iterating it would
-    either raise a bare ``TypeError`` or accept a table's keys as executable names.
+    either raise a bare ``TypeError`` or accept a table's keys as executable names.  So
+    is a name carrying a control character: the probe reads its result one line at a
+    time, and no shell can look such a name up whole, so one of them decides the
+    verdict for every other name probed alongside it.
     """
     if not path.is_file():
         return {}
@@ -45,20 +53,23 @@ def _read_doc(path: Path) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for pkg, exes in raw.items():
         if exes is None:
-            result[str(pkg)] = []
+            names: list[str] | None = []
         elif isinstance(exes, str):
-            result[str(pkg)] = [exes]
+            names = [exes]
         elif isinstance(exes, list) and not any(
             isinstance(e, (list, dict)) or e is None or isinstance(e, bool)
             for e in exes
         ):
-            result[str(pkg)] = [str(e) for e in exes]
+            names = [str(e) for e in exes]
         else:
+            names = None
+        if names is None or any(_has_control_char(n) for n in names):
             raise ConfigError(
                 f"the config file {path} sets '{pkg}' to a value that is not an "
                 "executable name or a list of them. Fix or remove that entry, "
                 "then retry."
             )
+        result[str(pkg)] = names
     return result
 
 

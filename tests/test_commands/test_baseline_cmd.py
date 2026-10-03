@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from kanibako.commands.baseline_cmd import (
     _filter_packages,
     run_install,
@@ -270,6 +272,42 @@ class TestProbeTreatsNameAsOneWord:
         assert script == "command -v 'weird name;rm -rf /'"
         # Still a LOGIN shell: -l is what makes the probe see a session's PATH.
         assert mrun.call_args[0][0][-3:-1] == ["sh", "-lc"]
+
+
+class TestRunVerifyRefusesUnprobeableNames:
+    """``kanibako baseline verify`` refuses a crafted overlay name before it probes."""
+
+    def test_nul_in_an_overlay_name_never_reaches_the_probe(
+        self, tmp_home, monkeypatch
+    ) -> None:
+        """Real XDG overlay, real ``run_verify``: the refusal lands, the probe never runs.
+
+        Without the refusal the NUL reaches ``subprocess.run`` as an argv entry and
+        the whole command dies on an embedded-null ValueError instead of naming the
+        file and the package.
+        """
+        from kanibako.errors import ConfigError
+
+        overlay = tmp_home / "config" / "kanibako" / "image-baseline.yaml"
+        overlay.parent.mkdir(parents=True, exist_ok=True)
+        overlay.write_text('git: ["rg\\0sh"]\n')
+
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+        monkeypatch.setenv("HOME", str(tmp_home / "home"))
+        args = argparse.Namespace(
+            only=None, skip=None, all_images=False, image="img:latest"
+        )
+        with (
+            patch("kanibako.runtime.container.ContainerRuntime", return_value=runtime),
+            patch("subprocess.run") as mock_run,
+            pytest.raises(ConfigError) as exc,
+        ):
+            run_verify(args)
+        assert str(exc.value).startswith(
+            f"the config file {overlay} sets 'git' to a value that is not an "
+        )
+        mock_run.assert_not_called()
 
 
 class TestRunInstall:
