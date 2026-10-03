@@ -2633,7 +2633,7 @@ self:
   ignored without a word and never reached a box. It now **refuses, naming the key and the file**.
   Move it under `self:` if it is one of this agent's settings; otherwise delete it. A top-level
   `system:`, `meta:`, `pref:` or `binding_derivations:` table is still dropped with a warning, and
-  a `workset:` or `box:` table is still not read. An `agent:` table is read — next item.
+  an `agent:`, `workset:`, or `box:` table is read — next items.
 - **You have an `agent:` table at the top of the file.** 1.7.2 and 1.8.0-rc2 never read it — the
   file's reader took `self:` alone (in 1.7.2 the file was `agents/<agent>/settings.yaml`) — so whatever it held reached no box, without a word. It is
   **read now**, the way the `agent:` table in the system or a working set's settings file is:
@@ -2660,9 +2660,20 @@ self:
   the same node) — keep one. Two different settings of one table merge (`self: env: A` beside
   `agent: claude: env: B`). A value where an agent's table goes (`agent: claude: 5`, or a bare
   `claude:`) refuses, and so does a key that is not a setting of the agent it sits under
-  (`agent: goose: bogus: 1`) — the same check `self:` gets. Every `agent` verb that reads the
-  file (`show`, `info`, `list`, `get`) refuses it as the launch does; `agent reset <agent> --all` does not refuse, and now
+  (`agent: goose: bogus: 1`) — the same check `self:` gets. So does a value where the whole
+  `agent:` table goes — `agent: 5`, `agent: null`, or a bare `agent:` line, which 1.8.0-rc2
+  ignored. Every `agent` verb that reads the file (`show`, `info`, `list`, `get`) refuses it as the launch does; `agent reset <agent> --all` does not refuse, and now
   clears this table as well.
+- **You have a `workset:` or `box:` table at the top of the file.** 1.7.2 and 1.8.0-rc2 never read
+  it; it is read now, as defaults for the working set and box while this agent runs — the working
+  set's and box's own files still win. A value that did nothing until now takes effect (including
+  `box: image:`). A value where the table goes (`box:` left empty, `box: null`, `workset: 5`)
+  refuses, naming the file and key; a key that is not a setting refuses as in any settings file.
+  `agent reset <agent> --all` removes both tables.
+- **You have `self: null`, or a value at `self:`.** It was ignored; it now refuses, naming the file,
+  as `agent: {claude: null}` does in the system file. Give `self:` a table or delete the line. A
+  null CATEGORY under it (`self: {caches: null}`) is not this case: it resets that category for the
+  agent, as the same null does in any settings file.
 - **You have a value where `env`'s or `secret_path`'s table goes, or a bad entry inside a
   category.** 1.8.0-rc2 dropped `self: {env: 5}` (or a bare `env:` line) without a word, in the
   launch and in the `agent` verbs alike, and its `agent` verbs listed a file whose category
@@ -3281,11 +3292,11 @@ box:
 ```
 
 **A table where a single value belongs is refused under an agent node too.** In the system settings
-file, the site base file, and a workset's or box's `pref.agent:` table, `agent: {claude: {model:
-{x: 1}}}` was silently dropped while the same shape under an agent file's `self:` was refused. It is
-now refused, naming each key (`agent.claude.model`) and the file; this covers every node, `default`
-included. Category tables (`env:`, `bindings:` and the rest) and `transform_settings` are tables by
-design and still resolve. An agent's own `agent.yaml` is not yet covered by this check.
+file, the site base file, a workset's or box's `pref.agent:` table, and an agent's own
+`agents/<agent>/agent.yaml`, `agent: {claude: {model: {x: 1}}}` was silently dropped while the same
+shape under an agent file's `self:` was refused. It is now refused, naming each key
+(`agent.claude.model`) and the file; this covers every node, `default` included. Category tables (`env:`, `bindings:` and the rest) and `transform_settings` are tables by
+design and still resolve.
 
 **A `config:` table is refused too, with a message of its own.** The `config.*` keys are the
 bootstrap paths and live only in the config file — `~/.config/kanibako.cfg` by default (site-wide,

@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-file input. The system settings file and the site base file are now checked one file at a
   time too, like the box and workset files. A table where a single value belongs under an agent
   node (`agent: {claude: {model: {x: 1}}}`, or the same under `pref.agent:`) is now refused, naming
-  the key and the file, in the system, site base, workset, and box settings files. See *2.47 An
+  the key and the file, in the system, site base, workset, box, and agent settings files. See *2.47 An
   undeclared key in a settings file now stops the command, and the cure is a hand-edit* in
   [MIGRATION.md](MIGRATION.md).
 
@@ -766,8 +766,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never reached it, with no message; the top-level check for the other settings files did not
   cover this one. It now stops the command, naming the key and the file: move the setting under
   `self:`, or delete the line. A top-level `system:`, `meta:`, `pref:` or `binding_derivations:`
-  table is still dropped with a warning, and a `workset:` or `box:` table is still not read; an
-  `agent:` table is now read (next entry). See `MIGRATION.md` § *2.37 An agent's settings file has
+  table is still dropped with a warning, and an `agent:`, `workset:`, or `box:` table is now read
+  (next entries). See `MIGRATION.md` § *2.37 An agent's settings file has
   ONE level: everything sits directly under `self:`*.
 
 - **An `agent:` table at the top of an agent's `agent.yaml` is now read, like the `agent:` table in
@@ -783,11 +783,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written (a new value goes under `self:`). Another agent's node merges but is never used, since
   that agent's own file is the one read when it runs. The same setting under both `self:` and
   `agent: <this agent>:` refuses, naming both spellings and the file, in every `agent` verb that
-  reads the file as well as at a launch; so does a value in place of the table (`agent: 5`) or
-  of one agent's table (`agent: {claude: 5}`), and a key in it that is not a setting of that
-  agent (`agent: {claude: {bogus: 1}}`), as a key under `self:` already did. `agent reset <agent> --all`
-  now clears this table too, and counts its settings. See `MIGRATION.md` § *2.37 An agent's
+  reads the file as well as at a launch; so does a value in place of the table (`agent: 5`,
+  `agent: null`, or a bare `agent:` line) or of one agent's table (`agent: {claude: 5}`), and a
+  key in it that is not a setting of that agent (`agent: {claude: {bogus: 1}}`), as a key under
+  `self:` already did. `agent reset <agent> --all` now clears this table too, and counts its settings. See `MIGRATION.md` § *2.37 An agent's
   settings file has ONE level: everything sits directly under `self:`*.
+
+- **A `workset:` or `box:` table in an agent's `agent.yaml` is now read**, as defaults for the
+  working set and box while that agent runs, below the working set's and box's own files. Until now
+  it was ignored without a word. A `box: image:` there now sets the image a launch runs and the one
+  `box info` shows. `box info` now reads the selected agent's file, so a malformed one refuses there
+  as it does in `box show`. A value where the table goes (`box: null`, `workset: 5`) refuses, naming
+  the file and key; `agent reset <agent> --all` removes it.
+
+- **`self: null` (or any value) in an agent's `agent.yaml` now refuses**, as the system file's
+  `agent: {claude: null}` does; it was ignored. **A null category under `self:` (`caches: null`)
+  resets that category** for the agent, as in any other settings file. `agent reset <agent> --all`
+  removes either.
+
+- **tweakcc reads `agent.<agent>.transform_settings` from the resolved settings**: the system file's
+  `agent: claude: transform_settings:` now applies (the agent file still outranks it), and the
+  transform, bootstrap, and `box show --effective` lookups read the agent file's `agent: default:`
+  table as a launch does.
+
+- **A persona's token check reads the resolved `agent.<node>.secret_path`.** Before a persona box is
+  created or launched, kanibako checks that its custom endpoint has a bearer token, or an explicit
+  `null` for a keyless endpoint. That check read only the agent's `agent.yaml` and the persona
+  store. So a token set in the system settings file
+  (`agent: {navigator℘claude: {secret_path: {ANTHROPIC_AUTH_TOKEN: <path>}}}`) was mounted into
+  the box, but the create or launch was refused for having none. The check now reads the same resolved value, in the same order: the agent's
+  `agent.yaml`, then the persona store, then the system settings file. A broken path in a higher
+  place still refuses rather than falling through to a lower one, because it is the path the box
+  would mount. Inside a settings key, a persona node is spelled `navigator℘claude`, not
+  `navigator+claude`.
 
 - **The `agent` verbs refuse an undeclared entry in an agent's `agent.yaml` as a launch does, down
   to what is inside a category.** In v1.8.0-rc2 `agent show`, `info`, `list` and `get` answered rc 0 for a file a
