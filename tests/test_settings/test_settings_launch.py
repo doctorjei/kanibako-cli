@@ -6766,6 +6766,16 @@ class TestAgentFileAgentTable:
             ),
         )
 
+    def test_a_box_table_applies_above_the_system_file(self, tmp_path):
+        # 2E (Q85): the agent file's ``box:`` table merges defaults-down — below the box
+        # file, above the system file. (Mutation: drop ``level.contained`` from
+        # ``_agent_partial`` → ``A`` is absent → RED.)
+        from kanibako.settings.settings_launch import snapshot_leaf
+
+        snap = self._snap(tmp_path, {"self": {}, "box": {"env": {"A": "agent"}}},
+                          system={"box": {"env": {"A": "system"}}})
+        assert snapshot_leaf(snap, "box.env.A") == "agent"
+
     def test_the_own_node_sets_the_active_agent(self, tmp_path):
         snap = self._snap(tmp_path, {"agent": {"claude": {"model": "own"}}})
         assert effective_behavior(snap, active_agent="claude")["model"] == "own"
