@@ -357,7 +357,7 @@ def test_the_inherited_endpoint_keeps_suppress_and_delivery_in_step(
     proj = resolve_project(std, config, str(project_dir), initialize=True)
     target = _TARGETS[agent]()
     selection = AgentSelection(node=agent, source="settings").selection_level
-    _auth, suppressing, _model = start_cmd._resolve_box_launch_decisions(
+    _auth, suppressing, _model, _secrets = start_cmd._resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent, agent_cfg=None,
         system_settings_path=system_file, agent_cfg_path=None,
         selection_level=selection,

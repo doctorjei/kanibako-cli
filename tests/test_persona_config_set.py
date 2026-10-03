@@ -488,7 +488,7 @@ class TestPersonaLoadableEndToEnd:
         assert agent_cfg.secret_path[_TOKEN_VAR] == str(token)
 
         endpoint, error, _provider = _preflight_persona_load(
-            "navigator℘claude", agent_cfg, _URL, logging.getLogger("test"),
+            "navigator℘claude", agent_cfg.secret_path, _URL, logging.getLogger("test"),
         )
         assert error is None
         assert endpoint == _URL
@@ -509,7 +509,7 @@ class TestPersonaLoadableEndToEnd:
         )
         agent_cfg = load_agent_config(_node_file(agents_root), node="navigator℘claude", purpose=ReadPurpose.RESOLVE)
         _ep, error, _provider = _preflight_persona_load(
-            "navigator℘claude", agent_cfg, _URL, logging.getLogger("test"),
+            "navigator℘claude", agent_cfg.secret_path, _URL, logging.getLogger("test"),
         )
         assert error is not None
         assert "no usable auth token" in error

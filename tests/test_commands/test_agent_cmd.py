@@ -1474,7 +1474,7 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 autospec=True,
-                return_value=(_SHARED_AUTH, None, None),
+                return_value=(_SHARED_AUTH, None, None, {}),
             ),
         ):
             target = MagicMock()
@@ -1518,7 +1518,7 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 autospec=True,
-                return_value=(_SHARED_AUTH, None, None),
+                return_value=(_SHARED_AUTH, None, None, {}),
             ) as mock_resolve,
         ):
             target = MagicMock()
@@ -1593,7 +1593,7 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 autospec=True,
-                return_value=(_SHARED_AUTH, None, None),
+                return_value=(_SHARED_AUTH, None, None, {}),
             ),
         ):
             target = MagicMock()
@@ -1646,7 +1646,7 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 autospec=True,
-                return_value=(_SHARED_AUTH, "http://localhost:8080", None),
+                return_value=(_SHARED_AUTH, "http://localhost:8080", None, {}),
             ),
         ):
             target = MagicMock()
@@ -1687,7 +1687,7 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 autospec=True,
-                return_value=(_PRIVATE_AUTH, None, None),
+                return_value=(_PRIVATE_AUTH, None, None, {}),
             ),
         ):
             target = MagicMock()
@@ -1728,7 +1728,7 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 autospec=True,
-                return_value=(_SHARED_AUTH, None, None),
+                return_value=(_SHARED_AUTH, None, None, {}),
             ),
         ):
             target = MagicMock()
@@ -1770,7 +1770,7 @@ class TestRunReauth:
             patch(
                 "kanibako.commands.start._resolve_box_launch_decisions",
                 autospec=True,
-                return_value=(_SHARED_AUTH, None, None),
+                return_value=(_SHARED_AUTH, None, None, {}),
             ),
         ):
             target = MagicMock()

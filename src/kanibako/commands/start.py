@@ -3321,7 +3321,7 @@ def _run_container(
     # BARE (byte-identical to today); a set endpoint is the cred-fork signal →
     # ``suppress_oauth`` drops the host OAuth cred sync so the Anthropic token never
     # reaches a box pointed at a third-party endpoint.
-    auth_src, active_endpoint, active_model = _resolve_box_launch_decisions(
+    auth_src, active_endpoint, active_model, secret_paths = _resolve_box_launch_decisions(
         std=std,
         proj=proj,
         target=target,
@@ -3523,11 +3523,10 @@ def _run_container(
     agent_cfg_dirty = target is not None and not agent_cfg_exists
     if target is not None and harness_of(agent_id) != agent_id:
         active_endpoint, persona_error, provider = _preflight_persona_load(
-            agent_id, agent_cfg, active_endpoint, logger,
+            agent_id, secret_paths, active_endpoint, logger,
             target=target, keyspace_model=active_model,
-            # The store read from above — the pre-flight's SECOND token source
-            # (below the agent file rung) and the carrier of the store's own
-            # reject verdict.  ``probe=True`` is the LAUNCH path only: the create
+            # The store read from above carries the store's own reject verdict
+            # and the probe's env.  ``probe=True`` is the LAUNCH path only: the create
             # path keeps its separate WARN-ONLY probe (locked ruling #2).
             bundle=persona_bundle, probe=True,
         )
@@ -5848,69 +5847,29 @@ def _persona_wiring(target) -> "PersonaSpec":
     return PersonaSpec(token_var=_PERSONA_TOKEN_VAR, endpoint_delivery="env")
 
 
-def _persona_token_pointer(agent_cfg, var: str, bundle) -> object:
-    """The token STATE for ``secret_path.<var>``: the agent FILE, then the store.
+def _persona_token_pointer(secret_paths: "Mapping[str, object]", var: str) -> object:
+    """The token STATE for ``secret_path.<var>`` in the resolved *secret_paths*.
 
+    *secret_paths* is the launch snapshot's ``agent.<node>.secret_path`` table
+    (:func:`_resolve_box_launch_decisions`), so the agent file, the persona store and
+    the system file answer in the cascade's order — the value the launch MOUNTS.
     Returns one of the THREE states a token key may hold (2026-08-17 ruling):
 
-    * a ``str`` — a configured path (from the file, or the store's resolved
-      pointer);
-    * ``None`` — PRESENT-null: the agent FILE names *var* with an explicit
-      ``null`` (``--null`` / a hand-edit).  This endpoint is deliberately
-      KEYLESS; the caller proceeds without mounting a token;
-    * ``__MISSING__`` — *var* is not configured ANYWHERE (neither the file nor
-      the store names it).  The caller refuses, unchanged from before this key
-      could hold ``None`` at all.
-
-    TWO sources, in the RULED cascade order — the agent settings file rung first,
-    the persona-store tier below it.  That ordering is not a preference: the file
-    rung genuinely OUTRANKS the persona tier in ``build_launch_snapshot``, so it
-    is the value the launch will actually MOUNT.  Gating on
-    anything else would re-open the display≠launch gap (a pre-flight that
-    approves a token the box never receives, or refuses one it does).
-
-    ⚑ A file value that is PRESENT (a path OR an explicit ``null``) is NOT
-    rescued or overridden by the store: it still wins the cascade, so it is
-    still what the launch mounts (or does not), and the caller must act on it
-    as given.  The store is therefore consulted ONLY when the file does not
-    name this var AT ALL — never to repair a file value that does, and never
-    to turn a deliberate keyless declaration back into a token search.  And it
-    contributes only when it names THIS var (``bundle.auth_env``): a store
-    token exported as some other var does not satisfy this one.
-
-    ⚑ M-28 CONSEQUENCE, documented not fixed: an EXISTING persona box created
-    before the store persist was retired still has ``endpoint`` / ``secret_path``
-    values written into ``agents/<node>/agent.yaml`` by the old verified swap.
-    Those sit on the file rung, so they keep winning over the live store — a
-    persona that is edited in the store will not appear to change.  The cure is
-    MANUAL ("delete the values you did not write yourself") and is
-    DOCUMENTATION-ONLY by ruling; do NOT add scrub machinery here.
+    * a ``str`` — a configured path;
+    * ``None`` — PRESENT-null: *var* is set to an explicit ``null`` (``--null`` /
+      a hand-edit).  This endpoint is deliberately KEYLESS; the caller proceeds
+      without mounting a token;
+    * ``__MISSING__`` — *var* is not configured anywhere.  The caller refuses.
     """
-    if var in agent_cfg.secret_path:
-        return agent_cfg.secret_path[var]  # a path, or None = deliberately keyless
-    if (
-        bundle is not None
-        and bundle.token_path is not None
-        and bundle.auth_env
-        and bundle.auth_env == var
-    ):
-        return str(bundle.token_path)
-    return __MISSING__
+    return secret_paths.get(var, __MISSING__)
 
 
-def _persona_secret_path_keys(agent_cfg, bundle) -> "list[str]":
-    """Every ``secret_path`` var this persona resolves a token for, file + store.
+def _persona_secret_path_keys(secret_paths: "Mapping[str, object]") -> "list[str]":
+    """Every ``secret_path`` var this persona resolves (:func:`_persona_token_pointer`).
 
-    The EFFECTIVE key set the launch will mount: the agent file's keys plus the
-    store's ``auth_env`` when the store resolved a token pointer.  Used by the
-    DYNAMIC (codex) token var, which IS the single configured key — so "single"
-    has to be counted over both sources or a store-only persona would look like
-    it had zero keys while the box received one.
+    Used by the DYNAMIC (codex) token var, which IS the single configured key.
     """
-    keys = set(agent_cfg.secret_path)
-    if bundle is not None and bundle.token_path is not None and bundle.auth_env:
-        keys.add(bundle.auth_env)
-    return sorted(keys)
+    return sorted(secret_paths)
 
 
 def _persona_probe_error(
@@ -6025,13 +5984,12 @@ def _persona_probe_error(
     return None
 
 
-def _resolve_codex_persona_env_key(agent_cfg, wiring, bundle=None) -> "str | None":
+def _resolve_codex_persona_env_key(secret_paths, wiring) -> "str | None":
     """The config-file persona's bearer token var == the model-provider ``env_key``.
 
     For a FIXED-var harness this is ``wiring.token_var``.  For the DYNAMIC codex MVP
     (empty ``token_var``) it is the SINGLE ``secret_path`` key the persona resolves
-    — counted over BOTH sources (:func:`_persona_secret_path_keys`), because a
-    store-only persona has no file key at all and would otherwise read as zero.
+    (:func:`_persona_secret_path_keys`).
     That key names BOTH the in-box env var the token is exported to AND the
     ``[model_providers.<id>].env_key`` the generated config.toml reads, so they
     cannot drift.  Returns ``None`` when there is no single unambiguous key (zero →
@@ -6039,7 +5997,7 @@ def _resolve_codex_persona_env_key(agent_cfg, wiring, bundle=None) -> "str | Non
     """
     if wiring.token_var:
         return wiring.token_var
-    keys = _persona_secret_path_keys(agent_cfg, bundle)
+    keys = _persona_secret_path_keys(secret_paths)
     if len(keys) == 1:
         return keys[0]
     return None
@@ -6083,7 +6041,7 @@ def _resolve_codex_persona_provider(
 
 def _preflight_persona_load(
     agent_id: str,
-    agent_cfg,
+    secret_paths,
     keyspace_endpoint: str | None,
     logger,
     *,
@@ -6101,9 +6059,10 @@ def _preflight_persona_load(
     :class:`~kanibako.vscode.vscode_config.CodexModelProvider` INC 3 wires into
     ``~/.codex/config.toml``.
 
-    ⚑ NOTHING here mutates *agent_cfg*.  Every persona value is a LIVE resolution
-    input resolved through the cascade before this seam, so there is nothing to
-    adopt and nothing to write back to ``agents/<node>/agent.yaml``.
+    *secret_paths* is the resolved ``agent.<node>.secret_path`` table
+    (:func:`_resolve_box_launch_decisions`).  Every persona value is a LIVE
+    resolution input resolved through the cascade before this seam, so there is
+    nothing to adopt and nothing to write back to ``agents/<node>/agent.yaml``.
 
     ⚑ ``probe`` is opt-in and set ONLY by the launch: the create path keeps its own
     WARN-ONLY probe (locked ruling #2), so a create must not inherit this one's hard
@@ -6134,12 +6093,12 @@ def _preflight_persona_load(
 
     if wiring.endpoint_delivery == "config_file":
         return _preflight_config_file_persona(
-            agent_id, agent_cfg, keyspace_endpoint, keyspace_model, wiring, display,
+            agent_id, secret_paths, keyspace_endpoint, keyspace_model, wiring, display,
             bundle=bundle, target=target, probe=probe, logger=logger,
         )
 
     return _preflight_env_persona(
-        agent_cfg, keyspace_endpoint, keyspace_model, wiring, display,
+        secret_paths, keyspace_endpoint, keyspace_model, wiring, display,
         bundle=bundle, target=target, probe=probe, logger=logger,
     )
 
@@ -6166,7 +6125,7 @@ def _model_tristate(keyspace_model: object) -> object:
 
 
 def _preflight_env_persona(
-    agent_cfg,
+    secret_paths,
     endpoint: str,
     keyspace_model: object,
     wiring,
@@ -6188,8 +6147,8 @@ def _preflight_env_persona(
     Gates (each an ACTIONABLE, harness-appropriate error):
 
     1. the bearer token STATE under the FIXED ``wiring.token_var`` (claude
-       ``ANTHROPIC_AUTH_TOKEN``, goose ``OPENAI_API_KEY``), agent FILE first then
-       the store (:func:`_persona_token_pointer`) — THREE states (2026-08-17
+       ``ANTHROPIC_AUTH_TOKEN``, goose ``OPENAI_API_KEY``), as resolved
+       (:func:`_persona_token_pointer`) — THREE states (2026-08-17
        ruling): ABSENT (``__MISSING__``, never configured) ⇒ error pointing at
        ``agent.<node>.secret_path.<token_var>``, unchanged from before this key
        could hold ``None``; PRESENT-null (``None``, deliberately keyless) ⇒
@@ -6213,14 +6172,14 @@ def _preflight_env_persona(
        — reached for a PRESENT-null token too, sent with no ``Authorization``
        header.
 
-    NEVER mutates *agent_cfg*: every value is resolved live through the cascade
-    before this seam.  The endpoint + token ride their existing single-source
+    Every value is resolved live through the cascade before this seam.  The
+    endpoint + token ride their existing single-source
     channels (the ``endpoint``→env ``SettingArg`` + the ``secret_path`` mount), so
     there is no config-file provider to carry (``provider`` None).
     """
     from kanibako.targets.base import _scrub_endpoint_userinfo
 
-    token_state = _persona_token_pointer(agent_cfg, wiring.token_var, bundle)
+    token_state = _persona_token_pointer(secret_paths, wiring.token_var)
     if token_state is __MISSING__ or (
         isinstance(token_state, str) and not _secret_pointer_usable(token_state)
     ):
@@ -6298,7 +6257,7 @@ def _persona_no_endpoint_error(agent_id: str, wiring) -> str:
 
 def _preflight_config_file_persona(
     agent_id: str,
-    agent_cfg,
+    secret_paths,
     endpoint: str,
     keyspace_model: object,
     wiring,
@@ -6316,10 +6275,9 @@ def _preflight_config_file_persona(
 
     1. the bearer token STATE under the DYNAMIC token var (the single ``secret_path``
        key the persona resolves == the provider ``env_key``) — THREE states
-       (2026-08-17 ruling), same as the ENV path.  ⚑ "The keys the persona
-       resolves" spans BOTH sources — the agent file AND the persona store
-       (:func:`_persona_secret_path_keys`) — so a store-only persona resolves its
-       env_key from the store rather than reading as zero keys.  Distinguished
+       (2026-08-17 ruling), same as the ENV path.  "The keys the persona
+       resolves" are the resolved table's (:func:`_persona_secret_path_keys`), so a
+       store-only persona resolves its env_key from the store.  Distinguished
        sub-cases, all preserved:
        * ZERO keys → "no API key configured";
        * >1 keys → "ambiguous: multiple keys configured" (can't pick the env_key).
@@ -6338,19 +6296,18 @@ def _preflight_config_file_persona(
        refused BY NAME, never silently resolved).
 
     On success return the resolved :class:`~kanibako.vscode.vscode_config.CodexModelProvider`
-    for INC 3.  NEVER mutates *agent_cfg*: every value is resolved live through the
-    cascade before this seam.
+    for INC 3.  Every value is resolved live through the cascade before this seam.
     """
     from kanibako.targets.base import _scrub_endpoint_userinfo
 
     token_err = _codex_persona_token_error(
-        agent_cfg, wiring, endpoint, display, bundle,
+        secret_paths, wiring, endpoint, display,
     )
     if token_err is not None:
         return None, token_err, None
     # token gate passed ⇒ a single, usable-or-deliberately-keyless secret_path
     # key resolves the env_key.
-    env_key = _resolve_codex_persona_env_key(agent_cfg, wiring, bundle)
+    env_key = _resolve_codex_persona_env_key(secret_paths, wiring)
     assert env_key is not None  # guaranteed by the passed token gate above.
     model_state = _model_tristate(keyspace_model)
     if model_state is None:
@@ -6412,7 +6369,7 @@ def _preflight_config_file_persona(
             f"`persona.model_required: true` in the harness descriptor."
         ), None
     if probe:
-        probe_token_state = _persona_token_pointer(agent_cfg, env_key, bundle)
+        probe_token_state = _persona_token_pointer(secret_paths, env_key)
         probe_err = _persona_probe_error(
             target, endpoint,
             probe_token_state if isinstance(probe_token_state, str) else None,
@@ -6428,7 +6385,7 @@ def _preflight_config_file_persona(
 
 
 def _codex_persona_token_error(
-    agent_cfg, wiring, endpoint: str, display: str, bundle=None,
+    secret_paths, wiring, endpoint: str, display: str,
 ) -> "str | None":
     """The SUB-CASE-specific bearer-token error for a config-file persona, or ``None``.
 
@@ -6436,9 +6393,8 @@ def _codex_persona_token_error(
     message is actionable (INC-3 fold-in — INC 2 collapsed all three into a single
     "none was found").  A FIXED-var harness (non-empty ``wiring.token_var``) uses that
     var directly; the DYNAMIC codex MVP derives it from the single ``secret_path``
-    key the persona resolves — counted over the agent FILE and the persona STORE
-    together (:func:`_persona_secret_path_keys`), since a store-only persona has no
-    file key.  Returns ``None`` when a single, usable token resolves.
+    key the persona resolves (:func:`_persona_secret_path_keys`).  Returns ``None``
+    when a single, usable token resolves.
     """
     from kanibako.targets.base import _scrub_endpoint_userinfo
 
@@ -6448,7 +6404,7 @@ def _codex_persona_token_error(
         f"usable auth token.\n"
     )
     tail = "  Set the key for this persona, then retry."
-    keys = _persona_secret_path_keys(agent_cfg, bundle)
+    keys = _persona_secret_path_keys(secret_paths)
     # DYNAMIC (empty token_var): the env_key IS the single configured secret_path key.
     if not wiring.token_var and len(keys) > 1:
         return (
@@ -6459,9 +6415,9 @@ def _codex_persona_token_error(
             f"({', '.join(keys)}) — ambiguous.\n"
             f"  Leave exactly one, then retry."
         )
-    env_key = _resolve_codex_persona_env_key(agent_cfg, wiring, bundle)
+    env_key = _resolve_codex_persona_env_key(secret_paths, wiring)
     token_state = (
-        _persona_token_pointer(agent_cfg, env_key, bundle)
+        _persona_token_pointer(secret_paths, env_key)
         if env_key else __MISSING__
     )
     if not env_key or token_state is __MISSING__:
@@ -6706,12 +6662,13 @@ def _resolve_box_launch_decisions(
     agent_cfg_path,
     selection_level: "Mapping[str, object] | None",
     persona_values: "Mapping[str, str] | None" = None,
-) -> "tuple[AuthSource, str | None, object]":
+) -> "tuple[AuthSource, str | None, object, dict[str, object]]":
     """Resolve the launch's per-box decisions off ONE snapshot.
 
-    Auth SOURCE + persona endpoint + persona model — the single-source consolidation
-    of the auth resolve and the behavior (endpoint/model) resolve, read off the SAME
-    expanded snapshot so there is no duplicate build.
+    Auth SOURCE + persona endpoint + persona model + the persona's resolved
+    ``agent.<node>.secret_path`` table — the single-source consolidation of the auth
+    resolve and the behavior resolve, read off the SAME expanded snapshot so there is
+    no duplicate build.  The table keeps a present ``null`` (a keyless declaration).
 
     ⚑ The *model* is read via :func:`_persona_model_state`, NOT ``effective_behavior``
     — that reader deliberately collapses a present-None scalar into omission, which
@@ -6792,7 +6749,9 @@ def _resolve_box_launch_decisions(
         # THREE-STATE distinction the persona model gate needs (2026-08-17
         # ruling).
         model = _persona_model_state(snapshot, agent_name)
-    return auth_src, endpoint, model
+    secrets = settings_launch.snapshot_leaf(snapshot, f"agent.{agent_name}.secret_path")
+    secret_paths = _plain_table(secrets) if isinstance(secrets, dict) else {}
+    return auth_src, endpoint, model, secret_paths
 
 
 def _persona_model_state(snapshot: "KeyStore", active_agent: str) -> object:
@@ -8300,7 +8259,7 @@ def persona_create_verdict(
         if persona_bundle is not None
         else None
     )
-    _auth, endpoint, model = _resolve_box_launch_decisions(
+    _auth, endpoint, model, secret_paths = _resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent_id,
         agent_cfg=probe_cfg, system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
@@ -8312,7 +8271,7 @@ def persona_create_verdict(
     # it here would turn a create with a rejected token into a refusal, which is
     # exactly the unification that ruling forbids.
     _ep, error, _provider = _preflight_persona_load(
-        agent_id, probe_cfg, endpoint, logger, target=target, keyspace_model=model,
+        agent_id, secret_paths, endpoint, logger, target=target, keyspace_model=model,
         bundle=persona_bundle, probe=False,
     )
     return error
@@ -8392,7 +8351,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     # Auth SOURCE + persona endpoint off ONE snapshot (single-source). At CREATE, a
     # fresh custom-endpoint box is seeded WITHOUT the host OAuth cred (fail-safe;
     # <None>/no-target = bare, byte-identical to today).
-    auth_src, active_endpoint, active_model = _resolve_box_launch_decisions(
+    auth_src, active_endpoint, active_model, secret_paths = _resolve_box_launch_decisions(
         std=std, proj=proj, target=target, agent_name=agent_id,
         agent_cfg=seed_agent_cfg, system_settings_path=system_settings_path,
         agent_cfg_path=agent_cfg_path,
@@ -8414,7 +8373,7 @@ def seed_new_box(std, config, proj, *, explicit_agent: str | None = None) -> Non
     agent_cfg_dirty = target is not None and not agent_cfg_exists
     if target is not None and harness_of(agent_id) != agent_id:
         active_endpoint, persona_error, _provider = _preflight_persona_load(
-            agent_id, seed_agent_cfg, active_endpoint, logger,
+            agent_id, secret_paths, active_endpoint, logger,
             target=target, keyspace_model=active_model,
             # ``probe=False`` for the same reason as the create verdict: the
             # create path's probe is warn-only and lives in the store check.
