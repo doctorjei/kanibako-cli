@@ -295,8 +295,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TypeError` traceback, and one mapped to a table or a nested list was accepted silently, so its
   keys or the stringified inner list were probed as executable names; a null or boolean list item
   (`git: [~, true]`, or a bare YAML 1.1 `yes`/`no`/`on`/`off`) was probed as an executable named
-  `None`, `True`, or `False`. Each is now refused with an error naming the file and the package. A
-  number in a list is still read as a name (`[a, 2]` gives `a` and `2`).
+  `None`, `True`, or `False`; and a name carrying a control character (`\x00`–`\x1f` or `\x7f`,
+  newline and tab included) was passed to the probe as-is, where a NUL in any one name made the
+  probe report every baseline executable missing, so `rig diagnose` listed every package absent.
+  Each is now refused with an error naming the file and the package. A number in a list is still
+  read as a name (`[a, 2]` gives `a` and `2`), and so is a name with a space or a non-ASCII letter.
 
 - **A box name that belongs to more than one workset is refused instead of silently resolving to
   the wrong target.** `box info`, `stop`, the box lifecycle commands (`remap`, `convert`, `move`),
@@ -801,7 +804,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   key under `self:` once, and `kanibako system reset --all` counted each key under an agent's table
   in the system settings file once, so an `env:` table of three variables was 1; a table for a
   contained scope (`box:` in a `workset.yaml`) was counted setting by setting. All of them now
-  count setting by setting: that `env:` table is 3. What is removed is unchanged.
+  count setting by setting: that `env:` table is 3. The count is now
+  the number of lines `show` lists as overrides at that level. Anything else the reset removes is
+  named after the count instead of being added to it: *"Reset 1 override(s); also removed 2
+  undeclared entries."* for entries `show` lists as undeclared, and *"… unlisted entries"* for
+  entries `show` does not list at all, such as an `agent:` table in a `box.yaml` or `workset.yaml`,
+  which the launch ignores. Before, both were added into N, so `kanibako box reset --all` on a
+  `box.yaml` holding one setting and an ignored two-key `agent:` table said *"Reset 3
+  override(s)."* while `box show` listed one line. What is removed is unchanged.
 
 - **`kanibako box reset --all` and `kanibako workset reset --all` now clear the `pref:` table
   too.** They asked *"Remove all config overrides?"* and then left every pref in place —
@@ -810,9 +820,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at the box or workset level, and `show` already lists it as an override, so `--all` now removes
   the whole table and counts each line `box show` lists for it (one per destination of a
   bind-shaped request). An entry in the table that is not a pref, which `show` lists as
-  undeclared, is removed and counted too, as an undeclared entry in the `box:` table already was.
+  undeclared, is removed too, and the message names it as an undeclared entry rather than
+  counting it as an override.
   `kanibako box reset pref.<key>` still clears a single pref.
   `kanibako system reset --all` is unchanged: a pref cannot be set at the system level.
+
+- **`kanibako system show` lists an undeclared entry in the `agent: default:` table once.** It
+  printed the entry both as an override and under the undeclared heading; it now appears only
+  under the undeclared heading.
 
 - **A `config:` table in a settings file now stops the command, and says where each entry
   belongs.** The `config.*` keys are the bootstrap paths, and they live only in `kanibako.cfg`
@@ -1417,6 +1432,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a name carrying `;` or `"` ran the rest as shell commands inside the probe container. Each name
   is now passed as one quoted shell word. The probe still runs a login shell, so a tool on a login
   `PATH` is still found.
+
+- **Re-seeding a box replaces kanibako's own older hook commands instead of keeping both.**
+  Kanibako's claude hooks are matched by their exact command text, so a command that changed used
+  to leave its previous spelling in the box's settings.json beside the new one, and both ran.
+  Removal is exact-match and scoped to the job's own event, so a user's own hook and a
+  hand-edited variant of ours are both left alone. The codex side is unchanged — its hooks
+  live in a managed region that is rebuilt whole on every delivery.
+
+- **The refusal over a box home that no registration claims no longer tells you to
+  `rm -rf <box dir>`.** The registry is a rebuildable index, so an unclaimed home may be a complete
+  box whose registration was lost; the refusal stands, names the directory, and prints only verbs
+  that run on that state. It does not cover a home you have confirmed is leftover — that is still
+  yours to remove by hand, and the message will not suggest it.
+
+- **`create` on a path carrying a pending create entry refuses and names the box, the workspace,
+  and when the attempt started; `create --recover` completes it.** This covers primary and
+  standalone boxes. A create interrupted before its write-ahead entry leaves a home no entry
+  claims, and the bare primary create now refuses that instead of silently minting `<name>2`. A
+  home that a deregistered entry still claims is not an orphan: the create mints the next free name
+  beside it, as before. See *`create` refuses an interrupted create; finish it with `--recover`* in
+  [MIGRATION.md](MIGRATION.md).
 
 ### Added
 

@@ -180,7 +180,7 @@ shortcuts for common operations:
 
 | Subcommand | Description |
 |------------|-------------|
-| `box create [path]` | Create project (`--name`, `--standalone`, `--register`, `--image`/`--rig`, `--no-vault`, `--private`, `--allow-home`, `--agent`) |
+| `box create [path]` | Create project (`--name`, `--standalone`, `--register`, `--recover`, `--image`/`--rig`, `--no-vault`, `--private`, `--allow-home`, `--agent`) |
 | `box list` / `box ls` | List projects (`--all`, `--orphan`, `-q`) |
 | `box info` / `box inspect` | Project details (mode, paths, lock, rig) |
 | `box rm` / `box delete` | Remove project (`--purge` deletes metadata, `--force` skips confirm) |
