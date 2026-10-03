@@ -557,13 +557,9 @@ def run_connect(args: argparse.Namespace) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
     elif not source.is_dir():
-        # ⚑ ``connect`` REGISTERS an EXTERNAL project dir; ``create`` is the verb that makes
-        # one.  A dangling symlink is PRESENT but not a directory, so it reads as the latter.
-        # ``--force`` absorbs a standalone box and does not create a missing dir.
+        # ⚑ ``connect`` REGISTERS an EXTERNAL dir; a dangling symlink is PRESENT, not missing.
         present = "it is not a directory." if os.path.lexists(source) else "no such directory."
-        print(
-            f"Error: Cannot connect '{source.resolve()}': {present}", file=sys.stderr,
-        )
+        print(f"Error: Cannot connect '{source.resolve()}': {present}", file=sys.stderr)
         return 1
 
     # ⚑ THE J2 WRITE-AHEAD BRACKET, AND IT BELONGS HERE, NOT IN ``add_project``: entry
