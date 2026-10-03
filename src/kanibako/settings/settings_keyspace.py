@@ -262,7 +262,7 @@ DECLARED_AGENT_LEAVES: Final[frozenset[str]] = frozenset({
 #: SUBTRACTION (:data:`SCALAR_AGENT_LEAVES`) instead of by a second hand-kept list.
 #:
 #: ⚑ THE COST OF GETTING IT WRONG IS MEASURED: a scalar stored at
-#: ``self.transform_settings`` crashed every subsequent read of the agent file — i.e. every
+#: ``self.transform_settings`` crashed every later agent-file read — i.e. every
 #: launch, list, info and show — until :func:`kanibako.settings.agent_file.table_value_error`
 #: refused it.  That refusal is the FILE-shape half of this same fact, and
 #: ``tests/test_settings/test_agent_leaf_shape.py`` pins the two against each other.

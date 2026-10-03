@@ -2085,7 +2085,6 @@ def run_info(args: argparse.Namespace) -> int:
         agent_display = f"n/a ({exc})" if "RETIRED" in str(exc) else agent_display
     cred_age = _format_credential_age(creds_file) if creds_file else "n/a (no target)"
 
-    # The image row: the box scalars the launch resolves, under the agent it selects.
     from kanibako.commands.start import _box_scalars
     merged = _box_scalars(
         std, proj,

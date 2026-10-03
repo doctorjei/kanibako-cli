@@ -669,7 +669,7 @@ def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None:
             # (Q92): there ``agent_file.level_table`` REFUSES by name whatever the drops leave
             # (this one takes ``system:``, ``meta:``, ``binding_derivations:``;
             # ``settings_prefs`` takes ``pref:``), except a contained scope's table
-            # (``workset:`` / ``box:``), which it reads as that scope's defaults (Q85).
+            # (``workset:`` / ``box:``), read as defaults (Q85).
             _log.warning(
                 "Dropping top-level %r table from %s settings file %s: "
                 "'%s' is the RESERVED INTERNAL derivations node (R-8; manifest "
@@ -808,8 +808,8 @@ def _file_view(raw: Any, *, level: str, path: Path | None, fold: bool = True) ->
     THREE rules, one per declaration: directional enforcement (spec §0) drops a CONTAINING
     scope's table, ``meta:`` and the reserved derivations node; a ``pref:`` table survives only
     where §2h permits one (:data:`~kanibako.settings.settings_prefs.PREF_LEGAL_LEVELS`); the
-    per-agent file contributes its ROOT table, its ``agent:`` table (Q92) and its ``workset:``
-    and ``box:`` tables (Q85), and nothing else
+    per-agent file contributes its ROOT, ``agent:`` (Q92), ``workset:``, ``box:`` (Q85)
+    tables only
     (:func:`~kanibako.settings.agent_file.contributed_tables`). What survives is case-folded by
     :func:`fold_agent_nodes` unless *fold* is off (the ``NARROW`` read folds at parse time).
 
