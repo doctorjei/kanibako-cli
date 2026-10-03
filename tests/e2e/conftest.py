@@ -12,6 +12,7 @@ Run with::
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
@@ -54,23 +55,25 @@ SUBPROCESS_TIMEOUT = 60  # seconds
 _podman = shutil.which("podman")
 _tmux = shutil.which("tmux")
 
-requires_podman = pytest.mark.skipif(
-    _podman is None, reason="podman not found on PATH"
-)
-requires_tmux = pytest.mark.skipif(
-    _tmux is None, reason="tmux not found on PATH"
-)
+PODMAN_MISSING = "podman not found on PATH"
+TMUX_MISSING = "tmux not found on PATH"
+IMAGE_MISSING = f"{E2E_IMAGE} not available locally"
+
+requires_podman = pytest.mark.skipif(_podman is None, reason=PODMAN_MISSING)
+requires_tmux = pytest.mark.skipif(_tmux is None, reason=TMUX_MISSING)
+
+# Combine all skip conditions for use in pytestmark. `pytestmark` is read at
+# COLLECTION, which the plain `pytest tests/` unit run reaches with every e2e test
+# deselected, so collection must start no process: the image check is asked at
+# SETUP by `require_e2e_runtime` instead.
+e2e_requires = [requires_podman, requires_tmux]
 
 
 def _image_available() -> bool:
     """Check if the e2e test image is available locally.
 
-    ⚑ Runs at COLLECTION time (the ``requires_image`` marker below is built at
-    module scope), so it must never raise: this module is collected by the plain
-    ``pytest tests/`` unit run too, where the e2e tests are all deselected. An
-    escaping exception there is a COLLECTION ERROR, which aborts the whole run
-    before a single unit test executes — a probe for an optional dependency
-    taking the entire suite down with it.
+    ⚑ Never raises. A runtime that is absent, slow or unpermitted is ``False`` here,
+    and must not fail tests that have not asked about podman at all.
     """
     if _podman is None:
         return False
@@ -85,21 +88,18 @@ def _image_available() -> bool:
     return result.returncode == 0
 
 
-def _host_podman_storage() -> tuple[str, str] | None:
+@functools.cache
+def _host_storage() -> tuple[str, str] | None:
     """Return host's (graphRoot, runRoot) from podman info, or None on failure.
 
-    Captured before any HOME/XDG_DATA_HOME overrides so we can pin the test
-    subprocess's podman storage back to the host's real location via
-    storage.conf. Without this, kanibako-launched podman looks for images
-    in the test's tmp dir and never finds them.
+    ⚑ Asked under the INHERITED HOME/XDG_*, so the graphroot is the host's real store
+    and not a per-test redirect (see ``host_storage_conf``). Two things hold those
+    values: this is asked from a SESSION-scoped fixture, set up by pytest before the
+    function-scoped ``monkeypatch`` fixtures that redirect HOME, and
+    ``_isolate_user_dirs`` leaves an ``e2e``-marked test alone.
 
-    ⚑ Like :func:`_image_available`, this runs at COLLECTION time and must never
-    raise. A ``podman info`` that is merely SLOW — a cold or contended daemon on a
-    shared CI runner — used to escape as ``TimeoutExpired`` and abort collection of
-    the entire suite, so the unit job reported ``1 error`` having run ZERO tests.
-    The timeout is a failure to learn the host storage, which this function's own
-    contract already describes as ``None``; it is not a reason to fail a run that
-    was not going to touch podman at all.
+    ⚑ MEMOIZED: the host's store cannot move mid-session, and both callers want one
+    answer.
     """
     if _podman is None:
         return None
@@ -119,18 +119,6 @@ def _host_podman_storage() -> tuple[str, str] | None:
     if len(lines) != 2:
         return None
     return lines[0], lines[1]
-
-
-_host_storage = _host_podman_storage()
-
-
-requires_image = pytest.mark.skipif(
-    not _image_available(),
-    reason=f"{E2E_IMAGE} not available locally",
-)
-
-# Combine all skip conditions for use in pytestmark
-e2e_requires = [requires_podman, requires_tmux, requires_image]
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +236,23 @@ def podman_exec(
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(scope="session", autouse=True)
+def require_e2e_runtime() -> None:
+    """Skip the whole e2e session unless podman, tmux and the image are all present.
+
+    ⚑ EVERY e2e fixture that reaches podman depends on this one, directly or through
+    ``host_storage_conf``, so nothing probes or pre-warms before the report that the
+    runtime is unusable. Pytest caches a session-scoped skip and re-raises it for each
+    later test, so this one call skips the session.
+    """
+    if _podman is None:
+        pytest.skip(PODMAN_MISSING)
+    if _tmux is None:
+        pytest.skip(TMUX_MISSING)
+    if not _image_available():
+        pytest.skip(IMAGE_MISSING)
+
+
 @pytest.fixture(scope="session")
 def stub_script() -> Path:
     """Return path to the claude stub script."""
@@ -267,7 +272,7 @@ def goose_stub_script() -> Path:
 
 
 @pytest.fixture(scope="session")
-def host_storage_conf(tmp_path_factory) -> Path:
+def host_storage_conf(tmp_path_factory, require_e2e_runtime) -> Path:
     """Write a storage.conf pinning rootless podman to the host's real graphroot.
 
     The per-test env overrides HOME and XDG_DATA_HOME, which would otherwise
@@ -275,8 +280,9 @@ def host_storage_conf(tmp_path_factory) -> Path:
     host's pulled images. ``rootless_storage_path`` is the rootless-specific
     knob that survives those overrides (plain ``graphroot`` does not).
     """
-    assert _host_storage is not None, "podman info failed; cannot pin storage"
-    graphroot, runroot = _host_storage
+    storage = _host_storage()
+    assert storage is not None, "podman info failed; cannot pin storage"
+    graphroot, runroot = storage
     conf_dir = tmp_path_factory.mktemp("podman-storage")
     conf_path = conf_dir / "storage.conf"
     conf_path.write_text(
@@ -333,7 +339,7 @@ def ensure_image_in_pinned_store(host_storage_conf) -> None:
         env=pin_env, capture_output=True, text=True, timeout=20,
     )
     pinned_root = info.stdout.strip() if info.returncode == 0 else "<unknown>"
-    _diag(f"captured host store: {_host_storage}")
+    _diag(f"captured host store: {_host_storage()}")
     _diag(f"pinned-config graphroot: {pinned_root!r}")
 
     present = subprocess.run(
@@ -360,7 +366,7 @@ def ensure_image_in_pinned_store(host_storage_conf) -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def session_cleanup():
+def session_cleanup(require_e2e_runtime):
     """Safety-net: remove any leftover e2e test containers at suite end."""
     yield
     if _podman is None:
@@ -426,7 +432,7 @@ def write_e2e_settings_files(
     ``settings/config.bootstrap_config_paths``).  The stanza was INERT, so every e2e
     box launched the DECLARED DEFAULT ``ghcr.io/doctorjei/kanibako-oci:latest`` and not
     the ``kanibako-oci:latest`` this suite pre-warms (``ensure_image_in_pinned_store``)
-    and gates on (``requires_image``).  Both of those were curating an image no test ever
+    and gates on (``require_e2e_runtime``).  Both of those were curating an image no test ever
     ran BY REFERENCE — on CI the retag below makes the two names the same image — and the
     gate passed on a fact about a launch it did not describe.
 
@@ -444,7 +450,7 @@ def write_e2e_settings_files(
     pins it: ``box.image`` at system scope routes to a ``box:`` table.  That pin covers the
     ROUTE only; the file's LOCATION is derived above and is not covered there.
 
-    ⚑ THE BARE TAG IS NOT A CHANGE OF IMAGE ON CI, and ``requires_image`` is not the reason.
+    ⚑ THE BARE TAG IS NOT A CHANGE OF IMAGE ON CI, and the image gate is not the reason.
     ``resolve_image_reference``'s top precedence rule is official-and-local: an unqualified
     ``kanibako-oci:latest`` gains the ``ghcr.io/doctorjei`` fallback prefix and resolves to
     ``ghcr.io/doctorjei/kanibako-oci:latest`` whenever that ref is present locally — and the
