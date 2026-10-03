@@ -18,6 +18,7 @@ def executables() -> list[tuple[str, str]]
 def verify(probe: Callable[[str], bool]) -> list[tuple[str, str]]
 def install_command(pkgs: list[str]) -> list[str]
 def warn_non_debian() -> None
+def _has_control_char(name: str) -> bool
 def _read_doc(path: Path) -> dict[str, list[str]]
 def _shipped_default() -> dict[str, list[str]]
 def _overlay_paths() -> list[Path]
