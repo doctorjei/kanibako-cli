@@ -6805,8 +6805,9 @@ class TestAgentFileAgentTable:
         # and every ``self:`` category silently vanished from the snapshot.
         ({"self": {"model": "a", "env": {"A": "1"}}, "agent": {"claude": 5}},
          "writes agent 'claude' a second time"),
+        # A table at a scalar leaf: the file's read refuses its shape first.
         ({"self": {"model": "a"}, "agent": {"claude": {"model": {"x": 1}}}},
-         "`self.model` and `agent.claude.model.x`"),
+         "holds a table where a single value belongs"),
         # The fold-in: an undeclared key in the table, refused as ``self:``'s would be.
         ({"agent": {"claude": {"bogus": 1}}}, "carries 'agent.claude.bogus'"),
     ))

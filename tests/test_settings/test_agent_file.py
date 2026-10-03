@@ -1229,8 +1229,7 @@ class TestTheAgentTable:
             assert str(path) in message
 
     @pytest.mark.parametrize(("own", "other", "pair"), (
-        # A PREFIX is the same setting: ``model`` as a value and as a table.
-        ({"model": "a"}, {"claude": {"model": {"x": 1}}}, ("self.model", "agent.claude.model.x")),
+        # A PREFIX is the same setting: ``env`` as a table and as a value.
         ({"env": {"A": "1"}}, {"claude": {"env": 5}}, ("self.env.A", "agent.claude.env")),
     ))
     def test_a_prefix_is_the_same_setting(self, tmp_path, own, other, pair):
@@ -1239,6 +1238,18 @@ class TestTheAgentTable:
         with pytest.raises(SettingsError) as exc:
             agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         assert f"`{pair[0]}` and `{pair[1]}`" in str(exc.value)
+
+    def test_a_table_at_a_scalar_leaf_is_refused_by_the_read(self, tmp_path):
+        # The file's read refuses a table at ``model`` (its shape) before this file's
+        # two-spellings check runs; both name the file.
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": {"model": "a"}, "agent": {"claude": {"model": {"x": 1}}}})
+        with pytest.raises(SettingsError) as exc:
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+        message = str(exc.value)
+        assert "holds a table where a single value belongs" in message
+        assert "agent.claude.model" in message
+        assert str(path) in message
 
     @pytest.mark.parametrize("other", ({"claude": 5}, {"claude": None}, {"Claude": "x"}))
     def test_the_own_node_as_a_value_beside_self_refuses(self, tmp_path, other):
