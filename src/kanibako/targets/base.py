@@ -18,7 +18,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from kanibako.settings.settings_keyspace import ACCESS_TIERS
-from kanibako.settings.settings_resolve import _Unset
+from kanibako.settings.settings_resolve import UNSET, _Unset
 
 if TYPE_CHECKING:
     from kanibako.settings.agent_config import AgentConfig
@@ -40,13 +40,27 @@ class TargetSetting:
     description: str             # Human-readable description
     # Floor value when not overridden; None = <None>; UNSET = no floor, the key
     # inherits `agent.default.<key>`.  Read it through `descriptor_floor`.
-    default: str | None | _Unset = ""
+    default: str | None | _Unset = UNSET
     choices: tuple[str, ...] = ()  # Valid values; empty = freeform
 
 
 def descriptor_floor(descriptors: Iterable[TargetSetting]) -> dict[str, str | None]:
-    """The plugin's ``agent.<active>`` floor: each row's default, minus the rows that inherit."""
-    return {d.key: d.default for d in descriptors if not isinstance(d.default, _Unset)}
+    """The plugin's ``agent.<active>`` floor: each row's default, minus the rows that inherit.
+
+    ⚑ A row naming no default INHERITS ``agent.default.<key>`` or is REFUSED BY
+    NAME, never floorless — by
+    :func:`~kanibako.settings.agent_defaults.refuse_floorless_default`, the one rule
+    the YAML loader applies to the same rows.  ⚑ Function-local import: that module imports this one.
+    """
+    from kanibako.settings.agent_defaults import refuse_floorless_default
+
+    floor: dict[str, str | None] = {}
+    for row in descriptors:
+        if isinstance(row.default, _Unset):
+            refuse_floorless_default(row.key)
+        else:
+            floor[row.key] = row.default
+    return floor
 
 
 @dataclass(frozen=True)

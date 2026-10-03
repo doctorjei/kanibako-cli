@@ -6,6 +6,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ## Functions
 ```
+def refuse_floorless_default(named: str, where: str='') -> None
 def load_descriptor(package: str, filename: str) -> PluginDescriptor
 def load_behavior(package: str, filename: str) -> 'tuple[TargetSetting, ...]'
 def load_category_binds(package: str, filename: str, agent: str) -> CategoryBindDefaults

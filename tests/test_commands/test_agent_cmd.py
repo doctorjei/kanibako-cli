@@ -275,6 +275,52 @@ class TestRunInfo:
             "did not read: the system file does not read"
         ], captured.err
 
+    @pytest.mark.parametrize("verb", ("run_info", "run_show"))
+    def test_a_floorless_row_is_conceded_by_both_doors_alike(
+        self, agent_env, capsys, monkeypatch, verb,
+    ):
+        """ONE concession for both declaration paths, so the two doors are compared, not
+        each described.
+
+        A row that names no default for a key ``agent.default`` does not declare is
+        refused by the shared rule — read from a defaults file the refusal comes out of
+        ``setting_descriptors()``, built in Python it comes out of
+        :func:`~kanibako.targets.base.descriptor_floor`.  A display verb concedes both
+        and prints core's ``agent.default.label`` floor at rc 0; the launch is where the
+        refusal is reported.
+
+        The two doors are asserted EQUAL, so the pin is the parity itself: move the
+        ``descriptor_floor`` call out of the guard and ``python`` reddens while
+        ``defaults_file`` stays green.
+        """
+        from kanibako.commands import agent_cmd
+        from kanibako.settings.settings_resolve import SettingsError
+        from kanibako.targets.base import TargetSetting
+
+        def _door(which: str):
+            class _Rows:
+                @staticmethod
+                def setting_descriptors():
+                    if which == "defaults_file":
+                        raise SettingsError(
+                            "behavior entry 'provider' declares no 'default'"
+                        )
+                    return [TargetSetting(key="provider", description="LLM provider")]
+
+            return lambda *_args, **_kwargs: _Rows
+
+        run = getattr(agent_cmd, verb)
+        seen = {}
+        for which in ("defaults_file", "python"):
+            monkeypatch.setattr("kanibako.targets.get_target", _door(which))
+            capsys.readouterr()
+            rc = run(argparse.Namespace(agent_id="claude", effective=False))
+            captured = capsys.readouterr()
+            seen[which] = (rc, captured.out, captured.err)
+        assert seen["defaults_file"] == seen["python"]
+        assert seen["python"][0] == 0
+        assert "Agent Description (None)" in seen["python"][1], seen["python"][1]
+
     def test_a_system_label_resolves_through_a_meta_anchor(
         self, agent_env, config_file, capsys,
     ):

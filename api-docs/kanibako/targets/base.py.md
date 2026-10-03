@@ -53,7 +53,7 @@ def _validate_agent_binary(binary: Path) -> str | None
 class TargetSetting:
     key: str
     description: str
-    default: str | None | _Unset = ''
+    default: str | None | _Unset = UNSET
     choices: tuple[str, ...] = ()
 
 @dataclass(frozen=True)

@@ -713,10 +713,10 @@ def _label_floor(agent_id: str) -> dict[str, object]:
     }
     try:
         descriptors = get_target(harness_of(agent_id))().setting_descriptors()
+        plugin_floor = descriptor_floor(descriptors)
     except Exception:  # pragma: no cover - a plugin must not break a display verb
-        _log.debug("setting_descriptors() failed for a target", exc_info=True)
-        descriptors = []
-    plugin_floor = descriptor_floor(descriptors)
+        _log.debug("a target's behavior rows could not be floored", exc_info=True)
+        return floor
     if "label" in plugin_floor:
         floor[f"agent.{agent_id}.label"] = plugin_floor["label"]
     return floor

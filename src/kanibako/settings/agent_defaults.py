@@ -290,7 +290,7 @@ def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg
     value.
 
     *source* names the defaults file in the refusal, so a plugin author is
-    pointed at the file to fix (see :func:`_build_access_row`).
+    pointed at the file to fix (see :func:`refuse_floorless_default`).
     """
     where = f" ({source})" if source else ""
     named = entry.get("setting_key", "<unnamed>")
@@ -328,6 +328,24 @@ def _build_setting_arg(entry: dict[str, Any], *, source: str = "") -> SettingArg
     )
 
 
+def refuse_floorless_default(named: str, where: str = "") -> None:
+    """Refuse a declaration that names no ``default`` for a key nothing inherits.
+
+    ⚑ ONE RULE PER DECLARATION: a row carries a floor or inherits
+    ``agent.default.<key>``.  A plugin-only key has no tier below to inherit from,
+    so it is REFUSED BY NAME, in YAML and in Python alike.  *where* names the
+    defaults file to fix; a Python-built row passes none.
+    """
+    if named in behavior_defaults():
+        return
+    raise SettingsError(
+        f"behavior entry {named!r}{where} declares no 'default', and "
+        f"'agent.default' declares no {named!r} for it to inherit. Write the "
+        f"value, or 'default: null' if the key deliberately has none (goose "
+        f"pins no provider so its own config.yaml keeps owning it)."
+    )
+
+
 def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting:
     """Build ONE :class:`TargetSetting` from a declarative ``behavior:`` entry.
 
@@ -347,10 +365,9 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
     For a key that table declares, an omitted ``default:`` means the plugin sets no
     floor (:data:`~kanibako.settings.settings_resolve.UNSET`) and the key inherits
     ``agent.default.<key>``; a ``null`` is refused when ``agent.default`` already
-    supplies ``<None>`` (Q105).  For a plugin-only key (goose's ``provider``) no tier
-    below can supply a value, so ``default:`` is MANDATORY and a ``<None>`` is
-    written ``null``, a statement rather than an oversight.  A real default is kept
-    either way: it lands at ``agent.<active>.<key>`` and beats a user's
+    supplies ``<None>`` (Q105).  A key the table does NOT declare is refused by
+    name when it names no floor (:func:`refuse_floorless_default`).  A real default
+    is kept either way: it lands at ``agent.<active>.<key>`` and beats a user's
     ``agent.default.<key>`` ([Q91]).
 
     ⚑ The value must be a STRING or ``null``.  Everything else is stringified
@@ -362,9 +379,6 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
     ``setting_descriptors()`` keys into the legal leaf set), so validating a row
     against that set would be circular — ``agent.goose.provider`` is a key
     BECAUSE this section declares it.
-
-    *source* names the defaults file in every refusal, so a plugin author is
-    pointed at the file to fix (see :func:`_build_access_row`).
     """
     where = f" ({source})" if source else ""
     if not isinstance(entry, dict):
@@ -391,16 +405,10 @@ def _build_behavior(entry: dict[str, Any], *, source: str = "") -> TargetSetting
             )
     core = behavior_defaults()
     if "default" not in entry:
-        if named in core:
-            return TargetSetting(
-                key=named, description=entry["description"], default=UNSET,
-                choices=_behavior_choices(entry, named, where),
-            )
-        raise SettingsError(
-            f"behavior entry {named!r}{where} declares no 'default', and "
-            f"'agent.default' declares no {named!r} for it to inherit. Write the "
-            f"value, or 'default: null' if the key deliberately has none (goose "
-            f"pins no provider so its own config.yaml keeps owning it)."
+        refuse_floorless_default(named, where)
+        return TargetSetting(
+            key=named, description=entry["description"], default=UNSET,
+            choices=_behavior_choices(entry, named, where),
         )
     default = entry["default"]
     if default is None and named in core and core[named] is None:
@@ -566,10 +574,9 @@ def load_behavior(package: str, filename: str) -> "tuple[TargetSetting, ...]":
     agent with no behavior keys of its own is legal, and the launch reads its
     floor as empty (``start.py``: no descriptors ⇒ the core §2d backstop alone).
 
-    This is the ONE declaration site for those values: nothing in plugin CODE
-    carries a behavior default any more, so the file a plugin ships is also the
-    file that answers "what does this agent default its model to".  The order is
-    preserved because it is the order ``config`` lists the agent's settings in.
+    This is the ONE declaration site for those values, so the file a plugin ships
+    is also the file that answers "what does this agent default its model to".  The
+    order is preserved because it is the order ``config`` lists them in.
 
     A key declared TWICE is refused rather than last-wins: two rows for one key
     are two answers to "what is the floor", and the loser would be invisible.

@@ -268,6 +268,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scope. A bind-shaped category is still refused by name. See *2.14 Fixed: two `--null` CLI
   bugs* in [MIGRATION.md](MIGRATION.md).
 
+- **A `TargetSetting` built in Python with no `default` now inherits `agent.default`, instead of
+  shadowing your value with an empty string.** In 1.8.0-rc2 `TargetSetting.default` defaulted to
+  `""`, so a row a plugin built in Python without naming a default floored its key at `""` at
+  `agent.<agent>.<key>`, above a user's `agent.default.<key>`. It now defaults to `UNSET`: a key
+  `agent.default` declares (`model`, `endpoint`, `transform`, `label`, and the rest) inherits
+  `agent.default.<key>`, and any other key (goose's `provider`, say) is refused by name at launch,
+  the same refusal a defaults-file row without `default:` gets. `kanibako agent info` and
+  `agent show` do not refuse; they show core's `agent.default.label`. An explicit `default=""` is
+  still a floor and still wins. See *A `TargetSetting` built in Python with no `default` inherits
+  `agent.default`* in [MIGRATION.md](MIGRATION.md).
+
 ### Fixed
 
 - **Ctrl-C during first-run setup now cleans up and exits 130, instead of printing a traceback
