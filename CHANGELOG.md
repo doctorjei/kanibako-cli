@@ -270,6 +270,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Ctrl-C during first-run setup now cleans up and exits 130, instead of printing a traceback
+  and leaving a half-initialized tree.** An interrupt during first run is a `BaseException`, so it
+  skipped the cleanup that removes `kanibako.cfg` when a step after its creation fails; the config
+  file stayed, and every later run returned early at the "already initialized" check without
+  finishing the data tree. The same cleanup now runs on an interrupt, and the run exits 130 with a
+  newline — the code an interrupt during any command already produced — so the next run
+  initializes from scratch. Does not cover an interrupt during the initial write of the config file
+  itself, nor the pre-verb steps that run before that file exists.
+
+- **An `image-baseline.yaml` entry whose value is not an executable name, or a list of them, is
+  refused instead of read.** In v1.8.0-rc2 a package mapped to a number crashed with a bare
+  `TypeError` traceback, and one mapped to a table or a nested list was accepted silently, so its
+  keys or the stringified inner list were probed as executable names. Each is now refused with an
+  error naming the file and the package.
+
 - **A box name that belongs to more than one workset is refused instead of silently resolving to
   the wrong target.** `box info`, `stop`, the box lifecycle commands (`remap`, `convert`, `move`),
   and the create path now refuse with `Ambiguous box name '<name>' … Qualify it as
@@ -310,9 +325,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   traceback, and a few hundred bytes of shared aliases could burn minutes of CPU. Any file read
   through kanibako's YAML loader, including a bundle's `rig.yaml`, now stops with an error naming the
   file. The `image-baseline.yaml` overlays now go through the same loader: an overlay that is a list
-  or a single value, or that repeats a package, stops `start` and `rig diagnose` instead of being read
-  as empty or keeping the last value, and invalid YAML in an overlay is an `Error:` line instead of a
-  traceback.
+  or a single value, or that repeats a package, stops `start` and is reported by `rig diagnose` as a
+  `[!!] Baseline` settings error instead of being read as empty or keeping the last value; invalid
+  YAML in an overlay is an `Error:` line (a `rig diagnose` settings error) instead of a traceback.
 - **`kanibako <scope> set` on an undeclared key now names the key and the §0 reason** (e.g.
   `Error: 'agent.default.provider' cannot be set: 'provider' is not a declared agent key of
   'agent.default' (declared: …) (spec §0 — the keyspace is CLOSED).`), the same reason `reset`
