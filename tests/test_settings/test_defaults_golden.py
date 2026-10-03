@@ -544,7 +544,7 @@ class TestCoreBehaviorDefaults:
         monkeypatch.setattr(
             core_defaults, "_load_doc", lambda: {"agent_default": {"access": "fulll"}}
         )
-        with pytest.raises(RuntimeError, match="fulll"):
+        with pytest.raises(PackagingError, match="fulll"):
             access_default()
 
     def test_a_missing_behavior_key_refuses_by_name(self, monkeypatch):
