@@ -852,11 +852,9 @@ def _create_in_workset_space(workset: str, path: Path, *, standalone: bool,
 
 def _add_workset_member(std, config, workset: str, name: str,
                         args) -> "tuple[WorksetSpec, bool] | None":
-    """Make *name* a member of the named working set *workset*; ``None`` once refused.
+    """Add *name* to the named working set *workset*; ``None`` once it has refused.
 
-    Returns ``(spec, box_dir_existed)``.  The SAME-NAME conflict is ``add_project``'s
-    own refusal, and it raises that before it creates anything, so a name already in
-    the working set writes nothing at all.
+    Returns ``(spec, box_dir_existed)``.  Every refusal runs BEFORE the membership write.
     """
     registry = list_worksets(std)
     stored = find_identifier(workset, registry)  # ⚑ case-blind (§0)
@@ -870,7 +868,7 @@ def _add_workset_member(std, config, workset: str, name: str,
         return None
 
     # ⚑ A NAMED box's name IS its member name, so the designation and ``--name`` are
-    # two answers to one question.  Folded to compare, never to store (§0).
+    # two answers to one question — folded to compare, never to store (§0).
     override = getattr(args, "name", None)
     if override is not None and override.casefold() != name.casefold():
         print("Error: " + ERR_WORKSET_MEMBER_NAME_CONFLICT % (
@@ -878,28 +876,22 @@ def _add_workset_member(std, config, workset: str, name: str,
         ), file=sys.stderr)
         return None
 
-    # ⚑ REFUSED BEFORE THE MEMBERSHIP WRITE, because that write is what ``--recover``
-    # would then be resuming: the member is added whole by this create, so there is no
-    # half-built member for the flag to finish, and refusing after the write would
-    # leave a member with an empty box dir behind a failed command.
+    # ⚑ A member is added whole by this create, so there is no half-built member for
+    # ``--recover`` to finish; refusing it after the write would leave an empty box dir.
     if getattr(args, "recover", False):
         print("Error: " + ERR_WORKSET_MEMBER_NO_RECOVER % ws.name, file=sys.stderr)
         return None
 
-    # ⚑ THE MEMBERSHIP KEY IS FOLDED, so a case-blind collision would not add a second
-    # member — it would REPLACE the first one's recorded workspace and leave its box
-    # stranded.  ``find_identifier`` is the one case-blind comparison, and its own
-    # contract puts this refusal here, at the write that would create the entry.
+    # ⚑ THE MEMBERSHIP KEY IS FOLDED, so a case variant would not add a second member —
+    # it would REPLACE the taken one's recorded workspace and strand its box.
+    # ``find_identifier`` is the one case-blind comparison, and it belongs at the write.
     taken = find_identifier(name, [p.name for p in ws.projects])
     if taken is not None:
         print("Error: " + ERR_WORKSET_MEMBER_NAME_TAKEN % (taken, ws.name),
               file=sys.stderr)
         return None
 
-    # ⚑ READ BEFORE ``add_project``, which makes this dir: afterwards it is always
-    # there, and a dir that PREDATES the create is a real leftover worth refusing.
-    box_dir = ws.projects_dir / name
-    existed = box_dir.exists()
+    existed = (ws.projects_dir / name).exists()  # ⚑ BEFORE ``add_project`` makes it.
     if ws.workspaces_dir is None:
         print("Error: " + ERR_WORKSET_NULL_WORKSPACES % (
             ws.root / WORKSET_META_FILE, f"a workspace for '{name}'",
@@ -960,12 +952,10 @@ def run_create(args: argparse.Namespace) -> int:
             )
             return 1
 
-    # ⚑ THE SPACE IS THE CWD'S, NOT THE TARGET'S: "a command's workset path space is the
-    # named workset whose root contains the CURRENT DIRECTORY".  An IDENTIFIER names a
-    # box rather than a path, so the target it would have made is not consulted here.
+    # ⚑ THE SPACE IS THE CWD'S, NOT THE TARGET'S: "a command's workset path space is
+    # the named workset whose root contains the current directory".
     _space = _named_workset_owning(Path.cwd().resolve(), std)
-    # ⚑ THE ONE BOX THE SPACE ACCEPTS: a member NAME.  ``--standalone`` asks for a
-    # standalone box, which the space rejects, so it stays a refusal.
+    # ⚑ THE ONE BOX THE SPACE ACCEPTS: a member NAME.  ``--standalone`` is a refusal.
     _member = (
         project_dir
         if (_space is not None and not args.standalone
@@ -974,6 +964,7 @@ def run_create(args: argparse.Namespace) -> int:
     )
     _named_spec = None
     if _member is not None:
+        assert _space is not None
         _added = _add_workset_member(std, config, _space, _member, args)
         if _added is None:
             return 1
@@ -995,7 +986,7 @@ def run_create(args: argparse.Namespace) -> int:
         return 1
 
     # ⚑ Cross-kind name guard, run HERE so it refuses BEFORE the box dir + seed materialize.
-    # A NAMED box's name is its membership, which ``add_project`` already guarded.
+    # A NAMED box's name is its membership, guarded above.
     if _named_spec is None and getattr(args, "name", None) and not args.standalone:
         try:
             check_primary_box_name_free(
@@ -1030,6 +1021,7 @@ def run_create(args: argparse.Namespace) -> int:
     # ⚑ PERSONA LOAD-OR-ERROR IS A TRUE PRE-FLIGHT: this probe is NON-materializing
     # (``initialize=False``) so an unloadable persona refuses with NOTHING left on disk.
     if _named_spec is not None:
+        assert _member is not None
         _probe = resolve_workset_project(
             _named_spec, _member, std, config, initialize=False,
             enable_vault=enable_vault,
@@ -1049,9 +1041,8 @@ def run_create(args: argparse.Namespace) -> int:
             register=False,
         )
     # ⚑ CAPTURE BEFORE ``_name_new_box_probe``, which mutates ``_probe.name``.
-    # A NAMED member's box dir is the one ``add_project`` just made, so "already
-    # materialized" there is OUR OWN write; only a dir that predates it is a real
-    # leftover, and that is what it read.
+    # A NAMED member's dir is ``add_project``'s own write, so the read taken before it
+    # is the only "already materialized" answer there.
     _already = _named_already if _named_spec is not None else box_tree_materialized(_probe)
     _name_new_box_probe(std, _probe)
     # ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.
@@ -1137,6 +1128,7 @@ def run_create(args: argparse.Namespace) -> int:
     # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False`` DEFERS
     # registration past the home seed, giving the invariant "registered ==> fully seeded".
     if _named_spec is not None:
+        assert _member is not None
         proj = resolve_workset_project(
             _named_spec, _member, std, config, initialize=True,
             enable_vault=enable_vault,
