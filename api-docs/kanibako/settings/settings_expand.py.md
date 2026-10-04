@@ -27,6 +27,7 @@ def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | N
 @overload
 def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool, null_sources: NullSources | None=None, refs_read: RefsRead | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
 def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, null_sources: NullSources | None=None, refs_read: RefsRead | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
+def _absent_reason(dotted: str) -> str
 def _is_whole_value_ref(value: str) -> str | None
 def _is_whole_value_var(value: str) -> str | None
 ```
