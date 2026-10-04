@@ -389,6 +389,29 @@ class TestDeleteWorkset:
         with pytest.raises(WorksetError, match="not registered"):
             delete_workset("nope", std)
 
+    @pytest.mark.parametrize("malformed", [
+        pytest.param("workset:\n  meta:\n   - [broken: :\n", id="invalid-yaml"),
+        pytest.param("- one\n- two\n", id="top-level-list"),
+        pytest.param("just-a-scalar\n", id="top-level-scalar"),
+    ])
+    def test_purge_removes_a_root_whose_settings_file_is_malformed(
+        self, std, tmp_home, malformed,
+    ):
+        """⚑ A DELETION PATH NEVER GAINS A REFUSAL: purge clears a root it cannot read.
+
+        Every other reader refuses a malformed ``workset.yaml``, which is right — but the
+        user may be deleting the root BECAUSE the file is broken, so a refusal here would
+        make them hand-edit a file they are throwing away.
+        """
+        root = tmp_home / "worksets" / "brokenws"
+        create_workset("brokenws", root, std)
+        (root / "workset.yaml").write_text(malformed)
+
+        delete_workset("brokenws", std, remove_files=True)
+
+        assert not root.resolve().exists()
+        assert "brokenws" not in list_worksets(std)
+
 
 # ---------------------------------------------------------------------------
 # add_project / remove_project
@@ -2088,6 +2111,80 @@ class TestRetiredWorksetIdentityLocation:
         plain = tmp_home / "plain"
         plain.mkdir()
         assert _resolve_standalone_target(std, config, str(plain)) == (None, None)
+
+
+# ---------------------------------------------------------------------------
+# A MALFORMED workset.yaml — the reader, and the ONE caller that stays tolerant
+# ---------------------------------------------------------------------------
+
+#: The three shapes ``load_doc`` refuses: unparseable, a top-level list, a scalar.
+_MALFORMED_WORKSET_DOCS = [
+    pytest.param("workset:\n  meta:\n   - [broken: :\n", "not valid YAML", id="invalid-yaml"),
+    pytest.param("- one\n- two\n", "is a list, not a mapping", id="top-level-list"),
+    pytest.param("just-a-scalar\n", "is a single value, not a mapping", id="top-level-scalar"),
+]
+
+
+class TestMalformedWorksetSettingsDoc:
+    """A workset root's OWN ``workset.yaml`` is read like every other settings file.
+
+    Reading a malformed one as "no file" is not a safe default: it repoints every
+    resolved workset key — including the vault arms a teardown deletes by — to its
+    default, in silence.
+    """
+
+    @pytest.mark.parametrize("malformed,expected", _MALFORMED_WORKSET_DOCS)
+    def test_reader_refuses_and_names_the_file(self, tmp_home, malformed, expected):
+        from kanibako.errors import ConfigError
+        from kanibako.project.workset import load_workset_settings_doc
+
+        root = tmp_home / "ws"
+        root.mkdir()
+        (root / "workset.yaml").write_text(malformed)
+
+        with pytest.raises(ConfigError) as excinfo:
+            load_workset_settings_doc(root)
+        assert expected in str(excinfo.value)
+        assert str(root / "workset.yaml") in str(excinfo.value)
+
+    def test_absent_file_is_still_a_miss(self, tmp_home):
+        """``None`` still means ABSENT — the settings file is optional by design."""
+        from kanibako.project.workset import load_workset_settings_doc
+
+        root = tmp_home / "ws"
+        root.mkdir()
+        assert load_workset_settings_doc(root) is None
+
+    @pytest.mark.parametrize("malformed,expected", _MALFORMED_WORKSET_DOCS)
+    def test_load_workset_refuses_it(self, tmp_home, malformed, expected):
+        """The LOAD path refuses, so ``workset info`` names the file instead of lying."""
+        from kanibako.errors import ConfigError
+
+        root = tmp_home / "brokenws"
+        root.mkdir(parents=True)
+        (root / "workset.yaml").write_text(malformed)
+
+        with pytest.raises(ConfigError) as excinfo:
+            load_workset(root.resolve(), "brokenws")
+        assert expected in str(excinfo.value)
+
+    @pytest.mark.parametrize("malformed", [
+        pytest.param("workset:\n  meta:\n   - [broken: :\n", id="invalid-yaml"),
+        pytest.param("- one\n- two\n", id="top-level-list"),
+        pytest.param("just-a-scalar\n", id="top-level-scalar"),
+    ])
+    def test_the_ancestor_walk_still_falls_through(
+        self, std, tmp_home, config, malformed,
+    ):
+        """⚑ THE CARVE-OUT, at the walk: a FOREIGN ``workset.yaml`` above the cwd is a
+        miss, not a refusal — most directories the walk passes over are not ours."""
+        from kanibako.settings.paths import detect_project_mode
+
+        plain = tmp_home / "plain" / "sub"
+        plain.mkdir(parents=True)
+        (tmp_home / "workset.yaml").write_text(malformed)
+
+        assert detect_project_mode(plain, std, config).mode is BoxMode.primary
 
 
 class TestRetiredRegistrySections:
