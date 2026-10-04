@@ -81,12 +81,13 @@ from kanibako.project.workset import (
     release_project,
     remove_member_store,
     _member_store_bases,
+    report_retained_vault,
+    report_retained_vaults,
     resolve_workset_canon,
     resolve_workset_vault_pair,
     resolve_workset_vault_ro,
     resolve_workset_vault_rw,
     resolve_workset_workspaces,
-    retained_vault_reason,
     standalone_vault_teardown,
 )
 
@@ -189,23 +190,20 @@ def _default_rename_name(
     """The explicit primary-box name a DEFAULT-mode edge would MINT, or ``None``."""
     if not requested_name:
         return None
-    if state.mode == BoxMode.primary and state.name:
-        existing = primary_box_name_for_workspace(
-            std.primary_workset, str(landing_ws),
-        )
-        if existing is not None:
-            # ⚑ Landing path already registered ⇒ SAME-PATH edge, no NEW registration minted.
-            # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the
-            # SAME box, so it is the moot reuse below and not a refused in-place rename.
-            if not _same_box_name(requested_name, existing):
-                raise ProjectError(
-                    f"In-place rename of a primary (default-mode) box is not "
-                    f"supported: '{existing}' -> '{requested_name}'. Move the box "
-                    f"to rename it (e.g. `box move {existing} <new-path> --name "
-                    f"{requested_name}`), or drop --name to keep the current name."
-                )
-            # --name equals the current name: a moot reuse, not a rename edge.
-            return None
+    existing = _primary_name_at(state, std, landing_ws)
+    if existing is not None:
+        # ⚑ Landing path already registered ⇒ SAME-PATH edge, no NEW registration minted.
+        # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the
+        # SAME box, so it is the moot reuse below and not a refused in-place rename.
+        if not _same_box_name(requested_name, existing):
+            raise ProjectError(
+                f"In-place rename of a primary (default-mode) box is not "
+                f"supported: '{existing}' -> '{requested_name}'. Move the box "
+                f"to rename it (e.g. `box move {existing} <new-path> --name "
+                f"{requested_name}`), or drop --name to keep the current name."
+            )
+        # --name equals the current name: a moot reuse, not a rename edge.
+        return None
     # ⚑ Case-blind (§0): ``--name FOO`` on a box registered as ``foo`` names the SAME
     # box, so the mint is its STORED spelling. Minting the typed case makes the source's
     # OWN registration read as a same-kind collision at ``_to_default``, refusing a move
@@ -214,6 +212,18 @@ def _default_rename_name(
     if own is not None and _same_box_name(requested_name, own):
         return own
     return requested_name
+
+
+def _primary_name_at(
+    state: ProjectState, std: StandardPaths, landing_ws: Path,
+) -> str | None:
+    """The primary name registered at *landing_ws* for a PRIMARY source, else ``None``.
+
+    ⚑ Not ``None`` is the SAME-PATH edge: the box lands where it is registered.
+    """
+    if state.mode != BoxMode.primary or not state.name:
+        return None
+    return primary_box_name_for_workspace(std.primary_workset, str(landing_ws))
 
 
 def _primary_source_own_name(
@@ -719,18 +729,42 @@ def _validate(
     # --- cross-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
     # ⚑ Checked UP FRONT so a name refusal costs no file copy.
     requested_name = spec.name or ""
+    # The reuse-in-place edges, whose teardown is skipped: the box keeps its own vault.
+    vault_reused = (
+        state.mode == BoxMode.standalone and target_mode == BoxMode.standalone
+        and (dest is None or dest == state.metadata_path.resolve())
+    )
     if target_mode == BoxMode.primary:
         landing_ws = dest if dest is not None else state.workspace_path
         mint = _default_rename_name(state, std, landing_ws, requested_name)
         # ⚑ FIX1: a same-name relocate reuses the SOURCE's OWN registration — self-reuse,
         # not a collision, so it is exempt from the same-kind guard.
-        if mint is not None and not _same_box_name(
-            mint, _primary_source_own_name(state, std)
-        ):
+        own_name = _primary_source_own_name(state, std)
+        # ⚑ The same-path edge reuses the box in place too (``_to_default``).
+        landed = _primary_name_at(state, std, landing_ws)
+        vault_reused = (
+            (landed is not None and landed == state.name)
+            or (mint is not None and _same_box_name(mint, own_name))
+        )
+        if mint is not None and not _same_box_name(mint, own_name):
             check_primary_box_name_free(
                 std.primary_workset, std.registry, mint, str(landing_ws),
                 force=force,
             )
+
+    # --- a disabled vault that still holds data would be left behind (Q64) ---
+    stranded = [] if vault_reused or state.enable_vault else [
+        leaf for leaf, _why in _unreceived_vault_leaves(
+            (state.vault_ro, state.vault_rw), (None, None), vault_enabled=False,
+        )
+    ]
+    if stranded and not force:
+        raise ProjectError(
+            f"Refusing: box.enable_vault is false for '{state.name}', but its vault "
+            f"still holds data at {', '.join(map(str, stranded))}. The box carries no "
+            "vault, so this would leave that data behind. Move it out first, or pass "
+            "--force to proceed and leave it in place."
+        )
 
     return {
         "target_mode": target_mode,
@@ -1246,36 +1280,38 @@ def _carry_box_logs(
 _VAULT_ARM_KEYS: tuple[str, str] = ("workset.vault_ro", "workset.vault_rw")
 
 
-def _report_retained_vault(vault: Path, why: str) -> None:
-    """The retained-vault-leaf Note: name the store that stays, and why it stays.
-
-    ⚑ ONE text for every site that leaves a vault the box no longer uses.  A keep
-    that cannot name the path as the user's is just a leak, so the path is the
-    subject and *why* qualifies it.
-    """
-    import sys
-
-    print(f"Note: left the vault at {vault} in place — {why}", file=sys.stderr)
+#: Why a relocation keeps a disabled vault's stored data in place (Q64).
+_DISABLED_VAULT_WHY = "box.enable_vault is false, so nothing received its contents."
 
 
 def _unreceived_vault_leaves(
     src_arms: tuple[Path | None, Path | None],
     dst_vault: tuple[Path | None, Path | None],
     leaf_name: str = "",
+    *,
+    vault_enabled: bool = True,
 ) -> list[tuple[Path, str]]:
-    """The source vault leaves the destination has NO leaf for, each with its key.
+    """The source vault leaves the destination receives nothing into, each with why.
 
-    ⚑⚑ A DESTINATION ARM SET TO ``<None>`` GETS NO LEAF (spec §2a, ALL PROJECTS), so
-    the carry dropped that side and its contents survive nowhere if the teardown
-    deletes the source's leaf for it.  Those leaves are RETAINED, and this is the one
+    ⚑⚑ A DESTINATION ARM SET TO ``<None>`` GETS NO LEAF (spec §2a, ALL PROJECTS), and a
+    box whose ``box.enable_vault`` is false carries nothing at all
+    (:func:`_vault_carry_pairs`), so in both cases the source's contents survive nowhere
+    if the teardown deletes its leaf.  Those leaves are RETAINED, and this is the one
     place that decides which: a teardown that deleted a side the destination never
-    received destroys the box's store, silently, at rc 0.
+    received destroys the box's store, silently, at rc 0.  A disabled vault's EMPTY leaf
+    holds nothing to lose and is not retained.
 
     *src_arms* is the SOURCE's resolved ``(ro, rw)``; *leaf_name* is the per-box leaf
     a named or primary mode nests under each arm (STANDALONE's vault IS its arm).
     """
+    if not vault_enabled:
+        return [
+            (arm / leaf_name, _DISABLED_VAULT_WHY)
+            for arm in src_arms
+            if arm is not None and _vault_leaf_has_contents(arm / leaf_name)
+        ]
     return [
-        (arm / leaf_name, key)
+        (arm / leaf_name, f"{key} is null at the destination, so nothing received its contents.")
         for arm, key, leaf in zip(src_arms, _VAULT_ARM_KEYS, dst_vault)
         if arm is not None and leaf is None
     ]
@@ -1283,27 +1319,57 @@ def _unreceived_vault_leaves(
 
 def _report_unreceived_vaults(kept: list[tuple[Path, str]]) -> None:
     """The retained-leaf Note for each :func:`_unreceived_vault_leaves` entry."""
-    for leaf, key in kept:
-        _report_retained_vault(
-            leaf, f"{key} is null at the destination, so nothing received its contents"
-        )
+    for leaf, why in kept:
+        report_retained_vault(leaf, why)
 
 
 def _carried_member_store(
     ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None],
+    *, vault_enabled: bool = True,
 ) -> tuple[tuple[Path, ...], list[tuple[Path, str]]]:
     """(*ws*'s store bases the destination received into, its retained vault leaves).
 
     ⚑ A base whose arm the destination dropped contributes no leaf to carry into,
-    so the source's per-box leaf under it is not this retirement's to delete.
+    so the source's per-box leaf under it is not this retirement's to delete.  The
+    retained leaves include :func:`_nulled_arm_stores`.
     """
     boxes_dir, *arms = _member_store_bases(ws)
     src_arms = resolve_workset_vault_pair(ws.root)
-    unreceived = {arm for arm, _key in _unreceived_vault_leaves(src_arms, dst_vault)}
-    bases = tuple(base for base in (boxes_dir, *arms) if base not in unreceived)
-    kept = [entry for entry in _unreceived_vault_leaves(src_arms, dst_vault, name)
-            if entry[0].exists()]
-    return bases, kept
+    unreceived = _unreceived_vault_leaves(
+        src_arms, dst_vault, name, vault_enabled=vault_enabled,
+    )
+    held = {leaf.parent for leaf, _why in unreceived}
+    bases = tuple(base for base in (boxes_dir, *arms) if base not in held)
+    kept = [entry for entry in unreceived if entry[0].exists()]
+    return bases, kept + _nulled_arm_stores(ws.root, name)
+
+
+def _nulled_arm_stores(ws_root: Path, name: str) -> list[tuple[Path, str]]:
+    """(*ws_root*'s NULL ``workset.vault_*`` arms' per-box leaves still on disk, with why.
+
+    ⚑⚑ A NULL ARM NAMES NO DIR, so both :func:`_member_store_bases` (no base to delete
+    under) and :func:`_unreceived_vault_leaves` (no arm to name as kept) skip it.  An arm
+    nulled AFTER data was stored under it leaves that data on disk, deleted by nothing
+    and named by nothing.  Its leaf sits at the key's DEFAULT location, which is where
+    the data was while the arm still resolved.
+    """
+    out: list[tuple[Path, str]] = []
+    for key, resolver, arm in zip(
+        _VAULT_ARM_KEYS, (resolve_workset_vault_ro, resolve_workset_vault_rw),
+        resolve_workset_vault_pair(ws_root),
+    ):
+        if arm is not None:
+            continue
+        default = resolver(ws_root, None)
+        if default is None:
+            continue
+        leaf = default / name
+        if leaf.exists() or leaf.is_symlink():
+            out.append(
+                (leaf, f"{key} is null, so it no longer names this store and it is "
+                       "yours to remove.")
+            )
+    return out
 
 
 def _remove_old_metadata(
@@ -1357,7 +1423,7 @@ def _remove_old_metadata(
         # ``vault/`` skeleton parent is on that list, and ``rmtree`` there would take
         # the store down with the dir.
         kept = _unreceived_vault_leaves(
-            (state.vault_ro, state.vault_rw), dst_vault,
+            (state.vault_ro, state.vault_rw), dst_vault, vault_enabled=state.enable_vault,
         )
         if kept:
             held = {arm.resolve() for arm, _key in kept}
@@ -1386,11 +1452,7 @@ def _remove_old_metadata(
         for vault in removable_vault:
             if vault.is_dir():
                 shutil.rmtree(vault, ignore_errors=True)
-        for vault in retained_vault:
-            if vault.is_dir():
-                _report_retained_vault(
-                    vault, f"it is {retained_vault_reason(root, vault)} and is yours to remove.",
-                )
+        report_retained_vaults(root, retained_vault)
         _report_unreceived_vaults(kept)
         return
 
@@ -1417,8 +1479,8 @@ def _remove_old_metadata(
         # leafless ``vault_dir`` would take every box's vault with it.
         # ⚑ Keyed RESOLVED, as the lookup below is: a symlink anywhere in the vault path
         # would otherwise miss here and send an unreceived leaf to the ``rmtree``.
-        unreceived = {leaf.resolve(): key for leaf, key in _unreceived_vault_leaves(
-            (state.vault_ro, state.vault_rw), dst_vault,
+        unreceived = {leaf.resolve(): why for leaf, why in _unreceived_vault_leaves(
+            (state.vault_ro, state.vault_rw), dst_vault, vault_enabled=state.enable_vault,
         )}
         for vault_dir, arm in ((state.vault_ro, std.primary_vault_ro),
                                (state.vault_rw, std.primary_vault_rw)):
@@ -1430,14 +1492,11 @@ def _remove_old_metadata(
                 print(f"Warning: leaving {vault_dir} in place — it is not a per-box "
                       f"directory under {arm}", file=sys.stderr)
                 continue
-            key = unreceived.get(vault_dir.resolve())
-            if key is not None:
+            why = unreceived.get(vault_dir.resolve())
+            if why is not None:
                 # ⚑ Foreign ground above is not a per-box leaf at all; this one IS, and
                 # the destination holds no copy of it.
-                _report_retained_vault(
-                    vault_dir,
-                    f"{key} is null at the destination, so nothing received its contents",
-                )
+                report_retained_vault(vault_dir, why)
                 continue
             shutil.rmtree(vault_dir, ignore_errors=True)
         if state.shell_path.is_dir() and state.shell_path != state.metadata_path / "home":
@@ -1451,22 +1510,27 @@ def _remove_old_metadata(
     # (a failed removal part-way would otherwise take the box with it).  ⚑ The workspace
     # leaf is NOT deleted here — a relocation retires it on success (``_retire_old_workspace``).
     if state.ws is not None:
-        src_ws, src_name = state.ws, state.name
+        src_ws, src_name, enabled = state.ws, state.name, state.enable_vault
         release_project(src_ws, src_name)
-        unwind.on_success(lambda: _retire_old_store(src_ws, src_name, dst_vault))
+        unwind.on_success(lambda: _retire_old_store(src_ws, src_name, dst_vault, enabled))
 
 
 def _retire_old_store(
     ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None],
+    vault_enabled: bool = True, *, reraise: bool = False,
 ) -> None:
-    """Delete relocated-from member *name*'s store; an ``_Unwind.on_success`` action ONLY.
+    """Delete relocated-from member *name*'s store and name each leaf it leaves.
 
     A failed removal prints a Note naming every leaf left behind; rc is unchanged.
+    With *reraise* the failure propagates instead, for a caller whose unwind
+    restores the store.
     """
-    bases, kept = _carried_member_store(ws, name, dst_vault)
+    bases, kept = _carried_member_store(ws, name, dst_vault, vault_enabled=vault_enabled)
     try:
         remove_member_store(ws, name, bases=bases)
     except OSError as err:
+        if reraise:
+            raise
         _report_store_leftovers(ws, name, err, keep=kept)
     else:
         _report_store_leftovers(ws, name, keep=kept)
@@ -1515,9 +1579,7 @@ def _to_default(
     # would read the source's OWN entry as a same-kind collision. Free it first.
     preserved_name: str | None = None
     if state.mode == BoxMode.primary and state.name:
-        existing = primary_box_name_for_workspace(
-            std.primary_workset, str(new_workspace),
-        )
+        existing = _primary_name_at(state, std, new_workspace)
         if existing is not None:
             # SAME-PATH in-place convert: free the name so assign reuses it verbatim.
             preserved_name = existing
@@ -2014,10 +2076,9 @@ def _to_workset(
         # of the store, so a failure part-way through must restore from it, never drop it.
         unwind.push(_restore_source)
         release_project(src_ws, src_name)
-        _bases, _kept = _carried_member_store(src_ws, src_name, dst_vault)
-        remove_member_store(src_ws, src_name, bases=_bases)
-        _report_store_leftovers(src_ws, src_name, keep=_kept)
-        _report_unreceived_vaults(_kept)
+        _retire_old_store(
+            src_ws, src_name, dst_vault, state.enable_vault, reraise=True,
+        )
         # Discard the stash on success (kept intact while unwind may need it).
         unwind.on_success(lambda: _dispose_stash(stash))
 

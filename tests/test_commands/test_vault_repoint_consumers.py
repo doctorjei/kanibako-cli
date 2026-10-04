@@ -323,12 +323,34 @@ class TestStandalonePurgeFollowsAnInRootRepoint:
         assert vro == outside / "ro"
         _rm_standalone(std, "sa_out", root,
                        argparse.Namespace(purge=True, force=True))
-        out = capsys.readouterr().out
+        out = capsys.readouterr()
         assert (outside / "ro" / "keep.txt").read_text() == "vault data"
         assert (outside / "rw" / "keep.txt").read_text() == "vault data"
         # Not silent: the retained path is named.
-        assert str(outside / "ro") in out
+        assert str(outside / "ro") in out.err
         assert not (root / "box_data").exists()
+
+    def test_out_of_root_arm_not_on_disk_is_not_reported(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """An out-of-root arm that does not exist leaves nothing in place, so no Note
+        names it; a dangling symlink is on disk and is still named."""
+        from kanibako.commands.box._parser import _rm_standalone
+
+        std, config, root, vro, vrw = _standalone_with_vault(
+            config_file, tmp_home, "sa_gone",
+        )
+        nowhere = tmp_home / "nowhere" / "rw"
+        dangling = tmp_home / "dangling-ro"
+        dangling.symlink_to(tmp_home / "no-such-target")
+        _repoint(root, "vault_rw", str(nowhere))
+        _repoint(root, "vault_ro", str(dangling))
+        _rm_standalone(std, "sa_gone", root,
+                       argparse.Namespace(purge=True, force=True))
+        err = capsys.readouterr().err
+        assert not (root / "box_data").exists()  # anti-vacuity: the purge ran
+        assert str(nowhere) not in err
+        assert f"Note: left the vault at {dangling} in place" in err
 
 
 class TestTeardownResolvesBeforeItDeletes:
@@ -445,9 +467,8 @@ class TestCleanPurgeFollowsTheRepoint:
             config_file, tmp_home, "cl_out", vault_repoint=outside,
         )
         assert _purge_one(std, config, str(root), force=True) == 0
-        out = capsys.readouterr().out
         assert (outside / "ro" / "keep.txt").read_text() == "vault data"
-        assert str(outside / "ro") in out
+        assert str(outside / "ro") in capsys.readouterr().err
 
 
 class TestStandaloneMoveSourceCleanupFollowsTheRepoint:
@@ -753,6 +774,11 @@ class TestANullSourceArmKeepsItsLeftoverData:
         _repoint(root, "vault_rw", None)
         return std, root, vro, vrw
 
+    def _assert_named(self, err, vault):
+        """The retained-vault Note names *vault*, a DIRECTORY or a FILE alike."""
+        assert f"Note: left the vault at {vault} in place" in err
+        assert "not a vault arm of this box" in err
+
     def test_box_rm_purge_keeps_a_nulled_arms_data_and_names_it(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
@@ -760,9 +786,8 @@ class TestANullSourceArmKeepsItsLeftoverData:
 
         std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "sa_nul")
         _rm_standalone(std, "sa_nul", root, argparse.Namespace(purge=True, force=True))
-        out = capsys.readouterr().out
+        self._assert_named(capsys.readouterr().err, vrw)
         assert (vrw / "keep.txt").read_text() == "vault data"
-        assert f"Kept vault: {vrw} (not a vault arm of this box" in out
         # The arm the box still names is its own, and it went.
         assert not vro.exists()
         assert not (root / "box_data").exists()
@@ -775,7 +800,84 @@ class TestANullSourceArmKeepsItsLeftoverData:
         std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "cl_nul")
         config = load_config(config_file)
         assert _purge_one(std, config, str(root), force=True) == 0
-        out = capsys.readouterr().out
+        self._assert_named(capsys.readouterr().err, vrw)
         assert (vrw / "keep.txt").read_text() == "vault data"
-        assert f"Kept vault: {vrw} (not a vault arm of this box" in out
         assert not vro.exists()
+
+    def test_box_rm_purge_names_a_loose_file_left_in_the_vault_skeleton(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """⚑ The retained list holds FILES: a loose file in the ``vault/`` skeleton is
+        the user's data as much as the nulled arm beside it, so the purge must name it."""
+        from kanibako.commands.box._parser import _rm_standalone
+
+        std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "sa_loose")
+        loose = root / "vault" / "loose-note.txt"
+        loose.write_text("the user's own file")
+        _rm_standalone(std, "sa_loose", root, argparse.Namespace(purge=True, force=True))
+        err = capsys.readouterr().err
+        self._assert_named(err, loose)
+        self._assert_named(err, vrw)  # the directory beside it is still named
+        assert loose.read_text() == "the user's own file"
+
+    def test_box_purge_names_a_loose_file_left_in_the_vault_skeleton(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The same loose file, through the ``box purge`` caller of the same split."""
+        from kanibako.commands.clean import _purge_one
+
+        std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "cl_loose")
+        loose = root / "vault" / "loose-note.txt"
+        loose.write_text("the user's own file")
+        config = load_config(config_file)
+        assert _purge_one(std, config, str(root), force=True) == 0
+        err = capsys.readouterr().err
+        self._assert_named(err, loose)
+        self._assert_named(err, vrw)  # the directory beside it is still named
+        assert loose.read_text() == "the user's own file"
+
+    def test_a_default_layout_purge_names_no_vault_at_all(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The control: nothing is retained, so the Note says nothing.  A helper that
+        narrated every entry of the split would pass the two tests above and fail here."""
+        from kanibako.commands.clean import _purge_one
+
+        std, config, root, vro, vrw = _standalone_with_vault(
+            config_file, tmp_home, "cl_clean"
+        )
+        assert _purge_one(std, config, str(root), force=True) == 0
+        err = capsys.readouterr().err
+        assert "left the vault at" not in err
+        assert "not a vault arm of this box" not in err
+        assert not vro.exists()
+        assert not vrw.exists()
+
+    def test_a_converting_standalone_box_names_a_loose_vault_file(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The third caller: a standalone source converted into a workset, whose split
+        reports the same retained entries."""
+        from kanibako.commands.box._lifecycle import (
+            TargetSpec,
+            execute_lifecycle,
+            resolve_lifecycle_target,
+        )
+        from kanibako.project.workset import create_workset
+
+        std, root, vro, vrw = self._nulled_after_data(
+            config_file, tmp_home, "sa_conv"
+        )
+        loose = root / "vault" / "loose-note.txt"
+        loose.write_text("the user's own file")
+        create_workset("wsb", tmp_home / "wsb_root", std)
+        config = load_config(config_file)
+        state = resolve_lifecycle_target(str(root), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="wsb"), std, config, force=True,
+        )
+        assert new.owner == "workset:wsb"  # anti-vacuity: the convert landed
+        err = capsys.readouterr().err
+        self._assert_named(err, loose)
+        self._assert_named(err, vrw)  # the directory beside it is still named
+        assert loose.read_text() == "the user's own file"

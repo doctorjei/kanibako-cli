@@ -38,7 +38,8 @@ had drifted (it named a ``worksets.yaml`` that no longer exists).
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import sys
+from collections.abc import Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -474,6 +475,30 @@ def retained_vault_reason(root: Path, vault: Path) -> str:
     if root in vault.parents:
         return "not a vault arm of this box"
     return f"outside {root}"
+
+
+def report_retained_vault(vault: Path, why: str) -> None:
+    """The retained-vault-leaf Note: name the store that stays, and why it stays.
+
+    ⚑ ONE text for every site that leaves a vault the box no longer uses.  A keep
+    that cannot name the path as the user's is just a leak, so the path is the
+    subject and *why* qualifies it.
+    """
+    print(f"Note: left the vault at {vault} in place — {why}", file=sys.stderr)
+
+
+def report_retained_vaults(root: Path, retained: Iterable[Path]) -> None:
+    """Print the retained-vault Note for every path in *retained* that is on disk.
+
+    ⚑⚑ *retained* HOLDS FILES: an ``is_dir()`` test before printing drops one.  It also
+    holds out-of-root arms that may not exist; a dangling symlink counts as on disk.
+    """
+    for vault in retained:
+        if not (vault.exists() or vault.is_symlink()):
+            continue
+        report_retained_vault(
+            vault, f"it is {retained_vault_reason(root, vault)} and is yours to remove.",
+        )
 
 
 # ---------------------------------------------------------------------------

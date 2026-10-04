@@ -1038,8 +1038,8 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   Two safeguards limit what that can take. For a primary or named box only the per-box
   `<box-name>` directory under the arm is ever removed, never the arm itself. For a **standalone**
   box the arm *is* the vault, so an arm pointing outside the box's own root is treated as yours:
-  it is kept and named on screen (`Kept vault: <path>`), and you remove it yourself. An arm inside
-  the root is deleted with the box.
+  it is kept and named on screen (`Note: left the vault at <path> in place`), and you remove it
+  yourself. An arm inside the root is deleted with the box.
   🛑 **A value that cannot be resolved now stops these commands instead of being ignored.** In
   1.7.2 both keys were accepted and never read, so an unresolvable one — `@config.registry/ro`,
   say — sat in a settings file doing nothing. It is read now, and a purge or move refuses by name
@@ -5923,7 +5923,7 @@ directory answered. It now names no directory:
 
 - A null vault arm gets no directory and no mount, and `box move` or `box convert` into it leaves
   the box's current vault where it is, printing `Note: left the vault at <path> in place —
-  workset.vault_<arm> is null at the destination, so nothing received its contents`.
+  workset.vault_<arm> is null at the destination, so nothing received its contents.`
 - A null `canon` or `template` skips that layer.
 - A null `channelroot` leaves out the three `~/channels/workset/*` binds, and each launch warns
   once, naming `workset.channelroot` and its file (see *One of kanibako's own binds warns when only
@@ -5932,13 +5932,33 @@ directory answered. It now names no directory:
 A standalone box whose root file nulls a vault arm after data was stored under it no longer owns
 that data: `<root>/vault/rw` (or `ro`) is no arm of the box. `box move`, `box convert`,
 `box rm --purge` and `box purge` keep the `<root>/vault/` folder whenever it holds anything
-besides the box's own arms and its `.gitignore`, and name each entry they kept — `Note: left the
-vault at <path> in place — it is not a vault arm of this box and is yours to remove.`, or `Kept
-vault: <path> (not a vault arm of this box — remove it yourself)` from the two purges.
+besides the box's own arms and its `.gitignore`, and name each entry they kept, files included,
+on stderr: `Note: left the vault at <path> in place — it is not a vault arm of this box and is
+yours to remove.` A named box's arm nulled after data was stored under it leaves that data at the
+key's default location, `<workset>/vault/rw/<box>` (or `ro`); every `box move` and `box convert`
+that relocates the box keeps it and names it: `Note: left the vault at <path> in place —
+workset.vault_rw is null, so it no longer names this store and it is yours to remove.`
 
 **What to do.** To get the directory back, delete the line or give it a path. To keep the `null`
 with no warning, also set the three channel bind entries to `null`. Move or delete a vault
 directory a relocation or a purge left behind yourself; kanibako does not remove it.
+
+### A relocation refuses to leave a disabled vault's data behind
+
+**Read this if a box sets `box.enable_vault: false` while its vault directories still hold data,
+and you run `box move`, `box convert` or `box remap` on it — by hand or from a script.**
+
+**What changed.** In v1.8.0-rc2 the relocation made no vault for such a box and then deleted the
+old vault directories with whatever they held, and exited 0. It now refuses, exits 1, and writes
+nothing: `Refusing: box.enable_vault is false for '<box>', but its vault still holds data at
+<path>[, <path>]. The box carries no vault, so this would leave that data behind. Move it out
+first, or pass --force to proceed and leave it in place.` An empty disabled vault, and a
+relocation that keeps the box's own vault in place, proceed as before.
+
+**What to do.** Move the data out first, or add `--force`. With `--force` the data stays where it
+is, each directory is named — `Note: left the vault at <path> in place — box.enable_vault is false,
+so nothing received its contents.` — and you remove it yourself. `--force` on these verbs also
+skips the confirmation prompt, as it always did.
 
 ### 2.95 The `agent` verbs refuse an agent file with an undeclared key, as the launch does
 

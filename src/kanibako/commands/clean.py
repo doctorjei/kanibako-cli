@@ -170,7 +170,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako
         # artifacts (box_data/ + root workset.yaml + vault/), never the root.
         from kanibako.project.workset import (
-            retained_vault_reason,
+            report_retained_vaults,
             standalone_vault_teardown,
         )
 
@@ -187,10 +187,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         (root / WORKSET_META_FILE).unlink(missing_ok=True)
         for vault_dir in removable_vault:
             shutil.rmtree(vault_dir, ignore_errors=True)
-        for vault_dir in retained_vault:
-            if vault_dir.is_dir():
-                print(f"\nKept vault: {vault_dir} "
-                      f"({retained_vault_reason(root, vault_dir)} — remove it yourself)")
+        report_retained_vaults(root, retained_vault)
     else:
         if not remove_box_tree(proj.metadata_path):
             _warn_undeleted(proj.metadata_path)

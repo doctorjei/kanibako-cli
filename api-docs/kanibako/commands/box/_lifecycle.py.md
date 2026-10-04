@@ -13,6 +13,7 @@ BARE_INTO_WS = _Sentinel('BARE_INTO_WS')
 UNCHANGED = _Sentinel('UNCHANGED')
 STUBBORN_INPLACE_MSG = 'Stubbornly refusing to convert in-place from within a workset; add `--move` or `--move <path>` to relocate.'
 _VAULT_ARM_KEYS: tuple[str, str] = ('workset.vault_ro', 'workset.vault_rw')
+_DISABLED_VAULT_WHY = 'box.enable_vault is false, so nothing received its contents.'
 _STANDALONE_FIXED_ARTIFACTS = frozenset({STANDALONE_META_DIR, WORKSET_META_FILE, BOX_META_FILE, '.kanibako.lock'})
 _STANDALONE_ROOT_DIR_KEYS = (('workset.workspaces', _resolve_standalone_workspaces), ('workset.vault_ro', resolve_workset_vault_ro), ('workset.vault_rw', resolve_workset_vault_rw), ('workset.canon', resolve_workset_canon))
 _BARE_MOVE = _Sentinel('BARE_MOVE')
@@ -29,6 +30,7 @@ def run_move(args) -> int
 def run_convert(args) -> int
 def _same_box_name(left: str | None, right: str | None) -> bool
 def _default_rename_name(state: ProjectState, std: StandardPaths, landing_ws: Path, requested_name: str) -> str | None
+def _primary_name_at(state: ProjectState, std: StandardPaths, landing_ws: Path) -> str | None
 def _primary_source_own_name(state: ProjectState, std: StandardPaths) -> str | None
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]
 def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None
@@ -49,12 +51,12 @@ def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path | N
 def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None) -> None
 def _move_log_back(dst: Path, src: Path) -> None
 def _carry_box_logs(state: ProjectState, std: StandardPaths, unwind: _Unwind, *, dst_logs: Path | None, dst_name: str) -> None
-def _report_retained_vault(vault: Path, why: str) -> None
-def _unreceived_vault_leaves(src_arms: tuple[Path | None, Path | None], dst_vault: tuple[Path | None, Path | None], leaf_name: str='') -> list[tuple[Path, str]]
+def _unreceived_vault_leaves(src_arms: tuple[Path | None, Path | None], dst_vault: tuple[Path | None, Path | None], leaf_name: str='', *, vault_enabled: bool=True) -> list[tuple[Path, str]]
 def _report_unreceived_vaults(kept: list[tuple[Path, str]]) -> None
-def _carried_member_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None]) -> tuple[tuple[Path, ...], list[tuple[Path, str]]]
+def _carried_member_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], *, vault_enabled: bool=True) -> tuple[tuple[Path, ...], list[tuple[Path, str]]]
+def _nulled_arm_stores(ws_root: Path, name: str) -> list[tuple[Path, str]]
 def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, dst_vault: tuple[Path | None, Path | None], preserve_name: str | None=None, preserve_root: Path | None=None) -> None
-def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None]) -> None
+def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], vault_enabled: bool=True, *, reraise: bool=False) -> None
 def _report_store_leftovers(ws: Workset, name: str, err: OSError | None=None, *, keep: list[tuple[Path, str]] | None=None) -> None
 def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str='', force: bool=False) -> ProjectState
 def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None) -> Path
