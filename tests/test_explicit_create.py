@@ -105,6 +105,8 @@ class TestCreateRefusesNamedBoxWorkspace:
         err = capsys.readouterr().err
         assert "already the workspace of named box 'extbox'" in err
         assert "in workset 'wsa'" in err
+        # ⚑ Qualified: a bare name tries the PRIMARY workset first.
+        assert "kanibako box show wsa/extbox" in err
         # The WRITE is what the refusal is for: no membership row, no box dir.
         assert load_primary_boxes(std.primary_workset) == {}
         assert not any(std.boxes.iterdir()) if std.boxes.exists() else True
@@ -156,10 +158,11 @@ class TestCreateRefusesNamedBoxWorkspace:
     def test_an_in_tree_member_is_not_refused(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
-        """A member under the workset's own ``workset.workspaces`` is its path space.
+        """A member under the workset's own ``workset.workspaces`` is not this guard's.
 
-        ``create`` there makes a NAMED box; the resolver skips these, so this
-        guard never claims them.
+        The resolver skips in-tree members, so this guard never claims them; that
+        path is in the workset's path space, whose own rule decides the create.
+        Only this guard's message is pinned here, whatever the exit code.
         """
         from kanibako.commands.box._parser import run_create
         from kanibako.project.workset import add_project, create_workset
@@ -170,8 +173,24 @@ class TestCreateRefusesNamedBoxWorkspace:
         member.mkdir(parents=True)
         add_project(ws, "m1", member, std)
 
-        assert run_create(_create_args(member)) == 0
+        run_create(_create_args(member))
         assert "already the workspace of named box" not in capsys.readouterr().err
+
+    def test_standalone_at_a_connected_path_is_refused(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The rule is mode-free: detection finds the connected box before a
+        standalone marker, so a standalone box there would be unreachable too."""
+        from kanibako.commands.box._parser import run_create
+
+        _config, std = _std(config_file)
+        member = _connected_member(tmp_home, std)
+        before = sorted(p.name for p in member.iterdir())
+
+        assert run_create(_create_args(member, standalone=True)) == 1
+        err = capsys.readouterr().err
+        assert "already the workspace of named box 'extbox'" in err
+        assert sorted(p.name for p in member.iterdir()) == before
 
     def test_the_cure_the_refusal_names_actually_works(
         self, config_file, tmp_home, credentials_dir, capsys

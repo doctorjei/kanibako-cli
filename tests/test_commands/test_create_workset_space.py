@@ -299,16 +299,15 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
         assert list(load_workset(root, "wsa").projects) == []
 
     def test_recover_is_refused_before_the_membership_write(self, wsa, capsys, monkeypatch):
-        """A member is added whole by its create, so ``--recover`` has nothing to
-        resume — and refusing it after the write would leave a member behind a
-        failed command, with an empty box dir and no seed."""
+        """No member and no pending create, so ``--recover`` has nothing to resume —
+        and the refusal runs before the membership write, so nothing is left."""
         root, std = wsa
         monkeypatch.chdir(root)
         from kanibako.commands.box._parser import run_create
 
         assert run_create(_args("fresh", recover=True)) == 1
         err = capsys.readouterr().err
-        assert "nothing to resume" in err
+        assert "no interrupted 'create' of 'fresh' in working set 'wsa'" in err
         assert not _printed_commands(err)
         assert list(load_workset(root, "wsa").projects) == []
         assert not (root / "boxes" / "fresh").exists()
@@ -340,3 +339,127 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
         assert run_create(_args("plain")) == 0
         assert "Created default project" in capsys.readouterr().out
         assert list(load_primary_boxes(std.primary_workset)) == ["plain"]
+
+
+def _tree(root):
+    """Every path under *root* with its file bytes or symlink target."""
+    out = {}
+    for p in sorted(root.rglob("*")):
+        rel = str(p.relative_to(root))
+        if p.is_symlink():
+            out[rel] = ("link", str(p.readlink()))
+        elif p.is_file():
+            out[rel] = ("file", p.read_bytes())
+        else:
+            out[rel] = ("dir", None)
+    return out
+
+
+class TestAnInterruptedNamedCreateIsRecoverable:
+    """§ Detection & import: an interrupted create is completed by replay; a create
+    on a pending entry refuses and names it; ``create --recover`` replays it."""
+
+    def _crash(self, monkeypatch, name):
+        from kanibako.commands.box._parser import run_create
+
+        def boom(*_a, **_kw):
+            raise KeyboardInterrupt
+
+        with monkeypatch.context() as m:
+            m.setattr("kanibako.commands.start.seed_new_box", boom)
+            with pytest.raises(KeyboardInterrupt):
+                run_create(_args(name))
+
+    def test_crash_then_recover(self, wsa, capsys, credentials_dir, monkeypatch):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.launch import journal
+
+        root, std = wsa
+        monkeypatch.chdir(root)
+        self._crash(monkeypatch, "crashbox")
+        assert [p.name for p in load_workset(root, "wsa").projects] == ["crashbox"]
+        pending = journal.pending_create(std.journal, str(root / "boxes" / "crashbox"))
+        assert pending is not None and pending["mode"] == "named"
+        capsys.readouterr()
+
+        # A plain create names the pending entry and prints the recover cure by NAME.
+        assert run_create(_args("crashbox")) == 1
+        err = capsys.readouterr().err
+        assert "an interrupted 'create' is pending" in err
+        assert "'crashbox' (named)" in err
+        assert "kanibako create --recover crashbox" in err
+        assert "already exists in working set" not in err
+
+        # ``no_vault=False``: the flag as the CLI spells it absent (a given one is refused).
+        assert run_create(_args("crashbox", recover=True, no_vault=False)) == 0
+        assert "Resumed interrupted named project" in capsys.readouterr().out
+        assert journal.read_journal(std.journal) == {}
+        assert [p.name for p in load_workset(root, "wsa").projects] == ["crashbox"]
+        assert (root / "boxes" / "crashbox" / "home").is_dir()
+        assert load_primary_boxes(std.primary_workset) == {}
+
+    def test_recover_on_a_complete_member_is_refused(self, wsa, capsys, monkeypatch, tmp_home):
+        from kanibako.commands.box._parser import run_create
+
+        root, _std = wsa
+        monkeypatch.chdir(root)
+        assert run_create(_args("newbox")) == 0
+        capsys.readouterr()
+        before = _tree(tmp_home)
+        assert run_create(_args("newbox", recover=True, no_vault=False)) == 1
+        err = capsys.readouterr().err
+        assert "no interrupted 'create' of 'newbox' in working set 'wsa'" in err
+        assert _tree(tmp_home) == before
+
+
+class TestNoRefusalStrandsAMember:
+    """Every refusal runs before the membership write: the working set's records,
+    its ``boxes/`` and every other file under the test tree are unchanged."""
+
+    @pytest.mark.parametrize("over", [
+        {"agent": "nosuchpersona+claude"},
+        {"agent": "Not A Ref!"},
+        {"name": "other"},
+        {"recover": True},
+        {"standalone": True},
+    ], ids=["no-such-persona", "bad-agent-ref", "two-names", "recover", "standalone"])
+    def test_a_refused_new_member_leaves_nothing(self, wsa, tmp_home, monkeypatch, over):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import KanibakoError
+
+        root, _std = wsa
+        monkeypatch.chdir(root)
+        before = _tree(tmp_home)
+        try:
+            rc = run_create(_args("pbox2", **over))
+        except KanibakoError:
+            rc = 1
+        assert rc == 1
+        assert _tree(tmp_home) == before
+        assert list(load_workset(root, "wsa").projects) == []
+
+    def test_a_stale_box_dir_is_refused_and_left_alone(self, wsa, tmp_home, capsys, monkeypatch):
+        from kanibako.commands.box._parser import run_create
+
+        root, _std = wsa
+        (root / "boxes" / "stale").mkdir(parents=True)
+        monkeypatch.chdir(root)
+        before = _tree(tmp_home)
+        assert run_create(_args("stale")) == 1
+        err = capsys.readouterr().err
+        # It names the box dir that is in the way, not the workspace.
+        assert str(root / "boxes" / "stale") in err
+        assert _tree(tmp_home) == before
+        assert list(load_workset(root, "wsa").projects) == []
+
+    @pytest.mark.parametrize("second", ["newbox", "NEWBOX"])
+    def test_a_taken_name_leaves_nothing(self, wsa, tmp_home, capsys, monkeypatch, second):
+        from kanibako.commands.box._parser import run_create
+
+        root, _std = wsa
+        monkeypatch.chdir(root)
+        assert run_create(_args("newbox")) == 0
+        before = _tree(tmp_home)
+        assert run_create(_args(second)) == 1
+        assert "already exists in working set 'wsa'" in capsys.readouterr().err
+        assert _tree(tmp_home) == before

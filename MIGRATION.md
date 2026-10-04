@@ -383,7 +383,11 @@ inside boxes. In order of likely impact:
     the door at a value the launch refuses*; and a `system.*` path value referencing outside its tier
     is refused at `set` — see *A system path value referencing outside its tier is refused at `set`*;
     and `set` refuses, unless `--force`, while a settings file it reads stores an entry that is not a
-    key — see *`set` refuses while a settings file it reads stores an entry that is not a key*.
+    key — see *`set` refuses while a settings file it reads stores an entry that is not a key*;
+    and `create <name>` under a named workset's root makes a named box of that workset, refusing a
+    path, a bare `create` and `--standalone` there — see *`create` inside a named workset's path
+    space*; and `create` refuses a directory a named box holds as its workspace — see *`create` in a
+    directory connected to a workset is refused*.
 
 ---
 
@@ -6278,6 +6282,25 @@ Name an upstream that is a key, or remove that entry by editing the file. --forc
 `/opt/x` and `/opt//x/`, or `~/w` and `/home/agent/w`, in the same `bindings`, `masks`, `caches`,
 `common`, `seeded` or `synced` map used to resolve to whichever came last. Any settings file holding
 both now refuses, naming both spellings; keep one.
+
+### `create` inside a named workset's path space
+
+On v1.7.x, `kanibako create <name>` (or `create <path>`, or a bare `create`) run inside a workset's
+tree silently made a PRIMARY box at `<cwd>/<name>`. In v1.8.0 the current directory decides the path
+space. Under a named workset's root, `create <name>` makes a named box of that workset (its
+workspace is `<root>/workspaces/<name>`), and a path, a bare `create`, or `--standalone` is refused
+with a message naming the workset. To make a primary or standalone box, run `create` from a
+directory outside every named workset's root, with a target outside it. Existing primary boxes that
+v1.7.x made inside a workset's tree are not moved.
+
+### `create` in a directory connected to a workset is refused
+
+Earlier builds let `create` make a box in a directory connected to a named workset from outside it,
+or in a subdirectory of one. That box could not be reached from its path, because the directory
+resolves to the named box. `create` now refuses there, with or without `--standalone`. A primary
+box made this way appears in `kanibako box list` under the default workset; remove it with
+`kanibako box rm <name>` (add `--purge` to delete its box directory as well). Neither form touches
+the directory's files, and the named box is unaffected.
 
 ---
 

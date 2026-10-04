@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +26,7 @@ from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, ProjectError, WorksetError
 from kanibako.project.names import read_names
-from kanibako.project.workset import add_project, list_worksets, load_workset
+from kanibako.project.workset import Workset, add_project, list_worksets, load_workset
 from kanibako.settings.messages import (
     ERR_WORKSET_MEMBER_NAME_CONFLICT,
     ERR_WORKSET_MEMBER_NAME_TAKEN,
@@ -712,11 +713,14 @@ def _create_recovery_refusal(
     given = [flag for flag in _CREATE_SHAPING_FLAGS if getattr(args, flag, None)]
 
     # ⚑ EVERY CURE LINE NAMES THE ROOT THE USER PASSED, NEVER THE RESOLVED
-    # WORKSPACE: a STANDALONE box's ``<root>/workspace`` is no ``create`` argument.
+    # WORKSPACE: a STANDALONE box's ``<root>/workspace`` is no ``create`` argument,
+    # and a NAMED member is created by its NAME (a path in its space is refused).
     _standalone = probe.mode is BoxMode.standalone
     mode_flag = " --standalone" if _standalone else ""
     root = str(
-        probe.metadata_path if _standalone else probe.project_path or "<None>"
+        probe.metadata_path if _standalone
+        else probe.name if probe.mode is BoxMode.named
+        else probe.project_path or "<None>"
     )
 
     if pending is None:
@@ -741,7 +745,8 @@ def _create_recovery_refusal(
     # the box on disk.
     box_dir = _box_journal_key(probe)
     name = pending.get("name") or probe.name
-    mode = "standalone" if pending.get("mode") == "standalone" else "default"
+    _recorded = pending.get("mode")
+    mode = _recorded if _recorded in ("standalone", "named") else "default"
     where = str(pending.get("workspace") or probe.project_path or "<None>")
 
     if given:
@@ -851,11 +856,13 @@ def _create_in_workset_space(workset: str, path: Path, *, standalone: bool,
     )
 
 
-def _add_workset_member(std, config, workset: str, name: str,
-                        args) -> "tuple[WorksetSpec, bool] | None":
-    """Add *name* to the named working set *workset*; ``None`` once it has refused.
+def _plan_workset_member(std, workset: str, name: str,
+                         args) -> "tuple[Workset, str, bool] | None":
+    """The pre-write checks for a member *name* of *workset*; ``None`` once it has refused.
 
-    Returns ``(spec, box_dir_existed)``.  Every refusal runs BEFORE the membership write.
+    Returns ``(ws, member, existing)``: *member* is the stored spelling when the
+    name is already a member (*existing*), else the name as typed.  It WRITES
+    NOTHING — ``add_project`` runs only once every create refusal has passed.
     """
     registry = list_worksets(std)
     stored = find_identifier(workset, registry)  # ⚑ case-blind (§0)
@@ -877,36 +884,19 @@ def _add_workset_member(std, config, workset: str, name: str,
         ), file=sys.stderr)
         return None
 
-    # ⚑ A member is added whole by this create, so there is no half-built member for
-    # ``--recover`` to finish; refusing it after the write would leave an empty box dir.
-    if getattr(args, "recover", False):
-        print("Error: " + ERR_WORKSET_MEMBER_NO_RECOVER % ws.name, file=sys.stderr)
-        return None
-
     # ⚑ THE MEMBERSHIP KEY IS FOLDED, so a case variant would not add a second member —
-    # it would REPLACE the taken one's recorded workspace and strand its box.
-    # ``find_identifier`` is the one case-blind comparison, and it belongs at the write.
+    # it would REPLACE the taken one's recorded workspace and strand its box.  A taken
+    # name is refused only once the journal says no create of it is pending.
     taken = find_identifier(name, [p.name for p in ws.projects])
     if taken is not None:
-        print("Error: " + ERR_WORKSET_MEMBER_NAME_TAKEN % (taken, ws.name),
-              file=sys.stderr)
-        return None
+        return ws, taken, True
 
-    existed = (ws.projects_dir / name).exists()  # ⚑ BEFORE ``add_project`` makes it.
     if ws.workspaces_dir is None:
         print("Error: " + ERR_WORKSET_NULL_WORKSPACES % (
             ws.root / WORKSET_META_FILE, f"a workspace for '{name}'",
         ), file=sys.stderr)
         return None
-    try:
-        add_project(
-            ws, name, ws.workspaces_dir / name, std,
-            force=getattr(args, "force", False),
-        )
-    except WorksetError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return None
-    return WorksetSpec.from_workset(ws), existed
+    return ws, name, False
 
 
 def run_create(args: argparse.Namespace) -> int:
@@ -964,12 +954,22 @@ def run_create(args: argparse.Namespace) -> int:
         else None
     )
     _named_spec = None
+    _named_ws: Workset | None = None
+    _named_existing = False
     if _member is not None:
         assert _space is not None
-        _added = _add_workset_member(std, config, _space, _member, args)
-        if _added is None:
+        _planned = _plan_workset_member(std, _space, _member, args)
+        if _planned is None:
             return 1
-        _named_spec, _named_already = _added
+        _named_ws, _member, _named_existing = _planned
+        # ⚑ THE PROBE SEES THE MEMBER BEFORE IT IS WRITTEN: ``add_project`` waits until
+        # every refusal below has passed, so no refusal strands a member.
+        _named_spec = WorksetSpec.from_workset(_named_ws)
+        if not _named_existing:
+            _named_spec = dataclasses.replace(
+                _named_spec, project_names=(*_named_spec.project_names, _member),
+            )
+        _named_already = (_named_ws.projects_dir / _member).exists()
 
     # ⚑ ``None`` = the PRIMARY path space; the default workset is unregistered.
     _ws_name = (None if _named_spec is not None
@@ -1003,7 +1003,9 @@ def run_create(args: argparse.Namespace) -> int:
 
     # ⚑ The PATH's conflict arm — the NAME arm above cannot see this collision.
     # A NAMED member's workspace is ``workspaces/<name>``, never ``effective_path``.
-    if _named_spec is None and not args.standalone:
+    # ⚑ Mode-free: a STANDALONE box there is as unreachable as a primary one, since
+    # detection finds the connected box before the standalone marker.
+    if _named_spec is None:
         try:
             check_workspace_not_named_box(std, str(effective_path))
         except ProjectError as e:
@@ -1011,7 +1013,7 @@ def run_create(args: argparse.Namespace) -> int:
             return 1
 
     # Create directory if it doesn't exist.  A NAMED member's dir is its workspace
-    # under the working set, which ``add_project`` made — never ``<cwd>/<identifier>``.
+    # under the working set, which ``add_project`` makes — never ``<cwd>/<identifier>``.
     if project_dir is not None and _named_spec is None:
         target = Path(project_dir)
         if not target.exists():
@@ -1051,12 +1053,26 @@ def run_create(args: argparse.Namespace) -> int:
             register=False,
         )
     # ⚑ CAPTURE BEFORE ``_name_new_box_probe``, which mutates ``_probe.name``.
-    # A NAMED member's dir is ``add_project``'s own write, so the read taken before it
-    # is the only "already materialized" answer there.
+    # A NAMED member's answer is whether its box dir exists, read before any write:
+    # ``add_project`` makes that dir, and a pending create's attempt one already did.
     _already = _named_already if _named_spec is not None else box_tree_materialized(_probe)
     _name_new_box_probe(std, _probe)
     # ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.
     _pending = _pending_create_entry(std, _probe)
+    # ⚑ A MEMBER NAME WITH NO PENDING CREATE: a taken name is refused, and ``--recover``
+    # has nothing to resume.  A pending one goes on to the recovery refusal below.
+    if _named_spec is not None and _pending is None:
+        assert _named_ws is not None
+        if getattr(args, "recover", False):
+            print("Error: " + ERR_WORKSET_MEMBER_NO_RECOVER % (
+                _member, _named_ws.name,
+            ), file=sys.stderr)
+            return 1
+        if _named_existing:
+            print("Error: " + ERR_WORKSET_MEMBER_NAME_TAKEN % (
+                _member, _named_ws.name,
+            ), file=sys.stderr)
+            return 1
     # ⚑ RECOVERY IS NEVER IMPLICIT, and the refusal runs AHEAD OF EVERY DOOR BELOW:
     # a flag about to be refused must not reach the persona pre-flight, the agent
     # persist or the seed.
@@ -1067,7 +1083,7 @@ def run_create(args: argparse.Namespace) -> int:
         print(_refusal, file=sys.stderr)
         return 1
     # ⚑ THE PRE-JOURNAL FORK: a crash that left a dir behind but nothing for
-    # ``--recover`` to find.  A NAMED member's dir is ``add_project``'s own write.
+    # ``--recover`` to find.  A NAMED member's existing box dir is refused below.
     _orphan = (
         None if (_named_spec is not None or _already or _pending is not None)
         else _orphaned_primary_box_dir(args, std, _probe)
@@ -1129,8 +1145,11 @@ def run_create(args: argparse.Namespace) -> int:
     # asks the PROBE: the resolve's recovery arms would bootstrap the home the message
     # then claims already existed.
     if _already and not is_recovery:
+        # ⚑ A NAMED member's "already" is its box dir, so that is the path to name.
+        _where = (_probe.metadata_path if _named_spec is not None
+                  else _probe.project_path)
         print(
-            f"Error: project already initialized in {_probe.project_path or '<None>'}",
+            f"Error: project already initialized in {_where or '<None>'}",
             file=sys.stderr,
         )
         return 1
@@ -1138,7 +1157,20 @@ def run_create(args: argparse.Namespace) -> int:
     # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False`` DEFERS
     # registration past the home seed, giving the invariant "registered ==> fully seeded".
     if _named_spec is not None:
-        assert _member is not None
+        assert _member is not None and _named_ws is not None
+        # ⚑ THE MEMBERSHIP WRITE, AFTER EVERY REFUSAL: a pending create's member was
+        # written by attempt one, so a recovery adds nothing.
+        if not _named_existing:
+            assert _named_ws.workspaces_dir is not None  # refused in the plan
+            try:
+                add_project(
+                    _named_ws, _member, _named_ws.workspaces_dir / _member, std,
+                    force=getattr(args, "force", False),
+                )
+            except WorksetError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
+            _named_spec = WorksetSpec.from_workset(_named_ws)
         proj = resolve_workset_project(
             _named_spec, _member, std, config, initialize=True,
             enable_vault=enable_vault,
