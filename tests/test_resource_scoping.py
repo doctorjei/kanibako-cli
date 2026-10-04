@@ -563,6 +563,36 @@ class TestBuildEffectiveState:
         )
         assert res_codex["model"] == "haiku"  # no plugin row: default tier applies
 
+    @pytest.mark.parametrize("route", ["persona", "system-file"])
+    def test_the_printed_endpoint_drops_its_userinfo(self, tmp_path, monkeypatch, route):
+        """``box show --effective`` prints this dict, so the endpoint's userinfo is
+        scrubbed, through both routes an endpoint arrives by: the persona store and
+        a settings file (where a literal ``@`` is spelled ``\\@``).
+
+        The persona route is the incident: its ``@host`` was read as an ``@``-ref and
+        expanded to ``""``, so the credential printed with no ``@`` left to find it.
+        """
+        from kanibako.commands import start
+        from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
+
+        raw = "https://SEKRITU:SEKRITP@host.invalid/v1"
+        descriptors = [TargetSetting(key="endpoint", description="Endpoint", default="")]
+        if route == "persona":
+            monkeypatch.setattr(
+                start, "_persona_values_for", lambda node, target: {"endpoint": raw},
+            )
+            ssp = None
+        else:
+            ssp = self._make_system_settings(
+                tmp_path, settings={"endpoint": raw.replace("@", "\\@")},
+            )
+        result = _build_effective_state(
+            self._make_target(descriptors), AgentConfig(),
+            **self._make_box_file(tmp_path / "proj"), system_settings_path=ssp,
+        )
+        assert result["endpoint"] == "https://<redacted>@host.invalid/v1"
+        assert "SEKRIT" not in repr(result)
+
 
 class TestDisplayAnswersLikeTheLaunch:
     """The ``--effective`` behavior read resolves an anchor-spelled value as the launch does."""
