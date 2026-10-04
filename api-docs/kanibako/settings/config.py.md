@@ -56,6 +56,8 @@ def usable_box_store_value(value: object) -> bool
 def refuses_box_store_value(canonical: str, value: object) -> bool
 def chain_bad_entries(value: object, bad: Iterable[str], *, stored: 'Callable[[str], object]') -> list[str]
 def system_path_ref_error(canonical: str, value: 'str | None') -> 'str | None'
+def ref_points_downward(canonical: str, value: 'str | None') -> 'str | None'
+def downward_ref_error(canonical: str, value: 'str | None') -> 'str | None'
 def _layer1_settings_keys(data: dict) -> list[str]
 def _scalar_value(value: object) -> object
 def _present_scalar_fields(path: Path) -> dict[str, object]
