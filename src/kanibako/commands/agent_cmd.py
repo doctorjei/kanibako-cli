@@ -12,7 +12,7 @@ from kanibako.agent_ref import (
     display_agent_ref,
     harness_of,
 )
-from kanibako.commands.flags import add_null_flag
+from kanibako.commands.flags import add_null_flag, add_set_force_flag
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,6 +66,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     set_p.add_argument("agent_id", help="Agent identifier")
     set_p.add_argument("key_value", nargs="?", help="key=value pair")
     add_null_flag(set_p, undo="agent reset <agent> <key>")
+    add_set_force_flag(set_p)
     set_p.set_defaults(func=run_set)
 
     # agent reset <agent> <key> | --all  [--force]
@@ -373,7 +374,6 @@ def run_set(args: argparse.Namespace) -> int:
     args.reset = None
     args.all_keys = False
     args.effective = False
-    args.force = False
     return _run_agent_config(args)
 
 
@@ -608,6 +608,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             agents_root=std.agents,
             # The per-node store is global, so the target is the SYSTEM scope (§2a).
             std=std,
+            force=getattr(args, "force", False),
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

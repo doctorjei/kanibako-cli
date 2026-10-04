@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kanibako.launch.box_identity import validate_box_name
-from kanibako.commands.flags import add_null_flag
+from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import (
     WORKSET_META_FILE,
     user_config_file,
@@ -392,9 +392,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     set_p.add_argument("args", nargs="*", default=[], help="[project] key=value")
-    set_p.add_argument(
-        "--force", action="store_true", help="Skip confirmation prompts",
-    )
+    add_set_force_flag(set_p)
     add_null_flag(set_p, undo="box reset [project] <key>")
     set_p.set_defaults(func=run_set)
 
@@ -2487,6 +2485,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
             agents_root=std.agents,
             command_scope=ConfigLevel.box,
             active_agent=_get_agent_name or None,
+            cascade_system_path=std.settings,
+            cascade_workset_path=workset_path,
         )
         # ⚑ Name the value with the canonical redirect form, so the READ teaches the
         # request — mirroring the refusal message ``set`` prints.
@@ -2524,6 +2524,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             cascade_agent_name=cascade_agent_name,
             command_scope=ConfigLevel.box,
             std=std, proj=proj,
+            force=args.force,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

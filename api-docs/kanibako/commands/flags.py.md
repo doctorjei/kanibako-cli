@@ -14,6 +14,7 @@ BOX_FLAG_COMMANDS: frozenset[str] = frozenset({'start', 'shell', 'box start', 'b
 AGENT_FLAG_HELP_PER_RUN = 'Use agent NAME for this run only. It overrides the agent saved for the box, and is not saved itself.'
 AGENT_FLAG_HELP_PERSISTED = "Create the box with agent NAME and save NAME as the box's agent, so later commands use it without the flag. Change it afterwards with 'kanibako box set pref.system.agent=<name>'."
 NULL_FLAG_HELP_TEMPLATE = "SUPPRESS the value this key would otherwise inherit: writes an explicit null (present-None) at this scope, so the scopes above it stop supplying the key and the consumer sees it as dropped (spec section 2h). This WRITES an override rather than removing one - to undo it and get the inherited value back, use the sibling 'reset' verb ('{undo}')."
+SET_FORCE_HELP = 'Set even though a settings file this command reads stores an entry that is not a key: warn and write instead of refusing (spec section 2a). The entry stays; remove it by editing that file. A value whose own upstream chain reaches such an entry is refused either way.'
 _AGENT_FLAG_EXCLUDE: frozenset[str] = frozenset({'setup'})
 _COMMAND_PATH_DEST = '_command_path'
 _BAIL = -1
@@ -22,6 +23,7 @@ _BAIL = -1
 ## Functions
 ```
 def add_null_flag(parser: argparse.ArgumentParser, *, undo: str) -> None
+def add_set_force_flag(parser: argparse.ArgumentParser) -> None
 def hoist_optionals(parser: argparse.ArgumentParser, argv: list[str]) -> list[str]
 def inject_blanket_flags(parser: argparse.ArgumentParser) -> None
 def command_key(args: argparse.Namespace) -> str

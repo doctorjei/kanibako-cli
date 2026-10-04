@@ -296,14 +296,14 @@ def _primary_box(std, config_file, tmp_home):
     )
 
 
-def _set_box(key: str, value, std, proj) -> str:
+def _set_box(key: str, value, std, proj, *, force: bool = False) -> str:
     """``set_config_value`` threaded as ``box set`` threads it: the box is the target."""
     from kanibako.settings.paths import box_workset_settings_paths
 
     box_file, _ = box_workset_settings_paths(proj)
     return set_config_value(
         key, value, config_path=box_file, cascade_system_path=std.settings,
-        command_scope=ConfigLevel.box, std=std, proj=proj,
+        command_scope=ConfigLevel.box, std=std, proj=proj, force=force,
     )
 
 
@@ -458,10 +458,16 @@ class TestABrokenTargetDoesNotBlockTheRepair:
             fh.write("pref:\n  system.agent: claude\n")
 
     @_WRITES_THE_DOTTED_PREF
-    def test_an_unrelated_value_is_still_written(self, std, config_file, tmp_home):
+    def test_an_unrelated_value_is_written_only_with_force(self, std, config_file, tmp_home):
+        """Keyspec §2a: the dotted ``pref`` entry is a bad entry outside the edited value's
+        chain, so a plain ``set`` refuses naming it, and ``--force`` writes — the broken
+        TARGET still blocks nothing."""
         proj = _primary_box(std, config_file, tmp_home)
         self._break(proj)
         message = _set_box("box.canon", "/abs/canon", std, proj)
+        assert message.startswith("Error:") and "pref | system.agent" in message, message
+        assert "--force" in message
+        message = _set_box("box.canon", "/abs/canon", std, proj, force=True)
         assert message == "Set box.canon=/abs/canon", message
 
     @_WRITES_THE_DOTTED_PREF
