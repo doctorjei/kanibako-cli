@@ -970,9 +970,17 @@ def _category_set_lookups(
         result = expand(candidate, ctx, collect_errors=True)
         assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
         errors = result[1]
+        # ⚑ FIRST, AND BEFORE THE FLOOR-BLINDNESS ARM — the direction is a fact about the
+        # SPELLING, so it needs no verdict from the expander. Judged after the blindness
+        # test, a value carrying BOTH a downward ref and a same-scope ref this cascade
+        # cannot see was forgiven whole, downward ref included, and :func:`_floor_blind_default`
+        # is the ONLY arm that forgives: run here, a value with no error still reaches
+        # :func:`config.ref_points_downward`.
+        down = downward_ref_error(key, value)
+        if down is not None:
+            return down
         if key not in errors:
-            # ⚑ NOT EXEMPTED — :func:`config.ref_points_downward`.
-            return downward_ref_error(key, value)
+            return None
         if _floor_blind_default(key, value, candidate, command_scope):
             return None
         return errors[key]

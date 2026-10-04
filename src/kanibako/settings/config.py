@@ -1185,7 +1185,14 @@ def ref_points_downward(canonical: str, value: "str | None") -> "str | None":
 
 
 def downward_ref_error(canonical: str, value: "str | None") -> "str | None":
-    """THE refusal for a DOWNWARD ``@``-ref outside the system path tier, or ``None``."""
+    """THE refusal for a DOWNWARD ``@``-ref outside the system path tier, or ``None``.
+
+    ⚑ ONE CARRIER, TWO DOORS — the set door (``config_interface``) and the resolve
+    sweep (``settings_launch._refuse_downward_refs``) both read it, so a spelling
+    refused at one is refused at the other in the same words. The message does NOT
+    name the key: each door places it, and a key the message also spelled would be
+    read twice in one line.
+    """
     if not value or canonical in SYSTEM_PATH_DEFAULTS:
         return None
     down = ref_points_downward(canonical, value)
@@ -1193,5 +1200,5 @@ def downward_ref_error(canonical: str, value: "str | None") -> "str | None":
         return None
     segs = down.split(".", 2)
     return ERR_CONFIG_DOWNWARD_REF % (
-        canonical, value, down, segs[1] if segs[0] == "meta" else segs[0],
+        value, down, segs[1] if segs[0] == "meta" else segs[0],
     )

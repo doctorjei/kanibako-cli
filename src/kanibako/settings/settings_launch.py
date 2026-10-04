@@ -1407,7 +1407,8 @@ def refuse_read_time_faults(
     The READ-TIME refusals, IN ORDER. Runs after ``expand``: [R147]'s bare-relative sweep
     (:func:`_refuse_ambiguous_path_values`, over *written*), then §0's undeclared-key
     refusal (:func:`_refuse_undeclared_snapshot`, over *expanded*), then §2c's entry at
-    an internal bind's dest (:func:`_refuse_internal_bind_entries`, over *written*).
+    an internal bind's dest (:func:`_refuse_internal_bind_entries`, over *written*), then
+    §0's downward-ref sweep (:func:`_refuse_downward_refs`, over *written*).
     ⚑ ONE CARRIER OF THE ORDER: the launch (:func:`build_launch_snapshot`) and the workset preview
     (``commands/workset_cmd._workset_preview_entries``) both call this, so a resolve
     route cannot run one refusal and skip the other.
@@ -1422,6 +1423,7 @@ def refuse_read_time_faults(
         expanded, files=files, written=written, subject=subject,
     )
     _refuse_internal_bind_entries(written)
+    _refuse_downward_refs(written, files)
 
 
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
@@ -1461,6 +1463,96 @@ def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
             ))
     if refusals:
         raise SettingsError("\n".join(refusals))
+
+
+def _bind_source(value: object) -> "str | None":
+    """The HOST SOURCE *value* spells, or ``None`` when it is not a source.
+
+    ⚑ Every shape one dest-keyed arm holds a source in, because a settings file
+    writes a one-element LIST while the assembled level carries a
+    :class:`~kanibako.settings.kb_store.BindEntry` — the same spellings the reader
+    and the collapse disagree about, read here ONCE rather than in each sweep.
+    """
+    from kanibako.settings.kb_store import Bind, BindEntry
+
+    if isinstance(value, (BindEntry, Bind)):
+        return value.src if isinstance(value, BindEntry) else value.host
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple)) and len(value) == 1:
+        return value[0] if isinstance(value[0], str) else None
+    return None
+
+
+def _refuse_downward_refs(
+    written: Sequence[_WrittenLevel], files: Sequence[SettingsFile],
+) -> None:
+    """RAISE naming every settings-file entry whose ``@``-ref points DOWNWARD (spec §0).
+
+    The RESOLVE half of "no ``@``-ref points DOWNWARD". The set door refuses the same
+    spelling through the SAME predicate — :func:`~kanibako.settings.config.downward_ref_error`
+    — so this sweep is the read-side of one rule, not a second judgment of it: a value
+    a `set` door can no longer store is still readable when it is HAND-WRITTEN into a
+    file, and it would otherwise be wired into a real mount.
+
+    ⚑ PER WRITTEN LEVEL, so the FOLDED FLOOR is never judged: the base level carries
+    kanibako's own declared defaults merged into it, and a default is not a user's
+    spelling. For that level the base FILE's own view decides what it holds — the rule
+    :func:`_carrying_files` already states for the base level.
+    ⚑ EVERY offending entry, not the first (a user hand-edits the cure), and each is
+    filed under THE FILE THAT CARRIES IT, so the hand-edit has an aim.
+    """
+    from kanibako.settings.config import downward_ref_error
+
+    base_view: object = next((f.view for f in files if f.level == "base" and f.loaded), {})
+    found: dict[str, list[str]] = {}
+    for level, path, floor_store in written:
+        if path is None:
+            continue
+        store = base_view if floor_store is not None else level
+        if not isinstance(store, dict):
+            continue
+        for segments, is_node in walk_store_paths(store):
+            if is_node:
+                continue
+            key = ".".join(segments)
+            leaf = snapshot_leaf(store, key)
+            if (
+                is_terminal_category_key(key) and isinstance(leaf, dict)
+                and not any("." in seg for seg in segments)
+            ):
+                # ⚑ A dest-keyed arm: the DEST is the mapping key, so the ref lives on
+                # the entry and the key that carries it is the ARM (the same key
+                # ``workset share add`` judges its source at).
+                for dest, entry in dict.items(leaf):
+                    src = _bind_source(entry)
+                    if src is None:
+                        continue
+                    err = downward_ref_error(key, src)
+                    if err is not None:
+                        found.setdefault(str(path), []).append(f"{key}[{dest}]: {err}")
+                continue
+            if any("." in seg for seg in segments):
+                continue  # a bind DESTINATION is data, never a key (see _path_key_leaves)
+            src = _bind_source(leaf)
+            if src is None:
+                continue
+            err = downward_ref_error(key, src)
+            if err is not None:
+                found.setdefault(str(path), []).append(f"{key}: {err}")
+    if not found:
+        return
+    where = "\n".join(
+        f"    - {path}: " + "\n      ".join(lines) for path, lines in found.items()
+    )
+    raise SettingsError(
+        f"the settings this command reads carry a DOWNWARD @-reference:\n"
+        f"{where}\n"
+        f"  kanibako will not resolve these: the same value would then be read the "
+        f"same way by every scope below the one it points into.\n"
+        f"  Fix: edit the file named above BY HAND — remove the '@'-reference, or point "
+        f"it at a key of the same or a containing scope."
+    )
 
 
 def internal_bind_refusals(

@@ -148,14 +148,17 @@ ERR_CONFIG_PATH_REF_SCOPE = (
                                                     # the key, the value, the offending ref
 # ⚑ The OTHER HALF of "no @-ref points DOWNWARD" (spec §0), for every key OUTSIDE the
 # system path tier; scope and why are stated once, on ``config.ref_points_downward``.
+# ⚑ IT DOES NOT NAME THE KEY: each door puts the key in its own position — the set door
+# in its ``Error: '<key>':`` lead, the resolve sweep under the FILE that carries it — so
+# the key and this sentence cannot say the same thing twice in one line.
 ERR_CONFIG_DOWNWARD_REF = (
-                        "%s is set to %r, which points at '@%s' — DOWNWARD, into the %s.* "
-                        "scope this key CONTAINS. A key may reference its own scope or one "
-                        "that CONTAINS it, never a scope it contains: one value would then "
-                        "be read the same way by every scope below it (spec §0: no @-ref "
-                        "points DOWNWARD). Reference a key of the containing scope instead, "
-                        "or set the value you mean.")
-                                                    # key, value, ref, the ref's scope
+                        "%r points at '@%s' — DOWNWARD, into the %s.* scope its key "
+                        "CONTAINS. A key may reference its own scope or one that CONTAINS "
+                        "it, never a scope it CONTAINS: the same value would then be read "
+                        "the same way by every scope below it (spec §0: no @-ref points "
+                        "DOWNWARD). Reference a key of the containing scope instead, or "
+                        "set the value you mean.")
+                                                    # value, ref, the ref's scope
 # ⚑ The §2a bad-ENTRY report, ONE per file the command reads, and the only thing ``get``
 # says about them.  ``config.chain_bad_entries`` separates the two arms below.
 WARN_CONFIG_BAD_ENTRIES = "%s stores entries that are not keys (spec §0):\n  %s"

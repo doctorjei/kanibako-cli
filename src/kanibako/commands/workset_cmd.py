@@ -953,6 +953,46 @@ def _load_share_doc(ws_config: Path) -> dict:
     return load_doc(ws_config)
 
 
+def _bind_source_ref_error(arm: str, source: str, *, where: "Path") -> "str | None":
+    """Refuse a host source whose ``@``-reference is DOWNWARD or is not a key, else ``None``.
+
+    ⚑ THIS DOOR IS NOT A SECOND CHECKER. Both judgments are the ones the ``set`` door
+    already makes, asked of the same two oracles: :func:`config.downward_ref_error` for
+    the direction (spec §0, "no ``@``-ref points DOWNWARD") and
+    :func:`settings_keyspace.key_validity` for whether the name is a key at all — the
+    oracle the set door judges a referent with. A spelling refused here is the spelling
+    ``set`` refuses, so the two cannot drift apart.
+
+    ⚑ THE ARM IS THE KEY. A dest-keyed arm's destination is the mapping KEY and the
+    source is its value, so the key that carries a downward ref is the arm — the same
+    key the resolve sweep judges a stored arm at.
+    ⚑ A DECLARED key this workset does not itself hold is NOT refused: a source may
+    reference a key of its own or a containing scope, and whether this file holds it is
+    the launch's business. Only a name that is no key at all, or a ref pointing into a
+    scope the arm CONTAINS, is refused.
+    """
+    from kanibako.settings.config import downward_ref_error
+    from kanibako.settings.settings_configset import scan_tokens
+    from kanibako.settings.settings_keyspace import key_validity
+
+    down = downward_ref_error(arm, source)
+    if down is not None:
+        return f"{arm} in {where}: {down}"
+    try:
+        refs, _vars = scan_tokens(source)
+    except ValueError as exc:
+        return f"{arm} in {where}: {exc}"
+    for name in refs:
+        reason = key_validity(name, valid_agents=())
+        if reason is not None:
+            return (
+                f"{arm} in {where}: the source {source!r} references '@{name}', which is "
+                f"not a config key — {reason}. Nothing was written; reference a key that "
+                f"is one, or give a path that resolves on its own."
+            )
+    return None
+
+
 def run_share_add(args: argparse.Namespace) -> int:
     """Add (or overwrite) a workset binding, keyed by its box DESTINATION (R-10)."""
     from kanibako.settings.agent_config import is_self_resolving
@@ -1014,6 +1054,10 @@ def run_share_add(args: argparse.Namespace) -> int:
     )
     if refusals:
         print("Error: " + "\n".join(refusals), file=sys.stderr)
+        return 1
+    src_err = _bind_source_ref_error(f"workset.bindings.{args.mode}", host_src, where=ws_config)
+    if src_err is not None:
+        print(f"Error: {src_err}", file=sys.stderr)
         return 1
     existed = guest_dest in subtree
     # ⚑ The 1-ELEMENT dest-keyed entry (R-6): the destination is the KEY and appears
