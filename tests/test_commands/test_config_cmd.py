@@ -1216,7 +1216,11 @@ class TestLoadProjectOverrides:
         assert load_project_overrides(p) == {"box_shell": ""}
 
     def test_a_stored_null_is_not_an_override(self, tmp_path):
-        """The reset sentinel resolves to the default, so it overrides nothing."""
+        """A stored null is a VALUE (spec §2h), and only non-``None`` values are reported.
+
+        ⚑ The key is PRESENT; what :func:`load_project_overrides` declines to report is the
+        null itself, so a present null and an absent key are not the same row.
+        """
         p = tmp_path / "box.yaml"
         p.write_text("box:\n  shell: null\n")
         assert load_project_overrides(p) == {}
