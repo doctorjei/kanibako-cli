@@ -434,7 +434,8 @@ def _print_category_block(
     # the containment and its separator guard.
     bindings = snapshot_leaf(snapshot, "meta.assembly.bindings")
     collapsed = dict(bindings) if isinstance(bindings, dict) else {}
-    # ⚑⚑ THE ARM KEY IS THE DESTINATION AS WRITTEN; THE ARBITRATED MAP IS KEYED BY THE
+    # ⚑⚑ THE ARM KEY IS THE DESTINATION AS WRITTEN (an ``@``-ref shows its referent's
+    # escaped residue instead); THE ARBITRATED MAP IS KEYED BY THE
     # RESOLVED ONE. The eager build defers ``~`` and ``$VAR`` in a destination, so an
     # arm holds ``$XDG_DATA_HOME/z`` while the map holds ``/data/z`` — two spellings of
     # one destination. Both sides are put in the map's spelling before pairing, or a
@@ -475,9 +476,8 @@ def _print_category_block(
         # printed in DECLARATION form with the reason beneath it, so a reader skimming
         # the block for mounts cannot take a loss for one.
         # ⚑ THE DESTINATION PRINTS RESOLVED — the guest path the mount lands on, the
-        # one the pairing decided on. The arm key in *shown* is the box-side residue,
-        # escapes still in it, and is neither what the user wrote nor where the mount
-        # goes.
+        # one the pairing decided on. The key in *shown* keeps the user's spelling,
+        # except an ``@``-ref, which shows its referent's escaped residue.
         if derivation.outcome == DERIVED_MOUNT:
             print(f"  {shown} = {entry.src} -> {dest}{opts}", file=out)
             continue
