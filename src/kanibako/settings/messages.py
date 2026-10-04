@@ -96,6 +96,27 @@ ERR_CONFIG_NULL_PATH_CURE = (
 ERR_CONFIG_NULL_PATH_SET_HEAD = (
                         "the launch refuses a null at these path keys, so this set is refused too:\n  %s\n")
 ERR_CONFIG_NULL_PATH = ERR_CONFIG_NULL_PATH_HEAD + ERR_CONFIG_NULL_PATH_CURE
+# ⚑ A BOX SCALAR at a ``null`` its own DECLARED DEFAULT gives no meaning to (spec §2b).  The
+# split and the shared BUILDER are the path doors' above; the membership is
+# ``config.refuses_null_box_scalar``.  The REASON is the launch's own clause: §2h keeps a
+# ``None`` for the CONSUMER, and a box scalar whose default is a value has no consumer a
+# null could mean anything to.  It is NOT the path-key reason — ``box.image`` is an image
+# reference, and "a null path key" would be a false thing to read.
+ERR_BOX_SCALAR_NULL_REASON = (
+                        "kanibako gives a null no meaning here: this key's default is a value, "
+                        "and a null is not a second spelling of it.")
+ERR_BOX_SCALAR_NULL_HEAD = (
+                        "%s sets these box scalar keys to null:\n  %s\n")
+                                                    # the file path, the offending keys
+#: The READ-TIME cue — the default, since the lines are already there.
+ERR_BOX_SCALAR_NULL_CURE = (
+                        ERR_BOX_SCALAR_NULL_REASON + " Delete those lines to use each key's " +
+                        "default, or set the value you mean.")
+#: The SET door's lead — the keys, and no file, because a ``set`` that refused wrote none.
+ERR_BOX_SCALAR_NULL_SET_HEAD = (
+                        "the launch refuses a null at these box scalar keys, so this set is "
+                        "refused too:\n  %s\n")
+                                                    # the offending keys
 # ⚑ The BOX STORE at a value the LAUNCH cannot use (spec §0, §2c) — the same
 # "one reason, one home" split, and the same carrier: ``config.refuses_box_store_value`` is
 # the membership and ``config.null_path_keys_error`` builds the text, so the ``--null`` and

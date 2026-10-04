@@ -21,6 +21,7 @@ from kanibako.settings.config import (
 )
 from kanibako.settings.config_interface import show_config
 from kanibako.settings.config_keys import ConfigLevel
+from kanibako.settings.messages import ERR_BOX_SCALAR_NULL_REASON
 from kanibako.settings.paths import load_std_paths
 from kanibako.settings.settings_launch import load_merged_config
 
@@ -211,3 +212,224 @@ class TestTheEffectiveViewPrintsTheSpecSpelling:
         assert "box_enable_vault = True" in out
         assert "box_share_images = False" in out
         assert "box_enable_vault = true" not in out
+
+
+class TestTheMembershipIsDerivedFromTheDeclaredDefault:
+    """``config.refuses_null_box_scalar`` — a box scalar is refused exactly when its own
+    declared default is a VALUE (spec §2b, §2h)."""
+
+    @pytest.mark.parametrize(
+        "dotted", ["box.image", "box.share_images", "box.enable_vault"],
+    )
+    def test_a_scalar_whose_default_is_a_value_refuses_a_null(self, dotted):
+        from kanibako.settings.config import refuses_null_box_scalar
+
+        assert refuses_null_box_scalar(dotted) is True
+
+    def test_box_shell_is_not_refused_because_its_default_is_none(self):
+        """🛑 THE NEIGHBOUR THAT MUST KEEP WORKING: ``box.shell``'s declared ``<None>`` is
+        a MEANING (auto-detect, spec §2b), not a gap — so the door stays silent and
+        ``--null box.shell`` is still a legal write."""
+        from kanibako.settings.config import refuses_null_box_scalar
+
+        assert refuses_null_box_scalar("box.shell") is False
+
+    def test_a_key_outside_the_overlay_is_not_a_member(self):
+        """The membership is the OVERLAY, not every key: a path key is the path door's."""
+        from kanibako.settings.config import refuses_null_box_scalar
+
+        assert refuses_null_box_scalar("box.bindings.ro") is False
+        assert refuses_null_box_scalar("workset.boxes") is False
+
+
+class TestTheLaunchRefusesAndTheSetDoorRefuses:
+    """One stored value, one answer: a box scalar the launch refuses a ``null`` at is
+    refused at the door that would write it, and the launch names the key and the file."""
+
+    def _box_yaml(self, tmp_path, dotted, spelling="null"):
+        leaf = dotted.split(".", 1)[1]
+        p = tmp_path / BOX_META_FILE
+        p.write_text(f"box:\n  {leaf}: {spelling}\n")
+        return p
+
+    @pytest.mark.parametrize(
+        "dotted", ["box.image", "box.share_images", "box.enable_vault"],
+    )
+    def test_the_launch_refuses_and_names_the_key_and_the_file(self, tmp_path, dotted):
+        """A refusal the user READS is code: it must name the key, the file and the cure —
+        and it must NOT substitute the default the way the read used to."""
+        from kanibako.settings.settings_resolve import SettingsError
+
+        p = self._box_yaml(tmp_path, dotted)
+        with pytest.raises(SettingsError) as excinfo:
+            load_merged_config(p)
+        message = str(excinfo.value)
+        assert dotted in message
+        assert str(p) in message
+        assert "default" in message
+
+    def test_a_null_box_shell_still_reaches_the_merge(self, tmp_path):
+        """🛑 THE CONTROL: the refusal must not have widened onto ``box.shell``, whose null
+        means auto-detect.  It is in the same overlay and the same file loop."""
+        p = self._box_yaml(tmp_path, "box.shell")
+        assert load_merged_config(p).box_shell is None
+
+    def test_a_file_silent_about_the_key_is_never_refused(self, tmp_path):
+        """§2h's distinction: an ABSENT key is a default, and a present ``None`` is a
+        value.  Only the second is refused, so an untouched box still launches."""
+        p = tmp_path / BOX_META_FILE
+        p.write_text("box:\n  image: x\n")
+        assert load_merged_config(p).box_image == "x"
+
+    def test_the_set_door_refuses_the_write_the_launch_refuses(self, tmp_path):
+        """``6bea7719``'s carrier, one membership: the ``set`` door answers in its OWN
+        words (it wrote no line to name) and shares the REASON sentence."""
+        from kanibako.settings.config_interface import set_config_value
+
+        box_yaml = tmp_path / BOX_META_FILE
+        box_yaml.write_text("box:\n  shell: null\n")
+        message = set_config_value(
+            "box.image", None, config_path=box_yaml,
+            command_scope=ConfigLevel.box,
+        )
+        assert message.startswith("Error: ")
+        assert "box.image" in message
+        assert ERR_BOX_SCALAR_NULL_REASON in message
+        assert "Nothing was written" in message
+        # 🛑 NOTHING WAS WRITTEN — the whole point of refusing at the door.
+        assert "box.image" not in box_yaml.read_text()
+
+    def test_the_set_door_still_writes_a_null_box_shell(self, tmp_path):
+        """🛑 THE CONTROL for the door too: ``--null box.shell`` is a legal write."""
+        from kanibako.settings.config_interface import set_config_value
+
+        box_yaml = tmp_path / BOX_META_FILE
+        message = set_config_value(
+            "box.shell", None, config_path=box_yaml,
+            command_scope=ConfigLevel.box,
+        )
+        assert not message.startswith("Error: ")
+        assert "shell" in box_yaml.read_text()
+
+    def test_a_concrete_value_is_never_refused(self, tmp_path):
+        """Only the ``None`` idiom is refused — a value the user chose still writes."""
+        from kanibako.settings.config_interface import set_config_value
+
+        box_yaml = tmp_path / BOX_META_FILE
+        message = set_config_value(
+            "box.image", "myimg:1", config_path=box_yaml,
+            command_scope=ConfigLevel.box,
+        )
+        assert not message.startswith("Error: ")
+        assert "myimg:1" in box_yaml.read_text()
+
+
+class TestAPresentNullIsNotAnAbsentKey:
+    """⚑ THE PAIR, WRITTEN AS A PAIR.  Spec §2h draws one line between a key a file HOLDS
+    as ``None`` and a key a file says nothing about, and for ``box.*`` the two answer
+    differently: the first is a value (kept, or refused where the declared default gives
+    it no meaning), the second is a default.  A test that showed only one half would pass
+    on code that got the other half wrong, so every box scalar gets all three."""
+
+    #: ``box.*`` dotted key → the flat field it lands on.
+    FIELDS = {
+        "box.image": "box_image",
+        "box.share_images": "box_share_images",
+        "box.enable_vault": "box_enable_vault",
+        "box.shell": "box_shell",
+    }
+    #: Each key's declared default (spec §2b) — the ABSENT key's answer.
+    DEFAULTS = {
+        "box.image": "ghcr.io/doctorjei/kanibako-oci:latest",
+        "box.share_images": False,
+        "box.enable_vault": True,
+        "box.shell": None,
+    }
+    #: A concrete value of each key's own type, as a file spells it and as it resolves.
+    REAL = {
+        "box.image": ("myimg:1", "myimg:1"),
+        "box.share_images": ("true", True),
+        "box.enable_vault": ("false", False),
+        "box.shell": ("/bin/zsh", "/bin/zsh"),
+    }
+
+    def _box_yaml(self, tmp_path, dotted, spelling):
+        p = tmp_path / BOX_META_FILE
+        p.write_text(f"box:\n  {dotted.split('.', 1)[1]}: {spelling}\n")
+        return p
+
+    @pytest.mark.parametrize("dotted", sorted(DEFAULTS))
+    def test_an_absent_key_still_gets_the_default(self, tmp_path, dotted):
+        """⚑ THE ABSENT HALF, per key: a file that never mentions it resolves to its
+        declared default — no refusal, and no ``None`` either.
+
+        The file names a DIFFERENT scalar, so the key under test is genuinely absent and
+        the assertion is about the default rather than about the file being unread.
+        """
+        other = next(k for k in self.DEFAULTS if k != dotted)
+        p = self._box_yaml(tmp_path, other, self.REAL[other][0])
+        assert getattr(load_merged_config(p), self.FIELDS[dotted]) == self.DEFAULTS[dotted]
+
+    @pytest.mark.parametrize("dotted", sorted(DEFAULTS))
+    def test_a_real_value_still_wins(self, tmp_path, dotted):
+        """⚑ THE REAL-VALUE HALF, per key: a value the user chose resolves to itself."""
+        spelling, expected = self.REAL[dotted]
+        p = self._box_yaml(tmp_path, dotted, spelling)
+        assert getattr(load_merged_config(p), self.FIELDS[dotted]) == expected
+
+    @pytest.mark.parametrize("dotted", sorted(DEFAULTS))
+    def test_a_present_null_is_never_read_as_the_default(self, tmp_path, dotted):
+        """⚑ AND THE POINT OF THE PAIR: no present ``None`` answers with the key's own
+        default.  Where §2b declares a ``<None>`` the consumer reads ``None``; where it
+        declares a value the launch refuses.  Neither arm substitutes the default."""
+        from kanibako.settings.settings_resolve import SettingsError
+
+        p = self._box_yaml(tmp_path, dotted, "null")
+        if self.DEFAULTS[dotted] is None:
+            assert getattr(load_merged_config(p), self.FIELDS[dotted]) is None
+        else:
+            with pytest.raises(SettingsError) as excinfo:
+                load_merged_config(p)
+            assert dotted in str(excinfo.value)
+
+
+class TestTheDisplaySurvivesAValueTheLaunchRefuses:
+    """``show --effective`` must ANSWER with what is stored, so a ``null`` it is about to
+    print is not a reason to raise."""
+
+    @pytest.mark.parametrize(
+        ("dotted", "field", "default_row"),
+        [
+            ("box.image", "box_image", "box_image = ghcr.io/doctorjei/kanibako-oci:latest"),
+            ("box.share_images", "box_share_images", "box_share_images = False"),
+            ("box.enable_vault", "box_enable_vault", "box_enable_vault = True"),
+        ],
+    )
+    def test_effective_prints_null_for_a_refused_scalar(
+        self, tmp_path, capsys, dotted, field, default_row,
+    ):
+        """Each refused key prints ``null`` — the stored value, in the one spelling.
+
+        ⚑ THE ROW, NOT THE OUTPUT: the other three scalars print their own defaults in
+        the same block, so the assertion is that THIS key's row is not its default row.
+        The row is keyed by the FLAT FIELD the display prints, not the dotted leaf.
+        """
+        from kanibako.settings.config_interface import show_config
+
+        global_cfg = tmp_path / "kanibako.cfg"
+        global_cfg.write_text("")
+        box_yaml = tmp_path / BOX_META_FILE
+        box_yaml.write_text(f"box:\n  {dotted.split('.', 1)[1]}: null\n")
+        rc = show_config(
+            command_scope=ConfigLevel.box,
+            global_config_path=global_cfg,
+            config_path=box_yaml,
+            effective=True,
+        )
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert f"  {field} = null" in out
+        # 🛑 NOT the declared default: that was the defect — a value the file never held.
+        assert default_row not in out
+        assert "= None" not in out
+        assert "<None>" not in out
