@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **An `@`-reference to a name that is not a key stops a launch and `box show --effective`, naming the
+  reference and the entry that holds it.** A bind destination `@meta.agent.home/x` used to mount at
+  `/x`, a source `@box.nope/sub` mounted `/sub`, and an env value `/e@v\$q` became `/e$q`, all without
+  a word. A reference to a declared key with no value still drops a whole-value entry and reads as
+  empty inside a longer value. An escaped `\@` is a literal `@` and is not checked. See *An undeclared
+  key in a settings file now stops the command, and the cure is a hand-edit* in [MIGRATION.md](MIGRATION.md).
+
 - **A value where a category's map goes is refused where the file is read, naming the key and
   the file.** `caches: 5`, `masks: x`, or `transform_settings: 5` in any settings file (the system,
   workset, box or agent file) now stops a launch with

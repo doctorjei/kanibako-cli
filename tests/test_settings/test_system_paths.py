@@ -1020,10 +1020,10 @@ class TestResolverSplitRouting:
         from kanibako.settings.keystore import KeyStore
         from kanibako.settings.settings_expand import expand
 
-        # A whole-value @config.* ref to a key absent from the foundation is a
-        # dangling ref → the holder key is DROPPED (§6b propagation).
+        # A whole-value @config.* ref to a declared key absent from the foundation
+        # → the holder key is DROPPED (§6b propagation).
         snap = KeyStore()
-        snap["x"] = "@config.missing"
+        snap["x"] = "@config.journal"
         ctx = self._ctx({"config.data": "/foundation/data"})
         out = expand(snap, ctx)
         assert "x" not in out
