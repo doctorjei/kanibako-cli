@@ -22,7 +22,11 @@ from typing import TYPE_CHECKING, TypeVar
 from kanibako.settings.kb_store import BindEntry
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_categories import DECLARATION_ROOT_REF
-from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
+from kanibako.settings.settings_resolve import (
+    SettingsError,
+    literal_expr,
+    normalize_bind_dest,
+)
 from kanibako.targets.assembly import resolve_binding_source
 
 if TYPE_CHECKING:
@@ -80,7 +84,7 @@ def agent_default_partial(
                 f"{'ro' if binding.ro else 'rw'} arm; bindings are act-once and a "
                 f"dest-keyed arm admits one entry per destination."
             )
-        arm[dest] = BindEntry(str(src), opts)
+        arm[dest] = BindEntry(literal_expr(str(src)), opts)
 
     bindings = KeyStore()
     if dict.__len__(ro_binds):

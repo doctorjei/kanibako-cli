@@ -237,6 +237,11 @@ def literal_expr(text: str) -> str:
     return "".join(f"\\{c}" if c in _EXPR_SIGNIFICANT else c for c in text)
 
 
+def literal_map(values: Mapping[str, str]) -> dict[str, str]:
+    """*values* with every value a :func:`literal_expr`: a table of resolved host paths."""
+    return {key: literal_expr(value) for key, value in values.items()}
+
+
 def is_verbatim_text(path: Sequence[str]) -> bool:
     """Whether the key at *path* holds TEXT, never an expression: ``agent.<node>.endpoint``.
 

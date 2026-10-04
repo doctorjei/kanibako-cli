@@ -292,6 +292,24 @@ def every_mode_cell(floors: Any) -> dict[str, Any]:
     return cells
 
 
+def literal_text(value: Any) -> Any:
+    """The text a floor's `literal_expr` value spells; a non-string passes through.
+
+    A floor enters a resolved host path as `settings_resolve.literal_expr`, so a
+    sentinel `@`-ref handed in comes back escaped; this reads it back to the path the
+    manifest formula names. A string that is NOT exactly a `literal_expr` raises, so a
+    producer that stops escaping its path reds the view instead of printing the cell.
+    """
+    from kanibako.settings.settings_resolve import literal_expr
+
+    if not isinstance(value, str):
+        return value
+    text = re.sub(r"\\(.)", r"\1", value, flags=re.DOTALL)
+    if literal_expr(text) != value:
+        raise ValueError(f"not a literal floor value: {value!r}")
+    return text
+
+
 #: The workset root a sentinel run hands the derivations, as the `@`-ref the
 #: manifest composes from. A derivation joins its output onto this exactly as it
 #: would onto a real path, so what it prints is the manifest's formula when the
