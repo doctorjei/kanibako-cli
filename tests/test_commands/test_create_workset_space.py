@@ -465,15 +465,24 @@ class TestNoRefusalStrandsAMember:
         assert _tree(tmp_home) == before
         assert list(load_workset(root, "wsa").projects) == []
 
-    def test_a_kept_workspace_survives_the_undo(self, wsa, tmp_home, monkeypatch):
-        """The undo removes only what this create made: a workspace the user had is kept."""
+    @pytest.mark.parametrize("kind", ["dir", "link"])
+    def test_a_kept_workspace_survives_the_undo(self, wsa, tmp_home, monkeypatch, kind):
+        """The undo removes only what this create made: a workspace the user had is
+        kept, a symlink there included (a create makes no discoverability link)."""
         from kanibako.commands.box._parser import run_create
         from kanibako.errors import KanibakoError
 
         root, _std = wsa
         mine = root / "workspaces" / "pvbox"
-        mine.mkdir(parents=True)
-        (mine / "notes.txt").write_text("keep")
+        mine.parent.mkdir(parents=True, exist_ok=True)
+        if kind == "dir":
+            mine.mkdir()
+            (mine / "notes.txt").write_text("keep")
+        else:
+            elsewhere = tmp_home / "elsewhere"
+            elsewhere.mkdir()
+            (elsewhere / "notes.txt").write_text("keep")
+            mine.symlink_to(elsewhere)
         monkeypatch.chdir(root)
         monkeypatch.setattr(
             "kanibako.settings.config_interface.set_config_value",
@@ -483,6 +492,30 @@ class TestNoRefusalStrandsAMember:
         with pytest.raises(KanibakoError):
             run_create(_args("pvbox", private=True))
         assert _tree(tmp_home) == before
+
+    def test_a_member_written_meanwhile_keeps_its_record(self, wsa, tmp_home, monkeypatch):
+        """The undo drops the registry file it made only while no box is in it: a
+        member another writer added inside the window keeps its record."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import KanibakoError
+        from kanibako.project.workset import add_project
+
+        root, std = wsa
+        monkeypatch.chdir(root)
+
+        def persist_then_fail(*_a, **_kw):
+            if not [p for p in load_workset(root, "wsa").projects if p.name == "intruder"]:
+                ws = load_workset(root, "wsa")
+                add_project(ws, "intruder", ws.workspaces_dir / "intruder", std)
+            return "Error: simulated persist failure"
+
+        monkeypatch.setattr(
+            "kanibako.settings.config_interface.set_config_value", persist_then_fail,
+        )
+        with pytest.raises(KanibakoError):
+            run_create(_args("pvbox", private=True))
+        assert [p.name for p in load_workset(root, "wsa").projects] == ["intruder"]
+        assert not (root / "boxes" / "pvbox").exists()
 
     def test_a_stale_box_dir_is_refused_and_left_alone(self, wsa, tmp_home, capsys, monkeypatch):
         from kanibako.commands.box._parser import run_create
