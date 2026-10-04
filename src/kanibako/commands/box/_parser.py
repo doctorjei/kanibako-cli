@@ -954,11 +954,10 @@ def run_create(args: argparse.Namespace) -> int:
     )
     _named_spec = None
     if _member is not None:
-        _named_spec, _named_already = _add_workset_member(
-            std, config, _space, _member, args,
-        )
-        if _named_spec is None:
+        _added = _add_workset_member(std, config, _space, _member, args)
+        if _added is None:
             return 1
+        _named_spec, _named_already = _added
 
     # ⚑ ``None`` = the PRIMARY path space; the default workset is unregistered.
     _ws_name = (None if _named_spec is not None
