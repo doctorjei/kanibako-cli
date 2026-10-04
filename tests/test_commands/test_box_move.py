@@ -274,3 +274,73 @@ class TestTargetWorksetResolutionIsCaseBlind:
 
         with pytest.raises(WorksetError, match="not found"):
             _resolve_target_workset("nosuchworkset", std)
+
+
+class TestBoxMoveOfTheWorksetsOwnWorkspace:
+    """``run_move`` on a member whose leaf the workset names, wherever that leaf is.
+
+    A leaf under a repointed ``workset.workspaces`` dir, or behind a symlink, is the
+    workset's OWN workspace.  Read as external it was refused with a false
+    "external-connected" message, because the caller's copy-nothing arm is keyed on
+    that same test.
+    """
+
+    def _repointed_member(self, std, tmp_home, name="ws1", member="alpha"):
+        from kanibako.project.workset import (
+            add_project,
+            create_workset,
+            load_workset,
+        )
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        ws = create_workset(name, tmp_home / f"{name}_root", std)
+        data = load_doc(ws.root / "workset.yaml")
+        data.setdefault("workset", {})["workspaces"] = str(tmp_home / f"{name}-data")
+        dump_doc(ws.root / "workset.yaml", data)
+        ws = load_workset(ws.root, ws.name)
+        leaf = ws.workspaces_dir / member
+        leaf.mkdir(parents=True)
+        (leaf / "f.txt").write_text("mine")
+        add_project(ws, member, leaf, std)
+        return ws, leaf
+
+    def test_a_repointed_member_moves_to_an_external_path(self, config_file,
+                                                         tmp_home, credentials_dir):
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws, leaf = self._repointed_member(std, tmp_home)
+        dest = tmp_home / "ext" / "alpha"
+
+        rc = run_move(_move_args(leaf, dest))
+
+        assert rc == 0
+        assert (dest / "f.txt").read_text() == "mine"
+        # the success-path retire removed the member's LEAF and the external
+        # member's discoverability link took the spot — not the repointed parent
+        assert leaf.is_symlink() and leaf.resolve() == dest.resolve()
+        assert leaf.parent.is_dir()
+
+    def test_a_symlinked_member_moves_to_an_external_path(self, config_file,
+                                                         tmp_home, credentials_dir):
+        import shutil
+
+        from kanibako.project.workset import add_project, create_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("ws1", tmp_home / "ws1_root", std)
+        leaf = ws.workspaces_dir / "alpha"
+        leaf.mkdir(parents=True)
+        (leaf / "f.txt").write_text("mine")
+        add_project(ws, "alpha", leaf, std)
+        real = tmp_home / "real"
+        shutil.move(str(leaf), str(real))
+        leaf.symlink_to(real)
+        dest = tmp_home / "ext" / "alpha"
+
+        rc = run_move(_move_args(leaf, dest))
+
+        assert rc == 0
+        assert (dest / "f.txt").read_text() == "mine"
+        # the user's own directory is never moved and never deleted through the link
+        assert (real / "f.txt").read_text() == "mine"

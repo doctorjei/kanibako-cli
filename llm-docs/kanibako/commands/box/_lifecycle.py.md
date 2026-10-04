@@ -61,9 +61,10 @@ exemption is a real invariant rather than a convenience:
 
 * `owner` is the canonical ownership token: `"primary"`, `"standalone"`, or `"workset:<name>"`.
 * `ws` is the loaded `Workset` when the owner is a workset, else `None`.
-* `is_external` is True when the live workspace lives OUTSIDE the owning workset's root — a
-  connected-external project, i.e. the user's own directory. **Every destructive branch keys on
-  this flag.**
+* `is_external` is True when the live workspace is not one of the owning workset's OWN workspaces
+  (`project.workset.is_in_tree_workspace` — the root OR the resolved `workset.workspaces` dir, each
+  tested with the leaf followed and with only its parent resolved) — i.e. a connected-external
+  project, the user's own directory. **Every destructive branch keys on this flag.**
 * ⚑ **Two vault fields, and they are not interchangeable.** `enable_vault` is the RESOLVED
   `box.enable_vault` — the whole cascade, `base < system < workset < box`, via
   `config.resolve_box_enable_vault` (it was a two-file read until 2026-08-29, which is why a
@@ -481,8 +482,8 @@ two-file READER here (which this did until 2026-08-29) was the same defect one l
 Resolve a workset project (internal or external-connected) to a state.
 
 Falls back to `box_resolve.find_connected_external_box` when the path is not inside any workset
-tree. EXTERNAL is then decided by the same test the rest of the module uses: the live workspace
-lies outside the workset root.
+tree. EXTERNAL is then decided by the same test the rest of the module uses: the live workspace is
+not one of the workset's own (`is_in_tree_workspace`).
 
 ```def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_external: bool = False) -> ProjectState```
 Adapter from `ProjectPaths` to `ProjectState`.
@@ -549,8 +550,10 @@ The guards, in order, and what each protects:
   project being moved") — STEP 2 would copy into a child of the tree the retire deletes (shape X1).
   `_retire_old_workspace` also skips that shape, as a second guard.
 * **membership guard** — refuse landing the project inside a workset it is not (becoming) a member
-  of. `relocating` is exactly `dest is not None`; the code tests `dest` directly so mypy narrows
-  away the `None` for the `.resolve()`.
+  of. ⚑ The test is `is_in_tree_workspace`, NOT `landing.resolve()` against the root alone, so a
+  landing under a repointed `workset.workspaces` dir and a **symlinked** in-tree leaf are refused
+  like a plain one. `relocating` is exactly `dest is not None`; the code tests `dest` directly so
+  mypy narrows away the `None` for the `.resolve()`.
 * **null `workset.workspaces`** (Q96) — a named target whose landing is in-tree (`BARE_INTO_WS`,
   or a landing under the target root) refuses via `refuse_null_workspaces`, before STEP 2 moves a
   tree or a ws→ws source releases; an in-place convert to standalone refuses the same way when the
