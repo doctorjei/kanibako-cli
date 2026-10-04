@@ -26,6 +26,7 @@ import pytest
 
 from kanibako.errors import PackagingError
 from kanibako.settings.config_keys import ConfigLevel
+from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_categories import narrow_table_winners
 from kanibako.settings.settings_resolve import (
     ResolveCtx,
@@ -34,6 +35,7 @@ from tests.support.filenames import CONFIG_FILENAME
 from tests.support.narrow_resolve import table_bind_dests
 
 HOST_HOME = "/home/u"
+GUEST_HOME = "/home/agent"
 
 
 def make_ctx(
@@ -2415,3 +2417,106 @@ class TestTheEffectiveDISPLAYSEAMCarriesTheDeclaringKeysEndToEnd:
             "no mount — the mask declared by 'box.masks[/opt/arb]' at /opt/arb "
             "covers this destination" in text
         ), text
+
+
+# ---------------------------------------------------------------------------
+# §2a — a nulled vault key OMITS its bind, and the launch NAMES the key.
+# ---------------------------------------------------------------------------
+
+
+class _NullArmProj:
+    """ProjectPaths stand-in whose vault arms are whatever the case sets."""
+
+    def __init__(self, tmp_path, **arms):
+        self.mode = BoxMode.primary
+        self.name = "b1"
+        self.group = None
+        self.project_path = tmp_path / "code" / "x"
+        self.metadata_path = tmp_path / "boxes" / "b1"
+        self.shell_path = tmp_path / "boxes" / "b1" / "home"
+        self.vault_ro_path = arms.get("vault_ro_path", tmp_path / "vault" / "ro")
+        self.vault_rw_path = arms.get("vault_rw_path", tmp_path / "vault" / "rw")
+
+
+def _launch_over_nulled_key(tmp_path, caplog, workset_yaml, table):
+    """Resolve a real launch over a workset file that nulls a key; report the warnings.
+
+    ⚑ The floor comes from the SHIPPED producer, so the entry under test is the one a
+    launch really emits — a hand-written floor would not carry it at all.
+    """
+    from kanibako.settings.settings_launch import (
+        build_launch_snapshot,
+        reset_none_warnings,
+        snapshot_category_entries,
+    )
+
+    reset_none_warnings()  # one warning per process, not per resolve
+    ws_path = tmp_path / "workset.yaml"
+    ws_path.write_text(workset_yaml)
+    caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+    ctx = make_ctx(
+        workset_name=None,
+        xdg={"XDG_DATA_HOME": "/data", "XDG_STATE_HOME": "/state"},
+        config={"config.primary_workset": str(tmp_path)},
+    )
+    floor: dict = {}
+    _merge_floor(floor, table)
+    snap = build_launch_snapshot(
+        agent_name="claude", ctx=ctx, system_path=None, agent_path=None,
+        workset_path=ws_path, box_path=None, default_categories=floor,
+    )
+    mounted = {
+        e.box_dest for e in snapshot_category_entries(
+            snap, active_agent="claude", box_ctx=ctx,
+        )
+        if e.category.startswith("bindings")
+    }
+    return mounted, [
+        r.getMessage() for r in caplog.records
+        if r.name == "kanibako.settings.settings_launch"
+    ]
+
+
+class TestNulledVaultArmOmitsItsBindAndWarns:
+    """A nulled vault key omits its bind — and the launch NAMES the key that did it.
+
+    ⚑ The bind is omitted by the COLLAPSE, off the ``@workset.<key>`` ref its floor
+    entry names; the FLOOR ENTRY ITSELF must still be emitted or the warning that
+    reports the omission has nothing to report.
+    """
+
+    _RO = f"{GUEST_HOME}/vault/ro"
+    _RW = f"{GUEST_HOME}/vault/rw"
+
+    def _core(self, tmp_path, **arms):
+        from kanibako.settings import core_defaults
+
+        return core_defaults.core_default_categories(
+            None, _NullArmProj(tmp_path, **arms),
+            enable_vault=True, mode="primary", guarantee_create=False,
+        )
+
+    def test_a_null_vault_ro_omits_the_ro_bind_and_warns(self, tmp_path, caplog):
+        mounted, warnings = _launch_over_nulled_key(
+            tmp_path, caplog, "workset:\n  vault_ro: null\n",
+            self._core(tmp_path, vault_ro_path=None),
+        )
+        assert self._RO not in mounted
+        assert self._RW in mounted  # the other arm is untouched
+        assert [w for w in warnings if "workset.vault_ro" in w and self._RO in w], warnings
+
+    def test_a_null_vault_rw_omits_the_rw_bind_and_warns(self, tmp_path, caplog):
+        mounted, warnings = _launch_over_nulled_key(
+            tmp_path, caplog, "workset:\n  vault_rw: null\n",
+            self._core(tmp_path, vault_rw_path=None),
+        )
+        assert self._RW not in mounted
+        assert self._RO in mounted
+        assert [w for w in warnings if "workset.vault_rw" in w and self._RW in w], warnings
+
+    def test_no_nulled_arm_warns(self, tmp_path, caplog):
+        """The control: the same launch over an unrepointed workset is silent."""
+        _, warnings = _launch_over_nulled_key(
+            tmp_path, caplog, "workset:\n  logs: /l\n", self._core(tmp_path),
+        )
+        assert warnings == [], warnings

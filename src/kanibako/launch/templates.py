@@ -266,8 +266,9 @@ class WorksetStampScope:
     """
 
     workset_path: Path
-    canon_root: Path
-    template_root: Path
+    #: ⚑ ``None`` when the workset nulls the key — that LAYER IS SKIPPED (spec §2a).
+    canon_root: Path | None
+    template_root: Path | None
 
     #: The declared scope row this is a respelling OF.  A class attribute, not a field:
     #: choosing the row is not something a caller gets to do.
@@ -652,9 +653,10 @@ def _assert_stamp_leaf_in_root(
 
     if _is_contained(resolved, workset_path):
         return
-    # ⚑ A non-string repoint (unset, or a ``<None>`` these keys still read as unset) reaches
-    # here when the DEFAULT leaf is itself a symlink out of the root, so the message has to
-    # be able to say that instead of printing the sentinel.
+    # ⚑ A non-string repoint reaches here when the DEFAULT leaf is itself a symlink out
+    # of the root, so the message has to be able to say that instead of printing the
+    # sentinel.  ⚑ A null ``workset.<leaf>`` never names a layer to check — see
+    # :func:`_workset_stamp_dirs`.
     repoint = _workset_path_repoint(doc, leaf)
     origin = (
         f"is set to {repoint!r} in {workset_path / WORKSET_META_FILE}"
@@ -672,7 +674,7 @@ def _assert_stamp_leaf_in_root(
 
 def _workset_stamp_dirs(
     workset_path: Path, *, canon_only: bool,
-) -> tuple[Path, Path]:
+) -> tuple[Path | None, Path | None]:
     """*workset_path*'s RESOLVED ``(workset.canon, workset.template)`` dirs.
 
     ⚑⚑ THE STAMP FOLLOWS THE KEYS, NOT THE LITERALS.  Both are declared repointable
@@ -685,6 +687,10 @@ def _workset_stamp_dirs(
     ``workset.yaml`` — which is EVERY root ``workset create`` makes, since it refuses a
     root that already exists and writes no settings file — yields the literal defaults,
     so the unrepointed stamp lands exactly where it always did.
+
+    ⚑ A key the root NULLS answers ``None`` and its LAYER IS SKIPPED (spec §2a): no
+    canon chapter is created, no box-template skeleton is made, and neither root is
+    composed with.  ``template`` is ``<None>`` in STANDALONE by the same rule (§2c).
 
     ⚑⚑ IT IS ALSO THE GATE: a leaf that escapes the root is refused HERE, by
     :func:`_assert_stamp_leaf_in_root`, before any caller holds a path to write to.  The
@@ -705,14 +711,16 @@ def _workset_stamp_dirs(
     doc = load_workset_settings_doc(workset_path)
     canon_root = resolve_workset_canon(workset_path, doc)
     template_root = resolve_workset_template(workset_path, doc)
-    _assert_stamp_leaf_in_root(workset_path, doc, canon_root, _CANON_LEAF)
-    if not canon_only:
+    if canon_root is not None:
+        _assert_stamp_leaf_in_root(workset_path, doc, canon_root, _CANON_LEAF)
+    if not canon_only and template_root is not None:
         _assert_stamp_leaf_in_root(workset_path, doc, template_root, _TEMPLATE_LEAF)
     return canon_root, template_root
 
 
 def _workset_scope_allowed(workset_path: Path,
-                           canon_root: Path, template_root: Path) -> tuple[str, ...]:
+                           canon_root: Path | None,
+                           template_root: Path | None) -> tuple[str, ...]:
     """The workset whitelist RESPELLED against this root's resolved leaves.
 
     ⚑ REACHED ONLY THROUGH :class:`WorksetStampScope`, which is what makes the property
@@ -745,8 +753,8 @@ def _workset_scope_allowed(workset_path: Path,
     """
     default_template, default_chapter = SCOPE_WHITELISTS["workset"]
 
-    def store_rel(root: Path) -> str | None:
-        if not _is_contained(root, workset_path):
+    def store_rel(root: Path | None) -> str | None:
+        if root is None or not _is_contained(root, workset_path):
             return None
         try:
             return root.relative_to(workset_path).as_posix()
@@ -761,8 +769,13 @@ def _workset_scope_allowed(workset_path: Path,
 
 
 def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool,
-                        canon_root: Path) -> tuple[Path, Path]:
+                        canon_root: Path | None) -> tuple[Path, Path] | None:
     """The (source, destination) pair of the workset stamp's copy — ONE definition.
+
+    ``None`` when the root NULLS ``workset.canon``: the canon layer is SKIPPED, so
+    nothing is copied and nothing is refused.  ⚑ THE MOLD'S ONLY TIER IS ITS CANON ONE
+    (:data:`_MOLD_CANON_ROOT`) — the ``template/`` skeleton is ``mkdir``\\ ed, never
+    copied — so a skipped canon layer skips the copy whole, on either half.
 
     ⚑ The PRE-FLIGHT and the STAMP must narrow identically or the check would clear a
     copy it never looked at; both read this, neither respells it.
@@ -777,6 +790,8 @@ def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool
     per-workset repoint moves where content lands, never where it is read from.
     """
     mold = std.template / PACKAGED_WORKSET_TEMPLATE
+    if canon_root is None:
+        return None
     if canon_only:
         return mold / _MOLD_CANON_ROOT, canon_root
     return mold, workset_path
@@ -799,7 +814,10 @@ def check_workset_template(std: StandardPaths, workset_path: Path, *,
     canon_root, template_root = _workset_stamp_dirs(
         workset_path, canon_only=canon_only,
     )
-    src, dest = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
+    stamp = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
+    if stamp is None:
+        return
+    src, dest = stamp
     copy_tree(src, dest, dest_root=workset_path, check_only=True,
               scope=WorksetStampScope(workset_path, canon_root, template_root))
 
@@ -855,17 +873,20 @@ def install_workset_template(std: StandardPaths, workset_path: Path, *,
     canon_root, template_root = _workset_stamp_dirs(
         workset_path, canon_only=canon_only,
     )
-    src, dest = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
-    copy_tree(src, dest, dest_root=workset_path,
-              scope=WorksetStampScope(workset_path, canon_root, template_root))
-    if not canon_only:
+    stamp = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
+    if stamp is not None:
+        src, dest = stamp
+        copy_tree(src, dest, dest_root=workset_path,
+                  scope=WorksetStampScope(workset_path, canon_root, template_root))
+    if not canon_only and template_root is not None:
         for rel in _BOX_TEMPLATE_SKELETON:
             target = template_root / rel
             _assert_contained(target, workset_path, what="workset template skeleton dir")
             target.mkdir(parents=True, exist_ok=True)
-    chapter = canon_root / _CANON_CHAPTER_LEAF
-    _assert_contained(chapter, workset_path, what="workset canon chapter dir")
-    chapter.mkdir(parents=True, exist_ok=True)
+    if canon_root is not None:
+        chapter = canon_root / _CANON_CHAPTER_LEAF
+        _assert_contained(chapter, workset_path, what="workset canon chapter dir")
+        chapter.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------

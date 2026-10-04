@@ -242,6 +242,141 @@ class TestWorksetChannelPaths:
         assert channels.has_workset_channels(standalone_proj) is False
 
 
+class TestNullChannelroot:
+    """``workset.channelroot: null`` answers ``None`` — and the FLOOR ROWS STAY.
+
+    ⚑ The three ``~/channels/workset/*`` binds are STANDARD, so their floor entries
+    must be emitted whatever the root resolves to: the entry is what the §2a warning
+    and ``box show --effective`` read, and the bind itself is omitted by the collapse
+    off the ``@workset.channels.*`` ref.  Dropping the row would report a standard
+    bind as never having existed.
+    """
+
+    _WS_DESTS = (
+        "/home/agent/channels/workset/common",
+        "/home/agent/channels/workset/chat",
+        "/home/agent/channels/workset/share",
+    )
+
+    @staticmethod
+    def _null_channelroot(root):
+        from kanibako.settings.config_io import dump_doc
+
+        settings = root / "workset.yaml"
+        data = {}
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        data["workset"] = {"channelroot": None}
+        dump_doc(settings, data)
+
+    def test_a_null_channelroot_answers_no_workset_channels(self, primary_proj, std):
+        self._null_channelroot(std.primary_workset)
+        assert channels.workset_channel_paths(primary_proj, std) is None
+
+    def test_the_three_workset_rows_stay_in_the_floor(self, primary_proj, std):
+        from kanibako.settings import core_defaults
+
+        self._null_channelroot(std.primary_workset)
+        table = core_defaults.channel_default_categories(std, primary_proj)
+        assert all(d in _ws_dests(table) for d in self._WS_DESTS), _ws_dests(table)
+        # …and every one of them names the nulled key, so the collapse can omit it.
+        for dest, value in _ws_dests(table).items():
+            if dest in self._WS_DESTS:
+                assert value[0].startswith("@workset.channels."), (dest, value)
+
+    def test_a_standalone_box_still_omits_the_three_rows(self, standalone_proj, std):
+        from kanibako.settings import core_defaults
+
+        table = core_defaults.channel_default_categories(std, standalone_proj)
+        assert not [d for d in _ws_dests(table) if d in self._WS_DESTS]
+
+    def test_the_launch_omits_the_three_binds_and_names_the_key_and_the_file(
+        self, primary_proj, std, caplog,
+    ):
+        """⚑ §2a ON THE REAL LAUNCH PATH: nulling ``workset.channelroot`` leaves each of
+        the three rows naming a ``<None>`` source, so each is omitted — and ONE warning
+        names the key that did it and the file it was written in.
+        """
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.settings_launch import (
+            reset_none_warnings,
+            snapshot_category_entries,
+        )
+        from kanibako.targets.shell import ShellTarget
+
+        ws_yaml = std.primary_workset / "workset.yaml"
+        self._null_channelroot(std.primary_workset)
+        reset_none_warnings()  # one warning per process, not per resolve
+        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=primary_proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=ShellTarget(), agent_cfg=None,
+            cli_level=None,
+        )
+        mounted = {
+            entry.box_dest for entry in snapshot_category_entries(
+                snapshot, active_agent="claude", box_ctx=None,
+            )
+            if entry.category.startswith("bindings")
+        }
+        assert not [d for d in self._WS_DESTS if d in mounted], sorted(mounted)
+        warned = [
+            record.getMessage() for record in caplog.records
+            if record.name == "kanibako.settings.settings_launch"
+            and "workset.channelroot" in record.getMessage()
+        ]
+        assert len(warned) == 1, warned
+        assert str(ws_yaml) in warned[0]
+        # Every omitted bind is named, so one warning answers for all three.
+        for dest in self._WS_DESTS:
+            assert dest in warned[0], (dest, warned[0])
+
+    def test_a_null_root_with_the_three_entries_nulled_is_silent(
+        self, primary_proj, std, caplog,
+    ):
+        """⚑ §2a, THE OTHER HALF: a bind is omitted by setting its entry AND its source
+        to ``<None>`` (spec §2a, STANDARD binds), so a null root whose three entries are
+        nulled with it says nothing at all.  A root is not a lone-null bind: with no bind
+        lone-null there is nothing for the root's message to be about, and it has no
+        list of binds to name."""
+        from kanibako.commands.start import _resolve_launch_snapshot
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.settings_launch import (
+            reset_none_warnings,
+            snapshot_category_entries,
+        )
+        from kanibako.targets.shell import ShellTarget
+
+        ws_yaml = std.primary_workset / "workset.yaml"
+        ws_yaml.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(ws_yaml, {
+            "workset": {"channelroot": None},
+            "box": {"bindings": {"rw": {dest: None for dest in self._WS_DESTS}}},
+        })
+        reset_none_warnings()  # one warning per process, not per resolve
+        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+        snapshot, _deliveries = _resolve_launch_snapshot(
+            std=std, proj=primary_proj, agent_name="claude",
+            system_settings_path=None, agent_cfg_path=None,
+            desc=None, install=None, target=ShellTarget(), agent_cfg=None,
+            cli_level=None,
+        )
+        mounted = {
+            entry.box_dest for entry in snapshot_category_entries(
+                snapshot, active_agent="claude", box_ctx=None,
+            )
+            if entry.category.startswith("bindings")
+        }
+        assert not [d for d in self._WS_DESTS if d in mounted], sorted(mounted)
+        assert [record.getMessage() for record in caplog.records
+                if record.name == "kanibako.settings.settings_launch"] == []
+
+
+def _ws_dests(table):
+    """Every destination in a channel floor table."""
+    return {dest: value for arm in table.values() for dest, value in arm.items()}
+
+
 # ---------------------------------------------------------------------------
 # box_channel_addresses — meta.box.{inbox,share_global,share_workset}.
 # ---------------------------------------------------------------------------

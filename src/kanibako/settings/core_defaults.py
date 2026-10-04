@@ -281,6 +281,10 @@ def add_bind(
     arm[dest] = (host_src,) if options is None else (host_src, str(options))
 
 
+#: The ``channels:`` rows a standalone box has no host source for.
+WORKSET_CHANNEL_SOURCES = ("workset_common", "workset_chat", "workset_share")
+
+
 def channel_default_categories(
     std: StandardPaths, proj: ProjectPaths
 ) -> BindArmTable:
@@ -303,6 +307,14 @@ def channel_default_categories(
         sources["workset_common"] = str(wch.common)
         sources["workset_chat"] = str(wch.chat)
         sources["workset_share"] = str(wch.share)
+    elif _ch.has_workset_channels(proj):
+        # ⚑ A NULL ``workset.channelroot`` KEEPS THE THREE ROWS: each emits its own
+        # ``@workset.channels.*`` ref, which resolves to null — the floor SUPPLIES that
+        # null (``workset_anchor_floor``) — so the collapse omits the bind and §2a warns
+        # (MIGRATION "…only its entry or only its source is `null`").
+        for row in _load_doc().get("channels", []):
+            if row["source"] in WORKSET_CHANNEL_SOURCES:
+                sources[row["source"]] = str(row["meta_ref"])
 
     binds: BindArmTable = {}
     for entry in _load_doc().get("channels", []):
@@ -334,10 +346,11 @@ def core_default_categories(
     # shipped entry supplies ``meta_ref``/``mode_meta_ref`` and never reads it.
     sources: dict[str, str | None] = {
         "project_path": None if proj.project_path is None else str(proj.project_path),
-        "vault_ro_path": str(proj.vault_ro_path),
-        "vault_rw_path": str(proj.vault_rw_path),
+        # ⚡ A NULL ARM IS LEFT UNPROBED, as ``project_path`` above.
+        "vault_ro_path": None if proj.vault_ro_path is None else str(proj.vault_ro_path),
+        "vault_rw_path": None if proj.vault_rw_path is None else str(proj.vault_rw_path),
     }
-    vault_dir = {
+    vault_dir: dict[str, Path | None] = {
         "vault_ro_path": proj.vault_ro_path,
         "vault_rw_path": proj.vault_rw_path,
     }
@@ -348,12 +361,15 @@ def core_default_categories(
         if entry.get("scope") == "vault":
             if not enable_vault:
                 continue
-            src_path = vault_dir.get(entry["source"])
-            if src_path is None:
+            src_name = entry["source"]
+            if src_name not in vault_dir:
                 continue  # unknown source name (defensive)
+            # ⚡ A NULL ARM STILL EMITS ITS ENTRY — its ``@workset.vault_*`` source
+            # resolves to null, so the collapse omits the bind and §2a warns.
+            src_path = vault_dir[src_name]
             # ⚑ *guarantee_create* False suppresses ONLY this mkdir — the bind is still emitted;
             # a DISPLAY verb (``box show --effective``) must not write to disk.
-            if guarantee_create:
+            if guarantee_create and src_path is not None:
                 src_path.mkdir(parents=True, exist_ok=True)
         category = entry["category"]
         # ⚑ TWO @-ref shapes: a single ``meta_ref`` (mode-independent — workspace) or a

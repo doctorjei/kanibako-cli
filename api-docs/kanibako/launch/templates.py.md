@@ -52,9 +52,9 @@ def _packaged_base_template() -> Path | None
 def _packaged_shared_bundle() -> Path | None
 def _packaged_agent_store(agent_name: str) -> Path | None
 def _assert_stamp_leaf_in_root(workset_path: Path, doc: Mapping[str, Any] | None, resolved: Path, leaf: str) -> None
-def _workset_stamp_dirs(workset_path: Path, *, canon_only: bool) -> tuple[Path, Path]
-def _workset_scope_allowed(workset_path: Path, canon_root: Path, template_root: Path) -> tuple[str, ...]
-def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool, canon_root: Path) -> tuple[Path, Path]
+def _workset_stamp_dirs(workset_path: Path, *, canon_only: bool) -> tuple[Path | None, Path | None]
+def _workset_scope_allowed(workset_path: Path, canon_root: Path | None, template_root: Path | None) -> tuple[str, ...]
+def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool, canon_root: Path | None) -> tuple[Path, Path] | None
 def _is_shipped_content(entry: Path) -> bool
 def _packaged_manifest_entries(agent_names: list[str]) -> list[tuple[str, bytes]]
 def _normalize_markdown(text: str) -> str
@@ -68,8 +68,8 @@ def _same_doc(a: object, b: object) -> bool
 @dataclass(frozen=True)
 class WorksetStampScope:
     workset_path: Path
-    canon_root: Path
-    template_root: Path
+    canon_root: Path | None
+    template_root: Path | None
     name: ClassVar[str] = 'workset'
 
     def allowed(self) -> tuple[str, ...]
