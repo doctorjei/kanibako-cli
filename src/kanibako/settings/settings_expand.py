@@ -52,6 +52,7 @@ from kanibako.settings.settings_resolve import (
     ResolveCtx,
     SettingsError,
     expand_expr,
+    is_verbatim_text,
     match_ref,
     match_var,
     resolve_var,
@@ -382,6 +383,8 @@ class _Expander:
                 self.null_sources[path] = tuple(null_refs)
             return entry
         if isinstance(value, str):
+            if is_verbatim_text(path):
+                return value
             return self._expand_str(value, space="host", chain=chain)
         # No token to expand. (A present-None leaf is a terminal, not _ABSENT.)
         return value
@@ -589,6 +592,8 @@ class _Expander:
             elif isinstance(raw, BindEntry):
                 # The entry alone: its destination is the KEY, unreachable by value ref.
                 resolved = self._expand_bind_entry(raw, chain=chain)
+            elif isinstance(raw, str) and is_verbatim_text(dotted.split(".")):
+                resolved = raw
             elif isinstance(raw, str):
                 resolved = self._expand_str(raw, space="host", chain=chain)
             else:
