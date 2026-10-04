@@ -28,6 +28,7 @@ from kanibako.settings.agent_file import (
 from kanibako.settings.settings_assemble import ReadPurpose, agent_record
 from kanibako.settings.config_io import dump_doc
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+from kanibako.settings.settings_keyspace import BIND_LEAF_CATEGORIES
 from kanibako.settings.settings_resolve import SettingsError
 
 
@@ -937,7 +938,17 @@ class TestLevelTable:
         # ⚑ PARAMETRIZED OFF THE CONSTANT, so widening the tuple widens the pin and a
         # narrowing shows up as a missing case rather than as silence. ``bindings`` rides
         # as ONE token — its ``{ro, rw}`` table is re-rooted whole.
-        table = {"ro": {"/box/x": ["/h/x"]}} if category == "bindings" else {"X": "y"}
+        # ⚑⚑ THE BIND CATEGORIES ARE PICKED BY :data:`BIND_LEAF_CATEGORIES`, never by a
+        # second list: this read judges a dest-keyed entry's SHAPE (spec §2a makes it a
+        # list), so a fixture that put a bare scalar under a bind dest would be testing a
+        # refusal here instead of the routing this case is for. ``env`` / ``secret_path``
+        # / ``masks`` take a scalar per name and keep it.
+        if category == "bindings":
+            table = {"ro": {"/box/x": ["/h/x"]}}
+        elif category in BIND_LEAF_CATEGORIES:
+            table = {"/box/x": ["/h/x"]}
+        else:
+            table = {"X": "y"}
         raw = {"self": {category: table}}
         level = level_table(raw, sub_key="claude", node="claude")
         assert level.table == {category: table}

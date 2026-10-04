@@ -472,19 +472,24 @@ def refuse_scalar_at_table_key(
 
 def check_bind_map(
     raw: Mapping[str, Any], *, category: str, where: str | None = None,
+    declared: bool = True,
 ) -> None:
     """RAISE on every malformed or doubly-spelled entry of ONE dest-keyed bind map.
 
-    The per-entry checks (the retired sub-table shape, the entry arity, the unrooted
-    source) and the per-map one (two spellings of one destination) together. *category*
-    names the key in every refusal; *where* names the file when the reader has it. A
-    ``None`` entry is a legal UNSET, so only its spelling is judged.
+    The per-entry checks (the retired sub-table shape, a value that is not a list, the
+    entry arity, the unrooted source) and the per-map one (two spellings of one
+    destination) together. *category* names the key in every refusal; *where* names the
+    file when the reader has it. A ``None`` entry is a legal UNSET, so only its spelling
+    is judged.
 
-    ⚑ THE ENTRY CHECKS RUN WHERE THE PARSE UNPACKS ONE, and nowhere else: a list or tuple is
-    an entry, so its arity and its source are judged, and a value that is neither is left as
-    the store coercion leaves it. That keeps this checker's verdict IDENTICAL to the reader
-    it is shared with — a check that refused more here would make the agent-file reader
-    stricter than the settings-file tier rather than equal to it.
+    ⚑ EVERY NON-``None`` ENTRY IS JUDGED HERE, and by the SAME reader: a sub-table is the
+    retired shape, and anything else must unpack as the structured entry, so a bare scalar
+    is refused rather than left to the store coercion — ONE verdict for the settings-file
+    tier and the agent-file reader alike.
+
+    ⚑ *declared* is False for a map whose KEY is not a declared category position
+    (``agent.common``, a node with no discriminator): its entries are undeclared keys, so
+    a value that is not a list is left to the §0 refusal, which names the whole key.
     """
     refuse_dest_spelled_twice(raw, category=category, where=where)
     for key, sub in raw.items():
@@ -500,14 +505,15 @@ def check_bind_map(
                 f"(bindings 2026-08-06c, the other four 2026-08-08c). Re-key the "
                 f"entry to its destination.{_in_file(where)}"
             )
-        if isinstance(sub, (list, tuple)):
-            try:
-                src, _opts = unpack_bind_entry(sub)
-            except SettingsError as exc:
-                raise SettingsError(
-                    f"{category} entry {str(key)!r}: {exc}{_in_file(where)}"
-                ) from exc
-            refuse_unrooted_source(src, category, dest, where=where)
+        if not declared and not isinstance(sub, (list, tuple)):
+            continue
+        try:
+            src, _opts = unpack_bind_entry(sub)
+        except SettingsError as exc:
+            raise SettingsError(
+                f"{category} entry {str(key)!r}: {exc}{_in_file(where)}"
+            ) from exc
+        refuse_unrooted_source(src, category, dest, where=where)
 
 
 def check_bind_tables(

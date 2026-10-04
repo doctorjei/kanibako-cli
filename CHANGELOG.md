@@ -481,6 +481,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/opt//x/`, `~/w` and `/home/agent/w`) used to resolve last-wins without a word. They are now
   refused, naming both spellings, in every dest-keyed map: `bindings.ro`, `bindings.rw`, `masks`,
   `caches`, `common`, `seeded` and `synced`, in any settings file.
+- **A bare scalar where a bind entry goes is refused where the file is read.** A destination mapped
+  to a plain value instead of a list (`caches: {/opt/c: /src}`) in `bindings.ro`, `bindings.rw`,
+  `caches`, `seeded`, `common`, or `synced` was stored as written in the system file and in an agent
+  file. In a workset or box file it was refused when the settings were resolved, without naming the
+  file, and under a `pref.agent.<agent>.` request it was stored as written. It is now refused in
+  every settings file and agent file, naming the category, the destination, and the file. A list
+  entry and a `null` entry are unchanged, and `masks` values are unaffected.
 - **A working-set box whose workspace sits under a repointed `workset.workspaces` directory, or
   whose `workspaces/<name>` is a symlink, is now treated as the working set's own workspace, not as
   a directory you connected from outside.** v1.8.0-rc2 read such a workspace as external.

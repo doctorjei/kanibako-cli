@@ -2300,3 +2300,50 @@ def test_a_scalar_leaf_refusal_names_the_node_the_way_the_user_writes_it(
     msg = str(exc.value)
     assert "agent.nav+claude.model" in msg, msg
     assert "℘" not in msg, msg
+
+
+# --------------------------------------------------------------------------- #
+# A bare scalar entry is judged only at a DECLARED category position (§0/§2a)  #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.writes_undeclared(
+    "agent.common.plugins",
+    reason="the undeclared key is stored so the §0 refusal can name it.",
+)
+def test_a_scalar_under_an_undeclared_category_token_is_left_to_the_key_refusal(
+    tmp_path: Path,
+) -> None:
+    """``agent.common`` is a node with no discriminator, so ``common`` there is not the
+    category: its entries are undeclared KEYS, and §0 must name ``agent.common.plugins``.
+    """
+    system = _write(tmp_path / "settings.yaml", {"agent": {"common": {"plugins": "/tmp/x"}}})
+    level = assemble_levels_at(agent_name="claude", system_path=system)[SYSTEM]
+    assert level["agent"]["common"]["plugins"] == "/tmp/x"
+
+
+def test_a_scalar_entry_under_a_pref_is_judged_at_its_target(tmp_path: Path) -> None:
+    """A pref's value is installed AT its target key (spec §2h), so the target's rule holds."""
+    workset = _write(
+        tmp_path / "workset.yaml", {"pref": {"agent": {"claude": {"common": {"/opt/c": "y"}}}}},
+    )
+    with pytest.raises(SettingsError, match=r"common entry '/opt/c'.*got str: 'y'"):
+        assemble_levels_at(agent_name="claude", workset_path=workset)
+
+
+@pytest.mark.writes_undeclared(
+    "pref.box", "pref.box.caches", "pref.box.caches./opt/c",
+    reason="box.caches is off the §2h allowlist, so the file partial carries an undeclared "
+           "pref for the allowlist filter to refuse by name.",
+)
+def test_a_scalar_entry_under_an_unrequestable_pref_gets_the_allowlist_refusal(
+    tmp_path: Path,
+) -> None:
+    """A pref whose target is not requestable is refused by §2h's allowlist, by name."""
+    from kanibako.settings.settings_prefs import AgentNames, apply_prefs, collect_prefs
+
+    workset = _write(tmp_path / "workset.yaml", {"pref": {"box": {"caches": {"/opt/c": "y"}}}})
+    (request,) = collect_prefs(workset, None)
+    with pytest.raises(SettingsError, match="not requestable") as exc:
+        apply_prefs([request], valid_agents=AgentNames({"claude"}, leaf_map={"claude": frozenset()}))
+    assert "pref.box.caches" in str(exc.value)
