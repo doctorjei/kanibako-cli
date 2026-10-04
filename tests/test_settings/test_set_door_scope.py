@@ -296,6 +296,48 @@ class TestAContainedScopeKeyIsAcceptedAtTheContainingDoor:
         assert not message.startswith("Error:"), message
 
 
+class TestAMetaRefIsJudgedByItsScopeToken:
+    """``@meta.<scope>.*`` names a scope in its SECOND segment: keyspec §2b's own default
+    for ``box.canon`` is ``@meta.box.path/canon``, so a containing door that refused
+    ``@meta.box.path/c2`` refused the shape of the declared default itself."""
+
+    def test_a_box_key_may_reference_its_own_meta_scope_at_the_workset_door(self, ws_files):
+        message = _set("box.canon", "@meta.box.path/c2", ws_files, ConfigLevel.workset,
+                       std=ws_files["std"], ws=ws_files["ws"])
+        assert not message.startswith("Error:"), message
+        assert "@meta.box.path/c2" in ws_files["workset"].read_text()
+
+    @pytest.mark.parametrize("key, value", [
+        ("workset.template", "@meta.workset.path/t2"),   # own scope
+        ("box.canon", "@meta.workset.path/c3"),          # a containing scope
+    ])
+    def test_own_or_containing_meta_scope_is_accepted_at_the_system_door(
+        self, tmp_path, std, key, value,
+    ):
+        files = _files(tmp_path)
+        message = _set(key, value, files, ConfigLevel.system, std=std)
+        assert not message.startswith("Error:"), f"{key}={value!r}: {message}"
+        assert value in files["system"].read_text()
+
+    @pytest.mark.parametrize("value", [
+        "@meta.box.path/t2",          # DOWNWARD: box inside a workset key
+        "@meta.runtime.ws_root/t2",   # no scope token on the containment order
+        "@meta.workset.nope/t2",      # own scope, but undeclared
+    ])
+    def test_these_meta_refs_stay_refused_at_the_system_door(self, tmp_path, std, value):
+        files = _files(tmp_path)
+        message = _set("workset.template", value, files, ConfigLevel.system, std=std)
+        assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
+        assert "dangling @-reference" in message, message
+        assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
+
+    def test_a_downward_meta_ref_stays_refused_at_the_keys_own_door(self, ws_files):
+        message = _set("workset.template", "@meta.box.path/t2", ws_files,
+                       ConfigLevel.workset, std=ws_files["std"], ws=ws_files["ws"])
+        assert message.startswith("Error:"), message
+        assert "dangling @-reference" in message, message
+
+
 class TestAnUpwardWriteStaysRefused:
     """The other half of §0's rule, and the message is UNCHANGED text."""
 

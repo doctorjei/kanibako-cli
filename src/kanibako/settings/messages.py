@@ -120,10 +120,10 @@ ERR_BOX_STORE_SET_HEAD = (
 # LITERAL, unlike ``ERR_SETTINGS_BAD_REF``'s spliced one — this names what the user wrote.
 ERR_CONFIG_PATH_REF_SCOPE = (
                         "%s is set to %r, which points at '@%s' — outside the system "
-                        "path tier. A system path value may reference only @config.* and "
-                        "@system.* keys, so a launch could not read it back (spec §0: no "
-                        "@-ref points downward). Reference one of those keys instead, or "
-                        "set the path you mean.")
+                        "path tier. A system path value may reference only @config.* keys "
+                        "and the system path keys, so a launch could not read it back "
+                        "(spec §0: no @-ref points downward). Reference one of those keys "
+                        "instead, or set the path you mean.")
                                                     # the key, the value, the offending ref
 # ⚑ The §2a bad-ENTRY report, ONE per file the command reads, and the only thing ``get``
 # says about them.  ``config.chain_bad_entries`` separates the two arms below.
@@ -137,7 +137,7 @@ ERR_CONFIG_BAD_ENTRIES_TAIL = (
 #: does not reach.  Names the broken upstream so it can be repointed or repaired.
 ERR_CONFIG_CHAIN_BAD_ENTRY = (
                         "the edited value's own upstream chain reaches %s, which is not a "
-                        "key, so this set is refused too (spec §2a):\n  %s\n"
+                        "key, so this set is refused too (spec §2a):\n%s\n"
                         "Name an upstream that is a key, or remove that entry by editing "
                         "the file. --force does not set a value whose own chain is broken.")
                                                     # the broken upstream, the entries

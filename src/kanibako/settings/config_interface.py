@@ -902,7 +902,9 @@ def _floor_blind_default(
         return False
     # ⚑ THE ALLOWED REF SCOPES off the one containment order: the key's own level and
     # every level containing it. A subset of :data:`SCOPE_CONTAINMENT`, so a scopeless
-    # ref — ``@config.*``, ``@meta.*`` — is not in it and is not forgiven either.
+    # ref — ``@config.*``, ``@meta.runtime.*`` — is not in it and is not forgiven either.
+    # A ``@meta.<scope>.*`` ref is judged by its SCOPE token: keyspec §2b's own default
+    # for ``box.canon`` is ``@meta.box.path/canon``.
     viewable = {key_scope} | set(containing_scopes(key_scope))
     try:
         refs, _vars = scan_tokens(value)
@@ -914,7 +916,9 @@ def _floor_blind_default(
         # seen, so a probe disagreeing here would refuse a value the launch takes.
         if snapshot_leaf(candidate, name) is not __MISSING__:
             continue
-        if name.split(".", 1)[0] not in viewable:
+        segs = name.split(".", 2)
+        ref_scope = segs[1] if segs[0] == "meta" and len(segs) > 1 else segs[0]
+        if ref_scope not in viewable:
             return False
         unseen.append(name)
     return bool(unseen) and all(

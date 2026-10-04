@@ -1064,7 +1064,8 @@ def system_path_ref_error(canonical: str, value: "str | None") -> "str | None":
     :func:`kanibako.settings.config_interface._path_tier_split`, the same
     ``(config.*`` foundation, ``system.*`` floor) that lookup resolves against, and
     refuses a ref that split cannot see (spec §0: no ``@``-ref points DOWNWARD).  A
-    ``@config.*``/``@system.*`` ref is inside that split and passes.
+    ``@config.*`` key or a system PATH key is inside that split and passes; any other
+    ``@system.*`` ref (``@system.agent``) is not, and is refused.
     ⚑ THE MEMBERSHIP IS :data:`SYSTEM_PATH_DEFAULTS` — the very table ``paths.py``
     resolves the tier from (P13), so a key added to the tier is judged here with no edit.
     ``config.*`` keys are ``set: file`` with no CLI write route and are carried by the
