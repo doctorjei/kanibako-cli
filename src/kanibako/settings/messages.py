@@ -125,6 +125,22 @@ ERR_CONFIG_PATH_REF_SCOPE = (
                         "@-ref points downward). Reference one of those keys instead, or "
                         "set the path you mean.")
                                                     # the key, the value, the offending ref
+# ⚑ The §2a bad-ENTRY report, ONE per file the command reads, and the only thing ``get``
+# says about them.  ``config.chain_bad_entries`` separates the two arms below.
+WARN_CONFIG_BAD_ENTRIES = "%s stores entries that are not keys (spec §0):\n  %s"
+                                                    # the file path, the entries
+#: The OUT-of-chain refusal's tail — what it did not do, and the two cures.
+ERR_CONFIG_BAD_ENTRIES_TAIL = (
+                        "\nNothing was written. Remove those entries by editing the file, or "
+                        "rerun with --force to set anyway.")
+#: The HARD arm: a bad entry the value's own upstream chain REACHES, which ``--force``
+#: does not reach.  Names the broken upstream so it can be repointed or repaired.
+ERR_CONFIG_CHAIN_BAD_ENTRY = (
+                        "the edited value's own upstream chain reaches %s, which is not a "
+                        "key, so this set is refused too (spec §2a):\n  %s\n"
+                        "Name an upstream that is a key, or remove that entry by editing "
+                        "the file. --force does not set a value whose own chain is broken.")
+                                                    # the broken upstream, the entries
 ERR_PROJECT_NO_PATH =   "Project path '%s' does not exist." # the path that does not exist
 ERR_PROJECT_BAD_DESIGNATION = "Invalid box designation %r: it is neither a box name nor a path."
 # ⚑ The two $HOME-guard messages take NO arguments (raised bare).

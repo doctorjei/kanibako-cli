@@ -218,6 +218,21 @@ def add_null_flag(parser: argparse.ArgumentParser, *, undo: str) -> None:
     )
 
 
+#: ⚑ The ``set`` door's OWN ``--force`` (spec §2a).  Distinct from the ``reset`` door's
+#: "skip the confirmation": ``set`` asks no confirmation, and the two must not read alike.
+SET_FORCE_HELP = (
+    "Set even though a settings file this command reads stores an entry that is not "
+    "a key: warn and write instead of refusing (spec section 2a). The entry stays; "
+    "remove it by editing that file. A value whose own upstream chain reaches such "
+    "an entry is refused either way."
+)
+
+
+def add_set_force_flag(parser: argparse.ArgumentParser) -> None:
+    """Wire the shared ``--force`` flag onto a scope's ``set`` parser."""
+    parser.add_argument("--force", action="store_true", help=SET_FORCE_HELP)
+
+
 # ---------------------------------------------------------------------------
 # Option-anywhere parsing (B-5).
 # ---------------------------------------------------------------------------
