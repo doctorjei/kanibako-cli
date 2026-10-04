@@ -1014,23 +1014,32 @@ def retired_cure(files: Iterable[SettingsFile]) -> None:
             refuse_retired_behavior_keys(f.view, level=f.level, path=f.path)
 
 
-def _refuse_malformed_category(parts: tuple[str, ...], sub: Any) -> None:
-    """RAISE on a non-``None`` non-map at the category key spelled by *parts*, or pass.
+def _refuse_malformed_category(parts: tuple[str, ...], sub: Any, *, agent_file: bool) -> None:
+    """RAISE on a non-``None`` non-map where a TABLE belongs, or pass.
 
     ⚑ THE POSITION IS THE DISCRIMINATOR, and this walk is the one place it cannot be
     assumed: a deep walk reaches ``system.channels.common`` — a path SCALAR that merely
     ENDS in a category token, while its family's ``system.channels.chat`` does not.
     :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` reads that
-    position, so it judges here and the message names the WHOLE key.
+    position, so it judges and the message names the WHOLE key.
+
+    ⚑⚑ *agent_file* CARRIES THE CONCESSION, and it is the reason this is a flag and not a
+    constant. An agent file is read by ``agent_record``, and a wrong-SHAPE value must not
+    kill the verbs that SHOW it — the repair doors have to stay reachable, so THAT reader
+    coerces and the WRITE side refuses (``agent_file.table_value_error``). The six cascade
+    files are parsed by a reader with no such door, so there a scalar is refused. A key
+    spells the same either way; what differs is which door the reader leaves open.
     """
+    if agent_file:
+        return
     key = ".".join(parts)
-    if is_terminal_category_key(key):
+    if is_terminal_category_key(key) or parts[-1] in TABLE_VALUED_AGENT_LEAVES:
         refuse_scalar_at_table_key(key, sub)
 
 
 def _parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
-    path: tuple[str, ...] = (),
+    path: tuple[str, ...] = (), agent_file: bool = False,
 ) -> Any:
     """Recursively coerce a raw settings node into the ``StoreValue`` space.
 
@@ -1055,7 +1064,7 @@ def _parse_node(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
                     )
                     continue
-                _refuse_malformed_category((*path, key_s), sub)
+                _refuse_malformed_category((*path, key_s), sub, agent_file=agent_file)
             if not in_binds and key_s in BIND_LEAF_CATEGORIES:
                 # A TERMINAL dest-keyed category — the map is HERE, not one level down, so it is
                 # parsed on the way PAST the category token. Same malformed-shape hand-off as an arm.
@@ -1067,17 +1076,17 @@ def _parse_node(
                         root_ref=_declaration_root_ref(path, key_s),
                     )
                     continue
-                _refuse_malformed_category((*path, key_s), sub)
+                _refuse_malformed_category((*path, key_s), sub, agent_file=agent_file)
             if not in_binds and key_s in _MARKER_LEAF_CATEGORIES:
                 if isinstance(sub, dict):
                     store[key_s] = _parse_marker_map(sub, path=(*path, key_s))
                     continue
-                _refuse_malformed_category((*path, key_s), sub)
+                _refuse_malformed_category((*path, key_s), sub, agent_file=agent_file)
             if not in_binds and key_s in TABLE_VALUED_AGENT_LEAVES and sub is not None \
                     and not isinstance(sub, dict):
                 # A table-valued agent LEAF, whole — spec §2d, no §2a category involved,
                 # so the branches above cannot reach it. Same rule, same wording.
-                refuse_scalar_at_table_key(".".join((*path, key_s)), sub)
+                _refuse_malformed_category((*path, key_s), sub, agent_file=agent_file)
             # Entering a bind-shaped category: its entries below are binds.
             descend_binds = in_binds or key_s in BIND_CATEGORY_TOKENS
             store[key_s] = _parse_node(
@@ -1086,6 +1095,7 @@ def _parse_node(
                 dest_keyed=dest_keyed,
                 at_bindings=(not in_binds and key_s == _DEST_KEYED_CATEGORY),
                 path=(*path, key_s),
+                agent_file=agent_file,
             )
         return store
     if in_binds and isinstance(value, (list, tuple)):
@@ -1163,6 +1173,7 @@ def _declared_source(
 
 def _parse_naming_file(
     raw: dict, *, file_path: Path | None, key_path: tuple[str, ...] = (),
+    agent_file: bool = False,
 ) -> KeyStore:
     """Parse one settings file's node, NAMING *file_path* in every refusal the parse raises.
 
@@ -1178,7 +1189,9 @@ def _parse_naming_file(
     difference between them (the agent file's walk starts one scope in).
     """
     try:
-        parsed = _parse_node(raw, in_binds=False, path=key_path)
+        parsed = _parse_node(
+            raw, in_binds=False, path=key_path, agent_file=agent_file,
+        )
     except (ReservedKeyError, SettingsError) as exc:
         where = str(file_path) if file_path is not None else "<settings>"
         raise SettingsError(f"{exc} (in settings file {where})") from exc
@@ -1186,7 +1199,9 @@ def _parse_naming_file(
     return parsed
 
 
-def _file_partial(raw: dict, *, path: Path | None = None) -> KeyStore:
+def _file_partial(
+    raw: dict, *, path: Path | None = None, agent_file: bool = False,
+) -> KeyStore:
     """Build ONE level partial from a settings file's WHOLE nested content, SCOPE TOKEN KEPT (§0).
 
     The rule for every NON-agent level (``base`` / ``system`` / ``workset`` / ``box``); the agent
@@ -1207,7 +1222,9 @@ def _file_partial(raw: dict, *, path: Path | None = None) -> KeyStore:
     """
     if not isinstance(raw, dict):
         return KeyStore()
-    return _parse_naming_file(fold_agent_nodes(raw, path=path), file_path=path)
+    return _parse_naming_file(
+        fold_agent_nodes(raw, path=path), file_path=path, agent_file=agent_file,
+    )
 
 
 def _agent_partial(
@@ -1239,7 +1256,7 @@ def _agent_partial(
     """
     level = level_table(raw, sub_key=sub_key, node=node, path=path)
     scope = _scope_nodes(level.scope, sub_key=sub_key, path=path)
-    store = _file_partial(level.contained, path=path)
+    store = _file_partial(level.contained, path=path, agent_file=True)
     if not level.table and not scope:
         return store
     agent_node = KeyStore()
@@ -1254,6 +1271,7 @@ def _agent_partial(
         # does differently from a file tier's — the file naming is the shared wrap's.
         agent_node[level.node] = _parse_naming_file(
             level.table, file_path=path, key_path=("agent", level.node),
+            agent_file=True,
         )
     if scope:
         # ⚑ WHAT THE BOUNDARY GUARANTEES, AND ALL IT GUARANTEES: before this overlay
@@ -1274,7 +1292,7 @@ def _scope_nodes(scope: dict, *, sub_key: str, path: Path | None) -> KeyStore:
     """
     if not scope:
         return KeyStore()
-    nodes = _file_partial({FILE_SCOPE: scope}, path=path).get(FILE_SCOPE)
+    nodes = _file_partial({FILE_SCOPE: scope}, path=path, agent_file=True).get(FILE_SCOPE)
     picked = KeyStore()
     if not isinstance(nodes, KeyStore):
         return picked
