@@ -24,7 +24,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from kanibako.errors import ContainerError
@@ -863,32 +863,92 @@ def _precreate_mount_stubs(
         except OSError as exc:
             logger.debug("stub clear-symlink FAILED: %s (%s)", p, exc)
 
+    def _parents_within(stub: Path, root: Path) -> "Iterator[Path]":
+        """Yield *stub*'s parent dirs up to the first symlink or (excl.) *root*.
+
+        ⚑ Stops at *root* and at the first ancestor that does not resolve inside
+        *root* — never walks above the box home. A symlink is yielded and the walk
+        ends there: the link is never walked through.
+        """
+        try:
+            root_resolved = root.resolve()
+        except OSError as exc:
+            logger.debug("stub walk skip (root resolve FAILED): %s (%s)", root, exc)
+            return
+        # Start at the stub's PARENT: a symlink AT the stub is ``_clear_symlink``'s
+        # to remove, not this walk's to judge.
+        current = stub.parent
+        while True:
+            # ⚑ Checked BEFORE the containment test: a DANGLING link does not resolve,
+            # so that test would stop the walk without ever yielding it. A parent we
+            # cannot probe is not evidence of a symlink — ``is_symlink`` re-raises
+            # EACCES — so the walk stops there, as it always has.
+            try:
+                is_link = current.is_symlink()
+            except OSError as exc:
+                logger.debug("stub walk stop (parent unprobeable): %s (%s)", current, exc)
+                return
+            if is_link:
+                yield current
+                return
+            # ⚑ Stop AT root, never above: an escaping ancestor resolves OUTSIDE root and
+            # raises ValueError, so we stop rather than chmod beyond the box home.
+            try:
+                rel = current.resolve().relative_to(root_resolved)
+            except (OSError, ValueError):
+                return
+            if rel == Path("."):
+                # Reached root itself — off-limits, and nothing above it either.
+                return
+            yield current
+            current = current.parent
+
+    def _escaping_symlink(stub: Path, root: Path) -> Path | None:
+        """The nearest symlinked parent of *stub* that leaves *root*, else None.
+
+        A symlinked parent still resolving INSIDE the box home is an accepted
+        shape: the stub lands where the box home owns it.
+        """
+        try:
+            root_resolved = root.resolve()
+        except OSError:
+            return None
+        for current in _parents_within(stub, root):
+            if not current.is_symlink():
+                continue
+            try:
+                current.resolve().relative_to(root_resolved)
+            except (OSError, ValueError):
+                return current
+            return None
+        return None
+
+    def _refuse_symlinked_parent(dest: str, stub: Path, root: Path) -> None:
+        """Raise if a parent of *stub* is a symlink leading outside *root*."""
+        parent = _escaping_symlink(stub, root)
+        if parent is None:
+            return
+        try:
+            target = os.readlink(parent)
+        except OSError:
+            target = str(parent)
+        raise ContainerError(
+            f"refusing to mount {dest!r}: its parent {parent} is a symlink to "
+            f"{target!r}, which is outside the box home {root}. A bind stubbed "
+            f"under it would be created there, so the bind would land outside the "
+            f"box home instead of at the declared destination. Replace the symlink "
+            f"with a real directory, or point the bind at a destination whose "
+            f"parents are real directories."
+        )
+
     def _loosen_parents(stub: Path, root: Path) -> None:
         """Add SEARCH bits to *stub*'s parent dirs up to (not incl.) *root*.
 
         ⚑ This MUTATES user-visible modes in the box home, so its containment is
         load-bearing and deliberately narrow — see the llm-doc before widening it.
         """
-        try:
-            root_resolved = root.resolve()
-        except OSError as exc:
-            logger.debug("loosen skip (root resolve FAILED): %s (%s)", root, exc)
-            return
-        # Start at the stub's PARENT: the stub's own mode is owned by the bind.
-        current = stub.parent
-        while True:
-            # ⚑ Stop AT root, never above: an escaping ancestor resolves OUTSIDE root and
-            # raises ValueError, so we stop rather than chmod beyond the box home.
+        for current in _parents_within(stub, root):
             try:
-                rel = current.resolve().relative_to(root_resolved)
-            except (OSError, ValueError):
-                break
-            if rel == Path("."):
-                # Reached root itself — off-limits, and nothing above it either.
-                break
-            try:
-                # ⚑ A symlinked parent could escape the box home even if it resolves
-                # back inside — stop the walk rather than chmod through it.
                 if current.is_symlink():
                     logger.debug("loosen stop at symlink parent: %s", current)
                     break
@@ -941,12 +1001,22 @@ def _precreate_mount_stubs(
     def _home_root(dest: str) -> Path | None:
         return None if dest.startswith(workspace_prefix) else shell_path
 
+    # ⚑ THE PLAN IS BUILT BEFORE ANY STUB IS MADE, so a refusal creates nothing:
+    # ``mkdir(parents=True)`` under a symlinked parent raises FileExistsError on the
+    # LINK, which was logged at debug and swallowed, and the launch then failed with
+    # a podman error naming neither the link nor the destination.
+    plan: list[tuple[str, Path, bool]] = []  # (dest, host stub path, is_dir)
+
+    def _plan_dir(dest: str, host_path: Path, root: Path) -> None:
+        _refuse_symlinked_parent(dest, host_path, root)
+        plan.append((dest, host_path, True))
+
     # Built-in directory mounts — all shell_path-side, so their loosen walks are no-ops.
-    _ensure_dir(shell_path / GUEST_WORKSPACE_RELPATH, traverse_root=shell_path)
+    _plan_dir(GUEST_WORKSPACE, shell_path / GUEST_WORKSPACE_RELPATH, shell_path)
     if enable_vault:
         # Vault is UNIVERSAL unless disabled, so its dest stubs are always made.
-        _ensure_dir(shell_path / GUEST_VAULT_RO_RELPATH, traverse_root=shell_path)
-        _ensure_dir(shell_path / GUEST_VAULT_RW_RELPATH, traverse_root=shell_path)
+        _plan_dir(GUEST_VAULT_RO_RELPATH, shell_path / GUEST_VAULT_RO_RELPATH, shell_path)
+        _plan_dir(GUEST_VAULT_RW_RELPATH, shell_path / GUEST_VAULT_RW_RELPATH, shell_path)
     # ⚑ Mask stubs sit OUTSIDE the vault arm on purpose and must STAY outside: ``run``
     # emits a declared mask vault-or-not, and without its stub the mount fails in LXC.
     for mask in tmpfs_masks:
@@ -954,12 +1024,10 @@ def _precreate_mount_stubs(
         if host_path is None:
             logger.debug("mask stub skip (not under home): %s", mask)
             continue
-        _ensure_dir(host_path, traverse_root=_home_root(mask))
+        _plan_dir(mask, host_path, _home_root(mask) or project_path)
 
     # Extra mounts: pre-create destination stubs.
-    if not extra_mounts:
-        return
-    for mount in extra_mounts:
+    for mount in extra_mounts or []:
         dest = mount.destination
         src = mount.source
         host_path = _guest_dest_to_host(dest, shell_path, project_path)
@@ -977,11 +1045,17 @@ def _precreate_mount_stubs(
             logger.debug("stub skip (not under home): %s → %s", src, dest)
             continue
 
-        if src.is_dir():
-            _ensure_dir(host_path, traverse_root=_home_root(dest))
-        else:
+        is_dir = src.is_dir()
+        if not is_dir:
             logger.debug(
                 "stub file: src=%s is_file=%s is_dir=%s exists=%s → %s",
-                src, src.is_file(), src.is_dir(), src.exists(), host_path,
+                src, src.is_file(), is_dir, src.exists(), host_path,
             )
+        _refuse_symlinked_parent(dest, host_path, _home_root(dest) or project_path)
+        plan.append((dest, host_path, is_dir))
+
+    for dest, host_path, is_dir in plan:
+        if is_dir:
+            _ensure_dir(host_path, traverse_root=_home_root(dest))
+        else:
             _ensure_file(host_path, traverse_root=_home_root(dest))

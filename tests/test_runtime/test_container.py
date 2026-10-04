@@ -2245,3 +2245,104 @@ class TestGuestDestToHost:
             assert _guest_dest_to_host(
                 "/home/agent/workspacefoo/x", shell, project, **kw
             ) == shell / "workspacefoo" / "x"
+
+
+class TestSymlinkedParentRefusal:
+    """A mount dest nested under a symlinked parent is refused, not stubbed."""
+
+    @staticmethod
+    def _stubs(shell, project, src, dest):
+        from kanibako.runtime.container import _precreate_mount_stubs
+        from kanibako.targets.base import Mount
+        _precreate_mount_stubs(
+            shell, project, [Mount(source=src, destination=dest, options="")],
+            enable_vault=False,
+            vault_ro_path=shell / "no-ro",
+            vault_rw_path=shell / "no-rw",
+            tmpfs_masks=[],
+        )
+
+    def test_dangling_symlinked_parent_refused_naming_parent_and_target(self, tmp_path):
+        """A dest under a dangling symlinked parent refuses before anything is made.
+
+        Pins the refusal to name the symlinked parent and the link's target: the
+        launch used to continue past a debug-only FileExistsError and fail later
+        with a podman error that named neither.
+        """
+        shell = tmp_path / "shell"
+        project = tmp_path / "project"
+        src = tmp_path / "src"
+        for d in (shell, project, src):
+            d.mkdir()
+        (shell / "canon").symlink_to("/home/agent/workspace/wiki")
+
+        with pytest.raises(ContainerError) as exc:
+            self._stubs(shell, project, src, "/home/agent/canon/notebook")
+
+        message = str(exc.value)
+        assert str(shell / "canon") in message
+        assert "/home/agent/workspace/wiki" in message
+        # Nothing was created: the refusal is read-only.
+        assert (shell / "canon").is_symlink()
+        assert not (shell / "canon" / "notebook").exists()
+
+    def test_symlinked_parent_leading_outside_the_box_home_refused(self, tmp_path):
+        """A live link that leaves the box home is refused, like a dangling one."""
+        shell = tmp_path / "shell"
+        project = tmp_path / "project"
+        src = tmp_path / "src"
+        for d in (shell, project, src):
+            d.mkdir()
+        (shell / "canon").symlink_to(project / "realtarget")
+
+        with pytest.raises(ContainerError, match="is a symlink to"):
+            self._stubs(shell, project, src, "/home/agent/canon/notebook")
+
+        assert (shell / "canon").is_symlink()
+
+    def test_symlinked_parent_inside_the_box_home_is_not_refused(self, tmp_path):
+        """A symlinked parent that still lands inside the box home is stubbed.
+
+        The refusal is about WHERE the bind lands. A link resolving inside the
+        box home puts the stub where the box home owns it, so it is stubbed —
+        and ``_loosen_parents`` still stops at the link rather than chmodding
+        through it.
+        """
+        shell = tmp_path / "shell"
+        project = tmp_path / "project"
+        src = tmp_path / "src"
+        for d in (shell, project, src):
+            d.mkdir()
+        (shell / "realtarget").mkdir()
+        (shell / "canon").symlink_to(shell / "realtarget")
+
+        self._stubs(shell, project, src, "/home/agent/canon/notebook")
+
+        assert (shell / "canon").is_symlink()
+        assert (shell / "realtarget" / "notebook").is_dir()
+
+    def test_symlink_at_the_dest_itself_is_still_cleared(self, tmp_path):
+        """A symlink AT the dest is _clear_symlink's to remove, so it is not refused."""
+        shell = tmp_path / "shell"
+        project = tmp_path / "project"
+        src = tmp_path / "src"
+        for d in (shell, project, src):
+            d.mkdir()
+        (shell / "canon").symlink_to("/home/agent/workspace/wiki")
+
+        self._stubs(shell, project, src, "/home/agent/canon")
+
+        assert (shell / "canon").is_dir()
+        assert not (shell / "canon").is_symlink()
+
+    def test_real_parents_are_stubbed(self, tmp_path):
+        """A dest whose parents are real directories is stubbed as before."""
+        shell = tmp_path / "shell"
+        project = tmp_path / "project"
+        src = tmp_path / "src"
+        for d in (shell, project, src):
+            d.mkdir()
+
+        self._stubs(shell, project, src, "/home/agent/canon/notebook")
+
+        assert (shell / "canon" / "notebook").is_dir()
