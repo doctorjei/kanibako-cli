@@ -559,6 +559,72 @@ class TestSystemPersonaAgentKeys:
         assert data == {"self": {"endpoint": "https://ep"}}
 
 
+class TestSystemSetJudgesTheNodeAsGetDoes:
+    """Spec §0: ``system set`` refuses a node ``system get`` refuses, and writes nothing."""
+
+    @pytest.mark.parametrize("key, value", [
+        ("agent.nav+zzz.model", "=x"),
+        ("agent.nav+zzz.secret_path.ANTHROPIC_AUTH_TOKEN", "=/t/tok"),
+        ("agent.nav+zzz.env.FOO", "=1"),
+        ("agent.zzz.model", "=x"),
+    ])
+    def test_unknown_node_is_refused_by_the_get_verdict_and_nothing_is_written(
+        self, config_file, tmp_home, capsys, key, value,
+    ):
+        rc = _set(key + value)
+        set_err = capsys.readouterr().err
+        assert rc == 1
+        assert set_err.startswith(f"Error: '{key}' cannot be set: ")
+        assert _get(key) == 1
+        get_err = capsys.readouterr().err
+        reason = set_err.split(" cannot be set: ", 1)[1].strip()
+        assert reason.rstrip(".") in get_err
+        agents = _std(config_file).agents
+        assert not agents.exists() or [
+            p.name for p in agents.iterdir() if "zzz" in p.name
+        ] == []
+
+    def test_null_at_an_unknown_node_is_refused(self, config_file, tmp_home, capsys):
+        rc = run_set(argparse.Namespace(
+            key_value="agent.nav+zzz.model", force=True, null=True,
+        ))
+        assert rc == 1
+        assert "is not a valid agent" in capsys.readouterr().err
+
+    def test_reset_at_an_unknown_node_is_refused_on_a_fresh_home(
+        self, config_file, tmp_home, capsys,
+    ):
+        key = "agent.nav+rrr.model"
+        assert _reset(key) == 1
+        assert capsys.readouterr().err.startswith(f"Error: '{key}' cannot be reset: ")
+        agents = _std(config_file).agents
+        assert not (agents / "nav+rrr").exists()
+
+    def test_reset_at_an_unknown_node_leaves_an_existing_store_untouched(
+        self, config_file, tmp_home, capsys,
+    ):
+        node_file = _std(config_file).agents / "nav+zzz" / "agent.yaml"
+        node_file.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(node_file, {"self": {"model": "x"}})
+        assert _reset("agent.nav+zzz.model") == 1
+        assert "is not a valid agent" in capsys.readouterr().err
+        assert load_doc(node_file) == {"self": {"model": "x"}}
+
+    @pytest.mark.parametrize("key", ["agent.claude.model", "agent.nav+claude.model"])
+    def test_a_valid_node_still_resets(self, config_file, tmp_home, capsys, key):
+        assert _set(f"{key}=x") == 0
+        assert _reset(key) == 0
+        capsys.readouterr()
+        assert _get(key) == 0
+        assert capsys.readouterr().out == f"{key}: (not set)\n"
+
+    @pytest.mark.parametrize("key", ["agent.claude.model", "agent.nav+claude.model"])
+    def test_a_valid_node_still_sets(self, config_file, tmp_home, capsys, key):
+        assert _set(f"{key}=x") == 0
+        assert _get(key) == 0
+        assert f"{key}=x" in capsys.readouterr().out
+
+
 class TestSystemAgentNodeBindWriteRouteRetired:
     """R-9 — through the REAL ``system config`` CLI, not the engine: the per-node
     descriptor bind write route is refused, and the refusal reaches the user's

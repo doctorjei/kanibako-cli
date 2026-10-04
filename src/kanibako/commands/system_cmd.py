@@ -260,6 +260,36 @@ def run_defaults(args: argparse.Namespace) -> int:
     return 0
 
 
+def _agent_node_error(key: str, *, verb: str) -> str | None:
+    """Why ``system <verb>`` refuses the agent node *key* addresses, or ``None``.
+
+    The node is judged by the ``system get`` verdict (spec §0), before anything is
+    written or removed. A valid node returns ``None``: the engine owns every other refusal.
+    """
+    from kanibako.settings.config_keys import (
+        ConfigLevel,
+        agent_node_of,
+        resolve_key,
+        scope_key_reason,
+        scope_key_refusal,
+    )
+    from kanibako.settings.settings_keyspace import is_valid_agent_segment
+    from kanibako.settings.settings_prefs import default_valid_agents
+
+    canonical = resolve_key(key)
+    # ⚑ The key's own agent segment, the one ``get`` judges — not ``agent_node_of``'s node,
+    # which splits on the LAST segment and reads ``agent.claude.bindings.ro.model`` as
+    # node ``claude.bindings.ro``, pre-empting the engine's retired-route refusal.
+    if not agent_node_of(canonical) or is_valid_agent_segment(
+        canonical.split(".")[1], default_valid_agents(),
+    ):
+        return None
+    reason = scope_key_reason(canonical)
+    if reason is None:
+        return None
+    return scope_key_refusal(key, reason, ConfigLevel.system, verb=verb, cure="")
+
+
 def _run_system_config(args: argparse.Namespace) -> int:
     """Shared global-config engine dispatch.
 
@@ -358,6 +388,10 @@ def _run_system_config(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+        _node_err = _agent_node_error(key, verb="reset")
+        if _node_err is not None:
+            print(_node_err, file=sys.stderr)
+            return 1
         # Ensure the system settings dir exists for SETTINGS removals.
         ssp.parent.mkdir(parents=True, exist_ok=True)
         # ⚑ NO per-node bind floor registry is threaded any more. It existed so a
@@ -446,6 +480,10 @@ def _run_system_config(args: argparse.Namespace) -> int:
 
     # set
     if action == ConfigAction.set:
+        _node_err = _agent_node_error(key, verb="set")
+        if _node_err is not None:
+            print(_node_err, file=sys.stderr)
+            return 1
         # Ensure the system settings dir exists for SETTINGS writes.
         ssp.parent.mkdir(parents=True, exist_ok=True)
 
