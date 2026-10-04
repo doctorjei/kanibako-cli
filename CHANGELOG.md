@@ -486,7 +486,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   '<workset>/<name>'`, naming every candidate. Previously a same-named folder in the current
   directory silently took its place (`stop` exited 0 against the wrong target), or the name was
   turned into a nonexistent `<cwd>/<name>` path. Unknown names still resolve as paths. `start` and
-  `code` still print their generic no-box message for an ambiguous name.
+  `code` refuse it the same way; they used to print a generic "no box at <name>" message that advised
+  creating a box the user already has.
 
 - **`kanibako stop` stops a box whose `box.yaml` or global `settings.yaml` is not valid YAML or not
   a mapping, and prints the file's problem as a warning.** Before, it exited 1 and the box could
