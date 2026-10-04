@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `foo.` or `a b` breaks the box-name rule, so it is resolved as a path and never looked up in the
   registry, by any command that takes a box, `box rm` and `box register` included. A missing one
   now fails with `Project path '<cwd>/<it>' does not exist.` (or, at launch, `no box at
-  <cwd>/<it>. To create a new box, run 'kanibako create <it>'`) instead of an unknown-name
+  <cwd>/<it>. To create a new box, run:  kanibako create <it>`) instead of an unknown-name
   error. A `/` designation is a qualified `<workset>/<box>` name only when both parts are valid
   names, so `./gone` is a path too. A registered box whose name breaks the rule is reached by its
   path or from its directory, not by that name. See *2.107 A designation that cannot be a box name is a
@@ -342,6 +342,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--force` is unchanged and still means "skip the confirmation".
 
 ### Fixed
+
+- **The "no box" error's create command now pastes as printed.** `start`'s suggestion is
+  `shlex.quote`d and no longer wrapped in single quotes, so `Error: no box at <path>. To create a
+  new box, run:  kanibako create 'a b'` pastes as one argument; a spec with a space or a `'` used
+  to paste as a different command.
 
 - **A malformed bind entry in an agent file is refused where the file is read, and two spellings
   of one destination are refused everywhere.** A sub-table where an entry goes, an entry of three
