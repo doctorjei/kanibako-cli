@@ -2699,6 +2699,11 @@ self:
   `agents/self/` folder is not an agent, and `agent list`, `info`, `show` and `get` now refuse it
   by path: delete it (or empty it with `agent reset self --all`).
 
+If `kanibako agent show`, `info`, `list` or `get` now refuses your agent's settings file over a
+bind entry, in any of its `self:`, `agent:`, `workset:` or `box:` tables, that entry was already
+refusing the launch: re-key a sub-table to its destination, drop the third element, or spell the
+source out in full.
+
 **Why refuse a nested level rather than keep accepting it?** Because it was never one spelling —
 it was two, and the flat one won without saying so. A file carrying both a nested and a flat table
 of one category lost the nested one *wholesale*: entries spelled only under `<agent>:` were not
@@ -6267,6 +6272,12 @@ Name an upstream that is a key, or remove that entry by editing the file. --forc
 - If the entry the message names is one your new value points at through an `@`-reference,
   `--force` will not help — the chain would resolve through a name that is not a key. Repoint the
   value at a real key first.
+
+### Two spellings of one destination in one map are refused
+
+`/opt/x` and `/opt//x/`, or `~/w` and `/home/agent/w`, in the same `bindings`, `masks`, `caches`,
+`common`, `seeded` or `synced` map used to resolve to whichever came last. Any settings file holding
+both now refuses, naming both spellings; keep one.
 
 ---
 

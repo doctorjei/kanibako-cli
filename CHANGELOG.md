@@ -343,6 +343,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A malformed bind entry in an agent file is refused where the file is read, and two spellings
+  of one destination are refused everywhere.** A sub-table where an entry goes, an entry of three
+  elements, and a bare relative source, under the file's `self:`, `agent:`, `workset:` or `box:`
+  table, used to pass `agent show`, `info`, `list` and `get` and refuse only when a box started.
+  They now refuse in those verbs too, naming the category, the entry and the file. And because a
+  destination is canonicalized on read, two spellings of one destination in one map (`/opt/x` and
+  `/opt//x/`, `~/w` and `/home/agent/w`) used to resolve last-wins without a word. They are now
+  refused, naming both spellings, in every dest-keyed map: `bindings.ro`, `bindings.rw`, `masks`,
+  `caches`, `common`, `seeded` and `synced`, in any settings file.
 - **A working-set box whose workspace sits under a repointed `workset.workspaces` directory, or
   whose `workspaces/<name>` is a symlink, is now treated as the working set's own workspace, not as
   a directory you connected from outside.** v1.8.0-rc2 read such a workspace as external.
@@ -882,8 +891,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arm that does not exist), and a value in place of the `env` or `secret_path` table, under `self:`
   as already under the file's `agent:` table. One refusal names every such entry at once, as the
   launch's does. One agent spelled twice in that table (`agent: {Claude: …, claude: …}`) now
-  refuses in these verbs too, naming both spellings, in a refusal of its own. Three malformed bind entries still refuse only when a box starts: `/x: {q: 1}`, an entry of
-  three elements, and a bare relative source. `agent reset <agent> --all` still opens the file. See
+  refuses in these verbs too, naming both spellings, in a refusal of its own. `agent reset <agent>
+  --all` still opens the file. See
   `MIGRATION.md` § *2.37 An agent's settings file has ONE level: everything sits directly under
   `self:`*.
 
