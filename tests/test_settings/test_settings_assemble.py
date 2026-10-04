@@ -834,6 +834,59 @@ def test_one_node_spelled_twice_in_one_file_is_refused_naming_both(
     assert f"'agent.{first}'" in msg and f"'agent.{second}'" in msg and str(sysf) in msg
 
 
+@pytest.mark.parametrize("node", ("nav+claude", "gpt+claude", "nav+Claude"))
+def test_a_plus_spelled_node_in_a_settings_file_is_refused_by_name(
+    tmp_path: Path, node: str
+) -> None:
+    # A ``+`` node names a segment no reader holds, so the node resolves to nothing and the
+    # file says nothing; the refusal names the node, the ``℘`` spelling and the file.
+    # (Mutation: drop the call from ``_fold_node_table`` → the fold returns → RED.)
+    from kanibako.agent_ref import canonicalize_agent_ref
+
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {node: {"model": "a"}}})
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels_at(agent_name="claude", system_path=sysf)
+    msg = str(exc.value)
+    assert "spells an agent node with '+'" in msg
+    assert f"'agent.{node}' is written '{node}'" in msg
+    assert f"the same node is '{canonicalize_agent_ref(node)}'" in msg
+    assert str(sysf) in msg
+
+
+def test_every_plus_spelled_node_in_a_settings_file_is_named_at_once(
+    tmp_path: Path
+) -> None:
+    # The cure is a hand-edit of that file, so one refusal names every node needing it.
+    sysf = _write(
+        tmp_path / "settings.yaml",
+        {"agent": {"nav+claude": {"model": "a"}, "gpt+claude": {"model": "b"}}},
+    )
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels_at(agent_name="claude", system_path=sysf)
+    msg = str(exc.value)
+    assert "nav+claude" in msg and "gpt+claude" in msg
+
+
+@pytest.mark.parametrize("node", ("nav℘claude", "claude", "default", "shell"))
+def test_a_node_the_fold_can_reach_is_not_refused_as_a_plus_spelling(
+    tmp_path: Path, node: str
+) -> None:
+    # The canonical spelling and every bare node still read, so the refusal is narrow.
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {node: {"model": "a"}}})
+    assemble_levels_at(agent_name="claude", system_path=sysf)
+
+
+@pytest.mark.parametrize("node", ("nav+claude+x", "+claude", "nav+"))
+def test_a_node_that_is_not_a_ref_is_left_to_the_keyspace(
+    tmp_path: Path, node: str
+) -> None:
+    # A segment that is not a ref names no agent, so the keyspace's own verdict owns it at the
+    # doors; this refusal must not claim that shape, or one node would have two rules.
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {node: {"model": "a"}}})
+    levels = assemble_levels_at(agent_name="claude", system_path=sysf)
+    assert any("agent" in level for level in levels)
+
+
 def test_a_dropped_table_is_not_folded_or_judged(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
