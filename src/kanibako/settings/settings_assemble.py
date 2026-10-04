@@ -63,6 +63,7 @@ from kanibako.settings.settings_keyspace import (
     TERMINAL_CATEGORY_TAILS,
     Judgment,
     is_terminal_category_key,
+    pref_allowlist_entry,
     render_store_path,
     undeclared_store_paths,
 )
@@ -1080,6 +1081,18 @@ def _is_table_valued_agent_leaf(parts: tuple[str, ...]) -> bool:
     return len(parts) == 3 and parts[0] == "agent" and parts[2] in TABLE_VALUED_AGENT_LEAVES
 
 
+def _at_declared_category(parts: tuple[str, ...]) -> bool:
+    """Is *parts* a DECLARED dest-keyed category position, a ``pref.`` head stripped (spec §2h)?
+
+    A pref target counts only when it is requestable, so §2h's allowlist refusal names it.
+    """
+    if parts[:1] == (PREF_ROOT,):
+        parts = parts[1:]
+        if pref_allowlist_entry(".".join(parts)) is None:
+            return False
+    return is_terminal_category_key(".".join(parts))
+
+
 def _parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
     path: tuple[str, ...] = (),
@@ -1105,6 +1118,7 @@ def _parse_node(
                 if isinstance(sub, dict):
                     store[key_s] = parse_bind_map(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
+                        declared=_at_declared_category((*path, key_s)),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1117,6 +1131,7 @@ def _parse_node(
                     store[key_s] = parse_bind_map(
                         sub, category=key_s,
                         root_ref=_declaration_root_ref(path, key_s),
+                        declared=_at_declared_category((*path, key_s)),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1165,6 +1180,7 @@ def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore:
 
 def parse_bind_map(
     raw: Any, *, category: str = "bindings", root_ref: str | None = None,
+    declared: bool = True,
 ) -> KeyStore:
     """Parse a raw DEST-KEYED category map into a :class:`KeyStore` of :class:`BindEntry`.
 
@@ -1182,7 +1198,7 @@ def parse_bind_map(
             f"A dest-keyed {category!r} map must be a mapping "
             f"{{box_dest: [src[, options]]}}, got {type(raw).__name__}: {raw!r}."
         )
-    check_bind_map(raw, category=category)
+    check_bind_map(raw, category=category, declared=declared)
     store = KeyStore()
     for key, sub in raw.items():
         # ⚑ THE ONE PLACE A STORED DEST IS CANONICALIZED ON READ (R-11) — ``~`` and ``~/`` must be

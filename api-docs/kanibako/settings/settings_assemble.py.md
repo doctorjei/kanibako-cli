@@ -44,7 +44,7 @@ def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None
 def refuse_undeclared_entries(view: Any, *, level: str, path: Path | None, stored: Any=None) -> None
 def undeclared_listing(findings: Sequence[tuple[tuple[str, ...], Judgment]]) -> tuple[str, str, str]
 def retired_cure(files: Iterable[SettingsFile]) -> None
-def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None) -> KeyStore
+def parse_bind_map(raw: Any, *, category: str='bindings', root_ref: str | None=None, declared: bool=True) -> KeyStore
 def dotted_partial(floor: dict[str, object] | None) -> KeyStore
 def assemble_levels(*, agent_name: str, files: Iterable[SettingsFile], floor: dict[str, object] | None=None) -> list[KeyStore]
 def agent_record(path: Path, *, node: str, purpose: ReadPurpose) -> AgentConfig
@@ -67,6 +67,7 @@ def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dic
 def _file_view(raw: Any, *, level: str, path: Path | None, fold: bool=True) -> Any
 def _refuse_malformed_category(parts: tuple[str, ...], sub: Any) -> None
 def _is_table_valued_agent_leaf(parts: tuple[str, ...]) -> bool
+def _at_declared_category(parts: tuple[str, ...]) -> bool
 def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=()) -> Any
 def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str
