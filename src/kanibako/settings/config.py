@@ -978,6 +978,27 @@ def refuses_null_path_key(canonical: str) -> bool:
     )
 
 
+def usable_box_store_value(value: object) -> bool:
+    """True iff the LAUNCH can use *value* at the box store — the box root's own test.
+
+    ⚑ THE VALUE HALF, stated once: the launch reads it for every root it dereferences,
+    so a set door must not spell the test again. 🛑 EXISTENCE + LEAF, NOT ABSOLUTENESS
+    — whitespace-only is NOT a refusal.
+    """
+    return isinstance(value, str) and value != "" and not value.endswith("/")
+
+
+def refuses_box_store_value(canonical: str, value: object) -> bool:
+    """True iff the LAUNCH refuses *value* AT THE BOX STORE KEY (spec §0, §2c).
+
+    ⚑ THE KEY MEMBERSHIP, and the ``workset.boxes`` key check — the launch reads two keys
+    with one test, so only the set door asks which key. It adds no judgment of its own.
+    """
+    if canonical != f"workset.{BOXES_PATH}":
+        return False
+    return not usable_box_store_value(value)
+
+
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None:
     """Refuse a ``null`` at any of *path_keys* in *table*, naming *path* and the keys."""
     leaves = _flatten_leaves(table, prefix)

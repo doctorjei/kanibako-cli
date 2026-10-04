@@ -598,7 +598,7 @@ def test_match_var_name_and_end(expr: str, name: str, end: int) -> None:
 
 
 def test_match_var_is_the_one_parser_for_the_dollar_family() -> None:
-    """``_expand_var`` / ``_scan_var_span`` / ``_scan_tokens`` share ONE parse.
+    """``_expand_var`` / ``_scan_var_span`` / ``scan_tokens`` share ONE parse.
 
     They carried three copies of the same ten lines. Agreement on token
     BOUNDARIES is what the ``defer_env`` deferral depends on (the span re-emitted
@@ -606,7 +606,7 @@ def test_match_var_is_the_one_parser_for_the_dollar_family() -> None:
     so it is asserted structurally rather than left to three copies happening to
     match — the same argument that made ``match_ref`` public.
     """
-    from kanibako.settings.settings_configset import _scan_tokens
+    from kanibako.settings.settings_configset import scan_tokens
     from kanibako.settings.settings_resolve import _scan_var_span
 
     for expr in ("$AGENT", "${XDG_DATA_HOME}", "$XDG_DATA_HOME/x"):
@@ -615,7 +615,7 @@ def test_match_var_is_the_one_parser_for_the_dollar_family() -> None:
         assert span_end == end  # identical boundary...
         assert span == expr[:end]  # ...and the span IS that slice.
         assert name in span
-        assert _scan_tokens(expr)[1] == [name]  # ...and the same name.
+        assert scan_tokens(expr)[1] == [name]  # ...and the same name.
 
 
 @pytest.mark.parametrize(
