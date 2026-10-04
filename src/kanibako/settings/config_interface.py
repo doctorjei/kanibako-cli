@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping, NamedTuple
 from kanibako.settings.config import (
     _LAYER1_TABLE,
     agent_settings_of,
+    chain_bad_entries,
     load_config,
     load_project_overrides,
     null_path_keys_error,
@@ -29,8 +30,11 @@ from kanibako.settings.config import (
 )
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings.messages import (
+    ERR_CONFIG_BAD_ENTRIES_TAIL,
+    ERR_CONFIG_CHAIN_BAD_ENTRY,
     ERR_CONFIG_NULL_PATH_REASON,
     ERR_CONFIG_NULL_PATH_SET_HEAD,
+    WARN_CONFIG_BAD_ENTRIES,
 )
 from kanibako.settings.config_display import (
     _flatten_bind_map,
@@ -125,6 +129,7 @@ from kanibako.settings.config_io import (
     write_root_key,
 )
 from kanibako.errors import KanibakoError, UserCanceled
+from kanibako.log import get_logger
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.settings_categories import (
     ABSTRACT_CATEGORIES,
@@ -136,6 +141,8 @@ from kanibako.settings.settings_keyspace import (
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
 from kanibako.utils import confirm_prompt
+
+_log = get_logger(__name__)
 
 if TYPE_CHECKING:
     from kanibako.settings.settings_launch import LaunchInputs
@@ -597,6 +604,137 @@ def _unusable_store_root_error(canonical: str, value: "str | None") -> "str | No
     return None
 
 
+def _command_tier_files(
+    cmd: "Path | None",
+    command_scope: "ConfigLevel | None",
+    *,
+    system_path: "Path | None",
+    agent_path: "Path | None",
+    workset_path: "Path | None",
+    box_path: "Path | None",
+) -> "tuple[Path | None, Path | None, Path | None, Path | None]":
+    """The tier files a command reads — ``(system, agent, workset, box)`` — with *cmd*, the
+    command's own settings file, filling its scope's slot when the caller left it empty.
+    A *cmd* that does not exist fills nothing.
+    """
+    if cmd is not None and not cmd.exists():
+        cmd = None
+    sys_p, agent_p, ws_p, box_p = system_path, agent_path, workset_path, box_path
+    scope = command_scope.value if command_scope is not None else None
+    if scope == "system":
+        sys_p = cmd if sys_p is None else sys_p
+    elif scope == "workset":
+        ws_p = cmd if ws_p is None else ws_p
+    elif scope == "agent":
+        agent_p = cmd if agent_p is None else agent_p
+    elif scope == "box":
+        box_p = cmd if box_p is None else box_p
+    return sys_p, agent_p, ws_p, box_p
+
+
+def _dotted_in(node: object, dotted: str) -> object:
+    """The value at *dotted* inside a settings VIEW, or ``None``."""
+    for seg in dotted.split("."):
+        if not isinstance(node, dict) or seg not in node:
+            return None
+        node = node[seg]
+    return node
+
+
+class _BadEntries(NamedTuple):
+    """The undeclared entries the files a command reads STORE, grouped by the file that
+    holds them, plus the two views the doors take of that one finding."""
+
+    #: ``(file path, one "key = value" line per entry)``, in the cascade's file order
+    files: "list[tuple[Path | None, list[str]]]"
+    #: dotted names across the files, for :func:`config.chain_bad_entries`
+    names: "list[str]"
+    #: reads a dotted STORED value, most-specific file first (§2 precedence)
+    stored: "Callable[[str], object]"
+
+    def warn_reports(self) -> "list[str]":
+        """One :data:`~kanibako.settings.messages.WARN_CONFIG_BAD_ENTRIES` line per file."""
+        return [
+            WARN_CONFIG_BAD_ENTRIES % (path, "\n  ".join(lines)) for path, lines in self.files
+        ]
+
+    def chain_block(self) -> str:
+        """The same entries, nested under their file — for a message that already has a lead."""
+        return "\n".join(
+            f"  {path} stores:\n    " + "\n    ".join(lines) for path, lines in self.files
+        )
+
+
+def _cascade_bad_entries(
+    cmd: "Path | None",
+    command_scope: "ConfigLevel | None",
+    *,
+    system_path: "Path | None",
+    workset_path: "Path | None",
+    box_path: "Path | None",
+    edited: "str | None" = None,
+) -> _BadEntries:
+    """Keyspec §2a: the entries ``set`` judges and ``get`` warns on, per settings file the
+    command reads — one report each, from the view the CASCADE reads, so a table the cascade
+    drops is not reported (the detector is ``show``'s, :func:`_undeclared_stored_entries`).
+
+    ⚑ AN ENTRY THE EDIT OVERWRITES IS LEFT OUT (:func:`_overwritten_by`): setting the bad
+    key itself is the repair the rule keeps open.  The agent file is not read here; its own
+    reader refuses an undeclared entry.
+
+    ⚑ THE DROP ANNOUNCEMENTS ARE TAKEN, NOT SPOKEN.  The view is built by
+    :func:`~kanibako.settings.settings_assemble._file_view`, which announces every table spec
+    §0 drops — and a bad-entry scan is not a ``show``, so those lines belong to whichever
+    door the user actually ran (:func:`_quiet_drop_announcements` takes them; the drop still
+    happens).
+    """
+    from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
+
+    sys_p, _agent, ws_p, box_p = _command_tier_files(
+        cmd, command_scope, system_path=system_path, agent_path=None,
+        workset_path=workset_path, box_path=box_path,
+    )
+    files = [
+        (level, path) for level, path in (
+            ("system", sys_p), ("workset", ws_p), ("box", box_p),
+        ) if path is not None and path.exists()
+    ]
+    for level, path in files:
+        _quiet_drop_announcements(path, ConfigLevel(level))
+    grouped: "list[tuple[Path | None, list[str]]]" = []
+    names: list[str] = []
+    views: list[dict] = []
+    for read in read_settings_files(files, purpose=ReadPurpose.DISPLAY):
+        if not isinstance(read.view, dict):
+            continue
+        views.insert(0, read.view)  # most-specific first — the cascade's precedence
+        kept = [
+            (segs, shown, v) for segs, (shown, v)
+            in sorted(_undeclared_stored_entries(read.view).items())
+            if not _overwritten_by(edited, ".".join(segs))
+        ]
+        if kept:
+            grouped.append((read.path, [f"{shown} = {v}" for _segs, shown, v in kept]))
+            names.extend(".".join(segs) for segs, _shown, _v in kept)
+    return _BadEntries(
+        grouped, names, lambda dotted: _first_dotted(views, dotted),
+    )
+
+
+def _first_dotted(views: "list[dict]", dotted: str) -> object:
+    for view in views:
+        found = _dotted_in(view, dotted)
+        if found is not None:
+            return found
+    return None
+
+
+def _overwritten_by(edited: "str | None", entry: str) -> bool:
+    """Whether setting *edited* replaces the stored *entry* — the entry is the key itself,
+    a dotted spelling of it (``pref: {"system.agent": …}``), or a non-table above it."""
+    return edited is not None and (edited == entry or edited.startswith(entry + "."))
+
+
 def _set_time_snapshot(
     *,
     target: "LaunchInputs | None",
@@ -714,22 +852,11 @@ def _set_time_snapshot(
     # to dodge ``_drop_upward_scopes`` on a file the key's scope token had already mis-filed.
     # With the slot taken from the command there is nothing left for it to dodge.
     assert config_path is not None  # a target-less snapshot backfills the command's file
-    cmd: "Path | None" = noun_settings_file(config_path, system_settings_path)
-    if cmd is not None and not cmd.exists():
-        cmd = None
-    sys_p = system_path
-    agent_p = agent_path
-    ws_p = workset_path
-    box_p = box_path
-    scope = command_scope.value if command_scope is not None else None
-    if scope == "system":
-        sys_p = cmd if sys_p is None else sys_p
-    elif scope == "workset":
-        ws_p = cmd if ws_p is None else ws_p
-    elif scope == "agent":
-        agent_p = cmd if agent_p is None else agent_p
-    elif scope == "box":
-        box_p = cmd if box_p is None else box_p
+    sys_p, agent_p, ws_p, box_p = _command_tier_files(
+        noun_settings_file(config_path, system_settings_path), command_scope,
+        system_path=system_path, agent_path=agent_path,
+        workset_path=workset_path, box_path=box_path,
+    )
 
     # Assemble the FULL cascade with the SAME ``assemble_levels`` the launch uses, then merge.
     levels = assemble_levels(
@@ -948,9 +1075,25 @@ def get_config_value(
     agents_root: Path | None = None,
     command_scope: "ConfigLevel | None" = None,
     active_agent: str | None = None,
+    cascade_system_path: Path | None = None,
+    cascade_workset_path: Path | None = None,
 ) -> str | None:
-    """Read one config value STORED AT THIS NOUN, or ``None`` when it is not set there."""
+    """Read one config value STORED AT THIS NOUN, or ``None`` when it is not set there.
+
+    Warns, and reads on, when a file the noun's ``set`` would judge stores an entry that
+    is not a key (spec §2a); the ``cascade_*`` files are the tiers above the noun's own.
+    """
     canonical = resolve_key(key)
+    try:
+        bad = _cascade_bad_entries(
+            noun_settings_file(project_toml, system_settings_path), command_scope,
+            system_path=cascade_system_path, workset_path=cascade_workset_path,
+            box_path=None,
+        )
+    except KanibakoError:
+        bad = _BadEntries([], [], lambda _dotted: None)  # that file's own reader refuses it
+    for report in bad.warn_reports():
+        _log.warning("Warning: %s", report)
 
     # A BARE agent behavior key at BOX scope has no readable value of its own — REDIRECT the
     # read to the box's active-agent mirror. WORKSET has no mirror and is refused at the handler.
@@ -1182,6 +1325,7 @@ def set_config_value(
     proj: Any = None,
     ws: Any = None,
     target_error: "str | None" = None,
+    force: bool = False,
 ) -> str:
     """Write a config value to the appropriate store; returns a message or error, NEVER raises.
 
@@ -1189,6 +1333,8 @@ def set_config_value(
     the COMMAND's target, whose full cascade the set-time validation resolves against
     (spec §2a); see :func:`_set_time_target`. *target_error* is why a caller could
     not name its target; the write is then validated as if the target failed to build.
+    *force* writes past a bad entry the value does not depend on, warning instead of
+    refusing; it does not reach one the value's own upstream chain does.
     """
     canonical = resolve_key(key)
 
@@ -1385,6 +1531,35 @@ def set_config_value(
         )
         if isinstance(scalar_verdict, _SetError):
             return _refusal(f"Error: {scalar_verdict.message}")
+
+    # Spec §2a: an entry that is not a key, in a file this command reads. TWO ARMS, and the
+    # split is a fact about the VALUE (:func:`config.chain_bad_entries`): one the edited
+    # value's own upstream chain reaches is a HARD error no ``--force`` reaches, because
+    # storing it would store a value that resolves through a name that is not a key; the
+    # rest are an error unless ``--force``, which warns and writes. ``set`` never removes
+    # an entry, and the one the edit overwrites was already left out.
+    try:
+        bad = _cascade_bad_entries(
+            noun_settings_file(config_path, system_settings_path), command_scope,
+            system_path=cascade_system_path, workset_path=cascade_workset_path,
+            box_path=cascade_box_path, edited=canonical,
+        )
+    except KanibakoError:
+        bad = _BadEntries([], [], lambda _dotted: None)  # that file's own reader refuses it
+    if bad.files:
+        on_chain = chain_bad_entries(value, bad.names, stored=bad.stored)
+        if on_chain:
+            return _refusal(
+                "Error: " + ERR_CONFIG_CHAIN_BAD_ENTRY % (
+                    ", ".join(on_chain), bad.chain_block(),
+                )
+            )
+        if not force:
+            return (
+                "Error: " + "\n".join(bad.warn_reports()) + ERR_CONFIG_BAD_ENTRIES_TAIL
+            )
+        for report in bad.warn_reports():
+            _log.warning("Warning: %s", report)
 
     # ``pref.<target>`` — the §2h REQUEST, validated with the SAME filters the launch applies.
     # ⚑ Written NESTED, never as a dotted literal: a dotted bind-shaped value is never
@@ -2305,6 +2480,22 @@ def _abstract_declarations(data: dict, scope: str) -> dict[str, str]:
     return out
 
 
+def _dropped_tables_get_reads(
+    path: "Path | None", command_scope: ConfigLevel,
+) -> list[str]:
+    """The top-level tables in *path* the cascade drops at *command_scope* and ``get`` still
+    reads — every dropped token but ``meta`` and the derivations node, which no read verb
+    answers from."""
+    from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE
+    from kanibako.settings.settings_drops import cascade_drop_set
+
+    raw = load_doc(path) if path is not None else None
+    if not isinstance(raw, dict):
+        return []
+    read = cascade_drop_set(command_scope.value) - {"meta", BINDING_DERIVATIONS_NODE}
+    return sorted(str(k) for k in raw if str(k) in read)
+
+
 class _ShownEntries(NamedTuple):
     """What ``show`` LISTS for one noun — the rows, in the order it prints them.
 
@@ -2549,5 +2740,12 @@ def show_config(
                 for k in group:
                     print(f"    {k} = {misplaced[k]}", file=out)
                 print(f"      Fix: {cure}.", file=out)
+        dropped = _dropped_tables_get_reads(settings_src, command_scope)
+        if dropped:
+            print(
+                f"  (dropped — {settings_src} stores {', '.join(dropped)}: tables the "
+                f"launch ignores at this scope (spec §0), though 'get' still reads them)",
+                file=out,
+            )
 
     return 0

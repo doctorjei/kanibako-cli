@@ -9,7 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/settings_configset.
 
 ```
 OK: _OK = _OK()
-__all__ = ['Verdict', 'OK', 'Error', 'validate_config_set', 'ResolveProbe']
+__all__ = ['Verdict', 'OK', 'Error', 'scan_tokens', 'validate_config_set', 'ResolveProbe']
 ```
 
 ## Types
@@ -21,8 +21,8 @@ ResolveProbe = Callable[[str, str], 'str | None']
 
 ## Functions
 ```
+def scan_tokens(value: str) -> tuple[list[str], list[str]]
 def validate_config_set(key: str, value: str, *, resolves: ResolveProbe) -> Verdict
-def _scan_tokens(value: str) -> tuple[list[str], list[str]]
 ```
 
 ## Classes

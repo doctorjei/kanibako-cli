@@ -20,6 +20,7 @@ __all__ = [
     "Verdict",
     "OK",
     "Error",
+    "scan_tokens",
     "validate_config_set",
     "ResolveProbe",
 ]
@@ -57,11 +58,12 @@ ResolveProbe = Callable[[str, str], "str | None"]
 # ---- Token scan — the resolver's own parse grammar ---- #
 
 
-def _scan_tokens(value: str) -> tuple[list[str], list[str]]:
+def scan_tokens(value: str) -> tuple[list[str], list[str]]:
     """Scan *value* for ``@``-ref and ``$VAR`` token NAMES, resolving nothing.
 
-    A malformed token raises :class:`ValueError`. Mirrors ``expand_expr``'s scanner EXACTLY by
-    calling its own parsers — one grammar, not a second (S25).
+    ⚑ THE ONE grammar for a value: a second scanner is a second opinion on the
+    value, and one that never parsed the ``$`` family is blind to it. Malformed →
+    ``ValueError``.
     """
     refs: list[str] = []
     var_names: list[str] = []
@@ -115,7 +117,7 @@ def validate_config_set(
     # 1. MALFORMED syntax only, before any snapshot work; it also tells us whether the value
     #    bears tokens (step 3 needs that). Dangling / unknown / cycle is the E3 probe's job.
     try:
-        ref_names, var_names = _scan_tokens(value)
+        ref_names, var_names = scan_tokens(value)
     except ValueError as exc:
         return Error(f"'{key}': malformed value {value!r}: {exc}")
 

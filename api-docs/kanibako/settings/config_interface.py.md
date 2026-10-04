@@ -9,13 +9,14 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_interface.py
 
 ```
 FLOOR_TIER = 'built-in default'
+_log = get_logger(__name__)
 ```
 
 ## Functions
 ```
 def parse_config_arg(arg: str | None, *, set_null: bool=False) -> 'tuple[ConfigAction, str, str | None]'
-def get_config_value(key: str, *, global_config_path: Path, project_toml: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, system_settings_path: Path | None=None, agents_root: Path | None=None, command_scope: 'ConfigLevel | None'=None, active_agent: str | None=None) -> str | None
-def set_config_value(key: str, value: 'str | None', *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', command_scope: ConfigLevel | None=None, agents_root: Path | None=None, std: Any=None, proj: Any=None, ws: Any=None, target_error: 'str | None'=None) -> str
+def get_config_value(key: str, *, global_config_path: Path, project_toml: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, system_settings_path: Path | None=None, agents_root: Path | None=None, command_scope: 'ConfigLevel | None'=None, active_agent: str | None=None, cascade_system_path: Path | None=None, cascade_workset_path: Path | None=None) -> str | None
+def set_config_value(key: str, value: 'str | None', *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', command_scope: ConfigLevel | None=None, agents_root: Path | None=None, std: Any=None, proj: Any=None, ws: Any=None, target_error: 'str | None'=None, force: bool=False) -> str
 def reset_config_value(key: str, *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, command_scope: ConfigLevel | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', agents_root: Path | None=None) -> str
 def effective_value(canonical: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, floor: 'Mapping[str, object] | None'=None, inputs: 'LaunchInputs | None'=None) -> 'tuple[str, str] | None'
 def write_system_value(system_settings_path: Path, leaf: str, value: object) -> None
@@ -31,6 +32,11 @@ def _target_scope_anchors(target: 'LaunchInputs | None', *, agent_path: 'Path | 
 def _set_time_anchor(anchor_ref: str, *, scope_anchors: 'dict[str, object]', agents_root: 'Path | None') -> 'str | None'
 def _bare_relative_path_error(canonical: str, value: 'str | None', *, display_key: str, route_key: str, config_path: Path, system_settings_path: 'Path | None', command_scope: 'ConfigLevel | None', target: 'LaunchInputs | None', agent_path: 'Path | None', agent_name: str, agents_root: 'Path | None') -> 'str | None'
 def _unusable_store_root_error(canonical: str, value: 'str | None') -> 'str | None'
+def _command_tier_files(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', agent_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None') -> 'tuple[Path | None, Path | None, Path | None, Path | None]'
+def _dotted_in(node: object, dotted: str) -> object
+def _cascade_bad_entries(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', edited: 'str | None'=None) -> _BadEntries
+def _first_dotted(views: 'list[dict]', dotted: str) -> object
+def _overwritten_by(edited: 'str | None', entry: str) -> bool
 def _set_time_snapshot(*, target: 'LaunchInputs | None', agent_name: str, agent_path: 'Path | None', config_path: 'Path | None'=None, command_scope: 'ConfigLevel | None'=None, system_settings_path: 'Path | None'=None, system_path: 'Path | None'=None, workset_path: 'Path | None'=None, box_path: 'Path | None'=None) -> 'tuple[Any, Any]'
 def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: 'ConfigLevel | None'=None, system_settings_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, agent_name: str='', target: 'LaunchInputs | None'=None)
 def _clone_keystore(store: 'Any') -> 'Any'
@@ -52,6 +58,7 @@ def _quiet_drop_announcements(path: 'Path | None', command_scope: 'ConfigLevel |
 def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]
 def _misplaced_config_entries(data: dict) -> dict[str, str]
 def _abstract_declarations(data: dict, scope: str) -> dict[str, str]
+def _dropped_tables_get_reads(path: 'Path | None', command_scope: ConfigLevel) -> list[str]
 def _keeps_settings_apart(command_scope: 'ConfigLevel | None') -> bool
 def _shown_entries(*, config_path: 'Path | None', settings_path: 'Path | None', command_scope: 'ConfigLevel | None', stored: 'dict | None'=None) -> _ShownEntries
 ```
@@ -64,6 +71,14 @@ class ConfigAction(Enum):
     set = 'set'
     show = 'show'
     reset = 'reset'
+
+class _BadEntries(NamedTuple):
+    files: 'list[tuple[Path | None, list[str]]]'
+    names: 'list[str]'
+    stored: 'Callable[[str], object]'
+
+    def warn_reports(self) -> 'list[str]'
+    def chain_block(self) -> str
 
 class _ShownEntries(NamedTuple):
     overrides: 'list[tuple[str, object]]'
