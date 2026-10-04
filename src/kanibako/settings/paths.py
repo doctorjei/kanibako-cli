@@ -1235,25 +1235,38 @@ def standalone_logs_dir(root: Path) -> Path | None:
     return resolve_workset_logs(root, load_workset_settings_doc(root), standalone=True)
 
 
-def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]:
-    """``(resolved workset.logs dir, box name)`` for *proj*'s mode; the dir is ``None`` under ``<None>``."""
-    box = proj.name if proj.name else short_hash(proj.project_hash)
+def box_logs_dir_for(
+    std: StandardPaths, mode: BoxMode, metadata_path: Path, ws_root: Path | None,
+) -> Path | None:
+    """The resolved ``workset.logs`` dir of a box in *mode*; ``None`` under a present ``<None>``.
+
+    ⚑ Takes *mode*'s operands rather than a :class:`ProjectPaths`, so a caller holding its
+    own box-state descriptor resolves the same dir without building one.  *ws_root* is the
+    containing workset root, and is read in ``named`` mode only.
+    """
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_logs
 
-    if proj.mode is BoxMode.standalone:
+    if mode is BoxMode.standalone:
         # ``metadata_path`` IS the standalone root (drift I).
-        return standalone_logs_dir(proj.metadata_path), box
+        return standalone_logs_dir(metadata_path)
 
-    if proj.mode is BoxMode.named:
-        # The workset root is carried on the project group (root=ws.root).  ⚑ The
-        # fallback still assumes the DEFAULT box layout; it is unreachable from
+    if mode is BoxMode.named:
+        # ⚑ The fallback still assumes the DEFAULT box layout; it is unreachable from
         # ``resolve_workset_project``, which always supplies the group.
-        ws_root = proj.group.root if proj.group else proj.metadata_path.parent.parent
-        return resolve_workset_logs(ws_root, load_workset_settings_doc(ws_root)), box
+        root = ws_root if ws_root is not None else metadata_path.parent.parent
+        return resolve_workset_logs(root, load_workset_settings_doc(root))
     # PRIMARY: the PRIMARY workset's logs dir — ``std.primary_logs`` is already the
     # RESOLVED ``workset.logs`` of the primary root (:func:`resolve_system_paths`).
-    return std.primary_logs, box
+    return std.primary_logs
+
+
+def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]:
+    """``(resolved workset.logs dir, box name)`` for *proj*'s mode; the dir is ``None`` under ``<None>``."""
+    box = proj.name if proj.name else short_hash(proj.project_hash)
+    # ⚑ The workset root rides the project group (root=ws.root).
+    ws_root = proj.group.root if proj.group else proj.metadata_path.parent.parent
+    return box_logs_dir_for(std, proj.mode, proj.metadata_path, ws_root), box
 
 
 def _bootstrap_shell(shell_path: Path) -> None:
