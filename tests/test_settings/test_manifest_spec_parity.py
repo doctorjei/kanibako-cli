@@ -91,10 +91,10 @@ def _spec_lines() -> list[str]:
 def _default_tier_fence(lines: list[str]) -> list[str]:
     """The lines INSIDE §2d's Default-tier fenced block.
 
-    ⛑ THE WALK IS `kinemata_views.spec_fence`'s, moved here when the per-node views
-    needed the same three steps: §2d's span from the extraction script's own heading
-    parser, the marker located within that span, and the fence that opens on the next
-    non-blank line.  It FAILS CLOSED on each -- a missing section, a marker that moved
+    ⛑ THE WALK IS `kinemata_views.spec_fence`'s, moved there from this file when the
+    per-node views needed the same three steps: §2d's span from the extraction script's
+    own heading parser, the marker located within that span, and the fence that opens on
+    the next non-blank line.  It FAILS CLOSED on each -- a missing section, a marker that moved
     or was renamed, a fence that never opens or closes -- so the reformat that used to
     red HERE still reds, from the one implementation.
     """

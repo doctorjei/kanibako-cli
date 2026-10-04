@@ -823,7 +823,8 @@ def spec_notation(value: object) -> str:
 #: whose value is the QUOTED form of one of these is a literal STRING that merely
 #: reads like a sentinel, and the strip in `spec_fence_rows` must not turn it into
 #: one.
-SPEC_SENTINELS = frozenset(spec_notation(value) for value in (None, True, False, {}))
+_SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
+SPEC_SENTINELS = frozenset(spec_notation(value) for value in _SENTINEL_VALUES)
 
 
 def spec_fence(section: str, marker: str) -> list[str]:
@@ -884,6 +885,33 @@ def spec_cell_value(cell: str) -> str:
     return cell
 
 
+def _strip_html_comments(lines: list[str]) -> list[str]:
+    """*lines* with every ``<!-- ... -->`` span removed, spans crossing lines included.
+
+    A line keeps its position (an emptied line stays, as ``""`` or its uncommented
+    remainder), so nothing downstream that counts lines is shifted.
+    """
+    visible: list[str] = []
+    in_comment = False
+    for raw in lines:
+        kept, rest = "", raw
+        while rest:
+            if in_comment:
+                end = rest.find("-->")
+                if end < 0:
+                    rest = ""
+                else:
+                    rest, in_comment = rest[end + 3:], False
+            else:
+                start = rest.find("<!--")
+                if start < 0:
+                    kept, rest = kept + rest, ""
+                else:
+                    kept, rest, in_comment = kept + rest[:start], rest[start + 4:], True
+        visible.append(kept)
+    return visible
+
+
 def spec_fence_rows(section: str, marker: str) -> list[tuple[str, str]]:
     """``(key, value-cell-as-written)`` for every ``key | value  notes`` row in a
     fence, brace forms expanded to one pair per key.
@@ -893,9 +921,14 @@ def spec_fence_rows(section: str, marker: str) -> list[tuple[str, str]]:
     value; `tier REALIZATION …` is not). `spec_cell_value` and
     `classify_spec_cell` are the two readers of that distinction, and they are here
     so neither caller re-derives it.
+
+    ⚑ AN HTML COMMENT IS NOT A ROW. §2d annotates its fences with ``<!-- -->``
+    blocks, single- or multi-line, and an ``agent.<node>.x | y`` example written
+    inside one is prose about a row, not a row; `_strip_html_comments` removes it
+    before the row test.
     """
     rows: list[tuple[str, str]] = []
-    for raw in spec_fence(section, marker):
+    for raw in _strip_html_comments(spec_fence(section, marker)):
         if "|" not in raw or raw.lstrip().startswith("#"):
             continue
         written_key, _, remainder = raw.partition("|")
@@ -923,7 +956,7 @@ def classify_spec_cell(key: str, cell: str) -> str:
     """`STATED`, `MEMBERSHIP` or `NOT_EXPRESSIBLE` for one §2d ``agent.<node>.*`` cell.
 
     ⚑ THE THREE CLASSES ARE THE WHOLE VERDICT, STATED ONCE. `kinemata.toml` names
-    the two views they drive and nothing else; restating the rules beside those
+    the view they drive and nothing else; restating the rules beside those
     tables is the drift this function exists to prevent.
 
     * **NOT EXPRESSIBLE** -- the cell cannot state a default a descriptor is held
@@ -942,9 +975,10 @@ def classify_spec_cell(key: str, cell: str) -> str:
         parenthesized host source of a dest-keyed entry, or a ``<runtime-probed …>``
         placeholder.
     * **MEMBERSHIP** -- the key is named and its value is what ABSENCE yields
-      (`<None>`, `{}`). The descriptor may state that value or state nothing, and
-      any OTHER value is a finding -- so a fabricated default reds and an honest
-      omission does not.
+      (`<None>`, `{}`). The descriptor may state that value or state nothing
+      (`agent_tier_defaults` drops a produced absence value, so the two read
+      alike), and any OTHER value is a finding -- so a fabricated default reds and
+      an honest omission does not.
     * **STATED** -- a literal the descriptor's floor must equal.
 
     A row this comparison does not cover at all is filtered by the caller, not
@@ -1017,55 +1051,6 @@ def node_not_expressible(node: str) -> list[str]:
     ]
 
 
-def spec_universal_leaves() -> list[str]:
-    """The leaves §2d declares at the ``agent.default`` tier -- the UNIVERSAL set.
-
-    ⚑ WHY THE KEYS VIEW NEEDS THEM. §2d's "Generic, per-agent" block states
-    ``agent.<agent>.<key> | agent.default.<key>``, so a universal leaf is governed
-    at EVERY node by that row, and a node fence is free not to restate it:
-    claude's spells ``model``/``endpoint`` out to give the realization, while
-    codex's and goose's do not. Requiring a per-node row for a universal leaf would
-    report two thirds of the plugin surface as missing against a spec that covers
-    it -- a false positive, and the kind that teaches a gate to be ignored.
-
-    A leaf outside this set is one §2d states for no tier, which is the only shape
-    a descriptor key can be unaccounted for.
-    """
-    return sorted(
-        key[len("agent.default."):]
-        for key, _cell in spec_fence_rows("2d", "**default**")
-        if key.startswith("agent.default.")
-    )
-
-
-def node_spec_keys(node: str) -> list[str]:
-    """Every ``agent.<node>.*`` key §2d GOVERNS, whatever its cell can be compared for.
-
-    Two §2d rows contribute, and both are rows:
-
-    * the node's OWN fence, for the keys it names -- including cells that state no
-      value, since ``agent.claude.model | --model <val>  FLAG; no plugin default``
-      still NAMES a key the descriptor declares, and dropping it would make this
-      view blind to the fabrication the board cites that row for;
-    * every UNIVERSAL leaf, through the "Generic, per-agent" row
-      ``agent.<agent>.<key> | agent.default.<key>`` (`spec_universal_leaves`).
-
-    ⚑ WHAT IS EXCLUDED, AND WHY IT IS NOT A HOLE. A dest-keyed ``[dest]`` row is an
-    ENTRY of a terminal key, not a key (§2a), so it is not in the set; and a leaf
-    in no §2d tier at all is a key §2d does not govern -- which is precisely what
-    the keys view exists to report, so it is left OUT of the corpus and shows up as
-    a code key with no row behind it.
-
-    So the two views answer two questions off one classification: does the
-    descriptor STATE the value §2d states (`node_spec_defaults`), and does it
-    DECLARE the keys §2d governs (`node_spec_keys`).
-    """
-    prefix = f"agent.{node}."
-    keys = {key for key in node_spec_rows(node) if "[" not in key and "]" not in key}
-    keys.update(f"{prefix}{leaf}" for leaf in spec_universal_leaves())
-    return sorted(keys)
-
-
 # --------------------------------------------------------------------------- #
 # The DESCRIPTOR side -- what each node's own declaration PRODUCES, read through
 # the production loaders and never through a second reader of the YAML.
@@ -1081,9 +1066,15 @@ def agent_tier_defaults(node: str) -> dict[str, str]:
     ``descriptor_floor`` turns into ``agent.<node>.<key>`` entries; its ``env:``
     rows are what ``default_envs()`` yields. The pseudo-agent's twin rows come
     from ``core_defaults.pseudo_tier_defaults()`` and ``env_default_categories()``
-    -- the producers the launch itself reads. A row whose floor is ``None`` states
-    NO default (§2d's ``<None>``) and is left to the keys view, which
-    compares the KEY.
+    -- the producers the launch itself reads.
+
+    ⚑ AN ABSENCE VALUE IS NOT A STATED DEFAULT. A floor of ``None`` or ``{}``
+    (§2d's ``<None>``/``{}``, :data:`ABSENCE_CELLS`) is what omitting the row
+    yields, so it is dropped here rather than produced: that is what lets a
+    descriptor state a MEMBERSHIP cell's value or state nothing, and read the same.
+    A STATED cell is never an absence value (`classify_spec_cell`), so the drop
+    cannot hide one -- a descriptor that blanks a STATED row still reds as "declared,
+    produced by nothing".
 
     ⚑ ``$GUEST_HOME`` IS FOLDED BACK TO ``~``. The loader expands it to the guest
     constant (§2a: the guest-home literal lives in one place), so the stored value
@@ -1093,47 +1084,17 @@ def agent_tier_defaults(node: str) -> dict[str, str]:
     """
     from kanibako.settings.settings_resolve import GUEST_HOME
 
-    def notation(value: str) -> str:
-        if value.startswith(GUEST_HOME):
+    def notation(value: object) -> str:
+        if isinstance(value, str) and value.startswith(GUEST_HOME):
             value = "~" + value[len(GUEST_HOME):]
         return spec_notation(value)
 
     produced: dict[str, str] = {}
     prefix = f"agent.{node}."
     for key, value in _agent_tier_floors(node).items():
-        if value is not None and key.startswith(prefix):
+        if key.startswith(prefix) and spec_notation(value) not in ABSENCE_CELLS:
             produced[key] = notation(value)
     return produced
-
-
-def agent_tier_declared(node: str) -> list[str]:
-    """The ``agent.<node>.*`` keys a node's own declaration NAMES, floored or not.
-
-    ⚑ A FLOORLESS ROW IS STILL A DECLARED KEY. ``agent.claude.model`` carries no
-    ``default:``, inherits ``agent.default.model``, and is the row the conformance
-    board probes; a view that dropped it would be blind to exactly the
-    fabrication that row is cited for. So this reads ``setting_descriptors()``
-    rather than ``descriptor_floor``, which is what omits them.
-
-    ⚑ SCOPED TO THE NODE. ``env_default_categories`` is the core env floor for
-    EVERY scope (``agent.default``, ``box``, the agent tier), so without the
-    prefix a `shell` view would carry ``box.env.COLORTERM`` and
-    ``agent.default.env.TERM`` -- two keys no node declares.
-    """
-    declared: set[str] = set()
-    if node == "shell":
-        from kanibako.settings.core_defaults import (
-            env_default_categories, pseudo_tier_defaults,
-        )
-
-        declared |= set(pseudo_tier_defaults()) | set(env_default_categories())
-    else:
-        from kanibako.targets import get_target
-
-        target = get_target(node)()
-        declared |= {f"agent.{node}.{row.key}" for row in target.setting_descriptors()}
-        declared |= set(target.default_envs())
-    return sorted(key for key in declared if key.startswith(f"agent.{node}."))
 
 
 def _agent_tier_floors(node: str) -> dict[str, str | None]:
@@ -1159,7 +1120,7 @@ def _agent_tier_floors(node: str) -> dict[str, str | None]:
 
 
 class _AgentRegistry:
-    """Shared construction for the two ``agent.<node>.*`` registries below.
+    """Shared construction for the ``agent.<node>.*`` registry below.
 
     ⚑ STRUCTURAL, NOT INHERITED -- the trade `KeyspaceRegistry` makes: kinemata is
     not a dependency of this project and must not become one, so a registry class
@@ -1189,7 +1150,7 @@ class _AgentRegistry:
         raise NotImplementedError
 
     def entries(self) -> list[Any]:
-        from kinemata.contract import Entry
+        from kinemata.contract import Entry  # type: ignore[import-not-found]
 
         return [Entry(id=str(row["key"]), clauses=(), extra=row) for row in self.rows]
 
@@ -1221,8 +1182,8 @@ class _AgentRegistry:
 class AgentStatedDefaults(_AgentRegistry):
     """The defaults one node's descriptor STATES, as ``key: {default: value}``.
 
-    The claim side of the ``spec-2d-<node>-defaults`` view. A row whose floor is
-    ``None`` states no default and is not an entry, which is what makes that view
+    The claim side of the ``agent-<node>-stated`` parity view. A row whose floor is
+    an absence value (``None``, ``{}``) states no default and is not an entry, which is what makes that view
     comparable: §2d's STATED cells are literals, so a literal the descriptor does
     not state is a finding rather than a shape to reconcile.
     """
@@ -1235,19 +1196,3 @@ class AgentStatedDefaults(_AgentRegistry):
             {"key": key, "default": value}
             for key, value in agent_tier_defaults(self.node).items()
         ]
-
-
-class AgentDeclaredRows(_AgentRegistry):
-    """Every ``agent.<node>.*`` key one node's descriptor NAMES, as ``key: {}``.
-
-    The claim side of the ``spec-2d-<node>-keys`` view: a floorless ``model`` row
-    is a declared key and §2d names it in a cell that states no default, so the two
-    sides can meet on the KEY alone.
-    """
-
-    def __init__(self, *, node: str, name: str = "agent-declared", **options: object) -> None:
-        super().__init__(node=node, name=name, **options)
-
-    def _rows(self) -> list[dict[str, object]]:
-        return [{"key": key, "default": ""} for key in agent_tier_declared(self.node)]
-
