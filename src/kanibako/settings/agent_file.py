@@ -914,7 +914,8 @@ def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
 
     ⚑ THE FILE-SHAPE REFUSALS THE ``agent:`` TABLE BROUGHT (Q92) RUN HERE TOO, for that reason: a
     VALUE where its node tables go (:func:`_refuse_scope_value`), one node spelled twice in it
-    (:func:`refuse_node_spelled_twice`), and one setting written under both ``self:`` and
+    (:func:`refuse_node_spelled_twice`), a node whose separator is the typed ``+`` rather than the
+    in-key one (:func:`refuse_plus_spelled_node`), and one setting written under both ``self:`` and
     ``agent: <node>:`` (:func:`_refuse_two_spellings`, Q103).
     ⚑ And the dest-keyed bind maps get the settings tier's own checks, HERE because this file
     is read as a RAW node table and nothing downstream of it judges an entry (spec §2a) — in
@@ -929,6 +930,7 @@ def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
         _refuse_scope_value(tables, token, path=path)
     if isinstance(scope, dict):
         refuse_node_spelled_twice(scope, prefix=FILE_SCOPE, path=path)
+        refuse_plus_spelled_node(scope, prefix=FILE_SCOPE, path=path)
     _refuse_node_values(tables, node=node, path=path)
     _refuse_two_spellings(tables, node=node, path=path)
     check_bind_tables(
@@ -1064,6 +1066,52 @@ def refuse_node_spelled_twice(table: dict, *, prefix: str, path: Path | None) ->
                 f"lowercase)."
             )
         identity[ident] = seg
+
+
+def refuse_plus_spelled_node(table: dict, *, prefix: str, path: Path | None) -> None:
+    """RAISE when a node of the agent node table *table* spells the separator ``+`` (spec §0).
+
+    ``+`` is the spelling you TYPE and ``℘`` the one you WRITE: a key path is split on ``.``
+    into segments that admit no ``+``, which is the whole reason the canonical separator
+    exists (:data:`kanibako.agent_ref.SEPARATORS`). A ``+`` node is therefore not a second
+    spelling of the node to fold — it names a segment nothing reads, so the node resolves to
+    nothing and the file says nothing. §0 admits no silent accept: it refuses, by name.
+
+    ⚑ THE SECOND CARRIER BESIDE :func:`refuse_node_spelled_twice`, and it runs AFTER it, so a
+    file carrying BOTH spellings of one node is still told the two collide — the more specific
+    diagnosis — while this answers for the lone ``+`` node that no other check reaches.
+
+    A segment that is not a ref at all (``nav+claude+x``, ``+claude``, ``nav+``) is left to the
+    keyspace, which already refuses it by name as an invalid agent; one rule per shape.
+    """
+    if not table:
+        return
+    from kanibako.agent_ref import CANONICAL_SEP, canonicalize_agent_ref
+    from kanibako.errors import ConfigError
+
+    wrong: list[tuple[str, str]] = []
+    for seg in table:
+        if not isinstance(seg, str):
+            continue
+        try:
+            canonical = canonicalize_agent_ref(seg)
+        except ConfigError:
+            continue  # not a ref — the keyspace's own refusal, not this one
+        if canonical != seg:
+            wrong.append((seg, canonical))
+    if not wrong:
+        return
+    where = str(path) if path is not None else "<settings>"
+    named = "\n".join(
+        f"  - '{prefix}.{seg}' is written '{seg}'; the same node is '{canonical}'"
+        for seg, canonical in wrong
+    )
+    raise SettingsError(
+        f"Settings file {where} spells an agent node with '+', which is the form you TYPE, "
+        f"not the one a key carries (spec §0 — the keyspace is CLOSED, so a node that reads "
+        f"as nothing is an error that names itself, never a silent accept):\n{named}\n"
+        f"  Fix: replace the '+' with '{CANONICAL_SEP}' in each entry above, in {where}."
+    )
 
 
 def _node_identity(segment: Any) -> Any:
