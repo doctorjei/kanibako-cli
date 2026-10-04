@@ -954,22 +954,12 @@ def _load_share_doc(ws_config: Path) -> dict:
 
 
 def _bind_source_ref_error(arm: str, source: str, *, where: "Path") -> "str | None":
-    """Refuse a host source whose ``@``-reference is not a config key at all, else ``None``.
+    """Refuse a host source naming a ``@``-reference that is not a config key.
 
-    ⚑ THIS DOOR IS NOT A SECOND CHECKER. The judgment is
-    :func:`settings_keyspace.key_validity` — the oracle the ``set`` door judges a
-    referent with — so a name refused here is a name ``set`` refuses, and the two cannot
-    drift apart.
-
-    ⚑ THE ARM IS THE KEY. A dest-keyed arm's destination is the mapping KEY and the
-    source is its value, so the key that carries a ref is the arm.
-    ⚑ A DECLARED key this working set does not itself hold is NOT refused: a source may
-    reference a key of its own or a containing scope, and whether this file holds it is
-    the launch's business. That is what leaves a ``@box.*`` or ``@meta.box.*`` source
-    alone — :func:`settings_launch.depends_on_the_box` is the mechanism that makes such
-    a source the BOX's to decide, and it previews as ``(depends on the box)``. Whether a
-    downward ref belongs to that exception is a question about §0, not a spelling check
-    this door may make on its own.
+    ⚑ NOT A SECOND CHECKER: :func:`settings_keyspace.key_validity`, the oracle the ``set``
+    door judges a referent with. ⚑ THE ARM IS THE KEY — a dest-keyed arm's destination is
+    the mapping KEY, so the key carrying a ref is the arm. ⚑ A ``@box.*`` / ``@meta.box.*``
+    source is left alone: ``depends_on_the_box`` makes it the BOX's to decide.
     """
     from kanibako.settings.settings_configset import scan_tokens
     from kanibako.settings.settings_keyspace import key_validity
