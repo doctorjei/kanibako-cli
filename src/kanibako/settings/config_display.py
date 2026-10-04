@@ -464,8 +464,9 @@ def _print_category_block(
         pair_declarations(declarations, collapsed),
         strict=True,
     ))
-    for key, dest, entry in rows:
+    for (key, _, entry), declaration in zip(rows, declarations, strict=True):
         shown = display_agent_ref(key)
+        dest = declaration.dest
         opts = f"  [{entry.opts}]" if entry.opts else ""
         derivation = derivations[key]
         # ⚑ THE ARROW IS THE DELIVERY, and only a delivered binding earns one — the
@@ -473,10 +474,10 @@ def _print_category_block(
         # receives nothing keeps its KEY (that key is what a user edits) and is
         # printed in DECLARATION form with the reason beneath it, so a reader skimming
         # the block for mounts cannot take a loss for one.
-        # ⚑ THE DESTINATION PRINTS AS THE USER WROTE IT — the key they edit is the
-        # arm's, and an answer spelled in a form absent from their files is one they
-        # cannot act on. The RESOLVED path is what the pairing decided on, and it is
-        # already in the reason line beneath a loss.
+        # ⚑ THE DESTINATION PRINTS RESOLVED — the guest path the mount lands on, the
+        # one the pairing decided on. The arm key in *shown* is the box-side residue,
+        # escapes still in it, and is neither what the user wrote nor where the mount
+        # goes.
         if derivation.outcome == DERIVED_MOUNT:
             print(f"  {shown} = {entry.src} -> {dest}{opts}", file=out)
             continue
