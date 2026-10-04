@@ -390,6 +390,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`kanibako system get agent.<node>.<key>` no longer prints `(not set)` for a value the system
+  settings file holds under `agent: <node>:`.** The launch applies a per-node value from either the
+  node's `agents/<node>/agent.yaml` or the system file's `agent: <node>:` table, but `get` only read the
+  node's file. It now also reads the system file's `agent: <node>:` table, never its `self:` table,
+  when the node's file does not have the key. This covers `env.<VAR>`, `secret_path.<VAR>`, flat
+  settings such as `model`, `label` and `run_args`, and the per-node bind read. The node's own file
+  still wins when both files have the key. A key in neither file is still `(not set)`, and a
+  non-scalar `env.<VAR>` in the system file is refused like one in the node file. `workset get` and
+  `box get` are unchanged, because those files' `agent:` table is never applied. `kanibako agent get
+  <node> <key>` is not covered.
+
 - **`system set` and `system reset` refuse an agent node that `system get` refuses.** `kanibako system
   set agent.<node>.<key>=…` (with or without `--null`) and `kanibako system reset agent.<node>.<key>` at a
   node that is not a valid agent are now refused, and nothing is written or removed. That covers a
@@ -3312,7 +3323,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/opt/a\$b`, `@box.env.X/t` — is arbitrated like any other, and a mask over one is reported like
   any other. The key keeps the spelling you wrote, because that is the line you edit; the
   destination after `->`, and in the declaration form of a loss, is the resolved guest path the mount
-  lands on (`$XDG_*` expanded, escapes removed), and the reason beneath a loss names it too.
+  lands on (`$XDG_*` expanded, escapes removed), and the reason beneath a loss names it too. A `pref`
+  request whose destination holds an `@`-reference is matched to the mount it produced, instead of
+  being reported as suppressed while mounted.
 
 - **A `box.enable_vault` published by a workset stays the workset's — `box remap`, `box move` and
   `box convert` no longer resolve it inconsistently, nor harden it into the box that inherited it.**
