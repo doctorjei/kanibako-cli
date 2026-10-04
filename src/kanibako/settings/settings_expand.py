@@ -188,23 +188,27 @@ def _is_whole_value_var(value: str) -> str | None:
 NullSources = dict[tuple[str, ...], tuple[str, ...]]
 #: Each expanded leaf's path → every key its value read, references followed through.
 RefsRead = dict[tuple[str, ...], frozenset[str]]
+#: A bind entry's arm path plus its STORED destination → the arm key it was filed under.
+DestKeys = dict[tuple[str, ...], str]
 
 
 @overload
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None = None,
-    refs_read: RefsRead | None = None,
+    refs_read: RefsRead | None = None, dest_keys: DestKeys | None = None,
 ) -> KeyStore: ...
 @overload
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool,
     null_sources: NullSources | None = None, refs_read: RefsRead | None = None,
+    dest_keys: DestKeys | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]: ...
 
 
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False,
     null_sources: NullSources | None = None, refs_read: RefsRead | None = None,
+    dest_keys: DestKeys | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]:
     """Expand *snapshot*'s tokens to terminals, returning a FRESH KeyStore (S19).
 
@@ -229,6 +233,10 @@ def expand(
     (:data:`NullSources`): which bind entries came out ``None`` and the refs that made
     them so.  ``settings_launch`` names those keys in the [R185] warning.
 
+    *dest_keys*, when given, is filled with :data:`DestKeys`: the key each bind entry
+    was filed under, so a reader holding the stored destination finds the entry
+    without expanding it a second time.
+
     The input snapshot is never mutated (S19).
     """
     expander = _Expander(snapshot, ctx, collect_errors=collect_errors)
@@ -237,6 +245,8 @@ def expand(
         null_sources.update(expander.null_sources)
     if refs_read is not None:
         refs_read.update(expander.refs_read)
+    if dest_keys is not None:
+        dest_keys.update(expander.dest_keys)
     if collect_errors:
         return expanded, expander.errors
     return expanded
@@ -273,6 +283,7 @@ class _Expander:
         # E2: a bind entry made ``None`` by its source → the refs that did it.
         self.null_sources: NullSources = {}
         self.refs_read: RefsRead = {}
+        self.dest_keys: DestKeys = {}
         self._deps: dict[str, frozenset[str]] = {}
         self._reading: list[set[str]] = []
         # The message spelling of each leaf being expanded, innermost last.
@@ -343,6 +354,8 @@ class _Expander:
                 self._leaf_labels.pop()
             if read:
                 self.refs_read[(*path, out_key)] = frozenset(read)
+            if isinstance(value, BindEntry):
+                self.dest_keys[child_path] = out_key
             if resolved is _ABSENT:
                 continue  # whole-value ref to an absent key → drop this key (§6b).
             if isinstance(value, BindEntry) and dict.__contains__(out, out_key):

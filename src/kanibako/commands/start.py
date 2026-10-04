@@ -7308,6 +7308,7 @@ def _resolve_launch_snapshot(
     # enrichment below names the same list the build applied.
     prefs = inputs.prefs
 
+    dest_keys: dict[tuple[str, ...], str] = {}
     snapshot = settings_launch.build_launch_snapshot(
         **inputs.as_kwargs(),
         agent_name=agent_name,
@@ -7324,6 +7325,7 @@ def _resolve_launch_snapshot(
         # none, so there ``@system.agent`` answers the STORED default — a known gap:
         # keyspec §2b makes it ``shell``.
         cli_level=cli_level,
+        dest_keys=dest_keys,
     )
     try:
         # THE REALIZATION SEAM (MBR-1 P4c-2), and its position is the design: AFTER
@@ -7422,6 +7424,7 @@ def _resolve_launch_snapshot(
                 else _narrow_bind_map(delivered, narrow_bind_dests)
             ),
             declared_by=declared_by,
+            dest_keys=dest_keys,
         )
     except (CategoryCollisionError, SettingsError) as exc:
         raise _annotate_pref_origin(exc, prefs) from None
