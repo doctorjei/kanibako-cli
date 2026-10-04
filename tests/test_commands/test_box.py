@@ -2590,19 +2590,45 @@ class TestCheckPersonaStoreForCreate:
         )
         return _check_persona_store_for_create(ref, tmp_home / "project")
 
-    def _settings_path(self, tmp_home):
-        return (
-            tmp_home / "data" / "agents" / "navigator℘codex" / "agent.yaml"
+    def _agents_root(self):
+        """⚑ The store ROOT production resolves — never one the test composes."""
+        from kanibako.settings.config import config_file_path, load_config
+        from kanibako.settings.paths import load_std_paths, user_config_home
+
+        return load_std_paths(
+            load_config(config_file_path(user_config_home())),
+        ).agents
+
+    def _settings_path(self):
+        # ⚑ The ROOT and the DIRNAME both come from the production helpers.
+        from kanibako.settings.agent_config import agent_settings_path
+
+        return agent_settings_path(self._agents_root(), "navigator+codex")
+
+    def test_the_watched_root_is_the_live_store_root(self, tmp_home):
+        """⚑ NEGATIVE CONTROL for the absence assertions in this class.
+
+        They are evidence only while they watch the root production resolves:
+        a root the product never writes makes every ``not …exists()`` below
+        pass whatever the code under test does.  So pin the root itself —
+        against the concrete tree, against the path a composing test builds,
+        and against the store path the product opens.
+        """
+        assert self._agents_root() == tmp_home / "data" / "kanibako" / "agents"
+        assert self._agents_root() != tmp_home / "data" / "agents"
+        assert self._settings_path() == (
+            tmp_home / "data" / "kanibako" / "agents" / "navigator+codex"
+            / "agent.yaml"
         )
 
     def test_bare_ref_falls_through(self, tmp_home, monkeypatch):
         self._store(tmp_home)
         assert self._call(tmp_home, "codex", monkeypatch) is None
-        assert not (tmp_home / "data" / "agents").exists()
+        assert not self._agents_root().exists()
 
     def test_persona_without_store_falls_through(self, tmp_home, monkeypatch):
         assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
-        assert not (tmp_home / "data" / "agents").exists()
+        assert not self._agents_root().exists()
 
     def test_uninstalled_harness_falls_through(self, tmp_home, monkeypatch):
         self._store(tmp_home)
@@ -2610,7 +2636,7 @@ class TestCheckPersonaStoreForCreate:
             self._call(tmp_home, "navigator+codex", monkeypatch, target=None)
             is None
         )
-        assert not (tmp_home / "data" / "agents").exists()
+        assert not self._agents_root().exists()
 
     def test_store_entry_is_recognized_and_persists_nothing(
         self, tmp_home, monkeypatch, capsys,
@@ -2624,7 +2650,7 @@ class TestCheckPersonaStoreForCreate:
         self._store(tmp_home)
         err = self._call(tmp_home, "navigator+codex", monkeypatch)
         assert err is None
-        assert not (tmp_home / "data" / "agents").exists()
+        assert not self._agents_root().exists()
         out = capsys.readouterr().out
         assert "navigator+codex" in out
         assert "persona store" in out
@@ -2642,13 +2668,13 @@ class TestCheckPersonaStoreForCreate:
         assert self._call(
             tmp_home, "navigator+codex", monkeypatch, target=ShellTarget(),
         ) is None
-        assert not (tmp_home / "data" / "agents").exists()
+        assert not self._agents_root().exists()
 
     def test_unusable_store_config_is_an_error(self, tmp_home, monkeypatch):
         self._store(tmp_home, config=False)  # entry dir, no config.toml
         err = self._call(tmp_home, "navigator+codex", monkeypatch)
         assert err is not None and err.startswith("Error:")
-        assert not self._settings_path(tmp_home).exists()
+        assert not self._settings_path().exists()
 
     def test_the_reject_reason_names_the_specific_cause(self, tmp_home, monkeypatch):
         """The reader's OWN reason rides through, not a vague "no usable config"."""
@@ -2677,7 +2703,7 @@ class TestCheckPersonaStoreForCreate:
         assert "myhost:8080/v1" in err
         assert "not well-formed" in err
         assert "agent.navigator+codex.endpoint=<url>" in err
-        assert not self._settings_path(tmp_home).exists()
+        assert not self._settings_path().exists()
 
     @pytest.mark.parametrize("endpoint", [
         "https://api.navigator.example/v1",
@@ -2698,7 +2724,7 @@ class TestCheckPersonaStoreForCreate:
             'env_key = "NAVIGATOR_API_KEY"\n'
         )
         assert self._call(tmp_home, "navigator+codex", monkeypatch) is None
-        assert not (tmp_home / "data" / "agents").exists()
+        assert not self._agents_root().exists()
 
     def test_malformed_ref_is_an_error(self, tmp_home, monkeypatch):
         err = self._call(tmp_home, "navi/gator+codex", monkeypatch)
@@ -2716,7 +2742,7 @@ class TestCheckPersonaStoreForCreate:
         launch still meets the same file and reports it there.)
         """
         self._store(tmp_home)
-        settings = self._settings_path(tmp_home)
+        settings = self._settings_path()
         settings.parent.mkdir(parents=True)
         settings.write_text("self:\n  endpoint: ok\n :\n  - [unclosed\n")
 
@@ -2730,7 +2756,7 @@ class TestCheckPersonaStoreForCreate:
         err = self._call(tmp_home, "navigator+codex", monkeypatch)
         assert err is None  # soft: the endpoint is still usable
         assert "token pointer did not resolve" in capsys.readouterr().err
-        assert not (tmp_home / "data" / "agents").exists()
+        assert not self._agents_root().exists()
 
     # --- the create-time WARN-ONLY probe (these values' ONE verify: a start
     # --- does not re-probe) --------------------------------------------------
@@ -3031,12 +3057,14 @@ class TestCreatePersistsAgentSelection:
         # first-use GENERATE writes it — but it must be EMPTY of persona values.
         # The store's endpoint/model/token reached this create as a live cascade
         # level; a surviving import would have copied them in here.
+        from kanibako.settings.agent_config import agent_settings_path
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
 
         std = load_std_paths(load_config(config_file))
-        node_doc = load_doc(std.agents / "navigator℘codex" / "agent.yaml")
-        node_self = node_doc.get("self") or {}
+        node_file = agent_settings_path(std.agents, "navigator+codex")
+        assert node_file.exists()
+        node_self = load_doc(node_file).get("self") or {}
         assert "endpoint" not in node_self
         assert "model" not in node_self
         assert "secret_path" not in node_self
@@ -3052,6 +3080,7 @@ class TestCreatePersistsAgentSelection:
         residue"; the import is gone, so the exception is gone with it and the
         failure path now leaves NOTHING AT ALL."""
         from kanibako.commands.start import _resolve_existing_box
+        from kanibako.settings.agent_config import agent_settings_path
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
 
@@ -3081,5 +3110,8 @@ class TestCreatePersistsAgentSelection:
         assert _resolve_existing_box(std, config, str(tmp_home / "project")) is None
         # …and no persona residue either: the verdict refuses BEFORE the seed's
         # first-use generate, and nothing persists the store any more, so the
-        # node dir is never created at all.
-        assert not (std.agents / "navigator℘codex" / "agent.yaml").exists()
+        # node dir is never created at all.  ⚑ The whole DIRECTORY, not just its
+        # ``agent.yaml``: a node dir can exist without that file — the persona
+        # share-symlink shim lays exactly such a dir — and this refusal must
+        # leave neither shape behind.
+        assert not agent_settings_path(std.agents, "navigator+codex").parent.exists()

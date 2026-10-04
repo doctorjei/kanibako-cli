@@ -8464,6 +8464,8 @@ class TestPersonaLoadOrErrorIntegration:
     def test_unconfigured_persona_errors_no_artifacts(
         self, start_mocks, tmp_path, monkeypatch, capsys,
     ):
+        from kanibako.settings.agent_config import agent_settings_path
+
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir laid
         # DRIVE THE FIRST-USE PATH (round-1 F3 fix): start_mocks defaults the agent
         # config path's ``.exists()`` truthy, which would take the "config already
@@ -8473,7 +8475,7 @@ class TestPersonaLoadOrErrorIntegration:
         # is live: on a LOADABLE persona the config WOULD be written, so
         # ``m_write.assert_not_called()`` genuinely proves the gate short-circuits
         # BEFORE the write (mutation-proven: move the write pre-gate → this reddens).
-        absent_cfg = tmp_path / "agents" / "navigator℘claude" / "agent.yaml"
+        absent_cfg = agent_settings_path(tmp_path / "agents", "navigator+claude")
         with start_mocks() as m:
             self._drive_persona(m)
             with (
@@ -8631,12 +8633,14 @@ class TestPersonaLoadOrErrorIntegration:
     def test_system_default_persona_defers_box(
         self, start_mocks, tmp_path, monkeypatch, capsys,
     ):
+        from kanibako.settings.agent_config import agent_settings_path
+
         # No explicit --agent, but the SYSTEM DEFAULT is a persona (Director
         # RESIDUAL ruling, 2026-07-03): the box-independent source must ALSO defer
         # box materialization, so an unloadable system-default persona on a
         # brand-new box leaves NO empty unregistered box dir.
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))  # no host dir laid
-        absent_cfg = tmp_path / "agents" / "navigator℘claude" / "agent.yaml"
+        absent_cfg = agent_settings_path(tmp_path / "agents", "navigator+claude")
         with start_mocks() as m:
             self._drive_persona(m)
             m.read_system_agent.return_value = "navigator+claude"  # system default
@@ -8858,6 +8862,8 @@ class TestPersonaLoadOrErrorUnmasked:
     def test_unloadable_persona_start_errors_real_path(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
+        from kanibako.settings.agent_config import agent_settings_path
+
         # cwd is tmp_home/project; pre-create a BARE box there (launch no longer
         # auto-creates).  Nothing configures 'navigator+claude' anywhere → it is
         # unloadable.
@@ -8881,8 +8887,10 @@ class TestPersonaLoadOrErrorUnmasked:
 
         std = load_std_paths(load_config(config_file))
         # An unloadable persona materializes NO persona agent store (the box itself
-        # was pre-created bare and legitimately exists).
-        assert not (std.agents / "navigator℘claude").exists()
+        # was pre-created bare and legitimately exists).  ⚑ The whole DIRECTORY,
+        # not just its ``agent.yaml``: a node dir can exist without that file, and
+        # only the absence of the dir rules that out.
+        assert not agent_settings_path(std.agents, "navigator+claude").parent.exists()
 
     def test_loadable_persona_start_passes_gate_real_path(
         self, config_file, tmp_home, credentials_dir,
