@@ -2270,6 +2270,73 @@ class TestAConcreteRowPrintsTheResolvedGuestPath:
         assert "= /opt/lit$b  (declared: /src)" in text, text
 
 
+class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
+    """A ``pref`` request keeps its ``@``-refs; the arm it lands in is keyed by their
+    expansion. The block looks each request up under the key ``expand`` recorded for it
+    and prints the result's resolved guest path, as a concrete row does.
+    """
+
+    def _pref_block(self, tmp_path, ro: dict, agent: str = "claude") -> str:
+        """The ``show --effective`` text for a box file holding *ro* as a ``pref`` arm."""
+        import io
+
+        import yaml
+
+        from kanibako.settings.config_interface import show_config
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot,
+            meta_agent_path_floor,
+        )
+
+        box = tmp_path / "box.yaml"
+        box.write_text(yaml.safe_dump({
+            "pref": {"agent": {agent: {"bindings": {"ro": ro}}}},
+            "box": {"env": {"ODD": "/e\\@v\\$q"}},
+        }))
+        ctx = make_ctx(agent_name=agent)
+        dest_keys: dict = {}
+        snap = build_launch_snapshot(
+            agent_name=agent, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=box,
+            default_categories=meta_agent_path_floor(agent),
+            agent_behavior_floor={"canon": "/cn"}, dest_keys=dest_keys,
+        )
+        buf = io.StringIO()
+        show_config(
+            command_scope=ConfigLevel.box, global_config_path=tmp_path / "g.yaml",
+            config_path=tmp_path / "s.yaml", effective=True,
+            category_snapshot=snap, category_ctx=ctx, category_dest_keys=dest_keys,
+            file=buf,
+        )
+        return buf.getvalue()
+
+    def test_an_at_ref_destination_is_found_and_prints_resolved(self, tmp_path):
+        text = self._pref_block(tmp_path, {"@box.env.ODD/p": ["/src"]})
+        assert "-> agent.claude.bindings.ro[@box.env.ODD/p] = /src -> /e@v$q/p\n" in text, text
+        assert "suppressed" not in text, text
+
+    @pytest.mark.parametrize(("dest", "shown"), [
+        ("$XDG_DATA_HOME/x", "/data/x"),
+        ("/opt/lit\\$b\\~c", "/opt/lit$b~c"),
+    ])
+    def test_a_deferred_destination_prints_resolved(self, tmp_path, dest, shown):
+        text = self._pref_block(tmp_path, {dest: ["/src"]})
+        assert f"-> agent.claude.bindings.ro[{dest}] = /src -> {shown}\n" in text, text
+
+    def test_a_ref_to_a_key_added_after_expansion_reads_what_the_launch_filed(
+        self, tmp_path,
+    ):
+        """``meta.box.agent.*`` is mirrored AFTER ``expand``, so the launch files this
+        entry under ``/q`` although the finished snapshot holds ``canon = /cn``; the
+        display reports what was filed, not a re-expansion against that snapshot."""
+        text = self._pref_block(tmp_path, {"@meta.box.agent.canon/q": ["/src"]}, "shell")
+        assert "-> agent.shell.bindings.ro[@meta.box.agent.canon/q] = /src -> /q\n" in text, text
+
+    def test_a_suppressed_at_ref_entry_is_still_reported_suppressed(self, tmp_path):
+        text = self._pref_block(tmp_path, {"@box.env.ODD/gone": None})
+        assert "-> agent.claude.bindings.ro[@box.env.ODD/gone] = (omitted" in text, text
+
+
 class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
     """``box show --effective`` prints the KEY behind whatever beat a declaration.
 

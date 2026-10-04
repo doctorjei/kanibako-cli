@@ -167,7 +167,9 @@ def _nested_settings_overrides(data: dict) -> dict[str, str]:
     return out
 
 
-def _print_pref_block(snapshot: Any, out: Any) -> None:
+def _print_pref_block(
+    snapshot: Any, out: Any, box_ctx: Any, dest_keys: "Mapping[tuple[str, ...], str]",
+) -> None:
     """Render each ``pref`` REQUEST beside the RESULT it produced (spec §2h).
 
     *"--effective shows BOTH the request and the resulting value — so 'why did
@@ -191,9 +193,16 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
     terminal question in the one module that owns it (no key semantics here); the
     per-entry expansion below reads the dest as a MAP KEY on both halves and
     never re-splits it.
+
+    ⚑ A REQUEST'S DESTINATION IS LOOKED UP UNDER THE ARM KEY ``expand`` FILED IT UNDER,
+    read off *dest_keys* (``settings_expand.DestKeys``, the same resolve's record): the
+    request keeps its ``@``-refs and the arm does not.  A destination with no record
+    was filed as written.  The result prints the guest path ``resolve_box_dest`` yields
+    off that key with *box_ctx*, the launch's own, as the concrete rows do.
     """
     from kanibako.settings.kb_store import Bind, BindEntry
     from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.settings_launch import resolve_box_dest
     from kanibako.settings.settings_prefs import prefs_from_partial
 
     if not isinstance(snapshot, KeyStore):
@@ -256,14 +265,21 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
             # destination), and one name for two types is how a None-carrying row
             # gets read as an entry key.
             for entry_dest in dict.keys(req.value):
+                entry = dict.__getitem__(req.value, entry_dest)
+                found: Any = __MISSING__
+                result_dest = entry_dest
+                if isinstance(arm, KeyStore):
+                    arm_key = dest_keys.get(
+                        (*req.target.split("."), entry_dest), entry_dest,
+                    )
+                    found = dict.get(arm, arm_key, __MISSING__)
+                    if isinstance(found, BindEntry):
+                        result_dest = resolve_box_dest(arm_key, box_ctx)
                 rows.append((
                     entry_label(req.target, entry_dest),
-                    _render(
-                        dict.__getitem__(req.value, entry_dest), entry_dest, target_leaf,
-                    ),
-                    dict.get(arm, entry_dest, __MISSING__) if isinstance(arm, KeyStore)
-                    else __MISSING__,
-                    entry_dest,
+                    _render(entry, entry_dest, target_leaf),
+                    found,
+                    result_dest,
                     target_leaf,
                 ))
         else:

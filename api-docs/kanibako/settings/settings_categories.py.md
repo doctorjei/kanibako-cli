@@ -56,7 +56,7 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]
 def is_scalar_family_value(value: object) -> bool
 def refuse_non_scalar_family_value(key: str, category: str, value: object) -> None
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None
-def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None, declared_by: 'dict[str, str] | None'=None) -> LaunchDeliveries
+def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None, declared_by: 'dict[str, str] | None'=None, dest_keys: 'dict[tuple[str, ...], str] | None'=None) -> LaunchDeliveries
 def narrow_table_winners(entries: list[CategoryEntry], dests: frozenset[str]) -> list[CategoryEntry]
 def raise_binding_vs_binding(box_dest: str, concrete: list[CategoryEntry]) -> NoReturn
 def raise_extension_onto_occupied(box_dest: str, *, extension: CategoryEntry, base: CategoryEntry) -> NoReturn
@@ -111,4 +111,5 @@ class LaunchDeliveries:
     agent_dests: frozenset[str]
     narrow_bindings: 'dict[str, object] | None' = None
     declared_by: 'dict[str, str]' = field(default_factory=dict)
+    dest_keys: 'dict[tuple[str, ...], str]' = field(default_factory=dict)
 ```

@@ -112,7 +112,7 @@ from kanibako.settings.settings_categories import (
     refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_cli_level import build_cli_level, guard_cli_level
-from kanibako.settings.settings_expand import NullSources, RefsRead, expand
+from kanibako.settings.settings_expand import DestKeys, NullSources, RefsRead, expand
 from kanibako.settings.settings_keyspace import (
     BIND_LEAF_CATEGORIES,
     Judgment,
@@ -2279,6 +2279,7 @@ def build_launch_snapshot(
     cli_level: Mapping[str, object] | None = None,
     subject: ResolveSubject = ResolveSubject.BOX,
     refs_read: RefsRead | None = None,
+    dest_keys: DestKeys | None = None,
     written_out: "list[_WrittenLevel] | None" = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
@@ -2323,6 +2324,9 @@ def build_launch_snapshot(
     a caller cannot omit them by accident. Supplying them is a CACHE, not a second
     source. *valid_agents* injects the agent-validity set (defaults to plugin
     discovery); tests supply their own.
+
+    *dest_keys*, when given, receives ``expand``'s record of the key each bind entry was
+    filed under (:data:`~kanibako.settings.settings_expand.DestKeys`).
 
     *written_out*, when given, receives the cascade's labeled levels, most-specific-first,
     so a caller can name the file whose value won (:func:`_none_setter`).
@@ -2390,7 +2394,9 @@ def build_launch_snapshot(
     if written_out is not None:
         written_out.extend(written)
     null_sources: NullSources = {}
-    expanded = expand(snapshot, ctx, null_sources=null_sources, refs_read=refs_read)
+    expanded = expand(
+        snapshot, ctx, null_sources=null_sources, refs_read=refs_read, dest_keys=dest_keys,
+    )
     # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
     # are resolved terminals.
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)

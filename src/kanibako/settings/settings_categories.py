@@ -378,6 +378,10 @@ class LaunchDeliveries:
     read by a display that must NAME the declaration a mount came from
     (``settings.config_display``, ``box show --effective``).
 
+    *dest_keys* is ``expand``'s record of the arm key each bind entry was filed under
+    (``settings_expand.DestKeys``), carried here for the same reason: a display that
+    holds a stored destination finds its entry through it instead of re-expanding.
+
     🛑 THE ENVIRONMENT IS NOT HERE ANY MORE — the variables are arbitrated by
     ``store_collapse.collapse_env`` and read off ``meta.assembly.env``.  A second,
     un-arbitrated view of the same declarations is what let a per-VAR contest be
@@ -390,6 +394,7 @@ class LaunchDeliveries:
     agent_dests: frozenset[str]
     narrow_bindings: "dict[str, object] | None" = None
     declared_by: "dict[str, str]" = field(default_factory=dict)
+    dest_keys: "dict[tuple[str, ...], str]" = field(default_factory=dict)
 
 
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
@@ -601,6 +606,7 @@ def launch_deliveries(
     entries: list[CategoryEntry], *, agent_dests: frozenset[str],
     narrow_bindings: "dict[str, object] | None" = None,
     declared_by: "dict[str, str] | None" = None,
+    dest_keys: "dict[tuple[str, ...], str] | None" = None,
 ) -> LaunchDeliveries:
     """Build the :class:`LaunchDeliveries` carrier from a CREDENTIAL-GATED list.
 
@@ -624,6 +630,7 @@ def launch_deliveries(
         agent_dests=agent_dests,
         narrow_bindings=narrow_bindings,
         declared_by=dict(declared_by or {}),
+        dest_keys=dict(dest_keys or {}),
     )
 
 
