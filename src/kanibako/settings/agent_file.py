@@ -37,6 +37,7 @@ from kanibako.settings.settings_resolve import (
     SettingsError,
     check_bind_tables,
     normalize_bind_dest,
+    refuse_scalar_at_table_key,
 )
 from kanibako.utils import deep_merge
 
@@ -116,6 +117,17 @@ _SCALAR_WRITABLE_KEYS: Final[frozenset[str]] = frozenset({"run_args"})
 #: file actually holds. ⚑ The answer to the question above is NO for all of them: an entry inside
 #: one of these tables is DATA, never a key segment of its own.
 _TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS
+
+#: The root keys a non-``None`` SCALAR is refused at: a table whole, and never a value.
+#: ⚑ DERIVED from the two facts that own them rather than listed, so neither can drift, and
+#: NARROWER than :data:`_TABLE_VALUED_KEYS` on purpose: ``env`` / ``secret_path`` hold a SCALAR
+#: per name, so a value at their ROOT is the separate question
+#: ``settings_launch._assert_declared_categories`` leaves open — widening it is a decision,
+#: not an omission to fix in passing. ``transform_settings`` is the ONE table-valued agent
+#: LEAF, and it is in no category set, so it is in here and nowhere else.
+_TABLE_VALUED_ROOT_CATEGORIES: Final[frozenset[str]] = (
+    _TABLE_VALUED_KEYS - _VERB_WRITABLE_CATEGORIES
+)
 
 #: Every ROOT key the file stores as a LIST OF ARGV WORDS rather than as the one string the
 #: command line hands over.
@@ -811,11 +823,24 @@ def _refuse_nested_tables(
     refused. A BARE ``claude:`` leaf parses to ``None`` and is NOT refused here — it is not a
     table, carries nothing, and delivers nothing; ``record`` sweeps it into state as the scalar it
     parsed to, and the undeclared-leaf check refuses it there by name.
+
+    ⚑ THE MIRROR HALF RUNS HERE TOO, on the SAME root and against the SAME set: a non-``None``
+    scalar where a :data:`_TABLE_VALUED_ROOT_CATEGORIES` key's table goes is a wrong SHAPE
+    (spec §0, closed keyspace) and is refused by
+    :func:`~kanibako.settings.settings_resolve.refuse_scalar_at_table_key` — the one rule the
+    settings tier's own parse also calls, so a ``caches: 5`` gets one verdict wherever it is
+    written. That half is the only coverage ``transform_settings`` has on a READ: it is a
+    declared agent LEAF, not a §2a category, so no category walk reaches it.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
     agent = node or "<agent>"
     for sub_key, sub_val in root_tbl.items():
+        if sub_key in _TABLE_VALUED_ROOT_CATEGORIES:
+            refuse_scalar_at_table_key(
+                file_spelling(sub_key), sub_val,
+                where=str(path) if path is not None else None,
+            )
         if sub_key in _ROOT_TABLES or not isinstance(sub_val, dict):
             continue
         category = _refused_category(sub_val)

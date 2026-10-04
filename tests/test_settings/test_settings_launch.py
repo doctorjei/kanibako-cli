@@ -968,13 +968,16 @@ class TestAMasksListInASETTINGSFILEIsRefusedByName:
         ws = tmp_path / "workset.yaml"
         ws.write_text('workset:\n  masks:\n    - "/w/m"\n')
         ctx = _ctx()
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx,
-            system_path=None, agent_path=None, workset_path=ws, box_path=None,
-        )
+        # ⚑ BOTH CALLS ARE INSIDE THE ``raises``, as in the box case above: the refusal
+        # fires while the file is PARSED, which is what lets it name the file to edit.
         with pytest.raises(SettingsError) as excinfo:
+            snap = build_launch_snapshot(
+                agent_name="claude", ctx=ctx,
+                system_path=None, agent_path=None, workset_path=ws, box_path=None,
+            )
             snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
         assert "workset.masks" in str(excinfo.value)
+        assert str(ws) in str(excinfo.value)
 
     def test_an_empty_map_is_not_an_error(self, tmp_path: Path):
         # PRESENT-BUT-EMPTY stays a no-op, exactly as it is for the bind families:
