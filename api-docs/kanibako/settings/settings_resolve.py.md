@@ -37,6 +37,10 @@ def split_bind(value: str) -> tuple[str, str | None]
 def unpack_bind(value: object) -> tuple[str, str, str | None]
 def unpack_bind_entry(value: object) -> tuple[str, str | None]
 def normalize_bind_dest(dest: str) -> str
+def refuse_dest_spelled_twice(raw: Mapping[str, Any], *, category: str, where: str | None=None) -> None
+def refuse_unrooted_source(src: str, category: str, dest: str, *, where: str | None=None) -> None
+def check_bind_map(raw: Mapping[str, Any], *, category: str, where: str | None=None) -> None
+def check_bind_tables(tables: Mapping[str, Any], *, root: str, scope: str, contained: Sequence[str], where: str | None) -> None
 def match_var(expr: str, i: int) -> tuple[str, int]
 def match_ref(expr: str, i: int) -> tuple[str, int]
 def expand_expr(expr: str, *, space: Literal['host', 'guest'], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]=(), defer_env: bool=False) -> str
@@ -45,6 +49,9 @@ def resolve_value(key: str, *, levels: list[LevelView], ctx: ResolveCtx, lookup:
 def _host_term() -> str
 def _host_colorterm() -> str | None
 def _unescape(s: str) -> str
+def _check_node_binds(table: Mapping[str, Any], *, where: str | None) -> None
+def _check_dest_map(raw: Mapping[str, Any], *, category: str, where: str | None) -> None
+def _in_file(where: str | None) -> str
 def _scan_var_span(expr: str, i: int) -> tuple[str, int]
 def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
 def _resolve_var(name: str, ctx: ResolveCtx) -> str

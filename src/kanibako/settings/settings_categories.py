@@ -55,10 +55,10 @@ ENV: Final[Delivery] = "ENV"
 #: sentence, once, for every seam that refuses one.  ⚑ THE SECOND CLAUSE IS THE ONE
 #: PEOPLE DO NOT KNOW, which is why it travels with the first: a relative source is not
 #: merely resolved against a surprising directory, it stops being a host path at all.
-#: Read by the declaration parse (``settings_assemble._declared_source``) and by the
-#: post-expansion guard (``settings_expand``), which catch the same defect at the two
-#: ends of the resolve — one for a source spelled relative, one for a source whose
-#: ``@``-ref dereferences a path key holding a bare relative ([R147]).
+#: Read by the three seams that refuse one: ``settings_resolve.refuse_unrooted_source``
+#: (the DECLARATION-LOAD entry refusal), ``settings_expand`` (the post-expansion guard,
+#: which catches the same defect after an ``@``-ref dereferences a bare-relative path key,
+#: [R147]) and ``settings_launch`` (a ``secret_path`` host source).
 BARE_RELATIVE_SOURCE_HAZARD: Final[str] = (
     "a relative source resolves against whatever directory kanibako happens to be run "
     "from, and for a MOUNT podman reads a source beginning with neither '.' nor '/' as "

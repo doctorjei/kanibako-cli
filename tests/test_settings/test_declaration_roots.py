@@ -200,9 +200,9 @@ def test_a_relative_concrete_source_is_refused_by_name(
 ) -> None:
   """The refusal names the CATEGORY, the DESTINATION and the offending SOURCE.
 
-  (Mutation: return *src* instead of raising in ``settings_assemble._declared_source`` →
-  every row fails, the file loading silently with a source podman would read as a named
-  volume.)
+  (Mutation: return *src* instead of raising in
+  ``settings_resolve.refuse_unrooted_source`` → every row fails, the file loading silently
+  with a source podman would read as a named volume.)
   """
   with pytest.raises(SettingsError) as exc:
     _sources(tmp_path, **{level: text})
