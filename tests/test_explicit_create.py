@@ -1071,3 +1071,144 @@ class TestStandaloneNullWorkspaceHasNoPath:
             resolve_lifecycle_target(str(root), std, config)
         assert "workset.workspaces" in str(exc.value)
         assert str(root / "workset.yaml") in str(exc.value)
+
+
+class TestNamedInTreeNullWorkspaceHasNoPath:
+    """A named IN-TREE member under a null ``workset.workspaces`` has no workspace either.
+
+    ``@workset.workspaces/<name>`` is a whole-value ``<None>`` (§0), so the launch refuses
+    and the two display faces must not name the registered folder: it is the RECORD, not
+    the resolution.  An external member and a primary box resolve through no workset key
+    and keep their own path — the boundary this must not cross.
+    """
+
+    def _member(self, tmp_home, config_file):
+        from kanibako.project.workset import add_project, create_workset
+
+        config, std = _std(config_file)
+        root = (tmp_home / "worksets" / "nullws").resolve()
+        ws = create_workset("nullws", root, std)
+        add_project(ws, "app", root / "workspaces" / "app", std)
+        settings = _null_workspaces(root)
+        return config, std, root, settings
+
+    def _cli(self, argv, capsys):
+        from kanibako import cli
+
+        capsys.readouterr()
+        try:
+            cli.main(argv)
+            code = 0
+        except SystemExit as exc:
+            code = exc.code
+        return code, capsys.readouterr()
+
+    def test_resolve_and_floor_carry_none(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        from kanibako.settings.settings_launch import _box_inputs
+
+        config, std, _root, _settings = self._member(tmp_home, config_file)
+        proj = _resolve_existing_box(std, config, "nullws/app")
+        assert proj is not None and proj.name == "app"
+        assert proj.project_path is None
+        inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None)
+        assert inputs.meta_identity is not None
+        assert inputs.meta_identity["meta.box.workspace"] is None
+        # The RECORD of where the files are survives the null: the hash is the box's
+        # identity, and nulling must not rename its container or drop its membership.
+        assert proj.project_hash
+        assert not any(p.name == "None" for p in _tree(tmp_home))
+
+    def test_displays_show_none_never_the_registered_folder(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        self._member(tmp_home, config_file)
+        recorded = str(tmp_home / "worksets" / "nullws" / "workspaces" / "app")
+
+        code, out = self._cli(["box", "show", "nullws/app", "--effective"], capsys)
+        assert code == 0, out.err
+        assert "box.bindings" in out.out  # the resolve ran
+        assert recorded not in out.out + out.err
+        assert "= None" not in out.out
+
+        code, out = self._cli(["box", "info", "nullws/app"], capsys)
+        assert code == 0, out.err
+        assert re.search(r"^\s*Project:\s+<None>$", out.out, re.MULTILINE), out.out
+        assert recorded not in out.out + out.err
+        assert not any(p.name == "None" for p in _tree(tmp_home))
+
+    def test_the_displays_agree_with_the_launch_refusal(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """Both faces and the launch answer from the one resolved value."""
+        from kanibako.errors import WorksetError
+
+        self._member(tmp_home, config_file)
+
+        with pytest.raises(WorksetError) as exc:
+            _launch("nullws/app")
+        message = str(exc.value)
+        assert "workset.workspaces" in message
+
+        code, out = self._cli(["box", "info", "nullws/app"], capsys)
+        assert code == 0, out.err
+        # The launch says the box has no workspace to mount; the display must not contradict.
+        assert re.search(r"^\s*Project:\s+<None>$", out.out, re.MULTILINE), out.out
+
+        code, out = self._cli(["box", "show", "nullws/app", "--effective"], capsys)
+        assert code == 0, out.err
+        assert "~/workspace]" not in out.out
+
+    def test_lifecycle_state_carries_the_recorded_workspace(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """A lifecycle op works on the RECORD — where the files are — so it still resolves.
+
+        ⚑ The null governs the RESOLVED ``meta.box.workspace``, which is what the launch
+        mounts; a move or a re-point needs the leaf on disk, and refusing at resolve time
+        would strand a box that can legitimately move OUT to a directory outside the workset.
+        The op-level refusal is what stops a move that would land a new in-tree leaf.
+        """
+        from kanibako.commands.box._lifecycle import resolve_lifecycle_target
+        from kanibako.project.workset import load_workset
+
+        config, std, root, _settings = self._member(tmp_home, config_file)
+        recorded = root / "workspaces" / "app"
+        state = resolve_lifecycle_target("nullws/app", std, config)
+        assert state.workspace_path == recorded
+        assert state.mode.value == "named"
+        # The box is still a member, so the op can re-point or release it.
+        assert [p.name for p in load_workset(root, "nullws").projects] == ["app"]
+
+    def test_an_external_member_keeps_its_own_workspace(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The boundary: a recorded workspace OUTSIDE the root resolves through no key."""
+        from kanibako.project.workset import add_project, create_workset
+
+        config, std = _std(config_file)
+        root = (tmp_home / "worksets" / "extws").resolve()
+        ws = create_workset("extws", root, std)
+        source = (tmp_home / "ext-src").resolve()
+        source.mkdir()
+        add_project(ws, "ext", source, std)
+        _null_workspaces(root)
+
+        proj = _resolve_existing_box(std, config, str(source))
+        assert proj is not None and proj.name == "ext"
+        assert proj.project_path == source
+
+    def test_a_primary_box_keeps_its_project_dir(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """The boundary: primary's workspace is the project dir, not a workset key."""
+        from kanibako.commands.box._parser import run_create
+
+        config, std = _std(config_file)
+        assert run_create(_create_args(tmp_home / "project")) == 0
+        _null_workspaces(std.primary_workset)
+
+        proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
+        assert proj is not None and proj.name == "project"
+        assert proj.project_path == (tmp_home / "project").resolve()

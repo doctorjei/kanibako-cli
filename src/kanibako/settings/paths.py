@@ -163,8 +163,8 @@ def _default_project_group(std: StandardPaths) -> ProjectGroup:
 @dataclass
 class ProjectPaths:
     """Resolved paths for a specific project."""
-    # ⚑ ``None`` ONLY for a standalone box whose root nulls ``workset.workspaces`` (Q106):
-    # it has no workspace, its ``meta.box.workspace`` is ``<None>`` and its launch refuses.
+    # ⚑ ``None`` when the box has NO workspace (Q106): a standalone box, or a named member
+    # whose workspace is in-tree, under a null ``workset.workspaces``.
     project_path: Path | None
     project_hash: str
     metadata_path: Path      # host-only: workset.yaml, breadcrumb, lock
@@ -1790,25 +1790,33 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
     project_toml, workset_toml = _box_settings_files(BoxMode.named, metadata_path, ws)
     registered_workspace = _workset_box_workspace_for_name(ws.root, project_name)
     if registered_workspace is not None:
-        project_path = Path(registered_workspace)
+        workspace = Path(registered_workspace)
     else:
         if ws.workspaces_dir is None:
             # ⚑ No recorded workspace and no workspaces dir to compose one in.
             raise WorksetError(ERR_WORKSET_NULL_WORKSPACES % (
                 ws.root / WORKSET_META_FILE, f"a workspace for '{project_name}'"))
-        project_path = ws.workspaces_dir / project_name
+        workspace = ws.workspaces_dir / project_name
         from kanibako.launch import box_resolve
-        identity = box_resolve.resolve_box_identity(project_path, std, config)
+        identity = box_resolve.resolve_box_identity(workspace, std, config)
         if identity is not None:
-            project_path = Path(identity["workspace"])
+            workspace = Path(identity["workspace"])
     # B2b: the per-box custom home/vault path OVERRIDE is DROPPED;
     # the workspace override above is a SEPARATE concern and STAYS.
     shell_path, vault_ro_path, vault_rw_path = _workset_box_paths(
         metadata_path, ws.vault_ro_dir, ws.vault_rw_dir, project_name)
     resolved_vault = enable_vault
 
-    # Hash the resolved workspace path for container naming.
-    phash = project_hash(str(project_path.resolve()))
+    # Hash the workspace: the box's identity, so a null must not rename it.
+    phash = project_hash(str(workspace.resolve()))
+    # ⚑ An IN-TREE member has NO workspace once the root nulls ``workset.workspaces``, and the
+    # launch refuses it (Q106).  Asked of the LAUNCH's own refusal — one reader owns the rule.
+    project_path: Path | None = workspace
+    from kanibako.project.workset import refuse_null_box_workspace
+    try:
+        refuse_null_box_workspace(ws.root, workspace, project_name, standalone=False)
+    except WorksetError:
+        project_path = None
 
     is_new = False
     if initialize and not shell_path.is_dir():
@@ -1818,8 +1826,8 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
             enable_vault if enable_vault is not None else read_box_enable_vault(project_toml),
         )
         # P5a dual-register (idempotent): the SOLE on-disk identity record.  Sourced from the
-        # RESOLVED *project_path* so an external-connect override seeds the external dir.
-        _register_workset_box_membership(ws.root, project_name, project_path)
+        # box's workspace, so an external-connect override seeds the external dir.
+        _register_workset_box_membership(ws.root, project_name, workspace)
         is_new = True
 
     if initialize:
