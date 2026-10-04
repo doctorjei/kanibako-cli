@@ -781,8 +781,14 @@ class TestWorksetConnect:
     def test_connect_internal_no_override_no_symlink(
         self, config_file, tmp_home, capsys
     ):
-        """connect to a dir INSIDE the workset root → a real workspaces/{name} dir,
-        no override, and a membership row recording THAT dir."""
+        """connect of an EXISTING ``workspaces/<name>`` leaf → no override, no
+        symlink, and a membership row recording THAT dir.
+
+        The ruling (kanibako, 141st): "``workset connect`` NEVER creates a directory, a
+        workspace, or a box tree beyond the registration it writes. An in-tree source
+        that is an EXISTING, unregistered ``workspaces/<name>`` dir may be registered
+        (register only); every other in-tree source is REFUSED, naming why."
+        """
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.settings.config_io import load_doc
 
@@ -790,9 +796,10 @@ class TestWorksetConnect:
         std = load_std_paths(config)
         ws = create_workset("intws", tmp_home / "ws_int", std)
 
-        # Internal source: a directory inside the workset root.
-        internal = ws.root / "inside_src"
-        internal.mkdir()
+        # In-tree source: the member's own workspaces/<name> leaf, already there.
+        internal = ws.workspaces_dir / "int"
+        internal.mkdir(parents=True)
+        (internal / "keep.txt").write_text("seeded\n")
 
         args = argparse.Namespace(
             workset="intws", source=str(internal), project_name="int", force=False,
@@ -805,14 +812,103 @@ class TestWorksetConnect:
         assert "project" not in load_doc(project_toml)
 
         # ⚑⚑ EVERY member gets a row, in-tree as well as external — and an in-tree
-        # member's row records ``workspaces/<name>``, the dir it actually runs on,
-        # not the caller's source argument (which was `inside_src` here).
-        assert _workset_boxes(ws) == {"int": str(ws.workspaces_dir / "int")}
+        # member's row records ``workspaces/<name>``, the dir it actually runs on.
+        assert _workset_boxes(ws) == {"int": str(internal)}
 
-        # workspaces/int is a real directory, not a symlink.
-        wsdir = ws.workspaces_dir / "int"
-        assert wsdir.is_dir()
-        assert not wsdir.is_symlink()
+        # workspaces/int is a real directory, not a symlink, and connect registered it
+        # rather than minting it: the file it was seeded with is still there.
+        assert internal.is_dir()
+        assert not internal.is_symlink()
+        assert (internal / "keep.txt").read_text() == "seeded\n"
+
+    def test_connect_in_tree_own_tree_refuses_creating_nothing(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The ruling: every in-tree source that is not an EXISTING
+        ``workspaces/<name>`` directory is REFUSED, naming why."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+        from kanibako.project.workset import list_worksets, load_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_intrefuse").resolve()
+        ws = create_workset("intrefuse", root, std)
+
+        # One refusal class, three shapes: the root itself, a dir beside workspaces/,
+        # and a subdir of a member.
+        nested = root / "workspaces" / "x" / "sub"
+        nested.mkdir(parents=True)
+        (root / "notes").mkdir()
+        for source, name in (
+            (root, "ws_intrefuse"),
+            (root / "notes", "notes"),
+            (nested, "sub"),
+        ):
+            args = argparse.Namespace(
+                workset="intrefuse", source=str(source),
+                project_name=name, force=False,
+            )
+            assert run_connect(args) == 1, source
+            err = capsys.readouterr().err
+            assert err.strip() == (
+                f"Error: Cannot connect '{source.resolve()}': it is part of "
+                "working set 'intrefuse's own tree, not a project. `workset "
+                "connect` registers an existing workspaces/<name> directory; it "
+                "creates nothing."
+            ), source
+
+        # Nothing was created and no member was registered by any of the three.
+        assert not (root / "workspaces" / "notes").exists()
+        assert not (root / "workspaces" / "sub").exists()
+        assert not (root / "workspaces" / "ws_intrefuse").exists()
+        reloaded = load_workset(list_worksets(std)["intrefuse"], "intrefuse")
+        assert reloaded.projects == []
+        assert _workset_boxes(reloaded) == {}
+        assert journal.read_journal(std.journal) == {}
+
+    def test_connect_in_tree_leaf_naming_a_different_project_refuses(
+        self, config_file, tmp_home, capsys,
+    ):
+        """An existing ``workspaces/<name>`` leaf is register-only under the name that
+        LEAF has: ``--name`` pointing elsewhere would make ``add_project`` mint the
+        other dir, so it is refused."""
+        from kanibako.commands.workset_cmd import run_connect
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("mismatch", tmp_home / "ws_mismatch", std)
+
+        internal = ws.workspaces_dir / "alpha"
+        internal.mkdir(parents=True)
+
+        args = argparse.Namespace(
+            workset="mismatch", source=str(internal), project_name="beta", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "it is part of working set 'mismatch's own tree" in err
+        assert not (ws.workspaces_dir / "beta").exists()
+
+    def test_connect_in_tree_missing_leaf_refuses(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``workspaces/<name>`` is admitted because it EXISTS: a name under
+        ``workspaces/`` with no directory there is not a source to register."""
+        from kanibako.commands.workset_cmd import run_connect
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("noleaf", tmp_home / "ws_noleaf", std)
+
+        args = argparse.Namespace(
+            workset="noleaf", source=str(ws.workspaces_dir / "ghost"),
+            project_name="ghost", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "it is part of working set 'noleaf's own tree" in err
+        assert not (ws.workspaces_dir / "ghost").exists()
 
     def test_connect_standalone_refused_without_force(
         self, config_file, tmp_home, capsys

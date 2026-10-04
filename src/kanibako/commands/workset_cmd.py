@@ -568,7 +568,7 @@ def run_connect(args: argparse.Namespace) -> int:
     source = Path(args.source) if args.source else Path(os.getcwd())
     project_name = args.project_name or source.resolve().name
 
-    # ⚑ BOTH REFUSALS BELOW FIRE BEFORE THE JOURNAL BRACKET, so a refused connect leaves
+    # ⚑ EVERY REFUSAL BELOW FIRES BEFORE THE JOURNAL BRACKET, so a refused connect leaves
     # no pending ``connect`` entry behind (``add_project`` refuses the same null case for
     # its other callers).
     if source_in_tree(ws, source):
@@ -576,6 +576,24 @@ def run_connect(args: argparse.Namespace) -> int:
             refuse_null_workspaces(ws.root, f"a workspace for '{project_name}'")
         except WorksetError as e:
             print(f"Error: {e}", file=sys.stderr)
+            return 1
+        # ⚑ ``connect`` REGISTERS AN EXISTING ``workspaces/<name>`` DIRECTORY AND CREATES
+        # NOTHING.  ``add_project`` makes the leaf its row records, so admitting any other
+        # in-tree source would register a project holding none of that source's files.
+        resolved = source.resolve()
+        workspaces = ws.workspaces_dir
+        if not (
+            workspaces is not None
+            and resolved.parent == workspaces.resolve()
+            and resolved.name == project_name
+            and resolved.is_dir()
+        ):
+            print(
+                f"Error: Cannot connect '{resolved}': it is part of working set "
+                f"'{ws.name}'s own tree, not a project. `workset connect` registers an "
+                "existing workspaces/<name> directory; it creates nothing.",
+                file=sys.stderr,
+            )
             return 1
     elif not source.is_dir():
         # ⚑ ``connect`` REGISTERS an EXTERNAL dir; a dangling symlink is PRESENT, not missing.
