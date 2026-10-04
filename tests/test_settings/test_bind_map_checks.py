@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kanibako.settings.agent_file import _contribution, level_table
+from kanibako.settings.agent_file import _CONTRIBUTED, _contribution, level_table
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_assemble import _parse_marker_map, parse_bind_map
 from kanibako.settings.settings_resolve import SettingsError
@@ -25,9 +25,9 @@ BIND_RO = "bindings.ro"
 # EVERY top-level table the agent file contributes and the cascade reads: its own root,
 # its ``agent:`` table and the scopes it CONTAINS. Each is a scope's own table, so each
 # holds categories at its first level — the ``agent:`` table one level deeper, under the
-# node name. Parametrized off the reader's own contributed set, so a table this forgets
-# shows up as a MISSING CASE here rather than as silence in a walk.
-_SCOPE_TABLES: tuple[str, ...] = ("self", "agent", "workset", "box")
+# node name. Built from the reader's own contributed set, so a table added there shows up
+# as a NEW CASE here rather than as silence in a walk. Sorted: a set's order varies per run.
+_SCOPE_TABLES: tuple[str, ...] = tuple(sorted(_CONTRIBUTED))
 
 
 def _agent_file(tmp_path: Path, body: str) -> Path:

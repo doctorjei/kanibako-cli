@@ -23,14 +23,14 @@ from typing import Any, Literal
 # for ONE constant (``UNSET`` / ``GUEST_HOME``), so an edge added here is an import-time cost they
 # all pay, in an import order this module does not control.
 #
-# ⚑⚑ CALL-TIME EXCEPTION, AND IT IS FOUR NAMES IN ONE RULE: the dest-keyed map checks read
-# ``agent_config.is_self_resolving``, ``settings_categories.{ABSTRACT_CATEGORIES,
+# ⚑⚑ CALL-TIME EXCEPTION, AND IT IS FIVE NAMES FROM THREE MODULES IN ONE RULE: the dest-keyed
+# map checks read ``agent_config.is_self_resolving``, ``settings_categories.{ABSTRACT_CATEGORIES,
 # BARE_RELATIVE_SOURCE_HAZARD}`` and ``settings_keyspace.{BIND_CATEGORIES,
 # is_terminal_category_tail}``, because a map's own checks need the keyspace to decide what a map
 # IS and every reader of one must run them. ⚑ THE CYCLE IS MEASURED, NOT ASSUMED: hoisting
 # ``agent_config.is_self_resolving`` to module level raises ``ImportError: cannot import name
 # 'SettingsError' from partially initialized module 'kanibako.settings.settings_resolve'``, because
-# ``agent_config`` imports ``SettingsError`` from here at ITS module level. The other three
+# ``agent_config`` imports ``SettingsError`` from here at ITS module level. The other two modules
 # measure clean at import time and stay call-time anyway: a module-level edge is a standing claim
 # about two modules' relative import order, which only the imported module can honor.
 from kanibako.agent_ref import CANONICAL_SEP, SEGMENT_CHAR_CLASS
