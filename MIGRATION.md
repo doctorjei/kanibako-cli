@@ -378,7 +378,12 @@ inside boxes. In order of likely impact:
     `create --recover` — see *2.105 `create` refuses an interrupted create; finish it with
     `--recover`*; and `workset connect` exits 1 for a source that is not an existing directory — see
     *2.106 `workset connect` refuses a source that is not an existing directory*; and a box designation that
-    cannot be a box name (`.hidden`, `foo.`) is a path — see *2.107 A designation that cannot be a box name is a path*.
+    cannot be a box name (`.hidden`, `foo.`) is a path — see *2.107 A designation that cannot be a box name is a path*;
+    and `set` refuses an empty `workset.boxes` or one ending in `/` — see *`workset.boxes` is refused at
+    the door at a value the launch refuses*; and a `system.*` path value referencing outside its tier
+    is refused at `set` — see *A system path value referencing outside its tier is refused at `set`*;
+    and `set` refuses, unless `--force`, while a settings file it reads stores an entry that is not a
+    key — see *`set` refuses while a settings file it reads stores an entry that is not a key*.
 
 ---
 
@@ -6169,6 +6174,88 @@ Error: no box at /home/you/work/.hidden. To create a new box, run 'kanibako crea
 
 **What to do.** If you named a box by such a value before 1.8.0, address it by its path, or run the
 command from inside its workspace, and rename it.
+
+### `workset.boxes` is refused at the door at a value the launch refuses
+
+**Read this if you script `kanibako workset set <ws> workset.boxes=<value>`, or read `workset.boxes`
+out of a settings file you did not write.** The closest precedent is *2.104 `set --null` at a path
+key is refused at the door*.
+
+**What changed.** In v1.8.0-rc2 `set` at `workset.boxes` accepted a value the launch cannot use and
+wrote it. The empty string and a value ending in `/` are both refused by the launch's box-root check,
+which continues past a value only when it is a non-empty string that does not end in a separator. `set`
+now exits 1 and writes nothing, at every scope that may write the key. The launch's test now lives in
+one place, read by both the launch and the set door, so a change to one cannot leave the other behind.
+
+**What you see.**
+
+```
+$ kanibako workset set ws1 workset.boxes=
+Error: the launch refuses this value at the box store key, so this set is refused too:
+  workset.boxes
+the box root 'meta.box.path' derives from '@workset.boxes', so a settings file that sets workset.boxes to null / "" — or removes it — leaves every key rooted at the box root pointing somewhere at the filesystem root. Nothing was written: to use workset.boxes's default, run 'reset workset.boxes', or set the path you mean.
+```
+
+**What to do.** Run `reset workset.boxes` to take the default, or set the path you mean. `set --null
+workset.boxes` is unchanged. **A script that passed an empty string, or a variable that happened to be
+empty, now fails where it used to succeed** — check the value before you pass it. A value ending in
+`/` is refused the same way.
+
+### A system path value referencing outside its tier is refused at `set`
+
+**Read this if you `set` a `system.*` path key to an `@`-reference.**
+
+**What changed.** The system path keys resolve only against `@config.*` keys and the other system
+path keys. In v1.8.0-rc2 `set` stored a reference outside them — `system set
+system.template=@box.image/x`, or `@system.agent/x` — and every later command that reads the path
+tier then failed `Unknown @-reference`. `set` now exits 1 and writes nothing.
+
+**What you see.**
+
+```
+$ kanibako system set system.template=@box.image/x
+Error: system.template is set to '@box.image/x', which points at '@box.image' — outside the system path tier. A system path value may reference only @config.* keys and the system path keys, so a launch could not read it back (spec §0: no @-ref points downward). Reference one of those keys instead, or set the path you mean.
+```
+
+**What to do.** Reference a `@config.*` key or a system path key, or set the literal path. A value
+already stored by hand is read as before, and still fails `Unknown @-reference` until you change it.
+
+### `set` refuses while a settings file it reads stores an entry that is not a key
+
+**Read this if a `set` you have scripted now fails with *"stores entries that are not keys"*, or if
+you pass `--force` to a scope's `set`.**
+
+**What changed.** `set` at the `system`, `workset`, `box`, and `agent` scopes reads every settings
+file the command resolves, and a bad entry in any of them refuses the write unless `--force`. An
+entry the edited value's own `@`-chain depends on is refused even with `--force`. `get` warns on the
+same entries and reads on. `show` may print one extra `(dropped — …)` line per noun; it is new
+output, not a new fault, and names a table the launch already ignored. `--force` after `set` now
+means the rule above; it previously meant nothing on that verb, so no working script changes
+behavior, but a `--force` you relied on being ignored is not ignored any more.
+
+**What you see.**
+
+```
+$ kanibako workset set ws1 box.shell=bash
+Error: /home/you/ws1/workset.yaml stores entries that are not keys (spec §0):
+  workset.bogus = /tmp
+Nothing was written. Remove those entries by editing the file, or rerun with --force to set anyway.
+
+$ kanibako workset set --force ws1 workset.canon=@workset.bogus/x
+Error: the edited value's own upstream chain reaches workset.bogus, which is not a key, so this set is refused too (spec §2a):
+  /home/you/ws1/workset.yaml stores:
+    workset.bogus = /tmp
+Name an upstream that is a key, or remove that entry by editing the file. --force does not set a value whose own chain is broken.
+```
+
+**What to do.**
+
+- That file really does hold a line the keyspace does not declare. Read the file, delete the named
+  line by hand, and rerun; `set` will not remove it for you and there is no flag that does. To write
+  anyway, pass `--force`: it warns, writes, and leaves the entry in place.
+- If the entry the message names is one your new value points at through an `@`-reference,
+  `--force` will not help — the chain would resolve through a name that is not a key. Repoint the
+  value at a real key first.
 
 ---
 

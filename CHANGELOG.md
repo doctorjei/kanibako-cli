@@ -317,6 +317,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names what it left. See *A `null` workset vault, canon, template or channel root means no directory* in
   [MIGRATION.md](MIGRATION.md).
 
+- **A settings file that stores an entry which is not a key now stops `set`, and `--force` means
+  something.** `set` reads every settings file the command resolves, and a bad entry in any of them
+  refuses the write: it names the file and the entry, writes nothing, and says `--force` will set
+  anyway. `--force` then warns and writes, and the entry stays — removing it is still a hand edit,
+  because `set` never rewrites what it did not judge. The refusal has one exception, and it is about
+  the value rather than the file: an entry the edited value's own `@`-chain depends on is a **hard
+  error that `--force` does not override**, since storing that value would store a value that
+  resolves through a name that is not a key. `workset set ws1 workset.canon=@workset.bogus/x`
+  against a `workset: {bogus: …}` entry is refused either way, and the refusal names the broken
+  upstream so it can be repointed. `get` warns on the same entries and reads on, and says nothing
+  about the tables the cascade drops. Covers the `system`, `workset`, `box`, and `agent` scopes.
+  Does not cover the per-agent file, whose own reader already refuses an undeclared entry, and does
+  not cover `config set`, which judges the bootstrap config file instead. See *`set` refuses while a
+  settings file it reads stores an entry that is not a key* in [MIGRATION.md](MIGRATION.md).
+
+- Plain `show` now flags, in one line, a top-level table in its settings file that the launch drops
+  at that scope but `get` still reads from — a `system:` table at the workset noun, an `agent:` table
+  at the box noun. `meta:` and the binding-derivations node are not named, because no read verb
+  answers from them.
+
+- `--force` on a scope's `set` is now the flag above. It was already accepted there and read by
+  nothing, while its help described a confirmation prompt that `set` never asks for; `reset`'s own
+  `--force` is unchanged and still means "skip the confirmation".
+
 ### Fixed
 
 - **A workset's own `workset.yaml` that is not valid YAML, or is a list or a single value, is now
@@ -1551,6 +1575,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standalone box, and nothing else. Connecting a directory **inside** the working set is unchanged, as
   is connecting the current directory. See *2.106 `workset connect` refuses a source that is not an
   existing directory* in [MIGRATION.md](MIGRATION.md).
+
+- **`workset.boxes` is refused at `set` at a value the launch refuses.** In v1.8.0-rc2,
+  `workset set <ws> workset.boxes=` answered `Set workset.boxes=` and wrote `''`. A value ending in
+  `/` was written the same way. The launch's box-root check refuses both. `set` now exits 1 and
+  writes nothing, at every scope that may write the key, and gives the launch's own reason. The
+  launch and the set door now read one test. See *`workset.boxes` is refused at the door at a value
+  the launch refuses* in [MIGRATION.md](MIGRATION.md).
+
+- **A key of a contained scope is accepted at `set` when its value references its own scope or a
+  containing one.** `kanibako system set workset.canon=@workset.channelroot/x` was refused as
+  `dangling @-reference '@workset.channelroot' (no such config key in the keyspace)`, even though
+  the key is declared and every launch resolves it. It now exits 0 and is stored as an overridable
+  default. The same holds for `@meta.box.path` and `@meta.workset.path`, judged by the scope they
+  name: `kanibako workset set ws1 box.canon=@meta.box.path/c2`, the shape of `box.canon`'s own
+  default, is now accepted. A reference into a scope below the key (for example `@box.*` or
+  `@meta.box.path` inside a `workset.*` key) is still refused, as before.
+
+- **`system set` refuses a system path value whose `@`-reference the system path tier cannot
+  resolve.** `system set system.template=@box.image/x` (or `@system.agent/x`) was accepted, and
+  every later command that reads the path tier then failed `Unknown @-reference`. The system path
+  keys resolve only against `@config.*` keys and the other system path keys. Any other reference is
+  now refused at `set`, which names it and writes nothing. See *A system path value referencing
+  outside its tier is refused at `set`* in [MIGRATION.md](MIGRATION.md).
 
 ### Added
 
