@@ -19,6 +19,7 @@ from kanibako.settings.config import user_config_file, load_config
 from kanibako.errors import ConfigError, WorksetError
 from kanibako.settings.paths import (
     load_std_paths,
+    primary_box_name_for_workspace,
     remove_box_logs,
     workset_settings_path,
 )
@@ -37,6 +38,7 @@ from kanibako.project.workset import (
     is_in_tree_workspace,
     list_worksets,
     load_workset,
+    refuse_existing_box,
     refuse_null_workspaces,
     remove_project,
     resolve_workset_name,
@@ -575,7 +577,8 @@ def run_connect(args: argparse.Namespace) -> int:
     # ⚑⚑ IN-TREE IS ``is_in_tree_workspace`` ON THE RESOLVED SOURCE — the call
     # ``add_project`` makes; a root-only test walks past a REPOINTED workspaces key.
     resolved = source.resolve()
-    if is_in_tree_workspace(ws, resolved):
+    in_tree = is_in_tree_workspace(ws, resolved)
+    if in_tree:
         try:
             refuse_null_workspaces(ws.root, f"a workspace for '{project_name}'")
         except WorksetError as e:
@@ -585,27 +588,48 @@ def run_connect(args: argparse.Namespace) -> int:
         # takes is the member's own leaf ``workspaces/<name>`` — the dir ``add_project``
         # records; any other in-tree dir would record a SIBLING, an empty workspace.
         workspaces = ws.workspaces_dir
-        leaf = workspaces.resolve() / project_name if workspaces is not None else None
-        if (leaf is None or resolved.parent != leaf.parent
-                or resolved.name != project_name or not resolved.is_dir()):
-            if (leaf is not None and resolved.parent == leaf.parent
-                    and resolved.name != project_name):
+        assert workspaces is not None  # refused above
+        leaf = workspaces.resolve() / project_name
+        if resolved != leaf or not resolved.is_dir():
+            if resolved.parent == leaf.parent and resolved.name != project_name:
                 why = (f"its directory name '{resolved.name}' and --name "
                        f"'{project_name}' differ")
+            elif resolved == leaf:
+                why = ("it is not a directory" if os.path.lexists(resolved)
+                       else "no directory there")
             else:
                 why = ("it is inside the working set root or its workspaces "
                        "directory, not a project")
             print(
                 f"Error: Cannot connect '{resolved}': {why}. 'connect' registers a "
-                f"member and creates none — it takes an existing "
-                f"'{ws.name}/workspaces/{project_name}' directory.",
+                f"member and creates none — it takes an existing '{leaf}' directory.",
                 file=sys.stderr,
             )
+            return 1
+        try:
+            refuse_existing_box(resolved, std, force=args.force)
+        except WorksetError as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
     elif not source.is_dir():
         # ⚑ ``connect`` REGISTERS an EXTERNAL dir; a dangling symlink is PRESENT, not missing.
         present = "it is not a directory." if os.path.lexists(source) else "no such directory."
         print(f"Error: Cannot connect '{source.resolve()}': {present}", file=sys.stderr)
+        return 1
+
+    # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected — it would
+    # stay registered beside the new member.  ``box convert`` changes an EXTERNAL
+    # workspace's owner; inside the tree it does not reach the box.
+    owner = primary_box_name_for_workspace(std.primary_workset, str(resolved))
+    if owner is not None:
+        how = (f"remove it first with 'kanibako box rm {owner}'" if in_tree else
+               f"to make it a member of '{ws.name}', run "
+               f"'kanibako box convert {owner} --workset {ws.name}'")
+        print(
+            f"Error: Cannot connect '{resolved}': it is already the workspace of "
+            f"primary box '{owner}'; {how}.",
+            file=sys.stderr,
+        )
         return 1
 
     # ⚑ THE J2 WRITE-AHEAD BRACKET, AND IT BELONGS HERE, NOT IN ``add_project``: entry

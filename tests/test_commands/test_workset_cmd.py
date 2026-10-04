@@ -844,7 +844,7 @@ class TestWorksetConnect:
             err = capsys.readouterr().err
             # The refusal NAMES why, and the leaf it would take is named with it.
             assert "inside the working set root or its workspaces directory" in err
-            assert f"'own/workspaces/{name}'" in err
+            assert f"'{root / 'workspaces' / name}'" in err
 
         # Neither shape gained a member, a workspace or a pending journal entry.
         assert not (root / "workspaces" / "ws_own").exists()
@@ -883,7 +883,7 @@ class TestWorksetConnect:
             assert run_connect(args) == 1
             err = capsys.readouterr().err
             reasons.append(err)
-            assert f"'sub/workspaces/{name}'" in err
+            assert f"'{root / 'workspaces' / name}'" in err
             assert not (root / "workspaces" / name).exists()
 
         # A leaf asked for under a name of its own is told the two names differ; the
@@ -917,19 +917,24 @@ class TestWorksetConnect:
         dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
         (outside / "x" / "sub").mkdir(parents=True)
         (outside / "x" / "sub" / "f.txt").write_text("mine\n")
+        # The OLD default leaf is still in the tree, but no longer the leaf it takes.
+        (root / "workspaces" / "alpha").mkdir(parents=True)
 
-        for source, name in ((outside / "x" / "sub", "sub"), (outside, "extws")):
+        for source, name in ((outside / "x" / "sub", "sub"), (outside, "extws"),
+                             (root / "workspaces" / "alpha", "alpha")):
             args = argparse.Namespace(
                 workset="rp", source=str(source), project_name=name, force=False,
             )
             assert run_connect(args) == 1
             err = capsys.readouterr().err
             assert "inside the working set root or its workspaces directory" in err
-            assert f"'rp/workspaces/{name}'" in err
+            # The leaf it names is under the REPOINTED dir, the one it would take.
+            assert f"it takes an existing '{outside / name}' directory" in err
 
         # Nothing was created or registered under the repointed dir either.
         assert not (outside / "sub").exists()
         assert not (outside / "extws").exists()
+        assert not (outside / "alpha").exists()
         assert (outside / "x" / "sub" / "f.txt").read_text() == "mine\n"
         reloaded = load_workset(list_worksets(std)["rp"], "rp")
         assert reloaded.projects == []
@@ -984,14 +989,100 @@ class TestWorksetConnect:
         )
         assert run_connect(args) == 1
         err = capsys.readouterr().err
-        assert "inside the working set root or its workspaces directory" in err
-        assert "'ghost/workspaces/ghost'" in err
+        assert f"Cannot connect '{missing}': no directory there." in err
+        assert f"it takes an existing '{missing}' directory" in err
 
         assert not missing.exists()
         reloaded = load_workset(list_worksets(std)["ghost"], "ghost")
         assert reloaded.projects == []
         assert _workset_boxes(reloaded) == {}
         assert journal.read_journal(std.journal) == {}
+
+    def test_connect_in_tree_leaf_of_a_primary_box_refuses(
+        self, config_file, tmp_home, capsys,
+    ):
+        """One workspace holds one box: a leaf under a REPOINTED ``workset.workspaces``
+        that is already a primary box's workspace is refused, not shared."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+        from kanibako.project.workset import list_worksets, load_workset
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import register_primary_box_name
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        outside = (tmp_home / "extws3").resolve()
+        leaf = outside / "beta"
+        leaf.mkdir(parents=True)
+        register_primary_box_name(std.primary_workset, std.registry, "beta", str(leaf))
+        root = (tmp_home / "ws_pb").resolve()
+        create_workset("pb", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+
+        args = argparse.Namespace(
+            workset="pb", source=str(leaf), project_name="beta", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert f"Cannot connect '{leaf}': it is already the workspace of primary box 'beta'" in err
+        reloaded = load_workset(list_worksets(std)["pb"], "pb")
+        assert reloaded.projects == []
+        assert _workset_boxes(reloaded) == {}
+        assert not (reloaded.projects_dir / "beta").exists()
+        assert journal.read_journal(std.journal) == {}
+
+    def test_connect_in_tree_leaf_another_workset_connects_refuses(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The EXTERNAL arm's "already a box" check runs on an in-tree leaf too: a leaf
+        another workset already connects is refused, not registered a second time."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import add_project, list_worksets, load_workset
+        from kanibako.settings.config_io import dump_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        outside = (tmp_home / "extws4").resolve()
+        leaf = outside / "beta"
+        leaf.mkdir(parents=True)
+        other = create_workset("other", (tmp_home / "ws_other").resolve(), std)
+        add_project(other, "beta", leaf, std)
+        root = (tmp_home / "ws_tw").resolve()
+        create_workset("tw", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+
+        args = argparse.Namespace(
+            workset="tw", source=str(leaf), project_name="beta", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "already connected as project 'beta' in workset 'other'" in err
+        assert _workset_boxes(load_workset(list_worksets(std)["tw"], "tw")) == {}
+
+    def test_connect_external_workspace_of_a_primary_box_refuses(
+        self, config_file, tmp_home, capsys,
+    ):
+        """An EXTERNAL dir that is a primary box's workspace is refused too, and told the
+        verb that changes the box's owner."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import list_worksets, load_workset
+        from kanibako.settings.paths import register_primary_box_name
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ext = (tmp_home / "ext_pb" / "beta").resolve()
+        ext.mkdir(parents=True)
+        register_primary_box_name(std.primary_workset, std.registry, "beta", str(ext))
+        create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
+
+        args = argparse.Namespace(
+            workset="xpb", source=str(ext), project_name="beta", force=True,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "it is already the workspace of primary box 'beta'" in err
+        assert "'kanibako box convert beta --workset xpb'" in err
+        assert _workset_boxes(load_workset(list_worksets(std)["xpb"], "xpb")) == {}
 
     def test_connect_standalone_refused_without_force(
         self, config_file, tmp_home, capsys
