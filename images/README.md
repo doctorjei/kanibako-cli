@@ -20,10 +20,9 @@ base tier:
 | `vm`    | `kanibako-vm`     | `ghcr.io/doctorjei/droste-hair:1.1.0`   | systemd VM                |
 
 The shared (all-variant) package layer installs the kanibako **baseline** tool
-set — `tmux inotify-tools ripgrep fd-find openssh-client` — whose list is derived
-at build time from `kanibako baseline list`, so the images and the CLI never
-drift. `nodejs`/`npm` and `cifs-utils`/`nfs-common` are explicit conveniences
-(not part of the baseline contract); `sshpass` is min-only.
+set — whose list is derived at build time from `kanibako baseline list`, so the
+images and the CLI never drift. `nodejs`/`npm` and `cifs-utils`/`nfs-common` are
+explicit conveniences (not part of the baseline contract); `sshpass` is min-only.
 
 Each image bundles the `kanibako-cli` wheel built from the same commit, handed
 to the Containerfile through the named build context `cliwheel`, so an image
