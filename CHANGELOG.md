@@ -375,6 +375,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`jq` is now part of the image baseline, so a box without it is reported instead of passing.**
+  The shipped claude statusline parses its hook JSON with `jq` and has no fallback: with `jq` off
+  `PATH` it still exited 0 and rendered a constant `—/0k $0.00`, which is a permanently wrong
+  reading to the auto-loop because `context-usage.txt` is its gate input. `jq` reached the box from
+  the droste base image, outside kanibako's contract, so `baseline verify` could not see its
+  absence. It is declared in the baseline now, which means `baseline verify` names it missing and
+  every image variant installs it — the shared Containerfile step derives its package list from
+  `kanibako baseline list`, so this needs no per-image edit. The statusline script itself is
+  unchanged.
+
 - **The "no box" error's create command now pastes as printed.** `start`'s suggestion is
   `shlex.quote`d and no longer wrapped in single quotes, so `Error: no box at <path>. To create a
   new box, run:  kanibako create 'a b'` pastes as one argument; a spec with a space or a `'` used
