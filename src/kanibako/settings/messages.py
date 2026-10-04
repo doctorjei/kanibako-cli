@@ -150,6 +150,12 @@ ERR_PROJECT_NEW_HOME = ("Refusing to create project rooted at $HOME: this would 
 ERR_PROJECT_REG_HOME = ("Refusing to register $HOME as a project path: this would mount the " +
                         "entire home directory as the workspace.")
 ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
+# ⚑ "one record per project" (spec § Detection & import) asked at the PATH, not the name.
+ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already the workspace of " +
+                         "named box '%s' in workset '%s', and one path is one project's record. " +
+                         "--force does not override this. Use that box ('kanibako box show %s'), " +
+                         "or free the path first:\n"
+                         "  kanibako workset disconnect %s %s --force") # path, box, workset (box, ws, box)
 ERR_PROJECT_DIR_IS_WS = ("Name '%s' is already in use by a workset. Box and workset names are " +
                          "separate namespaces, but this bare name would then resolve to the " +
                          "box, shadowing the workset in bare-name lookups. Re-run with --force " +
