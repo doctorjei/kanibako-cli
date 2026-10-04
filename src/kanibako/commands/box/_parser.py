@@ -226,7 +226,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="New workspace location (default: cwd)",
     )
     remap_p.add_argument(
-        "--force", action="store_true", help="Skip confirmation prompt",
+        "--force", action="store_true",
+        help="Skip confirmation; also leave a disabled vault's data in place",
     )
     remap_p.set_defaults(func=run_remap)
 
@@ -251,7 +252,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     move_p.add_argument(
         "--force", action="store_true",
-        help="Skip confirmation; also override the cwd-inside-project guard",
+        help="Skip confirmation; also override the cwd-inside-project guard and "
+             "leave a disabled vault's data in place",
     )
     move_p.set_defaults(func=run_move)
 
@@ -281,7 +283,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Rename the project in the target",
     )
     convert_p.add_argument(
-        "--force", action="store_true", help="Skip confirmation prompt",
+        "--force", action="store_true",
+        help="Skip confirmation; also leave a disabled vault's data in place",
     )
     convert_p.set_defaults(func=run_convert)
 
@@ -1743,7 +1746,7 @@ def _teardown_standalone_box(
     *plan* is :func:`_standalone_teardown_plan`, from a caller that resolved it before an
     irreversible step of its own.
     """
-    from kanibako.project.workset import retained_vault_reason
+    from kanibako.project.workset import report_retained_vaults
     from kanibako.settings.paths import STANDALONE_META_DIR
 
     metadata_dir = root / STANDALONE_META_DIR
@@ -1765,10 +1768,7 @@ def _teardown_standalone_box(
             if vault_dir.is_dir():
                 _purge_dir(vault_dir)
                 print(f"Removed vault: {vault_dir}")
-        for vault_dir in retained_vault:
-            if vault_dir.is_dir():
-                print(f"Kept vault: {vault_dir} "
-                      f"({retained_vault_reason(root, vault_dir)} — remove it yourself)")
+        report_retained_vaults(root, retained_vault)
         return True
     print(
         f"Warning: could not fully remove {metadata_dir} "

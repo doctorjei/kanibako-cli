@@ -48,6 +48,8 @@ def resolve_workset_vault_rw(workset_root: Path, workset_settings: Mapping[str, 
 def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path | None, Path | None]
 def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]
 def retained_vault_reason(root: Path, vault: Path) -> str
+def report_retained_vault(vault: Path, why: str) -> None
+def report_retained_vaults(root: Path, retained: Iterable[Path]) -> None
 def is_reserved_workset_name(name: str) -> bool
 def refuse_retired_workset_identity(root: Path) -> None
 def is_workset_skeleton(root: Path) -> bool

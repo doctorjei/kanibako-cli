@@ -1811,6 +1811,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now refused at `set`, which names it and writes nothing. See *A system path value referencing
   outside its tier is refused at `set`* in [MIGRATION.md](MIGRATION.md).
 
+- **Vault data kanibako keeps is now always named, including a plain file.** A loose file left
+  directly in a standalone box's `vault/` is retained exactly as an unclaimed directory is, but
+  `box rm --purge`, `kanibako box purge` and a standalone `box move`/`box convert` printed only
+  the retained *directories*, so the file stayed on disk and nothing said so. All three now print
+  every retained entry, files included, and they share one text:
+  `Note: left the vault at <path> in place — it is <why> and is yours to remove.` The two callers
+  that printed `Kept vault: <path>` on stdout now print that Note on stderr, where the other
+  retained-vault Note already went. A **named** box's `workset.vault_ro`/`vault_rw` set to `null`
+  *after* data was stored under it is also named now, on every `box move` and `box convert` that
+  relocates the box: the arm named no directory, so neither the store's removal nor any report
+  reached the data it left at the key's default location, and the relocation returned success
+  over it in silence. A **primary** box's own nulled arm is not covered — its per-box leaf is
+  still left unnamed.
+
+- **A relocation no longer deletes the data of a vault the box has switched off.** A box with
+  `box.enable_vault: false` carries no vault, so `box move`, `box convert` and `box remap` made no
+  vault at the destination and then deleted the source's vault directories, data included, at rc
+  0. Each now refuses before it writes anything while that vault still holds data:
+  `Refusing: box.enable_vault is false for '<box>', but its vault still holds data at <path>.`,
+  naming every such directory and `--force`. With `--force` the data stays where it is and the
+  Note names it: `Note: left the vault at <path> in place — box.enable_vault is false, so nothing
+  received its contents.` A disabled vault that is empty, and a relocation that keeps the box's
+  own vault in place, proceed as before. See *A relocation refuses to leave a disabled vault's
+  data behind* in [MIGRATION.md](MIGRATION.md).
+
 ### Added
 
 - **A missing import inside a plugin's charter chapter now warns.** Inside `~/canon/charter/agent/`,
@@ -3026,8 +3051,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   primary or named box only the per-box `<box-name>` directory is ever removed, under whichever arm
   it actually lives — never the shared arm above it. For a standalone box the arm IS the vault,
   with no per-box directory beneath it, so an arm you pointed **outside** the box's own root is
-  treated as yours rather than kanibako's: it is left in place and named on screen (`Kept vault:
-  …`) instead of being deleted. An arm inside the root goes with the box, as it always did.
+  treated as yours rather than kanibako's: it is left in place and named on screen (`Note: left
+  the vault at <path> in place`) instead of being deleted. An arm inside the root goes with the box, as it always did.
   ⚑ One refusal is new. If either key holds a value that cannot be resolved, a purge or a move now
   stops and names the key **before** removing anything, rather than deleting half the box and then
   failing. Fix the value — or unset it — and run the command again.

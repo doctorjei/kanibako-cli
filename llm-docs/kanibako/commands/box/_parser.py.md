@@ -298,7 +298,7 @@ system-design § "Detection & import" detection marker,
   not the box's vault once `workset.vault_ro`/`vault_rw` is repointed, the ROOT file this teardown
   unlinks is the only carrier of that repoint, and an unresolvable repoint RAISES — a refusal that
   has to land while the box is still whole. Resolving mid-teardown left a half-purged box behind
-  the traceback. An arm outside `root` is printed as `Kept vault: …` and left alone.
+  the traceback. An arm outside `root` is printed as `Note: left the vault at …` and left alone.
 
 `_purge_dir` is a thin alias for `kanibako.runtime.container.remove_box_tree`, which is where the
 body lives so EVERY box-tree deleter can reuse it — `extract`, `move`, `duplicate` and `purge` all
