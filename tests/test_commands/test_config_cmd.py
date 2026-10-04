@@ -1219,7 +1219,7 @@ class TestLoadProjectOverrides:
         """A stored null is a VALUE (spec §2h), and only non-``None`` values are reported.
 
         ⚑ The key is PRESENT; what :func:`load_project_overrides` declines to report is the
-        null itself, so a present null and an absent key are not the same row.
+        null itself: a present null and an absent key differ in the file, but neither is an override.
         """
         p = tmp_path / "box.yaml"
         p.write_text("box:\n  shell: null\n")
