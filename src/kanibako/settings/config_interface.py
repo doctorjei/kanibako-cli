@@ -146,7 +146,7 @@ from kanibako.settings.settings_categories import (
     refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_keyspace import (
-    is_var_table, key_validity, render_store_path,
+    display_segments, display_store_path, is_var_table, key_validity, shown_key,
 )
 from kanibako.settings.keystore import ReservedKeyError
 from kanibako.settings.settings_prefs import PREF_ROOT
@@ -240,15 +240,16 @@ def _pref_value_error(
         or _is_agent_node_bind_key(target)
         or is_terminal_category_key(target)
     ):
+        shown = shown_key(canonical)
         return (
-            f"Error: '{canonical}' targets '{target}', which is a STRUCTURED "
+            f"Error: '{shown}' targets '{shown_key(target)}', which is a STRUCTURED "
             f"category key — its value is a map keyed by box DESTINATION "
             f"({{<box_dest>: [<host_src>]}}), never a scalar (spec §2a). Write the "
             f"request in the settings file:\n"
             f"  pref:\n"
             f"{chr(10).join('  ' + line for line in _yaml_skeleton(target))}\n"
-            f"...or suppress the entry with: --null {canonical}\n"
-            f"(that WRITES a suppression; 'reset {canonical}' undoes it)"
+            f"...or suppress the entry with: --null {shown}\n"
+            f"(that WRITES a suppression; 'reset {shown}' undoes it)"
         )
 
     # ⚑ [R147]'s bare-relative refusal, checked AT THE TARGET for the third time and the
@@ -286,11 +287,12 @@ def _pref_value_error(
     )
     defect = resolves(target, value)
     if defect is not None:
+        shown_target = shown_key(target)
         return (
-            f"Error: '{canonical}' value {value!r} does not resolve at its target "
-            f"'{target}': {defect}. A pref is installed at the target key and "
-            f"resolved like any other value (spec §2h), so an unresolvable request "
-            f"would silently change or drop '{target}' at launch."
+            f"Error: '{shown_key(canonical)}' value {value!r} does not resolve at "
+            f"its target '{shown_target}': {defect}. A pref is installed at the target key "
+            f"and resolved like any other value (spec §2h), so an unresolvable request "
+            f"would silently change or drop '{shown_target}' at launch."
         )
     return None
 
@@ -301,7 +303,7 @@ def _yaml_skeleton(target: str) -> list[str]:
 
     # ⚑ THE LEAF LINE FOLLOWS THE CATEGORY: a terminal dest-keyed category takes a MAP, and
     # printing the retired name-keyed pair form for one would hand back a refused shape.
-    parts = target.split(".")
+    parts = shown_key(target).split(".")
     if is_terminal_category_key(target):
         leaf = (
             "{<box_dest>: true}" if parts[-1] == "masks"
@@ -2024,8 +2026,8 @@ def reset_config_value(
             return scope_key_refusal(key, reason, command_scope, verb="reset")
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
-            return f"Cleared {display_agent_ref(canonical)}"
-        return f"No override for {display_agent_ref(canonical)}"
+            return f"Cleared {shown_key(canonical)}"
+        return f"No override for {shown_key(canonical)}"
 
     # ⚑ There is NO ``agent.<node>.bindings.{ro,rw}.<name>`` branch here any more (R-9), and
     # the absence is deliberate — the preamble refuses it BY NAME, symmetrically with set.
@@ -2037,7 +2039,7 @@ def reset_config_value(
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return _honest_reset_message(canonical, command_scope)
-        return f"No override for {canonical}"
+        return f"No override for {shown_key(canonical)}"
 
     # ``agent.<node>.secret_path.<VAR>`` — remove the stored pointer from the node's OWN file.
     # ⚑ BEFORE the persona branch.
@@ -2060,14 +2062,14 @@ def reset_config_value(
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return _honest_reset_message(canonical, command_scope)
-        return f"No override for {canonical}"
+        return f"No override for {shown_key(canonical)}"
 
     # ``<scope>.env.<VAR>`` — remove the stored value from the command scope's settings file.
     if _is_scope_env_key(canonical):
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return _honest_reset_message(canonical, command_scope)
-        return f"No override for {canonical}"
+        return f"No override for {shown_key(canonical)}"
 
     # ``agent.<node>.<key>`` — remove the stored override from the node's OWN settings file
     # (``remove_nested_key`` prunes now-empty tables, keeping the file sparse).
@@ -2090,7 +2092,7 @@ def reset_config_value(
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
             return _honest_reset_message(canonical, command_scope)
-        return f"No override for {canonical}"
+        return f"No override for {shown_key(canonical)}"
 
     # ``box.agent.<key>`` — RETIRED (P7, spec §2b). Refuse with the cure, naming the SAME agent
     # the set path names, so the two verbs prescribe the identical spelling.
@@ -2114,10 +2116,10 @@ def reset_config_value(
             # The shared message would be a true-sounding sentence about a tier that does
             # not exist for this key.
             return (
-                f"Cleared {canonical}; kanibako now reads as not yet set up. "
+                f"Cleared {shown_key(canonical)}; kanibako now reads as not yet set up. "
                 f"Run 'kanibako setup' to record it again."
             )
-        return f"No override for {canonical}"
+        return f"No override for {shown_key(canonical)}"
 
     # Regular config keys — the same known-key table, and the same ONE spelling, as set/get.
     route = _KEY_ROUTES.get(canonical)
@@ -2164,7 +2166,7 @@ def reset_config_value(
             effective = None
         # ⚑ The CANONICAL key in both messages — see the ``set`` twin's note.
         return _honest_reset_message(canonical, command_scope, effective)
-    return f"No override for {canonical}"
+    return f"No override for {shown_key(canonical)}"
 
 
 def _reset_dest(
@@ -2196,7 +2198,7 @@ def _honest_reset_message(
         if command_scope is not None
         else "this scope"
     )
-    base = f"Cleared {key} set on {scope_phrase}; "
+    base = f"Cleared {shown_key(key)} set on {scope_phrase}; "
     if effective is not None:
         value, tier = effective
         return f"{base}effective is now {value} ({tier})."
@@ -2564,7 +2566,7 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
 
     ⚑ SEGMENTS, NOT A JOINED NAME: a dotted entry name (``box: {"env.X": 1}``) joins to a
     declared key it is not. *shown* is the display spelling: a dotted entry name is
-    spelled as the launch's refusal spells it (``settings_keyspace.render_store_path``:
+    spelled as the launch's refusal spells it (``settings_keyspace.display_store_path``:
     ``box | env.X``), anything else joined. Only the override subtraction in
     :func:`show_config` compares the joined form.
 
@@ -2613,7 +2615,7 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
                 # (``box.zzz`` for ``box: {zzz: {"a.b": 1}}``), and this marks the deepest
                 # stored path, as everywhere here. NOT at the ``<VAR>`` slot — see the
                 # docstring.
-                out[segments] = (render_store_path(segments), render_stored_scalar(v))
+                out[segments] = (display_store_path(segments), render_stored_scalar(v))
                 continue
             if scope_key_reason(".".join(segments)) is None:
                 continue  # declared — whatever is under it is DATA, not keys
@@ -2624,7 +2626,7 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
                 # three hand-kept arms here used to restate, one of which had drifted.
                 # Spelled JOINED: below a dotted ``<VAR>`` name that is the older spelling,
                 # left as-is pending the deferred dotted-var treatment.
-                out[segments] = (".".join(segments), render_stored_scalar(v))
+                out[segments] = (".".join(display_segments(segments)), render_stored_scalar(v))
 
     _walk(data, ())
     return out

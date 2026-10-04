@@ -52,6 +52,7 @@ from typing import (
     Sequence,
 )
 
+from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.kb_store import RESOLUTION_ORDER, SCOPE_CONTAINMENT, StoreValue
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
@@ -63,6 +64,7 @@ from kanibako.settings.settings_keyspace import (
     is_valid_agent_segment,
     key_validity,
     pref_allowlist_entry,
+    shown_key,
     unread_harnesses,
     valid_agent_segments,
 )
@@ -337,15 +339,15 @@ def allowlist_reason(
                     # "'claude' is not a valid agent" when the plugin registry
                     # could not be read sends the user to fix a correct name.
                     return (
-                        f"agent DISCOVERY FAILED, so '{name}' could not be "
+                        f"agent DISCOVERY FAILED, so '{display_agent_ref(name)}' could not be "
                         f"validated. This is an environment fault, not a "
                         f"problem with the name: the plugin registry could not "
                         f"be read. Check the kanibako install (run 'kanibako "
                         f"system diagnose'); the request itself may be fine"
                     )
-                known = ", ".join(valid_agent_segments(valid_agents))
+                known = ", ".join(map(display_agent_ref, valid_agent_segments(valid_agents)))
                 return (
-                    f"it names agent '{name}', which is not a valid agent "
+                    f"it names agent '{display_agent_ref(name)}', which is not a valid agent "
                     f"(valid: {known}). A pref MAY pre-configure an agent this "
                     f"box is not running, but not an unknown one (spec §2h)"
                 )
@@ -365,7 +367,7 @@ def allowlist_reason(
     from kanibako.settings.config_keys import has_no_cli_write_route
 
     if scope in SCOPE_CONTAINMENT and not has_no_cli_write_route(target):
-        return f"{base}. Set '{target}' directly at the {scope} scope instead"
+        return f"{base}. Set '{shown_key(target)}' directly at the {scope} scope instead"
     return base
 
 
@@ -391,7 +393,7 @@ def forbidden_tier_reason(target: str, *, level: str) -> str | None:
     if head in RESOLUTION_ORDER and level in RESOLUTION_ORDER:
         if RESOLUTION_ORDER.index(head) >= RESOLUTION_ORDER.index(level):
             return (
-                f"it targets '{target}', which resolves at or after the {level} "
+                f"it targets '{shown_key(target)}', which resolves at or after the {level} "
                 f"level. A later-resolving key needs no pref — set it directly "
                 f"(spec §2h structural tier)"
             )
@@ -405,14 +407,14 @@ def forbidden_tier_reason(target: str, *, level: str) -> str | None:
             PREF_ROOT: "a request-of-a-request has no termination argument",
         }[head]
         return (
-            f"it targets '{target}', and meta.* / config.* / pref.* may never be "
+            f"it targets '{shown_key(target)}', and meta.* / config.* / pref.* may never be "
             f"requested (spec §2h categorical tier): {why}"
         )
 
     # LOCATOR CLOSURE.
     if target in LOCATOR_CLOSURE:
         return (
-            f"it targets '{target}', which locates a cascade-input settings file "
+            f"it targets '{shown_key(target)}', which locates a cascade-input settings file "
             f"(workset.boxes -> meta.box.path -> meta.box.settings). Requesting "
             f"it from a lower level could relocate the very file the request came "
             f"from, so it is barred (spec §2h locator closure). Setting it in a "
@@ -508,7 +510,8 @@ def apply_prefs(
         why = validate_pref(req, valid_agents=valid_agents, allowlist=allowlist)
         if why is not None:
             raise SettingsError(
-                f"{req.key} at the {req.level} level ({req.where}) was refused: "
+                f"{shown_key(req.key)} at the {req.level} level ({req.where}) "
+                f"was refused: "
                 f"{why}. The launch is stopped rather than proceeding with a "
                 f"partially-applied request (spec §2h)."
             )
@@ -517,7 +520,8 @@ def apply_prefs(
             # constructing requests by hand must not be able to smuggle in a
             # level where a pref is illegal — that is the recursion bound.
             raise SettingsError(
-                f"{req.key} carries level {req.level!r}, but a pref is legal "
+                f"{shown_key(req.key)} carries level {req.level!r}, but a pref is "
+                f"legal "
                 f"only at {' / '.join(PREF_LEGAL_LEVELS)} (spec §2h)."
             )
         if req.level == "box":
@@ -732,8 +736,9 @@ def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]:
     """Every DECLARATION-ENTRY key *req* can account for.
 
     A settings ENTRY is named in a launch message by
-    :func:`~kanibako.settings.settings_keyspace.entry_label`. For most targets that
-    label IS the pref target, because ``<VAR>`` is a key SEGMENT. For the SEVEN
+    :func:`~kanibako.settings.settings_keyspace.entry_label`, its node in the ``+``
+    spelling (``CategoryEntry.label``), so these keys are spelled so too. For most
+    targets that label IS the pref target, because ``<VAR>`` is a key SEGMENT. For the SEVEN
     terminal dest-keyed categories (the six bind-shaped ones plus ``masks``) it is
     not: the target stops at the category and the destinations live INSIDE the
     value (``<target>[<dest>]``), so one request accounts for one entry PER
@@ -756,13 +761,14 @@ def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]:
     per-destination strings that are not keys. A terminal target whose value is NOT
     a map yields the bare target, which is what the adapter's own error names.
     """
+    shown = shown_key(req.target)
     if not is_terminal_category_key(req.target):
-        return (req.target,)
+        return (shown,)
     value = req.value
     if not isinstance(value, dict):
-        return (req.target,)
+        return (shown,)
     return tuple(
-        entry_label(req.target, dest)
+        entry_label(shown, dest)
         for dest in dict.keys(value)
         if dict.__getitem__(value, dest) is not None
     )

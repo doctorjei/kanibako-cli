@@ -65,6 +65,7 @@ from kanibako.settings.settings_keyspace import (
     is_terminal_category_key,
     leaf_name_reason,
     pseudo_agent_fence,
+    shown_key,
 )
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, literal_expr
 from kanibako.settings.settings_cli_level import SELECTION_KEY, build_cli_level
@@ -7459,7 +7460,7 @@ def _annotate_pref_origin(exc, prefs):
 
     def _line(key, req):
         return (
-            f"'{key}' was installed by '{req.key}' in the {req.level} "
+            f"'{key}' was installed by '{shown_key(req.key)}' in the {req.level} "
             f"settings file {req.where}"
         )
 

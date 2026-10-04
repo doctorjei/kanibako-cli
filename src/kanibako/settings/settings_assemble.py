@@ -64,7 +64,7 @@ from kanibako.settings.settings_keyspace import (
     Judgment,
     is_terminal_category_key,
     pref_allowlist_entry,
-    render_store_path,
+    display_store_path,
     undeclared_store_paths,
 )
 from kanibako.settings.settings_keyspace_probe import keyspace_verdict
@@ -439,7 +439,8 @@ def _retired_behavior_cure(
     *subject*. ``access`` is an AGENT-scope key (spec §2d), so every level writes it
     under that node.
     """
-    agent = node or subject or "<agent>"
+    named = node or subject
+    agent = display_agent_ref(named) if named else "<agent>"
     if level == "agent":
         return f"kanibako agent set {agent} {successor}={tier}"
     if level in PREF_LEGAL_LEVELS:
@@ -1032,7 +1033,7 @@ def undeclared_listing(
     The one listing stage (h) and the launch's §0 refusal both print (P10).
     """
     named = "\n".join(
-        f"  - {render_store_path(segments, judgment.key_len)}: {judgment.note}"
+        f"  - {display_store_path(segments, judgment.key_len)}: {judgment.note}"
         for segments, judgment in findings
     )
     count = len(findings)
