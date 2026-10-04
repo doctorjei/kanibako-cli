@@ -21,6 +21,7 @@ from kanibako.settings.config import (
     _LAYER1_TABLE,
     agent_settings_of,
     chain_bad_entries,
+    downward_ref_error,
     load_config,
     load_project_overrides,
     null_path_keys_error,
@@ -966,7 +967,12 @@ def _category_set_lookups(
         assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
         errors = result[1]
         if key not in errors:
-            return None
+            # ⚑ THE SUCCESS PATH IS WHERE A DOWNWARD REF SURVIVED: the expander records a
+            # defect only for a referent the floor CANNOT see, so a downward ref naming one
+            # this cascade HOLDS — ``@box.image``, which the box scalars' declared defaults
+            # put in every snapshot — arrived here with no complaint at all. The refusal
+            # reads the SPELLING, not the floor; see :func:`config.ref_points_downward`.
+            return downward_ref_error(key, value)
         if _floor_blind_default(key, value, candidate, command_scope):
             return None
         return errors[key]

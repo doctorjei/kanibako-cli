@@ -12,7 +12,9 @@ from kanibako.settings.bootstrap import (BOXES_PATH, CONFIG_FILE, CONFIG_PATH_DE
                                          SITE_CONFIG_DIR, SITE_CONFIG_FILE,
                                          SITE_SETTINGS_FILE, SYSTEM_PATH_DEFAULTS)
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT
+from kanibako.settings.messages import (ERR_CONFIG_DOWNWARD_REF,
+                                        ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
                                         ERR_CONFIG_LAYER1_UNDECLARED,
                                         ERR_CONFIG_NULL_PATH_CURE,
                                         ERR_CONFIG_NULL_PATH_HEAD,
@@ -1104,3 +1106,54 @@ def system_path_ref_error(canonical: str, value: "str | None") -> "str | None":
     if not misses:
         return None
     return ERR_CONFIG_PATH_REF_SCOPE % (canonical, value, misses[0])
+
+
+def ref_points_downward(canonical: str, value: "str | None") -> "str | None":
+    """The first ``@``-ref in *value* pointing DOWNWARD for *canonical*, else ``None``.
+
+    ⚑ SPEC §0, "Directional view/set across CONTAINMENT levels": a key "may **view up** …
+    and no ``@``-ref points DOWNWARD". So DOWNWARD is *into a scope this key CONTAINS* —
+    :func:`~kanibako.settings.settings_drops.contained_scopes`, off the one containment
+    order, never a private re-walk. A ``@meta.<scope>.*`` ref is judged by its SCOPE token
+    (keyspec §2b's own default for ``box.canon`` is ``@meta.box.path/canon``).
+
+    ⚑ A ref naming NO level of that order is neither up nor down, and this leaves it to
+    its own doors: ``@config.*`` is the Layer-1 foundation and ``@meta.runtime.*`` a
+    namespace, so neither is a scope a key contains. Judging those downward would refuse
+    a legal spelling — the over-firing half of this rule.
+
+    ⚑ THE DIRECTION IS A FACT ABOUT THE SPELLING, so this asks the floor nothing: a
+    referent the cascade HOLDS is still downward, and ``@box.image`` is no exception
+    because the box scalars' declared defaults put it in every snapshot.
+    """
+    from kanibako.settings.settings_configset import scan_tokens
+    from kanibako.settings.settings_drops import contained_scopes
+
+    if not isinstance(value, str):
+        return None
+    key_scope = canonical.split(".", 1)[0]
+    if key_scope not in SCOPE_CONTAINMENT:
+        return None
+    downward = contained_scopes(key_scope)
+    try:
+        refs, _vars = scan_tokens(value)
+    except ValueError:
+        return None  # a malformed token is the expander's own verdict; keep it
+    for name in refs:
+        segs = name.split(".", 2)
+        if (segs[1] if segs[0] == "meta" and len(segs) > 1 else segs[0]) in downward:
+            return name
+    return None
+
+
+def downward_ref_error(canonical: str, value: "str | None") -> "str | None":
+    """THE refusal for a DOWNWARD ``@``-ref outside the system path tier, or ``None``."""
+    if not value or canonical in SYSTEM_PATH_DEFAULTS:
+        return None
+    down = ref_points_downward(canonical, value)
+    if down is None:
+        return None
+    segs = down.split(".", 2)
+    return ERR_CONFIG_DOWNWARD_REF % (
+        canonical, value, down, segs[1] if segs[0] == "meta" else segs[0],
+    )
