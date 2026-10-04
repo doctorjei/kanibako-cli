@@ -112,6 +112,12 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     """The keys a floor builder declares that are ALSO registry default rows."""
     return frozenset(built) & declared
 
+  # The channel family's one spelling: its group below, and the anchor-floor subtraction.
+  channel_family = frozenset({
+    "workset.channelroot", "workset.channels.common", "workset.channels.chat",
+    "workset.channels.broadcast", "workset.channels.share",
+    "workset.channels.mailboxes", "workset.channels.share_global"})
+
   return (
     # --- carriers that enumerate their own keys (derived, self-correcting) --- #
     ("bootstrap.py (config tier)", frozenset(CONFIG_PATH_DEFAULTS)),
@@ -127,7 +133,12 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # three: it was not "emitted by no floor" but emitted ONLY into the CREATE-time seed
     # resolve, which an existing box never runs again. Under the user's 2026-08-29 ruling
     # — a declared default must answer FOR ANY BOX THAT EXISTS — that is the same defect.
-    ("settings_launch.py (anchor floor)", _floor(workset_anchor_floor(mode="primary"))),
+    # ⚑ MINUS THE CHANNEL FAMILY: with no ``channelroot`` this probe takes the floor's
+    # NULL-channel-root branch, which supplies the four workset-local leaves as
+    # ``<None>``. That is a user override's consequence; the default is derived by
+    # ``channels.py`` (its group below).
+    ("settings_launch.py (anchor floor)",
+     _floor(workset_anchor_floor(mode="primary")) - channel_family),
     ("settings_launch.py (auth floor)", _floor(
       auth_chain_floor(mode="primary", agent_name=_PROBE_AGENT))),
     ("core-defaults.yaml (agent_default:)", frozenset(
@@ -182,10 +193,7 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # the launch installs into the anchor floor. They sat under the join label while
     # three of them had no consumer at all, which is exactly the state that label made
     # look ordinary (R-35, "fix the CODE").
-    ("channels/channels.py (channel key derivation)", frozenset({
-      "workset.channelroot", "workset.channels.common", "workset.channels.chat",
-      "workset.channels.broadcast", "workset.channels.share",
-      "workset.channels.mailboxes", "workset.channels.share_global"})),
+    ("channels/channels.py (channel key derivation)", channel_family),
     # ⚑⚑ THE ``built-in (path join at use)`` AND ``project/workset.py (workspaces key
     # resolution)`` LABELS ARE GONE. The first went 2026-08-29, when its last member
     # ``workset.workspaces`` got a carrier; the second held that key until 2026-09-27,
