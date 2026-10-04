@@ -164,6 +164,8 @@ ERR_WORKSET_NOT_IN_BOX = ("Inside workset '%s' but not in a specific project wor
                           "to a project directory under %s/.") # workset name, workspaces dir
 ERR_WORKSET_MEMBER_NAME_CONFLICT = ("In working set '%s' a box's name IS its member name, so '%s' and " +
                           "'%s' are two names for one box; pass the member name alone.") # workset name, --name, identifier
+ERR_WORKSET_MEMBER_NAME_TAKEN = ("Project '%s' already exists in working set '%s'; member names are " +
+                          "compared case-blind.") # stored spelling, workset name
 # ⚑ A null ``workset.workspaces`` HAS a meaning (no workspace dir, spec §2c), unlike the
 # null path keys ERR_CONFIG_NULL_PATH refuses — so this names what cannot be created there.
 ERR_WORKSET_NULL_WORKSPACES = ("%s sets workset.workspaces to null, so it has no workspace " +

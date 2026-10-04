@@ -28,6 +28,7 @@ from kanibako.project.names import read_names
 from kanibako.project.workset import add_project, list_worksets, load_workset
 from kanibako.settings.messages import (
     ERR_WORKSET_MEMBER_NAME_CONFLICT,
+    ERR_WORKSET_MEMBER_NAME_TAKEN,
     ERR_WORKSET_NULL_WORKSPACES,
 )
 from kanibako.settings.paths import (
@@ -874,6 +875,16 @@ def _add_workset_member(std, config, workset: str, name: str,
         print("Error: " + ERR_WORKSET_MEMBER_NAME_CONFLICT % (
             ws.name, override, name,
         ), file=sys.stderr)
+        return None
+
+    # ⚑ THE MEMBERSHIP KEY IS FOLDED, so a case-blind collision would not add a second
+    # member — it would REPLACE the first one's recorded workspace and leave its box
+    # stranded.  ``find_identifier`` is the one case-blind comparison, and its own
+    # contract puts this refusal here, at the write that would create the entry.
+    taken = find_identifier(name, [p.name for p in ws.projects])
+    if taken is not None:
+        print("Error: " + ERR_WORKSET_MEMBER_NAME_TAKEN % (taken, ws.name),
+              file=sys.stderr)
         return None
 
     # ⚑ READ BEFORE ``add_project``, which makes this dir: afterwards it is always
