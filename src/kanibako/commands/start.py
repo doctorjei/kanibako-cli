@@ -2802,11 +2802,12 @@ def _run_container(
     # 0), which is CHECKED rather than assumed: relaunching into a live container
     # name would otherwise fail much deeper, in ``runtime.run``, as a name clash.
     #
-    # NOT running is NOT an error.  ``--restart`` means "this launch must be a
-    # fresh container with my flags applied"; a stopped box already satisfies
-    # that, and erroring would make a ``--restart`` alias/script fail purely
+    # The condition is EXISTENCE, not liveness: an exited container still holds
+    # the name and blocks an ephemeral/shell launch, and ``_stop_one`` removes it
+    # either way.  No container at all is NOT an error — there is nothing to
+    # clear, and erroring would make a ``--restart`` alias/script fail purely
     # because it won the race.
-    if restart and runtime.is_running(container_name_for(proj)):
+    if restart and runtime.container_exists(container_name_for(proj)):
         from kanibako.commands.stop import _stop_one
         _stop_one(runtime, project_dir=project_dir)
         if runtime.is_running(container_name_for(proj)):
@@ -5066,6 +5067,9 @@ def _run_container(
                     "Check the logs above, or run 'kanibako system diagnose'.",
                     file=sys.stderr,
                 )
+                _print_new_session_hint(
+                    target, is_agent_mode=is_agent_mode, new_session=new_session,
+                )
                 return 1
 
             # Attach to the new bootstrap session.  The container may not be
@@ -5121,14 +5125,35 @@ def _run_container(
                 # retry.
                 if not runtime.is_running(container_name):
                     break
+                # The container is up but the attach failed: tmux has no session
+                # yet, OR the agent already ran and its session ended.  Both look
+                # the same from here, so the warning claims neither.
                 if _exec_attempt < _max_exec_attempts:
                     print(
-                        f"Warning: container not ready for exec "
+                        f"Warning: could not attach to the agent session "
                         f"(attempt {_exec_attempt}/{_max_exec_attempts}), "
                         f"retrying...",
                         file=sys.stderr,
                     )
                     time.sleep(0.5)
+            else:
+                # Every attempt failed with the container still up.  It is left
+                # running so it can be inspected before anything reaps it.
+                writeback_session_credentials(target, proj, auth_src=auth_src)
+                print(
+                    f"Error: Could not attach to box '{proj.name}' after "
+                    f"{_max_exec_attempts} attempts. Its container "
+                    f"({container_name}) is still running; the agent inside may "
+                    f"have exited.\n"
+                    f"  Look inside:  kanibako shell {proj.name}\n"
+                    f"  Stop it:      kanibako stop {proj.name}\n"
+                    f"  Then start it again.",
+                    file=sys.stderr,
+                )
+                _print_new_session_hint(
+                    target, is_agent_mode=is_agent_mode, new_session=new_session,
+                )
+                return rc or 1
             # If agent exited, show container logs so the user can
             # see why (tmux swallows output on exit).
             if not runtime.is_running(container_name):
@@ -5189,13 +5214,10 @@ def _run_container(
             # Clean/ephemeral exit: writeback project -> host (FIX 1 helper).
             writeback_session_credentials(target, proj, auth_src=auth_src)
 
-            # Hint when a plugin agent (not ``--agent shell``) fails in continue mode.
-            if rc != 0 and is_agent_mode and not new_session and has_plugin(target):
-                print(
-                    "hint: if the agent exited because there was no conversation "
-                    "to continue, use 'kanibako start -N' to start fresh.",
-                    file=sys.stderr,
-                )
+        if rc != 0:
+            _print_new_session_hint(
+                target, is_agent_mode=is_agent_mode, new_session=new_session,
+            )
 
         # Surface any tier-2 baseline warnings now that the bootstrap session
         # has closed (the alt-screen has been torn down).
@@ -5208,6 +5230,23 @@ def _run_container(
         if lock_fd is not None:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             lock_fd.close()
+
+
+def _print_new_session_hint(
+    target, *, is_agent_mode: bool, new_session: bool,
+) -> None:
+    """After a failed agent launch without ``-N``, suggest ``-N``.
+
+    Silent for an entrypoint/shell launch and for a target with no plugin
+    (``--agent shell`` has no conversation).  The caller decides that the launch
+    failed.
+    """
+    if is_agent_mode and not new_session and has_plugin(target):
+        print(
+            "hint: if the agent exited because there was no conversation "
+            "to continue, use 'kanibako start -N' to start fresh.",
+            file=sys.stderr,
+        )
 
 
 def _print_setup_did_not_take(target) -> None:
