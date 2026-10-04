@@ -383,6 +383,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`system set` and `system reset` refuse an agent node that `system get` refuses.** `kanibako system
+  set agent.<node>.<key>=…` (with or without `--null`) and `kanibako system reset agent.<node>.<key>` at a
+  node that is not a valid agent are now refused, and nothing is written or removed. That covers a
+  persona on a harness no installed plugin provides, such as `agent.nav+zzz.model`, and an agent whose
+  plugin is not installed. Before, `set` succeeded and created `agents/<node>/agent.yaml`, and `reset`
+  answered "No override" or cleared the file, while `system get` called the same key *"not a valid
+  agent"*. The refusal uses the same words as `get`. An existing store for such a node can still be
+  edited with `kanibako agent set|reset <node> …`.
+
 - **A `\@` in a box destination is a literal `@`, as documented.** Before, it stopped every launch and
   `box show --effective` with `unexpected unresolved @-reference in a box_dest`.
 - **A `$`, `@`, `\` or `~` in a directory name is now kept as part of the path.** Kanibako passed
