@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
+from typing import TypedDict
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (BOXES_PATH, CONFIG_FILE, CONFIG_PATH_DEFAULTS,
@@ -48,9 +49,14 @@ def coerce_bool(value: object) -> bool | None:
     return None
 
 
-_DEFAULTS: dict[str, str] = {
+class _BoxScalarDefaults(TypedDict):
+    box_image: str
+    box_shell: str | None
+
+
+_DEFAULTS: _BoxScalarDefaults = {
     "box_image": "ghcr.io/doctorjei/kanibako-oci:latest",
-    "box_shell": "",
+    "box_shell": None,
 }
 
 
@@ -67,7 +73,11 @@ class KanibakoConfig:
 
     box_image: str = _DEFAULTS["box_image"]
     # ⚑ NO ``box_agent_name`` field (P7, spec §2b) — the selection is a KEY.
-    box_shell: str = _DEFAULTS["box_shell"]
+    # ⚑ ``<None>`` IS the declared default, NOT the ``""`` spelling (spec §2b
+    # ``box.shell | <None>``, auto-detect): a scalar leaf that admits ``<None>`` holds it,
+    # and a consumer reads ``None`` (spec §2h) — never the string ``"None"``, and never a
+    # ``""`` a user cannot tell from a value.
+    box_shell: str | None = _DEFAULTS["box_shell"]
     box_share_images: bool = False
     # ⚑ THE CARRIER OF ``box.enable_vault``'s DECLARED DEFAULT (2026-08-29).  It used to
     # live inside ``read_box_enable_vault``'s ``return True``, which made the reader the
@@ -326,11 +336,11 @@ def box_scalar_defaults_floor() -> dict[str, object]:
     floor: dict[str, object] = {}
     for dotted, field_name in _BOX_SCALAR_FIELDS.items():
         value = getattr(defaults, field_name)
-        # ⚑ A ``str`` field spells the declared ``<None>`` as ``""`` (``box.shell``, spec
-        # §2b ``box.shell | <None>``), and the floor SUPPLIES it as a present ``None``
-        # ([R177]) — never ``""``, which is a value, and which a ``default_categories``
-        # fold drops as a suppression, so ``@box.shell`` would dangle.  A present ``None`` does not
-        # reach the flat field: ``settings_launch.resolve_box_scalars`` skips it, leaving ``""``
+        # ⚑ A declared ``<None>`` is SUPPLIED as a present ``None`` (spec §2b
+        # ``box.shell | <None>``) — never ``""``, which is a value, and which a
+        # ``default_categories`` fold drops as a suppression, so ``@box.shell`` would
+        # dangle.  A present ``None`` does not reach the flat field:
+        # ``settings_launch.resolve_box_scalars`` skips it, leaving ``None``
         # (auto-detect).  ⚑ ``False`` is a VALUE and survives — ``False == ""`` is False.
         floor[dotted] = None if value == "" else value
     return floor
@@ -342,7 +352,13 @@ def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) 
     ⚑ The BOOL arm is selected off the DATACLASS DEFAULT, not a hand-kept name list, so a
     fourth scalar cannot be added without its coercion (``box.enable_vault``, 2026-08-29:
     a settings file stores ``false``, and ``str(False)`` is the truthy ``"False"``).
+
+    ⚑ A ``<None>``-admitting field is selected off the SAME default — for one the
+    declared default IS ``None``, the only case where ``str(None)`` would hand a
+    consumer the program ``None`` (spec §2h).
     """
+    if value is None and getattr(defaults, field_name) is None:
+        return None
     if isinstance(getattr(defaults, field_name), bool):
         coerced = coerce_bool(value)
         return coerced if coerced is not None else bool(value)
