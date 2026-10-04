@@ -563,7 +563,7 @@ class TestBuildEffectiveState:
         )
         assert res_codex["model"] == "haiku"  # no plugin row: default tier applies
 
-    @pytest.mark.parametrize("route", ["system-file"])
+    @pytest.mark.parametrize("route", ["persona", "system-file"])
     def test_the_printed_endpoint_drops_its_userinfo(self, tmp_path, monkeypatch, route):
         """``box show --effective`` prints this dict, so the endpoint's userinfo is
         scrubbed, through both routes an endpoint arrives by: the persona store and
