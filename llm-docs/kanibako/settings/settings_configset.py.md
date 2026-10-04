@@ -111,7 +111,7 @@ literals — files store UNRESOLVED.
 instance is enough; compare with `verdict is OK` or `isinstance(verdict, _OK)`. `Error` carries a
 single `message` field, the human-readable reason, and means `config set` must REFUSE to write.
 
-## `_scan_tokens` — the shared parse grammar
+## `scan_tokens` — the shared parse grammar
 
 Scans a value for `@`-ref and `$VAR` token NAMES and returns `(ref_names, var_names)`, WITHOUT
 resolving anything (design §6d: validate references for well-formedness, never expand to a

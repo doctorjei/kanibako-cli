@@ -72,11 +72,16 @@ from kanibako.settings.config import (
     load_config,
     config_base_path,
     settings_base_path,
+    usable_box_store_value,
     user_config_file,
 )
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.keystore import KeyStore
+from kanibako.settings.messages import (
+    ERR_BOX_STORE_EMPTY_REASON,
+    ERR_BOX_STORE_TRAILING_REASON,
+)
 from kanibako.settings.paths import (
     BoxMode,
     ProjectError,
@@ -2745,47 +2750,31 @@ def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object:
 def _assert_box_root_resolved(snapshot: KeyStore) -> None:
     """Fail LOUDLY when the box root, or the store it derives from, did not resolve.
 
-    ⚑ A box root that resolves to nothing does NOT surface as an error on its own. The
-    pid-0 foundation bind's src IS ``meta.box.home`` = ``@meta.box.path/home``, an
-    EMBEDDED ``@``-ref, and the embedded rule (§6b) coerces an absent referent to ``""``
-    (a present-``None`` one makes the key ``None``, spec §0). The L7 guarantee-create
-    then ``mkdir``\\ s whatever that produced and mounts it OVER the box home, so the
-    box comes up with the wrong host directory as its home and nothing anywhere reports
-    an error.
+    ⚑ NOTHING SURFACES IT. The foundation bind's src IS ``meta.box.home`` =
+    ``@meta.box.path/home``, an EMBEDDED ``@``-ref, and the embedded rule (§6b) coerces
+    an absent referent to ``""``. The L7 guarantee-create ``mkdir``\\s that and mounts
+    it OVER the box home: the wrong host directory, silently.
 
-    ⚑ AND THE RESULT CAN LOOK PERFECTLY VALID, which is why BOTH keys are checked —
-    primary/named yields the syntactically perfect ``/mybox`` that no shape check
-    would reject. ⚑ AND A THIRD SHAPE: a root ending in ``/`` means the LEAF vanished,
-    so every box in the workset would share the BOXES DIRECTORY's home. Each shape,
-    and how it is reached, is worked through in the llm-doc.
+    ⚑ THREE SHAPES, so BOTH keys are read: absent / ``""``, primary-named's
+    perfect ``/mybox``, and a root ending in ``/`` — the LEAF vanished, so every box
+    shares the BOXES DIRECTORY's home (llm-doc has each).
 
-    ⚑ THE TEST IS EXISTENCE + LEAF, NOT ABSOLUTENESS — deliberately, and please do not
-    "tighten" it to require a leading ``/``. That was tried: it reddens 131 tests in
-    ``tests/test_commands/test_start.py``, which mock ``load_std_paths()`` wholesale,
-    so the resolved root is legitimately not a real path there. No production path
-    reaches this check non-absolute.
+    ⚑ THE TEST IS EXISTENCE + LEAF, NOT ABSOLUTENESS — please do not "tighten" it to
+    require a leading ``/``: that reddens 131 tests in ``test_commands/test_start.py``,
+    which mock ``load_std_paths()`` wholesale. ⚑ Test ``config.usable_box_store_value``,
+    reasons ``settings.messages``.
 
-    Checked ONLY when the caller actually supplied the anchor in its floor fragment,
-    so narrow resolves and partial-floor callers are unaffected.
+    Called ONLY on an anchored floor (the call site's guard).
     """
     for key in (_BOX_STORE_KEY, _BOX_ROOT_KEY):
         value = snapshot_leaf(snapshot, key)
-        if isinstance(value, str) and value != "" and not value.endswith("/"):
+        if usable_box_store_value(value):
             continue
         got = "absent" if value is __MISSING__ else repr(value)
-        trailing = isinstance(value, str) and value.endswith("/")
         why = (
-            "its trailing separator means the final path segment resolved to "
-            "nothing (an empty @meta.box.name leaves the box root pointing at the "
-            "SHARED box store, so every box in the workset would resolve the same "
-            "home)"
-            if trailing
-            else (
-                f"the box root '{_BOX_ROOT_KEY}' derives from '@{_BOX_STORE_KEY}', "
-                f'so a settings file that sets workset.boxes to null / "" — or '
-                f"removes it — leaves every key rooted at the box root pointing "
-                f"somewhere at the filesystem root"
-            )
+            ERR_BOX_STORE_TRAILING_REASON
+            if isinstance(value, str) and value.endswith("/")
+            else ERR_BOX_STORE_EMPTY_REASON
         )
         raise SettingsError(
             f"The box store/root key '{key}' did not resolve to a usable path (got "
