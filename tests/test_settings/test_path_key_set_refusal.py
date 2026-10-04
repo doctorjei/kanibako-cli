@@ -629,6 +629,22 @@ class TestASystemPathValueMayNotPointOutOfItsTier:
             message = _set("system.template", "@box.image/x", files, ConfigLevel.system)
             assert message.startswith("Error:"), f"{name}: {message}"
 
+    def test_a_non_path_system_ref_is_refused_and_the_message_says_so(
+        self, config_file, tmp_path,
+    ):
+        """``@system.agent`` is a ``system.*`` key but NOT a system PATH key, so the tier
+        lookup cannot see it.  With ``system.agent`` set, the E3 probe resolves it, so
+        this door is the one that refuses — and its message must not claim that any
+        ``@system.*`` key is allowed."""
+        files = _files(tmp_path)
+        files["system"].write_text("system:\n  agent: claude\n")
+        message = _set("system.template", "@system.agent/x", files, ConfigLevel.system)
+        assert message.startswith("Error:"), message
+        assert "'@system.agent'" in message and "outside the system path tier" in message
+        assert "@config.* keys and the system path keys" in message, message
+        assert "@system.* keys" not in message, message
+        assert "template" not in str(load_doc(files["system"]))
+
     # ---- the half that breaks quietly: an over-firing door ----
 
     def test_every_ref_inside_the_tier_is_still_ACCEPTED(self, config_file, tmp_path):

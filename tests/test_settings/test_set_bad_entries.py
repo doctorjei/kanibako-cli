@@ -93,13 +93,17 @@ class TestSetRefusesOnABadEntry:
             "system": {"agent": "claude"}, "box": {"bogus": 1},
         })
         with caplog.at_level(logging.WARNING, logger=_LOGGER):
-            msg = _system_set(tmp_path, "system.template", "@system.agent/x", force=True)
-        assert msg == "Set system.template=@system.agent/x", msg
+            msg = _system_set(tmp_path, "system.template", "@system.canon/x", force=True)
+        assert msg == "Set system.template=@system.canon/x", msg
         assert "upstream chain reaches" not in caplog.text
 
 
 class TestAnInChainBadEntryIsHard:
-    """The HARD arm: ``--force`` does not reach it, and the broken upstream is named."""
+    """The HARD arm: ``--force`` does not reach it, and the broken upstream is named.
+
+    ⚑ The edited key is ``box.canon``, a contained-scope key, NOT a system path key: a
+    system path value referencing a bad entry is refused EARLIER, by the system path
+    tier's own door (``config.system_path_ref_error``), so it never reaches this arm."""
 
     @pytest.mark.writes_undeclared("box.bogus", reason=_JUDGES)
     def test_force_does_not_override_a_chain_that_reaches_it(self, tmp_path, caplog):
@@ -107,7 +111,7 @@ class TestAnInChainBadEntryIsHard:
         _write(ssp, {"box": {"bogus": "/tmp"}})
         before = ssp.read_text()
         with caplog.at_level(logging.WARNING, logger=_LOGGER):
-            msg = _system_set(tmp_path, "system.template", "@box.bogus/x", force=True)
+            msg = _system_set(tmp_path, "box.canon", "@box.bogus/x", force=True)
         assert msg.startswith("Error: "), msg
         assert "box.bogus" in msg and "--force does not set" in msg
         assert ssp.read_text() == before
@@ -117,27 +121,39 @@ class TestAnInChainBadEntryIsHard:
     def test_the_refusal_is_the_same_without_force(self, tmp_path):
         ssp = tmp_path / "settings.yaml"
         _write(ssp, {"box": {"bogus": "/tmp"}})
-        assert _system_set(tmp_path, "system.template", "@box.bogus/x").startswith("Error: ")
+        msg = _system_set(tmp_path, "box.canon", "@box.bogus/x")
+        assert msg.startswith("Error: ") and "--force does not set" in msg, msg
 
     @pytest.mark.writes_undeclared("box.bogus", reason=_JUDGES)
     def test_the_chain_is_followed_through_a_declared_key(self, tmp_path):
         """Two hops: the value names a DECLARED key whose own value names the bad entry."""
         ssp = tmp_path / "settings.yaml"
         _write(ssp, {
-            "system": {"template": "/tmp/ok"},
             "agent": {"default": {"canon": "@box.bogus/x"}},
-            "box": {"bogus": "/tmp"},
+            "box": {"canon": "/tmp/ok", "bogus": "/tmp"},
         })
-        msg = _system_set(tmp_path, "system.template", "@agent.default.canon/y", force=True)
+        msg = _system_set(tmp_path, "box.canon", "@agent.default.canon/y", force=True)
         assert msg.startswith("Error: ") and "box.bogus" in msg, msg
-        assert yaml.safe_load(ssp.read_text())["system"]["template"] == "/tmp/ok"
+        assert "--force does not set" in msg, msg
+        assert yaml.safe_load(ssp.read_text())["box"]["canon"] == "/tmp/ok"
 
     @pytest.mark.writes_undeclared("box.self", reason=_JUDGES)
     def test_a_self_referential_entry_terminates_and_is_refused(self, tmp_path):
         ssp = tmp_path / "settings.yaml"
         _write(ssp, {"box": {"self": "@box.self/x"}})
-        msg = _system_set(tmp_path, "system.template", "@box.self/x", force=True)
+        msg = _system_set(tmp_path, "box.canon", "@box.self/x", force=True)
         assert msg.startswith("Error: ") and "box.self" in msg, msg
+
+    def test_the_walk_terminates_on_a_loop_through_declared_keys(self):
+        """The door's E3 probe refuses a cyclic value first, so the walk's own SEEN set is
+        pinned on the function: a two-key loop that reaches no bad entry ends empty."""
+        from kanibako.settings.config import chain_bad_entries
+
+        stored = {"box.canon": "@box.shell/x", "box.shell": "@box.canon/y"}.get
+        assert chain_bad_entries("@box.canon/z", ["box.bogus"], stored=stored) == []
+        assert chain_bad_entries("@box.canon/z", ["box.shell"], stored=stored) == ["box.shell"]
+        stored2 = {"box.canon": "@box.bogus/x"}.get
+        assert chain_bad_entries("@box.canon/z", ["box.bogus"], stored=stored2) == ["box.bogus"]
 
 
 class TestGetWarnsOnTheSameEntries:
