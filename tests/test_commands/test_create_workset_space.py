@@ -261,13 +261,30 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
         capsys.readouterr()
         assert run_create(_args("newbox")) == 1
         err = capsys.readouterr().err
-        assert "already exists in workset 'wsa'" in err
+        assert "already exists in working set 'wsa'" in err
         assert "workset connect" not in err
         assert not _printed_commands(err)
         assert [p.name for p in load_workset(root, "wsa").projects] == ["newbox"]
         assert load_primary_boxes(std.primary_workset) == {}
         from kanibako.launch import journal
         assert journal.read_journal(std.journal) == {}
+
+    def test_a_case_variant_of_a_taken_name_is_refused(self, wsa, capsys, monkeypatch):
+        """The membership key is folded, so a case variant would REPLACE the taken
+        member's recorded workspace and strand its box — it refuses instead."""
+        root, _std = wsa
+        monkeypatch.chdir(root)
+        from kanibako.commands.box._parser import run_create
+
+        assert run_create(_args("newbox")) == 0
+        capsys.readouterr()
+        assert run_create(_args("NEWBOX")) == 1
+        err = capsys.readouterr().err
+        assert "already exists in working set 'wsa'" in err
+        assert not _printed_commands(err)
+        # The first member keeps its own recorded workspace.
+        assert [p.name for p in load_workset(root, "wsa").projects] == ["newbox"]
+        assert (root / "workspaces" / "NEWBOX").exists() is False
 
     def test_a_second_name_for_one_box_is_refused(self, wsa, capsys, monkeypatch):
         """A named box's name IS its member name, so ``--name`` may not add one."""
