@@ -803,7 +803,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`set` validates a new value against the settings its command's box, working set, or system
   scope resolves at launch.** `box set`, `workset set`, `system set`, and `agent set` refused a value
   spelled against an anchor the launch resolves, such as `box set box.canon=@meta.box.home/canon`
-  or `workset set <ws> workset.canon=@meta.runtime.ws_root/canon`, as a dangling reference. The
+  or `workset set <ws> workset.auth.path=@meta.runtime.ws_root/auth`, as a dangling reference. The
   check now resolves the value through the box's, the working set's, or the system scope's own
   launch resolve, so those values are accepted and the bare-relative refusal names the root that
   resolve gives. A working set names no box, so `workset set` still refuses a value that needs a
@@ -1815,8 +1815,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the key is declared and every launch resolves it. It now exits 0 and is stored as an overridable
   default. The same holds for `@meta.box.path` and `@meta.workset.path`, judged by the scope they
   name: `kanibako workset set ws1 box.canon=@meta.box.path/c2`, the shape of `box.canon`'s own
-  default, is now accepted. A reference into a scope below the key (for example `@box.*` or
-  `@meta.box.path` inside a `workset.*` key) is still refused, as before.
+  default, is now accepted. Which keys a reference may name is decided by the resolution order; see
+  the entry *A `set` now judges every `@`-reference by the resolution order*.
 
 - **`system set` refuses a system path value whose `@`-reference the system path tier cannot
   resolve.** `system set system.template=@box.image/x` (or `@system.agent/x`) was accepted, and
@@ -1824,6 +1824,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keys resolve only against `@config.*` keys and the other system path keys. Any other reference is
   now refused at `set`, which names it and writes nothing. See *A system path value referencing
   outside its tier is refused at `set`* in [MIGRATION.md](MIGRATION.md).
+
+- **A `set` now judges every `@`-reference by the resolution order.** A key may reference only keys
+  of its own set or of a set resolved before it (system-design "Ordering rule"). `system set
+  workset.auth.path=@box.image` and `workset set ws workset.registry=/z/@{box.image}` used to be
+  stored; the second then broke every later command on that workset. Both are now refused, naming
+  the key, the ref and both sets. `system set agent.<agent>.<key>=@meta.workset.path/x` is now
+  accepted, because `meta.workset` resolves before `agent`. At the workset door, a workset directory
+  key (`boxes`, `registry`, `workspaces`, `logs`, `canon`, `template`, `channelroot`, `vault_ro`,
+  `vault_rw`, `channels.*`) is held to what its reader can resolve: an absolute path, `~`, `$XDG_*`,
+  or `@meta.workset.path`. A value such as `@workset.channelroot/chat` or `/x/$AGENT/c` used to be
+  stored and then broke that working set's later commands. A dangling reference to a declared key
+  (other than an `agent.<persona>.*` key) now says it is declared but outside this command's
+  cascade, instead of "no such config key in the keyspace". See *A `set` whose `@`-reference names a
+  later key set is refused* in [MIGRATION.md](MIGRATION.md).
 
 - **Vault data kanibako keeps is now always named, including a plain file.** A loose file left
   directly in a standalone box's `vault/` is retained exactly as an unclaimed directory is, but
