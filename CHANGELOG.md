@@ -348,6 +348,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new box, run:  kanibako create 'a b'` pastes as one argument; a spec with a space or a `'` used
   to paste as a different command.
 
+- **A `null` at a box scalar whose default is a value is now refused, and it is no longer
+  silently answered with that default.** `kanibako box set --null box.image` wrote the line and
+  the next read handed back `ghcr.io/doctorjei/kanibako-oci:latest` — an image the file never
+  held — so `box show --effective` reported a value no tier stored. `box.image`,
+  `box.share_images` and `box.enable_vault` are now refused at the door that would write them
+  and at the launch (and by `kanibako image`, `baseline verify` and `setup`; `system diagnose`
+  reports it), each naming the key, the file and the cure. The refusal applies at every
+  tier — system, agent, workset, and box — and names the file of the tier whose `null` won; a
+  `null` overridden by a more authoritative tier or by `--image` is not refused, and the override
+  wins. A key the files are *silent* about still resolves to its declared default, so an
+  untouched box is unaffected. A `null` at `box.shell` is unchanged: its declared `<None>` means
+  auto-detect. A box's unset `box.shell` is printed as `null`. A file that already stores one of
+  these three keys as `null` is refused at launch until you delete the line; nothing is migrated
+  for you.
+
+- **`box show --effective` now reads the selected agent's own `box:` table.** An agent file
+  carrying `box: {image: …}` was displayed as the built-in default while the launch used the
+  agent's value. It does not cover any other scalar — only the ones an agent file may set.
+
 - **A malformed bind entry in an agent file is refused where the file is read, and two spellings
   of one destination are refused everywhere.** A sub-table where an entry goes, an entry of three
   elements, and a bare relative source, under the file's `self:`, `agent:`, `workset:` or `box:`

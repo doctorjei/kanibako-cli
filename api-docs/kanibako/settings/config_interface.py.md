@@ -21,7 +21,7 @@ def reset_config_value(key: str, *, config_path: Path, env_path: Path | None=Non
 def effective_value(canonical: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, floor: 'Mapping[str, object] | None'=None, inputs: 'LaunchInputs | None'=None) -> 'tuple[str, str] | None'
 def write_system_value(system_settings_path: Path, leaf: str, value: object) -> None
 def reset_all(*, config_path: Path, env_path: Path | None=None, force: bool=False, system_settings_path: Path | None=None, command_scope: 'ConfigLevel | None'=None) -> str
-def show_config(*, global_config_path: Path, command_scope: ConfigLevel, config_path: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, effective: bool=False, file: Any=None, workset_path: Path | None=None, agent_state: dict[str, str] | None=None, env_resolved: dict[str, str] | None=None, system_settings_path: Path | None=None, category_snapshot: Any=None, category_ctx: Any=None, category_error: str | None=None, category_declared_by: Any=None, inputs: Any=None) -> int
+def show_config(*, global_config_path: Path, command_scope: ConfigLevel, config_path: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, effective: bool=False, file: Any=None, workset_path: Path | None=None, agent_state: dict[str, str] | None=None, env_resolved: dict[str, str] | None=None, system_settings_path: Path | None=None, category_snapshot: Any=None, category_ctx: Any=None, category_error: str | None=None, category_declared_by: Any=None, inputs: Any=None, agent_name: str=GENERAL_SLOT, agent_path: Path | None=None) -> int
 def _pref_value_error(canonical: str, value: 'str | None', *, config_path: Path, command_scope: 'ConfigLevel | None', system_settings_path: Path | None, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, agent_name: str, set_target: 'LaunchInputs | None') -> str | None
 def _yaml_skeleton(target: str) -> list[str]
 def _host_xdg_map(data_home: 'Path | None'=None) -> dict[str, str]
@@ -49,6 +49,7 @@ def _stored_shape_for(canonical: str, value: object) -> object
 def _set_confirmation(display_key: str, value: object) -> str
 def _null_path_key_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
 def _box_store_value_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
+def _null_box_scalar_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
 def _reset_dest(canonical: str, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> DestRoute
 def _honest_reset_message(key: str, command_scope: 'ConfigLevel | None', effective: 'tuple[str, str] | None'=None) -> str
 def _clear_writable_tables(path: Path, command_scope: 'ConfigLevel | None') -> dict[str, int]
