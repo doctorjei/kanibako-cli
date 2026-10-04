@@ -37,6 +37,7 @@ from kanibako.settings.settings_resolve import (
     ResolveCtx,
     SettingsError,
     expand_expr,
+    literal_expr,
 )
 
 HOST_HOME = "/home/u"
@@ -610,6 +611,31 @@ def test_box_side_braced_var_deferred_verbatim() -> None:
     snap = KeyStore({"box": {"caches": {"c": Bind("/h", "${XDG_CACHE_HOME}/k")}}})
     out = expand(snap, _ctx(xdg={"XDG_CACHE_HOME": "/host/cache"}))
     assert out["box"]["caches"]["c"].box == "${XDG_CACHE_HOME}/k"
+
+
+#: A referent directory holding every character the expander reads as syntax.
+_ODD_REFERENT = "/d/a@b$c\\e~f"
+
+
+@pytest.mark.parametrize("dest,expected", [
+    (r"/opt/at\@x", "/opt/at@x"),
+    (r"/opt/a\\\@b", "/opt/a\\@b"),
+    ("@meta.box.path/s", _ODD_REFERENT + "/s"),
+    ("@meta.box.path", _ODD_REFERENT),
+    (r"~/a\$b\~c\\d", GUEST_HOME + "/a$b~c\\d"),
+], ids=["escaped-at", "escaped-backslash-then-at", "embedded-ref", "whole-value-ref",
+        "env-escapes"])
+def test_a_box_dest_reaches_the_box_path_verbatim(dest, expected) -> None:
+    r"""Keyspec escape contract, through the launch seam: ``\@`` unescapes to ``@``,
+    which the box side reads as a literal like a referent's own ``@``; ``\$ \~ \\``
+    survive the deferral and unescape box-side; an ``@ref`` resolves host-side."""
+    snap = KeyStore({
+        "meta": {"box": {"path": literal_expr(_ODD_REFERENT)}},
+        "box": {"bindings": {"rw": {dest: BindEntry("/h/src")}}},
+    })
+    ctx = _ctx()
+    entries = snapshot_category_entries(expand(snap, ctx), active_agent="claude", box_ctx=ctx)
+    assert [e.box_dest for e in entries] == [expected]
 
 
 # --------------------------------------------------------------------------- #

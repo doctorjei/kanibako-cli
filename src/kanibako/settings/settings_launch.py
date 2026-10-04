@@ -3226,9 +3226,12 @@ def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str:
     box's home, fixed machinery.
 
     An escaped ``\\$`` survives the deferral verbatim and unescapes here, so a literal
-    dollar the user meant stays one.
+    dollar the user meant stays one. Every ``@`` is literal here: the build resolved
+    the ``@``-refs, and the box never processes ``@`` (keyspec escape contract).
     """
-    return expand_expr(raw, space="guest", ctx=box_ctx, lookup=_no_lookup)
+    return expand_expr(
+        raw.replace("@", "\\@"), space="guest", ctx=box_ctx, lookup=_no_lookup,
+    )
 
 
 def snapshot_category_entries(
@@ -3823,14 +3826,10 @@ def _emit_bind(
 
 
 def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
-    """``expand_expr`` lookup for :func:`resolve_box_dest`: the snapshot's ``@``-refs
-    are ALREADY resolved at build, so a surviving ``@``-ref in a box_dest is a
-    build/config error — raise rather than silently emit ``""``.
+    """``expand_expr`` lookup for :func:`resolve_box_dest`, which escapes every ``@``
+    first, so no ``@``-ref reaches it; it raises rather than silently emit ``""``.
     """
-    raise SettingsError(
-        f"unexpected unresolved @-reference in a box_dest: {ref!r} "
-        f"(box_dest @-refs are resolved at build; only $XDG/~ are deferred)"
-    )
+    raise SettingsError(f"unexpected @-reference in a box_dest: {ref!r}")
 
 
 def resolve_box_scalars(

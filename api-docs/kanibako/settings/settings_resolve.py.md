@@ -27,12 +27,14 @@ _VAR_NAME_RE = re.compile('[A-Za-z_][A-Za-z0-9_]*')
 _REF_SEG = f'[{SEGMENT_CHAR_CLASS}{CANONICAL_SEP}]+'
 _REF_NAME_RE = re.compile(f'{_REF_SEG}(?:\\.{_REF_SEG})*')
 _EXPR_SIGNIFICANT: frozenset[str] = frozenset('\\$@~')
+_DEFERRED_SIGNIFICANT: frozenset[str] = frozenset('\\$~')
 ```
 
 ## Functions
 ```
 def expand_guest_home(value: str) -> str
 def literal_expr(text: str) -> str
+def deferred_literal_expr(text: str) -> str
 def literal_map(values: Mapping[str, str]) -> dict[str, str]
 def is_verbatim_text(path: Sequence[str]) -> bool
 def split_bind(value: str) -> tuple[str, str | None]
