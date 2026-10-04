@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kanibako.commands.flags import add_null_flag
+from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.errors import ConfigError, WorksetError
 from kanibako.settings.paths import (
@@ -192,9 +192,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     set_p.add_argument("workset", help="Name of the working set")
     set_p.add_argument("key_value", nargs="?", help="key=value pair")
     add_null_flag(set_p, undo="workset reset <workset> <key>")
-    set_p.add_argument(
-        "--force", action="store_true", help="Skip confirmation prompts",
-    )
+    add_set_force_flag(set_p)
     set_p.set_defaults(func=run_set)
 
     # kanibako workset reset <workset> <key> | --all  [--force]
@@ -880,6 +878,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             # one that disagreed with ``system get`` on the same key.
             agents_root=std.agents,
             command_scope=ConfigLevel.workset,
+            cascade_system_path=std.settings,
         )
         if val is not None:
             print(val)
@@ -897,6 +896,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             cascade_system_path=std.settings,
             command_scope=ConfigLevel.workset,
             std=std, ws=ws,
+            force=args.force,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)

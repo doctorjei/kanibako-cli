@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -998,6 +998,49 @@ def refuses_box_store_value(canonical: str, value: object) -> bool:
     if canonical != f"workset.{BOXES_PATH}":
         return False
     return not usable_box_store_value(value)
+
+
+def chain_bad_entries(
+    value: object, bad: Iterable[str], *, stored: "Callable[[str], object]",
+) -> list[str]:
+    """The *bad* entries the edited *value*'s own upstream ``@``-chain REACHES (spec §2a).
+
+    ⚑ THE SPLIT, STATED ONCE.  A bad entry in a file the command reads has two arms: one the
+    edited value's own chain depends on, which is a HARD error ``--force`` does not override,
+    and one it does not, which is an error unless ``--force``.  Only the first is a question
+    about the value; the second is a question about the file, and belongs to the door.
+
+    ⚑ TRANSITIVE, through DECLARED keys only.  The walk follows a ref to a value ``stored``
+    reads, so a chain of two hops (``@a.b`` whose value is ``@c.d``) reaches ``c.d``.  A ref
+    that is itself bad ends the walk there — its value is not a key's value to follow.
+    *stored* answers ``None`` for a name no file holds, and the walk stops.
+
+    ⚑ A WORKLIST, NOT RECURSION, so a ``@``-chain that loops back on itself terminates on
+    the SEEN set.  A self-reference is therefore a chain that reaches itself once.
+    """
+    from kanibako.settings.settings_configset import scan_tokens
+
+    if not isinstance(value, str) or not value:
+        return []
+    remaining = set(bad)
+    reached: list[str] = []
+    seen: set[str] = set()
+    pending = [value]
+    while pending and remaining:
+        try:
+            refs, _vars = scan_tokens(pending.pop())
+        except ValueError:
+            continue  # malformed: the value's own door refuses that
+        for ref in refs:
+            if ref in remaining:
+                reached.append(ref)
+                remaining.discard(ref)
+            elif ref not in seen:
+                seen.add(ref)
+                nxt = stored(ref)
+                if isinstance(nxt, str) and nxt:
+                    pending.append(nxt)
+    return reached
 
 
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None:

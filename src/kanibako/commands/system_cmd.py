@@ -6,7 +6,7 @@ import argparse
 import sys
 
 from kanibako import __version__
-from kanibako.commands.flags import add_null_flag
+from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file
 from kanibako.settings.paths import xdg
 
@@ -40,9 +40,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     set_p.add_argument("key_value", nargs="?", help="key=value pair")
     add_null_flag(set_p, undo="system reset <key>")
-    set_p.add_argument(
-        "--force", action="store_true", help="Skip confirmation prompts",
-    )
+    add_set_force_flag(set_p)
     set_p.set_defaults(func=run_set)
 
     # system reset <key> | --all  [--force]
@@ -506,6 +504,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             agents_root=agents_root,
             std=set_std,
             target_error=set_std_error,
+            force=args.force,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
