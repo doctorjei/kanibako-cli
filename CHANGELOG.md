@@ -409,7 +409,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spelling. A table that spells one node both ways is refused, naming both spellings, by `get` as
   well as `set` and `box show --effective`. `box show --effective`, `set` and `reset`
   confirmations, and the capital-node warning name a node as `navigator+claude`, the spelling you
-  can paste back.
+  can paste back. Error messages and warnings name a node that way too: refusals from `get`, `set`,
+  and `reset`, the agent settings file refusal and its `kanibako agent reset navigator+claude --all`
+  cure, launch refusals, the edit a destination collision tells you to make, and the listing of
+  entries that are not settings keys. Only the node changes: a value, a destination, or a segment
+  you typed that contains `℘` is printed as written.
 
 - **A foreground box whose session cannot be attached now says so.** When every attach attempt failed
   with the container still up, the retries stopped after `attempt 4/5` with nothing more said. The

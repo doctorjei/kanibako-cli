@@ -33,6 +33,7 @@ from kanibako.settings.settings_categories import (
   CategoryEntry,
   internal_bind_cure,
 )
+from kanibako.settings.settings_keyspace import shown_key
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
 from kanibako.settings.store_shape import StoreShape, StoreShapeSet, _arm_of
 
@@ -757,16 +758,17 @@ def _refuse_env_twin(arriving: CategoryEntry, held: CollapsedEnv) -> None:
   secret's VALUE never enters the collapse at all, so this function sees only the
   ``env`` half of that slot.
   """
+  held_key, arriving_key = shown_key(held.key), shown_key(arriving.key)
   raise SettingsError(
     f"the environment variable {arriving.box_dest!r} is claimed by two keys: "
-    f"{held.key!r} at the {held.scope!r} scope already holds it, and "
-    f"{arriving.key!r} at the {arriving.scope!r} scope names it again. A variable "
+    f"{held_key!r} at the {held.scope!r} scope already holds it, and "
+    f"{arriving_key!r} at the {arriving.scope!r} scope names it again. A variable "
     f"is written ONCE and the containing scope writes it first, so the second "
     f"declaration could never take effect. Give the variable ONE owner: keep the "
     f"key at the scope the value belongs to and remove the other one. An override "
     f"is not enough - these are two different KEYS, so both survive the cascade. To "
     f"change the value WITHOUT moving its owner, write the SAME key "
-    f"({held.key!r}) in a nearer settings file: keys cascade, and the nearest "
+    f"({held_key!r}) in a nearer settings file: keys cascade, and the nearest "
     f"file wins."
   )
 

@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 
 from kanibako import kuid
 from kanibako.agent_ref import (
-    ADDRESSABLE_PSEUDO_AGENTS, GENERAL_SLOT, harness_of, with_harness,
+    ADDRESSABLE_PSEUDO_AGENTS, GENERAL_SLOT, display_agent_ref, harness_of, with_harness,
 )
 from kanibako.settings.agent_config import (
     ambiguous_path_value_error,
@@ -119,8 +119,9 @@ from kanibako.settings.settings_keyspace import (
     KeyClass,
     entry_label,
     is_terminal_category_key,
+    display_store_path,
     pseudo_agent_fence,
-    render_store_path,
+    shown_key,
     undeclared_store_paths,
     walk_store_paths,
 )
@@ -1265,7 +1266,7 @@ def _finding_name(
 ) -> str:
     """*segments* rendered as :func:`undeclared_listing` renders that finding."""
     key_len = next(j.key_len for seg, j in findings if seg == segments)
-    return render_store_path(segments, key_len)
+    return display_store_path(segments, key_len)
 
 
 def _carrying_files(
@@ -1505,14 +1506,15 @@ def internal_bind_refusals(
         if norm in internal:
             if when == "write":
                 refusals.append(
-                    f"{entry_label(arm, dest)} cannot be added to {where}: its "
+                    f"{entry_label(shown_key(arm), dest)} cannot be added to {where}: its "
                     f"destination is that of an internal kanibako bind (spec §2c), which "
                     f"is not repointable. Nothing was written; choose another destination."
                 )
                 continue
             refusals.append(
-                f"{entry_label(arm, dest)} in {where} is at the destination of an "
-                f"internal kanibako bind (spec §2c), not repointable; remove the entry."
+                f"{entry_label(shown_key(arm), dest)} in {where} is at the "
+                f"destination of an internal kanibako bind (spec §2c), not repointable; "
+                f"remove the entry."
             )
             continue
         if not is_mask or value is None:
@@ -1520,14 +1522,14 @@ def internal_bind_refusals(
         # The write form here has no caller yet: ``share add`` writes only ``bindings``.
         if when == "write":
             refusals.extend(
-                f"{entry_label(arm, dest)} cannot be added to {where}: it would remove "
-                f"the internal kanibako bind at {hidden} (spec §2c), which is not "
-                f"suppressible. Nothing was written; mask a narrower path."
+                f"{entry_label(shown_key(arm), dest)} cannot be added to {where}: "
+                f"it would remove the internal kanibako bind at {hidden} (spec §2c), "
+                f"which is not suppressible. Nothing was written; mask a narrower path."
                 for hidden in internal if is_within(hidden, norm)
             )
             continue
         refusals.extend(
-            f"{entry_label(arm, dest)} in {where} would remove the internal "
+            f"{entry_label(shown_key(arm), dest)} in {where} would remove the internal "
             f"kanibako bind at {hidden} (spec §2c), which is not suppressible; mask a "
             f"narrower path."
             for hidden in internal if is_within(hidden, norm)
@@ -2529,7 +2531,7 @@ def _warn_lone_none_standard_binds(
             refs = _source_refs(src, expanded, ctx)
             if not refs:
                 continue  # INTERNAL: no source key.
-            label = entry_label(arm, dest)
+            label = entry_label(shown_key(arm), dest)
             merged_arm = snapshot_leaf(merged, arm)
             if isinstance(merged_arm, KeyStore) and dict.__contains__(merged_arm, dest):
                 expanded_arm = snapshot_leaf(expanded, arm)
@@ -2550,7 +2552,9 @@ def _warn_lone_none_standard_binds(
                     if any(snapshot_leaf(expanded, ref) is None for ref in refs):
                         rootless.append((label, ", ".join(dict.fromkeys(refs))))
                     continue
-                named = ", ".join(f"{ref} (in {where})" for ref, where in set_refs)
+                named = ", ".join(
+                    f"{shown_key(ref)} (in {where})" for ref, where in set_refs
+                )
                 message = (
                     f"The standard bind {label} is omitted: its source references "
                     f"{named}, which is null, but the entry itself is not. Set {label} "
@@ -2564,7 +2568,7 @@ def _warn_lone_none_standard_binds(
                     continue  # its source is <None> too: both, silent.
                 # ``meta.*`` is read-only (§0): named, but never offered as the cure.
                 settable = [r for r in dict.fromkeys(refs) if not r.startswith("meta.")]
-                keys = ", ".join(settable or dict.fromkeys(refs))
+                keys = ", ".join(map(shown_key, settable or dict.fromkeys(refs)))
                 message = (
                     f"The standard bind {label} is set to null in {where}, so it is "
                     f"omitted, but its source key ({keys}) is not null."
@@ -2653,11 +2657,13 @@ def _warn_null_ref_secrets(
             if not null_refs:
                 continue
             named = ", ".join(
-                f"{ref} (null in {_none_setter(written, ref, None) or _FLOOR_WHERE})"
+                f"{shown_key(ref)} "
+                f"(null in {_none_setter(written, ref, None) or _FLOOR_WHERE})"
                 for ref in null_refs
             )
             _warn_once(
-                f"{key} is {raw!r}, which references {named}, so it is null and "
+                f"{shown_key(key)} is {raw!r}, which references {named}, so it is "
+                f"null and "
                 f"the secret {var} is not mounted from it."
             )
 
@@ -3162,14 +3168,15 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
     )
     if not isinstance(slot, KeyStore):
         raise SettingsError(
-            f"'{key}' is not materialized in this snapshot (no "
-            f"meta.agent.{active_agent} node) — the launch grammar composes from "
-            f"the keyspace, so the resolve must carry meta_agent_grammar_floor()"
+            f"'{shown_key(key)}' is not materialized in this snapshot (no "
+            f"meta.agent.{display_agent_ref(active_agent)} node) — the launch grammar "
+            f"composes from the keyspace, so the resolve must carry meta_agent_grammar_floor()"
         )
     mode_node = dict.get(slot, "mode", __MISSING__)
     if not isinstance(mode_node, KeyStore):
         raise SettingsError(
-            f"'{key}' is not materialized in this snapshot — the launch grammar "
+            f"'{shown_key(key)}' is not materialized in this snapshot — the "
+            f"launch grammar "
             f"composes from the keyspace, so the resolve must carry "
             f"meta_agent_grammar_floor()"
         )
@@ -3180,7 +3187,7 @@ def meta_agent_grammar(snapshot: KeyStore, *, active_agent: str) -> AgentGrammar
             isinstance(part, str) for part in fragment
         ):
             raise SettingsError(
-                f"'{key}.{mode_key}' is not an argv fragment "
+                f"'{shown_key(key)}.{mode_key}' is not an argv fragment "
                 f"(expected a list of strings, got {type(fragment).__name__})"
             )
         mode[str(mode_key)] = list(fragment)
@@ -3458,11 +3465,12 @@ def _assert_declared_categories(key_prefix: str, node: KeyStore) -> None:
         bindings = _require_category_node(key_prefix, "bindings", bindings)
         for name in dict.keys(bindings):
             if name not in ("ro", "rw"):
+                shown = shown_key(key_prefix)
                 raise SettingsError(
-                    f"{key_prefix}.bindings.{name} is an ARM-LESS binding, which is "
+                    f"{shown}.bindings.{name} is an ARM-LESS binding, which is "
                     f"not a declared key; bindings are declared per arm and the arm "
-                    f"is the WHOLE key — {key_prefix}.bindings.ro / "
-                    f"{key_prefix}.bindings.rw, each a TERMINAL map keyed by box "
+                    f"is the WHOLE key — {shown}.bindings.ro / "
+                    f"{shown}.bindings.rw, each a TERMINAL map keyed by box "
                     f"destination (spec §2a / §2d). Move the entry under one of the "
                     f"two arms, keyed by its destination"
                 )
@@ -3508,16 +3516,17 @@ def _require_category_node(key_prefix: str, category: str, node: object) -> KeyS
     # a user must declare is the MAP, keyed by destination — never a ``.<name>`` entry,
     # which is no longer a key at any scope. ``masks`` is dest-keyed like the rest but
     # its VALUE is the 3-state marker, not a source, so only the example differs.
+    shown = shown_key(key_prefix)
     declared = (
-        f"{key_prefix}.bindings.{{ro,rw}}" if category == "bindings"
-        else f"{key_prefix}.{category}"
+        f"{shown}.bindings.{{ro,rw}}" if category == "bindings"
+        else f"{shown}.{category}"
     )
     shape = (
         "{box_dest: true}" if category == "masks"
         else "{box_dest: [src[, options]]}"
     )
     raise SettingsError(
-        f"{key_prefix}.{category} is a value at a CATEGORY ROOT "
+        f"{shown}.{category} is a value at a CATEGORY ROOT "
         f"({type(node).__name__}: {node!r}), which is not a declared key; "
         f"declare {declared} as a map keyed by box destination, "
         f"{shape} (spec §2a / §2d L906-910)"
@@ -3752,7 +3761,8 @@ def _emit_bind_map(
             continue
         if not isinstance(entry, BindEntry):
             raise SettingsError(
-                f"category {entry_label('.'.join(key_segments[:-1]), dest)} is "
+                f"category "
+                f"{entry_label(shown_key('.'.join(key_segments[:-1])), dest)} is "
                 f"{type(entry).__name__}, "
                 f"expected a BindEntry ({category} is dest-keyed: the map key is "
                 f"the destination)"

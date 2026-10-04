@@ -49,6 +49,7 @@ _DUNDER_RE: Final = re.compile('^__.*__$')
 _VAR_RE: Final = re.compile('^[A-Za-z_][A-Za-z0-9_]*$')
 _KEY: Final[KeyJudgment] = KeyJudgment(KeyClass.KEY, '')
 _NOT_ASKED: Final[object] = object()
+_NODE_HEADS: Final = (('agent',), ('meta', 'agent'), ('pref', 'agent'))
 ```
 
 ## Types
@@ -76,6 +77,9 @@ def agent_leaf_is_declared(name: str, tail: str, agent_leaf_map: 'AgentLeafMap |
 def effective_agent_leaves(agent_leaf_map: 'AgentLeafMap | None') -> Collection[str]
 def key_validity(key: str, *, valid_agents: Collection[str], agent_leaf_map: 'AgentLeafMap | None'=None) -> str | None
 def key_class(key: str, *, valid_agents: Collection[str], agent_leaf_map: 'AgentLeafMap | None'=None) -> KeyJudgment
+def display_segments(segments: Sequence[str]) -> tuple[str, ...]
+def shown_key(key: str) -> str
+def display_store_path(segments: Sequence[str], key_len: int | None=None) -> str
 def render_store_path(segments: Collection[str], key_len: int | None=None) -> str
 def dotted_entry_reason(parent: Sequence[str], name: str) -> str
 def is_var_table(parent: Sequence[str], *, oracle: Callable[[str], KeyJudgment]) -> bool

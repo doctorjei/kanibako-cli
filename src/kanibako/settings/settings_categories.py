@@ -284,9 +284,10 @@ class CategoryEntry:
     @property
     def label(self) -> str:
         """How a message names this entry: ``<declaration>[<dest>]`` or ``….<VAR>``."""
-        from kanibako.settings.settings_keyspace import entry_label
+        from kanibako.settings.settings_keyspace import display_segments, entry_label
 
-        return entry_label(".".join(self.key_segments[:-1]), self.key_segments[-1])
+        declaration = ".".join(display_segments(self.key_segments[:-1]))
+        return entry_label(declaration, self.key_segments[-1])
 
 
 def _bind_options(category: str) -> str:
@@ -857,8 +858,10 @@ def _suppress_then_add(
     prescription; the extension-onto-occupied refusal passes False.
     """
     # ⚑ SEGMENTS, NEVER A DOTTED SPLIT — a split block is not a declaration at all.
-    from kanibako.settings.settings_keyspace import entry_label
+    from kanibako.settings.settings_keyspace import display_segments, entry_label
 
+    # The block is pasted into a file, where the node reads in its ``+`` spelling.
+    occupant_segments = display_segments(occupant_segments)
     occupant_key = entry_label(".".join(occupant_segments[:-1]), occupant_segments[-1])
     scope = occupant_segments[0]
     last = len(occupant_segments) - 1
@@ -982,7 +985,7 @@ def effective_bindings_and_template_sources(
     from kanibako.settings.kb_store import BINDING_DERIVATIONS_NODE
     from kanibako.settings.keystore import KeyStore
     from kanibako.settings.settings_launch import snapshot_leaf
-    from kanibako.settings.settings_keyspace import entry_label
+    from kanibako.settings.settings_keyspace import display_segments, entry_label
     from kanibako.settings.settings_views import derived_binding_rows
     from kanibako.settings.store_collapse import Declaration, pair_declarations
 
@@ -992,7 +995,7 @@ def effective_bindings_and_template_sources(
     # label; the delivery is read off the dotted declaration key.
     declarations = [
         Declaration(
-            key=entry_label(".".join(segments[:-1]), segments[-1]),
+            key=entry_label(".".join(display_segments(segments[:-1])), segments[-1]),
             dest=bind.box, src=bind.host,
             delivery=declaration_delivery(".".join(segments)),
         )

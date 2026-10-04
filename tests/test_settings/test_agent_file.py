@@ -1619,7 +1619,7 @@ class TestTheForwardCompatPassthroughIsClosed:
         with pytest.raises(SettingsError) as exc:
             agent_record(refused, node="nav℘claude", purpose=ReadPurpose.RESOLVE)
         assert "'zippity'" in str(exc.value)
-        assert "agent.nav℘claude" in str(exc.value)
+        assert "agent.nav+claude" in str(exc.value)
 
         declared = self._file(tmp_path, {"model": "opus", "endpoint": "https://e"})
         assert agent_record(declared, node="nav℘claude", purpose=ReadPurpose.RESOLVE).state == {
