@@ -448,12 +448,12 @@ class TestWorksetRm:
     def test_rm_purge_of_an_unreadable_workset_yaml_succeeds(
         self, config_file, tmp_home, capsys, malformed,
     ):
-        """⚑ A DELETION PATH NEVER GAINS A REFUSAL — the project-count guard included.
+        """⚑ A DELETION PATH NEVER GAINS A REFUSAL FOR A BROKEN FILE.
 
         ``run_rm`` asks how many projects a workset holds before it will unregister
         it, and that ask is where the refusal landed once the reader started refusing.
-        ``--purge`` removes the tree either way, so the count is moot: a user deleting
-        a root because its file is broken must not have to hand-edit it first.
+        A user deleting a root because its file is broken must not have to hand-edit
+        it first.
         """
         from kanibako.commands.workset_cmd import run_rm
 
@@ -467,6 +467,37 @@ class TestWorksetRm:
 
         assert rc == 0
         assert not root.resolve().exists()
+
+    @pytest.mark.parametrize("malformed", [
+        pytest.param("workset:\n  boxes: [broken: :\n", id="invalid-yaml"),
+        pytest.param("- one\n- two\n", id="top-level-list"),
+        pytest.param("just-a-scalar\n", id="top-level-scalar"),
+    ])
+    def test_rm_purge_without_force_keeps_the_project_guard_for_an_unreadable_workset_yaml(
+        self, config_file, tmp_home, capsys, malformed,
+    ):
+        """⚑ A BROKEN FILE DOES NOT LIFT THE PROJECT-COUNT GUARD — ``--purge`` included.
+
+        The members are counted at the DEFAULT registry path, so a workset that has
+        projects still needs ``--force`` before ``--purge`` deletes its tree.
+        """
+        from kanibako.commands.workset_cmd import run_rm
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("purgemembers", tmp_home / "ws_purgemembers", std)
+        src = tmp_home / "proj_src_purgemembers"
+        src.mkdir()
+        add_project(ws, "myproj", src)
+        root = ws.root
+        (root / "workset.yaml").write_text(malformed)
+
+        rc = run_rm(argparse.Namespace(name="purgemembers", purge=True, force=False))
+
+        assert rc == 1
+        assert root.is_dir()
+        assert "purgemembers" in list_worksets(std)
+        assert "has 1 project(s)" in capsys.readouterr().err
 
     def test_rm_without_purge_refuses_an_unreadable_workset_yaml_and_names_both_cures(
         self, config_file, tmp_home, capsys,

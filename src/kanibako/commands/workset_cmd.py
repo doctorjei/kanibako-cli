@@ -24,6 +24,10 @@ from kanibako.settings.paths import (
 )
 from kanibako.utils import confirm_prompt
 from kanibako.identifiers import find_identifier
+from kanibako.project.workset_registry import (
+    load_workset_boxes,
+    resolve_workset_registry_path,
+)
 from kanibako.project.workset import (
     DEFAULT_WORKSET_ALIAS,
     RESERVED_WORKSET_IDENTIFIERS,
@@ -506,27 +510,32 @@ def run_rm(args: argparse.Namespace) -> int:
     label_name = args.name if stored is None else stored
     if stored is not None:
         try:
-            ws = load_workset(registry[stored], stored)
-            if ws.projects and not args.force:
-                print(
-                    f"Error: workset '{label_name}' has {len(ws.projects)} project(s). "
-                    f"Use --force to remove anyway.",
-                    file=sys.stderr,
-                )
-                return 1
+            members = len(load_workset(registry[stored], stored).projects)
+            unreadable: ConfigError | None = None
         except WorksetError:
-            pass
+            members, unreadable = 0, None
         except ConfigError as exc:
-            # ⚑⚑ AN UNREADABLE workset.yaml IS NOT A REFUSAL HERE.  The count is
-            # unknowable, so it takes the answer a non-empty workset gets — except on
-            # ``--purge``, which removes the tree either way.
-            if not args.purge and not args.force:
-                print(
-                    f"Error: workset '{label_name}': {exc} Use --purge to remove it and "
-                    f"its files, or --force to unregister it only.",
-                    file=sys.stderr,
-                )
-                return 1
+            # ⚑⚑ A BROKEN workset.yaml KEEPS THE PROJECT GUARD, ``--purge`` included: members
+            # are counted at the DEFAULT registry path, ``delete_workset``'s fallback.
+            members = 0 if args.force else len(load_workset_boxes(
+                resolve_workset_registry_path(registry[stored].resolve(), None),
+            ))
+            unreadable = exc
+        if members and not args.force:
+            print(
+                f"Error: workset '{label_name}' has {members} project(s). "
+                f"Use --force to remove anyway.",
+                file=sys.stderr,
+            )
+            return 1
+        # ⚑ Unregistering alone keeps a tree whose settings cannot be read, so it refuses.
+        if unreadable is not None and not args.purge and not args.force:
+            print(
+                f"Error: workset '{label_name}': {unreadable} Use --purge to remove it and "
+                f"its files, or --force to unregister it only.",
+                file=sys.stderr,
+            )
+            return 1
 
     if not args.force:
         label = "and remove files " if args.purge else ""

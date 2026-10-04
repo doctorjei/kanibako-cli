@@ -135,12 +135,7 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
     path = root / WORKSET_META_FILE
     if not path.is_file():
         return None
-    try:
-        return load_doc(path)
-    except ConfigError:
-        raise
-    except Exception:  # ⚑ non-parse: a miss
-        return None
+    return load_doc(path)
 
 
 def _workset_path_repoint(

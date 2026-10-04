@@ -5622,6 +5622,9 @@ An empty file, or one holding only comments, is still read as empty.
 **What to do.** Open the named file. Write what you meant as keys in their tables, or delete the
 file if it holds nothing you need.
 
+This includes a workset's own `<workset root>/workset.yaml`: every command that reads it now
+refuses, `box list` warns and skips that workset, and `workset rm --purge --force` still removes it.
+
 ### 2.88 `box move`, `convert`, `duplicate` and `extract` copy a symlink as a symlink
 
 **Read this if a box's workspace, home, vault or data holds symlinks and you move, convert,

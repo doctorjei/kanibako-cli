@@ -414,7 +414,11 @@ including the vault arms the teardown paths delete by.
 ⚑ THREE CARVE-OUTS, each catching `ConfigError` itself — `refuse_retired_workset_identity` and
 `is_workset_skeleton`, both reached by `detect_project_mode`'s ancestor walk over every directory
 above the cwd (most of them not ours), and `delete_workset`'s purge, which must not make a user
-hand-edit the very file they are deleting. No other caller catches.
+hand-edit the very file they are deleting. Two other callers catch it: `commands/workset_cmd.py`'s
+`run_rm`, which counts the members at the DEFAULT registry path so the project-count guard still
+holds (`--purge` included) and refuses an unregister without `--purge` or `--force`; and
+`settings/paths.py`'s `iter_workset_projects` (`box list`), whose `except Exception` warns, naming
+the file, and skips that workset.
 
 ```python
 def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None | _Unset
