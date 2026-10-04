@@ -383,7 +383,10 @@ inside boxes. In order of likely impact:
     the door at a value the launch refuses*; and a `system.*` path value referencing outside its tier
     is refused at `set` — see *A system path value referencing outside its tier is refused at `set`*;
     and `set` refuses, unless `--force`, while a settings file it reads stores an entry that is not a
-    key — see *`set` refuses while a settings file it reads stores an entry that is not a key*.
+    key — see *`set` refuses while a settings file it reads stores an entry that is not a key*;
+    and a `null` at `box.image`, `box.share_images` or `box.enable_vault` that wins the cascade is
+    refused at launch and at `set --null` — see *A `null` at a box scalar with a value default is
+    refused, not defaulted*.
 
 ---
 
@@ -6190,6 +6193,30 @@ Error: no box at /home/you/work/.hidden. To create a new box, run 'kanibako crea
 
 **What to do.** If you named a box by such a value before 1.8.0, address it by its path, or run the
 command from inside its workspace, and rename it.
+
+### A `null` at a box scalar with a value default is refused, not defaulted
+
+**What changed.** Keyspec §2h keeps a present `None` on a scalar leaf for the consumer and
+never substitutes the key's default. `box.image`, `box.share_images` and `box.enable_vault`
+declare a value default and no `<None>`, so a `null` there has no consumer to mean anything to:
+`box.image` would be the string `"None"` and a bool would read `False`. The launch now refuses
+and names the key, the file and the cure, and `box set --null` refuses the same write.
+
+**What you must do.** Nothing, unless any settings file (system, agent, workset, or box) already
+stores one of these three as `null`. That is the one case that now stops a launch:
+
+```yaml
+box:
+  image: null      # ← refused; delete this line
+```
+
+The error names the file, so you can find it without hunting. Delete the line to get the
+default, or set the value you meant. Nothing is written and nothing is migrated for you.
+
+**What is NOT covered.** A key your file never mentions is untouched — it still resolves to its
+declared default. `box.shell` is untouched: its `<None>` is auto-detect, so `--null box.shell`
+remains a legal write. A `""` remains a real value, distinct from both. A `null` overridden by a
+higher tier or the CLI is not refused: the override wins.
 
 ### `workset.boxes` is refused at the door at a value the launch refuses
 

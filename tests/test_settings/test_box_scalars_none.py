@@ -270,7 +270,7 @@ class TestTheLaunchRefusesAndTheSetDoorRefuses:
 
     def test_a_null_box_shell_still_reaches_the_merge(self, tmp_path):
         """🛑 THE CONTROL: the refusal must not have widened onto ``box.shell``, whose null
-        means auto-detect.  It is in the same overlay and the same file loop."""
+        means auto-detect.  It is in the same overlay and the same resolve."""
         p = self._box_yaml(tmp_path, "box.shell")
         assert load_merged_config(p).box_shell is None
 
@@ -433,3 +433,71 @@ class TestTheDisplaySurvivesAValueTheLaunchRefuses:
         assert default_row not in out
         assert "= None" not in out
         assert "<None>" not in out
+
+
+class TestTheRefusalJudgesTheResolvedValue:
+    """The refusal reads the value that WINS the whole cascade (system < agent < workset <
+    box, then the CLI), so a null at any tier is judged and an overridden null is not.
+
+    # keyspec §2h: "KEPT ``None`` for a scalar leaf — the consumer reads None, never the
+    # key's default" — the consumer is the RESOLVED value, wherever its null came from.
+    """
+
+    def _write(self, path, text):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        return path
+
+    def test_a_system_tier_null_is_refused_naming_the_system_file(self, std):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        self._write(std.settings, "box:\n  image: null\n")
+        with pytest.raises(SettingsError) as excinfo:
+            load_merged_config()
+        assert "box.image" in str(excinfo.value)
+        assert str(std.settings) in str(excinfo.value)
+
+    def test_an_agent_tier_null_is_refused_naming_the_agent_file(self, std, tmp_path):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        agent = self._write(tmp_path / "agent.yaml", "box:\n  share_images: null\n")
+        box = self._write(tmp_path / BOX_META_FILE, "{}\n")
+        with pytest.raises(SettingsError) as excinfo:
+            load_merged_config(box, agent_name="claude", agent_path=agent)
+        assert "box.share_images" in str(excinfo.value)
+        assert str(agent) in str(excinfo.value)
+
+    def test_a_box_value_overrides_an_agent_tier_null(self, std, tmp_path):
+        agent = self._write(tmp_path / "agent.yaml", "box:\n  image: null\n")
+        box = self._write(tmp_path / BOX_META_FILE, "box:\n  image: img:box\n")
+        cfg = load_merged_config(box, agent_name="claude", agent_path=agent)
+        assert cfg.box_image == "img:box"
+
+    def test_a_cli_value_overrides_a_system_tier_null(self, std):
+        self._write(std.settings, "box:\n  image: null\n")
+        assert load_merged_config(cli_overrides={"box_image": "img:cli"}).box_image == "img:cli"
+
+    def test_a_box_null_over_a_workset_value_is_refused_naming_the_box_file(self, std, tmp_path):
+        """The null WINS here, so it is refused, and the file named is the winner's."""
+        from kanibako.settings.settings_resolve import SettingsError
+
+        ws = self._write(tmp_path / "ws.yaml", "box:\n  image: img:ws\n")
+        box = self._write(tmp_path / BOX_META_FILE, "box:\n  image: null\n")
+        with pytest.raises(SettingsError) as excinfo:
+            load_merged_config(box, workset_path=ws)
+        assert str(box) in str(excinfo.value)
+        assert str(ws) not in str(excinfo.value)
+
+    def test_system_show_effective_prints_a_system_tier_null(self, std, capsys):
+        self._write(std.settings, "box:\n  image: null\n")
+        cfg_path = user_config_file()
+        rc = show_config(
+            command_scope=ConfigLevel.system,
+            global_config_path=cfg_path,
+            config_path=cfg_path,
+            effective=True,
+        )
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "  box_image = null" in out
+        assert "kanibako-oci:latest" not in out
