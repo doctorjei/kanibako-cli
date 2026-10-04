@@ -1309,7 +1309,7 @@ class TestTheAgentTable:
         with pytest.raises(SettingsError) as exc:
             agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
         message = str(exc.value)
-        assert f"spells an agent node with '+'" in message
+        assert "spells an agent node with '+'" in message
         assert "'agent.nav+claude' is written 'nav+claude'" in message
         assert "the same node is 'nav℘claude'" in message
         assert f"in {path}" in message
