@@ -87,7 +87,7 @@ from kanibako.agent_ref import (
 )
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
-from kanibako.targets.base import descriptor_floor, has_plugin
+from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
 from kanibako.utils import container_name_for, short_hash
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
 # :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker
@@ -5932,9 +5932,7 @@ def _persona_probe_error(
     worth surfacing) — no launch may die on a probe bug.  Returns the error
     message, or ``None`` to proceed.
     """
-    from kanibako.targets.base import (
-        PersonaProbeOutcome, PersonaProbeVerdict, _scrub_endpoint_userinfo,
-    )
+    from kanibako.targets.base import PersonaProbeOutcome, PersonaProbeVerdict
 
     if target is None:
         return None
@@ -6177,7 +6175,6 @@ def _preflight_env_persona(
     channels (the ``endpoint``→env ``SettingArg`` + the ``secret_path`` mount), so
     there is no config-file provider to carry (``provider`` None).
     """
-    from kanibako.targets.base import _scrub_endpoint_userinfo
 
     token_state = _persona_token_pointer(secret_paths, wiring.token_var)
     if token_state is __MISSING__ or (
@@ -6298,7 +6295,6 @@ def _preflight_config_file_persona(
     On success return the resolved :class:`~kanibako.vscode.vscode_config.CodexModelProvider`
     for INC 3.  Every value is resolved live through the cascade before this seam.
     """
-    from kanibako.targets.base import _scrub_endpoint_userinfo
 
     token_err = _codex_persona_token_error(
         secret_paths, wiring, endpoint, display,
@@ -6396,7 +6392,6 @@ def _codex_persona_token_error(
     key the persona resolves (:func:`_persona_secret_path_keys`).  Returns ``None``
     when a single, usable token resolves.
     """
-    from kanibako.targets.base import _scrub_endpoint_userinfo
 
     intro = (
         f"Error: persona '{display}' has an endpoint "
@@ -6544,7 +6539,14 @@ def _effective_behavior_for_display(
         persona_values=persona_values,
         cli_level=selection_level,
     )
-    return settings_launch.effective_behavior(snapshot, active_agent=active)
+    state = settings_launch.effective_behavior(snapshot, active_agent=active)
+    # ⚑ THIS DICT IS PRINTED, so the endpoint goes out USERINFO-SCRUBBED, through the
+    # one helper every other printed endpoint uses: a persona's endpoint is often
+    # ``https://<credential>@host/…``, and this view printed it whole.
+    endpoint = state.get("endpoint")
+    if isinstance(endpoint, str):
+        state["endpoint"] = _scrub_endpoint_userinfo(endpoint)
+    return state
 
 
 def _resolve_box_auth_source(

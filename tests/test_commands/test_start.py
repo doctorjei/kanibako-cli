@@ -9737,7 +9737,7 @@ class TestPersonaLiveTierWiring:
         )
         assert path.read_bytes() == before
 
-    # --- the expand() exposure (locked decision #4) ---------------------------
+    # --- persona-store values are DATA, never expressions (Jei, 142nd) ----------
 
     _EXPAND_HAZARDS = [
         "$HOME/tok",          # a host $VAR the ctx DOES know
@@ -9783,26 +9783,21 @@ class TestPersonaLiveTierWiring:
 
     # ⚑ ``$HOME/tok`` is EXCLUDED here and gets its own test below: the store's
     # ``.secret_path`` pointer is expanded by ``resolve_secret_path`` BEFORE the
-    # keyspace sees it, so a ``$VAR`` in a POINTER is a documented divergence
-    # rather than an expand-time equivalence.  Every other hazard shape agrees.
+    # keyspace sees it, so a ``$VAR`` in a POINTER never reaches the leaf as
+    # written.  Every other hazard shape reaches it verbatim.
     @pytest.mark.parametrize("raw", [
         r for r in _EXPAND_HAZARDS if not r.startswith("$")
     ])
-    def test_a_store_secret_path_expands_exactly_as_an_agent_file_one(
+    def test_a_store_secret_path_arrives_verbatim_while_an_agent_file_one_expands(
         self, std, config_file, tmp_home, raw,
     ):
-        """⚑ Locked decision #4, the AGENT-FILE half: same leaf, two levels.
+        """Jei, 142nd: a persona-store value is DATA — the AGENT-FILE half.
 
-        A `$`/`@` inside a store value reaches ``expand()``.  The agent FILE has
-        the identical exposure — ``_agent_partial`` re-roots the file's FLAT
-        ``self.secret_path`` into the active agent level, so it is the same kind
-        of snapshot leaf on the rung directly above the persona tier.  Not a
-        regression, then; but the equivalence is pinned rather than assumed.
-
-        Structurally it cannot differ once both are leaves — ``expand`` walks the
-        ALREADY-MERGED snapshot and has no idea which level contributed a leaf —
-        and if these ever DO diverge, the store path is the wrong one: the agent
-        file is the released, user-visible behavior.
+        The store's values come from a harness config, so a ``$``/``@``/``~`` in
+        one is a character: the leaf arrives exactly as the store wrote it.  The
+        same text in the agent FILE is still a settings EXPRESSION and still
+        expands (or is refused), so the two routes DIFFER wherever the text holds
+        a token — that difference is the rule, pinned from both sides.
         """
         from kanibako.commands.start import _persona_values_for
         from kanibako.settings.agent_config import (
@@ -9840,15 +9835,19 @@ class TestPersonaLiveTierWiring:
             category="secret_path", var="ANTHROPIC_AUTH_TOKEN",
             agent_cfg=load_agent_config(path, node=self._NODE, purpose=ReadPurpose.RESOLVE), agent_cfg_path=path,
         )
-        assert via_store == via_file, (
-            f"store and agent-file secret_path disagree for {raw!r}: "
-            f"{via_store!r} vs {via_file!r}"
-        )
+        assert via_store == ("ok", literal)
+        # CONTROL: the agent file still expands — ``@b.example`` is a dangling
+        # embedded ref (→ ``""``) and a bare ``$`` is malformed.  ``~`` is not at
+        # position 0 and ``plain-value`` holds no token, so those two agree.
+        if raw in ("100%$", "a@b.example"):
+            assert via_file != via_store
+        else:
+            assert via_file == via_store
 
     def test_a_dollar_var_in_a_store_POINTER_is_expanded_before_the_keyspace(
         self, std, config_file, tmp_home, monkeypatch,
     ):
-        """⚑ THE ONE DIVERGENCE, pinned deliberately — NOT an equivalence.
+        """The POINTER is expanded BEFORE the keyspace; the result then enters as DATA.
 
         A ``$VAR`` in the store's ``.secret_path`` POINTER is expanded by
         :func:`~kanibako.persona_store.resolve_secret_path` (``os.path.expandvars``
@@ -9904,17 +9903,14 @@ class TestPersonaLiveTierWiring:
         assert "NAV_TOKEN_DIR" in via_file[2]
 
     @pytest.mark.parametrize("raw", _EXPAND_HAZARDS)
-    def test_a_store_env_value_expands_exactly_as_a_keyspace_one(
+    def test_a_store_env_value_arrives_verbatim_while_a_keyspace_one_expands(
         self, std, config_file, tmp_home, raw,
     ):
-        """⚑ Locked decision #4, the ENV half — the store against a scope FILE.
+        """Jei, 142nd: a persona-store value is DATA — the ENV half, against a scope FILE.
 
-        🛑 THE REASON THIS COMPARISON EXCLUDED THE AGENT FILE IS GONE (MBR-1 P3).
-        It read: ``_agent_partial`` re-roots only ``self.secret_path``, so
-        ``self.env`` never becomes a snapshot leaf at all and sees no ``expand``.
-        That WAS the defect, not a property of the file — the env arm is re-rooted
-        now, and the agent-file route has its own equivalence pin directly below.
-        This case keeps its own subject: the store against a keyspace scope.
+        The store's env value arrives as written, token characters and all; the
+        same text in a settings file is an expression, so every hazard but the
+        token-free control comes out different (expanded, emptied, or refused).
         """
         from kanibako.commands.start import _persona_values_for
 
@@ -9928,10 +9924,11 @@ class TestPersonaLiveTierWiring:
             std, tmp_home, target=target, category="env", var="NAV_X",
             system_doc={"agent": {self._NODE: {"env": {"NAV_X": raw}}}},
         )
-        assert via_store == via_keyspace, (
-            f"store and keyspace env disagree for {raw!r}: "
-            f"{via_store!r} vs {via_keyspace!r}"
-        )
+        assert via_store == ("ok", raw)
+        if raw == "plain-value":
+            assert via_keyspace == via_store
+        else:
+            assert via_keyspace != via_store
 
     @pytest.mark.parametrize("raw", _EXPAND_HAZARDS)
     def test_an_agent_FILE_env_value_expands_exactly_as_a_keyspace_one(
