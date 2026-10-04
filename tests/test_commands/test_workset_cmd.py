@@ -781,8 +781,8 @@ class TestWorksetConnect:
     def test_connect_internal_no_override_no_symlink(
         self, config_file, tmp_home, capsys
     ):
-        """connect to a dir INSIDE the workset root → a real workspaces/{name} dir,
-        no override, and a membership row recording THAT dir."""
+        """connect an EXISTING workspaces/{name} dir INSIDE the workset root → that same
+        real dir, kept as it is, no override, and a membership row recording it."""
         from kanibako.commands.workset_cmd import run_connect
         from kanibako.settings.config_io import load_doc
 
@@ -790,9 +790,10 @@ class TestWorksetConnect:
         std = load_std_paths(config)
         ws = create_workset("intws", tmp_home / "ws_int", std)
 
-        # Internal source: a directory inside the workset root.
-        internal = ws.root / "inside_src"
-        internal.mkdir()
+        # Internal source: the member's own leaf, the dir an in-tree member runs on.
+        internal = ws.workspaces_dir / "int"
+        internal.mkdir(parents=True)
+        (internal / "keep.txt").write_text("kept\n")
 
         args = argparse.Namespace(
             workset="intws", source=str(internal), project_name="int", force=False,
@@ -805,14 +806,192 @@ class TestWorksetConnect:
         assert "project" not in load_doc(project_toml)
 
         # ⚑⚑ EVERY member gets a row, in-tree as well as external — and an in-tree
-        # member's row records ``workspaces/<name>``, the dir it actually runs on,
-        # not the caller's source argument (which was `inside_src` here).
+        # member's row records ``workspaces/<name>``, the dir it actually runs on.
+        # ⚑ A row that records the caller's SOURCE instead is the ``add_project``
+        # seam's invariant, pinned where it lives: ``test_workset.py``
+        # ``test_creates_subdirectories`` and ``test_persists_to_the_membership``.
         assert _workset_boxes(ws) == {"int": str(ws.workspaces_dir / "int")}
 
-        # workspaces/int is a real directory, not a symlink.
+        # workspaces/int is a real directory, not a symlink, and keeps its files:
+        # connect registers, it never re-seeds what is already there.
         wsdir = ws.workspaces_dir / "int"
         assert wsdir.is_dir()
         assert not wsdir.is_symlink()
+        assert (wsdir / "keep.txt").read_text() == "kept\n"
+
+    def test_connect_in_tree_own_tree_refuses_creating_nothing(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A dir that is the workset's OWN tree — its root, or a sibling of
+        ``workspaces/`` — is not a project, so connect refuses it and creates nothing."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+        from kanibako.project.workset import list_worksets, load_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_own").resolve()
+        create_workset("own", root, std)
+        notes = root / "notes"
+        notes.mkdir()
+        (notes / "file.txt").write_text("mine\n")
+
+        for source, name in ((root, "ws_own"), (notes, "notes")):
+            args = argparse.Namespace(
+                workset="own", source=str(source), project_name=name, force=False,
+            )
+            assert run_connect(args) == 1
+            err = capsys.readouterr().err
+            # The refusal NAMES why, and the leaf it would take is named with it.
+            assert "inside the working set root or its workspaces directory" in err
+            assert f"'own/workspaces/{name}'" in err
+
+        # Neither shape gained a member, a workspace or a pending journal entry.
+        assert not (root / "workspaces" / "ws_own").exists()
+        assert not (root / "workspaces" / "notes").exists()
+        assert (notes / "file.txt").read_text() == "mine\n"
+        reloaded = load_workset(list_worksets(std)["own"], "own")
+        assert reloaded.projects == []
+        assert _workset_boxes(reloaded) == {}
+        assert journal.read_journal(std.journal) == {}
+
+    def test_connect_in_tree_leaf_naming_a_different_project_refuses(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A source that is not the ``workspaces/<name>`` its member would run on — a
+        subdir of a member, or a leaf whose name is not the project name — is refused,
+        and no ``workspaces/<name>`` is made to stand in for it."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+        from kanibako.project.workset import list_worksets, load_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_sub").resolve()
+        create_workset("sub", root, std)
+        member = root / "workspaces" / "alpha"
+        member.mkdir(parents=True)
+        (member / "keep.txt").write_text("kept\n")
+        inside = member / "sub"
+        inside.mkdir()
+
+        reasons = []
+        for source, name in ((inside, "sub"), (member, "beta")):
+            args = argparse.Namespace(
+                workset="sub", source=str(source), project_name=name, force=False,
+            )
+            assert run_connect(args) == 1
+            err = capsys.readouterr().err
+            reasons.append(err)
+            assert f"'sub/workspaces/{name}'" in err
+            assert not (root / "workspaces" / name).exists()
+
+        # A leaf asked for under a name of its own is told the two names differ; the
+        # subdir is told it is inside the working set.  The member's dir is untouched
+        # and neither shape registered.
+        assert "its directory name 'alpha' and --name 'beta' differ" in reasons[1]
+        assert "inside the working set root or its workspaces directory" in reasons[0]
+        assert (member / "keep.txt").read_text() == "kept\n"
+        reloaded = load_workset(list_worksets(std)["sub"], "sub")
+        assert reloaded.projects == []
+        assert _workset_boxes(reloaded) == {}
+        assert journal.read_journal(std.journal) == {}
+
+    def test_connect_in_tree_repointed_workspaces_refuses_creating_nothing(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``workset.workspaces`` is a USER key, so it can point OUTSIDE the workset
+        root: in-tree is then the workspaces dir too, and a dir inside it that is not a
+        ``workspaces/<name>`` leaf is refused rather than made into a member."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+        from kanibako.project.workset import list_worksets, load_workset
+        from kanibako.settings.config_io import dump_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_rp").resolve()
+        create_workset("rp", root, std)
+        outside = (tmp_home / "extws").resolve()
+        outside.mkdir()
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+        (outside / "x" / "sub").mkdir(parents=True)
+        (outside / "x" / "sub" / "f.txt").write_text("mine\n")
+
+        for source, name in ((outside / "x" / "sub", "sub"), (outside, "extws")):
+            args = argparse.Namespace(
+                workset="rp", source=str(source), project_name=name, force=False,
+            )
+            assert run_connect(args) == 1
+            err = capsys.readouterr().err
+            assert "inside the working set root or its workspaces directory" in err
+            assert f"'rp/workspaces/{name}'" in err
+
+        # Nothing was created or registered under the repointed dir either.
+        assert not (outside / "sub").exists()
+        assert not (outside / "extws").exists()
+        assert (outside / "x" / "sub" / "f.txt").read_text() == "mine\n"
+        reloaded = load_workset(list_worksets(std)["rp"], "rp")
+        assert reloaded.projects == []
+        assert _workset_boxes(reloaded) == {}
+        assert journal.read_journal(std.journal) == {}
+
+    def test_connect_in_tree_repointed_workspaces_admits_its_own_leaf(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A repointed ``workset.workspaces`` still admits the member's own leaf: the
+        dir connect records is the one the user pointed at, so it is adopted as it is."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import list_worksets, load_workset
+        from kanibako.settings.config_io import dump_doc
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_rpok").resolve()
+        create_workset("rpok", root, std)
+        outside = (tmp_home / "extws2").resolve()
+        leaf = outside / "alpha"
+        leaf.mkdir(parents=True)
+        (leaf / "keep.txt").write_text("kept\n")
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+
+        args = argparse.Namespace(
+            workset="rpok", source=str(leaf), project_name="alpha", force=False,
+        )
+        assert run_connect(args) == 0
+        assert "Added project 'alpha'" in capsys.readouterr().out
+        reloaded = load_workset(list_worksets(std)["rpok"], "rpok")
+        assert _workset_boxes(reloaded) == {"alpha": str(leaf)}
+        assert (leaf / "keep.txt").read_text() == "kept\n"
+
+    def test_connect_in_tree_missing_leaf_refuses(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``connect`` registers a member, so a ``workspaces/<name>`` path with NO
+        directory there is refused rather than made."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.launch import journal
+        from kanibako.project.workset import list_worksets, load_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        root = (tmp_home / "ws_ghost").resolve()
+        create_workset("ghost", root, std)
+        missing = root / "workspaces" / "ghost"
+
+        args = argparse.Namespace(
+            workset="ghost", source=str(missing), project_name="ghost", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "inside the working set root or its workspaces directory" in err
+        assert "'ghost/workspaces/ghost'" in err
+
+        assert not missing.exists()
+        reloaded = load_workset(list_worksets(std)["ghost"], "ghost")
+        assert reloaded.projects == []
+        assert _workset_boxes(reloaded) == {}
+        assert journal.read_journal(std.journal) == {}
 
     def test_connect_standalone_refused_without_force(
         self, config_file, tmp_home, capsys
