@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.launch.box_identity import validate_box_name
+from kanibako.launch.box_identity import Designation, classify_designation, validate_box_name
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import (
     WORKSET_META_FILE,
@@ -23,12 +23,13 @@ from kanibako.settings.config import (
 )
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
-from kanibako.errors import ContainerError, ProjectError
+from kanibako.errors import ContainerError, ProjectError, WorksetError
 from kanibako.project.names import read_names
 from kanibako.settings.paths import (
     BoxMode,
     DesignationRoute,
     _box_settings_files,
+    _find_workset_for_path,
     _primary_box_paths,
     _standalone_settings_files,
     box_tree_materialized,
@@ -809,6 +810,37 @@ def _orphaned_primary_box_dir(args, std, probe) -> "Path | None":
     return orphan
 
 
+def _named_workset_owning(path: Path, std) -> str | None:
+    """The named working set whose path space holds *path*, else ``None``."""
+    try:
+        ws, _project = _find_workset_for_path(path, std)
+    except WorksetError:
+        return None
+    return ws.name
+
+
+def _create_in_workset_space(workset: str, path: Path, *, standalone: bool,
+                             by_cwd: bool) -> str:
+    """The refusal for a ``create`` in a named working set's path space.
+
+    It names the working set and states the space's rule, and prints NO command.
+    *by_cwd* names the CWD's space as the reason rather than the target's tree.
+    """
+    kind = "STANDALONE" if standalone else "PRIMARY"
+    where = (
+        f"the current directory is in the path space of working set '{workset}', "
+        "which makes only named boxes of that working set"
+        if by_cwd else
+        f"that path is in the path space of working set '{workset}', which makes "
+        "only named boxes of that working set"
+    )
+    return (
+        f"Error: Refusing to create a box in {path}: {where}.\n"
+        f"  A box created there would be a {kind} box, which that space does not "
+        "accept: a path-based, standalone or primary-working-set box is refused here."
+    )
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     config_file = user_config_file()
@@ -852,6 +884,20 @@ def run_create(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    # ⚑ ``None`` = the PRIMARY path space; the default workset is unregistered.
+    _ws_name = _named_workset_owning(effective_path, std)
+    _by_cwd = False
+    # ⚑ A PATH is refused by the CWD's space, even outside its tree; a NAME is not a path.
+    if (_ws_name is None and project_dir is not None
+            and classify_designation(project_dir) is not Designation.IDENTIFIER):
+        _ws_name = _named_workset_owning(Path.cwd().resolve(), std)
+        _by_cwd = _ws_name is not None
+    if _ws_name is not None:
+        print(_create_in_workset_space(
+            _ws_name, effective_path, standalone=args.standalone, by_cwd=_by_cwd,
+        ), file=sys.stderr)
+        return 1
 
     # ⚑ Cross-kind name guard, run HERE so it refuses BEFORE the box dir + seed materialize.
     if getattr(args, "name", None) and not args.standalone:
