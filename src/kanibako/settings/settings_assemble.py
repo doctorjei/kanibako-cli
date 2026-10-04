@@ -58,6 +58,7 @@ from kanibako.settings.settings_drops import cascade_drop_set, upward_scope_drop
 from kanibako.settings.settings_keyspace import (
     BIND_LEAF_CATEGORIES,
     SCALAR_AGENT_LEAVES,
+    TABLE_VALUED_AGENT_LEAVES,
     TERMINAL_CATEGORY_TAILS,
     Judgment,
     is_terminal_category_key,
@@ -1017,11 +1018,10 @@ def _refuse_malformed_category(parts: tuple[str, ...], sub: Any) -> None:
     """RAISE on a non-``None`` non-map at the category key spelled by *parts*, or pass.
 
     ⚑ THE POSITION IS THE DISCRIMINATOR, and this walk is the one place it cannot be
-    assumed: a deep walk reaches ``system.channels.common`` — an ordinary path SCALAR that
-    merely ENDS in a category token, and its family's sibling ``system.channels.chat`` does
-    not. Spec §2a puts the discriminator in the ``channels.`` segment, which
-    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` already reads, so
-    that is what judges here and the message names the WHOLE key it spells.
+    assumed: a deep walk reaches ``system.channels.common`` — a path SCALAR that merely
+    ENDS in a category token, while its family's ``system.channels.chat`` does not.
+    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` reads that
+    position, so it judges here and the message names the WHOLE key.
     """
     key = ".".join(parts)
     if is_terminal_category_key(key):
@@ -1050,9 +1050,6 @@ def _parse_node(
             key_s = str(key)
             if at_bindings and key_s in _BIND_ARMS:
                 # An ARM (``bindings.ro`` / ``.rw``) — a TERMINAL dest-keyed map (R-5).
-                # ⚑ A non-``None`` non-map is a MALFORMED arm and refuses HERE, naming the
-                # arm; ``settings_launch._assert_declared_categories`` also catches it, but
-                # runs on the ASSEMBLED snapshot and so cannot name the file to edit.
                 if isinstance(sub, dict):
                     store[key_s] = parse_bind_map(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
@@ -1076,6 +1073,11 @@ def _parse_node(
                     store[key_s] = _parse_marker_map(sub, path=(*path, key_s))
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
+            if not in_binds and key_s in TABLE_VALUED_AGENT_LEAVES and sub is not None \
+                    and not isinstance(sub, dict):
+                # A table-valued agent LEAF, whole — spec §2d, no §2a category involved,
+                # so the branches above cannot reach it. Same rule, same wording.
+                refuse_scalar_at_table_key(".".join((*path, key_s)), sub)
             # Entering a bind-shaped category: its entries below are binds.
             descend_binds = in_binds or key_s in BIND_CATEGORY_TOKENS
             store[key_s] = _parse_node(

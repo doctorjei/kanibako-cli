@@ -344,6 +344,20 @@ def test_a_scalar_at_transform_settings_refuses(tmp_path: Path, value: str) -> N
     assert str(path) in message
 
 
+@pytest.mark.parametrize(
+    ("category", "example"),
+    [("caches", "{box_dest: [src[, options]]}"), ("masks", "{box_dest: true}")],
+)
+def test_the_cure_is_printed_in_the_shape_that_category_takes(
+    tmp_path: Path, category: str, example: str,
+) -> None:
+    """A mask has no source, so the bind example would send the reader somewhere wrong."""
+    path = _agent_file(tmp_path, _under("self", category, "5"))
+    with pytest.raises(SettingsError) as exc:
+        _read(path)
+    assert example in str(exc.value)
+
+
 @pytest.mark.parametrize("table", _SCOPE_TABLES)
 @pytest.mark.parametrize("category", ["caches", "masks", "bindings"])
 def test_a_null_category_is_accepted_in_every_top_level_table(
@@ -361,6 +375,26 @@ def test_a_caches_map_reads_in_every_top_level_table(tmp_path: Path, table: str)
 
 def test_transform_settings_as_a_table_reads(tmp_path: Path) -> None:
     _read(_agent_file(tmp_path, "self:\n  transform_settings:\n    tweak: 1\n"))
+
+
+def test_a_scalar_at_a_table_valued_agent_leaf_refuses_in_a_settings_file(
+    tmp_path: Path,
+) -> None:
+    """The same leaf in a SETTINGS file, read by the settings tier's own parse.
+
+    ⚑ A table-valued agent leaf is spec §2d, not a §2a category, so no category walk
+    reaches it in either tier — this is the settings file's half of the twin.
+    """
+    from kanibako.settings.settings_assemble import _parse_naming_file
+
+    path = tmp_path / "settings.yaml"
+    with pytest.raises(SettingsError) as exc:
+        _parse_naming_file(
+            {"agent": {"claude": {"transform_settings": 5}}}, file_path=path,
+        )
+    message = str(exc.value)
+    assert "'agent.claude.transform_settings'" in message
+    assert str(path) in message
 
 
 def test_both_readers_return_the_one_refusal(tmp_path: Path) -> None:
