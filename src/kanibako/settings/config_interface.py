@@ -323,26 +323,33 @@ def _host_xdg_map(data_home: "Path | None" = None) -> dict[str, str]:
 
 
 def _set_time_ctx(config: "dict[str, str] | None" = None) -> "Any":
-    """The :class:`~kanibako.settings.settings_resolve.ResolveCtx` for the set-time E3 probe."""
-    from kanibako.settings.settings_resolve import ResolveCtx
+    """The :class:`~kanibako.settings.settings_resolve.ResolveCtx` for the set-time E3 probe.
+
+    *config* holds resolved paths and enters as
+    :func:`~kanibako.settings.settings_resolve.literal_map`, as the launch ctx's does.
+    """
+    from kanibako.settings.settings_resolve import ResolveCtx, literal_map
 
     return ResolveCtx(
         agent_name=None,
         workset_name=None,
         host_home=str(Path.home()),
         xdg=_host_xdg_map(),
-        config=config or {},
+        config=literal_map(config or {}),
     )
 
 
-def _path_tier_split() -> "tuple[dict[str, str], dict[str, object]]":
-    """The path tier as ``(config_foundation, floor)``, RAISING on failure."""
+def _path_tier_split() -> "tuple[dict[str, str], dict[str, str]]":
+    """The path tier as ``(config_foundation, floor)`` of resolved paths, RAISING on failure.
+
+    A snapshot floors them as :func:`~kanibako.settings.settings_resolve.literal_map`.
+    """
     # ⚑ THE FAILURE ARM IS THE CALLER'S, DELIBERATELY — do not add a ``try`` here: the two
     # callers disagree about what a failure means and both are right.
     from kanibako.settings.config import user_config_file
     from kanibako.settings.paths import load_system_config, xdg
 
-    floor: dict[str, object] = {}
+    floor: dict[str, str] = {}
     config_foundation: dict[str, str] = {}
     user_config = user_config_file()
     data_home = xdg("XDG_DATA_HOME", ".local/share")
@@ -807,6 +814,7 @@ def _set_time_snapshot(
     # launch resolve (``build_launch_snapshot``) so the set-time floor and the launch
     # floor cannot drift.
     from kanibako.settings.config import box_scalar_defaults_floor
+    from kanibako.settings.settings_resolve import literal_map
 
     # ⚑ A path-tier failure must NOT crash a ``config set`` — fall back to an empty floor.
     try:
@@ -817,7 +825,7 @@ def _set_time_snapshot(
     # ⚑ DISJOINT BY CONSTRUCTION: the declared half is ``box.*``, the path tier is
     # ``system.*``/``config.*``.  The merge order is stated anyway so a future overlap
     # resolves the only way it can — the RESOLVED path wins over an unresolved expression.
-    floor: dict[str, object] = {**box_scalar_defaults_floor(), **path_floor}
+    floor: dict[str, object] = {**box_scalar_defaults_floor(), **literal_map(path_floor)}
 
     # ⚑ THE DECLARED HALF IS FOLDED HERE AND NOT INSIDE ``_path_tier_split``, DELIBERATELY:
     # the OTHER caller of that split is ``effective_value``, whose RULED contract is
@@ -2209,6 +2217,7 @@ def effective_value(
         assemble_cascade,
         fold_floor,
     )
+    from kanibako.settings.settings_resolve import literal_map
 
     if inputs is not None:
         ctx = inputs.ctx
@@ -2226,10 +2235,11 @@ def effective_value(
         # ⚑ The path tier — identical inputs to the set-time probe, but the failure arm
         # DIFFERS: an "effective" computed without it would name a value the cascade never resolves.
         try:
-            config_foundation, path_floor = _path_tier_split()
+            config_foundation, tier_floor = _path_tier_split()
         except Exception:
             return None
         ctx = _set_time_ctx(config=config_foundation)
+        path_floor = {**literal_map(tier_floor)}
         subject = (
             ResolveSubject.BOX if box_path is not None
             else ResolveSubject.WORKSET if workset_path is not None

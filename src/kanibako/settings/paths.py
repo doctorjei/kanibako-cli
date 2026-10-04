@@ -44,7 +44,8 @@ from kanibako.errors import (AmbiguousNameError, ConfigError, ProjectError,
 from kanibako.settings.agent_config import (ambiguous_path_value_error,
                                             is_unambiguous_path_value)
 from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsError,
-                                                _Unset, expand_expr, resolve_value)
+                                                _Unset, expand_expr, literal_map,
+                                                resolve_value)
 
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.launch.box_identity import Designation, classify_designation
@@ -641,7 +642,8 @@ def host_config_map(std: StandardPaths) -> dict[str, str]:
     """THE single builder for the ``config=`` argument of every host-side ``ResolveCtx``.
 
     The Layer-1 CONFIG-key foundation projected BACK onto its own dotted key names, so
-    a stored ``@config.*`` source resolves at launch.  The Layer-1 twin of
+    a stored ``@config.*`` source resolves at launch; each value is the resolved path as a
+    :func:`~kanibako.settings.settings_resolve.literal_expr`.  The Layer-1 twin of
     :func:`system_path_floor`, and the ``config=`` twin of :func:`host_xdg_map` — a host
     ctx is built from those two and nothing else.
 
@@ -664,7 +666,9 @@ def host_config_map(std: StandardPaths) -> dict[str, str]:
     ctx build — loud, immediate, and at every launch.  Silent omission is the failure this
     replaces; a crash is strictly the better one.
     """
-    return {key: str(getattr(std, key.split(".", 1)[1])) for key in CONFIG_PATH_DEFAULTS}
+    return literal_map(
+        {key: str(getattr(std, key.split(".", 1)[1])) for key in CONFIG_PATH_DEFAULTS}
+    )
 
 
 #: The :class:`StandardPaths` FIELD a Layer-2 ``system.*`` key's resolved value lands in,
@@ -694,7 +698,8 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     """The RESOLVED Layer-2 ``system.*`` path tier, keyed by its own dotted key names.
 
     Every consumer folds this into a floor so a stored ``@system.*`` source resolves.
-    Each value equals the corresponding ``std`` attribute — the same flat foundation
+    Each value is the corresponding ``std`` attribute as a
+    :func:`~kanibako.settings.settings_resolve.literal_expr` — the same flat foundation
     resolves both — so an ``@``-ref-routed bind is byte-identical to a runtime-probed
     literal.
 
@@ -735,7 +740,9 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     floor itself).  ``tests/test_channels/test_system_channel_keys.py`` carried the
     by-name pin on the omission; it is INVERTED, not deleted.
     """
-    return {key: str(getattr(std, _floor_field(key))) for key in SYSTEM_PATH_DEFAULTS}
+    return literal_map(
+        {key: str(getattr(std, _floor_field(key))) for key in SYSTEM_PATH_DEFAULTS}
+    )
 
 
 def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path,

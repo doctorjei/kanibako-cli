@@ -26,7 +26,7 @@ def _pref_value_error(canonical: str, value: 'str | None', *, config_path: Path,
 def _yaml_skeleton(target: str) -> list[str]
 def _host_xdg_map(data_home: 'Path | None'=None) -> dict[str, str]
 def _set_time_ctx(config: 'dict[str, str] | None'=None) -> 'Any'
-def _path_tier_split() -> 'tuple[dict[str, str], dict[str, object]]'
+def _path_tier_split() -> 'tuple[dict[str, str], dict[str, str]]'
 def _set_time_target(*, std, proj, ws, agent_name: str, system_path: 'Path | None') -> 'LaunchInputs | None'
 def _target_scope_anchors(target: 'LaunchInputs | None', *, agent_path: 'Path | None', agent_name: str) -> dict[str, object]
 def _set_time_anchor(anchor_ref: str, *, scope_anchors: 'dict[str, object]', agents_root: 'Path | None') -> 'str | None'
