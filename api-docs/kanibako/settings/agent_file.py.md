@@ -20,7 +20,6 @@ _CARRIED_CATEGORIES: Final[frozenset[str]] = frozenset(_FLAT_AGENT_CATEGORIES) -
 _VERB_WRITABLE_CATEGORIES: Final[frozenset[str]] = frozenset({'env', 'secret_path'})
 _SCALAR_WRITABLE_KEYS: Final[frozenset[str]] = frozenset({'run_args'})
 _TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS
-_TABLE_VALUED_ROOT_CATEGORIES: Final[frozenset[str]] = _TABLE_VALUED_KEYS - _VERB_WRITABLE_CATEGORIES
 _LIST_VALUED_KEYS: Final[frozenset[str]] = frozenset({'run_args'})
 _CATEGORY_PLACEHOLDER: Final[dict[str, tuple[str, str]]] = {'env': ('<VAR>', '<value>'), 'secret_path': ('<VAR>', '<host-path>'), 'bindings': ('ro', '{<box-dest>: [<host-src>]}')}
 _DEST_KEYED_PLACEHOLDER: Final[tuple[str, str]] = ('<box-dest>', '[<host-src>]')
