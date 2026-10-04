@@ -38,6 +38,8 @@ def _assert_primary_home_free_for_create(std, name: str) -> None
 def _check_persona_store_for_create(agent_ref: str, project_path) -> str | None
 def _create_recovery_refusal(args, std, probe, *, already: bool, pending: dict | None) -> 'str | None'
 def _orphaned_primary_box_dir(args, std, probe) -> 'Path | None'
+def _named_workset_owning(path: Path, std) -> str | None
+def _create_in_workset_space(workset: str, path: Path, *, standalone: bool, by_cwd: bool) -> str
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
