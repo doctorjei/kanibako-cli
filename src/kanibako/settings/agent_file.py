@@ -174,11 +174,15 @@ class AgentFileSlot:
     ``agent:`` table may spell the node's own settings as ``agent: <node>:`` beside ``self:``, so
     every read and write of the slot addresses whichever of the two holds it
     (:func:`_spelled_sections`).
+
+    *self_root* is ``False`` for a file with no ``self:`` root (the system settings file, whose
+    ``self:`` is not a key): the slot then lives under ``agent: <node>:`` alone.
     """
 
     path: Path
     tail: str
     node: str
+    self_root: bool = True
 
 
 @dataclass(frozen=True)
@@ -345,12 +349,14 @@ def _spelled_sections(
 
     ``self`` IS ``agent.<node>``, so a value may sit under either spelling (Q92) and the file's
     readers refuse one written under both (:func:`_refuse_two_spellings`). The own-node spelling
-    is taken only when it HOLDS *leaf*; otherwise ``self:`` — where a new value is written.
+    is taken only when it HOLDS *leaf*; otherwise ``self:`` — where a new value is written —
+    or, for a slot without a ``self_root``, ``agent: <node>:`` as *slot* spells the node.
     """
+    fallback = sections if slot.self_root else (FILE_SCOPE, slot.node, *sections[1:])
     doc = load_doc(slot.path) if slot.path.exists() else None
     scope = doc.get(FILE_SCOPE) if isinstance(doc, dict) else None
     if not isinstance(scope, dict):
-        return sections
+        return fallback
     own_id = _node_identity(slot.node)
     for seg, table in scope.items():
         if not isinstance(seg, str) or not isinstance(table, dict):
@@ -360,7 +366,7 @@ def _spelled_sections(
         spelled = (FILE_SCOPE, seg, *sections[1:])
         if stored_leaf_object(slot.path, spelled, leaf, default=_UNSET) is not _UNSET:
             return spelled
-    return sections
+    return fallback
 
 
 # ---------------------------------------------------------------------------

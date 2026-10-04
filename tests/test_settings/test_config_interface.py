@@ -5292,6 +5292,63 @@ class TestAgentNodeBindGetSurvives:
         ) is None
 
 
+class TestPerNodeGetReadsTheNounFileOnlyWhereTheCascadeKeepsIt:
+    """A per-node key has TWO homes: the node's own store, and the ``agent: <node>:`` map
+    of the file the noun is ABOUT. The launch cascade reads both at the SYSTEM scope,
+    where the agent level outranks the noun (spec §2), so a read consulting the node's
+    file alone answered ``(not set)`` over a value the launch delivers.
+
+    ⚑ THE SECOND HOME IS SCOPED, and the scope is the CASCADE'S OWN: at workset or box
+    scope the noun outranks the agent level, so the cascade DROPS that file's whole
+    ``agent:`` table (``settings_drops.cascade_drop_set``). Reading it there would answer
+    with a value no launch applies — the same fabrication mirrored — so the second home
+    stands aside exactly where ``_dropped_tables_get_reads`` says a read must not look.
+    """
+
+    def _agents_root(self, tmp_path):
+        root = tmp_path / "agents"
+        (root / "claude").mkdir(parents=True)
+        return root
+
+    def test_the_system_scope_reads_the_noun_file_as_well_as_the_node_file(self, tmp_path):
+        agents = self._agents_root(tmp_path)
+        settings = tmp_path / "settings.yaml"
+        dump_doc(settings, {"agent": {"claude": {"env": {"X": "from-noun-file"}}}})
+        assert get_config_value(
+            "agent.claude.env.X",
+            global_config_path=tmp_path / CONFIG_FILENAME,
+            system_settings_path=settings, agents_root=agents,
+            command_scope=ConfigLevel.system,
+        ) == "from-noun-file"
+
+    @pytest.mark.parametrize("scope", [ConfigLevel.workset, ConfigLevel.box])
+    def test_a_scope_that_contains_the_agent_tier_does_NOT_read_that_table(
+        self, tmp_path, scope,
+    ):
+        agents = self._agents_root(tmp_path)
+        settings = tmp_path / "settings.yaml"
+        dump_doc(settings, {"agent": {"claude": {"env": {"X": "from-noun-file"}}}})
+        assert get_config_value(
+            "agent.claude.env.X",
+            global_config_path=tmp_path / CONFIG_FILENAME,
+            project_toml=settings, agents_root=agents,
+            command_scope=scope,
+        ) is None
+
+    def test_the_node_file_still_wins_where_both_files_hold_the_key(self, tmp_path):
+        agents = self._agents_root(tmp_path)
+        settings = tmp_path / "settings.yaml"
+        dump_doc(settings, {"agent": {"claude": {"env": {"X": "from-noun-file"}}}})
+        node_file = agents / "claude" / "agent.yaml"
+        dump_doc(node_file, {"self": {"env": {"X": "from-node-file"}}})
+        assert get_config_value(
+            "agent.claude.env.X",
+            global_config_path=tmp_path / CONFIG_FILENAME,
+            system_settings_path=settings, agents_root=agents,
+            command_scope=ConfigLevel.system,
+        ) == "from-node-file"
+
+
 class TestPersonaScalarGetResetUnchanged:
     """Neither the surviving node-bind GET branch nor the node-bind write REFUSAL
     may divert a persona SCALAR key (``agent.<node>.model`` / ``.endpoint``) — it
