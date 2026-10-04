@@ -318,6 +318,7 @@ class TestRunCreatePersonaGate:
         from unittest.mock import MagicMock
 
         from kanibako.commands.box._parser import run_create
+        from kanibako.settings.agent_config import agent_settings_path
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths
         from kanibako.launch import journal
@@ -355,8 +356,10 @@ class TestRunCreatePersonaGate:
         assert seed_called["v"] is False
         assert journal.read_journal(std.journal) == {}
         assert _primary_names(std) == {}
-        # No agent-store artifact was materialized for the persona node.
-        assert not (std.agents / "navigator℘claude").exists()
+        # No persona store DIRECTORY was materialized for the node — the whole
+        # ``agents/<node>/`` dir, not just its ``agent.yaml``, since a node dir can
+        # exist without that file.
+        assert not agent_settings_path(std.agents, "navigator+claude").parent.exists()
 
 
 class TestRunCreateJournalLifecycle:
