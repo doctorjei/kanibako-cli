@@ -67,6 +67,7 @@ from kanibako.project.workset import (
     Workset,
     add_project,
     ensure_discoverability_link,
+    is_in_tree_workspace,
     list_worksets,
     load_workset,
     load_workset_settings_doc,
@@ -329,13 +330,7 @@ def _resolve_workset_state(
         WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
     )
     assert proj.project_path is not None  # only a standalone box can lack a workspace
-    # EXTERNAL == the live workspace lies outside the workset root.
-    is_external = True
-    try:
-        proj.project_path.resolve().relative_to(ws.root.resolve())
-        is_external = False
-    except ValueError:
-        is_external = True
+    is_external = not is_in_tree_workspace(ws, proj.project_path)
     return _state_from_paths(
         owner_token(BoxMode.named, ws.name), proj, ws=ws,
         is_external=is_external,
@@ -571,7 +566,6 @@ def _validate(
 
     # --- membership guard: refuse landing inside a workset the project is
     #     not (becoming) a member of ---
-    # ``relocating`` is exactly ``dest is not None``; test dest directly so mypy narrows.
     landing = dest if dest is not None else state.workspace_path
     owning_ws_root: Path | None = None
     if target_mode == BoxMode.named and target_ws is not None:
@@ -580,9 +574,8 @@ def _validate(
         ws_root = Path(ws_root).resolve()
         if owning_ws_root is not None and ws_root == owning_ws_root:
             continue
-        try:
-            landing.resolve().relative_to(ws_root)
-        except ValueError:
+        # ⚑ In-tree: a repointed ``workset.workspaces`` dir, or a link.
+        if not is_in_tree_workspace(Workset(name=ws_name, root=ws_root), landing):
             continue
         raise ProjectError(
             f"Refusing to land the project inside workset '{ws_name}' "
@@ -1664,13 +1657,7 @@ def _to_workset(
     dest: Path | None,
 ) -> ProjectState:
     """Convert/relocate the project into *target_ws* (std-aware external wiring)."""
-    # Is the (new) workspace inside the target workset's tree?
-    internal = False
-    try:
-        new_workspace.resolve().relative_to(target_ws.root.resolve())
-        internal = True
-    except ValueError:
-        internal = False
+    internal = is_in_tree_workspace(target_ws, new_workspace)
 
     # The path add_project records and decides external wiring from.
     source_for_add = new_workspace

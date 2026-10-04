@@ -57,6 +57,7 @@ def default_workset(std: StandardPaths) -> Workset
 def resolve_workset_name(name: str, std: StandardPaths) -> Workset
 def delete_workset(name: str, std: StandardPaths, *, remove_files: bool=False) -> Path
 def source_in_tree(ws: Workset, source_path: Path) -> bool
+def is_in_tree_workspace(ws: Workset, path: Path) -> bool
 def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False) -> WorksetProject
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None
 def release_project(ws: Workset, name: str) -> WorksetProject

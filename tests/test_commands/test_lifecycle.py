@@ -21,7 +21,7 @@ from kanibako.commands.box._lifecycle import (
     resolve_lifecycle_target,
 )
 from kanibako.settings.config import load_config
-from kanibako.settings.config_io import load_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.errors import AmbiguousNameError, ProjectError, WorksetError
 from kanibako.settings.paths import load_primary_boxes
 from kanibako.settings.paths import (
@@ -1350,6 +1350,152 @@ class TestNoWorkspaceLossBeforeSuccess:
             )
         assert (pdir / "file.txt").read_text() == "x1"
         assert not (pdir / "sub").exists()
+
+
+class TestTheWorksetsOwnWorkspaceIsInTree:
+    """A member's workspace under a repointed ``workset.workspaces``, or behind a
+    symlink, is the workset's OWN leaf: in-tree, not external.  Read as external it
+    took the copy-nothing arm and the release deleted the box's workspace."""
+
+    def _repointed_member(self, env, name="ws1", member="alpha", contents="keep"):
+        """A NAMED member whose workspace lives under a ``workset.workspaces`` dir
+        repointed OUTSIDE the workset root."""
+        config, std, tmp_home = env
+        ws = _make_workset(env, name, f"{name}_root")
+        settings = ws.root / "workset.yaml"
+        data = load_doc(settings)
+        data.setdefault("workset", {})["workspaces"] = str(tmp_home / f"{name}-data")
+        dump_doc(settings, data)
+        ws = load_workset(ws.root, ws.name)
+        leaf = ws.workspaces_dir / member
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text(contents)
+        add_project(ws, member, leaf, std)
+        return ws, leaf, resolve_lifecycle_target(str(leaf), std, config)
+
+    def _symlinked_member(self, env, name="ws1", member="alpha", contents="keep"):
+        """A NAMED member whose ``workspaces/<name>`` leaf is a symlink to a dir of
+        the user's, outside the workset root."""
+        import shutil
+
+        config, std, tmp_home = env
+        ws = _make_workset(env, name, f"{name}_root")
+        leaf = ws.workspaces_dir / member
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text(contents)
+        add_project(ws, member, leaf, std)
+        real = tmp_home / "real"
+        shutil.move(str(leaf), str(real))
+        leaf.symlink_to(real)
+        return ws, leaf, real, resolve_lifecycle_target(str(leaf), std, config)
+
+    def test_a_repointed_member_is_not_external(self, env):
+        """The pin this rests on: the source state itself must not read EXTERNAL."""
+        config, std, tmp_home = env
+        ws, leaf, state = self._repointed_member(env)
+        assert state.mode is BoxMode.named
+        assert not state.is_external
+
+    def test_a_symlinked_member_is_not_external(self, env):
+        config, std, tmp_home = env
+        ws, leaf, real, state = self._symlinked_member(env)
+        assert state.mode is BoxMode.named
+        assert not state.is_external
+
+    @pytest.mark.parametrize("ownership", ["default", "standalone"])
+    def test_in_place_convert_out_is_refused(self, env, ownership):
+        """R3 / R4: refused by the membership guard; the workspace is untouched."""
+        config, std, tmp_home = env
+        ws, leaf, state = self._repointed_member(env)
+        with pytest.raises(ProjectError, match="not .* a member"):
+            execute_lifecycle(
+                state, TargetSpec(ownership=ownership), std, config,
+                confirm=_conf_yes(),
+            )
+        assert (leaf / "file.txt").read_text() == "keep"
+
+    def test_ws_to_ws_convert_in_place_is_refused(self, env):
+        """R2: the source is in-tree, so the existing ws->ws in-place refusal fires."""
+        config, std, tmp_home = env
+        ws1, leaf, state = self._repointed_member(env)
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        with pytest.raises(ProjectError, match="Stubbornly refusing"):
+            execute_lifecycle(
+                state, TargetSpec(location=INPLACE, ownership="ws2"), std, config,
+                confirm=_conf_yes(),
+            )
+        assert (leaf / "file.txt").read_text() == "keep"
+
+    def test_ws_to_ws_bare_move_copies_then_retires_the_member_leaf(self, env):
+        """R5: the copy runs (the source is no longer external) and the success-path
+        retire removes the box's LEAF — never the repointed parent that holds it."""
+        config, std, tmp_home = env
+        ws1, leaf, state = self._repointed_member(env)
+        ws2 = create_workset("ws2", tmp_home / "ws2_root", std)
+        new = execute_lifecycle(
+            state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"), std, config,
+            confirm=_conf_yes(),
+        )
+        landed = ws2.workspaces_dir / "alpha"
+        assert (landed / "file.txt").read_text() == "keep"
+        assert new.workspace_path == landed
+        assert not leaf.exists()
+        assert leaf.parent.is_dir()
+
+    def test_a_symlinked_leaf_is_copied_through_and_the_link_unlinked(self, env, capsys):
+        """SL1: STEP 2 copies through the link; the retire unlinks it and keeps the
+        user's directory, naming it."""
+        config, std, tmp_home = env
+        ws1, leaf, real, state = self._symlinked_member(env)
+        ws2 = create_workset("ws2", tmp_home / "ws2_root", std)
+        new = execute_lifecycle(
+            state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"), std, config,
+            confirm=_conf_yes(),
+        )
+        landed = ws2.workspaces_dir / "alpha"
+        assert (landed / "file.txt").read_text() == "keep"
+        assert new.workspace_path == landed
+        assert not leaf.is_symlink() and not leaf.exists()
+        assert (real / "file.txt").read_text() == "keep"
+        assert f"Note: left {real.resolve()}; it is yours" in capsys.readouterr().err
+
+    def test_in_place_convert_of_a_symlinked_leaf_is_refused(self, env):
+        """SL3: the guard reads the link's PARENT, so a symlinked in-tree leaf is
+        refused exactly like a plain one."""
+        config, std, tmp_home = env
+        ws, leaf, real, state = self._symlinked_member(env)
+        with pytest.raises(ProjectError, match="not .* a member"):
+            execute_lifecycle(
+                state, TargetSpec(ownership="default"), std, config,
+                confirm=_conf_yes(),
+            )
+        assert leaf.is_symlink()
+        assert (real / "file.txt").read_text() == "keep"
+
+    def test_a_repointed_member_is_refused_exactly_like_a_plain_in_tree_one(self, env):
+        """RA: the repointed leaf gets the plain in-tree member's refusal, so the
+        end state RA describes — two boxes sharing one workspace — is not reachable
+        from here."""
+        config, std, tmp_home = env
+        ws, leaf, state = self._repointed_member(env)
+        with pytest.raises(ProjectError, match="not .* a member"):
+            execute_lifecycle(
+                state, TargetSpec(ownership="default"), std, config,
+                confirm=_conf_yes(),
+            )
+        plain_ws = create_workset("plain", tmp_home / "plain_root", std)
+        plain_leaf = plain_ws.workspaces_dir / "alpha"
+        plain_leaf.mkdir(parents=True)
+        (plain_leaf / "file.txt").write_text("keep")
+        add_project(plain_ws, "alpha", plain_leaf, std)
+        plain_state = resolve_lifecycle_target(str(plain_leaf), std, config)
+        with pytest.raises(ProjectError, match="not .* a member"):
+            execute_lifecycle(
+                plain_state, TargetSpec(ownership="default"), std, config,
+                confirm=_conf_yes(),
+            )
+        assert (leaf / "file.txt").read_text() == "keep"
+        assert (plain_leaf / "file.txt").read_text() == "keep"
 
 
 class TestRetireOldWorkspace:

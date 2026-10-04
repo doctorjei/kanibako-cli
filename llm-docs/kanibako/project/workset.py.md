@@ -483,9 +483,10 @@ EXTERNAL member's recorded workspace resolves through no key, so it still launch
 never asked (its workspace is the project dir). *workspace* is `None` only for a standalone box under
 a null, which refuses either way. The one caller is
 `commands/start._refuse_null_workspace_bind`, on `_run_container`'s non-materializing probe.
-⚑ The in-tree test is the same one `add_project` decides external wiring by (`_path_in_tree`), so
-an in-tree member recorded under an ABSOLUTE `workset.workspaces` repoint outside the root, then
-nulled, reads as external and launches on its recorded dir.
+⚑ This refusal tests the ROOT alone (`_path_in_tree`), which is NOT the predicate `add_project`
+decides external wiring by (`is_in_tree_workspace`), so an in-tree member recorded under an
+ABSOLUTE `workset.workspaces` repoint outside the root, then nulled, reads as external here and
+launches on its recorded dir.
 
 ```python
 def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
@@ -747,13 +748,30 @@ resolve back to this workset. Sources inside the workset tree keep the normal be
 `workspaces/{name}` directory — and REFUSE (`refuse_null_workspaces`) when `workset.workspaces` is
 null, before anything is created. An external member still connects under a null, without the
 link. Under a null only a *restoring* unwind reaches the in-tree arm, and it records the member's
-own *source_path* (there is no `workspaces/<name>` to compose). `source_in_tree(ws, source_path)` is the in-tree test, shared with `run_connect`.
+own *source_path* (there is no `workspaces/<name>` to compose). `is_in_tree_workspace(ws, source_path)` is the in-tree test `add_project` reads; `run_connect` still tests the root alone with `source_in_tree`.
 *restoring* (keyword-only) skips that refusal: `box/_lifecycle`'s `_restore_source` unwind
 re-registers a member it just released and creates no workspace, so a null must not strand it.
 
 ⚑ **No `workset.yaml` is written on either path.** See **Connected (external) boxes** for the
 sparse-create ruling; the pre-relocation docstring claimed a `workspace` override file here and it
 was false.
+
+### ⚑⚑ `is_in_tree_workspace` — the ONE in-tree test
+
+```python
+def is_in_tree_workspace(ws: Workset, path: Path) -> bool
+```
+True when *path* is one of *ws*'s OWN workspaces. In-tree is `ws.root` **OR** the resolved
+`workset.workspaces` dir — the key is a user key, so a repoint puts a member's leaf outside the
+root, and a test that reads `ws.root` alone calls the box's own workspace EXTERNAL. Each of the two
+roots is tested twice: *path* resolved, and *path*'s PARENT resolved with the leaf NOT followed, so
+a **symlinked** leaf is in-tree by the link that names it. External is the negation.
+
+⚑ It is ONE function because five sites must agree, and each of them is a deleter or a decision to
+copy nothing: `add_project`'s external wiring, the lifecycle's source-state `is_external`, its
+target-landing `internal`, and its membership guard. A second spelling is how a repointed leaf ends
+up read two ways in one op. `source_in_tree` is the root-only test and is NOT this one —
+`run_connect` and the launch-side null-bind refusal still use it.
 
 ### The up-front validation block (external only)
 
