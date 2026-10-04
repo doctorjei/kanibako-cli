@@ -152,8 +152,8 @@ def source_groups() -> tuple[tuple[str, frozenset[str]], ...]:
     # ⚑ WIDENED 2026-08-29, 2 keys to 3: ``box.enable_vault`` is a field now, and its
     # field default is what ``config.box_scalar_defaults_floor`` publishes into every
     # box-scalar resolve — the same route ``box.image`` and ``box.share_images`` take.
-    # ``box.shell`` joined 2026-09-27: its ``""`` field default is floored as the declared
-    # ``<None>``, a PRESENT ``None`` ([R177]), so it has a carrier to name.
+    # ``box.shell`` joined 2026-09-27: its field default IS the declared ``<None>``, the
+    # PRESENT ``None`` the floor publishes, so it has a carrier to name.
     ("config.py (KanibakoConfig field)",
      frozenset({"box.image", "box.share_images", "box.enable_vault", "box.shell"})),
     # ⚑⚑ THE ``config.py (read-with-default)`` LABEL IS GONE (2026-08-29), and it was the
