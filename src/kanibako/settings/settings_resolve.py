@@ -12,13 +12,27 @@ from __future__ import annotations
 import os
 import posixpath
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
-# ⚑ NOTHING FROM ``settings/`` MAY BE IMPORTED HERE — not ``config.py``, not ``paths.py``.
-# This module is the bottom of the dependency order and they all import IT; a reverse edge is
-# a cycle with no facade to hide in (every ``settings/__init__.py`` is import-free).
+# ⚑⚑ THE IMPORT-TIME CLOSURE IS ``agent_ref`` + ``errors`` AND NOTHING ELSE — not ``config.py``,
+# not ``paths.py``. This module is the bottom of the dependency order and they all import IT; a
+# reverse edge is a cycle with no facade to hide in (every ``settings/__init__.py`` is
+# import-free). ⚑ IT IS A CONTRACT, not an accident: the agent plugin packages import this module
+# for ONE constant (``UNSET`` / ``GUEST_HOME``), so an edge added here is an import-time cost they
+# all pay, in an import order this module does not control.
+#
+# ⚑⚑ CALL-TIME EXCEPTION, AND IT IS FOUR NAMES IN ONE RULE: the dest-keyed map checks read
+# ``agent_config.is_self_resolving``, ``settings_categories.{ABSTRACT_CATEGORIES,
+# BARE_RELATIVE_SOURCE_HAZARD}`` and ``settings_keyspace.{BIND_CATEGORIES,
+# is_terminal_category_tail}``, because a map's own checks need the keyspace to decide what a map
+# IS and every reader of one must run them. ⚑ THE CYCLE IS MEASURED, NOT ASSUMED: hoisting
+# ``agent_config.is_self_resolving`` to module level raises ``ImportError: cannot import name
+# 'SettingsError' from partially initialized module 'kanibako.settings.settings_resolve'``, because
+# ``agent_config`` imports ``SettingsError`` from here at ITS module level. The other three
+# measure clean at import time and stay call-time anyway: a module-level edge is a standing claim
+# about two modules' relative import order, which only the imported module can honor.
 from kanibako.agent_ref import CANONICAL_SEP, SEGMENT_CHAR_CLASS
 from kanibako.errors import KanibakoError
 
@@ -48,8 +62,9 @@ def expand_guest_home(value: str) -> str:
 # The GUEST workspace/vault leaves, in the two forms their consumers need: a RELPATH to join onto
 # a host ``Path`` and an absolute to compare a box-side dest against.
 # ⚑ GUEST-SIDE ONLY. ``bootstrap.WORKSPACE_PATH`` is a HOST leaf spelled identically and the
-# two are INDEPENDENT — this module may import NOTHING from ``settings/``, so a guest constant
-# CANNOT be expressed in terms of a host one; the separation is structural, not conventional.
+# two are INDEPENDENT — no guest constant is expressed in terms of a host one, since
+# ``bootstrap`` is not in this module's import-time closure (above); the separation is
+# structural, not conventional.
 # 🛑 The values are DECLARED KEY NAMES in the closed keyspace (``box.bindings.rw[~/workspace]``,
 # ``box.bindings.ro[~/vault/ro]``, ``box.bindings.rw[~/vault/rw]``); ``canonicalize_dest`` expands
 # the ``~``. Respelling one redeclares three keys and hard-errors every existing user ``box.yaml``.
@@ -318,6 +333,177 @@ def normalize_bind_dest(dest: str) -> str:
         if out.startswith("//"):
             out = out[1:]
     return out
+
+
+# ---------------------------------------------------------------------------
+# THE dest-keyed map checks (spec §2a) — ONE checker, EVERY reader
+# ---------------------------------------------------------------------------
+# ⚑⚑ EVERY reader of a dest-keyed map routes through here, because the checks
+# belong to the MAP and not to the reader: a settings FILE, a floor key and an agent
+# FILE all read the same shapes, so a check owned by one reader is a check the
+# others do not run.
+
+
+def refuse_dest_spelled_twice(
+    raw: Mapping[str, Any], *, category: str, where: str | None = None,
+) -> None:
+    """RAISE when two keys of the dest-keyed map *raw* are ONE destination (spec §2a).
+
+    Canonicalization makes ``~``/``~/``, ``//``, ``.``/``..`` and a trailing ``/`` ONE
+    destination, so two such keys land on one store key and the second would overwrite
+    the first without a word. A destination is the map's IDENTITY, and neither spelling
+    may silently win — the refusal names BOTH. *category* names the key; *where* names
+    the file when the reader knows it.
+    """
+    spelled: dict[str, str] = {}
+    for key in raw:
+        dest = normalize_bind_dest(str(key))
+        first = spelled.get(dest)
+        if first is not None:
+            raise SettingsError(
+                f"{category} spells one destination twice: {first!r} and {str(key)!r} "
+                f"are both the guest path {dest!r}, because a destination is "
+                f"CANONICALIZED on read (spec §2a) and neither spelling may silently win.\n"
+                f"  Fix: keep one spelling of {dest!r} in {category} and remove the other."
+                f"{_in_file(where)}"
+            )
+        spelled[dest] = str(key)
+
+
+def refuse_unrooted_source(
+    src: str, category: str, dest: str, *, where: str | None = None,
+) -> None:
+    """RAISE when *src* is a bare-relative source in a category that takes no root (spec §2a).
+
+    A CONCRETE category takes no root at any scope, so a bare-relative source there can only
+    resolve against the process CWD and is refused where it is declared. An ABSTRACT
+    category HAS a declaration root and joins a bare leaf under it, so it is never judged
+    here — including when the key path named no scope, because that path is not a KEY and
+    §0's undeclared-key refusal downstream is the one that must name it.
+
+    ⚑ The category decides this on its own, so no caller has to pass a root: a category with
+    a declaration root is an ABSTRACT one by definition of the root table.
+    """
+    from kanibako.settings.agent_config import is_self_resolving
+    from kanibako.settings.settings_categories import (
+        ABSTRACT_CATEGORIES,
+        BARE_RELATIVE_SOURCE_HAZARD,
+    )
+
+    if is_self_resolving(src) or category in ABSTRACT_CATEGORIES:
+        return
+    raise SettingsError(
+        f"{category} entry at {dest!r} declares a bare-relative host source "
+        f"{src!r}; a source must fully resolve on its own — absolute, ~, $var or "
+        f"an @-ref. {category} takes NO root at any scope (spec §2a), so no later "
+        f"layer may supply the missing one: {BARE_RELATIVE_SOURCE_HAZARD}. "
+        f"Spell the source out.{_in_file(where)}"
+    )
+
+
+def check_bind_map(
+    raw: Mapping[str, Any], *, category: str, where: str | None = None,
+) -> None:
+    """RAISE on every malformed or doubly-spelled entry of ONE dest-keyed bind map.
+
+    The per-entry checks (the retired sub-table shape, the entry arity, the unrooted
+    source) and the per-map one (two spellings of one destination) together. *category*
+    names the key in every refusal; *where* names the file when the reader has it. A
+    ``None`` entry is a legal UNSET, so only its spelling is judged.
+
+    ⚑ THE ENTRY CHECKS RUN WHERE THE PARSE UNPACKS ONE, and nowhere else: a list or tuple is
+    an entry, so its arity and its source are judged, and a value that is neither is left as
+    the store coercion leaves it. That keeps this checker's verdict IDENTICAL to the reader
+    it is shared with — a check that refused more here would make the agent-file reader
+    stricter than the settings-file tier rather than equal to it.
+    """
+    refuse_dest_spelled_twice(raw, category=category, where=where)
+    for key, sub in raw.items():
+        if sub is None:
+            continue
+        dest = normalize_bind_dest(str(key))
+        if isinstance(sub, dict):
+            raise SettingsError(
+                f"{category} entry {str(key)!r} holds a sub-table, which is the "
+                f"RETIRED name-keyed shape {{name: {{...}}}}. A {category} value "
+                f"is a FLAT map keyed by box DESTINATION whose value is "
+                f"[src[, options]] (spec §2a); the entry name was dropped "
+                f"(bindings 2026-08-06c, the other four 2026-08-08c). Re-key the "
+                f"entry to its destination.{_in_file(where)}"
+            )
+        if isinstance(sub, (list, tuple)):
+            try:
+                src, _opts = unpack_bind_entry(sub)
+            except SettingsError as exc:
+                raise SettingsError(
+                    f"{category} entry {str(key)!r}: {exc}{_in_file(where)}"
+                ) from exc
+            refuse_unrooted_source(src, category, dest, where=where)
+
+
+def check_bind_tables(
+    tables: Mapping[str, Any], *,
+    root: str, scope: str, contained: Sequence[str], where: str | None,
+) -> None:
+    """RAISE on a malformed or doubly-spelled dest-keyed bind map an agent file's tables carry.
+
+    An agent file is read as a RAW node table, so it never reaches the settings tier's
+    bind parse — the same maps, judged by the same checks, at the reader the launch and
+    the ``agent`` verbs share. *tables* is the file's own root: the ``root:`` table, the
+    ``scope:`` table's node tables, and every *contained* scope table — each walked to the
+    dest-keyed maps it holds. *root* / *scope* / *contained* are the three key names, passed
+    in because they belong to the caller.
+
+    ⚑ ``root:`` and every *contained* table are the SCOPE'S OWN TABLE, so their category tokens
+    sit at the first level; only the ``scope:`` table carries its node names above them. Both
+    shapes end at one table of categories, which is what makes ONE walk the whole file's.
+    """
+    for token in (root, *contained):
+        own = tables.get(token)
+        if isinstance(own, dict):
+            _check_node_binds(own, where=where)
+    node_tables = tables.get(scope)
+    if isinstance(node_tables, dict):
+        for node_table in node_tables.values():
+            if isinstance(node_table, dict):
+                _check_node_binds(node_table, where=where)
+
+
+def _check_node_binds(table: Mapping[str, Any], *, where: str | None) -> None:
+    """Check every dest-keyed map one scope's or agent node's *table* holds.
+
+    ONE level only, plus a ``bindings`` arm's: every dest-keyed category is TERMINAL, so a
+    node table's category token IS the map. Nothing is descended, so a table-valued key whose
+    contents are not settings is never read as one.
+    """
+    from kanibako.settings.settings_keyspace import is_terminal_category_tail
+
+    for key, value in table.items():
+        if not isinstance(value, dict):
+            continue
+        if is_terminal_category_tail((key,)):
+            _check_dest_map(value, category=key, where=where)
+        elif key == "bindings":
+            for arm, arm_map in value.items():
+                if isinstance(arm_map, dict) and is_terminal_category_tail(("bindings", arm)):
+                    _check_dest_map(arm_map, category=f"bindings.{arm}", where=where)
+
+
+def _check_dest_map(raw: Mapping[str, Any], *, category: str, where: str | None) -> None:
+    """Run the checks that apply to the dest-keyed map *category* holds."""
+    from kanibako.settings.settings_keyspace import BIND_CATEGORIES
+
+    if category in BIND_CATEGORIES:
+        check_bind_map(raw, category=category, where=where)
+    else:
+        # A MARKER map holds 3-state markers rather than bind entries, so the PER-MAP
+        # spelling check is the whole of what applies to it.
+        refuse_dest_spelled_twice(raw, category=category, where=where)
+
+
+def _in_file(where: str | None) -> str:
+    """The ``(in settings file X)`` clause, matching the parse wrapper's own wording."""
+    return f" (in settings file {where})" if where is not None else ""
 
 
 def match_var(expr: str, i: int) -> tuple[str, int]:
