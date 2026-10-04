@@ -2,8 +2,9 @@
 
 Pins three things the map's own reader and the agent-file reader once disagreed on: a
 map spelled two ways for ONE destination is REFUSED naming BOTH spellings rather than
-resolved last-wins; the per-entry refusals (the retired sub-table, the entry arity,
-the unrooted source) are the SAME refusals whichever reader meets them — because
+resolved last-wins; the per-entry refusals (the retired sub-table, a value that is not
+a list, the entry arity, the unrooted source) are the SAME refusals whichever reader
+meets them — because
 :mod:`kanibako.settings.settings_resolve` owns them, not a reader; and EVERY top-level
 table the agent file reads is walked, the contained-scope ones included.
 """
@@ -113,16 +114,24 @@ def test_a_null_entry_at_one_dest_is_legal() -> None:
     assert store["/opt/x"] is None
 
 
-def test_a_value_that_is_not_an_entry_is_left_to_the_store(tmp_path: Path) -> None:
-    """The checker judges an entry where the PARSE unpacks one, so both readers agree.
+def test_a_value_that_is_not_an_entry_refuses_the_same_in_both_readers(tmp_path: Path) -> None:
+    """An entry is a LIST, and both readers refuse a value that is not one — the same words.
 
-    A dest-keyed map's value that is neither a sub-table nor a list is stored as it is by
-    the settings tier, and the agent-file reader must return the SAME verdict — a check that
-    refused it here would make that reader stricter than the tier, not equal to it.
+    Keyspec §2a gives the entry a list form and no bare-scalar shorthand, so a scalar
+    under a dest key is a malformed entry whichever reader meets the same bytes. The
+    settings-file tier and the agent-file reader therefore raise one message, and the
+    reader that holds a file appends it: a check that judged the shape in one reader and
+    not the other would leave the two disagreeing about the same input.
     """
-    body = "self:\n  caches:\n    /opt/c: y\n"
-    _read(_agent_file(tmp_path, body))
-    assert dict.get(parse_bind_map({"/opt/c": "y"}, category="caches"), "/opt/c") == "y"
+    with pytest.raises(SettingsError) as exc:
+        parse_bind_map({"/opt/c": "y"}, category="caches")
+    tier_msg = str(exc.value)
+    assert "caches entry '/opt/c'" in tier_msg
+    assert "got str: 'y'" in tier_msg
+    path = _agent_file(tmp_path, "self:\n  caches:\n    /opt/c: y\n")
+    with pytest.raises(SettingsError) as exc:
+        _read(path)
+    assert str(exc.value) == f"{tier_msg} (in settings file {path})"
 
 
 def test_two_spellings_of_one_dest_refuse_at_the_agent_file_read(tmp_path: Path) -> None:
