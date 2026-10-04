@@ -1542,7 +1542,8 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
     ``<path>`` is the resolved target we looked for a box at; the suggested
     ``create`` carries the user's own spec so it is copy-pasteable — an explicit
     ``kanibako create <spec>`` when they named a PATH, a bare ``kanibako create``
-    from inside the project dir (no spec).
+    from inside the project dir (no spec).  A PATH spec is ``shlex.quote``d and
+    the line carries no wrapping quotes, so the printed command pastes as typed.
 
     ⚑ THREE SHAPES, and only the first is that plain one-liner.  A designation
     that takes the name route (:func:`designation_route`) gets its own
@@ -1587,11 +1588,11 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
                 f"  Otherwise create a new box:  kanibako create {project_dir}"
             )
         target = str(Path(project_dir).resolve())
-        suggest = f"kanibako create {project_dir}"
+        suggest = f"kanibako create {shlex.quote(project_dir)}"
     else:
         target = os.getcwd()
         suggest = "kanibako create"
-    return f"Error: no box at {target}. To create a new box, run '{suggest}'"
+    return f"Error: no box at {target}. To create a new box, run:  {suggest}"
 
 
 def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
