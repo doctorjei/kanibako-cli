@@ -3636,8 +3636,24 @@ def _emit_scope_node(
     if isinstance(secret, KeyStore):
         for var in dict.keys(secret):
             path_val = dict.__getitem__(secret, var)
+            # ⚑ A PRESENT ``None`` IS EMITTED, with no source: it is the keyless
+            # declaration (§2a) and a VALUE in the per-VAR cascade (§2h), so a lower
+            # scope's pointer must not win past it. ``secret_path_winners`` picks it
+            # and ``secret_path_deliveries`` mounts nothing for it.
             if path_val is None:
-                continue  # a reset secret_path has no path to mount.
+                collected.append((
+                    (order, "secret_path", var),
+                    CategoryEntry(
+                        category="secret_path", scope=scope,
+                        box_dest=f"{SECRET_MOUNT_DIR}/{var}", host_src=None,
+                        delivery="MOUNT", options="ro", name=var,
+                        key_segments=(
+                            *decl_scope_fn("secret_path", var).split("."),
+                            "secret_path", var,
+                        ),
+                    ),
+                ))
+                continue
             # ⚑ THE SCALAR REFUSAL (§2a) — the env branch's twin, and here the coercion
             # it replaces produced a MOUNT SOURCE spelled as a Python repr, which the
             # bare-relative refusal below then reported as the wrong defect.

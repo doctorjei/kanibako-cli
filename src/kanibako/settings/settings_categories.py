@@ -396,7 +396,9 @@ def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]:
 
     Every ``secret_path`` dest is ``SECRET_MOUNT_DIR/{VAR}`` BY CONSTRUCTION, so a
     group sharing a dest is ONE VAR from several scopes — the per-VAR cascade, picked
-    by :func:`_most_specific`, then depth-sorted.  ⚑ P7 — WHAT IT DOES *NOT* DECIDE:
+    by :func:`_most_specific`, then depth-sorted.  A winner whose ``host_src`` is
+    ``None`` is a KEYLESS declaration (§2a): it wins its VAR and mounts nothing.
+    ⚑ P7 — WHAT IT DOES *NOT* DECIDE:
     whether anything ELSE contends for that dest.  That is
     :func:`secret_path_deliveries`'.
     """
@@ -439,6 +441,8 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
 
     delivered: list[CategoryEntry] = []
     for winner in winners:
+        if winner.host_src is None:
+            continue
         group = by_dest[winner.box_dest]
         concrete = [e for e in group if e.category in CONCRETE_CATEGORIES]
         abstract = [e for e in group if e.category in ABSTRACT_CATEGORIES]
@@ -566,7 +570,7 @@ def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None:
     for e in entries:
         if e.category == "env":
             env_keys.setdefault(e.name, []).append(e.key)
-        elif e.category == "secret_path":
+        elif e.category == "secret_path" and e.host_src is not None:
             secret_keys.setdefault(e.name, []).append(e.key)
 
     for var, env_group in env_keys.items():

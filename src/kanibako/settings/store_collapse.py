@@ -34,7 +34,7 @@ from kanibako.settings.settings_categories import (
   internal_bind_cure,
 )
 from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
-from kanibako.settings.store_shape import StoreShape, StoreShapeSet
+from kanibako.settings.store_shape import StoreShape, StoreShapeSet, _arm_of
 
 
 class CollapsedBind(NamedTuple):
@@ -171,7 +171,9 @@ def _mount_declaration_keys(
   That is what keeps the categories out of this module - ``store_shape`` alone
   decides which category reaches which arm, and a second copy of that table here
   would drift the day one moves. It also files the same-scope pair's WINNER rather
-  than the loser the producer dropped, because only the winner is in the arm.
+  than the loser the producer dropped, because only the winner is in the arm. An
+  entry ``store_shape`` routes to NO arm produced no row and is never filed: a
+  keyless ``secret_path`` is source-less without being a mask.
   """
   keys: _MountKeys = {}
   for scope in SCOPE_CONTAINMENT:
@@ -183,7 +185,7 @@ def _mount_declaration_keys(
     }
     mask_dests = {normalize_bind_dest(dest_path) for dest_path in shape.mask}
     for entry in entries:
-      if entry.scope != scope or entry.delivery != MOUNT:
+      if entry.scope != scope or entry.delivery != MOUNT or _arm_of(entry) is None:
         continue
       dest = normalize_bind_dest(entry.box_dest)
       if entry.host_src is None:

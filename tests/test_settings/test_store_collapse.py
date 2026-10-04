@@ -53,6 +53,7 @@ from kanibako.settings.store_collapse import (
   refuse_uncovered_synced,
 )
 from kanibako.settings.settings_categories import (
+  SECRET_MOUNT_DIR,
   SUPPRESS_THEN_ADD,
   _suppress_then_add,
 )
@@ -1422,6 +1423,15 @@ class TestDeclarationProvenance:
     """``caches``/``common`` fold into ``rw``; the key filed must be the one written."""
     collapsed = self.collapsed({"box.caches": {"~/cache": ("/h/cache",)}})
     assert collapsed.declared_by[f"{GUEST}/cache"] == f"box.caches[{GUEST}/cache]"
+
+  def test_a_keyless_secret_at_a_masked_dest_does_not_claim_the_mask(self):
+    """A ``null`` ``secret_path`` is source-less like a mask but folds into no arm."""
+    dest = f"{SECRET_MOUNT_DIR}/TOK"
+    collapsed = self.collapsed({
+      "box.masks": [dest],
+      "box.secret_path.TOK": None,
+    })
+    assert collapsed.declared_by[dest] == f"box.masks[{dest}]"
 
 
 def live_refusal_both(floor: dict) -> tuple[str, str]:

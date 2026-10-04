@@ -22,6 +22,7 @@ from kanibako.errors import PackagingError
 from kanibako.settings.agent_file import _FLAT_AGENT_CATEGORIES
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, Bind, BindEntry
 from kanibako.settings.keystore import KeyStore
+from kanibako.settings.settings_categories import secret_path_deliveries
 from kanibako.settings.settings_launch import (
     build_launch_snapshot,
     effective_behavior,
@@ -4383,11 +4384,17 @@ class TestScalarFamilyNonScalarRefusal:
             ("env", "PORT", exported),
         ]
 
-    @pytest.mark.parametrize("category", ["env", "secret_path"])
-    def test_a_present_None_is_still_the_RESET_it_always_was(self, category):
-        """A present-``None`` is the tri-state OMIT, not a non-scalar: it emits
-        nothing and must not be refused."""
-        assert self._entries({"box": {category: {"FOO": None}}}) == []
+    def test_a_present_None_env_is_the_OMIT_and_is_not_refused(self):
+        """A present-``None`` is the tri-state OMIT, not a non-scalar."""
+        assert self._entries({"box": {"env": {"FOO": None}}}) == []
+
+    def test_a_present_None_secret_path_is_a_KEYLESS_entry_not_a_refusal(self):
+        """§2a/§2h: a present-``None`` secret is a VALUE that wins its VAR, so it is
+        emitted, source-less, for the per-VAR cascade to pick."""
+        entries = self._entries({"box": {"secret_path": {"FOO": None}}})
+        assert [(e.category, e.name, e.host_src) for e in entries] == [
+            ("secret_path", "FOO", None),
+        ]
 
 
 # --------------------------------------------------------------------------- #
@@ -6801,11 +6808,9 @@ class TestNullRefSecretPath:
                 workset_path=ws_path, box_path=box_path, default_categories=floor,
                 meta_identity={"meta.box.name": "b1"}, valid_agents=("claude",),
             )
-        delivered = {
-            e.name for e in snapshot_category_entries(
-                snap, active_agent="claude", box_ctx=_ctx(),
-            )
-            if e.category in ("secret_path", "env")
+        entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+        delivered = {e.name for e in entries if e.category == "env"} | {
+            e.name for e in secret_path_deliveries(entries)
         }
         warnings = [
             r.getMessage() for r in caplog.records
@@ -6839,11 +6844,9 @@ class TestNullRefSecretPath:
         reset_none_warnings()
         caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
         snap = _auth_snapshot("standalone", tmp_path=tmp_path, box_file=self._SECRET)
-        assert not [
-            e for e in snapshot_category_entries(
-                snap, active_agent="claude", box_ctx=_ctx(),
-            ) if e.category == "secret_path"
-        ]
+        assert not secret_path_deliveries(snapshot_category_entries(
+            snap, active_agent="claude", box_ctx=_ctx(),
+        ))
         warnings = [
             r.getMessage() for r in caplog.records
             if r.name == "kanibako.settings.settings_launch"
