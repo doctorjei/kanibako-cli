@@ -17,6 +17,7 @@ _REDACTED = '<redacted>'
 _WITHHELD = '(withheld — the reply still matched a value from the request after scrubbing)'
 _UNREADABLE = '(withheld — the reply could not be decoded, so it could not be scrubbed)'
 _REFUSAL_STATUSES = (401, 403)
+_SCHEME = re.compile('[A-Za-z][A-Za-z0-9+.-]*')
 _MODEL_REQUIRED_STATUSES = (400, 422)
 ```
 

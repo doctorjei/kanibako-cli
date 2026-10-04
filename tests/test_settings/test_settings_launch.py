@@ -6885,3 +6885,56 @@ class TestTheAgentFileGetsOneVerdict:
         # ``agent:`` table: one value, one node, one answer.
         snap = self._launch(tmp_path, {"agent": {"claude": {"model": "b"}}})
         assert effective_behavior(snap, active_agent="claude")["model"] == "b"
+
+
+class TestPersonaValuesAreDataNotExpressions:
+    """A persona-store value comes from a HARNESS config, not a settings file, so
+    ``@`` / ``$`` / ``~`` / ``\\`` in it are characters, never tokens.
+
+    The incident: ``https://user:key@host.invalid/v1`` lost ``@host.invalid`` to
+    ``@``-ref expansion (an unknown ref coerces to ``""`` when embedded), which
+    corrupted the delivered ``ANTHROPIC_BASE_URL`` and left the userinfo scrub no
+    ``@`` to find, so the credential printed.
+    """
+
+    _RAW = {
+        "endpoint": "https://SEKRITU:SEKRITP@host.invalid/v1",
+        "model": "~org/m@{x}",
+        "secret_path.ANTHROPIC_AUTH_TOKEN": "/tok/$NOPE/@a.b/tok",
+        "env.PERSONA_FLAG": "a$NOPE ${X} \\@y \\",
+    }
+
+    @pytest.mark.parametrize("key,path", _PERSONA_CLASSES, ids=lambda v: str(v))
+    def test_every_value_class_arrives_verbatim(self, tmp_path, key, path):
+        raw = self._RAW[key]
+        snap = _persona_snap(tmp_path, persona_values={key: raw})
+        assert _leaf(snap, path) == raw
+
+    def test_the_delivered_base_url_is_the_endpoint_as_written(self, tmp_path):
+        from kanibako.targets.assembly import assemble_env
+        from kanibako.targets.base import Channel, PluginDescriptor, SettingArg
+
+        raw = self._RAW["endpoint"]
+        snap = _persona_snap(tmp_path, persona_values={"endpoint": raw})
+        values = effective_behavior(snap, active_agent="claude")
+        descriptor = PluginDescriptor(
+            command=("claude",), bindings=(), mode={"start": ()},
+            settings=(SettingArg(
+                setting_key="endpoint", channel=Channel.ENV, env_var="ANTHROPIC_BASE_URL",
+            ),),
+        )
+        env = assemble_env(descriptor, access="full", setting_values=values)
+        assert env["ANTHROPIC_BASE_URL"] == raw
+
+    def test_a_settings_file_endpoint_is_still_an_expression(self, tmp_path):
+        """CONTROL — the literal rule is the STORE's, not the key's: a settings file
+        still writes a literal ``@`` as ``\\@`` and still expands a real ref."""
+        snap = _persona_snap(
+            tmp_path, persona_values={},
+            system={"agent": {"claude": {
+                "endpoint": "https://u:k\\@@{agent.claude.model}/v1", "model": "h",
+            }}},
+        )
+        assert effective_behavior(snap, active_agent="claude")["endpoint"] == (
+            "https://u:k@h/v1"
+        )
