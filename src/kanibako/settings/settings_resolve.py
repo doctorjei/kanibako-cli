@@ -433,14 +433,12 @@ def refuse_scalar_at_table_key(
     )
 
     leaf = key.rpartition(".")[2]
-    if not is_terminal_category_key(key) and leaf not in BIND_CATEGORIES:
-        shape = "a table of its own entries"
-    elif leaf == "masks":
+    if leaf == "masks":
         shape = "a dest-keyed map of 3-state markers, {box_dest: true}"
+    elif is_terminal_category_key(key) or leaf in BIND_CATEGORIES:
+        shape = "a dest-keyed map, keyed by box destination, {box_dest: [src[, options]]}"
     else:
-        shape = (
-            "a dest-keyed map, keyed by box destination, {box_dest: [src[, options]]}"
-        )
+        shape = "a table of its own entries"
     raise SettingsError(
         f"'{key}' holds a scalar ({render_stored_scalar(value)}) where a TABLE goes: it is "
         f"{shape}, and an entry inside one is DATA in the value, never a key of its own "
