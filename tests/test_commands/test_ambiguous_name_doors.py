@@ -3,8 +3,9 @@
 ``AmbiguousNameError`` is a ``ProjectError``, and both launch doors read
 ``ProjectError`` as "there is no box here" -- so a name that belongs to two
 worksets was reported as a plain miss instead of as the choice the user has to
-make.  The message the resolver builds names every candidate and the
-``<workset>/<name>`` cure; these tests pin that it reaches the user.
+make.  The message the resolver builds names every candidate by
+``<workset>/<name>`` and states that cure; these tests pin that it reaches the
+user.
 """
 
 from __future__ import annotations
@@ -40,11 +41,17 @@ def _two_worksets_holding(std, config, tmp_home, member: str) -> tuple[Path, Pat
     return first, second
 
 
-def _assert_actionable(message: str, first: Path, second: Path, name: str) -> None:
-    """The message must name BOTH candidates and the ``<workset>/<name>`` cure."""
+def _assert_actionable(message: str, name: str) -> None:
+    """The message must name BOTH candidates as ``<workset>/<name>``, plus the cure.
+
+    The candidates are named by QUALIFIED name, not by workspace path: a
+    ``workset.workspaces`` repoint puts the path outside the workset root, so a
+    path need not contain the workset name and the prescribed cure is not
+    derivable from one.
+    """
     assert "Ambiguous box name" in message
-    assert str(first) in message
-    assert str(second) in message
+    assert f"cluster-a/{name}" in message
+    assert f"cluster-b/{name}" in message
     assert f"<workset>/{name}" in message
 
 
@@ -85,12 +92,12 @@ class TestStartDoorAmbiguity:
         """
         from kanibako.commands.start import _resolve_existing_box
 
-        first, second = _two_worksets_holding(std, config, tmp_home, "foo")
+        _two_worksets_holding(std, config, tmp_home, "foo")
         monkeypatch.chdir(tmp_home)
 
         with pytest.raises(AmbiguousNameError) as excinfo:
             _resolve_existing_box(std, config, "foo")
-        _assert_actionable(str(excinfo.value), first, second, "foo")
+        _assert_actionable(str(excinfo.value), "foo")
 
     def test_start_door_unique_name_still_resolves(
         self, std, config, tmp_home, monkeypatch,
@@ -135,12 +142,12 @@ class TestCodeDoorAmbiguity:
         """
         from kanibako.commands.code_cmd import run_code
 
-        first, second = _two_worksets_holding(std, config, tmp_home, "foo")
+        _two_worksets_holding(std, config, tmp_home, "foo")
         monkeypatch.chdir(tmp_home)
 
         with pytest.raises(AmbiguousNameError) as excinfo:
             run_code(_args(project="foo"))
-        _assert_actionable(str(excinfo.value), first, second, "foo")
+        _assert_actionable(str(excinfo.value), "foo")
 
     def test_code_door_unique_name_passes_the_resolve(
         self, std, config, tmp_home, monkeypatch, working_runtime, capsys,
@@ -214,7 +221,7 @@ class TestAmbiguityReachesTheUser:
         """
         from kanibako import cli
 
-        first, second = _two_worksets_holding(std, config, tmp_home, "foo")
+        _two_worksets_holding(std, config, tmp_home, "foo")
         monkeypatch.chdir(tmp_home)
         runtime = MagicMock()
         runtime.is_running.return_value = True
@@ -229,6 +236,6 @@ class TestAmbiguityReachesTheUser:
             out = capsys.readouterr()
 
         assert excinfo.value.code == 1, out.err
-        _assert_actionable(out.err, first, second, "foo")
+        _assert_actionable(out.err, "foo")
         # The generic no-box cure must NOT be what the user is told to do.
         assert "kanibako create" not in out.err

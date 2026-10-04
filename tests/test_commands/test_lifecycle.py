@@ -242,8 +242,8 @@ class TestResolveTarget:
         settings/paths.py, fixed by excluding the type rather than the message.
         """
         config, std, tmp_home = env
-        first = _make_materialized_member(env, "cluster-a", "dup")
-        second = _make_materialized_member(env, "cluster-b", "dup")
+        _make_materialized_member(env, "cluster-a", "dup")
+        _make_materialized_member(env, "cluster-b", "dup")
 
         # cwd OUTSIDE both worksets: that is the only context where the name is
         # ambiguous at all (inside one, step 1 resolves it).
@@ -255,8 +255,10 @@ class TestResolveTarget:
             resolve_lifecycle_target("dup", std, config)
         message = str(excinfo.value)
         assert "Ambiguous box name" in message
-        assert str(first) in message
-        assert str(second) in message
+        # Candidates by QUALIFIED name, not workspace path: workset.workspaces is
+        # settable, so a registered path need not name the workset it belongs to.
+        assert "cluster-a/dup" in message
+        assert "cluster-b/dup" in message
         assert "<workset>/dup" in message
 
     def test_unambiguous_member_name_still_resolves(self, env, monkeypatch):
