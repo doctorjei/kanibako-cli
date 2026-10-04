@@ -51,6 +51,8 @@ from kanibako.settings.paths import (
     _default_project_group,
     assign_primary_box_name,
     box_metadata_dir,
+    box_log_files,
+    box_logs_dir_for,
     box_workset_settings_paths,
     check_primary_box_name_free,
     detect_project_mode,
@@ -61,6 +63,7 @@ from kanibako.settings.paths import (
     resolve_project,
     resolve_standalone_project,
     resolve_workset_project,
+    standalone_logs_dir,
     unregister_primary_box_name,
     write_vault_gitignore,
 )
@@ -1189,6 +1192,55 @@ def _carry_vault_contents(
         _copy_vault_leaf_contents(src, dst)
 
 
+def _move_log_back(dst: Path, src: Path) -> None:
+    """Undo one carried log file. :func:`shutil.move` returns a path; ``_Unwind`` wants ``None``."""
+    shutil.move(dst, src)
+
+
+def _carry_box_logs(
+    state: ProjectState,
+    std: StandardPaths,
+    unwind: _Unwind,
+    *,
+    dst_logs: Path | None,
+    dst_name: str,
+) -> None:
+    """Carry the source box's log files to *dst_name* in *dst_logs*, each move undoable.
+
+    ⚑ Same bracket as the vault carry: a rolled-back move leaves the logs where they
+    were.  Nothing is derived here — :func:`box_log_files` names both sides.
+    Hands off when either side has no dir (a present ``<None>`` ``workset.logs``), when
+    the two sides name ONE file — every relocation between two worksets sharing a logs
+    dir — and when the destination already holds a log, which stays in place beside the
+    source.
+    """
+    import sys
+
+    src_logs = box_logs_dir_for(
+        std, state.mode, state.metadata_path,
+        state.ws.root if state.ws is not None else None,
+    )
+    if src_logs is None or dst_logs is None:
+        return
+    for src, dst in zip(
+        box_log_files(src_logs, state.name), box_log_files(dst_logs, dst_name),
+    ):
+        if not src.is_file() or src.resolve() == dst.resolve():
+            continue
+        if dst.exists():
+            # ⚑ NEVER clobber an existing dest — a live sibling's log, or the residue
+            # of a ``box rm`` without purge, is not this box's to replace.
+            print(
+                f"Warning: not carrying log {src} — the destination {dst} already "
+                f"exists; both are left in place.",
+                file=sys.stderr,
+            )
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(src, dst)
+        unwind.push(partial(_move_log_back, dst, src))
+
+
 #: The ``workset.`` keys the two vault arms resolve from, in the ``(ro, rw)`` order
 #: every vault consumer takes them.
 _VAULT_ARM_KEYS: tuple[str, str] = ("workset.vault_ro", "workset.vault_rw")
@@ -1530,6 +1582,7 @@ def _to_default(
     # ⚑ THE VAULT CARRY (P1 data loss): the leaves above are created EMPTY and
     # ``_remove_old_metadata`` below deletes the source — contents move first.
     _carry_vault_contents(state, std, vault_ro, vault_rw)
+    _carry_box_logs(state, std, unwind, dst_logs=std.primary_logs, dst_name=project_name)
 
     _remove_old_metadata(
         state, std, config, unwind, dst_vault=(vault_ro, vault_rw),
@@ -1824,6 +1877,9 @@ def _to_standalone(
     # vault is fresh and the teardown below deletes the source, so contents
     # move first.  A reuse-in-place rename collapses to a same-path no-op.
     _carry_vault_contents(state, std, vault_ro, vault_rw)
+    _carry_box_logs(
+        state, std, unwind, dst_logs=standalone_logs_dir(root), dst_name=box_name,
+    )
 
     _remove_old_metadata(
         state, std, config, unwind, dst_vault=(vault_ro, vault_rw),
@@ -2040,6 +2096,14 @@ def _to_workset(
         # workset (a corrupt state refused elsewhere) must not reach this line.
         _copy_vault_leaf_contents(stash_vault_ro, vault_ro)
         _copy_vault_leaf_contents(stash_vault_rw, vault_rw)
+    # ⚑ THE LOG CARRY, beside the vault carry — the destination is registered either way
+    # by now, and a released source keeps its logs (``remove_member_store`` deletes the
+    # box tree and the vault leaves, never the logs).
+    _carry_box_logs(
+        state, std, unwind,
+        dst_logs=box_logs_dir_for(std, BoxMode.named, dst_project, target_ws.root),
+        dst_name=new_name,
+    )
     if not source_is_workset:
         # ⚑ THE VAULT CARRY (P1 data loss) — see ``_to_default``: contents move
         # before the teardown below deletes the source.
