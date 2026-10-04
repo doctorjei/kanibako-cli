@@ -306,6 +306,26 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
         add_project(ws, member, leaf, std)
         return ws, leaf
 
+    def test_a_non_canonical_path_under_a_repointed_workspaces_dir_is_refused(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A repointed ``workset.workspaces`` dir is in-tree for the landing check too.
+
+        The dir is a user key, so it can sit outside the workset root entirely; the
+        landing refusal has to read it as the workset's own space, not as the user's.
+        """
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws, leaf = self._repointed_member(std, tmp_home)
+        other = ws.workspaces_dir / "other"
+
+        rc = run_move(_move_args(leaf, other))
+
+        assert rc == 1
+        assert "Refusing to record" in capsys.readouterr().err
+        assert (leaf / "f.txt").read_text() == "mine"
+        assert not other.exists()
+
     def test_a_repointed_member_moves_to_an_external_path(self, config_file,
                                                          tmp_home, credentials_dir):
         config = load_config(config_file)

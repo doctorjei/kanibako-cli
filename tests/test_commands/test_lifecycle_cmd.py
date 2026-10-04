@@ -7,6 +7,7 @@ These exercise the thin ``run_remap`` / ``run_move`` / ``run_convert`` wrappers
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 
 import pytest
@@ -15,6 +16,7 @@ from kanibako.cli import build_parser
 from kanibako.commands.box import _lifecycle
 from kanibako.commands.box._lifecycle import (
     _BARE_MOVE,
+    resolve_lifecycle_target,
     run_convert,
     run_move,
     run_remap,
@@ -976,3 +978,250 @@ class TestInvalidNameReported:
         assert "Error: Invalid box name 'bad/name':" in err
         assert "Traceback" not in err
         assert not (pdir / "box_data").exists()
+
+
+# ---------------------------------------------------------------------------
+# The landings a relocation cannot record
+# ---------------------------------------------------------------------------
+
+def _named(env, ws, name="proj", contents="wsdata"):
+    """A named member of *ws*, its workspace leaf at ``workspaces/<name>``."""
+    config, std, tmp_home = env
+    leaf = ws.workspaces_dir / name
+    leaf.mkdir(parents=True)
+    (leaf / "file.txt").write_text(contents)
+    add_project(ws, name, leaf, std)
+    return leaf
+
+
+def _external_member(env, ws, name="proj"):
+    """A CONNECTED member of *ws* whose workspace is the user's own directory."""
+    config, std, tmp_home = env
+    ext = tmp_home / "ext_repo"
+    ext.mkdir()
+    (ext / "file.txt").write_text("mine")
+    add_project(ws, name, ext, std)
+    return ext
+
+
+class TestInTreeLandingRefused:
+    """F1: inside a workset a box lives at ``workspaces/<name>``, and nowhere else.
+
+    Every case runs with ``--force`` (``_move_args``/``_convert_args`` default it), so
+    each one also pins that ``--force`` is not a way past the refusal.
+    """
+
+    def test_ws_to_ws_move_to_a_non_canonical_in_tree_path(self, env, capsys):
+        """A move naming a path inside the target workset, other than its own leaf."""
+        config, std, tmp_home = env
+        ws1 = create_workset("ws1", tmp_home / "ws1_root", std)
+        ws2 = create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf = _named(env, ws1)
+        stray = ws2.root / "proj"
+        rc = run_move(_move_args(str(leaf), stray, to_workset="ws2"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Refusing to record" in err
+        assert str(ws2.workspaces_dir / "proj") in err
+        # Refused before any write: the source is whole and no stray copy was made.
+        assert (leaf / "file.txt").read_text() == "wsdata"
+        assert not stray.exists()
+        assert not (ws2.workspaces_dir / "proj").exists()
+
+    def test_same_workset_move_to_a_non_canonical_in_tree_path(self, env, capsys):
+        """The source's own workset, no ``--workset``: the landing is still refused, and
+        the box keeps recording the leaf it already had."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        leaf = _named(env, ws)
+        other = ws.root / "other"
+        rc = run_move(_move_args(str(leaf), other))
+        assert rc == 1
+        assert "Refusing to record" in capsys.readouterr().err
+        assert (leaf / "file.txt").read_text() == "wsdata"
+        assert not other.exists()
+        again = resolve_lifecycle_target(str(leaf), std, config)
+        assert again.workspace_path == leaf.resolve()
+        assert again.mode == BoxMode.named
+
+    def test_primary_move_into_the_target_workset_root(self, env, capsys):
+        """A primary box aimed at a path inside a workset root, not at ``workspaces/``."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _default(env, contents="primary")
+        stray = ws.root / "proj"
+        rc = run_move(_move_args(pdir, stray, to_workset="ws"))
+        assert rc == 1
+        assert "Refusing to record" in capsys.readouterr().err
+        assert (pdir / "file.txt").read_text() == "primary"
+        assert not stray.exists()
+        assert not (ws.workspaces_dir / "proj").exists()
+
+    def test_primary_move_into_another_members_leaf(self, env, capsys):
+        """``workspaces/<some other name>`` is as non-canonical as the workset root."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _default(env, contents="primary")
+        rc = run_move(_move_args(pdir, ws.workspaces_dir / "zzz", to_workset="ws"))
+        assert rc == 1
+        assert "Refusing to record" in capsys.readouterr().err
+        assert (pdir / "file.txt").read_text() == "primary"
+        assert not (ws.workspaces_dir / "zzz").exists()
+
+    def test_standalone_move_into_the_target_workset_root(self, env, capsys):
+        """A standalone source is held to the same one-leaf rule."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        sdir = _standalone(env)
+        stray = ws.root / "sa"
+        rc = run_move(_move_args(sdir, stray, to_workset="ws"))
+        assert rc == 1
+        assert "Refusing to record" in capsys.readouterr().err
+        assert (sdir / "file.txt").read_text() == "x"
+        assert not stray.exists()
+
+    def test_remap_onto_a_non_canonical_in_tree_path(self, env, capsys):
+        """``remap`` records records only, but still not a workspace that never was."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        leaf = _named(env, ws)
+        other = ws.root / "other"
+        other.mkdir()
+        (other / "file.txt").write_text("moved by hand")
+        rc = run_remap(_remap_args(str(leaf), other))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Refusing to record" in err
+        assert "and remap" in err
+        again = resolve_lifecycle_target(str(leaf), std, config)
+        assert again.workspace_path == leaf.resolve()
+        assert (other / "file.txt").read_text() == "moved by hand"
+
+
+class TestExternalSourceNotRelocated:
+    """D: the user's own directory is never copied, and never re-recorded elsewhere."""
+
+    def test_convert_bare_move_from_an_external_member(self, env, capsys):
+        config, std, tmp_home = env
+        ws1 = create_workset("ws1", tmp_home / "ws1_root", std)
+        ws2 = create_workset("ws2", tmp_home / "ws2_root", std)
+        ext = _external_member(env, ws1)
+        rc = run_convert(_convert_args("proj", to_workset="ws2", move=_BARE_MOVE))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "external-connected project" in err
+        assert "box remap" in err
+        assert (ext / "file.txt").read_text() == "mine"
+        assert not (ws2.workspaces_dir / "proj").exists()
+        again = resolve_lifecycle_target(str(ext), std, config)
+        assert again.workspace_path == ext.resolve()
+
+    def test_convert_default_move_from_an_external_member(self, env, capsys):
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        ext = _external_member(env, ws)
+        dest = tmp_home / "newp"
+        rc = run_convert(_convert_args("proj", to_default=True, move=str(dest)))
+        assert rc == 1
+        assert "external-connected project" in capsys.readouterr().err
+        assert not dest.exists()
+        assert (ext / "file.txt").read_text() == "mine"
+
+    def test_convert_standalone_move_from_an_external_member(self, env, capsys):
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        ext = _external_member(env, ws)
+        dest = tmp_home / "newsa"
+        rc = run_convert(_convert_args("proj", to_standalone=True, move=str(dest)))
+        assert rc == 1
+        assert "external-connected project" in capsys.readouterr().err
+        assert not dest.exists()
+        assert (ext / "file.txt").read_text() == "mine"
+
+    def test_a_locked_external_box_reports_the_lock_first(self, env, capsys):
+        """The lock is the first fact the user must act on, so it outranks the refusal."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        ext = _external_member(env, ws)
+        state = resolve_lifecycle_target(str(ext), std, config)
+        state.metadata_path.mkdir(parents=True, exist_ok=True)
+        (state.metadata_path / ".kanibako.lock").write_text("")
+        rc = run_move(_move_args(str(ext), tmp_home / "somewhere", force=False))
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "lock file found" in err
+        assert "external-connected" not in err
+
+
+class TestOccupiedLandingRefused:
+    """N1: an unregistered leaf of the target's new name is the user's, not ours."""
+
+    def test_in_place_rename_onto_an_occupied_leaf(self, env, capsys):
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        leaf = _named(env, ws, "alpha")
+        occupied = ws.workspaces_dir / "beta"
+        occupied.mkdir(parents=True)
+        (occupied / "keep.txt").write_text("keep")
+        rc = run_convert(_convert_args("alpha", to_workset="ws", name="beta"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Refusing to land 'beta'" in err
+        assert str(occupied) in err
+        assert (occupied / "keep.txt").read_text() == "keep"
+        assert (leaf / "file.txt").read_text() == "wsdata"
+        again = resolve_lifecycle_target(str(leaf), std, config)
+        assert again.name == "alpha"
+        assert again.workspace_path == leaf.resolve()
+
+    def test_bare_move_onto_an_occupied_leaf(self, env, capsys):
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _default(env, contents="primary")
+        occupied = ws.workspaces_dir / "proj"
+        occupied.mkdir(parents=True)
+        (occupied / "keep.txt").write_text("keep")
+        rc = run_convert(_convert_args(str(pdir), to_workset="ws", move=_BARE_MOVE))
+        assert rc == 1
+        assert "already exists" in capsys.readouterr().err
+        assert (occupied / "keep.txt").read_text() == "keep"
+        assert (pdir / "file.txt").read_text() == "primary"
+
+
+class TestLandingsThatMustKeepWorking:
+    """The exemptions: what F1 and the occupied-landing check must NOT refuse."""
+
+    def test_same_workset_same_name_move_to_an_external_path(self, env):
+        """The source's own leaves are exempt, and an external landing is never in-tree."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        leaf = _named(env, ws)
+        ext = tmp_home / "ext_repo2"
+        rc = run_move(_move_args(str(leaf), ext))
+        assert rc == 0
+        assert (ext / "file.txt").read_text() == "wsdata"
+        # The old in-tree leaf is retired and the discoverability link takes its place.
+        assert leaf.is_symlink()
+        assert os.readlink(leaf) == str(ext)
+        again = resolve_lifecycle_target(str(leaf), std, config)
+        assert again.workspace_path == ext.resolve()
+
+    def test_remap_onto_an_existing_destination(self, env):
+        """``remap``'s files are meant to be where it records them."""
+        config, std, tmp_home = env
+        pdir = _default(env, contents="keep")
+        moved = tmp_home / "moved_here"
+        pdir.rename(moved)
+        rc = run_remap(_remap_args(str(pdir), moved))
+        assert rc == 0
+        assert (moved / "file.txt").read_text() == "keep"
+        assert str(moved) in load_primary_boxes(std.primary_workset).values()
+
+    def test_bare_move_into_the_workset(self, env):
+        """The canonical landing is what F1 exists to leave alone."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _default(env, contents="primary")
+        rc = run_convert(_convert_args(str(pdir), to_workset="ws", move=_BARE_MOVE))
+        assert rc == 0
+        assert (ws.workspaces_dir / "proj" / "file.txt").read_text() == "primary"
