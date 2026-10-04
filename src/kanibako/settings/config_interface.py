@@ -1101,6 +1101,34 @@ def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None:
     return read_leaf(slot)
 
 
+def _node_noun_file_value(
+    canonical: str, slot: AgentFileSlot, noun_file: "Path | None",
+    command_scope: "ConfigLevel | None",
+) -> "str | None":
+    """⚑ THE SECOND HOME FOR ONE KEY: the NOUN's own settings file, at the node's file
+    TAIL. A per-node ``agent.<node>.<tail>`` is stored in EITHER file — the agent level
+    outranks the system level (spec §2), so the system file's ``agent: <node>:`` row is
+    a downward key it stores — and the launch cascade reads both, so a read consulting the
+    node's file alone answers ``(not set)`` over a value the launch delivers.
+    ⚑ TAIL AND NODE COME FROM *slot*; the reserved ``default`` tier is excluded upstream.
+    ⚑ ``agent: <node>:`` ONLY, NEVER ``self:`` — ``self`` is the per-agent file's root and
+    nowhere else's (spec §0), so the slot is built without a ``self_root``.
+    ⚑ AND ONLY WHERE THE CASCADE KEEPS THE TABLE — :func:`_dropped_tables_get_reads`'s own
+    rule. At workset or box scope the noun outranks the agent level, so the cascade drops
+    that file's whole ``agent:`` table; reading it there would report a value no launch
+    applies, which is this same fabrication mirrored.
+    """
+    from kanibako.settings.settings_drops import cascade_drop_set
+
+    if noun_file is None or command_scope is None:
+        return None
+    if "agent" in cascade_drop_set(command_scope.value):
+        return None
+    return _read_slot(
+        canonical, AgentFileSlot(noun_file, slot.tail, slot.node, self_root=False),
+    )
+
+
 def _stored_shape_for(canonical: str, value: object) -> object:
     """*value* in the shape a SETTINGS FILE must hold it in at *canonical* — the WRITE-side
     twin of :func:`_argv_aware`, and the scope files' half of what ``agent_file.write_leaf``
@@ -1226,7 +1254,12 @@ def get_config_value(
         bind_target = _node_bind_target(canonical, agents_root)
         if bind_target is None:
             return None
-        return read_leaf(bind_target)
+        val = read_leaf(bind_target)
+        if val is not None:
+            return val
+        return _node_noun_file_value(
+            canonical, bind_target, noun_file, command_scope,
+        )
 
     # ``agent.<node>.secret_path.<VAR>`` — the stored PATH, never the secret VALUE (spec §2a).
     # ⚑ BEFORE the persona branch (discriminated node storage).
@@ -1237,7 +1270,12 @@ def get_config_value(
         secret_target = _node_secret_target(canonical, agents_root)
         if not isinstance(secret_target, AgentFileSlot):
             return None  # no store here, or a refused node — a read reports neither
-        return _read_slot(canonical, secret_target)
+        val = _read_slot(canonical, secret_target)
+        if val is not None:
+            return val
+        return _node_noun_file_value(
+            canonical, secret_target, noun_file, command_scope,
+        )
 
     # ``<scope>.secret_path.<VAR>`` — the stored PATH from the NOUN's settings file.
     # ⚑ ``noun_file``, NOT ``project_toml``: the SYSTEM handler never threads the latter.
@@ -1263,9 +1301,14 @@ def get_config_value(
     # ``is_agent_default_tier_key`` covers both halves of the tier here.
     if _is_persona_agent_key(canonical) and not is_agent_default_tier_key(canonical):
         target = _persona_agent_target(canonical, agents_root, verb="read")
-        if isinstance(target, AgentFileSlot):
-            return _read_slot(canonical, target)
-        return None
+        if not isinstance(target, AgentFileSlot):
+            return None
+        val = _read_slot(canonical, target)
+        if val is not None:
+            return val
+        return _node_noun_file_value(
+            canonical, target, noun_file, command_scope,
+        )
 
     # Bare agent settings (model, continue_mode, access, allow_helpers).
     if _is_agent_setting(canonical):

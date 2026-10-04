@@ -45,6 +45,7 @@ def _set_leaf(store: 'Any', parts: list, value: object) -> None
 def _argv_aware(leaf: str, fallback: 'Callable[[object], str]') -> 'Callable[[object], str]'
 def _scalar_family_render(key: str, category: str) -> 'Callable[[object], str]'
 def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None
+def _node_noun_file_value(canonical: str, slot: AgentFileSlot, noun_file: 'Path | None', command_scope: 'ConfigLevel | None') -> 'str | None'
 def _stored_shape_for(canonical: str, value: object) -> object
 def _set_confirmation(display_key: str, value: object) -> str
 def _null_path_key_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'
