@@ -96,6 +96,7 @@ def _warn_once(message: str) -> None
 def _none_setter(written: Sequence[_WrittenLevel], key: str, dest: str | None) -> str | None
 def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]
 def _warn_lone_none_standard_binds(floor: Mapping[str, object], merged: KeyStore, expanded: KeyStore, *, null_sources: NullSources, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
+def _warn_rootless_channel_binds(rootless: Sequence[tuple[str, str]], expanded: KeyStore, *, written: Sequence[_WrittenLevel]) -> None
 def _warn_null_ref_secrets(merged: KeyStore, expanded: KeyStore, *, active_agent: str, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None

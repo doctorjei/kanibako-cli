@@ -77,7 +77,12 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
 
         state = _default_state_from_meta(workspace, std)
         assert state is not None
-        _remove_old_metadata(state, std, config, _Unwind())
+        # The destination took both sides, so the teardown owns both source leaves.
+        _remove_old_metadata(
+            state, std, config, _Unwind(),
+            dst_vault=(std.primary_vault_ro / "moved",
+                      std.primary_vault_rw / "moved"),
+        )
 
         # The per-box LEAVES went with the box...
         assert not proj.vault_ro_path.exists()
@@ -103,7 +108,12 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         (proj.vault_ro_path / "keep.txt").write_text("box data")
 
         state = _default_state_from_meta(workspace, std)
-        _remove_old_metadata(state, std, config, _Unwind())
+        # The destination took both sides, so the teardown owns both source leaves.
+        _remove_old_metadata(
+            state, std, config, _Unwind(),
+            dst_vault=(std.primary_vault_ro / "moved",
+                      std.primary_vault_rw / "moved"),
+        )
 
         assert not proj.vault_ro_path.exists()
         assert not proj.vault_rw_path.exists()
@@ -132,7 +142,12 @@ class TestPrimarySourceCleanupFollowsTheRepoint:
         # Degenerate state: the arm with no per-box leaf.
         state.vault_ro = std.primary_vault_ro
         state.vault_rw = std.primary_vault_rw
-        _remove_old_metadata(state, std, config, _Unwind())
+        # The destination took both sides, so the teardown owns both source leaves.
+        _remove_old_metadata(
+            state, std, config, _Unwind(),
+            dst_vault=(std.primary_vault_ro / "moved",
+                      std.primary_vault_rw / "moved"),
+        )
 
         assert std.primary_vault_ro.is_dir()
         assert (other / "keep.txt").read_text() == "another box's data"
@@ -535,6 +550,24 @@ class TestArchiveStubNamesTheRealVault:
         assert stub.vault_ro_path == std.primary_vault_ro / stub.name
         assert "unknown-" not in str(stub.vault_ro_path)
 
+    def test_a_null_arm_leaves_the_stub_without_a_vault_leaf(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """``archive --all`` on a primary box whose path is gone: the stub must answer
+        ``<None>`` for the nulled arm rather than compose a leaf under it."""
+        from kanibako.commands.archive import _stub_project
+
+        std, config = _reload(config_file)
+        _repoint(std.primary_workset, "vault_ro", None)
+        std, config = _reload(config_file)
+        workspace = tmp_home / "gone4" / "app"
+        workspace.mkdir(parents=True)
+        proj = resolve_project(std, config, str(workspace), initialize=True)
+
+        stub = _stub_project(proj.metadata_path, None, std, config)
+        assert stub.vault_ro_path is None
+        assert stub.vault_rw_path == std.primary_vault_rw / stub.name
+
 
 # ---------------------------------------------------------------------------
 # ITEM 4 — helper vaults answer NO workset key (measured, not assumed)
@@ -597,3 +630,110 @@ class TestDuplicateGitignoreTargetsTheSkeletonParent:
         assert ro == new_path / "vault" / "ro"
         assert rw == new_path / "vault" / "rw"
         assert ro.parent == new_path / "vault"
+
+
+# ---------------------------------------------------------------------------
+# A NULL arm — the destructive verbs and the reporting ones, per box mode.
+# ---------------------------------------------------------------------------
+
+
+class TestNullArmIsNoSuchDir:
+    """``workset.{vault_ro,vault_rw}: null`` names no dir, so every consumer that would
+    ``rm -rf`` or report a per-box leaf has nothing to act on — and says so rather than
+    inventing the default leaf.
+
+    ⚑ The verb still RUNS: a null arm is a declared value, not a refusal, and refusing
+    would make the documented cure the one thing that cannot be done.
+    """
+
+    def test_box_rm_purges_a_primary_box_with_a_null_arm(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """``box rm``'s PRIMARY teardown: no vault leaf is named, and the metadata goes."""
+        from kanibako.commands.box._parser import _teardown_primary_box
+
+        std, config = _reload(config_file)
+        _repoint(std.primary_workset, "vault_ro", None)
+        std, config = _reload(config_file)
+        assert std.primary_vault_ro is None
+        meta = tmp_home / "boxes" / "nullarm"
+        meta.mkdir(parents=True)
+        (meta / "box.yaml").write_text("{}\n")
+
+        assert _teardown_primary_box(std, "nullarm", meta) is True
+        out = capsys.readouterr().out
+        assert "Removed metadata" in out
+        assert not meta.exists()
+
+    def test_box_info_reports_a_null_arm_as_none(self, config_file, tmp_home, capsys):
+        """``box info`` prints ``<None>``, not the text ``None`` and not a default leaf."""
+        from kanibako.commands.box._parser import run_info
+
+        std, config = _reload(config_file)
+        root = tmp_home / "infobox"
+        root.mkdir()
+        _repoint(root, "vault_ro", None)
+        proj = resolve_standalone_project(std, config, project_dir=str(root),
+                                          initialize=True)
+        assert run_info(argparse.Namespace(path=str(root), box=None, json=False)) == 0
+        out = capsys.readouterr().out
+        assert "Vault RO" in out and "<None>" in out
+        # Anti-vacuity: the other arm still reports its real path.
+        assert str(proj.vault_rw_path) in out
+
+    def test_clean_purge_of_one_primary_box_skips_a_null_arm(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """The single-box sibling of the ``--all`` case: same arms, one box tree."""
+        from kanibako.commands.clean import _purge_one
+
+        std, config = _reload(config_file)
+        workspace = tmp_home / "code" / "purgeone"
+        workspace.mkdir(parents=True)
+        proj = resolve_project(std, config, str(workspace), initialize=True)
+        _repoint(std.primary_workset, "vault_ro", None)
+        std, config = _reload(config_file)
+        assert std.primary_vault_ro is None
+
+        assert _purge_one(std, config, str(workspace), force=True) == 0
+        capsys.readouterr()
+        assert not proj.metadata_path.exists()
+        # Anti-vacuity: the other arm's per-box leaf did exist, and is gone.
+        assert not (std.primary_vault_rw / proj.name).exists()
+
+    def test_clean_purge_all_skips_a_null_primary_arm(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """``box purge --all`` walks every box meta dir; a null arm yields no leaf."""
+        from kanibako.commands.clean import _purge_all
+
+        std, config = _reload(config_file)
+        workspace = tmp_home / "code" / "purgeall"
+        workspace.mkdir(parents=True)
+        proj = resolve_project(std, config, str(workspace), initialize=True)
+        _repoint(std.primary_workset, "vault_rw", None)
+        std, config = _reload(config_file)
+        assert std.primary_vault_rw is None
+
+        assert _purge_all(std, config, force=True) == 0
+        capsys.readouterr()
+        assert not proj.metadata_path.exists()
+        # Anti-vacuity: the other arm's per-box leaf did exist, and is gone.
+        assert not (std.primary_vault_ro / proj.name).exists()
+
+    def test_vault_commands_report_no_vault_dir_for_a_null_arm(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The vault verbs name the key that nulled it, so the user knows what to fix."""
+        from kanibako.commands.vault_cmd import _resolve_vault_rw
+
+        std, config = _reload(config_file)
+        root = tmp_home / "vaultnull"
+        root.mkdir()
+        _repoint(root, "vault_rw", None)
+        proj = resolve_standalone_project(std, config, project_dir=str(root),
+                                          initialize=True)
+        assert proj.vault_rw_path is None
+        assert _resolve_vault_rw(str(root)) is None
+        err = capsys.readouterr().err
+        assert "workset.vault_rw" in err

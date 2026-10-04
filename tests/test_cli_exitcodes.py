@@ -424,6 +424,34 @@ class TestStandaloneLaunch:
         proj.shell_path.mkdir(parents=True, exist_ok=True)
         return proj
 
+    def test_a_null_vault_rw_arm_takes_no_auto_snapshot(self, start_mocks, tmp_path):
+        """``workset.vault_rw: null`` names no vault dir, so there is nothing to snapshot.
+
+        ⚑ Patched where it is DEFINED: ``_run_container`` imports ``auto_snapshot``
+        inside the function, so patching this module's attribute would not intercept it.
+        """
+        from unittest.mock import patch
+
+        from kanibako.commands.start import _run_container
+
+        project = tmp_path / "novaultsnap"
+        project.mkdir()
+        (project / ".kanibako").mkdir()
+
+        with start_mocks() as m, patch("kanibako.snapshots.auto_snapshot") as m_snap:
+            proj = self._make_standalone_proj(project)
+            proj.vault_rw_path = None
+            m.resolve_any_project.return_value = proj
+
+            rc = _run_container(
+                project_dir=str(project), entrypoint=None, image_override=None,
+                new_session=False, safe_mode=False, resume_mode=False,
+                extra_args=[],
+            )
+
+        assert rc == 0
+        m_snap.assert_not_called()
+
     def test_start_detects_standalone_project(self, start_mocks, tmp_path):
         """start from a standalone project dir uses resolve_any_project."""
         from kanibako.commands.start import _run_container

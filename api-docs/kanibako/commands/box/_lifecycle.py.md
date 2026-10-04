@@ -12,6 +12,7 @@ INPLACE = _Sentinel('INPLACE')
 BARE_INTO_WS = _Sentinel('BARE_INTO_WS')
 UNCHANGED = _Sentinel('UNCHANGED')
 STUBBORN_INPLACE_MSG = 'Stubbornly refusing to convert in-place from within a workset; add `--move` or `--move <path>` to relocate.'
+_VAULT_ARM_KEYS: tuple[str, str] = ('workset.vault_ro', 'workset.vault_rw')
 _STANDALONE_FIXED_ARTIFACTS = frozenset({STANDALONE_META_DIR, WORKSET_META_FILE, BOX_META_FILE, '.kanibako.lock'})
 _STANDALONE_ROOT_DIR_KEYS = (('workset.workspaces', _resolve_standalone_workspaces), ('workset.vault_ro', resolve_workset_vault_ro), ('workset.vault_rw', resolve_workset_vault_rw), ('workset.canon', resolve_workset_canon))
 _BARE_MOVE = _Sentinel('BARE_MOVE')
@@ -42,13 +43,17 @@ def _unwind_box_tree(path: Path) -> None
 def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str='home', unwind: _Unwind) -> Path
 def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> None
 def _vault_leaf_has_contents(leaf: Path) -> bool
-def _copy_vault_leaf_contents(src: Path, dst: Path) -> None
+def _copy_vault_leaf_contents(src: Path, dst: Path | None) -> None
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
-def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path, dst_rw: Path) -> list[tuple[Path, Path]]
-def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path, dst_rw: Path) -> None
-def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, preserve_name: str | None=None, preserve_root: Path | None=None) -> None
-def _retire_old_store(ws: Workset, name: str) -> None
-def _report_store_leftovers(ws: Workset, name: str, err: OSError | None=None) -> None
+def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None) -> list[tuple[Path, Path]]
+def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None) -> None
+def _report_retained_vault(vault: Path, why: str) -> None
+def _unreceived_vault_leaves(src_arms: tuple[Path | None, Path | None], dst_vault: tuple[Path | None, Path | None], leaf_name: str='') -> list[tuple[Path, str]]
+def _report_unreceived_vaults(kept: list[tuple[Path, str]]) -> None
+def _carried_member_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None]) -> tuple[tuple[Path, ...], list[tuple[Path, str]]]
+def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, dst_vault: tuple[Path | None, Path | None], preserve_name: str | None=None, preserve_root: Path | None=None) -> None
+def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None]) -> None
+def _report_store_leftovers(ws: Workset, name: str, err: OSError | None=None, *, keep: list[tuple[Path, str]] | None=None) -> None
 def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str='', force: bool=False) -> ProjectState
 def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None) -> Path
 def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]
@@ -63,7 +68,7 @@ def _state_ws_root(state: ProjectState, std: StandardPaths) -> Path
 def _relocate_channel_partition(old: ProjectState, new: ProjectState, std: StandardPaths) -> None
 def _safe_unregister(std: StandardPaths, name: str) -> None
 def _safe_register_membership(std: StandardPaths, name: str, workspace: Path) -> None
-def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path, Path]
+def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | None, Path | None]
 def _existing_member_leaves(ws: Workset, name: str) -> frozenset[Path]
 def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None
 def _dispose_stash(stash: Path) -> None
@@ -86,8 +91,8 @@ class ProjectState:
     workspace_path: Path
     metadata_path: Path
     shell_path: Path
-    vault_ro: Path
-    vault_rw: Path
+    vault_ro: Path | None
+    vault_rw: Path | None
     is_external: bool = False
     ws: Workset | None = None
     enable_vault: bool = True

@@ -210,7 +210,7 @@ def _archive_all(std, config, args) -> int:
 def _stub_project(metadata_path, project_path, std, config):
     """Create a minimal ProjectPaths stand-in for projects whose path is gone."""
     from kanibako.launch import box_resolve
-    from kanibako.settings.paths import ProjectPaths, project_hash
+    from kanibako.settings.paths import ProjectPaths, _primary_box_paths, project_hash
 
     # P8a: name from box_resolve's identity (registry KEY / composed standalone
     # name).  A gone-path box that is STILL registered resolves by its (now
@@ -229,25 +229,27 @@ def _stub_project(metadata_path, project_path, std, config):
         phash = metadata_path.name
 
     effective_path = project_path or Path(f"(unknown-{name or metadata_path.name})")
-    # ⚑ The vault arms are the PRIMARY workset's RESOLVED ``@workset.{vault_ro,vault_rw}``
-    # plus this box's ``<name>`` leaf — the same derivation ``_primary_box_paths`` uses,
-    # and the only one that can be right here: ``_stub_project`` is reached ONLY from
-    # ``_archive_all``'s default-mode loop, so the stub is a PRIMARY box (the ``mode``
-    # default this constructor takes).
-    # ⚑⚑ It was composed off ``effective_path`` — the WORKSPACE — which was never a vault
-    # path in ANY mode.  That was filler added (``840f7907``) to satisfy a required
+    # ⚑⚑ The vault arms are the PRIMARY workset's RESOLVED ``@workset.{vault_ro,vault_rw}``
+    # plus this box's ``<name>`` leaf, and :func:`paths._primary_box_paths` is the ONE
+    # derivation of that: this stub is reached ONLY from ``_archive_all``'s
+    # default-mode loop, so the box is a PRIMARY one (the ``mode`` default this
+    # constructor takes).
+    # ⚑⚑ They were composed off ``effective_path`` — the WORKSPACE — which was never a
+    # vault path in ANY mode.  That was filler added (``840f7907``) to satisfy a required
     # dataclass field, not a resolution; on the ``project_path is None`` branch it even
     # produced the RELATIVE ``(unknown-<name>)/vault/ro``.  ``_archive_one`` reads neither
     # field, so nothing has ever consumed it — but a stub that names a real box must not
     # hand out a path no verb could act on.
-    vault_leaf = name or metadata_path.name
+    _shell, vault_ro_path, vault_rw_path = _primary_box_paths(
+        std, metadata_path, name or metadata_path.name,
+    )
     return ProjectPaths(
         project_path=effective_path,
         project_hash=phash,
         metadata_path=metadata_path,
         shell_path=metadata_path / "home",
-        vault_ro_path=std.primary_vault_ro / vault_leaf,
-        vault_rw_path=std.primary_vault_rw / vault_leaf,
+        vault_ro_path=vault_ro_path,
+        vault_rw_path=vault_rw_path,
         is_new=False,
         name=name,
     )
