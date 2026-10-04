@@ -1665,3 +1665,183 @@ class TestAReservedNameInASettingsFileRefusesInsteadOfCrashing:
 
         code, _ = self._run(["box", "show", project_dir, "--effective"], capsys)
         assert code == 0
+
+
+class TestEffectiveRendersANodeTheWayAUserWritesIt:
+    """``box show --effective`` names an agent's node in the ``+`` form, never ``℘``.
+
+    ``℘`` is a KEY-PATH device: a key path splits on ``.`` into segments that admit no
+    ``+`` (``kanibako.agent_ref`` says why), so the cascade builds every node-bearing
+    key canonically. Printing that key verbatim showed a user a spelling no command
+    accepts, in the block whose whole purpose is to be copied out.
+
+    ⚑ END-TO-END THROUGH ``cli.main``, because the rendered row is assembled by the
+    verb's own snapshot walk -- a unit test of a renderer would not reach the keys that
+    walk actually produces. The three assertions are the three distinct key SOURCES the
+    block has: a ``pref`` REQUEST, a CONCRETE per-tier bind, and the ABSTRACT declaration
+    beside its ``binding_derivations`` derivation.
+
+    ⚑ AND ONLY THE KEYS. A bind's ``src`` and ``dest``, and a pref's stored VALUE, are
+    DATA the user typed and must read back verbatim -- normalising them would print a
+    path that no longer exists and contradict the ``env`` lines below, which render the
+    same value through ``render_stored_scalar`` and keep the character. The fixture
+    therefore puts ``℘`` inside a source path and inside a value, so a fix that reaches
+    past the key column turns this red.
+    """
+
+    def _box(self, config_file, tmp_home):
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+
+        store = std.agents / "nav+claude" / "agent.yaml"
+        store.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(store, {
+            "self": {
+                "model": "sonnet",
+                "bindings": {"ro": {"/etc/agent-thing": ["/srv/℘data"]}},
+                "env": {"LABEL": "a℘b"},
+            },
+        })
+        dump_doc(proj.metadata_path / "box.yaml", {
+            "pref": {
+                "system": {"agent": "nav+claude"},
+                "agent": {"nav+claude": {"access": "editing"}},
+            },
+        })
+        return project_dir
+
+    def test_the_effective_block_prints_every_node_bearing_key_as_plus(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako import cli
+
+        project_dir = self._box(config_file, tmp_home)
+
+        try:
+            code = cli.main(["box", "show", project_dir, "--effective"])
+        except SystemExit as exc:
+            code = exc.code
+        assert code == 0
+        out = capsys.readouterr().out
+
+        assert "  pref.agent.nav+claude.access = editing" in out, out
+        assert "    -> agent.nav+claude.access = editing" in out, out
+        assert "  agent.nav+claude.bindings.ro[/etc/agent-thing] = /srv/℘data" in out, out
+        assert "  agent.nav+claude.common[/home/agent/.claude/cache]" in out, out
+        assert "binding_derivations.agent.nav+claude.common[" in out, out
+
+    def test_the_key_fix_does_not_reach_into_data_columns(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako import cli
+
+        project_dir = self._box(config_file, tmp_home)
+
+        try:
+            code = cli.main(["box", "show", project_dir, "--effective"])
+        except SystemExit as exc:
+            code = exc.code
+        assert code == 0
+        out = capsys.readouterr().out
+
+        # A source path and a stored value are the user's own characters: shown as
+        # written, and not as a `+` that names a different path.
+        assert "/srv/℘data" in out, out
+        assert "/srv/+data" not in out, out
+        assert "  env LABEL = a℘b" in out, out
+        assert "a+b" not in out, out
+
+
+class TestResetNamesTheRequestTheWayAUserWroteIt:
+    """``box reset pref.agent.<node>.<leaf>`` confirms in the ``+`` form, never ``℘``.
+
+    A ``pref.<target>`` request is the one reset branch that speaks the CANONICAL key:
+    the persona branches a few lines below already swap in a display key, and the
+    generic tails name a key with no node in it. The request's TARGET is a node, so
+    the confirmation taught ``persona℘harness`` — the same spelling
+    ``_set_confirmation`` exists to keep out of ``set``'s own lesson.
+    """
+
+    def _box(self, config_file, tmp_home, *, node_spelling, leaf="access"):
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        dump_doc(proj.metadata_path / "box.yaml", {
+            "pref": {"agent": {node_spelling: {leaf: "editing"}}},
+        })
+        return project_dir
+
+    def _reset(self, project_dir):
+        from kanibako import cli
+
+        return cli.main(["box", "reset", project_dir, "pref.agent.nav+claude.access"])
+
+    def test_a_cleared_request_confirms_in_the_plus_form(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        # A file written by an older store spells the node with the internal separator.
+        project_dir = self._box(config_file, tmp_home, node_spelling="nav℘claude")
+
+        try:
+            code = self._reset(project_dir)
+        except SystemExit as exc:
+            code = exc.code
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "Cleared pref.agent.nav+claude.access" in out, out
+        assert "℘" not in out, out
+
+    def test_an_absent_request_says_so_in_the_plus_form(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        # The node holds a request, but not the one reset names.
+        project_dir = self._box(
+            config_file, tmp_home, node_spelling="nav+claude", leaf="model",
+        )
+
+        try:
+            code = self._reset(project_dir)
+        except SystemExit as exc:
+            code = exc.code
+        assert code == 0
+        out = capsys.readouterr().out
+        assert "No override for pref.agent.nav+claude.access" in out, out
+        assert "℘" not in out, out
+
+
+class TestGetRefusesANodeSpelledTwice:
+    """``box get`` refuses a box file spelling one node both ways, as ``set`` does (spec §0)."""
+
+    def test_box_get_names_both_spellings(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako import cli
+        from kanibako.settings.config_io import dump_doc
+
+        root = TestStandaloneBoxTierRoundTrip()._standalone(config_file, tmp_home)
+        _root_file, box_file = TestStandaloneBoxTierRoundTrip._files(root)
+        dump_doc(box_file, {"pref": {"agent": {
+            "navigator+claude": {"access": "editing"},
+            "navigator℘claude": {"access": "none"},
+        }}})
+        capsys.readouterr()
+
+        try:
+            code = cli.main(["box", "get", str(root), "pref.agent.navigator+claude.access"])
+        except SystemExit as exc:
+            code = exc.code
+        captured = capsys.readouterr()
+        assert code != 0, captured.out
+        assert captured.out == "", captured.out
+        assert "spelled twice" in captured.err, captured.err
+        assert "'pref.agent.navigator+claude'" in captured.err, captured.err
+        assert "'pref.agent.navigator℘claude'" in captured.err, captured.err

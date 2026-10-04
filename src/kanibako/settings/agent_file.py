@@ -1052,16 +1052,20 @@ def refuse_node_spelled_twice(table: dict, *, prefix: str, path: Path | None) ->
     (:func:`_contribution`, over its ``agent:`` table) and the cascade's fold
     (``settings_assemble._fold_node_table``). *prefix* is the table's dotted address.
     """
+    from kanibako.agent_ref import display_agent_ref
+
     where = str(path) if path is not None else "<settings>"
     identity: dict[Any, Any] = {}
     for seg in table:
         ident = _node_identity(seg)
         if ident in identity:
+            # ⚑ *ident* is the canonical node the two agree on, named as the user writes it; the
+            # two KEYS stay as the file spells them, being the entries to delete.
             raise SettingsError(
                 f"'{prefix}.{identity[ident]}' and '{prefix}.{seg}' in settings file {where} "
-                f"are ONE agent node ('{ident}') spelled twice; neither may silently win. "
-                f"Keep one spelling and remove the other (spec §0: an agent's node is "
-                f"lowercase)."
+                f"are ONE agent node ('{display_agent_ref(ident)}') spelled twice; neither may "
+                f"silently win. Keep one spelling and remove the other (spec §0: an agent's "
+                f"node is lowercase)."
             )
         identity[ident] = seg
 

@@ -33,6 +33,7 @@ def read_stored_leaf(noun_file: 'Path | None', sections: tuple[str, ...], leaf: 
 def render_stored_pref(v: object) -> str
 def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_pref) -> str | None
 def _guard_document(data: object) -> None
+def _resolved_section(table: dict, section: str) -> str
 ```
 
 ## Classes
