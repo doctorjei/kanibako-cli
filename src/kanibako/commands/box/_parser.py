@@ -911,7 +911,9 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
     from kanibako.project.workset import (
         _member_store_bases, load_workset_settings_doc, release_project,
     )
-    from kanibako.project.workset_registry import resolve_workset_registry_path
+    from kanibako.project.workset_registry import (
+        load_workset_boxes, resolve_workset_registry_path,
+    )
     from kanibako.runtime.container import remove_box_tree
 
     bases = _member_store_bases(ws)
@@ -930,7 +932,9 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
     new_registry = _new(registry)
 
     def undo() -> None:
-        release_project(ws, name)  # the record only; never a directory
+        # ⚑ The record only, never a directory — and ``keep_link``: a create makes no
+        # discoverability link, so a link at ``workspaces/<name>`` is the user's.
+        release_project(ws, name, keep_link=True)
         for path in new_leaves:
             if path == box_dir and path.is_dir():
                 remove_box_tree(path)
@@ -939,7 +943,8 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
         for path in new_parents:
             if path.is_dir() and not any(path.iterdir()):
                 path.rmdir()
-        if new_registry and registry.is_file():
+        # ⚑ Only while it holds no box: a member written meanwhile keeps its record.
+        if new_registry and registry.is_file() and not load_workset_boxes(registry):
             registry.unlink()
 
     return undo
@@ -1320,7 +1325,12 @@ def run_create(args: argparse.Namespace) -> int:
     finally:
         # ⚑ ONE cleanup path, for a refusal's ``return`` and a raise alike.
         if _undo_member is not None and not _journaled:
-            _undo_member()
+            # ⚑ A failed undo must not replace the error that brought us here.
+            try:
+                _undo_member()
+            except Exception as undo_err:  # noqa: BLE001 - reported, never raised
+                print(f"Warning: could not undo the member '{_member}' this create "
+                      f"added: {undo_err}", file=sys.stderr)
     seed_new_box(std, config, proj, explicit_agent=_agent_arg)
     # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
     # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).
