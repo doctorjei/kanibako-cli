@@ -1036,6 +1036,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is never handed to its endpoint. A malformed settings category is now reported before the token
   check.
 
+- **A `secret_path.<VAR>: null` now stops a lower scope's token from being mounted.** A `null` at the
+  box, working set, or agent scope says the endpoint needs no token, and the persona token check
+  already read it that way. The launch still mounted the token a lower scope pointed at, though (for
+  example a `system.secret_path.ANTHROPIC_AUTH_TOKEN`), so the box received a token its settings had
+  turned off. The `null` now wins its variable for the mount too: nothing is mounted at
+  `/run/kanibako/secrets/<VAR>` and the variable is not exported. A `secret_path` whose value refers
+  to a `null` key behaves the same way.
+
 - **The `agent` verbs refuse an undeclared entry in an agent's `agent.yaml` as a launch does, down
   to what is inside a category.** In v1.8.0-rc2 `agent show`, `info`, `list` and `get` answered rc 0 for a file a
   launch refused over its contents — an environment variable name that is not one
