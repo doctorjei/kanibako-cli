@@ -60,6 +60,7 @@ a dependency of this project and must not become one: it is pinned in CI, not in
 from __future__ import annotations
 
 import contextlib
+import re
 from typing import Any
 
 
@@ -752,3 +753,458 @@ def system_settings_rows() -> list[tuple[str, str, str]]:
         else:
             raise SystemExit(f"§2g: unreadable Default cell {row['Default']!r} for {key[1]}")
     return rows
+
+
+# --------------------------------------------------------------------------- #
+# §2d's FENCE notation, and the per-node cell classification.
+#
+# ⚑ §2d IS NOT A TABLE. Its rows are `key | default  notes` lines inside fenced
+# blocks, with brace forms (`agent.shell.bindings.{ro,rw}`) -- so `spec_table`
+# above, which reads §2g's ONE markdown table, reaches none of it. The row reader
+# below was MOVED here from `tests/test_settings/test_manifest_spec_parity.py`,
+# where it was written, so that test's §2d default-tier pin and the per-node
+# descriptor views read the fence through ONE implementation (P10). That test
+# imports the names it still owns from here; its SCOPE (§2d's default tier against
+# the manifest) is unchanged.
+#
+# ⚑ THE LOCATOR AND THE HEADING PARSER ARE STILL `scripts/keyspec-extract.py`'s,
+# reached through `_keyspec_extract` above. A third copy of where the spec lives is
+# what the moved test's own comment warned against.
+# --------------------------------------------------------------------------- #
+
+#: The nodes the `agent.<node>.*` parity views cover: the three shipped harness
+#: plugins, and the one pseudo-agent whose tier `core-defaults.yaml` declares. The
+#: `default` tier is NOT here -- `test_manifest_spec_parity` owns it.
+AGENT_TIER_NODES: tuple[str, ...] = ("claude", "codex", "goose", "shell")
+
+#: The §2d fence notation for the two values YAML cannot spell the way the spec
+#: writes them. `spec_notation` renders a value INTO this notation and a spec cell
+#: is compared as written, so neither carrier has to change to satisfy the other.
+SPEC_NULL = "<None>"
+SPEC_EMPTY = "{}"
+
+#: A row's value ends at the first run of two-or-more spaces; what follows is the
+#: description column. One space is not a separator -- no declared value in §2d
+#: contains one, and treating it as one would truncate any that later did.
+_VALUE_END = re.compile(r"\s{2,}")
+
+#: `bindings.{ro,rw}` -- §2d's two-arms-on-one-line notation. A way of writing two
+#: rows, not the spelling of a key.
+_BRACES = re.compile(r"^(?P<head>[^{}]*)\{(?P<alts>[^{}]+)\}(?P<tail>[^{}]*)$")
+
+
+def expand_braces(key: str) -> list[str]:
+    """The keys a spec row declares -- more than one where it uses brace notation."""
+    match = _BRACES.match(key)
+    if match is None:
+        return [key]
+    return [
+        f"{match['head']}{alt.strip()}{match['tail']}"
+        for alt in match["alts"].split(",")
+    ]
+
+
+def spec_notation(value: object) -> str:
+    """A value written in the spec fence's notation."""
+    if value is None:
+        return SPEC_NULL
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, dict) and not value:
+        return SPEC_EMPTY
+    return str(value)
+
+
+#: The fence's sentinel spellings, obtained by ASKING `spec_notation` for each of
+#: the values YAML cannot spell as itself rather than restating its literals -- so
+#: a respelled sentinel cannot drift out of sync between the two (P13). A spec row
+#: whose value is the QUOTED form of one of these is a literal STRING that merely
+#: reads like a sentinel, and the strip in `spec_fence_rows` must not turn it into
+#: one.
+_SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
+SPEC_SENTINELS = frozenset(spec_notation(value) for value in _SENTINEL_VALUES)
+
+
+def spec_fence(section: str, marker: str) -> list[str]:
+    """The lines INSIDE one fenced block of *section*, located by a MARKER line.
+
+    Derived by walking headings: the section's span comes from the extraction
+    script's own parser, the marker is located within that span, and the fence is
+    the block that opens on the next non-blank line. It FAILS CLOSED by raising --
+    a missing spec, a missing section, a marker that moved or was renamed, and an
+    unclosed fence all stop here, which exits a `[[parity]]` oracle nonzero: a
+    failure no baseline can accept.
+
+    ⚑ THE MARKER IS THE BOLD NAME ALONE, matched as the START of the line. §2d's
+    pseudo-agent name (`**shell**`) is a RESERVED name the spec is committed to,
+    while the gloss beside it is prose, rewordable at any time.
+    """
+    keyspec = _keyspec_extract()
+    path = keyspec._DEFAULT_SPEC
+    if not path.is_file():
+        raise SystemExit(f"spec not found: {path} (set KANI_CANON to the canon root)")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    sections = keyspec.parse_sections(lines)
+    if section not in sections:
+        raise SystemExit(f"{path}: no section {section!r}")
+    body = lines[sections[section].start - 1:sections[section].end]
+    marks = [n for n, raw in enumerate(body) if raw.strip().startswith(marker)]
+    if len(marks) != 1:
+        raise SystemExit(
+            f"{path}: §{section} carries {len(marks)} lines opening with {marker!r}, "
+            f"expected exactly 1 -- the fence's opening marker moved or was renamed"
+        )
+    rest = body[marks[0] + 1:]
+    opens = next((n for n, raw in enumerate(rest) if raw.strip()), None)
+    if opens is None or not rest[opens].startswith("```"):
+        raise SystemExit(f"{path}: the line after {marker!r} does not open a fenced block")
+    closes = next(
+        (n for n, raw in enumerate(rest[opens + 1:], start=opens + 1)
+         if raw.startswith("```")),
+        None,
+    )
+    if closes is None:
+        raise SystemExit(f"{path}: §{section}'s {marker!r} fence is never closed")
+    return rest[opens + 1:closes]
+
+
+def spec_cell_value(cell: str) -> str:
+    """One ``| value  description`` cell as the value to compare, in fence notation.
+
+    ⚑ DOUBLE QUOTES ARE THE FENCE'S STRING DELIMITER, not part of the value, so a
+    quoted sentinel keeps its quotes and compares unequal to a native one rather
+    than silently passing as it. No declared value in §2d contains a quote
+    character, so a stripped pair is the same string.
+    """
+    if len(cell) >= 2 and cell.startswith('"') and cell.endswith('"'):
+        unquoted = cell[1:-1]
+        if unquoted not in SPEC_SENTINELS:
+            return unquoted
+    return cell
+
+
+def _strip_html_comments(lines: list[str]) -> list[str]:
+    """*lines* with every ``<!-- ... -->`` span removed, spans crossing lines included.
+
+    A line keeps its position (an emptied line stays, as ``""`` or its uncommented
+    remainder), so nothing downstream that counts lines is shifted.
+    """
+    visible: list[str] = []
+    in_comment = False
+    for raw in lines:
+        kept, rest = "", raw
+        while rest:
+            if in_comment:
+                end = rest.find("-->")
+                if end < 0:
+                    rest = ""
+                else:
+                    rest, in_comment = rest[end + 3:], False
+            else:
+                start = rest.find("<!--")
+                if start < 0:
+                    kept, rest = kept + rest, ""
+                else:
+                    kept, rest, in_comment = kept + rest[:start], rest[start + 4:], True
+        visible.append(kept)
+    return visible
+
+
+def spec_fence_rows(section: str, marker: str) -> list[tuple[str, str]]:
+    """``(key, value-cell-as-written)`` for every ``key | value  notes`` row in a
+    fence, brace forms expanded to one pair per key.
+
+    ⚑ THE CELL IS RETURNED AS WRITTEN, quotes included, because whether it was
+    quoted is what tells a VALUE from PROSE (`"Command Line Shell (shell)"` is a
+    value; `tier REALIZATION …` is not). `spec_cell_value` and
+    `classify_spec_cell` are the two readers of that distinction, and they are here
+    so neither caller re-derives it.
+
+    ⚑ AN HTML COMMENT IS NOT A ROW. §2d annotates its fences with ``<!-- -->``
+    blocks, single- or multi-line, and an ``agent.<node>.x | y`` example written
+    inside one is prose about a row, not a row; `_strip_html_comments` removes it
+    before the row test.
+    """
+    rows: list[tuple[str, str]] = []
+    for raw in _strip_html_comments(spec_fence(section, marker)):
+        if "|" not in raw or raw.lstrip().startswith("#"):
+            continue
+        written_key, _, remainder = raw.partition("|")
+        cell = _VALUE_END.split(remainder.strip())[0].strip()
+        for key in expand_braces(written_key.strip()):
+            rows.append((key, cell))
+    return rows
+
+
+#: Cell classes. `STATED` is the only one a VALUE is compared for; the other two
+#: are named for what the spec's cell can support, as §2g's build named `(unset)`
+#: membership and its NOT EXPRESSIBLE residue.
+STATED = "stated"
+MEMBERSHIP = "membership"
+NOT_EXPRESSIBLE = "not-expressible"
+
+#: The two cells whose value is what ABSENCE yields: no producer value is compared
+#: against them. ⚑ `true` and `false` are NOT among them: the fence spells
+#: a boolean `true`, and `spec_notation(True)` is `true`, so `agent.shell.allow_helpers
+#: | true` and `agent.goose.env.GOOSE_DISABLE_KEYRING | true` are STATED values.
+ABSENCE_CELLS = (SPEC_NULL, SPEC_EMPTY)
+
+
+def classify_spec_cell(key: str, cell: str) -> str:
+    """`STATED`, `MEMBERSHIP` or `NOT_EXPRESSIBLE` for one §2d ``agent.<node>.*`` cell.
+
+    ⚑ THE THREE CLASSES ARE THE WHOLE VERDICT, STATED ONCE. `kinemata.toml` names
+    the view they drive and nothing else; restating the rules beside those
+    tables is the drift this function exists to prevent.
+
+    * **NOT EXPRESSIBLE** -- the cell cannot state a default a descriptor is held
+      to, and NO claim is made about it:
+      - a key carrying a ``[dest]`` index: a dest-keyed category ENTRY (§2a), not
+        a default -- ``bindings.ro[~/.local/bin/claude]``, ``synced[...]``;
+      - a QUOTED cell, however long: it is the fence's string delimiter around a
+        value (``"Command Line Shell (shell)"``);
+      - an UNQUOTED cell carrying whitespace, which is every REALIZATION
+        (``--model <val>``, ``tier REALIZATION ...``) and every
+        ``(none in descriptor) · host_prep=...`` line;
+      - a value starting ``@`` (a store-relative reference; ``canon``'s arm is
+        dynamic and lives in ``core_defaults.canon_default_categories``, as
+        ``pseudo_tier_defaults``' own docstring records);
+      - a value starting ``(``, or a ``<...>`` that is not ``<None>``: the
+        parenthesized host source of a dest-keyed entry, or a ``<runtime-probed …>``
+        placeholder.
+    * **MEMBERSHIP** -- the key is named and its value is what ABSENCE yields
+      (`<None>`, `{}`). A producer that yields no floor for the key (a ``None``
+      or empty-dict value, which `agent_tier_defaults` drops) reads the same as
+      one that omits the row, and any real value -- the STRING ``"{}"`` or
+      ``"<None>"`` included -- is a finding, so a fabricated default reds and an
+      honest omission does not.
+    * **STATED** -- a literal the descriptor's floor must equal.
+
+    A row this comparison does not cover at all is filtered by the caller, not
+    classified here: a ``meta.`` head is a different tier.
+    """
+    if "[" in key or "]" in key:
+        return NOT_EXPRESSIBLE
+    if not cell:
+        return NOT_EXPRESSIBLE
+    if len(cell) >= 2 and cell.startswith('"') and cell.endswith('"'):
+        return STATED
+    if any(char.isspace() for char in cell):
+        return NOT_EXPRESSIBLE
+    if cell.startswith(("@", "(")):
+        return NOT_EXPRESSIBLE
+    if cell.startswith("<") and cell != SPEC_NULL:
+        return NOT_EXPRESSIBLE
+    return MEMBERSHIP if cell in ABSENCE_CELLS else STATED
+
+
+def _node_fence_marker(node: str) -> str:
+    """The line that opens *node*'s §2d fence: a `####` subheading for a plugin,
+    the reserved bold pseudo-agent name for `shell`."""
+    if node == "shell":
+        return "**shell**"
+    return f"#### `agent.{node}.*`"
+
+
+def node_spec_rows(node: str) -> dict[str, tuple[str, str]]:
+    """``{key: (cell-class, value-as-written)}`` for one node's §2d default rows.
+
+    *node* is a member of :data:`AGENT_TIER_NODES`. The rows come from that node's
+    OWN §2d fence, located by its heading -- read as a heading, never as a line
+    number. A ``meta.agent.<node>.*`` row is a different tier and is not this
+    node's default corpus.
+    """
+    if node not in AGENT_TIER_NODES:
+        raise SystemExit(f"{node!r} is not a node with an agent.<node>.* tier")
+    prefix = f"agent.{node}."
+    rows: dict[str, tuple[str, str]] = {}
+    for key, cell in spec_fence_rows("2d", _node_fence_marker(node)):
+        if key.startswith(prefix):
+            rows[key] = (classify_spec_cell(key, cell), spec_cell_value(cell))
+    return dict(sorted(rows.items()))
+
+
+def node_spec_defaults(node: str) -> dict[str, str]:
+    """``{key: value}`` for the STATED cells -- the values a descriptor's floor is
+    held to, in the fence's notation and compared as written."""
+    return {
+        key: value
+        for key, (kind, value) in node_spec_rows(node).items()
+        if kind == STATED
+    }
+
+
+def node_not_expressible(node: str) -> list[str]:
+    """The rows this module makes NO claim about -- the list a report owes.
+
+    ⚑ THE MEMBERSHIP CLASS IS VISIBLE ONLY THROUGH ITS ABSENCE HERE.  A
+    ``<None>``/``{}`` cell names a key and states the value absence yields, so it
+    is neither a value to compare (`node_spec_defaults`) nor a row to report
+    (`node_not_expressible`); a producer yielding no floor for the key passes,
+    and any real value is a finding.
+    """
+    return [
+        key
+        for key, (kind, _value) in node_spec_rows(node).items()
+        if kind == NOT_EXPRESSIBLE
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# The DESCRIPTOR side -- what each node's own declaration PRODUCES, read through
+# the production loaders and never through a second reader of the YAML.
+# --------------------------------------------------------------------------- #
+
+
+def _is_absent(value: object) -> bool:
+    """True for a RAW producer value meaning "no floor": ``None`` or an empty dict.
+
+    Never decided from `spec_notation`: the string ``"{}"`` is a value.
+    """
+    return value is None or (isinstance(value, dict) and not value)
+
+
+def agent_tier_defaults(node: str) -> dict[str, str]:
+    """``{agent.<node>.<leaf>: value-in-spec-notation}`` for the defaults a node's
+    own declaration STATES.
+
+    ⚑ THE PRODUCTION ROUTE, NOT A HAND-BUILT DICT. A plugin's floor is what
+    ``get_target(node)().setting_descriptors()`` yields and what
+    ``descriptor_floor`` turns into ``agent.<node>.<key>`` entries; its ``env:``
+    rows are what ``default_envs()`` yields. The pseudo-agent's twin rows come
+    from ``core_defaults.pseudo_tier_defaults()`` and ``env_default_categories()``
+    -- the producers the launch itself reads.
+
+    ⚑ NO FLOOR IS NOT A STATED DEFAULT. A producer yields ``None`` for a row with
+    no default (a plugin's floorless row, the pseudo-agent's ``None`` rows), and an
+    empty dict is the same absence; such a value is dropped here rather than
+    produced. ⚑ THE TEST IS ON THE RAW VALUE, NEVER ITS NOTATION: a descriptor
+    default that is the STRING ``"{}"`` or ``"<None>"`` renders exactly like an
+    absence, and judging by notation would let that fabricated default pass. A
+    plugin loader refuses a real ``null``/dict default, so a plugin cannot state an
+    absence; it can only omit the default. A STATED cell is never an absence
+    (`classify_spec_cell`), so the drop cannot hide one -- a producer that blanks a
+    STATED row still reds as "declared, produced by nothing".
+
+    ⚑ ``$GUEST_HOME`` IS FOLDED BACK TO ``~``. The loader expands it to the guest
+    constant (§2a: the guest-home literal lives in one place), so the stored value
+    is the in-box path while the spec writes the ``~`` form. The fold is the
+    INVERSE of ``settings_resolve.expand_guest_home``; without it every
+    ``env.KANIBAKO_DIRECTIVE_FINAL`` row would disagree with a spec that is right.
+    """
+    from kanibako.settings.settings_resolve import GUEST_HOME
+
+    def notation(value: object) -> str:
+        if isinstance(value, str) and value.startswith(GUEST_HOME):
+            value = "~" + value[len(GUEST_HOME):]
+        return spec_notation(value)
+
+    produced: dict[str, str] = {}
+    prefix = f"agent.{node}."
+    for key, value in _agent_tier_floors(node).items():
+        if key.startswith(prefix) and not _is_absent(value):
+            produced[key] = notation(value)
+    return produced
+
+
+def _agent_tier_floors(node: str) -> dict[str, str | None]:
+    """``{agent.<node>.<leaf>: floor-or-None}`` from the production loaders."""
+    if node == "shell":
+        from kanibako.settings.core_defaults import (
+            env_default_categories, pseudo_tier_defaults,
+        )
+
+        rows: dict[str, str | None] = dict(pseudo_tier_defaults())
+        rows.update(env_default_categories())
+        return rows
+    from kanibako.targets import get_target
+    from kanibako.targets.base import descriptor_floor
+
+    target = get_target(node)()
+    rows = {
+        f"agent.{node}.{leaf}": value
+        for leaf, value in descriptor_floor(target.setting_descriptors()).items()
+    }
+    rows.update(target.default_envs())
+    return rows
+
+
+class _AgentRegistry:
+    """Shared construction for the ``agent.<node>.*`` registry below.
+
+    ⚑ STRUCTURAL, NOT INHERITED -- the trade `KeyspaceRegistry` makes: kinemata is
+    not a dependency of this project and must not become one, so a registry class
+    here satisfies `kinemata.contract.Registry` by having its members rather than
+    by importing the base, and this module imports with or without kinemata
+    installed.
+    """
+
+    match_mode = "strings"
+    suffixes: tuple[str, ...] | None = None
+    machinery: tuple[str, ...] = ()
+    mentions_are_uses = True
+    budget = 16 * 1024
+    line_budget = 160
+    boundary = ""
+
+    def __init__(self, *, node: str, name: str = "agent-tier", **options: object) -> None:
+        if node not in AGENT_TIER_NODES:
+            raise ValueError(f"registry {name!r}: {node!r} is not one of {AGENT_TIER_NODES}")
+        self.name = name
+        self.node = node
+        self.closed = False
+        self.options = dict(options)
+        self.rows = self._rows()
+
+    def _rows(self) -> list[dict[str, object]]:
+        raise NotImplementedError
+
+    def entries(self) -> list[Any]:
+        from kinemata.contract import Entry  # type: ignore[import-not-found]
+
+        return [Entry(id=str(row["key"]), clauses=(), extra=row) for row in self.rows]
+
+    def declared(self, identifier: str) -> bool:
+        return identifier in {str(row["key"]) for row in self.rows}
+
+    def resolve(self, identifier: str) -> tuple[str, ...]:
+        return ()
+
+    def detect(self, text: str) -> list[str]:
+        """⚑ EMPTY, AND SAYSO. These registries answer `parity`, which hands over
+        identifiers rather than source text; a literal matcher over a span of
+        Python would report a mention of `agent.claude.label` in a docstring as a
+        use. The project owns use-tracking for this tier, in
+        `kinemata_keyspace.KeyspaceRegistry`."""
+        return []
+
+    def line(self, entry: Any) -> str:
+        return str(entry.id)
+
+    def candidates(self, text: str) -> list[str]:
+        return []
+
+    @property
+    def notices(self) -> tuple[str, ...]:
+        return ()
+
+
+class AgentStatedDefaults(_AgentRegistry):
+    """The defaults one node's descriptor STATES, as ``key: {default: value}``.
+
+    The claim side of the ``agent-<node>-stated`` parity view. A row whose floor is
+    an absence value (``None``, ``{}``) states no default and is not an entry, which is what makes that view
+    comparable: §2d's STATED cells are literals, so a literal the descriptor does
+    not state is a finding rather than a shape to reconcile.
+    """
+
+    def __init__(self, *, node: str, name: str = "agent-stated", **options: object) -> None:
+        super().__init__(node=node, name=name, **options)
+
+    def _rows(self) -> list[dict[str, object]]:
+        return [
+            {"key": key, "default": value}
+            for key, value in agent_tier_defaults(self.node).items()
+        ]
