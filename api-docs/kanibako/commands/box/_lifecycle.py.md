@@ -47,6 +47,8 @@ def _copy_vault_leaf_contents(src: Path, dst: Path | None) -> None
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
 def _vault_carry_pairs(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None) -> list[tuple[Path, Path]]
 def _carry_vault_contents(state: ProjectState, std: StandardPaths, dst_ro: Path | None, dst_rw: Path | None) -> None
+def _move_log_back(dst: Path, src: Path) -> None
+def _carry_box_logs(state: ProjectState, std: StandardPaths, unwind: _Unwind, *, dst_logs: Path | None, dst_name: str) -> None
 def _report_retained_vault(vault: Path, why: str) -> None
 def _unreceived_vault_leaves(src_arms: tuple[Path | None, Path | None], dst_vault: tuple[Path | None, Path | None], leaf_name: str='') -> list[tuple[Path, str]]
 def _report_unreceived_vaults(kept: list[tuple[Path, str]]) -> None

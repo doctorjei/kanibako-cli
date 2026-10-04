@@ -383,6 +383,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box move` and `box convert` now carry a box's `workset.logs` files** (its helper log and
+  credential-watcher log) when the box gets a new name or a new `workset.logs` directory; before, the
+  logs stayed behind under the old name, where nothing wrote them. A move that rolls back puts them
+  back. A log file already present under the new name is left in place with a warning naming both
+  paths, and the box's own log stays where it was for you to reconcile.
+
 - **A foreground box whose session cannot be attached now says so.** When every attach attempt failed
   with the container still up, the retries stopped after `attempt 4/5` with nothing more said. The
   launch now exits non-zero with an error that names the still-running container and the cures

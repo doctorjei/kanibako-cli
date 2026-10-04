@@ -51,6 +51,7 @@ def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | Non
 def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles
 def remove_box_logs(logs_dir: Path | None, box: str) -> list[Path]
 def standalone_logs_dir(root: Path) -> Path | None
+def box_logs_dir_for(std: StandardPaths, mode: BoxMode, metadata_path: Path, ws_root: Path | None) -> Path | None
 def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]
 def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
