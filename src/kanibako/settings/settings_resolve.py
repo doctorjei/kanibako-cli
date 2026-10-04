@@ -237,6 +237,19 @@ def literal_expr(text: str) -> str:
     return "".join(f"\\{c}" if c in _EXPR_SIGNIFICANT else c for c in text)
 
 
+def is_verbatim_text(path: Sequence[str]) -> bool:
+    """Whether the key at *path* holds TEXT, never an expression: ``agent.<node>.endpoint``.
+
+    Keyspec ``agent.default.endpoint``: verbatim in every settings file and at ``set`` —
+    no ``@``-ref, ``$``/``~`` expansion or ``\\`` unescape, never refused for its
+    characters.  Its readers: the expander (every resolve), ``config set`` validation,
+    and the persona route, whose other values still enter as :func:`literal_expr`.
+    ⚑ A SINGLE NAMED EXCEPTION, not a key-kind facility: separating literal keys from
+    computed ones is a deferred design, and a second literal key belongs to it.
+    """
+    return len(path) == 3 and path[0] == "agent" and path[2] == "endpoint"
+
+
 def split_bind(value: str) -> tuple[str, str | None]:
     """Split ``host_src:guest_dest`` at the FIRST UNESCAPED ``:``; no colon ⇒ ``(value, None)``.
 

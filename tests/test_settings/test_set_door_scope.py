@@ -561,3 +561,51 @@ def _root_store(value, *, at: str = "workset.boxes") -> KeyStore:
     if at != "meta.box.path":
         snapshot["meta"] = KeyStore({"box": KeyStore({"path": "/tmp/onebox"})})
     return snapshot
+
+
+# --------------------------------------------------------------------------- #
+# The endpoint is TEXT at every set door (keyspec ``agent.default.endpoint``)  #
+# --------------------------------------------------------------------------- #
+
+#: Every character a settings EXPRESSION reads as syntax, in one endpoint.
+_TEXT_ENDPOINT = "https://SEKRITU:SEKRITP@host.invalid/v1/$NOPE/~x/@{a.b}/a\\b"
+
+
+def _stored_endpoints(root: Path) -> list:
+    """Every ``endpoint`` leaf in every settings file under *root*, as loaded."""
+    from kanibako.settings.config_io import load_doc
+
+    found: list = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, child in node.items():
+                if key == "endpoint":
+                    found.append(child)
+                walk(child)
+
+    for path in sorted(root.rglob("*.yaml")):
+        walk(load_doc(path))
+    return found
+
+
+class TestTheEndpointIsStoredAsText:
+    """Jei, 142nd: the endpoint is stored VERBATIM at ``set`` and is never refused for the
+    characters it contains — ``https://u:k@host/v1`` was refused as a dangling ``@host``."""
+
+    @pytest.mark.parametrize("key,scope", [
+        ("endpoint", ConfigLevel.system),               # the agent.default tier
+        ("agent.claude.endpoint", ConfigLevel.system),  # the per-node door (`agent set`)
+    ])
+    def test_the_value_is_written_as_typed(self, ws_files, key, scope):
+        message = _set(key, _TEXT_ENDPOINT, ws_files, scope,
+                       std=ws_files["std"], ws=ws_files["ws"])
+        assert not message.startswith("Error:"), message
+        root = ws_files["system"].parent
+        assert _stored_endpoints(root) == [_TEXT_ENDPOINT]
+
+    def test_a_sibling_key_is_still_an_expression(self, ws_files):
+        """CONTROL — the same text at ``model`` still carries the dangling ``@host``."""
+        message = _set("agent.claude.model", _TEXT_ENDPOINT, ws_files, ConfigLevel.system,
+                       std=ws_files["std"], ws=ws_files["ws"])
+        assert message.startswith("Error:"), message
