@@ -834,6 +834,118 @@ def test_one_node_spelled_twice_in_one_file_is_refused_naming_both(
     assert f"'agent.{first}'" in msg and f"'agent.{second}'" in msg and str(sysf) in msg
 
 
+@pytest.mark.parametrize(("spelled", "node"), [
+    ("nav+claude", "nav\u2118claude"), ("nav\u2118claude", "nav\u2118claude"),
+    ("gpt+claude", "gpt\u2118claude"),
+])
+def test_a_plus_spelled_node_in_a_settings_file_is_read_as_its_node(
+    tmp_path: Path, spelled: str, node: str
+) -> None:
+    # A node table is USER INPUT, so a node spelled `persona+harness` names the node every
+    # reader asks for and is READ. Its value reaches the level, which is what a stored node
+    # that read as nothing could never do.
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {spelled: {"model": "opus"}}})
+    levels = assemble_levels_at(agent_name="claude", system_path=sysf)
+    assert list(levels[SYSTEM]["agent"]) == [node]
+    assert dict.get(levels[SYSTEM]["agent"][node], "model") == "opus"
+
+
+def test_a_plus_spelled_node_in_a_settings_file_is_folded_silently(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # `+` is the spelling a human writes, so it is the PREFERRED one and joins no warning --
+    # unlike the capital-node fold, which warns because a capital name is a near miss.
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {"nav+claude": {"model": "opus"}}})
+    with caplog.at_level("WARNING"):
+        assemble_levels_at(agent_name="claude", system_path=sysf)
+    assert not [r for r in caplog.records if str(sysf) in r.getMessage()]
+
+
+def test_a_plus_spelled_capital_node_is_folded_and_warns_for_its_case_alone(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # BOTH folds reach the node and the warning names the case alone: the separator is the
+    # preferred spelling, so the capital node's own warning must not be suppressed by it.
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {"Nav+Claude": {"model": "opus"}}})
+    with caplog.at_level("WARNING"):
+        levels = assemble_levels_at(agent_name="claude", system_path=sysf)
+    assert list(levels[SYSTEM]["agent"]) == ["Nav\u2118claude"]
+    msgs = [r.getMessage() for r in caplog.records if str(sysf) in r.getMessage()]
+    assert len(msgs) == 1, msgs
+    assert "lowercase" in msgs[0], msgs
+
+
+def test_one_node_spelled_with_both_separators_gets_the_spelled_twice_verdict(
+    tmp_path: Path
+) -> None:
+    # ONE carrier for "which node does this key name", so the two-spellings check and the
+    # fold agree, and a file carrying BOTH is told the two collide -- the more specific
+    # diagnosis -- rather than that one of them is not a key.
+    sysf = _write(
+        tmp_path / "settings.yaml",
+        {"agent": {"nav+claude": {"model": "a"}, "nav\u2118claude": {"model": "b"}}},
+    )
+    with pytest.raises(SettingsError, match="ONE agent node .* spelled twice") as exc:
+        assemble_levels_at(agent_name="claude", system_path=sysf)
+    msg = str(exc.value)
+    # ⚑ THE NODE IS NAMED THE WAY THE USER WRITES IT, so the key they must delete is one they can
+    # find. The two KEYS stay as the file spells them -- one of them really is written ``℘``.
+    assert "ONE agent node ('nav+claude') spelled twice" in msg, msg
+    assert "'agent.nav+claude'" in msg and "'agent.nav\u2118claude'" in msg, msg
+
+
+@pytest.mark.parametrize("node", ("nav\u2118claude", "claude", "default", "shell"))
+def test_a_node_the_fold_can_reach_is_still_read(
+    tmp_path: Path, node: str
+) -> None:
+    # The canonical spelling, a bare harness and both pseudo-agents read, so the fold is narrow.
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {node: {"model": "a"}}})
+    assemble_levels_at(agent_name="claude", system_path=sysf)
+
+
+@pytest.mark.parametrize(("spelled", "node"), [
+    ("Default", "default"), ("Shell", "shell"),
+])
+def test_a_capital_pseudo_agent_node_reaches_the_node_it_owns(
+    tmp_path: Path, spelled: str, node: str
+) -> None:
+    # A RESERVED name is refused to a ref (``agent_address_node`` raises on it), so a fold that
+    # reached for that parser alone left the spelling unread AND un-warned. The case fold runs
+    # first, and the value lands on the node the name owns.
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {spelled: {"model": "opus"}}})
+    levels = assemble_levels_at(agent_name="claude", system_path=sysf)
+    assert list(levels[SYSTEM]["agent"]) == [node]
+    assert dict.get(levels[SYSTEM]["agent"][node], "model") == "opus"
+
+
+def test_the_capital_node_warning_names_no_canonical_separator(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The warning is a LESSON, so it may only spell a node the way the CLI accepts it -- and the
+    # node it is read as is a canonical one, whose separator no command takes. The keys stay
+    # canonical; the SENTENCE is the user-facing surface.
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {"Nav+Claude": {"model": "opus"}}})
+    with caplog.at_level("WARNING"):
+        assemble_levels_at(agent_name="claude", system_path=sysf)
+    msgs = [r.getMessage() for r in caplog.records if str(sysf) in r.getMessage()]
+    assert len(msgs) == 1, msgs
+    assert "℘" not in msgs[0], msgs[0]
+    assert "it is read as 'agent.Nav+claude' for now" in msgs[0], msgs[0]
+
+
+@pytest.mark.parametrize("node", ("nav+claude+x", "+claude", "nav+"))
+def test_a_node_that_is_not_a_ref_is_left_to_the_keyspace(
+    tmp_path: Path, node: str
+) -> None:
+    # A segment that is not a ref names no agent, so the keyspace's own verdict owns it at the
+    # doors; the fold must not claim that shape, or one node would have two rules. Pinned by
+    # the key being left EXACTLY as written -- a fold that swallowed the shape would rename it,
+    # and a segment the keyspace must judge would arrive under a node of the fold's own.
+    sysf = _write(tmp_path / "settings.yaml", {"agent": {node: {"model": "a"}}})
+    levels = assemble_levels_at(agent_name="claude", system_path=sysf)
+    assert list(levels[SYSTEM]["agent"]) == [node]
+
+
 def test_a_dropped_table_is_not_folded_or_judged(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -2172,3 +2284,19 @@ class TestEachFileIsAuditedOnItsOwn:
         msg = str(exc.value)
         assert "RETIRED" in msg
         assert "not a settings key" not in msg
+
+
+def test_a_scalar_leaf_refusal_names_the_node_the_way_the_user_writes_it(
+    tmp_path: Path
+) -> None:
+    # The keys this walks are the FOLDED ones, so they carry the canonical separator; a key the
+    # user must edit BY HAND is named the way they wrote it.
+    sysf = _write(
+        tmp_path / "settings.yaml",
+        {"agent": {"nav+claude": {"model": {"a": "b"}}}},
+    )
+    with pytest.raises(SettingsError) as exc:
+        assemble_levels_at(agent_name="claude", system_path=sysf)
+    msg = str(exc.value)
+    assert "agent.nav+claude.model" in msg, msg
+    assert "℘" not in msg, msg

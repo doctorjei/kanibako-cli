@@ -840,9 +840,10 @@ This affects nobody upgrading from **v1.7.2**, which had neither those entries n
 handbook chapter; it is written down because the `1.8.0rc1` prerelease declared them.
 
 **(d) A persona's store directory is renamed — rename it by hand or the persona starts over.**
-A persona node is spelled `navigator+claude` when you type it and `navigator℘claude` inside a
-settings key; only the second is legal in a key, because a key path is split on `.` into name
-segments and `+` is not one of them. v1.7.2 let that internal spelling reach the disk, so a
+A persona node is spelled `navigator+claude`: on the command line, in a settings key, and on disk.
+kanibako also reads the internal form `navigator℘claude` in a settings file, so a file written by
+an earlier version keeps working; a file that spells one node both ways is refused.
+v1.7.2 let that internal spelling reach the disk, so a
 persona's store sat at `<data>/agents/navigator℘claude/`. It is the `+` form now, everywhere
 kanibako composes it — `agent.yaml`, the per-node `canon` and `template` stores, and the
 symlinks sharing the harness's plugins and cache. Do this before your first launch on v1.8.0:

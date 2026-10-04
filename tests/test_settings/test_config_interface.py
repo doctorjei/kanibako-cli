@@ -6565,6 +6565,22 @@ class TestNullSpelling:
         assert _built_here(owner), "the renderer stopped building the message"
         assert _built_here(tree) == _built_here(owner)
 
+    def test_the_confirmation_names_a_node_the_way_the_cli_accepts_it(self):
+        """A confirmation is a lesson, so it may only teach a spelling the CLI accepts -- and
+        the cascade canonicalizes a node to ``℘`` before this is called. ``+`` is the
+        user-facing form; ``℘`` is what a key path carries and no command retakes.
+
+        MUTATION: pass ``display_key`` through -> reds.
+        """
+        from kanibako.settings.config_interface import _set_confirmation
+
+        assert _set_confirmation("pref.agent.navigator℘claude.access", "editing") == (
+            "Set pref.agent.navigator+claude.access=editing"
+        )
+        # A key carrying no node is untouched, and a null is still spelled ``null``.
+        assert _set_confirmation("box.image", "ghcr.io/x:1") == "Set box.image=ghcr.io/x:1"
+        assert _set_confirmation("box.image", None) == "Set box.image=null"
+
     def test_no_write_mechanism_refuses_null_on_its_own_any_more(self, tmp_path):
         """⚑⚑ THE SPECIMEN RAN OUT. This row pinned the ONE mechanism that could not
         express a null: first the docker ``env.<VAR>`` arm ("the env file is a plain

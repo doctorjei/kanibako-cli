@@ -31,7 +31,7 @@ from kanibako.settings.config import (
     system_path_ref_error,
     unset_project_config_key,
 )
-from kanibako.agent_ref import GENERAL_SLOT
+from kanibako.agent_ref import GENERAL_SLOT, display_agent_ref
 from kanibako.settings.settings_launch import load_merged_config, snapshot_leaf
 from kanibako.settings.messages import (
     ERR_BOX_SCALAR_NULL_REASON,
@@ -1165,6 +1165,18 @@ def get_config_value(
     for report in bad.warn_reports():
         _log.warning("Warning: %s", report)
 
+    # A node spelled two ways in the noun's file is refused, as ``set`` and ``show`` refuse it.
+    # ``config.*`` reads the bootstrap file alone, so a settings-file fault does not reach it.
+    if not is_config_file_only_key(canonical):
+        from kanibako.settings.settings_assemble import refuse_doubled_agent_nodes
+
+        noun_path = noun_settings_file(project_toml, system_settings_path)
+        try:
+            noun_doc: dict = load_doc(noun_path)
+        except KanibakoError:
+            noun_doc = {}  # the reader of the requested key judges an unreadable file
+        refuse_doubled_agent_nodes(noun_doc, path=noun_path)
+
     # A BARE agent behavior key at BOX scope has no readable value of its own — REDIRECT the
     # read to the box's active-agent mirror. WORKSET has no mirror and is refused at the handler.
     _box_agent_redirect = box_agent_redirect_key(
@@ -1334,11 +1346,14 @@ def _set_confirmation(display_key: str, value: object) -> str:
     # ⚑ *display_key* is the key AS THE USER MAY RETYPE IT — ``_honest_reset_message``'s ⚑,
     # and the same reason: a confirmation is a lesson, so it may only teach spellings the
     # CLI accepts. That rule binds the VALUE too, which is why this is one function and not
-    # nine f-strings. A present-``None`` is spelled ``null`` — the YAML the file now holds and
-    # what the ``--null`` flag exists to write. ⚑ THE READ VERBS SAY ``null`` TOO, through
-    # ``config_io.render_stored_scalar``: the two verbs disagreed about one stored value until
-    # that renderer was made total, which is why the rule is not restated here.
-    return f"Set {display_key}={'null' if value is None else value}"
+    # nine f-strings. ⚑ BINDS THE SEPARATOR: ``persona℘harness`` teaches a spelling nothing
+    # takes. A present-``None`` is spelled ``null`` — the YAML the
+    # file now holds and what the ``--null`` flag exists to write. ⚑ THE READ VERBS SAY
+    # ``null`` TOO, through ``config_io.render_stored_scalar``: the two verbs disagreed about
+    # one stored value until that renderer was made total, which is why the rule is not
+    # restated here.
+    key = display_agent_ref(display_key)
+    return f"Set {key}={'null' if value is None else value}"
 
 
 def _null_path_key_error(
@@ -1995,8 +2010,8 @@ def reset_config_value(
             return scope_key_refusal(key, reason, command_scope, verb="reset")
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
-            return f"Cleared {canonical}"
-        return f"No override for {canonical}"
+            return f"Cleared {display_agent_ref(canonical)}"
+        return f"No override for {display_agent_ref(canonical)}"
 
     # ⚑ There is NO ``agent.<node>.bindings.{ro,rw}.<name>`` branch here any more (R-9), and
     # the absence is deliberate — the preamble refuses it BY NAME, symmetrically with set.

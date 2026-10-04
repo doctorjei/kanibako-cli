@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.agent_file import stored_leaf_display
 from kanibako.settings.config_io import load_doc, render_stored_scalar
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
@@ -304,7 +305,8 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
 
     print("", file=out)
     for target, request, value, dest, leaf in sorted(rows, key=lambda r: r[0]):
-        print(f"  {PREF_ROOT}.{target} = {request}", file=out)
+        shown = display_agent_ref(target)
+        print(f"  {PREF_ROOT}.{shown} = {request}", file=out)
         if value is __MISSING__:
             # The ordinary present-None rule OMITTED it: a bind / category /
             # masks leaf was suppressed. Saying so is the whole point — this is
@@ -335,7 +337,7 @@ def _print_pref_block(snapshot: Any, out: Any) -> None:
             result = "(unset — the consumer applies its default)"
         else:
             result = _render(value, dest, leaf)
-        print(f"    -> {target} = {result}", file=out)
+        print(f"    -> {shown} = {result}", file=out)
 
 
 def _print_category_block(
@@ -494,6 +496,7 @@ def _print_category_block(
         strict=True,
     ))
     for key, dest, entry in rows:
+        shown = display_agent_ref(key)
         opts = f"  [{entry.opts}]" if entry.opts else ""
         derivation = derivations[key]
         # ⚑ THE ARROW IS THE DELIVERY, and only a delivered binding earns one — the
@@ -506,9 +509,9 @@ def _print_category_block(
         # cannot act on. The RESOLVED path is what the pairing decided on, and it is
         # already in the reason line beneath a loss.
         if derivation.outcome == DERIVED_MOUNT:
-            print(f"  {key} = {entry.src} -> {dest}{opts}", file=out)
+            print(f"  {shown} = {entry.src} -> {dest}{opts}", file=out)
             continue
-        print(f"  {key} = {dest}{opts}  (declared: {entry.src})", file=out)
+        print(f"  {shown} = {dest}{opts}  (declared: {entry.src})", file=out)
         # ⚑ THE SAME KEYS THE ABSTRACT HALF BELOW GETS. A concrete row loses to a mask
         # exactly as an abstract one does — it is the case this whole pairing was added
         # for — so keying one half and not the other would leave the acute case bare.
@@ -535,9 +538,10 @@ def _print_category_block(
     # second reader of the same pairing, and one sentence about what a mask did to a
     # declaration is not a thing to keep two copies of.
     for row in effective_bindings_and_template_sources(snapshot):
-        print(f"  {row.declaration.key} = {row.declaration.src}", file=out)
+        shown = display_agent_ref(row.declaration.key)
+        print(f"  {shown} = {row.declaration.src}", file=out)
         print(
-            f"    {BINDING_DERIVATIONS_NODE}.{row.declaration.key} = "
+            f"    {BINDING_DERIVATIONS_NODE}.{shown} = "
             f"{derivation_result(row, declared_by)}",
             file=out,
         )

@@ -398,6 +398,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   back. A log file already present under the new name is left in place with a warning naming both
   paths, and the box's own log stays where it was for you to reconcile.
 
+- **A persona node spelled `persona+harness` in a settings file is read, and kanibako prints it that
+  way.** In v1.8.0-rc2, a node such as `agent: {navigator+claude: …}` in the system file, or
+  `pref: {agent: {navigator+claude: …}}` in a working set's or box's file, resolved to nothing, while
+  `box show --effective` reported it unset. It is now read as that node, without a warning; a
+  capital node still warns. `set` writes the node as `navigator+claude`, and `reset` clears it. A
+  file holding the internal `navigator℘claude` keeps reading, and a later `set` reuses that
+  spelling. A table that spells one node both ways is refused, naming both spellings, by `get` as
+  well as `set` and `box show --effective`. `box show --effective`, `set` and `reset`
+  confirmations, and the capital-node warning name a node as `navigator+claude`, the spelling you
+  can paste back.
+
 - **A foreground box whose session cannot be attached now says so.** When every attach attempt failed
   with the container still up, the retries stopped after `attempt 4/5` with nothing more said. The
   launch now exits non-zero with an error that names the still-running container and the cures
@@ -2384,16 +2395,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and update any `pref.system.agent` or `system.agent` that named the old spelling.
 
 - **BREAKING: a persona's store directory is now named `<persona>+<harness>`.** A persona node
-  has two spellings — `navigator+claude`, which you type, and `navigator℘claude`, which kanibako
-  uses inside a settings key. Only the second can appear in a key: a key path is split on `.`
-  into name segments and `+` is not one of them, so `agent.navigator+claude.model` would be read
-  as the key `agent.navigator` and quietly resolve the wrong thing. That reason applies to keys
-  and to nothing else, yet the directory carried it too — v1.7.2 put a persona's own store at
-  `<data>/agents/navigator℘claude/`, a path you cannot type without pasting a character that is
-  on no keyboard. Every place kanibako composes that directory now writes the `+` form: the
-  agent file, the per-node `canon` and `template` stores, and the symlinks that share the
-  harness's plugins and cache. **Key names are unchanged** — `agent.<node>.*` still canonicalizes
-  to `℘` internally, and both spellings still work on the command line and reach the same store.
+  is spelled `navigator+claude` everywhere you meet it: on the command line, in a settings file,
+  and on disk. v1.7.2 put a persona's own store at `<data>/agents/navigator℘claude/`, a path you
+  cannot type without pasting a character that is on no keyboard. Every place kanibako composes
+  that directory now writes the `+` form: the agent file, the per-node `canon` and `template`
+  stores, and the symlinks that share the harness's plugins and cache.
   One key's *value* moves with the directory it names: `meta.agent.<node>.name` now reads
   `navigator+claude`, which is what the spec's own formula
   (`meta.agent.<node>.path` = `@config.agents/@meta.agent.<node>.name`) requires of it.
@@ -2407,7 +2413,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to read `$KANIBAKO_AGENT` and never to guess — so the value it finds should be the one a person
   writes. v1.7.2 stamped the internal spelling instead, which meant the one place the separator was
   guaranteed to be seen by a reader was the one place it had no business being. An environment
-  variable is not a settings key, and `℘` exists only so a node can sit inside a key path.
+  variable is read by people, and `℘` is kanibako's internal spelling.
   Everything kanibako reads back off the stamp — `kanibako stop`'s credential writeback, `kanibako
   code`'s extension seed, the credential watcher, and a `kanibako start` that reattaches to a
   running box — converts it back before using it, and accepts either spelling, so **a box already
