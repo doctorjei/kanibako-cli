@@ -390,7 +390,9 @@ inside boxes. In order of likely impact:
     and `create <name>` under a named workset's root makes a named box of that workset, refusing a
     path, a bare `create` and `--standalone` there — see *`create` inside a named workset's path
     space*; and `create` refuses a directory a named box holds as its workspace — see *`create` in a
-    directory connected to a workset is refused*.
+    directory connected to a workset is refused*; and an endpoint is read and stored as written, so
+    a `\` that escaped a character in it must go — see *An endpoint is text: remove a `\` you
+    wrote to escape a character in it*.
 
 ---
 
@@ -6364,6 +6366,21 @@ resolves to the named box. `create` now refuses there, with or without `--standa
 box made this way appears in `kanibako box list` under the default workset; remove it with
 `kanibako box rm <name>` (add `--purge` to delete its box directory as well). Neither form touches
 the directory's files, and the named box is unaffected.
+
+### An endpoint is text: remove a `\` you wrote to escape a character in it
+
+**Read this if an `endpoint` in a settings file, or in a `set` you have scripted, contains a `\`.**
+
+**What changed.** `agent.default.endpoint` and every `agent.<node>.endpoint` are text: kanibako reads
+them exactly as written in every settings file and stores them exactly as typed at `set`. Earlier
+builds read an endpoint as a settings expression, where `@` began a reference, `$` and `~` expanded,
+and `\` escaped the next character, so `https://user:key@host/v1` had to be written
+`https://user:key\@host/v1`, and `set` refused the unescaped form as a dangling reference. That
+`\` is now part of the endpoint and is delivered to the agent.
+
+**What to do.** Remove each `\` you wrote as an escape: `https://user:key\@host/v1` becomes
+`https://user:key@host/v1`. An endpoint that referred to another key or variable (`@…`, `$…`, `~`)
+must be written out in full.
 
 ---
 

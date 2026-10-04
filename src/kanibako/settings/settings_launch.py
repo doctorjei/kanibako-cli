@@ -132,6 +132,7 @@ from kanibako.settings.settings_resolve import (
     ResolveCtx,
     SettingsError,
     expand_expr,
+    is_verbatim_text,
     literal_expr,
     normalize_bind_dest,
 )
@@ -2959,12 +2960,11 @@ def _persona_partial(
     the §2d / §0 form, so they merge by name at the persona rung. No value is
     bind-shaped, so every leaf is a plain scalar.
 
-    ⚑ EVERY VALUE ENTERS AS :func:`~kanibako.settings.settings_resolve.literal_expr`,
-    never as an expression. The store's values come from a harness config, not a
-    settings file, so a ``@``, ``$``, ``~`` or ``\\`` in one is DATA: an endpoint's
-    ``https://user:key@host/v1`` names a host, not the ref ``@host``. Read as an
-    expression, that ``@host`` expanded to ``""``, which corrupted the delivered
-    endpoint and took the ``@`` the userinfo scrub needs to find the credential.
+    ⚑ EVERY VALUE IS DATA, never an expression: the store's values come from a harness
+    config, so a ``@``, ``$``, ``~`` or ``\\`` in one is literal.  Each enters as
+    :func:`~kanibako.settings.settings_resolve.literal_expr` — except the endpoint, which
+    :func:`~kanibako.settings.settings_resolve.is_verbatim_text` makes text for EVERY
+    source, so the expander keeps it as written and an escape here would be delivered.
 
     ⚑ DELIBERATE DIVERGENCE from the sibling ``dotted_partial`` / ``_insert_dotted``
     route, which this must NOT use: those split on EVERY dot. A ``<VAR>`` here is
@@ -2978,7 +2978,8 @@ def _persona_partial(
     active_node = KeyStore()
     for key, val in persona_values.items():
         category, sep, var = key.partition(".")  # FIRST dot only — see above.
-        val = literal_expr(val)  # store values are data, never expressions — see above.
+        if not is_verbatim_text(("agent", agent_name, key)):  # the expander keeps it as text.
+            val = literal_expr(val)  # store values are data, never expressions — see above.
         if not sep:
             active_node[key] = val
             continue

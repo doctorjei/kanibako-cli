@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from typing import Callable, Union
 
 from kanibako.settings.config_keys import KEY_TYPES, CoercionError, _coerce_value
-from kanibako.settings.settings_resolve import SettingsError, match_ref, match_var
+from kanibako.settings.settings_resolve import (
+    SettingsError,
+    is_verbatim_text,
+    match_ref,
+    match_var,
+)
 
 __all__ = [
     "Verdict",
@@ -114,17 +119,29 @@ def validate_config_set(
     SHAPE, which a scalar has not; ``endpoint = https://api.anthropic.com`` must pass. Do not
     reintroduce a colon check on this path.
     """
-    # 1. MALFORMED syntax only, before any snapshot work; it also tells us whether the value
-    #    bears tokens (step 3 needs that). Dangling / unknown / cycle is the E3 probe's job.
-    try:
-        ref_names, var_names = scan_tokens(value)
-    except ValueError as exc:
-        return Error(f"'{key}': malformed value {value!r}: {exc}")
+    # 0. A TEXT key (``is_verbatim_text``) has no tokens and no upstream chain: steps 1 and 2
+    #    would refuse ``https://user:key@host/v1`` for a ref ``@host`` it does not contain.
+    #    Judged at the slot the value is WRITTEN to, so the bare ``endpoint`` is
+    #    ``agent.default.endpoint``.
+    from kanibako.settings.config_dest import _key_slot
 
-    # 2. E3 FULL-RESOLUTION check (Q9) — a reason BLOCKS.
-    reason = resolves(key, value)
-    if reason is not None:
-        return Error(f"'{key}': {reason}")
+    slot = _key_slot(key)
+    if is_verbatim_text((*slot[0], slot[1]) if slot is not None else key.split(".")):
+        ref_names: list[str] = []
+        var_names: list[str] = []
+    else:
+        # 1. MALFORMED syntax only, before any snapshot work; it also tells us whether the
+        #    value bears tokens (step 3 needs that). Dangling / unknown / cycle is the E3
+        #    probe's job.
+        try:
+            ref_names, var_names = scan_tokens(value)
+        except ValueError as exc:
+            return Error(f"'{key}': malformed value {value!r}: {exc}")
+
+        # 2. E3 FULL-RESOLUTION check (Q9) — a reason BLOCKS.
+        reason = resolves(key, value)
+        if reason is not None:
+            return Error(f"'{key}': {reason}")
 
     # 3. Typed scalar keys — the H2 check, reusing the registry's coercion. A token-bearing
     #    value has no terminal type until build, so it is NOT type-checked here.

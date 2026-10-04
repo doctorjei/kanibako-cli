@@ -33,6 +33,7 @@ _EXPR_SIGNIFICANT: frozenset[str] = frozenset('\\$@~')
 ```
 def expand_guest_home(value: str) -> str
 def literal_expr(text: str) -> str
+def is_verbatim_text(path: Sequence[str]) -> bool
 def split_bind(value: str) -> tuple[str, str | None]
 def unpack_bind(value: object) -> tuple[str, str, str | None]
 def unpack_bind_entry(value: object) -> tuple[str, str | None]

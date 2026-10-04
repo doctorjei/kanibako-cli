@@ -1572,10 +1572,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   indistinguishable from a username (`https:tok@host` reads like `user:pw@host`), both are
   redacted from the printed endpoint, and the error still names the `https://<host>` form it
   expected. ⚑ Scrubbed is not proven clean — the evidence block inherits the provider text's
-  documented residue; `get` and `agent show` still print a settings-file endpoint as stored; and a
-  settings-file endpoint hand-written with an unescaped `@` (`https://user:key@host/v1`, not
-  `https://user:key\@host/v1`) still loses `@host` to reference expansion, so it prints the
-  credential and delivers the wrong URL — so it is still not safe to paste.
+  documented residue, and `get`, `show` (`system show` and `agent show`) and the `set`
+  confirmation still print a settings-file endpoint as stored — so it is still not safe to paste.
 
 - **A persona's endpoint, model and env values are used exactly as the harness config writes them,
   and its token path exactly as `.secret_path` resolves.** They were read as settings expressions, so an `@` began a reference: in
@@ -1584,8 +1582,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left to mark it. A `$`, `~` or `\` in a persona value was likewise expanded or refused as a
   variable. Persona values are now literal text. The `.secret_path` pointer is unchanged: a `$VAR`
   or `~` in it is still expanded and a relative path is still anchored to the persona directory; the
-  resulting path is then used as written. A settings-file value is unchanged: it is still an
-  expression, and a literal `@` in it is still written `\@`.
+  resulting path is then used as written. A settings-file value other than the endpoint is
+  unchanged: it is still an expression, and a literal `@` in it is still written `\@`.
+
+- **A settings-file endpoint is used exactly as written, and `set` stores it exactly as typed.**
+  `agent.default.endpoint` and every `agent.<node>.endpoint` were read as settings expressions, so
+  `set` refused `https://user:key@host/v1` as a dangling `@host` reference, and the same text written
+  by hand lost `@host`, delivering `https://user:key/v1` and printing the credential. A `$` or `~`
+  was expanded and a `\` dropped. The endpoint is now text in every settings file and at `set`
+  (`system set endpoint=…`, `system set agent.<node>.endpoint=…`, `agent set <node> endpoint=…`,
+  `box set pref.agent.<node>.endpoint=…`),
+  and is never refused for the characters it contains. ⚑ A `\` you wrote to escape a character in
+  an endpoint is now part of it: remove it (MIGRATION.md, *An endpoint is text: remove a `\` you
+  wrote to escape a character in it*).
 
 - **`kanibako upgrade` could not find its own repository in a git worktree.** It looked for a
   `.git` directory, but in a worktree `.git` is a file (`gitdir: …`), so `upgrade` failed with

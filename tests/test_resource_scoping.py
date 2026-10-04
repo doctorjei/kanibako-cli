@@ -567,7 +567,7 @@ class TestBuildEffectiveState:
     def test_the_printed_endpoint_drops_its_userinfo(self, tmp_path, monkeypatch, route):
         """``box show --effective`` prints this dict, so the endpoint's userinfo is
         scrubbed, through both routes an endpoint arrives by: the persona store and
-        a settings file (where a literal ``@`` is spelled ``\\@``).
+        a settings file (where the endpoint is text, written as is).
 
         The persona route is the incident: its ``@host`` was read as an ``@``-ref and
         expanded to ``""``, so the credential printed with no ``@`` left to find it.
@@ -584,7 +584,7 @@ class TestBuildEffectiveState:
             ssp = None
         else:
             ssp = self._make_system_settings(
-                tmp_path, settings={"endpoint": raw.replace("@", "\\@")},
+                tmp_path, settings={"endpoint": raw},
             )
         result = _build_effective_state(
             self._make_target(descriptors), AgentConfig(),

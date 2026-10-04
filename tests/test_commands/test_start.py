@@ -10054,6 +10054,18 @@ class TestPersonaLiveTierWiring:
         )
         assert secret_paths == {"OTHER_KEY": file_tok, "ANTHROPIC_AUTH_TOKEN": store_tok}
 
+    def test_the_no_token_error_names_a_file_endpoint_redacted(self, std, tmp_home, tmp_path):
+        """A settings-file endpoint is TEXT (keyspec ``agent.default.endpoint``), so its
+        ``@host`` survives to the error and the userinfo scrub finds the credential.
+        (Base: ``@host.invalid`` expanded to ``""`` and the error printed ``SEKRITP``.)"""
+        raw = "https://SEKRITU:SEKRITP@host.invalid/v1"
+        _paths, err = self._token_gate(
+            std, tmp_path, system_file={"agent": {self._NODE: {"endpoint": raw}}},
+        )
+        assert err is not None and "no usable auth token" in err
+        assert "(https://<redacted>@host.invalid/v1)" in err
+        assert "SEKRIT" not in err
+
     def test_a_null_in_the_agent_file_is_a_keyless_declaration(self, std, tmp_home, tmp_path):
         self._store_token(tmp_home)
         secret_paths, err = self._token_gate(

@@ -6926,15 +6926,78 @@ class TestPersonaValuesAreDataNotExpressions:
         env = assemble_env(descriptor, access="full", setting_values=values)
         assert env["ANTHROPIC_BASE_URL"] == raw
 
-    def test_a_settings_file_endpoint_is_still_an_expression(self, tmp_path):
-        """CONTROL — the literal rule is the STORE's, not the key's: a settings file
-        still writes a literal ``@`` as ``\\@`` and still expands a real ref."""
+    def test_a_settings_file_endpoint_is_no_longer_unescaped(self, tmp_path):
+        """The ``\\@`` a settings file once needed is two characters now (keyspec
+        ``agent.default.endpoint``: VERBATIM TEXT), so it is delivered as written."""
+        snap = _persona_snap(
+            tmp_path, persona_values={},
+            system={"agent": {"claude": {"endpoint": "https://u:k\\@h/v1"}}},
+        )
+        assert effective_behavior(snap, active_agent="claude")["endpoint"] == (
+            "https://u:k\\@h/v1"
+        )
+
+
+#: Every character a settings EXPRESSION reads as syntax, in one endpoint.
+_TEXT_ENDPOINT = "https://SEKRITU:SEKRITP@host.invalid/v1/$NOPE/~x/@{a.b}/a\\b"
+
+
+def _file_endpoint(tier: str, node: str) -> dict:
+    """``_persona_snap`` kwargs carrying :data:`_TEXT_ENDPOINT` at *node* in *tier*'s file."""
+    if tier == "agent_state":
+        return {"agent_state": {"endpoint": _TEXT_ENDPOINT}}
+    return {tier: {"agent": {node: {"endpoint": _TEXT_ENDPOINT}}}}
+
+
+class TestASettingsFileEndpointIsText:
+    """Keyspec ``agent.default.endpoint``: VERBATIM TEXT in every settings file — no
+    ``@``-ref, ``$``/``~`` expansion or ``\\`` unescape (Jei, 142nd).
+
+    The persona store's half is :class:`TestPersonaValuesAreDataNotExpressions`.
+    """
+
+    @pytest.mark.parametrize("tier,node", [
+        ("system", "default"), ("system", "claude"), ("agent_state", "claude"),
+    ])
+    def test_the_endpoint_resolves_as_written(self, tmp_path, tier, node):
+        snap = _persona_snap(tmp_path, persona_values={}, **_file_endpoint(tier, node))
+        assert effective_behavior(snap, active_agent="claude")["endpoint"] == _TEXT_ENDPOINT
+
+    def test_the_delivered_base_url_is_the_file_endpoint_as_written(self, tmp_path):
+        from kanibako.targets.assembly import assemble_env
+        from kanibako.targets.base import Channel, PluginDescriptor, SettingArg
+
+        snap = _persona_snap(
+            tmp_path, persona_values={}, **_file_endpoint("system", "default"),
+        )
+        values = effective_behavior(snap, active_agent="claude")
+        descriptor = PluginDescriptor(
+            command=("claude",), bindings=(), mode={"start": ()},
+            settings=(SettingArg(
+                setting_key="endpoint", channel=Channel.ENV, env_var="ANTHROPIC_BASE_URL",
+            ),),
+        )
+        env = assemble_env(descriptor, access="full", setting_values=values)
+        assert env["ANTHROPIC_BASE_URL"] == _TEXT_ENDPOINT
+
+    def test_a_ref_to_the_endpoint_reads_its_text(self, tmp_path):
+        """The referent is text too: ``@agent.claude.endpoint`` from another key
+        substitutes the endpoint as written, not an expansion of it."""
         snap = _persona_snap(
             tmp_path, persona_values={},
             system={"agent": {"claude": {
-                "endpoint": "https://u:k\\@@{agent.claude.model}/v1", "model": "h",
+                "endpoint": _TEXT_ENDPOINT, "env": {"BASE": "@agent.claude.endpoint"},
             }}},
         )
-        assert effective_behavior(snap, active_agent="claude")["endpoint"] == (
-            "https://u:k@h/v1"
+        assert _leaf(snap, ("env", "BASE")) == _TEXT_ENDPOINT
+
+    def test_other_keys_still_expand(self, tmp_path):
+        """CONTROL — the rule is the endpoint's alone: a sibling key still resolves
+        its ``@``-ref and escape."""
+        snap = _persona_snap(
+            tmp_path, persona_values={},
+            system={"agent": {"claude": {
+                "model": "m-@{agent.claude.env.TAG}\\@x", "env": {"TAG": "t"},
+            }}},
         )
+        assert effective_behavior(snap, active_agent="claude")["model"] == "m-t@x"
