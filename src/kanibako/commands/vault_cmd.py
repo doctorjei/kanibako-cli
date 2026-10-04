@@ -107,6 +107,10 @@ def _resolve_vault_rw(project_dir: str | None):
     if not proj.vault_enabled():
         print("Vault is disabled for this project.", file=sys.stderr)
         return None
+    if proj.vault_rw_path is None:
+        print("This workset sets workset.vault_rw to null — there is no vault "
+              "directory to act on.", file=sys.stderr)
+        return None
     return proj.vault_rw_path
 
 

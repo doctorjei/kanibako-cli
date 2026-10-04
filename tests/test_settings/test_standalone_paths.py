@@ -9,6 +9,7 @@ import pytest
 from kanibako.project import registry_store
 from kanibako.errors import ProjectError
 from kanibako.settings.bootstrap import CREDS_WATCHER_LOG_SUFFIX
+from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import (
     BoxMode,
     creds_watcher_log_path,
@@ -22,6 +23,27 @@ from kanibako.utils import project_hash
 # ---------------------------------------------------------------------------
 # TestResolveStandaloneProject
 # ---------------------------------------------------------------------------
+
+class TestNullWorksetTemplateFrontDoor:
+    """``workset.template: null`` must not stop a standalone ``box create``.
+
+    spec §2c declares ``workset.template | <None>`` for STANDALONE, and §2a skips any
+    layer whose source/dest is ``<None>``.  The key is declared ``<None>`` in this very
+    mode, so a create that refuses on it could never run.
+    """
+
+    def test_a_null_workset_template_skips_the_layer_and_still_creates(
+        self, std, config, project_dir,
+    ):
+        root = project_dir.resolve()
+        write_nested_key(root / "workset.yaml", ("workset",), "template", None)
+        proj = resolve_standalone_project(std, config, str(project_dir), initialize=True)
+        assert proj.mode is BoxMode.standalone
+        # ⚑ The canon half is stamped; the template half is skipped, not invented.
+        assert (root / "canon" / "handbook").is_dir()
+        assert not (root / "template").exists()
+        assert proj.vault_ro_path is not None
+
 
 class TestResolveStandaloneProject:
     def test_returns_standalone_mode(self, std, config, project_dir):

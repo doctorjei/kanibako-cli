@@ -1431,7 +1431,7 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         leaf, state = self._member(env, ws1)
         stash_root = self._stash_dir(tmp_path, monkeypatch)
 
-        def part_way(ws, name):
+        def part_way(ws, name, *, bases=None):
             remove_box_tree(ws.projects_dir / name)
             raise OSError("injected leg-1 failure")
 
@@ -1551,7 +1551,7 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         ws1 = _make_workset(env, "ws1", "ws1_root")
         leaf, state = self._member(env, ws1)
 
-        def fails(ws, name):
+        def fails(ws, name, *, bases=None):
             raise OSError("injected store failure")
 
         monkeypatch.setattr(lc, "remove_member_store", fails)

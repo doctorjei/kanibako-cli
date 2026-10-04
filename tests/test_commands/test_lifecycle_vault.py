@@ -12,6 +12,7 @@ and never delete foreign ground).
 from __future__ import annotations
 
 import os
+import shutil
 
 import pytest
 
@@ -527,3 +528,262 @@ class TestCarryGuardContract:
         state.enable_vault = False
         assert _vault_carry_pairs(state, std, tmp_path / "d_ro", tmp_path / "d_rw") == []
         assert capsys.readouterr().err == ""
+
+
+class TestNullArmAcrossTheLifecycle:
+    """``workset.{vault_ro,vault_rw}: null`` on the relocation paths — no such dir.
+
+    ⚑ A null arm is a DECLARED value (spec §2a), so every verb here completes and the
+    relocation creates nothing under the nulled arm.  Each case pins one place that
+    composes the per-box leaf: a null arm that is not recognised as null raises
+    ``TypeError`` (or deletes a sibling box's vault) instead of completing.
+    """
+
+    def _reload(self, env, config_file):
+        """The primary arms are resolved ONCE at std load; rebuild after a null."""
+        config, std, _tmp_home = env
+        config2 = load_config(config_file)
+        return config2, load_std_paths(config2)
+
+    def test_the_remap_fallback_yields_no_leaf_for_a_null_arm(
+        self, env, config_file, tmp_home,
+    ):
+        """``remap`` on a primary box whose workspace dir is gone reads the registered
+        metadata alone — and a nulled arm must leave that state without a vault leaf."""
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        _repoint(std.primary_workset, "vault_ro", None)
+        config2, std2 = self._reload(env, config_file)
+        shutil.rmtree(pdir)  # the workspace dir is what sent us to the fallback
+        state = resolve_lifecycle_target(str(pdir), std2, config2)
+        assert state.mode == BoxMode.primary
+        assert state.vault_ro is None
+        assert state.vault_rw == std2.primary_vault_rw / state.name
+
+    def test_primary_to_standalone_convert_completes_over_a_null_arm(self, env, config_file):
+        """The source teardown walks ``(state.vault_*, std.primary_vault_*)``: a null
+        arm names no dir to delete, and the other arm's leaf is still removed."""
+        config, std, tmp_home = env
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        (state.vault_rw / "keep.txt").write_text("rw store")
+        _repoint(std.primary_workset, "vault_ro", None)
+        config2, std2 = self._reload(env, config_file)
+        fresh = resolve_lifecycle_target(str(pdir), std2, config2)
+        assert fresh.vault_ro is None  # anti-vacuity: the null reached the state
+        new = execute_lifecycle(
+            fresh, TargetSpec(location=tmp_home / "dest", ownership="standalone"),
+            std2, config2, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.standalone
+        # The armed side was torn down; the nulled arm named no leaf to delete.
+        assert not (std2.primary_vault_rw / fresh.name).exists()
+
+    def test_standalone_to_primary_convert_creates_no_leaf_for_a_null_arm(
+        self, env, config_file, tmp_home, capsys,
+    ):
+        """The destination's own leaves come from the primary arms — a null one gets no
+        leaf and no mkdir, and the box is still a primary member.  The source's store for
+        that side is left in place and named: the destination is the only other place it
+        could be, and it is not there."""
+        config, std, tmp_home = env
+        pdir = _make_standalone(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        seed = _seed_vault(state)
+        source_ro, source_rw = state.vault_ro, state.vault_rw
+        _repoint(std.primary_workset, "vault_rw", None)
+        config2, std2 = self._reload(env, config_file)
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="default"), std2, config2, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.primary
+        assert new.vault_ro == std2.primary_vault_ro / new.name
+        assert new.vault_ro.is_dir()
+        assert new.vault_rw is None
+        assert not (std2.primary_workset / "vault" / "rw").exists()
+        # The received side moved and its source went with it; the unreceived side did
+        # not move, so it is still the store — the whole point of not deleting it.
+        assert (new.vault_ro / "ro-note.txt").read_text() == seed["ro-note.txt"]
+        assert not source_ro.exists()
+        assert (source_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
+        assert (source_rw / "sub" / "deep.txt").read_text() == seed["sub/deep.txt"]
+        err = capsys.readouterr().err
+        assert f"Note: left the vault at {source_rw} in place" in err
+        assert "workset.vault_rw is null at the destination" in err
+
+    def test_a_named_member_of_a_null_vault_workset_still_tears_down(
+        self, env, tmp_home,
+    ):
+        """A NAMED source's leaves come off its OWN workset's resolved arms: with the
+        ro arm nulled, the member store goes and the armed leaf goes with it."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        external = tmp_home / "ext_repo"
+        external.mkdir()
+        add_project(ws, "ep", external, std)
+        _repoint(ws.root, "vault_ro", None)
+        state = resolve_lifecycle_target(str(external), std, config)
+        assert state.vault_ro is None  # anti-vacuity: the null reached the state
+        (state.vault_rw / "keep.txt").write_text("rw store")
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="standalone"), std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.standalone
+        # The armed leaf is gone, and no ``ep`` tree remains under the workset.
+        assert not (ws.root / "vault" / "rw" / "ep").exists()
+        assert not (ws.root / "box_data" / "ep").exists()
+
+    def test_a_move_into_a_null_vault_workset_registers_no_leaf(self, env, tmp_home):
+        """The destination workset's own arms gate the membership it records: with the
+        ro arm nulled, the move lands and no ``<name>`` leaf is claimed under it."""
+        config, std, tmp_home = env
+        ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
+        ws_b = create_workset("wsb", tmp_home / "wsb_root", std)
+        internal = ws_a.workspaces_dir / "b1"
+        internal.mkdir(parents=True)
+        add_project(ws_a, "b1", internal, std)
+        state = resolve_lifecycle_target(str(internal), std, config)
+        _seed_vault(state)
+        _repoint(ws_b.root, "vault_ro", None)
+        dest = ws_b.workspaces_dir / "b1"
+        new = execute_lifecycle(
+            state, TargetSpec(location=dest, ownership="wsb"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.owner == "workset:wsb"
+        assert new.vault_ro is None  # anti-vacuity: the null reached the new member
+        assert not (ws_b.root / "vault" / "ro" / "b1").exists()
+        assert any(p.name == "b1" for p in load_workset(ws_b.root, ws_b.name).projects)
+
+
+class TestNullDestinationArmRetainsTheSourceVault:
+    """A source vault leaf the destination has NO leaf for is left in place, and named.
+
+    ⚑⚑ A DESTINATION ARM SET TO ``<None>`` GETS NO LEAF (spec §2a, ALL PROJECTS), so the
+    carry drops that side.  A teardown that then deletes the source's leaf for it
+    destroys the box's store — silently, at rc 0, with the box's registration intact.
+    These pin the retention per source mode.
+    """
+
+    def _assert_retained(self, source, new, seed, err, kept_side, key):
+        """*kept_side*'s source store is intact and named; the other side was carried."""
+        other = "rw" if kept_side == "ro" else "ro"
+        kept, carried = source[kept_side], source[other]
+        assert not carried.exists()  # the received side was carried, then torn down
+        assert (kept / f"{kept_side}-note.txt").read_text() == seed[f"{kept_side}-note.txt"]
+        assert (getattr(new, f"vault_{other}") / f"{other}-note.txt").read_text() == (
+            seed[f"{other}-note.txt"]
+        )
+        assert f"Note: left the vault at {kept} in place" in err
+        assert f"{key} is null at the destination" in err
+
+    def test_a_primary_source_retains_its_ro_store_over_a_null_destination_arm(
+        self, env, tmp_home, capsys,
+    ):
+        """primary → named: the ro leaf the target workset cannot hold stays, and is named."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="p2")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        seed = _seed_vault(state)
+        ws_b = create_workset("wsb", tmp_home / "wsb_root", std)
+        _repoint(ws_b.root, "vault_ro", None)
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="wsb"), std, config, confirm=_conf_yes(),
+        )
+        assert new.owner == "workset:wsb"
+        assert new.vault_ro is None  # anti-vacuity: the null reached the new member
+        self._assert_retained(
+            {"ro": state.vault_ro, "rw": state.vault_rw}, new, seed,
+            capsys.readouterr().err, "ro", "workset.vault_ro",
+        )
+
+    def test_a_primary_source_retains_its_rw_store_over_a_null_standalone_arm(
+        self, env, tmp_home, capsys,
+    ):
+        """primary → standalone: the rw leaf the root has no arm for stays, and is named."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="p3")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        seed = _seed_vault(state)
+        # The standalone root is the box's own project dir (drift H), so the root's
+        # own ``workset.yaml`` is the destination's arm to read.
+        _repoint(pdir, "vault_rw", None)
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="standalone"), std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.standalone
+        assert new.vault_rw is None  # anti-vacuity: the null reached the new box
+        self._assert_retained(
+            {"ro": state.vault_ro, "rw": state.vault_rw}, new, seed,
+            capsys.readouterr().err, "rw", "workset.vault_rw",
+        )
+
+    def test_a_named_source_retains_its_ro_store_over_a_null_destination_arm(
+        self, env, tmp_home, capsys,
+    ):
+        """ws→ws: the release is a teardown too — the ro leaf the target cannot hold
+        stays, is named by the retained-vault Note, and is not reported as a failure."""
+        config, std, tmp_home = env
+        ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
+        ws_b = create_workset("wsb", tmp_home / "wsb_root", std)
+        internal = ws_a.workspaces_dir / "b1"
+        internal.mkdir(parents=True)
+        add_project(ws_a, "b1", internal, std)
+        state = resolve_lifecycle_target(str(internal), std, config)
+        seed = _seed_vault(state)
+        source_ro, source_rw = state.vault_ro, state.vault_rw
+        _repoint(ws_b.root, "vault_ro", None)
+        new = execute_lifecycle(
+            state, TargetSpec(location=ws_b.workspaces_dir / "b1", ownership="wsb"),
+            std, config, confirm=_conf_yes(),
+        )
+        assert new.vault_ro is None  # anti-vacuity: the null reached the new member
+        err = capsys.readouterr().err
+        self._assert_retained({"ro": source_ro, "rw": source_rw}, new, seed, err,
+                              "ro", "workset.vault_ro")
+        # The box tree IS the retirement's to delete, and it went: only the vault leaf
+        # the destination could not receive is left — named once, as a keep.
+        assert not (ws_a.projects_dir / "b1").exists()
+        assert "could not remove the old store of 'b1'" not in err
+
+
+class TestNullArmTeardownGuards:
+    """Guards on the null-arm teardown edges, each reachable through the real verb."""
+
+    def test_a_null_canon_root_leaves_the_root_sweep_deciding(
+        self, env, tmp_home,
+    ):
+        """In-place convert to standalone: ``workset.canon: null`` names no dir, so the
+        root's artifact census holds no path for it — and the sweep of the user's own
+        top-level files goes on to a decision instead of raising on the absent one."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="canon_null")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        _repoint(pdir, "canon", None)
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="standalone"), std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.standalone
+        # The sweep ran: the user's own top-level file moved into the workspace dir.
+        assert not (pdir / "file.txt").exists()
+        assert any(p.is_dir() and (p / "file.txt").is_file()
+                   for p in pdir.iterdir())
+
+    def test_a_null_standalone_rw_arm_writes_no_vault_gitignore(
+        self, env, tmp_home,
+    ):
+        """In-place convert to standalone over a pre-existing ``vault/``: a null
+        ``workset.vault_rw`` is no arm, so the skeleton file — whose whole content is a
+        claim about that arm — is not written beside the directory the user named."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="gitignore_null")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        (pdir / "vault").mkdir(parents=True)
+        (pdir / "vault" / "user.txt").write_text("the user's own store")
+        _repoint(pdir, "vault_rw", None)
+        new = execute_lifecycle(
+            state, TargetSpec(ownership="standalone"), std, config, confirm=_conf_yes(),
+        )
+        assert new.vault_rw is None  # anti-vacuity: the null reached the new box
+        assert not (pdir / "vault" / ".gitignore").exists()
+        assert (pdir / "vault" / "user.txt").read_text() == "the user's own store"
