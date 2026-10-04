@@ -187,8 +187,8 @@ def lookup_by_path(
 
 def _workset_member_paths(
     worksets: dict[str, str], name: str,
-) -> list[tuple[str, str]]:
-    """Return the ``(workset name, workspace path)`` pairs for box *name*.
+) -> list[tuple[str, str, str]]:
+    """Return the ``(workset name, box name, workspace path)`` triples for box *name*.
 
     Reads each NAMED workset's per-workset registry ``boxes:`` membership — the
     SAME index the box resolver (``box_resolve``) consumes and ``list`` reflects
@@ -196,7 +196,8 @@ def _workset_member_paths(
     logic, only reuses :mod:`kanibako.project.workset_registry`).  One entry per workset
     whose ``boxes:`` section lists *name*; the caller disambiguates any
     cross-workset collision.  A workset with no such member contributes nothing.
-    The name is the STORED ``[worksets]`` key (§0).
+    Both names are the STORED spellings: the ``[worksets]`` key and the
+    ``boxes:`` key (§0).
 
     *worksets* is the ``[worksets]`` section (``{ws_name: ws_root}``) — the
     PRIMARY workset is intentionally excluded (it is not listed there): its
@@ -206,7 +207,7 @@ def _workset_member_paths(
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
-    members: list[tuple[str, str]] = []
+    members: list[tuple[str, str, str]] = []
     for ws_name, ws_root_str in worksets.items():
         ws_root = Path(ws_root_str)
         registry_path = workset_registry.resolve_workset_registry_path(
@@ -215,7 +216,7 @@ def _workset_member_paths(
         boxes = workset_registry.load_workset_boxes(registry_path)
         stored = find_identifier(name, boxes)  # ⚑ case-blind membership test (§0)
         if stored is not None:
-            members.append((ws_name, boxes[stored]))
+            members.append((ws_name, stored, boxes[stored]))
     return members
 
 
@@ -320,25 +321,25 @@ def resolve_name(
 
     # 4. Workset-MEMBER boxes.  A bare name that is a member of a NAMED workset
     #    is otherwise unaddressable from outside that workset (the cwd-inside
-    #    case is handled by step 1) — resolve it to the member's WORKSPACE path
-    #    (what ``resolve_project`` expects: an existing box workspace dir).
+    #    case is handled by step 1) — resolve it to the member's registered
+    #    WORKSPACE path, the form ``resolve_project`` takes.
     members = _workset_member_paths(names["worksets"], name)
     if members:
         # Collapse identical targets (a symlinked workspace can normalize to the same
         # path), keeping the first workset claiming each so a shared box is named once;
         # distinct paths ⇒ a member of multiple worksets → ambiguous from outside.
-        targets: dict[str, tuple[str, str]] = {}
+        targets: dict[str, tuple[str, str, str]] = {}
         for member in members:
-            targets.setdefault(str(Path(member[1]).resolve()), member)
+            targets.setdefault(str(Path(member[2]).resolve()), member)
         if len(targets) == 1:
-            return members[0][1], "project"
+            return members[0][2], "project"
         # ``workset.workspaces`` is settable, so a registered path need not name its
-        # workset: the candidates are named ``<workset>/<name>``, the spelling a user
-        # types.  The existence check is a LABEL — membership is registry-borne.
+        # workset: candidates are ``<workset>/<box>`` STORED spellings (§0), the command
+        # a user runs.  The existence check is a LABEL — membership is registry-borne.
         candidates: list[str] = []
-        for ws_name, member_path in targets.values():
+        for ws_name, box_name, member_path in targets.values():
             missing = "" if Path(member_path).is_dir() else " [workspace missing]"
-            candidates.append(f"{ws_name}/{name}{missing}")
+            candidates.append(f"{ws_name}/{box_name}{missing}")
         raise AmbiguousNameError(
             f"Ambiguous box name '{name}': it is a member of multiple worksets "
             f"({', '.join(candidates)}). Qualify it as '<workset>/{name}' or run "
