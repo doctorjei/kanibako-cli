@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from kanibako.commands.flags import add_null_flag
 from kanibako.settings.config import user_config_file, load_config
-from kanibako.errors import WorksetError
+from kanibako.errors import ConfigError, WorksetError
 from kanibako.settings.paths import (
     load_std_paths,
     remove_box_logs,
@@ -516,6 +516,17 @@ def run_rm(args: argparse.Namespace) -> int:
                 return 1
         except WorksetError:
             pass
+        except ConfigError as exc:
+            # ⚑⚑ AN UNREADABLE workset.yaml IS NOT A REFUSAL HERE.  The count is
+            # unknowable, so it takes the answer a non-empty workset gets — except on
+            # ``--purge``, which removes the tree either way.
+            if not args.purge and not args.force:
+                print(
+                    f"Error: workset '{label_name}': {exc} Use --purge to remove it and "
+                    f"its files, or --force to unregister it only.",
+                    file=sys.stderr,
+                )
+                return 1
 
     if not args.force:
         label = "and remove files " if args.purge else ""

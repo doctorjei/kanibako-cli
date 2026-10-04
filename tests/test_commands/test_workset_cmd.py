@@ -440,6 +440,60 @@ class TestWorksetRm:
         assert rc == 0
         assert not root.is_dir()
 
+    @pytest.mark.parametrize("malformed", [
+        pytest.param("workset:\n  boxes: [broken: :\n", id="invalid-yaml"),
+        pytest.param("- one\n- two\n", id="top-level-list"),
+        pytest.param("just-a-scalar\n", id="top-level-scalar"),
+    ])
+    def test_rm_purge_of_an_unreadable_workset_yaml_succeeds(
+        self, config_file, tmp_home, capsys, malformed,
+    ):
+        """⚑ A DELETION PATH NEVER GAINS A REFUSAL — the project-count guard included.
+
+        ``run_rm`` asks how many projects a workset holds before it will unregister
+        it, and that ask is where the refusal landed once the reader started refusing.
+        ``--purge`` removes the tree either way, so the count is moot: a user deleting
+        a root because its file is broken must not have to hand-edit it first.
+        """
+        from kanibako.commands.workset_cmd import run_rm
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("purgebad", tmp_home / "ws_purgebad", std)
+        root = ws.root
+        (root / "workset.yaml").write_text(malformed)
+
+        rc = run_rm(argparse.Namespace(name="purgebad", purge=True, force=True))
+
+        assert rc == 0
+        assert not root.resolve().exists()
+
+    def test_rm_without_purge_refuses_an_unreadable_workset_yaml_and_names_both_cures(
+        self, config_file, tmp_home, capsys,
+    ):
+        """⚑ OFF THE PURGE PATH THE GUARD KEEPS ITS SHAPE — unregistering still asks.
+
+        Only ``--purge`` is exempt, because only it destroys the tree. The refusal
+        carries the reader's own wording, so it names the file, and it names the two
+        ways forward.
+        """
+        from kanibako.commands.workset_cmd import run_rm
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("keepbad", tmp_home / "ws_keepbad", std)
+        root = ws.root
+        (root / "workset.yaml").write_text("just-a-scalar\n")
+
+        rc = run_rm(argparse.Namespace(name="keepbad", purge=False, force=False))
+
+        assert rc == 1
+        assert root.is_dir()
+        assert "keepbad" in list_worksets(std)
+        err = capsys.readouterr().err
+        assert str(root / "workset.yaml") in err
+        assert "--purge" in err and "--force" in err
+
     def test_rm_unknown_error(self, config_file, tmp_home, capsys):
         from kanibako.commands.workset_cmd import run_rm
 
