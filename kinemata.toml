@@ -3687,10 +3687,12 @@ authority = "declared"
 # ⚑ `every_mode_cell` DROPS WHAT SOME MODE OMITS, and on this floor that is
 # `workset.kuid` (no standalone key: its standalone arm is the prose `<generated
 # at creation>`, held by `standalone-absences`; its primary and named arms are
-# `kuid-primary`'s and `kuid-named`'s) and the four workset-local channel
-# leaves plus `workset.channelroot` (supplied only as the standalone `None`
-# without the caller's inputs: `standalone-nulls` holds that arm, the channel
-# tables below the others). The `meta.*` keys are `workset-anchor-meta`'s.
+# `kuid-primary`'s and `kuid-named`'s) and `workset.channelroot` (supplied only as
+# the standalone `None` without the caller's inputs). The floor supplies the four
+# workset-local `workset.channels.*` leaves as `None` in EVERY mode, so the probe
+# skips them by prefix: their values are held by `workset-channels-primary`, `workset-channels-named` and
+# `standalone-nulls`, which also holds the standalone `channelroot` arm. The
+# `meta.*` keys are `workset-anchor-meta`'s.
 # 🛑 THE COST OF THE DROP: a key this floor emitted in SOME modes only, with a
 # non-`None` value, would be dropped here and printed by no other oracle -- the
 # one place this table's "and nothing else" does not reach.
@@ -3720,7 +3722,7 @@ from kanibako.settings.settings_launch import _BOX_MODES, workset_anchor_floor
 from kinemata_views import every_mode_cell
 cells = every_mode_cell({mode: workset_anchor_floor(mode=mode) for mode in _BOX_MODES})
 for key, cell in sorted(cells.items()):
-    if not key.startswith("meta."):
+    if not key.startswith("meta.") and not key.startswith("workset.channels."):
         print(f"kanibako-anchor: {key}={json.dumps(cell)}")
 """]
 extract = '(?m)^kanibako-anchor: ([^\s=]+)=(.+)$'

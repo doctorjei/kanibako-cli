@@ -304,6 +304,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `agent show` do not refuse; they show core's `agent.default.label`. An explicit `default=""` is
   still a floor and still wins. See *A `TargetSetting` built in Python with no `default` inherits
   `agent.default`* in [MIGRATION.md](MIGRATION.md).
+- **A `null` `workset.vault_ro`, `workset.vault_rw`, `workset.canon`, `workset.template` or
+  `workset.channelroot` now means no directory.** Before, each was read as unset and took its
+  default directory. A null vault arm now creates no vault directory and mounts no vault for that
+  arm. A null `canon` or `template` skips that layer when a workset is stamped. A null
+  `channelroot` leaves out the three `~/channels/workset/*` binds, and each launch warns once,
+  naming `workset.channelroot` and the file that set it. `box move` and `box convert` into a
+  workset or standalone root whose vault arm is null leave the box's existing vault directory where
+  it is and print its path. Before, they copied its contents into the default directory. A
+  standalone box whose `<root>/vault/` folder still holds data under an arm set to `null` keeps
+  that data through `box move`, `box convert`, `box rm --purge` and `box purge`, each of which
+  names what it left. See *A `null` workset vault, canon, template or channel root means no directory* in
+  [MIGRATION.md](MIGRATION.md).
 
 ### Fixed
 

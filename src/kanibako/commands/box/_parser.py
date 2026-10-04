@@ -1484,6 +1484,7 @@ def _teardown_standalone_box(
     *plan* is :func:`_standalone_teardown_plan`, from a caller that resolved it before an
     irreversible step of its own.
     """
+    from kanibako.project.workset import retained_vault_reason
     from kanibako.settings.paths import STANDALONE_META_DIR
 
     metadata_dir = root / STANDALONE_META_DIR
@@ -1507,7 +1508,8 @@ def _teardown_standalone_box(
                 print(f"Removed vault: {vault_dir}")
         for vault_dir in retained_vault:
             if vault_dir.is_dir():
-                print(f"Kept vault: {vault_dir} (outside {root} — remove it yourself)")
+                print(f"Kept vault: {vault_dir} "
+                      f"({retained_vault_reason(root, vault_dir)} — remove it yourself)")
         return True
     print(
         f"Warning: could not fully remove {metadata_dir} "

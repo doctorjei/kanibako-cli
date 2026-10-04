@@ -82,6 +82,7 @@ from kanibako.project.workset import (
     resolve_workset_vault_ro,
     resolve_workset_vault_rw,
     resolve_workset_workspaces,
+    retained_vault_reason,
     standalone_vault_teardown,
 )
 
@@ -1276,7 +1277,9 @@ def _remove_old_metadata(
                 shutil.rmtree(vault, ignore_errors=True)
         for vault in retained_vault:
             if vault.is_dir():
-                _report_retained_vault(vault, f"it is outside {root} and is yours to remove.")
+                _report_retained_vault(
+                    vault, f"it is {retained_vault_reason(root, vault)} and is yours to remove.",
+                )
         _report_unreceived_vaults(kept)
         return
 
@@ -1301,9 +1304,11 @@ def _remove_old_metadata(
         # silently leave the box's real vault behind.
         # ⚑ Containment must be STRICT — ``relative_to`` ACCEPTS an equal path, so a
         # leafless ``vault_dir`` would take every box's vault with it.
-        unreceived = dict(_unreceived_vault_leaves(
+        # ⚑ Keyed RESOLVED, as the lookup below is: a symlink anywhere in the vault path
+        # would otherwise miss here and send an unreceived leaf to the ``rmtree``.
+        unreceived = {leaf.resolve(): key for leaf, key in _unreceived_vault_leaves(
             (state.vault_ro, state.vault_rw), dst_vault,
-        ))
+        )}
         for vault_dir, arm in ((state.vault_ro, std.primary_vault_ro),
                                (state.vault_rw, std.primary_vault_rw)):
             if vault_dir is None or arm is None or not vault_dir.is_dir():

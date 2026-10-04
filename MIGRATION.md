@@ -5835,6 +5835,35 @@ directory, or set `workset.workspaces` to the directory you want. To keep the `n
 working set, connect a directory outside it instead. A workspace that v1.8.0-rc2 created while the `null`
 was set is still under `<workset>/workspaces/`; to start its box again, delete the `workspaces:` line.
 
+### A `null` workset vault, canon, template or channel root means no directory
+
+**Read this if a `<workset>/workset.yaml` sets `workset.vault_ro`, `workset.vault_rw`,
+`workset.canon`, `workset.template` or `workset.channelroot` to `null`.** That covers the primary
+workset's file, a named workset's, and a standalone box's root file; a `null` written by `--null`
+counts.
+
+**What changed.** In v1.8.0-rc2 such a `null` was read as if the key were not set, and the default
+directory answered. It now names no directory:
+
+- A null vault arm gets no directory and no mount, and `box move` or `box convert` into it leaves
+  the box's current vault where it is, printing `Note: left the vault at <path> in place —
+  workset.vault_<arm> is null at the destination, so nothing received its contents`.
+- A null `canon` or `template` skips that layer.
+- A null `channelroot` leaves out the three `~/channels/workset/*` binds, and each launch warns
+  once, naming `workset.channelroot` and its file (see *One of kanibako's own binds warns when only
+  its entry or only its source is `null`*).
+
+A standalone box whose root file nulls a vault arm after data was stored under it no longer owns
+that data: `<root>/vault/rw` (or `ro`) is no arm of the box. `box move`, `box convert`,
+`box rm --purge` and `box purge` keep the `<root>/vault/` folder whenever it holds anything
+besides the box's own arms and its `.gitignore`, and name each entry they kept — `Note: left the
+vault at <path> in place — it is not a vault arm of this box and is yours to remove.`, or `Kept
+vault: <path> (not a vault arm of this box — remove it yourself)` from the two purges.
+
+**What to do.** To get the directory back, delete the line or give it a path. To keep the `null`
+with no warning, also set the three channel bind entries to `null`. Move or delete a vault
+directory a relocation or a purge left behind yourself; kanibako does not remove it.
+
 ### 2.95 The `agent` verbs refuse an agent file with an undeclared key, as the launch does
 
 **Read this if an agent's settings file (`<data>/agents/<agent>/agent.yaml`) has a line under
