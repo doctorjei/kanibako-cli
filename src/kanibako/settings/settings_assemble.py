@@ -58,8 +58,10 @@ from kanibako.settings.settings_drops import cascade_drop_set, upward_scope_drop
 from kanibako.settings.settings_keyspace import (
     BIND_LEAF_CATEGORIES,
     SCALAR_AGENT_LEAVES,
+    TABLE_VALUED_AGENT_LEAVES,
     TERMINAL_CATEGORY_TAILS,
     Judgment,
+    is_terminal_category_key,
     render_store_path,
     undeclared_store_paths,
 )
@@ -70,6 +72,7 @@ from kanibako.settings.settings_resolve import (
     check_bind_map,
     normalize_bind_dest,
     refuse_dest_spelled_twice,
+    refuse_scalar_at_table_key,
     refuse_unrooted_source,
     unpack_bind,
     unpack_bind_entry,
@@ -1011,6 +1014,32 @@ def retired_cure(files: Iterable[SettingsFile]) -> None:
             refuse_retired_behavior_keys(f.view, level=f.level, path=f.path)
 
 
+def _refuse_malformed_category(parts: tuple[str, ...], sub: Any) -> None:
+    """RAISE on a non-``None`` non-map where a TABLE belongs, or pass.
+
+    ⚑ THE POSITION IS THE DISCRIMINATOR, and this walk is the one place it cannot be
+    assumed: a deep walk reaches ``system.channels.common`` — a path SCALAR that merely
+    ENDS in a category token, while its family's ``system.channels.chat`` does not.
+    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` reads that
+    position, so it judges and the message names the WHOLE key.
+
+    ⚑ ONE JUDGE FOR EVERY TIER, the agent file included: a launch is refused at the FILE
+    that holds the value, and the file it names is the one to edit whatever tier that file
+    is. The DISPLAY verbs are not this walk — ``agent_record`` coerces a wrong shape so a
+    broken file stays openable to repair (``settings_resolve._check_node_binds``).
+    """
+    key = ".".join(parts)
+    if is_terminal_category_key(key) or _is_table_valued_agent_leaf(parts):
+        refuse_scalar_at_table_key(key, sub)
+
+
+def _is_table_valued_agent_leaf(parts: tuple[str, ...]) -> bool:
+    """Does *parts* end AT a declared table-valued agent leaf, ``agent.<node>.<leaf>``?"""
+    # ⚑ A node is ONE segment (``agent_ref.parse_agent_ref`` refuses a dotted one), so the
+    # same word inside a family's entries or inside the table's own payload is DATA.
+    return len(parts) == 3 and parts[0] == "agent" and parts[2] in TABLE_VALUED_AGENT_LEAVES
+
+
 def _parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
     path: tuple[str, ...] = (),
@@ -1033,13 +1062,12 @@ def _parse_node(
             key_s = str(key)
             if at_bindings and key_s in _BIND_ARMS:
                 # An ARM (``bindings.ro`` / ``.rw``) — a TERMINAL dest-keyed map (R-5).
-                # ⚑ A non-dict is a MALFORMED arm and is deliberately left to the legacy leaf path,
-                # so ``settings_launch._assert_declared_categories`` still names the key.
                 if isinstance(sub, dict):
                     store[key_s] = parse_bind_map(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
                     )
                     continue
+                _refuse_malformed_category((*path, key_s), sub)
             if not in_binds and key_s in BIND_LEAF_CATEGORIES:
                 # A TERMINAL dest-keyed category — the map is HERE, not one level down, so it is
                 # parsed on the way PAST the category token. Same malformed-shape hand-off as an arm.
@@ -1051,9 +1079,16 @@ def _parse_node(
                         root_ref=_declaration_root_ref(path, key_s),
                     )
                     continue
-            if not in_binds and key_s in _MARKER_LEAF_CATEGORIES and isinstance(sub, dict):
-                store[key_s] = _parse_marker_map(sub, path=(*path, key_s))
-                continue
+                _refuse_malformed_category((*path, key_s), sub)
+            if not in_binds and key_s in _MARKER_LEAF_CATEGORIES:
+                if isinstance(sub, dict):
+                    store[key_s] = _parse_marker_map(sub, path=(*path, key_s))
+                    continue
+                _refuse_malformed_category((*path, key_s), sub)
+            if not in_binds and _is_table_valued_agent_leaf((*path, key_s)):
+                # A table-valued agent LEAF, whole — spec §2d, no §2a category involved,
+                # so the branches above cannot reach it. Same rule, same wording.
+                _refuse_malformed_category((*path, key_s), sub)
             # Entering a bind-shaped category: its entries below are binds.
             descend_binds = in_binds or key_s in BIND_CATEGORY_TOKENS
             store[key_s] = _parse_node(
@@ -1162,7 +1197,9 @@ def _parse_naming_file(
     return parsed
 
 
-def _file_partial(raw: dict, *, path: Path | None = None) -> KeyStore:
+def _file_partial(
+    raw: dict, *, path: Path | None = None,
+) -> KeyStore:
     """Build ONE level partial from a settings file's WHOLE nested content, SCOPE TOKEN KEPT (§0).
 
     The rule for every NON-agent level (``base`` / ``system`` / ``workset`` / ``box``); the agent
@@ -1214,6 +1251,18 @@ def _agent_partial(
     has already REFUSED at the boundary (Q103, ``agent_file._refuse_two_spellings``).
     """
     level = level_table(raw, sub_key=sub_key, node=node, path=path)
+    for leaf, leaf_value in level.state.items():
+        # ⚑ THE ONE TABLE-VALUED LEAF THE SPLIT HIDES: ``transform_settings`` is a §2d leaf,
+        # not a category root, so :func:`~kanibako.settings.agent_file.level_table` splits it into
+        # *state* and no parse below ever sees it. Without this the launch dropped it in silence.
+        # The all-agents tier's *state* is empty (``self:`` is ``agent.<node>``), so this is the
+        # active level's own leaves and only the launch reaches it — ``agent_record`` coerces.
+        if leaf in TABLE_VALUED_AGENT_LEAVES and leaf_value is not None \
+                and not isinstance(leaf_value, dict):
+            refuse_scalar_at_table_key(
+                f"agent.{level.node}.{leaf}", leaf_value,
+                where=str(path) if path is not None else None,
+            )
     scope = _scope_nodes(level.scope, sub_key=sub_key, path=path)
     store = _file_partial(level.contained, path=path)
     if not level.table and not scope:
