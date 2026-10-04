@@ -2316,6 +2316,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
         category_ctx = None
         category_error = None
         category_declared_by = None
+        agent_id = GENERAL_SLOT
+        agent_cfg_path: Path | None = None
         if args.effective:
             from kanibako.settings.agent_config import agent_settings_path
             from kanibako.settings.settings_assemble import ReadPurpose, agent_record
@@ -2442,6 +2444,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             category_ctx=category_ctx,
             category_error=category_error,
             category_declared_by=category_declared_by,
+            agent_name=agent_id, agent_path=agent_cfg_path,
         )
 
     if action == ConfigAction.get:

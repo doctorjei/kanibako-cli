@@ -134,7 +134,7 @@ def resolve_box_shell(config, std, *, runtime=None, image=None) -> tuple[str, st
     shell (stored, else lazily probed and persisted when *runtime* is given) →
     ``sh``.
     """
-    box_shell = getattr(config, "box_shell", "") or ""
+    box_shell = getattr(config, "box_shell", None) or ""
     if box_shell:
         return box_shell, "box.shell"
 
