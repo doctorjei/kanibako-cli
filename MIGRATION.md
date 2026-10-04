@@ -3423,6 +3423,13 @@ This now also covers a key the merge hides. An undeclared entry in a workset or 
 refused even when another file's table covers it, and the message names the file to edit by hand.
 Plain `workset share list` refuses such a file too.
 
+An `@`-reference counts too. A reference to a name that is not a key now stops the command, naming
+the reference and the entry that holds it. That covers `@meta.agent.home/x` as a bind destination, a
+typo such as `@box.nope`, and `@meta.box.name.jsonl`, whose name swallows the extension. Before, it
+resolved as empty, so the entry was dropped or the path lost that piece. A reference to a declared key
+that has no value is unchanged. The cure is a hand-edit: point the reference at a declared key, write
+`@{meta.box.name}.jsonl` to keep a suffix, or escape a literal `@` as `\@`.
+
 ### 2.48 `box get` and `workset get` refuse a name that is not a key, and `show` marks the entry
 
 **Read this if a script calls `kanibako box get` or `kanibako workset get`, or if you have a

@@ -7154,3 +7154,54 @@ class TestASettingsFileEndpointIsText:
             }}},
         )
         assert effective_behavior(snap, active_agent="claude")["model"] == "m-t@x"
+
+
+@pytest.mark.parametrize("box, named", [
+    ({"bindings": {"rw": {"@meta.agent.home/x": ["/h/src"]}}}, "@meta.agent.home"),
+    ({"bindings": {"rw": {"@meta.agent.home": ["/h/src"]}}}, "@meta.agent.home"),
+    ({"bindings": {"ro": {"/opt/u": ["@box.nope/sub"]}}}, "@box.nope"),
+    ({"env": {"ZED": "@box.nope"}}, "@box.nope"),
+    ({"env": {"ODD": "/e@v\\$q"}}, "@v"),
+], ids=["embedded-dest", "whole-dest", "embedded-src", "whole-env", "embedded-env"])
+def test_a_ref_that_names_no_key_is_refused_by_name(tmp_path: Path, box, named):
+    """Spec §0: the keyspace is closed, so an ``@``-ref to an undeclared key is refused
+    NAMING it — never resolved as absence, which drops the key or empties the path."""
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError, match="references no key") as exc:
+        build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+            workset_path=None, box_path=_write_yaml(tmp_path / "box.yaml", {"box": box}),
+        )
+    assert f"'{named}'" in str(exc.value)
+
+
+@pytest.mark.parametrize("env", [
+    {"A": "x-@box.env.B", "B": "@box.nope"},
+    {"B": "@box.nope", "A": "x-@box.env.B"},
+], ids=["holder-reached-through-a-ref", "holder-resolved-first"])
+def test_the_refusal_names_the_key_that_holds_the_ref(tmp_path: Path, env):
+    """The key named is the one HOLDING the bad ref, whichever key the resolve reached first."""
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as exc:
+        build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+            workset_path=None,
+            box_path=_write_yaml(tmp_path / "box.yaml", {"box": {"env": env}}),
+        )
+    assert str(exc.value).startswith("box.env.B: '@box.nope' references no key"), exc.value
+
+
+def test_the_refusal_names_a_binding_entry_by_its_index(tmp_path: Path):
+    """Spec §0: a binding entry is ``box.bindings.ro[/opt/u]``; a dotted tail is not a key."""
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError) as exc:
+        build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+            workset_path=None, box_path=_write_yaml(tmp_path / "box.yaml", {"box": {
+                "bindings": {"ro": {"/opt/u": ["@box.nope/sub"]}},
+            }}),
+        )
+    assert str(exc.value).startswith("box.bindings.ro[/opt/u]: '@box.nope'"), exc.value

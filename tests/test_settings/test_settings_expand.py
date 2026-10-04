@@ -187,8 +187,8 @@ def test_multi_hop_whole_value_chain() -> None:
 
 
 def test_whole_value_absent_drops_key_full_chain() -> None:
-    # a = @b, b = @c, c ABSENT → a and b are both DROPPED (absence full chain).
-    snap = KeyStore({"a": "@b", "b": "@c"})
+    # a = @b, b = @box.env.C, box.env.C ABSENT → a and b are both DROPPED (absence full chain).
+    snap = KeyStore({"a": "@b", "b": "@box.env.C"})
     out = expand(snap, _ctx())
     assert _probe(out, "a") is __MISSING__
     assert _probe(out, "b") is __MISSING__
@@ -218,7 +218,7 @@ def test_whole_value_present_none_propagates_none() -> None:
 
 def test_braced_whole_value_absent_drops_key_full_chain() -> None:
     # Mirror of test_whole_value_absent_drops_key_full_chain with braces.
-    snap = KeyStore({"a": "@{b}", "b": "@{c}"})
+    snap = KeyStore({"a": "@{b}", "b": "@{box.env.C}"})
     out = expand(snap, _ctx())
     assert _probe(out, "a") is __MISSING__
     assert _probe(out, "b") is __MISSING__
@@ -259,14 +259,14 @@ def test_braced_whole_value_resolves_non_str_terminal_verbatim() -> None:
 def test_braced_embedded_absent_coerces_empty_and_keeps_key() -> None:
     # THE CONTRAST that proves the two shapes stay distinguished: the SAME ref,
     # with a suffix, is EMBEDDED — absent coerces to "" and the key survives.
-    snap = KeyStore({"a": "@{x.y}.jsonl", "c": "/ok"})
+    snap = KeyStore({"a": "@{box.env.XY}.jsonl", "c": "/ok"})
     out = expand(snap, _ctx())
     assert out["a"] == ".jsonl"
     assert out["c"] == "/ok"
 
 
 def test_braced_bind_whole_value_host_absent_drops_bind() -> None:
-    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@{missing}", "~/x")}}}})
+    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@{box.env.MISSING}", "~/x")}}}})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "x") is __MISSING__
 
@@ -347,7 +347,7 @@ def test_whole_value_ref_to_subtree_fresh_and_expanded() -> None:
 
 def test_embedded_absent_token_to_empty_keeps_key() -> None:
     # container_name-style: an embedded ref to an absent key → "" (key SURVIVES).
-    snap = KeyStore({"name": "kanibako-@box.missing"})
+    snap = KeyStore({"name": "kanibako-@box.env.MISSING"})
     out = expand(snap, _ctx())
     assert _probe(out, "name") == "kanibako-"  # key present, token empty.
 
@@ -374,7 +374,7 @@ def test_embedded_present_none_propagates_through_a_chain() -> None:
 
 def test_embedded_absent_and_present_none_in_one_value_is_none() -> None:
     # The present None wins over the absent ref's "" — the value is None.
-    snap = KeyStore({"a": "@nope/@y/x", "y": None})
+    snap = KeyStore({"a": "@box.env.NOPE/@y/x", "y": None})
     out = expand(snap, _ctx())
     assert _probe(out, "a") is None
 
@@ -481,7 +481,7 @@ def test_bind_opts_carried() -> None:
 
 def test_bind_whole_value_host_absent_drops_bind() -> None:
     # host_src is a whole-value @-ref to an absent key → the bind is DROPPED.
-    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@missing", "~/x")}}}})
+    snap = KeyStore({"box": {"bindings": {"rw": {"x": Bind("@box.env.MISSING", "~/x")}}}})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "x") is __MISSING__
 
@@ -513,7 +513,7 @@ def test_bind_host_xdg_and_tilde_expand_host_side() -> None:
 def test_bind_box_whole_value_absent_ref_raises() -> None:
     # A whole-value box_dest @-ref to an absent key is unreachable on spec forms
     # and a mount foot-gun if coerced to "" — so it raises (not silently empty).
-    snap = KeyStore({"box": {"caches": {"c": Bind("/h", "@nope")}}})
+    snap = KeyStore({"box": {"caches": {"c": Bind("/h", "@box.env.NOPE")}}})
     with pytest.raises(SettingsError) as ei:
         expand(snap, _ctx())
     assert "box_dest" in str(ei.value)
@@ -567,7 +567,7 @@ def test_mixed_whole_then_embedded_cycle_raises() -> None:
 
 def test_absent_ref_is_NOT_a_cycle_error() -> None:
     # A legit-absent referent is §6b propagation, NOT a cycle — must not raise.
-    snap = KeyStore({"a": "@nope"})
+    snap = KeyStore({"a": "@box.env.NOPE"})
     out = expand(snap, _ctx())  # no exception.
     assert _probe(out, "a") is __MISSING__
 
@@ -1174,7 +1174,7 @@ def test_bind_entry_opts_carried_verbatim() -> None:
 def test_bind_entry_whole_value_src_absent_drops_the_entry() -> None:
     # Same 3-state rule as the name-keyed Bind: an absent whole-value src means the
     # binding cannot point anywhere, so the entry is DROPPED (§6b/§3).
-    snap = _arm({"~/a": BindEntry("@box.nope"), "~/b": BindEntry("/h/b")})
+    snap = _arm({"~/a": BindEntry("@box.env.NOPE"), "~/b": BindEntry("/h/b")})
     out = expand(snap, _ctx())
     assert _probe(out, "box", "bindings", "rw", "~/a") is __MISSING__
     assert _probe(out, "box", "bindings", "rw", "~/b") == BindEntry("/h/b")
@@ -1248,7 +1248,7 @@ def test_a_none_bind_source_is_skipped_not_mounted_at_the_collapse(src: str) -> 
     [
         ("@workset.auth.path/x", ("workset.auth.path",)),
         ("@{workset.auth.path}", ("workset.auth.path",)),
-        ("@nope/@workset.auth.path/@y", ("workset.auth.path", "y")),
+        ("@box.env.NOPE/@workset.auth.path/@y", ("workset.auth.path", "y")),
     ],
 )
 def test_the_side_table_names_the_null_refs_of_a_none_entry(src, refs) -> None:
@@ -1300,7 +1300,7 @@ def test_a_seeded_layer_with_a_present_none_dest_is_skipped_in_lenient_mode() ->
 
 def test_a_seeded_layer_with_an_absent_whole_value_dest_still_raises() -> None:
     # Absence is not <None>: the §2a skip does not reach a dangling destination.
-    snap = KeyStore({"box": {"seeded": {"@nope": BindEntry("/h/a")}}})
+    snap = KeyStore({"box": {"seeded": {"@box.env.NOPE": BindEntry("/h/a")}}})
     with pytest.raises(SettingsError, match="an absent config key"):
         expand(snap, _ctx())
 
@@ -1330,7 +1330,7 @@ def test_bind_embedded_present_none_box_dest_raises() -> None:
 def test_bind_entry_whole_value_dest_key_to_absent_raises() -> None:
     # A destination cannot resolve to no path — the same loud refusal the
     # name-keyed ``box_dest`` gets, moved to the key.
-    snap = _arm({"@box.nope": BindEntry("/h/a")})
+    snap = _arm({"@box.env.NOPE": BindEntry("/h/a")})
     with pytest.raises(SettingsError) as exc:
         expand(snap, _ctx())
     assert "destination cannot" in str(exc.value)
