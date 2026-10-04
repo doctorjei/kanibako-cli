@@ -3256,8 +3256,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   have. The same happened when a mask sat **above** the binding: the sweep leaves the binding's own
   destination absent from the collapsed map entirely, so nothing was there to notice its absence.
   Concrete rows are now paired against the arbitrated map through the same function the abstract
-  declarations and `workset share list --effective` already use. A binding that is delivered prints
-  exactly as before — including one that legitimately **supersedes** a lower-scope mask, which is
+  declarations and `workset share list --effective` already use. A binding that is delivered is
+  still printed as a mount — including one that legitimately **supersedes** a lower-scope mask, which is
   a real mount and not a loss. A binding that is not delivered keeps its key (that key is what you
   edit) and is printed in declaration form with the reason beneath it, naming the destination that
   took it:
@@ -3266,10 +3266,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         (no mount — the mask declared by 'box.masks./opt/arb' at /opt/arb covers this
         destination, and a mask has no host source: the box sees nothing at that path)
 
-  A destination you spelled with a variable — `$XDG_CACHE_HOME/models`, say — is arbitrated like
-  any other, and a mask over one is reported like any other. The key is still printed the way you
-  wrote it, because that is the line you edit; the reason beneath a loss names the resolved path,
-  because that is where the collision happened.
+  A destination you spelled with a variable, an escape, or an `@`-reference — `$XDG_CACHE_HOME/models`,
+  `/opt/a\$b`, `@box.env.X/t` — is arbitrated like any other, and a mask over one is reported like
+  any other. The key keeps the spelling you wrote, because that is the line you edit; the
+  destination after `->`, and in the declaration form of a loss, is the resolved guest path the mount
+  lands on (`$XDG_*` expanded, escapes removed), and the reason beneath a loss names it too.
 
 - **A `box.enable_vault` published by a workset stays the workset's — `box remap`, `box move` and
   `box convert` no longer resolve it inconsistently, nor harden it into the box that inherited it.**
