@@ -880,7 +880,7 @@ def _plan_workset_member(std, workset: str, name: str,
     # ⚑ A NAMED box's name IS its member name, so the designation and ``--name`` are
     # two answers to one question — folded to compare, never to store (§0).
     override = getattr(args, "name", None)
-    if override is not None and override.casefold() != name.casefold():
+    if override is not None and find_identifier(override, [name]) is None:
         print("Error: " + ERR_WORKSET_MEMBER_NAME_CONFLICT % (
             ws.name, override, name,
         ), file=sys.stderr)
