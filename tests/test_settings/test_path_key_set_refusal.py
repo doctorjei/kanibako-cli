@@ -251,10 +251,12 @@ class TestTheLegalShapesAreAccepted:
         # the set-time probe resolves that foundation from the REAL
         # ``$XDG_CONFIG_HOME/kanibako.cfg`` and CONCEDES on any failure, so an
         # unisolated run answers "dangling @-reference" off the host's own file.
+        # ⚑ NOT a workset EARLY key: those take only ``@meta.workset.path``
+        # (``test_workset_early_key_set_door.py``).
         files = _files(tmp_path)
-        message = _set("workset.channelroot", value, files, ConfigLevel.workset)
+        message = _set("workset.auth.path", value, files, ConfigLevel.workset)
         assert not message.startswith("Error:"), message
-        assert load_doc(files["workset"])["workset"]["channelroot"] == value
+        assert load_doc(files["workset"])["workset"]["auth"]["path"] == value
 
     @pytest.mark.parametrize("value", [
         "/srv/c", "~/c", "$XDG_CACHE_HOME/c", "${XDG_CACHE_HOME}/c", "@config.data/c",
@@ -341,18 +343,20 @@ class TestSetTimeResolvesTheCommandsTarget:
 
     def test_a_workset_value_resolves_against_the_worksets_anchors(self, std, tmp_home):
         ws = create_workset("anchorws", tmp_home / "anchorws", std)
-        message = _set_ws("workset.canon", "@meta.runtime.ws_root/canon", std, ws)
-        assert message == "Set workset.canon=@meta.runtime.ws_root/canon", message
+        message = _set_ws("workset.auth.path", "@meta.runtime.ws_root/auth", std, ws)
+        assert message == "Set workset.auth.path=@meta.runtime.ws_root/auth", message
 
     @pytest.mark.parametrize("ref", ["@meta.box.path", "@meta.box.home"])
     def test_a_workset_value_needing_a_box_is_judged_without_one(
         self, ref, std, tmp_home,
     ):
-        """A working set names no box: its box anchors are OMITTED, never fabricated."""
+        """A working set names no box, and a workset key may not name one: ``meta.box``
+        resolves after the workset keys (system-design "Ordering rule")."""
         ws = create_workset("noboxws", tmp_home / "noboxws", std)
-        message = _set_ws("workset.canon", f"{ref}/canon", std, ws)
+        message = _set_ws("workset.auth.path", f"{ref}/auth", std, ws)
         assert message.startswith("Error:"), message
-        assert f"dangling @-reference '{ref}'" in message
+        assert f"points at '{ref}'" in message, message
+        assert 'system-design "Ordering rule"' in message, message
 
     def test_a_write_naming_no_target_gets_no_anchor_from_its_file(self, tmp_path):
         """⚑ NO TARGET, NO ANCHOR: ``meta.workset.path`` is never read off the parent
@@ -554,7 +558,7 @@ class TestEveryNounPassesItsTarget:
 
         create_workset("cliws", tmp_home / "cliws", std)
         rc = run_set(argparse.Namespace(
-            workset="cliws", key_value="workset.canon=@meta.runtime.ws_root/canon",
+            workset="cliws", key_value="workset.auth.path=@meta.runtime.ws_root/auth",
             force=False,
         ))
         assert rc == 0, capsys.readouterr().err
@@ -578,7 +582,7 @@ class TestEveryNounPassesItsTarget:
 
 
 # ---------------------------------------------------------------------------
-# The system PATH TIER's @-ref scope (spec §0: no @-ref points DOWNWARD)
+# The system PATH TIER's @-ref scope (system-design "Ordering rule": a key depends only on preceding sets)
 # ---------------------------------------------------------------------------
 
 #: Shapes whose ``@``-ref names a key OUTSIDE the system path tier.  Each parses to a

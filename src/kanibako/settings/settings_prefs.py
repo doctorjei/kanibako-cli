@@ -52,7 +52,7 @@ from typing import (
     Sequence,
 )
 
-from kanibako.settings.kb_store import SCOPE_CONTAINMENT, StoreValue
+from kanibako.settings.kb_store import RESOLUTION_ORDER, SCOPE_CONTAINMENT, StoreValue
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_keyspace import (
     PREF_ALLOWLIST,
@@ -103,20 +103,6 @@ LOCATOR_CLOSURE: Final[frozenset[str]] = frozenset({
     "workset.boxes",
     "workset.kuid",
 })
-
-#: Resolution ORDER of the cascade levels, for the STRUCTURAL forbidden tier
-#: (spec §1A). A pref may target only a key resolving STRICTLY EARLIER
-#: than the level setting it.
-_LEVEL_ORDER: Final[dict[str, int]] = {
-    "config": 0,    # L0.1
-    "meta": 1,      # L0.2 / L1.x / L4.1 — bootstrap anchors
-    "base": 2,      # L2.1
-    "system": 3,    # L2.2
-    "agent": 4,     # L3.1
-    "workset": 5,   # L3.2
-    "box": 6,       # L4.2
-}
-
 
 @dataclass(frozen=True)
 class PrefRequest:
@@ -400,11 +386,10 @@ def forbidden_tier_reason(target: str, *, level: str) -> str | None:
     """
     head = target.split(".", 1)[0]
 
-    # STRUCTURAL.
-    target_rank = _LEVEL_ORDER.get(head)
-    level_rank = _LEVEL_ORDER.get(level)
-    if target_rank is not None and level_rank is not None:
-        if target_rank >= level_rank:
+    # STRUCTURAL, off :data:`RESOLUTION_ORDER`. A ``meta.*`` head is no rung there; the
+    # categorical arm refuses it.
+    if head in RESOLUTION_ORDER and level in RESOLUTION_ORDER:
+        if RESOLUTION_ORDER.index(head) >= RESOLUTION_ORDER.index(level):
             return (
                 f"it targets '{target}', which resolves at or after the {level} "
                 f"level. A later-resolving key needs no pref — set it directly "

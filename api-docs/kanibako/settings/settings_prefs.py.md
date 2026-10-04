@@ -12,7 +12,6 @@ PREF_ROOT: Final[str] = 'pref'
 PREF_LEGAL_LEVELS: Final[tuple[str, ...]] = ('workset', 'box')
 LOCATOR_CLOSURE: Final[frozenset[str]] = frozenset({'workset.boxes', 'workset.kuid'})
 _log = logging.getLogger(__name__)
-_LEVEL_ORDER: Final[dict[str, int]] = {'config': 0, 'meta': 1, 'base': 2, 'system': 3, 'agent': 4, 'workset': 5, 'box': 6}
 _DISCOVERY: 'dict[str, AgentNames]' = {}
 ```
 
