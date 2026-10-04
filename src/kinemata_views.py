@@ -945,8 +945,8 @@ STATED = "stated"
 MEMBERSHIP = "membership"
 NOT_EXPRESSIBLE = "not-expressible"
 
-#: The two cells whose value is what ABSENCE yields, so the descriptor may state
-#: them or state nothing. ⚑ `true` and `false` are NOT among them: the fence spells
+#: The two cells whose value is what ABSENCE yields: no producer value is compared
+#: against them. ⚑ `true` and `false` are NOT among them: the fence spells
 #: a boolean `true`, and `spec_notation(True)` is `true`, so `agent.shell.allow_helpers
 #: | true` and `agent.goose.env.GOOSE_DISABLE_KEYRING | true` are STATED values.
 ABSENCE_CELLS = (SPEC_NULL, SPEC_EMPTY)
@@ -975,10 +975,11 @@ def classify_spec_cell(key: str, cell: str) -> str:
         parenthesized host source of a dest-keyed entry, or a ``<runtime-probed …>``
         placeholder.
     * **MEMBERSHIP** -- the key is named and its value is what ABSENCE yields
-      (`<None>`, `{}`). The descriptor may state that value or state nothing
-      (`agent_tier_defaults` drops a produced absence value, so the two read
-      alike), and any OTHER value is a finding -- so a fabricated default reds and
-      an honest omission does not.
+      (`<None>`, `{}`). A producer that yields no floor for the key (a ``None``
+      or empty-dict value, which `agent_tier_defaults` drops) reads the same as
+      one that omits the row, and any real value -- the STRING ``"{}"`` or
+      ``"<None>"`` included -- is a finding, so a fabricated default reds and an
+      honest omission does not.
     * **STATED** -- a literal the descriptor's floor must equal.
 
     A row this comparison does not cover at all is filtered by the caller, not
@@ -1041,8 +1042,8 @@ def node_not_expressible(node: str) -> list[str]:
     ⚑ THE MEMBERSHIP CLASS IS VISIBLE ONLY THROUGH ITS ABSENCE HERE.  A
     ``<None>``/``{}`` cell names a key and states the value absence yields, so it
     is neither a value to compare (`node_spec_defaults`) nor a row to report
-    (`node_not_expressible`); the descriptor may state that value or state
-    nothing, and only a different value is a finding.
+    (`node_not_expressible`); a producer yielding no floor for the key passes,
+    and any real value is a finding.
     """
     return [
         key
@@ -1057,6 +1058,14 @@ def node_not_expressible(node: str) -> list[str]:
 # --------------------------------------------------------------------------- #
 
 
+def _is_absent(value: object) -> bool:
+    """True for a RAW producer value meaning "no floor": ``None`` or an empty dict.
+
+    Never decided from `spec_notation`: the string ``"{}"`` is a value.
+    """
+    return value is None or (isinstance(value, dict) and not value)
+
+
 def agent_tier_defaults(node: str) -> dict[str, str]:
     """``{agent.<node>.<leaf>: value-in-spec-notation}`` for the defaults a node's
     own declaration STATES.
@@ -1068,13 +1077,16 @@ def agent_tier_defaults(node: str) -> dict[str, str]:
     from ``core_defaults.pseudo_tier_defaults()`` and ``env_default_categories()``
     -- the producers the launch itself reads.
 
-    ⚑ AN ABSENCE VALUE IS NOT A STATED DEFAULT. A floor of ``None`` or ``{}``
-    (§2d's ``<None>``/``{}``, :data:`ABSENCE_CELLS`) is what omitting the row
-    yields, so it is dropped here rather than produced: that is what lets a
-    descriptor state a MEMBERSHIP cell's value or state nothing, and read the same.
-    A STATED cell is never an absence value (`classify_spec_cell`), so the drop
-    cannot hide one -- a descriptor that blanks a STATED row still reds as "declared,
-    produced by nothing".
+    ⚑ NO FLOOR IS NOT A STATED DEFAULT. A producer yields ``None`` for a row with
+    no default (a plugin's floorless row, the pseudo-agent's ``None`` rows), and an
+    empty dict is the same absence; such a value is dropped here rather than
+    produced. ⚑ THE TEST IS ON THE RAW VALUE, NEVER ITS NOTATION: a descriptor
+    default that is the STRING ``"{}"`` or ``"<None>"`` renders exactly like an
+    absence, and judging by notation would let that fabricated default pass. A
+    plugin loader refuses a real ``null``/dict default, so a plugin cannot state an
+    absence; it can only omit the default. A STATED cell is never an absence
+    (`classify_spec_cell`), so the drop cannot hide one -- a producer that blanks a
+    STATED row still reds as "declared, produced by nothing".
 
     ⚑ ``$GUEST_HOME`` IS FOLDED BACK TO ``~``. The loader expands it to the guest
     constant (§2a: the guest-home literal lives in one place), so the stored value
@@ -1092,7 +1104,7 @@ def agent_tier_defaults(node: str) -> dict[str, str]:
     produced: dict[str, str] = {}
     prefix = f"agent.{node}."
     for key, value in _agent_tier_floors(node).items():
-        if key.startswith(prefix) and spec_notation(value) not in ABSENCE_CELLS:
+        if key.startswith(prefix) and not _is_absent(value):
             produced[key] = notation(value)
     return produced
 

@@ -64,6 +64,7 @@ def _root_or_decoy(mode: str, attribute: str) -> Any
 def _keyspec_extract() -> Any
 def _strip_html_comments(lines: list[str]) -> list[str]
 def _node_fence_marker(node: str) -> str
+def _is_absent(value: object) -> bool
 def _agent_tier_floors(node: str) -> dict[str, str | None]
 ```
 
