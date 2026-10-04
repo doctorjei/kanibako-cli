@@ -2143,7 +2143,7 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         assert _collapsed(categories)["/data/z"].src == "/src"
 
         text = _block(categories)
-        assert "box.bindings.ro[$XDG_DATA_HOME/z] = /src -> $XDG_DATA_HOME/z" in text, text
+        assert "box.bindings.ro[$XDG_DATA_HOME/z] = /src -> /data/z" in text, text
         assert "no mount" not in text, text
 
     def test_a_MASKED_XDG_spelled_dest_prints_the_mask_not_a_mount(self):
@@ -2168,12 +2168,12 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
             "mount at a destination the box sees nothing at"
         )
         assert (
-            "box.bindings.ro[$XDG_DATA_HOME/z] = $XDG_DATA_HOME/z  (declared: /src)"
+            "box.bindings.ro[$XDG_DATA_HOME/z] = /data/z  (declared: /src)"
             in text
         ), text
         # ⚑ THE KEY KEEPS THE SPELLING THE USER WROTE while the destination is the
-        # RESOLVED one — the two halves of the same row, and the key is the half they
-        # can go and edit.
+        # RESOLVED one, on the row and in the reason — the key is the half they can go
+        # and edit.
         assert (
             f"{self._MASK_PHRASE}'box.masks[$XDG_DATA_HOME/z]' at /data/z covers this "
             "destination" in text
@@ -2241,6 +2241,33 @@ class TestAConcreteBindingTheCollapseSwallowedIsNotShownAsAMount:
         })
         assert "box.bindings.ro[/opt/arb-x] = /src -> /opt/arb-x" in text, text
         assert "no mount" not in text, text
+
+
+class TestAConcreteRowPrintsTheResolvedGuestPath:
+    """A concrete row's destination prints as the guest path the mount lands on.
+
+    The arm key is the box-side residue: a user's ``\\$``/``\\~`` stay escaped in it,
+    and an ``@``-ref's referent arrives with its ``$`` escaped. Neither spelling is
+    where the box sees the mount; ``resolve_box_dest`` is.
+    """
+
+    def test_an_escaped_literal_prints_unescaped(self):
+        text = _block({"box.bindings.ro": {"/opt/lit\\$b\\~c": ("/src",)}})
+        assert "/src -> /opt/lit$b~c\n" in text, text
+
+    def test_a_referent_dollar_prints_unescaped(self):
+        text = _block({
+            "box.env.ODD": "/e\\@v\\$q",
+            "box.bindings.ro": {"@box.env.ODD/t": ("/src",)},
+        })
+        assert "/src -> /e@v$q/t\n" in text, text
+
+    def test_a_lost_row_prints_the_resolved_path_in_declaration_form(self):
+        text = _block({
+            "box.bindings.ro": {"/opt/lit\\$b": ("/src",)},
+            "box.masks": ["/opt/lit\\$b"],
+        })
+        assert "= /opt/lit$b  (declared: /src)" in text, text
 
 
 class TestALossInTheEffectiveBlockNamesTheDECLARATIONThatTookTheDestination:
