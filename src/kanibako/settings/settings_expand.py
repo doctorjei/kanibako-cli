@@ -8,12 +8,13 @@ to terminals — TRANSITIVELY (a fixpoint), with cycle detection. It is PURE, an
 NEVER mutates the input snapshot (S19): it builds a fresh ``KeyStore``.
 
 ⚑ A reference resolves to a DECLARED key or it does not resolve at all — this pass
-NEVER fabricates a default for a name it cannot find. An absent referent propagates
-ABSENCE (§6b: whole-value → the holder key is DROPPED, embedded → ``""``). A
-present-``None`` referent makes the WHOLE value ``None``, whole-value or embedded
-alike (spec §0, [R186]). Every other unresolvable case is an ERROR that NAMES the
-key: a cycle, a depth-cap breach, an unknown ``$VAR``, a ``@pref.*`` ref, or a
-binding destination that would resolve to no path.
+NEVER fabricates a default for a name it cannot find. An absent referent that is a
+declared key propagates ABSENCE (§6b: whole-value → the holder key is DROPPED,
+embedded → ``""``). A present-``None`` referent makes the WHOLE value ``None``,
+whole-value or embedded alike (spec §0, [R186]). Every other unresolvable case is an
+ERROR that NAMES the key: a ref that names no declared key, a cycle, a depth-cap
+breach, an unknown ``$VAR``, a ``@pref.*`` ref, or a binding destination that would
+resolve to no path.
 
 ⚑ ABSENCE HAS A SECOND SOURCE, and it is not a failure: a PASSTHROUGH variable
 (``$COLORTERM``) whose host signal is unset answers absence too, and a whole-value
@@ -47,6 +48,8 @@ from typing import overload
 from kanibako.settings.kb_store import Bind, BindEntry, StoreValue
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD
+from kanibako.settings.settings_keyspace import KeyClass, entry_label
+from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_resolve import (
     MAX_REF_DEPTH,
     ResolveCtx,
@@ -239,6 +242,13 @@ def expand(
     return expanded
 
 
+def _leaf_label(path: tuple[str, ...]) -> str:
+    """How a message names the leaf at *path*: a dest-keyed entry is an index."""
+    if len(path) < 2:
+        return ".".join(path)
+    return entry_label(".".join(path[:-1]), path[-1])
+
+
 class _Expander:
     """The per-pass expansion state: the source snapshot, ctx, and the fixpoint memo.
 
@@ -265,6 +275,8 @@ class _Expander:
         self.refs_read: RefsRead = {}
         self._deps: dict[str, frozenset[str]] = {}
         self._reading: list[set[str]] = []
+        # The message spelling of each leaf being expanded, innermost last.
+        self._leaf_labels: list[str] = []
 
     # ------------------------------------------------------------------ #
     # Tree walk — build the fresh expanded snapshot                      #
@@ -302,6 +314,7 @@ class _Expander:
                 out[key] = self._expand_node(value, path=child_path)
                 continue
             self._reading.append(set())
+            self._leaf_labels.append(_leaf_label(child_path))
             try:
                 if self._collect_errors:
                     # LENIENT (Q9): a defect anywhere in THIS leaf's transitive chain
@@ -327,6 +340,7 @@ class _Expander:
                     resolved = self._expand_leaf(value, path=child_path)
             finally:
                 read = self._reading.pop()
+                self._leaf_labels.pop()
             if read:
                 self.refs_read[(*path, out_key)] = frozenset(read)
             if resolved is _ABSENT:
@@ -592,6 +606,18 @@ class _Expander:
                 # the strict §6b silent drop. Raised so the OWNING leaf gets it.
                 raise _LenientDefect(
                     f"dangling @-reference '@{dotted}' ({_absent_reason(dotted)})"
+                )
+            # ⚑ Absence propagates (§6b) only from a KEY; a ref that names no key is
+            # refused by name (spec §0), never dropped.
+            verdict = keyspace_verdict(dotted)
+            if verdict.cls is not KeyClass.KEY:
+                # The key that HOLDS the ref is the trail element before it.
+                leaf = self._leaf_labels[-1] if self._leaf_labels else chain[0]
+                holder = leaf if len(chain) == 2 else chain[-2]
+                trail = "" if holder == leaf else f" (reached from {leaf})"
+                raise SettingsError(
+                    f"{holder}: '@{dotted}' references no key: "
+                    f"{verdict.reason}{trail}."
                 )
             self._memo[dotted] = _ABSENT
             return _ABSENT

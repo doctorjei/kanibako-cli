@@ -30,6 +30,7 @@ def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, n
 def _absent_reason(dotted: str) -> str
 def _is_whole_value_ref(value: str) -> str | None
 def _is_whole_value_var(value: str) -> str | None
+def _leaf_label(path: tuple[str, ...]) -> str
 ```
 
 ## Classes
