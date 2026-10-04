@@ -185,8 +185,10 @@ def lookup_by_path(
     return None
 
 
-def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
-    """Return the workspace paths registered under box *name* across worksets.
+def _workset_member_paths(
+    worksets: dict[str, str], name: str,
+) -> list[tuple[str, str]]:
+    """Return the ``(workset name, workspace path)`` pairs for box *name*.
 
     Reads each NAMED workset's per-workset registry ``boxes:`` membership — the
     SAME index the box resolver (``box_resolve``) consumes and ``list`` reflects
@@ -194,6 +196,7 @@ def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
     logic, only reuses :mod:`kanibako.project.workset_registry`).  One entry per workset
     whose ``boxes:`` section lists *name*; the caller disambiguates any
     cross-workset collision.  A workset with no such member contributes nothing.
+    The name is the STORED ``[worksets]`` key (§0).
 
     *worksets* is the ``[worksets]`` section (``{ws_name: ws_root}``) — the
     PRIMARY workset is intentionally excluded (it is not listed there): its
@@ -203,8 +206,8 @@ def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
-    paths: list[str] = []
-    for ws_root_str in worksets.values():
+    members: list[tuple[str, str]] = []
+    for ws_name, ws_root_str in worksets.items():
         ws_root = Path(ws_root_str)
         registry_path = workset_registry.resolve_workset_registry_path(
             ws_root, load_doc(ws_root / WORKSET_META_FILE),
@@ -212,8 +215,8 @@ def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]:
         boxes = workset_registry.load_workset_boxes(registry_path)
         stored = find_identifier(name, boxes)  # ⚑ case-blind membership test (§0)
         if stored is not None:
-            paths.append(boxes[stored])
-    return paths
+            members.append((ws_name, boxes[stored]))
+    return members
 
 
 def resolve_name(
@@ -319,17 +322,26 @@ def resolve_name(
     #    is otherwise unaddressable from outside that workset (the cwd-inside
     #    case is handled by step 1) — resolve it to the member's WORKSPACE path
     #    (what ``resolve_project`` expects: an existing box workspace dir).
-    member_paths = _workset_member_paths(names["worksets"], name)
-    if member_paths:
-        # Collapse identical targets (a symlinked workspace can normalize to the
-        # same path); genuinely distinct paths mean the name is a member of
-        # multiple worksets → ambiguous from outside any workset.
-        distinct = list(dict.fromkeys(str(Path(p).resolve()) for p in member_paths))
-        if len(distinct) == 1:
-            return member_paths[0], "project"
+    members = _workset_member_paths(names["worksets"], name)
+    if members:
+        # Collapse identical targets (a symlinked workspace can normalize to the same
+        # path), keeping the first workset claiming each so a shared box is named once;
+        # distinct paths ⇒ a member of multiple worksets → ambiguous from outside.
+        targets: dict[str, tuple[str, str]] = {}
+        for member in members:
+            targets.setdefault(str(Path(member[1]).resolve()), member)
+        if len(targets) == 1:
+            return members[0][1], "project"
+        # ``workset.workspaces`` is settable, so a registered path need not name its
+        # workset: the candidates are named ``<workset>/<name>``, the spelling a user
+        # types.  The existence check is a LABEL — membership is registry-borne.
+        candidates: list[str] = []
+        for ws_name, member_path in targets.values():
+            missing = "" if Path(member_path).is_dir() else " [workspace missing]"
+            candidates.append(f"{ws_name}/{name}{missing}")
         raise AmbiguousNameError(
             f"Ambiguous box name '{name}': it is a member of multiple worksets "
-            f"({', '.join(distinct)}). Qualify it as '<workset>/{name}' or run "
+            f"({', '.join(candidates)}). Qualify it as '<workset>/{name}' or run "
             f"the command from inside the intended workset."
         )
 

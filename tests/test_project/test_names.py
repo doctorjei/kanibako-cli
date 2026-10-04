@@ -10,6 +10,7 @@ name API (``pick``/``assign``/``register``/``unregister``/reverse-lookup) lives 
 from __future__ import annotations
 
 import argparse
+import shutil
 
 import pytest
 from pathlib import Path
@@ -292,6 +293,24 @@ class TestResolveName:
         workset_registry.register_workset_box(reg_path, box_name, box_ws)
         return box_ws
 
+    def _register_member_at(
+        self, registry: Path, tmp_path: Path, ws_name: str, box_name: str,
+        box_ws: Path,
+    ) -> Path:
+        """Register a NAMED workset whose *box_name* member sits at *box_ws*.
+
+        *box_ws* is the path recorded in the per-workset ``boxes:`` registry, so
+        two worksets can be pointed at ONE target.
+        """
+        from kanibako.project import workset_registry
+
+        ws_root = tmp_path / ws_name
+        ws_root.mkdir(exist_ok=True)
+        register_name(registry, ws_name, str(ws_root), section="worksets")
+        reg_path = workset_registry.resolve_workset_registry_path(ws_root, None)
+        workset_registry.register_workset_box(reg_path, box_name, box_ws)
+        return box_ws
+
     def test_workset_member_resolves_from_outside(
         self, registry: Path, tmp_path: Path
     ) -> None:
@@ -324,6 +343,124 @@ class TestResolveName:
         self._register_ws_member(registry, tmp_path, "myws", "cluster2")
         with pytest.raises(ProjectError, match="Unknown"):
             resolve_name(registry, "not-a-member", cwd=tmp_path)
+
+    # -- The ambiguity message must make its own cure derivable --------------
+
+    def test_ambiguity_message_names_the_qualified_candidates(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """The candidates are named ``<workset>/<name>``, so the cure is derivable.
+
+        ``workset.workspaces`` is user-settable, so a registered workspace path
+        need not contain its workset name; a message that listed only paths
+        could not tell the user what to type.  Both candidates are named by
+        their STORED workset key.
+
+        Mutation proof: having ``_workset_member_paths`` yield the path alone
+        (dropping the ``[worksets]`` key) leaves the message printing paths and
+        these qualified names absent.
+        """
+        ws1 = self._register_ws_member(registry, tmp_path, "ws1", "dup")
+        ws2 = self._register_ws_member(registry, tmp_path, "ws2", "dup")
+
+        with pytest.raises(ProjectError) as excinfo:
+            resolve_name(registry, "dup", cwd=tmp_path)
+        message = str(excinfo.value)
+        assert "ws1/dup" in message
+        assert "ws2/dup" in message
+        # The cure the message prescribes is now readable off its own output.
+        assert "<workset>/dup" in message
+        # ... and it is not merely the path re-spelled.
+        assert str(ws1) not in message
+        assert str(ws2) not in message
+
+    def test_ambiguity_survives_a_repointed_workspaces_dir(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """Repointing ``workset.workspaces`` cannot hide which workset is which.
+
+        Each workset gets an absolute workspaces dir outside its own root whose
+        path contains NO workset name — the case where a path-only message
+        leaves the user with no way to apply the ``<workset>/<name>`` cure.
+        """
+        from kanibako.project import workset_registry
+        from kanibako.settings.config_io import dump_doc
+
+        for ws_name, pool in (("alpha-ws", "pool-one"), ("beta-ws", "pool-two")):
+            pods = tmp_path / pool / "spaces"
+            member = pods / "dup"
+            member.mkdir(parents=True)
+            ws_root = tmp_path / ws_name
+            ws_root.mkdir()
+            dump_doc(
+                ws_root / "workset.yaml",
+                {"workset": {"workspaces": str(pods)}},
+            )
+            register_name(registry, ws_name, str(ws_root), section="worksets")
+            reg_path = workset_registry.resolve_workset_registry_path(ws_root, None)
+            workset_registry.register_workset_box(reg_path, "dup", member)
+
+        with pytest.raises(ProjectError) as excinfo:
+            resolve_name(registry, "dup", cwd=tmp_path)
+        message = str(excinfo.value)
+        assert "alpha-ws/dup" in message
+        assert "beta-ws/dup" in message
+        # Neither registered path mentions the workset it belongs to.
+        assert "pool-one" not in message
+        assert "pool-two" not in message
+
+    def test_one_workset_sharing_a_target_is_not_ambiguous(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """Two worksets naming ONE box resolve; qualification must not split it.
+
+        A symlinked workspace normalizes to the same path from both worksets.
+        That is one box, so the collapse on the resolved path stands — naming
+        the candidates by workset must not report it as a choice between two.
+        """
+        shared = tmp_path / "shared-ws" / "dup"
+        shared.mkdir(parents=True)
+        for ws_name in ("ws1", "ws2"):
+            self._register_member_at(registry, tmp_path, ws_name, "dup", shared)
+
+        path, kind = resolve_name(registry, "dup", cwd=tmp_path)
+        assert kind == "project"
+        assert Path(path).resolve() == shared.resolve()
+
+    def test_missing_workspace_folder_still_resolves(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """A registered member whose workspace is gone still resolves.
+
+        MEMBERSHIP IS REGISTRY-BORNE: the ``boxes:`` entry is the record, so a
+        missing folder is not grounds to stop resolving the box.  Pinned so the
+        label in the ambiguity message is never mistaken for a filter.
+        """
+        box_ws = self._register_ws_member(registry, tmp_path, "ws1", "gone")
+        shutil.rmtree(box_ws)
+        assert not box_ws.exists()
+
+        path, kind = resolve_name(registry, "gone", cwd=tmp_path)
+        assert kind == "project"
+        assert path == str(box_ws)
+
+    def test_ambiguity_labels_a_missing_workspace(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """A candidate whose workspace is gone is marked, not dropped.
+
+        Membership is registry-borne, so a dead folder stays a candidate — the
+        message says so instead of silently listing a path the user cannot use.
+        """
+        self._register_ws_member(registry, tmp_path, "ws1", "dup")
+        gone = self._register_ws_member(registry, tmp_path, "ws2", "dup")
+        shutil.rmtree(gone)
+
+        with pytest.raises(ProjectError) as excinfo:
+            resolve_name(registry, "dup", cwd=tmp_path)
+        message = str(excinfo.value)
+        assert "ws1/dup" in message
+        assert "ws2/dup [workspace missing]" in message
 
     # -- Registered path is authoritative (bifrost A0 / S-2) ----------------
 
@@ -1006,8 +1143,6 @@ class TestBoxDeregisterPurge:
 
     def test_purge_by_name_idempotent_on_missing_dir(self, config_file, tmp_home, credentials_dir, capsys):
         """Entry present but dir already gone → drop entry, no error."""
-        import shutil
-
         from kanibako.project import registry_store
         from kanibako.commands.box._parser import run_rm
 
