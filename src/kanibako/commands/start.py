@@ -5892,27 +5892,30 @@ def _persona_wiring(target) -> "PersonaSpec":
 def _persona_token_pointer(secret_paths: "Mapping[str, object]", var: str) -> object:
     """The token STATE for ``secret_path.<var>`` in the resolved *secret_paths*.
 
-    *secret_paths* is the launch snapshot's ``agent.<node>.secret_path`` table
-    (:func:`_resolve_box_launch_decisions`), so the agent file, the persona store and
-    the system file answer in the cascade's order — the resolved ``agent.<node>.secret_path`` table.
+    *secret_paths* is the launch's per-VAR ``secret_path`` table
+    (:func:`_persona_secret_table`), so every scope that DELIVERS a pointer for *var*
+    answers in the cascade's order, and a var the launch mounts nowhere is absent.
     Returns one of the THREE states a token key may hold (2026-08-17 ruling):
 
     * a ``str`` — a configured path;
-    * ``None`` — PRESENT-null: *var* is set to an explicit ``null`` (``--null`` /
-      a hand-edit).  This endpoint is deliberately KEYLESS; the caller proceeds
-      without mounting a token;
-    * ``__MISSING__`` — *var* is not configured anywhere.  The caller refuses.
+    * ``None`` — PRESENT-null: *var*'s winning declaration is an explicit ``null``
+      (``--null`` / a hand-edit), at ANY tier.  This endpoint is deliberately
+      KEYLESS; the caller proceeds without mounting a token;
+    * ``__MISSING__`` — *var* is not delivered and not declared keyless.  The
+      caller refuses.
     """
     return secret_paths.get(var, __MISSING__)
 
 
 def _persona_secret_path_keys(secret_paths: "Mapping[str, object]") -> "list[str]":
-    """Every ``secret_path`` var this persona resolves (:func:`_persona_token_pointer`).
+    """The ``secret_path`` var NAMES this persona DECLARED (:class:`PersonaSecretTable`).
 
-    Used by the DYNAMIC (codex) token var, which IS the single configured key.
+    Used by the DYNAMIC (codex) token var, which IS the single name the persona
+    declared.  ⚑ NOT the delivered table's keys: another scope's secret is delivered
+    to this box too, and a name the persona never declared is not a bearer token it
+    may be handed.
     """
-    return sorted(secret_paths)
-
+    return sorted(getattr(secret_paths, "declared", secret_paths))
 
 def _persona_probe_error(
     target, endpoint: str, token_ptr: "str | None", model: "str | None", display: str,
@@ -6028,12 +6031,13 @@ def _resolve_codex_persona_env_key(secret_paths, wiring) -> "str | None":
     """The config-file persona's bearer token var == the model-provider ``env_key``.
 
     For a FIXED-var harness this is ``wiring.token_var``.  For the DYNAMIC codex MVP
-    (empty ``token_var``) it is the SINGLE ``secret_path`` key the persona resolves
+    (empty ``token_var``) it is the SINGLE ``secret_path`` key the persona DECLARED
     (:func:`_persona_secret_path_keys`).
     That key names BOTH the in-box env var the token is exported to AND the
     ``[model_providers.<id>].env_key`` the generated config.toml reads, so they
-    cannot drift.  Returns ``None`` when there is no single unambiguous key (zero →
-    no token; >1 → ambiguous), which the caller turns into an actionable error.
+    cannot drift.  Returns ``None`` when there is no single unambiguous declared key
+    (zero → no token; >1 → ambiguous), which the caller turns into an actionable
+    error.
     """
     if wiring.token_var:
         return wiring.token_var
@@ -6099,10 +6103,12 @@ def _preflight_persona_load(
     :class:`~kanibako.vscode.vscode_config.CodexModelProvider` INC 3 wires into
     ``~/.codex/config.toml``.
 
-    *secret_paths* is the resolved ``agent.<node>.secret_path`` table
-    (:func:`_resolve_box_launch_decisions`).  Every persona value is a LIVE
-    resolution input resolved through the cascade before this seam, so there is
-    nothing to adopt and nothing to write back to ``agents/<node>/agent.yaml``.
+    *secret_paths* is the launch's per-VAR ``secret_path`` table
+    (:func:`_persona_secret_table`) — every tier the launch DELIVERS, plus each var
+    whose winning declaration is keyless.  Every persona value is a LIVE
+    resolution input resolved through the cascade before this seam,
+    so there is nothing to adopt and nothing to write back to
+    ``agents/<node>/agent.yaml``.
 
     ⚑ ``probe`` is opt-in and set ONLY by the launch: the create path keeps its own
     WARN-ONLY probe (locked ruling #2), so a create must not inherit this one's hard
@@ -6313,11 +6319,12 @@ def _preflight_config_file_persona(
     ACTIONABLE, SUB-CASE-SPECIFIC error (INC-3 fold-in), then the provider assemble:
 
     1. the bearer token STATE under the DYNAMIC token var (the single ``secret_path``
-       key the persona resolves == the provider ``env_key``) — THREE states
+       key the persona DECLARED == the provider ``env_key``) — THREE states
        (2026-08-17 ruling), same as the ENV path.  "The keys the persona
-       resolves" are the resolved table's (:func:`_persona_secret_path_keys`), so a
-       store-only persona resolves its env_key from the store.  Distinguished
-       sub-cases, all preserved:
+       declares" are its own ``agent.<node>.secret_path`` names
+       (:func:`_persona_secret_path_keys`), so a store-only persona resolves its
+       env_key from the store and a var another SCOPE delivers is never adopted as
+       this persona's bearer token.  Distinguished sub-cases, all preserved:
        * ZERO keys → "no API key configured";
        * >1 keys → "ambiguous: multiple keys configured" (can't pick the env_key).
          The store can only ever ADD its one key, so it can turn zero into one; it
@@ -6431,7 +6438,7 @@ def _codex_persona_token_error(
     message is actionable (INC-3 fold-in — INC 2 collapsed all three into a single
     "none was found").  A FIXED-var harness (non-empty ``wiring.token_var``) uses that
     var directly; the DYNAMIC codex MVP derives it from the single ``secret_path``
-    key the persona resolves (:func:`_persona_secret_path_keys`).  Returns ``None``
+    key the persona DECLARED (:func:`_persona_secret_path_keys`).  Returns ``None``
     when a single, usable token resolves.
     """
 
@@ -6709,9 +6716,10 @@ def _resolve_box_launch_decisions(
 ) -> "tuple[AuthSource, str | None, object, dict[str, object]]":
     """Resolve the launch's per-box decisions off ONE snapshot.
 
-    Auth SOURCE + persona endpoint + persona model + the persona's resolved
-    ``agent.<node>.secret_path`` table — the single-source consolidation of the auth
-    resolve and the behavior resolve, read off the SAME expanded snapshot so there is
+    Auth SOURCE + persona endpoint + persona model + the launch's per-VAR
+    ``secret_path`` table (:class:`PersonaSecretTable`) — the single-source
+    consolidation of the auth resolve and the behavior resolve, read off the SAME
+    expanded snapshot so there is
     no duplicate build.  The table keeps a present ``null`` (a keyless declaration).
 
     ⚑ The *model* is read via :func:`_persona_model_state`, NOT ``effective_behavior``
@@ -6793,9 +6801,115 @@ def _resolve_box_launch_decisions(
         # THREE-STATE distinction the persona model gate needs (2026-08-17
         # ruling).
         model = _persona_model_state(snapshot, agent_name)
-    secrets = settings_launch.snapshot_leaf(snapshot, f"agent.{agent_name}.secret_path")
-    secret_paths = _plain_table(secrets) if isinstance(secrets, dict) else {}
+    secret_paths = _persona_secret_table(snapshot, agent_name, inputs.ctx)
     return auth_src, endpoint, model, secret_paths
+
+
+#: The tiers one ``secret_path.<VAR>`` cascades through, MOST SPECIFIC FIRST — the
+#: order :func:`~kanibako.settings.settings_merge.merge` folds, with the agent tier's
+#: §2d active-over-default pick collapsed into one ``agent`` rung.
+_SECRET_CASCADE_TIERS: "tuple[str, ...]" = ("box", "workset", "agent", "system")
+
+
+class PersonaSecretTable(dict):
+    """The launch's per-VAR ``secret_path`` STATE, plus the persona's own var NAMES.
+
+    ⚑ TWO QUESTIONS, TWO ANSWERS, AND THEY MUST NOT SHARE A SOURCE.  The KEYS are the
+    persona's own ``agent.<node>.secret_path`` names — a config-file harness derives
+    the token VARIABLE from them (``env_key``), and a refusal names them.  The VALUES
+    are what the launch DELIVERS, which is every tier's mount.  A mounted table alone
+    cannot answer the first: another scope's secret is delivered here too, so reading
+    the name list off it let an unrelated scope's var become this persona's token.
+
+    A ``dict`` so a state read (:func:`_persona_token_pointer`) is a plain
+    ``get``/compare; only the name list is extra.
+    """
+    __slots__ = ("declared",)
+
+    def __init__(self, state: "Mapping[str, object]", declared: "tuple[str, ...]"):
+        super().__init__(state)
+        self.declared: "tuple[str, ...]" = declared
+
+
+def _persona_secret_tier_tables(snapshot, active_agent: str) -> "dict[str, dict]":
+    """Each cascade tier's own ``secret_path`` table, keyed by tier token.
+
+    ``agent_declared`` is the ``agent`` rung MINUS its ``agent.default`` backstop — the
+    node tier's own names, the ones a persona declares.
+    """
+    from kanibako.settings import settings_launch
+
+    def _table(dotted: str) -> "dict[str, object]":
+        node = settings_launch.snapshot_leaf(snapshot, dotted)
+        return _plain_table(node) if isinstance(node, dict) else {}
+
+    node_tier = _table(f"agent.{active_agent}.secret_path")
+    # §2d per VAR, with the pseudo-agent fence the rest of the cascade applies.
+    agent_tier: dict[str, object] = {}
+    if pseudo_agent_fence(active_agent) is None:
+        agent_tier = _table("agent.default.secret_path")
+    return {
+        "box": _table("box.secret_path"),
+        "workset": _table("workset.secret_path"),
+        "agent": {**agent_tier, **node_tier},
+        "system": _table("system.secret_path"),
+        "agent_declared": node_tier,
+    }
+
+
+def _persona_secret_nulls(tiers: "Mapping[str, dict]") -> "dict[str, None]":
+    """The vars whose WINNING ``secret_path`` declaration is a present ``None``.
+
+    ⚑ A present ``None`` is a VALUE at every tier the category is available at (spec
+    §2a — *"PRESENT-NULL means this endpoint needs no token … ABSENT means not
+    configured"*), and it has no mount, so the delivery list cannot carry it.  The
+    CASCADE decides: only the MOST SPECIFIC declaration of a VAR speaks, so a
+    lower-tier null never displaces a pointer a higher tier mounts.
+    """
+    names: set = set()
+    for table in tiers.values():
+        names.update(table)
+    nulls: dict[str, None] = {}
+    for var in names:
+        for tier in _SECRET_CASCADE_TIERS:
+            if var in tiers[tier]:
+                if tiers[tier][var] is None:
+                    nulls[var] = None
+                break
+    return nulls
+
+
+def _persona_secret_table(snapshot, active_agent: str, box_ctx) -> PersonaSecretTable:
+    """The per-VAR ``secret_path`` state this launch DELIVERS, for the token gate.
+
+    ⚑ THE GATE COUNTS WHAT THE LAUNCH MOUNTS, so the two cannot disagree: the cascade
+    is :func:`~kanibako.settings.settings_launch.snapshot_category_entries` and
+    :func:`~kanibako.settings.settings_categories.secret_path_deliveries` — the delivery
+    seam's own pair, over the same four scopes, with the same §2d active-over-default
+    agent pick.  DELIVERIES, not the bare per-VAR winners: a masked dest takes the
+    mount away silently, so a winner the launch never mounts is not a token this
+    persona has.  A var the launch mounts NOWHERE is ABSENT, which is what a mask
+    reads as.
+    """
+    from kanibako.settings import settings_launch
+    from kanibako.settings.settings_categories import secret_path_deliveries
+
+    entries = settings_launch.snapshot_category_entries(
+        snapshot, active_agent=active_agent, box_ctx=box_ctx,
+    )
+    tiers = _persona_secret_tier_tables(snapshot, active_agent)
+    table: dict[str, object] = {
+        e.name: e.host_src for e in secret_path_deliveries(entries)
+    }
+    # ⚑ THE CASCADE SPOKE FIRST, so a null only fills a var no pointer won.
+    table.update(_persona_secret_nulls(tiers))
+    # ⚑ THE PERSONA'S OWN NAMES — the node tier alone, because that is the tier a
+    # refusal names (``agent.<node>.secret_path.<ENV_KEY>``) and the tier a var must
+    # be declared in to be this persona's bearer token.  An ``agent.default`` pointer
+    # is DELIVERED (so the state table carries it) without being a name this persona
+    # declared; the store splices onto this same tier, so a store persona resolves
+    # its var here.
+    return PersonaSecretTable(table, tuple(sorted(tiers["agent_declared"])))
 
 
 def _persona_model_state(snapshot: "KeyStore", active_agent: str) -> object:

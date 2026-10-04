@@ -15,6 +15,7 @@ VAULT_MASK_DEST = core_defaults.vault_mask_default()
 _BOOTSTRAP_NONE = 'none'
 _BOOTSTRAP_MISSING = object()
 _PERSONA_TOKEN_VAR = 'ANTHROPIC_AUTH_TOKEN'
+_SECRET_CASCADE_TIERS: 'tuple[str, ...]' = ('box', 'workset', 'agent', 'system')
 _ASSEMBLY_BINDINGS: 'tuple[str, ...]' = ('meta', 'assembly', 'bindings')
 _ASSEMBLY_SEEDED: 'tuple[str, ...]' = ('meta', 'assembly', 'seeded')
 _ASSEMBLY_SYNCED: 'tuple[str, ...]' = ('meta', 'assembly', 'synced')
@@ -114,6 +115,9 @@ def _codex_persona_token_error(secret_paths, wiring, endpoint: str, display: str
 def _effective_behavior_for_display(target, agent_cfg, *, std, proj, system_settings_path, selection_level: 'Mapping[str, object] | None', node_name=None, agent_cfg_path=None) -> dict[str, str]
 def _resolve_box_auth_source(*, std, proj, agent_name: str, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None')
 def _resolve_box_launch_decisions(*, std, proj, target, agent_name: str, agent_cfg, system_settings_path, agent_cfg_path, selection_level: 'Mapping[str, object] | None', persona_values: 'Mapping[str, str] | None'=None) -> 'tuple[AuthSource, str | None, object, dict[str, object]]'
+def _persona_secret_tier_tables(snapshot, active_agent: str) -> 'dict[str, dict]'
+def _persona_secret_nulls(tiers: 'Mapping[str, dict]') -> 'dict[str, None]'
+def _persona_secret_table(snapshot, active_agent: str, box_ctx) -> PersonaSecretTable
 def _persona_model_state(snapshot: 'KeyStore', active_agent: str) -> object
 def _merge_default_categories(table: dict[str, object], incoming: 'Mapping[str, object]', *, family: str, origins: dict[tuple[str, str], str]) -> None
 def _box_scalars(std, proj, agent_id: str, system_path, cli_overrides) -> KanibakoConfig
@@ -185,6 +189,11 @@ class BootstrapChoice(NamedTuple):
     node: str | None
     pref: PrefRequest | None = None
     from_default: bool = False
+
+class PersonaSecretTable(dict):
+    __slots__ = ('declared',)
+
+    def __init__(self, state: 'Mapping[str, object]', declared: 'tuple[str, ...]')
 
 class LaunchRealization(NamedTuple):
     effective_state: dict[str, str]
