@@ -1624,7 +1624,7 @@ def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
     if owned is not None:
         raise ProjectError(ERR_PROJECT_PATH_IS_NAMED_BOX % (
             workspace, owned.box_name, owned.workset_name,
-            owned.box_name, owned.workset_name, owned.box_name,
+            owned.workset_name, owned.box_name, owned.workset_name, owned.box_name,
         ))
 
 
