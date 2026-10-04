@@ -171,6 +171,12 @@ ERR_PROJECT_NEW_HOME = ("Refusing to create project rooted at $HOME: this would 
 ERR_PROJECT_REG_HOME = ("Refusing to register $HOME as a project path: this would mount the " +
                         "entire home directory as the workspace.")
 ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
+# ⚑ "one record per project" (spec § Detection & import) asked at the PATH, not the name.
+ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already the workspace of " +
+                         "named box '%s' in workset '%s', and one path is one project's record. " +
+                         "--force does not override this. Use that box ('kanibako box show %s/%s'), " +
+                         "or free the path first:\n"
+                         "  kanibako workset disconnect %s %s --force") # path, box, workset (ws, box, ws, box)
 ERR_PROJECT_DIR_IS_WS = ("Name '%s' is already in use by a workset. Box and workset names are " +
                          "separate namespaces, but this bare name would then resolve to the " +
                          "box, shadowing the workset in bare-name lookups. Re-run with --force " +
@@ -183,6 +189,12 @@ ERR_WORKSET_WS_NOT_BOX = ("'%s' is a workset, not a single project box. Name a p
                           "under that workset.") # ⚑ the name TWICE — two args, one value
 ERR_WORKSET_NOT_IN_BOX = ("Inside workset '%s' but not in a specific project workspace. Change " +
                           "to a project directory under %s/.") # workset name, workspaces dir
+ERR_WORKSET_MEMBER_NAME_CONFLICT = ("In working set '%s' a box's name IS its member name, so '%s' and " +
+                          "'%s' are two names for one box; pass the member name alone.") # workset name, --name, identifier
+ERR_WORKSET_MEMBER_NAME_TAKEN = ("Project '%s' already exists in working set '%s'; member names are " +
+                          "compared case-blind.") # stored spelling, workset name
+ERR_WORKSET_MEMBER_NO_RECOVER = ("--recover found no interrupted 'create' of '%s' in working set " +
+                          "'%s', so there is nothing to resume.") # member name, workset name
 # ⚑ A null ``workset.workspaces`` HAS a meaning (no workspace dir, spec §2c), unlike the
 # null path keys ERR_CONFIG_NULL_PATH refuses — so this names what cannot be created there.
 ERR_WORKSET_NULL_WORKSPACES = ("%s sets workset.workspaces to null, so it has no workspace " +
