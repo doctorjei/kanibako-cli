@@ -954,30 +954,26 @@ def _load_share_doc(ws_config: Path) -> dict:
 
 
 def _bind_source_ref_error(arm: str, source: str, *, where: "Path") -> "str | None":
-    """Refuse a host source whose ``@``-reference is DOWNWARD or is not a key, else ``None``.
+    """Refuse a host source whose ``@``-reference is not a config key at all, else ``None``.
 
-    ⚑ THIS DOOR IS NOT A SECOND CHECKER. Both judgments are the ones the ``set`` door
-    already makes, asked of the same two oracles: :func:`config.downward_ref_error` for
-    the direction (spec §0, "no ``@``-ref points DOWNWARD") and
-    :func:`settings_keyspace.key_validity` for whether the name is a key at all — the
-    oracle the set door judges a referent with. A spelling refused here is the spelling
-    ``set`` refuses, so the two cannot drift apart.
+    ⚑ THIS DOOR IS NOT A SECOND CHECKER. The judgment is
+    :func:`settings_keyspace.key_validity` — the oracle the ``set`` door judges a
+    referent with — so a name refused here is a name ``set`` refuses, and the two cannot
+    drift apart.
 
     ⚑ THE ARM IS THE KEY. A dest-keyed arm's destination is the mapping KEY and the
-    source is its value, so the key that carries a downward ref is the arm — the same
-    key the resolve sweep judges a stored arm at.
-    ⚑ A DECLARED key this workset does not itself hold is NOT refused: a source may
+    source is its value, so the key that carries a ref is the arm.
+    ⚑ A DECLARED key this working set does not itself hold is NOT refused: a source may
     reference a key of its own or a containing scope, and whether this file holds it is
-    the launch's business. Only a name that is no key at all, or a ref pointing into a
-    scope the arm CONTAINS, is refused.
+    the launch's business. That is what leaves a ``@box.*`` or ``@meta.box.*`` source
+    alone — :func:`settings_launch.depends_on_the_box` is the mechanism that makes such
+    a source the BOX's to decide, and it previews as ``(depends on the box)``. Whether a
+    downward ref belongs to that exception is a question about §0, not a spelling check
+    this door may make on its own.
     """
-    from kanibako.settings.config import downward_ref_error
     from kanibako.settings.settings_configset import scan_tokens
     from kanibako.settings.settings_keyspace import key_validity
 
-    down = downward_ref_error(arm, source)
-    if down is not None:
-        return f"{arm} in {where}: {down}"
     try:
         refs, _vars = scan_tokens(source)
     except ValueError as exc:

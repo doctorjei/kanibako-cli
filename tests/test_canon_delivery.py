@@ -1432,6 +1432,66 @@ class TestInternalBindEntryRefusal:
                 self._refuse([(self._level({"box.bindings.rw": {dest: None}}), None, None)])
 
 
+class TestDownwardRefRefusal:
+    """``settings_launch._refuse_downward_refs``, per written level (spec §0).
+
+    The RESOLVE half of "no ``@``-ref points DOWNWARD". The set doors refuse the same
+    spelling through the same predicate; this is what a value HAND-WRITTEN into a file
+    meets, and the file is named because the cure is a hand-edit.
+    """
+
+    @staticmethod
+    def _refuse(written, files=()):
+        from kanibako.settings.settings_launch import _refuse_downward_refs
+
+        _refuse_downward_refs(written, files)
+
+    @staticmethod
+    def _level(values: dict):
+        from kanibako.settings.settings_assemble import dotted_partial
+
+        return dotted_partial(values)
+
+    def test_a_hand_written_downward_ref_refuses_naming_its_key_and_file(self, tmp_path):
+        """A ``workset.*`` key holding ``@box.*`` binds ONE box's settings for the whole
+        working set; read, it wires that box's image into the canon mount."""
+        with pytest.raises(SettingsError) as excinfo:
+            self._refuse([(self._level({"workset.canon": "@box.image/x"}),
+                           tmp_path / "settings.yaml", None)])
+        message = str(excinfo.value)
+        assert f"{tmp_path / 'settings.yaml'}" in message
+        assert "workset.canon" in message
+        assert "'@box.image/x' points at '@box.image'" in message
+        assert "no @-ref points DOWNWARD" in message
+
+    def test_a_dest_keyed_arm_is_not_swept(self, tmp_path):
+        """⚑ A source reading a ``box.*`` or ``meta.box.*`` key is the BOX's to decide —
+        :func:`settings_launch.depends_on_the_box` is the mechanism and a box-less preview
+        prints ``(depends on the box)`` for one. Sweeping the arm would refuse that
+        capability, not a defect, so the arm is left to ``share add`` and the launch."""
+        self._refuse([(self._level(
+            {"workset.bindings.ro": {"/home/agent/data": ["@box.canon/x"]}}
+        ), tmp_path / "workset.yaml", None)])
+
+    def test_the_folded_floor_is_never_judged(self, tmp_path):
+        """The ``base`` level carries kanibako's own declared defaults merged into it, and
+        a default is not a user's spelling — so the base FILE's own view decides."""
+        floor = self._level({"workset.canon": "@box.canon/x"})
+        site = self._level({})
+        self._refuse([(site, tmp_path / "base.yaml", floor)])
+
+    @pytest.mark.parametrize("value", [
+        "@system.canon/x",     # a CONTAINING scope
+        "@workset.canon/x",    # the key's own scope
+        "/srv/canon",          # no ref at all
+    ])
+    def test_a_same_or_upward_ref_is_not_refused(self, tmp_path, value):
+        """The refusal is a DIRECTION. Sweeping every leaf would be a blanket ban on
+        ``@``-refs if the predicate were wrong, so the legal spellings are pinned."""
+        self._refuse([(self._level({"workset.canon": value}),
+                       tmp_path / "settings.yaml", None)])
+
+
 @pytest.fixture
 def fake_runtime():
     """Patch ``ContainerRuntime`` at its definition module (the import inside
