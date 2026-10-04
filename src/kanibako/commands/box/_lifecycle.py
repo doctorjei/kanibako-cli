@@ -1192,6 +1192,11 @@ def _carry_vault_contents(
         _copy_vault_leaf_contents(src, dst)
 
 
+def _move_log_back(dst: Path, src: Path) -> None:
+    """Undo one carried log file. :func:`shutil.move` returns a path; ``_Unwind`` wants ``None``."""
+    shutil.move(dst, src)
+
+
 def _carry_box_logs(
     state: ProjectState,
     std: StandardPaths,
@@ -1221,7 +1226,7 @@ def _carry_box_logs(
             continue
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(src, dst)
-        unwind.push(partial(shutil.move, dst, src))
+        unwind.push(partial(_move_log_back, dst, src))
 
 
 #: The ``workset.`` keys the two vault arms resolve from, in the ``(ro, rw)`` order

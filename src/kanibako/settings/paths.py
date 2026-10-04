@@ -1238,11 +1238,9 @@ def standalone_logs_dir(root: Path) -> Path | None:
 def box_logs_dir_for(
     std: StandardPaths, mode: BoxMode, metadata_path: Path, ws_root: Path | None,
 ) -> Path | None:
-    """The resolved ``workset.logs`` dir of a box in *mode*; ``None`` under a present ``<None>``.
+    """The resolved ``workset.logs`` dir for a box in *mode*; ``None`` under a present ``<None>``.
 
-    ⚑ Takes *mode*'s operands rather than a :class:`ProjectPaths`, so a caller holding its
-    own box-state descriptor resolves the same dir without building one.  *ws_root* is the
-    containing workset root, and is read in ``named`` mode only.
+    ⚑ Takes *mode*'s operands, not a :class:`ProjectPaths`; *ws_root* is read in ``named`` mode only.
     """
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_logs
@@ -1264,7 +1262,6 @@ def box_logs_dir_for(
 def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]:
     """``(resolved workset.logs dir, box name)`` for *proj*'s mode; the dir is ``None`` under ``<None>``."""
     box = proj.name if proj.name else short_hash(proj.project_hash)
-    # ⚑ The workset root rides the project group (root=ws.root).
     ws_root = proj.group.root if proj.group else proj.metadata_path.parent.parent
     return box_logs_dir_for(std, proj.mode, proj.metadata_path, ws_root), box
 
