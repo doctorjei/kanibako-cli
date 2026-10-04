@@ -36,6 +36,7 @@ ERR_CONFIG_NULL_PATH = ERR_CONFIG_NULL_PATH_HEAD + ERR_CONFIG_NULL_PATH_CURE
 ERR_BOX_STORE_TRAILING_REASON = 'its trailing separator means the final path segment resolved to nothing (an empty @meta.box.name leaves the box root pointing at the SHARED box store, so every box in the workset would resolve the same home)'
 ERR_BOX_STORE_EMPTY_REASON = 'the box root \'meta.box.path\' derives from \'@workset.boxes\', so a settings file that sets workset.boxes to null / "" — or removes it — leaves every key rooted at the box root pointing somewhere at the filesystem root'
 ERR_BOX_STORE_SET_HEAD = 'the launch refuses this value at the box store key, so this set is refused too:\n  %s\n'
+ERR_CONFIG_PATH_REF_SCOPE = "%s is set to %r, which points at '@%s' — outside the system path tier. A system path value may reference only @config.* and @system.* keys, so a launch could not read it back (spec §0: no @-ref points downward). Reference one of those keys instead, or set the path you mean."
 ERR_PROJECT_NO_PATH = "Project path '%s' does not exist."
 ERR_PROJECT_BAD_DESIGNATION = 'Invalid box designation %r: it is neither a box name nor a path.'
 ERR_PROJECT_NEW_HOME = 'Refusing to create project rooted at $HOME: this would mount the ' + 'entire home directory as the workspace.\n If you really want a ' + 'project here, use:\nkanibako create --standalone ~ --allow-home'
