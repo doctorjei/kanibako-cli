@@ -462,6 +462,28 @@ class TestResolveName:
         assert "ws1/dup" in message
         assert "ws2/dup [workspace missing]" in message
 
+    def test_ambiguity_prints_the_stored_box_spelling(
+        self, registry: Path, tmp_path: Path
+    ) -> None:
+        """Each candidate's box half is its STORED spelling, not the typed one.
+
+        Names are case-blind for collision but keep their creation-time case as
+        canonical (§0), and the candidate is a command the user will run.  Two
+        worksets store ``Foo`` and ``foo``; the user types ``FOO``.
+
+        Mutation proof: printing the typed *name* in the candidate makes the
+        message read ``Cluster-A/FOO, cluster-b/FOO``.
+        """
+        self._register_ws_member(registry, tmp_path, "Cluster-A", "Foo")
+        self._register_ws_member(registry, tmp_path, "cluster-b", "foo")
+
+        with pytest.raises(ProjectError) as excinfo:
+            resolve_name(registry, "FOO", cwd=tmp_path)
+        message = str(excinfo.value)
+        assert "(Cluster-A/Foo, cluster-b/foo)" in message
+        assert "Cluster-A/FOO" not in message
+        assert "cluster-b/FOO" not in message
+
     # -- Registered path is authoritative (bifrost A0 / S-2) ----------------
 
     def test_cwd_context_resolves_stranded_member_after_repoint(
