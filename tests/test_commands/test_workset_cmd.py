@@ -833,21 +833,23 @@ class TestWorksetConnect:
         config = load_config(config_file)
         std = load_std_paths(config)
         root = (tmp_home / "ws_intrefuse").resolve()
-        ws = create_workset("intrefuse", root, std)
+        create_workset("intrefuse", root, std)
 
-        # One refusal class, three shapes: the root itself, a dir beside workspaces/,
-        # and a subdir of a member.
+        # One refusal class over the shapes that are not a member's own leaf: the root
+        # itself, a dir beside workspaces/, a subdir of a member, and the same dir
+        # under --force, which absorbs a standalone box and does not bypass this.
         nested = root / "workspaces" / "x" / "sub"
         nested.mkdir(parents=True)
         (root / "notes").mkdir()
-        for source, name in (
-            (root, "ws_intrefuse"),
-            (root / "notes", "notes"),
-            (nested, "sub"),
+        for source, name, force in (
+            (root, "ws_intrefuse", False),
+            (root / "notes", "notes", False),
+            (nested, "sub", False),
+            (root / "notes", "notes", True),
         ):
             args = argparse.Namespace(
                 workset="intrefuse", source=str(source),
-                project_name=name, force=False,
+                project_name=name, force=force,
             )
             assert run_connect(args) == 1, source
             err = capsys.readouterr().err
@@ -856,7 +858,7 @@ class TestWorksetConnect:
                 "working set 'intrefuse's own tree, not a project. `workset "
                 "connect` registers an existing workspaces/<name> directory; it "
                 "creates nothing."
-            ), source
+            ), (source, force)
 
         # Nothing was created and no member was registered by any of the three.
         assert not (root / "workspaces" / "notes").exists()
