@@ -1363,9 +1363,9 @@ class TestTheAgentTable:
         {"nosuchharness": {"x": 1}},            # conceded: no readable vocabulary ([R150])
         {"claude": {"run_args": ["-x"], "transform_settings": {"a": 1}}},
         {"bar": {"env": {"A": "1"}}},           # a category's entries are data, not keys
-        {"claude": {"caches": "x"}},            # the launch concedes a terminal category value
+        {"claude": {"caches": "x"}},            # load coerces a wrong shape; the launch refuses it
     ))
-    def test_what_the_launch_concedes_load_concedes(self, tmp_path, scope):
+    def test_load_reads_past_these_node_tables(self, tmp_path, scope):
         path = tmp_path / "agent.yaml"
         dump_doc(path, {"self": {"model": "a"}, "agent": scope})
         assert agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state["model"] == "a"

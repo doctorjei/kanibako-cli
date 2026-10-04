@@ -6053,6 +6053,22 @@ would silently discard an invalid entry.
 **What to do.** Open the named file and fix or delete the named section, then run the `set` again.
 No `reset` reaches it: `reset --all` leaves it in place.
 
+### A value where a category's map goes is refused
+
+**Read this if a launch stops with `'<key>' holds a scalar (<value>) where a TABLE goes`.** Such a
+value usually comes from a hand edit.
+
+**What changed.** A category (`bindings.ro`, `bindings.rw`, `caches`, `seeded`, `common`, `synced`,
+`masks`) and the table-valued `transform_settings` take a map. A single value there, such as
+`caches: 5` or `transform_settings: 5`, used to be ignored, or refused late without naming the
+file. It is now refused when the file is read, in every settings file, the agent file included,
+and the message names the key and the file. A `null` there is still accepted: it leaves the whole
+category out.
+
+**What to do.** Give the key its map (`caches: {"/opt/x": ["/src/a"]}`, `masks: {"~/secret":
+true}`) or delete the line. `kanibako agent info` still opens a broken agent file and shows the
+warning.
+
 ### 2.99 A plain-shell box writes the canon to `~/AGENTS.md`
 
 **Read this if you keep your own `~/AGENTS.md` in a box home, or if your `box.shell` or an

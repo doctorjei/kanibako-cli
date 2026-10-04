@@ -40,6 +40,7 @@ def unpack_bind_entry(value: object) -> tuple[str, str | None]
 def normalize_bind_dest(dest: str) -> str
 def refuse_dest_spelled_twice(raw: Mapping[str, Any], *, category: str, where: str | None=None) -> None
 def refuse_unrooted_source(src: str, category: str, dest: str, *, where: str | None=None) -> None
+def refuse_scalar_at_table_key(key: str, value: Any, *, where: str | None=None) -> None
 def check_bind_map(raw: Mapping[str, Any], *, category: str, where: str | None=None) -> None
 def check_bind_tables(tables: Mapping[str, Any], *, root: str, scope: str, contained: Sequence[str], where: str | None) -> None
 def match_var(expr: str, i: int) -> tuple[str, int]

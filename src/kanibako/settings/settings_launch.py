@@ -3489,6 +3489,9 @@ def _require_category_node(key_prefix: str, category: str, node: object) -> KeyS
     ⚑ PRESENT-BUT-EMPTY (``bindings: {}``) is NOT an error: an empty node is
     byte-indistinguishable from an absent one after ``assemble``, so erroring would
     trap a no-op. ⚑ And ONE route does not reach this check at all — see the llm-doc.
+    ⚑ A value out of a SETTINGS FILE is refused before it gets here, at the parse that
+    names the file (:func:`~kanibako.settings.settings_resolve.refuse_scalar_at_table_key`),
+    so what reaches this check is the FLOOR and the ``bindings`` namespace.
     """
     if isinstance(node, KeyStore):
         return node

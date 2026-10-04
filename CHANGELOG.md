@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A value where a category's map goes is refused where the file is read, naming the key and
+  the file.** `caches: 5`, `masks: x`, or `transform_settings: 5` in any settings file (the system,
+  workset, box or agent file) now stops a launch with
+  the key and the file to edit. A category scalar used to be ignored without a word, and a
+  `transform_settings` scalar dropped. A `null` there is unchanged: it leaves the whole category
+  out. `agent info`, `show`, `list` and `get` still open such a file, warning where they would have
+  used it. See *A value where a category's map goes is refused* in [MIGRATION.md](MIGRATION.md).
+
 - **`create` inside a named workset makes a box of that workset.** Run from anywhere under a named
   workset's root, `kanibako create <name>` now makes a named box of that workset, with its
   workspace at `workspaces/<name>`. A path, no designation, `--standalone`, or `--name` naming a

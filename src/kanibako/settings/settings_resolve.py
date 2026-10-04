@@ -414,6 +414,57 @@ def refuse_unrooted_source(
     )
 
 
+def refuse_scalar_at_table_key(
+    key: str, value: Any, *, where: str | None = None,
+) -> None:
+    """RAISE on a non-``None`` SCALAR where *key*'s TABLE goes (spec §0, closed keyspace).
+
+    Every §2a category is TERMINAL and dest-keyed, and a table-valued agent leaf is a table
+    WHOLE: the key ENDS at the category token and its VALUE is the map. A scalar there is a
+    wrong SHAPE, not a wrong value, and §0 admits neither here — a passthrough would store
+    something no reader can apply and say nothing.
+
+    ⚑⚑ A present-``None`` IS THE ONE NON-MAP VALUE A CATEGORY ACCEPTS, and it is not a
+    defect: spec §2h classifies it as an OMIT (no mount, no unmask) and calls it the
+    suppression power a scope has over what it contains. So ``null`` passes, and only a
+    NON-null scalar refuses — one shape, one verdict.
+
+    *key* is the spelling the CALLER holds, which decides both what the message names and
+    which example it prescribes: a dest-keyed category's entries are box destinations, a
+    marker's are 3-state markers, and a table-valued agent leaf's are its own entries
+    (:data:`~kanibako.settings.settings_keyspace.BIND_CATEGORIES` is what tells the first
+    two apart, ``masks`` being dest-keyed without being bind-shaped). *where* names the
+    file when the reader has it; ⚑ the settings tier's own parse supplies the file in its
+    wrapper instead, so a caller already wrapped in one passes none.
+    """
+    if value is None or isinstance(value, dict):
+        return
+    from kanibako.settings.config_io import render_stored_scalar
+    from kanibako.settings.settings_keyspace import (
+        BIND_CATEGORIES,
+        is_terminal_category_key,
+    )
+
+    leaf = key.rpartition(".")[2]
+    if leaf == "masks":
+        shape = "a dest-keyed map of 3-state markers, {box_dest: true}"
+    elif is_terminal_category_key(key) or leaf in BIND_CATEGORIES:
+        shape = "a dest-keyed map, keyed by box destination, {box_dest: [src[, options]]}"
+    else:
+        shape = "a table of its own entries"
+    raise SettingsError(
+        f"'{key}' holds a scalar ({render_stored_scalar(value)}) where a TABLE goes: it is "
+        f"{shape}, and an entry inside one is DATA in the value, never a key of its own "
+        f"(spec §2a). One shape, one verdict: a key outside the declared shape is an "
+        f"ERROR that names itself, never a silent accept.\n"
+        f"  Fix: give '{key}' its table, or delete the entry. A present `null` is the one "
+        f"non-table value a category accepts — it OMITS the whole category (spec §2h), "
+        f"and a `null` ENTRY omits just that destination.\n"
+        f"  The cure is the hand-edit: a category's entries are DATA, so no verb writes "
+        f"one.{_in_file(where)}"
+    )
+
+
 def check_bind_map(
     raw: Mapping[str, Any], *, category: str, where: str | None = None,
 ) -> None:
@@ -488,6 +539,13 @@ def _check_node_binds(table: Mapping[str, Any], *, where: str | None) -> None:
     ONE level only, plus a ``bindings`` arm's: every dest-keyed category is TERMINAL, so a
     node table's category token IS the map. Nothing is descended, so a table-valued key whose
     contents are not settings is never read as one.
+
+    ⚑ A non-dict at a category token is CONCEDED HERE, not refused, and that is the agent
+    file's READ side on purpose: a wrong-SHAPE value must not kill the verbs that SHOW it,
+    because the repair doors have to stay reachable — so the read coerces and the WRITE
+    side refuses (:func:`~kanibako.settings.agent_file.table_value_error`). A LAUNCH is the
+    other reader and refuses the same shape, naming the file
+    (:func:`refuse_scalar_at_table_key`).
     """
     from kanibako.settings.settings_keyspace import is_terminal_category_tail
 

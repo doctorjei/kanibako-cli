@@ -968,13 +968,16 @@ class TestAMasksListInASETTINGSFILEIsRefusedByName:
         ws = tmp_path / "workset.yaml"
         ws.write_text('workset:\n  masks:\n    - "/w/m"\n')
         ctx = _ctx()
-        snap = build_launch_snapshot(
-            agent_name="claude", ctx=ctx,
-            system_path=None, agent_path=None, workset_path=ws, box_path=None,
-        )
+        # ⚑ BOTH CALLS ARE INSIDE THE ``raises``, as in the box case above: the refusal
+        # fires while the file is PARSED, which is what lets it name the file to edit.
         with pytest.raises(SettingsError) as excinfo:
+            snap = build_launch_snapshot(
+                agent_name="claude", ctx=ctx,
+                system_path=None, agent_path=None, workset_path=ws, box_path=None,
+            )
             snapshot_category_entries(snap, active_agent="claude", box_ctx=ctx)
         assert "workset.masks" in str(excinfo.value)
+        assert str(ws) in str(excinfo.value)
 
     def test_an_empty_map_is_not_an_error(self, tmp_path: Path):
         # PRESENT-BUT-EMPTY stays a no-op, exactly as it is for the bind families:
@@ -992,6 +995,153 @@ def test_adapter_skips_a_none_entry_and_keeps_its_sibling():
     }}}})
     entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
     assert [(e.box_dest, e.host_src) for e in entries] == [("/ok", "/h/ok")]
+
+
+# The agent FILE is a settings file, so the same rule holds there: a value where a
+# category's map goes is refused where the file is read, naming the key AND the file.
+# ⚑ ONE DOOR CLOSES, ONE STAYS OPEN. The launch refuses; ``agent info`` / ``show`` /
+# ``list`` / ``get`` still open the file and warn, so a broken agent file can be
+# repaired. Pinned by both halves below — a rule that refused on BOTH, or on NEITHER,
+# reads identically from either test alone.
+_AGENT_FILE_REFUSALS = (
+    # (the doc the agent file holds, the key the refusal must name)
+    ("self: {caches: 5}", "agent.claude.caches"),
+    ("self: {masks: 5}", "agent.claude.masks"),
+    ("self: {transform_settings: 5}", "agent.claude.transform_settings"),
+    ("agent: {claude: {caches: x}}", "agent.claude.caches"),
+    ("agent: {default: {masks: 5}}", "agent.default.masks"),
+    ("workset: {caches: 5}", "workset.caches"),
+)
+
+
+class TestAScalarWhereACategorysMapGoesIsRefusedInTheAgentFile:
+    """A wrong SHAPE in the agent file stops the launch, naming the key and the file.
+
+    Every entry of ``_AGENT_FILE_REFUSALS`` is a shape a user can write by hand, and
+    every one is a SCALAR where a TABLE belongs: ``self:``'s own categories, the
+    ``agent:`` table's node tables, the table-valued §2d leaf, and a contained
+    ``workset:`` table. The refusal is the settings file's own
+    (:func:`~kanibako.settings.settings_resolve.refuse_scalar_at_table_key`), so the
+    agent file is not a second rule with its own wording.
+    """
+
+    @pytest.mark.parametrize(("body", "key"), _AGENT_FILE_REFUSALS)
+    def test_the_launch_refuses_it_naming_the_key_and_the_file(
+        self, tmp_path: Path, body: str, key: str,
+    ):
+        from kanibako.settings.settings_resolve import SettingsError
+
+        agent = tmp_path / "agent.yaml"
+        agent.write_text(body)
+        with pytest.raises(SettingsError) as excinfo:
+            build_launch_snapshot(
+                agent_name="claude", ctx=_ctx(),
+                system_path=None, agent_path=agent, workset_path=None, box_path=None,
+            )
+        message = str(excinfo.value)
+        assert f"'{key}'" in message      # the DISCRIMINATED key, re-rooted under its node
+        assert str(agent) in message       # and the file to edit — the address, not the key alone
+
+    @pytest.mark.parametrize(
+        "body",
+        (
+            # the OMIT at each of the six positions above
+            "self: {caches: null}",
+            "self: {masks: null}",
+            "self: {transform_settings: null}",
+            "agent: {claude: {caches: null}}",
+            "agent: {default: {masks: null}}",
+            "workset: {caches: null}",
+            # and the DECLARED table at each of them
+            'self: {caches: {"/opt/x": ["/src/a"]}}',
+            'self: {masks: {"~/s": true}}',
+            "self: {transform_settings: {a: 1}}",
+            'agent: {claude: {caches: {"/opt/x": ["/src/a"]}}}',
+            'agent: {default: {masks: {"~/s": true}}}',
+            'workset: {caches: {"/opt/x": ["/src/a"]}}',
+            # and the leaf's NAME away from its position, which is DATA
+            'self: {env: {transform_settings: "1"}}',
+            "self: {secret_path: {transform_settings: /x}}",
+            "self: {transform_settings: {transform_settings: 5}}",
+        ),
+    )
+    def test_the_legal_shapes_in_the_same_place_still_read(self, tmp_path: Path, body: str):
+        """⚑ THE OTHER SIDE OF THE SAME VERDICT, at the SAME positions: a present ``null``
+        is spec §2h's OMIT and a real map is the declared shape, so neither refuses.
+
+        Without this a rule that refused everything would read exactly like the one
+        that refuses the right thing.
+        """
+        from kanibako.settings.settings_resolve import SettingsError
+
+        agent = tmp_path / "agent.yaml"
+        agent.write_text(body)
+        try:
+            build_launch_snapshot(
+                agent_name="claude", ctx=_ctx(),
+                system_path=None, agent_path=agent, workset_path=None, box_path=None,
+            )
+        except SettingsError as exc:   # pragma: no cover — the pin that must hold
+            pytest.fail(f"{body!r} refused: {exc}")
+
+
+def test_agent_info_warns_and_still_exits_zero_over_a_broken_agent_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """The REPAIR DOOR: the real CLI, the real broken file, rc 0 and a named warning.
+
+    ⛔ A subprocess on purpose. The pin is that ``agent info`` reaches the file and
+    SURVIVES it; calling ``run_info`` in process would pass just as well while saying
+    nothing about which env the verb really reads. The child imports THIS tree.
+    """
+    import os
+    import subprocess
+    import sys
+
+    repo_src = Path(__file__).resolve().parents[2] / "src"
+    dirs = {name: tmp_path / name for name in
+            ("home", "config", "data", "state", "cache", "runtime")}
+    for directory in dirs.values():
+        directory.mkdir()
+    env = os.environ.copy()
+    env.update({
+        "HOME": str(dirs["home"]),
+        "XDG_CONFIG_HOME": str(dirs["config"]),
+        "XDG_DATA_HOME": str(dirs["data"]),
+        "XDG_STATE_HOME": str(dirs["state"]),
+        "XDG_CACHE_HOME": str(dirs["cache"]),
+        # Without it the CLI falls back to a fresh /tmp runtime dir and prints a
+        # warning over the very output these assertions read.
+        "XDG_RUNTIME_DIR": str(dirs["runtime"]),
+        "PYTHONPATH": str(repo_src),
+    })
+    # ⚑ THE SETUP BELOW RUNS IN THIS PROCESS, so it must see the SAME tree the child
+    # does — otherwise ``load_std_paths`` writes the agent file under the developer's
+    # own data dir and the child reads an empty one. Set both, not just ``env``.
+    for name in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
+                 "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"):
+        monkeypatch.setenv(name, env[name])
+
+    from kanibako.settings.agent_config import agents_dir
+    from kanibako.settings.agent_file import agent_settings_path
+    from kanibako.settings.config import write_global_config
+    from kanibako.settings.paths import load_config, load_std_paths
+
+    write_global_config(dirs["config"] / "kanibako.cfg")
+    std = load_std_paths(load_config(dirs["config"] / "kanibako.cfg"))
+    agent = agent_settings_path(agents_dir(std.data_path), "claude")
+    agent.parent.mkdir(parents=True, exist_ok=True)
+    agent.write_text("self:\n  model: opus\n  caches: 5\n")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "kanibako", "agent", "info", "claude"],
+        env=env, capture_output=True, text=True, timeout=300, cwd=tmp_path, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    # ⚑ THE WARNING IS STDERR, and that is the contract: a broken file is announced on the
+    # stream a script can drop, and the DISPLAY still lands on stdout.
+    assert "agent.claude.caches" in result.stderr
+    assert "model = opus" in result.stdout      # ...and the file's LEGAL leaf still reads
 
 
 class TestTheTwoBindShapesAreRuledInAtTheirOwnSeam:

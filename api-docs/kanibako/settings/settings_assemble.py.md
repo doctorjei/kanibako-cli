@@ -62,6 +62,8 @@ def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None)
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict
 def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict
 def _file_view(raw: Any, *, level: str, path: Path | None, fold: bool=True) -> Any
+def _refuse_malformed_category(parts: tuple[str, ...], sub: Any) -> None
+def _is_table_valued_agent_leaf(parts: tuple[str, ...]) -> bool
 def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=()) -> Any
 def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str

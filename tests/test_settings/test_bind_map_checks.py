@@ -11,13 +11,18 @@ table the agent file reads is walked, the contained-scope ones included.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
 from kanibako.settings.agent_file import _CONTRIBUTED, _contribution, level_table
 from kanibako.settings.config_io import load_doc
-from kanibako.settings.settings_assemble import _parse_marker_map, parse_bind_map
+from kanibako.settings.settings_assemble import (
+    _parse_marker_map,
+    _parse_naming_file,
+    parse_bind_map,
+)
 from kanibako.settings.settings_resolve import SettingsError
 
 BIND_RO = "bindings.ro"
@@ -302,6 +307,132 @@ def test_a_valid_map_reads_in_every_top_level_table(tmp_path: Path, table: str) 
     """
     body = _under(table, "bindings", "ro:\n  /opt/x: [/src/a]\n  rw:\n  /opt/y: [/src/b, z]")
     _read(_agent_file(tmp_path, body))
+
+
+# ---------------------------------------------------------------------------
+# A SCALAR WHERE THE CATEGORY'S TABLE GOES — refused, naming the key and the file
+# ---------------------------------------------------------------------------
+# Every category is TERMINAL, so the category token IS the key and its value is the
+# map. §0 admits nothing else there: a passthrough stores a value no reader can apply.
+# A present-``None`` is the ONE non-map value a category takes (spec §2h's OMIT), and it
+# is pinned here too — one shape, one verdict, and the verdict has both sides.
+#
+# ⚑ THE SETTINGS TIER'S PARSE ONLY. The agent file's read is a DIFFERENT reader that
+# CONCEDES a wrong shape on purpose, so that a broken file's repair verbs stay reachable
+# (``test_agent_file.py::TestLoadSurvivesAMalformedTable``); that ruling is recorded in
+# ``settings_resolve._check_node_binds`` and is untouched here.
+
+
+def _settings_file(tmp_path: Path, doc: dict, name: str = "settings.yaml") -> Path:
+    path = tmp_path / name
+    path.write_text(yaml.safe_dump(doc, sort_keys=False))
+    return path
+
+
+@pytest.mark.parametrize("scope", ["system", "workset", "box"])
+@pytest.mark.parametrize(
+    ("category", "value"),
+    [("caches", "5"), ("caches", "x"), ("masks", "5")],
+)
+def test_a_scalar_at_a_category_refuses_in_a_settings_file(
+    tmp_path: Path, scope: str, category: str, value: str,
+) -> None:
+    path = _settings_file(tmp_path, {scope: {category: _scalar(value)}})
+    with pytest.raises(SettingsError) as exc:
+        _parse_naming_file({scope: {category: _scalar(value)}}, file_path=path)
+    message = str(exc.value)
+    assert f"'{scope}.{category}'" in message   # the DISCRIMINATED key, scope-qualified
+    assert str(path) in message                 # and the file to edit
+
+
+def _scalar(value: str) -> Any:
+    return int(value) if value.isdigit() else value
+
+
+@pytest.mark.parametrize(
+    ("category", "example"),
+    [("caches", "{box_dest: [src[, options]]}"), ("masks", "{box_dest: true}")],
+)
+def test_the_cure_is_printed_in_the_shape_that_category_takes(
+    tmp_path: Path, category: str, example: str,
+) -> None:
+    """A mask has no source, so the bind example would send the reader somewhere wrong."""
+    path = _settings_file(tmp_path, {"system": {category: 5}})
+    with pytest.raises(SettingsError) as exc:
+        _parse_naming_file({"system": {category: 5}}, file_path=path)
+    assert example in str(exc.value)
+
+
+@pytest.mark.parametrize("scope", ["system", "workset", "box"])
+@pytest.mark.parametrize("category", ["caches", "masks"])
+def test_a_null_category_is_accepted_in_a_settings_file(
+    tmp_path: Path, scope: str, category: str,
+) -> None:
+    """⚑ THE OTHER SIDE OF THE SAME VERDICT: a bare ``<category>:`` is spec §2h's OMIT."""
+    path = _settings_file(tmp_path, {scope: {category: None}})
+    store = _parse_naming_file({scope: {category: None}}, file_path=path)
+    assert store[scope][category] is None
+
+
+@pytest.mark.parametrize("scope", ["system", "workset", "box"])
+def test_a_caches_map_reads_in_a_settings_file(tmp_path: Path, scope: str) -> None:
+    """The CONTROL: a legal dest-keyed map under a leaf category reads, and is not judged."""
+    doc = {scope: {"caches": {"/opt/x": ["/src/a"]}}}
+    _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+
+
+def test_a_transform_settings_table_reads_in_a_settings_file(tmp_path: Path) -> None:
+    doc = {"agent": {"claude": {"transform_settings": {"a": 1}}}}
+    _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+
+
+def test_a_scalar_at_a_table_valued_agent_leaf_refuses_in_a_settings_file(
+    tmp_path: Path,
+) -> None:
+    """``transform_settings`` is spec §2d, a table-valued agent LEAF, not a §2a category.
+
+    No category walk reaches it, so the parse judges it against the table-valued set —
+    the same rule and the same words a category gets.
+    """
+    doc = {"agent": {"claude": {"transform_settings": 5}}}
+    path = _settings_file(tmp_path, doc)
+    with pytest.raises(SettingsError) as exc:
+        _parse_naming_file(doc, file_path=path)
+    message = str(exc.value)
+    assert "'agent.claude.transform_settings'" in message
+    assert str(path) in message
+
+
+@pytest.mark.parametrize("doc", [
+    {"system": {"env": {"transform_settings": "1"}}},
+    {"agent": {"claude": {"env": {"transform_settings": "1"}}}},
+    {"agent": {"claude": {"secret_path": {"transform_settings": "/x"}}}},
+    {"agent": {"claude": {"transform_settings": {"transform_settings": 5}}}},
+    {"agent": {"claude": {"transform_settings": {"a": {"transform_settings": 5}}}}},
+])
+def test_the_leaf_s_name_away_from_its_position_is_data(tmp_path: Path, doc: dict) -> None:
+    """Only ``agent.<node>.transform_settings`` is the leaf: the same word as a family's
+    entry or inside the table's own payload is DATA, and a scalar there is legal."""
+    _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+
+
+def test_a_null_table_valued_agent_leaf_is_accepted_in_a_settings_file(tmp_path: Path) -> None:
+    doc = {"agent": {"claude": {"transform_settings": None}}}
+    store = _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+    assert store["agent"]["claude"]["transform_settings"] is None
+
+
+def test_a_scalar_that_merely_ENDS_in_a_category_token_is_not_a_category(
+    tmp_path: Path,
+) -> None:
+    """``system.channels.common`` is a path scalar; ``.channels.`` is the discriminator.
+
+    Spec §2a gives one word to two senses, so the deep walk needs the POSITION, not the
+    token — otherwise a declared path key would start refusing on its name alone.
+    """
+    doc = {"system": {"channels": {"common": "/tmp/x"}}}
+    store = _parse_naming_file(doc, file_path=_settings_file(tmp_path, doc))
+    assert store["system"]["channels"]["common"] == "/tmp/x"
 
 
 # ---------------------------------------------------------------------------
