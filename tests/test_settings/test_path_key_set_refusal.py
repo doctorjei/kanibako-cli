@@ -569,3 +569,144 @@ class TestEveryNounPassesItsTarget:
         assert run_set(argparse.Namespace(key_value="system.cache=/srv/c", force=True)) == 0
         assert seen["std"] is not None
         assert seen.get("proj") is None and seen.get("ws") is None
+
+
+# ---------------------------------------------------------------------------
+# The system PATH TIER's @-ref scope (spec §0: no @-ref points DOWNWARD)
+# ---------------------------------------------------------------------------
+
+#: Shapes whose ``@``-ref names a key OUTSIDE the system path tier.  Each parses to a
+#: real ref the set-time CASCADE floor can satisfy, and each reads as
+#: ``Unknown @-reference`` at the launch — the two doors disagreeing, which is the defect.
+_OUT_OF_TIER_SHAPES = [
+    "@box.image/x",
+    "@box.enable_vault/x",
+    "@box.shell/x",
+    "@box.image./x",
+    "@box.image",
+    "@box..image/x",
+    "@box.image /x",
+]
+
+
+class TestASystemPathValueMayNotPointOutOfItsTier:
+    """``system.template=@box.image/x`` was ACCEPTED and stored, and every launch-seam
+    read then failed ``Unknown @-reference: box.image`` — whether or not ``box.image``
+    held a value.  The set door judged the value against the full cascade snapshot,
+    whose floor carries the box scalars' declared defaults; the system path tier
+    resolves through one lookup that sees only the ``config.*`` foundation and the
+    single ``system`` level.  The two doors disagreed."""
+
+    @pytest.mark.parametrize("value", _OUT_OF_TIER_SHAPES)
+    def test_it_is_refused_and_nothing_is_written(self, value, config_file, tmp_path):
+        files = _files(tmp_path)
+        message = _set("system.template", value, files, ConfigLevel.system)
+        assert message.startswith("Error:"), message
+        # ⚑ THE REF AND THE WHY, not a generic complaint: the user must learn WHICH
+        # reference was out of scope and that the launch could not read it back.
+        assert "@box" in message
+        assert "outside the system path tier" in message
+        # ⚑ REFUSED BEFORE THE WRITE — a poisoned settings file is what the set-time
+        # half exists to prevent.
+        written = load_doc(files["system"])
+        assert written in ({}, None) or "template" not in str(written)
+
+    def test_the_refusal_holds_whether_or_not_the_referent_has_a_value(
+        self, config_file, tmp_path,
+    ):
+        """The row is explicit that this failed *whether or not* ``box.image`` is null,
+        because the box scalars' DECLARED-DEFAULT floor is what let the set door say
+        yes in either state.  Both are pinned: with no box tier on the path, and with a
+        real box tier file present."""
+        for name in ("no-box-tier", "box-tier-present"):
+            files = _files(tmp_path / name)
+            message = _set("system.template", "@box.image/x", files, ConfigLevel.system)
+            assert message.startswith("Error:"), f"{name}: {message}"
+
+    # ---- the half that breaks quietly: an over-firing door ----
+
+    def test_every_ref_inside_the_tier_is_still_ACCEPTED(self, config_file, tmp_path):
+        """The non-regression, swept over the WHOLE tier rather than one key: a value
+        referencing ANY other ``system.*`` path key, and ANY ``config.*`` key.  A
+        too-eager set door breaks a working box, so this is the case that must not move.
+        ``system.template`` is excluded — a self-reference is CYCLIC, the E3 probe's
+        own refusal, and is not this door's business."""
+        from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
+
+        referable = [k for k in sorted(SYSTEM_PATH_DEFAULTS) if k != "system.template"]
+        referable += sorted(CONFIG_PATH_DEFAULTS)
+        assert len(referable) > 10, referable
+        for ref in referable:
+            files = _files(tmp_path / ref.replace(".", "_"))
+            value = f"@{ref}/sub"
+            message = _set("system.template", value, files, ConfigLevel.system)
+            assert not message.startswith("Error:"), f"{ref}: {message}"
+            assert load_doc(files["system"])["system"]["template"] == value
+
+    def test_the_non_ref_shapes_are_untouched(self, config_file, tmp_path):
+        for i, value in enumerate(("/srv/t", "~/t", "$XDG_DATA_HOME/t", "${XDG_DATA_HOME}/t")):
+            files = _files(tmp_path / f"v{i}")
+            message = _set("system.template", value, files, ConfigLevel.system)
+            assert not message.startswith("Error:"), f"{value!r}: {message}"
+
+    def test_a_null_is_not_this_doors_business(self, config_file, tmp_path):
+        """⚑ A ``null`` at ``system.template`` IS refused — by ``_null_path_key_error``,
+        which runs earlier and is the ``--null`` precedent's own rule (spec §2a).  What
+        is pinned here is that THIS door adds nothing to that: the predicate passes a
+        null straight through, so the null door's own message and rc are the whole
+        answer, exactly as before."""
+        from kanibako.settings.config import system_path_ref_error
+
+        assert system_path_ref_error("system.template", None) is None
+        assert system_path_ref_error("system.template", "") is None
+        files = _files(tmp_path)
+        message = _set("system.template", None, files, ConfigLevel.system)
+        assert message.startswith("Error:")
+        assert "null path key" in message, message
+
+    def test_the_scope_is_the_tier_paths_ITSELF_resolves(self):
+        """THE ANTI-SECOND-LIST PIN.  The membership this door judges by is the very
+        table ``paths._resolve_system_path_keys`` resolves the tier from — the same
+        object, not a copy of it — so a key added to the tier is judged here with no
+        edit and the scope cannot drift from the launch's."""
+        from kanibako.settings import bootstrap, paths
+        from kanibako.settings.config import system_path_ref_error
+
+        assert paths.SYSTEM_PATH_DEFAULTS is bootstrap.SYSTEM_PATH_DEFAULTS
+        # ⚑ THE PREDICATE ANSWERS THE CARRIER TEXT; the set door prepends ``Error: ``,
+        # the same split ``null_path_keys_error`` and the E3 probe both use.  The
+        # membership is SYSTEM_PATH_DEFAULTS ENTIRE — the system path tier.
+        assert len(paths.SYSTEM_PATH_DEFAULTS) > 5
+        for key in paths.SYSTEM_PATH_DEFAULTS:
+            message = system_path_ref_error(key, "@box.image/x")
+            assert message is not None and key in message and "@box.image" in message, key
+        # ⚑ AND ``config.*`` IS NOT IN IT, by its own declaration rather than by an
+        # omission here: those six are ``set: file`` with no CLI write route, so
+        # ``set_config_value`` refuses them with the §1 message LONG before this door
+        # runs.  They are carried by their read-time doors alone.
+        for key in bootstrap.CONFIG_PATH_DEFAULTS:
+            assert system_path_ref_error(key, "@box.image/x") is None, key
+
+    def test_it_is_not_this_door_for_a_key_outside_the_system_path_tier(self):
+        """⚑ THE NARROWNESS, pinned.  A downward ref is a spec question for EVERY key,
+        but this door is scoped to the one tier whose reader demonstrably cannot
+        resolve it.  A ``box.*``/``workset.*``/``agent.*`` path key and a non-path
+        ``system.*`` key answer ``None`` here — widening this one silently would ban
+        spellings the box and workset tiers read perfectly well."""
+        from kanibako.settings.config import system_path_ref_error
+
+        for key in ("box.canon", "workset.channelroot", "agent.canon", "system.model"):
+            assert system_path_ref_error(key, "@box.image/x") is None, key
+
+    def test_the_read_seam_still_reports_the_unknown_reference(self, tmp_home):
+        """THE LAUNCH IS UNCHANGED.  A value written by hand, past every set door, is
+        still read as ``Unknown @-reference`` — this door changed what may be STORED,
+        not what the launch says about a value already in the file."""
+        from kanibako.settings.paths import resolve_system_paths
+
+        with pytest.raises(Exception) as exc:
+            resolve_system_paths(
+                {"system.template": "@box.image/x"},
+                data_home=tmp_home / "data", home=tmp_home,
+            )
+        assert "Unknown @-reference" in str(exc.value), str(exc.value)

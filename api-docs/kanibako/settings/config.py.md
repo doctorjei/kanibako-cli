@@ -52,6 +52,7 @@ def resolve_agent(*, explicit_agent: str | None, requested: str | None=None, pro
 def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None
 def null_path_keys_error(path: Path, keys: Iterable[str], *, cure: str=ERR_CONFIG_NULL_PATH_CURE, head: 'str | None'=None) -> 'str | None'
 def refuses_null_path_key(canonical: str) -> bool
+def system_path_ref_error(canonical: str, value: 'str | None') -> 'str | None'
 def _layer1_settings_keys(data: dict) -> list[str]
 def _scalar_value(value: object) -> object
 def _present_scalar_fields(path: Path) -> dict[str, object]

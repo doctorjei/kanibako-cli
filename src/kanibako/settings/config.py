@@ -15,7 +15,8 @@ from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
                                         ERR_CONFIG_LAYER1_UNDECLARED,
                                         ERR_CONFIG_NULL_PATH_CURE,
-                                        ERR_CONFIG_NULL_PATH_HEAD)
+                                        ERR_CONFIG_NULL_PATH_HEAD,
+                                        ERR_CONFIG_PATH_REF_SCOPE)
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -986,3 +987,55 @@ def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable
     )
     if error is not None:
         raise ConfigError(error)
+
+
+def system_path_ref_error(canonical: str, value: "str | None") -> "str | None":
+    """THE refusal for a ``system.*`` path value pointing outside the system path tier, or ``None``.
+
+    ⚑ THE SCOPE IS THE LAUNCH'S OWN SPLIT, never a list written here.
+    ``paths._resolve_system_path_keys`` resolves a ``system.*`` path value through ONE
+    lookup that consults the ``config.*`` foundation and the single ``system`` level and
+    nothing else, so a ``@box.*`` ref is unresolvable there — the launch reports it as
+    ``Unknown @-reference`` at EVERY seam.  This function expands the value through
+    :func:`kanibako.settings.config_interface._path_tier_split`, the same
+    ``(config.*`` foundation, ``system.*`` floor) that lookup resolves against, and
+    refuses a ref that split cannot see (spec §0: no ``@``-ref points DOWNWARD).  A
+    ``@config.*``/``@system.*`` ref is inside that split and passes.
+    ⚑ THE MEMBERSHIP IS :data:`SYSTEM_PATH_DEFAULTS` — the very table ``paths.py``
+    resolves the tier from (P13), so a key added to the tier is judged here with no edit.
+    ``config.*`` keys are ``set: file`` with no CLI write route and are carried by the
+    read-time doors alone.
+    ⚑ ``_unusable_store_root_error`` builds the same split for a DIFFERENT question
+    (whether a ``system.state`` store root is USABLE) and RAISES on a miss. This one
+    RECORDS a miss and returns ``""`` so expansion completes and one verdict covers
+    every ref in the value; the two are deliberately not one helper.
+    ⚑ THE UNKNOWABLE IS NOT REFUSED: no value, a tier that will not build, a malformed
+    token or a shape another door owns all answer ``None`` — a set door that refused
+    everything on a broken tier would be worse than the value it caught.
+    """
+    if not value or canonical not in SYSTEM_PATH_DEFAULTS:
+        return None
+    from kanibako.settings.config_interface import _path_tier_split, _set_time_ctx
+    from kanibako.settings.settings_resolve import expand_expr
+
+    try:
+        config_foundation, path_floor = _path_tier_split()
+    except Exception:
+        return None
+    misses: list[str] = []
+
+    def _lookup(ref: str, chain: "tuple[str, ...]" = ()) -> str:
+        got = config_foundation.get(ref) if ref.startswith("config.") else path_floor.get(ref)
+        if got is None:
+            misses.append(ref)
+            return ""
+        return str(got)
+
+    try:
+        expand_expr(value, space="host", ctx=_set_time_ctx(config=config_foundation),
+                    lookup=_lookup)
+    except Exception:
+        return None
+    if not misses:
+        return None
+    return ERR_CONFIG_PATH_REF_SCOPE % (canonical, value, misses[0])
