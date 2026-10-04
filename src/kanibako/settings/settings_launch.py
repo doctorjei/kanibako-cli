@@ -1512,29 +1512,19 @@ def _refuse_downward_refs(
         store = base_view if floor_store is not None else level
         if not isinstance(store, dict):
             continue
-        for segments, is_node in walk_store_paths(store):
-            if is_node:
-                continue
+        for segments, _is_node in walk_store_paths(store):
             key = ".".join(segments)
-            leaf = snapshot_leaf(store, key)
-            if (
-                is_terminal_category_key(key) and isinstance(leaf, dict)
-                and not any("." in seg for seg in segments)
-            ):
-                # ⚑ A dest-keyed arm: the DEST is the mapping key, so the ref lives on
-                # the entry and the key that carries it is the ARM (the same key
-                # ``workset share add`` judges its source at).
-                for dest, entry in dict.items(leaf):
-                    src = _bind_source(entry)
-                    if src is None:
-                        continue
-                    err = downward_ref_error(key, src)
-                    if err is not None:
-                        found.setdefault(str(path), []).append(f"{key}[{dest}]: {err}")
+            # ⚑ A dest-keyed arm's ENTRY is not swept: a source reading a ``box.*`` or
+            # ``meta.box.*`` key is the BOX's to decide — :func:`depends_on_the_box` is
+            # the mechanism, and a box-less preview prints ``(depends on the box)`` for
+            # one. Sweeping it would refuse that capability, not a defect. The PARENT is
+            # the test, because a destination is a path with no dot in it far more often
+            # than not.
+            if is_terminal_category_key(".".join(segments[:-1])):
                 continue
             if any("." in seg for seg in segments):
                 continue  # a bind DESTINATION is data, never a key (see _path_key_leaves)
-            src = _bind_source(leaf)
+            src = _bind_source(snapshot_leaf(store, key))
             if src is None:
                 continue
             err = downward_ref_error(key, src)

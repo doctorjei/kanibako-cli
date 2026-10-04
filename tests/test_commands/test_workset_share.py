@@ -141,6 +141,53 @@ class TestShareAdd:
         bindings = read_bindings(workset.root / "workset.yaml")
         assert bindings == {("ro", "/srv/docs"): ["/host/docs"]}
 
+    @pytest.mark.parametrize("source", [
+        "@{nope.zz}/x",   # no declared namespace
+        "@{workset.nope}/x",   # a declared scope, an undeclared leaf
+    ])
+    def test_add_refuses_a_source_naming_no_config_key(
+        self, config_file, tmp_home, workset, capsys, source,
+    ):
+        """🛑 THE KEYSPACE IS CLOSED (spec §0): a source naming something that is not a
+        key is refused HERE, so ``share add`` never stores a reference the launch cannot
+        follow. A source the launch drops silently is a share the user believes is
+        mounted and is not.
+
+        MUTATION: drop the ``_bind_source_ref_error`` call in ``run_share_add`` -> rc 0
+        and the file gains the entry. The destination is unchanged across both rows, so
+        only the SOURCE is judged.
+        """
+        ws_file = workset.root / "workset.yaml"
+        before = ws_file.read_bytes() if ws_file.exists() else None
+        rc = run_share_add(_add_args(bind=f"{source}:/home/agent/data", mode="ro"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"workset.bindings.ro in {ws_file}" in err
+        assert "is not a config key" in err
+        assert "Nothing was written" in err
+        after = ws_file.read_bytes() if ws_file.exists() else None
+        assert after == before, "the source was WRITTEN"
+
+    @pytest.mark.parametrize("source", [
+        "@workset.canon/x",   # the arm's own scope
+        "@system.canon/x",    # a CONTAINING scope
+        "@meta.box.path/x",   # the BOX's to decide — design 1C's box-dependent source
+        "/host/docs",         # a path that resolves on its own
+        "~/docs",
+    ])
+    def test_add_takes_a_source_pointing_upward_at_the_box_or_nowhere(
+        self, config_file, tmp_home, workset, source,
+    ):
+        """🛑 THE OTHER HALF: the refusal is about KEYS, not about ``@``. A source naming
+        the arm's own scope, a containing one, or a key only the box can answer is
+        stored — ``depends_on_the_box`` is what makes the last one meaningful, and a
+        box-less preview prints ``(depends on the box)`` for it.
+        """
+        rc = run_share_add(_add_args(bind=f"{source}:/home/agent/data", mode="ro"))
+        assert rc == 0
+        bindings = read_bindings(workset.root / "workset.yaml")
+        assert bindings == {("ro", "/home/agent/data"): [source]}
+
     def test_add_overwrite_is_keyed_on_the_destination(
         self, config_file, tmp_home, workset, capsys
     ):

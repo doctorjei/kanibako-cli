@@ -319,23 +319,30 @@ class TestAMetaRefIsJudgedByItsScopeToken:
         assert not message.startswith("Error:"), f"{key}={value!r}: {message}"
         assert value in files["system"].read_text()
 
-    @pytest.mark.parametrize("value", [
-        "@meta.box.path/t2",          # DOWNWARD: box inside a workset key
-        "@meta.runtime.ws_root/t2",   # no scope token on the containment order
-        "@meta.workset.nope/t2",      # own scope, but undeclared
+    @pytest.mark.parametrize("value, why", [
+        ("@meta.box.path/t2", "DOWNWARD"),            # box inside a workset key
+        ("@meta.runtime.ws_root/t2", "dangling"),     # no scope token on the containment order
+        ("@meta.workset.nope/t2", "dangling"),        # own scope, but undeclared
     ])
-    def test_these_meta_refs_stay_refused_at_the_system_door(self, tmp_path, std, value):
+    def test_these_meta_refs_stay_refused_at_the_system_door(
+        self, tmp_path, std, value, why,
+    ):
+        """Each row keeps the WORDING of the rule that refuses it: a ref into a scope the
+        key CONTAINS is DOWNWARD, and one that is no declared key at all is dangling. The
+        two are different sentences about different faults, and a value is refused either
+        way."""
         files = _files(tmp_path)
         message = _set("workset.template", value, files, ConfigLevel.system, std=std)
         assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
-        assert "dangling @-reference" in message, message
+        assert ("no @-ref points DOWNWARD" if why == "DOWNWARD"
+                else "dangling @-reference") in message, message
         assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
 
     def test_a_downward_meta_ref_stays_refused_at_the_keys_own_door(self, ws_files):
         message = _set("workset.template", "@meta.box.path/t2", ws_files,
                        ConfigLevel.workset, std=ws_files["std"], ws=ws_files["ws"])
         assert message.startswith("Error:"), message
-        assert "dangling @-reference" in message, message
+        assert "no @-ref points DOWNWARD" in message, message
 
 
 class TestAnUpwardWriteStaysRefused:
@@ -397,11 +404,14 @@ class TestWhatStaysRefused:
         A ``workset.*`` key holding ``@box.*`` binds ONE box's settings for the whole
         workset, so a set that stores it writes a value the cascade cannot honor and the
         user learns it from a wrong ``handbook/workset`` mount instead of at the door.
+        🛑 And the refusal NAMES THE DIRECTION: these referents are absent from this
+        floor, so the expander's own defect for them is a dangling ref, and the direction
+        is the fact worth reporting.
         """
         files = _files(tmp_path)
         message = _set(key, value, files, ConfigLevel.system, std=std)
         assert message.startswith("Error:"), f"{key}={value!r} was ACCEPTED: {message}"
-        assert "dangling @-reference" in message, message
+        assert "no @-ref points DOWNWARD" in message, message
         assert not files["system"].exists(), f"{key}={value!r} was WRITTEN: {message}"
 
     @pytest.mark.parametrize("key, value, ref", [
@@ -411,6 +421,11 @@ class TestWhatStaysRefused:
         ("workset.canon", "@box.image", "@box.image"),
         ("workset.canon", "@box.enable_vault", "@box.enable_vault"),
         ("workset.boxes", "@box.image/x", "@box.image"),
+        # ⚑ THE MIXED VALUE — a downward ref AND a same-scope ref this cascade cannot
+        # see, in ONE value. The expander's only recorded defect is the same-scope one,
+        # so the value took the floor-blind arm and was forgiven WHOLE, downward ref
+        # included. Direction is read off the spelling, so the second ref changes nothing.
+        ("workset.canon", "@{workset.channelroot}/@{box.image}", "@box.image"),
     ])
     def test_a_downward_ref_this_floor_HOLDS_is_refused(
         self, tmp_path, std, key, value, ref,
@@ -443,11 +458,12 @@ class TestWhatStaysRefused:
 
     def test_the_keys_own_door_refuses_the_downward_ref_too(self, ws_files):
         """One rule, both doors: the contained scope's own door sees the referent and has
-        always refused it, so the two doors now AGREE rather than disagreeing."""
+        always refused it, so the two doors now AGREE — in the WORDING too, not only in
+        the verdict."""
         message = _set(_CONTAINED_KEY, "@box.canon/x", ws_files, ConfigLevel.workset,
                        std=ws_files["std"], ws=ws_files["ws"])
         assert message.startswith("Error:"), message
-        assert "dangling @-reference" in message, message
+        assert "no @-ref points DOWNWARD" in message, message
 
     def test_a_malformed_dollar_is_not_forgiven(self, tmp_path, std):
         """⚑ THE ``$`` FAMILY, which the blindness rule has to read before it forgives.

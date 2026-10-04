@@ -348,11 +348,16 @@ class TestSetTimeResolvesTheCommandsTarget:
     def test_a_workset_value_needing_a_box_is_judged_without_one(
         self, ref, std, tmp_home,
     ):
-        """A working set names no box: its box anchors are OMITTED, never fabricated."""
+        """A working set names no box: its box anchors are OMITTED, never fabricated.
+
+        🛑 And the refusal NAMES THE DIRECTION, because that is the fault here: the
+        anchor is absent AND the ref points into the scope the key CONTAINS.
+        """
         ws = create_workset("noboxws", tmp_home / "noboxws", std)
         message = _set_ws("workset.canon", f"{ref}/canon", std, ws)
         assert message.startswith("Error:"), message
-        assert f"dangling @-reference '{ref}'" in message
+        assert "no @-ref points DOWNWARD" in message, message
+        assert f"'{ref}/canon' points at '{ref}'" in message, message
 
     def test_a_write_naming_no_target_gets_no_anchor_from_its_file(self, tmp_path):
         """⚑ NO TARGET, NO ANCHOR: ``meta.workset.path`` is never read off the parent
