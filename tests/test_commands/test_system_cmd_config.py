@@ -1412,8 +1412,8 @@ class TestAListValuedLeafReadsBackAsItsCommandLine:
             assert "['" not in out, out
 
     def test_show_renders_a_noun_file_s_pref_flatten(self, tmp_path, capsys):
-        """``config_display._pref_overrides`` — the OTHER flatten, reached through the
-        ``config_path`` noun file a box ``show`` is handed.
+        """``config_display._nested_settings_overrides`` — the one ``pref`` route, reached
+        through the ``config_path`` noun file a box ``show`` is handed.
         """
         from kanibako.settings.config_interface import show_config
 
@@ -1560,8 +1560,8 @@ class TestTheEmptyIdiomsReadBackAsThemselves:
         assert "None" not in out, out
 
     def test_show_renders_a_noun_file_s_pref_flatten(self, tmp_path, capsys):
-        """``_pref_overrides`` — the OTHER ``_flatten_table`` caller, and the twin whose
-        ``null`` arm was right while the one above it was not.  Both now read one walk."""
+        """A box's ``pref:`` table renders through ``_nested_settings_overrides``, the one
+        route, and a present-``None`` request prints ``null``."""
         from kanibako.settings.config_interface import show_config
 
         noun = tmp_path / "noun.yaml"

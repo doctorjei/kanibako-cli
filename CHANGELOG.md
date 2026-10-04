@@ -1388,7 +1388,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scalars and the `pref` requests still appear exactly once each, and a declaration written for a
   *containing* scope — a `workset:` table in a box's file, which kanibako drops with a warning — is
   not listed as an override, because it is not one. `bindings`, `masks`, `synced`, `env` and
-  `secret_path` stored at a box are unchanged and stay unlisted in this view.
+  `secret_path` entries stored at a box are listed the same way (`box.env.FOO = bar`); `secret_path`
+  rows show the path, never the secret.
+  `kanibako system show` likewise lists a persona's table in the system settings file
+  (`agent.claude.model = haiku`, a composite node spelled `navigator+codex`). Before, both were left
+  out, and `reset --all` reported them as *"… unlisted entries"*; they are now counted among the
+  overrides it reset.
 
 - **`kanibako workset show --effective` never showed the binding a working set's `common`, `caches`
   and `seeded` declarations produce.** The keyspace spec asks `--effective` to show both the

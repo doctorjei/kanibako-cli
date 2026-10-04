@@ -1845,3 +1845,112 @@ class TestGetRefusesANodeSpelledTwice:
         assert "spelled twice" in captured.err, captured.err
         assert "'pref.agent.navigator+claude'" in captured.err, captured.err
         assert "'pref.agent.navigator℘claude'" in captured.err, captured.err
+
+
+class TestShowListsWhatTheFileHolds:
+    """``box show`` and ``system show`` list what their file holds, through the flatten
+    ``workset show`` lists with — one reader, so the nouns cannot disagree about a table.
+
+    ⚑ END-TO-END THROUGH ``cli.main``: the rows are what a user reads, and ``reset --all``
+    counts those same rows.
+    """
+
+    def _main(self, argv, capsys):
+        """``cli.main`` to completion; return ``(exit_code, stdout)``."""
+        from kanibako import cli
+
+        try:
+            cli.main(argv)
+        except SystemExit as exc:
+            code = exc.code
+        else:
+            code = 0
+        return code, capsys.readouterr().out
+
+    def _box(self, config_file, tmp_home):
+        from kanibako.settings.paths import load_std_paths, resolve_project
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_project(std, config, project_dir=project_dir, initialize=True)
+        return project_dir, proj
+
+    def test_box_show_lists_the_env_entry_box_set_wrote(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        project_dir, _ = self._box(config_file, tmp_home)
+        code, _ = self._main(["box", "set", project_dir, "box.env.FOO=bar"], capsys)
+        assert code == 0
+
+        code, out = self._main(["box", "show", project_dir], capsys)
+        assert code == 0
+        assert "  box.env.FOO = bar" in out.splitlines(), out
+        assert "(no overrides)" not in out, out
+
+    def test_box_show_lists_a_box_table_as_workset_show_does(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """⚑ THE PARITY IS THE PIN: one ``box:`` table, stored at a box and at a working
+        set, gives the same rows at both nouns.  The box scalar is the one row each noun
+        spells its own way (``box_image`` / ``box.image``), so it is compared apart.
+        """
+        from kanibako.settings.config import load_project_overrides
+
+        table = {
+            "image": "custom:v1",
+            "env": {"FOO": "bar"},
+            "secret_path": {"TOKEN": "/run/tok"},
+            "bindings": {"ro": {"~/data": "/srv/data"}},
+            "caches": {"~/.cache/uv": "uv"},
+        }
+        project_dir, proj = self._box(config_file, tmp_home)
+        box_file = proj.metadata_path / "box.yaml"
+        dump_doc(box_file, {**load_doc(box_file), "box": table})
+        ws_root = tmp_home / "ws"
+        code, _ = self._main(["workset", "create", "--name", "ws", str(ws_root)], capsys)
+        assert code == 0
+        ws_file = ws_root / "workset.yaml"
+        dump_doc(ws_file, {**load_doc(ws_file), "box": table})
+
+        _, box_out = self._main(["box", "show", project_dir], capsys)
+        _, ws_out = self._main(["workset", "show", "ws"], capsys)
+
+        def box_rows(out):
+            return [ln for ln in out.splitlines() if ln.startswith("  box.")]
+
+        ws_rows = box_rows(ws_out)
+        assert "  box.image = custom:v1" in ws_rows, ws_out
+        assert box_rows(box_out) == [r for r in ws_rows if r != "  box.image = custom:v1"], (
+            box_out, ws_out,
+        )
+        # The box noun's scalar row, once and in its own spelling.
+        assert load_project_overrides(box_file) == {"box_image": "custom:v1"}
+        assert box_out.count("custom:v1") == 1, box_out
+        assert "  box_image = custom:v1" in box_out.splitlines(), box_out
+
+    def test_system_show_lists_a_persona_node_and_reset_counts_it(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        """A persona node in the system settings file is listed, its node spelled for the
+        user (``+``), and ``reset --all`` reports those rows as the overrides it reset."""
+        settings = tmp_home / "data" / "kanibako" / "global" / "settings.yaml"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(settings, {"agent": {
+            "claude": {"model": "haiku", "env": {"ZED": "1"}},
+            "navigator℘codex": {"model": "o3"},
+        }})
+
+        code, out = self._main(["system", "show"], capsys)
+        assert code == 0
+        rows = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        assert rows == [
+            "agent.claude.env.ZED = 1",
+            "agent.claude.model = haiku",
+            "agent.navigator+codex.model = o3",
+        ], out
+
+        code, out = self._main(["system", "reset", "--all", "--force"], capsys)
+        assert code == 0
+        assert out.strip() == f"Reset {len(rows)} override(s).", out
+        assert "agent" not in load_doc(settings), load_doc(settings)

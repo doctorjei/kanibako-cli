@@ -1060,8 +1060,8 @@ file IS its config file — the settings display reads *config_path*.
 
 ⚑⚑ **THE NOUN'S SETTINGS FILE IS READ AS THE CASCADE READS IT** (`_noun_stored_view`:
 `settings_assemble.cascade_view` at *command_scope*'s level): every block below that shows a table
-the cascade could drop takes that view, never the path. The box scalars and `_pref_overrides` read
-*config_path*, whose `box:` / `pref:` tables the cascade never drops at the box. `cascade_view` is
+the cascade could drop takes that view, never the path. The box scalars read
+*config_path*, whose `box:` table the cascade never drops at the box. `cascade_view` is
 what the launch's own seams judge a file by,
 so a table the launch drops — an `agent:` table in a box's settings file, a `system:` table in a
 workset's file, a `pref:` table in the system settings file — gets no row here either. Read raw,
