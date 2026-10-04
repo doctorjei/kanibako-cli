@@ -2580,6 +2580,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
         category_ctx = None
         category_error = None
         category_declared_by = None
+        category_dest_keys = None
         # ⚑ The AGENT the box scalars resolve under, defaulted here because the block
         # below that resolves it runs only for ``--effective`` and this call does not.
         agent_id = GENERAL_SLOT
@@ -2687,6 +2688,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
                     ),
                 )
                 category_declared_by = deliveries.declared_by
+                category_dest_keys = deliveries.dest_keys
                 # ⚑ The SAME helper the launch uses, off the SAME collapsed leaf
                 # (``meta.assembly.env``), so the display cannot claim an env the box
                 # will not get.  It needs the RESOLVE — hence its position here.
@@ -2710,6 +2712,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             category_ctx=category_ctx,
             category_error=category_error,
             category_declared_by=category_declared_by,
+            category_dest_keys=category_dest_keys,
             agent_name=agent_id, agent_path=agent_cfg_path,
         )
 

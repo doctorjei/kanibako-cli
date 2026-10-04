@@ -11,7 +11,7 @@ def _flatten_table(node: dict, prefix: str, out: dict[str, str]) -> None
 def _is_bind_map_key(key: str) -> bool
 def _flatten_bind_map(table: dict, key: str, out: dict[str, str]) -> None
 def _nested_settings_overrides(data: dict) -> dict[str, str]
-def _print_pref_block(snapshot: Any, out: Any) -> None
+def _print_pref_block(snapshot: Any, out: Any, box_ctx: Any, dest_keys: 'Mapping[tuple[str, ...], str]') -> None
 def _print_category_block(snapshot: Any, error: str | None, out: Any, box_ctx: Any, declared_by: 'Mapping[str, str] | None'=None) -> None
 def _iter_agent_tiers(scope: str, scope_node: Any)
 def _sub(node: Any, path: 'tuple[str, ...]') -> Any

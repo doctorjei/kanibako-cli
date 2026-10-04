@@ -2786,6 +2786,7 @@ def show_config(
     category_ctx: Any = None,
     category_error: str | None = None,
     category_declared_by: Any = None,
+    category_dest_keys: Any = None,
     inputs: Any = None,
     agent_name: str = GENERAL_SLOT,
     agent_path: Path | None = None,
@@ -2854,7 +2855,7 @@ def show_config(
 
         # ``pref`` REQUESTS + the RESULT each produced (spec §2h read verbs).
         if category_snapshot is not None:
-            _print_pref_block(category_snapshot, out)
+            _print_pref_block(category_snapshot, out, category_ctx, category_dest_keys or {})
 
         # Path-delivery CATEGORIES + their materialized derivations (§0).
         # ⚑ *category_ctx* travels WITH the snapshot and is required by it: the block
