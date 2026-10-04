@@ -18,6 +18,7 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               ERR_PROJECT_BAD_DESIGNATION,
                                               ERR_PROJECT_NEW_HOME, ERR_PROJECT_REG_HOME,
                                               ERR_PROJECT_NAME_USED, ERR_PROJECT_DIR_IS_WS,
+                                              ERR_PROJECT_PATH_IS_NAMED_BOX,
                                               ERR_WORKSET_NO_PROJECT, ERR_WORKSET_NO_WORKSET,
                                               ERR_WORKSET_WS_NOT_BOX, ERR_WORKSET_NOT_IN_BOX,
                                               ERR_WORKSET_NULL_WORKSPACES)
@@ -1607,6 +1608,24 @@ def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str
     ) is not None:
         from kanibako.errors import ProjectError
         raise ProjectError(ERR_PROJECT_DIR_IS_WS % name)
+
+
+def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
+    """Raise ``ProjectError`` when a NAMED box already holds *workspace* (no write).
+
+    Read through the ONE resolver that consults the per-workset ``boxes:`` membership —
+    :func:`box_resolve.find_connected_external_box` — which states what it matches.
+    """
+    # ⚑ Lazy import avoids a paths <-> box_resolve import cycle — do not hoist.
+    from kanibako.errors import ProjectError
+    from kanibako.launch import box_resolve
+
+    owned = box_resolve.find_connected_external_box(Path(workspace), std)
+    if owned is not None:
+        raise ProjectError(ERR_PROJECT_PATH_IS_NAMED_BOX % (
+            workspace, owned.box_name, owned.workset_name,
+            owned.box_name, owned.workset_name, owned.box_name,
+        ))
 
 
 def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str,
