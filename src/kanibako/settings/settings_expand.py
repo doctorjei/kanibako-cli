@@ -83,13 +83,12 @@ _ABSENT: _Absent = _Absent()
 
 
 def _absent_reason(dotted: str) -> str:
-    """Why *dotted* is not in the snapshot, and a declared key is NOT a keyspace breach.
+    """Why *dotted* is not in the snapshot — a DECLARED key is NOT a keyspace breach.
 
-    ⚑ The set-time command judges a value against ITS OWN cascade, so a declared key that
-    lives in a scope this cascade does not reach is absent BY CONSTRUCTION — and telling
-    the user it is "no such config key in the keyspace" is a false statement about the
-    keyspace. :func:`~kanibako.settings.settings_keyspace.key_validity` is the oracle the
-    set door already judges a referent with, so both doors agree on what "declared" is.
+    ⚑ A set-time command judges a value against ITS OWN cascade, so a declared key living
+    in a scope that cascade does not reach is absent BY CONSTRUCTION, and
+    :func:`~kanibako.settings.settings_keyspace.key_validity` is the oracle the set door
+    uses.
     """
     from kanibako.settings.settings_keyspace import key_validity
 
