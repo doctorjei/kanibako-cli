@@ -11,6 +11,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/core_defaults.py.md
 PACKAGED_ROM_PARTS = ('rom',)
 PACKAGED_SETTINGS_PARTS = (*PACKAGED_ROM_PARTS, 'settings')
 CORE_DEFAULTS_FILENAME = 'core-defaults.yaml'
+WORKSET_CHANNEL_SOURCES = ('workset_common', 'workset_chat', 'workset_share')
 KICKOFF_PACKAGED_PARTS = (*PACKAGED_ROM_PARTS, 'KICKOFF.md')
 ROM_ROOT_PARTS = (*PACKAGED_ROM_PARTS, 'canon')
 CANON_GUEST_ROOT = 'canon'

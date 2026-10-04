@@ -29,6 +29,7 @@ from kanibako.settings.paths import (
     BoxMode,
     DesignationRoute,
     _box_settings_files,
+    _primary_box_paths,
     _standalone_settings_files,
     box_tree_materialized,
     box_workset_settings_paths,
@@ -1431,8 +1432,10 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
     if removed:
         print(f"Removed metadata: {metadata_dir}")
         # ⚑ The PRIMARY vault is NOT under metadata_dir — remove it separately.
-        for vdir in (std.primary_vault_ro / name, std.primary_vault_rw / name):
-            if vdir.is_dir():
+        # ⚑ A NULL ARM NAMES NO DIR.
+        _shell, vault_ro, vault_rw = _primary_box_paths(std, metadata_dir, name)
+        for vdir in (vault_ro, vault_rw):
+            if vdir is not None and vdir.is_dir():
                 _purge_dir(vdir)
     else:
         print(
@@ -2102,8 +2105,8 @@ def run_info(args: argparse.Namespace) -> int:
         ("Hash", short_hash(proj.project_hash)),
         ("Metadata", str(proj.metadata_path)),
         ("Shell", str(proj.shell_path)),
-        ("Vault RO", str(proj.vault_ro_path)),
-        ("Vault RW", str(proj.vault_rw_path)),
+        ("Vault RO", str(proj.vault_ro_path or "<None>")),
+        ("Vault RW", str(proj.vault_rw_path or "<None>")),
     ]
     rows.extend([
         ("Image", merged.box_image),

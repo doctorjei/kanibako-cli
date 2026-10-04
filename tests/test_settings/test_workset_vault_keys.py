@@ -94,6 +94,48 @@ class TestVaultResolverFaces:
         assert "@config.registry" in str(exc.value)
 
 
+class TestNullVaultArmFrontDoor:
+    """``workset.vault_ro: null`` must not stop ``load_std_paths`` — it stops EVERY command.
+
+    MIGRATION "One of kanibako's own binds warns when only its entry or only its source is
+    `null`" tells users to write exactly this key: the RO bind is left out and the launch
+    warns only when ONE half of the bind is ``null``.  A refusal at the path table would
+    make the documented cure the one thing that cannot be done.
+    """
+
+    def test_a_null_vault_ro_leaves_the_standard_paths_loadable(
+        self, std, config_file,
+    ):
+        _repoint(std.primary_workset, "vault_ro", None)
+        reloaded = load_std_paths(load_config(config_file))
+        # ⚑ CARRIES the null rather than answering with the default leaf.
+        assert reloaded.primary_vault_ro is None
+        assert reloaded.primary_vault_rw == std.primary_workset / "vault" / "rw"
+
+    def test_a_null_vault_rw_leaves_the_standard_paths_loadable(
+        self, std, config_file,
+    ):
+        _repoint(std.primary_workset, "vault_rw", None)
+        reloaded = load_std_paths(load_config(config_file))
+        assert reloaded.primary_vault_rw is None
+        assert reloaded.primary_vault_ro == std.primary_workset / "vault" / "ro"
+
+    def test_a_primary_box_is_still_created_and_gets_no_ro_vault_leaf(
+        self, std, config, config_file, tmp_home,
+    ):
+        """⚑ "No such dir" reaches the CREATE: no leaf is made, and nothing is invented."""
+        _repoint(std.primary_workset, "vault_ro", None)
+        reloaded = load_std_paths(load_config(config_file))
+        workspace = tmp_home / "code" / "nullro"
+        workspace.mkdir(parents=True)
+        proj = resolve_project(reloaded, load_config(config_file), str(workspace),
+                               initialize=True)
+        assert proj.vault_ro_path is None
+        assert proj.vault_rw_path is not None
+        assert proj.vault_rw_path.is_dir()
+        assert not (std.primary_workset / "vault" / "ro" / proj.name).exists()
+
+
 # ---------------------------------------------------------------------------
 # NAMED mode — the workset root's own workset.yaml
 # ---------------------------------------------------------------------------

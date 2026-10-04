@@ -1880,6 +1880,59 @@ class TestInstallWorksetTemplate:
         ).is_file()
         assert (ws / "template" / "box" / "home").is_dir()
 
+    def test_stamps_the_canon_chapter_beside_the_mold_content(self, std, tmp_path):
+        """The control: an unrepointed root gets BOTH halves of the canon layer."""
+        from kanibako.launch.templates import install_workset_template
+
+        install_packaged_templates(std, ["claude"])
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        install_workset_template(std, ws)
+        assert (ws / "canon" / "handbook").is_dir()
+
+    def test_a_null_canon_skips_the_whole_canon_layer(self, std, tmp_path):
+        """``workset.canon: null`` SKIPS the layer: nothing copied, nothing refused.
+
+        ⚑ With the REAL mold installed, so the copy has something to refuse: the
+        mold's ``canon/handbook`` has no destination left, and a whitelist entry that
+        respells nothing would raise on it. Both halves of the stamp must narrow the
+        same way, so the PRE-FLIGHT is exercised here too — it runs first and writes
+        nothing.
+        """
+        from kanibako.launch.templates import (
+            check_workset_template,
+            install_workset_template,
+        )
+
+        install_packaged_templates(std, ["claude"])
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
+
+        check_workset_template(std, ws)          # PRE-FLIGHT: must not raise
+        install_workset_template(std, ws)
+        assert not (ws / "canon").exists()
+        assert not (ws / "handbook").exists()
+        # The template half is a different key, so it still lands.
+        assert (ws / "template" / "box" / "home" / "canon" / "notebook").is_dir()
+
+    def test_a_null_canon_skips_the_standalone_half_too(self, std, tmp_path):
+        """The STANDALONE stamp reads the mold's canon ROOT, so it skips the same way."""
+        from kanibako.launch.templates import (
+            check_workset_template,
+            install_workset_template,
+        )
+
+        install_packaged_templates(std, ["claude"])
+        ws = tmp_path / "ws"
+        ws.mkdir()
+        (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
+
+        check_workset_template(std, ws, canon_only=True)
+        install_workset_template(std, ws, canon_only=True)
+        assert not (ws / "canon").exists()
+        assert not (ws / "handbook").exists()
+
     def test_refuses_a_registry_planted_by_the_mold(self, std, tmp_path):
         """⚑ The severity case: ``registry.yaml`` is ``workset.registry``, the
         AUTHORITATIVE box membership — a templated one could ORPHAN boxes. And a

@@ -114,9 +114,10 @@ class StandardPaths:
     channels_share: Path
     # PRIMARY-workset box store: ``@config.primary_workset/boxes`` (per-box meta + shell).
     boxes: Path
-    # PRIMARY-workset vault + logs roots under ``@config.primary_workset``.
-    primary_vault_ro: Path
-    primary_vault_rw: Path
+    # PRIMARY-workset vault roots.  ⚑ ``None`` when the PRIMARY workset nulls the arm:
+    # no such dir, so no vault bind and no per-box vault leaf.
+    primary_vault_ro: Path | None
+    primary_vault_rw: Path | None
     # ``None`` when the PRIMARY ``workset.logs`` is a present ``<None>``: no logs dir.
     primary_logs: Path | None
 
@@ -165,8 +166,9 @@ class ProjectPaths:
     # ⚑ The RESOLVED ``workset.{vault_ro,vault_rw}`` (+ a ``<box-name>`` leaf in primary
     # and named mode) — NOT ``project_path/vault/ro``.  🛑 That stale spelling is what the
     # comment here used to say, and ``commands/archive.py`` was written against it.
-    vault_ro_path: Path      # → /home/agent/vault/ro
-    vault_rw_path: Path      # → /home/agent/vault/rw
+    # ⚑ ``None`` for a nulled arm, as ``StandardPaths.primary_vault_*`` above.
+    vault_ro_path: Path | None   # → /home/agent/vault/ro
+    vault_rw_path: Path | None   # → /home/agent/vault/rw
     is_new: bool = field(default=False)
     mode: BoxMode = field(default=BoxMode.primary)
     name: str = field(default="")
@@ -261,9 +263,9 @@ class _WorksetLike(Protocol):
     @property
     def workspaces_dir(self) -> Path | None: ...
     @property
-    def vault_ro_dir(self) -> Path: ...
+    def vault_ro_dir(self) -> Path | None: ...
     @property
-    def vault_rw_dir(self) -> Path: ...
+    def vault_rw_dir(self) -> Path | None: ...
     @property
     def logs_dir(self) -> Path | None: ...
     @property
@@ -295,9 +297,9 @@ class WorksetSpec:
     workspaces_dir: Path | None
     #: ⚑ The RESOLVED ``workset.{vault_ro,vault_rw}`` — ONE ARM EACH, never a shared
     #: ``vault/`` parent to join ``ro``/``rw`` onto.  The two are independently
-    #: repointable keys, so a single parent cannot answer both.
-    vault_ro_dir: Path
-    vault_rw_dir: Path
+    #: repointable keys, so a single parent cannot answer both.  ``None`` for a nulled arm.
+    vault_ro_dir: Path | None
+    vault_rw_dir: Path | None
     project_names: tuple[str, ...]
     is_default: bool = False
 
@@ -619,8 +621,13 @@ def resolve_system_paths(set_values: Mapping[str, str],
 
     pw_settings = load_workset_settings_doc(pw)
     resolved["_primary_boxes"] = resolve_workset_boxes(pw, pw_settings)
-    resolved["_primary_vault_ro"] = resolve_workset_vault_ro(pw, pw_settings)
-    resolved["_primary_vault_rw"] = resolve_workset_vault_rw(pw, pw_settings)
+    # ⚑ Each arm is OMITTED when nulled, as ``_primary_logs`` below.
+    primary_vault_ro = resolve_workset_vault_ro(pw, pw_settings)
+    if primary_vault_ro is not None:
+        resolved["_primary_vault_ro"] = primary_vault_ro
+    primary_vault_rw = resolve_workset_vault_rw(pw, pw_settings)
+    if primary_vault_rw is not None:
+        resolved["_primary_vault_rw"] = primary_vault_rw
     # ⚑ ``_primary_logs`` is OMITTED when ``workset.logs`` is a present ``<None>`` — the
     # table holds paths only; :func:`load_std_paths` reads the omission as ``None``.
     primary_logs = resolve_workset_logs(pw, pw_settings)
@@ -969,8 +976,8 @@ def load_std_paths(config: BootstrapConfig | None = None, *,
                      channels_mailboxes=resolved["system.channels.mailboxes"],
                      channels_share=resolved["system.channels.share"],
                      boxes=resolved["_primary_boxes"],
-                     primary_vault_ro=resolved["_primary_vault_ro"],
-                     primary_vault_rw=resolved["_primary_vault_rw"],
+                     primary_vault_ro=resolved.get("_primary_vault_ro"),
+                     primary_vault_rw=resolved.get("_primary_vault_rw"),
                      primary_logs=resolved.get("_primary_logs"))
 
 
@@ -1107,33 +1114,41 @@ def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, 
 
 
 def _primary_box_paths(std: StandardPaths,
-                       metadata_path: Path, box_name: str) -> tuple[Path, Path, Path]:
-    """Fixed PRIMARY-mode ``(shell, vault_ro, vault_rw)`` (no layout axis)."""
+                       metadata_path: Path, box_name: str) -> tuple[Path, Path | None, Path | None]:
+    """Fixed PRIMARY-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
+
+    ⚑ A NULL ARM YIELDS ``None`` FOR THE PER-BOX LEAF TOO — none is invented.
+    """
     shell = metadata_path / HOME_PATH
-    vault_ro = std.primary_vault_ro / box_name
-    vault_rw = std.primary_vault_rw / box_name
+    vault_ro = None if std.primary_vault_ro is None else std.primary_vault_ro / box_name
+    vault_rw = None if std.primary_vault_rw is None else std.primary_vault_rw / box_name
     return shell, vault_ro, vault_rw
 
 
-def _workset_box_paths(metadata_path: Path, vault_ro_base: Path, vault_rw_base: Path,
-                       box_name: str) -> tuple[Path, Path, Path]:
+def _workset_box_paths(metadata_path: Path, vault_ro_base: Path | None,
+                       vault_rw_base: Path | None, box_name: str,
+                       ) -> tuple[Path, Path | None, Path | None]:
     """Fixed NAMED-mode ``(shell, vault_ro, vault_rw)`` (no layout axis).
 
     ⚑ The two bases are the RESOLVED ``workset.{vault_ro,vault_rw}`` — one arm each,
-    because either may be repointed independently of the other.  Only the per-box
+    because either may be repointed independently of the other, and either may be a
+    present ``<None>``.  Only the per-box
     ``@meta.box.name`` LEAF is composed here; that leaf is the whole per-mode variation.
     """
     shell = metadata_path / HOME_PATH
-    return shell, vault_ro_base / box_name, vault_rw_base / box_name
+    return (shell,
+            None if vault_ro_base is None else vault_ro_base / box_name,
+            None if vault_rw_base is None else vault_rw_base / box_name)
 
 
-def _standalone_box_paths(root: Path) -> tuple[Path, Path, Path]:
+def _standalone_box_paths(root: Path) -> tuple[Path, Path | None, Path | None]:
     """Fixed STANDALONE-mode ``(home, vault_ro, vault_rw)`` (no layout axis).
 
     ⚑ STANDALONE roots a degenerate workset at *root*, so *root*'s own ``workset.yaml``
     is the workset tier and its ``workset.{vault_ro,vault_rw}`` are RESOLVED here — the
     keys are UNIFORM in every mode (§2c ALL PROJECTS, R-29), with no standalone
     carve-out.  Only the BIND differs: a lone box takes the arm itself, no name leaf.
+    ⚑ A null arm answers ``None``, as in the other two modes.
     """
     from kanibako.project.workset import resolve_workset_vault_pair
 
@@ -1276,8 +1291,9 @@ def _upgrade_shell(shell_path: Path) -> None:
     bashrc.write_text(content)
 
 
-def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path,
-                 vault_rw_path: Path, project_path: Path, *, enable_vault: bool = True,
+def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path,
+                 vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path,
+                 *, enable_vault: bool = True,
                  vault_root: Path) -> None:
     """Shared first-time project setup: create directories, bootstrap shell.
 
@@ -1285,6 +1301,7 @@ def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vaul
     REQUIRED because the skeleton is composed off it — see :func:`write_vault_gitignore`,
     which answers the whole question.  Without a root there is no skeleton, so there is
     nothing to answer.
+    ⚑ A NULL ARM IS NOT CREATED, and has no ``.gitignore`` beside it.
     """
     import sys
 
@@ -1297,11 +1314,13 @@ def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vaul
 
     # Vault directories (skip when vault is disabled).
     if enable_vault:
-        vault_ro_path.mkdir(parents=True, exist_ok=True)
-        vault_rw_path.mkdir(parents=True, exist_ok=True)
-        # ⚑ ORDER IS LOAD-BEARING: the mkdir above is what puts the skeleton on disk
-        # whenever the gate would pass, satisfying this call's precondition silently.
-        write_vault_gitignore(vault_root, vault_rw_path)
+        if vault_ro_path is not None:
+            vault_ro_path.mkdir(parents=True, exist_ok=True)
+        if vault_rw_path is not None:
+            vault_rw_path.mkdir(parents=True, exist_ok=True)
+            # ⚑ ORDER IS LOAD-BEARING: the mkdir above is what puts the skeleton on disk
+            # whenever the gate would pass, satisfying this call's precondition silently.
+            write_vault_gitignore(vault_root, vault_rw_path)
 
     print(MSG_DONE, file=sys.stderr)
 
@@ -1362,8 +1381,9 @@ def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None:
         gitignore.write_text("rw/\n")
 
 
-def _init_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path,
-                  vault_rw_path: Path, project_path: Path, *, enable_vault: bool = True) -> None:
+def _init_project(std: StandardPaths, metadata_path: Path, shell_path: Path,
+                  vault_ro_path: Path | None, vault_rw_path: Path | None,
+                  project_path: Path, *, enable_vault: bool = True) -> None:
     """First-time project setup: create directories, copy credentials from host."""
     _init_common(std, metadata_path, shell_path, vault_ro_path, vault_rw_path, project_path,
                  enable_vault=enable_vault, vault_root=std.primary_workset)
@@ -2025,7 +2045,9 @@ def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths:
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
     """Advisory (never fatal): warn when a box that EXPECTS a vault has none on disk (spec D5)."""
     try:
-        if proj.vault_enabled() and not proj.vault_rw_path.is_dir():
+        # ⚑ A NULL ARM IS NO SUCH DIR, not a missing one to warn about.
+        if (proj.vault_enabled() and proj.vault_rw_path is not None
+                and not proj.vault_rw_path.is_dir()):
             get_logger(__name__).warning(WARN_BOX_NO_VAULT, proj.name or str(proj.project_path or "<None>"),
                                          proj.vault_rw_path)
     except SettingsError:
@@ -2035,7 +2057,8 @@ def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
 
 
 def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool,
-                         name: str = "", register: bool = True) -> tuple[str, Path, Path, Path]:
+                         name: str = "",
+                         register: bool = True) -> tuple[str, Path, Path | None, Path | None]:
     """Establish a standalone box at *root*: identity + meta + registration (the shared core)."""
     from kanibako.project import registry_store
     from kanibako.launch import box_identity
@@ -2161,8 +2184,8 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
 
 
 def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path,
-                             vault_ro_path: Path, vault_rw_path: Path, project_path: Path,
-                             *, enable_vault: bool = True) -> None:
+                             vault_ro_path: Path | None, vault_rw_path: Path | None,
+                             project_path: Path, *, enable_vault: bool = True) -> None:
     """First-time standalone project setup: all state inside the project dir (vault included).
 
     ⚑ *metadata_path* is the ``box_data/`` dir; the WORKSET root is its parent, and that

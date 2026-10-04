@@ -40,12 +40,12 @@ def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool=Fa
 def refuse_null_box_workspace(workset_root: Path, workspace: Path | None, box: str, *, standalone: bool) -> None
 def resolve_workset_boxes(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path
 def resolve_workset_logs(workset_root: Path, workset_settings: Mapping[str, Any] | None, *, standalone: bool=False) -> Path | None
-def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
-def resolve_workset_canon(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
-def resolve_workset_template(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
-def resolve_workset_vault_ro(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
-def resolve_workset_vault_rw(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path
-def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path, Path]
+def resolve_workset_channelroot(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path | None
+def resolve_workset_canon(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path | None
+def resolve_workset_template(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path | None
+def resolve_workset_vault_ro(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path | None
+def resolve_workset_vault_rw(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path | None
+def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path | None, Path | None]
 def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]
 def is_reserved_workset_name(name: str) -> bool
 def refuse_retired_workset_identity(root: Path) -> None
@@ -60,10 +60,9 @@ def source_in_tree(ws: Workset, source_path: Path) -> bool
 def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False) -> WorksetProject
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None
 def release_project(ws: Workset, name: str) -> WorksetProject
-def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, Path, Path] | None=None) -> None
+def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, ...] | None=None) -> None
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
 def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None | _Unset
-def _repoint_or_default(repoint: str | None | _Unset) -> str | None
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)
 def _load_workset(root: Path, name: str) -> Workset
@@ -73,7 +72,7 @@ def _path_in_tree(path: Path, root: Path) -> bool
 def _detach_project(ws: Workset, name: str) -> None
 def _find_member(ws: Workset, name: str) -> WorksetProject
 def _unfollowed(path: Path) -> Path
-def _member_store_bases(ws: Workset) -> tuple[Path, Path, Path]
+def _member_store_bases(ws: Workset) -> tuple[Path, ...]
 ```
 
 ## Classes
@@ -99,9 +98,9 @@ class Workset:
     @property
     def vault_dir(self) -> Path
     @property
-    def vault_ro_dir(self) -> Path
+    def vault_ro_dir(self) -> Path | None
     @property
-    def vault_rw_dir(self) -> Path
+    def vault_rw_dir(self) -> Path | None
     @property
     def logs_dir(self) -> Path | None
     @property

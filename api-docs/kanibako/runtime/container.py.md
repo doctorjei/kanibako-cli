@@ -26,7 +26,7 @@ def _run_post_start(hook: 'Callable[[], None]') -> None
 def _is_managed_canon_dest(dest: str) -> bool
 def _is_seed_denied_canon_dest(dest: str) -> bool
 def _guest_dest_to_host(dest: str, shell_path: Path, project_path: Path, *, map_home_root: bool=False) -> Path | None
-def _precreate_mount_stubs(shell_path: Path, project_path: Path, extra_mounts: list | None, enable_vault: bool, vault_ro_path: Path, vault_rw_path: Path, tmpfs_masks: list[str]) -> None
+def _precreate_mount_stubs(shell_path: Path, project_path: Path, extra_mounts: list | None, enable_vault: bool, vault_ro_path: Path | None, vault_rw_path: Path | None, tmpfs_masks: list[str]) -> None
 ```
 
 ## Classes
@@ -51,7 +51,7 @@ class ContainerRuntime:
     def load(self, archive: Path) -> str | None
     def diff(self, image: str) -> list[str]
     def ensure_image(self, image: str, containers_dir: Path | None=None) -> None
-    def run(self, image: str, *, shell_path: Path, project_path: Path, vault_ro_path: Path, vault_rw_path: Path, extra_mounts: list | None=None, tmpfs_masks: list[str] | None=None, enable_vault: bool=True, env: dict[str, str] | None=None, name: str | None=None, entrypoint: str | None=None, cli_args: list[str] | None=None, detach: bool=False, post_start: 'Callable[[], None] | None'=None) -> int
+    def run(self, image: str, *, shell_path: Path, project_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, extra_mounts: list | None=None, tmpfs_masks: list[str] | None=None, enable_vault: bool=True, env: dict[str, str] | None=None, name: str | None=None, entrypoint: str | None=None, cli_args: list[str] | None=None, detach: bool=False, post_start: 'Callable[[], None] | None'=None) -> int
     def exec(self, name: str, command: list[str], *, env: dict[str, str] | None=None, attach: bool=False) -> int
     def exec_ready(self, name: str) -> bool
     def container_exists(self, name: str) -> bool

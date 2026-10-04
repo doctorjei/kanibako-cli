@@ -257,7 +257,8 @@ def _channel_key(
 def workset_channel_paths(
     proj: ProjectPaths, std: StandardPaths
 ) -> WorksetChannels | None:
-    """Derive the WORKSET-local channel roots for *proj*; ``None`` for standalone.
+    """Derive the WORKSET-local channel roots for *proj*; ``None`` for standalone, or for a
+    null ``workset.channelroot``.
 
     ⚑⚑ EVERY LEAF IS RESOLVED THROUGH ITS OWN DECLARED KEY, never joined onto the root
     (R-35, "fix the CODE").  Joining looked harmless because the joins ARE the spec's
@@ -271,8 +272,9 @@ def workset_channel_paths(
     return workset_channels_at(workset_root(proj, std))
 
 
-def workset_channels_at(ws_root: Path) -> WorksetChannels:
-    """Derive the WORKSET-local channel roots of the working set rooted at *ws_root*.
+def workset_channels_at(ws_root: Path) -> WorksetChannels | None:
+    """Derive the WORKSET-local channel roots of *ws_root*; ``None`` for a nulled
+    ``workset.channelroot``.
 
     The ONE carrier of the derivation; :func:`workset_channel_paths` is its
     ``ProjectPaths`` adapter and adds the standalone gate.  A box-less resolve (a
@@ -285,6 +287,8 @@ def workset_channels_at(ws_root: Path) -> WorksetChannels:
 
     doc = load_workset_settings_doc(ws_root)
     root = resolve_workset_channelroot(ws_root, doc)
+    if root is None:
+        return None
     chat = _channel_key(ws_root, doc, "chat", root / "chat")
     return WorksetChannels(
         root=root,

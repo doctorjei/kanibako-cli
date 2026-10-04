@@ -69,7 +69,7 @@ def designation_route(value: str | None, *, name_first: bool=False) -> Designati
 def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_is_path: bool, name_first: bool=False) -> str
 def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, register: bool=True, name_override: str | None=None) -> ProjectPaths
 def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str | None=None, *, initialize: bool=False, register: bool=True, warn: bool=True) -> ProjectPaths
-def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool, name: str='', register: bool=True) -> tuple[str, Path, Path, Path]
+def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool, name: str='', register: bool=True) -> tuple[str, Path, Path | None, Path | None]
 def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name: str='', register: bool=True) -> ProjectPaths
 def _default_project_group(std: StandardPaths) -> ProjectGroup
 def _standalone_settings_files(root: Path) -> tuple[Path, Path]
@@ -82,14 +82,14 @@ def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str]
 def _floor_field(key: str) -> str
 def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path, xdg_vars: Mapping[str, str], tolerate_bad_settings: bool=False) -> dict[str, str]
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]
-def _primary_box_paths(std: StandardPaths, metadata_path: Path, box_name: str) -> tuple[Path, Path, Path]
-def _workset_box_paths(metadata_path: Path, vault_ro_base: Path, vault_rw_base: Path, box_name: str) -> tuple[Path, Path, Path]
-def _standalone_box_paths(root: Path) -> tuple[Path, Path, Path]
+def _primary_box_paths(std: StandardPaths, metadata_path: Path, box_name: str) -> tuple[Path, Path | None, Path | None]
+def _workset_box_paths(metadata_path: Path, vault_ro_base: Path | None, vault_rw_base: Path | None, box_name: str) -> tuple[Path, Path | None, Path | None]
+def _standalone_box_paths(root: Path) -> tuple[Path, Path | None, Path | None]
 def _bootstrap_shell(shell_path: Path) -> None
 def _upgrade_shell(shell_path: Path) -> None
-def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *, enable_vault: bool=True, vault_root: Path) -> None
+def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path, *, enable_vault: bool=True, vault_root: Path) -> None
 def _host_path_within(candidate: Path, root: Path) -> bool
-def _init_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *, enable_vault: bool=True) -> None
+def _init_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path, *, enable_vault: bool=True) -> None
 def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None
 def _is_standalone_meta_dir(root: Path) -> bool
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None
@@ -105,7 +105,7 @@ def _resolve_designated_path(std: StandardPaths, config: BootstrapConfig, raw: s
 def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths
 def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths
-def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path, vault_rw_path: Path, project_path: Path, *, enable_vault: bool=True) -> None
+def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path, *, enable_vault: bool=True) -> None
 ```
 
 ## Classes
@@ -147,8 +147,8 @@ class StandardPaths:
     channels_mailboxes: Path
     channels_share: Path
     boxes: Path
-    primary_vault_ro: Path
-    primary_vault_rw: Path
+    primary_vault_ro: Path | None
+    primary_vault_rw: Path | None
     primary_logs: Path | None
 
 @dataclass(frozen=True)
@@ -164,8 +164,8 @@ class ProjectPaths:
     project_hash: str
     metadata_path: Path
     shell_path: Path
-    vault_ro_path: Path
-    vault_rw_path: Path
+    vault_ro_path: Path | None
+    vault_rw_path: Path | None
     is_new: bool = field(default=False)
     mode: BoxMode = field(default=BoxMode.primary)
     name: str = field(default='')
@@ -181,8 +181,8 @@ class WorksetSpec:
     root: Path
     projects_dir: Path
     workspaces_dir: Path | None
-    vault_ro_dir: Path
-    vault_rw_dir: Path
+    vault_ro_dir: Path | None
+    vault_rw_dir: Path | None
     project_names: tuple[str, ...]
     is_default: bool = False
 
@@ -214,9 +214,9 @@ class _WorksetLike(Protocol):
     @property
     def workspaces_dir(self) -> Path | None
     @property
-    def vault_ro_dir(self) -> Path
+    def vault_ro_dir(self) -> Path | None
     @property
-    def vault_rw_dir(self) -> Path
+    def vault_rw_dir(self) -> Path | None
     @property
     def logs_dir(self) -> Path | None
     @property

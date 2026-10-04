@@ -12,6 +12,7 @@ from kanibako.errors import UserCanceled
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
+    _primary_box_paths,
     box_logs_location,
     load_std_paths,
     remove_box_logs,
@@ -192,9 +193,9 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # Phase 5: PRIMARY vault lives under @config.primary_workset (not under
         # metadata_path), so remove the per-box ro/rw dirs explicitly.
         if proj.mode is BoxMode.primary:
-            for vault_dir in (proj.vault_ro_path, proj.vault_rw_path):
-                if vault_dir.is_dir():
-                    shutil.rmtree(vault_dir, ignore_errors=True)
+            for box_vault in (proj.vault_ro_path, proj.vault_rw_path):
+                if box_vault is not None and box_vault.is_dir():
+                    shutil.rmtree(box_vault, ignore_errors=True)
 
     # M2 (registry hygiene): the box metadata is gone, so drop its registry
     # entry too — otherwise registry.{projects,standalone} keeps a dangling
@@ -252,11 +253,11 @@ def _purge_all(std, config, *, force: bool) -> int:
             _warn_undeleted(metadata_path)
         # Phase 5: PRIMARY vault lives under @config.primary_workset/vault/
         # {ro,rw}/<name> (name == metadata dir name), not under metadata_path.
-        for vault_dir in (
-            std.primary_vault_ro / metadata_path.name,
-            std.primary_vault_rw / metadata_path.name,
-        ):
-            if vault_dir.is_dir():
+        _shell, vault_ro, vault_rw = _primary_box_paths(
+            std, metadata_path, metadata_path.name,
+        )
+        for vault_dir in (vault_ro, vault_rw):
+            if vault_dir is not None and vault_dir.is_dir():
                 shutil.rmtree(vault_dir, ignore_errors=True)
 
         # The per-box logs, under the PRIMARY workset's resolved ``workset.logs``

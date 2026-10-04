@@ -61,7 +61,7 @@ from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
-from kanibako.settings.paths import StandardPaths
+from kanibako.settings.paths import StandardPaths, _workset_box_paths
 
 # ⚑⚑ EVERY NAME BELOW IS AN ALIAS, NEVER A VALUE.  The defaults themselves live in
 # ``settings/bootstrap.py``, the designated path-literal file, and are materialized
@@ -154,18 +154,6 @@ def _workset_path_repoint(
             if repoint and repoint is not UNSET:
                 return str(repoint)
     return UNSET
-
-
-def _repoint_or_default(repoint: str | None | _Unset) -> str | None:
-    """COLLAPSE a present ``<None>`` into "take the default" — keys whose S3 pass is still owed.
-
-    ``workset.logs`` and ``workset.workspaces`` carry ``<None>`` through
-    (:func:`resolve_workset_logs`, :func:`resolve_workset_workspaces`) and ``workset.boxes``
-    refuses it (:func:`resolve_workset_boxes`); ``channelroot``, ``canon``, ``template``,
-    ``vault_ro`` and ``vault_rw`` still read a present ``<None>`` as unset, which [R177]
-    does not allow.
-    """
-    return repoint if isinstance(repoint, str) else None
 
 
 def resolve_workset_workspaces(
@@ -294,7 +282,8 @@ def resolve_workset_logs(
         return None
     if not standalone:
         return resolve_workset_dir_key(
-            workset_root, _repoint_or_default(repoint), _LOGS_LEAF, key=_LOGS_LEAF,
+            workset_root, repoint if isinstance(repoint, str) else None,
+            _LOGS_LEAF, key=_LOGS_LEAF,
         )
     boxes = str(resolve_workset_boxes(workset_root, workset_settings, standalone=True))
     return resolve_workset_dir_key(
@@ -308,11 +297,16 @@ def resolve_workset_logs(
 
 def resolve_workset_channelroot(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-) -> Path:
-    """Return the resolved ``workset.channelroot`` — ⚑ primary/named ONLY; callers gate on mode."""
+) -> Path | None:
+    """Return the resolved ``workset.channelroot`` — ⚑ primary/named ONLY; callers gate on mode.
+
+    ``None`` for a present ``<None>``: no channel root, so no channel bind.
+    """
+    repoint = _workset_path_repoint(workset_settings, "channelroot")
+    if repoint is None:
+        return None
     return resolve_workset_dir_key(
-        workset_root,
-        _repoint_or_default(_workset_path_repoint(workset_settings, "channelroot")),
+        workset_root, repoint if isinstance(repoint, str) else None,
         _CHANNELROOT_LEAF,
         key="channelroot",
     )
@@ -320,11 +314,16 @@ def resolve_workset_channelroot(
 
 def resolve_workset_canon(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-) -> Path:
-    """Return the resolved ``workset.canon`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included."""
+) -> Path | None:
+    """Return the resolved ``workset.canon`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included.
+
+    ``None`` for a present ``<None>``: the canon layer is SKIPPED (spec §2a).
+    """
+    repoint = _workset_path_repoint(workset_settings, _CANON_LEAF)
+    if repoint is None:
+        return None
     return resolve_workset_dir_key(
-        workset_root,
-        _repoint_or_default(_workset_path_repoint(workset_settings, _CANON_LEAF)),
+        workset_root, repoint if isinstance(repoint, str) else None,
         _CANON_LEAF,
         key=_CANON_LEAF,
     )
@@ -332,11 +331,16 @@ def resolve_workset_canon(
 
 def resolve_workset_template(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-) -> Path:
-    """Return the resolved ``workset.template`` dir — ⚑ primary/named ONLY; <None> in standalone."""
+) -> Path | None:
+    """Return the resolved ``workset.template`` dir — ⚑ primary/named ONLY; <None> in standalone.
+
+    ``None`` for a present ``<None>``, and in STANDALONE (spec §2c): no template layer.
+    """
+    repoint = _workset_path_repoint(workset_settings, _TEMPLATE_LEAF)
+    if repoint is None:
+        return None
     return resolve_workset_dir_key(
-        workset_root,
-        _repoint_or_default(_workset_path_repoint(workset_settings, _TEMPLATE_LEAF)),
+        workset_root, repoint if isinstance(repoint, str) else None,
         _TEMPLATE_LEAF,
         key=_TEMPLATE_LEAF,
     )
@@ -344,11 +348,18 @@ def resolve_workset_template(
 
 def resolve_workset_vault_ro(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-) -> Path:
-    """Return the resolved ``workset.vault_ro`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included."""
+) -> Path | None:
+    """Return the resolved ``workset.vault_ro`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included.
+
+    ``None`` for a present ``<None>``: no RO arm, so the bind is omitted (MIGRATION "A
+    `null` setting inside a bind's source leaves the bind out…") and
+    ``StandardPaths.primary_vault_ro`` is ``None``.
+    """
+    repoint = _workset_path_repoint(workset_settings, _VAULT_RO_KEY)
+    if repoint is None:
+        return None
     return resolve_workset_dir_key(
-        workset_root,
-        _repoint_or_default(_workset_path_repoint(workset_settings, _VAULT_RO_KEY)),
+        workset_root, repoint if isinstance(repoint, str) else None,
         _VAULT_RO_LEAF,
         key=_VAULT_RO_KEY,
     )
@@ -356,22 +367,29 @@ def resolve_workset_vault_ro(
 
 def resolve_workset_vault_rw(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-) -> Path:
-    """Return the resolved ``workset.vault_rw`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included."""
+) -> Path | None:
+    """Return the resolved ``workset.vault_rw`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included.
+
+    ``None`` for a present ``<None>``, on the terms of :func:`resolve_workset_vault_ro` —
+    the two arms resolve INDEPENDENTLY, so either may carry it alone.
+    """
+    repoint = _workset_path_repoint(workset_settings, _VAULT_RW_KEY)
+    if repoint is None:
+        return None
     return resolve_workset_dir_key(
-        workset_root,
-        _repoint_or_default(_workset_path_repoint(workset_settings, _VAULT_RW_KEY)),
+        workset_root, repoint if isinstance(repoint, str) else None,
         _VAULT_RW_LEAF,
         key=_VAULT_RW_KEY,
     )
 
 
-def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path, Path]:
+def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path | None, Path | None]:
     """The resolved ``(vault_ro, vault_rw)`` for *workset_root*, off ONE workset.yaml read.
 
     ⚑ The pair form exists because EVERY consumer wants both arms, and reading the file
     once per arm opens a window for the two to disagree about the same document — the
     same reason ``_workset_skeleton_dirs`` takes one read for its three resolutions.
+    ⚑ Either arm may be ``None``: a workset may null one arm and not the other.
     """
     settings_doc = load_workset_settings_doc(workset_root)
     return (resolve_workset_vault_ro(workset_root, settings_doc),
@@ -407,6 +425,9 @@ def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]:
     removable: list[Path] = []
     retained: list[Path] = []
     for arm in resolve_workset_vault_pair(root):
+        # ⚑ A NULL ARM IS NO SUCH DIR: it names nothing to remove and nothing to keep.
+        if arm is None:
+            continue
         # ⚑ STRICT: ``arm == root`` must land in *retained*.  A ``vault_ro: .`` would
         # otherwise nominate the user's whole project directory for deletion.
         if root in arm.parents:
@@ -578,13 +599,13 @@ class Workset:
         return self.root / _VAULT_LEAF
 
     @property
-    def vault_ro_dir(self) -> Path:
-        """The resolved ``workset.vault_ro`` — ⚑ RESOLVED, not composed."""
+    def vault_ro_dir(self) -> Path | None:
+        """The resolved ``workset.vault_ro`` — ⚑ RESOLVED, not composed; ``None`` when nulled."""
         return resolve_workset_vault_ro(self.root, load_workset_settings_doc(self.root))
 
     @property
-    def vault_rw_dir(self) -> Path:
-        """The resolved ``workset.vault_rw`` — ⚑ RESOLVED, not composed."""
+    def vault_rw_dir(self) -> Path | None:
+        """The resolved ``workset.vault_rw`` — ⚑ RESOLVED, not composed; ``None`` when nulled."""
         return resolve_workset_vault_rw(self.root, load_workset_settings_doc(self.root))
 
     @property
@@ -1063,18 +1084,21 @@ def add_project(
 
         # Vault nests ro/rw ABOVE the box name, matching PRIMARY and STANDALONE.
         # ⚑ Unwind removes the per-box LEAVES only — never the shared ro/rw parents.
-        # ⚑ The two arms are RESOLVED keys, so the per-box leaf joins the RESOLVED arm.
-        vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
-        vault_ro_proj = vault_ro_base / name
-        vault_rw_proj = vault_rw_base / name
-        existed_vault_ro = vault_ro_proj.exists()
-        existed_vault_rw = vault_rw_proj.exists()
-        vault_ro_proj.mkdir(parents=True, exist_ok=True)
-        vault_rw_proj.mkdir(parents=True, exist_ok=True)
-        if not existed_vault_ro:
-            unwind.push(lambda: shutil.rmtree(vault_ro_proj, ignore_errors=True))
-        if not existed_vault_rw:
-            unwind.push(lambda: shutil.rmtree(vault_rw_proj, ignore_errors=True))
+        # ⚑ The per-box leaves are composed by the one NAMED-mode accessor, off the
+        # RESOLVED arms: a null arm gets no leaf, for there is no dir to nest one under.
+        _shell, vault_ro_proj, vault_rw_proj = _workset_box_paths(
+            proj_box, *resolve_workset_vault_pair(ws.root), name,
+        )
+        if vault_ro_proj is not None:
+            existed_vault_ro = vault_ro_proj.exists()
+            vault_ro_proj.mkdir(parents=True, exist_ok=True)
+            if not existed_vault_ro:
+                unwind.push(lambda: shutil.rmtree(vault_ro_proj, ignore_errors=True))
+        if vault_rw_proj is not None:
+            existed_vault_rw = vault_rw_proj.exists()
+            vault_rw_proj.mkdir(parents=True, exist_ok=True)
+            if not existed_vault_rw:
+                unwind.push(lambda: shutil.rmtree(vault_rw_proj, ignore_errors=True))
 
         if is_external:
             # ⚑ workspaces/{name} is a discoverability SYMLINK — never mounted.
@@ -1216,13 +1240,18 @@ def release_project(ws: Workset, name: str) -> WorksetProject:
     return target
 
 
-def _member_store_bases(ws: Workset) -> tuple[Path, Path, Path]:
-    """*ws*'s resolved ``(boxes, vault_ro, vault_rw)`` — what :func:`remove_member_store` deletes under."""
-    return (ws.projects_dir, *resolve_workset_vault_pair(ws.root))
+def _member_store_bases(ws: Workset) -> tuple[Path, ...]:
+    """*ws*'s resolved ``(boxes, vault_ro, vault_rw)`` — what :func:`remove_member_store` deletes under.
+
+    ⚑ A NULL VAULT ARM CONTRIBUTES NO BASE: there is no such dir, so no per-box leaf
+    under it is removed.  The boxes dir is always first.
+    """
+    vault_ro, vault_rw = resolve_workset_vault_pair(ws.root)
+    return tuple(base for base in (ws.projects_dir, vault_ro, vault_rw) if base is not None)
 
 
 def remove_member_store(
-    ws: Workset, name: str, *, bases: tuple[Path, Path, Path] | None = None,
+    ws: Workset, name: str, *, bases: tuple[Path, ...] | None = None,
 ) -> None:
     """Delete *name*'s box tree and per-box vault leaves; ⚑ NEVER its workspace leaf.
 
@@ -1235,7 +1264,7 @@ def remove_member_store(
     # ⚑⚑ RESOLVED, and it MUST match ``add_project``: deleting the composed default
     # while the box's real vault sits at the repoint leaves the user's data orphaned
     # AND removes a directory the box never used.
-    boxes_dir, vault_ro_base, vault_rw_base = bases or _member_store_bases(ws)
+    boxes_dir, *vault_bases = bases or _member_store_bases(ws)
     # ⚑ THE BOX TREE NEEDS THE UNSHARE ESCALATION (J-7): rmtree raises on the 555
     # canon skeleton EVEN WHEN THE CALLER OWNS IT.  Vault leaves are ordinary user
     # content and stay on the plain path.
@@ -1246,7 +1275,8 @@ def remove_member_store(
         box_tree.unlink()
     elif box_tree.is_dir():
         remove_box_tree(box_tree)
-    for leaf in (vault_ro_base / name, vault_rw_base / name):
+    for base in vault_bases:
+        leaf = base / name
         if leaf.is_symlink():
             # Defensive: only the link is removed, never its target.
             leaf.unlink()

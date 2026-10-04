@@ -317,8 +317,8 @@ class ContainerRuntime:
         *,
         shell_path: Path,
         project_path: Path,
-        vault_ro_path: Path,
-        vault_rw_path: Path,
+        vault_ro_path: Path | None,
+        vault_rw_path: Path | None,
         extra_mounts: list | None = None,
         tmpfs_masks: list[str] | None = None,
         enable_vault: bool = True,
@@ -849,8 +849,8 @@ def _precreate_mount_stubs(
     project_path: Path,
     extra_mounts: list | None,
     enable_vault: bool,
-    vault_ro_path: Path,
-    vault_rw_path: Path,
+    vault_ro_path: Path | None,
+    vault_rw_path: Path | None,
     tmpfs_masks: list[str],
 ) -> None:
     """Pre-create mount destination stubs to avoid crun permission errors."""

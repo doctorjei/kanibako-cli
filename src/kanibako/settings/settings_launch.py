@@ -501,8 +501,7 @@ def meta_identity_floor(
     ``proj.name``, the workspace source, the channel partition addresses from
     :func:`kanibako.channels.channels.box_channel_addresses`, the plugin-set agent
     name), so a bind re-pointed to ``@meta.box.workspace`` / ``@meta.box.inbox``
-    expands to the byte-identical host_src the old proj-attr injection produced
-    (JC-B2-4 equivalence bar).
+    expands to the byte-identical host_src (JC-B2-4 equivalence bar).
 
     *share_workset* is ``None`` for STANDALONE (no workset-local channels, §2c) →
     a whole-value ``None`` terminal.  *project_path* is ``None`` for a standalone box
@@ -620,8 +619,7 @@ def meta_agent_identity_floor(
 #
 # ⚑ WHERE THE PER-MODE VARIATION LIVES (spec §2c): HERE and nowhere downstream, so
 # every rooted key and the box home spell themselves ONCE against ``@meta.box.path``
-# / ``@workset.*``. The per-mode formula table, verified equal to the layout helpers
-# it replaced, is in the llm-doc.
+# / ``@workset.*``. The per-mode formula table is in the llm-doc.
 #
 # ⚑ A BOX ROOT THAT DOES NOT RESOLVE IS CATASTROPHIC, NOT COSMETIC — the foundation
 # bind's src derefs it EMBEDDED, so a failure yields the host_src ``/home``, which L7
@@ -680,62 +678,48 @@ def workset_anchor_floor(
     contribution roots, and ``meta.box.home`` are UNIFORM. The formulas and what each
     one feeds: the llm-doc.
 
-    ⚑ It also carries the NON-LAYOUT ``workset.*`` scalars — ``skip_kuid_check``
-    (every mode), ``registry`` and ``kuid`` (primary/named only) — and the layer-3 seed
-    source ``workset.template`` (primary/named only). They are here for the
-    same reason ``workset.channelroot`` is: each is a manifest row with a declared
-    default that no floor emitted, so a whole-value ``@``-ref to it resolved to
-    ``__MISSING__`` in every launch snapshot. A builder named for the anchors is the
-    honest cost of one floor per scope.
+    ⚑ It also carries the NON-LAYOUT ``workset.*`` scalars — ``skip_kuid_check``,
+    ``registry``, ``kuid``, ``workset.template``: each is a manifest row with a declared
+    default that no floor emitted, so a whole-value ``@``-ref to it would resolve to
+    ``__MISSING__``. A builder named for the anchors is the honest cost of one floor.
 
-    ⚑ ``workset.logs`` is what makes the helper-log bind a SINGLE row for all modes.
-    There is deliberately NO ``meta.box.helper_log`` anchor: that construct-time
-    LITERAL existed only because the spec's spelling did not parse, and it is not a
-    spec-declared key, so under §0's closed keyspace it was not a key at all. Do not
-    reintroduce it — one bind, one spelling.
+    ⚑ ``workset.logs`` is what makes the helper-log bind a SINGLE row for all modes, and
+    there is deliberately NO ``meta.box.helper_log`` anchor: it is not a spec-declared
+    key, so under §0's closed keyspace it is not one. Do not reintroduce it — one bind,
+    one spelling.
 
-    *workset_channels* maps the RESOLVED channel paths into ``workset.channels.*``.
-    ⚑ Each leaf is checked against :data:`_WORKSET_CHANNEL_LEAVES` and an undeclared one
-    is REFUSED: this is the one place a floor builds a key from a caller-supplied NAME,
-    and a free-form passthrough would open the closed keyspace (§0) from inside the
-    floor. ⚑ The four workset-LOCAL leaves are PRIMARY/NAMED only, but ``mailboxes`` and
-    ``share_global`` are ALL PROJECTS (§2c) — so this argument is NOT ``None`` for a
-    standalone box. For STANDALONE the floor itself supplies the four local leaves as
-    ``None``, and a caller-supplied value for one of them is REFUSED.
+    *workset_channels* maps the RESOLVED channel paths into ``workset.channels.*``.  ⚑
+    Each leaf is checked against :data:`_WORKSET_CHANNEL_LEAVES` and an undeclared one is
+    REFUSED: this is the one place a floor builds a key from a caller-supplied NAME, and a
+    free-form passthrough would open the closed keyspace (§0) from inside the floor.  ⚑
+    ``mailboxes`` and ``share_global`` are ALL PROJECTS (§2c), so this argument is NOT
+    ``None`` for a standalone box, which supplies the four LOCAL leaves itself — a
+    caller-supplied value for one of those is REFUSED.
 
     *channelroot* is the resolved ``workset.channelroot`` — PRIMARY/NAMED only. For
     STANDALONE the floor supplies the ``None`` §2c declares, and a caller-supplied value
-    is REFUSED. ⚑ It is a LITERAL, not the spec's
-    ``@meta.workset.path/channels`` formula, and deliberately so: the key is read on the
-    DETECTION side before any snapshot exists, and the floor must carry the answer that
-    pass already reached or the two would resolve one key two ways.
+    is REFUSED. ⚑ A LITERAL, not the spec's ``@meta.workset.path/channels`` formula: the
+    key is read on the DETECTION side before any snapshot exists, so the floor must carry
+    the answer that pass already reached. ⚑ A nulled root in either mode leaves the four
+    workset-LOCAL ``workset.channels.*`` leaves SUPPLIED as ``<None>``, and a present
+    ``<None>`` is what lets §2a name the key.
 
     *workspaces* is the resolved ``workset.workspaces`` — NAMED/STANDALONE only. For
     PRIMARY the floor supplies the ``None`` §2c declares, and a caller-supplied value is
-    REFUSED. ⚑⚑ IT IS A LITERAL FOR THE SAME
-    REASON AS ``channelroot``, ONLY MORE SO. ``settings/workset_dirkeys.py`` names this
-    key FIRST among the ones read on the detection side, and four readers run before any
-    snapshot exists — ``paths._check_workset``, ``project.workset._workset_skeleton_dirs``,
-    ``launch.box_resolve.find_connected_external_box`` and ``project/names.py``.
-    ``channelroot`` is read pre-snapshot to BUILD paths; ``workspaces`` is read
-    pre-snapshot to decide WHAT KIND OF BOX THIS EVEN IS, so a floor that spelled the
-    formula instead would let detection and the keyspace answer that question two ways.
-    ⚑ MEASURED, not assumed: with a workset repoint ``channelroot: comms`` the snapshot's
-    ``workset.channelroot`` is the RAW unrooted ``"comms"`` — the launch cascade does not
-    root a relative workset-tier value; only ``resolve_workset_dir_key`` does, and only
-    pre-snapshot. A formula composed at expand time would have produced ``comms/common``.
+    REFUSED. ⚑⚑ A LITERAL FOR THE SAME REASON AS ``channelroot``, ONLY MORE SO: it is
+    read pre-snapshot to decide WHAT KIND OF BOX THIS EVEN IS, so a floor that spelled
+    the formula instead would let detection and the keyspace answer that question two
+    ways. The launch cascade does NOT root a relative workset-tier value — only
+    ``resolve_workset_dir_key`` does, and only pre-snapshot.
 
     ⚑ Every ``<None>`` arm is SUPPLIED as a present ``None``, never omitted: PRIMARY's
-    ``workset.workspaces``, and STANDALONE's ``workset.registry``, ``workset.template``,
+    ``workset.workspaces``, STANDALONE's ``workset.registry``, ``workset.template``,
     ``workset.channelroot`` and the four workset-LOCAL ``workset.channels.*`` leaves.
-    A value the user sets reaches the key through the settings cascade, which outranks
-    this floor by merge level — so a primary ``workspaces`` in the primary workset's
-    ``workset.yaml`` is honored there, as ``project.workset.default_workset`` honors it. A supplied ``<None>`` is a value, and a
-    default is a fallback that applies only where nothing was supplied ([R177]); an
-    OMITTED key instead renders ``""`` inside an embedded ``@``-ref (a present ``None``
-    makes the whole value ``None``, spec §0), so a user entry
-    ``@workset.template/box/home`` seeded from the HOST path ``/box/home``.
-    ``workset.kuid`` stays absent: its standalone arm is the PROSE
+    A user value reaches the key through the settings cascade, which outranks this floor
+    by merge level. A supplied ``<None>`` is a value and a default is a fallback that
+    applies only where nothing was supplied ([R177]); an OMITTED key instead renders
+    ``""`` inside an embedded ``@``-ref (a present ``None`` makes the whole value
+    ``None``, spec §0). ``workset.kuid`` stays absent: its standalone arm is the PROSE
     ``<generated at creation>``, not ``<None>``.
     """
     if mode not in _BOX_MODES:
@@ -822,10 +806,9 @@ def workset_anchor_floor(
         # parity is what makes PRESENT-SENTINEL ("no kuid stored") distinguishable from
         # a wrong one, and that property lives with the codec.
         floor["workset.kuid"] = kuid.SENTINEL
-    # ⚑ The CHANNEL ROOT the six leaves default off. It was declared with a default and
-    # emitted by no floor at all, so ``@workset.channelroot`` dangled in every launch
-    # snapshot and a default primary box had no ``channelroot`` under its ``workset``
-    # node — a key the manifest promises and the keyspace could not answer.
+    # ⚑ The CHANNEL ROOT the six leaves default off: a key the manifest promises must be
+    # in the floor, or ``@workset.channelroot`` dangles and a default primary box has no
+    # ``channelroot`` under its ``workset`` node.
     if channelroot is not None:
         if standalone:
             raise SettingsError(
@@ -834,6 +817,15 @@ def workset_anchor_floor(
                 "supplies that None itself, so no caller may emit a path for it."
             )
         floor["workset.channelroot"] = channelroot
+    elif not standalone:
+        # ⚑ A NULL CHANNEL ROOT LEAVES THE FOUR LOCAL LEAVES PRESENT AND ``<None>``,
+        # exactly as STANDALONE supplies them above.  A ``<None>`` is not a MISSING
+        # key: each STANDARD channel row emits an ``@workset.channels.<leaf>`` source,
+        # so an absent leaf would omit the three ``~/channels/workset/*`` binds with
+        # no file to name.  Supplied, the collapse omits the same three and the launch
+        # names the key the user set.
+        for leaf in sorted(_WORKSET_LOCAL_CHANNEL_LEAVES):
+            floor[f"workset.channels.{leaf}"] = None
     # ⚑ The MEMBER-WORKSPACE root, same defect and same fix: a manifest row with real
     # NAMED and STANDALONE arms that no floor emitted, so ``@workset.workspaces`` was
     # ``__MISSING__`` in every launch snapshot and its dependent ``meta.box.workspace``
@@ -2494,13 +2486,16 @@ def _warn_lone_none_standard_binds(
     setting BOTH to ``<None>``; if a file sets only one, the launch warns, naming both
     keys and that file.  Both, or neither, is silent.
     ⚑ STANDARD = a floor entry whose source carries an ``@``-ref (its source key): the
-    core-defaults tables, plugin binds ([Q95] 2) and the helper log alike, since each
-    folds its source formula into this floor.  A literal-source floor entry is INTERNAL
-    and has no source key; a user-added entry is not in the floor ([Q94] 2).
-    ⚑ ``seeded`` is out: §2a skips a ``<None>`` layer and names no warning.
-    ⚑ A ``<None>`` the floor itself supplies (a standalone ``<None>`` row) was not SET by
-    anyone, so it never warns; only a settings file's value does.
+    core-defaults tables, plugin binds ([Q95] 2) and the helper log alike.  A
+    literal-source entry is INTERNAL; a user-added entry is not in the floor ([Q94] 2).
+    ⚑ ``seeded`` is out: §2a skips a ``<None>`` layer.  ⚑ A ``<None>`` the floor itself
+    supplies is not SET by anyone, so only a settings file's value warns.  The ONE
+    exception is the four workset-LOCAL ``workset.channels.*`` leaves under a null channel
+    root: the key a user CAN act on is ``workset.channelroot``, so that key and its file
+    are the ones to name — and ONE message answers for every bind they omit.
     """
+    # (label, source key) for each bind a FLOOR-SUPPLIED ``<None>`` source omits.
+    rootless: list[tuple[str, str]] = []
     for arm, entries in floor.items():
         if not (_is_bind_floor_key(arm) and isinstance(entries, dict)):
             continue
@@ -2524,6 +2519,13 @@ def _warn_lone_none_standard_binds(
                     if (where := _none_setter(written, ref, None)) is not None
                 ]
                 if not set_refs:
+                    # ⚑ A source the FLOOR nulled: only the workset-LOCAL channel
+                    # leaves are nulled that way, and the key a user can act on is
+                    # ``workset.channelroot``, so only a ``<None>`` the user wrote makes
+                    # this a warning.  A merely MISSING source says nothing: no file
+                    # nulled it, and §2a judges what was SET.
+                    if any(snapshot_leaf(expanded, ref) is None for ref in refs):
+                        rootless.append((label, ", ".join(dict.fromkeys(refs))))
                     continue
                 named = ", ".join(f"{ref} (in {where})" for ref, where in set_refs)
                 message = (
@@ -2549,6 +2551,36 @@ def _warn_lone_none_standard_binds(
                         f" Set {keys} to null as well to omit it without this warning."
                     )
             _warn_once(message)
+    _warn_rootless_channel_binds(rootless, expanded, written=written)
+
+
+def _warn_rootless_channel_binds(
+    rootless: Sequence[tuple[str, str]],
+    expanded: KeyStore,
+    *,
+    written: Sequence[_WrittenLevel],
+) -> None:
+    """Warn ONCE that a null ``workset.channelroot`` omitted the channel binds.
+
+    *rootless* pairs each omitted bind's label with its ``<None>`` source key.  One
+    null root is ONE fact that took three binds with it, so the message names the key
+    and the file that set it — once — and lists the binds it omitted.  It fires only
+    for a root a settings file wrote: a root the floor left absent is the DEFAULT and
+    every leaf resolved, which is why there is nothing to report.
+    ⚑ An EMPTY *rootless* says nothing: every one of the root's binds was either
+    omitted with its entry or resolved, so none of them is lone-null.
+    """
+    if not rootless:
+        return
+    where = _none_setter(written, "workset.channelroot", None)
+    if where is None or snapshot_leaf(expanded, "workset.channelroot") is not None:
+        return
+    labels = ", ".join(dict.fromkeys(label for label, _ in rootless))
+    _warn_once(
+        f"The standard binds {labels} are omitted: their source key "
+        f"workset.channelroot is null in {where}, but each entry itself is not. Set "
+        f"them to null as well to omit them without this warning."
+    )
 
 
 #: Where a ``<None>`` the floor supplies was set, as a message names it.
@@ -2900,9 +2932,8 @@ def _agent_state_partial(level: AgentFileLevel | None) -> KeyStore | None:
     would be the one that rots.
 
     ⚑⚑ THE DISCRIMINATOR ARRIVES WITH THE DATA (C-2; [spec:15-21, "self"]).  The node
-    the table came FROM and the node it merged UNDER used to be two independent facts
-    that nothing cross-checked; the pair now travels as one :class:`AgentFileLevel`,
-    and there is no longer a parameter to pass the wrong node in.
+    the table came FROM and the node it merged UNDER travel as one
+    :class:`AgentFileLevel`, so the pair cannot be crossed.
     """
     if level is None or not level.table:
         return None

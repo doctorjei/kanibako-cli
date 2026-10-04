@@ -1387,6 +1387,64 @@ class TestWorksetBoxesPresentNone:
         assert (root / "boxes" / "m").is_dir()
 
 
+class TestWorksetFiveDirKeysCarryNull:
+    """A present ``<None>`` is a VALUE at all five workset dir keys — never "unset".
+
+    spec §2a omits a bind whose source is ``<None>``, and §2c's STANDALONE table declares
+    ``workset.{registry,template} | <None>``, so the template layer is SKIPPED rather than
+    refused.  MIGRATION *"A `null` setting inside a bind's source leaves the bind out…"*
+    and *"One of kanibako's own binds warns when only its entry or only its source is
+    `null`"* are the whole of it: the user writes ``workset.vault_ro: null`` and kanibako
+    leaves the RO bind out, warning only when one half of the bind is ``<None>``.  Only an
+    ABSENT key takes a default.
+
+    ``workset.logs``/``workset.workspaces`` already carry it and ``workset.boxes`` still
+    refuses it (MIGRATION "A `workset.boxes` of `null` is refused"); this class covers the
+    five that did neither.
+    """
+
+    #: ⚑ ONE list, swept once: five copies of this test is five places to forget a key.
+    _NULL_CARRYING_KEYS = (
+        ("channelroot", "resolve_workset_channelroot", "channels"),
+        ("canon", "resolve_workset_canon", "canon"),
+        ("template", "resolve_workset_template", "template"),
+        ("vault_ro", "resolve_workset_vault_ro", "vault/ro"),
+        ("vault_rw", "resolve_workset_vault_rw", "vault/rw"),
+    )
+
+    @staticmethod
+    def _resolver(name):
+        from kanibako.project import workset as ws_mod
+
+        return getattr(ws_mod, name)
+
+    def test_a_present_null_carries_and_never_takes_the_default_leaf(self, tmp_path):
+        for key, resolver_name, default in self._NULL_CARRYING_KEYS:
+            resolver = self._resolver(resolver_name)
+            assert resolver(tmp_path, {"workset": {key: None}}) is None, key
+            # 🛑 The regression this pins: the default leaf is a path the user said does
+            # not exist, and it is a real directory underneath this root.
+            assert not (tmp_path / default).exists(), key
+
+    def test_an_absent_key_still_takes_its_default_leaf(self, tmp_path):
+        """GUARD for the other half of the rule: UNSET (key absent) still falls back."""
+        for key, resolver_name, default in self._NULL_CARRYING_KEYS:
+            resolver = self._resolver(resolver_name)
+            assert resolver(tmp_path, None) == tmp_path / default, key
+            assert resolver(tmp_path, {"workset": {}}) == tmp_path / default, key
+            assert resolver(tmp_path, {"workset": {key: "/srv/elsewhere"}}) == Path(
+                "/srv/elsewhere"
+            ), key
+
+    def test_one_null_arm_leaves_the_other_on_its_own_default(self, tmp_path):
+        """GUARD: the two vault arms resolve INDEPENDENTLY, so neither answers for the other."""
+        doc = {"workset": {"vault_ro": None}}
+        assert self._resolver("resolve_workset_vault_ro")(tmp_path, doc) is None
+        assert self._resolver("resolve_workset_vault_rw")(tmp_path, doc) == (
+            tmp_path / "vault" / "rw"
+        )
+
+
 class TestWorksetWorkspacesPresentNone:
     """A present ``<None>`` ``workset.workspaces`` = no workspace dir (Q96, [R177]).
 
