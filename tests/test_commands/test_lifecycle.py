@@ -1136,6 +1136,46 @@ class TestValidation:
                 std, config, confirm=_conf_yes(),
             )
 
+    def test_an_abandoned_box_tree_of_the_new_name_blocks_the_landing(self, env):
+        """An unregistered ``boxes/<name>`` is the same collision as a stray workspace.
+
+        A crashed earlier operation can leave one behind, and ``add_project`` adopts
+        whatever is already there.
+        """
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _make_default(env)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        abandoned = ws.projects_dir / "proj"
+        abandoned.mkdir(parents=True)
+        (abandoned / "box.yaml").write_text("mode: primary\n")
+        with pytest.raises(ProjectError, match="Refusing to land 'proj'"):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws"),
+                std, config, confirm=_conf_yes(),
+            )
+        assert (abandoned / "box.yaml").read_text() == "mode: primary\n"
+        assert (pdir / "file.txt").read_text() == "hello"
+
+    def test_the_sources_own_leaves_do_not_block_its_own_relocation(self, env):
+        """The same-workset, same-name case releases and re-records its own leaves."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        leaf = ws.workspaces_dir / "proj"
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("keep")
+        add_project(ws, "proj", leaf, std)
+        state = resolve_lifecycle_target(str(leaf), std, config)
+        (state.vault_rw / "v.txt").parent.mkdir(parents=True, exist_ok=True)
+        (state.vault_rw / "v.txt").write_text("vault")
+        ext = tmp_home / "ext"
+        new = execute_lifecycle(
+            state, TargetSpec(location=ext), std, config, confirm=_conf_yes(),
+        )
+        assert new.workspace_path == ext.resolve()
+        assert (ext / "file.txt").read_text() == "keep"
+        assert (state.vault_rw / "v.txt").read_text() == "vault"
+
     def test_dest_occupied(self, env):
         config, std, tmp_home = env
         pdir = _make_default(env)
@@ -1507,7 +1547,7 @@ class TestRetireOldWorkspace:
         (real / "f.txt").write_text("mine")
         old = tmp_path / "old"
         old.symlink_to(real)
-        lc._retire_old_workspace(old, tmp_path / "landed", tmp_path / "landed")
+        lc._retire_old_workspace(old, tmp_path / "landed")
         assert not old.is_symlink()
         assert (real / "f.txt").read_text() == "mine"
         assert f"Note: left {real.resolve()}; it is yours" in capsys.readouterr().err
@@ -1515,28 +1555,28 @@ class TestRetireOldWorkspace:
     def test_a_landing_under_the_old_tree_is_skipped(self, tmp_path):
         old = tmp_path / "old"
         (old / "sub").mkdir(parents=True)
-        lc._retire_old_workspace(old, old / "sub", old / "sub")
+        lc._retire_old_workspace(old, old / "sub")
         assert (old / "sub").is_dir()
 
-    @pytest.mark.parametrize("where", ["is_old", "under_old"])
-    def test_the_recorded_workspace_is_never_retired(self, tmp_path, where):
-        """The box's recorded workspace survives even when the landing is elsewhere —
-        e.g. a ``workspaces`` dir repointed inside the moving box's own tree."""
+    def test_the_old_tree_is_retired_once_the_copy_landed_elsewhere(self, tmp_path):
         old = tmp_path / "old"
-        (old / "wsd" / "alpha").mkdir(parents=True)
+        old.mkdir()
         (old / "f.txt").write_text("mine")
-        recorded = old if where == "is_old" else old / "wsd" / "alpha"
-        lc._retire_old_workspace(old, tmp_path / "landed", recorded)
-        assert (old / "f.txt").read_text() == "mine"
-        assert recorded.is_dir()
+        landed = tmp_path / "landed"
+        landed.mkdir()
+        (landed / "f.txt").write_text("mine")
+        lc._retire_old_workspace(old, landed)
+        assert not old.exists()
+        assert (landed / "f.txt").read_text() == "mine"
 
 
 class TestRollbacksDeleteOnlyWhatTheOpCreated:
     """A failed relocation restores the source store; nothing that existed is deleted.
 
     Covers the ws→ws stash (restore once the release started, independent restore
-    steps, disposal through the box-tree deleter), the success-only store removal of a
-    workset source, and the target unwind's created-leaves rule.
+    steps, disposal through the box-tree deleter), a ``KeyboardInterrupt`` after the
+    release, the success-only store removal of a workset source, and the target
+    unwind's created-leaves rule.
     """
 
     def _member(self, env, ws, name="alpha"):
@@ -1583,6 +1623,34 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
 
         monkeypatch.setattr(lc, "remove_member_store", part_way)
         with pytest.raises(OSError, match="injected leg-1"):
+            execute_lifecycle(
+                state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
+                std, config, confirm=_conf_yes(),
+            )
+        self._assert_source_whole(ws1, leaf, state)
+        assert [p.name for p in load_workset(ws1.root, ws1.name).projects] == ["alpha"]
+        assert list(stash_root.iterdir()) == []
+
+    def test_a_keyboard_interrupt_after_the_release_still_unwinds(
+        self, env, monkeypatch, tmp_path,
+    ):
+        """Ctrl-C mid-relocation: the source comes back whole and the stash is gone.
+
+        The interrupt lands where the fault injection lands — after every copy, with
+        the source already released — and the unwind still runs, so ``$TMPDIR`` keeps
+        no ``kanibako-unwind-*`` holding the box's store.
+        """
+        config, std, tmp_home = env
+        ws1 = _make_workset(env, "ws1", "ws1_root")
+        create_workset("ws2", tmp_home / "ws2_root", std)
+        leaf, state = self._member(env, ws1)
+        stash_root = self._stash_dir(tmp_path, monkeypatch)
+
+        def interrupted(*a, **kw):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(lc, "write_box_enable_vault", interrupted)
+        with pytest.raises(KeyboardInterrupt):
             execute_lifecycle(
                 state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
                 std, config, confirm=_conf_yes(),
@@ -1715,18 +1783,27 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
                 f"failure; left {ws1.projects_dir / 'alpha'}") in err
 
     def test_target_unwind_keeps_pre_existing_store_leaves(self, env, monkeypatch):
-        """N1b fault arm: leaves that existed stay; the one this op created goes."""
+        """A leaf that existed before the op stays; the one this op created goes.
+
+        The pre-existing leaf here is the source's OWN workspace leaf, which the
+        occupied-landing check exempts — so the fault arm is still reached.  A leaf
+        that is not the source's own is refused before any write instead
+        (``test_an_abandoned_box_tree_of_the_new_name_blocks_the_landing``).
+        """
         from kanibako.project.workset import resolve_workset_vault_pair
 
         config, std, tmp_home = env
         ws = _make_workset(env)
-        pdir = _make_default(env, contents="n1b")
-        state = resolve_lifecycle_target(str(pdir), std, config)
+        leaf = ws.workspaces_dir / "proj"
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("n1b")
+        add_project(ws, "proj", leaf, std)
+        state = resolve_lifecycle_target(str(leaf), std, config)
         vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
-        kept = [ws.projects_dir / "proj", vault_rw_base / "proj"]
-        for p in kept:
-            p.mkdir(parents=True)
-            (p / "keep.txt").write_text("mine")
+        for base in (vault_ro_base, vault_rw_base):
+            (base / "proj").mkdir(parents=True, exist_ok=True)
+            (base / "proj" / "keep.txt").write_text("mine")
+        dest = tmp_home / "ext"
 
         def boom(*a, **kw):
             raise RuntimeError("injected late failure")
@@ -1734,12 +1811,15 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         monkeypatch.setattr(lc, "write_box_enable_vault", boom)
         with pytest.raises(RuntimeError, match="injected"):
             execute_lifecycle(
-                state, TargetSpec(ownership="ws"), std, config, confirm=_conf_yes(),
+                state, TargetSpec(location=dest), std, config, confirm=_conf_yes(),
             )
-        for p in kept:
-            assert (p / "keep.txt").read_text() == "mine"
-        assert not (vault_ro_base / "proj").exists()
-        assert load_workset(ws.root, ws.name).projects == []
+        # The leaf that existed is untouched ...
+        assert (leaf / "file.txt").read_text() == "n1b"
+        # ... and the store this op released came back whole.
+        for base in (vault_ro_base, vault_rw_base):
+            assert (base / "proj" / "keep.txt").read_text() == "mine"
+        assert [p.name for p in load_workset(ws.root, ws.name).projects] == ["proj"]
+        assert not dest.exists()
 
 
 # ---------------------------------------------------------------------------

@@ -553,6 +553,16 @@ def _validate(
     if is_ws_to_ws and not state.is_external and not relocating:
         raise ProjectError(STUBBORN_INPLACE_MSG)
 
+    # --- an EXTERNAL source cannot be relocated: its "workspace" is the user's own
+    #     directory, so a copy would record a path that holds nothing.
+    if relocating and state.is_external and not spec.records_only:
+        raise ProjectError(
+            f"'{state.name}' is an external-connected project; its workspace is "
+            "your own directory, not managed by kanibako. Use `box remap <old> "
+            "<new>` to update records if you moved it, or `box convert` without "
+            "`--move` to change ownership."
+        )
+
     # --- destination not already occupied ---
     # ⚑ ``records_only`` exempt: ``remap``'s files are ALREADY at *dest*, so it must not
     # be required empty (and a no-op same-path remap is fine).
@@ -567,6 +577,28 @@ def _validate(
             )
         if dest.exists():
             raise ProjectError(f"Destination already exists: {dest}")
+
+    # --- an in-tree landing for a NAMED target must be the one leaf the target
+    #     records.  Any other in-tree path is copied to by step 2 and written over by
+    #     the step-2b copy, so the box would record ``workspaces/<name>`` while the user
+    #     asked for the other path.  ``records_only`` is NOT exempt: it records that path
+    #     as the workspace too.
+    if target_mode == BoxMode.named and target_ws is not None and dest is not None:
+        ws_dir = target_ws.workspaces_dir
+        if (ws_dir is not None and is_in_tree_workspace(target_ws, dest)
+                and dest != (ws_dir / new_name).resolve()):
+            hint = (
+                f"move it to `{ws_dir / new_name}` and remap"
+                if spec.records_only else
+                "use bare `--move` (into the workset), or `--workset <ws> "
+                f"--move {ws_dir / new_name}`"
+            )
+            raise ProjectError(
+                f"Refusing to record {dest} for a workset member: inside workset "
+                f"'{target_ws.name}' a box lives at `{ws_dir / new_name}`, and no "
+                f"other in-tree path is the workspace the box records. To {hint}, or "
+                "choose a destination outside the workset."
+            )
 
     # --- membership guard: refuse landing inside a workset the project is
     #     not (becoming) a member of ---
@@ -647,6 +679,31 @@ def _validate(
                 f"'{target_ws.name}'."
             )
 
+    # --- an UNREGISTERED leaf of the target's new name is the same collision on disk:
+    #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt
+    #     (its files ARE meant to be at *dest*), and so is a leaf that IS the source's
+    #     own — the same-workset, same-name case releases and re-records it.
+    if (
+        not spec.records_only
+        and target_mode == BoxMode.named
+        and target_ws is not None
+    ):
+        own: frozenset[Path] = frozenset()
+        if (state.ws is not None and target_ws.name == state.ws.name
+                and _same_box_name(new_name, state.name)):
+            own = frozenset(
+                leaf for leaf in _member_leaves(state.ws, state.name)
+                if leaf is not None
+            )
+        taken = [p for p in sorted(_existing_member_leaves(target_ws, new_name))
+                 if p not in own]
+        if taken:
+            raise ProjectError(
+                f"Refusing to land '{new_name}' in workset '{target_ws.name}': "
+                f"{taken[0]} already exists and this operation did not create it. "
+                "Move it aside, or choose another name."
+            )
+
     # --- cross-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
     # ⚑ Checked UP FRONT so a name refusal costs no file copy.
     requested_name = spec.name or ""
@@ -707,7 +764,9 @@ def execute_lifecycle(
     unwind = _Unwind()
     try:
         new_state = _run_steps(state, spec, std, config, plan, unwind)
-    except Exception:
+    except BaseException:
+        # ⚑⚑ ``BaseException``, not ``Exception``: an interrupt after the release would
+        # otherwise skip every compensating action and leave the stash in ``$TMPDIR``.
         unwind.run()
         raise
     unwind.finish()
@@ -811,8 +870,7 @@ def _run_steps(
     # ⚑ Never a user's EXTERNAL source. ---
     if not records_only and relocating and dest is not None and not state.is_external:
         old_ws = state.workspace_path
-        recorded = new_state.workspace_path
-        unwind.on_success(lambda: _retire_old_workspace(old_ws, dest, recorded))
+        unwind.on_success(lambda: _retire_old_workspace(old_ws, dest))
     # ⚑ An external landing whose ``workspaces/<name>`` was held by the leaf just retired
     #   gets its discoverability link now, after the retire (registration order).
     if target_mode is BoxMode.named and target_ws is not None and new_state.is_external:
@@ -826,23 +884,22 @@ def _run_steps(
     return new_state
 
 
-def _retire_old_workspace(old: Path, landed: Path, recorded: Path) -> None:
+def _retire_old_workspace(old: Path, landed: Path) -> None:
     """Delete the relocated-from workspace *old*, whose copy landed at *landed*.
 
     ⚑⚑ An ``_Unwind.on_success`` action ONLY — a failed op never reaches it.  Skips an
     absent *old*, and an *old* that is or holds *landed* (a move into its own subtree;
-    ``_validate`` refuses that first) or *recorded*, the workspace the box now records.
-    A symlink is unlinked, never followed.  A failed delete prints a Note and stops: no
-    second deleter, rc unchanged.
+    ``_validate`` refuses that first).  A symlink is unlinked, never followed.  A failed
+    delete prints a Note and stops: no second deleter, rc unchanged.
     """
     import sys
 
     if not old.exists() and not old.is_symlink():
         return
     old_r = old.resolve()
-    for kept in (landed.resolve(), recorded.resolve()):
-        if old_r == kept or old_r in kept.parents:
-            return
+    landed_r = landed.resolve()
+    if old_r == landed_r or old_r in landed_r.parents:
+        return
     try:
         if old.is_symlink():
             old.unlink()
@@ -1925,9 +1982,7 @@ def _to_workset(
         # ⚑ The copy carries the canon skeleton's MODES but not its OWNERSHIP (J-7).
         materialize_canon_skeleton(dst_shell)
 
-    # ⚑ A source leaf that IS the landing leaf (same workset, same name) needs no copy.
-    if (copy_workspace and in_tree_leaf is not None
-            and state.workspace_path.resolve() != in_tree_leaf.resolve()):
+    if (copy_workspace and in_tree_leaf is not None):
         dst_workspace = in_tree_leaf
         ignore = None
         if state.mode == BoxMode.standalone:
@@ -1939,9 +1994,7 @@ def _to_workset(
         # other sources keep their tree (an in-place convert deletes nothing).
         if source_is_workset and not state.is_external:
             old_leaf = state.workspace_path
-            # An in-tree landing: the box records ``dst_workspace`` itself.
-            unwind.on_success(lambda: _retire_old_workspace(
-                old_leaf, dst_workspace, dst_workspace))
+            unwind.on_success(lambda: _retire_old_workspace(old_leaf, dst_workspace))
 
     # Determine the recorded workspace.
     if in_tree_leaf is not None:
@@ -2339,16 +2392,6 @@ def run_move(args) -> int:
         return 1
     except OSError as e:
         print(_relocation_failure(e), file=sys.stderr)
-        return 1
-
-    if state.is_external:
-        print(
-            f"Error: '{state.name}' is an external-connected project; its "
-            "workspace is your own directory, not managed by kanibako.\n"
-            "Use `box remap <old> <new>` to update records if you moved it, "
-            "or `box convert` to change ownership.",
-            file=sys.stderr,
-        )
         return 1
 
     if _abort_if_locked(state, getattr(args, "force", False)):
