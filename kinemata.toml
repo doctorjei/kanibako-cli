@@ -5309,6 +5309,157 @@ for kind, key, _ in system_settings_rows():
 extract = '(?m)^keyspec-2g-not-key: (.+)$'
 relation = "disjoint"
 
+# FACT: each shipped node's descriptor states the defaults keyspec §2d states for
+# it, at `agent.<node>.*`. Two views per node, one registry each, and the cell
+# CLASSIFICATION lives in `kinemata_views.classify_spec_cell` -- these tables name
+# the views and restate none of its rules (P10). The spec is the authority here, so
+# `authority = "produced"` exactly as for `spec-2g-*`: the oracle prints §2d and
+# the descriptor is the claim.
+# `spec-2d-<node>-defaults` compares the STATED literals (`label`, `transform`, the
+# `env.*` rows, the pseudo-agent's `access`/`allow_helpers`/`bootstrap`);
+# `spec-2d-<node>-keys` compares the keys each descriptor NAMES, floorless rows
+# included -- `agent.claude.model` has no `default:` and inherits
+# `agent.default.model`, and it is the row the conformance board probes.
+# NOT EXPRESSIBLE, and so not compared: the dest-keyed `[dest]` entries, the
+# `access`/`model`/`endpoint` realization prose, the `bootstrap` notes, and
+# `agent.<node>.canon`'s `@`-ref (its arm is dynamic, per `pseudo_tier_defaults`).
+# A missing spec, a moved heading or a marker that moved exits the oracle nonzero.
+[[registry]]
+name = "agent-claude-stated"
+kind = "import"
+target = "kinemata_views:AgentStatedDefaults"
+node = "claude"
+
+[[registry]]
+name = "agent-claude-declared"
+kind = "import"
+target = "kinemata_views:AgentDeclaredRows"
+node = "claude"
+
+[[registry]]
+name = "agent-codex-stated"
+kind = "import"
+target = "kinemata_views:AgentStatedDefaults"
+node = "codex"
+
+[[registry]]
+name = "agent-codex-declared"
+kind = "import"
+target = "kinemata_views:AgentDeclaredRows"
+node = "codex"
+
+[[registry]]
+name = "agent-goose-stated"
+kind = "import"
+target = "kinemata_views:AgentStatedDefaults"
+node = "goose"
+
+[[registry]]
+name = "agent-goose-declared"
+kind = "import"
+target = "kinemata_views:AgentDeclaredRows"
+node = "goose"
+
+[[registry]]
+name = "agent-shell-stated"
+kind = "import"
+target = "kinemata_views:AgentStatedDefaults"
+node = "shell"
+
+[[registry]]
+name = "agent-shell-declared"
+kind = "import"
+target = "kinemata_views:AgentDeclaredRows"
+node = "shell"
+
+[[parity]]
+registry = "agent-claude-stated"
+command = ["{python}", "-c", """
+from kinemata_views import node_spec_defaults
+for key, value in node_spec_defaults("claude").items():
+    print(f"keyspec-2d: {key}={value}")
+"""]
+extract = '(?m)^keyspec-2d: (\S+)=(.+)$'
+field = "default"
+authority = "produced"
+
+[[parity]]
+registry = "agent-claude-declared"
+command = ["{python}", "-c", """
+from kinemata_views import node_spec_keys
+for key in node_spec_keys("claude"):
+    print(f"keyspec-2d-key: {key}")
+"""]
+extract = '(?m)^keyspec-2d-key: (.+)$'
+relation = "produced_contains"
+authority = "produced"
+
+[[parity]]
+registry = "agent-codex-stated"
+command = ["{python}", "-c", """
+from kinemata_views import node_spec_defaults
+for key, value in node_spec_defaults("codex").items():
+    print(f"keyspec-2d: {key}={value}")
+"""]
+extract = '(?m)^keyspec-2d: (\S+)=(.+)$'
+field = "default"
+authority = "produced"
+
+[[parity]]
+registry = "agent-codex-declared"
+command = ["{python}", "-c", """
+from kinemata_views import node_spec_keys
+for key in node_spec_keys("codex"):
+    print(f"keyspec-2d-key: {key}")
+"""]
+extract = '(?m)^keyspec-2d-key: (.+)$'
+relation = "produced_contains"
+authority = "produced"
+
+[[parity]]
+registry = "agent-goose-stated"
+command = ["{python}", "-c", """
+from kinemata_views import node_spec_defaults
+for key, value in node_spec_defaults("goose").items():
+    print(f"keyspec-2d: {key}={value}")
+"""]
+extract = '(?m)^keyspec-2d: (\S+)=(.+)$'
+field = "default"
+authority = "produced"
+
+[[parity]]
+registry = "agent-goose-declared"
+command = ["{python}", "-c", """
+from kinemata_views import node_spec_keys
+for key in node_spec_keys("goose"):
+    print(f"keyspec-2d-key: {key}")
+"""]
+extract = '(?m)^keyspec-2d-key: (.+)$'
+relation = "produced_contains"
+authority = "produced"
+
+[[parity]]
+registry = "agent-shell-stated"
+command = ["{python}", "-c", """
+from kinemata_views import node_spec_defaults
+for key, value in node_spec_defaults("shell").items():
+    print(f"keyspec-2d: {key}={value}")
+"""]
+extract = '(?m)^keyspec-2d: (\S+)=(.+)$'
+field = "default"
+authority = "produced"
+
+[[parity]]
+registry = "agent-shell-declared"
+command = ["{python}", "-c", """
+from kinemata_views import node_spec_keys
+for key in node_spec_keys("shell"):
+    print(f"keyspec-2d-key: {key}")
+"""]
+extract = '(?m)^keyspec-2d-key: (.+)$'
+relation = "produced_contains"
+authority = "produced"
+
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
 # the shape this project says it is -- the one mechanism here that compares the

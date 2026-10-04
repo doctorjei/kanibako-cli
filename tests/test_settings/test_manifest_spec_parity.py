@@ -30,8 +30,6 @@ Indent note: 4 spaces, matching every sibling in ``tests/test_settings/``.
 
 from __future__ import annotations
 
-import re
-
 import pytest
 
 from kanibako.settings.keyspace_manifest import manifest_doc
@@ -40,6 +38,23 @@ from kanibako.settings.keyspace_manifest import manifest_doc
 # reached through the sibling test that already loads that hyphenated script by path.
 # Re-deriving either here would be a second copy of the spec's location (P10).
 from tests.test_keyspec_extract import keyspec
+
+# ⚑ THE FENCE READER IS `kinemata_views`'s, NOT THIS FILE'S.  The row notation, the
+#: brace expansion and the value notation moved to that module when the §2d per-node
+#: descriptor views (`test_agent_descriptor_spec_parity.py`) needed the same three rules,
+#: so this fence and those views cannot drift apart.  The names below are the ones this
+#: file already used; its SCOPE is unchanged -- §2d's DEFAULT tier against the
+#: manifest, and the per-node arm is still somebody else's question.
+from kinemata_views import (  # noqa: F401  (this file's own readers use these names)
+    SPEC_EMPTY as _EMPTY,
+    SPEC_NULL as _NULL,
+    SPEC_SENTINELS as _SENTINELS,
+    expand_braces as _expand_braces,
+    spec_cell_value as _spec_cell_value,
+    spec_fence as _spec_fence,
+    spec_fence_rows as _spec_fence_rows,
+    spec_notation as _canonical,
+)
 
 #: The tier this file pins.  Every row on both sides is one of these; the per-node arm
 #: (``agent.<agent>.*``) is a different subsection and a different question.
@@ -58,52 +73,6 @@ TIER = "agent.default."
 SECTION = "2d"
 MARKER = "**default**"
 
-#: The spec fence's spelling for the three values YAML cannot spell the same way.  A
-#: manifest value is rendered INTO this notation and the spec token is compared as
-#: written, so neither carrier has to change to satisfy the other.
-_NULL = "<None>"
-_EMPTY = "{}"
-
-#: A row's value ends at the first run of two-or-more spaces; what follows is the
-#: description column.  One space is not a separator — no declared value contains one,
-#: and treating it as one would truncate any that later did.
-_VALUE_END = re.compile(r"\s{2,}")
-
-#: ``bindings.{ro,rw}`` — the spec's two-arms-on-one-line notation.  It is a way of
-#: writing two rows, not the spelling of a key.
-_BRACES = re.compile(r"^(?P<head>[^{}]*)\{(?P<alts>[^{}]+)\}(?P<tail>[^{}]*)$")
-
-
-def _expand_braces(key: str) -> list[str]:
-    """The keys a spec row declares — more than one where it uses brace notation."""
-    match = _BRACES.match(key)
-    if match is None:
-        return [key]
-    return [
-        f"{match['head']}{alt.strip()}{match['tail']}"
-        for alt in match["alts"].split(",")
-    ]
-
-
-def _canonical(value: object) -> str:
-    """A manifest value written in the spec fence's notation."""
-    if value is None:
-        return _NULL
-    if value is True:
-        return "true"
-    if value is False:
-        return "false"
-    if isinstance(value, dict) and not value:
-        return _EMPTY
-    return str(value)
-
-
-#: The fence's sentinel spellings, obtained by ASKING ``_canonical`` for each of the
-#: values YAML cannot spell as itself rather than restating its literals here — so a
-#: respelled sentinel cannot drift out of sync between the two (P13).  A spec row whose
-#: value is the QUOTED form of one of these is a literal STRING that merely reads like
-#: a sentinel, and the strip below must not turn it into one.
-_SENTINELS = frozenset(_canonical(value) for value in (None, True, False, {}))
 
 
 # --------------------------------------------------------------------------- #
@@ -122,77 +91,46 @@ def _spec_lines() -> list[str]:
 def _default_tier_fence(lines: list[str]) -> list[str]:
     """The lines INSIDE §2d's Default-tier fenced block.
 
-    Derived by walking headings: §2d's span comes from the same parser the extraction
-    oracle uses, the marker is located within that span, and the fence is the block that
-    opens on the next non-blank line.  Every step asserts what it found, so a reformat
-    that moves any of them reds HERE rather than silently yielding zero rows.
+    ⛑ THE WALK IS `kinemata_views.spec_fence`'s, moved here when the per-node views
+    needed the same three steps: §2d's span from the extraction script's own heading
+    parser, the marker located within that span, and the fence that opens on the next
+    non-blank line.  It FAILS CLOSED on each -- a missing section, a marker that moved
+    or was renamed, a fence that never opens or closes -- so the reformat that used to
+    red HERE still reds, from the one implementation.
     """
-    sections = keyspec.parse_sections(lines)
-    assert SECTION in sections, (
-        f"the spec no longer has a §{SECTION} section — the Default tier this file "
-        f"pins cannot be located, so nothing below is being checked"
-    )
-    span = sections[SECTION]
-    body = lines[span.start - 1:span.end]
-
-    marks = [n for n, raw in enumerate(body) if raw.strip().startswith(MARKER)]
-    assert len(marks) == 1, (
-        f"§{SECTION} carries {len(marks)} lines opening with {MARKER!r}, expected "
-        f"exactly 1 — the Default tier's opening marker moved or was renamed"
-    )
-
-    rest = body[marks[0] + 1:]
-    opens = next((n for n, raw in enumerate(rest) if raw.strip()), None)
-    assert opens is not None and rest[opens].startswith("```"), (
-        f"the line after the {MARKER!r} marker does not open a fenced block "
-        f"({rest[opens] if opens is not None else '<end of section>'!r})"
-    )
-    closes = next(
-        (n for n, raw in enumerate(rest[opens + 1:], start=opens + 1)
-         if raw.startswith("```")),
-        None,
-    )
-    assert closes is not None, f"§{SECTION}'s Default-tier fence is never closed"
-    return rest[opens + 1:closes]
+    return _spec_fence(SECTION, MARKER)
 
 
 def _spec_rows(lines: list[str]) -> dict[str, str]:
     """``{key: value-as-written}`` for every ``agent.default.*`` row in the fence.
 
-    A row is ``<key> | <value>[  <description>]``.  Continuation and comment lines start
-    with ``#`` and are not rows; lines declaring some OTHER tier's key (§2d's fence also
-    states two ``meta.agent.*`` rows) are not this file's corpus.
+    ⛑ THE ROW NOTATION IS `kinemata_views`'s TOO (``spec_fence_rows`` /
+    ``spec_cell_value``).  A row is ``<key> | <value>[  <description>]``; continuation
+    and comment lines start with ``#`` and are not rows; and §2d's fence also states
+    two ``meta.agent.*`` rows that are not this file's corpus.
 
-    ⚑ DOUBLE QUOTES ARE THE FENCE'S STRING DELIMITER, not part of the value — the fourth
+    ⛑ DOUBLE QUOTES ARE THE FENCE'S STRING DELIMITER, not part of the value — the fourth
     notation this file translates, beside ``<None>`` / ``true`` / ``{}``.  ``label`` is
     the first Default-tier value to use it (its value has spaces, so the spec quotes it
     where ``bootstrap | tmux`` needs no quoting), and YAML cannot spell a string with its
     delimiters retained.  No declared value in this fence contains a quote character, so
     a stripped pair is the same string.
 
-    ⚑ THE STRIP IS CONDITIONAL, AND THE CONDITION IS THE WHOLE POINT.  ``"<None>"`` is
+    ⛑ THE STRIP IS CONDITIONAL, and the condition is the whole point.  ``"<None>"`` is
     the literal six-character STRING; ``<None>`` is the fence's spelling for null.  They
     are different declarations, so a quoted sentinel keeps its quotes and compares
     unequal to a native one rather than silently passing as it.
 
-    ⚑ ONE-SIDED, DELIBERATELY.  ``_canonical`` renders the literal string ``<None>`` and
+    ⛑ ONE-SIDED, DELIBERATELY.  ``_canonical`` renders the literal string ``<None>`` and
     null IDENTICALLY, so the registry cannot state the distinction this side now draws:
     a quoted sentinel reds against EITHER manifest spelling.  No §2d row states one; if
     one ever does, the fix is on the manifest side.
     """
-    rows: dict[str, str] = {}
-    for raw in lines:
-        if not raw.startswith(TIER) or "|" not in raw:
-            continue
-        written_key, _, remainder = raw.partition("|")
-        value = _VALUE_END.split(remainder.strip())[0].strip()
-        if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
-            unquoted = value[1:-1]
-            if unquoted not in _SENTINELS:
-                value = unquoted
-        for key in _expand_braces(written_key.strip()):
-            rows[key] = value
-    return rows
+    return {
+        key: _spec_cell_value(cell)
+        for key, cell in _spec_fence_rows(SECTION, MARKER)
+        if key.startswith(TIER)
+    }
 
 
 # --------------------------------------------------------------------------- #
