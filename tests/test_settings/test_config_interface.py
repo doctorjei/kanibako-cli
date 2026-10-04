@@ -3200,14 +3200,14 @@ class TestCrossScopeCascadeConfigSet:
         resolves -> ALLOWED (the system.* floor is folded in by
         ``_category_set_lookups`` regardless of cascade files)."""
         ws_f = tmp_path / "ws-settings.yaml"
-        dump_doc(ws_f, {"workset": {"vault_ro": "/srv/vault/ro", "boxes": "/old"}})
+        dump_doc(ws_f, {"workset": {"vault_ro": "/srv/vault/ro", "auth": {"path": "/old"}}})
         msg = set_config_value(
-            "workset.boxes", "@workset.vault_ro/sub",
+            "workset.auth.path", "@workset.vault_ro/sub",
             config_path=ws_f, command_scope=ConfigLevel.workset,
             cascade_workset_path=ws_f,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(ws_f)["workset"]["boxes"] == "@workset.vault_ro/sub"
+        assert load_doc(ws_f)["workset"]["auth"]["path"] == "@workset.vault_ro/sub"
 
 
 # ---------------------------------------------------------------------------
@@ -5434,7 +5434,7 @@ class TestSetTimeResolutionProbe:
         cfg = tmp_path / BOX_META_FILE
         cfg.write_text("workset:\n  template: /ws/template\n")
         msg = set_config_value(
-            "workset.boxes", "@workset.template/boxes",
+            "workset.auth.path", "@workset.template/auth",
             config_path=cfg, cascade_workset_path=cfg,
             command_scope=ConfigLevel.workset,
         )
@@ -5443,20 +5443,20 @@ class TestSetTimeResolutionProbe:
     def test_a_ref_to_a_present_none_is_a_value_not_a_defect(self, tmp_path):
         """V1: an embedded ref to a present ``<None>`` makes the value ``<None>`` (spec
         §0) — a value, not a dangling ref, so the set is accepted; and the effective
-        value names nothing rather than the root-relative ``/logs``.  ``workset.logs``
-        because its null is legal (no logs); a null ``workset.boxes`` is refused ([Q96])."""
+        value names nothing rather than the root-relative ``/auth``.  ``workset.auth.path``
+        because it is no workset EARLY key, whose reader takes only ``@meta.workset.path``."""
         from kanibako.settings.config_interface import effective_value
 
         cfg = tmp_path / BOX_META_FILE
         cfg.write_text("workset:\n  template: null\n")
         msg = set_config_value(
-            "workset.logs", "@workset.template/logs",
+            "workset.auth.path", "@workset.template/auth",
             config_path=cfg, cascade_workset_path=cfg,
             command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
         assert effective_value(
-            "workset.logs", ("workset",), "logs", agent_name="",
+            "workset.auth.path", ("workset", "auth"), "path", agent_name="",
             system_path=None, agent_path=None, workset_path=cfg, box_path=None,
         ) is None
 

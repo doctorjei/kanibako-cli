@@ -9,6 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/kb_store.py.md`.
 
 ```
 SCOPE_CONTAINMENT: tuple[str, ...] = ('system', 'agent', 'workset', 'box')
+RESOLUTION_ORDER: tuple[str, ...] = ('config', 'meta.runtime', 'meta.agent', 'meta.workset', 'base', 'system', 'agent', 'workset', 'meta.box', 'box')
 BINDING_DERIVATIONS_NODE: Final[str] = 'binding_derivations'
 __MISSING__: __Missing__ = __Missing__()
 ```

@@ -26,6 +26,7 @@ from kanibako.settings.config import (
     load_project_overrides,
     null_path_keys_error,
     read_agent_settings,
+    ref_order_error,
     refuses_box_store_value,
     refuses_null_box_scalar,
     refuses_null_path_key,
@@ -39,6 +40,7 @@ from kanibako.settings.messages import (
     ERR_BOX_SCALAR_NULL_SET_HEAD,
     ERR_BOX_STORE_EMPTY_REASON,
     ERR_BOX_STORE_SET_HEAD,
+    ERR_WORKSET_EARLY_SET_HEAD,
     ERR_BOX_STORE_TRAILING_REASON,
     ERR_CONFIG_BAD_ENTRIES_TAIL,
     ERR_CONFIG_CHAIN_BAD_ENTRY,
@@ -139,7 +141,7 @@ from kanibako.settings.config_io import (
 )
 from kanibako.errors import KanibakoError, UserCanceled
 from kanibako.log import get_logger
-from kanibako.settings.kb_store import __MISSING__
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
 from kanibako.settings.settings_categories import (
     refuse_non_scalar_family_value,
 )
@@ -898,25 +900,17 @@ def _floor_blind_default(
     a DECLARED key IS a dangling ref, and is not forgiven. A defect that is not a missing
     referent — a cycle, the depth cap, a reserved leaf — is not this function's business.
 
-    ⚑ AND A FORGIVEN REF MAY NOT POINT DOWNWARD — the same §0 bullet: "a scope may
-    **view up** … and no ``@``-ref points DOWNWARD". So it is forgiven only when it names
-    the KEY's own scope or one CONTAINING it. Downward is the silent one: a ``@box.*`` ref
-    inside a ``workset.*`` key binds ONE box's settings for the whole workset.
+    ⚑ WHICH sets a ref may name at all is :func:`config.ref_order_error`'s verdict, which
+    the set door runs FIRST; this function only forgives what that verdict let through.
     """
     from kanibako.settings.settings_configset import scan_tokens
-    from kanibako.settings.settings_drops import containing_scopes, writable_scopes
+    from kanibako.settings.settings_drops import writable_scopes
 
     if command_scope is None:
         return False
     key_scope = key.split(".", 1)[0]
     if key_scope == command_scope.value or key_scope not in writable_scopes(command_scope.value):
         return False
-    # ⚑ THE ALLOWED REF SCOPES off the one containment order: the key's own level and
-    # every level containing it. A subset of :data:`SCOPE_CONTAINMENT`, so a scopeless
-    # ref — ``@config.*``, ``@meta.runtime.*`` — is not in it and is not forgiven either.
-    # A ``@meta.<scope>.*`` ref is judged by its SCOPE token: keyspec §2b's own default
-    # for ``box.canon`` is ``@meta.box.path/canon``.
-    viewable = {key_scope} | set(containing_scopes(key_scope))
     try:
         refs, _vars = scan_tokens(value)
     except ValueError:
@@ -929,7 +923,10 @@ def _floor_blind_default(
             continue
         segs = name.split(".", 2)
         ref_scope = segs[1] if segs[0] == "meta" and len(segs) > 1 else segs[0]
-        if ref_scope not in viewable:
+        # ⚑ A scopeless ref — ``@config.*``, ``@meta.runtime.*`` — names no scope, so the
+        # command's cascade is not what hides it, and it is not forgiven. A
+        # ``@meta.<scope>.*`` ref is judged by its SCOPE token.
+        if ref_scope not in SCOPE_CONTAINMENT:
             return False
         unseen.append(name)
     return bool(unseen) and all(
@@ -1686,6 +1683,11 @@ def set_config_value(
     if box_store_err is not None:
         return box_store_err
 
+    # The ORDERING RULE, read off the spelling: see :func:`config.ref_order_error`. ⚑ BEFORE
+    # the E3 probe, which would call a forward ref this cascade cannot see "dangling".
+    order_err = ref_order_error(canonical, value)
+    if order_err is not None:
+        return _refusal(f"Error: {order_err}")
     # SET-TIME RESOLUTION PROBE for a value the EXPANDER will see (E3, spec §2a / Q9); see
     # :func:`_probes_at_set_time` for which keys qualify. It blocks ONLY on the edited value's
     # own upstream chain, so ``config set`` stays usable to REPAIR a broken config.
@@ -1717,6 +1719,19 @@ def set_config_value(
     ref_err = system_path_ref_error(canonical, value)
     if ref_err is not None:
         return _refusal(f"Error: {ref_err}")
+    # The workset early keys, at the WORKSET door, in their reader's own words: that reader
+    # reads only the workset's own file.
+    from kanibako.settings.workset_dirkeys import early_key_set_error
+
+    early_dest = None if command_scope is not ConfigLevel.workset else _write_dest(
+        canonical, command_scope=command_scope,
+        config_path=config_path, settings_path=system_settings_path,
+    )
+    early_err = None if early_dest is None else early_key_set_error(
+        canonical, value, written_file=early_dest.file,
+    )
+    if early_err is not None:
+        return _refusal("Error: " + ERR_WORKSET_EARLY_SET_HEAD % early_err)
     # Spec §2a: an entry that is not a key, in a file this command reads. TWO ARMS, and the
     # split is a fact about the VALUE (:func:`config.chain_bad_entries`): one the edited
     # value's own upstream chain reaches is a HARD error no ``--force`` reaches, because
