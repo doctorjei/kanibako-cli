@@ -26,6 +26,7 @@ __all__ = [
     "OK",
     "Error",
     "scan_tokens",
+    "holds_verbatim_text",
     "validate_config_set",
     "ResolveProbe",
 ]
@@ -102,6 +103,21 @@ def scan_tokens(value: str) -> tuple[list[str], list[str]]:
 # ---- validate_config_set — the B5 set-time validation ---- #
 
 
+def holds_verbatim_text(key: str) -> bool:
+    """Whether the value at the CLI key *key* is TEXT (:func:`is_verbatim_text`).
+
+    Judged at the slot the value is WRITTEN to, so the bare ``endpoint`` is
+    ``agent.default.endpoint``; a ``pref.<target>`` request is judged at its target.
+    """
+    from kanibako.settings.config_dest import _key_slot
+    from kanibako.settings.settings_prefs import PREF_ROOT
+
+    if key.startswith(f"{PREF_ROOT}."):
+        key = key[len(PREF_ROOT) + 1:]
+    slot = _key_slot(key)
+    return is_verbatim_text((*slot[0], slot[1]) if slot is not None else key.split("."))
+
+
 def validate_config_set(
     key: str,
     value: str,
@@ -119,14 +135,10 @@ def validate_config_set(
     SHAPE, which a scalar has not; ``endpoint = https://api.anthropic.com`` must pass. Do not
     reintroduce a colon check on this path.
     """
-    # 0. A TEXT key (``is_verbatim_text``) has no tokens and no upstream chain: steps 1 and 2
-    #    would refuse ``https://user:key@host/v1`` for a ref ``@host`` it does not contain.
-    #    Judged at the slot the value is WRITTEN to, so the bare ``endpoint`` is
-    #    ``agent.default.endpoint``.
-    from kanibako.settings.config_dest import _key_slot
-
-    slot = _key_slot(key)
-    if is_verbatim_text((*slot[0], slot[1]) if slot is not None else key.split(".")):
+    # 0. A TEXT key (:func:`holds_verbatim_text`) has no tokens and no upstream chain: steps
+    #    1 and 2 would refuse ``https://user:key@host/v1`` for a ref ``@host`` it does not
+    #    contain.
+    if holds_verbatim_text(key):
         ref_names: list[str] = []
         var_names: list[str] = []
     else:

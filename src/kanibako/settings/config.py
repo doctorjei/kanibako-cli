@@ -1020,9 +1020,9 @@ def refuses_box_store_value(canonical: str, value: object) -> bool:
 
 
 def chain_bad_entries(
-    value: object, bad: Iterable[str], *, stored: "Callable[[str], object]",
+    value: object, bad: Iterable[str], *, key: str, stored: "Callable[[str], object]",
 ) -> list[str]:
-    """The *bad* entries the edited *value*'s own upstream ``@``-chain REACHES (spec §2a).
+    """The *bad* entries the edited *value* of *key* REACHES on its own ``@``-chain (spec §2a).
 
     ⚑ THE SPLIT, STATED ONCE.  A bad entry in a file the command reads has two arms: one the
     edited value's own chain depends on, which is a HARD error ``--force`` does not override,
@@ -1034,12 +1034,16 @@ def chain_bad_entries(
     that is itself bad ends the walk there — its value is not a key's value to follow.
     *stored* answers ``None`` for a name no file holds, and the walk stops.
 
+    ⚑ A TEXT value (:func:`~kanibako.settings.settings_configset.holds_verbatim_text`) has
+    no chain: neither the edited value of a text *key* nor the stored value of a text key a
+    ref names is scanned, so the ``@host`` in ``https://user:key@host/v1`` is no ref.
+
     ⚑ A WORKLIST, NOT RECURSION, so a ``@``-chain that loops back on itself terminates on
     the SEEN set.  A self-reference is therefore a chain that reaches itself once.
     """
-    from kanibako.settings.settings_configset import scan_tokens
+    from kanibako.settings.settings_configset import holds_verbatim_text, scan_tokens
 
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str) or not value or holds_verbatim_text(key):
         return []
     remaining = set(bad)
     reached: list[str] = []
@@ -1054,7 +1058,7 @@ def chain_bad_entries(
             if ref in remaining:
                 reached.append(ref)
                 remaining.discard(ref)
-            elif ref not in seen:
+            elif ref not in seen and not holds_verbatim_text(ref):
                 seen.add(ref)
                 nxt = stored(ref)
                 if isinstance(nxt, str) and nxt:

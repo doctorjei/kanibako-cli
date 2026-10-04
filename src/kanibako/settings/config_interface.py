@@ -1710,7 +1710,9 @@ def set_config_value(
     except KanibakoError:
         bad = _BadEntries([], [], lambda _dotted: None)  # that file's own reader refuses it
     if bad.files:
-        on_chain = chain_bad_entries(value, bad.names, stored=bad.stored)
+        on_chain = chain_bad_entries(
+            value, bad.names, key=canonical, stored=bad.stored,
+        )
         if on_chain:
             return _refusal(
                 "Error: " + ERR_CONFIG_CHAIN_BAD_ENTRY % (
