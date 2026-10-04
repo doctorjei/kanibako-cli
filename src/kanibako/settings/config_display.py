@@ -19,12 +19,11 @@ lives is :mod:`kanibako.settings.config_dest`; nothing here answers any of those
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Mapping
 
 from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.agent_file import stored_leaf_display
-from kanibako.settings.config_io import load_doc, render_stored_scalar
+from kanibako.settings.config_io import render_stored_scalar
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
 from kanibako.settings.settings_keyspace import entry_label
 from kanibako.settings.settings_prefs import PREF_ROOT
@@ -144,7 +143,7 @@ def _nested_settings_overrides(data: dict) -> dict[str, str]:
     :func:`_flatten_table`, so one stored value has one spelling at every verb.
 
     ⚑ A NON-SCALAR SHAPE RENDERS THROUGH ITS OWNER (``agent_file.stored_leaf_display``),
-    exactly as in :func:`_pref_overrides`.  Skipping ``agent`` does NOT put the argv list
+    at every noun, ``pref:`` requests included: this is their one route.  Skipping ``agent`` does NOT put the argv list
     out of reach: a ``pref:`` table is not a scope table but is not skipped either, so
     ``pref.agent.default.run_args`` walks through here and printed the Python repr
     ``['--p', '--q']`` — at the workset noun, the one this walk serves where a ``pref:``
@@ -165,36 +164,6 @@ def _nested_settings_overrides(data: dict) -> dict[str, str]:
         if key in ("agent", "resource_overrides") or not isinstance(val, dict):
             continue
         _flatten_table(val, f"{key}.", out)
-    return out
-
-
-def _pref_overrides(path: Path | None) -> dict[str, str]:
-    """Flatten a settings file's ``pref:`` table to ``pref.<target> -> value``.
-
-    ``config show`` must LIST prefs (spec §2h read verbs). The box's plain
-    view reads ``load_project_overrides`` + ``agent_settings_of``, neither of
-    which can see a ``pref:`` table, so it is flattened here through
-    :func:`_flatten_table` — literally the walk ``_nested_settings_overrides``
-    uses, which is what the two docstrings claimed while each carried its own copy.
-    A present-``None`` request renders as ``null`` — it is a REQUEST TO SUPPRESS,
-    and showing it as blank would make the one thing a box cannot otherwise
-    express look like nothing at all.
-
-    ⚑ A request whose TARGET holds a non-scalar shape renders through the module that
-    owns that shape (``agent_file.stored_leaf_display``): ``pref.agent.default.run_args``
-    carries the same argv LIST the target key does, and a bare ``str()`` put the Python
-    repr ``['--p', '--q']`` in every ``show`` block.
-    """
-    if path is None or not path.exists():
-        return {}
-    data = load_doc(path)
-    if not isinstance(data, dict):
-        return {}
-    table = data.get(PREF_ROOT)
-    if not isinstance(table, dict):
-        return {}
-    out: dict[str, str] = {}
-    _flatten_table(table, f"{PREF_ROOT}.", out)
     return out
 
 

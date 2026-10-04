@@ -60,10 +60,10 @@ def _noun_stored_view(path: 'Path | None', command_scope: ConfigLevel) -> dict
 def _quiet_drop_announcements(path: 'Path | None', command_scope: 'ConfigLevel | None') -> None
 def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, str]]
 def _misplaced_config_entries(data: dict) -> dict[str, str]
-def _abstract_declarations(data: dict, scope: str) -> dict[str, str]
 def _dropped_tables_get_reads(path: 'Path | None', command_scope: ConfigLevel) -> list[str]
 def _keeps_settings_apart(command_scope: 'ConfigLevel | None') -> bool
 def _shown_entries(*, config_path: 'Path | None', settings_path: 'Path | None', command_scope: 'ConfigLevel | None', stored: 'dict | None'=None) -> _ShownEntries
+def _persona_node_rows(stored: dict) -> dict[str, tuple[str, str]]
 ```
 
 ## Classes
