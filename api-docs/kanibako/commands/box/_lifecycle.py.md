@@ -37,7 +37,8 @@ def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool
 def _resolve_primary_state(root: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
 def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None
 def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
-def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_external: bool=False) -> ProjectState
+def _recorded_workspace(ws: Workset, box_name: str, resolved: Path | None) -> Path | None
+def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_external: bool=False, workspace: Path | None=None) -> ProjectState
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
