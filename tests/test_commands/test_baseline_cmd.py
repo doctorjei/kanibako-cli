@@ -13,6 +13,9 @@ from kanibako.commands.baseline_cmd import (
     run_list,
     run_verify,
 )
+from kanibako.runtime import baseline as baseline_mod
+
+from tests.support.repo import REPO_ROOT
 
 
 class TestParsers:
@@ -99,7 +102,7 @@ class TestRunList:
         assert pkgs == sorted(pkgs)  # sorted, stable
         assert set(pkgs) == {
             "tmux", "inotify-tools", "ripgrep", "fd-find", "openssh-client",
-            "bubblewrap",
+            "bubblewrap", "jq",
         }
 
     def test_list_executables_format(self, capsys) -> None:
@@ -110,6 +113,50 @@ class TestRunList:
         assert "tmux: tmux" in out
         assert "inotify-tools: inotifywait inotifywatch" in out
         assert "ripgrep: rg" in out
+
+
+class TestSharedImageContainerfile:
+    """The shared all-variant Containerfile installs the baseline by DERIVING it.
+
+    It has no hardcoded package list: the apt step consumes ``$(kanibako
+    baseline list)``, so a package declared in the baseline reaches every
+    variant — ``min`` included, which takes the same shared step — with no
+    edit here. This pins that derivation, so a future hand-written list
+    cannot silently drop a declared baseline package again.
+    """
+
+    def _containerfile(self) -> str:
+        return (
+            REPO_ROOT / "images" / "containers" / "Containerfile.kanibako"
+        ).read_text()
+
+    def test_apt_step_derives_from_baseline_list(self) -> None:
+        assert 'baseline="$(kanibako baseline list)"' in self._containerfile()
+
+    def test_every_baseline_package_is_not_hardcoded(self) -> None:
+        """The shared apt step must not spell out a package list of its own.
+
+        jq is the regression: it was in no image, so nothing installed it.
+        Deriving the list is what makes the next declared package free.
+        """
+        text = self._containerfile()
+        apt_step = text.split("baseline=\"$(kanibako baseline list)\"", 1)[1]
+        apt_step = apt_step.split("rm -rf /var/lib/apt/lists", 1)[0]
+        for pkg in baseline_mod.packages():
+            assert pkg not in apt_step, f"{pkg} is hardcoded, not derived"
+
+    def test_min_variant_takes_the_shared_baseline_step(self) -> None:
+        """min is a VARIANT of the shared Containerfile, not a separate file.
+
+        Its own block adds sshpass only, so it inherits the baseline step.
+        """
+        text = self._containerfile()
+        assert 'if [ "$VARIANT" = "min" ]' in text
+        assert 'if [ "$VARIANT" = "lxc" ]' in text
+        # The min-only block adds sshpass and nothing baseline-derived.
+        min_block = text.split('if [ "$VARIANT" = "min" ]', 1)[1]
+        min_block = min_block.split("fi", 1)[0]
+        assert "baseline list" not in min_block
 
 
 class TestRunVerify:
@@ -158,6 +205,53 @@ class TestRunVerify:
         out = capsys.readouterr().out
         assert "missing 'rg'" in out
 
+    def test_verify_names_jq_when_the_image_lacks_it(self, capsys) -> None:
+        """`baseline verify` reports a jq-less image by name and exits 1."""
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+
+        def fake_run(cmd, **kwargs):
+            exe = cmd[-1].split()[-1]
+            return MagicMock(returncode=1 if exe == "jq" else 0)
+
+        with (
+            patch(
+                "kanibako.runtime.container.ContainerRuntime", return_value=runtime
+            ),
+            patch("subprocess.run", side_effect=fake_run),
+        ):
+            args = argparse.Namespace(
+                image="img", all_images=False, only=None, skip=None,
+            )
+            rc = run_verify(args)
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "[!!] jq: missing 'jq'" in out
+
+    def test_verify_jq_present_exits_0(self, capsys) -> None:
+        """An image carrying every baseline tool, jq included, verifies clean."""
+        runtime = MagicMock()
+        runtime.cmd = "podman"
+        probed: list[str] = []
+
+        def fake_run(cmd, **kwargs):
+            probed.append(cmd[-1].split()[-1])
+            return MagicMock(returncode=0)
+
+        with (
+            patch(
+                "kanibako.runtime.container.ContainerRuntime", return_value=runtime
+            ),
+            patch("subprocess.run", side_effect=fake_run),
+        ):
+            args = argparse.Namespace(
+                image="img", all_images=False, only=None, skip=None,
+            )
+            rc = run_verify(args)
+        assert rc == 0
+        assert "jq" in probed
+        assert "all baseline executables present" in capsys.readouterr().out
+
     def test_verify_only_filter(self, capsys) -> None:
         runtime = MagicMock()
         runtime.cmd = "podman"
@@ -200,7 +294,7 @@ class TestRunVerify:
                 image="img", all_images=False, only=None,
                 skip=[
                     "ripgrep", "fd-find", "openssh-client", "inotify-tools",
-                    "bubblewrap",
+                    "bubblewrap", "jq",
                 ],
             )
             rc = run_verify(args)

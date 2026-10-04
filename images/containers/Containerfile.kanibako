@@ -90,9 +90,9 @@ RUN set -eu; \
 
 # Shared (all-variant) packages.
 #
-# The baseline tool set (tmux, inotify-tools, ripgrep, fd-find, openssh-client)
-# is the single source of truth kanibako expects in every box; it is derived at
-# build time from `kanibako baseline list` so the image and the CLI never drift.
+# The baseline tool set is the single source of truth kanibako expects in every
+# box; it is derived at build time from `kanibako baseline list` (the shipped
+# rom/settings/image-baseline.yaml), so the image and the CLI never drift.
 #
 # nodejs/npm (MCP servers + tweakcc) and cifs-utils/nfs-common remain explicit
 # image conveniences, NOT part of the baseline contract. They are absent from
