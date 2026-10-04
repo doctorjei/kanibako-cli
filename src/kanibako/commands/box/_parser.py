@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import shutil
 import sys
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -899,6 +901,50 @@ def _plan_workset_member(std, workset: str, name: str,
     return ws, name, False
 
 
+def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
+    """The undo for a member this create is about to add; call it BEFORE ``add_project``.
+
+    It drops the membership record and removes only what did not exist when it was
+    made — the member's dirs, any parent dir and the registry file the write created.
+    A workspace, vault leaf or registry the user already had is kept.
+    """
+    from kanibako.project.workset import (
+        _member_store_bases, load_workset_settings_doc, release_project,
+    )
+    from kanibako.project.workset_registry import resolve_workset_registry_path
+    from kanibako.runtime.container import remove_box_tree
+
+    bases = _member_store_bases(ws)
+    box_dir = bases[0] / name
+    assert ws.workspaces_dir is not None
+    # ⚑ LEAVES BEFORE PARENTS: a parent this run made holds only what it made.
+    leaves = (box_dir, *(base / name for base in bases[1:]), ws.workspaces_dir / name)
+    parents = (*bases, ws.workspaces_dir)
+    registry = resolve_workset_registry_path(ws.root, load_workset_settings_doc(ws.root))
+
+    def _new(path: Path) -> bool:
+        return not path.exists() and not path.is_symlink()
+
+    new_leaves = [p for p in leaves if _new(p)]
+    new_parents = [p for p in parents if _new(p)]
+    new_registry = _new(registry)
+
+    def undo() -> None:
+        release_project(ws, name)  # the record only; never a directory
+        for path in new_leaves:
+            if path == box_dir and path.is_dir():
+                remove_box_tree(path)
+            elif path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+        for path in new_parents:
+            if path.is_dir() and not any(path.iterdir()):
+                path.rmdir()
+        if new_registry and registry.is_file():
+            registry.unlink()
+
+    return undo
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     config_file = user_config_file()
@@ -1154,65 +1200,97 @@ def run_create(args: argparse.Namespace) -> int:
         )
         return 1
 
-    # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False`` DEFERS
-    # registration past the home seed, giving the invariant "registered ==> fully seeded".
-    if _named_spec is not None:
+    # ⚑ THE MEMBERSHIP WRITE, AFTER EVERY REFUSAL: a pending create's member was
+    # written by attempt one, so a recovery adds nothing.  Until the journal entry is
+    # written, nothing could recover this member, so any exit before it UNDOES it.
+    _undo_member = None
+    if _named_spec is not None and not _named_existing:
         assert _member is not None and _named_ws is not None
-        # ⚑ THE MEMBERSHIP WRITE, AFTER EVERY REFUSAL: a pending create's member was
-        # written by attempt one, so a recovery adds nothing.
-        if not _named_existing:
-            assert _named_ws.workspaces_dir is not None  # refused in the plan
-            try:
-                add_project(
-                    _named_ws, _member, _named_ws.workspaces_dir / _member, std,
-                    force=getattr(args, "force", False),
-                )
-            except WorksetError as e:
-                print(f"Error: {e}", file=sys.stderr)
-                return 1
-            _named_spec = WorksetSpec.from_workset(_named_ws)
-        proj = resolve_workset_project(
-            _named_spec, _member, std, config, initialize=True,
-            enable_vault=enable_vault,
-        )
-    elif args.standalone:
-        proj = resolve_standalone_project(
-            std, config, project_dir, initialize=True,
-            enable_vault=enable_vault,
-            name=standalone_name,
-            register=False,
-        )
-    else:
-        proj = resolve_project(
-            std, config, project_dir=project_dir, initialize=True,
-            enable_vault=enable_vault if not enable_vault else None,
-            name_override=getattr(args, "name", None),
-            register=False,
-        )
+        assert _named_ws.workspaces_dir is not None  # refused in the plan
+        _undo_member = _new_member_undo(_named_ws, _member)
+        try:
+            add_project(
+                _named_ws, _member, _named_ws.workspaces_dir / _member, std,
+                force=getattr(args, "force", False),
+            )
+        except WorksetError as e:  # ``add_project`` unwinds its own writes
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        _named_spec = WorksetSpec.from_workset(_named_ws)
 
-    # ⚑ FRESH CREATE ONLY — a recovery re-create reuses the half-built box's on-disk meta.
-    if proj.is_new:
-        # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE shared gate, writing the BOX-TIER
-        # file from the ONE pair (M-8).  Only an EXPLICIT ``-i``/``--image`` persists.
-        project_toml, create_ws_path = box_workset_settings_paths(proj)
-        persist_creation_flags(
-            project_toml, materializing=proj.is_new, image=args.image,
-        )
+    _journaled = False
+    try:
+        # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False``
+        # DEFERS registration past the home seed: "registered ==> fully seeded".
+        if _named_spec is not None:
+            assert _member is not None
+            proj = resolve_workset_project(
+                _named_spec, _member, std, config, initialize=True,
+                enable_vault=enable_vault,
+            )
+        elif args.standalone:
+            proj = resolve_standalone_project(
+                std, config, project_dir, initialize=True,
+                enable_vault=enable_vault,
+                name=standalone_name,
+                register=False,
+            )
+        else:
+            proj = resolve_project(
+                std, config, project_dir=project_dir, initialize=True,
+                enable_vault=enable_vault if not enable_vault else None,
+                name_override=getattr(args, "name", None),
+                register=False,
+            )
 
-        # ⚑ AUTH-CRITICAL: --private must run BEFORE the seed, and must write through the
-        # SANCTIONED settings write into the SAME box-tier file the snapshot reads.
-        if getattr(args, "private", False):
-            from kanibako.settings.config_interface import set_config_value
-            from kanibako.settings.config_keys import ConfigLevel
-            from kanibako.errors import KanibakoError
-            for _auth_key in (
-                "box.auth.global_enabled",
-                "box.auth.workset_enabled",
-            ):
-                # ⚑ set_config_value RETURNS an "Error: …" string, never raises — so this
-                # AUTH-CRITICAL write must be checked or it fails silently and leaks.
+        # ⚑ FRESH CREATE ONLY — a recovery re-create reuses the half-built box's on-disk meta.
+        if proj.is_new:
+            # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE shared gate, writing the BOX-TIER
+            # file from the ONE pair (M-8).  Only an EXPLICIT ``-i``/``--image`` persists.
+            project_toml, create_ws_path = box_workset_settings_paths(proj)
+            persist_creation_flags(
+                project_toml, materializing=proj.is_new, image=args.image,
+            )
+
+            # ⚑ AUTH-CRITICAL: --private must run BEFORE the seed, and must write through the
+            # SANCTIONED settings write into the SAME box-tier file the snapshot reads.
+            if getattr(args, "private", False):
+                from kanibako.settings.config_interface import set_config_value
+                from kanibako.settings.config_keys import ConfigLevel
+                from kanibako.errors import KanibakoError
+                for _auth_key in (
+                    "box.auth.global_enabled",
+                    "box.auth.workset_enabled",
+                ):
+                    # ⚑ set_config_value RETURNS an "Error: …" string, never raises — so this
+                    # AUTH-CRITICAL write must be checked or it fails silently and leaks.
+                    _msg = set_config_value(
+                        _auth_key, "false",
+                        config_path=project_toml,
+                        cascade_system_path=std.settings,
+                        cascade_workset_path=create_ws_path,
+                        cascade_box_path=project_toml,
+                        command_scope=ConfigLevel.box,
+                        std=std, proj=proj,
+                    )
+                    if not _msg.startswith("Set "):
+                        raise KanibakoError(
+                            f"--private: failed to persist {_auth_key} to the box "
+                            f"settings ({_msg}); refusing to create a box that would "
+                            f"forward host credentials."
+                        )
+
+            # ⚑ `create --agent` persists the §2h REQUEST `pref.system.agent`, NOT the retired
+            # `box.agent_name`, and stores the RAW ref (selection canonicalizes on read).
+            # ⚑ SAME "given" predicate as the store check above, deliberately — the two used
+            # to spell it differently, and a blank ref fell down the gap between them.
+            if _agent_arg is not None:
+                from kanibako.settings.config_interface import set_config_value
+                from kanibako.settings.config_keys import ConfigLevel
+                # ⚑ The box being created is the target (spec §2a); no agent is selected
+                # yet, so the resolve is the no-agent one.
                 _msg = set_config_value(
-                    _auth_key, "false",
+                    "pref.system.agent", _agent_arg,
                     config_path=project_toml,
                     cascade_system_path=std.settings,
                     cascade_workset_path=create_ws_path,
@@ -1221,48 +1299,28 @@ def run_create(args: argparse.Namespace) -> int:
                     std=std, proj=proj,
                 )
                 if not _msg.startswith("Set "):
-                    raise KanibakoError(
-                        f"--private: failed to persist {_auth_key} to the box "
-                        f"settings ({_msg}); refusing to create a box that would "
-                        f"forward host credentials."
+                    # ⚑ A silent no-op would make plain `start` launch a DIFFERENT agent.
+                    print(
+                        f"Error: failed to persist the box agent selection "
+                        f"({_msg}).",
+                        file=sys.stderr,
                     )
+                    return 1
 
-        # ⚑ `create --agent` persists the §2h REQUEST `pref.system.agent`, NOT the retired
-        # `box.agent_name`, and stores the RAW ref (selection canonicalizes on read).
-        # ⚑ SAME "given" predicate as the store check above, deliberately — the two used
-        # to spell it differently, and a blank ref fell down the gap between them.
-        if _agent_arg is not None:
-            from kanibako.settings.config_interface import set_config_value
-            from kanibako.settings.config_keys import ConfigLevel
-            # ⚑ The box being created is the target (spec §2a); no agent is selected
-            # yet, so the resolve is the no-agent one.
-            _msg = set_config_value(
-                "pref.system.agent", _agent_arg,
-                config_path=project_toml,
-                cascade_system_path=std.settings,
-                cascade_workset_path=create_ws_path,
-                cascade_box_path=project_toml,
-                command_scope=ConfigLevel.box,
-                std=std, proj=proj,
-            )
-            if not _msg.startswith("Set "):
-                # ⚑ A silent no-op would make plain `start` launch a DIFFERENT agent.
-                print(
-                    f"Error: failed to persist the box agent selection "
-                    f"({_msg}).",
-                    file=sys.stderr,
-                )
-                return 1
+            # ⚑ At the project ROOT (``metadata_path``), not ``project_path`` — box_data/ and
+            # vault/ live there, and for standalone the workspace is a SUBDIR of the root.
+            if args.standalone:
+                write_project_gitignore(proj.metadata_path)
 
-        # ⚑ At the project ROOT (``metadata_path``), not ``project_path`` — box_data/ and
-        # vault/ live there, and for standalone the workspace is a SUBDIR of the root.
-        if args.standalone:
-            write_project_gitignore(proj.metadata_path)
-
-    # ⚑ THE J1 WRITE-AHEAD ORDER, AND IT IS THE WHOLE MECHANISM: write entry → seed →
-    # register → clear entry.  Clearing is IMMEDIATE after the registry write (HARD
-    # INVARIANT: registered ==> no pending entry at rest).  Do not reorder these four.
-    _write_create_entry(std, proj)
+        # ⚑ THE J1 WRITE-AHEAD ORDER, AND IT IS THE WHOLE MECHANISM: write entry → seed →
+        # register → clear entry.  Clearing is IMMEDIATE after the registry write (HARD
+        # INVARIANT: registered ==> no pending entry at rest).  Do not reorder these four.
+        _write_create_entry(std, proj)
+        _journaled = True
+    finally:
+        # ⚑ ONE cleanup path, for a refusal's ``return`` and a raise alike.
+        if _undo_member is not None and not _journaled:
+            _undo_member()
     seed_new_box(std, config, proj, explicit_agent=_agent_arg)
     # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
     # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).
