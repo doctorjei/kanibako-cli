@@ -319,6 +319,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A workset's own `workset.yaml` that is not valid YAML, or is a list or a single value, is now
+  refused by every command, not only by `start`.** `workset info`, `workset list`, `workset get`,
+  `workset share` and the box commands read it as no file at all, so every workset path silently
+  fell back to its default, including the vault paths a teardown deletes. They now stop with exit
+  code 1, naming the file. `box list` warns, naming the file, and keeps listing the other worksets.
+  `workset rm --purge --force` still removes a workset whose file is broken. A `workset.yaml` in a
+  directory above the working directory that is not a registered workset is still passed over in
+  silence, as before.
 - **A retired `auto_approve` refusal now names, in its cure, the agent the entry is stored under**
   rather than the agent being resolved. Before, a box carrying another agent's retired entry was
   told to write the tier to the wrong agent. At the system level, the cure named no agent at all and
