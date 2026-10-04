@@ -773,6 +773,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exit 1 and say which `workset.yaml` sets `workset.boxes` to `null`. See `MIGRATION.md`
   § *2.93 A `workset.boxes` of `null` is refused*.
 
+- **A `null` at `workset.registry` is refused instead of read as the default.** v1.8.0-rc2 read a
+  `workset: {registry: null}` line as unset, so every command fell through to `<workset>/registry.yaml`,
+  the file that holds the workset's box membership. The resolver now refuses with exit 1, naming the
+  key and the file, for the primary workset and a named one. `workset set --null <workset>
+  workset.registry` is refused at the door and writes nothing, like `workset.boxes`. An unset key, and
+  a repoint you set, are unchanged. See `MIGRATION.md` § *A `workset.boxes` of `null` is refused*.
+
 - **A `workset.workspaces` of `null` refuses to create a workspace or launch a box in it, naming
   the key and the file.**
   v1.8.0-rc2 read a `null` `workset.workspaces` as unset, so these commands created the workspace

@@ -294,3 +294,94 @@ def test_resolve_is_pure_no_side_effects(tmp_path: Path) -> None:
     workset_root = tmp_path / "myws"
     workset_registry.resolve_workset_registry_path(workset_root, None)
     assert not workset_root.exists()
+
+
+# ---------------------------------------------------------------------------
+# A PRESENT null at ``workset.registry`` — refused at the read and at the set door
+# ---------------------------------------------------------------------------
+
+
+def test_a_null_registry_refuses_naming_the_key_and_the_file(tmp_path: Path) -> None:
+    """``workset.registry: null`` RAISES instead of taking the default.
+
+    The registry holds the workset's box MEMBERSHIP and its entry keys are the only
+    source of box names, so a null leaves no workset to read.  Mutation guard: an
+    absent-or-null read that falls through to ``<root>/registry.yaml`` returns that
+    path and this assertion never runs.
+    """
+    workset_root = tmp_path / "myws"
+    with pytest.raises(SettingsError) as excinfo:
+        workset_registry.resolve_workset_registry_path(
+            workset_root, {"workset": {"registry": None}}
+        )
+    message = str(excinfo.value)
+    assert "workset.registry" in message
+    assert str(workset_root / "workset.yaml") in message
+
+
+def test_the_null_refusal_is_the_path_key_carriers_own(tmp_path: Path) -> None:
+    """⚑ ONE CARRIER: this reader raises through ``config``'s carrier, like ``workset.boxes``.
+
+    A second wording spelled for the registry would be a second rule, free to drift
+    from the reason every other path-key door answers to.
+    """
+    from kanibako.settings.config import null_path_keys_error
+
+    workset_root = tmp_path / "myws"
+    with pytest.raises(SettingsError) as excinfo:
+        workset_registry.resolve_workset_registry_path(
+            workset_root, {"workset": {"registry": None}}
+        )
+    assert str(excinfo.value) == null_path_keys_error(
+        workset_root / "workset.yaml", ("workset.registry",)
+    )
+
+
+def test_the_registry_key_is_in_the_doors_membership() -> None:
+    """The ``set`` door answers to :func:`config.refuses_null_path_key` for this key."""
+    from kanibako.settings.config import refuses_null_path_key
+
+    assert refuses_null_path_key("workset.registry") is True
+
+
+def test_a_null_registry_is_refused_at_the_set_door_and_nothing_is_written(
+    tmp_path: Path,
+) -> None:
+    """``set --null workset.registry`` is refused BEFORE the write, naming the key.
+
+    Driven through :func:`set_config_value`, the door the ``workset set`` verb runs.
+    """
+    from kanibako.settings.config_interface import set_config_value
+    from kanibako.settings.config_keys import ConfigLevel
+
+    workset_settings = tmp_path / "myws" / "workset.yaml"
+    message = set_config_value(
+        "workset.registry", None,
+        config_path=workset_settings, cascade_workset_path=workset_settings,
+        command_scope=ConfigLevel.workset,
+    )
+    assert message.startswith("Error:"), message
+    assert "workset.registry" in message, message
+    assert not workset_settings.exists(), f"{workset_settings} was written: {message}"
+
+
+@pytest.mark.parametrize("settings_doc", [
+    None,                                          # no workset.yaml at all
+    {},                                            # a file that holds no table
+    {"workset": {}},                               # a table with no key in it
+    {"workset": {"logs": None}},                   # ...and one whose OTHER key is null
+], ids=["no_doc", "empty_doc", "empty_table", "sibling_null"])
+def test_an_absent_registry_key_still_takes_the_default(
+    tmp_path: Path, settings_doc: dict | None,
+) -> None:
+    """⚑ THE ABSENT/PRESENT LINE. Absent takes the default; only a PRESENT null refuses.
+
+    Every shape here has no ``workset.registry`` at all, and every one must still read
+    ``<root>/registry.yaml`` — a refusal that reached past a present null and into the
+    absent case would strand every workset that never set the key.
+    """
+    workset_root = tmp_path / "myws"
+    assert (
+        workset_registry.resolve_workset_registry_path(workset_root, settings_doc)
+        == workset_root / "registry.yaml"
+    )
