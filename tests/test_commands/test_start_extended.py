@@ -1518,6 +1518,120 @@ class TestNoConversationHint:
         assert "start -N" in captured.err
 
 
+class TestPersistentAttachFailureIsSaid:
+    """A foreground persistent launch whose attach fails says what happened and what to do.
+
+    The retry loop used to fall off its last attempt in silence (the last line was
+    ``attempt 4/5``), and the ``-N`` hint was reachable only from the ephemeral arm.
+    """
+
+    @staticmethod
+    def _launch(**over):
+        kw = dict(
+            project_dir=None, entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False,
+            extra_args=[], persistent=True,
+        )
+        kw.update(over)
+        with patch("time.sleep"):
+            return _run_container(**kw)
+
+    def test_exhausted_attach_on_a_live_box_is_an_error_naming_the_cures(
+        self, start_mocks, capsys,
+    ):
+        """tmux has no session, every attempt: the box stays up and the user is told so."""
+        with start_mocks() as m:
+            m.runtime.exec.return_value = 1
+            rc = self._launch()
+            teardown_rm = m.runtime.rm.called
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "Could not attach to box 'testproject' after 5 attempts" in err
+        assert "kanibako shell testproject" in err
+        assert "kanibako stop testproject" in err
+        assert "start -N" in err
+        # The live box is kept for inspection, not reaped.
+        assert not teardown_rm
+
+    def test_retry_warning_does_not_claim_the_container_is_not_ready(
+        self, start_mocks, capsys,
+    ):
+        """A failed attach into a RUNNING container is a missing session, not a
+        not-ready container — it is also what a box whose agent already died shows."""
+        with start_mocks() as m:
+            m.runtime.exec.return_value = 1
+            self._launch()
+        err = capsys.readouterr().err
+        assert "could not attach to the agent session (attempt 4/5)" in err
+        assert "container not ready for exec" not in err
+
+    def test_exhausted_readiness_probe_is_an_error_too(self, start_mocks, capsys):
+        """``podman exec`` never accepted the probe, with the container up."""
+        with start_mocks() as m:
+            m.runtime.exec_ready.side_effect = lambda *a, **kw: False
+            rc = self._launch()
+            attached = m.runtime.exec.called
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert not attached
+        assert "container not ready for exec (attempt 4/5)" in err
+        assert "Could not attach to box 'testproject' after 5 attempts" in err
+
+    def test_no_exhaustion_error_with_new_session_hint_withheld(
+        self, start_mocks, capsys,
+    ):
+        """``-N`` already given: the attach error still prints, the ``-N`` hint does not."""
+        with start_mocks() as m:
+            m.runtime.exec.return_value = 1
+            rc = self._launch(new_session=True)
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "Could not attach to box" in err
+        assert "start -N" not in err
+
+    def test_agent_death_after_attach_reaches_the_new_session_hint(
+        self, start_mocks, capsys,
+    ):
+        """The supervised (persistent) arm reaches the ``-N`` hint the ephemeral arm has."""
+        def _exec_then_exit(*a, **kw):
+            m.runtime.is_running.return_value = False
+            return 0
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._container_exit_code", return_value=1,
+        ):
+            m.runtime.exec.side_effect = _exec_then_exit
+            rc = self._launch()
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "start -N" in err
+        assert "Could not attach" not in err
+
+    def test_clean_persistent_exit_gets_no_hint(self, start_mocks, capsys):
+        def _exec_then_exit(*a, **kw):
+            m.runtime.is_running.return_value = False
+            return 0
+        with start_mocks() as m, patch(
+            "kanibako.commands.start._container_exit_code", return_value=0,
+        ):
+            m.runtime.exec.side_effect = _exec_then_exit
+            rc = self._launch()
+        assert rc == 0
+        assert "start -N" not in capsys.readouterr().err
+
+    def test_box_dead_before_attach_reaches_the_new_session_hint(
+        self, start_mocks, capsys,
+    ):
+        """The container never came up: the error is followed by the ``-N`` hint."""
+        with start_mocks() as m:
+            m.runtime.run.side_effect = None
+            m.runtime.run.return_value = 0
+            rc = self._launch()
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "Container exited before session could attach" in err
+        assert "start -N" in err
+
+
 class TestInteractivePersistentGuard:
     """Interactive mode rejects launch when a container already exists.
 

@@ -375,6 +375,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A foreground box whose session cannot be attached now says so.** When every attach attempt failed
+  with the container still up, the retries stopped after `attempt 4/5` with nothing more said. The
+  launch now exits non-zero with an error that names the still-running container and the cures
+  (`kanibako shell <box>` to look inside, `kanibako stop <box>` to clear it). The box is left running
+  so it can be inspected. The retry warning for a failed attach now reads *could not attach to the
+  agent session* rather than *container not ready for exec*, because a box whose agent already exited
+  fails the same way. The hint to use `kanibako start -N` after a failed launch without `-N` now
+  prints for a persistent box too, not only an ephemeral one.
+
+- **`--restart` now clears an exited container.** A container left in the `Exited` state still holds
+  the box's name. `--restart` checked only for a *running* box, so a `--restart --ephemeral` or shell
+  launch stopped at the "still holding its name" refusal. It now removes any existing container
+  through `kanibako stop` before launching. `box info` shows such a container as `exited, still
+  holding the name (<container>); clear it: kanibako stop <box>` instead of `stopped persistent`; the
+  container need not be persistent.
+
 - **`jq` is now part of the image baseline, so a box without it is reported instead of passing.**
   The shipped claude statusline parses its hook JSON with `jq` and has no fallback: with `jq` off
   `PATH` it still exited 0 and rendered a constant `—/0k $0.00`, which is a permanently wrong
@@ -1433,8 +1449,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name. `kanibako list` reported that box as `stopped` and `kanibako ps` omitted it entirely —
   both correctly — but the launch guard asked a different question: it checked only whether
   a container *existed*, in any state, and then announced that one was *running*. Every cure
-  that message named was wrong there — there is nothing to reattach to, and `--restart` no-ops
-  on a box that is already down — so
+  that message named was wrong there — there is nothing to reattach to, and `--restart` then did
+  nothing for a box that was already down — so
   `kanibako shell` stayed locked out until you happened to run `kanibako stop`, which removes an
   exited container as a side effect. The guard now reads liveness as well as existence. A live box
   gets the same refusal and the same three cures as before; an exited container gets a message that

@@ -2262,9 +2262,12 @@ def _check_container_running(proj) -> tuple[bool, str]:
     for name, image, status in containers:
         if name == container_name:
             return True, f"running ({container_name}: {image})"
-    # A stopped PERSISTENT container still exists.
+    # An exited container still holds the name.
     if runtime.container_exists(container_name):
-        return False, f"stopped persistent ({container_name})"
+        return False, (
+            f"exited, still holding the name ({container_name}); "
+            f"clear it: kanibako stop {proj.name}"
+        )
     return False, f"not running ({container_name})"
 
 
