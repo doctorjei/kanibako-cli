@@ -19,8 +19,8 @@ hold keys of the scopes it CONTAINS ... which serve as OVERRIDABLE defaults", an
 NOT write a setting in a containing (higher) level". The set-time resolution probe judges a
 candidate value against the COMMAND's cascade, so a referent living in the contained scope is
 absent from that snapshot by construction — and ``system set workset.canon=@workset.channelroot/x``
-was refused as a "dangling @-reference (no such config key in the keyspace)" for a key that is
-declared and that every launch resolves. :func:`_floor_blind_default` forgives exactly that
+was refused as a "dangling @-reference (declared in the keyspace, but not in this command's
+cascade)" for a key that every launch resolves. :func:`_floor_blind_default` forgives exactly that
 blindness and nothing else.
 
 ⚑ SO THE ASYMMETRY IS THE POINT, and both halves are pinned: ``TestAnUpwardWriteStaysRefused``
@@ -404,18 +404,42 @@ class TestWhatStaysRefused:
         assert "dangling @-reference" in message, message
         assert not files["system"].exists(), f"{key}={value!r} was WRITTEN: {message}"
 
-    @pytest.mark.parametrize("value", ["@box.enable_vault", "@box.image"])
-    def test_a_downward_ref_this_floor_HOLDS_is_judged_normally(self, tmp_path, std, value):
-        """🛑 NOT A NEW REFUSAL, and pinned so the boundary is a decision and not a gap.
+    @pytest.mark.parametrize("key, value, ref", [
+        # ⚑ THE FLOOR HOLDS EVERY ONE OF THESE: the box scalars' DECLARED defaults put the
+        # ``box.*`` leaves below in the snapshot the set-time probe judges against, so the
+        # expander recorded no defect and the value reached the file.
+        ("workset.canon", "@box.image", "@box.image"),
+        ("workset.canon", "@box.enable_vault", "@box.enable_vault"),
+        ("workset.boxes", "@box.image/x", "@box.image"),
+    ])
+    def test_a_downward_ref_this_floor_HOLDS_is_refused(
+        self, tmp_path, std, key, value, ref,
+    ):
+        """🛑 SPEC §0, "Directional view/set across CONTAINMENT levels": a scope "may
+        **view up** (read-only ``@``-reference a CONTAINING scope's keys)" and
+        "**no ``@``-ref points DOWNWARD**".
 
-        The declared floor carries some ``box.*`` defaults, so ``@box.enable_vault`` and
-        ``@box.image`` RESOLVE at the system command and were accepted before this change.
-        This rule forgives a MISSING referent; a downward ref the floor can see is not
-        missing, so it is no blindness case and this door has no verdict to give.
+        Whether this floor can SEE the referent is not in that sentence. A ``workset.*``
+        key holding ``@box.*`` binds ONE box's settings for the whole workset, so the
+        direction is a fact about the SPELLING — and it is judged without asking the floor
+        what it holds, which is the only question that could answer "yes" here.
         """
+        files = _files(tmp_path)
+        message = _set(key, value, files, ConfigLevel.system, std=std)
+        assert message.startswith("Error:"), f"{key}={value!r} was ACCEPTED: {message}"
+        assert f"'{ref}'" in message, message
+        assert "no @-ref points DOWNWARD" in message, message
+        assert not files["system"].exists(), f"{key}={value!r} was WRITTEN: {message}"
+
+    @pytest.mark.parametrize("value", ["@workset.channelroot/x", "@system.canon/x"])
+    def test_the_same_door_takes_a_same_or_upward_ref(self, tmp_path, std, value):
+        """🛑 THE OTHER HALF, so the refusal is a direction and not a blanket pass: the same
+        key, the same floor, the same door — and a ref that names the key's own scope or
+        one CONTAINING it is stored."""
         files = _files(tmp_path)
         message = _set(_CONTAINED_KEY, value, files, ConfigLevel.system, std=std)
         assert not message.startswith("Error:"), f"{value!r}: {message}"
+        assert value in files["system"].read_text()
 
     def test_the_keys_own_door_refuses_the_downward_ref_too(self, ws_files):
         """One rule, both doors: the contained scope's own door sees the referent and has

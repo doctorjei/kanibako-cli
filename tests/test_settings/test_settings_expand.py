@@ -713,6 +713,27 @@ def test_lenient_collects_dangling_whole_value_ref() -> None:
     assert expanded["c"] == "/ok"
 
 
+def test_lenient_names_a_DECLARED_referent_as_declared_and_not_as_a_keyspace_breach() -> None:
+    # 🛑 THE WORDING IS A FACT ABOUT THE KEYSPACE, and a set-time command judges a value
+    # against ITS OWN cascade: a DECLARED key living in a scope that cascade does not
+    # reach is absent by construction, so telling the user it is "no such config key in
+    # the keyspace" is a false statement about the keyspace.
+    snap = KeyStore({"a": "@system.canon", "c": "/ok"})
+    _expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "declared in the keyspace, but not in this command's cascade" in errors["a"]
+    assert "no such config key in the keyspace" not in errors["a"]
+
+
+def test_lenient_still_calls_an_UNDECLARED_referent_no_such_config_key() -> None:
+    # ⚑ THE OTHER HALF, and the reason the wording above is a refinement and not a
+    # softening: a name that is not a key at all IS a keyspace breach, whichever cascade
+    # was asked.
+    snap = KeyStore({"a": "@nope.missing", "c": "/ok"})
+    _expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert "no such config key in the keyspace" in errors["a"]
+    assert "declared in the keyspace" not in errors["a"]
+
+
 def test_lenient_collects_dangling_embedded_ref() -> None:
     # ⚑ BRACED: ``-`` is a ref-name char, so bare ``@nope.x-post`` would name
     # ``nope.x-post``.  That still dangles, and the assertion below is a SUBSTRING
