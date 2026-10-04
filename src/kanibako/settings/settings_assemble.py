@@ -24,7 +24,6 @@ from kanibako.agent_ref import agent_segment_case
 from kanibako.settings.agent_config import (
     AgentConfig,
     category_root_ref,
-    is_self_resolving,
     root_relative_source,
 )
 from kanibako.settings.agent_file import (
@@ -53,7 +52,6 @@ from kanibako.settings.kb_store import (
 from kanibako.settings.keystore import KeyStore, ReservedKeyError
 from kanibako.settings.settings_categories import (
     ABSTRACT_CATEGORIES,
-    BARE_RELATIVE_SOURCE_HAZARD,
     DECLARATION_ROOT_REF,
 )
 from kanibako.settings.settings_drops import cascade_drop_set, upward_scope_drop_set
@@ -69,7 +67,10 @@ from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_prefs import PREF_LEGAL_LEVELS, PREF_ROOT, refuse_pref_table
 from kanibako.settings.settings_resolve import (
     SettingsError,
+    check_bind_map,
     normalize_bind_dest,
+    refuse_dest_spelled_twice,
+    refuse_unrooted_source,
     unpack_bind,
     unpack_bind_entry,
 )
@@ -1078,6 +1079,8 @@ def _parse_node(
 
 def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore:
     """Parse a dest-keyed MARKER map (``masks``): canonicalize each dest, keep each value as is."""
+    # ⚑ A marker value is a 3-state marker, not a bind entry, so only the PER-MAP check applies.
+    refuse_dest_spelled_twice(raw, category=path[-1])
     store = KeyStore()
     for key, sub in raw.items():
         dest = normalize_bind_dest(str(key))
@@ -1091,40 +1094,26 @@ def parse_bind_map(
     """Parse a raw DEST-KEYED category map into a :class:`KeyStore` of :class:`BindEntry`.
 
     *raw* is the ``{box_dest: [src[, opts]]}`` mapping at ANY terminal bind-shaped key — a
-    ``bindings`` arm or one of the four whose token is the whole key. ONE parser, not two;
-    *category* names the key in the refusals. Returns a nested node (not an opaque dict leaf)
-    so it merges PER-ENTRY across levels; a ``None`` entry is preserved VERBATIM. llm-docs.
+    ``bindings`` arm or one of the four whose token is the whole key. ONE parser, not two.
+    Returns a nested node (not an opaque dict leaf) so it merges PER-ENTRY across levels; a
+    ``None`` entry is preserved VERBATIM. llm-docs.
 
-    ⚑⚑ THE §2a SOURCE RULE IS ENFORCED HERE, and this is the DECLARATION-LOAD seam it belongs at:
-    what gets STORED must resolve on its own. *root_ref* is the ABSTRACT category's declaration
-    root (:func:`_declaration_root_ref`) — a bare-relative source is joined under it and a
-    self-resolving one is stored verbatim, both by :func:`~kanibako.settings.agent_config.
-    root_relative_source`, which owns that rule. Without one — every CONCRETE category, at every
-    scope — a bare-relative source is a DEFECT and is REFUSED by name, because nothing later may
-    supply the missing root (§2a: the assembler-prepend is FORBIDDEN).
+    ⚑⚑ THIS IS THE DECLARATION-LOAD SEAM: what gets STORED must resolve on its own, so the
+    root is supplied HERE (:func:`_declared_source`) and never downstream — rooting at
+    ASSEMBLY is FORBIDDEN by §2a.
     """
     if not isinstance(raw, dict):
         raise SettingsError(
             f"A dest-keyed {category!r} map must be a mapping "
             f"{{box_dest: [src[, options]]}}, got {type(raw).__name__}: {raw!r}."
         )
+    check_bind_map(raw, category=category)
     store = KeyStore()
     for key, sub in raw.items():
         # ⚑ THE ONE PLACE A STORED DEST IS CANONICALIZED ON READ (R-11) — ``~`` and ``~/`` must be
         # ONE entry. Producers normalize too; the function is idempotent, so neither place is
         # load-bearing alone. ⚑ The VALUE is never canonicalized: a host_src stays as authored.
         dest = normalize_bind_dest(str(key))
-        if isinstance(sub, dict):
-            # ⚑ A nested MAPPING is the RETIRED name-keyed shape — refused BY NAME (spec §2a
-            # "STALE SHAPES ARE REFUSED LOUDLY"). A 3-element list is refused by unpack_bind_entry.
-            raise SettingsError(
-                f"{category} entry {str(key)!r} holds a sub-table, which is the "
-                f"RETIRED name-keyed shape {{name: {{...}}}}. A {category} value "
-                f"is a FLAT map keyed by box DESTINATION whose value is "
-                f"[src[, options]] (spec §2a); the entry name was dropped "
-                f"(bindings 2026-08-06c, the other four 2026-08-08c). Re-key the "
-                f"entry to its destination."
-            )
         entry = _parse_node(sub, in_binds=True, dest_keyed=True)
         if isinstance(entry, BindEntry):
             entry = BindEntry(
@@ -1137,29 +1126,15 @@ def parse_bind_map(
 def _declared_source(
     src: str, category: str, dest: str, root_ref: str | None,
 ) -> str:
-    """The §2a-conforming ``host_src`` to STORE for one entry, or a refusal.
+    """The §2a-conforming ``host_src`` to STORE for one entry.
 
-    ⚑ ONE function for both halves of the rule, because they are the same rule seen from the two
-    sides of the abstract/concrete line: an ABSTRACT category HAS a declaration root and a bare
-    leaf is joined under it; a CONCRETE one has none at any scope, so a bare-relative source there
-    can only ever resolve against the process CWD and is refused where it is declared.
+    ⚑ A CONCRETE category takes no root at any scope, so its bare-relative source is
+    :func:`~kanibako.settings.settings_resolve.refuse_unrooted_source`'s to refuse.
     """
     if root_ref is not None:
         return root_relative_source(src, root_ref)
-    if is_self_resolving(src):
-        return src
-    if category in ABSTRACT_CATEGORIES:
-        # ABSTRACT, yet the key path named no scope — so this is not a KEY, and §0's
-        # undeclared-key refusal downstream is the one that must name it. Stored verbatim:
-        # a seam that prescribed a source cure here would be curing a non-key.
-        return src
-    raise SettingsError(
-        f"{category} entry at {dest!r} declares a bare-relative host source "
-        f"{src!r}; a source must fully resolve on its own — absolute, ~, $var or "
-        f"an @-ref. {category} takes NO root at any scope (spec §2a), so no later "
-        f"layer may supply the missing one: {BARE_RELATIVE_SOURCE_HAZARD}. "
-        f"Spell the source out."
-    )
+    refuse_unrooted_source(src, category, dest)
+    return src
 
 
 def _parse_naming_file(

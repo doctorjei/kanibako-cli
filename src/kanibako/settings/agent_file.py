@@ -33,7 +33,11 @@ from kanibako.settings.config_io import (
 )
 from kanibako.settings.settings_categories import CATEGORY_FAMILY_ROOTS
 from kanibako.settings.settings_drops import cascade_drop_set, contained_scopes
-from kanibako.settings.settings_resolve import SettingsError, normalize_bind_dest
+from kanibako.settings.settings_resolve import (
+    SettingsError,
+    check_bind_tables,
+    normalize_bind_dest,
+)
 from kanibako.utils import deep_merge
 
 #: The per-agent file's ROOT table — the file's self-reference, spelled ONCE, HERE.
@@ -912,6 +916,9 @@ def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
     VALUE where its node tables go (:func:`_refuse_scope_value`), one node spelled twice in it
     (:func:`refuse_node_spelled_twice`), and one setting written under both ``self:`` and
     ``agent: <node>:`` (:func:`_refuse_two_spellings`, Q103).
+    ⚑ And the dest-keyed bind maps get the settings tier's own checks, HERE because this file
+    is read as a RAW node table and nothing downstream of it judges an entry (spec §2a) — in
+    the contained-scope tables too, which the cascade reads like any other settings file.
     """
     if not isinstance(raw, dict):
         return contributed_tables(raw)
@@ -924,6 +931,10 @@ def _contribution(raw: Any, *, node: str | None, path: Path | None) -> dict:
         refuse_node_spelled_twice(scope, prefix=FILE_SCOPE, path=path)
     _refuse_node_values(tables, node=node, path=path)
     _refuse_two_spellings(tables, node=node, path=path)
+    check_bind_tables(
+        tables, root=_ROOT, scope=FILE_SCOPE, contained=_CONTAINED,
+        where=str(path) if path else None,
+    )
     return tables
 
 
