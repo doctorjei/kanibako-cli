@@ -168,6 +168,21 @@ class TestTheControlsCanFail:
 
         assert fabricated_defaults("claude") == {"agent.claude.model": "opus"}
 
+    @pytest.mark.parametrize("sentinel", ["{}", "<None>"])
+    def test_a_string_sentinel_default_is_found(
+        self, spec_mounted, descriptor_edit, sentinel
+    ):
+        """A default that is the STRING ``"{}"`` or ``"<None>"`` renders like an
+        absence but is a value: on claude's ``model`` (no stated §2d value) it is a
+        fabricated floor, not an omission."""
+        def add_a_floor(doc: dict) -> None:
+            for row in doc["behavior"]:
+                if row["key"] == "model":
+                    row["default"] = sentinel
+        descriptor_edit("claude", add_a_floor)
+
+        assert fabricated_defaults("claude") == {"agent.claude.model": sentinel}
+
     def test_a_dropped_spec_row_is_found(self, spec_mounted, spec_edit):
         """§2d losing a row the descriptor still states must not silently pass: the
         descriptor's value is then one §2d does not hold it to."""
@@ -200,9 +215,8 @@ class TestTheControlsCanFail:
         ]
 
     def test_an_absence_value_states_no_default(self, monkeypatch):
-        """A floor of ``None`` or ``{}`` is what omitting the row yields, so a
-        descriptor may state a MEMBERSHIP cell's value or state nothing and read
-        the same; only a real value is produced."""
+        """A RAW ``None`` or empty-dict floor is what omitting the row yields, so it
+        reads the same as no row; only a real value is produced."""
         monkeypatch.setattr(kinemata_views, "_agent_tier_floors", lambda node: {
             "agent.claude.none": None,
             "agent.claude.empty": {},
