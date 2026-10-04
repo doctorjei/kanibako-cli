@@ -277,14 +277,15 @@ _BOX_SCALAR_FIELDS: dict[str, str] = {
 
 
 def _scalar_value(value: object) -> object:
-    """A settings-file scalar as the flat object carries it (``None`` = the reset sentinel)."""
+    """A settings-file scalar as the flat object carries it (bool or null)."""
     if isinstance(value, bool) or value is None:
         return value
     return str(value)
 
 
 def _present_scalar_fields(path: Path) -> dict[str, object]:
-    """The DECLARED box scalars PRESENT in a SETTINGS file (``None`` = the reset sentinel).
+    """The DECLARED box scalars PRESENT in a SETTINGS file — ``None`` is a VALUE, not a
+    request for the default (§2h).
 
     ⚑⚑ KEYED ON THE DECLARED DOTTED KEYS (:data:`_BOX_SCALAR_FIELDS`), NEVER ON A FLATTENED
     NAMESPACE.  This used to flatten the whole document to underscore-joined names and keep
@@ -582,8 +583,8 @@ def load_project_overrides(path: Path) -> dict[str, object]:
 
     ⚑ OFF THE PRESENT SET, not off a loaded object (2026-08-31): ``load_config`` reads the
     LAYER-1 file now, and a box.yaml is a settings file.  The answer is unchanged — a key
-    absent from the file, and a present ``None`` (the reset sentinel), both resolve to the
-    default and so are not overrides.
+    absent from the file and a present ``None`` are both not overrides
+    (:func:`_present_scalar_fields`).
     ⚑ The value type is ``object`` because ``box.share_images`` and ``box.enable_vault`` are
     real bools, which is what the callers print.
     """
