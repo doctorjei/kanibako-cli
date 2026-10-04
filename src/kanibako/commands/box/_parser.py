@@ -872,7 +872,7 @@ def _add_workset_member(std, config, workset: str, name: str,
     override = getattr(args, "name", None)
     if override is not None and override.casefold() != name.casefold():
         print("Error: " + ERR_WORKSET_MEMBER_NAME_CONFLICT % (
-            ws.name, override, name, name,
+            ws.name, override, name,
         ), file=sys.stderr)
         return None
 
