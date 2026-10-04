@@ -796,6 +796,67 @@ class TestRetentionSurvivesASymlinkAndASourceNull:
         err = capsys.readouterr().err
         assert f"Note: left the vault at {old_rw} in place" in err
 
+    def test_a_null_named_source_arm_names_the_store_it_orphaned(
+        self, env, tmp_home, capsys,
+    ):
+        """A NAMED source arm nulled after its data was stored: the retirement has no
+        base under the arm and no key to name it by, so the store is named from the
+        arm's own default location instead."""
+        config, std, tmp_home = env
+        ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
+        # The member's workspace sits OUTSIDE the workset tree, so an in-place convert
+        # to the default workset has no in-tree landing to refuse.
+        external = tmp_home / "extb1"
+        external.mkdir(parents=True)
+        add_project(ws_a, "b1", external, std)
+        state = resolve_lifecycle_target(str(external), std, config)
+        seed = _seed_vault(state)
+        old_rw = state.vault_rw
+        _repoint(ws_a.root, "vault_rw", None)
+        fresh = resolve_lifecycle_target(str(external), std, config)
+        assert fresh.vault_rw is None  # anti-vacuity: the null reached the state
+        new = execute_lifecycle(
+            fresh, TargetSpec(ownership="default"), std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.primary
+        assert (old_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
+        err = capsys.readouterr().err
+        assert f"Note: left the vault at {old_rw} in place" in err
+        assert "workset.vault_rw is null" in err
+        # The received side was carried, and the box tree went: only the orphaned
+        # store is left, and it is left as a keep rather than a failure.
+        assert (new.vault_ro / "ro-note.txt").read_text() == seed["ro-note.txt"]
+        assert not (ws_a.projects_dir / "b1").exists()
+        assert "could not remove the old store of 'b1'" not in err
+
+    def test_a_null_named_source_arm_is_named_on_a_workset_convert(
+        self, env, tmp_home, capsys,
+    ):
+        """The same orphaned store through the named-to-named relocation, which retires
+        the source by the same sequence."""
+        config, std, tmp_home = env
+        ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
+        create_workset("wo", tmp_home / "wo_root", std)
+        external = tmp_home / "extd3"
+        external.mkdir(parents=True)
+        add_project(ws_a, "d3", external, std)
+        state = resolve_lifecycle_target(str(external), std, config)
+        seed = _seed_vault(state)
+        old_rw = state.vault_rw
+        _repoint(ws_a.root, "vault_rw", None)
+        fresh = resolve_lifecycle_target(str(external), std, config)
+        assert fresh.vault_rw is None  # anti-vacuity: the null reached the state
+        new = execute_lifecycle(
+            fresh, TargetSpec(ownership="wo"), std, config, confirm=_conf_yes(),
+        )
+        assert new.owner == "workset:wo"
+        assert (old_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
+        err = capsys.readouterr().err
+        assert f"Note: left the vault at {old_rw} in place" in err
+        assert "workset.vault_rw is null" in err
+        assert not (ws_a.projects_dir / "d3").exists()
+        assert "could not remove the old store of 'd3'" not in err
+
 
 class TestNullArmTeardownGuards:
     """Guards on the null-arm teardown edges, each reachable through the real verb."""
@@ -837,3 +898,120 @@ class TestNullArmTeardownGuards:
         assert new.vault_rw is None  # anti-vacuity: the null reached the new box
         assert not (pdir / "vault" / ".gitignore").exists()
         assert (pdir / "vault" / "user.txt").read_text() == "the user's own store"
+
+
+class TestDisabledVaultDataGuard:
+    """Q64: a disabled vault that still holds data is refused, ``--force`` keeps it in place.
+
+    A box with ``box.enable_vault`` false carries no vault, so a relocation leaves the
+    source leaves behind; without the guard the teardown deleted them at rc 0.
+    """
+
+    def _disabled_with_data(self, env, name):
+        config, std, _tmp_home = env
+        pdir = _make_default(env, name=name, enable_vault=False)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        assert state.enable_vault is False
+        state.vault_rw.mkdir(parents=True, exist_ok=True)
+        (state.vault_rw / "keep.txt").write_text("stale store")
+        return state
+
+    @pytest.mark.parametrize("spec", [
+        pytest.param({"location": "dest", "ownership": UNCHANGED}, id="move"),
+        pytest.param({"ownership": "standalone"}, id="convert"),
+    ])
+    def test_refused_without_force_and_the_data_survives(self, env, spec):
+        config, std, tmp_home = env
+        state = self._disabled_with_data(env, "dv1")
+        dest = tmp_home / "dest"
+        kwargs = {k: (dest if v == "dest" else v) for k, v in spec.items()}
+        with pytest.raises(ProjectError) as exc:
+            execute_lifecycle(state, TargetSpec(**kwargs), std, config, confirm=_conf_yes())
+        assert str(state.vault_rw) in str(exc.value)
+        assert "--force" in str(exc.value)
+        assert (state.vault_rw / "keep.txt").read_text() == "stale store"
+        assert not dest.exists()
+        assert resolve_lifecycle_target(str(state.workspace_path), std, config).mode == (
+            BoxMode.primary
+        )
+
+    @pytest.mark.parametrize("spec", [
+        pytest.param({"location": "dest", "ownership": UNCHANGED}, id="move"),
+        pytest.param({"ownership": "standalone"}, id="convert"),
+    ])
+    def test_force_proceeds_and_leaves_the_data_in_place(self, env, spec, capsys):
+        config, std, tmp_home = env
+        state = self._disabled_with_data(env, "dv2")
+        kwargs = {k: (tmp_home / "dest" if v == "dest" else v) for k, v in spec.items()}
+        new = execute_lifecycle(
+            state, TargetSpec(**kwargs), std, config, force=True, confirm=_conf_yes(),
+        )
+        assert new.workspace_path != state.workspace_path or new.mode != state.mode
+        assert (state.vault_rw / "keep.txt").read_text() == "stale store"
+        err = capsys.readouterr().err
+        assert f"Note: left the vault at {state.vault_rw} in place" in err
+        assert "box.enable_vault is false" in err
+
+    @pytest.mark.parametrize("spec", [
+        pytest.param({"location": "dest", "ownership": UNCHANGED}, id="move"),
+        pytest.param({"ownership": "standalone"}, id="convert"),
+    ])
+    def test_an_empty_disabled_vault_is_not_refused(self, env, spec, capsys):
+        """Negative control: nothing stored ⇒ nothing to strand, no refusal, no Note."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="dv3", enable_vault=False)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        state.vault_rw.mkdir(parents=True, exist_ok=True)
+        kwargs = {k: (tmp_home / "dest" if v == "dest" else v) for k, v in spec.items()}
+        execute_lifecycle(state, TargetSpec(**kwargs), std, config, confirm=_conf_yes())
+        assert "left the vault" not in capsys.readouterr().err
+
+    def test_a_remap_after_the_user_moved_the_tree_is_refused(self, env):
+        """``box remap``: the files are already at *dest*, but the vault is not carried."""
+        config, std, tmp_home = env
+        state = self._disabled_with_data(env, "dv4")
+        dest = tmp_home / "dv4-moved"
+        state.workspace_path.rename(dest)
+        spec = TargetSpec(location=dest, ownership=UNCHANGED, records_only=True)
+        with pytest.raises(ProjectError) as exc:
+            execute_lifecycle(state, spec, std, config, confirm=_conf_yes())
+        assert str(state.vault_rw) in str(exc.value)
+        assert "--force" in str(exc.value)
+        assert (state.vault_rw / "keep.txt").read_text() == "stale store"
+
+    def test_a_same_path_remap_is_not_refused(self, env, capsys):
+        """A remap onto the path the box is registered at reuses it in place, vault
+        included, so there is nothing to strand."""
+        config, std, _tmp_home = env
+        state = self._disabled_with_data(env, "dv5")
+        spec = TargetSpec(
+            location=state.workspace_path, ownership=UNCHANGED, records_only=True,
+        )
+        execute_lifecycle(state, spec, std, config, confirm=_conf_yes())
+        assert (state.vault_rw / "keep.txt").read_text() == "stale store"
+        assert "left the vault" not in capsys.readouterr().err
+
+    def test_a_named_source_keeps_its_disabled_vault_data_under_force(
+        self, env, tmp_home, capsys,
+    ):
+        """ws→ws: the release deletes the member store; the disabled vault's data stays."""
+        config, std, tmp_home = env
+        ws_a = create_workset("wsa", tmp_home / "wsa_root", std)
+        ws_b = create_workset("wsb", tmp_home / "wsb_root", std)
+        internal = ws_a.workspaces_dir / "b1"
+        internal.mkdir(parents=True)
+        add_project(ws_a, "b1", internal, std)
+        state = resolve_lifecycle_target(str(internal), std, config)
+        state.enable_vault = False
+        state.vault_rw.mkdir(parents=True, exist_ok=True)
+        (state.vault_rw / "keep.txt").write_text("stale store")
+        spec = TargetSpec(location=ws_b.workspaces_dir / "b1", ownership="wsb")
+        with pytest.raises(ProjectError, match="--force"):
+            execute_lifecycle(state, spec, std, config, confirm=_conf_yes())
+        assert (state.vault_rw / "keep.txt").read_text() == "stale store"
+        execute_lifecycle(state, spec, std, config, force=True, confirm=_conf_yes())
+        assert (state.vault_rw / "keep.txt").read_text() == "stale store"
+        err = capsys.readouterr().err
+        assert f"Note: left the vault at {state.vault_rw} in place" in err
+        assert "could not remove the old store of 'b1'" not in err
+        assert not (ws_a.projects_dir / "b1").exists()
