@@ -6185,7 +6185,7 @@ Error: Project path '/home/you/work/.hidden' does not exist.
 and at launch:
 
 ```
-Error: no box at /home/you/work/.hidden. To create a new box, run 'kanibako create .hidden'
+Error: no box at /home/you/work/.hidden. To create a new box, run:  kanibako create .hidden
 ```
 
 **What to do.** If you named a box by such a value before 1.8.0, address it by its path, or run the
