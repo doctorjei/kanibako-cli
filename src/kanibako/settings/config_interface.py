@@ -30,6 +30,7 @@ from kanibako.settings.config import (
     system_path_ref_error,
     unset_project_config_key,
 )
+from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.settings.settings_launch import load_merged_config, snapshot_leaf
 from kanibako.settings.messages import (
     ERR_BOX_STORE_EMPTY_REASON,
@@ -2713,11 +2714,14 @@ def show_config(
     category_error: str | None = None,
     category_declared_by: Any = None,
     inputs: Any = None,
+    agent_name: str = GENERAL_SLOT,
+    agent_path: Path | None = None,
 ) -> int:
     """Display config values — overrides only, or the full resolved view.  Returns an exit code.
 
     *command_scope* is the NOUN showing, and it fixes the level its settings file is judged at.
     *inputs* are the noun's own resolve inputs, when it is not a box.
+    *agent_name*/*agent_path* are the agent the scalars resolve under.
     """
     out = file or sys.stdout
     # The file agent SETTINGS are displayed from: the system settings file at SYSTEM, else the
@@ -2733,12 +2737,19 @@ def show_config(
         # ⚑ *config_path* is a BOX tier only for the box noun: the system and workset nouns
         # pass the Layer-1 ``.cfg`` there (keyspec §1), which is not a settings tier at all.
         box_tier = config_path if command_scope is ConfigLevel.box else None
-        cfg = load_merged_config(box_tier, workset_path=workset_path, inputs=inputs)
+        cfg = load_merged_config(
+            box_tier, workset_path=workset_path, inputs=inputs,
+            agent_name=agent_name, agent_path=agent_path,
+        )
         overrides = load_project_overrides(config_path) if config_path else {}
         for fld in fields(cfg):
             val = getattr(cfg, fld.name)
+            # ⚑ THE ONE RENDERER, for the ``None`` case only: it spells a present
+            # ``None`` ``null`` (spec §2h), the spelling every other door in this output
+            # already uses.  A bool keeps ``True`` and a terminal ``""`` keeps ``""``.
+            shown = render_stored_scalar(val) if val is None else val
             marker = " (override)" if fld.name in overrides else ""
-            print(f"  {fld.name} = {val}{marker}", file=out)
+            print(f"  {fld.name} = {shown}{marker}", file=out)
 
         # Agent settings: render a supplied box-view ``agent_state``, else fall back to the
         # project-level overrides.  ⚑ *agent_state* is UNMARKED: a box file cannot set an agent

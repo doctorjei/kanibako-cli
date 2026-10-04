@@ -14,7 +14,7 @@ AGENT_META_FILE = 'agent.yaml'
 SYSTEM_HELPERS_SECTION: 'tuple[str, ...]' = ('system', 'helpers')
 _BOOL_TRUE = frozenset({'true', '1', 'yes', 'on'})
 _BOOL_FALSE = frozenset({'false', '0', 'no', 'off'})
-_DEFAULTS: dict[str, str] = {'box_image': 'ghcr.io/doctorjei/kanibako-oci:latest', 'box_shell': ''}
+_DEFAULTS: _BoxScalarDefaults = {'box_image': 'ghcr.io/doctorjei/kanibako-oci:latest', 'box_shell': None}
 _LAYER1_TABLE = 'config'
 _BOX_SCALAR_FIELDS: dict[str, str] = {'box.image': 'box_image', 'box.share_images': 'box_share_images', 'box.shell': 'box_shell', 'box.enable_vault': 'box_enable_vault'}
 ```
@@ -73,7 +73,7 @@ def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable
 @dataclass
 class KanibakoConfig:
     box_image: str = _DEFAULTS['box_image']
-    box_shell: str = _DEFAULTS['box_shell']
+    box_shell: str | None = _DEFAULTS['box_shell']
     box_share_images: bool = False
     box_enable_vault: bool = True
 
@@ -82,4 +82,8 @@ class BootstrapConfig:
     config_paths: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None
+
+class _BoxScalarDefaults(TypedDict):
+    box_image: str
+    box_shell: str | None
 ```
