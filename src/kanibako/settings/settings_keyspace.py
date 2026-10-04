@@ -122,6 +122,7 @@ from kanibako.agent_ref import (
     PSEUDO_AGENT_NAMES,
     agent_segment_case,
     canonicalize_agent_ref,
+    display_agent_ref,
     harness_of,
 )
 from kanibako.errors import ConfigError, PackagingError
@@ -1223,12 +1224,13 @@ def _meta_reason(
         name = tail[0]
         if not is_valid_agent_segment(name, valid_agents):
             return _undeclared(_bad_agent_reason(name, valid_agents))
+        shown = display_agent_ref(name)
         sub = tail[1:]
         if not sub:
             # ⚑ THE OTHER NAMESPACE ONE WORD AWAY ([R141]): this is the agent's own
             # ANCHOR group; ``meta.box.agent`` above is the RO mirror of the settable
             # contract. Two namespaces, one word apart — say which, never both.
-            return _namespace(f"'meta.agent.{name}' is a namespace, not a key")
+            return _namespace(f"'meta.agent.{shown}' is a namespace, not a key")
         # A pseudo-agent is judged against its own §2d block, never the true-agent rows.
         fence = pseudo_agent_fence(name)
         meta_leaves = (
@@ -1241,17 +1243,17 @@ def _meta_reason(
             return _KEY
         if len(sub) == 1 and sub[0] == "auth" and auth_leaves:
             # The tier the ``meta.box.agent.auth`` mirror points AT (spec :1081).
-            return _namespace(f"'meta.agent.{name}.auth' is a namespace, not a key")
+            return _namespace(f"'meta.agent.{shown}.auth' is a namespace, not a key")
         if len(sub) == 2 and sub[0] == "auth" and auth_leaves:
             if sub[1] in auth_leaves:
                 return _KEY
             return _undeclared(
-                f"'meta.agent.{name}.auth.{sub[1]}' is not a declared key "
+                f"'meta.agent.{shown}.auth.{sub[1]}' is not a declared key "
                 f"(declared: {', '.join(sorted(auth_leaves))})"
             )
         declared = [*sorted(meta_leaves), *(f"auth.{a}" for a in sorted(auth_leaves))]
         return _undeclared(
-            f"'meta.agent.{name}.{'.'.join(sub)}' is not a declared key "
+            f"'meta.agent.{shown}.{'.'.join(sub)}' is not a declared key "
             f"(declared: {', '.join(declared)})"
         )
 
@@ -1262,15 +1264,15 @@ def _meta_reason(
 
 
 def _bad_agent_reason(name: str, valid_agents: Collection[str]) -> str:
-    known = ", ".join(valid_agent_segments(valid_agents))
+    known = ", ".join(map(display_agent_ref, valid_agent_segments(valid_agents)))
     node = agent_segment_case(name)
     case = (
-        f"; an agent's node is lowercase — spell it '{node}' (spec §0)"
+        f"; an agent's node is lowercase — spell it '{display_agent_ref(node)}' (spec §0)"
         if node != name and is_valid_agent_segment(node, valid_agents) else ""
     )
     return (
-        f"'{name}' is not a valid agent (valid: {known}){case}. The agent segment of "
-        f"an agent-scope key must name a real agent or a reserved PSEUDO-AGENT "
+        f"'{display_agent_ref(name)}' is not a valid agent (valid: {known}){case}. The agent "
+        f"segment of an agent-scope key must name a real agent or a reserved PSEUDO-AGENT "
         f"tier (spec §2d / §0 L21 — a bare 'agent.<key>' is not a key)"
     )
 
@@ -1855,7 +1857,7 @@ def key_class(
         # reason — see :func:`_agent_tail_reason`.
         vocabulary = AgentVocabulary(name, agent_leaf_map)
         return _agent_tail_reason(
-            f"agent.{name}", rest[1:], vocabulary,
+            f"agent.{display_agent_ref(name)}", rest[1:], vocabulary,
             leaves_known=vocabulary.is_known,
         )
 
@@ -1979,6 +1981,34 @@ class StoreNode(NamedTuple):
     """One judged path as :func:`container_notes` needs to see it."""
     verdict: str
     is_node: bool
+
+
+#: The heads whose NEXT segment is an agent node (spec §0 / §2c / §2h).
+_NODE_HEADS: Final = (("agent",), ("meta", "agent"), ("pref", "agent"))
+
+
+def display_segments(segments: Sequence[str]) -> tuple[str, ...]:
+    """*segments* as a USER reads them: the agent node segment in the ``+`` spelling.
+
+    Only the node segment converts; every other segment is shown as stored, being
+    whatever a file or a user spelled.
+    """
+    parts = tuple(segments)
+    for head in _NODE_HEADS:
+        n = len(head)
+        if parts[:n] == head and len(parts) > n:
+            return (*head, display_agent_ref(parts[n]), *parts[n + 1:])
+    return parts
+
+
+def shown_key(key: str) -> str:
+    """The dotted *key* as a USER reads it (:func:`display_segments`)."""
+    return ".".join(display_segments(key.split(".")))
+
+
+def display_store_path(segments: Sequence[str], key_len: int | None = None) -> str:
+    """:func:`render_store_path` over :func:`display_segments` — the path for a USER."""
+    return render_store_path(display_segments(segments), key_len)
 
 
 def render_store_path(segments: Collection[str], key_len: int | None = None) -> str:

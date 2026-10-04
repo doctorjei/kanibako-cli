@@ -34,6 +34,7 @@ from kanibako.settings.settings_categories import DECLARATION_ROOT_REF, SECRET_V
 from kanibako.settings.settings_drops import writable_scopes
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
+    shown_key,
     DECLARED_AGENT_LEAVES,
     PATH_VALUED_AGENT_LEAVES,
     SCALAR_AGENT_LEAVES,
@@ -386,7 +387,7 @@ def _coerce_value(canonical: str, value: "str | None") -> object | None:
         if coerced is not None:
             return coerced
         return CoercionError(
-            f"Error: {canonical} expects a boolean "
+            f"Error: {shown_key(canonical)} expects a boolean "
             f"(true/false/1/0/yes/no), got {value!r}"
         )
     if kind == "int":
@@ -394,7 +395,7 @@ def _coerce_value(canonical: str, value: "str | None") -> object | None:
             return int(value)
         except ValueError:
             return CoercionError(
-                f"Error: {canonical} expects a whole number, got {value!r}"
+                f"Error: {shown_key(canonical)} expects a whole number, got {value!r}"
             )
     return value
 
@@ -538,7 +539,7 @@ def _scope_direction_error(
     if key_scope in allowed:
         return None
     return (
-        f"Error: '{canonical}' (scope '{key_scope}') cannot be set from the "
+        f"Error: '{shown_key(canonical)}' (scope '{key_scope}') cannot be set from the "
         f"{command_scope.value} scope. A config set writes keys of its own scope "
         f"and of scopes it contains (system ⊃ agent ⊃ workset ⊃ box, spec §0); "
         f"writing upward is refused. Set it at the {key_scope} scope instead."
@@ -602,7 +603,7 @@ def _typed_key_node(node_raw: str, *, prefix: str) -> str:
                 "The command line spells '%s.%s', but an agent's node is lowercase "
                 "(spec §0): it is read as '%s.%s'. Type the lowercase spelling; kanibako "
                 "accepts this one only with this warning.",
-                prefix, node_raw, prefix, node,
+                prefix, node_raw, prefix, display_agent_ref(node),
             )
     return node
 
@@ -836,7 +837,8 @@ def access_value_error(canonical: str, value: str) -> str | None:
         return None
     legal = " | ".join(ACCESS_TIERS)
     return (
-        f"Error: {canonical} must be one of {legal} (spec §2d); got {value!r}. "
+        f"Error: {shown_key(canonical)} must be one of {legal} (spec §2d); "
+        f"got {value!r}. "
         f"An unrecognized permission tier is REFUSED, never treated as "
         f"'{access_default()}'."
     )
@@ -1086,10 +1088,10 @@ def agent_leaf_table_error(canonical: str, *, verb: str) -> str | None:
     if leaf not in TABLE_VALUED_AGENT_LEAVES or not _names_agent_leaf(canonical, leaf):
         return None
     return (
-        f"Error: '{canonical}' holds a TABLE, not a scalar, so it cannot be {verb} from "
-        f"the command line — its entries are DATA inside the table, not keys of their "
-        f"own (spec §2d). Edit the '{leaf}' table in the settings file directly; the "
-        f"launch reads it from there."
+        f"Error: '{shown_key(canonical)}' holds a TABLE, not a scalar, so it "
+        f"cannot be {verb} from the command line — its entries are DATA inside the "
+        f"table, not keys of their own (spec §2d). Edit the '{leaf}' table in the "
+        f"settings file directly; the launch reads it from there."
     )
 
 
@@ -1207,7 +1209,7 @@ def box_agent_retired_error(
     # ⚑ The pointer names what ``--effective`` ACTUALLY RENDERS; do not promise
     # ``meta.box.agent.<key>``, which no renderer emits today.
     tail = canonical[len("box.agent."):]
-    agent = active_agent or "<agent>"
+    agent = display_agent_ref(active_agent) if active_agent else "<agent>"
     return (
         f"Error: '{canonical}' is RETIRED — a box no longer carries a settable "
         f"mirror of its agent's settings (spec §2b). Tweak the agent for THIS box "
@@ -1250,7 +1252,7 @@ def bare_agent_key_scope_error(
     """Refuse a WRITE-shaped op on a BARE agent behavior key at box / workset scope."""
     if not _is_agent_setting(canonical) or command_scope not in _NO_BARE_AGENT_KEY_SCOPES:
         return None
-    agent = active_agent or "<agent>"
+    agent = display_agent_ref(active_agent) if active_agent else "<agent>"
     if command_scope is ConfigLevel.box:
         return (
             f"Error: box-scope agent settings can't be {verb} bare (a bare agent "
@@ -1416,7 +1418,7 @@ def _pref_write_site_error(
     target = canonical[len(PREF_ROOT) + 1:]
     scope = target.split(".", 1)[0]
     hint = (
-        f" Set '{target}' directly at the {scope} scope instead."
+        f" Set '{shown_key(target)}' directly at the {scope} scope instead."
         if scope in _SCOPE_CONTAINMENT
         # ⚑ ...but NOT for a YAML-only target: there is no direct set to redirect to
         # (:func:`has_no_cli_write_route`), and naming one would prescribe a command
@@ -1424,7 +1426,7 @@ def _pref_write_site_error(
         and not has_no_cli_write_route(target) else ""
     )
     return (
-        f"Error: '{canonical}' cannot be {verb} from the {command_scope.value} "
+        f"Error: '{shown_key(canonical)}' cannot be {verb} from the {command_scope.value} "
         f"scope. A pref is a REQUEST written in a workset or box settings file "
         f"only (spec §2h) — that restriction is what bounds the resolution "
         f"recursion.{hint}"
@@ -1453,7 +1455,7 @@ def _pref_target_error(
     )
     if why is None:
         return None
-    return f"Error: '{canonical}' was refused: {why}."
+    return f"Error: '{shown_key(canonical)}' was refused: {why}."
 
 
 def _pref_sections_leaf(canonical: str) -> "tuple[tuple[str, ...], str]":

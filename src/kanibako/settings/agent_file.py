@@ -17,6 +17,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Final, Iterable, Iterator
 
+from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.agent_config import (
     AgentConfig,
     agent_settings_path,
@@ -814,7 +815,7 @@ def _refuse_nested_tables(
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
-    agent = node or "<agent>"
+    agent = display_agent_ref(node) if node else "<agent>"
     for sub_key, sub_val in root_tbl.items():
         if sub_key in _ROOT_TABLES or not isinstance(sub_val, dict):
             continue
@@ -884,7 +885,7 @@ def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> No
     ⚑ ``agent:``, ``workset:`` and ``box:`` ARE NOT STRAYS EITHER: they are READ (Q92, Q85,
     :data:`_CONTRIBUTED`).
     """
-    agent = node or "<agent>"
+    agent = display_agent_ref(node) if node else "<agent>"
     where = path if path is not None else "the agent settings file"
     passed = cascade_drop_set(FILE_SCOPE)
     for raw_key in raw:
@@ -974,9 +975,10 @@ def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) ->
     own = tables.get(_ROOT)
     where = path if path is not None else "the agent settings file"
     if _ROOT in tables and not isinstance(own, dict):
+        agent = display_agent_ref(node) if node else "<agent>"
         raise SettingsError(
             f"`{_ROOT}` in {where} holds {render_stored_scalar(own)}, but `{_ROOT}:` IS "
-            f"`agent.{node or '<agent>'}`, which names an agent's settings table, not a key "
+            f"`agent.{agent}`, which names an agent's settings table, not a key "
             f"(spec §2d).\n"
             f"  Fix: delete the `{_ROOT}` entry from {where}, or give it a table of this "
             f"agent's settings."
@@ -989,10 +991,11 @@ def _refuse_node_values(tables: dict, *, node: str | None, path: Path | None) ->
         if isinstance(other, dict):
             continue
         twice = ""
-        if own_id is not None and isinstance(own, dict) and own and _node_identity(seg) == own_id:
+        if node is not None and isinstance(own, dict) and own and _node_identity(seg) == own_id:
+            shown = display_agent_ref(node)
             twice = (
-                f" It also writes agent '{node}' a second time: `{_ROOT}:` IS "
-                f"`agent.{node}`, and neither may silently win (spec §0) — merged, this value "
+                f" It also writes agent '{shown}' a second time: `{_ROOT}:` IS "
+                f"`agent.{shown}`, and neither may silently win (spec §0) — merged, this value "
                 f"would replace every setting under `{_ROOT}:`."
             )
         raise SettingsError(
@@ -1036,7 +1039,8 @@ def _refuse_two_spellings(tables: dict, *, node: str | None, path: Path | None) 
             f"  `{file_spelling(a)}` and `{FILE_SCOPE}.{seg}.{b}`" for a, b in clashes
         )
         raise SettingsError(
-            f"{where} sets the same setting twice — `{_ROOT}:` IS `agent.{node}`, so each "
+            f"{where} sets the same setting twice — `{_ROOT}:` IS "
+            f"`agent.{display_agent_ref(node)}`, so each "
             f"pair below is ONE key written in two spellings, and neither may silently "
             f"win (spec §0):\n{pairs}\n"
             f"  Fix: keep one spelling of each and remove the other from {where}."
@@ -1052,8 +1056,6 @@ def refuse_node_spelled_twice(table: dict, *, prefix: str, path: Path | None) ->
     (:func:`_contribution`, over its ``agent:`` table) and the cascade's fold
     (``settings_assemble._fold_node_table``). *prefix* is the table's dotted address.
     """
-    from kanibako.agent_ref import display_agent_ref
-
     where = str(path) if path is not None else "<settings>"
     identity: dict[Any, Any] = {}
     for seg in table:
@@ -1215,6 +1217,7 @@ def _refuse_undeclared_state(
     ``settings_launch._refuse_undeclared_snapshot`` names them: the cure is a hand-edit, and one
     entry per attempt turns one edit into N.  An entry both passes find is named once.
     """
+    agent = display_agent_ref(node)
     found: dict[str, tuple[str, str]] = {}
     for shown, spelled, reason in entries:
         found.setdefault(spelled, (shown, reason))
@@ -1227,12 +1230,12 @@ def _refuse_undeclared_state(
     if len(found) == 1:
         (shown, reason), = found.values()
         head = (
-            f"the agent settings file for '{node}' carries '{shown}', which is not a "
+            f"the agent settings file for '{agent}' carries '{shown}', which is not a "
             f"settings key: {reason}."
         )
     else:
         head = (
-            f"the agent settings file for '{node}' has {len(found)} entries that are not "
+            f"the agent settings file for '{agent}' has {len(found)} entries that are not "
             f"settings keys:\n{lines}"
         )
     spelled = ", ".join(f"`{s}`" for s in found)
@@ -1243,7 +1246,7 @@ def _refuse_undeclared_state(
         f"very 'anything goes' behavior the closed keyspace replaces.\n"
         f"  Fix: remove {spelled} from {path or 'the agent settings file'} (or correct the "
         f"spelling), or clear every override with "
-        f"'kanibako agent reset {node} --all'."
+        f"'kanibako agent reset {agent} --all'."
     )
 
 
@@ -1294,6 +1297,7 @@ def _undeclared_entries(
     """
     from kanibako.settings.config_keys import agent_key_reason
     from kanibako.settings.settings_keyspace import (
+        display_store_path,
         render_store_path,
         undeclared_store_paths,
     )
@@ -1315,7 +1319,7 @@ def _undeclared_entries(
         )
         for segments, judgment in found:
             tail = render_store_path(segments[2:], max(judgment.key_len - 2, 0))
-            yield render_store_path(segments, judgment.key_len), spelling(tail), judgment.note
+            yield display_store_path(segments, judgment.key_len), spelling(tail), judgment.note
 
 
 def _str_keys(table: dict) -> dict:
