@@ -383,6 +383,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `\@` in a box destination is a literal `@`, as documented.** Before, it stopped every launch and
+  `box show --effective` with `unexpected unresolved @-reference in a box_dest`.
 - **A `$`, `@`, `\` or `~` in a directory name is now kept as part of the path.** Kanibako passed
   the directories it finds itself (your home and XDG directories, the box, the name it takes from its
   directory, and its workspace, the workset root and name, its channel and inbox addresses, the
