@@ -1562,15 +1562,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   indistinguishable from a username (`https:tok@host` reads like `user:pw@host`), both are
   redacted from the printed endpoint, and the error still names the `https://<host>` form it
   expected. ⚑ Scrubbed is not proven clean — the evidence block inherits the provider text's
-  documented residue, and `get` and `agent show` still print a settings-file endpoint as stored —
-  so it is still not safe to paste.
+  documented residue; `get` and `agent show` still print a settings-file endpoint as stored; and a
+  settings-file endpoint hand-written with an unescaped `@` (`https://user:key@host/v1`, not
+  `https://user:key\@host/v1`) still loses `@host` to reference expansion, so it prints the
+  credential and delivers the wrong URL — so it is still not safe to paste.
 
-- **A persona's endpoint, model, token path and env values are used exactly as the harness config
-  writes them.** They were read as settings expressions, so an `@` began a reference: in
+- **A persona's endpoint, model and env values are used exactly as the harness config writes them,
+  and its token path exactly as `.secret_path` resolves.** They were read as settings expressions, so an `@` began a reference: in
   `https://user:key@host/v1`, `@host` named no key and became empty, which delivered
   `ANTHROPIC_BASE_URL=https://user:key/v1` to the box and printed the credential, since no `@` was
   left to mark it. A `$`, `~` or `\` in a persona value was likewise expanded or refused as a
-  variable. Persona values are now literal text. A settings-file value is unchanged: it is still an
+  variable. Persona values are now literal text. The `.secret_path` pointer is unchanged: a `$VAR`
+  or `~` in it is still expanded and a relative path is still anchored to the persona directory; the
+  resulting path is then used as written. A settings-file value is unchanged: it is still an
   expression, and a literal `@` in it is still written `\@`.
 
 - **`kanibako upgrade` could not find its own repository in a git worktree.** It looked for a
