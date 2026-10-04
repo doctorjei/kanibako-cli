@@ -38,7 +38,10 @@ from pathlib import Path
 from typing import Any
 
 from kanibako.identifiers import find_identifier
+from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
+from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 from kanibako.errors import LegacyRegistryIdentityError, ProjectError
 
@@ -243,21 +246,24 @@ def resolve_workset_registry_path(
     """Return the resolved per-workset registry FILE path (pure; no global state).
 
     A set ``workset.registry`` repoint wins (relative anchors under *workset_root*);
-    anything else falls through to ``<workset_root>/registry.yaml``.
+    an UNSET one falls through to ``<workset_root>/registry.yaml``.
 
-    ⚑ A FIFTH FACE on the ONE no-snapshot route, alongside the four in
-    ``project/workset.py`` — ``workset.registry``'s spec default is
-    ``@meta.workset.path/registry.yaml`` like theirs, so it carries tokens like theirs
+    ⚑ A NINTH FACE on the ONE no-snapshot route (``project/workset.py``): its spec
+    default is ``@meta.workset.path/registry.yaml``, like the other faces', so it carries tokens
     and must not expand them privately.
+
+    🛑 A present ``null`` REFUSES, naming the key and the file: this file holds the
+    workset's MEMBERSHIP and its entry keys are the only source of box names, so the
+    default would read a file the user says is not there.
     """
-    repoint: Any = None
-    if isinstance(workset_settings, Mapping):
-        workset_table = workset_settings.get("workset")
-        if isinstance(workset_table, Mapping):
-            repoint = workset_table.get("registry")
+    from kanibako.project.workset import _workset_path_repoint
+
+    repoint = _workset_path_repoint(workset_settings, "registry")
+    if repoint is None:
+        raise SettingsError(ERR_CONFIG_NULL_PATH % (
+            workset_root / WORKSET_META_FILE, "workset.registry",
+        ))
     return resolve_workset_dir_key(
-        workset_root,
-        str(repoint) if repoint else None,
-        _REGISTRY_FILE,
-        key="registry",
+        workset_root, repoint if isinstance(repoint, str) else None,
+        _REGISTRY_FILE, key="registry",
     )

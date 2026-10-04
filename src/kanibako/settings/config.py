@@ -985,16 +985,15 @@ def refuses_null_path_key(canonical: str) -> bool:
     no CLI write route, carried only for the WHOLE rule.
 
     🛑 THE WORKSET DIR KEYS ARE A MIX, so the membership is the readers' answer and not
-    "is this a path key".  ``workset.boxes`` is one — no table carries it, it refuses a
-    null on its own reader on the launch path (``project.workset.resolve_workset_boxes``);
-    its leaf is :data:`BOXES_PATH`.  The others are not:
-    ``workset.workspaces: null`` MEANS "no workspace dir" (spec §2c), ``workset.logs:
-    null`` "no logs dir".
+    "is this a path key".  Two refuse a null on their own reader, and no table carries
+    either: ``workset.boxes`` (leaf :data:`BOXES_PATH`) and ``workset.registry``.  The
+    rest MEAN something: ``workset.workspaces: null`` is "no workspace dir" (spec §2c),
+    ``workset.logs: null`` "no logs dir".
     """
     return (
         canonical in SYSTEM_PATH_DEFAULTS
         or canonical in CONFIG_PATH_DEFAULTS
-        or canonical == f"workset.{BOXES_PATH}"
+        or canonical in (f"workset.{BOXES_PATH}", "workset.registry")
     )
 
 

@@ -5809,6 +5809,11 @@ workset's, a named workset's, or a standalone box's root file. A `null` written 
 v1.8.0-rc2 counts; `set --null workset.boxes` now refuses at the door with exit 1 and writes
 nothing.
 
+A `workset.registry` of `null` is refused the same way, on the primary workset's and a named workset's
+root file, not a standalone box's, which has no registry. While any workset carries it, a command that
+looks a box up by name refuses too, because it cannot read that workset's membership. Delete the
+`registry:` line to use `<workset>/registry.yaml`.
+
 **What changed.** In v1.8.0-rc2 a `null` `workset.boxes` was read as if the key were not set, so
 `workset connect` put the box under the default directory (`<workset>/boxes/`), while starting
 the box refused. A box store is not optional, so `null` now stops every command that resolves
@@ -6152,11 +6157,11 @@ a defaults file or built in Python.
 
 ### 2.104 `set --null` at a path key is refused at the door
 
-**Read this if you run `set --null` at a `system.*` path key or at `workset.boxes`.**
+**Read this if you run `set --null` at a `system.*` path key, or at `workset.boxes` or `workset.registry`.**
 
 **What changed.** In v1.8.0-rc2 `set --null` at one of these keys answered `Set <key>=null`, wrote
 the null, and every later command refused the file it had written. It now exits 1 and writes
-nothing. This covers every `system.*` path key, and `workset.boxes` at any scope.
+nothing. This covers every `system.*` path key, and `workset.boxes` and `workset.registry` at any scope.
 
 **What you see.**
 
