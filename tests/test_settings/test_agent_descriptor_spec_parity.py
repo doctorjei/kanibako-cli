@@ -11,15 +11,15 @@ existing check noticing.  This file is the mechanical form of the rule.
 
 ⚑ THE CLASSIFICATION IS NOT RESTATED HERE.  Which §2d cell states a value a descriptor
 is held to, which names a key only, and which states nothing at all is decided once, in
-``kinemata_views.classify_spec_cell``; the ``spec-2d-*`` kinemata views and this file
-both read that verdict, and neither restates its rules.  ``TestTheCellClassification``
+``kinemata_views.classify_spec_cell``; the ``agent-<node>-stated`` kinemata views and
+this file both read that verdict, and neither restates its rules.  ``TestTheCellClassification``
 pins the three classes it produces, so a cell that moves between them reds HERE.
 
 ⚑ THE DESCRIPTOR SIDE IS THE PRODUCTION WIRING, NOT A HAND-BUILT DICT.  Every value read
 here comes from ``get_target(node)().setting_descriptors()`` / ``.default_envs()`` for a
 plugin and from ``core_defaults.pseudo_tier_defaults()`` / ``env_default_categories()``
 for the pseudo-agent — the producers the launch itself reads, reached through
-``kinemata_views.agent_tier_defaults`` and ``agent_tier_declared``.
+``kinemata_views.agent_tier_defaults``.
 
 ⚑ SKIPS OFF-BOX, AND THAT MATTERS FOR HOW A CI GREEN IS READ.  The spec lives in the
 canon (``~/canon/workbook/specs/``, or wherever ``KANI_CANON`` points), outside this repo
@@ -27,8 +27,10 @@ and absent from CI, so a green run in CI is NOT evidence that this parity holds 
 evidence that the file did not run.  The pin holds only where the canon is mounted.
 Precedent and the same disclosure: ``tests/test_keyspec_extract.py``.
 
-⚑ SCOPE: THE VALUES EACH NODE STATES, AND THE KEYS IT NAMES.  Nothing here asserts
-anything about prose, realisations or provenance on either side — the ``access`` /
+⚑ SCOPE: THE VALUES EACH NODE STATES.  Keys are not compared: §2d ¶1 and §0 let a
+plugin define its own ``agent.<agent>.*`` leaves (goose's ``provider``), so a descriptor
+key §2d does not name is legal.  Nothing here asserts anything about prose,
+realizations or provenance on either side — the ``access`` /
 ``model`` / ``endpoint`` realization cells, the ``bootstrap`` notes and the
 dest-keyed ``[dest]`` entries are classified NOT EXPRESSIBLE and deliberately absent
 from every comparison below.
@@ -76,12 +78,6 @@ def value_disagreements(node: str) -> dict[str, tuple[str, str]]:
         for key in sorted(set(stated) & set(produced))
         if stated[key] != produced[key]
     }
-
-
-def unaccounted_declared_keys(node: str) -> list[str]:
-    """The keys the descriptor NAMES that no §2d row governs."""
-    governed = set(kinemata_views.node_spec_keys(node))
-    return sorted(set(kinemata_views.agent_tier_declared(node)) - governed)
 
 
 def fabricated_defaults(node: str) -> dict[str, str]:
@@ -148,14 +144,11 @@ def spec_edit(monkeypatch: pytest.MonkeyPatch):
         def without_row(section: str, marker: str):
             return [row for row in real(section, marker) if row[0] != drop]
 
-        monkeypatch.setattr(kinemata_views, "spec_fence_rows", without_row)
-        if drop in kinemata_views.node_spec_defaults(node):
-            return
-        assert drop not in kinemata_views.node_spec_keys(node), (
-            f"{drop} is a UNIVERSAL leaf, so §2d's generic per-agent row still "
-            f"governs it after its node-fence line is dropped — pick a row no other "
-            f"§2d row covers"
+        assert drop in kinemata_views.node_spec_defaults(node), (
+            f"{drop} is not a STATED §2d row for {node}, so dropping it tests nothing"
         )
+        monkeypatch.setattr(kinemata_views, "spec_fence_rows", without_row)
+        assert drop not in kinemata_views.node_spec_defaults(node)
     return apply
 
 
@@ -175,34 +168,11 @@ class TestTheControlsCanFail:
 
         assert fabricated_defaults("claude") == {"agent.claude.model": "opus"}
 
-    def test_a_key_the_spec_lacks_is_found(self, spec_mounted, descriptor_edit):
-        """A descriptor row for a leaf no §2d tier states — the shape of
-        `agent.goose.provider`, added here to a plugin that has no such row."""
-        assert "agent.claude.provider" not in kinemata_views.node_spec_keys("claude")
-
-        def add_a_leaf(doc: dict) -> None:
-            doc["behavior"].append(
-                {"key": "provider", "description": "LLM provider", "default": None}
-            )
-        descriptor_edit("claude", add_a_leaf)
-
-        assert unaccounted_declared_keys("claude") == ["agent.claude.provider"]
-
     def test_a_dropped_spec_row_is_found(self, spec_mounted, spec_edit):
-        """§2d losing a row the descriptor still declares must not silently pass.
-
-        ⚑ THE ROW DROPPED IS ONE NO OTHER §2d ROW GOVERNS.  `agent.claude.label` and
-        `agent.claude.transform` would not do: both are UNIVERSAL leaves, so the
-        "Generic, per-agent" row ``agent.<agent>.<key> | agent.default.<key>`` still
-        covers them after their node-fence line is gone, and the keys view is right
-        to keep them.  A `env.<VAR>` row is the plugin's own — §2d's default tier
-        states only `env.TERM` — which is what makes one the probe.
-        """
+        """§2d losing a row the descriptor still states must not silently pass: the
+        descriptor's value is then one §2d does not hold it to."""
         spec_edit("claude", "agent.claude.env.DISABLE_AUTOUPDATER")
 
-        assert unaccounted_declared_keys("claude") == [
-            "agent.claude.env.DISABLE_AUTOUPDATER"
-        ]
         assert fabricated_defaults("claude") == {
             "agent.claude.env.DISABLE_AUTOUPDATER": "1"
         }
@@ -211,6 +181,35 @@ class TestTheControlsCanFail:
         """The one notation rule, on a synthetic row rather than a real one."""
         assert kinemata_views.expand_braces("a.{x,y}.z") == ["a.x.z", "a.y.z"]
         assert kinemata_views.expand_braces("a.plain") == ["a.plain"]
+
+    def test_a_row_inside_an_html_comment_is_not_a_row(self, monkeypatch):
+        """A ``key | value`` example inside ``<!-- -->`` — inline or spanning lines —
+        is prose about a row, and the reader must not count it."""
+        fence = [
+            "agent.x.a | 1  real",
+            "<!-- agent.x.b | 2  inline -->",
+            "<!-- opens here",
+            "agent.x.c | 3  inside a multi-line comment",
+            "closes here -->",
+            "agent.x.d | 4  <!-- trailing note -->",
+        ]
+        monkeypatch.setattr(kinemata_views, "spec_fence", lambda section, marker: fence)
+
+        assert kinemata_views.spec_fence_rows("2d", "m") == [
+            ("agent.x.a", "1"), ("agent.x.d", "4"),
+        ]
+
+    def test_an_absence_value_states_no_default(self, monkeypatch):
+        """A floor of ``None`` or ``{}`` is what omitting the row yields, so a
+        descriptor may state a MEMBERSHIP cell's value or state nothing and read
+        the same; only a real value is produced."""
+        monkeypatch.setattr(kinemata_views, "_agent_tier_floors", lambda node: {
+            "agent.claude.none": None,
+            "agent.claude.empty": {},
+            "agent.claude.real": "x",
+        })
+
+        assert kinemata_views.agent_tier_defaults("claude") == {"agent.claude.real": "x"}
 
 
 # --------------------------------------------------------------------------- #
@@ -229,19 +228,6 @@ class TestTheCorporaAreNotEmpty:
                 f"§2d states no comparable default for {node} — the fence's row "
                 f"notation changed and this file is checking nothing"
             )
-
-    def test_every_node_declares_keys(self, spec_mounted):
-        for node in NODES:
-            assert kinemata_views.agent_tier_declared(node), (
-                f"{node}'s declaration names no agent.{node}.* key — the loader seam "
-                f"moved and this file is checking nothing"
-            )
-
-    def test_the_universal_leaves_resolve(self, spec_mounted):
-        assert kinemata_views.spec_universal_leaves(), (
-            "§2d's default tier declares no agent.default.* leaf — the keys view has "
-            "no vocabulary and every plugin leaf would read as unaccounted for"
-        )
 
     def test_a_plugin_states_something_the_spec_cannot_hold_it_to(self, spec_mounted):
         """Every plugin has a cell that states no default, so the
