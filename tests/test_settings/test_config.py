@@ -134,23 +134,33 @@ class TestLoadConfig:
         assert std.channels_common == std.channels / "common"
         assert std.channels_broadcast == std.channels / "chat" / "broadcast.md"
 
-    def test_null_value_resolves_to_default(self, tmp_path):
-        """A SETTINGS file with ``box: image: null`` resolves the key to its default.
+    def test_a_present_null_is_never_the_default(self, tmp_path):
+        """A settings file holding ``box: image: null`` does NOT resolve to the default.
 
-        ⚑ THE FILE MOVED, not the rule: the reset sentinel is a settings-tier idiom, and
-        the Layer-1 file cannot carry the key to reset.
+        # keyspec §2h, "Values are installed VERBATIM — including ``None``": "KEPT ``None``
+        # for a scalar leaf — the consumer reads None, never the key's default."  §2b
+        # declares no ``<None>`` for ``box.image``, so there is no consumer a null could
+        # mean anything to and the launch refuses rather than substituting the default.
         """
+        from kanibako.settings.settings_resolve import SettingsError
+
         box_file = tmp_path / BOX_META_FILE
         box_file.write_text("box:\n  image: null\n")
-        merged = load_merged_config(box_file)
-        assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        with pytest.raises(SettingsError) as excinfo:
+            load_merged_config(box_file)
+        assert "box.image" in str(excinfo.value)
+        assert str(box_file) in str(excinfo.value)
 
-    def test_empty_value_resolves_to_default(self, tmp_path):
-        """An empty ``image:`` (None) resolves the key to its built-in default."""
+    def test_an_empty_value_is_the_same_present_null(self, tmp_path):
+        """An empty ``image:`` parses to the same ``None`` an explicit ``null`` does, so
+        it answers the same way — it is the SAME present ``None``, not a third idiom."""
+        from kanibako.settings.settings_resolve import SettingsError
+
         box_file = tmp_path / BOX_META_FILE
         box_file.write_text("box:\n  image:\n")
-        merged = load_merged_config(box_file)
-        assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        with pytest.raises(SettingsError) as excinfo:
+            load_merged_config(box_file)
+        assert "box.image" in str(excinfo.value)
 
     def test_config_table_populates_config_paths(self, tmp_path):
         """[config] keys land in cfg.config_paths (full dotted names)."""
@@ -951,8 +961,8 @@ class TestScalarOverlayPrecedence:
     here, so these cases planted their LOWER value in it.  They plant it in the
     WORKSET tier now, which is a real settings file; the layers are built-in defaults
     < workset < box < CLI, and the overlay SEMANTICS under test — presence beats
-    absence, ``null``/empty resets to the built-in default, ``""`` is a real value —
-    are unchanged and are what these cases were always about.
+    absence, a present ``None`` is a value the default never replaces (keyspec §2h),
+    ``""`` is a real value — are unchanged and are what these cases were always about.
     """
 
     def test_no_machine_config_path_attribute(self):
@@ -1010,32 +1020,43 @@ class TestScalarOverlayPrecedence:
         )
         assert merged.box_image == default_img
 
-    def test_null_resets_to_default(self, tmp_path):
-        """A YAML ``null`` in a more-specific layer resets to the built-in
-        default, discarding a lower layer's non-default value."""
+    def test_a_present_null_in_a_higher_file_does_not_inherit(self, tmp_path):
+        """A ``null`` in the box tier over a workset value is a PRESENT ``None``, not a
+        request for the built-in default.
+
+        # keyspec §2h: "KEPT ``None`` for a scalar leaf — the consumer reads None, never
+        # the key's default."  The higher file's null does not reach down for the lower
+        # file's ``img:custom`` and does not fall back to the default either.
+        """
+        from kanibako.settings.settings_resolve import SettingsError
+
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image: null\n")
-        merged = load_merged_config(project_path, workset_path=workset_path
-        )
-        assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        with pytest.raises(SettingsError) as excinfo:
+            load_merged_config(project_path, workset_path=workset_path
+            )
+        assert "box.image" in str(excinfo.value)
 
-    def test_empty_value_resets_to_default(self, tmp_path):
-        """An empty ``foo:`` (parses to None) also resets to the built-in
-        default, same as an explicit ``null``."""
+    def test_an_empty_value_in_a_higher_file_does_not_inherit(self, tmp_path):
+        """The empty spelling (``image:``, which parses to ``None``) is the same present
+        ``None`` and answers the same way as an explicit ``null``."""
+        from kanibako.settings.settings_resolve import SettingsError
+
         workset_path = tmp_path / "ws-config.yaml"
         workset_path.write_text("box:\n  image: img:custom\n")
         project_path = tmp_path / BOX_META_FILE
         project_path.write_text("box:\n  image:\n")
-        merged = load_merged_config(project_path, workset_path=workset_path
-        )
-        assert merged.box_image == "ghcr.io/doctorjei/kanibako-oci:latest"
+        with pytest.raises(SettingsError) as excinfo:
+            load_merged_config(project_path, workset_path=workset_path
+            )
+        assert "box.image" in str(excinfo.value)
 
     def test_empty_string_is_a_real_value_not_unset(self, tmp_path):
         """``""`` is a real value distinct from ``null``: a lower layer sets a
         non-empty box_shell, a higher layer sets ``""`` and that ``""`` wins (it
-        does NOT reset to box_shell's built-in default, which is also "").
+        does NOT read as unset, so it is not the auto-detect a ``null`` asks for).
 
         (⮕ P7: was written against ``box_agent_name``, retired with spec §2b; the
         SHAPE under test is the presence-based scalar overlay, not that key.)"""
@@ -1051,11 +1072,18 @@ class TestScalarOverlayPrecedence:
         merged_ws_only = load_merged_config(workset_path=workset_path)
         assert merged_ws_only.box_shell == "foo"
 
-    def test_higher_layer_overrides_after_null(self, tmp_path):
-        """A null reset is not terminal: a higher layer (CLI override) can set a
-        concrete value afterward and it wins."""
+    def test_the_cli_layer_still_wins_over_a_files_value(self, tmp_path):
+        """The CLI is the most-specific LAYER, so its value wins over any file's.
+
+        The lower file carries a concrete value, not a ``null``: a ``null`` at
+        ``box.image`` is a present ``None`` the launch refuses, so it never reaches a
+        layer that could override it.
+
+        # keyspec §2h: "KEPT ``None`` for a scalar leaf — the consumer reads None, never
+        # the key's default" — which is why this case's lower value must be a real one.
+        """
         workset_path = tmp_path / "ws-config.yaml"
-        workset_path.write_text("box:\n  image: null\n")
+        workset_path.write_text("box:\n  image: img:ws\n")
         merged = load_merged_config(workset_path=workset_path,
             cli_overrides={"box_image": "img:cli"},
         )

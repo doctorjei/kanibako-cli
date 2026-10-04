@@ -2316,6 +2316,8 @@ def _run_box_config(args: argparse.Namespace) -> int:
         category_ctx = None
         category_error = None
         category_declared_by = None
+        # ⚑ The AGENT the box scalars resolve under, defaulted here because the block
+        # below that resolves it runs only for ``--effective`` and this call does not.
         agent_id = GENERAL_SLOT
         agent_cfg_path: Path | None = None
         if args.effective:
