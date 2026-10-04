@@ -1510,7 +1510,7 @@ def _refuse_downward_refs(
         if path is None:
             continue
         store = base_view if floor_store is not None else level
-        if not isinstance(store, dict):
+        if not isinstance(store, KeyStore):
             continue
         for segments, _is_node in walk_store_paths(store):
             key = ".".join(segments)

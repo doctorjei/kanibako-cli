@@ -6268,6 +6268,50 @@ Error: system.template is set to '@box.image/x', which points at '@box.image' �
 **What to do.** Reference a `@config.*` key or a system path key, or set the literal path. A value
 already stored by hand is read as before, and still fails `Unknown @-reference` until you change it.
 
+### A downward `@`-reference is refused
+
+**Read this if a `set` of yours now fails with *"DOWNWARD"*, if `workset share add` now fails with
+*"is not a config key"*, or if a command that reads your settings now fails with *"carry a DOWNWARD
+`@`-reference"* where it used to run.**
+
+**What changed.** Spec §0 says a key "may **view up** … and no `@`-ref points DOWNWARD", and it says
+so of RESOLVE as well as of the CLI. In v1.8.0-rc2 a `set` refused a downward ref only when its own
+cascade could not see the referent, so `system set workset.canon=@box.image/x` stored — `box.image` is
+in every snapshot, because the box scalars' declared defaults put it there. A value carrying BOTH a
+downward ref and a same-scope ref the command cannot see was forgiven whole. A downward ref the
+command cannot see was reported as a dangling `@`-reference rather than as downward. `workset share add`
+ran no reference check at all, so a source naming no config key was stored. And a downward ref
+HAND-WRITTEN into a settings file was read by the launch, which resolved `workset.canon: "@box.image/x"`
+into the canon mount. All four are refused now, naming the key and the ref; nothing is written, and a
+file that already holds one is refused at resolve until you edit it. A reference to the key's own scope
+or a containing one is unaffected, as is a `system.*` path value (it keeps the wording above) and a
+reference naming no level of the containment order (`@config.*`, `@meta.runtime.*`). A
+`workset.bindings.*` source reading a `box.*` or `meta.box.*` key is also unaffected: that is the
+box-dependent source `share list --effective` prints `(depends on the box)` for.
+
+**What you see.**
+
+```
+$ kanibako system set 'workset.canon=@{workset.channelroot}/@{box.image}'
+Error: 'workset.canon': '@{workset.channelroot}/@{box.image}' points at '@box.image' — DOWNWARD, into the box.* scope its key CONTAINS. A key may reference its own scope or one that CONTAINS it, never a scope it CONTAINS: the same value would then be read the same way by every scope below it (spec §0: no @-ref points DOWNWARD). Reference a key of the containing scope instead, or set the value you mean.
+
+$ kanibako workset share add ws1 '@{nope.zz}/x:/home/agent/data' --mode ro
+Error: workset.bindings.ro in /home/you/ws1/workset.yaml: the source '@{nope.zz}/x' references '@nope.zz', which is not a config key — 'nope' is not a declared namespace (declared: config, system, agent, workset, box, meta, pref) — the keyspace is CLOSED (spec §0). Nothing was written; reference a key that is one, or give a path that resolves on its own.
+
+$ kanibako box show b1 --effective
+Error: the settings this command reads carry a DOWNWARD @-reference:
+    - /home/you/.local/share/kanibako/global/settings.yaml: workset.canon: '@box.image/x' points at '@box.image' — DOWNWARD, into the box.* scope its key CONTAINS. … (spec §0: no @-ref points DOWNWARD). …
+  kanibako will not resolve these: the same value would then be read the same way by every scope below the one it points into.
+  Fix: edit the file named above BY HAND — remove the '@'-reference, or point it at a key of the same or a containing scope.
+```
+
+**What to do.** At a `set` door, point the value at a key of its own scope or a containing one, or store
+the literal path. A `pref.*` request is judged at its TARGET key, so `pref.agent.<agent>.<key>=@box.*`
+is refused the same way. At `share add`, reference a key that is one, or give a path that resolves on
+its own. For a value already in a file, the refusal names the file and the key: edit that line BY HAND
+— no verb removes a stored value, and `box show --effective` resolves through this same check, so it
+refuses too. Nothing is migrated for you.
+
 ### `set` refuses while a settings file it reads stores an entry that is not a key
 
 **Read this if a `set` you have scripted now fails with *"stores entries that are not keys"*, or if
