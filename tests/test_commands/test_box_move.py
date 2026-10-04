@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import os
 
+import pytest
+
 from kanibako.commands.box._lifecycle import run_move
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import load_doc
@@ -344,3 +346,40 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
         assert (dest / "f.txt").read_text() == "mine"
         # the user's own directory is never moved and never deleted through the link
         assert (real / "f.txt").read_text() == "mine"
+
+    def test_a_failed_move_of_a_symlinked_member_keeps_the_link(
+            self, config_file, tmp_home, credentials_dir, monkeypatch):
+        """Rollback deletes only what the op created: the user's ``workspaces/<name>`` link.
+
+        The target unwind released the record as an external member's discoverability
+        link and unlinked it; the restore then made an EMPTY in-tree dir in its place.
+        """
+        import shutil
+
+        import kanibako.commands.box._lifecycle as lc
+        from kanibako.project.workset import add_project, create_workset, load_workset
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        ws = create_workset("ws1", tmp_home / "ws1_root", std)
+        leaf = ws.workspaces_dir / "alpha"
+        leaf.mkdir(parents=True)
+        (leaf / "f.txt").write_text("mine")
+        add_project(ws, "alpha", leaf, std)
+        real = tmp_home / "real"
+        shutil.move(str(leaf), str(real))
+        leaf.symlink_to(real)
+        dest = tmp_home / "ext" / "alpha"
+
+        def boom(*a, **kw):
+            raise RuntimeError("injected late failure")
+        monkeypatch.setattr(lc, "write_box_enable_vault", boom)
+
+        with pytest.raises(RuntimeError, match="injected late failure"):
+            run_move(_move_args(leaf, dest))
+
+        assert leaf.is_symlink() and os.readlink(leaf) == str(real)
+        assert (real / "f.txt").read_text() == "mine"
+        assert not dest.exists()
+        member = next(p for p in load_workset(ws.root, "ws1").projects if p.name == "alpha")
+        assert member.source_path.resolve() == real.resolve()

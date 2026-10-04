@@ -1259,13 +1259,14 @@ def _unfollowed(path: Path) -> Path:
     return path.parent.resolve() / path.name
 
 
-def release_project(ws: Workset, name: str) -> WorksetProject:
+def release_project(ws: Workset, name: str, *, keep_link: bool = False) -> WorksetProject:
     """Drop *name*'s membership RECORD; ⚑ never deletes a directory.
 
     ⚑⚑ The ONE path a relocation may take out of a workset: the member's workspace leaf is
     left exactly as it is — a real dir, or an in-tree symlink the user placed there.  Only
     an EXTERNAL member's discoverability link (recorded path ≠ ``workspaces/<name>``) is
     unlinked, and only the link.  Its store is :func:`remove_member_store`.
+    *keep_link* skips that unlink (a rollback).
     """
     target = _find_member(ws, name)
 
@@ -1276,7 +1277,7 @@ def release_project(ws: Workset, name: str) -> WorksetProject:
     # DEFAULT place; unlink it there (never create anything), or a later in-tree member of
     # the same name would inherit the old external folder through it.
     link = resolve_workspaces_locator(ws.root, load_workset_settings_doc(ws.root)) / name
-    if (link.is_symlink()
+    if (not keep_link and link.is_symlink()
             and _unfollowed(target.source_path) != _unfollowed(link)):
         link.unlink()
 

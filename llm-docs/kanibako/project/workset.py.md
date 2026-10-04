@@ -767,11 +767,12 @@ root, and a test that reads `ws.root` alone calls the box's own workspace EXTERN
 roots is tested twice: *path* resolved, and *path*'s PARENT resolved with the leaf NOT followed, so
 a **symlinked** leaf is in-tree by the link that names it. External is the negation.
 
-⚑ It is ONE function because five sites must agree, and each of them is a deleter or a decision to
+⚑ It is ONE function because four sites must agree, and each of them is a deleter or a decision to
 copy nothing: `add_project`'s external wiring, the lifecycle's source-state `is_external`, its
 target-landing `internal`, and its membership guard. A second spelling is how a repointed leaf ends
 up read two ways in one op. `source_in_tree` is the root-only test and is NOT this one —
-`run_connect` and the launch-side null-bind refusal still use it.
+`run_connect` still uses it, and the launch-side null-bind refusal (`refuse_null_box_workspace`)
+calls the same root-only `_path_in_tree` directly.
 
 ### The up-front validation block (external only)
 
@@ -856,14 +857,17 @@ for `workset disconnect --remove-files`. Before the split, the relocation releas
 `remove_project(remove_files=True)` and deleted the source workspace before the copy that read it.
 
 ```python
-def release_project(ws: Workset, name: str) -> WorksetProject
+def release_project(ws: Workset, name: str, *, keep_link: bool = False) -> WorksetProject
 ```
 Drop *name*'s `boxes:` membership row (D10) and in-memory member. Raises `WorksetError` if no
 project with *name* exists. Deletes no directory: it unlinks `workspaces/<name>` only when that leaf
 is a symlink AND the member is EXTERNAL — its recorded path differs from the leaf, compared with the
 parent resolved and the leaf not followed. An in-tree leaf is left as it is, including a symlink the
 user put there: unlinking that would orphan the workspace the box records. ⚑ **Unlinking removes
-ONLY the link — never the user's external source directory.**
+ONLY the link — never the user's external source directory.** *keep_link* skips even that unlink:
+`_lifecycle._unwind_target_member` passes it because a rollback removes only the leaves the op
+created, and on a same-workset relocation a pre-existing `workspaces/<name>` symlink reads here as
+an external member's link.
 
 ```python
 def _member_store_bases(ws: Workset) -> tuple[Path, Path, Path]
