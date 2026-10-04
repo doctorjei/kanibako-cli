@@ -5843,6 +5843,17 @@ directory, or set `workset.workspaces` to the directory you want. To keep the `n
 working set, connect a directory outside it instead. A workspace that v1.8.0-rc2 created while the `null`
 was set is still under `<workset>/workspaces/`; to start its box again, delete the `workspaces:` line.
 
+### A box under a repointed `workset.workspaces` directory is part of its working set
+
+**Read this if a working set's `workset.workspaces` points outside its root, or a
+`workspaces/<name>` entry is a symlink.**
+
+**What changed.** If `workset.workspaces` points outside the working set's root, boxes there count
+as members, the same as boxes under `<root>/workspaces`. Moving one to another working set now
+needs `--move`, and converting one to primary or standalone in place is refused.
+
+**What to do.** Use `box convert … --move <path>`.
+
 ### A `null` workset vault, canon, template or channel root means no directory
 
 **Read this if a `<workset>/workset.yaml` sets `workset.vault_ro`, `workset.vault_rw`,

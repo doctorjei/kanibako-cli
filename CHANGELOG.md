@@ -343,6 +343,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A working-set box whose workspace sits under a repointed `workset.workspaces` directory, or
+  whose `workspaces/<name>` is a symlink, is now treated as the working set's own workspace, not as
+  a directory you connected from outside.** v1.8.0-rc2 read such a workspace as external.
+  `box convert --default` or `--standalone` in place reported success and overwrote or emptied it.
+  `box convert --workset <other>` in place recorded a workspace the other working set does not
+  hold. `box convert --workset <other> --move` reported success with an empty workspace and left
+  the files behind. `box move` to a directory outside the working set was refused with a message
+  calling the workspace your own directory. The in-place conversions are now refused like those of
+  any other box in the working set. `--move` copies the workspace, then removes the old directory,
+  or for a symlink removes only the link and prints `Note: left <target>; it is yours`. `box move`
+  now moves the box.
+
 - **A workset's own `workset.yaml` that is not valid YAML, or is a list or a single value, is now
   refused by every command, not only by `start`.** `workset info`, `workset list`, `workset get`,
   `workset share` and the box commands read it as no file at all, so every workset path silently
