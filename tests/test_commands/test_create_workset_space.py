@@ -438,6 +438,52 @@ class TestNoRefusalStrandsAMember:
         assert _tree(tmp_home) == before
         assert list(load_workset(root, "wsa").projects) == []
 
+    @pytest.mark.parametrize("over", [{"private": True}, {"agent": "claude"}],
+                             ids=["private-persist", "agent-persist"])
+    def test_a_failed_persist_undoes_the_member(
+        self, wsa, tmp_home, credentials_dir, monkeypatch, over,
+    ):
+        """A persist that fails after the membership write, before the journal entry,
+        leaves no member: nothing could recover it, and a ``--private`` box left
+        behind would forward the host credentials the user asked it not to."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import KanibakoError
+
+        root, _std = wsa
+        (root / "workspaces").mkdir(exist_ok=True)
+        monkeypatch.chdir(root)
+        monkeypatch.setattr(
+            "kanibako.settings.config_interface.set_config_value",
+            lambda *a, **kw: "Error: simulated persist failure",
+        )
+        before = _tree(tmp_home)
+        try:
+            rc = run_create(_args("pvbox", **over))
+        except KanibakoError:
+            rc = 1
+        assert rc == 1
+        assert _tree(tmp_home) == before
+        assert list(load_workset(root, "wsa").projects) == []
+
+    def test_a_kept_workspace_survives_the_undo(self, wsa, tmp_home, monkeypatch):
+        """The undo removes only what this create made: a workspace the user had is kept."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import KanibakoError
+
+        root, _std = wsa
+        mine = root / "workspaces" / "pvbox"
+        mine.mkdir(parents=True)
+        (mine / "notes.txt").write_text("keep")
+        monkeypatch.chdir(root)
+        monkeypatch.setattr(
+            "kanibako.settings.config_interface.set_config_value",
+            lambda *a, **kw: "Error: simulated persist failure",
+        )
+        before = _tree(tmp_home)
+        with pytest.raises(KanibakoError):
+            run_create(_args("pvbox", private=True))
+        assert _tree(tmp_home) == before
+
     def test_a_stale_box_dir_is_refused_and_left_alone(self, wsa, tmp_home, capsys, monkeypatch):
         from kanibako.commands.box._parser import run_create
 
