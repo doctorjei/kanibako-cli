@@ -1481,16 +1481,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A credential in a persona endpoint's userinfo no longer reaches the terminal.** The endpoint
   is user-configured and was printed raw, so `https://<token>@host/...` appeared intact in refusal
-  evidence, probe warnings, pre-flight errors, and the error that refuses a malformed endpoint.
-  Each of these now prints the endpoint userinfo-scrubbed through the one helper
-  (`https://<redacted>@host/...`): host, path and provenance stay legible, the credential does
-  not. A malformed endpoint is scrubbed too, since the error refusing it is where it gets printed;
-  where a missing `//` leaves a scheme indistinguishable from a username (`https:tok@host` reads
-  like `user:pw@host`), both are redacted from the printed endpoint, and the error still names the
-  `https://<host>` form it expected. ⚑ Scrubbed is not proven clean — a credential containing an
-  unencoded `/`, `?` or `#` is not recognized as userinfo and prints in whole or in part, and the
-  evidence block inherits the provider text's documented residue — so it is still not safe to
-  paste.
+  evidence, probe warnings, pre-flight errors, the error that refuses a malformed endpoint, and the
+  `endpoint` row of `box show --effective`. Each of these now prints the endpoint
+  userinfo-scrubbed through the one helper (`https://<redacted>@host/...`): host, path and
+  provenance stay legible, the credential does not. The redacted span runs to the LAST `@` in the
+  endpoint, so a credential carrying `/`, `?` or `#` goes whole; the accepted cost is
+  over-redaction, since a legitimate `@` in a path or query is not told from a credential
+  (`https://host/v1?a=b@x` prints as `https://<redacted>@x`). Only the printed text changes; the
+  endpoint is checked and delivered as written. A malformed endpoint is scrubbed too, since the
+  error refusing it is where it gets printed; where a missing `//` leaves a scheme
+  indistinguishable from a username (`https:tok@host` reads like `user:pw@host`), both are
+  redacted from the printed endpoint, and the error still names the `https://<host>` form it
+  expected. ⚑ Scrubbed is not proven clean — the evidence block inherits the provider text's
+  documented residue, and `get` and `agent show` still print a settings-file endpoint as stored —
+  so it is still not safe to paste.
+
+- **A persona's endpoint, model, token path and env values are used exactly as the harness config
+  writes them.** They were read as settings expressions, so an `@` began a reference: in
+  `https://user:key@host/v1`, `@host` named no key and became empty, which delivered
+  `ANTHROPIC_BASE_URL=https://user:key/v1` to the box and printed the credential, since no `@` was
+  left to mark it. A `$`, `~` or `\` in a persona value was likewise expanded or refused as a
+  variable. Persona values are now literal text. A settings-file value is unchanged: it is still an
+  expression, and a literal `@` in it is still written `\@`.
 
 - **`kanibako upgrade` could not find its own repository in a git worktree.** It looked for a
   `.git` directory, but in a worktree `.git` is a file (`gitdir: …`), so `upgrade` failed with
