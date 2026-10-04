@@ -18,6 +18,7 @@ _SHIPPED = {
     "fd-find": ["fdfind"],
     "openssh-client": ["ssh"],
     "bubblewrap": ["bwrap"],
+    "jq": ["jq"],
 }
 
 
@@ -51,6 +52,7 @@ class TestShippedDefault:
         assert ("fd-find", "fdfind") in pairs
         assert ("openssh-client", "ssh") in pairs
         assert ("bubblewrap", "bwrap") in pairs
+        assert ("jq", "jq") in pairs
         # Sorted by (package, executable).
         assert pairs == sorted(pairs)
 
@@ -109,6 +111,15 @@ class TestVerify:
         # Everything present except 'rg'.
         missing = baseline.verify(lambda exe: exe != "rg")
         assert missing == [("ripgrep", "rg")]
+
+    def test_verify_reports_jq_missing_by_name(self) -> None:
+        """A box without jq is reported missing by name, not passed over."""
+        missing = baseline.verify(lambda exe: exe != "jq")
+        assert missing == [("jq", "jq")]
+
+    def test_verify_jq_present_passes(self) -> None:
+        """A box with every baseline tool, jq included, verifies clean."""
+        assert baseline.verify(lambda exe: True) == []
 
 
 class TestInstallCommand:
