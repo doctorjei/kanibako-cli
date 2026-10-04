@@ -34,12 +34,12 @@ from kanibako.project.workset import (
     add_project,
     create_workset,
     delete_workset,
+    is_in_tree_workspace,
     list_worksets,
     load_workset,
     refuse_null_workspaces,
     remove_project,
     resolve_workset_name,
-    source_in_tree,
 )
 
 if TYPE_CHECKING:
@@ -568,14 +568,39 @@ def run_connect(args: argparse.Namespace) -> int:
     source = Path(args.source) if args.source else Path(os.getcwd())
     project_name = args.project_name or source.resolve().name
 
-    # ⚑ BOTH REFUSALS BELOW FIRE BEFORE THE JOURNAL BRACKET, so a refused connect leaves
+    # ⚑ EVERY REFUSAL BELOW FIRES BEFORE THE JOURNAL BRACKET, so a refused connect leaves
     # no pending ``connect`` entry behind (``add_project`` refuses the same null case for
     # its other callers).
-    if source_in_tree(ws, source):
+    #
+    # ⚑⚑ IN-TREE IS ``is_in_tree_workspace`` ON THE RESOLVED SOURCE — the call
+    # ``add_project`` makes; a root-only test walks past a REPOINTED workspaces key.
+    resolved = source.resolve()
+    if is_in_tree_workspace(ws, resolved):
         try:
             refuse_null_workspaces(ws.root, f"a workspace for '{project_name}'")
         except WorksetError as e:
             print(f"Error: {e}", file=sys.stderr)
+            return 1
+        # ⚑ ``connect`` REGISTERS a member; it CREATES none.  The ONE in-tree source it
+        # takes is the member's own leaf ``workspaces/<name>`` — the dir ``add_project``
+        # records; any other in-tree dir would record a SIBLING, an empty workspace.
+        workspaces = ws.workspaces_dir
+        leaf = workspaces.resolve() / project_name if workspaces is not None else None
+        if (leaf is None or resolved.parent != leaf.parent
+                or resolved.name != project_name or not resolved.is_dir()):
+            if (leaf is not None and resolved.parent == leaf.parent
+                    and resolved.name != project_name):
+                why = (f"its directory name '{resolved.name}' and --name "
+                       f"'{project_name}' differ")
+            else:
+                why = ("it is inside the working set root or its workspaces "
+                       "directory, not a project")
+            print(
+                f"Error: Cannot connect '{resolved}': {why}. 'connect' registers a "
+                f"member and creates none — it takes an existing "
+                f"'{ws.name}/workspaces/{project_name}' directory.",
+                file=sys.stderr,
+            )
             return 1
     elif not source.is_dir():
         # ⚑ ``connect`` REGISTERS an EXTERNAL dir; a dangling symlink is PRESENT, not missing.
