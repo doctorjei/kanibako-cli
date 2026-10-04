@@ -54,7 +54,7 @@ def null_path_keys_error(path: Path, keys: Iterable[str], *, cure: str=ERR_CONFI
 def refuses_null_path_key(canonical: str) -> bool
 def usable_box_store_value(value: object) -> bool
 def refuses_box_store_value(canonical: str, value: object) -> bool
-def chain_bad_entries(value: object, bad: Iterable[str], *, stored: 'Callable[[str], object]') -> list[str]
+def chain_bad_entries(value: object, bad: Iterable[str], *, key: str, stored: 'Callable[[str], object]') -> list[str]
 def refuses_null_box_scalar(canonical: str) -> bool
 def system_path_ref_error(canonical: str, value: 'str | None') -> 'str | None'
 def _layer1_settings_keys(data: dict) -> list[str]
