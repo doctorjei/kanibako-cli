@@ -69,6 +69,137 @@ def _std(config_file):
 
 
 # ---------------------------------------------------------------------------
+# `create` at a path a NAMED box already holds → refused, nothing written
+# ---------------------------------------------------------------------------
+
+def _connected_member(tmp_home, std, *, name="extbox", dirname="ext"):
+    """A workset with ONE externally-connected member at ``tmp_home/<dirname>``."""
+    from kanibako.project.workset import add_project, create_workset
+
+    ws = create_workset("wsa", tmp_home / "wsa", std)
+    member = tmp_home / dirname
+    member.mkdir()
+    add_project(ws, name, member, std)
+    return member
+
+
+class TestCreateRefusesNamedBoxWorkspace:
+    """The PATH half of "one record per project" at the ``create`` door.
+
+    ``create`` picked a PRIMARY box name from the path, so a path a NAMED box
+    already holds collided with nothing the NAME guard could see — and the box
+    it made was then unreachable, because the ancestor-walk detection resolves
+    that directory to the named box.
+    """
+
+    def test_create_at_a_connected_path_is_refused(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.paths import load_primary_boxes
+
+        _config, std = _std(config_file)
+        member = _connected_member(tmp_home, std)
+
+        assert run_create(_create_args(member)) == 1
+        err = capsys.readouterr().err
+        assert "already the workspace of named box 'extbox'" in err
+        assert "in workset 'wsa'" in err
+        # The WRITE is what the refusal is for: no membership row, no box dir.
+        assert load_primary_boxes(std.primary_workset) == {}
+        assert not any(std.boxes.iterdir()) if std.boxes.exists() else True
+
+    def test_create_inside_a_connected_path_is_refused(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The resolver matches the DEEPEST registered ANCESTOR, as ``connect`` does."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.paths import load_primary_boxes
+
+        _config, std = _std(config_file)
+        member = _connected_member(tmp_home, std)
+        inner = member / "deep" / "inner"
+        inner.mkdir(parents=True)
+
+        assert run_create(_create_args(inner)) == 1
+        assert "already the workspace of named box 'extbox'" in capsys.readouterr().err
+        assert load_primary_boxes(std.primary_workset) == {}
+
+    def test_force_does_not_override_the_path(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """``--force`` overrides the CROSS-KIND name check only (spec § Detection & import)."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.paths import load_primary_boxes
+
+        _config, std = _std(config_file)
+        member = _connected_member(tmp_home, std)
+
+        assert run_create(_create_args(member, force=True)) == 1
+        assert "--force does not override this" in capsys.readouterr().err
+        assert load_primary_boxes(std.primary_workset) == {}
+
+    def test_a_neighbour_path_is_not_refused(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The guard is the OWNING PATH, not the containing directory."""
+        from kanibako.commands.box._parser import run_create
+
+        _config, std = _std(config_file)
+        _connected_member(tmp_home, std)
+        neighbour = tmp_home / "ext2"
+        neighbour.mkdir()
+
+        assert run_create(_create_args(neighbour)) == 0
+        assert "already the workspace of named box" not in capsys.readouterr().err
+
+    def test_an_in_tree_member_is_not_refused(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """A member under the workset's own ``workset.workspaces`` is its path space.
+
+        ``create`` there makes a NAMED box; the resolver skips these, so this
+        guard never claims them.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.project.workset import add_project, create_workset
+
+        _config, std = _std(config_file)
+        ws = create_workset("wsa", tmp_home / "wsa", std)
+        member = ws.root / "workspaces" / "m1"
+        member.mkdir(parents=True)
+        add_project(ws, "m1", member, std)
+
+        assert run_create(_create_args(member)) == 0
+        assert "already the workspace of named box" not in capsys.readouterr().err
+
+    def test_the_cure_the_refusal_names_actually_works(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The named cure is the verb the refusal prints, run as printed."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.paths import load_primary_boxes
+
+        _config, std = _std(config_file)
+        member = _connected_member(tmp_home, std)
+
+        assert run_create(_create_args(member)) == 1
+        cure = "kanibako workset disconnect wsa extbox --force"
+        assert cure in capsys.readouterr().err
+
+        from kanibako.commands.workset_cmd import run_disconnect
+        import argparse
+
+        assert run_disconnect(argparse.Namespace(
+            workset="wsa", project="extbox", force=True, remove_files=False,
+        )) == 0
+        capsys.readouterr()
+        # The path is free now, so the same create that was refused succeeds.
+        assert run_create(_create_args(member)) == 0
+        assert list(load_primary_boxes(std.primary_workset)) == ["ext"]
+
+
+# ---------------------------------------------------------------------------
 # Launch on an ABSENT box → exact error + non-zero exit (no box materialized)
 # ---------------------------------------------------------------------------
 

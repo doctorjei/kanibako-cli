@@ -34,6 +34,7 @@ from kanibako.settings.paths import (
     box_tree_materialized,
     box_workset_settings_paths,
     check_primary_box_name_free,
+    check_workspace_not_named_box,
     designation_route,
     iter_projects,
     iter_workset_projects,
@@ -863,6 +864,14 @@ def run_create(args: argparse.Namespace) -> int:
             )
             # ⚑ I4 data-loss guard — the HOME check the name check above does not make.
             _assert_primary_home_free_for_create(std, args.name)
+        except ProjectError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    # ⚑ The PATH's conflict arm — the NAME arm above cannot see this collision.
+    if not args.standalone:
+        try:
+            check_workspace_not_named_box(std, str(effective_path))
         except ProjectError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
