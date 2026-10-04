@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Mapping, NamedTuple
 
 from kanibako.settings.config import (
+    _BOX_SCALAR_FIELDS,
     _LAYER1_TABLE,
     agent_settings_of,
     chain_bad_entries,
@@ -46,9 +47,8 @@ from kanibako.settings.messages import (
     WARN_CONFIG_BAD_ENTRIES,
 )
 from kanibako.settings.config_display import (
-    _flatten_bind_map,
     _nested_settings_overrides,
-    _pref_overrides,
+    flatten_under,
     _print_category_block,
     _print_pref_block,
 )
@@ -141,7 +141,6 @@ from kanibako.errors import KanibakoError, UserCanceled
 from kanibako.log import get_logger
 from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.settings_categories import (
-    ABSTRACT_CATEGORIES,
     refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_keyspace import (
@@ -2432,8 +2431,8 @@ def reset_all(
             # The agent table is agent-keyed; clear every agent's subsection, "default" included.
             for agent, sec in list(agent_tbl.items()):
                 if isinstance(sec, dict):
-                    # ⚑ COUNTED PER NODE, ONCE, and BEFORE the removals, and NOT INTO
-                    # *count*: no verb lists a persona node.
+                    # ⚑ COUNTED PER NODE, ONCE, and BEFORE the removals; *count* already
+                    # holds the rows ``show`` lists for these leaves.
                     swept.add("agent")
                     removed += count_leaves(sec)
                     for k in list(sec):
@@ -2633,43 +2632,6 @@ def _misplaced_config_entries(data: dict) -> dict[str, str]:
     }
 
 
-def _abstract_declarations(data: dict, scope: str) -> dict[str, str]:
-    """*scope*'s OWN ABSTRACT-category declarations in a settings doc — ``key → value``.
-
-    Spec §0 on ``common`` / ``caches`` / ``seeded``: *"They remain real, declared keys: a
-    user sets them in YAML …, ``config show`` lists them"* — an obligation on the PLAIN
-    view, which ``--effective`` (the sibling clause, the derivation block) does not discharge.
-
-    ⚑ ROWS RENDER THROUGH :func:`_flatten_bind_map`, the renderer
-    :func:`_nested_settings_overrides` uses for the same tables, so a declaration cannot be
-    shown one way here and another way at the system noun.  Reading only the category tables
-    is what lets it run at a noun whose settings file IS its config file — see the call site.
-
-    ⚑ *scope* SELECTS THE NOUN'S OWN TABLE: the doc may carry other top-level tables,
-    ``pref:`` and hand-written junk included, and only the noun's own declarations are its
-    rows.  A table naming a CONTAINING scope (a ``workset:`` table hand-pasted into a
-    box's file) never gets this far — *data* is the file as the cascade reads it
-    (:func:`_noun_stored_view`), and directional enforcement has already dropped it there
-    (spec §0), so this filter is not the carrier of that rule.
-
-    ⚑ READ OFF THE STORED STRUCTURE, never a rendered row: a declaration is a DICT stored at
-    ``<scope>.<category>``, and its rows come from the one bind-map renderer the flatten
-    uses (:func:`_flatten_bind_map`), so label and value keep one spelling.  Re-parsing a
-    row's ``[`` would list an undeclared stored key that merely HOLDS one
-    (``box: {"caches[/foo]": …}``) as a declaration; such a key stays in the undeclared
-    block alone.
-    """
-    out: dict[str, str] = {}
-    table = data.get(scope)
-    if not isinstance(table, dict):
-        return out
-    for cat in ABSTRACT_CATEGORIES:
-        entries = table.get(cat)
-        if isinstance(entries, dict):
-            _flatten_bind_map(entries, f"{scope}.{cat}", out)
-    return out
-
-
 def _dropped_tables_get_reads(
     path: "Path | None", command_scope: ConfigLevel,
 ) -> list[str]:
@@ -2751,24 +2713,43 @@ def _shown_entries(
         if f"agent.default.{k}" not in not_overrides
     ]
 
-    # A NOUN THAT KEEPS ITS SETTINGS APART: the nested settings-tier overrides ARE
-    # overrides at this level.
-    if _keeps_settings_apart(command_scope):
+    rows += [
+        (label, v) for k, (label, v) in sorted(_persona_node_rows(stored).items())
+        if k not in not_overrides
+    ]
+
+    # ⚑ ONE FLATTEN AT EVERY NOUN: the nested tables, ``pref:`` included, are
+    # overrides at this level.  With no noun there is no level, and ``reset --all``
+    # clears no nested table either.  The box noun's settings file IS its config file,
+    # so its box scalars are already rows above (``load_project_overrides``) and are
+    # left out here rather than printed twice.
+    if command_scope is not None:
         nested = _nested_settings_overrides(stored)
+        if not _keeps_settings_apart(command_scope):
+            nested = {k: v for k, v in nested.items() if k not in _BOX_SCALAR_FIELDS}
         rows += [(k, v) for k, v in sorted(nested.items()) if k not in not_overrides]
-    else:
-        # THE BOX NOUN, whose settings file IS its config file.  A whole-file
-        # flatten here would print the box scalars and the ``pref`` requests a
-        # SECOND time, so it is NARROWED to the ABSTRACT declarations, which
-        # nothing else in this branch can see.
-        rows += sorted(_abstract_declarations(stored, ConfigLevel.box.value).items())
-        # ``pref`` REQUESTS stored at this noun (§2h) ARE overrides at this level —
-        # the ones that are KEYS.  ⚑ SUBTRACTED like the nested block above.
-        rows += [
-            (k, v) for k, v in sorted(_pref_overrides(config_path).items())
-            if k not in not_overrides
-        ]
     return _ShownEntries(rows, undeclared, misplaced, stored)
+
+
+def _persona_node_rows(stored: dict) -> dict[str, tuple[str, str]]:
+    """Every persona node's entries in *stored* — ``stored key → (label, value)``.
+
+    The ``default`` node is not here: ``agent_settings_of`` lists it, relative to the
+    node.  The LABEL spells the node for the user (``+``); the key keeps the stored
+    spelling, which is the one the undeclared entries are subtracted in.
+    """
+    agent = stored.get("agent")
+    if not isinstance(agent, dict):
+        return {}
+    out: dict[str, tuple[str, str]] = {}
+    for node, sec in agent.items():
+        if node == "default" or not isinstance(sec, dict):
+            continue
+        for tail, value in flatten_under(f"agent.{node}.", sec).items():
+            out[f"agent.{node}.{tail}"] = (
+                f"agent.{display_agent_ref(node)}.{tail}", value,
+            )
+    return out
 
 
 def show_config(
@@ -2803,8 +2784,8 @@ def show_config(
     # level's own ``config_path``.
     settings_src = noun_settings_file(config_path, system_settings_path)
     # ⚑ AS THE CASCADE READS IT (:func:`_noun_stored_view`): every block below that shows a
-    # table the cascade could drop takes *stored*; the box scalars and ``_pref_overrides`` read
-    # *config_path*, whose ``box:``/``pref:`` tables the cascade never drops at the box.
+    # table the cascade could drop takes *stored*; the box scalars read *config_path*, whose
+    # ``box:`` table the cascade never drops at the box.
     stored = _noun_stored_view(settings_src, command_scope)
 
     if effective:
@@ -2917,11 +2898,6 @@ def show_config(
         # same string, and matching them would need this display to re-derive the agent
         # tier's key form — a second opinion about a key's spelling, which is the thing
         # this module is not allowed to hold.
-        # ⚑ SCOPED TO THE CLAUSE, not to the file: ``bindings.{ro,rw}``/``masks``/
-        # ``synced``/``env``/``secret_path`` stored at a box stay unlisted above, as
-        # they were — no clause obliges them, and for ``secret_path`` [R149] reads
-        # the other way ("you may not want your secret files - even just locations
-        # - being dumped to the terminal").
         if undeclared:
             print(
                 f"  (undeclared — stored in {settings_src}, not keys (spec §0); "

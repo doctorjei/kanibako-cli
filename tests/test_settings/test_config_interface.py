@@ -1121,12 +1121,8 @@ class TestResetAll:
         # file counts each entry, as a scope table's does (``config_io.count_leaves``).
         # (Mutation: count ``+= 1`` per key again → "2" → RED.)
         #
-        # ⚑ THE UNIT IS UNCHANGED, THE BUCKET IS NOT.  A ``claude`` node is a PERSONA
-        # node, and no verb lists one, so these three leaves are reported in the second
-        # clause rather than among the overrides.  The claim this test has always made —
-        # an ``env:`` table of two variables is 2, not 1 — is kept, and the sibling case
-        # that IS listed (the ``default`` node) is the control in
-        # ``TestResetAllCountsWhatShowLists``.
+        # ⚑ A ``claude`` node is a PERSONA node, which ``show`` lists entry by entry,
+        # so these three leaves are three overrides.
         cf = tmp_path / "kanibako.cfg"
         ssp = tmp_path / "system.yaml"
         dump_doc(ssp, {"agent": {"claude": {"model": "opus", "env": {"A": "1", "B": "2"}}}})
@@ -1134,7 +1130,7 @@ class TestResetAll:
             config_path=cf, force=True, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
         )
-        assert msg == "No overrides to reset; also removed 3 unlisted entries.", msg
+        assert msg == "Reset 3 override(s).", msg
         assert "agent" not in load_doc(ssp), load_doc(ssp)
 
     def test_reset_all_without_scope_leaves_nested_tables(self, tmp_path):
@@ -1176,12 +1172,9 @@ class TestResetAllCountsWhatShowLists:
     assertion is the agreement rather than a number copied from today's output.
     """
 
-    def test_a_persona_node_is_removed_but_never_listed(self, tmp_path):
-        """A persona node (``agent.claude``) is not a row at any noun:
-        :func:`~kanibako.settings.config.agent_settings_of` renders the ``default``
-        node alone, and the nested flatten skips ``agent`` outright, so ``show``
-        says "(no overrides)" over exactly these three leaves — yet the sweep
-        removes them, and the message must claim no override for them.
+    def test_a_persona_node_is_listed_and_counted(self, tmp_path):
+        """A persona node (``agent.claude``) in the system settings file is three
+        rows of ``show``, and the sweep that removes it counts those three rows.
         """
         global_cfg = tmp_path / CONFIG_FILENAME
         global_cfg.write_text("")
@@ -1196,15 +1189,16 @@ class TestResetAllCountsWhatShowLists:
             system_settings_path=ssp, command_scope=ConfigLevel.system, file=buf,
         )
         out = buf.getvalue()
-        assert _override_rows(out) == [], out
-        assert "(no overrides)" in out, out
+        rows = _override_rows(out)
+        assert rows == [
+            "agent.claude.env.A = 1", "agent.claude.env.B = 2", "agent.claude.model = opus",
+        ], out
 
         msg = reset_all(
             config_path=global_cfg, force=True, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
         )
-        # ⚑ NO OVERRIDE IS CLAIMED, AND THE SHRINK IS STILL VISIBLE.
-        assert msg == "No overrides to reset; also removed 3 unlisted entries.", msg
+        assert msg == f"Reset {len(rows)} override(s).", msg
         # ⚑ WHAT IT CLEARS IS UNCHANGED: the node went with the rest.
         assert load_doc(ssp) == {}, load_doc(ssp)
 
@@ -1283,7 +1277,7 @@ class TestResetAllCountsWhatShowLists:
             config_path=global_cfg, force=True, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
         )
-        assert msg == "No overrides to reset; also removed 3 unlisted entries.", msg
+        assert msg == "Reset 3 override(s).", msg
         assert "agent" not in load_doc(ssp), load_doc(ssp)
 
     def test_box_a_dropped_agent_table_is_not_counted_as_overrides(self, tmp_path):
@@ -7398,10 +7392,13 @@ class TestStoredViewMarksUndeclaredEntries:
         ``box.masks./in/box/thing`` — a working entry reported as junk.
         """
         out = self._show(tmp_path, self._DIRTY, capsys)
+        marked = out.split("(undeclared", 1)[1]
         for stored in ("/on/host", "/in/box/thing", "MY_VAR"):
             assert f"box.bindings.ro.{stored}" not in out
             assert f"box.masks.{stored}" not in out
-        assert "box.env.MY_VAR" not in out
+        assert "box.env.MY_VAR" not in marked, out
+        # ⚑ AND IT IS LISTED, as the override it is.
+        assert "  box.env.MY_VAR = bar" in out.split("(undeclared", 1)[0], out
 
     def test_a_DECLARED_but_dropped_table_is_NOT_marked(self, tmp_path, capsys):
         """An ``agent:`` table in a ``box.yaml`` is discarded by DIRECTIONAL
