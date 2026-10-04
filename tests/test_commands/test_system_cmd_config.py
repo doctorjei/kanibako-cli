@@ -625,6 +625,176 @@ class TestSystemSetJudgesTheNodeAsGetDoes:
         assert f"{key}=x" in capsys.readouterr().out
 
 
+class TestSystemGetReadsTheNodeKeysTheNounFileHolds:
+    """Plain ``system get`` answers for a per-node key stored in the NOUN's own file.
+
+    THE DEFECT: a per-node ``agent.<node>.<tail>`` is stored in EITHER the node's own
+    ``agents/<node>/agent.yaml`` OR the ``agent: <node>:`` map of the system settings
+    file — the agent level outranks the system level (spec §2), so the system file's
+    row is a downward key it stores, and the launch cascade reads both. The read
+    resolved the node's own file alone, so a value the system file holds came back
+    ``(not set)`` at rc 0: a ``get`` reader that did not read what the launch delivers.
+
+    ⚑ ONE KEY, TWO HOMES, AND THE SECOND IS ASKED ONLY ON A MISS — so the node's own
+    file keeps the precedence the cascade settles it by. The engine half of this, and the
+    scope the second home stands down outside, are ``test_config_interface``'s
+    ``TestPerNodeGetReadsTheNounFileOnlyWhereTheCascadeKeepsIt``; this class is the
+    ``system`` verb the row names, driven through ``run_get``.
+    """
+
+    def _seed_noun_file(self, std, sections, leaf, value):
+        """The NOUN's settings file, at the address the keyspace declares."""
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        write_nested_key(std.settings, sections, leaf, value)
+
+    def _seed_node_file(self, std, node, sections, leaf, value):
+        """The node's OWN store, at the address ``agent_file._read_address`` produces."""
+        path = std.agents / store_dirname(node) / "agent.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_nested_key(path, ("self", *sections), leaf, value)
+
+    def test_the_env_value_the_system_file_holds_is_read_not_faked(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The reported key, through the real handler with the args the CLI passes."""
+        std = _std(config_file)
+        self._seed_noun_file(std, ("agent", "claude", "env"), "X", "from-system-file")
+        capsys.readouterr()
+        assert _get("agent.claude.env.X") == 0
+        assert capsys.readouterr().out == "agent.claude.env.X=from-system-file\n"
+
+    @pytest.mark.parametrize(
+        ("node_table", "key"),
+        [
+            ({"env": {"X": "the-system-file-value"}}, "agent.claude.env.X"),
+            ({"model": "the-system-file-value"}, "agent.claude.model"),
+            ({"label": "the-system-file-value"}, "agent.claude.label"),
+            (
+                {"secret_path": {"TOK": "the-system-file-value"}},
+                "agent.claude.secret_path.TOK",
+            ),
+            (
+                {"bindings": {"ro": {"/box/share": ["the-system-file-value"]}}},
+                "agent.claude.bindings.ro./box/share",
+            ),
+        ],
+    )
+    def test_every_family_of_that_one_source_is_read_too(
+        self, config_file, tmp_home, capsys, node_table, key,
+    ):
+        """ONE SOURCE, EVERY FAMILY — the two scalar categories, a flat state leaf, and
+        the R-9 bind read, all of which the node-file-only read refused alike."""
+        std = _std(config_file)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(std.settings, {"agent": {"claude": node_table}})
+        capsys.readouterr()
+        assert _get(key) == 0
+        out = capsys.readouterr().out
+        assert "(not set)" not in out, out
+        assert "the-system-file-value" in out, out
+
+    def test_the_node_own_file_keeps_its_precedence(
+        self, config_file, tmp_home, capsys,
+    ):
+        """Both files spelling ONE key is a cascade, not a contest: the node's own file
+        wins, which is what asking the second home only on a miss buys."""
+        std = _std(config_file)
+        self._seed_noun_file(std, ("agent", "claude", "env"), "BOTH", "from-system-file")
+        self._seed_node_file(std, "claude", ("env",), "BOTH", "from-agent-file")
+        capsys.readouterr()
+        assert _get("agent.claude.env.BOTH") == 0
+        assert capsys.readouterr().out == "agent.claude.env.BOTH=from-agent-file\n"
+
+    def test_a_key_neither_file_holds_is_still_reported_unset(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The second home adds an ANSWER, never a default: nothing stored anywhere is
+        still ``(not set)``, which is the one spelling spec §2a reserves for it."""
+        std = _std(config_file)
+        self._seed_noun_file(std, ("agent", "claude", "env"), "X", "from-system-file")
+        capsys.readouterr()
+        assert _get("agent.claude.env.OTHER") == 0
+        assert capsys.readouterr().out == "agent.claude.env.OTHER: (not set)\n"
+
+    @pytest.mark.parametrize(
+        "stored", ["", None, True, "a.b.c"],
+        ids=["empty-string", "null", "bool", "dotted-value"],
+    )
+    def test_both_homes_render_one_stored_value_the_same_way(
+        self, config_file, tmp_home, capsys, stored,
+    ):
+        """⚑ THE PAIRING ``agent_cmd``'s D-6 block pins, measured over the two HOMES
+        instead of the record and the file: a stored ``""`` and a stored null each have
+        their own spelling (spec §2h), so a value that read one way through one home and
+        another way through the other would be two vocabularies for one key."""
+        std = _std(config_file)
+        self._seed_noun_file(std, ("agent", "claude", "env"), "V", stored)
+        self._seed_node_file(std, "codex", ("env",), "V", stored)
+        capsys.readouterr()
+        assert _get("agent.claude.env.V") == 0
+        from_noun_file = capsys.readouterr().out
+        assert _get("agent.codex.env.V") == 0
+        from_node_file = capsys.readouterr().out
+        assert from_noun_file.split("=", 1)[1] == from_node_file.split("=", 1)[1], (
+            from_noun_file, from_node_file
+        )
+
+    def test_both_homes_render_an_argv_list_as_the_command_line(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``run_args`` is the one stored shape that is not a scalar, so it is the one
+        where a second renderer would show the Python repr at the user. The two homes are
+        handed the SAME argv in the two shapes the two write routes store it in, and both
+        must read back as the one command line."""
+        std = _std(config_file)
+        self._seed_noun_file(std, ("agent", "claude"), "run_args", "--sys --two")
+        self._seed_node_file(std, "codex", (), "run_args", ["--sys", "--two"])
+        capsys.readouterr()
+        assert _get("agent.claude.run_args") == 0
+        from_noun_file = capsys.readouterr().out
+        assert _get("agent.codex.run_args") == 0
+        from_node_file = capsys.readouterr().out
+        assert from_noun_file == "agent.claude.run_args=--sys --two\n", from_noun_file
+        assert from_node_file == "agent.codex.run_args=--sys --two\n", from_node_file
+
+    def test_the_reserved_any_agent_tier_is_read_where_it_already_was(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``agent.default.*`` is the any-agent TIER, not a persona node, and
+        ``config_dest._key_slot`` already gives it its slot in this same file — so the
+        second home stands aside rather than answering a key that already has an answer."""
+        std = _std(config_file)
+        self._seed_noun_file(std, ("agent", "default", "env"), "T", "from-the-tier")
+        capsys.readouterr()
+        assert _get("agent.default.env.T") == 0
+        assert capsys.readouterr().out == "agent.default.env.T=from-the-tier\n"
+
+    def test_a_persona_spelled_node_is_read_from_the_noun_file_too(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The node may be spelled ``nav+claude``; the file's own table may spell it either
+        way, which is the slot's business and not this verb's."""
+        std = _std(config_file)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(std.settings, {"agent": {"nav+claude": {"env": {"X": "from-noun-file"}}}})
+        capsys.readouterr()
+        assert _get("agent.nav+claude.env.X") == 0
+        assert capsys.readouterr().out == "agent.nav+claude.env.X=from-noun-file\n"
+
+
+    def test_a_self_table_in_the_system_file_is_not_read(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``self`` is the per-agent file's root and nowhere else's (spec §0): in the
+        system file it is not a key, so a value under it is no home for any node."""
+        std = _std(config_file)
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(std.settings, {"self": {"env": {"S": "in-self-of-system-file"}}})
+        capsys.readouterr()
+        assert _get("agent.claude.env.S") == 0
+        assert capsys.readouterr().out == "agent.claude.env.S: (not set)\n"
+
+
 class TestSystemAgentNodeBindWriteRouteRetired:
     """R-9 — through the REAL ``system config`` CLI, not the engine: the per-node
     descriptor bind write route is refused, and the refusal reaches the user's

@@ -78,6 +78,7 @@ class AgentFileSlot:
     path: Path
     tail: str
     node: str
+    self_root: bool = True
 
 @dataclass(frozen=True)
 class AgentFileLevel:
