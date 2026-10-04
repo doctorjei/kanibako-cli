@@ -623,6 +623,7 @@ class TestWorksetLaunch:
         proj = MagicMock()
         proj.is_new = False
         proj.mode = BoxMode.named
+        proj.name = project_name
         proj.group = ProjectGroup(
             name="my-workset", root=ws_root,
             is_default=False, local_shared_base=ws_root,
