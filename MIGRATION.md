@@ -384,6 +384,8 @@ inside boxes. In order of likely impact:
     and `set` refuses an empty `workset.boxes` or one ending in `/` — see *`workset.boxes` is refused at
     the door at a value the launch refuses*; and a `system.*` path value referencing outside its tier
     is refused at `set` — see *A system path value referencing outside its tier is refused at `set`*;
+    and a `set` whose `@`-reference names a key set resolved later is refused — see *A `set` whose
+    `@`-reference names a later key set is refused*;
     and `set` refuses, unless `--force`, while a settings file it reads stores an entry that is not a
     key — see *`set` refuses while a settings file it reads stores an entry that is not a key*;
     and a `null` at `box.image`, `box.share_images` or `box.enable_vault` that wins the cascade is
@@ -6383,11 +6385,31 @@ tier then failed `Unknown @-reference`. `set` now exits 1 and writes nothing.
 
 ```
 $ kanibako system set system.template=@box.image/x
-Error: system.template is set to '@box.image/x', which points at '@box.image' — outside the system path tier. A system path value may reference only @config.* keys and the system path keys, so a launch could not read it back (spec §0: no @-ref points downward). Reference one of those keys instead, or set the path you mean.
+Error: system.template is set to '@box.image/x', which points at '@box.image' — outside the system path tier. A system path value may reference only @config.* keys and the system path keys, so it cannot be read back at that stage — it is resolved before every other key. Reference one of those keys instead, or set the path you mean.
 ```
 
 **What to do.** Reference a `@config.*` key or a system path key, or set the literal path. A value
 already stored by hand is read as before, and still fails `Unknown @-reference` until you change it.
+
+### A `set` whose `@`-reference names a later key set is refused
+
+**Read this if a scripted `set` now fails citing system-design "Ordering rule", or a working set
+directory key's `set` fails with "this value could not be read back".**
+
+**What changed.** A value may reference only keys of its own set or of a set resolved earlier, so
+`@box.*` and `@meta.box.*` are refused inside `workset.*`, and `@workset.*` inside `agent.*` or
+`system.*`. At `workset set`, a working set directory key takes only an absolute path, `~`,
+`$XDG_*`, or `@meta.workset.path`.
+
+**What you see.**
+
+```
+$ kanibako system set workset.template=@meta.box.path/t2
+Error: workset.template is set to '@meta.box.path/t2', which points at '@meta.box.path' — a meta.box key, which resolves after the workset keys this one belongs to. A key may reference only keys of its own set or of a set resolved before it (system-design "Ordering rule"). Reference one of those keys instead, or set the value you mean.
+```
+
+**What to do.** Reference an earlier set, or set the literal path. A value already stored is read as
+before.
 
 ### `set` refuses while a settings file it reads stores an entry that is not a key
 
