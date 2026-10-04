@@ -527,27 +527,23 @@ def _check_node_binds(table: Mapping[str, Any], *, where: str | None) -> None:
     node table's category token IS the map. Nothing is descended, so a table-valued key whose
     contents are not settings is never read as one.
 
-    ⚑ THE SHAPE OF THE CATEGORY ITSELF IS JUDGED FIRST, ahead of the ``dict`` guard below:
-    a non-``None`` scalar at a category token is a wrong SHAPE (spec §0, closed keyspace)
-    and a passthrough would store it silently. A present-``None`` is the category's OMIT
-    (spec §2h) and passes — :func:`refuse_scalar_at_table_key` is where that distinction
-    lives, so the ``dict`` test below still sees every MAP.
+    ⚑ A non-dict at a category token is CONCEDED HERE, not refused, and that is the agent
+    file's READ side on purpose: a wrong-SHAPE value must not kill the verbs that SHOW it,
+    because the repair doors have to stay reachable — so the read coerces and the WRITE
+    side refuses (:func:`~kanibako.settings.agent_file.table_value_error`). The six cascade
+    files are parsed by a reader with no such door, and there the same shape refuses
+    (:func:`refuse_scalar_at_table_key`).
     """
     from kanibako.settings.settings_keyspace import is_terminal_category_tail
 
     for key, value in table.items():
-        if is_terminal_category_tail((key,)) or key == "bindings":
-            refuse_scalar_at_table_key(key, value, where=where)
         if not isinstance(value, dict):
             continue
         if is_terminal_category_tail((key,)):
             _check_dest_map(value, category=key, where=where)
         elif key == "bindings":
             for arm, arm_map in value.items():
-                if not is_terminal_category_tail(("bindings", arm)):
-                    continue
-                refuse_scalar_at_table_key(f"bindings.{arm}", arm_map, where=where)
-                if isinstance(arm_map, dict):
+                if isinstance(arm_map, dict) and is_terminal_category_tail(("bindings", arm)):
                     _check_dest_map(arm_map, category=f"bindings.{arm}", where=where)
 
 
