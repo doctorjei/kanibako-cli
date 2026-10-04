@@ -57,6 +57,10 @@ exemption is a real invariant rather than a convenience:
   whose old leaf is still a directory prints `Note: left <old>; remap deletes nothing` on success:
   the release keeps that leaf, so a user who copied rather than moved learns the old tree is theirs.
 
+⚑ One guard deliberately does **not** take the exemption. A records-only relocation still ends up
+RECORDING its `dest` as the box's workspace, so the in-tree-landing refusal below applies to
+`remap` unchanged; only its message changes ("move it to `<workspaces>/<name>` and remap").
+
 ## `ProjectState` — the uniform descriptor
 
 * `owner` is the canonical ownership token: `"primary"`, `"standalone"`, or `"workset:<name>"`.
@@ -86,9 +90,14 @@ From the redesign DESIGN. `execute_lifecycle` runs it; `_run_steps` is the body.
    destination `box.yaml` (sparse — see the drifted-claim note below for what it does NOT carry).
 5. **Retire the old workspace, on success only** — never the user's external source dir.
 
-Steps 2–5 push compensating actions onto an unwind stack; on ANY exception the stack runs in
+Steps 2–5 push compensating actions onto an unwind stack; on ANY failure the stack runs in
 reverse to restore a consistent state, then re-raises. `confirm`, if given, is called AFTER
 validation; returning False aborts cleanly (no changes) by raising `ProjectError`.
+
+⚑ The catch around `_run_steps` is on `BaseException`, not `Exception`. A `KeyboardInterrupt`
+arriving after the ws→ws release would otherwise skip every compensating action, leaving the
+relocation's stash in `$TMPDIR` — a copy of the box home, so possibly holding credentials — with
+nothing printed at all. The interrupt is still re-raised, so the CLI's own handling is unchanged.
 
 ### ⚑ Why step 1 holds everything
 
@@ -96,6 +105,38 @@ Refusing early is what makes "zero partial state" a property of the ENGINE rathe
 step's individual care. A refusal added inside `_run_steps` instead of `_validate` would fire after
 files had already moved — which is precisely the failure the unwind stack exists to make survivable
 and the ordering exists to make impossible. **New refusals belong in `_validate`.**
+
+### ⚑⚑ The three refusals that decide whether a landing is recordable
+
+A relocation's `dest` is a real directory the user named, but the box can only ever RECORD one
+workspace per name. These three are what makes that a checked fact rather than an emergent one, and
+each one fires before the first `copytree`:
+
+* **An in-tree landing must be the leaf the target records.** With a named target, a `dest` that
+  `is_in_tree_workspace(target_ws, dest)` is in scope for that workset's member, and the only path
+  such a member lives at is `workspaces/<name>`. Any other in-tree path is copied to by STEP 2 and
+  copied again to `workspaces/<name>` by STEP 2b, so the box would record `workspaces/<name>` while
+  the user asked for the other path — a stray second copy of their data, and a source leaf retired
+  against a landing it never had. The refusal names both paths, and its advice is in the refused
+  verb's own syntax: `TargetSpec.verb` (`"move"` / `"convert"`, set by `run_move` / `run_convert`)
+  and `records_only` (remap) pick it, because `box move` has no `--move`. The field is advice only;
+  no check reads it. An EXTERNAL `dest` is not in-tree and is always allowed, which is what keeps a
+  same-workset same-name move to a path of the user's own working.
+* **An occupied target leaf is the user's, not this op's.** `add_project` adopts whatever
+  `workspaces/<name>` / `boxes/<name>` / the two vault leaves already hold, so a landing onto one
+  is a silent merge. Exempt: `records_only` (its files are *meant* to be there) and a leaf that IS
+  the source's own — same workset, same name, whose store is stashed and released in leg 1 and
+  whose workspace leaf is the same-name move above. The rollback's created-leaves rule is the second
+  line of defense for the leaves this one lets through.
+* **An external source cannot be relocated at all.** Its "workspace" is the user's own directory;
+  a copy would leave the real files where they are and record a path that holds nothing, and no
+  ownership change makes that better. The message points at an in-place `convert` or a `remap`. It
+  is deliberately checked in `_validate` rather than in `run_move`, which is what puts
+  `_abort_if_locked` ahead of it: a LOCKED external box reports the lock and exits 2, because the
+  lock is the first fact the user can act on.
+
+⚑ None of the three takes `force`. `force` answers a name collision and the CWD-inside-old stranding,
+not "this landing is not recordable".
 
 ### STEP 2, arm by arm
 
@@ -160,10 +201,11 @@ about file safety.
 **Rule: no lifecycle step deletes a workspace before the whole op succeeded AND a copy of it landed
 elsewhere.** The releases (`release_project` in `_to_workset`'s leg 1 and `_remove_old_metadata`)
 drop records and the store, never the workspace leaf, so every failure path finds the source
-workspace whole. See **Rollbacks delete only what the op created** for the store. STEP 5 registers `_retire_old_workspace(old, dest, new_state.workspace_path)` with
+workspace whole. See **Rollbacks delete only what the op created** for the store. STEP 5 registers `_retire_old_workspace(old, dest)` with
 `unwind.on_success` for a real, INTERNAL move (`not records_only and relocating and dest and not state.is_external`). The
-retire itself skips an `old` that is or holds the workspace the box now records — a same-workset,
-same-name move to an in-tree non-canonical path lands back on its own leaf.
+retire itself skips an absent `old`, and an `old` that is or holds the copy's landing — a move into
+its own subtree, which `_validate` refuses first. Every relocation that reaches it records its
+landing, so an `old` the box still records is not a case it has to recognize.
 
 It used to be an in-op `rmtree(old_ws, ignore_errors=True)`, and the named release deleted the leaf
 even earlier, before the copy that read it — so a rename in place, or any failure after the
