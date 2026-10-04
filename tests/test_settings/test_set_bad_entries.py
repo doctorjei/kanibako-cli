@@ -150,10 +150,57 @@ class TestAnInChainBadEntryIsHard:
         from kanibako.settings.config import chain_bad_entries
 
         stored = {"box.canon": "@box.shell/x", "box.shell": "@box.canon/y"}.get
-        assert chain_bad_entries("@box.canon/z", ["box.bogus"], stored=stored) == []
-        assert chain_bad_entries("@box.canon/z", ["box.shell"], stored=stored) == ["box.shell"]
+        assert chain_bad_entries("@box.canon/z", key="box.shell", bad=["box.bogus"], stored=stored) == []
+        assert chain_bad_entries("@box.canon/z", key="box.shell", bad=["box.shell"], stored=stored) == ["box.shell"]
         stored2 = {"box.canon": "@box.bogus/x"}.get
-        assert chain_bad_entries("@box.canon/z", ["box.bogus"], stored=stored2) == ["box.bogus"]
+        assert chain_bad_entries("@box.canon/z", key="box.shell", bad=["box.bogus"], stored=stored2) == ["box.bogus"]
+
+
+class TestAnEndpointHasNoChain:
+    """Keyspec ``agent.default.endpoint``: the endpoint is TEXT, so the ``@host`` in it is no
+    ref and never reaches a bad entry — the walk scans neither the edited endpoint nor the
+    stored endpoint a ref names.  Only the out-of-chain arm, which ``--force`` passes, is left."""
+
+    _EP = "https://u:SEKRITP@host.invalid/v1"
+
+    @pytest.mark.parametrize("key", ["endpoint", "agent.claude.endpoint"])
+    def test_an_endpoint_naming_a_bad_entry_sets_with_force(self, tmp_path, key):
+        ssp = tmp_path / "settings.yaml"
+        _write(ssp, {"host": {"invalid": 1}})
+        agents = tmp_path / "agents"
+        refused = _system_set(tmp_path, key, self._EP, agents_root=agents)
+        assert refused.startswith("Error: ") and "upstream chain" not in refused, refused
+        assert "--force" in refused
+        msg = _system_set(tmp_path, key, self._EP, force=True, agents_root=agents)
+        assert msg == f"Set {key}={self._EP}", msg
+
+    def test_a_ref_to_a_stored_endpoint_does_not_read_its_text(self, tmp_path):
+        ssp = tmp_path / "settings.yaml"
+        _write(ssp, {"host": {"invalid": 1}, "agent": {"default": {"endpoint": self._EP}}})
+        msg = _system_set(
+            tmp_path, "agent.claude.model", "@agent.default.endpoint", force=True,
+            agents_root=tmp_path / "agents",
+        )
+        assert msg == "Set agent.claude.model=@agent.default.endpoint", msg
+
+    def test_a_box_pref_endpoint_naming_a_bad_entry_sets_with_force(self, tmp_path):
+        box = tmp_path / "box.yaml"
+        _write(box, {"host": {"invalid": 1}})
+        msg = set_config_value(
+            "pref.agent.claude.endpoint", self._EP, config_path=box,
+            cascade_system_path=tmp_path / "settings.yaml", cascade_box_path=box,
+            command_scope=ConfigLevel.box, force=True,
+        )
+        assert msg == f"Set pref.agent.claude.endpoint={self._EP}", msg
+
+    def test_the_walk_skips_text_and_still_follows_other_refs(self):
+        from kanibako.settings.config import chain_bad_entries
+
+        stored = {"agent.default.endpoint": "https://u:k@box.bogus/v1"}.get
+        bad = ["box.bogus"]
+        assert chain_bad_entries(self._EP, ["host.invalid"], key="endpoint", stored=stored) == []
+        assert chain_bad_entries("@agent.default.endpoint", bad, key="box.canon", stored=stored) == []
+        assert chain_bad_entries("@box.bogus/x", bad, key="box.canon", stored=stored) == bad
 
 
 class TestGetWarnsOnTheSameEntries:
