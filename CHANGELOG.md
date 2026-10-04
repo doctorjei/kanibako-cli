@@ -343,6 +343,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A downward `@`-ref is now refused at `set` even when the command can resolve it.** Spec §0:
+  a scope "may **view up** (read-only `@`-reference a CONTAINING scope's keys)" and "no `@`-ref
+  points DOWNWARD". The set-time check only ever saw the half of that rule whose referent its own
+  cascade cannot see, so a downward ref naming a referent the cascade DOES hold raised no defect
+  and was written. `box.image` is exactly that case — the box scalars' declared defaults put it in
+  every snapshot — so `system set workset.canon=@box.image/x` and `workset set ws1
+  workset.canon=@box.image/x` both answered `Set …` and stored a value that binds one box's
+  settings for the whole working set. Both are now refused, naming the ref, and nothing is
+  written. The refusal reads the direction off the spelling, so it holds for every key at every
+  set door; a ref naming the key's own scope or a containing one is still accepted, and a
+  `system.*` path value keeps the wording of the door that already refused it. A ref naming no
+  level of the containment order — `@config.*`, `@meta.runtime.*` — is unaffected. This covers the
+  `set` doors only: a downward ref HAND-WRITTEN into a settings file is still read by the launch.
+
+- A dangling `@`-reference no longer reports a declared key as "no such config key in the
+  keyspace". A set-time command judges a value against its own cascade, so a declared key living
+  in a scope that cascade does not reach is absent by construction; the report now says the key is
+  declared and this command's cascade does not hold it. A name that is not a key at all keeps the
+  keyspace wording.
+
 - **A malformed bind entry in an agent file is refused where the file is read, and two spellings
   of one destination are refused everywhere.** A sub-table where an entry goes, an entry of three
   elements, and a bare relative source, under the file's `self:`, `agent:`, `workset:` or `box:`
