@@ -1300,6 +1300,43 @@ class TestTheAgentTable:
         with pytest.raises(SettingsError, match="ONE agent node .* spelled twice"):
             agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
+    def test_a_plus_spelled_node_in_the_table_refuses_by_name(self, tmp_path):
+        # A ``+`` node names a segment no reader holds, so it resolves to nothing; the
+        # refusal names it and the canonical ``℘`` spelling it should carry.
+        # (Mutation: drop the call from ``_contribution`` → ``load`` returns → RED.)
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"agent": {"nav+claude": {"model": "a"}}})
+        with pytest.raises(SettingsError) as exc:
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+        message = str(exc.value)
+        assert f"spells an agent node with '+'" in message
+        assert "'agent.nav+claude' is written 'nav+claude'" in message
+        assert "the same node is 'nav℘claude'" in message
+        assert f"in {path}" in message
+
+    def test_every_plus_spelled_node_is_named_at_once(self, tmp_path):
+        # The cure is a hand-edit, so one refusal names every node that needs it.
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"agent": {"nav+claude": {"model": "a"}, "gpt+claude": {"model": "b"}}})
+        with pytest.raises(SettingsError) as exc:
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+        message = str(exc.value)
+        assert "nav+claude" in message and "gpt+claude" in message
+
+    @pytest.mark.parametrize("node", ("nav℘claude", "claude", "default", "nav+Claude"))
+    def test_a_node_the_fold_can_reach_is_not_refused_as_a_plus_spelling(
+        self, tmp_path, node
+    ):
+        # The canonical spelling, a bare harness and a pseudo-agent all read; ``nav+Claude``
+        # is refused for its ``+`` and NOT for its case, which the fold would warn about.
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"agent": {node: {"model": "a"}}})
+        if node == "nav+Claude":
+            with pytest.raises(SettingsError, match="the same node is 'nav℘Claude'"):
+                agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+            return
+        agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+
     def test_every_undeclared_entry_is_named_at_once(self, tmp_path):
         # The cure is a hand-edit: one refusal names every entry, as the launch does.
         path = tmp_path / "agent.yaml"
