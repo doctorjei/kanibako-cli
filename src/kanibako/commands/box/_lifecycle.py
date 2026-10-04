@@ -371,12 +371,25 @@ def _resolve_workset_state(
     proj = resolve_workset_project(
         WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
     )
-    assert proj.project_path is not None  # only a standalone box can lack a workspace
-    is_external = not is_in_tree_workspace(ws, proj.project_path)
+    # ⚑ THE RECORDED workspace: a null takes the resolved value, not the files ops move.
+    recorded = _recorded_workspace(ws, proj_name, proj.project_path)
+    if recorded is None:
+        # Defensive; the member row is guaranteed above.
+        refuse_null_workspaces(ws.root, f"a workspace for '{proj_name}'")
+    assert recorded is not None  # refused on the line above
+    is_external = not is_in_tree_workspace(ws, recorded)
     return _state_from_paths(
         owner_token(BoxMode.named, ws.name), proj, ws=ws,
-        is_external=is_external,
+        is_external=is_external, workspace=recorded,
     )
+
+
+def _recorded_workspace(ws: Workset, box_name: str, resolved: Path | None) -> Path | None:
+    """The member's recorded ``source_path`` — its files — else *resolved*."""
+    for member in ws.projects:
+        if member.name == box_name:
+            return member.source_path
+    return resolved
 
 
 def _state_from_paths(
@@ -385,21 +398,24 @@ def _state_from_paths(
     *,
     ws: Workset | None,
     is_external: bool = False,
+    workspace: Path | None = None,
 ) -> ProjectState:
     # ⚑ ``proj.vault_enabled()`` is the RESOLVED value; re-read the BOX TIER alone for what
     # the box authored, so a lifecycle op never persists the workset's default as a
     # box-scope override (see ``ProjectState.box_authored_vault``).
     box_tier, _ = box_workset_settings_paths(proj)
-    if proj.project_path is None:
+    # ⚑ *workspace* is a named caller's RECORDED path; only STANDALONE falls through here.
+    recorded = workspace if workspace is not None else proj.project_path
+    if recorded is None:
         # A standalone root that nulls ``workset.workspaces``: no workspace to move or copy.
         refuse_null_workspaces(proj.metadata_path, f"a workspace for '{proj.name}'",
                                standalone=True)
-    assert proj.project_path is not None  # refused on the line above
+    assert recorded is not None  # only a standalone box can lack a workspace
     return ProjectState(
         owner=owner,
         mode=proj.mode,
-        name=proj.name or proj.project_path.name,
-        workspace_path=proj.project_path,
+        name=proj.name or recorded.name,
+        workspace_path=recorded,
         metadata_path=proj.metadata_path,
         shell_path=proj.shell_path,
         vault_ro=proj.vault_ro_path,
