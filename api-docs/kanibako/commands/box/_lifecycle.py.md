@@ -104,6 +104,7 @@ class TargetSpec:
     ownership: str | _Sentinel = UNCHANGED
     name: str | None = None
     records_only: bool = False
+    verb: str | None = None
 
 class _Sentinel:
     __slots__ = ('_name',)

@@ -5859,6 +5859,41 @@ needs `--move`, and converting one to primary or standalone in place is refused.
 
 **What to do.** Use `box convert … --move <path>`.
 
+### A destination inside a workset must be the box's own `workspaces/<name>`
+
+**Read this if a `box move`, `box convert --move <path>` or `box remap` now stops with
+`Refusing to record <path> for a workset member`.**
+
+**What changed.** Inside the workset the box joins, the only path it can live at is
+`workspaces/<name>` (under `workset.workspaces` if you repointed it). The refusal names the path you
+gave and that path, and tells you the command to run.
+
+**What to do.** To move the box into the workset, run `box convert <box> --workset <ws> --move`
+(bare) or `box move <box> <ws>/workspaces/<name> --workset <ws>`. To keep the files where you named,
+choose a path outside the workset. If you moved the files by hand, put them at `workspaces/<name>`
+and `remap` there. `--force` does not override this.
+
+### `box convert --move` of an external-connected box is refused
+
+**Read this if a `box convert --move` stops with `'<name>' is an external-connected project`.**
+
+**What changed.** A box connected from outside its workset keeps its files in your own directory, so
+`--move` would record a path holding nothing. A locked box reports the lock first (exit 2).
+
+**What to do.** Use `box convert` without `--move` to change ownership only, or
+`box remap <old> <new>` to record a directory you moved yourself.
+
+### A leftover directory of the box's name in the target workset is refused
+
+**Read this if `box move` or `box convert` stops with
+`Refusing to land '<name>' … already exists and this operation did not create it`.**
+
+**What changed.** The directory it names (`workspaces/<name>`, `boxes/<name>`, or a vault directory)
+belongs to no registered box and used to be merged into. A box's own directories, and `box remap`,
+are not affected.
+
+**What to do.** Move it aside or choose another `--name`.
+
 ### A `null` workset vault, canon, template or channel root means no directory
 
 **Read this if a `<workset>/workset.yaml` sets `workset.vault_ro`, `workset.vault_rw`,

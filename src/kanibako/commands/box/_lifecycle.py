@@ -151,6 +151,9 @@ class TargetSpec:
     name: str | None = None
     #: ⚑ ``remap`` semantics — record the new location, copy/delete NOTHING.
     records_only: bool = False
+    #: The verb that asked (``"move"`` / ``"convert"``), so a refusal can give advice
+    #: in that command's own syntax.  Advice only — no check reads it.
+    verb: str | None = None
 
 
 def owner_token(mode: BoxMode, ws_name: str | None = None) -> str:
@@ -579,25 +582,31 @@ def _validate(
             raise ProjectError(f"Destination already exists: {dest}")
 
     # --- an in-tree landing for a NAMED target must be the one leaf the target
-    #     records.  Any other in-tree path is copied to by step 2 and written over by
-    #     the step-2b copy, so the box would record ``workspaces/<name>`` while the user
-    #     asked for the other path.  ``records_only`` is NOT exempt: it records that path
-    #     as the workspace too.
+    #     records.  Any other in-tree path is copied to by step 2 and copied again to
+    #     ``workspaces/<name>`` by step 2b, so the box would record ``workspaces/<name>``
+    #     while the user asked for the other path.  ``records_only`` is NOT exempt: it
+    #     records that path as the workspace too.
     if target_mode == BoxMode.named and target_ws is not None and dest is not None:
         ws_dir = target_ws.workspaces_dir
         if (ws_dir is not None and is_in_tree_workspace(target_ws, dest)
                 and dest != (ws_dir / new_name).resolve()):
-            hint = (
-                f"move it to `{ws_dir / new_name}` and remap"
-                if spec.records_only else
-                "use bare `--move` (into the workset), or `--workset <ws> "
-                f"--move {ws_dir / new_name}`"
-            )
+            leaf = ws_dir / new_name
+            rename = "" if _same_box_name(new_name, state.name) else f" --name {new_name}"
+            bare = (f"kanibako box convert {state.name} --workset {target_ws.name} "
+                    f"--move{rename}")
+            if spec.records_only:
+                advice = (f"Move the files to `{leaf}` and run `kanibako box remap` "
+                          "again")
+            elif spec.verb == "convert":
+                advice = f"Run `{bare}`"
+            else:
+                advice = (f"Run `kanibako box move {state.name} {leaf} --workset "
+                          f"{target_ws.name}{rename}` (or `{bare}`)")
             raise ProjectError(
                 f"Refusing to record {dest} for a workset member: inside workset "
-                f"'{target_ws.name}' a box lives at `{ws_dir / new_name}`, and no "
-                f"other in-tree path is the workspace the box records. To {hint}, or "
-                "choose a destination outside the workset."
+                f"'{target_ws.name}' a box lives at `{leaf}`, and no other in-tree "
+                f"path is the workspace the box records. {advice}, or choose a "
+                "destination outside the workset."
             )
 
     # --- membership guard: refuse landing inside a workset the project is
@@ -2407,6 +2416,7 @@ def run_move(args) -> int:
     try:
         spec = TargetSpec(
             location=new_path, ownership=ownership, name=_validated_name(args),
+            verb="move",
         )
         new_state = execute_lifecycle(
             state, spec, std, config,
@@ -2488,6 +2498,7 @@ def run_convert(args) -> int:
     try:
         spec = TargetSpec(
             location=location, ownership=ownership, name=_validated_name(args),
+            verb="convert",
         )
         new_state = execute_lifecycle(
             state, spec, std, config,

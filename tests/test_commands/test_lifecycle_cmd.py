@@ -1080,6 +1080,39 @@ class TestInTreeLandingRefused:
         assert (sdir / "file.txt").read_text() == "x"
         assert not stray.exists()
 
+    def test_the_advice_is_in_the_refused_commands_own_syntax(self, env, capsys):
+        """``box move`` has no ``--move``; each verb is told a command it really has."""
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _default(env, contents="primary")
+        leaf = ws.workspaces_dir / "proj"
+        bare = "`kanibako box convert proj --workset ws --move`"
+
+        rc = run_move(_move_args(pdir, ws.root / "proj", to_workset="ws"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"Run `kanibako box move proj {leaf} --workset ws` (or {bare})" in err
+        assert ", or choose a destination outside the workset." in err
+
+        rc = run_convert(_convert_args(str(pdir), to_workset="ws",
+                                       move=str(ws.root / "proj")))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert f"Run {bare}, or choose a destination outside the workset." in err
+        assert "kanibako box move" not in err
+        assert (pdir / "file.txt").read_text() == "primary"
+
+    def test_the_advice_carries_a_rename(self, env, capsys):
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        pdir = _default(env, contents="primary")
+        rc = run_move(_move_args(pdir, ws.root / "x", to_workset="ws", name="renamed"))
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert (f"`kanibako box move proj {ws.workspaces_dir / 'renamed'} --workset ws "
+                "--name renamed`") in err
+        assert "`kanibako box convert proj --workset ws --move --name renamed`" in err
+
     def test_remap_onto_a_non_canonical_in_tree_path(self, env, capsys):
         """``remap`` records records only, but still not a workspace that never was."""
         config, std, tmp_home = env
@@ -1092,7 +1125,7 @@ class TestInTreeLandingRefused:
         assert rc == 1
         err = capsys.readouterr().err
         assert "Refusing to record" in err
-        assert "and remap" in err
+        assert f"Move the files to `{leaf.resolve()}` and run `kanibako box remap`" in err
         again = resolve_lifecycle_target(str(leaf), std, config)
         assert again.workspace_path == leaf.resolve()
         assert (other / "file.txt").read_text() == "moved by hand"
