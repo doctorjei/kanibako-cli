@@ -9,11 +9,14 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import shutil
 import sys
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from kanibako.launch.box_identity import validate_box_name
+from kanibako.launch.box_identity import Designation, classify_designation, validate_box_name
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import (
     WORKSET_META_FILE,
@@ -23,17 +26,27 @@ from kanibako.settings.config import (
 )
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
-from kanibako.errors import ContainerError, ProjectError
+from kanibako.errors import ContainerError, ProjectError, WorksetError
 from kanibako.project.names import read_names
+from kanibako.project.workset import Workset, add_project, list_worksets, load_workset
+from kanibako.settings.messages import (
+    ERR_WORKSET_MEMBER_NAME_CONFLICT,
+    ERR_WORKSET_MEMBER_NAME_TAKEN,
+    ERR_WORKSET_MEMBER_NO_RECOVER,
+    ERR_WORKSET_NULL_WORKSPACES,
+)
 from kanibako.settings.paths import (
     BoxMode,
     DesignationRoute,
+    WorksetSpec,
     _box_settings_files,
+    _find_workset_for_path,
     _primary_box_paths,
     _standalone_settings_files,
     box_tree_materialized,
     box_workset_settings_paths,
     check_primary_box_name_free,
+    check_workspace_not_named_box,
     designation_route,
     iter_projects,
     iter_workset_projects,
@@ -45,6 +58,7 @@ from kanibako.settings.paths import (
     resolve_box_target,
     resolve_project,
     resolve_standalone_project,
+    resolve_workset_project,
     unregister_primary_box_name,
 )
 from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, with_harness
@@ -701,11 +715,14 @@ def _create_recovery_refusal(
     given = [flag for flag in _CREATE_SHAPING_FLAGS if getattr(args, flag, None)]
 
     # ⚑ EVERY CURE LINE NAMES THE ROOT THE USER PASSED, NEVER THE RESOLVED
-    # WORKSPACE: a STANDALONE box's ``<root>/workspace`` is no ``create`` argument.
+    # WORKSPACE: a STANDALONE box's ``<root>/workspace`` is no ``create`` argument,
+    # and a NAMED member is created by its NAME (a path in its space is refused).
     _standalone = probe.mode is BoxMode.standalone
     mode_flag = " --standalone" if _standalone else ""
     root = str(
-        probe.metadata_path if _standalone else probe.project_path or "<None>"
+        probe.metadata_path if _standalone
+        else probe.name if probe.mode is BoxMode.named
+        else probe.project_path or "<None>"
     )
 
     if pending is None:
@@ -730,7 +747,8 @@ def _create_recovery_refusal(
     # the box on disk.
     box_dir = _box_journal_key(probe)
     name = pending.get("name") or probe.name
-    mode = "standalone" if pending.get("mode") == "standalone" else "default"
+    _recorded = pending.get("mode")
+    mode = _recorded if _recorded in ("standalone", "named") else "default"
     where = str(pending.get("workspace") or probe.project_path or "<None>")
 
     if given:
@@ -809,6 +827,129 @@ def _orphaned_primary_box_dir(args, std, probe) -> "Path | None":
     return orphan
 
 
+def _named_workset_owning(path: Path, std) -> str | None:
+    """The named working set whose path space holds *path*, else ``None``."""
+    try:
+        ws, _project = _find_workset_for_path(path, std)
+    except WorksetError:
+        return None
+    return ws.name
+
+
+def _create_in_workset_space(workset: str, path: Path, *, standalone: bool,
+                             by_cwd: bool) -> str:
+    """The refusal for a ``create`` in a named working set's path space.
+
+    It names the working set and states the space's rule, and prints NO command.
+    *by_cwd* names the CWD's space as the reason rather than the target's tree.
+    """
+    kind = "STANDALONE" if standalone else "PRIMARY"
+    where = (
+        f"the current directory is in the path space of working set '{workset}', "
+        "which makes only named boxes of that working set"
+        if by_cwd else
+        f"that path is in the path space of working set '{workset}', which makes "
+        "only named boxes of that working set"
+    )
+    return (
+        f"Error: Refusing to create a box in {path}: {where}.\n"
+        f"  A box created there would be a {kind} box, which that space does not "
+        "accept: a path-based, standalone or primary-working-set box is refused here."
+    )
+
+
+def _plan_workset_member(std, workset: str, name: str,
+                         args) -> "tuple[Workset, str, bool] | None":
+    """The pre-write checks for a member *name* of *workset*; ``None`` once it has refused.
+
+    Returns ``(ws, member, existing)``: *member* is the stored spelling when the
+    name is already a member (*existing*), else the name as typed.  It WRITES
+    NOTHING — ``add_project`` runs only once every create refusal has passed.
+    """
+    registry = list_worksets(std)
+    stored = find_identifier(workset, registry)  # ⚑ case-blind (§0)
+    if stored is None:
+        print(f"Error: Working set '{workset}' is not registered.", file=sys.stderr)
+        return None
+    try:
+        ws = load_workset(registry[stored], stored)
+    except WorksetError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None
+
+    # ⚑ A NAMED box's name IS its member name, so the designation and ``--name`` are
+    # two answers to one question — folded to compare, never to store (§0).
+    override = getattr(args, "name", None)
+    if override is not None and override.casefold() != name.casefold():
+        print("Error: " + ERR_WORKSET_MEMBER_NAME_CONFLICT % (
+            ws.name, override, name,
+        ), file=sys.stderr)
+        return None
+
+    # ⚑ THE MEMBERSHIP KEY IS FOLDED, so a case variant would not add a second member —
+    # it would REPLACE the taken one's recorded workspace and strand its box.  A taken
+    # name is refused only once the journal says no create of it is pending.
+    taken = find_identifier(name, [p.name for p in ws.projects])
+    if taken is not None:
+        return ws, taken, True
+
+    if ws.workspaces_dir is None:
+        print("Error: " + ERR_WORKSET_NULL_WORKSPACES % (
+            ws.root / WORKSET_META_FILE, f"a workspace for '{name}'",
+        ), file=sys.stderr)
+        return None
+    return ws, name, False
+
+
+def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
+    """The undo for a member this create is about to add; call it BEFORE ``add_project``.
+
+    It drops the membership record and removes only what did not exist when it was
+    made — the member's dirs, any parent dir and the registry file the write created.
+    A workspace, vault leaf or registry the user already had is kept.
+    """
+    from kanibako.project.workset import (
+        _member_store_bases, load_workset_settings_doc, release_project,
+    )
+    from kanibako.project.workset_registry import (
+        load_workset_boxes, resolve_workset_registry_path,
+    )
+    from kanibako.runtime.container import remove_box_tree
+
+    bases = _member_store_bases(ws)
+    box_dir = bases[0] / name
+    assert ws.workspaces_dir is not None
+    # ⚑ LEAVES BEFORE PARENTS: a parent this run made holds only what it made.
+    leaves = (box_dir, *(base / name for base in bases[1:]), ws.workspaces_dir / name)
+    parents = (*bases, ws.workspaces_dir)
+    registry = resolve_workset_registry_path(ws.root, load_workset_settings_doc(ws.root))
+
+    def _new(path: Path) -> bool:
+        return not path.exists() and not path.is_symlink()
+
+    new_leaves = [p for p in leaves if _new(p)]
+    new_parents = [p for p in parents if _new(p)]
+    new_registry = _new(registry)
+
+    def undo() -> None:
+        # ⚑ The record only, never a directory — and ``keep_link``: a create makes no
+        # discoverability link, so a link at ``workspaces/<name>`` is the user's.
+        release_project(ws, name, keep_link=True)
+        for path in new_leaves:
+            if path == box_dir and path.is_dir():
+                remove_box_tree(path)
+            elif path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+        for path in new_parents:
+            if path.is_dir() and not any(path.iterdir()):
+                path.rmdir()
+        # ⚑ Only while it holds no box: a member written meanwhile keeps its record.
+        if new_registry and registry.is_file() and not load_workset_boxes(registry):
+            registry.unlink()
+
+    return undo
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     config_file = user_config_file()
@@ -853,8 +994,52 @@ def run_create(args: argparse.Namespace) -> int:
             )
             return 1
 
+    # ⚑ THE SPACE IS THE CWD'S, NOT THE TARGET'S: "a command's workset path space is
+    # the named workset whose root contains the current directory".
+    _space = _named_workset_owning(Path.cwd().resolve(), std)
+    # ⚑ THE ONE BOX THE SPACE ACCEPTS: a member NAME.  ``--standalone`` is a refusal.
+    _member = (
+        project_dir
+        if (_space is not None and not args.standalone
+            and classify_designation(project_dir) is Designation.IDENTIFIER)
+        else None
+    )
+    _named_spec = None
+    _named_ws: Workset | None = None
+    _named_existing = False
+    if _member is not None:
+        assert _space is not None
+        _planned = _plan_workset_member(std, _space, _member, args)
+        if _planned is None:
+            return 1
+        _named_ws, _member, _named_existing = _planned
+        # ⚑ THE PROBE SEES THE MEMBER BEFORE IT IS WRITTEN: ``add_project`` waits until
+        # every refusal below has passed, so no refusal strands a member.
+        _named_spec = WorksetSpec.from_workset(_named_ws)
+        if not _named_existing:
+            _named_spec = dataclasses.replace(
+                _named_spec, project_names=(*_named_spec.project_names, _member),
+            )
+        _named_already = (_named_ws.projects_dir / _member).exists()
+
+    # ⚑ ``None`` = the PRIMARY path space; the default workset is unregistered.
+    _ws_name = (None if _named_spec is not None
+                else _named_workset_owning(effective_path, std))
+    _by_cwd = False
+    # ⚑ A PATH is refused by the CWD's space, even outside its tree; a NAME is not a path.
+    if (_ws_name is None and project_dir is not None
+            and classify_designation(project_dir) is not Designation.IDENTIFIER):
+        _ws_name = _space
+        _by_cwd = _ws_name is not None
+    if _ws_name is not None:
+        print(_create_in_workset_space(
+            _ws_name, effective_path, standalone=args.standalone, by_cwd=_by_cwd,
+        ), file=sys.stderr)
+        return 1
+
     # ⚑ Cross-kind name guard, run HERE so it refuses BEFORE the box dir + seed materialize.
-    if getattr(args, "name", None) and not args.standalone:
+    # A NAMED box's name is its membership, guarded above.
+    if _named_spec is None and getattr(args, "name", None) and not args.standalone:
         try:
             check_primary_box_name_free(
                 std.primary_workset, std.registry,
@@ -867,8 +1052,20 @@ def run_create(args: argparse.Namespace) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # Create directory if it doesn't exist.
-    if project_dir is not None:
+    # ⚑ The PATH's conflict arm — the NAME arm above cannot see this collision.
+    # A NAMED member's workspace is ``workspaces/<name>``, never ``effective_path``.
+    # ⚑ Mode-free: a STANDALONE box there is as unreachable as a primary one, since
+    # detection finds the connected box before the standalone marker.
+    if _named_spec is None:
+        try:
+            check_workspace_not_named_box(std, str(effective_path))
+        except ProjectError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    # Create directory if it doesn't exist.  A NAMED member's dir is its workspace
+    # under the working set, which ``add_project`` makes — never ``<cwd>/<identifier>``.
+    if project_dir is not None and _named_spec is None:
         target = Path(project_dir)
         if not target.exists():
             target.mkdir(parents=True)
@@ -886,7 +1083,13 @@ def run_create(args: argparse.Namespace) -> int:
 
     # ⚑ PERSONA LOAD-OR-ERROR IS A TRUE PRE-FLIGHT: this probe is NON-materializing
     # (``initialize=False``) so an unloadable persona refuses with NOTHING left on disk.
-    if args.standalone:
+    if _named_spec is not None:
+        assert _member is not None
+        _probe = resolve_workset_project(
+            _named_spec, _member, std, config, initialize=False,
+            enable_vault=enable_vault,
+        )
+    elif args.standalone:
         _probe = resolve_standalone_project(
             std, config, project_dir, initialize=False,
             enable_vault=enable_vault,
@@ -901,10 +1104,26 @@ def run_create(args: argparse.Namespace) -> int:
             register=False,
         )
     # ⚑ CAPTURE BEFORE ``_name_new_box_probe``, which mutates ``_probe.name``.
-    _already = box_tree_materialized(_probe)
+    # A NAMED member's answer is whether its box dir exists, read before any write:
+    # ``add_project`` makes that dir, and a pending create's attempt one already did.
+    _already = _named_already if _named_spec is not None else box_tree_materialized(_probe)
     _name_new_box_probe(std, _probe)
     # ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.
     _pending = _pending_create_entry(std, _probe)
+    # ⚑ A MEMBER NAME WITH NO PENDING CREATE: a taken name is refused, and ``--recover``
+    # has nothing to resume.  A pending one goes on to the recovery refusal below.
+    if _named_spec is not None and _pending is None:
+        assert _named_ws is not None
+        if getattr(args, "recover", False):
+            print("Error: " + ERR_WORKSET_MEMBER_NO_RECOVER % (
+                _member, _named_ws.name,
+            ), file=sys.stderr)
+            return 1
+        if _named_existing:
+            print("Error: " + ERR_WORKSET_MEMBER_NAME_TAKEN % (
+                _member, _named_ws.name,
+            ), file=sys.stderr)
+            return 1
     # ⚑ RECOVERY IS NEVER IMPLICIT, and the refusal runs AHEAD OF EVERY DOOR BELOW:
     # a flag about to be refused must not reach the persona pre-flight, the agent
     # persist or the seed.
@@ -915,9 +1134,9 @@ def run_create(args: argparse.Namespace) -> int:
         print(_refusal, file=sys.stderr)
         return 1
     # ⚑ THE PRE-JOURNAL FORK: a crash that left a dir behind but nothing for
-    # ``--recover`` to find.
+    # ``--recover`` to find.  A NAMED member's existing box dir is refused below.
     _orphan = (
-        None if (_already or _pending is not None)
+        None if (_named_spec is not None or _already or _pending is not None)
         else _orphaned_primary_box_dir(args, std, _probe)
     )
     if _orphan is not None:
@@ -977,52 +1196,106 @@ def run_create(args: argparse.Namespace) -> int:
     # asks the PROBE: the resolve's recovery arms would bootstrap the home the message
     # then claims already existed.
     if _already and not is_recovery:
+        # ⚑ A NAMED member's "already" is its box dir, so that is the path to name.
+        _where = (_probe.metadata_path if _named_spec is not None
+                  else _probe.project_path)
         print(
-            f"Error: project already initialized in {_probe.project_path or '<None>'}",
+            f"Error: project already initialized in {_where or '<None>'}",
             file=sys.stderr,
         )
         return 1
 
-    # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False`` DEFERS
-    # registration past the home seed, giving the invariant "registered ==> fully seeded".
-    if args.standalone:
-        proj = resolve_standalone_project(
-            std, config, project_dir, initialize=True,
-            enable_vault=enable_vault,
-            name=standalone_name,
-            register=False,
-        )
-    else:
-        proj = resolve_project(
-            std, config, project_dir=project_dir, initialize=True,
-            enable_vault=enable_vault if not enable_vault else None,
-            name_override=getattr(args, "name", None),
-            register=False,
-        )
+    # ⚑ THE MEMBERSHIP WRITE, AFTER EVERY REFUSAL: a pending create's member was
+    # written by attempt one, so a recovery adds nothing.  Until the journal entry is
+    # written, nothing could recover this member, so any exit before it UNDOES it.
+    _undo_member = None
+    if _named_spec is not None and not _named_existing:
+        assert _member is not None and _named_ws is not None
+        assert _named_ws.workspaces_dir is not None  # refused in the plan
+        _undo_member = _new_member_undo(_named_ws, _member)
+        try:
+            add_project(
+                _named_ws, _member, _named_ws.workspaces_dir / _member, std,
+                force=getattr(args, "force", False),
+            )
+        except WorksetError as e:  # ``add_project`` unwinds its own writes
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        _named_spec = WorksetSpec.from_workset(_named_ws)
 
-    # ⚑ FRESH CREATE ONLY — a recovery re-create reuses the half-built box's on-disk meta.
-    if proj.is_new:
-        # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE shared gate, writing the BOX-TIER
-        # file from the ONE pair (M-8).  Only an EXPLICIT ``-i``/``--image`` persists.
-        project_toml, create_ws_path = box_workset_settings_paths(proj)
-        persist_creation_flags(
-            project_toml, materializing=proj.is_new, image=args.image,
-        )
+    _journaled = False
+    try:
+        # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False``
+        # DEFERS registration past the home seed: "registered ==> fully seeded".
+        if _named_spec is not None:
+            assert _member is not None
+            proj = resolve_workset_project(
+                _named_spec, _member, std, config, initialize=True,
+                enable_vault=enable_vault,
+            )
+        elif args.standalone:
+            proj = resolve_standalone_project(
+                std, config, project_dir, initialize=True,
+                enable_vault=enable_vault,
+                name=standalone_name,
+                register=False,
+            )
+        else:
+            proj = resolve_project(
+                std, config, project_dir=project_dir, initialize=True,
+                enable_vault=enable_vault if not enable_vault else None,
+                name_override=getattr(args, "name", None),
+                register=False,
+            )
 
-        # ⚑ AUTH-CRITICAL: --private must run BEFORE the seed, and must write through the
-        # SANCTIONED settings write into the SAME box-tier file the snapshot reads.
-        if getattr(args, "private", False):
-            from kanibako.settings.config_interface import set_config_value
-            from kanibako.settings.config_keys import ConfigLevel
-            from kanibako.errors import KanibakoError
-            for _auth_key in (
-                "box.auth.global_enabled",
-                "box.auth.workset_enabled",
-            ):
-                # ⚑ set_config_value RETURNS an "Error: …" string, never raises — so this
-                # AUTH-CRITICAL write must be checked or it fails silently and leaks.
+        # ⚑ FRESH CREATE ONLY — a recovery re-create reuses the half-built box's on-disk meta.
+        if proj.is_new:
+            # ⚑ §1A CREATE EXCEPTION (R-11a) via the ONE shared gate, writing the BOX-TIER
+            # file from the ONE pair (M-8).  Only an EXPLICIT ``-i``/``--image`` persists.
+            project_toml, create_ws_path = box_workset_settings_paths(proj)
+            persist_creation_flags(
+                project_toml, materializing=proj.is_new, image=args.image,
+            )
+
+            # ⚑ AUTH-CRITICAL: --private must run BEFORE the seed, and must write through the
+            # SANCTIONED settings write into the SAME box-tier file the snapshot reads.
+            if getattr(args, "private", False):
+                from kanibako.settings.config_interface import set_config_value
+                from kanibako.settings.config_keys import ConfigLevel
+                from kanibako.errors import KanibakoError
+                for _auth_key in (
+                    "box.auth.global_enabled",
+                    "box.auth.workset_enabled",
+                ):
+                    # ⚑ set_config_value RETURNS an "Error: …" string, never raises — so this
+                    # AUTH-CRITICAL write must be checked or it fails silently and leaks.
+                    _msg = set_config_value(
+                        _auth_key, "false",
+                        config_path=project_toml,
+                        cascade_system_path=std.settings,
+                        cascade_workset_path=create_ws_path,
+                        cascade_box_path=project_toml,
+                        command_scope=ConfigLevel.box,
+                        std=std, proj=proj,
+                    )
+                    if not _msg.startswith("Set "):
+                        raise KanibakoError(
+                            f"--private: failed to persist {_auth_key} to the box "
+                            f"settings ({_msg}); refusing to create a box that would "
+                            f"forward host credentials."
+                        )
+
+            # ⚑ `create --agent` persists the §2h REQUEST `pref.system.agent`, NOT the retired
+            # `box.agent_name`, and stores the RAW ref (selection canonicalizes on read).
+            # ⚑ SAME "given" predicate as the store check above, deliberately — the two used
+            # to spell it differently, and a blank ref fell down the gap between them.
+            if _agent_arg is not None:
+                from kanibako.settings.config_interface import set_config_value
+                from kanibako.settings.config_keys import ConfigLevel
+                # ⚑ The box being created is the target (spec §2a); no agent is selected
+                # yet, so the resolve is the no-agent one.
                 _msg = set_config_value(
-                    _auth_key, "false",
+                    "pref.system.agent", _agent_arg,
                     config_path=project_toml,
                     cascade_system_path=std.settings,
                     cascade_workset_path=create_ws_path,
@@ -1031,48 +1304,33 @@ def run_create(args: argparse.Namespace) -> int:
                     std=std, proj=proj,
                 )
                 if not _msg.startswith("Set "):
-                    raise KanibakoError(
-                        f"--private: failed to persist {_auth_key} to the box "
-                        f"settings ({_msg}); refusing to create a box that would "
-                        f"forward host credentials."
+                    # ⚑ A silent no-op would make plain `start` launch a DIFFERENT agent.
+                    print(
+                        f"Error: failed to persist the box agent selection "
+                        f"({_msg}).",
+                        file=sys.stderr,
                     )
+                    return 1
 
-        # ⚑ `create --agent` persists the §2h REQUEST `pref.system.agent`, NOT the retired
-        # `box.agent_name`, and stores the RAW ref (selection canonicalizes on read).
-        # ⚑ SAME "given" predicate as the store check above, deliberately — the two used
-        # to spell it differently, and a blank ref fell down the gap between them.
-        if _agent_arg is not None:
-            from kanibako.settings.config_interface import set_config_value
-            from kanibako.settings.config_keys import ConfigLevel
-            # ⚑ The box being created is the target (spec §2a); no agent is selected
-            # yet, so the resolve is the no-agent one.
-            _msg = set_config_value(
-                "pref.system.agent", _agent_arg,
-                config_path=project_toml,
-                cascade_system_path=std.settings,
-                cascade_workset_path=create_ws_path,
-                cascade_box_path=project_toml,
-                command_scope=ConfigLevel.box,
-                std=std, proj=proj,
-            )
-            if not _msg.startswith("Set "):
-                # ⚑ A silent no-op would make plain `start` launch a DIFFERENT agent.
-                print(
-                    f"Error: failed to persist the box agent selection "
-                    f"({_msg}).",
-                    file=sys.stderr,
-                )
-                return 1
+            # ⚑ At the project ROOT (``metadata_path``), not ``project_path`` — box_data/ and
+            # vault/ live there, and for standalone the workspace is a SUBDIR of the root.
+            if args.standalone:
+                write_project_gitignore(proj.metadata_path)
 
-        # ⚑ At the project ROOT (``metadata_path``), not ``project_path`` — box_data/ and
-        # vault/ live there, and for standalone the workspace is a SUBDIR of the root.
-        if args.standalone:
-            write_project_gitignore(proj.metadata_path)
-
-    # ⚑ THE J1 WRITE-AHEAD ORDER, AND IT IS THE WHOLE MECHANISM: write entry → seed →
-    # register → clear entry.  Clearing is IMMEDIATE after the registry write (HARD
-    # INVARIANT: registered ==> no pending entry at rest).  Do not reorder these four.
-    _write_create_entry(std, proj)
+        # ⚑ THE J1 WRITE-AHEAD ORDER, AND IT IS THE WHOLE MECHANISM: write entry → seed →
+        # register → clear entry.  Clearing is IMMEDIATE after the registry write (HARD
+        # INVARIANT: registered ==> no pending entry at rest).  Do not reorder these four.
+        _write_create_entry(std, proj)
+        _journaled = True
+    finally:
+        # ⚑ ONE cleanup path, for a refusal's ``return`` and a raise alike.
+        if _undo_member is not None and not _journaled:
+            # ⚑ A failed undo must not replace the error that brought us here.
+            try:
+                _undo_member()
+            except Exception as undo_err:  # noqa: BLE001 - reported, never raised
+                print(f"Warning: could not undo the member '{_member}' this create "
+                      f"added: {undo_err}", file=sys.stderr)
     seed_new_box(std, config, proj, explicit_agent=_agent_arg)
     # ⚑ THE CANON SKELETON (J-7) — AFTER the seed (it makes the root 555; protect first
     # and the seed's copies die EACCES) and INSIDE the journal window (it must replay).
@@ -1084,7 +1342,10 @@ def run_create(args: argparse.Namespace) -> int:
         _register_new_box(std, proj, force=getattr(args, "force", False))
     _clear_create_entry(std, proj)
 
-    mode = "standalone" if args.standalone else "default"
+    mode = (
+        "named" if _named_spec is not None
+        else "standalone" if args.standalone else "default"
+    )
     # Explicit-create: `create` MAKES the box but does NOT launch it, so name the verb.
     start_hint = (
         "Start the box by executing 'kanibako' (shortcuts to 'kanibako start') "

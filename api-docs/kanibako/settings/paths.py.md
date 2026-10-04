@@ -57,6 +57,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths, config: Bootstrap
 def load_primary_boxes(primary_workset: Path) -> dict[str, str]
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str | None
 def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str, workspace: str, *, force: bool=False) -> None
+def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None
 def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str, boxes_dir: Path | None=None) -> str
 def register_primary_box_name(primary_workset: Path, registry: Path, name: str, workspace: Path | str, *, force: bool=False) -> None
 def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, name: str, workspace: Path | str, *, force: bool=False) -> None

@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`create` inside a named workset makes a box of that workset.** Run from anywhere under a named
+  workset's root, `kanibako create <name>` now makes a named box of that workset, with its
+  workspace at `workspaces/<name>`. A path, no designation, `--standalone`, or `--name` naming a
+  different box is refused there. A name the workset already holds is refused, compared case-blind.
+  An interrupted create is finished with `create --recover <name>`. See *`create` inside a named
+  workset's path space* in [MIGRATION.md](MIGRATION.md).
+
 - The undeclared-key refusal now lists each entry beside the settings file that carries it, instead
   of every file the resolve loaded; an entry no settings file carries is said to come from a
   non-file input. The system settings file and the site base file are now checked one file at a
@@ -366,6 +373,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`box show --effective` now reads the selected agent's own `box:` table.** An agent file
   carrying `box: {image: …}` was displayed as the built-in default while the launch used the
   agent's value. It does not cover any other scalar — only the ones an agent file may set.
+
+- `create` refuses a path that a named box already holds as its workspace, at that path or anywhere
+  under it, with or without `--standalone`, and names the box and its workset instead of making a
+  second box that could not be reached from that path. `--force` does not override this. Connected
+  directories that no named box owns, and paths beside one, are unaffected. See *`create` in a
+  directory connected to a workset is refused* in [MIGRATION.md](MIGRATION.md).
 
 - **A malformed bind entry in an agent file is refused where the file is read, and two spellings
   of one destination are refused everywhere.** A sub-table where an entry goes, an entry of three
