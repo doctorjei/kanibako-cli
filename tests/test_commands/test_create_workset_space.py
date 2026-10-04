@@ -298,6 +298,24 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
         assert not _printed_commands(err)
         assert list(load_workset(root, "wsa").projects) == []
 
+    def test_recover_is_refused_before_the_membership_write(self, wsa, capsys, monkeypatch):
+        """A member is added whole by its create, so ``--recover`` has nothing to
+        resume — and refusing it after the write would leave a member behind a
+        failed command, with an empty box dir and no seed."""
+        root, std = wsa
+        monkeypatch.chdir(root)
+        from kanibako.commands.box._parser import run_create
+
+        assert run_create(_args("fresh", recover=True)) == 1
+        err = capsys.readouterr().err
+        assert "nothing to resume" in err
+        assert not _printed_commands(err)
+        assert list(load_workset(root, "wsa").projects) == []
+        assert not (root / "boxes" / "fresh").exists()
+        assert not (root / "workspaces" / "fresh").exists()
+        from kanibako.launch import journal
+        assert journal.read_journal(std.journal) == {}
+
     def test_standalone_stays_refused_in_the_space(self, wsa, capsys, monkeypatch):
         """``--standalone`` asks for a standalone box, which the space rejects."""
         root, _std = wsa

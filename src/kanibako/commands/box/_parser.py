@@ -29,6 +29,7 @@ from kanibako.project.workset import add_project, list_worksets, load_workset
 from kanibako.settings.messages import (
     ERR_WORKSET_MEMBER_NAME_CONFLICT,
     ERR_WORKSET_MEMBER_NAME_TAKEN,
+    ERR_WORKSET_MEMBER_NO_RECOVER,
     ERR_WORKSET_NULL_WORKSPACES,
 )
 from kanibako.settings.paths import (
@@ -875,6 +876,14 @@ def _add_workset_member(std, config, workset: str, name: str,
         print("Error: " + ERR_WORKSET_MEMBER_NAME_CONFLICT % (
             ws.name, override, name,
         ), file=sys.stderr)
+        return None
+
+    # ⚑ REFUSED BEFORE THE MEMBERSHIP WRITE, because that write is what ``--recover``
+    # would then be resuming: the member is added whole by this create, so there is no
+    # half-built member for the flag to finish, and refusing after the write would
+    # leave a member with an empty box dir behind a failed command.
+    if getattr(args, "recover", False):
+        print("Error: " + ERR_WORKSET_MEMBER_NO_RECOVER % ws.name, file=sys.stderr)
         return None
 
     # ⚑ THE MEMBERSHIP KEY IS FOLDED, so a case-blind collision would not add a second
