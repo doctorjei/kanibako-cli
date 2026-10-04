@@ -66,7 +66,7 @@ from kanibako.settings.settings_keyspace import (
     leaf_name_reason,
     pseudo_agent_fence,
 )
-from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH
+from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, literal_expr
 from kanibako.settings.settings_cli_level import SELECTION_KEY, build_cli_level
 from kanibako.settings.paths import (
     DesignationRoute,
@@ -9280,7 +9280,8 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     is the bug this function exists to prevent.
 
     The values are RESOLVED LITERALS, not ``@``-refs (the ``meta_identity_floor``
-    pattern): what a launch derives, it derives once, here.
+    pattern): what a launch derives, it derives once, here; the box name enters as
+    ``literal_expr``.
 
     🛑 ``KANIBAKO_DIRECTIVE_SEED`` is UNCONDITIONAL even though its kickoff BIND is
     descriptor-gated — a no-agent box gets the variable today and must keep getting
@@ -9312,7 +9313,7 @@ def _core_env_default_categories(*, proj, target, agent_id) -> dict[str, str]:
     """
     table: dict[str, str] = {}
     if proj.name:
-        table["system.env.KANIBAKO_NAME"] = proj.name
+        table["system.env.KANIBAKO_NAME"] = literal_expr(proj.name)
     table["system.env.KANIBAKO_DIRECTIVE_SEED"] = core_defaults.kickoff_guest_dest()
     table["system.env.KANIBAKO_AGENT_MARKERS_DIR"] = AGENT_MARKERS_DIR
     if target is not None:

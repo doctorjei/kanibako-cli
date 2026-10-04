@@ -28,6 +28,7 @@ from kanibako.agent_ref import ADDRESSABLE_PSEUDO_AGENTS
 from kanibako.errors import PackagingError
 from kanibako.settings.agent_config import store_dirname
 from kanibako.settings.config_io import parse_packaged
+from kanibako.settings.settings_resolve import literal_expr, literal_map
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths, StandardPaths
@@ -294,19 +295,21 @@ def channel_default_categories(
     addr = _ch.box_channel_addresses(proj, std)
     wch = _ch.workset_channel_paths(proj, std)
 
-    # Symbolic source name -> runtime-probed host path.  ⚑ Workset sources exist only for
-    # PRIMARY/NAMED, and their absence IS the standalone-omit gate below.
-    sources: dict[str, str] = {
+    # Symbolic source name -> runtime-probed host path, as a ``literal_expr``.  ⚑ Workset
+    # sources exist only for PRIMARY/NAMED, and their absence IS the standalone-omit gate below.
+    sources: dict[str, str] = literal_map({
         "channels_common": str(std.channels_common),
         "channels_chat": str(std.channels_chat),
         "channels_share": str(std.channels_share),
         "channels_mailboxes": str(std.channels_mailboxes),
         "inbox": str(addr.inbox),
-    }
+    })
     if wch is not None:
-        sources["workset_common"] = str(wch.common)
-        sources["workset_chat"] = str(wch.chat)
-        sources["workset_share"] = str(wch.share)
+        sources.update(literal_map({
+            "workset_common": str(wch.common),
+            "workset_chat": str(wch.chat),
+            "workset_share": str(wch.share),
+        }))
     elif _ch.has_workset_channels(proj):
         # ⚑ A NULL ``workset.channelroot`` KEEPS THE THREE ROWS: each emits its own
         # ``@workset.channels.*`` ref, which resolves to null — the floor SUPPLIES that
@@ -338,17 +341,20 @@ def core_default_categories(
     ⚑ NO HOME ROW. Home is pid 0, not one bind among these: it is constructed at the
     assembly seam off ``meta.box.home`` (spec ``:1015``), never declared here.
     """
-    # Symbolic source name -> runtime-probed host path off ``ProjectPaths``.
+    # Symbolic source name -> runtime-probed host path off ``ProjectPaths``, as a
+    # ``literal_expr``.
     # ⚑ ``project_path`` is ``None`` for a standalone box whose root nulls
     # ``workset.workspaces`` (Q106).  ``str()`` would turn that into the WORD
     # ``"None"`` and a bind would carry it as a host path, so the symbol is left
     # UNPROBED here and an entry that actually names it is refused below.  Every
     # shipped entry supplies ``meta_ref``/``mode_meta_ref`` and never reads it.
     sources: dict[str, str | None] = {
-        "project_path": None if proj.project_path is None else str(proj.project_path),
-        # ⚡ A NULL ARM IS LEFT UNPROBED, as ``project_path`` above.
-        "vault_ro_path": None if proj.vault_ro_path is None else str(proj.vault_ro_path),
-        "vault_rw_path": None if proj.vault_rw_path is None else str(proj.vault_rw_path),
+        name: None if path is None else literal_expr(str(path))
+        for name, path in (
+            ("project_path", proj.project_path),
+            ("vault_ro_path", proj.vault_ro_path),
+            ("vault_rw_path", proj.vault_rw_path),
+        )
     }
     vault_dir: dict[str, Path | None] = {
         "vault_ro_path": proj.vault_ro_path,
@@ -409,11 +415,11 @@ def kani_default_categories() -> BindArmTable:
     )
     secrets_path = Path(str(secrets_ref))
 
-    sources: dict[str, str] = {
+    sources: dict[str, str] = literal_map({
         "kani_pkg": str(pkg_dir),
         "kani_bin": str(entry_path),
         "secret_export": str(secrets_path),
-    }
+    })
 
     binds: BindArmTable = {}
     for entry in _load_doc().get("kani", []):
@@ -487,7 +493,7 @@ def kickoff_default_categories(
         )
     binds: BindArmTable = {}
     add_bind(
-        binds, str(entry["category"]), str(entry["box_dest"]), str(src),
+        binds, str(entry["category"]), str(entry["box_dest"]), literal_expr(str(src)),
         str(entry["options"]),
     )
     return binds
@@ -675,7 +681,7 @@ def rom_default_categories() -> BindArmTable:
     out: BindArmTable = {}
     for _key, rel, _is_dir in binds:
         add_bind(
-            out, "bindings.ro", _canon_dest(rel), str(rom_root / rel), "ro",
+            out, "bindings.ro", _canon_dest(rel), literal_expr(str(rom_root / rel)), "ro",
         )
     return out
 
@@ -698,7 +704,7 @@ def rom_agent_default_categories(
     out: BindArmTable = {}
     add_bind(
         out, "bindings.ro",
-        _rom_agent_chapter_dest(), str(rom_root), "ro",
+        _rom_agent_chapter_dest(), literal_expr(str(rom_root)), "ro",
     )
     return out
 
@@ -1156,7 +1162,7 @@ def helper_default_categories(
         # (its ``@meta.box.path`` default is answered by the caller, which holds the
         # resolved ``workset.boxes``), closing migration M-14.  ⚑ ``helper_sock`` is NOT
         # routed: its bounded name is the companion's name rule, not an ``@``-formula (JC-B2b-3).
-        host_src = entry.get("meta_ref", str(src_path))
+        host_src = entry.get("meta_ref", literal_expr(str(src_path)))
         add_bind(binds, category, box_dest, host_src, str(entry["options"]))
     return binds
 
@@ -1174,14 +1180,14 @@ def image_default_categories(
     ``images_conf`` stays an INTERNAL bind and NOT a key (spec §0's test).
     """
     sources: dict[str, str] = {
-        "images_conf": str(storage_conf_path),
+        "images_conf": literal_expr(str(storage_conf_path)),
     }
 
     binds: dict[str, object] = {}
     if graph_root is not None:
-        sources["images_store"] = str(graph_root)
+        sources["images_store"] = literal_expr(str(graph_root))
         # The USER KEY behind the store bind: the probe lands as ``box.images_store``'s DEFAULT.
-        binds["box.images_store"] = str(graph_root)
+        binds["box.images_store"] = literal_expr(str(graph_root))
     for entry in _load_doc().get("images", []):
         category = entry["category"]
         # ⚑ ``meta_ref`` is the emitted host_src; the symbolic ``source`` is the probed-literal

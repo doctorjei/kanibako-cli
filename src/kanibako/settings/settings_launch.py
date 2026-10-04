@@ -326,7 +326,7 @@ def meta_runtime_floor(
     the two cannot drift. *ws_root_literal* is the resolved workset-root path STRING,
     REQUIRED for ``named`` / ``standalone`` and IGNORED for ``primary`` (which uses
     the ``@config.primary_workset`` @-ref so the value live-propagates from the
-    Layer-1 foundation).
+    Layer-1 foundation); it enters as :func:`literal_expr`.
 
     The re-rooted keys are UNIFORM across modes and construct-set RO per §0, so the
     floor is their sole source. Per-key detail: the llm-doc.
@@ -339,7 +339,7 @@ def meta_runtime_floor(
 
     # meta.runtime.ws_name — the workset partition TOKEN (spec §1A):
     #   primary → __PRIMARY__ · named → <detected name> · standalone → __STANDALONE__.
-    floor["meta.runtime.ws_name"] = ws_name
+    floor["meta.runtime.ws_name"] = literal_expr(ws_name)
 
     # meta.runtime.ws_root (spec §1A):
     #   primary    → the @config.primary_workset @-ref STRING (foundation, #3a);
@@ -353,7 +353,7 @@ def meta_runtime_floor(
                 f"meta_runtime_floor: ws_root_literal is required for mode "
                 f"{mode!r} (only 'primary' uses the @config.primary_workset @-ref)"
             )
-        floor["meta.runtime.ws_root"] = ws_root_literal
+        floor["meta.runtime.ws_root"] = literal_expr(ws_root_literal)
 
     # Single-source re-root (spec §1A; §2c) — UNIFORM all modes.
     floor["meta.workset.path"] = "@meta.runtime.ws_root"
@@ -511,8 +511,9 @@ def meta_identity_floor(
     Every value is the RESOLVED LITERAL the launch already computes (the box name on
     ``proj.name``, the workspace source, the channel partition addresses from
     :func:`kanibako.channels.channels.box_channel_addresses`, the plugin-set agent
-    name), so a bind re-pointed to ``@meta.box.workspace`` / ``@meta.box.inbox``
-    expands to the byte-identical host_src (JC-B2-4 equivalence bar).
+    name), entered as :func:`literal_expr`, so a bind re-pointed to
+    ``@meta.box.workspace`` / ``@meta.box.inbox`` expands to the byte-identical
+    host_src (JC-B2-4 equivalence bar).
 
     *share_workset* is ``None`` for STANDALONE (no workset-local channels, §2c) →
     a whole-value ``None`` terminal.  *project_path* is ``None`` for a standalone box
@@ -531,21 +532,24 @@ def meta_identity_floor(
     ``agent_settings_path`` and the persona shim use, and it is the node that keeps
     the two in agreement. Both ``None`` for a NO-AGENT box. Per-key detail: the llm-doc.
     """
+    def literal(text: str | None) -> str | None:
+        return None if text is None else literal_expr(text)
+
     floor: dict[str, object] = {
         # Box identity (spec §2c). ⚑ The box name is REUSED from ``proj.name``
         # (JC-B2-2): standalone's <kuid>_%leaf% is composed LIVE in
         # ``resolve_standalone_project``, and B2 does NOT re-compose or regenerate it.
-        "meta.box.name": box_name,
+        "meta.box.name": literal_expr(box_name),
         # The in-box workspace SOURCE literal (routed to box.bindings.rw.workspace).
-        "meta.box.workspace": project_path,
+        "meta.box.workspace": literal(project_path),
         # This box's own channel partition addresses (inbox routed to
         # box.bindings.rw.inbox; the two share dirs are anchors for parity).
-        "meta.box.inbox": inbox,
-        "meta.box.share_global": share_global,
-        "meta.box.share_workset": share_workset,
+        "meta.box.inbox": literal_expr(inbox),
+        "meta.box.share_global": literal_expr(share_global),
+        "meta.box.share_workset": literal(share_workset),
         # The RO box-TIER settings-file anchor — the file the cascade reads and
         # `config set` writes.
-        "meta.box.settings": box_settings,
+        "meta.box.settings": literal(box_settings),
         # meta.workset.name is NOT set here: it anchors into meta.runtime.ws_name.
     }
     # The agent identity key (spec §2d) — REQUIRED when an agent exists, under
@@ -699,6 +703,8 @@ def workset_anchor_floor(
     key, so under §0's closed keyspace it is not one. Do not reintroduce it — one bind,
     one spelling.
 
+    The three path arguments are RESOLVED host paths and enter as :func:`literal_expr`.
+
     *workset_channels* maps the RESOLVED channel paths into ``workset.channels.*``.  ⚑
     Each leaf is checked against :data:`_WORKSET_CHANNEL_LEAVES` and an undeclared one is
     REFUSED: this is the one place a floor builds a key from a caller-supplied NAME, and a
@@ -827,7 +833,7 @@ def workset_anchor_floor(
                 "standalone (the manifest default is {standalone: null}); the floor "
                 "supplies that None itself, so no caller may emit a path for it."
             )
-        floor["workset.channelroot"] = channelroot
+        floor["workset.channelroot"] = literal_expr(channelroot)
     elif not standalone:
         # ⚑ A NULL CHANNEL ROOT LEAVES THE FOUR LOCAL LEAVES PRESENT AND ``<None>``,
         # exactly as STANDALONE supplies them above.  A ``<None>`` is not a MISSING
@@ -853,7 +859,7 @@ def workset_anchor_floor(
                 "None itself, so no caller may emit a path for it. A user's value "
                 "reaches the key through the settings cascade."
             )
-        floor["workset.workspaces"] = workspaces
+        floor["workset.workspaces"] = literal_expr(workspaces)
     if workset_channels is not None:
         for leaf, path in workset_channels.items():
             if leaf not in _WORKSET_CHANNEL_LEAVES:
@@ -871,7 +877,7 @@ def workset_anchor_floor(
                     "channels); the floor supplies that None itself, so no caller "
                     "may emit a path for it."
                 )
-            floor[f"workset.channels.{leaf}"] = path
+            floor[f"workset.channels.{leaf}"] = literal_expr(path)
     return floor
 
 

@@ -383,6 +383,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `$`, `@`, `\` or `~` in a directory name is now kept as part of the path.** Kanibako passed
+  the directories it finds itself (your home and XDG directories, the box, the name it takes from its
+  directory, and its workspace, the workset root and name, its channel and inbox addresses, the
+  packaged files and the agent install) to the settings resolver as expressions, so a character with
+  meaning in a settings value was read that way. A `$` stopped `create` and every launch (`Unknown
+  variable`). An `@` cut the path at the `@`, or silently dropped the key. A `\` was removed. Those
+  directories now enter as literal text everywhere: in the launch, in `box show --effective`, at
+  `set`, and when a `box_dest` refers to one of them. Values you write are not affected. A literal
+  `$`, `@`, `\` or leading `~` in your own value still needs a backslash.
 - **`box move` and `box convert` now carry a box's `workset.logs` files** (its helper log and
   credential-watcher log) when the box gets a new name or a new `workset.logs` directory; before, the
   logs stayed behind under the old name, where nothing wrote them. A move that rolls back puts them

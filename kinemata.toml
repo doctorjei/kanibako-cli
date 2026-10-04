@@ -1937,6 +1937,9 @@ where = { holds = "kinemata_views:bootstrap_path_row" }
 # channel family, the helper socket), the oracle hands the derivation `@`-refs as
 # its inputs (`kinemata_views.ref_token_project` / `ref_token_standard_paths`), so
 # the code composes the formula the manifest declares and no resolver is written.
+# The floor enters each resolved path as a `literal_expr`, so those oracles print
+# it through `kinemata_views.literal_text`, which reads the escape back and reds a
+# value that is not one.
 # The stubs are MODE-AWARE: only the attribute that is the workset root in that
 # mode carries `@meta.workset.path`, and every other root candidate carries a
 # decoy naming itself -- or, for the group outside NAMED, is absent and a read
@@ -3862,14 +3865,14 @@ import json
 from kanibako.settings.settings_launch import (
     _BOX_MODES, _workset_workspaces_floor_value, workset_anchor_floor,
 )
-from kinemata_views import REF_WORKSET_PATH, every_mode_cell
+from kinemata_views import REF_WORKSET_PATH, every_mode_cell, literal_text
 floors = {}
 for mode in _BOX_MODES:
     root = None if mode == "primary" else REF_WORKSET_PATH
     floor = workset_anchor_floor(
         mode=mode, workspaces=_workset_workspaces_floor_value(mode, root),
     )
-    floors[mode] = {"workset.workspaces": floor["workset.workspaces"]}
+    floors[mode] = {"workset.workspaces": literal_text(floor["workset.workspaces"])}
 for key, cell in sorted(every_mode_cell(floors).items()):
     print(f"kanibako-workspaces: {key}={json.dumps(cell)}")
 """]
@@ -4106,7 +4109,7 @@ registry = "workset-channels-primary"
 command = ["{python}", "-c", """
 import os, tempfile
 from kanibako.settings.settings_launch import _box_workset_floors
-from kinemata_views import ref_token_project, ref_token_standard_paths
+from kinemata_views import literal_text, ref_token_project, ref_token_standard_paths
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     _, floor, _ = _box_workset_floors(
@@ -4116,7 +4119,7 @@ with tempfile.TemporaryDirectory() as scratch:
     )
 for key, value in sorted(floor.items()):
     if key.startswith("workset.channel") and key.rsplit(".", 1)[-1] not in ("mailboxes", "share_global"):
-        print(f"kanibako-channel: {key}={value}")
+        print(f"kanibako-channel: {key}={literal_text(value)}")
 """]
 extract = '(?m)^kanibako-channel: ([^\s=]+)=(\S+)$'
 field = ["default", "primary"]
@@ -4128,7 +4131,7 @@ registry = "workset-channels-named"
 command = ["{python}", "-c", """
 import os, tempfile
 from kanibako.settings.settings_launch import _box_workset_floors
-from kinemata_views import ref_token_project, ref_token_standard_paths
+from kinemata_views import literal_text, ref_token_project, ref_token_standard_paths
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     _, floor, _ = _box_workset_floors(
@@ -4138,7 +4141,7 @@ with tempfile.TemporaryDirectory() as scratch:
     )
 for key, value in sorted(floor.items()):
     if key.startswith("workset.channel") and key.rsplit(".", 1)[-1] not in ("mailboxes", "share_global"):
-        print(f"kanibako-channel: {key}={value}")
+        print(f"kanibako-channel: {key}={literal_text(value)}")
 """]
 extract = '(?m)^kanibako-channel: ([^\s=]+)=(\S+)$'
 field = ["default", "named"]
@@ -4166,7 +4169,7 @@ registry = "workset-partition"
 command = ["{python}", "-c", """
 import os, tempfile
 from kanibako.settings.settings_launch import _box_workset_floors
-from kinemata_views import ref_token_project, ref_token_standard_paths
+from kinemata_views import literal_text, ref_token_project, ref_token_standard_paths
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     _, floor, _ = _box_workset_floors(
@@ -4175,7 +4178,7 @@ with tempfile.TemporaryDirectory() as scratch:
         "",
     )
 for leaf in ("mailboxes", "share_global"):
-    print(f"kanibako-partition: workset.channels.{leaf}={floor[f'workset.channels.{leaf}']}")
+    print(f"kanibako-partition: workset.channels.{leaf}={literal_text(floor[f'workset.channels.{leaf}'])}")
 """]
 extract = '(?m)^kanibako-partition: ([^\s=]+)=(\S+)$'
 field = "default"
@@ -4253,12 +4256,12 @@ authority = "declared"
 registry = "helper-socket-bind"
 command = ["{python}", "-c", """
 import os, tempfile
-from kinemata_views import guest_bind_arm, sentinel_helper_binds
+from kinemata_views import guest_bind_arm, literal_text, sentinel_helper_binds
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     binds = sentinel_helper_binds()
 for dest, (host_src, *_) in guest_bind_arm(binds, "bindings.rw"):
-    print(f"kanibako-helper-bind: {dest}={host_src}")
+    print(f"kanibako-helper-bind: {dest}={literal_text(host_src)}")
 """]
 extract = '(?m)^kanibako-helper-bind: ([^\s=]+)=(\S+)$'
 field = "default"
@@ -4586,11 +4589,11 @@ translate_identifier = { pattern = '^meta\.agent\.<agent>\.', replacement = "met
 registry = "box-inbox"
 command = ["{python}", "-c", """
 import os, tempfile
-from kinemata_views import box_address_floor
+from kinemata_views import box_address_floor, literal_text
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     floor = box_address_floor("named")
-print(f"kanibako-box-address: meta.box.inbox={floor['meta.box.inbox']}")
+print(f"kanibako-box-address: meta.box.inbox={literal_text(floor['meta.box.inbox'])}")
 """]
 extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
 field = "value"
@@ -4601,11 +4604,11 @@ translate = { pattern = '^@workset\.channels\.mailboxes/', replacement = "@syste
 registry = "box-share-global"
 command = ["{python}", "-c", """
 import os, tempfile
-from kinemata_views import box_address_floor
+from kinemata_views import box_address_floor, literal_text
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     floor = box_address_floor("named")
-print(f"kanibako-box-address: meta.box.share_global={floor['meta.box.share_global']}")
+print(f"kanibako-box-address: meta.box.share_global={literal_text(floor['meta.box.share_global'])}")
 """]
 extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
 field = "value"
@@ -4616,11 +4619,11 @@ translate = { pattern = '^@workset\.channels\.share_global/', replacement = "@sy
 registry = "box-share-workset-primary"
 command = ["{python}", "-c", """
 import os, tempfile
-from kinemata_views import box_address_floor
+from kinemata_views import box_address_floor, literal_text
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     floor = box_address_floor("primary")
-print(f"kanibako-box-address: meta.box.share_workset={floor['meta.box.share_workset']}")
+print(f"kanibako-box-address: meta.box.share_workset={literal_text(floor['meta.box.share_workset'])}")
 """]
 extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
 field = ["value", "primary"]
@@ -4631,11 +4634,11 @@ translate = { pattern = '^@workset\.channels\.share/', replacement = "@meta.work
 registry = "box-share-workset-named"
 command = ["{python}", "-c", """
 import os, tempfile
-from kinemata_views import box_address_floor
+from kinemata_views import box_address_floor, literal_text
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     floor = box_address_floor("named")
-print(f"kanibako-box-address: meta.box.share_workset={floor['meta.box.share_workset']}")
+print(f"kanibako-box-address: meta.box.share_workset={literal_text(floor['meta.box.share_workset'])}")
 """]
 extract = '(?m)^kanibako-box-address: ([^\s=]+)=(\S+)$'
 field = ["value", "named"]
@@ -4646,11 +4649,11 @@ translate = { pattern = '^@workset\.channels\.share/', replacement = "@meta.work
 registry = "box-share-workset-standalone"
 command = ["{python}", "-c", """
 import json, os, tempfile
-from kinemata_views import box_address_floor
+from kinemata_views import box_address_floor, literal_text
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     floor = box_address_floor("standalone")
-print(f"kanibako-box-address: meta.box.share_workset={json.dumps(floor['meta.box.share_workset'])}")
+print(f"kanibako-box-address: meta.box.share_workset={json.dumps(literal_text(floor['meta.box.share_workset']))}")
 """]
 extract = '(?m)^kanibako-box-address: ([^\s=]+)=(.+)$'
 field = ["value", "standalone"]
