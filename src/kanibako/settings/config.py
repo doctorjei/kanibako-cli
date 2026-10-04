@@ -340,9 +340,8 @@ def box_scalar_defaults_floor() -> dict[str, object]:
         # ⚑ A declared ``<None>`` is SUPPLIED as a present ``None`` (spec §2b
         # ``box.shell | <None>``) — never ``""``, which is a value, and which a
         # ``default_categories`` fold drops as a suppression, so ``@box.shell`` would
-        # dangle.  A present ``None`` does not reach the flat field:
-        # ``settings_launch.resolve_box_scalars`` skips it, leaving ``None``
-        # (auto-detect).  ⚑ ``False`` is a VALUE and survives — ``False == ""`` is False.
+        # dangle.  A winning present ``None`` lands on the flat field as ``None``
+        # (auto-detect), via ``settings_launch.resolve_box_scalars``.  ⚑ ``False`` is a VALUE and survives — ``False == ""`` is False.
         floor[dotted] = None if value == "" else value
     return floor
 

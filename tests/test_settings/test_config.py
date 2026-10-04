@@ -1072,22 +1072,29 @@ class TestScalarOverlayPrecedence:
         merged_ws_only = load_merged_config(workset_path=workset_path)
         assert merged_ws_only.box_shell == "foo"
 
-    def test_the_cli_layer_still_wins_over_a_files_value(self, tmp_path):
-        """The CLI is the most-specific LAYER, so its value wins over any file's.
+    def test_higher_layer_overrides_after_null(self, tmp_path):
+        """A null is not terminal: a higher layer (CLI override) can set a
+        concrete value afterward and it wins.
 
-        The lower file carries a concrete value, not a ``null``: a ``null`` at
-        ``box.image`` is a present ``None`` the launch refuses, so it never reaches a
-        layer that could override it.
-
-        # keyspec §2h: "KEPT ``None`` for a scalar leaf — the consumer reads None, never
-        # the key's default" — which is why this case's lower value must be a real one.
+        # keyspec §2h keeps a present ``None`` only where it WINS the cascade; the
+        # refusal judges the resolved value, so an overridden null is never refused.
         """
         workset_path = tmp_path / "ws-config.yaml"
-        workset_path.write_text("box:\n  image: img:ws\n")
+        workset_path.write_text("box:\n  image: null\n")
         merged = load_merged_config(workset_path=workset_path,
             cli_overrides={"box_image": "img:cli"},
         )
         assert merged.box_image == "img:cli"
+
+    def test_a_box_value_overrides_a_workset_null(self, tmp_path):
+        """The box tier is more authoritative than the workset tier, so its value wins
+        over a workset ``null`` and nothing is refused."""
+        workset_path = tmp_path / "ws-config.yaml"
+        workset_path.write_text("box:\n  image: null\n")
+        project_path = tmp_path / BOX_META_FILE
+        project_path.write_text("box:\n  image: img:box\n")
+        merged = load_merged_config(project_path, workset_path=workset_path)
+        assert merged.box_image == "img:box"
 
 
 class TestPresentScalarFields:
