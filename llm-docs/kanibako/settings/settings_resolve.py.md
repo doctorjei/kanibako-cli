@@ -498,7 +498,7 @@ what `expr[i]` actually is.
 
 **The SINGLE parser for the `$` token family**, exactly as `match_ref` is for `@`: shared by
 `_expand_var` (which resolves the name), `_scan_var_span` (which re-emits the source span for
-`defer_env`) and `settings_configset._scan_tokens` (which collects names for set-time
+`defer_env`) and `settings_configset.scan_tokens` (which collects names for set-time
 validation). Those three carried THREE copies of this ten-line parse before; one grammar, one
 copy, so a change to the token shape cannot land in some of them and not others.
 
@@ -528,7 +528,7 @@ TWO SPELLINGS, one meaning:
 
 **The SINGLE parser for both spellings**, shared by the scanner (`_expand_ref`), the whole-value
 shape test (`settings_expand._is_whole_value_ref`), set-time validation
-(`settings_configset._scan_tokens`) and the kinemata keyspace adapter's `@`-ref candidates
+(`settings_configset.scan_tokens`) and the kinemata keyspace adapter's `@`-ref candidates
 (`kinemata_keyspace._ref_names`) — one grammar for every reader (seam S25).
 
 The braced form deliberately MIRRORS `${...}` (`_expand_var` / `_scan_var_span`): optional brace,

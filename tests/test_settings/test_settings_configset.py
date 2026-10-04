@@ -221,14 +221,14 @@ def test_escaped_at_is_literal_not_a_ref() -> None:
 
 
 def test_braced_ref_scans_as_one_token_not_a_swallowed_suffix() -> None:
-    # ``_scan_tokens`` calls the resolver's OWN parser, so the ref name stops at
+    # ``scan_tokens`` calls the resolver's OWN parser, so the ref name stops at
     # the closing brace and the ``.jsonl`` suffix is a literal — the whole point
     # of the form. (Bare ``@meta.box.name.jsonl`` would yield one dotted name.)
-    from kanibako.settings.settings_configset import _scan_tokens
+    from kanibako.settings.settings_configset import scan_tokens
 
-    assert _scan_tokens("@{meta.box.name}.jsonl") == (["meta.box.name"], [])
-    assert _scan_tokens("@{a}/@{b}.x") == (["a", "b"], [])
-    assert _scan_tokens("@meta.box.name.jsonl") == (["meta.box.name.jsonl"], [])
+    assert scan_tokens("@{meta.box.name}.jsonl") == (["meta.box.name"], [])
+    assert scan_tokens("@{a}/@{b}.x") == (["a", "b"], [])
+    assert scan_tokens("@meta.box.name.jsonl") == (["meta.box.name.jsonl"], [])
 
 
 def test_braced_ref_that_resolves_is_ok() -> None:
@@ -258,11 +258,11 @@ def test_both_token_families_report_in_the_resolvers_message_style() -> None:
     """One grammar means one ERROR STYLE too, for ``$`` and ``@`` alike.
 
     PHASE R first routed only the ``@`` arm through the resolver's parser, which
-    left ``_scan_tokens`` speaking two message styles in one function — the exact
+    left ``scan_tokens`` speaking two message styles in one function — the exact
     "two forms for one thing" this codebase treats as a defect, and the kind that
     gets copied. Both arms now re-raise the resolver's own text.
     """
-    from kanibako.settings.settings_configset import _scan_tokens
+    from kanibako.settings.settings_configset import scan_tokens
 
     for value, expected in (
         ("@", "Malformed @-reference at:"),
@@ -271,7 +271,7 @@ def test_both_token_families_report_in_the_resolvers_message_style() -> None:
         ("${X", "Unterminated ${...} reference:"),
     ):
         with pytest.raises(ValueError) as ei:
-            _scan_tokens(value)
+            scan_tokens(value)
         assert str(ei.value).startswith(expected), (value, str(ei.value))
 
 

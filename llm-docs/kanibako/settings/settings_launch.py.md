@@ -883,6 +883,12 @@ present-`None` / `""`-terminal) plus the vanished-leaf shape.
 `_BOX_STORE_KEY` (`workset.boxes`) is the SETTABLE key the box root dereferences, and it is
 validated ALONGSIDE the root because a broken source does not always produce a broken-LOOKING root.
 
+The check states its test by calling `config.usable_box_store_value` and its two reason clauses by
+reading `messages.ERR_BOX_STORE_TRAILING_REASON` / `ERR_BOX_STORE_EMPTY_REASON`, because the `set`
+door judges the same value and must not come to disagree with the launch about what it accepts. The
+launch reads BOTH roots with that one test, which is why the set door's membership is the
+`workset.boxes` KEY alone — `config.refuses_box_store_value` adds the key and no judgment of its own.
+
 `snapshot_leaf` is PUBLIC because the assembly seam reads `meta.box.home` through it
 (`commands/start.py._install_assembly_collapse`). One reader, so a dotted read off a resolved
 snapshot cannot acquire a second spelling with its own idea of what absence looks like.
