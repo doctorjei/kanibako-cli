@@ -406,10 +406,15 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None
 ```
 Best-effort read of *root*'s workset `workset.yaml` document.
 
-Returns the raw document mapping, or `None` when the file is absent, unreadable, or not a mapping —
-**mirroring `load_workset_boxes`'s failure shape**, so a broken or (routinely) ABSENT settings
-file degrades a repoint to the default composition instead of crashing the detection / lookup paths
-that call it.
+⚑ "BEST-EFFORT" IS ABOUT THE FILE BEING OPTIONAL, NOT ABOUT BEING UNREADABLE. An ABSENT file is
+`None` — the settings file is optional by design, and `None` means exactly that and nothing else. A
+MALFORMED one is refused in `load_doc`'s own words, naming the file, like every other settings
+file: reading it as "no file" repointed every resolved workset key to its default in silence,
+including the vault arms the teardown paths delete by.
+⚑ THREE CARVE-OUTS, each catching `ConfigError` itself — `refuse_retired_workset_identity` and
+`is_workset_skeleton`, both reached by `detect_project_mode`'s ancestor walk over every directory
+above the cwd (most of them not ours), and `delete_workset`'s purge, which must not make a user
+hand-edit the very file they are deleting. No other caller catches.
 
 ```python
 def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None | _Unset
@@ -624,14 +629,14 @@ destination and the global registry as the real home of the name; the shipped gu
 MIGRATION.md §2.43.
 
 ⚑ Two things the check deliberately does NOT do: a `workset.meta` that is a SCALAR is not the
-identity table and does not refuse, and an unparseable file is a miss rather than a refusal
-(`load_workset_settings_doc` swallows the parse error), because a file kanibako cannot read is not
+identity table and does not refuse, and an unparseable file is a miss rather than a refusal — this
+function catches the reader's `ConfigError` itself, because a file kanibako cannot read is not
 evidence of a retired shape.
 
 ⚑ **PUBLIC, and called from two places:** `_load_workset`, and `settings/paths.py`'s ancestor walk,
 which now calls it for the diagnostic ALONE — there is no marker to find there any more, so a legacy
-root is refused by name on the way past rather than walked over in silence. Neither caller catches,
-so the refusal reaches the user as an `Error:` line.
+root is refused by name on the way past rather than walked over in silence. Neither caller catches
+the refusal, so it reaches the user as an `Error:` line.
 
 ```python
 def _load_registry(std: StandardPaths) -> dict[str, Path]
