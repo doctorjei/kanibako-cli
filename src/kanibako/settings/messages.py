@@ -96,6 +96,16 @@ ERR_CONFIG_NULL_PATH_CURE = (
 ERR_CONFIG_NULL_PATH_SET_HEAD = (
                         "the launch refuses a null at these path keys, so this set is refused too:\n  %s\n")
 ERR_CONFIG_NULL_PATH = ERR_CONFIG_NULL_PATH_HEAD + ERR_CONFIG_NULL_PATH_CURE
+# ⚑ THE SET DOOR'S HALF of "no @-ref points DOWNWARD" (spec §0) for the SYSTEM PATH TIER;
+# scope and why are stated once, on ``config.system_path_ref_error``. ⚑ The @-sigils are
+# LITERAL, unlike ``ERR_SETTINGS_BAD_REF``'s spliced one — this names what the user wrote.
+ERR_CONFIG_PATH_REF_SCOPE = (
+                        "%s is set to %r, which points at '@%s' — outside the system "
+                        "path tier. A system path value may reference only @config.* and "
+                        "@system.* keys, so a launch could not read it back (spec §0: no "
+                        "@-ref points downward). Reference one of those keys instead, or "
+                        "set the path you mean.")
+                                                    # the key, the value, the offending ref
 ERR_PROJECT_NO_PATH =   "Project path '%s' does not exist." # the path that does not exist
 ERR_PROJECT_BAD_DESIGNATION = "Invalid box designation %r: it is neither a box name nor a path."
 # ⚑ The two $HOME-guard messages take NO arguments (raised bare).
