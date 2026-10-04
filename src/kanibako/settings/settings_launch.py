@@ -66,7 +66,6 @@ from kanibako.settings.config import (
     AGENT_META_FILE,
     WORKSET_META_FILE,
     KanibakoConfig,
-    _present_scalar_fields,
     _typed_box_scalar,
     box_scalar_defaults_floor,
     load_config,
@@ -2271,6 +2270,7 @@ def build_launch_snapshot(
     cli_level: Mapping[str, object] | None = None,
     subject: ResolveSubject = ResolveSubject.BOX,
     refs_read: RefsRead | None = None,
+    written_out: "list[_WrittenLevel] | None" = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -2314,6 +2314,9 @@ def build_launch_snapshot(
     a caller cannot omit them by accident. Supplying them is a CACHE, not a second
     source. *valid_agents* injects the agent-validity set (defaults to plugin
     discovery); tests supply their own.
+
+    *written_out*, when given, receives the cascade's labeled levels, most-specific-first,
+    so a caller can name the file whose value won (:func:`_none_setter`).
 
     *cli_level* is the §1A **top-most input level** — above every settings file AND
     every pref. :func:`~kanibako.settings.settings_cli_level.guard_cli_level` is
@@ -2375,6 +2378,8 @@ def build_launch_snapshot(
         cli_level=cli_level,
     )
     snapshot, written = cascade.snapshot, cascade.written
+    if written_out is not None:
+        written_out.extend(written)
     null_sources: NullSources = {}
     expanded = expand(snapshot, ctx, null_sources=null_sources, refs_read=refs_read)
     # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
@@ -3818,12 +3823,21 @@ def resolve_box_scalars(
     inputs: LaunchInputs | None = None,
     agent_name: str = GENERAL_SLOT,
     agent_path: Path | None = None,
+    refuse_null_scalars: bool = True,
 ) -> dict[str, object]:
     """The box scalars resolved through the keyspace, as ``{dotted key: value}``.
 
     With *inputs*, the resolve is theirs (its subject, files and anchors), under
     *agent_name* and its settings file *agent_path*. Without, a box or working-set
     file is read as a BOX resolve over those paths, and neither means SYSTEM.
+
+    ⚑ A present ``None`` that WINS the cascade is KEPT (spec §2h: "the consumer reads
+    None, never the key's default").  Where the key gives a null no meaning
+    (:func:`config.refuses_null_box_scalar`) the resolve REFUSES it, naming the file of
+    the tier that supplied it — decided HERE, on the resolved value, so a null at any
+    tier is judged and a null a more authoritative tier or the CLI overrides is not.
+    *refuse_null_scalars* off is the DISPLAY's read: the ``None`` is returned, to be
+    printed ``null``.  A caller that ACTS on these values must not ask for it.
     """
 
     overrides = cli_overrides or {}
@@ -3833,6 +3847,7 @@ def resolve_box_scalars(
         share_images=bool(overrides.get("box_share_images", False)),
     )
     std = load_std_paths(load_config(user_config_file()))
+    written: list[_WrittenLevel] = []
     if inputs is None and box_path is None and workset_path is None:
         inputs = resolve_inputs(
             subject=ResolveSubject.SYSTEM, std=std, agent_name=GENERAL_SLOT,
@@ -3841,7 +3856,7 @@ def resolve_box_scalars(
     if inputs is not None:
         snapshot = build_launch_snapshot(
             **inputs.as_kwargs(), agent_name=agent_name, agent_path=agent_path,
-            cli_level=cli_level,
+            cli_level=cli_level, written_out=written,
         )
     else:
         snapshot = build_launch_snapshot(
@@ -3855,43 +3870,44 @@ def resolve_box_scalars(
             workset_path=workset_path,
             box_path=box_path,
             cli_level=cli_level,
+            written_out=written,
         )
     resolved: dict[str, object] = {}
     for dotted in _BOX_SCALAR_FIELDS:
         node = snapshot_leaf(snapshot, dotted)
-        if node is not __MISSING__ and node is not None:
+        if node is not __MISSING__:
             resolved[dotted] = node
+    if refuse_null_scalars:
+        _refuse_null_box_scalars(resolved, written)
     return resolved
 
 
 def _refuse_null_box_scalars(
-    path: Path, present: "Mapping[str, object]", dotted_of: "Mapping[str, str]",
+    resolved: "Mapping[str, object]", written: "Sequence[_WrittenLevel]",
 ) -> None:
-    """Refuse a ``null`` at every box scalar in *path* whose declared default is a VALUE.
+    """Refuse every RESOLVED box scalar that is ``None`` where its declared default is a VALUE.
 
     ⚑ NAMED, NEVER SUBSTITUTED.  The read that answered such a ``None`` with the key's own
-    default made ``box show --effective`` print an image the file never held, so the door
-    that wrote it and the launch that read it disagreed and the user learned at the launch.
-    The membership is :func:`config.refuses_null_box_scalar` and the text is the shared
+    default made ``box show --effective`` print an image no tier held.  The membership is
+    :func:`config.refuses_null_box_scalar` and the text is the shared
     :func:`config.null_path_keys_error` builder, so this door and the ``set`` door cannot
-    drift apart on the sentence they share.
-
-    ⚑ *present* is the file's PRESENT scalars, so a key the file is SILENT about is not
-    here — §2h's distinction between a present ``None`` and an absent key is the whole
-    difference between a refusal and a default.
+    drift apart on the sentence they share.  The file named is the WINNING tier's
+    (:func:`_none_setter` over *written*), one block per file.
     """
-    nulls = [
-        dotted for dotted, field in dotted_of.items()
-        if field in present and present[field] is None
-        and refuses_null_box_scalar(dotted)
-    ]
-    if not nulls:
+    by_file: dict[str, list[str]] = {}
+    for dotted, value in resolved.items():
+        if value is None and refuses_null_box_scalar(dotted):
+            source = _none_setter(written, dotted, None) or "<defaults>"
+            by_file.setdefault(source, []).append(dotted)
+    if not by_file:
         return
-    error = null_path_keys_error(
-        path, nulls, read_head=ERR_BOX_SCALAR_NULL_HEAD, cure=ERR_BOX_SCALAR_NULL_CURE,
-    )
-    assert error is not None  # one key is never an empty list
-    raise SettingsError(error)
+    errors = [
+        null_path_keys_error(
+            Path(source), keys, read_head=ERR_BOX_SCALAR_NULL_HEAD, cure=ERR_BOX_SCALAR_NULL_CURE,
+        )
+        for source, keys in sorted(by_file.items())
+    ]
+    raise SettingsError("\n".join(e for e in errors if e is not None))
 
 
 def load_merged_config(
@@ -3910,33 +3926,29 @@ def load_merged_config(
     (:func:`resolve_box_scalars`), so an agent file's ``box:`` table reaches the
     display that claims to show what a launch runs.
 
-    ⚑ *refuse_null_scalars* off is the DISPLAY's answer to a ``null`` the launch refuses
-    (:func:`_refuse_null_box_scalars`): it keeps the ``None`` on the field so the row spells
-    it ``null`` (spec §2h), where the launch's own answer is to refuse and name the key.  A
-    caller that ACTS on these values must not ask for it.
+    *refuse_null_scalars* is :func:`resolve_box_scalars`'s: off, a ``null`` the launch
+    refuses stays ``None`` on the field so the display prints it ``null`` (spec §2h).
     """
     if inputs is not None:
         workset_path, project_path = inputs.cascade_workset_path, inputs.cascade_box_path
     defaults = KanibakoConfig()
     cfg = KanibakoConfig()
-    for path in (workset_path, project_path):
-        if path and path.exists():
-            present = _present_scalar_fields(path)
-            if refuse_null_scalars:
-                _refuse_null_box_scalars(path, present, _BOX_SCALAR_FIELDS)
-            for k, v in present.items():
-                setattr(cfg, k, v)
     if cli_overrides:
         valid_keys = {fld.name for fld in fields(cfg)}
         for k, v in cli_overrides.items():
             if k in valid_keys:
                 setattr(cfg, k, v)
+    # ⚑ The files reach the fields ONLY through the resolve, so every tier's value — a
+    # present ``None`` included — is judged once, after the whole cascade.
     resolved = resolve_box_scalars(
         workset_path=workset_path, box_path=project_path,
         cli_overrides=cli_overrides, inputs=inputs,
         agent_name=agent_name, agent_path=agent_path,
+        refuse_null_scalars=refuse_null_scalars,
     )
     for dotted, field_name in _BOX_SCALAR_FIELDS.items():
         if dotted in resolved:
-            setattr(cfg, field_name, _typed_box_scalar(defaults, field_name, resolved[dotted]))
+            value = resolved[dotted]
+            setattr(cfg, field_name,
+                    None if value is None else _typed_box_scalar(defaults, field_name, value))
     return cfg
