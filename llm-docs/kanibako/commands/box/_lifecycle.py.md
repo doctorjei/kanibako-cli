@@ -115,11 +115,13 @@ each one fires before the first `copytree`:
 * **An in-tree landing must be the leaf the target records.** With a named target, a `dest` that
   `is_in_tree_workspace(target_ws, dest)` is in scope for that workset's member, and the only path
   such a member lives at is `workspaces/<name>`. Any other in-tree path is copied to by STEP 2 and
-  then written over by STEP 2b, so the box would record `workspaces/<name>` while the user asked for
-  the other path — a stray second copy of their data, and a source leaf retired against a landing it
-  never had. The refusal names both paths and the `workspaces/<name>` spelling. An EXTERNAL `dest`
-  is not in-tree and is always allowed, which is what keeps a same-workset same-name move to a path
-  of the user's own working.
+  copied again to `workspaces/<name>` by STEP 2b, so the box would record `workspaces/<name>` while
+  the user asked for the other path — a stray second copy of their data, and a source leaf retired
+  against a landing it never had. The refusal names both paths, and its advice is in the refused
+  verb's own syntax: `TargetSpec.verb` (`"move"` / `"convert"`, set by `run_move` / `run_convert`)
+  and `records_only` (remap) pick it, because `box move` has no `--move`. The field is advice only;
+  no check reads it. An EXTERNAL `dest` is not in-tree and is always allowed, which is what keeps a
+  same-workset same-name move to a path of the user's own working.
 * **An occupied target leaf is the user's, not this op's.** `add_project` adopts whatever
   `workspaces/<name>` / `boxes/<name>` / the two vault leaves already hold, so a landing onto one
   is a silent merge. Exempt: `records_only` (its files are *meant* to be there) and a leaf that IS
