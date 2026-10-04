@@ -380,19 +380,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directories that no named box owns, and paths beside one, are unaffected. See *`create` in a
   directory connected to a workset is refused* in [MIGRATION.md](MIGRATION.md).
 
-- **A downward `@`-ref is now refused at `set` even when the command can resolve it.** Spec §0:
-  a scope "may **view up** (read-only `@`-reference a CONTAINING scope's keys)" and "no `@`-ref
-  points DOWNWARD". The set-time check only ever saw the half of that rule whose referent its own
-  cascade cannot see, so a downward ref naming a referent the cascade DOES hold raised no defect
-  and was written. `box.image` is exactly that case — the box scalars' declared defaults put it in
-  every snapshot — so `system set workset.canon=@box.image/x` and `workset set ws1
-  workset.canon=@box.image/x` both answered `Set …` and stored a value that binds one box's
-  settings for the whole working set. Both are now refused, naming the ref, and nothing is
-  written. The refusal reads the direction off the spelling, so it holds for every key at every
-  set door; a ref naming the key's own scope or a containing one is still accepted, and a
-  `system.*` path value keeps the wording of the door that already refused it. A ref naming no
-  level of the containment order — `@config.*`, `@meta.runtime.*` — is unaffected. This covers the
-  `set` doors only: a downward ref HAND-WRITTEN into a settings file is still read by the launch.
+- **A downward `@`-ref is now refused at every key at every `set` door, a box or workset
+  `pref.*` request included, and a downward `@`-ref hand-written into a settings file is
+  refused by the launch.** Spec §0: a scope "may **view up** (read-only `@`-reference a
+  CONTAINING scope's keys)" and "no `@`-ref points DOWNWARD". The set-time check only ever
+  saw the half of that rule whose referent its own cascade cannot see, so a downward ref
+  naming a referent the cascade DOES hold raised no defect and was written. `box.image` is
+  exactly that case — the box scalars' declared defaults put it in every snapshot — so
+  `system set workset.canon=@box.image/x` and `workset set ws1 workset.canon=@box.image/x`
+  both answered `Set …` and stored a value that binds one box's settings for the whole
+  working set. A `pref.*` request is judged at its TARGET key, so
+  `pref.agent.<agent>.<key>=@box.*` is refused too. The refusal reads the direction off the
+  spelling, so it holds whatever the value's other refs resolve to: a value carrying both a
+  downward ref and a same-scope ref the command cannot see is still refused, and a downward
+  ref the command cannot see is now reported as DOWNWARD rather than as dangling. A ref
+  naming the key's own scope or a containing one is still accepted, a `system.*` path value
+  keeps the wording of the door that already refused it, and a ref naming no level of the
+  containment order — `@config.*`, `@meta.runtime.*` — is unaffected. `workset share add`
+  now refuses a source naming no config key, through the same oracle the `set` doors judge a
+  referent with, so a share is never stored pointing at something that is not a key. A
+  downward ref HAND-WRITTEN into a settings file is refused at resolve, naming the key and
+  the file, because the launch read one straight into a real mount. A `workset.bindings.*`
+  source reading a `box.*` or `meta.box.*` key is NOT covered: that is the box-dependent
+  source `(depends on the box)` is for, and each box resolves it against its own value.
+  See *A downward `@`-reference is refused* in [MIGRATION.md](MIGRATION.md).
 
 - A dangling `@`-reference no longer reports a declared key as "no such config key in the
   keyspace". A set-time command judges a value against its own cascade, so a declared key living
