@@ -415,8 +415,11 @@ def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]:
       survived, it was that it survived SILENTLY.
 
     The literal ``vault/`` skeleton parent is appended to *removable* when it is on
-    disk, so the default layout (whose ``.gitignore`` lives there, and which is what
-    every pre-repoint box has) is cleared exactly as it was before.
+    disk and holds nothing but removable arms and its ``.gitignore``, so the default
+    layout (which is what every pre-repoint box has) is cleared exactly as it was
+    before.  ⚑ Anything else in it — the contents of an arm the user has since set to
+    ``null`` included — is the user's: the skeleton stays, and each such entry lands
+    in *retained* (:func:`retained_vault_reason` says why it stays).
 
     🛑 CALL THIS BEFORE UNLINKING THE ROOT ``workset.yaml``.  That file is the standalone
     workset tier and the only carrier of the repoint; resolving after it is gone answers
@@ -436,8 +439,39 @@ def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]:
             retained.append(arm)
     skeleton = root / _VAULT_LEAF
     if skeleton.is_dir():
-        removable.append(skeleton)
+        arms = {arm.resolve() for arm in removable}
+        leftover = [child for child in sorted(skeleton.iterdir())
+                    if child.name != bootstrap.IGNORE_FILE
+                    and not _holds_only_arms(child, arms)]
+        if leftover:
+            retained.extend(leftover)
+        else:
+            removable.append(skeleton)
     return removable, retained
+
+
+def _holds_only_arms(path: Path, arms: set[Path]) -> bool:
+    """True when *path* is one of *arms* (RESOLVED), or a real dir holding only such.
+
+    ⚑ An empty dir qualifies (nothing in it to lose); a file or a symlink that is not
+    an arm does not.
+    """
+    if path.resolve() in arms:
+        return True
+    if path.is_symlink() or not path.is_dir():
+        return False
+    return all(_holds_only_arms(child, arms) for child in path.iterdir())
+
+
+def retained_vault_reason(root: Path, vault: Path) -> str:
+    """Why a :func:`standalone_vault_teardown` *retained* path stays, as a phrase.
+
+    Outside *root* it is the user's own store; inside it is a ``vault/`` entry no
+    ``workset.vault_*`` arm of the box names (e.g. one the user set to ``null``).
+    """
+    if root in vault.parents:
+        return "not a vault arm of this box"
+    return f"outside {root}"
 
 
 # ---------------------------------------------------------------------------

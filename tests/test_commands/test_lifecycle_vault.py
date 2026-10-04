@@ -747,6 +747,56 @@ class TestNullDestinationArmRetainsTheSourceVault:
         assert "could not remove the old store of 'b1'" not in err
 
 
+class TestRetentionSurvivesASymlinkAndASourceNull:
+    """The retention holds when the vault path runs through a symlink, and when the
+    SOURCE arm is the null one."""
+
+    def test_a_symlinked_primary_arm_still_retains_an_unreceived_leaf(
+        self, env, tmp_home, capsys,
+    ):
+        """The unreceived set and its lookup must compare in ONE form: a symlink in
+        the primary arm would otherwise miss the lookup and ``rmtree`` the leaf."""
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="p_link")
+        real = tmp_home / "real_ro"
+        shutil.move(str(std.primary_vault_ro), str(real))
+        std.primary_vault_ro.symlink_to(real)
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        assert state.vault_ro.resolve() != state.vault_ro  # anti-vacuity: via the link
+        seed = _seed_vault(state)
+        ws_b = create_workset("wsb", tmp_home / "wsb_root", std)
+        _repoint(ws_b.root, "vault_ro", None)
+        execute_lifecycle(
+            state, TargetSpec(ownership="wsb"), std, config, confirm=_conf_yes(),
+        )
+        assert (real / state.name / "ro-note.txt").read_text() == seed["ro-note.txt"]
+        assert f"Note: left the vault at {state.vault_ro} in place" in capsys.readouterr().err
+
+    def test_a_null_standalone_source_arm_keeps_its_old_data(
+        self, env, config_file, tmp_home, capsys,
+    ):
+        """Data stored in ``vault/rw`` before the root's ``vault_rw`` was set to null is
+        no arm of the box any more — the convert leaves the skeleton holding it, and
+        names it."""
+        config, std, tmp_home = env
+        pdir = _make_standalone(env, name="sa_srcnull")
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        seed = _seed_vault(state)
+        old_rw = state.vault_rw
+        _repoint(pdir, "vault_rw", None)
+        fresh = resolve_lifecycle_target(str(pdir), std, config)
+        assert fresh.vault_rw is None  # anti-vacuity: the null reached the state
+        new = execute_lifecycle(
+            fresh, TargetSpec(ownership="default"), std, config, confirm=_conf_yes(),
+        )
+        assert new.mode == BoxMode.primary
+        assert (old_rw / "rw-note.txt").read_text() == seed["rw-note.txt"]
+        assert (old_rw / "sub" / "deep.txt").read_text() == seed["sub/deep.txt"]
+        assert (new.vault_ro / "ro-note.txt").read_text() == seed["ro-note.txt"]
+        err = capsys.readouterr().err
+        assert f"Note: left the vault at {old_rw} in place" in err
+
+
 class TestNullArmTeardownGuards:
     """Guards on the null-arm teardown edges, each reachable through the real verb."""
 

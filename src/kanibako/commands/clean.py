@@ -169,7 +169,10 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     if proj.mode is BoxMode.standalone:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako
         # artifacts (box_data/ + root workset.yaml + vault/), never the root.
-        from kanibako.project.workset import standalone_vault_teardown
+        from kanibako.project.workset import (
+            retained_vault_reason,
+            standalone_vault_teardown,
+        )
 
         root = proj.metadata_path
         # ⚑⚑ RESOLVE THE VAULT FIRST: the root workset.yaml unlinked below is the only
@@ -186,7 +189,8 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
             shutil.rmtree(vault_dir, ignore_errors=True)
         for vault_dir in retained_vault:
             if vault_dir.is_dir():
-                print(f"\nKept vault: {vault_dir} (outside {root} — remove it yourself)")
+                print(f"\nKept vault: {vault_dir} "
+                      f"({retained_vault_reason(root, vault_dir)} — remove it yourself)")
     else:
         if not remove_box_tree(proj.metadata_path):
             _warn_undeleted(proj.metadata_path)

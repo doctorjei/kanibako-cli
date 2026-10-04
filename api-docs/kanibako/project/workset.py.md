@@ -47,6 +47,7 @@ def resolve_workset_vault_ro(workset_root: Path, workset_settings: Mapping[str, 
 def resolve_workset_vault_rw(workset_root: Path, workset_settings: Mapping[str, Any] | None) -> Path | None
 def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path | None, Path | None]
 def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]
+def retained_vault_reason(root: Path, vault: Path) -> str
 def is_reserved_workset_name(name: str) -> bool
 def refuse_retired_workset_identity(root: Path) -> None
 def is_workset_skeleton(root: Path) -> bool
@@ -63,6 +64,7 @@ def release_project(ws: Workset, name: str) -> WorksetProject
 def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, ...] | None=None) -> None
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
 def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None | _Unset
+def _holds_only_arms(path: Path, arms: set[Path]) -> bool
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)
 def _load_workset(root: Path, name: str) -> Workset

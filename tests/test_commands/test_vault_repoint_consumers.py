@@ -737,3 +737,45 @@ class TestNullArmIsNoSuchDir:
         assert _resolve_vault_rw(str(root)) is None
         err = capsys.readouterr().err
         assert "workset.vault_rw" in err
+
+
+class TestANullSourceArmKeepsItsLeftoverData:
+    """A standalone arm set to ``null`` AFTER data was stored under it: the purge keeps it.
+
+    ⚑ The null arm names no dir, so the default ``vault/rw`` it used to resolve to is
+    no longer a removable arm — it is the user's data inside the ``vault/`` skeleton.
+    The skeleton is ``rm -rf``\\ ed only when it holds nothing but removable arms and its
+    ``.gitignore``; otherwise it stays, and the leftover is named.
+    """
+
+    def _nulled_after_data(self, config_file, tmp_home, name):
+        std, config, root, vro, vrw = _standalone_with_vault(config_file, tmp_home, name)
+        _repoint(root, "vault_rw", None)
+        return std, root, vro, vrw
+
+    def test_box_rm_purge_keeps_a_nulled_arms_data_and_names_it(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.box._parser import _rm_standalone
+
+        std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "sa_nul")
+        _rm_standalone(std, "sa_nul", root, argparse.Namespace(purge=True, force=True))
+        out = capsys.readouterr().out
+        assert (vrw / "keep.txt").read_text() == "vault data"
+        assert f"Kept vault: {vrw} (not a vault arm of this box" in out
+        # The arm the box still names is its own, and it went.
+        assert not vro.exists()
+        assert not (root / "box_data").exists()
+
+    def test_box_purge_keeps_a_nulled_arms_data_and_names_it(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.commands.clean import _purge_one
+
+        std, root, vro, vrw = self._nulled_after_data(config_file, tmp_home, "cl_nul")
+        config = load_config(config_file)
+        assert _purge_one(std, config, str(root), force=True) == 0
+        out = capsys.readouterr().out
+        assert (vrw / "keep.txt").read_text() == "vault data"
+        assert f"Kept vault: {vrw} (not a vault arm of this box" in out
+        assert not vro.exists()

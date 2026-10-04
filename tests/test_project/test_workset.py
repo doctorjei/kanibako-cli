@@ -2239,3 +2239,43 @@ class TestRemoveProjectFailConsistent:
         # external source is untouched throughout.
         assert "extproj" in {p.name for p in load_workset(ws.root, ws.name).projects}
         assert external.is_dir()
+
+
+class TestStandaloneVaultTeardownSkeleton:
+    """The ``vault/`` skeleton goes only when nothing but removable arms and its
+    ``.gitignore`` is in it."""
+
+    def _root(self, tmp_path):
+        root = tmp_path / "sa"
+        for leaf in ("ro", "rw"):
+            (root / "vault" / leaf).mkdir(parents=True)
+        (root / "vault" / ".gitignore").write_text("rw/\n")
+        return root
+
+    def test_the_default_layout_clears_the_skeleton(self, tmp_path):
+        from kanibako.project.workset import standalone_vault_teardown
+
+        root = self._root(tmp_path)
+        removable, retained = standalone_vault_teardown(root)
+        assert root / "vault" in removable
+        assert retained == []
+
+    def test_a_nulled_arms_data_keeps_the_skeleton(self, tmp_path):
+        from kanibako.project.workset import standalone_vault_teardown
+
+        root = self._root(tmp_path)
+        (root / "vault" / "rw" / "data.txt").write_text("mine")
+        (root / "workset.yaml").write_text("workset:\n  vault_rw: null\n")
+        removable, retained = standalone_vault_teardown(root)
+        assert root / "vault" not in removable
+        assert removable == [root / "vault" / "ro"]
+        assert retained == [root / "vault" / "rw"]
+
+    def test_an_empty_dir_of_a_nulled_arm_does_not_keep_it(self, tmp_path):
+        from kanibako.project.workset import standalone_vault_teardown
+
+        root = self._root(tmp_path)
+        (root / "workset.yaml").write_text("workset:\n  vault_rw: null\n")
+        removable, retained = standalone_vault_teardown(root)
+        assert root / "vault" in removable
+        assert retained == []
