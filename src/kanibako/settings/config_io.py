@@ -312,15 +312,19 @@ def write_nested_key(
 
     Raises ConfigError when an intermediate is present but not a table, ``null`` included: every
     section walked is a namespace, where no value is a setting the closed keyspace accepts (spec §0).
+
+    ⚑ A NODE SECTION is stored as a human writes it, ``persona+harness`` -- see
+    :func:`_resolved_section`, which this walk and ``stored_leaf_object``'s share.
     """
     data = load_doc(path)
     node = data
     for depth, sec in enumerate(sections):
+        sec = _resolved_section(node, sec)
         if sec not in node:
             node[sec] = {}
         child = node[sec]
         if not isinstance(child, dict):
-            dotted = ".".join(sections[:depth + 1])
+            dotted = ".".join((*sections[:depth], sec))
             raise ConfigError(
                 f"the config file {path} holds {render_stored_scalar(child)} at '{dotted}', "
                 f"where a table of keys belongs, so '{dotted}.' keys cannot be written under it. "
@@ -329,6 +333,24 @@ def write_nested_key(
         node = child
     node[key] = value
     dump_doc(path, data)
+
+
+def _resolved_section(table: dict, section: str) -> str:
+    """*section* as *table* spells it -- a node's SEPARATOR, resolved to whichever the file holds.
+
+    A node already in the table WINS, so a write cannot leave one node in two spellings and a
+    read reaches a file stored either way. 🛑 THE SEPARATOR ALONE: a node's CASE is Q87's fold,
+    and that fold WARNS -- a walk that silently reached a capital node would make that a lie.
+    """
+    from kanibako.agent_ref import CANONICAL_SEP, display_agent_ref
+
+    if CANONICAL_SEP not in section:
+        return section
+    user_facing = display_agent_ref(section)
+    for spelling in table:
+        if isinstance(spelling, str) and display_agent_ref(spelling) == user_facing:
+            return spelling
+    return user_facing
 
 
 def remove_nested_key(
@@ -341,12 +363,17 @@ def remove_nested_key(
     data = load_doc(path)
 
     # Walk to the innermost table, recording the chain for pruning.
+    # ⚑ *walked* is the RESOLVED spelling, so the prune below deletes the key the walk matched.
     chain: list[dict] = [data]
+    walked: list[str] = []
     node = data
     for sec in sections:
-        if sec not in node or not isinstance(node[sec], dict):
+        resolved = _resolved_section(node, sec)
+        child = node.get(resolved)
+        if not isinstance(child, dict):
             return False
-        node = node[sec]
+        walked.append(resolved)
+        node = child
         chain.append(node)
 
     if key not in node:
@@ -354,9 +381,9 @@ def remove_nested_key(
     del node[key]
 
     # Prune empty tables bottom-up.
-    for i in range(len(sections) - 1, -1, -1):
+    for i in range(len(walked) - 1, -1, -1):
         if not chain[i + 1]:
-            del chain[i][sections[i]]
+            del chain[i][walked[i]]
         else:
             break
     dump_doc(path, data)
@@ -425,7 +452,7 @@ def stored_leaf_object(
     for sec in sections:
         if not isinstance(node, dict):
             return default
-        node = node.get(sec)
+        node = node.get(_resolved_section(node, sec))
     if not isinstance(node, dict) or leaf not in node:
         return default
     return node[leaf]

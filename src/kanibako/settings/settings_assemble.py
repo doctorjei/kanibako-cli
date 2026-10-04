@@ -20,7 +20,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-from kanibako.agent_ref import agent_segment_case
+from kanibako.agent_ref import agent_address_node, agent_segment_case, display_agent_ref
+from kanibako.errors import ConfigError
 from kanibako.settings.agent_config import (
     AgentConfig,
     category_root_ref,
@@ -703,18 +704,16 @@ def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any:
     Q87: a user-written capital node is ACCEPTED with a loud warning naming the file and both
     spellings, once per ``(file, key)`` (:func:`announce_drop_once`); code gets no such relief,
     because the keyspace verdict does not fold. Two spellings of ONE node in one file are
-    REFUSED, naming both: neither may silently win. A table where a node's SCALAR leaf goes
-    (:func:`_refuse_table_at_scalar_leaf`) is REFUSED too. Copies only what it changes.
+    REFUSED, naming both: neither may silently win. A ``persona+harness`` node is CANONICALIZED
+    SILENTLY. A table where a node's SCALAR leaf goes (:func:`_refuse_table_at_scalar_leaf`)
+    is REFUSED too. Copies only what it changes.
     """
     if not isinstance(raw, dict):
         return raw
     out = raw
     for address in _AGENT_NODE_TABLES:
-        parent: Any = out
-        for token in address[:-1]:
-            parent = parent.get(token) if isinstance(parent, dict) else None
-        table = parent.get(address[-1]) if isinstance(parent, dict) else None
-        if not isinstance(table, dict):
+        table = _node_table(out, address)
+        if table is None:
             continue
         folded = _fold_node_table(table, prefix=".".join(address), path=path)
         _refuse_table_at_scalar_leaf(folded, prefix=".".join(address), path=path)
@@ -727,6 +726,29 @@ def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any:
     return out
 
 
+def refuse_doubled_agent_nodes(raw: Any, *, path: Path | None) -> None:
+    """RAISE when a node table of the settings document *raw* spells one node twice.
+
+    The check :func:`fold_agent_nodes` makes (:func:`refuse_node_spelled_twice`), for a reader
+    that walks the file without folding it (``get``).
+    """
+    if not isinstance(raw, dict):
+        return
+    for address in _AGENT_NODE_TABLES:
+        table = _node_table(raw, address)
+        if table is not None:
+            refuse_node_spelled_twice(table, prefix=".".join(address), path=path)
+
+
+def _node_table(raw: dict, address: tuple[str, ...]) -> dict | None:
+    """The node table at *address* in *raw*, or ``None`` when no table is there."""
+    parent: Any = raw
+    for token in address[:-1]:
+        parent = parent.get(token) if isinstance(parent, dict) else None
+    table = parent.get(address[-1]) if isinstance(parent, dict) else None
+    return table if isinstance(table, dict) else None
+
+
 def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None) -> None:
     """RAISE naming every ``<prefix>.<node>.<leaf>`` holding a table where a SCALAR goes (spec §0).
 
@@ -735,7 +757,7 @@ def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None)
     table in any node, a scalar leaf (:data:`SCALAR_AGENT_LEAVES`) is one in none.
     """
     found = sorted(
-        f"{prefix}.{node}.{leaf}"
+        f"{prefix}.{display_agent_ref(str(node))}.{leaf}"
         for node, sub in table.items() if isinstance(sub, dict)
         for leaf, value in sub.items()
         if leaf in SCALAR_AGENT_LEAVES and isinstance(value, dict)
@@ -751,23 +773,41 @@ def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None)
     )
 
 
+def _canonical_node(seg: Any) -> Any:
+    """The NODE *seg* names -- a user's ``persona+harness``, canonicalized; *seg* if it names none.
+
+    ⚑ THE ORDER IS LOAD-BEARING: :func:`agent_segment_case` folds the CASE first, because
+    :func:`agent_address_node` REFUSES a reserved name -- reaching for it alone would leave
+    ``Default`` unread and un-warned.
+    """
+    if not isinstance(seg, str):
+        return seg
+    folded = agent_segment_case(seg)
+    try:
+        return agent_address_node(folded)
+    except ConfigError:
+        return folded
+
+
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict:
     """One node table's keys folded (:func:`fold_agent_nodes`); *table* itself when none changes."""
     refuse_node_spelled_twice(table, prefix=prefix, path=path)
     where = str(path) if path is not None else "<settings>"
     spelled: dict[Any, Any] = {}
     for seg in table:
-        node = agent_segment_case(seg) if isinstance(seg, str) else seg
+        node = _canonical_node(seg)
         spelled[node] = seg
     if all(node == seg for node, seg in spelled.items()):
         return table
     for node, seg in spelled.items():
-        if node != seg and announce_drop_once(path, f"{prefix}.{seg}"):
+        # ⚑ The warning keys off the CASE, and spells the node as the CLI does.
+        folded = agent_segment_case(seg) if isinstance(seg, str) else seg
+        if folded != seg and announce_drop_once(path, f"{prefix}.{seg}"):
             _log.warning(
                 "Settings file %s spells '%s.%s', but an agent's node is lowercase (spec "
                 "§0): it is read as '%s.%s' for now. Rename it in the file; kanibako "
                 "accepts this spelling only with this warning.",
-                where, prefix, seg, prefix, node,
+                where, prefix, seg, prefix, display_agent_ref(str(node)),
             )
     return {node: table[seg] for node, seg in spelled.items()}
 

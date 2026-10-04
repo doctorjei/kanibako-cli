@@ -38,6 +38,7 @@ def refuse_config_table(raw: Any, *, level: str, path: Path | None) -> None
 def reset_drop_warnings() -> None
 def announce_drop_once(path: Path | None, token: str) -> bool
 def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any
+def refuse_doubled_agent_nodes(raw: Any, *, path: Path | None) -> None
 def read_settings_files(files: Iterable[tuple[str, Path | None]], *, purpose: ReadPurpose, subject: str | None=None, box_name: str | None=None) -> tuple[SettingsFile, ...]
 def refuse_undeclared_per_file(files: Iterable[SettingsFile]) -> None
 def refuse_undeclared_entries(view: Any, *, level: str, path: Path | None, stored: Any=None) -> None
@@ -58,7 +59,9 @@ def _nested_present(raw: Any, parts: 'tuple[str, ...]') -> Any
 def _behavior_leaf_sites(raw: Any, leaf: str) -> 'list[tuple[tuple[str, ...], Any]]'
 def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None, node: str | None=None) -> str
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
+def _node_table(raw: dict, address: tuple[str, ...]) -> dict | None
 def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None) -> None
+def _canonical_node(seg: Any) -> Any
 def _fold_node_table(table: dict, *, prefix: str, path: Path | None) -> dict
 def _drop_upward_scopes(raw: dict, *, file_scope: str, path: Path | None) -> dict
 def _file_view(raw: Any, *, level: str, path: Path | None, fold: bool=True) -> Any

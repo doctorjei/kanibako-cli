@@ -1300,6 +1300,31 @@ class TestTheAgentTable:
         with pytest.raises(SettingsError, match="ONE agent node .* spelled twice"):
             agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
 
+    @pytest.mark.parametrize("spelled", ("nav+claude", "nav\u2118claude"))
+    def test_both_separators_in_the_table_read_the_same_way(self, tmp_path, spelled):
+        """GUARD (not a mutation pin): a node table is user input, so a node spelled ``+``
+        reaches this file's reader exactly as the canonical spelling does -- neither refuses."""
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"self": {"model": "own"}, "agent": {spelled: {"model": "a"}}})
+        assert dict(agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE).state) == {
+            "model": "own",
+        }
+
+    def test_one_node_spelled_with_both_separators_refuses_at_the_table(self, tmp_path):
+        """A file carrying BOTH spellings of one node is told the two collide -- the more
+        specific diagnosis -- not that one of them is not a node."""
+        path = tmp_path / "agent.yaml"
+        dump_doc(path, {"agent": {
+            "nav+claude": {"model": "a"}, "nav\u2118claude": {"model": "b"},
+        }})
+        with pytest.raises(SettingsError, match="ONE agent node .* spelled twice") as exc:
+            agent_record(path, node="claude", purpose=ReadPurpose.RESOLVE)
+        message = str(exc.value)
+        # ⚑ The node is named as the user writes it. The two KEYS stay as the file spells them --
+        # one of them really is written ``℘``, and that entry is the one to delete.
+        assert "ONE agent node ('nav+claude') spelled twice" in message, message
+        assert "'agent.nav+claude'" in message and "'agent.nav\u2118claude'" in message, message
+
     def test_every_undeclared_entry_is_named_at_once(self, tmp_path):
         # The cure is a hand-edit: one refusal names every entry, as the launch does.
         path = tmp_path / "agent.yaml"

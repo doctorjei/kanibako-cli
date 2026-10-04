@@ -2057,3 +2057,106 @@ class TestNestedWriteRefusesANonTableSection:
         assert err.startswith("Error: ")
         assert f"{ssp} holds 7 at 'box.env'" in err
         assert ssp.read_text() == "box:\n  env: 7\n"
+
+
+class TestAnAgentNodeIsStoredAsAUserWritesIt:
+    """``persona+harness`` in a settings file, ``persona℘harness`` only inside a key path.
+
+    The cascade builds its keys canonically and the store serialized them through, so a ``+``
+    typed on the command line landed in the file as ``℘`` -- an internal form in a file the user
+    edits by hand, and a spelling no command accepts. The store now writes the form a human
+    writes, and BOTH walks (this one write, :func:`stored_leaf_object`'s read) resolve a node
+    against the file's own spelling, so read and write agree and a file written either way names
+    one node.
+    MUTATION: pass ``sec`` through verbatim -> the stored-spelling and the read tests red.
+    """
+
+    def test_a_written_node_lands_in_the_file_with_the_typed_separator(self, tmp_path):
+        """A fresh node is stored the way a human writes it."""
+        from kanibako.settings.config_io import write_nested_key
+
+        path = tmp_path / "box.yaml"
+        write_nested_key(
+            path, ("pref", "agent", "navigator℘claude"), "access", "editing",
+        )
+        assert load_doc(path) == {
+            "pref": {"agent": {"navigator+claude": {"access": "editing"}}},
+        }
+
+    def test_a_node_the_file_already_holds_is_reused_not_duplicated(self, tmp_path):
+        """A file written before the store rendered ``+`` still holds ``℘`` and is never
+        migrated, so the node already in the table WINS: writing must not leave one node in two
+        spellings, the shape ``refuse_node_spelled_twice`` refuses."""
+        from kanibako.settings.config_io import write_nested_key
+
+        path = tmp_path / "box.yaml"
+        path.write_text("pref:\n  agent:\n    navigator℘claude:\n      access: editing\n")
+        write_nested_key(
+            path, ("pref", "agent", "navigator℘claude"), "access", "restricted",
+        )
+        assert load_doc(path) == {
+            "pref": {"agent": {"navigator℘claude": {"access": "restricted"}}},
+        }
+
+    @pytest.mark.parametrize("stored", ("navigator+claude", "navigator℘claude"))
+    def test_a_stored_node_reads_under_either_spelling_of_the_key(self, tmp_path, stored):
+        """The read walk resolves the node too, so the key the user types and the spelling the
+        file holds do not have to agree."""
+        from kanibako.settings.config_io import stored_leaf_object
+
+        path = tmp_path / "box.yaml"
+        dump_doc(path, {"pref": {"agent": {stored: {"access": "editing"}}}})
+        assert stored_leaf_object(
+            path, ("pref", "agent", "navigator℘claude"), "access",
+        ) == "editing"
+
+    @pytest.mark.parametrize("section", ("system", "box", "env", "channelroot"))
+    def test_a_section_that_is_not_a_node_is_stored_as_written(self, tmp_path, section):
+        """The render is a no-op on every other section, so one call covers every write route."""
+        from kanibako.settings.config_io import write_nested_key
+
+        path = tmp_path / "box.yaml"
+        write_nested_key(path, (section,), "leaf", "v")
+        assert load_doc(path) == {section: {"leaf": "v"}}
+
+    def test_a_stored_node_is_matched_on_the_separator_alone(self, tmp_path):
+        """🛑 A node's CASE is the Q87 fold's business and that fold WARNS about it, so a walk
+        that silently reached a capital node would make the warning a lie and collapse a
+        spelling the two-spellings refusal deliberately keeps apart."""
+        from kanibako.settings.config_io import stored_leaf_object
+
+        path = tmp_path / "box.yaml"
+        dump_doc(path, {"pref": {"agent": {"navigator℘Claude": {"access": "V"}}}})
+        assert stored_leaf_object(
+            path, ("pref", "agent", "navigator℘claude"), "access",
+        ) is None
+
+    @pytest.mark.parametrize("stored", ("navigator+claude", "navigator℘claude"))
+    def test_a_reset_reaches_a_node_the_file_holds_under_either_spelling(self, tmp_path, stored):
+        """The REMOVE walk resolves the node too, so a reset cannot report no override for an
+        entry the file holds: the key the user types and the spelling the file holds do not
+        have to agree, whichever direction they differ in."""
+        from kanibako.settings.config_io import remove_nested_key
+
+        path = tmp_path / "box.yaml"
+        dump_doc(path, {"pref": {"agent": {stored: {"access": "editing"}}}})
+        assert remove_nested_key(
+            path, ("pref", "agent", "navigator℘claude"), "access",
+        ) is True
+        assert load_doc(path) == {}, "the emptied node table was not pruned"
+
+    def test_the_set_reset_get_round_trip_of_one_node_ends_unset(self, tmp_path):
+        """The whole round trip, on the canonical section every reset path hands this function:
+        a value written under a node is read back, removed, and gone -- pruning the tables it
+        emptied on the way, so the file does not keep a node whose last leaf was reset."""
+        from kanibako.settings.config_io import (
+            remove_nested_key, stored_leaf_object, write_nested_key,
+        )
+
+        path = tmp_path / "box.yaml"
+        sections = ("pref", "agent", "navigator℘claude")
+        write_nested_key(path, sections, "access", "editing")
+        assert stored_leaf_object(path, sections, "access") == "editing"
+        assert remove_nested_key(path, sections, "access") is True
+        assert stored_leaf_object(path, sections, "access") is None
+        assert load_doc(path) == {}
