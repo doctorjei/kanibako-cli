@@ -166,6 +166,8 @@ ERR_WORKSET_MEMBER_NAME_CONFLICT = ("In working set '%s' a box's name IS its mem
                           "'%s' are two names for one box; pass the member name alone.") # workset name, --name, identifier
 ERR_WORKSET_MEMBER_NAME_TAKEN = ("Project '%s' already exists in working set '%s'; member names are " +
                           "compared case-blind.") # stored spelling, workset name
+ERR_WORKSET_MEMBER_NO_RECOVER = ("--recover has nothing to resume in working set '%s': a named box is " +
+                          "made whole by the create that adds it.") # workset name
 # ⚑ A null ``workset.workspaces`` HAS a meaning (no workspace dir, spec §2c), unlike the
 # null path keys ERR_CONFIG_NULL_PATH refuses — so this names what cannot be created there.
 ERR_WORKSET_NULL_WORKSPACES = ("%s sets workset.workspaces to null, so it has no workspace " +
