@@ -37,7 +37,6 @@ from kanibako.settings.settings_resolve import (
     SettingsError,
     check_bind_tables,
     normalize_bind_dest,
-    refuse_scalar_at_table_key,
 )
 from kanibako.utils import deep_merge
 
@@ -117,14 +116,6 @@ _SCALAR_WRITABLE_KEYS: Final[frozenset[str]] = frozenset({"run_args"})
 #: file actually holds. ⚑ The answer to the question above is NO for all of them: an entry inside
 #: one of these tables is DATA, never a key segment of its own.
 _TABLE_VALUED_KEYS: Final[frozenset[str]] = _ROOT_TABLES - _SCALAR_WRITABLE_KEYS
-
-#: The root keys a non-``None`` SCALAR is refused at: a table whole, and never a value.
-#: ⚑ DERIVED, so neither owner can drift, and NARROWER than :data:`_TABLE_VALUED_KEYS` on
-#: purpose: ``env`` / ``secret_path`` hold a SCALAR per name, and widening their ROOT case
-#: is a decision (``settings_launch._assert_declared_categories``), not an omission.
-_TABLE_VALUED_ROOT_CATEGORIES: Final[frozenset[str]] = (
-    _TABLE_VALUED_KEYS - _VERB_WRITABLE_CATEGORIES
-)
 
 #: Every ROOT key the file stores as a LIST OF ARGV WORDS rather than as the one string the
 #: command line hands over.
@@ -820,21 +811,11 @@ def _refuse_nested_tables(
     refused. A BARE ``claude:`` leaf parses to ``None`` and is NOT refused here — it is not a
     table, carries nothing, and delivers nothing; ``record`` sweeps it into state as the scalar it
     parsed to, and the undeclared-leaf check refuses it there by name.
-
-    ⚑ THE MIRROR HALF RUNS HERE TOO, on the SAME root and against the SAME set — the
-    non-``None`` scalar :func:`~kanibako.settings.settings_resolve.refuse_scalar_at_table_key`
-    refuses, the one rule the settings tier's own parse also calls. It is the only coverage
-    ``transform_settings`` has on a READ: a declared agent LEAF reaches no category walk.
     """
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
     agent = node or "<agent>"
     for sub_key, sub_val in root_tbl.items():
-        if sub_key in _TABLE_VALUED_ROOT_CATEGORIES:
-            refuse_scalar_at_table_key(
-                file_spelling(sub_key), sub_val,
-                where=str(path) if path is not None else None,
-            )
         if sub_key in _ROOT_TABLES or not isinstance(sub_val, dict):
             continue
         category = _refused_category(sub_val)
