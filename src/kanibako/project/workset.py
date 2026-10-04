@@ -48,7 +48,7 @@ from kanibako.project import registry_store, workset_registry
 from kanibako.settings import bootstrap
 from kanibako.settings.config_io import load_doc
 from kanibako.channels.channels import WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE
-from kanibako.errors import LegacyWorksetIdentityError, WorksetError
+from kanibako.errors import ConfigError, LegacyWorksetIdentityError, WorksetError
 from kanibako.identifiers import find_identifier
 from kanibako.project.names import register_name, unregister_name
 from kanibako.settings.config import WORKSET_META_FILE
@@ -126,13 +126,20 @@ _VAULT_RW_LEAF = f"{_VAULT_LEAF}/{bootstrap.RW_PATH}"
 # ---------------------------------------------------------------------------
 
 def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
-    """Best-effort read of *root*'s workset ``workset.yaml`` document (``None`` on any failure)."""
+    """Read *root*'s workset ``workset.yaml``: ``None`` when ABSENT, refused when malformed.
+
+    ⚑ READ LIKE EVERY OTHER SETTINGS FILE (``load_doc``), so a malformed one is refused
+    in its OWN words, naming the file.  ⚑ CARVE-OUTS CATCH ``ConfigError``:
+    the ancestor walk, and :func:`delete_workset`'s purge.
+    """
     path = root / WORKSET_META_FILE
     if not path.is_file():
         return None
     try:
         return load_doc(path)
-    except Exception:
+    except ConfigError:
+        raise
+    except Exception:  # ⚑ non-parse: a miss
         return None
 
 
@@ -652,7 +659,10 @@ def refuse_retired_workset_identity(root: Path) -> None:
     1.6.0/1.7.x wrote ``workset.meta``, and the unreleased 1.8.0 tree briefly wrote
     ``meta.workset``.
     """
-    data = load_workset_settings_doc(root)
+    try:
+        data = load_workset_settings_doc(root)
+    except ConfigError:
+        return
     if data is None:
         return
     workset_tbl = data.get("workset")
@@ -769,7 +779,11 @@ def is_workset_skeleton(root: Path) -> bool:
     ⚑ Three of the four are RESOLVED through their workset keys, so this finds a root
     that has repointed ``workset.boxes``, ``workset.workspaces`` or ``workset.logs``.
     """
-    return all(subdir.is_dir() for subdir in _workset_skeleton_dirs(root))
+    try:
+        dirs = _workset_skeleton_dirs(root)
+    except ConfigError:
+        return False
+    return all(subdir.is_dir() for subdir in dirs)
 
 
 # ---------------------------------------------------------------------------
@@ -924,8 +938,14 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
     root = registry[stored]
     purge = remove_files and root.is_dir()
     # ⚑ RESOLVED BEFORE THE UNREGISTER: a store that refuses (a null ``workset.boxes``)
-    # must stop the purge while the workset is still registered, not after.
-    boxes_dir = resolve_workset_boxes(root, load_workset_settings_doc(root)) if purge else None
+    # must stop the purge while the workset is still registered, not after.  ⚑⚑ AND AN
+    # UNREADABLE FILE IS NOT A REFUSAL: the unknowable repoint falls back to the
+    # DEFAULT store.
+    try:
+        ws_settings = load_workset_settings_doc(root) if purge else None
+    except ConfigError:
+        ws_settings = None
+    boxes_dir = resolve_workset_boxes(root, ws_settings) if purge else None
 
     # Drop the ONE ``worksets`` entry, by the STORED spelling.  Idempotent: a missing
     # entry is a no-op.
