@@ -19,6 +19,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   An interrupted create is finished with `create --recover <name>`. See *`create` inside a named
   workset's path space* in [MIGRATION.md](MIGRATION.md).
 
+- **`box move`, `box convert --move <path>` and `box remap` refuse a destination inside a workset
+  unless it is the box's own `workspaces/<name>`.** This applies to a box that is, or is becoming, a
+  workset member. Any other path in that workset used to be accepted: its root, a directory directly
+  under it, another name under `workspaces`, or a path under a repointed `workset.workspaces`. The
+  files were copied there and again to `workspaces/<name>`, the box recorded only
+  `workspaces/<name>`, and the copy at the path you named was left unrecorded. `box remap` to such a
+  path recorded `workspaces/<name>`, which held nothing. All three now stop before writing anything,
+  naming the path you gave and the path the box records. `--force` does not override this. See *A
+  destination inside a workset must be the box's own `workspaces/<name>`* in
+  [MIGRATION.md](MIGRATION.md).
+
+- **`box convert --move` of an external-connected box is refused, as `box move` already was.** Its
+  workspace is your own directory, which a relocation never copies. The command reported success and
+  recorded a path that held nothing while your files stayed where they were. It now exits 1 and
+  names `box remap` and `box convert` without `--move`. `box move` of a *locked* external box now
+  reports the lock first and exits 2 (it exited 1). See *`box convert --move` of an
+  external-connected box is refused* in [MIGRATION.md](MIGRATION.md).
+
+- **`box move` and `box convert` refuse to land on a leftover directory of the box's name in the
+  target workset.** A `workspaces/<name>`, `boxes/<name>` or vault directory that no registered box
+  owns used to be adopted, and the moved box's files were merged into it. It is now refused before
+  any write, naming the directory; `--force` does not override this. A box's own directories are
+  exempt, and `box remap` is unaffected. See *A leftover directory of the box's name in the target
+  workset is refused* in [MIGRATION.md](MIGRATION.md).
+
 - The undeclared-key refusal now lists each entry beside the settings file that carries it, instead
   of every file the resolve loaded; an entry no settings file carries is said to come from a
   non-file input. The system settings file and the site base file are now checked one file at a
@@ -379,6 +404,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   second box that could not be reached from that path. `--force` does not override this. Connected
   directories that no named box owns, and paths beside one, are unaffected. See *`create` in a
   directory connected to a workset is refused* in [MIGRATION.md](MIGRATION.md).
+
+- **Interrupting `box move`, `box convert` or `box remap` (Ctrl-C) now rolls the operation back.**
+  An interrupt skipped every rollback step. A move between worksets could be left half-done: either
+  registered in the new workset with its old vault and home already deleted, or not listed at all.
+  Meanwhile the only intact copy of its store sat in a `kanibako-unwind-*` directory in the
+  temporary directory, which may hold credentials. The rollback now runs on an interrupt as on any
+  other failure, and the command still exits 130.
 
 - **A malformed bind entry in an agent file is refused where the file is read, and two spellings
   of one destination are refused everywhere.** A sub-table where an entry goes, an entry of three
