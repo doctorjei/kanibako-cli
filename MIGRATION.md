@@ -6203,7 +6203,8 @@ declare a value default and no `<None>`, so a `null` there has no consumer to me
 and names the key, the file and the cure, and `box set --null` refuses the same write.
 
 **What you must do.** Nothing, unless any settings file (system, agent, workset, or box) already
-stores one of these three as `null`. That is the one case that now stops a launch, and `kanibako image`, `baseline verify` and `setup`:
+stores one of these three as `null`. That is the one case that now stops a launch, and
+`kanibako image`, `baseline verify` and `setup`:
 
 ```yaml
 box:
