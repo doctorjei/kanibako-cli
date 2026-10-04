@@ -701,11 +701,9 @@ def fold_agent_nodes(raw: Any, *, path: Path | None) -> Any:
     Q87: a user-written capital node is ACCEPTED with a loud warning naming the file and both
     spellings, once per ``(file, key)`` (:func:`announce_drop_once`); code gets no such relief,
     because the keyspace verdict does not fold. Two spellings of ONE node in one file are
-    REFUSED, naming both: neither may silently win. A node whose separator is the typed ``+``
-    rather than the in-key ``℘`` is REFUSED too (:func:`refuse_plus_spelled_node`) — it names no
-    segment the reader holds, so the fold would keep a node nothing can reach. A table where a
-    node's SCALAR leaf goes (:func:`_refuse_table_at_scalar_leaf`) is REFUSED as well. Copies only
-    what it changes.
+    REFUSED, naming both: neither may silently win — as is a ``+``-spelled node
+    (:func:`refuse_plus_spelled_node`). A table where a node's SCALAR leaf goes
+    (:func:`_refuse_table_at_scalar_leaf`) is REFUSED too. Copies only what it changes.
     """
     if not isinstance(raw, dict):
         return raw
