@@ -2157,7 +2157,7 @@ def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> N
     import sys
 
     try:
-        release_project(ws, name)
+        release_project(ws, name, keep_link=True)
     except Exception as err:  # noqa: BLE001 - reported; the leaves below still go
         print(f"Note: could not drop the record of '{name}' from workset "
               f"'{ws.name}': {err}", file=sys.stderr)

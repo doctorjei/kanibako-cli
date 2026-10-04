@@ -61,7 +61,7 @@ def source_in_tree(ws: Workset, source_path: Path) -> bool
 def is_in_tree_workspace(ws: Workset, path: Path) -> bool
 def add_project(ws: Workset, name: str, source_path: Path, std: StandardPaths | None=None, force: bool=False, *, restoring: bool=False) -> WorksetProject
 def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | None
-def release_project(ws: Workset, name: str) -> WorksetProject
+def release_project(ws: Workset, name: str, *, keep_link: bool=False) -> WorksetProject
 def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, ...] | None=None) -> None
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
 def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None | _Unset

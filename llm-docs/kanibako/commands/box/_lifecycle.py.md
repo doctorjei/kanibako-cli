@@ -918,8 +918,9 @@ RESOLVED vault arms, as `add_project` creates them. The workspace leaf is `None`
 Those of `_member_leaves` already on disk; a dangling link counts.
 
 ```def _unwind_target_member(ws: Workset, name: str, existed: frozenset[Path]) -> None```
-Undo a target registration (`_to_workset`, `copy_into_workset`): `release_project`, then each leaf
-NOT in *existed*. See **Rollbacks delete only what the op created**. A failed release or a leaf it
+Undo a target registration (`_to_workset`, `copy_into_workset`): `release_project` with
+`keep_link=True`, then each leaf NOT in *existed* — so a pre-existing `workspaces/<name>` symlink
+survives a same-workset rollback. See **Rollbacks delete only what the op created**. A failed release or a leaf it
 cannot remove is reported in a `Note`; the other leaves still go.
 
 ```def _dispose_stash(stash: Path) -> None```
