@@ -305,6 +305,87 @@ def test_a_valid_map_reads_in_every_top_level_table(tmp_path: Path, table: str) 
 
 
 # ---------------------------------------------------------------------------
+# A SCALAR WHERE THE CATEGORY'S TABLE GOES — refused, naming the key and the file
+# ---------------------------------------------------------------------------
+# Every category is TERMINAL, so the category token IS the key and its value is the
+# map. §0 admits nothing else there: a passthrough stores a value no reader can apply.
+# A present-``None`` is the ONE non-map value a category takes (spec §2h's OMIT), and it
+# is pinned here too — one shape, one verdict, and the verdict has both sides.
+
+
+@pytest.mark.parametrize("table", _SCOPE_TABLES)
+@pytest.mark.parametrize(
+    ("category", "value"),
+    [("caches", "5"), ("caches", "x"), ("masks", "5"), ("bindings", "5")],
+)
+def test_a_scalar_at_a_category_refuses_in_every_top_level_table(
+    tmp_path: Path, table: str, category: str, value: str,
+) -> None:
+    path = _agent_file(tmp_path, _under(table, category, value))
+    with pytest.raises(SettingsError) as exc:
+        _read(path)
+    message = str(exc.value)
+    assert f"'{category}'" in message          # the category, as the file spells it
+    assert str(path) in message                 # and the file to edit
+
+
+@pytest.mark.parametrize("value", ["5", "x"])
+def test_a_scalar_at_transform_settings_refuses(tmp_path: Path, value: str) -> None:
+    """``transform_settings`` is a table-valued agent LEAF, so no category walk reaches it.
+
+    It is the one shape with no other reader to catch it, which is why the root pass
+    judges it against the table-valued set rather than a category list.
+    """
+    path = _agent_file(tmp_path, f"self:\n  transform_settings: {value}\n")
+    with pytest.raises(SettingsError) as exc:
+        _read(path)
+    message = str(exc.value)
+    assert "'self.transform_settings'" in message
+    assert str(path) in message
+
+
+@pytest.mark.parametrize("table", _SCOPE_TABLES)
+@pytest.mark.parametrize("category", ["caches", "masks", "bindings"])
+def test_a_null_category_is_accepted_in_every_top_level_table(
+    tmp_path: Path, table: str, category: str,
+) -> None:
+    """⚑ THE OTHER SIDE OF THE SAME VERDICT: a bare ``<category>:`` is spec §2h's OMIT."""
+    _read(_agent_file(tmp_path, _under(table, category, "")))
+
+
+@pytest.mark.parametrize("table", _SCOPE_TABLES)
+def test_a_caches_map_reads_in_every_top_level_table(tmp_path: Path, table: str) -> None:
+    """The CONTROL: a legal dest-keyed map under a leaf category reads, and is not judged."""
+    _read(_agent_file(tmp_path, _under(table, "caches", "/opt/x: [/src/a]")))
+
+
+def test_transform_settings_as_a_table_reads(tmp_path: Path) -> None:
+    _read(_agent_file(tmp_path, "self:\n  transform_settings:\n    tweak: 1\n"))
+
+
+def test_both_readers_return_the_one_refusal(tmp_path: Path) -> None:
+    """One shape, one verdict: the settings file's parse and the agent file's read agree.
+
+    The two readers meet the same defect in different modules and spell the key at
+    different depths, so what is pinned is the RULE they share and the file each names.
+    """
+    from kanibako.settings.settings_assemble import _parse_naming_file
+
+    path = _agent_file(tmp_path, "self:\n  caches: 5\n")
+    with pytest.raises(SettingsError) as via_agent_file:
+        _read(path)
+    with pytest.raises(SettingsError) as via_settings_file:
+        # ⚑ A settings file carries its scope token IN the document, so ``key_path``
+        # stays empty — the agent file seeds it instead, because ``self:`` IS the scope.
+        _parse_naming_file({"system": {"caches": 5}}, file_path=path)
+    agent, settings = str(via_agent_file.value), str(via_settings_file.value)
+    assert "'caches'" in agent            # the agent file's own spelling of the key
+    assert "'system.caches'" in settings  # and the settings file's, scope-qualified
+    assert str(path) in agent and str(path) in settings
+    assert "One shape, one verdict" in agent and "One shape, one verdict" in settings
+
+
+# ---------------------------------------------------------------------------
 # ONE CHECKER — the refusals are the same object whichever reader raises them
 # ---------------------------------------------------------------------------
 

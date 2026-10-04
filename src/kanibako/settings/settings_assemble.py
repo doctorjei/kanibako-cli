@@ -60,6 +60,7 @@ from kanibako.settings.settings_keyspace import (
     SCALAR_AGENT_LEAVES,
     TERMINAL_CATEGORY_TAILS,
     Judgment,
+    is_terminal_category_key,
     render_store_path,
     undeclared_store_paths,
 )
@@ -70,6 +71,7 @@ from kanibako.settings.settings_resolve import (
     check_bind_map,
     normalize_bind_dest,
     refuse_dest_spelled_twice,
+    refuse_scalar_at_table_key,
     refuse_unrooted_source,
     unpack_bind,
     unpack_bind_entry,
@@ -1011,6 +1013,21 @@ def retired_cure(files: Iterable[SettingsFile]) -> None:
             refuse_retired_behavior_keys(f.view, level=f.level, path=f.path)
 
 
+def _refuse_malformed_category(parts: tuple[str, ...], sub: Any) -> None:
+    """RAISE on a non-``None`` non-map at the category key spelled by *parts*, or pass.
+
+    ⚑ THE POSITION IS THE DISCRIMINATOR, and this walk is the one place it cannot be
+    assumed: a deep walk reaches ``system.channels.common`` — an ordinary path SCALAR that
+    merely ENDS in a category token, and its family's sibling ``system.channels.chat`` does
+    not. Spec §2a puts the discriminator in the ``channels.`` segment, which
+    :func:`~kanibako.settings.settings_keyspace.is_terminal_category_key` already reads, so
+    that is what judges here and the message names the WHOLE key it spells.
+    """
+    key = ".".join(parts)
+    if is_terminal_category_key(key):
+        refuse_scalar_at_table_key(key, sub)
+
+
 def _parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
     path: tuple[str, ...] = (),
@@ -1033,13 +1050,15 @@ def _parse_node(
             key_s = str(key)
             if at_bindings and key_s in _BIND_ARMS:
                 # An ARM (``bindings.ro`` / ``.rw``) — a TERMINAL dest-keyed map (R-5).
-                # ⚑ A non-dict is a MALFORMED arm and is deliberately left to the legacy leaf path,
-                # so ``settings_launch._assert_declared_categories`` still names the key.
+                # ⚑ A non-``None`` non-map is a MALFORMED arm and refuses HERE, naming the
+                # arm; ``settings_launch._assert_declared_categories`` also catches it, but
+                # runs on the ASSEMBLED snapshot and so cannot name the file to edit.
                 if isinstance(sub, dict):
                     store[key_s] = parse_bind_map(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
                     )
                     continue
+                _refuse_malformed_category((*path, key_s), sub)
             if not in_binds and key_s in BIND_LEAF_CATEGORIES:
                 # A TERMINAL dest-keyed category — the map is HERE, not one level down, so it is
                 # parsed on the way PAST the category token. Same malformed-shape hand-off as an arm.
@@ -1051,9 +1070,12 @@ def _parse_node(
                         root_ref=_declaration_root_ref(path, key_s),
                     )
                     continue
-            if not in_binds and key_s in _MARKER_LEAF_CATEGORIES and isinstance(sub, dict):
-                store[key_s] = _parse_marker_map(sub, path=(*path, key_s))
-                continue
+                _refuse_malformed_category((*path, key_s), sub)
+            if not in_binds and key_s in _MARKER_LEAF_CATEGORIES:
+                if isinstance(sub, dict):
+                    store[key_s] = _parse_marker_map(sub, path=(*path, key_s))
+                    continue
+                _refuse_malformed_category((*path, key_s), sub)
             # Entering a bind-shaped category: its entries below are binds.
             descend_binds = in_binds or key_s in BIND_CATEGORY_TOKENS
             store[key_s] = _parse_node(
