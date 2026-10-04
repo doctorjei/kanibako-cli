@@ -83,6 +83,8 @@ def _carrying_files(findings: Sequence[tuple[tuple[str, ...], Judgment]], writte
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None
+def _bind_source(value: object) -> 'str | None'
+def _refuse_downward_refs(written: Sequence[_WrittenLevel], files: Sequence[SettingsFile]) -> None
 def _workset_channel_floor_values(part: 'WorksetPartition', wch: 'WorksetChannels | None') -> 'tuple[str | None, dict[str, str]]'
 def _workset_workspaces_floor_value(mode: str, ws_root_literal: 'str | None') -> 'str | None'
 def _box_less_omits(key: str, *, in_workset: bool) -> bool
