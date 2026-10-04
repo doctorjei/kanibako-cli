@@ -17,7 +17,7 @@ from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_L
                                         ERR_CONFIG_LAYER1_UNDECLARED,
                                         ERR_CONFIG_NULL_PATH_CURE,
                                         ERR_CONFIG_NULL_PATH_HEAD,
-                                        ERR_CONFIG_PATH_REF_SCOPE)
+                                        ERR_CONFIG_PATH_REF_SCOPE, ERR_CONFIG_REF_ORDER)
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -1104,7 +1104,8 @@ def system_path_ref_error(canonical: str, value: "str | None") -> "str | None":
     ``Unknown @-reference`` at EVERY seam.  This function expands the value through
     :func:`kanibako.settings.config_interface._path_tier_split`, the same
     ``(config.*`` foundation, ``system.*`` floor) that lookup resolves against, and
-    refuses a ref that split cannot see (spec §0: no ``@``-ref points DOWNWARD).  A
+    refuses a ref that split cannot see (system-design "Ordering rule": a key may
+    depend only on key sets preceding it, or on its own set).  A
     ``@config.*`` key or a system PATH key is inside that split and passes; any other
     ``@system.*`` ref (``@system.agent``) is not, and is refused.
     ⚑ THE MEMBERSHIP IS :data:`SYSTEM_PATH_DEFAULTS` — the very table ``paths.py``
@@ -1145,3 +1146,42 @@ def system_path_ref_error(canonical: str, value: "str | None") -> "str | None":
     if not misses:
         return None
     return ERR_CONFIG_PATH_REF_SCOPE % (canonical, value, misses[0])
+
+
+def _resolution_set(dotted: str) -> "str | None":
+    """The :data:`~kanibako.settings.kb_store.RESOLUTION_ORDER` set *dotted* belongs to, or ``None``."""
+    from kanibako.settings.kb_store import RESOLUTION_ORDER
+
+    head, _, rest = dotted.partition(".")
+    name = f"meta.{rest.partition('.')[0]}" if head == "meta" else head
+    return name if name in RESOLUTION_ORDER else None
+
+
+def ref_order_error(canonical: str, value: "str | None") -> "str | None":
+    """THE set-door refusal of an ``@``-ref naming a set resolved after *canonical*'s, or ``None``.
+
+    System-design "Ordering rule": a key may depend only on key sets PRECEDING it, or on its
+    own set. The verdict reads the SPELLING, so it holds whether or not this command's cascade
+    holds the referent. A key or ref outside :data:`~kanibako.settings.kb_store.RESOLUTION_ORDER`
+    (``pref.*``, an undeclared namespace) and a malformed value answer ``None``: other doors
+    own them. A ``system.*`` path key answers ``None`` too, since
+    :func:`system_path_ref_error` holds it to the narrower path tier.
+    """
+    if not value or canonical in SYSTEM_PATH_DEFAULTS:
+        return None
+    from kanibako.settings.kb_store import RESOLUTION_ORDER
+    from kanibako.settings.settings_configset import scan_tokens
+
+    key_set = _resolution_set(canonical)
+    if key_set is None:
+        return None
+    try:
+        refs, _vars = scan_tokens(value)
+    except ValueError:
+        return None
+    rank = RESOLUTION_ORDER.index(key_set)
+    for ref in refs:
+        ref_set = _resolution_set(ref)
+        if ref_set is not None and RESOLUTION_ORDER.index(ref_set) > rank:
+            return ERR_CONFIG_REF_ORDER % (canonical, value, ref, ref_set, key_set)
+    return None

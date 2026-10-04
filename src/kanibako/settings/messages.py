@@ -136,16 +136,29 @@ ERR_BOX_STORE_SET_HEAD = (
                         "the launch refuses this value at the box store key, so this set is "
                         "refused too:\n  %s\n")
                                                     # the offending key
-# ⚑ THE SET DOOR'S HALF of "no @-ref points DOWNWARD" (spec §0) for the SYSTEM PATH TIER;
+# ⚑ THE SET DOOR'S HALF of the ordering rule (system-design "Ordering rule") for the SYSTEM PATH TIER;
 # scope and why are stated once, on ``config.system_path_ref_error``. ⚑ The @-sigils are
 # LITERAL, unlike ``ERR_SETTINGS_BAD_REF``'s spliced one — this names what the user wrote.
 ERR_CONFIG_PATH_REF_SCOPE = (
                         "%s is set to %r, which points at '@%s' — outside the system "
                         "path tier. A system path value may reference only @config.* keys "
-                        "and the system path keys, so a launch could not read it back "
-                        "(spec §0: no @-ref points downward). Reference one of those keys "
-                        "instead, or set the path you mean.")
+                        "and the system path keys, so it cannot be read back at that "
+                        "stage — it is resolved before every other key. Reference one of "
+                        "those keys instead, or set the path you mean.")
                                                     # the key, the value, the offending ref
+# ⚑ THE SET DOOR'S ordering rule (system-design "Ordering rule") for every other key;
+# scope and why are stated once, on ``config.ref_order_error``.
+ERR_CONFIG_REF_ORDER = (
+                        "%s is set to %r, which points at '@%s' — a %s key, which resolves "
+                        "after the %s keys this one belongs to. A key may reference only "
+                        "keys of its own set or of a set resolved before it (system-design "
+                        "\"Ordering rule\"). Reference one of those keys instead, or set the "
+                        "value you mean.")
+                                                    # the key, the value, the ref, its set, the key's set
+#: The SET door's lead for ``workset_dirkeys.early_key_set_error``'s refusal.
+ERR_WORKSET_EARLY_SET_HEAD = (
+                        "nothing was written: this value could not be read back.\n  %s")
+                                                    # the reader's refusal
 # ⚑ The §2a bad-ENTRY report, ONE per file the command reads, and the only thing ``get``
 # says about them.  ``config.chain_bad_entries`` separates the two arms below.
 WARN_CONFIG_BAD_ENTRIES = "%s stores entries that are not keys (spec §0):\n  %s"

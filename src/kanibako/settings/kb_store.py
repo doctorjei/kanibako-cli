@@ -9,6 +9,13 @@ from kanibako.settings.keystore import KeyStore
 # Containment order, OUTERMOST first: ``system ⊃ agent ⊃ workset ⊃ box``. Single source for every
 # directional derivation. ⚑ Four scopes, NOT the six cascade levels.
 SCOPE_CONTAINMENT: tuple[str, ...] = ("system", "agent", "workset", "box")
+# Resolution order of the key SETS, EARLIEST first (system-design "Bootstrap order", L0.1-L4.2).
+# A ``meta.<scope>`` set is its own rung. Distinct from containment: ``meta.workset`` precedes
+# ``agent``, and ``box`` follows ``meta.box``.
+RESOLUTION_ORDER: tuple[str, ...] = (
+    "config", "meta.runtime", "meta.agent", "meta.workset", "base",
+    "system", "agent", "workset", "meta.box", "box",
+)
 BINDING_DERIVATIONS_NODE: Final[str] = "binding_derivations"  # ⚑ Reserved internal node, NOT a key
 
 

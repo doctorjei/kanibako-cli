@@ -1,13 +1,13 @@
 """The NO-SNAPSHOT resolver for the workset dir keys — ONE route, ONE grammar.
 
-``workset.{workspaces,boxes,logs,channelroot,registry,canon,template,vault_ro,vault_rw}`` are read
+The keys in :data:`WORKSET_EARLY_KEYS` are read
 on the DETECTION / paths side, which runs BEFORE the per-launch KeyStore snapshot exists — it is the pass
 that FINDS the workset the snapshot will later be built for.  So it cannot call
 :func:`kanibako.settings.settings_expand.expand`, which needs that snapshot.
 
 ⚑⚑ IT STILL MUST NOT GROW A SECOND GRAMMAR.  Files store entries UNRESOLVED (spec
 ``:214`` — ``@``-refs and ``$XDG``/``~`` verbatim), so every one of these values may
-carry a token, and the spec's own per-mode DEFAULT for all nine is
+carry a token, and the spec's own per-mode DEFAULT for the layout keys is
 ``@meta.workset.path/<leaf>`` (the two vault arms take a TWO-SEGMENT leaf,
 ``vault/ro`` and ``vault/rw``).  A resolver that merely ``expanduser()``-ed the string
 turned that documented default into a literal directory named ``@meta.workset.path``
@@ -45,7 +45,9 @@ from kanibako.settings.agent_config import (
     ambiguous_path_value_error,
     is_unambiguous_path_value,
 )
+from kanibako.settings.bootstrap import BOXES_PATH, LOGS_PATH, WORKSPACES_PATH
 from kanibako.settings.config import WORKSET_META_FILE
+from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError, expand_expr
 
 #: The ONE ``@``-ref a workset dir key can resolve before a snapshot exists: the
@@ -53,6 +55,14 @@ from kanibako.settings.settings_resolve import ResolveCtx, SettingsError, expand
 #: hand.  It is also the anchor of all five keys' spec-declared defaults, so the
 #: documented value resolves here without the snapshot the rest of the keyspace needs.
 WORKSET_PATH_REF = "meta.workset.path"
+
+#: The workset EARLY keys (under ``workset.``): the keys this route reads, so the ones that
+#: may depend only on :data:`WORKSET_PATH_REF` (system-design "Ordering rule").
+WORKSET_EARLY_KEYS: frozenset[str] = frozenset({
+    WORKSPACES_PATH, BOXES_PATH, LOGS_PATH, "channelroot", "registry", "canon", "template",
+    "vault_ro", "vault_rw",
+    *(f"channels.{leaf}" for leaf in DECLARED_WORKSET_CHANNEL_LEAVES),
+})
 
 
 def _host_ctx() -> ResolveCtx:
@@ -74,13 +84,15 @@ def _host_ctx() -> ResolveCtx:
 
 def resolve_workset_dir_key(
     workset_root: Path, repoint: str | None, default_leaf: str, *, key: str,
-    extra_refs: Mapping[str, str] | None = None,
+    extra_refs: Mapping[str, str] | None = None, where: Path | None = None,
 ) -> Path:
     """Resolve the ``workset.<key>`` *repoint* (or its ``<root>/<default_leaf>`` default).
 
     *repoint* is the RAW value as stored: it may carry ``@``-refs, ``$XDG_*`` or ``~``.
     *extra_refs* maps ref name -> ALREADY-RESOLVED value for refs the caller can answer
     itself; see the module docstring for why it is not a general widening.
+    *where* is the file a refusal names; it defaults to *workset_root*'s ``workset.yaml``.
+    *key* must be in :data:`WORKSET_EARLY_KEYS`; any other raises :class:`ValueError`.
     An unset repoint takes the default leaf under *workset_root*.  Raises
     :class:`~kanibako.settings.settings_resolve.SettingsError`, naming the key, the file
     and the token, when the value cannot be resolved without the launch snapshot.
@@ -93,6 +105,10 @@ def resolve_workset_dir_key(
     not a confusing message, it is a directory created in the wrong place that then
     holds data.  The root-relative reading stays expressible; it has to be SAID.
     """
+    if key not in WORKSET_EARLY_KEYS:
+        raise ValueError(f"workset.{key} is not a workset early key")
+    if where is None:
+        where = workset_root / WORKSET_META_FILE
     if not repoint:
         return workset_root / default_leaf
 
@@ -106,7 +122,7 @@ def resolve_workset_dir_key(
             ambiguous_path_value_error(
                 f"workset.{key}", repoint,
                 anchor=str(workset_root), anchor_ref=f"@{WORKSET_PATH_REF}",
-                where=str(workset_root / WORKSET_META_FILE),
+                where=str(where),
             )
         )
 
@@ -134,10 +150,30 @@ def resolve_workset_dir_key(
         usable = ", ".join(f"'@{name}'" for name in (WORKSET_PATH_REF, *(extra_refs or ())))
         raise SettingsError(
             f"workset.{key} is set to {repoint!r} in "
-            f"{workset_root / WORKSET_META_FILE}, which cannot be resolved: {exc}. "
+            f"{where}, which cannot be resolved: {str(exc).rstrip('.')}. "
             f"Use an absolute path, '~', '$XDG_*', or {usable}; a "
             f"LITERAL '$', '~' or '@' in a directory name must be "
             f"backslash-escaped."
         ) from exc
 
     return Path(expanded)
+
+
+def early_key_set_error(canonical: str, value: str | None, *, written_file: Path) -> str | None:
+    """The reader's refusal of *value* at a workset early key, or ``None``; the SET door's twin.
+
+    Runs :func:`resolve_workset_dir_key` itself on the value about to be written to
+    *written_file*, the workset's own file, anchored at its directory, the workset root.
+    So a value the launch snapshot would resolve but this reader cannot (``$AGENT``, any
+    ``@``-ref but :data:`WORKSET_PATH_REF`) is refused, because this reader reads it first.
+    """
+    if not isinstance(value, str) or not canonical.startswith("workset."):
+        return None
+    key = canonical.removeprefix("workset.")
+    if key not in WORKSET_EARLY_KEYS:
+        return None
+    try:
+        resolve_workset_dir_key(written_file.parent, value, "", key=key, where=written_file)
+    except SettingsError as exc:
+        return str(exc)
+    return None

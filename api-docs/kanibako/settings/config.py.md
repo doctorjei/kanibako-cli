@@ -57,6 +57,7 @@ def refuses_box_store_value(canonical: str, value: object) -> bool
 def chain_bad_entries(value: object, bad: Iterable[str], *, key: str, stored: 'Callable[[str], object]') -> list[str]
 def refuses_null_box_scalar(canonical: str) -> bool
 def system_path_ref_error(canonical: str, value: 'str | None') -> 'str | None'
+def ref_order_error(canonical: str, value: 'str | None') -> 'str | None'
 def _layer1_settings_keys(data: dict) -> list[str]
 def _scalar_value(value: object) -> object
 def _present_scalar_fields(path: Path) -> dict[str, object]
@@ -66,6 +67,7 @@ def _split_config_key(flat_key: str) -> tuple[str, str]
 def _flatten_leaves(data: dict, prefix: str='') -> dict[str, object]
 def _flatten_dotted(data: dict, prefix: str='') -> dict[str, str]
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None
+def _resolution_set(dotted: str) -> 'str | None'
 ```
 
 ## Classes

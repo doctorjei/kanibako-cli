@@ -18,16 +18,17 @@ something the launch accepts, which is the worse error of the two.
 hold keys of the scopes it CONTAINS ... which serve as OVERRIDABLE defaults", and a scope "may
 NOT write a setting in a containing (higher) level". The set-time resolution probe judges a
 candidate value against the COMMAND's cascade, so a referent living in the contained scope is
-absent from that snapshot by construction — and ``system set workset.canon=@workset.channelroot/x``
-was refused as a "dangling @-reference (no such config key in the keyspace)" for a key that is
-declared and that every launch resolves. :func:`_floor_blind_default` forgives exactly that
+absent from that snapshot by construction — and ``system set workset.auth.path=@workset.channelroot/x``
+was refused as a "dangling @-reference" for a key that is declared and that every launch
+resolves. :func:`_floor_blind_default` forgives exactly that
 blindness and nothing else.
 
 ⚑ SO THE ASYMMETRY IS THE POINT, and both halves are pinned: ``TestAnUpwardWriteStaysRefused``
 holds the containing-level write still refused with its UNCHANGED message, and
 ``TestWhatStaysRefused`` holds every defect that is not a referent this floor cannot see — an
-undeclared referent, a cycle, a malformed ref, a ``@config.*``/scopeless ref, a **DOWNWARD** ref,
-and a malformed ``$`` token.
+undeclared referent, a cycle, a malformed ref, a ``@config.*``/scopeless ref, a ref into a
+**LATER** key set (system-design "Ordering rule", judged before the probe runs), and a malformed
+``$`` token.
 
 **The three rules are each stated ONCE, and the other door points at them.** Row 1's membership
 is :func:`config.usable_box_store_value` — the launch's own test, which
@@ -71,8 +72,12 @@ from tests.support.filenames import CONFIG_FILENAME
 _BOXES = f"workset.{BOXES_PATH}"
 #: A contained-scope key and a ref INTO the contained scope — the shape §0 says a system
 #: file may hold, and the shape the base refused as a dangling @-reference.
-_CONTAINED_KEY = "workset.canon"
+#: ⚑ NOT a workset EARLY key: those take only ``@meta.workset.path``, whatever the door
+#: (``test_workset_early_key_set_door.py``).
+_CONTAINED_KEY = "workset.auth.path"
 _CONTAINED_REF = "@workset.channelroot/x"
+#: The ordering refusal's citation (``messages.ERR_CONFIG_REF_ORDER``).
+_ORDERING = 'system-design "Ordering rule"'
 
 
 def _files(tmp_path: Path) -> dict:
@@ -272,7 +277,7 @@ class TestAContainedScopeKeyIsAcceptedAtTheContainingDoor:
         message = _set(_CONTAINED_KEY, _CONTAINED_REF, files, ConfigLevel.system, std=std)
         assert not message.startswith("Error:"), message
         assert files["system"].exists(), "the downward default was not written"
-        assert "canon" in files["system"].read_text()
+        assert _CONTAINED_REF in files["system"].read_text()
 
     def test_the_same_key_at_its_own_door_is_unchanged(self, ws_files):
         """The contained scope's own door probes against the store that holds the referent,
@@ -309,7 +314,7 @@ class TestAMetaRefIsJudgedByItsScopeToken:
 
     @pytest.mark.parametrize("key, value", [
         ("workset.template", "@meta.workset.path/t2"),   # own scope
-        ("box.canon", "@meta.workset.path/c3"),          # a containing scope
+        ("box.canon", "@meta.workset.path/c3"),          # a preceding set
     ])
     def test_own_or_containing_meta_scope_is_accepted_at_the_system_door(
         self, tmp_path, std, key, value,
@@ -319,23 +324,23 @@ class TestAMetaRefIsJudgedByItsScopeToken:
         assert not message.startswith("Error:"), f"{key}={value!r}: {message}"
         assert value in files["system"].read_text()
 
-    @pytest.mark.parametrize("value", [
-        "@meta.box.path/t2",          # DOWNWARD: box inside a workset key
-        "@meta.runtime.ws_root/t2",   # no scope token on the containment order
-        "@meta.workset.nope/t2",      # own scope, but undeclared
+    @pytest.mark.parametrize("value, phrase", [
+        ("@meta.box.path/t2", _ORDERING),              # meta.box resolves after workset
+        ("@meta.runtime.ws_root/t2", "dangling @-reference"),   # no scope token
+        ("@meta.workset.nope/t2", "dangling @-reference"),      # own scope, but undeclared
     ])
-    def test_these_meta_refs_stay_refused_at_the_system_door(self, tmp_path, std, value):
+    def test_these_meta_refs_stay_refused_at_the_system_door(self, tmp_path, std, value, phrase):
         files = _files(tmp_path)
         message = _set("workset.template", value, files, ConfigLevel.system, std=std)
         assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
-        assert "dangling @-reference" in message, message
+        assert phrase in message, message
         assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
 
-    def test_a_downward_meta_ref_stays_refused_at_the_keys_own_door(self, ws_files):
+    def test_a_later_meta_ref_stays_refused_at_the_keys_own_door(self, ws_files):
         message = _set("workset.template", "@meta.box.path/t2", ws_files,
                        ConfigLevel.workset, std=ws_files["std"], ws=ws_files["ws"])
         assert message.startswith("Error:"), message
-        assert "dangling @-reference" in message, message
+        assert _ORDERING in message, message
 
 
 class TestAnUpwardWriteStaysRefused:
@@ -368,7 +373,7 @@ class TestWhatStaysRefused:
 
     @pytest.mark.parametrize("value", [
         "@workset.nonexistent",             # undeclared referent: a real dangling ref
-        "@workset.canon",                   # self-reference: a cycle, not a missing referent
+        "@workset.auth.path",               # self-reference: a cycle, not a missing referent
         "@workset.channelroot/@workset.nope",   # one declared and one not
         "@config.nonexistent",              # the Layer-1 foundation, not a cascade scope
         "@",                                # malformed
@@ -380,19 +385,20 @@ class TestWhatStaysRefused:
         assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
 
     @pytest.mark.parametrize("key, value", [
-        # ⚑ DOWNWARD (§0: "no ``@``-ref points DOWNWARD") — a ref into a scope the KEY
-        # does not contain. Declared, and ABSENT from the system floor exactly as an
-        # upward-blind referent is, so the blindness rule used to swallow every one.
-        ("workset.canon", "@box.canon/x"),          # workset ⊃ box
+        # ⚑ A ref into a LATER key set (system-design "Ordering rule"). Declared, and ABSENT
+        # from the system floor exactly as a blind referent is, so the blindness rule would
+        # swallow every one were the ordering rule not judged first.
+        ("workset.canon", "@box.canon/x"),          # box resolves after workset
         ("workset.canon", "@box.canon"),
         ("workset.boxes", "@box.bindings.ro"),      # a declared, non-path box key
         ("workset.boxes", "@box.canon"),
-        ("workset.canon", "@box.canon/@workset.channelroot"),  # upward, in a downward value
+        ("workset.canon", "@box.canon/@workset.channelroot"),  # own set, in a later-set value
+        ("agent.claude.env.FOO", "@workset.canon/x"),  # workset resolves after agent
     ])
-    def test_a_downward_ref_is_refused_at_the_containing_door(
+    def test_a_ref_into_a_later_set_is_refused_at_the_containing_door(
         self, tmp_path, std, key, value,
     ):
-        """🛑 THE DOWNWARD HALF OF §0, and the reason the forgiveness is bounded.
+        """🛑 THE ORDERING RULE, and the reason the forgiveness is bounded.
 
         A ``workset.*`` key holding ``@box.*`` binds ONE box's settings for the whole
         workset, so a set that stores it writes a value the cascade cannot honor and the
@@ -401,29 +407,39 @@ class TestWhatStaysRefused:
         files = _files(tmp_path)
         message = _set(key, value, files, ConfigLevel.system, std=std)
         assert message.startswith("Error:"), f"{key}={value!r} was ACCEPTED: {message}"
-        assert "dangling @-reference" in message, message
+        assert _ORDERING in message, message
         assert not files["system"].exists(), f"{key}={value!r} was WRITTEN: {message}"
 
     @pytest.mark.parametrize("value", ["@box.enable_vault", "@box.image"])
-    def test_a_downward_ref_this_floor_HOLDS_is_judged_normally(self, tmp_path, std, value):
-        """🛑 NOT A NEW REFUSAL, and pinned so the boundary is a decision and not a gap.
+    def test_a_later_set_ref_this_floor_HOLDS_is_refused_too(self, tmp_path, std, value):
+        """🛑 The rule reads the SPELLING, not the floor.
 
         The declared floor carries some ``box.*`` defaults, so ``@box.enable_vault`` and
-        ``@box.image`` RESOLVE at the system command and were accepted before this change.
-        This rule forgives a MISSING referent; a downward ref the floor can see is not
-        missing, so it is no blindness case and this door has no verdict to give.
+        ``@box.image`` RESOLVE at the system command; a check that asked the floor would
+        store them.
         """
         files = _files(tmp_path)
         message = _set(_CONTAINED_KEY, value, files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), f"{value!r}: {message}"
+        assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
+        assert _ORDERING in message, message
+        assert not files["system"].exists(), f"{value!r} was WRITTEN: {message}"
 
-    def test_the_keys_own_door_refuses_the_downward_ref_too(self, ws_files):
-        """One rule, both doors: the contained scope's own door sees the referent and has
-        always refused it, so the two doors now AGREE rather than disagreeing."""
+    def test_the_keys_own_door_refuses_the_later_set_ref_too(self, ws_files):
+        """One rule, both doors, one wording."""
         message = _set(_CONTAINED_KEY, "@box.canon/x", ws_files, ConfigLevel.workset,
                        std=ws_files["std"], ws=ws_files["ws"])
         assert message.startswith("Error:"), message
-        assert "dangling @-reference" in message, message
+        assert _ORDERING in message, message
+
+    def test_a_ref_into_a_preceding_meta_set_is_accepted(self, tmp_path, std):
+        """``meta.workset`` resolves before ``agent``, though the workset scope is contained
+        by the agent scope: the order decides, not the containment."""
+        files = _files(tmp_path)
+        message = _set("agent.claude.env.FOO", "@meta.workset.path/x", files,
+                       ConfigLevel.system, std=std)
+        assert not message.startswith("Error:"), message
+        written = [p.read_text() for p in files["agents"].rglob("*") if p.is_file()]
+        assert any("@meta.workset.path/x" in text for text in written), written
 
     def test_a_malformed_dollar_is_not_forgiven(self, tmp_path, std):
         """⚑ THE ``$`` FAMILY, which the blindness rule has to read before it forgives.
