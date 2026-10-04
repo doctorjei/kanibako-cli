@@ -6873,6 +6873,72 @@ class TestPersonaTokenCountsEveryMountedTier:
         assert _persona_token_pointer(self._table({}), self.VAR) is __MISSING__
 
 
+class TestANullSecretPathOmitsTheMountTheGateCallsKeyless:
+    """A present ``null`` ``secret_path.<VAR>`` wins its VAR for the MOUNT, too.
+
+    §2h: a present ``<None>`` is a value, never a fall-back.  The gate read a box
+    ``null`` over a system pointer as keyless while the launch still mounted the
+    system token, because the entry walk dropped the null and the lower scope won.
+    Both sides now read one winner off one entry list.
+    """
+
+    VAR = "ANTHROPIC_AUTH_TOKEN"
+
+    def _both(self, floor, active="navigator+claude"):
+        """(delivered secret mounts, gate table), off ONE production snapshot."""
+        from kanibako.commands.start import _persona_secret_table
+        from kanibako.settings.settings_categories import launch_deliveries
+        from kanibako.settings.settings_launch import (
+            build_launch_snapshot, snapshot_category_entries,
+        )
+        from kanibako.settings.settings_resolve import ResolveCtx
+
+        ctx = ResolveCtx(
+            agent_name=active, workset_name="ws", host_home="/home/u",
+            xdg={"XDG_DATA_HOME": "/data"}, config={},
+        )
+        snap = build_launch_snapshot(
+            agent_name=active, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=floor,
+        )
+        entries = snapshot_category_entries(snap, active_agent=active, box_ctx=ctx)
+        secrets = launch_deliveries(entries, agent_dests=frozenset()).secrets
+        mounts = {e.name: e.host_src for e in secrets}
+        return mounts, _persona_secret_table(snap, active, ctx)
+
+    @pytest.mark.parametrize("scope", ["box", "workset"])
+    def test_a_null_over_a_system_pointer_mounts_NOTHING(self, scope):
+        mounts, table = self._both({
+            scope: {"secret_path": {self.VAR: None}},
+            "system": {"secret_path": {self.VAR: "/h/system"}},
+        })
+        assert mounts == {}, "the system token must not be mounted"
+        assert _persona_token_pointer(table, self.VAR) is None
+
+    def test_a_null_at_the_agent_node_over_a_system_pointer_mounts_NOTHING(self):
+        mounts, table = self._both({
+            f"agent.navigator+claude.secret_path.{self.VAR}": None,
+            "system": {"secret_path": {self.VAR: "/h/system"}},
+        })
+        assert mounts == {}
+        assert _persona_token_pointer(table, self.VAR) is None
+
+    def test_a_box_pointer_over_a_system_null_is_MOUNTED(self):
+        mounts, table = self._both({
+            "box": {"secret_path": {self.VAR: "/h/box"}},
+            "system": {"secret_path": {self.VAR: None}},
+        })
+        assert mounts == {self.VAR: "/h/box"}
+        assert _persona_token_pointer(table, self.VAR) == "/h/box"
+
+    def test_a_null_for_one_var_leaves_another_vars_mount(self):
+        mounts, _table = self._both({
+            "box": {"secret_path": {self.VAR: None}},
+            "system": {"secret_path": {self.VAR: "/h/system", "GH_TOKEN": "/h/gh"}},
+        })
+        assert mounts == {"GH_TOKEN": "/h/gh"}
+
+
 def _agent_record(agent_path, target, node):
     """The agent tier the create path hands the resolve — a real file when there is one.
 

@@ -1159,10 +1159,10 @@ class TestAVarNamedByBothScalarFamiliesRefusesTheLaunch:
 
     def test_a_reset_secret_pointer_leaves_no_twin_to_refuse(self):
         # A present-null ``secret_path`` declares "this endpoint needs no token"
-        # (§2a's three-valued rule) and emits NO entry, so it names no VAR and
-        # cannot contend for one. ⚑ Pinned because the opposite — refusing on the
-        # KEY's presence rather than on an emitted entry — would break the
-        # documented way to turn a token off.
+        # (§2a's three-valued rule) and carries no source, so it names no VAR to
+        # export and cannot contend for one. ⚑ Pinned because the opposite —
+        # refusing on the KEY's presence — would break the documented way to turn
+        # a token off.
         deliveries = self._deliveries({
             "box.env.TOK": "value",
             "box.secret_path.TOK": None,

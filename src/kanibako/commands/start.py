@@ -6805,12 +6805,6 @@ def _resolve_box_launch_decisions(
     return auth_src, endpoint, model, secret_paths
 
 
-#: The tiers one ``secret_path.<VAR>`` cascades through, MOST SPECIFIC FIRST — the
-#: order :func:`~kanibako.settings.settings_merge.merge` folds, with the agent tier's
-#: §2d active-over-default pick collapsed into one ``agent`` rung.
-_SECRET_CASCADE_TIERS: "tuple[str, ...]" = ("box", "workset", "agent", "system")
-
-
 class PersonaSecretTable(dict):
     """The launch's per-VAR ``secret_path`` STATE, plus the persona's own var NAMES.
 
@@ -6831,85 +6825,39 @@ class PersonaSecretTable(dict):
         self.declared: "tuple[str, ...]" = declared
 
 
-def _persona_secret_tier_tables(snapshot, active_agent: str) -> "dict[str, dict]":
-    """Each cascade tier's own ``secret_path`` table, keyed by tier token.
-
-    ``agent_declared`` is the ``agent`` rung MINUS its ``agent.default`` backstop — the
-    node tier's own names, the ones a persona declares.
-    """
-    from kanibako.settings import settings_launch
-
-    def _table(dotted: str) -> "dict[str, object]":
-        node = settings_launch.snapshot_leaf(snapshot, dotted)
-        return _plain_table(node) if isinstance(node, dict) else {}
-
-    node_tier = _table(f"agent.{active_agent}.secret_path")
-    # §2d per VAR, with the pseudo-agent fence the rest of the cascade applies.
-    agent_tier: dict[str, object] = {}
-    if pseudo_agent_fence(active_agent) is None:
-        agent_tier = _table("agent.default.secret_path")
-    return {
-        "box": _table("box.secret_path"),
-        "workset": _table("workset.secret_path"),
-        "agent": {**agent_tier, **node_tier},
-        "system": _table("system.secret_path"),
-        "agent_declared": node_tier,
-    }
-
-
-def _persona_secret_nulls(tiers: "Mapping[str, dict]") -> "dict[str, None]":
-    """The vars whose WINNING ``secret_path`` declaration is a present ``None``.
-
-    ⚑ A present ``None`` is a VALUE at every tier the category is available at (spec
-    §2a — *"PRESENT-NULL means this endpoint needs no token … ABSENT means not
-    configured"*), and it has no mount, so the delivery list cannot carry it.  The
-    CASCADE decides: only the MOST SPECIFIC declaration of a VAR speaks, so a
-    lower-tier null never displaces a pointer a higher tier mounts.
-    """
-    names: set = set()
-    for table in tiers.values():
-        names.update(table)
-    nulls: dict[str, None] = {}
-    for var in names:
-        for tier in _SECRET_CASCADE_TIERS:
-            if var in tiers[tier]:
-                if tiers[tier][var] is None:
-                    nulls[var] = None
-                break
-    return nulls
-
-
 def _persona_secret_table(snapshot, active_agent: str, box_ctx) -> PersonaSecretTable:
     """The per-VAR ``secret_path`` state this launch DELIVERS, for the token gate.
 
     ⚑ THE GATE COUNTS WHAT THE LAUNCH MOUNTS, so the two cannot disagree: the cascade
     is :func:`~kanibako.settings.settings_launch.snapshot_category_entries` and
-    :func:`~kanibako.settings.settings_categories.secret_path_deliveries` — the delivery
-    seam's own pair, over the same four scopes, with the same §2d active-over-default
-    agent pick.  DELIVERIES, not the bare per-VAR winners: a masked dest takes the
-    mount away silently, so a winner the launch never mounts is not a token this
-    persona has.  A var the launch mounts NOWHERE is ABSENT, which is what a mask
+    :func:`~kanibako.settings.settings_categories.secret_path_winners` /
+    :func:`~kanibako.settings.settings_categories.secret_path_deliveries` — the
+    delivery seam's own derivation, over the same four scopes, with the same §2d
+    active-over-default agent pick.  A var whose WINNER is a present ``None`` reads
+    keyless (§2a); a var the launch mounts nowhere is ABSENT, which is what a mask
     reads as.
     """
     from kanibako.settings import settings_launch
-    from kanibako.settings.settings_categories import secret_path_deliveries
+    from kanibako.settings.settings_categories import (
+        secret_path_deliveries, secret_path_winners,
+    )
 
     entries = settings_launch.snapshot_category_entries(
         snapshot, active_agent=active_agent, box_ctx=box_ctx,
     )
-    tiers = _persona_secret_tier_tables(snapshot, active_agent)
     table: dict[str, object] = {
-        e.name: e.host_src for e in secret_path_deliveries(entries)
+        w.name: None for w in secret_path_winners(entries) if w.host_src is None
     }
-    # ⚑ THE CASCADE SPOKE FIRST, so a null only fills a var no pointer won.
-    table.update(_persona_secret_nulls(tiers))
+    table.update({e.name: e.host_src for e in secret_path_deliveries(entries)})
     # ⚑ THE PERSONA'S OWN NAMES — the node tier alone, because that is the tier a
     # refusal names (``agent.<node>.secret_path.<ENV_KEY>``) and the tier a var must
     # be declared in to be this persona's bearer token.  An ``agent.default`` pointer
     # is DELIVERED (so the state table carries it) without being a name this persona
     # declared; the store splices onto this same tier, so a store persona resolves
     # its var here.
-    return PersonaSecretTable(table, tuple(sorted(tiers["agent_declared"])))
+    node = settings_launch.snapshot_leaf(snapshot, f"agent.{active_agent}.secret_path")
+    declared = _plain_table(node) if isinstance(node, dict) else {}
+    return PersonaSecretTable(table, tuple(sorted(declared)))
 
 
 def _persona_model_state(snapshot: "KeyStore", active_agent: str) -> object:
