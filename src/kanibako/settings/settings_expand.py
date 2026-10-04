@@ -51,9 +51,9 @@ from kanibako.settings.settings_resolve import (
     MAX_REF_DEPTH,
     ResolveCtx,
     SettingsError,
+    deferred_literal_expr,
     expand_expr,
     is_verbatim_text,
-    literal_expr,
     match_ref,
     match_var,
     resolve_var,
@@ -483,8 +483,8 @@ class _Expander:
 
         *space*: ``"host"`` expands ``~``/``$VAR`` host-side; ``"defer"`` leaves
         them RAW for the box side (S17). ``@``-refs expand in BOTH spaces, and under
-        ``"defer"`` a referent's value enters as :func:`literal_expr`: it is a resolved
-        terminal, so the box resolver must not read its characters as tokens.
+        ``"defer"`` a referent's value enters as :func:`deferred_literal_expr`: it is a
+        resolved terminal, so the box resolver must not read its characters as tokens.
 
         *null_refs*, when given, receives the refs that made the result ``None``.
         """
@@ -494,7 +494,7 @@ class _Expander:
             if resolved is None and null_refs is not None:
                 null_refs.append(ref_name)
             if space == "defer" and isinstance(resolved, str):
-                return literal_expr(resolved)
+                return deferred_literal_expr(resolved)
             return resolved
         if space == "host":
             var_name = _is_whole_value_var(value)
@@ -664,7 +664,7 @@ class _Expander:
         """Substitute embedded tokens in *value* via ``expand_expr`` (§6b).
 
         An ``@``-ref token resolves through :meth:`_lookup_str` (absent/None →
-        ``""``, a None also RECORDED in *none_refs*, and a :func:`literal_expr` under
+        ``""``, a None also RECORDED in *none_refs*, and a :func:`deferred_literal_expr` under
         ``space="defer"``); ``~``/``$VAR`` expand host-side for ``space="host"`` and are
         left RAW (``defer_env=True``) for ``space="defer"`` (S17). A cycle reached
         through an embedded token still raises (B7). ONE scanner serves both spaces —
@@ -674,7 +674,7 @@ class _Expander:
 
         def lookup(ref: str, ch: tuple[str, ...]) -> str:
             text = self._lookup_str(ref, ch, none_refs)
-            return literal_expr(text) if defer else text
+            return deferred_literal_expr(text) if defer else text
 
         return expand_expr(
             value, space="host", ctx=self._ctx, lookup=lookup, chain=chain,

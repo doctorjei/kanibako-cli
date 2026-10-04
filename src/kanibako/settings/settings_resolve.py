@@ -237,6 +237,18 @@ def literal_expr(text: str) -> str:
     return "".join(f"\\{c}" if c in _EXPR_SIGNIFICANT else c for c in text)
 
 
+#: The characters the BOX-side resolver reads as syntax: the box never processes ``@``.
+_DEFERRED_SIGNIFICANT: frozenset[str] = frozenset("\\$~")
+
+
+def deferred_literal_expr(text: str) -> str:
+    """The deferred box-side residue that resolves to *text* VERBATIM: ``\\ $ ~`` escaped.
+
+    ``@`` stays plain, because the box resolver reads every ``@`` as a literal.
+    """
+    return "".join(f"\\{c}" if c in _DEFERRED_SIGNIFICANT else c for c in text)
+
+
 def literal_map(values: Mapping[str, str]) -> dict[str, str]:
     """*values* with every value a :func:`literal_expr`: a table of resolved host paths."""
     return {key: literal_expr(value) for key, value in values.items()}
