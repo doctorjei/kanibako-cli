@@ -26,6 +26,7 @@ from kanibako.settings.config import (
     read_agent_settings,
     refuses_box_store_value,
     refuses_null_path_key,
+    system_path_ref_error,
     unset_project_config_key,
 )
 from kanibako.settings.settings_launch import load_merged_config, snapshot_leaf
@@ -1488,6 +1489,13 @@ def set_config_value(
         )
         if isinstance(scalar_verdict, _SetError):
             return _refusal(f"Error: {scalar_verdict.message}")
+
+    # A ``@``-ref a ``system.*`` PATH value points at OUTSIDE the system path tier is
+    # REFUSED at set time; scope and why are on :func:`config.system_path_ref_error`.
+    # ⚑ AFTER the E3 probe, so a ref the probe already refuses keeps the probe's wording.
+    ref_err = system_path_ref_error(canonical, value)
+    if ref_err is not None:
+        return _refusal(f"Error: {ref_err}")
 
     # ``pref.<target>`` — the §2h REQUEST, validated with the SAME filters the launch applies.
     # ⚑ Written NESTED, never as a dotted literal: a dotted bind-shaped value is never
