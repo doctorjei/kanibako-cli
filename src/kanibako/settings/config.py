@@ -957,19 +957,23 @@ def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
 
 def null_path_keys_error(
     path: Path, keys: Iterable[str], *, cure: str = ERR_CONFIG_NULL_PATH_CURE,
-    head: "str | None" = None,
+    head: "str | None" = None, read_head: str = ERR_CONFIG_NULL_PATH_HEAD,
 ) -> "str | None":
-    """THE carrier for "these path keys are ``null``" (spec §2a) — ``None`` when none are.
+    """THE carrier for "these keys are ``null``" (spec §2a) — ``None`` when none are.
 
     ⚑ ONE CARRIER, EVERY DOOR (P10): both path tiers raise through it via
     :func:`_refuse_null_paths` and the ``set`` door calls it.  Every offender is named in
     full, sorted.
+
+    ⚑ TWO LEADS, TWO ARITIES — which is why they are two parameters and not one.  The
+    read-time lead names the file that HOLDS the lines, so it takes ``(path, keys)``; a
+    door that wrote none cannot name a file, so *head* takes ``(keys)`` alone.
     """
     nulls = sorted(keys)
     if not nulls:
         return None
     keys_block = "\n  ".join(nulls)
-    lead = ERR_CONFIG_NULL_PATH_HEAD % (path, keys_block) if head is None else head % keys_block
+    lead = read_head % (path, keys_block) if head is None else head % keys_block
     return lead + cure
 
 
@@ -1057,6 +1061,25 @@ def chain_bad_entries(
                 if isinstance(nxt, str) and nxt:
                     pending.append(nxt)
     return reached
+
+
+def refuses_null_box_scalar(canonical: str) -> bool:
+    """True iff the LAUNCH refuses a present ``null`` at the box scalar *canonical* (spec §2b).
+
+    ⚑ DERIVED FROM THE DECLARED DEFAULT, and that is the whole test: a box scalar whose own
+    default IS ``<None>`` gives a null something to SAY — ``box.shell`` auto-detects
+    (spec §2b) — so it is honored.  Every other box scalar's default is a VALUE, and
+    spec §2h's "the consumer reads ``None``, never the key's default" has no consumer to
+    hand it to: a ``box.image`` would be the string ``"None"`` and a bool one would read
+    ``False`` — a value the file never held, chosen by the reader.
+
+    🛑 NOT ``canonical in _BOX_SCALAR_FIELDS``, which names the WHOLE overlay and holds
+    ``box.shell`` too.  A fifth box scalar lands refused here without a list edit, and is
+    honored the day its own declared default admits a ``<None>``.
+    """
+    if canonical not in _BOX_SCALAR_FIELDS:
+        return False
+    return getattr(KanibakoConfig(), _BOX_SCALAR_FIELDS[canonical]) is not None
 
 
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None:
