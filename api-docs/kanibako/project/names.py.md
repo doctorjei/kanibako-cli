@@ -22,5 +22,5 @@ def resolve_name(registry: Path, name: str, cwd: Path | None=None, primary_works
 def resolve_qualified_name(registry: Path, qualified: str) -> tuple[str, str]
 def _load(registry: Path) -> dict[str, dict[str, str]]
 def _save(registry: Path, names: dict[str, dict[str, str]]) -> None
-def _workset_member_paths(worksets: dict[str, str], name: str) -> list[str]
+def _workset_member_paths(worksets: dict[str, str], name: str) -> list[tuple[str, str]]
 ```

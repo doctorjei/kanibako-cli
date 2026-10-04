@@ -368,8 +368,8 @@ class TestAmbiguousNameNotShadowedByFolder:
         test_unregistered_bare_folder_name_still_resolves_as_a_path).  It is
         "did the NAME route raise AMBIGUITY specifically".
         """
-        first = _make_member(std, config, tmp_home, "cluster-a", "alpha")
-        second = _make_member(std, config, tmp_home, "cluster-b", "alpha")
+        _make_member(std, config, tmp_home, "cluster-a", "alpha")
+        _make_member(std, config, tmp_home, "cluster-b", "alpha")
 
         cwd = tmp_home / "cwd"
         cwd.mkdir()
@@ -379,11 +379,13 @@ class TestAmbiguousNameNotShadowedByFolder:
 
         with pytest.raises(AmbiguousNameError) as excinfo:
             resolve_box_target(std, config, "alpha", initialize=False)
-        # Actionable: it names BOTH candidates and the <workset>/<name> cure.
+        # Actionable: it names BOTH candidates as <workset>/<name> plus the cure.
+        # The qualified NAME, not the workspace path: workset.workspaces is
+        # settable, so a registered path need not contain its workset name.
         message = str(excinfo.value)
         assert "Ambiguous box name" in message
-        assert str(first) in message
-        assert str(second) in message
+        assert "cluster-a/alpha" in message
+        assert "cluster-b/alpha" in message
         assert "<workset>/alpha" in message
 
     def test_unambiguous_member_name_with_same_named_folder_still_wins(
@@ -469,8 +471,8 @@ class TestAmbiguousNameNotShadowedByFolder:
         folder -- which must surface the actionable error rather than the strictly
         worse ``Project path '<cwd>/delta' does not exist``.
         """
-        first = _make_member(std, config, tmp_home, "cluster-a", "delta")
-        second = _make_member(std, config, tmp_home, "cluster-b", "delta")
+        _make_member(std, config, tmp_home, "cluster-a", "delta")
+        _make_member(std, config, tmp_home, "cluster-b", "delta")
 
         cwd = tmp_home / "cwd"
         cwd.mkdir()
@@ -478,11 +480,11 @@ class TestAmbiguousNameNotShadowedByFolder:
 
         with pytest.raises(AmbiguousNameError) as excinfo:
             resolve_project(std, config, project_dir="delta")
-        # Actionable, exactly like the other two front doors.
+        # Actionable, exactly like the other two front doors: qualified names.
         message = str(excinfo.value)
         assert "Ambiguous box name" in message
-        assert str(first) in message
-        assert str(second) in message
+        assert "cluster-a/delta" in message
+        assert "cluster-b/delta" in message
         assert "<workset>/delta" in message
 
     def test_unknown_name_through_resolve_project_still_pathifies(
