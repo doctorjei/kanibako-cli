@@ -162,6 +162,9 @@ ERR_WORKSET_WS_NOT_BOX = ("'%s' is a workset, not a single project box. Name a p
                           "under that workset.") # ⚑ the name TWICE — two args, one value
 ERR_WORKSET_NOT_IN_BOX = ("Inside workset '%s' but not in a specific project workspace. Change " +
                           "to a project directory under %s/.") # workset name, workspaces dir
+ERR_WORKSET_MEMBER_NAME_CONFLICT = ("In working set '%s' a box's name IS its member name, so '%s' and " +
+                          "'%s' are two names for one box. Pass one of them, or give the box its own " +
+                          "name with 'kanibako create %s' from outside the working set.") # workset name, --name, identifier, identifier
 # ⚑ A null ``workset.workspaces`` HAS a meaning (no workspace dir, spec §2c), unlike the
 # null path keys ERR_CONFIG_NULL_PATH refuses — so this names what cannot be created there.
 ERR_WORKSET_NULL_WORKSPACES = ("%s sets workset.workspaces to null, so it has no workspace " +

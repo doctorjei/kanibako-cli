@@ -25,9 +25,15 @@ from kanibako.runtime.container import ContainerRuntime
 from kanibako.identifiers import agent_node_case, find_identifier
 from kanibako.errors import ContainerError, ProjectError, WorksetError
 from kanibako.project.names import read_names
+from kanibako.project.workset import add_project, list_worksets, load_workset
+from kanibako.settings.messages import (
+    ERR_WORKSET_MEMBER_NAME_CONFLICT,
+    ERR_WORKSET_NULL_WORKSPACES,
+)
 from kanibako.settings.paths import (
     BoxMode,
     DesignationRoute,
+    WorksetSpec,
     _box_settings_files,
     _find_workset_for_path,
     _primary_box_paths,
@@ -46,6 +52,7 @@ from kanibako.settings.paths import (
     resolve_box_target,
     resolve_project,
     resolve_standalone_project,
+    resolve_workset_project,
     unregister_primary_box_name,
 )
 from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, with_harness
@@ -841,6 +848,54 @@ def _create_in_workset_space(workset: str, path: Path, *, standalone: bool,
     )
 
 
+def _add_workset_member(std, config, workset: str, name: str,
+                        args) -> "tuple[WorksetSpec, bool] | None":
+    """Make *name* a member of the named working set *workset*; ``None`` once refused.
+
+    Returns ``(spec, box_dir_existed)``.  The SAME-NAME conflict is ``add_project``'s
+    own refusal, and it raises that before it creates anything, so a name already in
+    the working set writes nothing at all.
+    """
+    registry = list_worksets(std)
+    stored = find_identifier(workset, registry)  # ⚑ case-blind (§0)
+    if stored is None:
+        print(f"Error: Working set '{workset}' is not registered.", file=sys.stderr)
+        return None
+    try:
+        ws = load_workset(registry[stored], stored)
+    except WorksetError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None
+
+    # ⚑ A NAMED box's name IS its member name, so the designation and ``--name`` are
+    # two answers to one question.  Folded to compare, never to store (§0).
+    override = getattr(args, "name", None)
+    if override is not None and override.casefold() != name.casefold():
+        print("Error: " + ERR_WORKSET_MEMBER_NAME_CONFLICT % (
+            ws.name, override, name, name,
+        ), file=sys.stderr)
+        return None
+
+    # ⚑ READ BEFORE ``add_project``, which makes this dir: afterwards it is always
+    # there, and a dir that PREDATES the create is a real leftover worth refusing.
+    box_dir = ws.projects_dir / name
+    existed = box_dir.exists()
+    if ws.workspaces_dir is None:
+        print("Error: " + ERR_WORKSET_NULL_WORKSPACES % (
+            ws.root / WORKSET_META_FILE, f"a workspace for '{name}'",
+        ), file=sys.stderr)
+        return None
+    try:
+        add_project(
+            ws, name, ws.workspaces_dir / name, std,
+            force=getattr(args, "force", False),
+        )
+    except WorksetError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return None
+    return WorksetSpec.from_workset(ws), existed
+
+
 def run_create(args: argparse.Namespace) -> int:
     """Create a new kanibako project (replaces ``kanibako init``)."""
     config_file = user_config_file()
@@ -885,13 +940,34 @@ def run_create(args: argparse.Namespace) -> int:
             )
             return 1
 
+    # ⚑ THE SPACE IS THE CWD'S, NOT THE TARGET'S: "a command's workset path space is the
+    # named workset whose root contains the CURRENT DIRECTORY".  An IDENTIFIER names a
+    # box rather than a path, so the target it would have made is not consulted here.
+    _space = _named_workset_owning(Path.cwd().resolve(), std)
+    # ⚑ THE ONE BOX THE SPACE ACCEPTS: a member NAME.  ``--standalone`` asks for a
+    # standalone box, which the space rejects, so it stays a refusal.
+    _member = (
+        project_dir
+        if (_space is not None and not args.standalone
+            and classify_designation(project_dir) is Designation.IDENTIFIER)
+        else None
+    )
+    _named_spec = None
+    if _member is not None:
+        _named_spec, _named_already = _add_workset_member(
+            std, config, _space, _member, args,
+        )
+        if _named_spec is None:
+            return 1
+
     # ⚑ ``None`` = the PRIMARY path space; the default workset is unregistered.
-    _ws_name = _named_workset_owning(effective_path, std)
+    _ws_name = (None if _named_spec is not None
+                else _named_workset_owning(effective_path, std))
     _by_cwd = False
     # ⚑ A PATH is refused by the CWD's space, even outside its tree; a NAME is not a path.
     if (_ws_name is None and project_dir is not None
             and classify_designation(project_dir) is not Designation.IDENTIFIER):
-        _ws_name = _named_workset_owning(Path.cwd().resolve(), std)
+        _ws_name = _space
         _by_cwd = _ws_name is not None
     if _ws_name is not None:
         print(_create_in_workset_space(
@@ -900,7 +976,8 @@ def run_create(args: argparse.Namespace) -> int:
         return 1
 
     # ⚑ Cross-kind name guard, run HERE so it refuses BEFORE the box dir + seed materialize.
-    if getattr(args, "name", None) and not args.standalone:
+    # A NAMED box's name is its membership, which ``add_project`` already guarded.
+    if _named_spec is None and getattr(args, "name", None) and not args.standalone:
         try:
             check_primary_box_name_free(
                 std.primary_workset, std.registry,
@@ -913,8 +990,9 @@ def run_create(args: argparse.Namespace) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # Create directory if it doesn't exist.
-    if project_dir is not None:
+    # Create directory if it doesn't exist.  A NAMED member's dir is its workspace
+    # under the working set, which ``add_project`` made — never ``<cwd>/<identifier>``.
+    if project_dir is not None and _named_spec is None:
         target = Path(project_dir)
         if not target.exists():
             target.mkdir(parents=True)
@@ -932,7 +1010,12 @@ def run_create(args: argparse.Namespace) -> int:
 
     # ⚑ PERSONA LOAD-OR-ERROR IS A TRUE PRE-FLIGHT: this probe is NON-materializing
     # (``initialize=False``) so an unloadable persona refuses with NOTHING left on disk.
-    if args.standalone:
+    if _named_spec is not None:
+        _probe = resolve_workset_project(
+            _named_spec, _member, std, config, initialize=False,
+            enable_vault=enable_vault,
+        )
+    elif args.standalone:
         _probe = resolve_standalone_project(
             std, config, project_dir, initialize=False,
             enable_vault=enable_vault,
@@ -947,7 +1030,10 @@ def run_create(args: argparse.Namespace) -> int:
             register=False,
         )
     # ⚑ CAPTURE BEFORE ``_name_new_box_probe``, which mutates ``_probe.name``.
-    _already = box_tree_materialized(_probe)
+    # A NAMED member's box dir is the one ``add_project`` just made, so "already
+    # materialized" there is OUR OWN write; only a dir that predates it is a real
+    # leftover, and that is what it read.
+    _already = _named_already if _named_spec is not None else box_tree_materialized(_probe)
     _name_new_box_probe(std, _probe)
     # ⚑ The JOURNAL ENTRY, not ``is_new``, drives recovery.
     _pending = _pending_create_entry(std, _probe)
@@ -961,9 +1047,9 @@ def run_create(args: argparse.Namespace) -> int:
         print(_refusal, file=sys.stderr)
         return 1
     # ⚑ THE PRE-JOURNAL FORK: a crash that left a dir behind but nothing for
-    # ``--recover`` to find.
+    # ``--recover`` to find.  A NAMED member's dir is ``add_project``'s own write.
     _orphan = (
-        None if (_already or _pending is not None)
+        None if (_named_spec is not None or _already or _pending is not None)
         else _orphaned_primary_box_dir(args, std, _probe)
     )
     if _orphan is not None:
@@ -1031,7 +1117,12 @@ def run_create(args: argparse.Namespace) -> int:
 
     # Loadability resolved → MATERIALIZE the box for real.  ⚑ ``register=False`` DEFERS
     # registration past the home seed, giving the invariant "registered ==> fully seeded".
-    if args.standalone:
+    if _named_spec is not None:
+        proj = resolve_workset_project(
+            _named_spec, _member, std, config, initialize=True,
+            enable_vault=enable_vault,
+        )
+    elif args.standalone:
         proj = resolve_standalone_project(
             std, config, project_dir, initialize=True,
             enable_vault=enable_vault,
@@ -1130,7 +1221,10 @@ def run_create(args: argparse.Namespace) -> int:
         _register_new_box(std, proj, force=getattr(args, "force", False))
     _clear_create_entry(std, proj)
 
-    mode = "standalone" if args.standalone else "default"
+    mode = (
+        "named" if _named_spec is not None
+        else "standalone" if args.standalone else "default"
+    )
     # Explicit-create: `create` MAKES the box but does NOT launch it, so name the verb.
     start_hint = (
         "Start the box by executing 'kanibako' (shortcuts to 'kanibako start') "
