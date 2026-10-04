@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shlex
 
 import pytest
 
@@ -77,13 +78,18 @@ class TestLaunchAbsentBoxErrors:
         self, config_file, tmp_home, credentials_dir, capsys
     ):
         """Bare ``kanibako`` (project_dir=None → cwd) on a dir with no box errors
-        and materializes NOTHING; the suggestion is a bare ``kanibako create``."""
+        and materializes NOTHING; the suggestion is a bare ``kanibako create``.
+
+        ⚑ The suggestion is no longer wrapped in single quotes: the printed
+        command is the tail of the line, so a reader copies it and it pastes.
+        That is why this pin reads ``run:  `` and not ``run '...'``.
+        """
         _config, std = _std(config_file)
         rc = _launch(None)
         assert rc == 1
         err = capsys.readouterr().err
         assert "no box at" in err
-        assert "run 'kanibako create'" in err
+        assert "run:  kanibako create" in err
         # No box was invented for the wrong cwd.
         assert not std.boxes.exists() or not any(std.boxes.iterdir())
 
@@ -406,14 +412,22 @@ class TestNoBoxErrorMessage:
 
     def test_path_shaped_miss_keeps_the_one_liner(self, tmp_path, monkeypatch):
         """⚑ Only the NAME shape changed.  A spec that IS a path on disk has no
-        registry story — ``create <path>`` is the right and only cure there."""
+        registry story — ``create <path>`` is the right and only cure there.
+
+        ⚑ The cure is now ``shlex.quote``d and the line carries no wrapping
+        quotes.  This pin exists because BOTH halves are load-bearing: without
+        the quoting a spec with a space pastes as two arguments, and with the
+        wrapping quotes the tail a reader copies is not a command at all.  A
+        plain path needs neither, so the text here is unchanged apart from the
+        ``run:  `` separator.
+        """
         monkeypatch.chdir(tmp_path)
         real = tmp_path / "realdir"
         real.mkdir()
         msg = _no_box_error(str(real))
         assert msg == (
             f"Error: no box at {real.resolve()}. To create a new box, "
-            f"run 'kanibako create {real}'"
+            f"run:  kanibako create {shlex.quote(str(real))}"
         )
         assert "box register" not in msg
 
@@ -422,12 +436,18 @@ class TestNoBoxErrorMessage:
         self, tmp_path, monkeypatch, spec,
     ):
         """A designation that cannot be a box name is a PATH, so a miss has no
-        registry story, whether or not it exists on disk."""
+        registry story, whether or not it exists on disk.
+
+        ⚑ The spec is ``shlex.quote``d and unquoted around, so the expectation
+        goes through ``shlex.quote`` too — the ``a b`` case is the one that
+        distinguishes the quoting from a pass-through, and it is asserted as
+        text here and as a real command paste in the pasteability tests below.
+        """
         monkeypatch.chdir(tmp_path)
         msg = _no_box_error(spec)
         assert msg == (
             f"Error: no box at {(tmp_path / spec).resolve()}. To create a new box, "
-            f"run 'kanibako create {spec}'"
+            f"run:  kanibako create {shlex.quote(spec)}"
         )
 
     def test_missing_qualified_designation_gets_the_name_message(
@@ -441,8 +461,37 @@ class TestNoBoxErrorMessage:
         msg = _no_box_error(None)
         assert msg == (
             f"Error: no box at {tmp_path}. To create a new box, "
-            "run 'kanibako create'"
+            "run:  kanibako create"
         )
+
+    def test_spec_with_a_space_is_one_argument_when_pasted(self, tmp_path, monkeypatch):
+        """⚑ The SPACE case.  The defect is not the wording but the command a
+        reader copies out of the line, so the assertion is on that command: the
+        tail after ``run:  `` must split into exactly THREE tokens whose third
+        is the spec verbatim, or the paste creates a box in a directory the user
+        never named.
+        """
+        monkeypatch.chdir(tmp_path)
+        spec = "a b"
+        printed = _no_box_error(spec).rsplit("run:  ", 1)[1]
+        assert printed == f"kanibako create {shlex.quote(spec)}"
+        assert shlex.split(printed) == ["kanibako", "create", spec]
+
+    def test_spec_with_a_quote_is_one_argument_when_pasted(self, tmp_path, monkeypatch):
+        """⚑ The QUOTE case, and it is the one that catches a fix which only
+        handles spaces.
+
+        No space here, so a spaces-only cure leaves the embedded ``'`` opening a
+        shell string that never closes: the paste does not create a box at the
+        named directory, it runs whatever the shell recovers from the rest of
+        the line.  ``shlex.quote`` closes and reopens the quote around it, so
+        the spec survives as one argument.
+        """
+        monkeypatch.chdir(tmp_path)
+        spec = "o'brien"
+        printed = _no_box_error(spec).rsplit("run:  ", 1)[1]
+        assert printed == f"kanibako create {shlex.quote(spec)}"
+        assert shlex.split(printed) == ["kanibako", "create", spec]
 
 
 # ---------------------------------------------------------------------------
@@ -531,9 +580,10 @@ class TestBrokenStandaloneNoBoxError:
         monkeypatch.chdir(tmp_home)
         msg = _no_box_error("bad name", std)
         assert "registered as a standalone box" not in msg
+        # ``bad name`` is a PATH, so its spec is quoted in the cure.
         assert msg == (
             f"Error: no box at {tmp_home.resolve() / 'bad name'}. To create a new "
-            "box, run 'kanibako create bad name'"
+            f"box, run:  kanibako create {shlex.quote('bad name')}"
         )
 
     def test_by_path_names_the_ruled_cure(
