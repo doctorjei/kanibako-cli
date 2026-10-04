@@ -377,7 +377,9 @@ inside boxes. In order of likely impact:
     refused at the door*; and a bare `create` over an interrupted create refuses, so finish it with
     `create --recover` — see *2.105 `create` refuses an interrupted create; finish it with
     `--recover`*; and `workset connect` exits 1 for a source that is not an existing directory — see
-    *2.106 `workset connect` refuses a source that is not an existing directory*; and a box designation that
+    *2.106 `workset connect` refuses a source that is not an existing directory*; and `workset connect`
+    exits 1 for a directory inside the working set that is not an existing `workspaces/<name>` leaf, or
+    that is already a box's workspace — see *`workset connect` no longer creates a project*; and a box designation that
     cannot be a box name (`.hidden`, `foo.`) is a path — see *2.107 A designation that cannot be a box name is a path*;
     and `set` refuses an empty `workset.boxes` or one ending in `/` — see *`workset.boxes` is refused at
     the door at a value the launch refuses*; and a `system.*` path value referencing outside its tier
@@ -6211,6 +6213,46 @@ writes nothing. `--force` does not bypass it.
 
 **What to do.** A script that connected a path it had not created yet now fails at the connect step.
 Create the project directory first, then connect it.
+
+---
+
+### `workset connect` no longer creates a project
+
+**Read this if a script of yours runs `kanibako workset connect` on a directory inside a working set.**
+
+**What changed.** `kanibako workset connect <workset> <source>` exits **1** instead of **0** when
+`<source>` lies inside the working set root or inside its `workset.workspaces` directory and is not
+that directory's existing `<name>` leaf. In 1.8.0-rc2 such a source was registered under its
+basename and an empty `workspaces/<basename>` was created for it, so the working set gained a project
+that contained none of the source's files, and a script that connected the wrong path read as
+success. `connect` registers; it does not create. It also exits **1** for a directory that is
+already a primary box's workspace, inside the working set or outside it; in 1.8.0-rc2 that connect
+succeeded and left two boxes on one workspace. `--force` bypasses neither refusal.
+
+**What to do.** Point `connect` at the directory that holds the project, and give it the
+directory's own name. To add a new member, create its directory under the working set's
+`workset.workspaces` directory (by default `<workset>/workspaces`) and connect it:
+
+```
+mkdir -p <workspaces-dir>/<project>
+kanibako workset connect <workset> <workspaces-dir>/<project>
+```
+
+Or duplicate a box that is not already a member of the working set into it, which creates
+`<workspaces-dir>/<project>` and registers it:
+
+```
+kanibako box duplicate <existing-project-dir> <workspaces-dir>/<project> --to named --workset <workset> --name <project> --force
+```
+
+A directory outside the working set still connects, and an existing `<workspaces-dir>/<name>`
+directory is still adopted with its files, including when `workset.workspaces` points outside the
+working set root. To make a primary box outside the working set a member, run `kanibako box convert
+<box> --workset <workset>` instead of `connect`.
+
+**Unaffected.** The first launch of a connected box still materializes it: `connect` still
+registers the box and creates its box store, and still never seeds, so the existing first-launch
+note stays correct. `kanibako create` and `kanibako box duplicate --to named` are unchanged.
 
 ---
 

@@ -1056,6 +1056,33 @@ def _path_in_tree(path: Path, root: Path) -> bool:
     return path.resolve().is_relative_to(root.resolve())
 
 
+def refuse_existing_box(source: Path, std: StandardPaths, *, force: bool = False) -> None:
+    """Raise ``WorksetError`` when connecting *source* would absorb a standalone box or
+    re-register a box another workset already connects there (no write)."""
+    from kanibako.launch import box_resolve
+
+    resolved_source = source.resolve()
+    # ⚑ D3-mode #1: an in-place standalone MARKER is the box's authoritative
+    # self-declaration; connecting it would be a silent "steal" + dual registration.
+    # The guard ALONE fixes it — with no ``boxes:`` entry, resolution finds the marker.
+    if not force and box_resolve.standalone_settings_present(resolved_source):
+        raise WorksetError(
+            f"Cannot connect '{resolved_source}': it is a standalone box "
+            "(in-place marker present). Connecting it would absorb a box "
+            "that declares itself standalone. Re-run with --force to connect "
+            "it anyway (it becomes a workset box), or convert it explicitly "
+            "first."
+        )
+
+    existing = box_resolve.find_connected_external_box(resolved_source, std)
+    if existing is not None:
+        raise WorksetError(
+            f"Cannot connect '{resolved_source}': it is already connected "
+            f"as project '{existing.box_name}' in workset "
+            f"'{existing.workset_name}'. Disconnect it first."
+        )
+
+
 def add_project(
     ws: Workset,
     name: str,
@@ -1104,27 +1131,7 @@ def add_project(
                 "workset, or connect it to that workset instead."
             )
 
-        from kanibako.launch import box_resolve
-
-        # ⚑ D3-mode #1: an in-place standalone MARKER is the box's authoritative
-        # self-declaration; connecting it would be a silent "steal" + dual registration.
-        # The guard ALONE fixes it — with no ``boxes:`` entry, resolution finds the marker.
-        if not force and box_resolve.standalone_settings_present(resolved_source):
-            raise WorksetError(
-                f"Cannot connect '{resolved_source}': it is a standalone box "
-                "(in-place marker present). Connecting it would absorb a box "
-                "that declares itself standalone. Re-run with --force to connect "
-                "it anyway (it becomes a workset box), or convert it explicitly "
-                "first."
-            )
-
-        existing = box_resolve.find_connected_external_box(resolved_source, std)
-        if existing is not None:
-            raise WorksetError(
-                f"Cannot connect '{resolved_source}': it is already connected "
-                f"as project '{existing.box_name}' in workset "
-                f"'{existing.workset_name}'. Disconnect it first."
-            )
+        refuse_existing_box(resolved_source, std, force=force)
 
     # ⚑⚑ THE ONE RECORDED PATH: an EXTERNAL connect records the source dir itself; an
     # in-tree member records ``workspaces/<name>``, which is the dir created below and

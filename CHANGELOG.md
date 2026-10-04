@@ -1721,9 +1721,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project no box could ever run on. A source that is not an existing directory is now refused —
   *`Cannot connect '<path>': no such directory.`*, or *`it is not a directory.`* for a file or a
   dangling symlink — and nothing is written. `--force` does not bypass it: `--force` absorbs a
-  standalone box, and nothing else. Connecting a directory **inside** the working set is unchanged, as
-  is connecting the current directory. See *2.106 `workset connect` refuses a source that is not an
-  existing directory* in [MIGRATION.md](MIGRATION.md).
+  standalone box, and nothing else. Connecting an existing `workspaces/<name>` directory, or the current
+  directory, is unchanged; for other sources inside the working set, see the bullet below. See *2.106
+  `workset connect` refuses a source that is not an existing directory* in [MIGRATION.md](MIGRATION.md).
+
+- **`workset connect` no longer creates a project.** Connecting a directory inside the working set
+  root or its workspaces directory — the root itself, a directory beside `workspaces/`, a
+  subdirectory of a member, a leaf asked for under a different name, or a `workspaces/<name>` path
+  with no directory there — returned exit 0 and added a new, empty project at
+  `workspaces/<basename>`, so a mistyped path read as a successful connect and the working set
+  gained a member holding none of the source's files. `connect` now registers and creates nothing:
+  an existing `workspaces/<name>` directory is still adopted with its files intact, a directory
+  outside the working set still connects as before, and every other in-tree source exits 1, says
+  it is inside the working set root or its workspaces directory, that the directory name and
+  `--name` differ, or that there is no directory there, and names the `workspaces/<name>` directory
+  it would take. The refusal follows the repointed `workset.workspaces` key as well as the root,
+  `--force` does not bypass it, and `kanibako create` — including a named member created in a
+  working set's path space — and `kanibako box duplicate --to named` still create the workspace
+  they record. The change is confined to the connect door, so `box extract`, `box move` and `box
+  convert` are unaffected by construction. A directory that is already a box's workspace is
+  refused too, so one workspace never holds two boxes: a primary box's workspace, in or out of the
+  working set, which in 1.8.0-rc2 connected and left the primary box registered beside the new
+  member, and an in-tree leaf that another working set connects or that holds a standalone box,
+  which were already refused outside the tree. `--force` bypasses only the standalone case. See
+  *`workset connect` no longer creates a project* in [MIGRATION.md](MIGRATION.md).
 
 - **`workset.boxes` is refused at `set` at a value the launch refuses.** In v1.8.0-rc2,
   `workset set <ws> workset.boxes=` answered `Set workset.boxes=` and wrote `''`. A value ending in
