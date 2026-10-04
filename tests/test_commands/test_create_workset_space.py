@@ -207,3 +207,101 @@ class TestCreateOutsideANamedWorkset:
         assert load_primary_boxes(std.primary_workset) == {}
         assert list_worksets(std)["wsa"] == root
         assert not _printed_commands(capsys.readouterr().err)
+
+
+class TestAnIdentifierMakesANamedBoxOfTheSpace:
+    """The one box the space accepts: a member NAME (system-design § Box designation
+    & workset path space — "Within a named workset's path space, 'create' accepts only
+    named boxes within that workset").  The space is the CWD's, at any depth.
+    """
+
+    @pytest.mark.parametrize("rel", ["", "workspaces", "workspaces/x"])
+    def test_makes_a_member_of_the_working_set(self, wsa, capsys, monkeypatch, rel):
+        root, std = wsa
+        (root / rel).mkdir(parents=True, exist_ok=True)
+        monkeypatch.chdir(root / rel)
+
+        from kanibako.commands.box._parser import run_create
+
+        assert run_create(_args("newbox")) == 0
+        capsys.readouterr()
+        ws = load_workset(root, "wsa")
+        assert [p.name for p in ws.projects] == ["newbox"]
+        # The member's workspace is the in-tree one, never ``<cwd>/<identifier>``.
+        assert (root / "workspaces" / "newbox").is_dir()
+        assert load_primary_boxes(std.primary_workset) == {}
+
+    def test_resolves_as_a_named_box(self, wsa, credentials_dir, monkeypatch):
+        """A named resolve: the box dir is the working set's, under its own vault."""
+        from kanibako.settings.config import load_config, user_config_file
+        from kanibako.settings.paths import (
+            BoxMode, WorksetSpec, resolve_workset_project,
+        )
+
+        root, std = wsa
+        monkeypatch.chdir(root)
+        from kanibako.commands.box._parser import run_create
+
+        assert run_create(_args("newbox")) == 0
+        proj = resolve_workset_project(
+            WorksetSpec.from_workset(load_workset(root, "wsa")), "newbox", std,
+            load_config(user_config_file()),
+        )
+        assert proj.mode is BoxMode.named
+        assert proj.project_path == root / "workspaces" / "newbox"
+        assert proj.metadata_path == root / "boxes" / "newbox"
+
+    def test_a_second_create_of_the_same_name_is_refused(self, wsa, capsys, monkeypatch):
+        """Conflict = REFUSE, and the refusal writes nothing."""
+        root, std = wsa
+        monkeypatch.chdir(root)
+        from kanibako.commands.box._parser import run_create
+
+        assert run_create(_args("newbox")) == 0
+        capsys.readouterr()
+        assert run_create(_args("newbox")) == 1
+        err = capsys.readouterr().err
+        assert "already exists in workset 'wsa'" in err
+        assert "workset connect" not in err
+        assert not _printed_commands(err)
+        assert [p.name for p in load_workset(root, "wsa").projects] == ["newbox"]
+        assert load_primary_boxes(std.primary_workset) == {}
+        from kanibako.launch import journal
+        assert journal.read_journal(std.journal) == {}
+
+    def test_a_second_name_for_one_box_is_refused(self, wsa, capsys, monkeypatch):
+        """A named box's name IS its member name, so ``--name`` may not add one."""
+        root, _std = wsa
+        monkeypatch.chdir(root)
+        from kanibako.commands.box._parser import run_create
+
+        assert run_create(_args("newbox", name="other")) == 1
+        err = capsys.readouterr().err
+        assert "two names for one box" in err
+        assert not _printed_commands(err)
+        assert list(load_workset(root, "wsa").projects) == []
+
+    def test_standalone_stays_refused_in_the_space(self, wsa, capsys, monkeypatch):
+        """``--standalone`` asks for a standalone box, which the space rejects."""
+        root, _std = wsa
+        monkeypatch.chdir(root)
+        from kanibako.commands.box._parser import run_create
+
+        assert run_create(_args("solo", standalone=True)) == 1
+        err = _refusal(capsys.readouterr().err)
+        assert "would be a STANDALONE box" in err
+        assert list(load_workset(root, "wsa").projects) == []
+
+    def test_an_identifier_outside_every_space_stays_a_primary_box(
+        self, wsa, tmp_home, capsys, credentials_dir, monkeypatch,
+    ):
+        """The control: the primary path space is untouched by the member route."""
+        _root, std = wsa
+        outside = tmp_home / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+        from kanibako.commands.box._parser import run_create
+
+        assert run_create(_args("plain")) == 0
+        assert "Created default project" in capsys.readouterr().out
+        assert list(load_primary_boxes(std.primary_workset)) == ["plain"]
