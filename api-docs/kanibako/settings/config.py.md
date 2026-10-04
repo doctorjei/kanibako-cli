@@ -14,7 +14,7 @@ AGENT_META_FILE = 'agent.yaml'
 SYSTEM_HELPERS_SECTION: 'tuple[str, ...]' = ('system', 'helpers')
 _BOOL_TRUE = frozenset({'true', '1', 'yes', 'on'})
 _BOOL_FALSE = frozenset({'false', '0', 'no', 'off'})
-_DEFAULTS: dict[str, str] = {'box_image': 'ghcr.io/doctorjei/kanibako-oci:latest', 'box_shell': ''}
+_DEFAULTS: _BoxScalarDefaults = {'box_image': 'ghcr.io/doctorjei/kanibako-oci:latest', 'box_shell': None}
 _LAYER1_TABLE = 'config'
 _BOX_SCALAR_FIELDS: dict[str, str] = {'box.image': 'box_image', 'box.share_images': 'box_share_images', 'box.shell': 'box_shell', 'box.enable_vault': 'box_enable_vault'}
 ```
@@ -50,11 +50,12 @@ def read_setup_completed(settings_path: Path | None) -> str | None
 def setup_compat_gate(settings_path: Path | None) -> str | None
 def resolve_agent(*, explicit_agent: str | None, requested: str | None=None, project_path: Path | None=None) -> str
 def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None
-def null_path_keys_error(path: Path, keys: Iterable[str], *, cure: str=ERR_CONFIG_NULL_PATH_CURE, head: 'str | None'=None) -> 'str | None'
+def null_path_keys_error(path: Path, keys: Iterable[str], *, cure: str=ERR_CONFIG_NULL_PATH_CURE, head: 'str | None'=None, read_head: str=ERR_CONFIG_NULL_PATH_HEAD) -> 'str | None'
 def refuses_null_path_key(canonical: str) -> bool
 def usable_box_store_value(value: object) -> bool
 def refuses_box_store_value(canonical: str, value: object) -> bool
 def chain_bad_entries(value: object, bad: Iterable[str], *, stored: 'Callable[[str], object]') -> list[str]
+def refuses_null_box_scalar(canonical: str) -> bool
 def system_path_ref_error(canonical: str, value: 'str | None') -> 'str | None'
 def _layer1_settings_keys(data: dict) -> list[str]
 def _scalar_value(value: object) -> object
@@ -73,7 +74,7 @@ def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable
 @dataclass
 class KanibakoConfig:
     box_image: str = _DEFAULTS['box_image']
-    box_shell: str = _DEFAULTS['box_shell']
+    box_shell: str | None = _DEFAULTS['box_shell']
     box_share_images: bool = False
     box_enable_vault: bool = True
 
@@ -82,4 +83,8 @@ class BootstrapConfig:
     config_paths: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None
+
+class _BoxScalarDefaults(TypedDict):
+    box_image: str
+    box_shell: str | None
 ```

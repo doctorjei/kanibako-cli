@@ -7,6 +7,7 @@ import argparse
 import pytest
 
 from kanibako.settings.config import (
+    KanibakoConfig,
     load_config,
     load_project_overrides,
     write_project_config,
@@ -1197,12 +1198,28 @@ class TestLoadProjectOverrides:
 
     def test_returns_only_overrides(self, tmp_path):
         p = tmp_path / "box.yaml"
-        write_project_config_key(p, "box_image", "override:v1")
+        # A value EQUAL to the declared default is not an override — the answer is BY
+        # VALUE against the default, not by presence.
+        write_project_config_key(p, "box_image", KanibakoConfig().box_image)
+        write_project_config_key(p, "box_shell", "override:zsh")
+        assert load_project_overrides(p) == {"box_shell": "override:zsh"}
+
+    def test_a_stored_empty_string_overrides_the_declared_none(self, tmp_path):
+        """⚑ ``box.shell``'s declared default is ``<None>`` (spec §2b), and a terminal
+        ``""`` is a VALUE distinct from unset — so a stored ``""`` IS an override.
+
+        ⚑ IT IS NOT "a value that happens to equal the default", which is the only
+        reading that made this a no-op while the default was spelled ``""``.
+        """
+        p = tmp_path / "box.yaml"
         write_project_config_key(p, "box_shell", "")
-        overrides = load_project_overrides(p)
-        # ⚑ ``box.shell``'s declared default IS ``""``, so a stored ``""`` is not an
-        # override — the answer is BY VALUE against the default, not by presence.
-        assert overrides == {"box_image": "override:v1"}
+        assert load_project_overrides(p) == {"box_shell": ""}
+
+    def test_a_stored_null_is_not_an_override(self, tmp_path):
+        """The reset sentinel resolves to the default, so it overrides nothing."""
+        p = tmp_path / "box.yaml"
+        p.write_text("box:\n  shell: null\n")
+        assert load_project_overrides(p) == {}
 
     def test_an_undeclared_flat_spelling_is_not_an_override(self, tmp_path):
         """🛑 ``box_image`` at top level is not a key (spec §0), so it overrides nothing.
