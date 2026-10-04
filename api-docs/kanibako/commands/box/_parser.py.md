@@ -40,6 +40,7 @@ def _create_recovery_refusal(args, std, probe, *, already: bool, pending: dict |
 def _orphaned_primary_box_dir(args, std, probe) -> 'Path | None'
 def _named_workset_owning(path: Path, std) -> str | None
 def _create_in_workset_space(workset: str, path: Path, *, standalone: bool, by_cwd: bool) -> str
+def _add_workset_member(std, config, workset: str, name: str, args) -> 'tuple[WorksetSpec, bool] | None'
 def _list_orphans(projects: list, ws_data: list, std, quiet: bool) -> int
 def _purge_dir(target: Path) -> bool
 def _assert_deletable(path, *, must_be_under: Path | None=None) -> Path
