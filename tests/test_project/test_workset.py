@@ -1059,6 +1059,65 @@ class TestWorksetWorkspacesResolved:
             )
 
 
+class TestInTreeWorkspacePredicate:
+    """``is_in_tree_workspace``: the ONE test for "is this the workset's own
+    workspace?" — at or under ``ws.root``, or at or under the resolved
+    ``workset.workspaces`` dir, each tested with the leaf followed AND with only
+    the parent resolved.  External is the negation."""
+
+    def _repointed(self, std, tmp_home, name="ws1"):
+        """A NAMED workset whose ``workset.workspaces`` points OUTSIDE its root."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        ws = create_workset(name, tmp_home / "worksets" / name, std)
+        data = load_doc(ws.root / "workset.yaml")
+        data.setdefault("workset", {})["workspaces"] = str(tmp_home / "wsdata1")
+        dump_doc(ws.root / "workset.yaml", data)
+        return load_workset(ws.root, name)
+
+    def test_a_path_under_the_root_is_in_tree(self, std, tmp_home):
+        from kanibako.project.workset import is_in_tree_workspace
+
+        ws = create_workset("ws1", tmp_home / "worksets" / "ws1", std)
+        assert is_in_tree_workspace(ws, ws.root / "workspaces" / "alpha")
+        assert is_in_tree_workspace(ws, ws.root)
+
+    def test_a_repointed_member_leaf_is_in_tree(self, std, tmp_home):
+        """The repoint puts the leaf outside ``ws.root``, so a root-only test read
+        the box's own workspace as EXTERNAL and a relocation deleted it."""
+        from kanibako.project.workset import is_in_tree_workspace
+
+        ws = self._repointed(std, tmp_home)
+        assert is_in_tree_workspace(ws, tmp_home / "wsdata1" / "alpha")
+
+    def test_any_path_under_a_repointed_workspaces_dir_is_in_tree(self, std, tmp_home):
+        """Not only ``workspaces/<name>``: the whole repointed dir is the workset's."""
+        from kanibako.project.workset import is_in_tree_workspace
+
+        ws = self._repointed(std, tmp_home)
+        assert is_in_tree_workspace(ws, tmp_home / "wsdata1" / "other" / "deeper")
+
+    def test_a_symlinked_leaf_is_in_tree_by_the_link_that_names_it(self, std, tmp_home):
+        """The leaf resolves OUTSIDE the root, so only the parent-resolved arm
+        answers — and a link is the workset's own leaf, never the user's dir."""
+        from kanibako.project.workset import is_in_tree_workspace
+
+        real = tmp_home / "real"
+        real.mkdir()
+        ws = create_workset("ws1", tmp_home / "worksets" / "ws1", std)
+        (ws.workspaces_dir / "alpha").symlink_to(real)
+        assert is_in_tree_workspace(ws, ws.workspaces_dir / "alpha")
+
+    def test_a_true_external_path_is_not_in_tree(self, std, tmp_home):
+        from kanibako.project.workset import is_in_tree_workspace
+
+        ws = create_workset("ws1", tmp_home / "worksets" / "ws1", std)
+        outside = tmp_home / "elsewhere" / "alpha"
+        assert not is_in_tree_workspace(ws, outside)
+        # A sibling whose name merely starts with the root's is not under it.
+        assert not is_in_tree_workspace(ws, tmp_home / "worksets" / "ws1-other" / "a")
+
+
 class TestWorksetBoxesAndLogsResolved:
     """``workset.boxes`` / ``workset.logs`` are DECLARED, repointable keys (keyspec
     ``@meta.workset.path/boxes``, ``@meta.workset.path/logs``), and the launch seam

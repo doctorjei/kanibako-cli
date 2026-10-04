@@ -1018,6 +1018,24 @@ def source_in_tree(ws: Workset, source_path: Path) -> bool:
     return _path_in_tree(source_path, ws.root)
 
 
+def is_in_tree_workspace(ws: Workset, path: Path) -> bool:
+    """True when *path* is one of *ws*'s own workspaces — the ONE in-tree test.
+
+    In-tree is ``ws.root`` OR the resolved ``workset.workspaces`` dir (a user key, so
+    repointed it puts a member's leaf outside the root, and a relocation reads it as
+    EXTERNAL).  Each root is tested twice — *path* resolved, and its PARENT
+    resolved with the leaf not followed — so a symlinked leaf is in-tree.
+    """
+    roots = [ws.root]
+    workspaces = ws.workspaces_dir
+    if workspaces is not None:
+        roots.append(workspaces)
+    for root in roots:
+        if _path_in_tree(path, root) or _path_in_tree(path.parent, root):
+            return True
+    return False
+
+
 def _path_in_tree(path: Path, root: Path) -> bool:
     """True when *path* lies under *root*, both resolved (the in-tree test)."""
     return path.resolve().is_relative_to(root.resolve())
@@ -1045,8 +1063,8 @@ def add_project(
 
     resolved_source = source_path.resolve()
 
-    # Determine whether the source is external (outside the workset root).
-    is_external = std is not None and not source_in_tree(ws, resolved_source)
+    # External ⇔ not one of the workset's own workspace dirs.
+    is_external = std is not None and not is_in_tree_workspace(ws, resolved_source)
     # ⚑ An in-tree member IS a workspace under ``workset.workspaces``; a null there refuses
     # before anything is created.  An external member keeps its own dir and still connects.
     if not is_external and not restoring:
