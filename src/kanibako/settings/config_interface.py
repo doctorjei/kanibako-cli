@@ -26,6 +26,7 @@ from kanibako.settings.config import (
     null_path_keys_error,
     read_agent_settings,
     refuses_box_store_value,
+    refuses_null_box_scalar,
     refuses_null_path_key,
     system_path_ref_error,
     unset_project_config_key,
@@ -33,6 +34,8 @@ from kanibako.settings.config import (
 from kanibako.agent_ref import GENERAL_SLOT
 from kanibako.settings.settings_launch import load_merged_config, snapshot_leaf
 from kanibako.settings.messages import (
+    ERR_BOX_SCALAR_NULL_REASON,
+    ERR_BOX_SCALAR_NULL_SET_HEAD,
     ERR_BOX_STORE_EMPTY_REASON,
     ERR_BOX_STORE_SET_HEAD,
     ERR_BOX_STORE_TRAILING_REASON,
@@ -1404,6 +1407,40 @@ def _box_store_value_error(
     return "Error: " + error
 
 
+def _null_box_scalar_error(
+    canonical: str,
+    value: "str | None",
+    *,
+    command_scope: "ConfigLevel | None",
+    config_path: Path,
+    system_settings_path: "Path | None",
+) -> "str | None":
+    """§2b — refuse a ``--null`` at a BOX SCALAR the launch refuses a null at, or ``None``.
+
+    ⚑ THE SAME TWO CALLS AS THE PATH DOOR, one value class apart: the membership is
+    :func:`config.refuses_null_box_scalar` and the builder is
+    :func:`config.null_path_keys_error`.  ``box.shell`` is in the overlay and is NOT in the
+    membership — its declared default IS ``<None>`` (spec §2b), so a null there means
+    auto-detect and this door stays silent.
+    """
+    if value is not None or not refuses_null_box_scalar(canonical):
+        return None
+    dest = _write_dest(
+        canonical, command_scope=command_scope,
+        config_path=config_path, settings_path=system_settings_path,
+    )
+    assert dest is not None  # every member of the membership has a routing-table slot
+    error = null_path_keys_error(
+        dest.file, (canonical,), head=ERR_BOX_SCALAR_NULL_SET_HEAD,
+        cure=(
+            f"{ERR_BOX_SCALAR_NULL_REASON} Nothing was written: to use {canonical}'s "
+            f"default, run 'reset {canonical}', or set the value you mean."
+        ),
+    )
+    assert error is not None  # one key is never an empty list
+    return "Error: " + error
+
+
 def set_config_value(
     key: str,
     value: "str | None",
@@ -1603,6 +1640,17 @@ def set_config_value(
     )
     if null_err is not None:
         return null_err
+
+    # ⚑ A ``--null`` at a BOX SCALAR THE LAUNCH REFUSES A NULL AT (spec §2b); see
+    # :func:`_null_box_scalar_error`.  It sits beside the path door above and shares its
+    # two calls, so a key refused at the launch is refused here in the set door's words.
+    scalar_err = _null_box_scalar_error(
+        canonical, value,
+        command_scope=command_scope, config_path=config_path,
+        system_settings_path=system_settings_path,
+    )
+    if scalar_err is not None:
+        return scalar_err
 
     # ⚑ A value at the BOX STORE the LAUNCH refuses (spec §0, §2c); see
     # :func:`_box_store_value_error`. AFTER the ``--null`` guard above, so a present
@@ -2740,6 +2788,9 @@ def show_config(
         cfg = load_merged_config(
             box_tier, workset_path=workset_path, inputs=inputs,
             agent_name=agent_name, agent_path=agent_path,
+            # ⚑ A DISPLAY answers with the stored ``null``; the LAUNCH refuses the same
+            # value and names the key.  Rows are read here and nothing acts on them.
+            refuse_null_scalars=False,
         )
         overrides = load_project_overrides(config_path) if config_path else {}
         for fld in fields(cfg):

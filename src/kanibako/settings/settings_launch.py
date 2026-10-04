@@ -71,6 +71,8 @@ from kanibako.settings.config import (
     box_scalar_defaults_floor,
     load_config,
     config_base_path,
+    null_path_keys_error,
+    refuses_null_box_scalar,
     settings_base_path,
     usable_box_store_value,
     user_config_file,
@@ -133,6 +135,10 @@ from kanibako.settings.settings_resolve import (
     expand_expr,
     literal_expr,
     normalize_bind_dest,
+)
+from kanibako.settings.messages import (
+    ERR_BOX_SCALAR_NULL_CURE,
+    ERR_BOX_SCALAR_NULL_HEAD,
 )
 
 
@@ -3858,6 +3864,36 @@ def resolve_box_scalars(
     return resolved
 
 
+def _refuse_null_box_scalars(
+    path: Path, present: "Mapping[str, object]", dotted_of: "Mapping[str, str]",
+) -> None:
+    """Refuse a ``null`` at every box scalar in *path* whose declared default is a VALUE.
+
+    ⚑ NAMED, NEVER SUBSTITUTED.  The read that answered such a ``None`` with the key's own
+    default made ``box show --effective`` print an image the file never held, so the door
+    that wrote it and the launch that read it disagreed and the user learned at the launch.
+    The membership is :func:`config.refuses_null_box_scalar` and the text is the shared
+    :func:`config.null_path_keys_error` builder, so this door and the ``set`` door cannot
+    drift apart on the sentence they share.
+
+    ⚑ *present* is the file's PRESENT scalars, so a key the file is SILENT about is not
+    here — §2h's distinction between a present ``None`` and an absent key is the whole
+    difference between a refusal and a default.
+    """
+    nulls = [
+        dotted for dotted, field in dotted_of.items()
+        if field in present and present[field] is None
+        and refuses_null_box_scalar(dotted)
+    ]
+    if not nulls:
+        return
+    error = null_path_keys_error(
+        path, nulls, read_head=ERR_BOX_SCALAR_NULL_HEAD, cure=ERR_BOX_SCALAR_NULL_CURE,
+    )
+    assert error is not None  # one key is never an empty list
+    raise SettingsError(error)
+
+
 def load_merged_config(
     project_path: Path | None = None,
     *,
@@ -3866,16 +3902,30 @@ def load_merged_config(
     inputs: LaunchInputs | None = None,
     agent_name: str = GENERAL_SLOT,
     agent_path: Path | None = None,
+    refuse_null_scalars: bool = True,
 ) -> KanibakoConfig:
-    """The box scalars as a :class:`KanibakoConfig`: each file's present values, then the keyspace resolve."""
+    """The box scalars as a :class:`KanibakoConfig`: each file's present values, then the keyspace resolve.
+
+    *agent_path* is the settings file *agent_name*'s, read in BOTH resolve shapes
+    (:func:`resolve_box_scalars`), so an agent file's ``box:`` table reaches the
+    display that claims to show what a launch runs.
+
+    ⚑ *refuse_null_scalars* off is the DISPLAY's answer to a ``null`` the launch refuses
+    (:func:`_refuse_null_box_scalars`): it keeps the ``None`` on the field so the row spells
+    it ``null`` (spec §2h), where the launch's own answer is to refuse and name the key.  A
+    caller that ACTS on these values must not ask for it.
+    """
     if inputs is not None:
         workset_path, project_path = inputs.cascade_workset_path, inputs.cascade_box_path
     defaults = KanibakoConfig()
     cfg = KanibakoConfig()
     for path in (workset_path, project_path):
         if path and path.exists():
-            for k, v in _present_scalar_fields(path).items():
-                setattr(cfg, k, getattr(defaults, k) if v is None else v)
+            present = _present_scalar_fields(path)
+            if refuse_null_scalars:
+                _refuse_null_box_scalars(path, present, _BOX_SCALAR_FIELDS)
+            for k, v in present.items():
+                setattr(cfg, k, v)
     if cli_overrides:
         valid_keys = {fld.name for fld in fields(cfg)}
         for k, v in cli_overrides.items():
