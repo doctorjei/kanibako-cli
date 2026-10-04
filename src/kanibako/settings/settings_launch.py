@@ -3819,13 +3819,13 @@ def resolve_box_scalars(
         )
     else:
         snapshot = build_launch_snapshot(
-            agent_name=GENERAL_SLOT,
+            agent_name=agent_name,
             ctx=ResolveCtx(
-                agent_name=GENERAL_SLOT, workset_name=None,
+                agent_name=agent_name, workset_name=None,
                 host_home=str(Path.home()), xdg=host_xdg_map(),
             ),
             system_path=std.settings if std.settings.exists() else None,
-            agent_path=None,
+            agent_path=agent_path,
             workset_path=workset_path,
             box_path=box_path,
             cli_level=cli_level,
