@@ -13,9 +13,11 @@ from kanibako.settings.agent_select import AgentSelection
 from kanibako.commands.start import (
     _apply_tweakcc,
     _check_box_components,
+    _persona_token_pointer,
     _run_container,
     run_start,
 )
+from kanibako.settings.kb_store import __MISSING__
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
 from kanibako.targets.base import (
@@ -6800,6 +6802,498 @@ class TestSeedNewBoxCreateEntry:
             "the skeleton makes the canon region 555 — a copy after it dies EACCES"
         )
         assert skeleton < register, "all of it inside the create-journal window"
+
+
+class TestPersonaTokenCountsEveryMountedTier:
+    """The persona token gate's table holds every ``secret_path`` tier the launch mounts.
+
+    A pointer the launch mounts must be counted by the gate, at whatever scope it was
+    declared: the gate refused a persona whose token sat at ``agent.default`` or at the
+    box / workset / system scope, while the launch mounted that very pointer. A tier
+    the launch does NOT mount must stay ABSENT, or the gate stops refusing a persona
+    that genuinely has no token.
+    """
+
+    VAR = "ANTHROPIC_AUTH_TOKEN"
+
+    def _table(self, floor, active="navigator+claude"):
+        """The gate's table, off the PRODUCTION chain (build → category entries)."""
+        from kanibako.commands.start import _persona_secret_table
+        from kanibako.settings.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_resolve import ResolveCtx
+
+        ctx = ResolveCtx(
+            agent_name=active, workset_name="ws", host_home="/home/u",
+            xdg={"XDG_DATA_HOME": "/data"}, config={},
+        )
+        snap = build_launch_snapshot(
+            agent_name=active, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=floor,
+        )
+        return _persona_secret_table(snap, active, ctx)
+
+    @pytest.mark.parametrize("tier,pointer", [
+        ("agent.navigator+claude", "/h/node"),
+        ("agent.default", "/h/default"),
+        ("box", "/h/box"),
+        ("workset", "/h/workset"),
+        ("system", "/h/system"),
+    ])
+    def test_a_pointer_is_counted_at_EVERY_tier(self, tier, pointer):
+        assert self._table({f"{tier}.secret_path.{self.VAR}": pointer}) == {
+            self.VAR: pointer,
+        }
+
+    def test_the_active_node_wins_over_the_default_fallback(self):
+        assert self._table({
+            f"agent.navigator+claude.secret_path.{self.VAR}": "/h/node",
+            f"agent.default.secret_path.{self.VAR}": "/h/default",
+        }) == {self.VAR: "/h/node"}
+
+    def test_a_mounted_pointer_wins_over_a_keyless_null(self):
+        assert self._table({
+            f"agent.navigator+claude.secret_path.{self.VAR}": None,
+            f"box.secret_path.{self.VAR}": "/h/box",
+        }) == {self.VAR: "/h/box"}
+
+    def test_a_null_is_PRESENT_and_makes_the_persona_keyless(self):
+        """A ``secret_path.<VAR>: null`` mounts nothing and is still deliberate.
+
+        Absent from the table it would read as ABSENT, and the gate would refuse a
+        persona that declared this endpoint keyless on purpose.
+        """
+        table = self._table({
+            f"agent.navigator+claude.secret_path.{self.VAR}": None,
+        })
+        assert table == {self.VAR: None}
+        assert _persona_token_pointer(table, self.VAR) is None
+
+    def test_no_pointer_anywhere_stays_ABSENT(self):
+        assert self._table({}) == {}
+        assert _persona_token_pointer(self._table({}), self.VAR) is __MISSING__
+
+
+def _agent_record(agent_path, target, node):
+    """The agent tier the create path hands the resolve — a real file when there is one.
+
+    ``target.generate_agent_config()`` is the FIRST-USE shape; an existing agent
+    file is read through ``agent_record``, which is what
+    ``_persona_create_verdict`` passes, so a persona configured in its agent file
+    is really in the cascade here.
+    """
+    from kanibako.settings import settings_assemble
+
+    if not agent_path.exists():
+        return target.generate_agent_config()
+    return settings_assemble.agent_record(
+        agent_path, node=node, purpose=settings_assemble.ReadPurpose.RESOLVE,
+    )
+
+
+class TestPersonaSecretTableNamesAndDeliveries:
+    """The token gate's table answers TWO questions and must not merge them.
+
+    * the NAMES a persona declared are its own ``agent.<node>.secret_path`` keys —
+      the DYNAMIC (codex) token var, and therefore the model-provider ``env_key``,
+      is chosen from those and from nothing else;
+    * the VALUES are what the launch DELIVERS, so another scope's mount is
+      delivered here but is never a name this persona may be handed.
+
+    A table that read both off one merged key set chose a var the persona never
+    declared, and wrote it beside the persona's own ``base_url``.
+    """
+
+    VAR = "NAV_KEY"
+    OTHER = "GH_TOKEN"
+
+    def _table(self, floor, active="navigator+codex"):
+        """The gate's table, off the PRODUCTION chain (build → category entries)."""
+        from kanibako.commands.start import _persona_secret_table
+        from kanibako.settings.settings_launch import build_launch_snapshot
+        from kanibako.settings.settings_resolve import ResolveCtx
+
+        ctx = ResolveCtx(
+            agent_name=active, workset_name="ws", host_home="/home/u",
+            xdg={"XDG_DATA_HOME": "/data"}, config={},
+        )
+        snap = build_launch_snapshot(
+            agent_name=active, ctx=ctx, system_path=None, agent_path=None,
+            workset_path=None, box_path=None, default_categories=floor,
+        )
+        return _persona_secret_table(snap, active, ctx)
+
+    def _names(self, floor, active="navigator+codex"):
+        from kanibako.commands.start import _persona_secret_path_keys
+
+        return _persona_secret_path_keys(self._table(floor, active))
+
+    def _node(self, var, value):
+        return {f"agent.navigator+codex.secret_path.{var}": value}
+
+    # --- the NAMES ---------------------------------------------------------
+
+    def test_another_scopes_secret_is_delivered_but_NOT_a_declared_name(self):
+        """A ``system`` secret reaches the box and is NOT this persona's token var."""
+        table = self._table({
+            **self._node(self.VAR, "/h/node"),
+            f"system.secret_path.{self.OTHER}": "/h/system",
+        })
+        assert table[self.OTHER] == "/h/system", "delivered to the box"
+        assert self._names({
+            **self._node(self.VAR, "/h/node"),
+            f"system.secret_path.{self.OTHER}": "/h/system",
+        }) == [self.VAR], "…and never a name the persona can be handed"
+
+    def test_an_agent_default_secret_is_delivered_but_NOT_a_declared_name(self):
+        """§2d's default backstop delivers its pointer; it declares nothing here.
+
+        A refusal names ``agent.<node>.secret_path.<ENV_KEY>``, so the node tier is
+        the only one a bearer-token NAME may come from.
+        """
+        floor = {"agent": {"default": {"secret_path": {self.OTHER: "/h/default"}}}}
+        assert self._table(floor)[self.OTHER] == "/h/default"
+        assert self._names(floor) == []
+
+    def test_the_personas_own_names_are_the_node_tier_keys(self):
+        assert self._names({
+            **self._node("B_KEY", "/h/b"), **self._node(self.VAR, "/h/nav"),
+        }) == ["B_KEY", self.VAR]
+
+    # --- the VALUES — what the launch DELIVERS ------------------------------
+
+    def test_a_masked_dest_is_DELIVERED_nothing_and_reads_ABSENT(self):
+        """A mask takes the mount away silently, so the var is not a token."""
+        var = self.VAR
+        table = self._table({
+            **self._node(var, "/h/node"),
+            "system": {"masks": {f"/run/kanibako/secrets/{var}": []}},
+        })
+        assert var not in table
+        assert _persona_token_pointer(table, var) is __MISSING__
+
+    def test_a_mask_at_another_vars_dest_does_not_hide_this_one(self):
+        var = self.VAR
+        table = self._table({
+            **self._node(var, "/h/node"),
+            "system": {"masks": {f"/run/kanibako/secrets/{self.OTHER}": []}},
+        })
+        assert table[var] == "/h/node"
+
+    # --- the VALUES — a keyless WINNER at any tier --------------------------
+
+    def test_a_null_at_a_NON_NODE_tier_is_a_keyless_declaration(self):
+        """§2a: the value is three-valued, and ``secret_path`` is at all four scopes."""
+        for key in (f"agent.navigator+codex.secret_path.{self.VAR}",
+                    f"agent.default.secret_path.{self.VAR}",
+                    f"box.secret_path.{self.VAR}",
+                    f"workset.secret_path.{self.VAR}",
+                    f"system.secret_path.{self.VAR}"):
+            table = self._table({key: None})
+            assert table == {self.VAR: None}, key
+            assert _persona_token_pointer(table, self.VAR) is None, key
+
+    def test_a_null_at_a_non_node_tier_shadows_a_LOWER_tiers_pointer(self):
+        """The cascade decides, so a more specific null wins what it displaces."""
+        table = self._table({
+            "box": {"secret_path": {self.VAR: None}},
+            "system": {"secret_path": {self.VAR: "/h/system"}},
+        })
+        assert table == {self.VAR: None}
+
+    def test_a_MORE_specific_pointer_shadows_a_lower_tiers_null(self):
+        """…and the other way round: a real mount is never read as keyless."""
+        table = self._table({
+            "box": {"secret_path": {self.VAR: "/h/box"}},
+            "system": {"secret_path": {self.VAR: None}},
+        })
+        assert table == {self.VAR: "/h/box"}
+
+
+class TestCodexEnvKeyComesFromThePersonasOwnNames:
+    """``env_key`` is the persona's OWN declared var, through the real resolve.
+
+    Two doors, both driven the way the launch drives them — the production
+    ``_resolve_box_launch_decisions`` with the arguments it really passes, then the
+    production ``_preflight_persona_load`` — so what is pinned is the value written
+    into ``[model_providers.<id>].env_key``, not a helper's return.
+    """
+
+    _ENDPOINT = "https://api.navigator.example/v1"
+    _NODE = "navigator℘codex"
+    _VAR = "NAV_KEY"
+    _OTHER = "GH_TOKEN"
+
+    def _target(self):
+        from kanibako.plugins.codex.target import CodexTarget
+
+        return CodexTarget()
+
+    def _proj(self, std):
+        from kanibako.settings.paths import ProjectGroup
+
+        proj = MagicMock()
+        proj.group = ProjectGroup(
+            name="default", root=std.data, is_default=True,
+            local_shared_base=std.data,
+        )
+        proj.mode = BoxMode.primary
+        proj.project_path = std.data
+        proj.vault_enabled.return_value = False
+        proj.name = "navbox"
+        return proj
+
+    def _gate(self, std, tmp_path, *, system_file=None, agent_file=None):
+        """``(endpoint, error, provider)`` off the launch's OWN resolve + gate."""
+        from kanibako.commands.start import (
+            _preflight_persona_load,
+            _resolve_box_launch_decisions,
+        )
+        from kanibako.settings.agent_config import agent_settings_path
+        from kanibako.settings.config_io import dump_doc
+
+        target = self._target()
+        agent_path = agent_settings_path(std.agents, self._NODE)
+        if agent_file is not None:
+            dump_doc(agent_path, agent_file)
+        system_path = None
+        if system_file is not None:
+            system_path = tmp_path / "system-settings.yaml"
+            dump_doc(system_path, system_file)
+        _auth, endpoint, model, secret_paths = _resolve_box_launch_decisions(
+            std=std, proj=self._proj(std), target=target, agent_name=self._NODE,
+            agent_cfg=_agent_record(agent_path, target, self._NODE),
+            system_settings_path=system_path, agent_cfg_path=agent_path,
+            selection_level=None, persona_values=None,
+        )
+        _ep, err, provider = _preflight_persona_load(
+            self._NODE, secret_paths, endpoint, MagicMock(), target=target,
+            keyspace_model=model,
+        )
+        return endpoint, err, provider
+
+    def _token(self, tmp_path, name="nav.key"):
+        p = tmp_path / name
+        p.write_text("material-for-this-test-only\n")
+        return str(p)
+
+    def test_an_unrelated_scopes_secret_does_not_make_the_persona_ambiguous(
+        self, std, tmp_path,
+    ):
+        """The persona declares ONE var; another scope's secret is not a second.
+
+        The mount list holds both, and reading the name list off it refused a
+        working persona.
+        """
+        tok = self._token(tmp_path)
+        _ep, err, provider = self._gate(
+            std, tmp_path,
+            agent_file={"self": {
+                "endpoint": self._ENDPOINT, "model": "some-model",
+                "secret_path": {self._VAR: tok},
+            }},
+            system_file={"system": {"secret_path": {self._OTHER: tok}}},
+        )
+        assert err is None
+        assert provider is not None
+        assert provider.env_key == self._VAR
+        assert provider.base_url == self._ENDPOINT
+
+    def test_a_persona_that_declares_no_var_refuses_rather_than_adopt_one(
+        self, std, tmp_path,
+    ):
+        """A secret only another scope holds is never this persona's bearer token.
+
+        Reading the name list off the delivered table wrote the foreign var beside
+        the persona's own ``base_url`` — a credential handed to an endpoint that
+        never asked for it.
+        """
+        tok = self._token(tmp_path)
+        _ep, err, provider = self._gate(
+            std, tmp_path,
+            agent_file={"self": {
+                "endpoint": self._ENDPOINT, "model": "some-model",
+            }},
+            system_file={"system": {"secret_path": {self._OTHER: tok}}},
+        )
+        assert provider is None
+        assert err is not None
+        assert "agent.navigator+codex.secret_path" in err
+        assert "none was found" in err
+        assert "ambiguous" not in err
+
+    def test_a_token_var_masked_at_its_dest_is_no_token(self, std, tmp_path):
+        """The launch mounts nothing at a masked dest, so there is no token."""
+        tok = self._token(tmp_path)
+        _ep, err, provider = self._gate(
+            std, tmp_path,
+            agent_file={"self": {
+                "endpoint": self._ENDPOINT, "model": "some-model",
+                "secret_path": {self._VAR: tok},
+            }},
+            system_file={"system": {"masks": {
+                f"/run/kanibako/secrets/{self._VAR}": [],
+            }}},
+        )
+        assert provider is None
+        assert err is not None
+        assert "none was found" in err
+
+
+class TestPersonaKeylessNullAtANonNodeTier:
+    """A ``null`` bearer token declares the endpoint KEYLESS at ANY tier.
+
+    §2a: ``secret_path.<VAR>`` is available at all four scopes and *"the value is
+    THREE-VALUED: a path is used · PRESENT-NULL means this endpoint needs no token,
+    and the launch proceeds without one · ABSENT means not configured."*  One shape,
+    one verdict — so a tier other than the node must not read as ABSENT and refuse.
+    """
+
+    _ENDPOINT = "https://api.navigator.example/v1"
+    _VAR = "ANTHROPIC_AUTH_TOKEN"
+
+    def _gate(self, std, tmp_path, system_file):
+        """``(error, token_state)`` off the launch's OWN resolve + gate."""
+        from kanibako.commands.start import (
+            _persona_token_pointer,
+            _preflight_persona_load,
+            _resolve_box_launch_decisions,
+        )
+        from kanibako.plugins.claude.target import ClaudeTarget
+        from kanibako.settings.agent_config import agent_settings_path
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import ProjectGroup
+
+        proj = MagicMock()
+        proj.group = ProjectGroup(
+            name="default", root=std.data, is_default=True,
+            local_shared_base=std.data,
+        )
+        proj.mode = BoxMode.primary
+        proj.project_path = std.data
+        proj.vault_enabled.return_value = False
+        proj.name = "navbox"
+        target = ClaudeTarget()
+        node = "navigator℘claude"
+        agent_path = agent_settings_path(std.agents, node)
+        dump_doc(agent_path, {"self": {"endpoint": self._ENDPOINT, "model": "m"}})
+        system_path = tmp_path / "system-settings.yaml"
+        dump_doc(system_path, system_file)
+        _auth, endpoint, model, secret_paths = _resolve_box_launch_decisions(
+            std=std, proj=proj, target=target, agent_name=node,
+            agent_cfg=_agent_record(agent_path, target, node),
+            system_settings_path=system_path, agent_cfg_path=agent_path,
+            selection_level=None, persona_values=None,
+        )
+        state = _persona_token_pointer(secret_paths, self._VAR)
+        _ep, err, _prov = _preflight_persona_load(
+            node, secret_paths, endpoint, MagicMock(), target=target,
+            keyspace_model=model,
+        )
+        return err, state
+
+    def test_a_system_tier_null_proceeds_rather_than_refusing(self, std, tmp_path):
+        err, state = self._gate(
+            std, tmp_path, {"system": {"secret_path": {self._VAR: None}}},
+        )
+        assert state is None, "PRESENT-null, not ABSENT"
+        assert err is None
+
+    def test_a_workset_tier_null_proceeds_rather_than_refusing(self, std, tmp_path):
+        err, state = self._gate(
+            std, tmp_path, {"workset": {"secret_path": {self._VAR: None}}},
+        )
+        assert state is None
+        assert err is None
+
+    def test_no_declaration_at_all_still_refuses(self, std, tmp_path):
+        """The keyless verdict is the NULL's, never a silent default."""
+        err, state = self._gate(std, tmp_path, {"system": {"agent": "navigator+claude"}})
+        assert state is __MISSING__
+        assert err is not None
+        assert "no usable auth token" in err
+
+
+class TestMalformedCategoryRefusesBeforeTheTokenGate:
+    """A settings error the launch must surface refuses BEFORE the persona gate.
+
+    The gate's table is built from the delivery seam's own category walk, so a
+    malformed category is a refusal on the way to the gate rather than one the
+    gate is reached in spite of.  A settings error that first let the token gate
+    answer reported the wrong problem.
+    """
+
+    @contextmanager
+    def _preamble(self):
+        from types import SimpleNamespace
+
+        runtime = MagicMock()
+        runtime.is_running.return_value = False
+        runtime.container_exists.return_value = False
+        runtime.image_exists.return_value = True
+        runtime.ensure_image.return_value = None
+        rig = SimpleNamespace(kind="prefab", image="test:latest", containerfile=None)
+        with (
+            patch("kanibako.commands.start.ContainerRuntime", return_value=runtime),
+            patch("kanibako.commands.start.resolve_rig", return_value=rig),
+            patch("kanibako.commands.start.load_registry", return_value={}),
+            patch("kanibako.launch.shells.capture_image_shell"),
+            patch("kanibako.runtime.freshness.check_image_freshness"),
+        ):
+            yield runtime
+
+    @staticmethod
+    def _precreate_bare_box(config_file):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths, resolve_box_target
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        resolve_box_target(
+            std, config, None, initialize=True, register=True, warn=False,
+        )
+
+    def test_the_category_root_refusal_wins_over_the_token_refusal(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_interface import set_config_value
+        from kanibako.settings.config_keys import ConfigLevel
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
+
+        std = load_std_paths(load_config(config_file))
+        # A persona with an endpoint and NO token anywhere — the case whose refusal
+        # used to come first — plus a malformed category at the workset root.
+        set_config_value(
+            "agent.navigator+claude.endpoint", "https://nav.example/v1",
+            config_path=std.settings, command_scope=ConfigLevel.system,
+            agents_root=std.agents,
+        )
+        from kanibako.settings.settings_resolve import SettingsError
+
+        # ⚑ AUTHORED IN THE FILE, not through ``config set``: a bind-shaped
+        # category is YAML-only (spec §2a), so the CLI route refuses to write it —
+        # which is why the malformed shape is only reachable by hand.
+        # The box is created first: the file's own parse now refuses the
+        # malformed category, so the create would stop on it too.
+        self._precreate_bare_box(config_file)
+        dump_doc(std.settings, {
+            "system": {"agent": "navigator+claude"},
+            "workset": {"caches": "x"},
+        })
+
+        with self._preamble():
+            with pytest.raises(SettingsError) as refusal:
+                _run_container(
+                    project_dir=None, entrypoint=None, image_override=None,
+                    new_session=False, safe_mode=False, resume_mode=False,
+                    extra_args=[], explicit_agent="navigator+claude",
+                )
+        # The SETTINGS refusal is what raised, and the token gate never answered:
+        # the two are the same launch, so the message the user reads is the one
+        # that names the key they have to fix.
+        assert "workset.caches" in str(refusal.value)
+        assert "no usable auth token" not in capsys.readouterr().err
 
 
 class TestEmitSecretMounts:

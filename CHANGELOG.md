@@ -982,16 +982,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transform, bootstrap, and `box show --effective` lookups read the agent file's `agent: default:`
   table as a launch does.
 
-- **A persona's token check reads the resolved `agent.<node>.secret_path`.** Before a persona box is
-  created or launched, kanibako checks that its custom endpoint has a bearer token, or an explicit
-  `null` for a keyless endpoint. That check read only the agent's `agent.yaml` and the persona
-  store. So a token set in the system settings file
-  (`agent: {navigator℘claude: {secret_path: {ANTHROPIC_AUTH_TOKEN: <path>}}}`) was mounted into
-  the box, but the create or launch was refused for having none. The check now reads the same resolved value, in the same order: the agent's
-  `agent.yaml`, then the persona store, then the system settings file. A broken path in a higher
-  place still refuses rather than falling through to a lower one, because it is the path the box
-  would mount. Inside a settings key, a persona node is spelled `navigator℘claude`, not
-  `navigator+claude`.
+- **A persona's token check counts the token the launch delivers, at every scope.** Before a persona box
+  is created or launched, kanibako checks that its custom endpoint has a bearer token, or an explicit
+  `null` for a keyless endpoint. That check read only the persona's own `secret_path` (for example
+  `agent.navigator+claude.secret_path.ANTHROPIC_AUTH_TOKEN`), so a token the launch mounted from
+  `agent.default` or from the `box`, `workset` or `system` scope was refused with "no usable auth
+  token". The check now reads the launch's own per-variable cascade: a mounted token counts wherever
+  it was declared; a token whose mount point is masked does not count, because the box would start
+  without it; and a `secret_path.<VAR>: null` that wins the cascade at any scope declares the endpoint
+  keyless. A broken path at the winning scope still refuses rather than falling through to a lower
+  one, because it is the path the box would mount. A codex persona's `env_key` is still chosen only
+  from the persona's own `agent.navigator+codex.secret_path` names, so a secret another scope delivers
+  is never handed to its endpoint. A malformed settings category is now reported before the token
+  check.
 
 - **The `agent` verbs refuse an undeclared entry in an agent's `agent.yaml` as a launch does, down
   to what is inside a category.** In v1.8.0-rc2 `agent show`, `info`, `list` and `get` answered rc 0 for a file a
