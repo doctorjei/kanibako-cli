@@ -10707,6 +10707,7 @@ class _RunningBoxDriver:
     def _running(self, m, agent: str = "claude"):
         """Put the harness in the ALREADY-RUNNING state a reattach sees."""
         m.runtime.is_running.return_value = True
+        m.runtime.container_exists.return_value = True
         m.runtime.inspect_env.return_value = agent
 
     def _start(self, **over):
@@ -11468,6 +11469,7 @@ class TestRestartFlag(_RunningBoxDriver):
         """Patch the stop verb, mirroring reality: after it, nothing is up."""
         def _stopped(*a, **kw):
             m.runtime.is_running.return_value = False
+            m.runtime.container_exists.return_value = False
             return 0
         return patch(
             "kanibako.commands.stop._stop_one", side_effect=_stopped,
@@ -11632,6 +11634,20 @@ class TestRestartFlag(_RunningBoxDriver):
             assert m.runtime.is_running.return_value is False
             assert self._start(restart=True) == 0
             m_stop.assert_not_called()
+
+    def test_restart_clears_an_exited_container_before_a_shell_launch(
+        self, start_mocks, capsys,
+    ):
+        """An exited container blocks an ephemeral/shell launch by NAME, so
+        ``--restart`` clears it through the stop verb and the launch proceeds."""
+        with start_mocks() as m, self._stop_patch(m) as m_stop:
+            m.runtime.container_exists.return_value = True
+            assert m.runtime.is_running.return_value is False
+            rc = self._start(restart=True, persistent=False, entrypoint="/bin/sh")
+            assert m_stop.called
+            assert m.runtime.run.called
+        assert rc == 0
+        assert "holding its name" not in capsys.readouterr().err
 
     def test_restart_errors_when_the_stop_did_not_take(self, start_mocks, capsys):
         """``podman stop`` blocks, so the container IS down when the stop verb

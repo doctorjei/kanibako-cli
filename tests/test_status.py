@@ -206,8 +206,8 @@ class TestCheckContainerRunning:
             assert running is False
             assert "not running" in detail
 
-    def test_stopped_persistent_container(self):
-        """Stopped persistent container is detected and reported."""
+    def test_exited_container_names_its_cure(self):
+        """An exited container (any mode) is reported with the verb that clears it."""
         mock_rt = MagicMock()
         mock_rt.list_running.return_value = []
         mock_rt.container_exists.return_value = True  # stopped but exists
@@ -218,7 +218,8 @@ class TestCheckContainerRunning:
             proj = _mock_proj(name="myapp")
             running, detail = _check_container_running(proj)
             assert running is False
-            assert "stopped persistent" in detail
+            assert "exited, still holding the name" in detail
+            assert "kanibako stop myapp" in detail
 
 
 # ---------------------------------------------------------------------------
