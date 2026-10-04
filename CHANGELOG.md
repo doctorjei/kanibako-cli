@@ -542,8 +542,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A box name that belongs to more than one workset is refused instead of silently resolving to
   the wrong target.** `box info`, `stop`, the box lifecycle commands (`remap`, `convert`, `move`),
   and the create path now refuse with `Ambiguous box name '<name>' … Qualify it as
-  '<workset>/<name>'`, naming every candidate. Previously a same-named folder in the current
-  directory silently took its place (`stop` exited 0 against the wrong target), or the name was
+  '<workset>/<name>'`, naming every candidate as `<workset>/<box>`, in each name's stored spelling,
+  whatever case was typed. Candidates used to be listed by workspace path, and because
+  `workset.workspaces` is settable that path need not contain the workset name, so the message did
+  not show what to type. A candidate whose workspace directory is gone is marked
+  `[workspace missing]`; it remains a candidate, and what resolves does not change. Previously a
+  same-named folder in the current directory silently took its place (`stop` exited 0 against the
+  wrong target), or the name was
   turned into a nonexistent `<cwd>/<name>` path. Unknown names still resolve as paths. `start` and
   `code` refuse it the same way; they used to print a generic "no box at <name>" message that advised
   creating a box the user already has.
