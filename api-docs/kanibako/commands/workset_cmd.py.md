@@ -35,6 +35,7 @@ def _run_workset_config(args: argparse.Namespace) -> int
 def _share_source_display(value: object) -> str
 def _resolve_share_workset(name: str)
 def _load_share_doc(ws_config: Path) -> dict
+def _bind_source_ref_error(arm: str, source: str, *, where: 'Path') -> 'str | None'
 def _print_no_shares(ws) -> None
 def _workset_raw_shares(files: Sequence[SettingsFile]) -> dict[tuple[str, str], object]
 def _workset_preview_entries(ws, std) -> 'list[CategoryEntry]'
