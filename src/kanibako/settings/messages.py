@@ -148,9 +148,7 @@ ERR_CONFIG_PATH_REF_SCOPE = (
                                                     # the key, the value, the offending ref
 # ⚑ The OTHER HALF of "no @-ref points DOWNWARD" (spec §0), for every key OUTSIDE the
 # system path tier; scope and why are stated once, on ``config.ref_points_downward``.
-# ⚑ IT DOES NOT NAME THE KEY: each door puts the key in its own position — the set door
-# in its ``Error: '<key>':`` lead, the resolve sweep under the FILE that carries it — so
-# the key and this sentence cannot say the same thing twice in one line.
+# ⚑ IT DOES NOT NAME THE KEY: each of the three doors places it, so a line reads it once.
 ERR_CONFIG_DOWNWARD_REF = (
                         "%r points at '@%s' — DOWNWARD, into the %s.* scope its key "
                         "CONTAINS. A key may reference its own scope or one that CONTAINS "
