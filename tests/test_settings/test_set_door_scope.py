@@ -625,3 +625,28 @@ class TestTheEndpointIsStoredAsText:
         message = _set("agent.claude.model", _TEXT_ENDPOINT, ws_files, ConfigLevel.system,
                        std=ws_files["std"], ws=ws_files["ws"])
         assert message.startswith("Error:"), message
+
+
+@pytest.mark.parametrize("value, phrase", [
+    ("@agent.zzz.model", "'zzz' is not a valid agent"),
+    ("@agent.claude.zork", "'zork' is not a declared agent key of 'agent.claude'"),
+    ("@agent.goose.provider", "declared in the keyspace, but not in this command's cascade"),
+    ("@agent.claude.env.NOPE", "declared in the keyspace, but not in this command's cascade"),
+])
+def test_a_missing_agent_ref_is_judged_against_the_discovered_agents(tmp_path, value, phrase):
+    """The set door knows which agents exist, so an unknown agent or leaf is named as such,
+    and a real agent's declared key is never reported as outside the keyspace."""
+    files = _files(tmp_path)
+    message = _set("box.env.M", value, files, ConfigLevel.box)
+    assert message.startswith("Error:"), f"{value!r} was ACCEPTED: {message}"
+    assert phrase in message, message
+
+
+def test_the_read_only_agent_mirror_is_judged_with_the_discovered_agents():
+    """``meta.box.agent.<key>`` is declared through the plugins' leaves, so the set door's
+    check must see them: ``provider`` is goose's, and with goose discovered it is a key."""
+    from kanibako.settings.config_keys import scope_key_reason
+    from kanibako.settings.settings_prefs import default_valid_agents
+
+    assert "goose" in default_valid_agents()
+    assert scope_key_reason("meta.box.agent.provider") is None
