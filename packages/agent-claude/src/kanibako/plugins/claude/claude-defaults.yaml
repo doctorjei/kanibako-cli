@@ -34,12 +34,14 @@ descriptor:
     - key: share
       origin: install_dir
       box_dest: "{$GUEST_HOME}/.local/share/claude"
+      owner: shared
       kind: dir
       scope: agent_critical
       ro: true
     - key: launcher
       origin: launcher
       box_dest: "{$GUEST_HOME}/.local/bin/claude"
+      owner: shared
       kind: file
       scope: agent_critical
       ro: true
@@ -62,6 +64,7 @@ descriptor:
       origin: literal
       literal_src_pkg: "data/KICKOFF.md"
       box_dest: "{$GUEST_HOME}/.config/kanibako/kickoff.md"
+      owner: shared
       kind: file
       scope: agent
       ro: true
@@ -123,6 +126,7 @@ descriptor:
   cred_files:
     - home_rel: ".claude/.credentials.json"
       host_rel: ".claude/.credentials.json"
+      owner: shared
       cadence: sync
       mtime_gate: true
       filtered: true
@@ -209,8 +213,10 @@ env:
 common:
   - host_src: plugins
     box_dest: "{$GUEST_HOME}/.claude/plugins"
+    owner: agent
   - host_src: cache
     box_dest: "{$GUEST_HOME}/.claude/cache"
+    owner: agent
 
 # AGENT-scope reference-sourced category binds (spec §2d): the tweakcc
 # patched-binary cache (the spec's `agent.claude.caches[{system.cache}/tweakcc]`
@@ -228,6 +234,7 @@ common:
 category_binds:
   - category: caches
     box_dest: "{system.cache}/tweakcc"
+    owner: agent
     meta_ref: "@meta.agent.claude.path/caches/tweakcc"
 
 # The former Route-A `category_binds:` `instructions` entry ({system.instructions} →

@@ -758,6 +758,7 @@ categories:
     delivery: MOUNT             # ⚑ THE MECHANISM, not the effect — read the 🛑 note
                                 #   above this block before calling this wrong
     value: path                 # secret_path.<VAR> — a PATH to secret material
+    owner: shared
     parametric: [VAR]
     cli_set: true               # scalar ⇒ full set/create (unlike source-only binds)
     never_read_by_kanibako: true    # value NEVER enters snapshot/keystore/argv/logs
@@ -848,6 +849,10 @@ bindmap_shape:
 ##   The conformance test should ASSERT that property rather than trust each entry.
 ## `scope:` — the key's OWN scope, for the directional write rule.
 ## `default:` — a mapping keyed by mode when the default is mode-dependent.
+## `owner:` — box · workset · partition · agent · shared: who a named host
+##   resource belongs to (§0 "Per-owner resources"). Every `type: path` row
+##   carries one, as does every declared bind entry the spec marks.
+##   `config_keys.KEY_OWNERS` is the code carrier, asserted equal by `[[parity]]`.
 ## ---------------------------------------------------------------------------
 keys:
 
@@ -858,6 +863,7 @@ keys:
   config.data:
     layer: 1
     type: path
+    owner: shared
     set: file
     default: "$XDG_DATA_HOME/kanibako"
     why: "root of the persistent data tree; referenced across the keyspace"
@@ -865,6 +871,7 @@ keys:
   config.settings:
     layer: 1
     type: path
+    owner: shared
     set: file
     default: "@config.data/global/settings.yaml"
     why: "THE system settings FILE — the cascade `system` level input"
@@ -872,6 +879,7 @@ keys:
   config.agents:
     layer: 1
     type: path
+    owner: shared
     set: file
     default: "@config.data/agents"
     why: "per-agent store; agent cascade files at <agent>/agent.yaml"
@@ -879,6 +887,7 @@ keys:
   config.primary_workset:
     layer: 1
     type: path
+    owner: shared
     set: file
     default: "@config.data/primary_workset"
     why: "PRIMARY workset root"
@@ -886,6 +895,7 @@ keys:
   config.registry:
     layer: 1
     type: path
+    owner: shared
     set: file
     default: "@config.data/global/registry.yaml"
     why: "name→path resolution; needed before loading named workset/box files"
@@ -893,6 +903,7 @@ keys:
   config.journal:
     layer: 1
     type: path
+    owner: shared
     set: file
     default: "@config.data/global/journal.yaml"
     why: "lifecycle journal (crash-recovery write-ahead log); normally EMPTY"
@@ -907,12 +918,14 @@ keys:
   system.channelroot:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "@config.data/channels"
     spec: "§2g"
   system.channels.common:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "@system.channelroot/common"
     note: "shared-scratch type-root. RENAMED from system.channels.commons (R-6)
@@ -922,30 +935,35 @@ keys:
   system.channels.chat:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "@system.channelroot/chat"
     spec: "§2g"
   system.channels.broadcast:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "@system.channels.chat/broadcast.md"
     spec: "§2g"
   system.channels.mailboxes:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "@system.channelroot/mailboxes"
     spec: "§2g"
   system.channels.share:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "@system.channelroot/share"
     spec: "§2g"
   system.template:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "@config.data/global/template"
     note: "the system TEMPLATE ROOT. RENAMED from system.base_template (R-1;
@@ -960,6 +978,7 @@ keys:
   system.canon:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "@config.data/global/canon"
     note: "the SYSTEM-level CANON CONTRIBUTION ROOT — the user's own directives;
@@ -975,6 +994,7 @@ keys:
   system.backup:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "@config.data/backup"
     spec: "§2g"
@@ -984,18 +1004,21 @@ keys:
   system.cache:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "$XDG_CACHE_HOME/kanibako"
     spec: "§2g"
   system.state:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "$XDG_STATE_HOME/kanibako"
     spec: "§2g"
   system.runtime:
     scope: system
     type: path
+    owner: shared
     set: cli+file
     default: "$XDG_RUNTIME_DIR/kanibako"
     note: "helper sockets; XDG_RUNTIME_DIR has NO spec default — fall back + WARN"
@@ -1069,6 +1092,7 @@ keys:
   workset.workspaces:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: null, named: "@meta.workset.path/workspaces",
               standalone: "@meta.workset.path/workspace"}
@@ -1079,6 +1103,7 @@ keys:
   workset.boxes:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: "@meta.workset.path/boxes", named: "@meta.workset.path/boxes",
               standalone: "@meta.workset.path/box_data"}
@@ -1087,6 +1112,7 @@ keys:
   workset.logs:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: "@meta.workset.path/logs", named: "@meta.workset.path/logs",
               standalone: "@workset.boxes"}
@@ -1096,6 +1122,7 @@ keys:
   workset.vault_ro:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: "@meta.workset.path/vault/ro"
     note: "ALL PROJECTS — defined ONCE for EVERY mode (R-29); only the box BIND
@@ -1105,6 +1132,7 @@ keys:
   workset.vault_rw:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: "@meta.workset.path/vault/rw"
     note: "ALL PROJECTS — defined ONCE for EVERY mode (R-29); see vault_ro"
@@ -1112,6 +1140,7 @@ keys:
   workset.canon:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: "@meta.workset.path/canon"
     note: "the WORKSET's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies
@@ -1126,6 +1155,7 @@ keys:
   workset.registry:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: "@meta.workset.path/registry.yaml",
               named: "@meta.workset.path/registry.yaml", standalone: null}
@@ -1135,6 +1165,7 @@ keys:
   workset.template:
     scope: workset
     type: path
+    owner: shared
     set: cli+file
     default: {primary: "@meta.workset.path/template",
               named: "@meta.workset.path/template", standalone: null}
@@ -1176,6 +1207,7 @@ keys:
   workset.auth.path:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: "@meta.workset.path/auth", named: "@meta.workset.path/auth",
               standalone: null}
@@ -1184,6 +1216,7 @@ keys:
   workset.channelroot:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: "@meta.workset.path/channels", named: "@meta.workset.path/channels",
               standalone: null}
@@ -1191,6 +1224,7 @@ keys:
   workset.channels.common:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: "@workset.channelroot/common", named: "@workset.channelroot/common",
               standalone: null}
@@ -1200,6 +1234,7 @@ keys:
   workset.channels.chat:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: "@workset.channelroot/chat", named: "@workset.channelroot/chat",
               standalone: null}
@@ -1207,6 +1242,7 @@ keys:
   workset.channels.broadcast:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: "@workset.channels.chat/broadcast.md",
               named: "@workset.channels.chat/broadcast.md", standalone: null}
@@ -1214,6 +1250,7 @@ keys:
   workset.channels.share:
     scope: workset
     type: path
+    owner: workset
     set: cli+file
     default: {primary: "@workset.channelroot/share", named: "@workset.channelroot/share",
               standalone: null}
@@ -1221,6 +1258,7 @@ keys:
   workset.channels.mailboxes:
     scope: workset
     type: path
+    owner: partition
     set: cli+file
     default: "@system.channels.mailboxes/@meta.workset.name"
     note: "ALL PROJECTS — mailboxes aggregate at SYSTEM, partitioned by workset name"
@@ -1228,6 +1266,7 @@ keys:
   workset.channels.share_global:
     scope: workset
     type: path
+    owner: partition
     set: cli+file
     default: "@system.channels.share/@meta.workset.name"
     spec: "§2c (ALL PROJECTS)"
@@ -1236,6 +1275,7 @@ keys:
   box.image:
     scope: box
     type: str
+    owner: shared
     set: cli+file
     default: "ghcr.io/doctorjei/kanibako-oci:latest"
     spec: "§2b"
@@ -1248,6 +1288,7 @@ keys:
   box.images_store:
     scope: box
     type: path
+    owner: shared
     set: cli+file
     default: "<runtime-probed podman graphroot>"
     note: "consulted ONLY when share_images is true; cascade-able to system for a
@@ -1257,6 +1298,7 @@ keys:
   box.canon:
     scope: box
     type: path
+    owner: box
     set: cli+file
     default: "@meta.box.path/canon"
     note: "the BOX's CANON CONTRIBUTION ROOT; its handbook/ subtree supplies the
@@ -1529,6 +1571,7 @@ keys:
   agent.default.template:
     scope: agent
     type: path
+    owner: shared
     set: cli+file
     default: "@config.agents/default/template"
     note: "the all-agents fallback arm of the layer-2 TEMPLATE SOURCE, sibling of
@@ -1558,6 +1601,7 @@ keys:
   agent.default.canon:
     scope: agent
     type: path
+    owner: shared
     set: cli+file
     default: "@config.agents/default/canon"
     note: "the all-agents fallback CANON CONTRIBUTION ROOT (= the parametric
@@ -1601,6 +1645,7 @@ keys:
     scope: agent
     parametric: [agent]
     type: path
+    owner: shared
     set: cli+file
     default: "@meta.agent.<agent>.path/template"
     note: "per-agent template SOURCE; seed layer 2"
@@ -1609,6 +1654,7 @@ keys:
     scope: agent
     parametric: [agent]
     type: path
+    owner: shared
     set: cli+file
     default: "@meta.agent.<agent>.path/canon"
     fallback: "agent.default.canon"
@@ -1717,6 +1763,7 @@ keys:
   agent.shell.template:
     scope: agent
     type: path
+    owner: shared
     set: cli+file
     default: null                 # fence <None> — installs NO layer-2 template (§2b)
     note: "no per-agent template SOURCE at the shell tier; the tier installs no
@@ -1725,6 +1772,7 @@ keys:
   agent.shell.canon:
     scope: agent
     type: path
+    owner: shared
     set: cli+file
     default: "@config.agents/default/canon"
     note: "the shell tier's CANON CONTRIBUTION ROOT is the all-agents fallback arm
@@ -1774,6 +1822,7 @@ keys:
     set: never
     origin: runtime_treewalk
     type: path
+    owner: shared
     value: "standalone=<runtime project dir> · primary={config.primary_workset} ·
             named=<detected workset root>"
     spec: "§1A (L0.2)"
@@ -1797,6 +1846,7 @@ keys:
     set: never
     origin: bootstrap
     type: path
+    owner: shared
     value: "{$XDG_CONFIG_HOME}/kanibako.cfg, or ~/.config/ if unset / not absolute"
     note: "the COMPLETE user file, not a base dir to concatenate"
     spec: "§1A (L0.2)"
@@ -1805,6 +1855,7 @@ keys:
     set: never
     origin: bootstrap
     type: path
+    owner: shared
     value: "/etc/kanibako/base.cfg"
     note: "the SITE Layer-1 input — the config set's least-specific layer"
     spec: "§1A (L0.2)"
@@ -1813,6 +1864,7 @@ keys:
     set: never
     origin: bootstrap
     type: path
+    owner: shared
     value: "/etc/kanibako/settings_base.yaml"
     note: "the machine-wide SETTINGS floor — the cascade `base` level input (L2.1)"
     spec: "§1A (L0.2)"
@@ -1959,6 +2011,7 @@ keys:
     set: never
     origin: bootstrap
     type: path
+    owner: workset
     value: "@meta.workset.path/workset.yaml"
     note: "the §1A SINGLE-SOURCE canonical spelling; the former
            {meta.runtime.ws_settings} anchor is CUT (unified path; R-36)"
@@ -1991,6 +2044,7 @@ keys:
     set: never
     origin: construct_time
     type: path
+    owner: box
     value: {primary: "@workset.boxes/@meta.box.name",
             named: "@workset.boxes/@meta.box.name",
             standalone: "@workset.boxes"}
@@ -2007,6 +2061,7 @@ keys:
     set: never
     origin: derived
     type: path
+    owner: box
     value: "@meta.box.path/home"
     note: "RO DERIVED box-home SOURCE — the pid-0 FOUNDATION bind's src_path,
            seeded into the collapse before any other entry (§0). It does NOT route
@@ -2023,6 +2078,7 @@ keys:
     set: never
     origin: construct_time
     type: path
+    owner: box
     value: {primary: "<the user's real project dir>",
             named: "{workset.workspaces}/{meta.box.name}",
             standalone: "{workset.workspaces}"}
@@ -2036,6 +2092,7 @@ keys:
     set: never
     origin: construct_time
     type: path
+    owner: box
     value: "{meta.box.path}/box.yaml"
     note: "UNIFORM — ALL PROJECTS, every mode (R-30): standalone HAS a box tier
            whose file is merely ABSENT by default; box values then resolve from
@@ -2055,6 +2112,7 @@ keys:
     set: never
     origin: derived
     type: path
+    owner: box
     value: "@workset.channels.mailboxes/@meta.box.name"
     spec: "§2c (ALL PROJECTS)"
   meta.box.share_global:
@@ -2062,6 +2120,7 @@ keys:
     set: never
     origin: derived
     type: path
+    owner: box
     value: "@workset.channels.share_global/@meta.box.name"
     spec: "§2c (ALL PROJECTS)"
   meta.box.share_workset:
@@ -2069,6 +2128,7 @@ keys:
     set: never
     origin: derived
     type: path
+    owner: box
     value: {primary: "@workset.channels.share/@meta.box.name",
             named: "@workset.channels.share/@meta.box.name",
             standalone: null}
@@ -2078,6 +2138,7 @@ keys:
     set: never
     origin: derived
     type: path
+    owner: workset
     value: {primary: "@workset.auth.path/@system.agent",
             named: "@workset.auth.path/@system.agent",
             standalone: null}
@@ -2143,6 +2204,7 @@ keys:
     set: never
     origin: derived
     type: str
+    owner: box
     value: "kanibako-{meta.box.name}%if {meta.box.helper_num}: -helper-{meta.box.helper_num}%"
     note: "a RENDERING of the identity pair, NEVER a source to parse back from"
     spec: "§2c (F5)"
@@ -2177,6 +2239,7 @@ keys:
     set: never
     origin: construct_time
     type: path
+    owner: agent
     value: "@config.agents/default"
     spec: "§2d"
   ## ---- meta.agent.shell.* — the plain-shell identity anchors (§2d fence) ----
@@ -2199,6 +2262,7 @@ keys:
     set: never
     origin: construct_time
     type: path
+    owner: agent
     value: "@config.agents/shell"
     note: "META so agent/workset/box cascade CANNOT override it — the twin formula
            ({config.agents}/{meta.agent.<agent>.name}) with name = shell."
@@ -2208,6 +2272,7 @@ keys:
     set: never
     origin: construct_time
     type: path
+    owner: agent
     value: "@meta.agent.shell.path/agent.yaml"
     spec: "§2d (shell fence)"
   meta.agent.shell.mode:
@@ -2255,6 +2320,7 @@ keys:
     set: never
     origin: construct_time
     type: path
+    owner: agent
     value: "@config.agents/@meta.agent.<agent>.name"
     note: "META so agent/workset/box cascade CANNOT override it (D-2026-06-22)"
     spec: "§2d"
@@ -2264,6 +2330,7 @@ keys:
     set: never
     origin: construct_time
     type: path
+    owner: agent
     value: "@meta.agent.<agent>.path/agent.yaml"
     spec: "§2d"
   meta.agent.<agent>.mode:
@@ -2349,6 +2416,7 @@ bind_default_entries:
     ## settings key" (§2c). Do NOT flatten the two classes into one.
     "~/canon/COLLECTION.md":
       user_key: false
+      owner: shared
       value: "(<packaged rom COLLECTION.md>)"
       note: "INTERNAL — the canon index; FILE bind over the pre-created box-skeleton
              mountpoint. Stays a BIND (rom truth: a seeded copy would freeze at
@@ -2358,11 +2426,13 @@ bind_default_entries:
       spec: "§2c (CANON books; R-10)"
     "~/canon/charter/ROM_CONTENTS.md":
       user_key: false
+      owner: shared
       value: "(<packaged rom charter/ROM_CONTENTS.md>)"
       note: "INTERNAL, FILE bind (same pre-created-mountpoint rule)"
       spec: "§2c (CANON books; R-10)"
     "~/canon/charter/general":
       user_key: false
+      owner: shared
       value: "(<packaged rom charter/general>)"
       note: "INTERNAL, dir ro. Successor delivery of the retired system.instructions
              box guide: the packaged rom's general chapter (ROM_GENERAL.md
@@ -2371,16 +2441,19 @@ bind_default_entries:
       spec: "§2c (CANON books; R-10) / §3 (system.instructions row)"
     "~/canon/charter/workset":
       user_key: false
+      owner: shared
       value: "(<packaged rom charter/workset>)"
       note: "INTERNAL, dir ro"
       spec: "§2c (CANON books; R-10)"
     "~/canon/charter/box":
       user_key: false
+      owner: shared
       value: "(<packaged rom charter/box>)"
       note: "INTERNAL, dir ro"
       spec: "§2c (CANON books; R-10)"
     "~/canon/charter/agent":
       user_key: false
+      owner: shared
       value: "(<plugin pkg data/rom>)"
       note: "INTERNAL, dir ro — the PLUGIN's bible chapter, emitted by CORE from the
              RESOLVED target (emission gate: rom_root exists AND contains
@@ -2394,6 +2467,7 @@ bind_default_entries:
       spec: "§2c (CANON books; R-10)"
     "~/canon/handbook/SYS_CONTENTS.md":
       user_key: true
+      owner: shared
       default: "({system.canon}/handbook/SYS_CONTENTS.md)"
       note: "FILE bind; system store — user-editable on the HOST, ro in-box. The ONE
              handbook entry that is WARNED and omitted when its source is absent
@@ -2404,6 +2478,7 @@ bind_default_entries:
       spec: "§2c (CANON books; R-10)"
     "~/canon/handbook/general":
       user_key: true
+      owner: shared
       default: "({system.canon}/handbook/general)"
       note: "dir ro; system store — the global handbook IS the general chapter (the
              system store ships NO agent/workset/box chapter stubs). OMITTED SILENTLY
@@ -2413,6 +2488,7 @@ bind_default_entries:
       spec: "§2c (CANON books; R-10)"
     "~/canon/handbook/agent":
       user_key: true
+      owner: shared
       default: "({agent.<active>.canon}/handbook)"
       note: "source per the §2d fallback (agent.<agent>.canon -> agent.default.canon;
              exactly ONE is bound — override, not additive); dest carries NO agent
@@ -2427,11 +2503,13 @@ bind_default_entries:
       spec: "§2c (CANON books; R-10) / §2d (R-9 + R-13)"
     "~/canon/handbook/workset":
       user_key: true
+      owner: workset
       default: "({workset.canon}/handbook)"
       note: "repoint route = workset.canon (R-9)"
       spec: "§2c (CANON books; R-10)"
     "~/canon/handbook/box":
       user_key: true
+      owner: box
       default: "({box.canon}/handbook)"
       note: "repoint route = box.canon (R-9); the SOURCE is filled at box create by
              the host-side box-handbook template copy (NOT a seed layer — those were
@@ -2440,6 +2518,7 @@ bind_default_entries:
       spec: "§2c (CANON books; R-10)"
     "~/.config/kanibako/kickoff.md":
       user_key: false
+      owner: shared
       value: "(<packaged core KICKOFF.md>)"
       note: "INTERNAL, like kani_pkg — the directive-chain entry slot; kickoff
              CONTENT lives in CORE, delivered by this unconditional bind. Not a user
@@ -2457,6 +2536,7 @@ bind_default_entries:
     ## exactly like the manifest's per-mode `default:` house style.
     "~/vault/ro":
       user_key: true
+      owner: box
       default: {primary: "({workset.vault_ro}/{meta.box.name})",
                 named: "({workset.vault_ro}/{meta.box.name})",
                 standalone: "({workset.vault_ro})"}
@@ -2466,6 +2546,7 @@ bind_default_entries:
       spec: "§2c (ALL WORKSETS / STANDALONE; R-29)"
     "/var/lib/shared-images":
       user_key: true
+      owner: shared
       default: "%if {box.share_images}: ({box.images_store}) else None%"
       note: "conditional on {box.share_images} (D-M8); the settable INPUTS are
              box.share_images + box.images_store (the USER KEY host store root).
@@ -2505,6 +2586,7 @@ bind_default_entries:
       spec: "§2c (ALL PROJECTS; D-M8) / §0 (the internal-only exception)"
     "~/.kanibako/state/helpers.jsonl":
       user_key: true
+      owner: box
       default: "({workset.logs}/{meta.box.name}.jsonl)"
       note: "a SINGLE row for all modes — workset.logs carries the per-mode
              variation (R-28). ⚑ THE BRACES ARE LOAD-BEARING (policy.reference_forms
@@ -2514,6 +2596,7 @@ bind_default_entries:
       spec: "§2c (ALL PROJECTS; R-23 / R-28)"
     "/opt/kanibako/kanibako":
       user_key: false
+      owner: shared
       value: "(<host pkg>)"
       note: "kanibako CLI delivery. INTERNAL per the spec's own references — the
              kickoff row reads 'INTERNAL, like kani_pkg' and the images_conf note
@@ -2524,6 +2607,7 @@ bind_default_entries:
       spec: "§2c (kanibako CLI delivery)"
     "~/.local/bin/kanibako":
       user_key: false
+      owner: shared
       value: "(<entry script>)"
       note: "kanibako CLI delivery; same class as kani_pkg (same flag applies)"
       see: "the note's `kani_pkg` is the retired NAME of the
@@ -2531,6 +2615,7 @@ bind_default_entries:
       spec: "§2c (kanibako CLI delivery)"
     "/etc/profile.d/kanibako-secrets.sh":
       user_key: false
+      owner: shared
       value: "(<packaged kanibako-secrets.sh>)"
       note: "INTERNAL, like kani_pkg — the secrets-into-shell-profile machinery:
              an RO bind delivering the generic self-adapting profile.d snippet
@@ -2554,10 +2639,12 @@ bind_default_entries:
     ## home is a same-dest collision (category_collisions row 1).
     "~/workspace":
       user_key: true
+      owner: box
       default: "({meta.box.workspace})"
       spec: "§2c"
     "~/vault/rw":
       user_key: true
+      owner: box
       default: {primary: "({workset.vault_rw}/{meta.box.name})",
                 named: "({workset.vault_rw}/{meta.box.name})",
                 standalone: "({workset.vault_rw})"}
@@ -2567,6 +2654,7 @@ bind_default_entries:
       spec: "§2c (ALL WORKSETS / STANDALONE; R-29)"
     "~/.kanibako/state/helper.sock":
       user_key: true
+      owner: box
       default: "(@system.runtime/<bounded name of \"@{meta.box.name}-@{meta.workset.name}\">, \"\")"
       note: "mount options MUST stay empty ('') — a LIVE unix socket; Z/U
              relabel/chown would break the shared socket topology (core-defaults
@@ -2578,36 +2666,43 @@ bind_default_entries:
       spec: "§2c (ALL PROJECTS)"
     "~/channels/common":
       user_key: true
+      owner: shared
       default: "({system.channels.common})"
       note: "system channel guest mount, option (A) — perms aspirational"
       spec: "§2c (ALL PROJECTS; R-6 name)"
     "~/channels/chat":
       user_key: true
+      owner: shared
       default: "({system.channels.chat})"
       spec: "§2c (ALL PROJECTS)"
     "~/channels/share":
       user_key: true
+      owner: shared
       default: "({system.channels.share})"
       note: "rw* -> ro under future (C)"
       spec: "§2c (ALL PROJECTS)"
     "~/channels/mailboxes":
       user_key: true
+      owner: shared
       default: "({system.channels.mailboxes})"
       note: "rw* -> ro under future (C)"
       spec: "§2c (ALL PROJECTS)"
     "~/channels/inbox":
       user_key: true
+      owner: box
       default: "({meta.box.inbox})"
       note: "own inbox; the (C)-stable path"
       spec: "§2c (ALL PROJECTS)"
     "~/channels/workset/common":
       user_key: true
+      owner: workset
       default: "({workset.channels.common})"
       note: "workset-LOCAL channel — PRIMARY/NAMED only; a standalone box has no
              workset channels, so the entry is OMITTED there (gated at the seam)"
       spec: "§2c (ALL WORKSETS; R-6 name)"
     "~/channels/workset/chat":
       user_key: true
+      owner: workset
       default: "({workset.channels.chat})"
       note: "PRIMARY/NAMED only (see workset_common)"
       see: "the note's `workset_common` is the retired NAME of this arm's
@@ -2615,6 +2710,7 @@ bind_default_entries:
       spec: "§2c (ALL WORKSETS)"
     "~/channels/workset/share":
       user_key: true
+      owner: workset
       default: "({workset.channels.share})"
       note: "PRIMARY/NAMED only; rw* -> ro under future (C)"
       spec: "§2c (ALL WORKSETS)"
@@ -2705,6 +2801,7 @@ category_default_entries:
   system.seeded:
     "~/":
       user_key: true
+      owner: shared
       default: "(@system.template/box/home)"
       note: "layer 1 — base BOX template (global); source = the box/home subtree of
              the system template ROOT (R-1: system.template, NOT the root itself)"
@@ -2712,6 +2809,7 @@ category_default_entries:
   agent.<agent>.seeded:               # parametric in <agent> — see parametric_keys above
     "~/":
       user_key: true
+      owner: shared
       default: "(@agent.<agent>.template/box/home)"
       note: "layer 2 — per-agent (agent = persona + harness); template holds
              settings.json / CLAUDE.md / dirs; SUBSUMES all per-file agent seeds"
@@ -2719,6 +2817,7 @@ category_default_entries:
   workset.seeded:
     "~/":
       user_key: true
+      owner: shared
       optional: skip_if_absent
       default: "(@workset.template/box/home)"
       note: "layer 3 — per-workset; the layer is SKIPPED when the source dir is
@@ -3202,6 +3301,7 @@ plugin_contributed:
       "~/.claude/.credentials.json":
         was: "agent.claude.synced.credentials (name retired 2026-08-07f)"
         user_key: true
+        owner: shared
         default: "(~/.claude/.credentials.json)"
         note: "SYNC, mtime-gate, FILTERED (transform_cred merges claudeAiOauth).
                COPY dest = GUEST path, resolved to the box store when the copy runs
@@ -3213,6 +3313,7 @@ plugin_contributed:
       "~/.codex/auth.json":
         was: "agent.codex.synced.auth (name retired 2026-08-07f)"
         user_key: true
+        owner: shared
         default: "(~/.codex/auth.json)"
         note: "SYNC, mtime-gate, filtered=False (Q2: allowlist iff install-bound
                fields). NOT an identity entry — the key's `~` is the GUEST home,
@@ -3222,6 +3323,7 @@ plugin_contributed:
       "~/.config/goose/secrets.yaml":
         was: "agent.goose.synced.secrets (name retired 2026-08-07f)"
         user_key: true
+        owner: shared
         default: "(~/.config/goose/secrets.yaml)"
         note: "SYNC, mtime-gate, chmod 0600. NOT an identity entry — the key's `~`
                is the GUEST home, element 0's is the HOST user's."
