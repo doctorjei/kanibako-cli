@@ -993,12 +993,7 @@ def _category_set_lookups(
 
 
 def _lenient_expand(snapshot: "Any", ctx: "Any", agent_name: str) -> "tuple[Any, dict[str, str]]":
-    """LENIENT ``expand`` of *snapshot*: ``(expanded, errors)``, deriving what the launch derives.
-
-    The mirror and auth keys exist only after the launch's expand, which answers a
-    reference to them through ``settings_launch.post_expand_keys``; the same derivation
-    here keeps a value the launch resolves from reading as dangling at set time.
-    """
+    """LENIENT ``expand``: ``(expanded, errors)``, deriving the keys the launch derives."""
     from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_launch import post_expand_keys
 
