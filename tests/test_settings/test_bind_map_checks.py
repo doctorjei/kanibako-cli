@@ -606,21 +606,51 @@ def test_a_reserved_pseudo_agent_name_is_not_named_as_a_bad_agent(
 
 
 @pytest.mark.parametrize(("spelling", "category"), _BIND_SPELLINGS)
-def test_the_deferred_read_withholds_the_name_verdict_unchanged(
+def test_the_deferred_read_still_carries_a_valid_agents_bare_scalar(
     tmp_path: Path, spelling: str, category: str,
 ) -> None:
-    """The DEFERRED read keeps its consumer's verdict, so this parse raises NOTHING here.
+    """THE DEFERRAL IS INTACT: a VALID agent's bare scalar is CARRIED here, not judged.
 
-    A ``pref:`` table is parsed without ``valid_agents`` on the pref-requests path, and its
-    consumer judges the agent segment in order. Extending the name check to that path would
-    duplicate one judgment in two places and refuse before the consumer ever runs.
+    ``defer_shape`` withholds the bare-scalar SHAPE verdict so ``apply_prefs`` can judge it in
+    order — and it withholds nothing else. This row guards that putting the name verdict ahead
+    of the shapes did not widen the carve-out over the one shape it was carved out for: the
+    value is stored VERBATIM and nothing is raised.
 
-    INVERT: run the name check on the deferred path too -> this row goes red, because the
-    parse starts raising instead of returning a store.
+    INVERT: judge the carried entry's shape here -> this row goes red on the raise.
     """
-    doc = _pref_agent_doc("zippity", category, "/src/a")
+    doc = _pref_agent_doc("claude", category, "/src/a")
     store = _file_partial(doc, path=_settings_file(tmp_path, doc), for_pref_requests=True)
-    assert store["pref"]["agent"]["zippity"] is not None
+    assert store["pref"]["agent"]["claude"] is not None
+
+
+@pytest.mark.parametrize(("spelling", "category"), _BIND_SPELLINGS)
+@pytest.mark.parametrize("entry", [
+    pytest.param("/src/a", id="bare-scalar"),
+    pytest.param({"old_name": {"src": "/s"}}, id="sub-table"),
+    pytest.param(["/src", "opts", "extra"], id="wrong-arity"),
+])
+def test_the_deferred_read_names_the_agent_for_every_shape(
+    tmp_path: Path, spelling: str, category: str, entry: Any,
+) -> None:
+    """Q2 AT THE DEFERRED DOOR: the name precedes every shape check, deferral or not.
+
+    The deferral is the SHAPE verdict's alone — the name was never part of it — so a bogus
+    agent is named on this path too, the bare scalar as much as the shapes judged here.
+    Otherwise the same bytes report a different defect depending on which door reads the
+    file, which is the drift one shared judgment exists to prevent.
+
+    INVERT: leave ``pref_agent`` off the deferred call -> all six rows go red: the four
+    judged-shape rows on their own shape message, the two bare-scalar rows on no refusal.
+    """
+    doc = _pref_agent_doc("zippity", category, entry)
+    path = _settings_file(tmp_path, doc)
+    with pytest.raises(SettingsError) as exc:
+        _file_partial(doc, path=path, for_pref_requests=True)
+    message = str(exc.value)
+    assert "it names agent 'zippity', which is not a valid agent" in message
+    assert "structured entry" not in message
+    assert "sub-table" not in message
+    assert "1 or 2 elements" not in message
 
 
 @pytest.mark.parametrize("doc", [
