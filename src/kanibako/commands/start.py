@@ -1449,7 +1449,7 @@ def _resolve_existing_box(
       alone (re-running ``create`` completes it); the launch path must treat a
       not-fully-registered box as "no box" → error.  ⚑ This holds for PRIMARY and
       NAMED (registration IS the signal); a half-created STANDALONE box resolves
-      named from its disk marker, which ``import_standalone`` leaves unregistered,
+      by name from its disk marker, which ``import_standalone`` leaves unregistered,
       so the caller refuses it on its pending create entry instead.
     * ``warn=False`` — a pure probe never doubles the non-conforming-name flag.
 
@@ -8599,7 +8599,12 @@ def _create_designation(probe) -> "tuple[str, str]":
 def recover_cure(probe) -> str:
     """The ``kanibako create … --recover`` line that finishes *probe*'s interrupted create."""
     mode_flag, root = _create_designation(probe)
-    return f"kanibako create{mode_flag} --recover {root}"
+    cure = f"kanibako create{mode_flag} --recover {root}"
+    # ⚑ A MEMBER NAME IS READ IN THE CWD'S WORKING SET ONLY, and a launch prints
+    # this from anywhere: the line enters the working set's root itself.
+    if probe.mode is BoxMode.named:
+        return f"cd {shlex.quote(str(probe.group.root))} && {cure}"
+    return cure
 
 
 def _write_create_entry(std, proj) -> None:
