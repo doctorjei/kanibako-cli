@@ -1059,8 +1059,13 @@ class TestPrefShapeVerdictFollowsTheAgentVerdict:
         """
         head, _, arm = category.rpartition(".")
         node: dict = {"somebox": "some-scalar"}
-        slot: dict = {arm: node} if head else node
-        leaf: dict = {"agent": {"zippity": {head: slot} if head else slot}}
+        # The four categories ARE the whole key, so the map is their value; an arm is
+        # nested under ``bindings``. Writing the map straight under the agent node
+        # would put ``somebox`` in the KEY PATH and never reach a bind map at all.
+        if head:
+            leaf: dict = {"agent": {"zippity": {head: {arm: node}}}}
+        else:
+            leaf = {"agent": {"zippity": {category: node}}}
         src = write(tmp_path / "workset.yaml", {"pref": leaf})
         with pytest.raises(SettingsError) as exc:
             apply_prefs(collect_prefs(src, None), valid_agents=AGENTS)
@@ -1121,22 +1126,25 @@ class TestPrefShapeVerdictFollowsTheAgentVerdict:
         apply_prefs(collect_prefs(src, None), valid_agents=AGENTS)
 
     def test_a_doubly_spelled_destination_is_refused_at_the_parse(self, tmp_path):
-        """The per-MAP check is not a shape verdict, so it still fires during the
-        parse rather than waiting for the agent. INVERT: defer it too -> reddens."""
+        """The per-MAP check is not a shape verdict, so it still fires during the parse.
+
+        ⚑ ONE entry is a BARE SCALAR, and that is the whole point: the deferred set is
+        carved out of the map, so a per-map check run only on what was carved OUT would
+        never see a destination spelled twice across the boundary. ``check_bind_map``
+        judges the sub-map, so the whole-map pass is load-bearing here — MUTATION-PROVED:
+        drop it and this is ACCEPTED, a silent accept where two keys are one
+        destination and the second overwrites the first.
+        """
         src = write(tmp_path / "workset.yaml", {
             "pref": {"agent": {"claude": {
                 # ``~`` expands to GUEST_HOME and a trailing slash is DROPPED, so
                 # these two keys are one destination — they must not both land.
-                "seeded": {"~/x": ["src"], "/home/agent/x/": ["src"]},
+                "seeded": {"~/x": ["src"], "/home/agent/x/": "some-scalar"},
             }}},
         })
         with pytest.raises(SettingsError) as exc:
-            apply_prefs(collect_prefs(src, None), valid_agents=AGENTS)
-        msg = str(exc.value)
-        assert "spells one destination twice" in msg
-        # Refused at the PARSE, so the request never reached the agent verdict: the
-        # target here is a VALID agent, and the map fault outranks nothing else.
-        assert "is not a valid agent" not in msg
+            collect_prefs(src, None)
+        assert "spells one destination twice" in str(exc.value)
 
     def test_a_non_pref_bind_map_is_unaffected(self):
         """The deferral is scoped to a ``pref.`` head: the same malformed map read as
