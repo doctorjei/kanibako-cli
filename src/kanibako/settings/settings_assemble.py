@@ -1083,25 +1083,16 @@ def _is_table_valued_agent_leaf(parts: tuple[str, ...]) -> bool:
 
 
 def _under_pref(parts: tuple[str, ...]) -> bool:
-    """Is *parts* a key path under a ``pref.`` head? (§2h)
-
-    ⚑ THE DEFERRAL PREDICATE. A ``pref:`` table is the ONE reader of this parse that has no
-    ``valid_agents``, so a ``pref.`` path cannot judge the AGENT SEGMENT here — and §2h's
-    allowlist is what judges it. The parse's entry-shape check would otherwise report
-    ``<category> entry '<dest>': must be a structured entry`` for a map whose real fault is an
-    unknown agent, so the user is sent to reshape an entry whose only defect is a name.
-    """
+    """Is *parts* a key path under a ``pref.`` head? (§2h)"""
     return parts[:1] == (PREF_ROOT,)
 
 
 def _is_bare_scalar_entry(value: Any) -> bool:
-    """Is *value* a bind-map entry that is a BARE SCALAR — the one shape nothing can salvage?
+    """Is *value* a bind-map entry that is a BARE SCALAR?
 
-    A dest-keyed entry is ``[src[, options]]``, so a list or a tuple is a structured-entry
-    attempt (its arity is judgeable here) and a table is the retired name-keyed shape (a
-    verdict about a SPELLING). A bare scalar is neither: it can only ever be refused for
-    being what it is, and saying so is what §2h's agent verdict has to precede. A present
-    ``None`` is §2h's per-entry OMIT and is never one of these.
+    ⚑ A list is a structured-entry ATTEMPT (its arity is judgeable at the parse) and a table
+    is the retired SPELLING; a bare scalar is neither, and is the one verdict §2h's agent
+    judgment must precede. ``None`` is the per-entry OMIT.
     """
     return value is not None and not isinstance(value, (list, tuple, dict))
 
@@ -1120,7 +1111,7 @@ def _at_declared_category(parts: tuple[str, ...]) -> bool:
 
 def _parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
-    path: tuple[str, ...] = (),
+    path: tuple[str, ...] = (), for_pref_requests: bool = False,
 ) -> Any:
     """Recursively coerce a raw settings node into the ``StoreValue`` space.
 
@@ -1144,7 +1135,7 @@ def _parse_node(
                     store[key_s] = parse_bind_map(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
                         declared=_at_declared_category((*path, key_s)),
-                        defer_shape=_under_pref(path),
+                        defer_shape=for_pref_requests and _under_pref(path),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1158,7 +1149,7 @@ def _parse_node(
                         sub, category=key_s,
                         root_ref=_declaration_root_ref(path, key_s),
                         declared=_at_declared_category((*path, key_s)),
-                        defer_shape=_under_pref(path),
+                        defer_shape=for_pref_requests and _under_pref(path),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1177,6 +1168,7 @@ def _parse_node(
                 sub,
                 in_binds=descend_binds,
                 dest_keyed=dest_keyed,
+                for_pref_requests=for_pref_requests,
                 at_bindings=(not in_binds and key_s == _DEST_KEYED_CATEGORY),
                 path=(*path, key_s),
             )
@@ -1220,13 +1212,10 @@ def parse_bind_map(
     root is supplied HERE (:func:`_declared_source`) and never downstream — rooting at
     ASSEMBLY is FORBIDDEN by §2a.
 
-    ⚑ *defer_shape* is a ``pref.`` path's (§2h) — see :func:`_under_pref`. It withholds
-    ONLY the verdict on a BARE-SCALAR entry (:func:`_is_bare_scalar_entry`), leaving that
-    value in the store verbatim for
-    :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`; the
-    doubly-spelled-destination, retired-sub-table and unrooted-source checks all still run
-    HERE. A value that unpacked is stored as a :class:`BindEntry` whatever *defer_shape*
-    says, so a well-formed entry is never carried into the deferred pass.
+    ⚑ *defer_shape* is a ``pref.`` path's (:func:`_under_pref`): it withholds ONLY the
+    bare-scalar entry verdict, carrying that value for
+    :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`. Every other check
+    still runs here, on the WHOLE map.
     """
     if not isinstance(raw, dict):
         raise SettingsError(
@@ -1236,15 +1225,9 @@ def parse_bind_map(
     if not defer_shape:
         check_bind_map(raw, category=category, declared=declared)
     else:
-        # ⚑ THE PER-MAP CHECK IS NOT A SHAPE VERDICT, so it still runs on the WHOLE
-        # map: two spellings of one destination is a fact about the map, not about
-        # any entry's shape.
+        # ⚑ NOT A SHAPE VERDICT, so it runs on the WHOLE map: a destination spelled twice
+        # is a fact about the map, and the sub-map cannot see one straddling the carve-out.
         refuse_dest_spelled_twice(raw, category=category)
-        # ⚑ AND THE DEFERRED SET IS THE BARE SCALAR, the one value that can never be a
-        # ``[src[, options]]`` entry. A sub-table is a table, not a scalar, and stays
-        # here: the retired-shape verdict names a SPELLING, and it holds whatever the
-        # agent segment says. A list is a structured-entry attempt, so its arity is
-        # judged here too — only the value that is not an entry at all waits.
         check_bind_map(
             {k: v for k, v in raw.items() if not _is_bare_scalar_entry(v)},
             category=category, declared=declared,
@@ -1256,9 +1239,8 @@ def parse_bind_map(
         # load-bearing alone. ⚑ The VALUE is never canonicalized: a host_src stays as authored.
         dest = normalize_bind_dest(str(key))
         if defer_shape and _is_bare_scalar_entry(sub):
-            # ⚑ Carried VERBATIM for the deferred verdict, and never unpacked: a
-            # ``BindEntry`` is what says the entry is well-formed, so deferring the
-            # shape means deferring the unpack that would have proved it.
+            # ⚑ Carried VERBATIM and never unpacked: a ``BindEntry`` is what SAYS an
+            # entry is well-formed, so deferring the shape defers that proof.
             store[dest] = sub
             continue
         entry = _parse_node(sub, in_binds=True, dest_keyed=True)
@@ -1286,6 +1268,7 @@ def _declared_source(
 
 def _parse_naming_file(
     raw: dict, *, file_path: Path | None, key_path: tuple[str, ...] = (),
+    for_pref_requests: bool = False,
 ) -> KeyStore:
     """Parse one settings file's node, NAMING *file_path* in every refusal the parse raises.
 
@@ -1301,7 +1284,9 @@ def _parse_naming_file(
     difference between them (the agent file's walk starts one scope in).
     """
     try:
-        parsed = _parse_node(raw, in_binds=False, path=key_path)
+        parsed = _parse_node(
+            raw, in_binds=False, path=key_path, for_pref_requests=for_pref_requests,
+        )
     except (ReservedKeyError, SettingsError) as exc:
         where = str(file_path) if file_path is not None else "<settings>"
         raise SettingsError(f"{exc} (in settings file {where})") from exc
@@ -1310,7 +1295,7 @@ def _parse_naming_file(
 
 
 def _file_partial(
-    raw: dict, *, path: Path | None = None,
+    raw: dict, *, path: Path | None = None, for_pref_requests: bool = False,
 ) -> KeyStore:
     """Build ONE level partial from a settings file's WHOLE nested content, SCOPE TOKEN KEPT (§0).
 
@@ -1324,6 +1309,12 @@ def _file_partial(
     leaf name (``box: get:``) and the RETIRED name-keyed §2a shape both named the offending KEY and
     left the user to work out WHICH of six cascade files to edit — the key is the defect, but the
     file is the address, and a cure with no address is a cure the user has to hunt for.
+    ⚑ *for_pref_requests* marks the ONE reader whose consumer judges the agent segment
+    (:func:`~kanibako.settings.settings_prefs.apply_prefs`), so only there is a bare-scalar
+    entry's verdict deferred — see :func:`_is_bare_scalar_entry`. The CASCADE's own read of
+    the same file is a different reader with a different consumer and keeps the verdict here,
+    because a value installed at a target is read at that target (spec §2h).
+
     ⚑ NO LIVE CALLER OMITS IT ANY MORE. It stayed optional for the one that parsed a SYNTHESIZED
     table — ``collect_prefs``' ``{pref: …}`` wrapper — but that table is still read OFF a real
     workset or box file, and that file is what its refusals must name, so it passes the path too.
@@ -1332,7 +1323,10 @@ def _file_partial(
     """
     if not isinstance(raw, dict):
         return KeyStore()
-    return _parse_naming_file(fold_agent_nodes(raw, path=path), file_path=path)
+    return _parse_naming_file(
+        fold_agent_nodes(raw, path=path), file_path=path,
+        for_pref_requests=for_pref_requests,
+    )
 
 
 def _agent_partial(

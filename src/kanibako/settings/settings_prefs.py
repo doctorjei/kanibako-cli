@@ -243,7 +243,14 @@ def collect_prefs(
                 # ⚑ *path* IS THE FILE THIS TABLE CAME OFF, and the parse must name it: a
                 # refusal raised in here is about the file the loop is holding, not about
                 # the synthesized ``{pref: …}`` wrapper built to carry it.
-                _file_partial({PREF_ROOT: table}, path=path),
+                # ⚑⚑ AND ``for_pref_requests`` — this is the ONE reader with no
+                # ``valid_agents``, whose requests :func:`apply_prefs` judges. It is why a
+                # bare-scalar entry's verdict waits for the agent segment rather than
+                # pre-empting it here; the cascade's own read of the same file is NOT that
+                # reader and still judges it.
+                _file_partial(
+                    {PREF_ROOT: table}, path=path, for_pref_requests=True,
+                ),
                 level=level, path=path,
             )
         )
@@ -427,20 +434,16 @@ def forbidden_tier_reason(target: str, *, level: str) -> str | None:
 def refuse_deferred_pref_shapes(req: PrefRequest) -> None:
     """RAISE on a bind-shaped pref value the parse left unjudged; pass when every entry is well-formed.
 
-    ⚑ THE DEFERRED HALF OF §2h's ORDER. The parse reads a ``pref:`` table without
-    ``valid_agents`` (:func:`~kanibako.settings.settings_assemble._under_pref`), so it cannot
-    know whether the target's agent segment names a real agent; a per-entry shape verdict
-    raised there would name the entry's shape for a request whose real fault is the AGENT
-    NAME. The parse therefore carries a malformed entry verbatim
-    (:func:`~kanibako.settings.settings_assemble.parse_bind_map`) and this judges it here —
-    after :func:`validate_pref` has ruled on the target, so the agent verdict is the one the
-    user reads first.
+    ⚑ THE DEFERRED HALF OF §2h's ORDER. A ``pref:`` table is read without ``valid_agents``,
+    so the parse cannot judge the AGENT SEGMENT, and a shape verdict raised there would send
+    the user to reshape an entry whose only defect is a name. The parse carries the entry
+    verbatim (:func:`~kanibako.settings.settings_assemble.parse_bind_map`); this judges it
+    after :func:`validate_pref` has ruled on the target, so the agent verdict reads first.
 
-    ⚑ ONE JUDGE, THE SAME CALL THE PARSE DEFERS: the offenders go back through
-    :func:`~kanibako.settings.settings_resolve.check_bind_map`, so the wording and the
-    ``(in settings file …)`` clause are the parse's own and cannot drift from it. Only a
-    non-``BindEntry`` value is an offender — a well-formed entry was already unpacked, and a
-    ``None`` entry is §2h's per-entry OMIT, not a shape fault.
+    ⚑ ONE JUDGE, THE CALL THE PARSE DEFERS: the offenders go back through
+    :func:`~kanibako.settings.settings_resolve.check_bind_map`, so the wording and the file
+    clause are the parse's own and cannot drift. A ``None`` entry is §2h's per-entry OMIT,
+    not a shape fault, and is never an offender.
     """
     from kanibako.settings.kb_store import BindEntry
     from kanibako.settings.settings_resolve import check_bind_map
@@ -469,14 +472,11 @@ def _bind_category_of(target: str) -> str | None:
 
     ⚑ A bind-shaped pref target is the WHOLE CATEGORY KEY — ``<agent>.seeded`` or
     ``<agent>.bindings.ro`` — because a destination is data inside its value and never a key
-    segment (§2h's "no bind-shaped category is such a family"). So the category is the
-    target's own TRAILING token, matched against
-    :data:`~kanibako.settings.settings_keyspace.BIND_CATEGORIES` rather than re-listed here.
-    Both spellings are tried because the members disagree on depth: the four categories are
-    ONE token (``seeded``), the two ``bindings`` arms are TWO (``bindings.rw``), and
-    ``<agent>.bindings.rw`` ends in the bare arm name. ``masks`` is dest-keyed too but is a
-    MARKER map, not a bind map, and its entries are 3-state markers — it is deliberately
-    absent.
+    segment (§2h's "no bind-shaped category is such a family"). The category is therefore
+    the target's TRAILING token, read from
+    :data:`~kanibako.settings.settings_keyspace.BIND_CATEGORIES` rather than re-listed here;
+    both depths are tried because the members disagree (one token vs ``bindings.<arm>``).
+    ``masks`` is dest-keyed too but holds 3-state markers, so it is deliberately absent.
     """
     from kanibako.settings.settings_keyspace import BIND_CATEGORIES
 
@@ -587,9 +587,8 @@ def apply_prefs(
                 f"legal "
                 f"only at {' / '.join(PREF_LEGAL_LEVELS)} (spec §2h)."
             )
-        # ⚑ ORDER, and it is the whole point: the TARGET is judged first, so a request
-        # naming an unknown agent is told THAT, and only a target the allowlist accepted
-        # reaches the entry-shape verdict the parse deferred.
+        # ⚑ ORDER: the TARGET is judged first, so a request naming an unknown agent is
+        # told THAT; only an accepted target reaches the deferred shape verdict.
         refuse_deferred_pref_shapes(req)
         if req.level == "box":
             box.append(req)
