@@ -618,14 +618,15 @@ def run_connect(args: argparse.Namespace) -> int:
         print(f"Error: Cannot connect '{source.resolve()}': {present}", file=sys.stderr)
         return 1
 
-    # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected.  ONE cure
-    # for both arms — a box at this workset's member leaf converts in place.
+    # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected.  In-tree,
+    # the in-place cure must land on THIS leaf, so it carries the leaf's name.
     owner = primary_box_name_for_workspace(std.primary_workset, str(resolved))
     if owner is not None:
+        rename = f" --name {project_name}" if in_tree and owner != project_name else ""
         print(
             f"Error: Cannot connect '{resolved}': "
             + ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX % (
-                owner, ws.name, owner, ws.name, owner, ws.name, owner, owner,
+                owner, ws.name, owner, ws.name, rename, owner, ws.name, owner, owner,
             ),
             file=sys.stderr,
         )
