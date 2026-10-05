@@ -2538,8 +2538,6 @@ def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]:
 #: read-only (§0), so there is no spelling of "null the inbox" to offer as a cure.
 _META_NULL_ORIGIN: dict[str, tuple[str, ...]] = {
     "meta.box.inbox": ("workset.channels.mailboxes", "system.channels.mailboxes"),
-    "meta.box.share_global": ("workset.channels.share_global", "system.channels.share"),
-    "meta.box.share_workset": ("workset.channels.share", "system.channels.share"),
 }
 
 
