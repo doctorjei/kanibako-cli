@@ -1776,9 +1776,13 @@ def set_config_value(
         canonical, command_scope=command_scope,
         config_path=config_path, settings_path=system_settings_path,
     )
+    # Its system tier is ``std``'s record; the system door names no workset, and when
+    # ``std`` failed it reads the record from the file it writes.
+    system_door = command_scope is ConfigLevel.system
     early_err = None if early_dest is None else early_key_set_error(
-        canonical, value, written_file=early_dest.file,
-        standalone_reads=command_scope is ConfigLevel.system,
+        canonical, value, written_file=early_dest.file, standalone_reads=system_door,
+        early_system=None if std is None else std.early_system, std_error=target_error,
+        workset_name=None if system_door or ws is None else ws.name,
     )
     if early_err is not None:
         return _refusal("Error: " + ERR_WORKSET_EARLY_SET_HEAD % early_err)
