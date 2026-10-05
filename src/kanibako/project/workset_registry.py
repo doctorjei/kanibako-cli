@@ -38,11 +38,10 @@ from pathlib import Path
 from typing import Any
 
 from kanibako.identifiers import find_identifier
-from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
+from kanibako.settings.workset_dirkeys import early_repoint, resolve_workset_dir_key
 from kanibako.errors import LegacyRegistryIdentityError, ProjectError
 
 # The DEFAULT leaf ``workset.registry`` falls back to — ⚑ a fallback, never a path
@@ -256,14 +255,11 @@ def resolve_workset_registry_path(
     workset's MEMBERSHIP and its entry keys are the only source of box names, so the
     default would read a file the user says is not there.
     """
-    from kanibako.project.workset import _workset_path_repoint
-
-    repoint = _workset_path_repoint(workset_settings, "registry")
+    repoint, where = early_repoint(workset_root, workset_settings, "registry")
     if repoint is None:
-        raise SettingsError(ERR_CONFIG_NULL_PATH % (
-            workset_root / WORKSET_META_FILE, "workset.registry",
-        ))
+        raise SettingsError(ERR_CONFIG_NULL_PATH % (where, "workset.registry"))
     return resolve_workset_dir_key(
         workset_root, repoint if isinstance(repoint, str) else None,
-        _REGISTRY_FILE, key="registry",
+        _REGISTRY_FILE, key="registry", where=where, standalone=False,
+        workset_settings=workset_settings,
     )

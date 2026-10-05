@@ -389,7 +389,7 @@ class TestTeardownResolvesBeforeItDeletes:
     def test_a_null_box_store_refuses_the_purge_before_the_unregister(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        """A null ``workset.boxes`` refuses through the logs default (``@meta.box.path``);
+        """A null ``workset.boxes`` refuses through the logs default (``@workset.boxes``);
         the refusal lands while the box is still REGISTERED, not after the unregister."""
         from kanibako.commands.box._parser import _rm_standalone
         from kanibako.project import registry_store

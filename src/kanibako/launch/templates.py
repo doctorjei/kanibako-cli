@@ -648,8 +648,7 @@ def _assert_stamp_leaf_in_root(
     re-read — the stamp's one-read property is what stops two answers about one file.
     """
     from kanibako.errors import TemplateScopeError
-    from kanibako.project.workset import _workset_path_repoint
-    from kanibako.settings.config import WORKSET_META_FILE
+    from kanibako.settings.workset_dirkeys import early_repoint
 
     if _is_contained(resolved, workset_path):
         return
@@ -657,9 +656,9 @@ def _assert_stamp_leaf_in_root(
     # of the root, so the message has to be able to say that instead of printing the
     # sentinel.  ⚑ A null ``workset.<leaf>`` never names a layer to check — see
     # :func:`_workset_stamp_dirs`.
-    repoint = _workset_path_repoint(doc, leaf)
+    repoint, where = early_repoint(workset_path, doc, leaf)
     origin = (
-        f"is set to {repoint!r} in {workset_path / WORKSET_META_FILE}"
+        f"is set to {repoint!r} in {where}"
         if isinstance(repoint, str)
         else f"takes its default {leaf!r} leaf under this root"
     )
@@ -668,7 +667,7 @@ def _assert_stamp_leaf_in_root(
         f"OUTSIDE the workset root {str(workset_path.resolve())!r}. The workset stamp "
         f"writes only inside the root it is stamping, so NOTHING was created "
         f"(spec §2a). Repoint workset.{leaf} to a path under the workset root, or "
-        f"remove it from {WORKSET_META_FILE} to take the default {leaf!r}."
+        f"remove it from {where.name} to take the default {leaf!r}."
     )
 
 

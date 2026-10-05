@@ -317,7 +317,7 @@ class TestB2bWorksetAnchors:
         # Standalone roots its degenerate workset at the project dir: the box store
         # is the box_data/ marker dir, and the logs live inside the box root itself.
         assert floor["workset.boxes"] == "@meta.workset.path/box_data"
-        assert floor["workset.logs"] == "@meta.box.path"
+        assert floor["workset.logs"] == "@workset.boxes"
         # The vault roots are UNIFORM with primary/named (only the BIND differs).
         assert floor["workset.vault_ro"] == "@meta.workset.path/vault/ro"
         assert floor["workset.vault_rw"] == "@meta.workset.path/vault/rw"
@@ -328,7 +328,7 @@ class TestB2bWorksetAnchors:
         # No invented resolved-literal anchors remain — not for home/vault, and
         # (since PHASE R made the spec's spelling expressible) not for the log
         # either: the bind is ``@workset.logs/@{meta.box.name}.jsonl``, and
-        # ``workset.logs = @meta.box.path`` above is what makes it standalone.
+        # ``workset.logs = @workset.boxes`` above is what makes it standalone.
         assert "meta.box.home_src" not in floor
         assert "meta.box.helper_log" not in floor
         assert "meta.box.vault_ro_src" not in floor

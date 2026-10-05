@@ -2388,7 +2388,7 @@ def _start_helper_hub(
     socket_path = helper_socket_path(proj, _run_dir)
     # Per-box, per-mode HOST helper log — the RESOLVED @workset.logs of that
     # box's workset root in EVERY mode (STANDALONE resolves it against the
-    # degenerate workset at the project dir, default @meta.box.path =
+    # degenerate workset at the project dir, default @workset.boxes =
     # box_data/), not the old shared @config.data/logs/<id>/ location.
     # Guarantee-create the parent before the ro bind (L7).
     # ⚑⚑ THE RESOLVED KEY IS WHAT MAKES THIS AGREE WITH THE MOUNT, which is

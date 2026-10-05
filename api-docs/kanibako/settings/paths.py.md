@@ -40,6 +40,7 @@ def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home
 def resolve_system_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path) -> dict[str, Path]
 def host_config_map(std: StandardPaths) -> dict[str, str]
 def system_path_floor(std: StandardPaths) -> dict[str, str]
+def layer1_set_values(user_config_path: Path) -> dict[str, str]
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> dict[str, Path]
 def resolve_data_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def resolve_state_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path

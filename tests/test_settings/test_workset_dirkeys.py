@@ -17,9 +17,14 @@ from pathlib import Path
 import pytest
 
 from kanibako.project import workset, workset_registry
+from kanibako.settings.config import system_settings_path
+from kanibako.settings.config_io import dump_doc
+from kanibako.settings.config_keys import _KEY_ROUTES
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import (
+    WORKSET_EARLY_KEYS,
     WORKSET_PATH_REF,
+    early_repoint,
     resolve_workset_dir_key,
 )
 
@@ -241,59 +246,139 @@ class TestTheRouteItself:
         ).is_absolute()
 
 
-class TestExtraRefsIsNarrow:
-    """``extra_refs`` admits ONLY what the caller passes, and only where it passes it.
+def _write_system(workset_table: dict) -> Path:
+    """Write *workset_table* as the system settings file's ``workset:`` table; its path."""
+    path = system_settings_path()
+    dump_doc(path, {"workset": workset_table})
+    return path
 
-    ⚑ The sweep above is the other half of this pair and must stay untouched: it calls
-    every face on the UN-WIDENED route, where ``@meta.box.path`` is one of the
-    ``_UNRESOLVABLE`` poisons.  If widening this route ever made that sweep go green
-    without ``extra_refs``, the refusal would have become a guess — and in primary/named
-    the guess is a trailing-separator box root, not an error anyone would see.
-    """
 
-    #: The one ref a caller supplies today (standalone ``workset.logs``), with a value
-    #: it has already resolved.  The NAME alone buys nothing — the value is the point.
-    _BOX_PATH = {"meta.box.path": "/ws/box_data"}
+def _routed(key: str, value: object) -> dict:
+    """A ``workset:`` table carrying *value* at ``workset.<key>``'s routed slot."""
+    sections, slot = _KEY_ROUTES[f"workset.{key}"]
+    table: dict = {slot: value}
+    for section in reversed(sections[1:]):
+        table = {section: table}
+    return table
 
-    def test_a_supplied_ref_resolves(self):
+
+class TestTheSystemFileIsTheTierBeneath:
+    """``system < workset`` for every early key: a system value applies, the workset's wins."""
+
+    @pytest.mark.parametrize("key", sorted(WORKSET_EARLY_KEYS))
+    def test_every_early_key_reads_the_system_tier(self, key, tmp_path):
+        system = _write_system(_routed(key, "/sys/x"))
+        assert early_repoint(tmp_path, None, key) == ("/sys/x", system)
+
+    @pytest.mark.parametrize("key", sorted(WORKSET_EARLY_KEYS))
+    def test_the_workset_file_wins_its_null_included(self, key, tmp_path):
+        _write_system(_routed(key, "/sys/x"))
+        own = tmp_path / "workset.yaml"
+        assert early_repoint(tmp_path, {"workset": _routed(key, "/own")}, key) == ("/own", own)
+        assert early_repoint(tmp_path, {"workset": _routed(key, None)}, key) == (None, own)
+
+    def test_a_system_value_reaches_the_faces(self, tmp_path):
+        _write_system({"boxes": "/sys/boxes", "registry": "@meta.workset.path/r.yaml"})
+        assert workset.resolve_workset_boxes(tmp_path, None) == Path("/sys/boxes")
+        assert workset_registry.resolve_workset_registry_path(tmp_path, None) == (
+            tmp_path / "r.yaml"
+        )
+
+    def test_a_workset_value_beats_it_at_the_face(self, tmp_path):
+        _write_system({"boxes": "/sys/boxes"})
+        doc = {"workset": {"boxes": "/own/boxes"}}
+        assert workset.resolve_workset_boxes(tmp_path, doc) == Path("/own/boxes")
+
+    def test_a_workset_null_beats_a_system_value(self, tmp_path):
+        _write_system({"logs": "/sys/logs"})
+        assert workset.resolve_workset_logs(tmp_path, {"workset": {"logs": None}}) is None
+
+    def test_a_system_null_is_honored_like_a_workset_one(self, tmp_path):
+        system = _write_system({"logs": None, "boxes": None})
+        assert workset.resolve_workset_logs(tmp_path, None) is None
+        with pytest.raises(SettingsError) as excinfo:
+            workset.resolve_workset_boxes(tmp_path, None)
+        assert str(system) in str(excinfo.value)
+        assert "workset.boxes" in str(excinfo.value)
+
+    def test_a_refusal_names_the_system_file(self, tmp_path):
+        system = _write_system({"boxes": "/z/$AGENT"})
+        with pytest.raises(SettingsError) as excinfo:
+            workset.resolve_workset_boxes(tmp_path, None)
+        assert str(system) in str(excinfo.value)
+
+
+class TestSameSetRefs:
+    """A workset early key may reference another one; the same route resolves it."""
+
+    def test_the_spec_channel_default_resolves(self, tmp_path):
+        doc = {"workset": {"channelroot": "@meta.workset.path/chan"}}
         assert resolve_workset_dir_key(
-            Path("/ws"), "@meta.box.path/x", "", key="logs",
-            extra_refs=self._BOX_PATH,
-        ) == Path("/ws/box_data/x")
+            tmp_path, "@workset.channelroot/chat", "chat", key="channels.chat",
+            standalone=False, workset_settings=doc,
+        ) == tmp_path / "chan" / "chat"
 
-    def test_the_same_ref_still_refuses_without_it(self):
+    def test_an_unset_referent_takes_its_declared_default_through_a_chain(self, tmp_path):
+        assert resolve_workset_dir_key(
+            tmp_path, "@workset.channels.chat/broadcast.md", "", key="channels.broadcast",
+            standalone=False,
+        ) == tmp_path / "channels" / "chat" / "broadcast.md"
+
+    def test_a_referent_reads_the_system_tier(self, tmp_path):
+        _write_system({"channelroot": "/sys/chan"})
+        assert resolve_workset_dir_key(
+            tmp_path, "@workset.channelroot/chat", "", key="channels.chat", standalone=False,
+        ) == Path("/sys/chan/chat")
+
+    @pytest.mark.parametrize(("standalone", "leaf"), [(True, "box_data"), (False, "boxes")])
+    def test_the_mode_picks_the_referents_default(self, standalone, leaf, tmp_path):
+        assert resolve_workset_dir_key(
+            tmp_path, "@workset.boxes/x", "", key="logs", standalone=standalone,
+        ) == tmp_path / leaf / "x"
+
+    def test_an_unknown_mode_refuses_a_mode_split_default(self, tmp_path):
+        with pytest.raises(SettingsError) as excinfo:
+            resolve_workset_dir_key(tmp_path, "@workset.boxes/x", "", key="canon")
+        message = str(excinfo.value)
+        assert "'@workset.boxes' is unset" in message
+        assert "box_data" in message
+
+    def test_a_cycle_is_refused(self, tmp_path):
+        doc = {"workset": {
+            "channelroot": "@workset.channels.chat/x",
+            "channels": {"chat": "@workset.channelroot/chat"},
+        }}
+        with pytest.raises(SettingsError, match="Cyclic @-reference: workset.channelroot"):
+            resolve_workset_dir_key(
+                tmp_path, "@workset.channels.chat/x", "", key="channelroot",
+                standalone=False, workset_settings=doc,
+            )
+
+    def test_a_null_referent_is_refused(self, tmp_path):
+        with pytest.raises(SettingsError, match="'@workset.channelroot' is null"):
+            resolve_workset_dir_key(
+                tmp_path, "@workset.channelroot/chat", "", key="channels.chat",
+                standalone=False, workset_settings={"workset": {"channelroot": None}},
+            )
+
+    def test_a_workset_key_outside_the_early_keys_is_refused(self, tmp_path):
+        with pytest.raises(SettingsError, match="'@workset.kuid' cannot be resolved here"):
+            resolve_workset_dir_key(tmp_path, "@workset.kuid/x", "", key="logs")
+
+    def test_a_ref_into_a_later_set_gets_the_ordering_verdict(self, tmp_path):
         with pytest.raises(SettingsError) as excinfo:
             resolve_workset_dir_key(
-                Path("/ws"), "@meta.box.path/x", "logs", key="logs",
+                tmp_path, "@meta.box.path", "", key="logs", standalone=True,
             )
         message = str(excinfo.value)
-        assert "meta.box.path" in message
-        assert "workset.logs" in message
-        assert "/ws/workset.yaml" in message
+        assert 'system-design "Ordering rule"' in message
+        assert str(tmp_path / "workset.yaml") in message
 
-    def test_a_ref_outside_the_supplied_map_still_refuses(self):
-        # Widening for ONE name must not widen for the next one along.
-        with pytest.raises(SettingsError) as excinfo:
-            resolve_workset_dir_key(
-                Path("/ws"), "@config.data/x", "", key="logs",
-                extra_refs=self._BOX_PATH,
-            )
-        message = str(excinfo.value)
-        assert "@config.data" in message
-        # The refusal lists what IS available, supplied refs included.
-        assert WORKSET_PATH_REF in message
-        assert "meta.box.path" in message
-
-    def test_the_workset_root_ref_survives_the_widening(self):
-        assert resolve_workset_dir_key(
-            Path("/ws"), f"@{WORKSET_PATH_REF}/logs", "", key="logs",
-            extra_refs=self._BOX_PATH,
-        ) == Path("/ws/logs")
-
-    def test_a_supplied_value_is_a_leaf_not_a_second_expansion_pass(self):
-        # ⚑ ``expand_expr`` never re-scans a substituted value; a host dir whose NAME
-        # contains an ``@`` must survive verbatim rather than being resolved again.
-        assert resolve_workset_dir_key(
-            Path("/ws"), "@meta.box.path/x", "", key="logs",
-            extra_refs={"meta.box.path": "/store/@config.data"},
-        ) == Path("/store/@config.data/x")
+    def test_the_standalone_logs_default_is_the_box_store(self, tmp_path):
+        assert workset.resolve_workset_logs(tmp_path, None, standalone=True) == (
+            tmp_path / "box_data"
+        )
+        doc = {"workset": {"boxes": "@meta.workset.path/store"}}
+        assert workset.resolve_workset_logs(tmp_path, doc, standalone=True) == (
+            tmp_path / "store"
+        )

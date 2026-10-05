@@ -662,18 +662,23 @@ def system_settings_path() -> Path:
 
     ⚑ Path resolution only, deliberately NOT ``paths.load_std_paths``: that one
     RAISES when no Layer-1 file exists, which a pre-cascade reader may not do to a
-    box that has never been set up.
+    box that has never been set up.  ⚑ And NOT ``paths.load_system_config``: that
+    resolves the primary workset's dir keys, which read this file through
+    ``workset_dirkeys.early_repoint``.  ``spec_default_xdg_map``, so a reader on the
+    detection side creates nothing.
     ⚑ The returned path need not exist — every reader here treats an absent file as
     "unset", which is exactly what a fresh install is.
     """
     from kanibako.settings.bootstrap import (XDG_DATA_HOME, XDG_SPEC_DEFAULTS)
-    from kanibako.settings.paths import load_system_config, xdg
+    from kanibako.settings.paths import (layer1_set_values, resolve_config_paths,
+                                         spec_default_xdg_map, xdg)
 
-    return load_system_config(
-        user_config_file(),
-        data_home=xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME]),
-        home=Path.home(),
-    )["config.settings"]
+    data_home = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    config = resolve_config_paths(
+        layer1_set_values(user_config_file()), data_home=data_home, home=Path.home(),
+        xdg_vars=spec_default_xdg_map(data_home),
+    )
+    return Path(config["config.settings"])
 
 
 def read_system_agent(system_path: Path | None) -> str | None:

@@ -376,7 +376,7 @@ helpers:
   # Per-box helper message log → ~/.kanibako/state/helpers.jsonl (ro).
   # THE SPEC'S OWN SPELLING (§2c ALL PROJECTS): @workset.logs/@{meta.box.name}.jsonl
   # — ONE row for every mode, because `workset.logs` carries the per-mode variation
-  # (primary/named @meta.workset.path/logs · standalone @meta.box.path).
+  # (primary/named @meta.workset.path/logs · standalone @workset.boxes).
   #
   # ⚑ THE BRACES ARE LOAD-BEARING, do not "simplify" them away.  A literal `.jsonl`
   # follows a dotted @-ref here, and the BARE form cannot express that: an @-ref name

@@ -760,7 +760,7 @@ def workset_anchor_floor(
         ),
         "workset.vault_ro": "@meta.workset.path/vault/ro",
         "workset.vault_rw": "@meta.workset.path/vault/rw",
-        "workset.logs": "@meta.box.path" if standalone else "@meta.workset.path/logs",
+        "workset.logs": "@workset.boxes" if standalone else "@meta.workset.path/logs",
         # The RO per-mode BOX ROOT — the anchor every rooted box key spells itself
         # against. STANDALONE is the EMPTY LEAF (a bare whole-value ref).
         "meta.box.path": (
