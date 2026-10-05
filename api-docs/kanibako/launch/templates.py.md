@@ -36,8 +36,8 @@ def stage_layers(dest: Path, layers: list[Path]) -> None
 def copy_tree(src: Path, dest: Path, *, overwrite: bool=False, scope: str | WorksetStampScope | None=None, dest_root: Path | None=None, check_only: bool=False) -> None
 def packaged_box_home_template() -> Path | None
 def ensure_agent_stores(std: StandardPaths, agent_names: 'Iterable[str]') -> list[str]
-def check_workset_template(std: StandardPaths, workset_path: Path, *, canon_only: bool=False) -> None
-def install_workset_template(std: StandardPaths, workset_path: Path, *, canon_only: bool=False) -> None
+def check_workset_template(std: StandardPaths, workset_path: Path, *, workset_name: str, canon_only: bool=False) -> None
+def install_workset_template(std: StandardPaths, workset_path: Path, *, workset_name: str, canon_only: bool=False) -> None
 def handbook_layer_source_keys(proj: ProjectPaths, agent_id: str | None) -> tuple[str, ...]
 def install_box_handbook_template(dest: Path, layer_roots: Iterable[Path]) -> None
 def install_packaged_templates(std: StandardPaths, agent_names: list[str], refresh: bool=False) -> None

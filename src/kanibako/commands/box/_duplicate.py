@@ -23,6 +23,7 @@ from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
     WorksetSpec,
+    _early_scope,
     _resolve_local_dir,
     _resolve_workset_or_connected,
     assign_primary_box_name,
@@ -122,7 +123,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     # membership, so the guard does not apply to them.
     if target_mode == BoxMode.primary:
         existing_box = primary_box_name_for_workspace(
-            std.primary_workset, str(new_path),
+            std.primary_workset, str(new_path), early=_early_scope(std, BoxMode.primary),
         )
         if existing_box is not None:
             print(
@@ -138,7 +139,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     if target_mode == BoxMode.standalone and not args.bare:
         from kanibako.project.workset import refuse_null_workspaces
 
-        refuse_null_workspaces(new_path, f"a workspace for '{new_path.name}'", standalone=True)
+        refuse_null_workspaces(new_path, f"a workspace for '{new_path.name}'", standalone=True,
+                               early=_early_scope(std, BoxMode.standalone))
 
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
@@ -179,6 +181,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             )
             dest_workspace = resolve_workset_workspaces(
                 new_path, load_workset_settings_doc(new_path), standalone=True,
+                early=_early_scope(std, BoxMode.standalone),
             )
             assert dest_workspace is not None  # a nulling root refused before the prompt
             _merge_workspace(workspace_src, dest_workspace, args.force)
@@ -369,7 +372,7 @@ def _unwind_local_name(std, project_name: str, dst_project: Path) -> None:
     guarded so one failure does not mask the rest.
     """
     try:
-        unregister_primary_box_name(std.primary_workset, project_name)
+        unregister_primary_box_name(std.primary_workset, project_name, early=_early_scope(std, BoxMode.primary))
     except Exception:  # noqa: BLE001 - best-effort restore
         pass
     try:
@@ -403,7 +406,7 @@ def _assert_dup_home_free(std, name: str) -> None:
     try:
         _assert_primary_home_free_for_create(std, name)
     except ProjectError:
-        unregister_primary_box_name(std.primary_workset, name)
+        unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
         raise
 
 
@@ -419,7 +422,7 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     # Registers the PRIMARY membership (the sole store; a duplicate now joins the
     # membership like any other primary box — closing the old global-only gap).
     project_name = assign_primary_box_name(
-        std.primary_workset, std.registry, str(new_path),
+        std.primary_workset, std.registry, str(new_path), early=_early_scope(std, BoxMode.primary),
     )
     projects_base = std.boxes
     dst_project = projects_base / project_name
@@ -491,7 +494,7 @@ def _duplicate_to_workset(args, std, config) -> int:
         print(f"Error: workset '{ws_name}' not found.", file=sys.stderr)
         return 1
     ws_name = stored_ws
-    ws = load_workset(registry[ws_name], ws_name)
+    ws = load_workset(registry[ws_name], ws_name, early_system=std.early_system)
 
     source_path = Path(args.source_path).resolve()
     # ⚑ A duplicate is always an IN-TREE member (``copy_into_workset``), even ``--bare``:
@@ -500,6 +503,7 @@ def _duplicate_to_workset(args, std, config) -> int:
 
     refuse_null_workspaces(
         ws.root, f"a workspace for '{getattr(args, 'project_name', None) or source_path.name}'",
+        early=ws.early_scope,
     )
     if not source_path.is_dir():
         print(f"Error: source path does not exist as a directory: {source_path}", file=sys.stderr)
@@ -793,7 +797,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
     from kanibako.errors import ProjectError
     try:
         dup_name = assign_primary_box_name(
-            std.primary_workset, std.registry, str(new_path),
+            std.primary_workset, std.registry, str(new_path), early=_early_scope(std, BoxMode.primary),
         )
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)

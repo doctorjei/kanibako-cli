@@ -28,6 +28,7 @@ from kanibako.launch.box_identity import validate_box_name
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings import bootstrap
 from kanibako.settings.core_defaults import materialize_canon_skeleton
+from kanibako.settings.workset_dirkeys import EarlyScope
 from kanibako.settings.config import (
     BOX_META_FILE,
     WORKSET_META_FILE,
@@ -49,6 +50,7 @@ from kanibako.settings.paths import (
     _workset_box_paths,
     _box_settings_files,
     _default_project_group,
+    _early_scope,
     assign_primary_box_name,
     box_metadata_dir,
     box_log_files,
@@ -223,7 +225,7 @@ def _primary_name_at(
     """
     if state.mode != BoxMode.primary or not state.name:
         return None
-    return primary_box_name_for_workspace(std.primary_workset, str(landing_ws))
+    return primary_box_name_for_workspace(std.primary_workset, str(landing_ws), early=_early_scope(std, BoxMode.primary))
 
 
 def _primary_source_own_name(
@@ -233,7 +235,7 @@ def _primary_source_own_name(
     if state.mode != BoxMode.primary or not state.name:
         return None
     return primary_box_name_for_workspace(
-        std.primary_workset, str(state.workspace_path),
+        std.primary_workset, str(state.workspace_path), early=_early_scope(std, BoxMode.primary),
     )
 
 
@@ -271,7 +273,7 @@ def resolve_lifecycle_target(
         proj = resolve_standalone_project(
             std, config, str(detection.project_root), initialize=False,
         )
-        return _state_from_paths("standalone", proj, ws=None)
+        return _state_from_paths("standalone", proj, ws=None, early=_early_scope(std, BoxMode.standalone))
 
     # default mode
     root = detection.project_root
@@ -286,14 +288,14 @@ def resolve_lifecycle_target(
     )
     if not proj.metadata_path.is_dir():
         raise ProjectError(f"No project data found for {root}")
-    return _state_from_paths("primary", proj, ws=None)
+    return _state_from_paths("primary", proj, ws=None, early=_early_scope(std, BoxMode.primary))
 
 
 def _default_state_from_meta(
     workspace: Path, std: StandardPaths,
 ) -> ProjectState | None:
     """Build a default-mode :class:`ProjectState` from registered metadata (``remap``)."""
-    name = primary_box_name_for_workspace(std.primary_workset, str(workspace))
+    name = primary_box_name_for_workspace(std.primary_workset, str(workspace), early=_early_scope(std, BoxMode.primary))
     if name is None:
         return None
     # ⚑ P8b: the PRIMARY-membership hit above IS the existence signal — identity no
@@ -341,7 +343,8 @@ def _resolve_workset_state(
         from kanibako.launch import box_resolve
         owned = box_resolve.find_connected_external_box(raw_path, std)
         if owned is not None:
-            ws, proj_name = (load_workset(owned.workset_root, owned.workset_name),
+            ws, proj_name = (load_workset(owned.workset_root, owned.workset_name,
+                                          early_system=std.early_system),
                              owned.box_name)
     if ws is None or proj_name is None:
         raise WorksetError(f"No workset project found for path: {raw_path}")
@@ -353,7 +356,7 @@ def _resolve_workset_state(
     is_external = not is_in_tree_workspace(ws, proj.project_path)
     return _state_from_paths(
         owner_token(BoxMode.named, ws.name), proj, ws=ws,
-        is_external=is_external,
+        early=_early_scope(std, BoxMode.named, ws.name), is_external=is_external,
     )
 
 
@@ -362,6 +365,7 @@ def _state_from_paths(
     proj: ProjectPaths,
     *,
     ws: Workset | None,
+    early: EarlyScope,
     is_external: bool = False,
 ) -> ProjectState:
     # ⚑ ``proj.vault_enabled()`` is the RESOLVED value; re-read the BOX TIER alone for what
@@ -371,7 +375,7 @@ def _state_from_paths(
     if proj.project_path is None:
         # A standalone root that nulls ``workset.workspaces``: no workspace to move or copy.
         refuse_null_workspaces(proj.metadata_path, f"a workspace for '{proj.name}'",
-                               standalone=True)
+                               standalone=True, early=early)
     assert proj.project_path is not None  # refused on the line above
     return ProjectState(
         owner=owner,
@@ -496,7 +500,7 @@ def _resolve_target_workset(
     stored = find_identifier(name, registry)
     if stored is None:
         raise WorksetError(f"Workset '{name}' not found.")
-    return load_workset(registry[stored], stored)
+    return load_workset(registry[stored], stored, early_system=std.early_system)
 
 
 def _validate(
@@ -633,7 +637,8 @@ def _validate(
         if owning_ws_root is not None and ws_root == owning_ws_root:
             continue
         # ⚑ In-tree: a repointed ``workset.workspaces`` dir, or a link.
-        if not is_in_tree_workspace(Workset(name=ws_name, root=ws_root), landing):
+        if not is_in_tree_workspace(
+                Workset(name=ws_name, root=ws_root, early_system=std.early_system), landing):
             continue
         raise ProjectError(
             f"Refusing to land the project inside workset '{ws_name}' "
@@ -653,14 +658,15 @@ def _validate(
             except ValueError:
                 pass
         if in_tree:
-            refuse_null_workspaces(target_ws.root, f"a workspace for '{new_name}'")
+            refuse_null_workspaces(target_ws.root, f"a workspace for '{new_name}'",
+                                   early=target_ws.early_scope)
     # An in-place convert TO standalone sweeps the project's files into the root's
     # ``workset.workspaces`` (``_consolidate_workspace_subdir``); a relocation's *dest* is
     # new, so it carries no null.
     if (target_mode == BoxMode.standalone and dest is None
             and state.mode != BoxMode.standalone):
         refuse_null_workspaces(state.workspace_path, f"a workspace for '{new_name}'",
-                               standalone=True)
+                               standalone=True, early=_early_scope(std, BoxMode.standalone))
 
     # --- CWD-inside-<old> guard (move is copytree+rmtree, not rename) ---
     # ⚑ ``records_only`` exempt: ``remap`` removes nothing, so it cannot strand the shell.
@@ -749,7 +755,7 @@ def _validate(
         if mint is not None and not _same_box_name(mint, own_name):
             check_primary_box_name_free(
                 std.primary_workset, std.registry, mint, str(landing_ws),
-                force=force,
+                force=force, early=_early_scope(std, BoxMode.primary),
             )
 
     # --- a disabled vault that still holds data would be left behind (Q64) ---
@@ -1156,7 +1162,7 @@ def _vault_carry_pairs(
     if state.mode == BoxMode.standalone:
         # ⚑ STANDALONE ANSWERS FROM ITS OWN TEARDOWN SPLIT, so it needs no arm here —
         # skipping on a missing arm would drop every pair and silently carry nothing.
-        removable, _retained = standalone_vault_teardown(state.metadata_path)
+        removable, _retained = standalone_vault_teardown(state.metadata_path, early=_early_scope(std, BoxMode.standalone))
         removable_roots = {p.resolve() for p in removable}
         out: list[tuple[Path, Path]] = []
         for side in sides:
@@ -1181,7 +1187,7 @@ def _vault_carry_pairs(
     if state.mode == BoxMode.primary:
         arms: tuple[Path | None, Path | None] = (std.primary_vault_ro, std.primary_vault_rw)
     elif state.mode == BoxMode.named and state.ws is not None:
-        arms = resolve_workset_vault_pair(state.ws.root)
+        arms = resolve_workset_vault_pair(state.ws.root, early=state.ws.early_scope)
     else:  # pragma: no cover - defensive: an unknown mode stays hands-off
         return []
     out = []
@@ -1253,6 +1259,7 @@ def _carry_box_logs(
     src_logs = box_logs_dir_for(
         std, state.mode, state.metadata_path,
         state.ws.root if state.ws is not None else None,
+        workset_name=state.ws.name if state.ws is not None else None,
     )
     if src_logs is None or dst_logs is None:
         return
@@ -1334,18 +1341,18 @@ def _carried_member_store(
     retained leaves include :func:`_nulled_arm_stores`.
     """
     boxes_dir, *arms = _member_store_bases(ws)
-    src_arms = resolve_workset_vault_pair(ws.root)
+    src_arms = resolve_workset_vault_pair(ws.root, early=ws.early_scope)
     unreceived = _unreceived_vault_leaves(
         src_arms, dst_vault, name, vault_enabled=vault_enabled,
     )
     held = {leaf.parent for leaf, _why in unreceived}
     bases = tuple(base for base in (boxes_dir, *arms) if base not in held)
     kept = [entry for entry in unreceived if entry[0].exists()]
-    return bases, kept + _nulled_arm_stores(ws.root, name)
+    return bases, kept + _nulled_arm_stores(ws, name)
 
 
-def _nulled_arm_stores(ws_root: Path, name: str) -> list[tuple[Path, str]]:
-    """(*ws_root*'s NULL ``workset.vault_*`` arms' per-box leaves still on disk, with why.
+def _nulled_arm_stores(ws: Workset, name: str) -> list[tuple[Path, str]]:
+    """(*ws*'s NULL ``workset.vault_*`` arms' per-box leaves still on disk, with why.
 
     ⚑⚑ A NULL ARM NAMES NO DIR, so both :func:`_member_store_bases` (no base to delete
     under) and :func:`_unreceived_vault_leaves` (no arm to name as kept) skip it.  An arm
@@ -1356,11 +1363,11 @@ def _nulled_arm_stores(ws_root: Path, name: str) -> list[tuple[Path, str]]:
     out: list[tuple[Path, str]] = []
     for key, resolver, arm in zip(
         _VAULT_ARM_KEYS, (resolve_workset_vault_ro, resolve_workset_vault_rw),
-        resolve_workset_vault_pair(ws_root),
+        resolve_workset_vault_pair(ws.root, early=ws.early_scope),
     ):
         if arm is not None:
             continue
-        default = resolver(ws_root, None)
+        default = resolver(ws.root, None, early=ws.early_scope)
         if default is None:
             continue
         leaf = default / name
@@ -1416,7 +1423,7 @@ def _remove_old_metadata(
         # only carrier of a ``workset.vault_*`` repoint, so a later read answers the
         # composed default; and an UNRESOLVABLE repoint raises here, which must happen
         # while the source is still whole and the unwind still has something to restore.
-        removable_vault, retained_vault = standalone_vault_teardown(root)
+        removable_vault, retained_vault = standalone_vault_teardown(root, early=_early_scope(std, BoxMode.standalone))
         # ⚑⚑ A SIDE THE DESTINATION NEVER RECEIVED IS NOT THIS TEARDOWN'S TO DELETE
         # (a standalone box's vault IS its arm, so the retention question is asked of
         # the arm itself).  A parent of a retained arm leaves *removable* with it: the
@@ -1462,7 +1469,7 @@ def _remove_old_metadata(
         reused_in_place = preserve_name is not None and state.name == preserve_name
         if state.name and not reused_in_place:
             try:
-                unregister_primary_box_name(std.primary_workset, state.name)
+                unregister_primary_box_name(std.primary_workset, state.name, early=_early_scope(std, BoxMode.primary))
             except Exception:  # noqa: BLE001
                 pass
         if reused_in_place:
@@ -1597,11 +1604,12 @@ def _to_default(
     if mint is not None:
         register_primary_box_name(
             std.primary_workset, std.registry, mint, new_workspace, force=force,
+            early=_early_scope(std, BoxMode.primary),
         )
         project_name = mint
     else:
         project_name = assign_primary_box_name(
-            std.primary_workset, std.registry, str(new_workspace),
+            std.primary_workset, std.registry, str(new_workspace), early=_early_scope(std, BoxMode.primary),
         )
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name
@@ -1678,16 +1686,17 @@ _STANDALONE_FIXED_ARTIFACTS = frozenset({
 
 
 def _resolve_standalone_workspaces(
-    root: Path, doc: Mapping[str, Any] | None,
+    root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope,
 ) -> Path:
     """``workset.workspaces`` for a STANDALONE root — the SINGULAR ``workspace`` default.
 
     Only a convert INTO the root reaches here, and it refused a nulling root first; the
     refusal below keeps a null from ever reading as the default.
     """
-    workspaces = resolve_workset_workspaces(root, doc, standalone=True)
+    workspaces = resolve_workset_workspaces(root, doc, standalone=True, early=early)
     if workspaces is None:
-        refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True)
+        refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True,
+                               early=early)
     assert workspaces is not None  # refused on the line above
     return workspaces
 
@@ -1708,7 +1717,9 @@ _STANDALONE_ROOT_DIR_KEYS = (
 )
 
 
-def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]:
+def _standalone_root_artifacts(
+    root: Path, *, early: EarlyScope,
+) -> list[tuple[str, Path, bool]]:
     """The RESOLVED ``(key, path, repointed)`` directories a standalone *root* owns.
 
     ⚑⚑ RESOLVED, NEVER A LEAF NAME: a basename filter cannot tell a repointed
@@ -1732,10 +1743,10 @@ def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]:
     doc = load_workset_settings_doc(root)
     out: list[tuple[str, Path, bool]] = []
     for key, resolver in _STANDALONE_ROOT_DIR_KEYS:
-        resolved = resolver(root, doc)
+        resolved = resolver(root, doc, early=early)
         if resolved is None:  # a null key names no dir, so it owns no artifact
             continue
-        out.append((key, resolved, resolved != resolver(root, None)))
+        out.append((key, resolved, resolved != resolver(root, None, early=early)))
     # ⚑ The literal ``vault/`` skeleton parent, on disk only — exactly the tail
     # ``standalone_vault_teardown`` appends, and for its reason: no key names it, the default
     # layout's ``.gitignore`` lives there, and ``_to_standalone`` writes that file itself.
@@ -1765,6 +1776,8 @@ def _consolidate_workspace_subdir(
     root: Path,
     workspace_subdir: Path,
     unwind: _Unwind,
+    *,
+    early: EarlyScope,
 ) -> None:
     """Move the project's top-level files into the standalone workspace dir (drift H)."""
     import sys
@@ -1776,7 +1789,7 @@ def _consolidate_workspace_subdir(
     if workspace_subdir.resolve() == root.resolve():
         return
 
-    artifacts = _standalone_root_artifacts(root)
+    artifacts = _standalone_root_artifacts(root, early=early)
     movable: list[Path] = []
     for child in root.iterdir():
         if child.name in _STANDALONE_FIXED_ARTIFACTS:
@@ -1884,7 +1897,7 @@ def _to_standalone(
     # only until the root carries a ``workset.workspaces`` repoint, and then it fills a
     # directory the box never looks in — two answers for one box.
     workspace_subdir = _resolve_standalone_workspaces(
-        root, load_workset_settings_doc(root),
+        root, load_workset_settings_doc(root), early=_early_scope(std, BoxMode.standalone),
     )
     # ⚑ The box METADATA DIR (``box_data/`` for a standalone source) — the ROOT would
     # strand ``<dst>/box_data/box_data/`` on a standalone→standalone move.
@@ -1898,7 +1911,7 @@ def _to_standalone(
         # its files are in the workspace dir and everything left beside them is
         # kanibako's own — starting with the root ``.gitignore`` written below, which
         # the sweep would relocate into the user's workspace.
-        _consolidate_workspace_subdir(root, workspace_subdir, unwind)
+        _consolidate_workspace_subdir(root, workspace_subdir, unwind, early=_early_scope(std, BoxMode.standalone))
         _copy_metadata(
             src_meta_dir, state.shell_path,
             dst_metadata, shell_into_metadata=True, home_leaf="home", unwind=unwind,
@@ -1940,7 +1953,8 @@ def _to_standalone(
     # move first.  A reuse-in-place rename collapses to a same-path no-op.
     _carry_vault_contents(state, std, vault_ro, vault_rw)
     _carry_box_logs(
-        state, std, unwind, dst_logs=standalone_logs_dir(root), dst_name=box_name,
+        state, std, unwind, dst_logs=standalone_logs_dir(root, early=_early_scope(std, BoxMode.standalone)),
+        dst_name=box_name,
     )
 
     _remove_old_metadata(
@@ -1999,7 +2013,8 @@ def _to_workset(
     # source-release leg needs them to know which of the SOURCE's vault leaves it
     # received.
     _dst_shell, vault_ro, vault_rw = _workset_box_paths(
-        target_ws.projects_dir / new_name, *resolve_workset_vault_pair(target_ws.root),
+        target_ws.projects_dir / new_name,
+        *resolve_workset_vault_pair(target_ws.root, early=target_ws.early_scope),
         new_name,
     )
     dst_vault = (vault_ro, vault_rw)
@@ -2134,6 +2149,7 @@ def _to_workset(
 
         registry_path = workset_registry.resolve_workset_registry_path(
             target_ws.root, load_doc(target_ws.root / WORKSET_META_FILE),
+            early=target_ws.early_scope,
         )
         # ⚑ THE membership accessor, not a second spelling of it: it already compares
         # case-blind (spec §0) and returns the path under the stored key.
@@ -2162,7 +2178,8 @@ def _to_workset(
     # box tree and the vault leaves, never the logs).
     _carry_box_logs(
         state, std, unwind,
-        dst_logs=box_logs_dir_for(std, BoxMode.named, dst_project, target_ws.root),
+        dst_logs=box_logs_dir_for(std, BoxMode.named, dst_project, target_ws.root,
+                                  workset_name=target_ws.name),
         dst_name=new_name,
     )
     if not source_is_workset:
@@ -2295,7 +2312,7 @@ def _relocate_channel_partition(
 
 def _safe_unregister(std: StandardPaths, name: str) -> None:
     try:
-        unregister_primary_box_name(std.primary_workset, name)
+        unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
     except Exception:  # noqa: BLE001
         pass
 
@@ -2305,7 +2322,7 @@ def _safe_register_membership(
 ) -> None:
     """Best-effort re-register *name* -> *workspace* in the PRIMARY membership (FIX1)."""
     try:
-        _register_workset_box_membership(std.primary_workset, name, workspace)
+        _register_workset_box_membership(std.primary_workset, name, workspace, early=_early_scope(std, BoxMode.primary))
     except Exception:  # noqa: BLE001
         pass
 
@@ -2319,7 +2336,7 @@ def _member_leaves(ws: Workset, name: str) -> tuple[Path | None, Path, Path | No
     """
     box_tree = ws.projects_dir / name
     _shell, vault_ro, vault_rw = _workset_box_paths(
-        box_tree, *resolve_workset_vault_pair(ws.root), name,
+        box_tree, *resolve_workset_vault_pair(ws.root, early=ws.early_scope), name,
     )
     workspaces = ws.workspaces_dir
     return (workspaces / name if workspaces is not None else None, box_tree,
