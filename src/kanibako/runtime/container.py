@@ -994,7 +994,6 @@ def _precreate_mount_stubs(
                 # Stop the walk: we cannot reason about ancestors we cannot probe.
                 logger.debug("loosen probe/chmod FAILED: %s (%s)", current, exc)
                 break
-            current = current.parent
 
     def _ensure_dir(p: Path, traverse_root: Path | None = None) -> None:
         _clear_symlink(p)
