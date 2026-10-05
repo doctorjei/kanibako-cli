@@ -1751,6 +1751,44 @@ class TestAuthActiveKeys:
         assert wga is False and bga is True and wsa is False
 
 
+def test_a_value_reads_the_mirror_and_the_computed_auth_keys(tmp_path):
+    """A reference to ``meta.box.agent.*`` or a computed ``meta.*.auth.*_active`` key sees
+    its value (spec §2b), though both are materialized after expansion."""
+    snap = _auth_snapshot(
+        "primary", tmp_path=tmp_path,
+        box_file={"box": {
+            "auth": {"global_enabled": False},
+            "bindings": {"ro": {"/q": ["{meta.box.agent.canon}/q"]}},
+            "env": {
+                "SHARE": "{meta.box.agent.auth.share_support}",
+                "MODEL": "m-{meta.box.agent.model}",
+                "WHOLE": "{meta.box.agent.model}",
+                "ACTIVE": "{meta.box.auth.global_active}-{meta.box.auth.workset_active}",
+                "WS": "{meta.workset.auth.global_active}",
+            },
+        }},
+        system_file={"agent": {"claude": {"model": "sonnet", "canon": "/canon"}}},
+    )
+    assert snap.box.bindings.ro["/q"].src == "/canon/q"
+    env = snap.box.env
+    assert env.MODEL == "m-sonnet" == f"m-{snap.meta.box.agent.model}"
+    assert env.WHOLE == "sonnet"
+    assert env.ACTIVE == "False-True" == "{}-{}".format(*_auth_active(snap)[1:])
+    assert env.WS is True is snap.meta.workset.auth.global_active
+    assert env.SHARE is True
+
+
+def test_a_mirror_reference_to_itself_is_a_cycle(tmp_path):
+    """A mirror key whose own value reaches the mirror is refused as a cycle, not dropped."""
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with pytest.raises(SettingsError, match="Cyclic"):
+        _auth_snapshot(
+            "primary", tmp_path=tmp_path,
+            system_file={"agent": {"claude": {"model": "{meta.box.agent.model}"}}},
+        )
+
+
 # --------------------------------------------------------------------------- #
 # change 8 (P6d2): box.auth.workset_path → RO meta.box.auth.workset_path        #
 # --------------------------------------------------------------------------- #

@@ -18,16 +18,17 @@ _SEEDED = 'seeded'
 NullSources = dict[tuple[str, ...], tuple[str, ...]]
 RefsRead = dict[tuple[str, ...], frozenset[str]]
 DestKeys = dict[tuple[str, ...], str]
+Derive = Callable[[str, Callable[[str], object]], object]
 
 ```
 
 ## Functions
 ```
 @overload
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None) -> KeyStore
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None) -> KeyStore
 @overload
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
-def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
+def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
 def _absent_reason(dotted: str) -> str
 def _is_whole_value_ref(value: str) -> str | None
 def _is_whole_value_var(value: str) -> str | None
@@ -48,7 +49,7 @@ class _LenientDefect(Exception):
     def __init__(self, reason: str) -> None
 
 class _Expander:
-    def __init__(self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False) -> None
+    def __init__(self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, derive: Derive | None=None) -> None
 
     def run(self) -> KeyStore
 
@@ -61,6 +62,7 @@ class _Expander:
     def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...], null_refs: list[str] | None=None) -> StoreValue | _Absent
     def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent
     def _resolve_ref(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent
+    def _derived(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _lookup_raw(self, dotted: str) -> StoreValue | _Absent
     def _expand_embedded(self, value: str, *, space: str, chain: tuple[str, ...], none_refs: list[str]) -> str
     def _lookup_str(self, dotted: str, chain: tuple[str, ...], none_refs: list[str]) -> str

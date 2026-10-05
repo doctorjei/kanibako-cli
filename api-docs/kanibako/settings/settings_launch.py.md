@@ -19,6 +19,7 @@ _SYSTEM_SHARE_ALLOWED_KEY = 'system.auth.share_allowed'
 _BOX_MODES: frozenset[str] = frozenset((mode.value for mode in BoxMode))
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset({'common', 'chat', 'broadcast', 'share', 'mailboxes', 'share_global'})
 _WORKSET_LOCAL_CHANNEL_LEAVES: frozenset[str] = _WORKSET_CHANNEL_LEAVES - {'mailboxes', 'share_global'}
+_AUTH_ACTIVE_KEYS: Final = ('meta.workset.auth.global_active', 'meta.box.auth.global_active', 'meta.box.auth.workset_active')
 _BOX_NAME_KEYS: Final = ('meta.box.name', 'meta.box.inbox', 'meta.box.share_global', 'meta.box.share_workset')
 _BOX_ONLY_PREFIXES: Final = ('meta.box.',)
 _WORKSET_ONLY_PREFIXES: Final = ('meta.workset.', 'workset.')
@@ -76,6 +77,8 @@ def resolve_box_scalars(*, workset_path: Path | None, box_path: Path | None, cli
 def load_merged_config(project_path: Path | None=None, *, workset_path: Path | None=None, cli_overrides: 'dict[str, object] | None'=None, inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT, agent_path: Path | None=None, refuse_null_scalars: bool=True) -> KanibakoConfig
 def _is_bind_floor_key(key: str) -> bool
 def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
+def _auth_inputs(read: Callable[[str], object], *, floor: bool) -> _AuthInputs
+def _auth_active_values(inputs: _AuthInputs) -> tuple[bool, bool, bool]
 def _materialize_auth_active(snapshot: KeyStore) -> None
 def _loaded_tiers(files: Sequence[SettingsFile]) -> tuple[SettingsFile, ...]
 def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[SettingsFile], written: Sequence[_WrittenLevel], subject: ResolveSubject) -> None
@@ -102,6 +105,9 @@ def _warn_rootless_channel_binds(rootless: Sequence[tuple[str, str]], expanded: 
 def _warn_null_ref_secrets(merged: KeyStore, expanded: KeyStore, *, active_agent: str, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
+def _post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive
+def _mirror_sources(snapshot: KeyStore, active_agent: str) -> KeyStore
+def _source_keys(node: KeyStore, prefix: str) -> KeyStore
 def _drop_non_mirror_keys(effective: KeyStore) -> None
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None
 def _agent_state_partial(level: AgentFileLevel | None) -> KeyStore | None
