@@ -28,7 +28,7 @@ from kanibako.launch.box_identity import validate_box_name
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings import bootstrap
 from kanibako.settings.core_defaults import materialize_canon_skeleton
-from kanibako.settings.workset_dirkeys import EarlyScope
+from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.config import (
     BOX_META_FILE,
     WORKSET_META_FILE,
@@ -549,6 +549,17 @@ def _validate(
         dest = spec.location.resolve()
 
     relocating = dest is not None
+
+    if not spec.records_only:
+        refuse_inherited_per_owner(
+            _state_ws_root(state, std), EarlyScope(std.early_system, _state_ws_token(state)))
+        if target_ws is not None:
+            refuse_inherited_per_owner(target_ws.root, target_ws.early_scope)
+        elif target_mode == BoxMode.primary:
+            refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
+        else:
+            refuse_inherited_per_owner(
+                dest or state.workspace_path, _early_scope(std, BoxMode.standalone))
 
     # --- no-op guard ---
     no_owner_change = (

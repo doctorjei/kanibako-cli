@@ -16,7 +16,7 @@ _USABLE_REFS = f"'@{WORKSET_PATH_REF}' (this workset's root), '@{WORKSET_NAME_RE
 ## Functions
 ```
 def early_repoint(workset_root: Path, workset_settings: Mapping[str, Any] | None, key: str, *, early: EarlyScope) -> tuple[str | None | _Unset, Path]
-def refuse_inherited_per_owner(workset_root: Path, early: EarlyScope) -> None
+def refuse_inherited_per_owner(workset_root: Path, early: EarlyScope, *, doc: Mapping[str, Any] | None | _Unset=UNSET) -> None
 def early_tier(doc: Mapping[str, Any] | None) -> dict[str, str | None]
 def early_system(set_values: Mapping[str, str | None], resolved: Mapping[str, Path], *, system_refusal: str | None=None) -> EarlySystem
 def resolve_workset_dir_key(workset_root: Path, repoint: str | None, default_leaf: str, *, key: str, where: Path | None=None, standalone: bool | None=None, workset_settings: Mapping[str, Any] | None=None, early: EarlyScope) -> Path

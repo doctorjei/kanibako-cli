@@ -59,7 +59,7 @@ from kanibako.settings.messages import (
 )
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import (
-    EarlyScope, EarlySystem, early_repoint, resolve_workset_dir_key,
+    EarlyScope, EarlySystem, early_repoint, refuse_inherited_per_owner, resolve_workset_dir_key,
 )
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
@@ -1041,10 +1041,10 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         ws_settings = load_workset_settings_doc(root) if purge else None
     except ConfigError:
         ws_settings = None
-    boxes_dir = (
-        resolve_workset_boxes(root, ws_settings, early=EarlyScope(std.early_system, stored))
-        if purge else None
-    )
+    early = EarlyScope(std.early_system, stored)
+    if purge:
+        refuse_inherited_per_owner(root, early, doc=ws_settings)
+    boxes_dir = resolve_workset_boxes(root, ws_settings, early=early) if purge else None
 
     # Drop the ONE ``worksets`` entry, by the STORED spelling.  Idempotent: a missing
     # entry is a no-op.

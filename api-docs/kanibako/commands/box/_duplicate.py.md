@@ -7,6 +7,8 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Functions
 ```
 def run_duplicate(args: argparse.Namespace) -> int
+def _refuse_inherited(std, source, target: tuple[Path, EarlyScope]) -> None
+def _local_target(std, mode: BoxMode, new_path: Path) -> tuple[Path, EarlyScope]
 def _source_is_external(args: argparse.Namespace, std) -> bool
 def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int
 def _merge_workspace(src: Path, dst: Path, force: bool) -> None
