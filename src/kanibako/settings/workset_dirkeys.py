@@ -140,9 +140,11 @@ class EarlySystem:
         ``system_refusal`` is set: those values were dropped, so there is nothing here to name.
     ``system_refusal``
         The text of a ``system:``-table refusal that TOLERANCE dropped, else ``None``.  ⚑ Set
-        only where the document LOADED and its ``system:`` table was refused.  A document that
-        does not load empties the whole tier instead, and carries no refusal text — the two
-        tolerance arms are deliberately not the same thing.
+        only where the document LOADED and its ``system:`` table was refused, or by the system
+        set door when ``std`` failed: there it holds that failure's text, whatever its cause,
+        and ``system_paths`` is likewise empty.  A document that does not load empties the
+        whole tier instead, and carries no refusal text — the two tolerance arms are
+        deliberately not the same thing.
     """
 
     tier: dict[str, str | None]
