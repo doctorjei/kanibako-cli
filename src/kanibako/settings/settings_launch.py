@@ -2948,9 +2948,13 @@ def _post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
 
     A mirror key resolves as the agent key the pick would copy into it
     (:func:`_mirror_sources`); an auth key is computed from inputs read on the same pass.
+    ⚑ The mirror is picked from the EXPANDED tree, where an active-tier leaf whose
+    reference resolves absent is gone (§6b), so the pick takes the fallback tier's leaf.
+    The raw pick still names the active leaf; when it reads absent, the fallback tier's
+    key for the same leaf is read instead (none for a pseudo-agent, :func:`_fallback_node`).
     """
     head = "meta.box.agent."
-    sources: list[KeyStore] = []
+    sources: list[tuple[KeyStore, object]] = []
 
     def derive(dotted: str, read: Callable[[str], object]) -> object:
         if dotted in _AUTH_ACTIVE_KEYS:
@@ -2961,14 +2965,23 @@ def _post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
             return __MISSING__
         if not sources:
             sources.append(_mirror_sources(snapshot, active_agent))
-        source = snapshot_leaf(sources[0], dotted[len(head):])
-        return read(source) if isinstance(source, str) else __MISSING__
+        picked, fallback = sources[0]
+        leaf = dotted[len(head):]
+        source = snapshot_leaf(picked, leaf)
+        if not isinstance(source, str):
+            return __MISSING__
+        value = read(source)
+        if value is not __MISSING__ or not isinstance(fallback, KeyStore):
+            return value
+        backup = snapshot_leaf(fallback, leaf)
+        return read(backup) if isinstance(backup, str) and backup != source else value
 
     return derive
 
 
-def _mirror_sources(snapshot: KeyStore, active_agent: str) -> KeyStore:
-    """The mirror's shape over the RAW *snapshot*, each leaf the key it is copied from.
+def _mirror_sources(snapshot: KeyStore, active_agent: str) -> tuple[KeyStore, object]:
+    """The mirror's shape over the RAW *snapshot*, each leaf the key it is copied from,
+    and the fallback tier (:func:`_fallback_node`) in the same form, or ``__MISSING__``.
 
     The same pick and the same drop as :func:`_materialize_box_agent_mirror`, run on
     the two agent tiers with every leaf replaced by its own dotted key.
@@ -2984,7 +2997,7 @@ def _mirror_sources(snapshot: KeyStore, active_agent: str) -> KeyStore:
     dict.__setitem__(root, "agent", tiers)
     effective = _agent_pick_node(root, active_agent)
     _drop_non_mirror_keys(effective)
-    return effective
+    return effective, _fallback_node(tiers, active_agent)
 
 
 def _source_keys(node: KeyStore, prefix: str) -> KeyStore:
