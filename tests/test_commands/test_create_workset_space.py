@@ -398,6 +398,45 @@ class TestAnInterruptedNamedCreateIsRecoverable:
         assert (root / "boxes" / "crashbox" / "home").is_dir()
         assert load_primary_boxes(std.primary_workset) == {}
 
+    def test_the_launch_cure_runs_from_outside_the_working_set(
+        self, wsa, capsys, credentials_dir, monkeypatch, tmp_home,
+    ):
+        """A launch can name a member from anywhere, but ``create`` reads a bare
+        member name only inside its working set: the printed cure, RUN from the
+        cwd the launch ran in, finishes the box."""
+        import shlex
+
+        from kanibako.cli import build_parser
+        from kanibako.commands.start import _run_container
+        from kanibako.launch import journal
+
+        root, std = wsa
+        monkeypatch.chdir(root)
+        self._crash(monkeypatch, "crashbox")
+        monkeypatch.chdir(tmp_home)
+        capsys.readouterr()
+
+        assert _run_container(
+            project_dir="wsa/crashbox", entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False, extra_args=[],
+        ) == 1
+        err = capsys.readouterr().err
+        [line] = [ln.split("Finish it:", 1)[1].strip()
+                  for ln in err.splitlines() if "Finish it:" in ln]
+
+        # The line as a shell runs it: each ``&&`` step in turn, in this process.
+        for step in line.split(" && "):
+            argv = shlex.split(step)
+            if argv[0] == "cd":
+                assert len(argv) == 2
+                monkeypatch.chdir(argv[1])
+                continue
+            assert argv[0] == "kanibako"
+            parsed = build_parser().parse_args(argv[1:])
+            assert parsed.func(parsed) == 0
+        assert journal.read_journal(std.journal) == {}
+        assert (root / "boxes" / "crashbox" / "home").is_dir()
+
     def test_recover_on_a_complete_member_is_refused(self, wsa, capsys, monkeypatch, tmp_home):
         from kanibako.commands.box._parser import run_create
 
