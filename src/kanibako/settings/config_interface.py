@@ -20,11 +20,13 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping, NamedTuple
 from kanibako.settings.config import (
     _BOX_SCALAR_FIELDS,
     _LAYER1_TABLE,
+    _agent_of,
     agent_settings_of,
     chain_reaches,
     load_config,
     load_project_overrides,
     null_path_keys_error,
+    reaches_identity,
     read_agent_settings,
     ref_order_error,
     refuses_box_store_value,
@@ -46,6 +48,8 @@ from kanibako.settings.messages import (
     ERR_CONFIG_CHAIN_BAD_ENTRY,
     ERR_CONFIG_NULL_PATH_REASON,
     ERR_CONFIG_NULL_PATH_SET_HEAD,
+    ERR_PER_OWNER_SET,
+    PER_OWNER_SET_WORDS,
     WARN_CONFIG_BAD_ENTRIES,
 )
 from kanibako.settings.config_display import (
@@ -125,6 +129,7 @@ from kanibako.settings.config_keys import (
     is_config_file_only_key,
     resolve_key,
     ConfigLevel,
+    KEY_OWNERS,
 )
 from kanibako.settings.config_io import (
     count_leaves,
@@ -141,7 +146,7 @@ from kanibako.settings.config_io import (
 )
 from kanibako.errors import KanibakoError, UserCanceled
 from kanibako.log import get_logger
-from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
+from kanibako.settings.kb_store import IDENTITY_ANCHORS, IDENTITY_PAIRED, SCOPE_CONTAINMENT, __MISSING__
 from kanibako.settings.settings_categories import (
     refuse_non_scalar_family_value,
 )
@@ -1509,6 +1514,54 @@ def _null_box_scalar_error(
     return "Error: " + error
 
 
+def _per_owner_set_error(
+    canonical: str, value: "str | None", *, command_scope: "ConfigLevel | None",
+    ws: Any, written: Path, stored: "Callable[[str], object]",
+) -> "str | None":
+    """Keyspec §0 "Per-owner resources" at the set door: why *value* gives every instance one
+    resource, or ``None``.
+
+    Judged only from a scope that contains the key's owner, in every mode that scope's file
+    feeds (a workset file feeds its own).  A ``pref.*`` request is judged as its target key.
+    """
+    from kanibako.settings.paths import BoxMode
+
+    key = canonical.removeprefix(f"{PREF_ROOT}.")
+    try:
+        agent: "str | None" = _agent_of(key)
+    except ValueError:
+        agent = None
+    row = key if agent is None else key.replace(f"agent.{agent}.", "agent.<agent>.", 1)
+    owner = KEY_OWNERS.get(key, KEY_OWNERS.get(row, "shared"))
+    if value is None or owner == "shared" or command_scope is None:
+        return None
+    rank = SCOPE_CONTAINMENT.index
+    if rank(command_scope.value) >= rank("workset" if owner == "partition" else owner):
+        return None
+    if command_scope is not ConfigLevel.workset:
+        modes: "tuple[BoxMode, ...]" = tuple(BoxMode)
+    elif ws is None:
+        modes = (BoxMode.primary, BoxMode.named)
+    else:
+        modes = (BoxMode.primary if ws.is_default else BoxMode.named,)
+    if all(reaches_identity(value, owner, mode, key=key, stored=stored) for mode in modes):
+        return None
+    noun, identity, shared_by, file_owner = PER_OWNER_SET_WORDS[owner]
+    cure = f"{value.rstrip('/')}/{_uniform_anchor(owner, agent)}"
+    return "Error: " + ERR_PER_OWNER_SET % (
+        canonical, value, command_scope.value, written, noun, identity, shared_by, cure,
+        canonical, file_owner,
+    )
+
+
+def _uniform_anchor(level: str, agent: "str | None") -> str:
+    """The anchor spelling that reaches *level* in every box mode, for a cure."""
+    common = set.intersection(*(set(anchors) for anchors in IDENTITY_ANCHORS[level].values()))
+    spelled = "{" + min(common).replace("<agent>", agent or "<agent>") + "}"
+    paired = sorted(set(IDENTITY_PAIRED.get(level, {}).values()))
+    return "/".join([*(_uniform_anchor(p, agent) for p in paired), spelled])
+
+
 def set_config_value(
     key: str,
     value: "str | None",
@@ -1816,6 +1869,12 @@ def set_config_value(
             )
         for report in bad.warn_reports():
             _log.warning("Warning: %s", report)
+    owner_err = _per_owner_set_error(
+        canonical, value, command_scope=command_scope, ws=ws, stored=bad.stored,
+        written=noun_settings_file(config_path, system_settings_path),
+    )
+    if owner_err is not None:
+        return _refusal(owner_err)
 
     # ``pref.<target>`` — the §2h REQUEST, validated with the SAME filters the launch applies.
     # ⚑ Written NESTED, never as a dotted literal: a dotted bind-shaped value is never

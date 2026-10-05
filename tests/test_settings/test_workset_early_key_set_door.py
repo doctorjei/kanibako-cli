@@ -32,6 +32,10 @@ _EARLY = sorted(f"workset.{key}" for key in WORKSET_EARLY_KEYS)
 _REFUSED = ["@{workset.kuid}/z", "/z/$AGENT"]
 #: Values the reader reads: the workset root ref, and a literal.
 _ACCEPTED = ["@meta.workset.path/x", "/lit/x"]
+#: A value the system door takes for every early key: it reaches the workset and the partition.
+_SYSTEM_ACCEPTED = "/lit/x/@meta.workset.path/@meta.workset.name"
+#: A system-file ``workset.boxes`` the per-owner check accepts (keyspec §0).
+_SYSTEM_BOXES = "/srv/kb/{meta.workset.path}"
 #: The spec's own same-set channel defaults (settings-keyspace §2c ALL WORKSETS).
 _SPEC_CHANNEL_DEFAULTS = {
   "workset.channels.common": "@workset.channelroot/common",
@@ -135,9 +139,9 @@ class TestTheSystemDoorAgreesWithTheReader:
     assert not settings.exists() or "$AGENT" not in settings.read_text()
 
   def test_a_value_the_reader_reads_is_written(self, key, std, tmp_path):
-    message = _system_set(key, "/lit/x", std, tmp_path)
+    message = _system_set(key, _SYSTEM_ACCEPTED, std, tmp_path)
     assert not message.startswith("Error:"), message
-    assert "/lit/x" in (tmp_path / "settings.yaml").read_text()
+    assert _SYSTEM_ACCEPTED in (tmp_path / "settings.yaml").read_text()
 
 
 @pytest.mark.parametrize(("key", "value"), sorted(_SPEC_CHANNEL_DEFAULTS.items()))
@@ -222,9 +226,21 @@ _LOGS_ON_BOXES = "@{workset.boxes}/lg"
 _SYSTEM_NAMES = ["__PRIMARY__", "__STANDALONE__"]
 
 
+#: Staged by hand: the door refuses this literal (keyspec §0), and the transitive E3 probe
+#: refuses ``workset.logs`` on any anchored ``workset.boxes`` the system file stores.
+_STAGED_BOXES = "/srv/kb"
+
+
+def _stage_system_boxes(std) -> None:
+  import yaml
+
+  std.settings.parent.mkdir(parents=True, exist_ok=True)
+  std.settings.write_text(yaml.safe_dump({"workset": {"boxes": _STAGED_BOXES}}))
+
+
 class TestTheSystemDoorReadsTheTierOnce:
   def test_a_referent_stored_in_the_system_file(self, std, config_file, door_probe):
-    assert not _std_system_set("workset.boxes", "/srv/kb", std).startswith("Error:")
+    _stage_system_boxes(std)
     std = _reload(config_file)
     opens, scopes = door_probe
     opens.clear()
@@ -234,7 +250,7 @@ class TestTheSystemDoorReadsTheTierOnce:
     assert opens == [std.settings]
     assert [s.workset_name for s in scopes if s is not None] == _SYSTEM_NAMES
     assert all(s is not None and s.system is std.early_system for s in scopes)
-    assert std.early_system.tier["workset.boxes"] == "/srv/kb"
+    assert std.early_system.tier["workset.boxes"] == _STAGED_BOXES
 
   def test_a_referent_at_its_per_mode_default(self, std, door_probe):
     message = _std_system_set("workset.logs", _LOGS_ON_BOXES, std)
@@ -245,7 +261,7 @@ class TestTheSystemDoorReadsTheTierOnce:
     assert all(s is not None and s.system is std.early_system for s in scopes)
 
   def test_a_failed_std_takes_the_record_from_the_one_read(self, std, door_probe):
-    assert not _std_system_set("workset.boxes", "/srv/kb", std).startswith("Error:")
+    _stage_system_boxes(std)
     opens, scopes = door_probe
     opens.clear()
     scopes.clear()
@@ -257,14 +273,14 @@ class TestTheSystemDoorReadsTheTierOnce:
     assert len(records) == 1 and len(scopes) == 2
     record = scopes[0].system
     assert record.file == std.settings
-    assert record.tier["workset.boxes"] == "/srv/kb"
+    assert record.tier["workset.boxes"] == _STAGED_BOXES
     assert record.system_paths == {}
     assert record.system_refusal == "std boom"
 
 
 def test_the_workset_door_reads_the_system_tier_from_std(std, config_file, tmp_path, door_probe):
   """The system file holds ``workset.boxes``; the workset door reads it from ``std``'s record."""
-  assert not _std_system_set("workset.boxes", "/srv/kb", std).startswith("Error:")
+  assert not _std_system_set("workset.boxes", _SYSTEM_BOXES, std).startswith("Error:")
   std = _reload(config_file)
   ws = create_workset("earlyws", tmp_path / "ws", std)
   opens, scopes = door_probe
