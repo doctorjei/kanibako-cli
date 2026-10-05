@@ -912,7 +912,7 @@ class TestLaunchRefusesNullWorkspaceBind:
         proj = _resolve_existing_box(std, config, str(source))
         assert proj is not None and proj.name == "ext"
         assert proj.project_path == source
-        _refuse_null_workspace_bind(proj)  # no raise
+        _refuse_null_workspace_bind(std, proj)  # no raise
         _assert_launch_passes_the_gate(str(source), monkeypatch, capsys)
 
     def test_primary_is_untouched(
@@ -928,7 +928,7 @@ class TestLaunchRefusesNullWorkspaceBind:
 
         proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
         assert proj is not None and proj.name == "project"
-        _refuse_null_workspace_bind(proj)  # no raise
+        _refuse_null_workspace_bind(std, proj)  # no raise
         _assert_launch_passes_the_gate(str(tmp_home / "project"), monkeypatch, capsys)
 
 

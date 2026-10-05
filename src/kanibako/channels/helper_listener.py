@@ -8,13 +8,16 @@ import socket
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from kanibako.channels.helpers import HELPER_SCRIPTS_RELPATH, INIT_SCRIPT_NAME, SPAWN_CONFIG_FILENAME
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, GUEST_HOME
 from kanibako.targets.base import Mount
+
+if TYPE_CHECKING:
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
 logger = get_logger("helper_listener")
 
@@ -43,6 +46,7 @@ class HelperContext:
     boxes: Path | None = None          # resolved PRIMARY workset.boxes (std.boxes)
     registry: Path | None = None       # resolved config.registry file (std.registry)
     primary_workset: Path | None = None  # resolved config.primary_workset (std.primary_workset)
+    early: EarlyScope | None = None    # the PRIMARY early scope (paths._early_scope)
 
 
 class HelperHub:
@@ -436,7 +440,7 @@ class HelperHub:
         boxes_base = ctx.boxes
         source_meta_dir: Path | None = None
         source_name = primary_box_name_for_workspace(
-            ctx.primary_workset, str(ctx.project_path),
+            ctx.primary_workset, str(ctx.project_path), early=ctx.early,
         )
         if source_name is not None:
             candidate = boxes_base / source_name
@@ -460,7 +464,7 @@ class HelperHub:
         # other primary box).
         try:
             new_name = assign_primary_box_name(
-                ctx.primary_workset, ctx.registry, str(new_path),
+                ctx.primary_workset, ctx.registry, str(new_path), early=ctx.early,
             )
         except Exception as e:
             return {"status": "error", "message": f"name assignment failed: {e}"}
