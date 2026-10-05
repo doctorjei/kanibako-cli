@@ -6639,15 +6639,13 @@ class TestLaunchSeedGate:
             assert rc == 0
             m_seed.assert_called_once()
 
-    def test_launch_never_completes_interrupted_create(self, start_mocks):
-        """Explicit-create: the launch path no longer resurrects a half-created
-        box.  Even with a PENDING create journal entry (and is_new False — the
-        existing-box relaunch shape), the launch does NOT seed / register / clear —
-        forward-recovery of an interrupted create belongs to ``kanibako create``."""
+    def test_launch_never_completes_interrupted_create(self, start_mocks, capsys):
+        """Explicit-create: the launch path never resurrects a half-created box.
+        With a PENDING create journal entry (and is_new False — the existing-box
+        relaunch shape) the launch REFUSES, naming ``create --recover``, and does
+        NOT seed / register / clear — forward-recovery belongs to ``create``."""
         with start_mocks() as m:
             m.proj.is_new = False
-            # A stale pending create entry would, pre-change, have driven the
-            # launch-side "or _pending_create_entry(...)" resurrection.
             m.pending_create_entry.return_value = {
                 "op": "create", "name": "testproject",
             }
@@ -6657,7 +6655,8 @@ class TestLaunchSeedGate:
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
-            assert rc == 0
+            assert rc == 1
+            assert "--recover" in capsys.readouterr().err
             m_seed.assert_not_called()
             m.register_new_box.assert_not_called()
             m.write_create_entry.assert_not_called()

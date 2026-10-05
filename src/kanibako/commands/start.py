@@ -70,6 +70,7 @@ from kanibako.settings.settings_keyspace import (
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, literal_expr
 from kanibako.settings.settings_cli_level import SELECTION_KEY, build_cli_level
 from kanibako.settings.paths import (
+    BoxMode,
     DesignationRoute,
     _upgrade_shell,
     box_workset_settings_paths,
@@ -1447,12 +1448,9 @@ def _resolve_existing_box(
       launch).  Forward-recovery of an interrupted create belongs to ``create``
       alone (re-running ``create`` completes it); the launch path must treat a
       not-fully-registered box as "no box" → error.  ⚑ This holds for PRIMARY and
-      NAMED (registration IS the signal); STANDALONE is the EXCEPTION — its
-      existence is a disk-marker + ``detect_project_mode``'s ``import_standalone``
-      self-heal, which re-registers a half-created standalone box (and clobbers its
-      create-journal entry) during the resolve, so a half-created STANDALONE box
-      reads as "exists" here and launches.  That is a PRE-EXISTING import-reconcile
-      interaction (not introduced by this gate) — see the explicit-create follow-up.
+      NAMED (registration IS the signal); a half-created STANDALONE box resolves
+      named from its disk marker, which ``import_standalone`` leaves unregistered,
+      so the caller refuses it on its pending create entry instead.
     * ``warn=False`` — a pure probe never doubles the non-conforming-name flag.
 
     REGISTRATION is the existence signal: a resolved box carries a non-empty
@@ -1537,6 +1535,17 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
         "  (box_data/ is already gone, so 'box rm' only drops the registry "
         "entry — your workspace/ and vault/ are not touched, and --name keeps "
         "the box's identity and channel address.)"
+    )
+
+
+def _interrupted_create_error(proj: ProjectPaths, pending: dict) -> str:
+    """The launch refusal for a box whose ``create`` is still pending in the journal."""
+    return (
+        f"Error: box '{proj.name}' has an interrupted 'create' pending (started "
+        f"{pending.get('started_at', '?')} on {pending.get('host', '?')}); a "
+        "launch will not finish it.\n"
+        f"  Finish it:  {recover_cure(proj)}\n"
+        "  Inspect it first:  kanibako box diagnose"
     )
 
 
@@ -2694,6 +2703,10 @@ def _run_container(
     _existing = _resolve_existing_box(std, config, project_dir)
     if _existing is None:
         print(_no_box_error(project_dir, std), file=sys.stderr)
+        return 1
+    _interrupted = _pending_create_entry(std, _existing)
+    if _interrupted is not None:
+        print(_interrupted_create_error(_existing, _interrupted), file=sys.stderr)
         return 1
 
     # MBR-6 (Jei 2026-08-02f, "no, a launch should not silently rebuild
@@ -8567,6 +8580,26 @@ def _box_journal_key(proj) -> str:
     derivation ever changes, this is the site that must change with it.
     """
     return str(Path(proj.shell_path).parent)
+
+
+def _create_designation(probe) -> "tuple[str, str]":
+    """The ``create`` mode flag and the designation that names *probe*'s box."""
+    # ⚑ EVERY CURE LINE NAMES THE ROOT THE USER PASSED, NEVER THE RESOLVED
+    # WORKSPACE: a STANDALONE box's ``<root>/workspace`` is no ``create`` argument,
+    # and a NAMED member is created by its NAME (a path in its space is refused).
+    _standalone = probe.mode is BoxMode.standalone
+    root = str(
+        probe.metadata_path if _standalone
+        else probe.name if probe.mode is BoxMode.named
+        else probe.project_path or "<None>"
+    )
+    return (" --standalone" if _standalone else ""), root
+
+
+def recover_cure(probe) -> str:
+    """The ``kanibako create … --recover`` line that finishes *probe*'s interrupted create."""
+    mode_flag, root = _create_designation(probe)
+    return f"kanibako create{mode_flag} --recover {root}"
 
 
 def _write_create_entry(std, proj) -> None:

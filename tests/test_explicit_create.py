@@ -366,6 +366,67 @@ class TestInterruptedCreateBoundary:
         assert load_primary_boxes(std.primary_workset).get("project") == project_dir
         assert _resolve_existing_box(std, config, None) is not None
 
+    @staticmethod
+    def _half_created_standalone(std, config, root):
+        """A standalone create stopped after its resolve and journal entry."""
+        from kanibako.commands.start import _write_create_entry
+        from kanibako.settings.paths import resolve_standalone_project
+
+        root.mkdir()
+        proj = resolve_standalone_project(
+            std, config, str(root), initialize=True, register=False,
+        )
+        _write_create_entry(std, proj)
+        return proj
+
+    def test_launch_refuses_half_created_standalone_and_keeps_its_entry(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The import pass must not adopt a standalone box whose create is pending:
+        the launch refuses naming ``create --recover``, the entry survives, and
+        ``create --recover`` then finishes the box."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.commands.start import _pending_create_entry
+        from kanibako.project import registry_store
+
+        config, std = _std(config_file)
+        root = tmp_home / "sa"
+        proj = self._half_created_standalone(std, config, root)
+
+        assert _launch(str(root)) == 1
+        err = capsys.readouterr().err
+        assert "Imported" not in err
+        assert (f"Finish it:  kanibako create --standalone --recover {root}"
+                in [ln.strip() for ln in err.splitlines()])
+        assert _pending_create_entry(std, proj) is not None
+        assert registry_store.load_standalone(std.registry) == {}
+
+        assert run_create(
+            _create_args(root, standalone=True, recover=True, no_vault=False)
+        ) == 0
+        assert _pending_create_entry(std, proj) is None
+        assert _resolve_existing_box(std, config, str(root)) is not None
+
+    def test_register_refuses_half_created_standalone_and_keeps_its_entry(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        from kanibako.commands.box._parser import run_register
+        from kanibako.commands.start import _pending_create_entry
+        from kanibako.project import registry_store
+
+        config, std = _std(config_file)
+        root = tmp_home / "sa"
+        proj = self._half_created_standalone(std, config, root)
+
+        assert run_register(
+            argparse.Namespace(target=str(root), box=None, force=False)
+        ) == 1
+        err = capsys.readouterr().err
+        assert (f"kanibako create --standalone --recover --register {root}"
+                in [ln.strip() for ln in err.splitlines()])
+        assert _pending_create_entry(std, proj) is not None
+        assert registry_store.load_standalone(std.registry) == {}
+
 
 # ---------------------------------------------------------------------------
 # MBR-6: a launch REFUSES a registered box whose directory is gone
