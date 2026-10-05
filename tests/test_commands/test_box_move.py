@@ -11,6 +11,7 @@ from kanibako.commands.box._lifecycle import run_move
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.paths import load_std_paths, resolve_project
+from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.utils import project_hash
 
 
@@ -46,7 +47,7 @@ class TestBoxMove:
 
         # PRIMARY membership updated to the new path.
         from kanibako.settings.paths import load_primary_boxes
-        boxes = load_primary_boxes(std.primary_workset)
+        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
         assert str(dest) in boxes.values()
         assert str(project_dir) not in boxes.values()
 
@@ -110,7 +111,7 @@ class TestBoxMove:
         rc = run_move(_move_args(project_dir, dest, to_workset="ws"))
         assert rc == 0
         assert dest.is_dir()
-        ws2 = load_workset(ws.root, ws.name)
+        ws2 = load_workset(ws.root, ws.name, early_system=std.early_system)
         assert any(p.name == "movable" for p in ws2.projects)
 
 
@@ -299,7 +300,7 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
         data = load_doc(ws.root / "workset.yaml")
         data.setdefault("workset", {})["workspaces"] = str(tmp_home / f"{name}-data")
         dump_doc(ws.root / "workset.yaml", data)
-        ws = load_workset(ws.root, ws.name)
+        ws = load_workset(ws.root, ws.name, early_system=std.early_system)
         leaf = ws.workspaces_dir / member
         leaf.mkdir(parents=True)
         (leaf / "f.txt").write_text("mine")
@@ -401,5 +402,6 @@ class TestBoxMoveOfTheWorksetsOwnWorkspace:
         assert leaf.is_symlink() and os.readlink(leaf) == str(real)
         assert (real / "f.txt").read_text() == "mine"
         assert not dest.exists()
-        member = next(p for p in load_workset(ws.root, "ws1").projects if p.name == "alpha")
+        member = next(p for p in load_workset(
+            ws.root, "ws1", early_system=std.early_system).projects if p.name == "alpha")
         assert member.source_path.resolve() == real.resolve()
