@@ -61,8 +61,8 @@ from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          XDG_SPEC_DEFAULTS, XDG_STATE_HOME)
 from kanibako.settings import bootstrap
 
-#: RE-EXPORT: the standalone marker/store leaf.  ``commands.box._parser`` reads it from
-#: here, and ``bootstrap`` stays the designated path-literal carrier it is defined in.
+#: RE-EXPORT: ``commands.box._parser`` reads the marker/store leaf from here, and
+#: ``bootstrap`` stays the designated path-literal carrier it is defined in.
 STANDALONE_META_DIR = bootstrap.STANDALONE_META_DIR
 
 if TYPE_CHECKING:
@@ -228,15 +228,9 @@ def standalone_box_store(root: Path, *, early: EarlyScope) -> Path:
     """The RESOLVED ``workset.boxes`` of the standalone box rooted at *root* — ITS store.
 
     ⭐ THE ONE PLACE A STANDALONE STORE PATH IS ANSWERED; every reader and deleter goes
-    through here or through :func:`box_metadata_dir`, which calls it.  ``workset.boxes`` is
-    a repointable workset key, so the store is ``box_data/`` only while the key is unset
-    (spec §2c) — composing that literal anywhere else reads a directory the box does not
-    use, which for a deleter means a directory the user never nominated.
-
-    ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
-    ⚑ A repoint the route REFUSES — a null ``workset.boxes`` ([R177]), a bare-relative
-    value — raises here, as it already does for this root's logs and vault arms; the box
-    has no store without it, and a silent default would put one where the user said none.
+    through here or through :func:`box_metadata_dir`, which calls it.  Composing
+    ``box_data/`` instead reads a directory the box does not use — for a deleter, one the
+    user never nominated.  ⚑ Deferred import: the documented paths/workset cycle.
     """
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_boxes
 
@@ -249,16 +243,11 @@ def standalone_store_teardown_plan(
 ) -> tuple[Path | None, Path | None]:
     """The standalone box store as ``(removable, retained)`` for a teardown — ONE split.
 
-    ⚑⚑ A standalone store the user pointed OUTSIDE *root* (or AT it) is the USER'S OWN
-    directory, and no verb ``rm -rf``\\ s it on their behalf — the same line
-    :func:`~kanibako.project.workset.standalone_vault_teardown` draws for a vault arm, and
-    the same one :func:`~kanibako.project.workset.delete_workset` draws for a workset
-    store.  Resolving the store is what makes this reachable: at the composed default the
-    store was always under the root by construction, so no guard was needed there.
-
-    A store strictly below *root* is kanibako's own skeleton inside the tree the teardown
-    is already clearing, so it goes with the box, repointed or not.  ``None`` on either arm
-    means there is nothing to act on.
+    ⚑⚑ A store OUTSIDE *root* is the USER'S OWN directory and no verb ``rm -rf``\\ s it on
+    their behalf — the line ``standalone_vault_teardown`` draws for a vault arm and
+    ``delete_workset`` for a workset store.  Resolving the store is what makes this
+    reachable: at the composed default it was under the root by construction.  ``None`` on
+    either arm means there is nothing to act on.
     """
     store = standalone_box_store(root, early=early)
     if not store.is_dir() or store.is_symlink():
@@ -269,11 +258,8 @@ def standalone_store_teardown_plan(
 
 
 def report_retained_store(store: Path, root: Path) -> None:
-    """Print the retained-store Note: name the store that stays, and why it stays.
-
-    ⚑ ONE text for every teardown that leaves a relocated store on disk, and it names
-    the STORE — :func:`~kanibako.project.workset.report_retained_vault` would announce a
-    store as a vault.  A keep that cannot name the path as the user's is just a leak.
+    """Print the retained-store Note: ONE text, and it names the STORE —
+    ``report_retained_vault`` would announce a store as a vault.
     """
     import sys
 
@@ -2557,10 +2543,9 @@ def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path
                              workset_root: Path) -> None:
     """First-time standalone project setup: all state inside the project dir (vault included).
 
-    ⚑ *metadata_path* is the box's store and *workset_root* is the ROOT that owns the
-    ``vault/`` skeleton its ``.gitignore`` belongs to.  ⚑ They are passed apart because a
-    repointed ``workset.boxes`` puts the store outside the root, and deriving the root from
-    the store's parent would hand ``write_vault_gitignore`` the store's directory instead.
+    ⚑ *workset_root* owns the ``vault/`` skeleton and is passed APART from *metadata_path*:
+    a repointed ``workset.boxes`` puts the store outside the root, so deriving the root from
+    the store's parent would hand ``write_vault_gitignore`` the store's own directory.
     """
     _init_common(std, metadata_path, shell_path, vault_ro_path, vault_rw_path, project_path,
                  enable_vault=enable_vault, vault_root=workset_root)
