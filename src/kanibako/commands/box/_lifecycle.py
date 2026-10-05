@@ -43,6 +43,7 @@ from kanibako.settings.paths import (
     ProjectPaths,
     StandardPaths,
     WorksetSpec,
+    _WorksetLike,
     _find_workset_for_path,
     _primary_box_paths,
     _register_workset_box_membership,
@@ -372,7 +373,7 @@ def _resolve_workset_state(
         WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
     )
     # ⚑ THE RECORDED workspace: a null takes the resolved value, not the files ops move.
-    recorded = _recorded_workspace(ws, proj_name, proj.project_path)
+    recorded = recorded_workspace_for(ws, proj_name, proj.project_path)
     if recorded is None:
         # Defensive; the member row is guaranteed above.
         refuse_null_workspaces(ws.root, f"a workspace for '{proj_name}'")
@@ -384,8 +385,20 @@ def _resolve_workset_state(
     )
 
 
-def _recorded_workspace(ws: Workset, box_name: str, resolved: Path | None) -> Path | None:
-    """The member's recorded ``source_path`` — its files — else *resolved*."""
+def recorded_workspace_for(
+    ws: "_WorksetLike", box_name: str, resolved: Path | None,
+) -> Path | None:
+    """The member's recorded ``source_path`` — its files — else *resolved*.
+
+    THE one accessor for "where are this member's files", shared by lifecycle,
+    ``box duplicate`` and ``box archive`` so the three cannot drift.  A null
+    ``workset.workspaces`` makes the RESOLVED ``project_path`` ``None`` while the
+    registry's ``boxes:`` row still names the real directory; guarding on the
+    resolved value alone turns "nulled" into "nothing there".
+
+    Named ``..._for`` because the bare ``recorded_workspace`` is already used as a
+    LOCAL three times below in this module — legal, but a shadow that reads as a bug.
+    """
     for member in ws.projects:
         if member.name == box_name:
             return member.source_path

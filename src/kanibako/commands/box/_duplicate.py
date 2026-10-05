@@ -646,15 +646,28 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             print("Aborted.")
             return 2
 
-    # Copy workspace (unless --bare).  Copy from the RESOLVED workspace, not a
-    # hardcoded ws.workspaces_dir/proj_name -- for an external-connected source
-    # the latter is only the discoverability symlink, while project_path (set
-    # via resolve_workset_project's meta["workspace"] override) is the live
-    # workspace.  No-op difference for ordinary internal workset sources.
+    # Copy workspace (unless --bare).  Copy from the member's RECORDED workspace, not
+    # the RESOLVED one: a null ``workset.workspaces`` leaves ``project_path`` None while
+    # the registry's ``boxes:`` row still names the real directory, so guarding on the
+    # resolved value turned "nulled" into "nothing there" and registered an EMPTY box
+    # with no warning at all.  One accessor for lifecycle / duplicate / archive, so the
+    # three cannot drift.  For an ordinary internal member the two are the same path.
     if not args.bare:
-        ws_workspace = src_proj.project_path
-        if ws_workspace is not None and ws_workspace.is_dir():
-            _merge_workspace(ws_workspace, new_path, args.force)
+        from kanibako.commands.box._lifecycle import recorded_workspace_for
+        from kanibako.project.workset import refuse_null_workspaces
+
+        ws_workspace = recorded_workspace_for(ws, proj_name, src_proj.project_path)
+        if ws_workspace is None:
+            refuse_null_workspaces(ws.root, f"a workspace for '{proj_name}'")
+        assert ws_workspace is not None  # refused on the line above
+        if not ws_workspace.is_dir():
+            print(
+                f"Error: the recorded workspace {ws_workspace} for "
+                f"{ws.name}/{proj_name} does not exist; nothing to copy.",
+                file=sys.stderr,
+            )
+            return 1
+        _merge_workspace(ws_workspace, new_path, args.force)
 
     # Copy metadata into target layout.
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
