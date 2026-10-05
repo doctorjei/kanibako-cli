@@ -866,23 +866,26 @@ def _precreate_mount_stubs(
     def _parents_within(stub: Path, root: Path) -> "Iterator[Path]":
         """Yield *stub*'s parent dirs up to the first symlink or (excl.) *root*.
 
-        ⚑ Stops at *root* and at the first ancestor that does not resolve inside
-        *root* — never walks above the box home. A symlink is yielded and the walk
-        ends there: the link is never walked through.
+        ⚑ Stops at *root* and at the first symlink — never walks above the box home,
+        and never walks THROUGH a link. The walk is by PATH POSITION, not by
+        ``resolve()``: resolving a component FOLLOWS a link further up, so a link
+        above the immediate parent would take the walk out of *root* before the
+        walk ever reached the link itself.
         """
         try:
-            root_resolved = root.resolve()
-        except OSError as exc:
-            logger.debug("stub walk skip (root resolve FAILED): %s (%s)", root, exc)
+            # ⚑ POSITION, so a stub outside *root* costs no filesystem probe and the
+            # walk cannot climb past the root: ``relative_to`` succeeding is what
+            # bounds the number of steps.
+            steps = len(stub.relative_to(root).parts)
+        except ValueError:
+            logger.debug("stub walk skip (dest not under root): %s / %s", stub, root)
             return
-        # Start at the stub's PARENT: a symlink AT the stub is ``_clear_symlink``'s
-        # to remove, not this walk's to judge.
         current = stub.parent
-        while True:
-            # ⚑ Checked BEFORE the containment test: a DANGLING link does not resolve,
-            # so that test would stop the walk without ever yielding it. A parent we
-            # cannot probe is not evidence of a symlink — ``is_symlink`` re-raises
-            # EACCES — so the walk stops there, as it always has.
+        for _ in range(steps):
+            if current == root:
+                return
+            # ⚑ A parent we cannot probe is not evidence of a symlink —
+            # ``is_symlink`` re-raises EACCES — so the walk stops there.
             try:
                 is_link = current.is_symlink()
             except OSError as exc:
@@ -891,25 +894,18 @@ def _precreate_mount_stubs(
             if is_link:
                 yield current
                 return
-            # ⚑ Stop AT root, never above: an escaping ancestor resolves OUTSIDE root and
-            # raises ValueError, so we stop rather than chmod beyond the box home.
-            try:
-                rel = current.resolve().relative_to(root_resolved)
-            except (OSError, ValueError):
-                return
-            if rel == Path("."):
-                # Reached root itself — off-limits, and nothing above it either.
-                return
             yield current
             current = current.parent
 
     def _refused_symlink(stub: Path, root: Path) -> tuple[Path, str] | None:
         """The nearest symlinked parent of *stub* to refuse, and the reason it is.
 
-        ⚑ Refuses a link LEADING OUT of *root*, and one that does not RESOLVE: a
-        dangling link has nothing to stub under, and ``mkdir`` then fails on the link
-        itself, which the stub helpers log at debug and swallow, so the launch goes on
-        to fail naming neither. A link resolving INSIDE *root* is stubbed.
+        ⚑ Refuses a link LEADING OUT of *root*, one that does not RESOLVE, and one
+        resolving to something that is not a DIRECTORY: a dangling link has nothing
+        to stub under, and a file is not a directory, so ``mkdir`` then fails on the
+        link itself, which the stub helpers log at debug and swallow, so the launch
+        goes on to fail naming neither. A link resolving to a directory INSIDE *root*
+        is stubbed.
         """
         try:
             root_resolved = root.resolve()
@@ -921,6 +917,8 @@ def _precreate_mount_stubs(
             try:
                 resolved = current.resolve(strict=True)
             except (OSError, RuntimeError):
+                return current, "unresolvable"
+            if not resolved.is_dir():
                 return current, "unresolvable"
             try:
                 resolved.relative_to(root_resolved)
@@ -966,10 +964,23 @@ def _precreate_mount_stubs(
         ⚑ This MUTATES user-visible modes in the box home, so its containment is
         load-bearing and deliberately narrow — see the llm-doc before widening it.
         """
+        try:
+            root_resolved = root.resolve()
+        except OSError as exc:
+            logger.debug("loosen skip (root resolve FAILED): %s (%s)", root, exc)
+            return
         for current in _parents_within(stub, root):
             try:
                 if current.is_symlink():
                     logger.debug("loosen stop at symlink parent: %s", current)
+                    break
+                # ⚑ The walk is by path position, so containment is re-asserted HERE,
+                # where the mutation is: a parent reached through a link higher up
+                # resolves outside *root*, and its mode is not ours to change.
+                try:
+                    current.resolve().relative_to(root_resolved)
+                except (OSError, ValueError):
+                    logger.debug("loosen stop (parent outside root): %s", current)
                     break
                 perm = stat.S_IMODE(current.stat().st_mode)
                 if perm & 0o011 != 0o011:
