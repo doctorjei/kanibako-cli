@@ -407,6 +407,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A reference to `meta.box.agent.<key>` or to a computed `meta.*.auth.*_active` key now sees its
+  value at launch.** Before, a value such as a bind source of `{meta.box.agent.canon}/q` resolved the
+  reference as absent and mounted `/q`. An agent key whose value reaches its own mirror is now refused
+  as a cyclic reference.
+
 - **The warning for a standard bind set to null offers its source key as the cure only when that key
   can be set to null.** Before, nulling a canon or system channel bind told you to set `system.canon` or
   `system.channels.*` to null as well, and both `system set --null` and the settings read refuse that.

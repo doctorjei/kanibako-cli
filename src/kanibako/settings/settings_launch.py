@@ -113,7 +113,9 @@ from kanibako.settings.settings_categories import (
     refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_cli_level import build_cli_level, guard_cli_level
-from kanibako.settings.settings_expand import DestKeys, NullSources, RefsRead, expand
+from kanibako.settings.settings_expand import (
+    Derive, DestKeys, NullSources, RefsRead, expand,
+)
 from kanibako.settings.settings_keyspace import (
     BIND_LEAF_CATEGORIES,
     Judgment,
@@ -942,16 +944,25 @@ class _AuthInputs:
 
 
 def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs:
-    """Read the six auth-chain bools off the expanded snapshot.
+    """Read the six auth-chain bools off the expanded snapshot."""
+    return _auth_inputs(
+        lambda key: snapshot_leaf(snapshot, key),
+        floor=isinstance(dict.get(snapshot, "box", __MISSING__), KeyStore),
+    )
 
-    An absent ``box`` node means the floor was not injected → all False (fail
-    CLOSED, never laundered into sharing). Each input is a real ``bool``
-    terminal resolved by ``expand``; :func:`as_bool` does not launder either.
+
+def _auth_inputs(read: Callable[[str], object], *, floor: bool) -> _AuthInputs:
+    """The six auth-chain bools, each leaf taken from *read* (``__MISSING__`` if absent).
+
+    Without the *floor* (no ``box`` node) all are False: fail CLOSED, never laundered
+    into sharing. Each input is a real ``bool`` terminal resolved by ``expand``;
+    :func:`as_bool` does not launder either. The capability is the box-scoped RO
+    MIRROR (change 8 — being ``meta.*``, a scope FILE cannot repoint it); the box keeps
+    only its two ENABLE knobs, the workset SOURCE path having moved to ``meta.box.auth``.
     """
     from kanibako.settings.settings_views import as_bool
 
-    box_node = dict.get(snapshot, "box", __MISSING__)
-    if not isinstance(box_node, KeyStore):
+    if not floor:
         return _AuthInputs(
             support=False,
             system_allow=False,
@@ -961,58 +972,39 @@ def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs:
             workset_knob=True,
         )
 
-    # The box-scoped RO capability MIRROR (change 8 — being ``meta.*``, a scope
-    # FILE cannot repoint it).
-    meta_node = dict.get(snapshot, "meta", __MISSING__)
-    support = False
-    if isinstance(meta_node, KeyStore):
-        meta_box = dict.get(meta_node, "box", __MISSING__)
-        if isinstance(meta_box, KeyStore):
-            meta_box_agent = dict.get(meta_box, "agent", __MISSING__)
-            if isinstance(meta_box_agent, KeyStore):
-                mba_auth = dict.get(meta_box_agent, "auth", __MISSING__)
-                if isinstance(mba_auth, KeyStore):
-                    support = as_bool(
-                        dict.get(mba_auth, "share_support", False)
-                    )
-
-    # The system + workset allow flags.
-    system_node = dict.get(snapshot, "system", __MISSING__)
-    system_allow = False
-    if isinstance(system_node, KeyStore):
-        sys_auth = dict.get(system_node, "auth", __MISSING__)
-        if isinstance(sys_auth, KeyStore):
-            system_allow = as_bool(dict.get(sys_auth, "share_allowed", False))
-
-    workset_node = dict.get(snapshot, "workset", __MISSING__)
-    workset_auth = (
-        dict.get(workset_node, "auth", __MISSING__)
-        if isinstance(workset_node, KeyStore)
-        else __MISSING__
-    )
-    workset_allow = False
-    global_sync = False
-    if isinstance(workset_auth, KeyStore):
-        workset_allow = as_bool(dict.get(workset_auth, "share_allowed", False))
-        global_sync = as_bool(dict.get(workset_auth, "global_sync", False))
-
-    # The two settable box ENABLE knobs — all that remains in ``box.auth`` since the
-    # workset SOURCE path moved to the RO ``meta.box.auth`` node (change 8).
-    box_auth = dict.get(box_node, "auth", __MISSING__)
-    global_knob = True
-    workset_knob = True
-    if isinstance(box_auth, KeyStore):
-        global_knob = as_bool(dict.get(box_auth, "global_enabled", True))
-        workset_knob = as_bool(dict.get(box_auth, "workset_enabled", True))
+    def flag(key: str, default: bool) -> bool:
+        value = read(key)
+        return as_bool(default if value is __MISSING__ else value)
 
     return _AuthInputs(
-        support=support,
-        system_allow=system_allow,
-        workset_allow=workset_allow,
-        global_sync=global_sync,
-        global_knob=global_knob,
-        workset_knob=workset_knob,
+        support=flag("meta.box.agent.auth.share_support", False),
+        system_allow=flag("system.auth.share_allowed", False),
+        workset_allow=flag("workset.auth.share_allowed", False),
+        global_sync=flag("workset.auth.global_sync", False),
+        global_knob=flag("box.auth.global_enabled", True),
+        workset_knob=flag("box.auth.workset_enabled", True),
     )
+
+
+#: The three computed sharing-state keys (Q61), in :func:`_auth_active_values` order.
+_AUTH_ACTIVE_KEYS: Final = (
+    "meta.workset.auth.global_active",
+    "meta.box.auth.global_active",
+    "meta.box.auth.workset_active",
+)
+
+
+def _auth_active_values(inputs: _AuthInputs) -> tuple[bool, bool, bool]:
+    """The values of :data:`_AUTH_ACTIVE_KEYS`, computed from the six inputs (Q61)."""
+    if not inputs.support:
+        return False, False, False
+    box_global_active = bool(inputs.system_allow and inputs.global_knob)
+    workset_global_active = bool(inputs.system_allow and inputs.global_sync)
+    if inputs.workset_allow and inputs.workset_knob:
+        box_workset_active = True if inputs.global_sync else not box_global_active
+    else:
+        box_workset_active = False
+    return workset_global_active, box_global_active, box_workset_active
 
 
 def _materialize_auth_active(snapshot: KeyStore) -> None:
@@ -1034,21 +1026,9 @@ def _materialize_auth_active(snapshot: KeyStore) -> None:
     Reads/writes via the UNBOUND ``dict`` protocol (S3) so a key named ``get`` /
     ``auth`` cannot shadow.
     """
-    inputs = _read_auth_inputs(snapshot)
-    if inputs.support:
-        box_global_active = bool(inputs.system_allow and inputs.global_knob)
-        workset_global_active = bool(inputs.system_allow and inputs.global_sync)
-        if inputs.workset_allow and inputs.workset_knob:
-            if inputs.global_sync:
-                box_workset_active = True
-            else:
-                box_workset_active = not box_global_active
-        else:
-            box_workset_active = False
-    else:
-        box_global_active = False
-        workset_global_active = False
-        box_workset_active = False
+    workset_global_active, box_global_active, box_workset_active = (
+        _auth_active_values(_read_auth_inputs(snapshot))
+    )
     meta_node = dict.get(snapshot, "meta", __MISSING__)
     if not isinstance(meta_node, KeyStore):
         meta_node = KeyStore()
@@ -2423,9 +2403,10 @@ def build_launch_snapshot(
     null_sources: NullSources = {}
     expanded = expand(
         snapshot, ctx, null_sources=null_sources, refs_read=refs_read, dest_keys=dest_keys,
+        derive=_post_expand_keys(snapshot, agent_name),
     )
     # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
-    # are resolved terminals.
+    # are resolved terminals; a reference read them already (:func:`_post_expand_keys`).
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)
     # The three computed sharing-state keys (Q61) — a COMPUTE step, AFTER expand
     # for the same reason: expand does not evaluate &&, so the ANDs only exist in
@@ -2959,6 +2940,62 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
 
 #: Where the mirror hangs, as SEGMENTS: the path the §0 oracle judges a copied entry at.
 _MIRROR_SEGMENTS: tuple[str, ...] = ("meta", "box", "agent")
+
+
+def _post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
+    """Answer, during ``expand`` of the RAW *snapshot*, a reference to a key the two
+    materializers above write only afterwards: the mirror and the auth keys (spec §2b).
+
+    A mirror key resolves as the agent key the pick would copy into it
+    (:func:`_mirror_sources`); an auth key is computed from inputs read on the same pass.
+    """
+    head = "meta.box.agent."
+    sources: list[KeyStore] = []
+
+    def derive(dotted: str, read: Callable[[str], object]) -> object:
+        if dotted in _AUTH_ACTIVE_KEYS:
+            floor = isinstance(dict.get(snapshot, "box", __MISSING__), KeyStore)
+            values = _auth_active_values(_auth_inputs(read, floor=floor))
+            return values[_AUTH_ACTIVE_KEYS.index(dotted)]
+        if not dotted.startswith(head) or not active_agent.strip():
+            return __MISSING__
+        if not sources:
+            sources.append(_mirror_sources(snapshot, active_agent))
+        source = snapshot_leaf(sources[0], dotted[len(head):])
+        return read(source) if isinstance(source, str) else __MISSING__
+
+    return derive
+
+
+def _mirror_sources(snapshot: KeyStore, active_agent: str) -> KeyStore:
+    """The mirror's shape over the RAW *snapshot*, each leaf the key it is copied from.
+
+    The same pick and the same drop as :func:`_materialize_box_agent_mirror`, run on
+    the two agent tiers with every leaf replaced by its own dotted key.
+    """
+    agent_node = dict.get(snapshot, "agent", __MISSING__)
+    tiers = KeyStore()
+    if isinstance(agent_node, KeyStore):
+        for name in ("default", active_agent):
+            node = dict.get(agent_node, name, __MISSING__)
+            if isinstance(node, KeyStore):
+                dict.__setitem__(tiers, name, _source_keys(node, f"agent.{name}"))
+    root = KeyStore()
+    dict.__setitem__(root, "agent", tiers)
+    effective = _agent_pick_node(root, active_agent)
+    _drop_non_mirror_keys(effective)
+    return effective
+
+
+def _source_keys(node: KeyStore, prefix: str) -> KeyStore:
+    """A copy of *node* whose every leaf is its own dotted key under *prefix*."""
+    out = KeyStore()
+    for name in dict.keys(node):
+        value = dict.__getitem__(node, name)
+        key = f"{prefix}.{name}"
+        leaf = _source_keys(value, key) if isinstance(value, KeyStore) else key
+        dict.__setitem__(out, name, leaf)
+    return out
 
 
 def _drop_non_mirror_keys(effective: KeyStore) -> None:
