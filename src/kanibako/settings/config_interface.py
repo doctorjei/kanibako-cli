@@ -157,6 +157,10 @@ _log = get_logger(__name__)
 if TYPE_CHECKING:
     from kanibako.settings.settings_launch import LaunchInputs
 
+#: The SET doors whose files ``workset_dirkeys.early_repoint`` reads, so the doors that run
+#: that reader's refusal on a workset early key.
+_EARLY_KEY_DOORS = frozenset({ConfigLevel.workset, ConfigLevel.system})
+
 
 # ---------------------------------------------------------------------------
 # Config action parsing
@@ -1764,11 +1768,11 @@ def set_config_value(
     ref_err = system_path_ref_error(canonical, value)
     if ref_err is not None:
         return _refusal(f"Error: {ref_err}")
-    # The workset early keys, at the WORKSET door, in their reader's own words: that reader
-    # reads only the workset's own file.
+    # The workset early keys, at the two doors whose files their reader reads (the workset's
+    # own, and the system file beneath it), in that reader's own words.
     from kanibako.settings.workset_dirkeys import early_key_set_error
 
-    early_dest = None if command_scope is not ConfigLevel.workset else _write_dest(
+    early_dest = None if command_scope not in _EARLY_KEY_DOORS else _write_dest(
         canonical, command_scope=command_scope,
         config_path=config_path, settings_path=system_settings_path,
     )

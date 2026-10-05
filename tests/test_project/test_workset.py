@@ -1319,16 +1319,19 @@ class TestWorksetLogsPresentNone:
     its default — and every log reader, writer and remover sees that one answer.
     """
 
-    def test_the_repoint_read_keeps_three_states(self):
-        from kanibako.project.workset import _workset_path_repoint
+    def test_the_repoint_read_keeps_three_states(self, tmp_path):
         from kanibako.settings.settings_resolve import UNSET
+        from kanibako.settings.workset_dirkeys import early_repoint
 
-        assert _workset_path_repoint(None, "logs") is UNSET
-        assert _workset_path_repoint({"workset": {}}, "logs") is UNSET
-        assert _workset_path_repoint({"workset": {"logs": None}}, "logs") is None
-        assert _workset_path_repoint({"workset": {"logs": "/x"}}, "logs") == "/x"
+        def read(doc):
+            return early_repoint(tmp_path, doc, "logs")[0]
+
+        assert read(None) is UNSET
+        assert read({"workset": {}}) is UNSET
+        assert read({"workset": {"logs": None}}) is None
+        assert read({"workset": {"logs": "/x"}}) == "/x"
         # ``""`` is not yet distinguished from unset; it keeps its old answer.
-        assert _workset_path_repoint({"workset": {"logs": ""}}, "logs") is UNSET
+        assert read({"workset": {"logs": ""}}) is UNSET
 
     def test_a_null_logs_resolves_to_no_dir_in_every_mode(self, tmp_path):
         from kanibako.project.workset import resolve_workset_logs
@@ -1413,7 +1416,7 @@ class TestWorksetBoxesPresentNone:
         for call in (
             lambda: resolve_workset_boxes(tmp_path, doc),
             lambda: resolve_workset_boxes(tmp_path, doc, standalone=True),
-            # A lone box's default logs dir is ``@meta.box.path`` = ``@workset.boxes``.
+            # A lone box's default logs dir is ``@workset.boxes``.
             lambda: resolve_workset_logs(tmp_path, doc, standalone=True),
         ):
             with pytest.raises(SettingsError) as exc:

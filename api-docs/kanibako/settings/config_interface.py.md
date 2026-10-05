@@ -10,6 +10,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/config_interface.py
 ```
 FLOOR_TIER = 'built-in default'
 _log = get_logger(__name__)
+_EARLY_KEY_DOORS = frozenset({ConfigLevel.workset, ConfigLevel.system})
 ```
 
 ## Functions

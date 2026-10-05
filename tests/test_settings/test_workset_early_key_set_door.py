@@ -1,11 +1,10 @@
-"""The WORKSET door holds the workset EARLY keys to their reader (system-design "Ordering rule").
+"""The WORKSET and SYSTEM doors hold the workset EARLY keys to their reader.
 
-A value the reader cannot resolve, stored by ``workset set``, makes every reader of the
-workset refuse it: ``workset info``/``show``/``connect`` fail and ``box list`` drops the
-workset.  The door runs the reader's own resolve (``workset_dirkeys.early_key_set_error``),
-so the verdict here is derived from :func:`resolve_workset_dir_key` rather than listed.
-The system door makes no early-key verdict of its own; it holds these keys to the ordering
-rule like any other key.
+A value the reader cannot resolve, stored by ``workset set`` or ``system set`` (the reader
+reads the system file beneath the workset's own), makes every reader of a workset refuse
+it: ``workset info``/``show``/``connect`` fail and ``box list`` drops the workset.  The
+door runs the reader's own resolve (``workset_dirkeys.early_key_set_error``), so the
+verdict here is derived from :func:`resolve_workset_dir_key` rather than listed.
 """
 
 from __future__ import annotations
@@ -27,8 +26,15 @@ _EARLY = sorted(f"workset.{key}" for key in WORKSET_EARLY_KEYS)
 #: Values the reader refuses that the ordering rule alone allows: a ref into the key's own
 #: set, and a ``$`` it cannot answer.
 _REFUSED = ["@{workset.kuid}/z", "/z/$AGENT"]
-#: Values the reader reads: its one ref, and a literal.
+#: Values the reader reads: the workset root ref, and a literal.
 _ACCEPTED = ["@meta.workset.path/x", "/lit/x"]
+#: The spec's own same-set channel defaults (settings-keyspace §2c ALL WORKSETS).
+_SPEC_CHANNEL_DEFAULTS = {
+  "workset.channels.common": "@workset.channelroot/common",
+  "workset.channels.chat": "@workset.channelroot/chat",
+  "workset.channels.share": "@workset.channelroot/share",
+  "workset.channels.broadcast": "@workset.channels.chat/broadcast.md",
+}
 
 
 def _reader_refuses(key: str, value: str) -> bool:
@@ -112,3 +118,33 @@ def test_a_system_ref_is_refused(ws, std, tmp_path):
   the key stays refused whichever door answers."""
   message = _workset_set("workset.registry", "/z/@{system.agent}", ws, std, tmp_path)
   assert message.startswith("Error:"), message
+
+
+@pytest.mark.parametrize("key", _EARLY)
+class TestTheSystemDoorAgreesWithTheReader:
+  def test_a_value_the_reader_refuses_is_refused_and_not_written(self, key, std, tmp_path):
+    message = _system_set(key, "/z/$AGENT", std, tmp_path)
+    assert message.startswith("Error: nothing was written"), message
+    assert str(tmp_path / "settings.yaml") in message, message
+    settings = tmp_path / "settings.yaml"
+    assert not settings.exists() or "$AGENT" not in settings.read_text()
+
+  def test_a_value_the_reader_reads_is_written(self, key, std, tmp_path):
+    message = _system_set(key, "/lit/x", std, tmp_path)
+    assert not message.startswith("Error:"), message
+    assert "/lit/x" in (tmp_path / "settings.yaml").read_text()
+
+
+@pytest.mark.parametrize(("key", "value"), sorted(_SPEC_CHANNEL_DEFAULTS.items()))
+def test_the_workset_door_takes_the_spec_channel_defaults(key, value, ws, std, tmp_path):
+  message = _workset_set(key, value, ws, std, tmp_path)
+  assert not message.startswith("Error:"), message
+  assert value in (ws.root / WORKSET_META_FILE).read_text()
+
+
+def test_a_referent_whose_default_splits_by_mode_is_refused(ws, std, tmp_path):
+  """``workset.canon`` is read in every mode, and an unset ``workset.boxes`` is
+  ``box_data`` in standalone and ``boxes`` elsewhere: no one answer, so it is refused."""
+  message = _workset_set("workset.canon", "@workset.boxes/cn", ws, std, tmp_path)
+  assert message.startswith("Error: nothing was written"), message
+  assert "'@workset.boxes' is unset" in message, message

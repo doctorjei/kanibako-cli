@@ -21,7 +21,6 @@ _CHANNELROOT_LEAF = bootstrap.CHANNELS_PATH
 _LOGS_LEAF = bootstrap.LOGS_PATH
 _CANON_LEAF = 'canon'
 _TEMPLATE_LEAF = 'template'
-_BOX_PATH_REF = 'meta.box.path'
 _BOXES_REF = f'workset.{BOXES_DIR_NAME}'
 _VAULT_LEAF = bootstrap.VAULT_PATH
 _VAULT_RO_KEY = 'vault_ro'
@@ -67,7 +66,7 @@ def ensure_discoverability_link(ws: Workset, name: str, target: Path) -> Path | 
 def release_project(ws: Workset, name: str, *, keep_link: bool=False) -> WorksetProject
 def remove_member_store(ws: Workset, name: str, *, bases: tuple[Path, ...] | None=None) -> None
 def remove_project(ws: Workset, name: str, *, remove_files: bool=False, std: StandardPaths | None=None) -> WorksetProject
-def _workset_path_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None | _Unset
+def _workspaces_null_file(workset_root: Path) -> Path | None
 def _holds_only_arms(path: Path, arms: set[Path]) -> bool
 @contextmanager
 def _journal_connect(journal: Path | None, box_path: Path, *, name: str, workset: str | None=None, workspace: str | None=None)

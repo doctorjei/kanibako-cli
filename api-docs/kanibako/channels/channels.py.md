@@ -26,8 +26,7 @@ def workset_channels_at(ws_root: Path) -> WorksetChannels | None
 def partition_key_paths(std: StandardPaths, ws_token: str, ws_root: Path) -> WorksetPartition
 def workset_partition_paths(proj: ProjectPaths, std: StandardPaths) -> WorksetPartition
 def box_channel_addresses(proj: ProjectPaths, std: StandardPaths) -> BoxChannelAddresses
-def _channels_repoint(workset_settings: Mapping[str, Any] | None, leaf: str) -> str | None
-def _channel_key(ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path) -> Path
+def _channel_key(ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path, *, standalone: bool | None) -> Path
 ```
 
 ## Classes

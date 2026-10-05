@@ -377,26 +377,44 @@ class TestStandaloneFixedPaths:
         )
         assert creds_watcher_log_path(std, proj).parent == helper_log_path(std, proj).parent
 
-    def test_helper_log_resolves_a_logs_value_written_as_the_box_ref(
+    def test_helper_log_resolves_a_logs_value_written_as_the_default_ref(
         self, std, config, project_dir, credentials_dir,
     ):
-        """``@meta.box.path`` is the STANDALONE default's own spelling, so a user may
-        write it — and a subdir under it is the obvious tidy-up.  It resolves here and
-        refuses on the un-widened route; both are pinned (test_workset_dirkeys)."""
+        """``@workset.boxes`` is the STANDALONE default's own spelling, so a user may
+        write it — and a subdir under it is the obvious tidy-up."""
+        proj = resolve_standalone_project(
+            std, config, str(project_dir), initialize=True,
+        )
+        resolved = project_dir.resolve()
+        self._set_workset_key(resolved, "logs", "@workset.boxes/logs")
+        assert helper_log_path(std, proj) == (
+            resolved / "box_data" / "logs" / f"{proj.name}.jsonl"
+        )
+
+    def test_helper_log_refuses_a_logs_value_written_as_the_box_root_ref(
+        self, std, config, project_dir, credentials_dir,
+    ):
+        """``@meta.box.path`` resolves after the workset keys (system-design "Ordering
+        rule"), so a hand-written one is refused by name, naming the file."""
         proj = resolve_standalone_project(
             std, config, str(project_dir), initialize=True,
         )
         resolved = project_dir.resolve()
         self._set_workset_key(resolved, "logs", "@meta.box.path/logs")
-        assert helper_log_path(std, proj) == (
-            resolved / "box_data" / "logs" / f"{proj.name}.jsonl"
-        )
+        from kanibako.settings.settings_resolve import SettingsError
+
+        with pytest.raises(SettingsError) as excinfo:
+            helper_log_path(std, proj)
+        message = str(excinfo.value)
+        assert 'system-design "Ordering rule"' in message
+        assert "workset.logs" in message
+        assert str(resolved / "workset.yaml") in message
 
     def test_helper_log_default_follows_a_boxes_repoint(
         self, std, config, project_dir, credentials_dir,
     ):
-        """With ``workset.logs`` UNSET the default is ``@meta.box.path``, which for a
-        lone box is ``@workset.boxes`` — so moving the box store moves the log with it.
+        """With ``workset.logs`` UNSET the default is ``@workset.boxes`` — so moving the
+        box store moves the log with it.
         🛑 This does NOT make the standalone box store repointable end to end: home,
         the vault teardown, ``box purge`` and detection still compose ``box_data``.
         """
