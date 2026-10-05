@@ -8,6 +8,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/paths.py.md`.
 ## Variables
 
 ```
+STANDALONE_META_DIR = bootstrap.STANDALONE_META_DIR
 logger = get_logger('paths')
 SUBSCRIPTED_SYSTEM_PATH_KEYS: frozenset[str] = frozenset({'system.backup', 'system.channelroot', 'system.template', 'system.cache', 'system.state', 'system.runtime'})
 STANDALONE_REGISTRY_COMMENT = 'REMOVING THIS WILL BREAK A STANDALONE BOX!'
@@ -30,6 +31,9 @@ def workset_settings_path(group: _WorksetRooted) -> Path
 def workset_settings_path(group: None) -> None
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None
 def box_tree_materialized(proj: ProjectPaths) -> bool
+def standalone_box_store(root: Path) -> Path
+def standalone_store_teardown_plan(root: Path) -> tuple[Path | None, Path | None]
+def report_retained_store(store: Path, root: Path) -> None
 def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path
 def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]
 def resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path: Path | None) -> bool
@@ -114,7 +118,7 @@ def _resolve_designated_path(std: StandardPaths, config: BootstrapConfig, raw: s
 def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths
 def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths
 def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths
-def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path, *, enable_vault: bool=True) -> None
+def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path, *, enable_vault: bool=True, workset_root: Path) -> None
 ```
 
 ## Classes

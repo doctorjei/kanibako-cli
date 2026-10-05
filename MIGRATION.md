@@ -6829,6 +6829,42 @@ becomes `kb-<new name>-<box>`.
 
 ---
 
+### 2.108 Standalone boxes: a relocated store is read where it is, and never deleted for you
+
+**Read this if you have ever set `workset.boxes` in a standalone box's root `workset.yaml`.**
+
+**What changed.** `workset.boxes` is a repointable workset key, and its standalone value is the
+`{meta.workset.path}/box_data` *default* — so `box_data/` named a standalone box's store only
+while the key was unset. Home, the box-scope settings file and both standalone teardowns composed
+`<root>/box_data` directly, so a hand-repointed store was read from a directory the box did not
+use. All of them now resolve the key.
+
+Two things follow that are worth stating plainly.
+
+**A teardown no longer deletes a store that sits outside the box root.** Where the resolved store
+lies outside the root it is a directory you nominated, so `purge` and the `box move`/`convert`
+source teardown leave it and tell you so:
+
+```
+Note: left the box store at /path/to/store/box_data in place — outside /path/to/box and is yours to remove.
+```
+
+That is the same line a relocated `vault_ro`/`vault_rw` arm already took (§2.9). Before, a
+relocated store survived but silently, and the leftover `<root>/box_data` was deleted instead — a
+directory the box had stopped using. A store lying strictly *below* the root is still removed,
+relocated or not.
+
+**Detection has not changed.** It still uses the `box_data/` marker as its locator, so a box whose
+store was relocated is discovered only while that marker is in place. Move the store and keep the
+marker, or leave the key unset.
+
+**What to do.** For a box you already relocated, nothing must change: move the data to the path
+`workset.boxes` names and leave `<root>/box_data` in place as the detection marker. If you want the
+relocated store gone, remove it yourself with the path from the Note. A box with no `workset.boxes`
+entry is unaffected — its resolved store is `<root>/box_data`, exactly as before.
+
+---
+
 ## 3. For plugin authors
 
 A plugin must return a `PluginDescriptor` from `descriptor` and a program from
