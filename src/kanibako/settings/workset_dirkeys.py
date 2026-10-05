@@ -395,6 +395,8 @@ def _reader_modes(key: str, *, standalone_reads: bool) -> tuple[bool | None, ...
 
 def early_key_set_error(
     canonical: str, value: str | None, *, written_file: Path, standalone_reads: bool,
+    early_system: EarlySystem | None = None, std_error: str | None = None,
+    workset_name: str | None = None,
 ) -> str | None:
     """The reader's refusal of *value* at a workset early key, or ``None``; the SET door's twin.
 
@@ -407,6 +409,15 @@ def early_key_set_error(
     first tier a referent is read from.  It resolves once per mode the key's readers pass
     (:func:`_reader_modes`; *standalone_reads*: a standalone box reads *written_file*), so a
     value accepted here resolves for every reader of that file.
+
+    ⚑ THE DOOR OPENS ONE FILE, ONCE: *written_file*.  The system tier beneath it is
+    *early_system*, the record the command's ``std`` load already settled, never a re-read.
+    *workset_name* is the workset door's scope name (``ws.name``).  At the SYSTEM door
+    (*standalone_reads*: only the system file is read by a standalone box) the file is read
+    by every workset, so each pass takes its reader mode's reserved partition name instead,
+    and a missing *early_system* means the ``std`` load failed (*std_error*, its text): the
+    record is built from the document this door already opened, which IS the system file,
+    with no ``system.*`` paths and *std_error* as the refusal that dropped them.
     """
     if not isinstance(value, str) or not canonical.startswith("workset."):
         return None
@@ -415,11 +426,44 @@ def early_key_set_error(
         return None
     try:
         doc = load_doc(written_file)
+        if standalone_reads and early_system is None:
+            early_system = EarlySystem(
+                tier=early_tier(doc), file=written_file, system_paths={},
+                system_refusal=std_error,
+            )
         for standalone in _reader_modes(key, standalone_reads=standalone_reads):
             resolve_workset_dir_key(
                 written_file.parent, value, "", key=key, where=written_file,
                 standalone=standalone, workset_settings=doc,
+                early=_door_scope(
+                    early_system, workset_name, system_door=standalone_reads,
+                    standalone=standalone,
+                ),
             )
     except (SettingsError, ConfigError) as exc:
         return str(exc)
     return None
+
+
+def _door_scope(
+    early_system: EarlySystem | None, workset_name: str | None, *, system_door: bool,
+    standalone: bool | None,
+) -> EarlyScope | None:
+    """The set door's scope for one reader-mode pass; ``None`` only while the series is unlanded.
+
+    The workset door names its workset.  The system door names the reserved partition of
+    the pass's mode: standalone's, else primary's, which also stands for a key read with
+    no mode (one declared default, so every mode resolves it alike).
+    """
+    from kanibako.channels.channels import workset_token
+    from kanibako.settings.paths import BoxMode
+
+    if early_system is None:
+        return None  # transitional: a workset-door caller with no ``std`` (S2g)
+    if system_door:
+        return EarlyScope(early_system, workset_token(
+            BoxMode.standalone if standalone else BoxMode.primary, None,
+        ))
+    if workset_name is None:
+        return None  # transitional: a workset-door caller with no ``ws`` (S2g)
+    return EarlyScope(early_system, workset_name)
