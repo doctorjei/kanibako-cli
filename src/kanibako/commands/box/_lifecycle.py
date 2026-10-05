@@ -267,10 +267,8 @@ def resolve_lifecycle_target(
     detection = detect_project_mode(raw_path, std, config)
 
     if detection.mode == BoxMode.named:
-        # ⚑ THE PRIMARY REGISTRY IS CONSULTED BEFORE A WORKSET PATH-SPACE CLAIM: a
-        # path inside a resolved ``workset.workspaces`` is where a member MAY live, and
-        # only a per-workset ``boxes:`` entry makes one a member (spec § Detection &
-        # import).  A member a workset DOES record keeps the workset.
+        # ⚑ A ``workset.workspaces`` path is where a member MAY live; only a ``boxes:``
+        # record makes one (spec § Detection & import).  Unrecorded, the primary decides.
         if (primary_box_name_for_workspace(std.primary_workset, str(raw_path)) is not None
                 and not _workset_records_member_at(raw_path, std)):
             return _resolve_primary_state(raw_path, std, config)
@@ -285,11 +283,7 @@ def resolve_lifecycle_target(
 
 
 def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool:
-    """Whether a NAMED workset records a member box AT *resolved* (``False`` for a bare claim).
-
-    ⚑ THE TWO READERS: an in-tree leaf is under the resolved ``workset.workspaces``
-    dir, while an EXTERNAL connect is outside every workset root.
-    """
+    """Whether a workset records a member at *resolved*: in-tree or an external connect."""
     from kanibako.launch import box_resolve
 
     if box_resolve.find_connected_external_box(resolved, std) is not None:
@@ -530,12 +524,10 @@ def _resolve_target_workset(
 
 
 def _cure_ref(state: ProjectState) -> str:
-    """The reference a printed ``box convert`` / ``box move`` reaches *state* by.
+    """The reference a printed cure reaches *state* by.
 
-    ⚑ A STANDALONE box is in no registry the lifecycle route reads, so a bare
-    name misses.  ⚑ Its METADATA path (the box root) is the reference, NOT its
-    workspace: a workspace nested under a root is itself inside whatever workset
-    path space the root sits in, and the mode is then read from that path space.
+    ⚑ A standalone's name is in no registry the route reads, and its nested workspace
+    resolves through the path space its root sits in, so it is the box root.
     """
     if state.mode is BoxMode.standalone:
         return str(state.metadata_path)
@@ -666,11 +658,8 @@ def _validate(
                 "choose a destination outside the workset."
             )
 
-    # --- an IN-PLACE convert whose landing leaf is not the source's own tree would
-    #     have to COPY the workspace in, and the source's tree is then left behind with
-    #     no owner: the convert drops the source's registration and nothing retires its
-    #     dir.  So an in-place convert may only record the box where it already stands.
-    #     (A relocation moves the tree, so its landing is genuinely new.)
+    # --- ⚑ an IN-PLACE convert records the box only where it stands: any other leaf
+    #     copies the tree in and orphans the source's tree.  A relocation moves it.
     if (target_mode == BoxMode.named and target_ws is not None
             and not relocating and not spec.records_only
             and state.mode is not BoxMode.named):
@@ -773,11 +762,8 @@ def _validate(
     # --- an UNREGISTERED leaf of the target's new name is the same collision on disk:
     #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt
     #     (its files ARE meant to be at *dest*), and so is a leaf that IS the source's
-    #     own — the same-workset, same-name case releases and re-records it, and so is
-    #     the source's OWN workspace when that is the landing leaf.  ⚑ That second
-    #     exemption reads no relocation test: the leaf the box stands in is not a
-    #     stranger's, whether it stays put (an in-place convert re-records it) or
-    #     moves on (a relocation vacates it).
+    #     own — the same-workset, same-name case releases and re-records it — and so is
+    #     the source's own workspace as the landing leaf, kept or vacated alike.
     if (
         not spec.records_only
         and target_mode == BoxMode.named

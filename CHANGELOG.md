@@ -581,6 +581,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   any other box in the working set. `--move` copies the workspace, then removes the old directory,
   or for a symlink removes only the link and prints `Note: left <target>; it is yours`. `box move`
   now moves the box.
+- **A default-mode box whose workspace sits under a working set's repointed `workset.workspaces`
+  directory can now be converted into that working set or moved.** v1.8.0-rc2 looked the box up in the
+  working set, which does not record it, so `box convert` and `box move` failed with `Project '<box>'
+  not found in workset '<ws>'`; only `box rm` reached it. A member the working set does record there is
+  still that member. Now `box convert <box> --workset <ws>` records it where it stands when its
+  directory is the member directory for its name. When it is not, the in-place convert is refused,
+  because it would copy the workspace and leave the old directory with no box; the refusal names
+  `--move` and `box move` as the cure. `workset connect` on such a directory is still refused, and now
+  names `box convert` (with `--name <directory name>` when the box has another name), `box move`, and
+  `box rm` as the cures.
 
 - **A workset's own `workset.yaml` that is not valid YAML, or is a list or a single value, is now
   refused by every command, not only by `start`.** `workset info`, `workset list`, `workset get`,

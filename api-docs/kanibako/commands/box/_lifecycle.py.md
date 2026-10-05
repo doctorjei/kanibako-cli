@@ -39,6 +39,7 @@ def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectStat
 def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
 def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_external: bool=False) -> ProjectState
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
+def _cure_ref(state: ProjectState) -> str
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> ProjectState
 def _retire_old_workspace(old: Path, landed: Path) -> None
