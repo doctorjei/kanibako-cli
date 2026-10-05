@@ -25,7 +25,7 @@ from kanibako.project.names import (
     unregister_name,
 )
 from kanibako.settings.paths import BoxMode, _early_scope
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 # ---------------------------------------------------------------------------

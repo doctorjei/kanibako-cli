@@ -33,7 +33,7 @@ from kanibako.settings.settings_resolve import (
 )
 from tests.support.filenames import CONFIG_FILENAME
 from tests.support.narrow_resolve import table_bind_dests
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 HOST_HOME = "/home/u"
 GUEST_HOME = "/home/agent"
@@ -373,13 +373,11 @@ def _probe_cases(tmp_path):
     The per-mode layouts come from the REAL path helpers, so a change to the
     on-disk layout shows up here rather than being re-asserted by hand.
     """
-    from kanibako.channels.channels import WS_TOKEN_STANDALONE
     from kanibako.settings.paths import (
         _primary_box_paths,
         _standalone_box_paths,
         _workset_box_paths,
     )
-    from kanibako.settings.workset_dirkeys import EarlyScope
 
     pw = tmp_path / "pw"
     md = pw / "boxes" / "mybox"
@@ -404,8 +402,7 @@ def _probe_cases(tmp_path):
     )
 
     root = tmp_path / "proj"
-    record = early_record(tmp_path)
-    sh, vro, vrw = _standalone_box_paths(root, early=EarlyScope(record, WS_TOKEN_STANDALONE))
+    sh, vro, vrw = _standalone_box_paths(root, early=early_record(tmp_path, mode=BoxMode.standalone))
     yield (
         "standalone",
         _ProbeProj(name="ab12c_proj", metadata_path=root, shell_path=sh,

@@ -32,7 +32,7 @@ from kanibako.settings.paths import (
 )
 from kanibako.settings.workset_dirkeys import EarlyScope
 from kanibako.project.workset import add_project, create_workset
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 @pytest.fixture
@@ -303,7 +303,6 @@ class _NullPrimaryLogsStd:
     primary_logs = None
 
     def __init__(self, tmp_path):
-
         self.early_system = early_record(tmp_path)
 
 

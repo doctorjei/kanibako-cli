@@ -16,7 +16,7 @@ from kanibako.project import workset_registry
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_resolve import SettingsError
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 @pytest.fixture
