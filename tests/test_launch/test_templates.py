@@ -31,6 +31,7 @@ from kanibako.launch.templates import (
     template_seed_defaults,
 )
 from kanibako.settings.core_defaults import ROM_GUIDE_REL as _GUIDE_REL
+from kanibako.channels.channels import WS_TOKEN_STANDALONE
 from kanibako.project.workset import add_project, create_workset
 
 
@@ -1874,7 +1875,7 @@ class TestInstallWorksetTemplate:
         install_packaged_templates(std, ["claude"])
         ws = tmp_path / "ws"
         ws.mkdir()
-        install_workset_template(std, ws)
+        install_workset_template(std, ws, workset_name=ws.name)
         assert (
             ws / "canon" / "handbook" / "SYS_WORKSET.md"
         ).is_file()
@@ -1887,7 +1888,7 @@ class TestInstallWorksetTemplate:
         install_packaged_templates(std, ["claude"])
         ws = tmp_path / "ws"
         ws.mkdir()
-        install_workset_template(std, ws)
+        install_workset_template(std, ws, workset_name=ws.name)
         assert (ws / "canon" / "handbook").is_dir()
 
     def test_a_null_canon_skips_the_whole_canon_layer(self, std, tmp_path):
@@ -1909,8 +1910,8 @@ class TestInstallWorksetTemplate:
         ws.mkdir()
         (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
 
-        check_workset_template(std, ws)          # PRE-FLIGHT: must not raise
-        install_workset_template(std, ws)
+        check_workset_template(std, ws, workset_name=ws.name)          # PRE-FLIGHT: must not raise
+        install_workset_template(std, ws, workset_name=ws.name)
         assert not (ws / "canon").exists()
         assert not (ws / "handbook").exists()
         # The template half is a different key, so it still lands.
@@ -1928,8 +1929,8 @@ class TestInstallWorksetTemplate:
         ws.mkdir()
         (ws / "workset.yaml").write_text("workset:\n  canon: null\n")
 
-        check_workset_template(std, ws, canon_only=True)
-        install_workset_template(std, ws, canon_only=True)
+        check_workset_template(std, ws, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+        install_workset_template(std, ws, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert not (ws / "canon").exists()
         assert not (ws / "handbook").exists()
 
@@ -1946,7 +1947,7 @@ class TestInstallWorksetTemplate:
         ws = tmp_path / "ws"
         ws.mkdir()
         with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, ws)
+            install_workset_template(std, ws, workset_name=ws.name)
         assert "WORKSET" in str(exc.value)
         assert not (ws / "registry.yaml").exists()
 
@@ -2002,12 +2003,12 @@ class TestWorksetStampSplit:
 
         install_packaged_templates(std, ["claude"])
         root = self._fresh_root(tmp_home, "solo-idem")
-        install_workset_template(std, root, canon_only=True)
+        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         stamped = root / "canon" / "handbook" / "SYS_WORKSET.md"
         stamped.write_text("MINE\n")
         theirs = root / "canon" / "handbook" / "notes.md"
         theirs.write_text("keep me\n")
-        install_workset_template(std, root, canon_only=True)
+        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert stamped.read_text() == "MINE\n"
         assert theirs.read_text() == "keep me\n"
         assert not (root / "template").exists()
@@ -2025,7 +2026,7 @@ class TestWorksetStampSplit:
         bad.write_text("nope\n")
         root = self._fresh_root(tmp_home, "solo-deny")
         with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root, canon_only=True)
+            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert "WORKSET" in str(exc.value)
         assert not (root / "canon" / "notebook").exists()
 
@@ -2042,7 +2043,7 @@ class TestWorksetStampSplit:
         bad.write_text("nope\n")
         root = self._fresh_root(tmp_home, "solo-preflight")
         with pytest.raises(TemplateScopeError):
-            check_workset_template(std, root, canon_only=True)
+            check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert not (root / "canon").exists()
 
     def test_standalone_create_refuses_whole_and_leaves_nothing(self, std, config, tmp_home):
@@ -2107,7 +2108,7 @@ class TestWorksetStampFollowsTheKeys:
 
         install_packaged_templates(std, ["claude"])
         root = self._root_with_repoint(tmp_home, "solo-seam", canon="@meta.workset.path/elsewhere/canon")
-        install_workset_template(std, root, canon_only=True)
+        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert (
             root / "elsewhere" / "canon" / "handbook" / "SYS_WORKSET.md"
         ).is_file()
@@ -2126,7 +2127,7 @@ class TestWorksetStampFollowsTheKeys:
         bad.write_text("nope\n")
         root = self._root_with_repoint(tmp_home, "solo-pre", canon="@meta.workset.path/my_canon")
         with pytest.raises(TemplateScopeError):
-            check_workset_template(std, root, canon_only=True)
+            check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert not (root / "my_canon").exists()
 
     def test_a_repointed_canon_is_still_whitelisted_to_handbook_only(
@@ -2143,7 +2144,7 @@ class TestWorksetStampFollowsTheKeys:
         bad.write_text("nope\n")
         root = self._root_with_repoint(tmp_home, "solo-deny-repoint", canon="@meta.workset.path/my_canon")
         with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root, canon_only=True)
+            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert "WORKSET" in str(exc.value)
         assert not (root / "my_canon" / "notebook").exists()
 
@@ -2163,7 +2164,7 @@ class TestWorksetStampFollowsTheKeys:
         (ws / "workset.yaml").write_text(
             yaml.safe_dump({"workset": {"template": "@meta.workset.path/molds"}})
         )
-        install_workset_template(std, ws)
+        install_workset_template(std, ws, workset_name=ws.name)
         assert (ws / "molds" / "box" / "home" / "canon" / "notebook").is_dir()
         assert (ws / "molds" / "box" / "home" / "canon" / "workbook").is_dir()
         assert (ws / "molds" / "box" / "canon" / "handbook").is_dir()
@@ -2226,7 +2227,7 @@ class TestWorksetStampFollowsTheKeys:
         install_packaged_templates(std, ["claude"])
         ws = tmp_path / "ws-plain"
         ws.mkdir()
-        install_workset_template(std, ws)
+        install_workset_template(std, ws, workset_name=ws.name)
         assert (
             ws / "canon" / "handbook" / "SYS_WORKSET.md"
         ).is_file()
@@ -2342,7 +2343,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         outside = tmp_path / "elsewhere" / "canon"
         root = self._root(tmp_path, "solo-out", canon=str(outside))
         with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root, canon_only=True)
+            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         text = str(exc.value)
         assert "workset.canon" in text                       # the KEY
         assert str(root / "workset.yaml") in text             # the FILE
@@ -2362,7 +2363,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         outside = tmp_path / "elsewhere-pre" / "canon"
         root = self._root(tmp_path, "solo-out-pre", canon=str(outside))
         with pytest.raises(TemplateScopeError) as exc:
-            check_workset_template(std, root, canon_only=True)
+            check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert "workset.canon" in str(exc.value)
         assert str(outside) in str(exc.value)
         assert not outside.exists()
@@ -2384,7 +2385,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         install_packaged_templates(std, ["claude"])
         root = self._root(tmp_path, "ws-escape", template="@meta.workset.path/../escaped")
         with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root)
+            install_workset_template(std, root, workset_name=root.name)
         assert "workset.template" in str(exc.value)
         assert not (tmp_path / "escaped").exists()
 
@@ -2403,7 +2404,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         outside = tmp_path / "OUTSIDE"
         root = self._root(tmp_path, "solo-empty-mold", canon=str(outside))
         with pytest.raises(TemplateScopeError):
-            install_workset_template(std, root, canon_only=True)
+            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert not outside.exists()
 
     def test_a_symlinked_skeleton_intermediate_writes_nothing_outside(
@@ -2423,7 +2424,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         (root / "template").mkdir()
         (root / "template" / "box").symlink_to(outside, target_is_directory=True)
         with pytest.raises(TemplateScopeError):
-            install_workset_template(std, root)
+            install_workset_template(std, root, workset_name=root.name)
         assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
 
     def test_a_symlinked_chapter_leaf_writes_nothing_outside(self, std, tmp_path):
@@ -2441,7 +2442,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         (root / "canon").mkdir()
         (root / "canon" / "handbook").symlink_to(outside, target_is_directory=True)
         with pytest.raises(TemplateScopeError):
-            install_workset_template(std, root, canon_only=True)
+            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert list(outside.iterdir()) == [], sorted(outside.rglob("*"))
 
     def test_a_symlinked_default_leaf_says_it_took_the_default(self, std, tmp_path):
@@ -2457,7 +2458,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
         root = self._root(tmp_path, "ws-symlink-default")
         (root / "canon").symlink_to(outside, target_is_directory=True)
         with pytest.raises(TemplateScopeError) as exc:
-            install_workset_template(std, root, canon_only=True)
+            install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert "takes its default 'canon' leaf" in str(exc.value)
         assert "None" not in str(exc.value)
 
@@ -2469,7 +2470,7 @@ class TestWorksetStampRefusesAnEscapingLeaf:
 
         install_packaged_templates(std, ["claude"])
         root = self._root(tmp_path, "solo-template-noise", template="@meta.workset.path/../nowhere")
-        install_workset_template(std, root, canon_only=True)
+        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert (root / "canon" / "handbook").is_dir()
         assert not (tmp_path / "nowhere").exists()
 

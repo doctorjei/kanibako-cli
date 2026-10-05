@@ -12,6 +12,7 @@ from kanibako.errors import UserCanceled
 from kanibako.settings.paths import (
     STANDALONE_META_DIR,
     BoxMode,
+    _early_scope,
     _primary_box_paths,
     box_logs_location,
     load_std_paths,
@@ -81,11 +82,12 @@ def _unregister_purged(std, proj) -> None:
 
         # PRIMARY (named-workset boxes are unregistered via remove_project, not
         # purge): the membership maps name → workspace path, so reverse-resolve.
+        early = _early_scope(std, BoxMode.primary)
         name = primary_box_name_for_workspace(
-            std.primary_workset, str(proj.project_path),
+            std.primary_workset, str(proj.project_path), early=early,
         ) or (proj.name or proj.metadata_path.name)
         if name:
-            unregister_primary_box_name(std.primary_workset, name)
+            unregister_primary_box_name(std.primary_workset, name, early=early)
     except Exception:  # noqa: BLE001 - cleanup must never break a purge
         pass
 
@@ -104,15 +106,16 @@ def _unregister_purged_primary(std, metadata_path, project_path) -> None:
     )
 
     try:
+        early = _early_scope(std, BoxMode.primary)
         name: str | None = None
         if project_path is not None:
             name = primary_box_name_for_workspace(
-                std.primary_workset, str(project_path),
+                std.primary_workset, str(project_path), early=early,
             )
         if name is None:
             name = metadata_path.name
         if name:
-            unregister_primary_box_name(std.primary_workset, name)
+            unregister_primary_box_name(std.primary_workset, name, early=early)
     except Exception:  # noqa: BLE001 - cleanup must never break a purge
         pass
 
@@ -178,7 +181,8 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # ⚑⚑ RESOLVE THE VAULT FIRST: the root workset.yaml unlinked below is the only
         # carrier of a ``workset.vault_*`` repoint, and ``root/"vault"`` is not the
         # box's vault once one is set.
-        removable_vault, retained_vault = standalone_vault_teardown(root)
+        removable_vault, retained_vault = standalone_vault_teardown(
+            root, early=_early_scope(std, BoxMode.standalone))
         # box_data/ holds the box home + its root-owned canon skeleton (J-7), so
         # the deletion needs the podman-unshare escalation, not a bare rmtree.
         box_data = root / STANDALONE_META_DIR
