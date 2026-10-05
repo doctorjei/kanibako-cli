@@ -20,11 +20,8 @@ This module reads/writes ONLY the ``worksets`` section; the
 callers and preserved across writes by :mod:`kanibako.project.registry_store`.
 :func:`resolve_name` additionally consults the PRIMARY per-workset membership
 (when a *primary_workset* is supplied) so a bare primary-box name still resolves
-at the same precedence the retired ``projects`` section held, and — LAST, after
-every step above — the ``standalone`` section, so a REGISTERED standalone box
-resolves by name too (an unregistered one stays path-only; spec § Detection &
-import).  Reading that section does not make this module its owner:
-:mod:`kanibako.project.registry_store` still is.
+at the same precedence the retired ``projects`` section held, and LAST the
+``standalone`` section (owned by :mod:`kanibako.project.registry_store`).
 """
 
 from __future__ import annotations
@@ -35,6 +32,9 @@ from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.errors import AmbiguousNameError, ProjectError
+from kanibako.log import get_logger
+
+logger = get_logger("names")
 
 
 # ---------------------------------------------------------------------------
@@ -220,16 +220,11 @@ def resolve_name(
 ) -> tuple[str, str]:
     """Look up a bare name and return ``(path, kind)``.
 
-    Resolution order (system-design § Detection & import, "Box designation & workset
-    path space"): steps 1-4 below, then the REGISTERED STANDALONE box of that name
-    LAST (:func:`kanibako.project.registry_store.standalone_root`).  An UNregistered
-    standalone is reachable only by path or from within its own tree, so it never
-    reaches this step and the lookup misses as it always did.
-
-    A registered standalone that LOSES to an earlier step is shadowed, and the
-    shadow is announced rather than left for the user to discover: the registration
-    says "resolves by name", the ordering says otherwise, and silence reads as a
-    broken registry.  It stays reachable by path.
+    Resolution order (system-design § Detection & import): steps 1-4 of
+    :func:`_resolve_before_standalone`, then a REGISTERED standalone box LAST; an
+    unregistered one is reachable only by path.  A registered standalone shadowed
+    by an earlier BOX is warned about (it stays reachable by path); a workset
+    winning is not a collision, as box and workset names are per-kind namespaces.
 
     *kind* is ``"project"`` or ``"workset"``.
     Raises ``ProjectError`` if no match is found, or ``AmbiguousNameError`` if
@@ -240,8 +235,7 @@ def resolve_name(
             registry, name, cwd=cwd, primary_workset=primary_workset,
         )
     except AmbiguousNameError:
-        # Standing LAST does not settle a tie between two EARLIER steps; the
-        # standalone section is not a tiebreaker for someone else's collision.
+        # The standalone step is not a tiebreaker for an earlier step's tie.
         raise
     except ProjectError:
         root = registry_store.standalone_root(registry, name)
@@ -250,11 +244,14 @@ def resolve_name(
         return root, "project"
 
     shadow = registry_store.standalone_root(registry, name)
-    if shadow is not None and Path(shadow).resolve() != Path(path).resolve():
+    if (
+        kind == "project" and shadow is not None
+        and Path(shadow).resolve() != Path(path).resolve()
+    ):
         logger.warning(
-            "bare name '%s' resolved to the %s at %s; the registered standalone "
+            "bare name '%s' resolved to the box at %s; the registered standalone "
             "box of the same name at %s is shadowed — reach it by path.",
-            name, kind, path, shadow,
+            name, path, shadow,
         )
     return path, kind
 
