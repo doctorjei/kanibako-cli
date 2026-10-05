@@ -57,6 +57,7 @@ from kanibako.settings.settings_resolve import (
     deferred_literal_expr,
     expand_expr,
     is_verbatim_text,
+    match_braced,
     match_ref,
     match_var,
     resolve_var,
@@ -135,7 +136,7 @@ def _is_whole_value_ref(value: str) -> str | None:
 
     S18 — the shape is decided by PARSE, never guessed, via the shared
     :func:`~kanibako.settings.settings_resolve.match_ref` grammar. ``"@a.b"`` /
-    ``"@{a.b}"`` → ``"a.b"``; anything with a leading, trailing or embedded literal
+    ``"@{a.b}"`` / ``"{a.b}"`` → ``"a.b"``; anything with a leading, trailing or embedded literal
     → ``None`` (the embedded path, handled by ``expand_expr`` substitution).
 
     ⚑ THE BRACED FORM MUST LAND HERE, NOT ON THE EMBEDDED PATH. This predicate is
@@ -147,6 +148,8 @@ def _is_whole_value_ref(value: str) -> str | None:
     NEVER RAISES — a total predicate; a malformed reference answers ``None`` and
     ``expand_expr`` raises it downstream with unchanged provenance.
     """
+    if value[:1] == "{":
+        return _whole_braced(value, "ref")
     if not value or value[0] != "@":
         return None
     try:
@@ -167,13 +170,15 @@ def _is_whole_value_var(value: str) -> str | None:
     so "the host set none" must reach the walk as absence and DROP the key, never as
     an empty string a reader would take for a capability claim.
 
-    Uses ``match_var``, the SHARED grammar, so ``$X`` and ``${X}`` both qualify.
+    Uses ``match_var``, the SHARED grammar, so ``$X``, ``${X}`` and ``{$X}`` all qualify.
     ``"\\$X"`` / ``"a$X"`` / ``"$X/y"`` / ``"$X "`` → ``None`` (embedded).
 
     **It NEVER RAISES — a total predicate**, like its ``@`` twin: a malformed reference
     (``"$"``, ``"${X"``) answers ``None`` and falls through to ``expand_expr``, which
     raises it with the same message from the same place it always has.
     """
+    if value[:1] == "{":
+        return _whole_braced(value, "var")
     if not value or value[0] != "$":
         return None
     try:
@@ -181,6 +186,14 @@ def _is_whole_value_var(value: str) -> str | None:
     except SettingsError:
         return None
     return name if end == len(value) else None
+
+
+def _whole_braced(value: str, kind: str) -> str | None:
+    """The NAME iff *value* is exactly one braced reference of *kind* (``{a.b}`` / ``{$X}``)."""
+    braced = match_braced(value, 0)
+    if braced is None or braced[0] != kind or braced[2] != len(value):
+        return None
+    return braced[1]
 
 
 #: The E2 side table :func:`expand` fills on request: a bind ENTRY's path (its segments,

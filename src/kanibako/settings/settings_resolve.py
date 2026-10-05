@@ -52,10 +52,11 @@ def expand_guest_home(value: str) -> str:
     The defaults files write every in-box destination as a ``$GUEST_HOME``
     expression so the guest-home literal lives in exactly one place (the
     :data:`~kanibako.settings.settings_resolve.GUEST_HOME` constant, single SoT).  Only the
-    leading ``$GUEST_HOME`` token is substituted; the rest is left verbatim.
+    leading ``$GUEST_HOME`` / ``{$GUEST_HOME}`` token is substituted; the rest is left verbatim.
     """
-    if value.startswith("$GUEST_HOME"):
-        return GUEST_HOME + value[len("$GUEST_HOME"):]
+    for token in ("{$GUEST_HOME}", "$GUEST_HOME"):
+        if value.startswith(token):
+            return GUEST_HOME + value[len(token):]
     return value
 
 
@@ -224,17 +225,25 @@ def _unescape(s: str) -> str:
 
 #: The characters :func:`expand_expr` reads as syntax (``~`` only at position 0, escaped
 #: everywhere for simplicity).
+# ⚑ ``$`` and ``@`` are here only while the old grammar is still read (braced-refs plan,
+# step 5 drops them); braces are doubled rather than escaped.
 _EXPR_SIGNIFICANT: frozenset[str] = frozenset("\\$@~")
 
 
-def literal_expr(text: str) -> str:
-    """The expression that expands to *text* VERBATIM: each ``\\ $ @ ~`` gets a backslash.
+def _brace_literal(c: str) -> str:
+    """``{``/``}`` doubled; any other character unchanged."""
+    return c * 2 if c in "{}" else c
 
-    For a host path a floor hands the expander as a value (a ``$``/``@`` in a directory
-    name is data, not a token). Host-space expansion removes every escape; a deferred
-    scan keeps ``\\$ \\~ \\\\`` for the box resolver and reads ``\\@`` as no reference.
+
+def literal_expr(text: str) -> str:
+    """The expression that expands to *text* VERBATIM: ``\\ $ @ ~`` backslashed, braces doubled.
+
+    For a host path a floor hands the expander as a value (a ``$``/``@``/``{`` in a
+    directory name is data, not a token). Host-space expansion removes every escape; a
+    deferred scan keeps ``\\$ \\~ \\\\ {{ }}`` for the box resolver and reads ``\\@`` as
+    no reference.
     """
-    return "".join(f"\\{c}" if c in _EXPR_SIGNIFICANT else c for c in text)
+    return "".join(f"\\{c}" if c in _EXPR_SIGNIFICANT else _brace_literal(c) for c in text)
 
 
 #: The characters the BOX-side resolver reads as syntax: the box never processes ``@``.
@@ -242,11 +251,14 @@ _DEFERRED_SIGNIFICANT: frozenset[str] = frozenset("\\$~")
 
 
 def deferred_literal_expr(text: str) -> str:
-    """The deferred box-side residue that resolves to *text* VERBATIM: ``\\ $ ~`` escaped.
+    """The deferred box-side residue that resolves to *text* VERBATIM: ``\\ $ ~`` escaped,
+    braces doubled.
 
     ``@`` stays plain, because the box resolver reads every ``@`` as a literal.
     """
-    return "".join(f"\\{c}" if c in _DEFERRED_SIGNIFICANT else c for c in text)
+    return "".join(
+        f"\\{c}" if c in _DEFERRED_SIGNIFICANT else _brace_literal(c) for c in text
+    )
 
 
 def literal_map(values: Mapping[str, str]) -> dict[str, str]:
@@ -356,7 +368,7 @@ def normalize_bind_dest(dest: str) -> str:
         out = GUEST_HOME + out[1:]
     if len(out) > 1 and out.endswith("/"):
         out = out.rstrip("/") or "/"
-    if "@" in out or "$" in out:
+    if "@" in out or "$" in out or "{" in out:
         return out
     if posixpath.isabs(out):
         out = posixpath.normpath(out)
@@ -642,6 +654,26 @@ def match_ref(expr: str, i: int) -> tuple[str, int]:
     return m.group(0), end
 
 
+def match_braced(expr: str, i: int) -> tuple[Literal["ref", "var"], str, int] | None:
+    """Parse ``{a.b.c}`` (a key) or ``{$NAME}`` (a variable) at index *i*.
+
+    Returns ``(kind, name, end_index)``, or ``None`` when no reference starts there:
+    ``{{``, or a ``{`` not followed by a name and its ``}``.
+    ⚑ PRECONDITION: ``expr[i] == "{"``.
+    ⚑ THE SINGLE parser for the braced spelling. While the old grammar is still read
+    (braced-refs plan, step 5), ``None`` means a literal ``{``; step 5 refuses it.
+    """
+    j = i + 1
+    kind: Literal["ref", "var"] = "ref"
+    pattern = _REF_NAME_RE
+    if j < len(expr) and expr[j] == "$":
+        kind, pattern, j = "var", _VAR_NAME_RE, j + 1
+    m = pattern.match(expr, j)
+    if m is None or m.end() >= len(expr) or expr[m.end()] != "}":
+        return None
+    return kind, m.group(0), m.end() + 1
+
+
 def expand_expr(
     expr: str,
     *,
@@ -678,15 +710,42 @@ def expand_expr(
                 # ⚑ THE ESCAPE RULE INVERTS UNDER DEFERRAL: host-side ``\\x`` -> ``x``, but a
                 # DEFERRED escape of an ENVIRONMENT-significant char is carried VERBATIM so the
                 # BOX resolver still sees it.  ``\\@`` stays unescaped — this pass owns ``@``.
+                if nxt == "@" and expr[i + 2:i + 3] == "{" and expr[i + 3:i + 4] != "{":
+                    # Old grammar: ``\@{`` is a literal ``@{``, never a braced ref (step 5 drops it).
+                    out.append("@{{" if defer_env else "@{")
+                    i += 3
+                    continue
                 if defer_env and nxt in ("$", "~", "\\"):
                     out.append("\\")
                     out.append(nxt)
+                elif defer_env:
+                    out.append(_brace_literal(nxt))
                 else:
                     out.append(nxt)
                 i += 2
                 continue
             out.append("\\")
             i += 1
+            continue
+        if c in "{}":
+            # ⚑ A literal brace stays DOUBLED under deferral, so the box pass reads it the same way.
+            if i + 1 < n and expr[i + 1] == c:
+                out.append(c * 2 if defer_env else c)
+                i += 2
+                continue
+            braced = match_braced(expr, i) if c == "{" else None
+            if braced is None:
+                # Old-grammar meaning until step 5: a lone brace is literal text.
+                out.append(_brace_literal(c) if defer_env else c)
+                i += 1
+                continue
+            kind, name, end = braced
+            if kind == "var":
+                out.append(expr[i:end] if defer_env else _resolve_var(name, ctx))
+                i = end
+                continue
+            out.append(_lookup_ref(name, lookup, chain))
+            i = end
             continue
         if c == "$":
             if defer_env:
@@ -774,8 +833,17 @@ def _expand_ref(
     lookup: Callable[[str, tuple[str, ...]], str],
     chain: tuple[str, ...],
 ) -> tuple[str, int]:
-    """Expand an ``@ref`` at index *i*: cycle guard, depth cap, ``lookup`` — spelling-agnostic."""
+    """Expand an ``@ref`` at index *i* through :func:`_lookup_ref`."""
     ref_name, end = match_ref(expr, i)
+    return _lookup_ref(ref_name, lookup, chain), end
+
+
+def _lookup_ref(
+    ref_name: str,
+    lookup: Callable[[str, tuple[str, ...]], str],
+    chain: tuple[str, ...],
+) -> str:
+    """One key reference: cycle guard, depth cap, ``lookup`` — spelling-agnostic."""
     if ref_name in chain:
         cycle = " -> ".join((*chain, ref_name))
         raise SettingsError(f"Cyclic @-reference: {cycle}")
@@ -784,7 +852,7 @@ def _expand_ref(
             f"@-reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
             f"'{ref_name}'."
         )
-    return lookup(ref_name, (*chain, ref_name)), end
+    return lookup(ref_name, (*chain, ref_name))
 
 
 def resolve_value(
