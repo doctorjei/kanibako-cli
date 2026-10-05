@@ -19,7 +19,7 @@ from pathlib import Path
 from kanibako.launch.box_identity import Designation, classify_designation, validate_box_name
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config_io import refuse_scalar_sections
-from kanibako.settings.workset_dirkeys import EarlyScope
+from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 from kanibako.settings.config import (
     WORKSET_META_FILE,
     user_config_file,
@@ -1835,6 +1835,11 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         )
         return 0
 
+    if kind == "standalone" and metadata:
+        refuse_inherited_per_owner(Path(str(metadata)), _early_scope(std, BoxMode.standalone))
+    elif kind != "standalone":
+        refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
+
     # ⚑ I4 STALE-ENTRY guard: if an ACTIVE box now owns this metadata path, purging by
     # the stale entry would delete a LIVE box's home.  Refuse, and drop the stale entry.
     if kind == "standalone":
@@ -1945,6 +1950,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     print(f"Removing standalone box: {box_name} ({root})")
     root_path = Path(root) if root is not None else None
     metadata_dir = root_path / STANDALONE_META_DIR if root_path is not None else None
+    if args.purge and root_path is not None:
+        refuse_inherited_per_owner(root_path, _early_scope(std, BoxMode.standalone))
     # ⚑ Resolved BEFORE the unregister: a teardown that refuses stops ``rm`` while the
     # box is still registered (see :func:`_standalone_teardown_plan`).
     plan = None
@@ -2050,6 +2057,8 @@ def run_rm(args: argparse.Namespace) -> int:
         print(f"Error: '{target}' is not a registered box.", file=sys.stderr)
         return 1
 
+    if args.purge:
+        refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
     print(f"Removing project: {name} ({path})")
 
     unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))

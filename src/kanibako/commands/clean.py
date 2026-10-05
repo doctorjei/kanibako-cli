@@ -20,6 +20,9 @@ from kanibako.settings.paths import (
     resolve_any_project,
 )
 from kanibako.utils import confirm_prompt
+from kanibako.channels.channels import workset_name_token, workset_root
+from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
+from kanibako.settings.messages import STATUS_NO_DATA
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -150,6 +153,9 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         print(f"No session data found for project {proj.project_path}")
         return 0
 
+    refuse_inherited_per_owner(
+        workset_root(proj, std), EarlyScope(std.early_system, workset_name_token(proj)))
+
     if not force:
         print(f"Project: {proj.project_path or '<None>'}")
         if proj.name:
@@ -222,6 +228,12 @@ def _purge_all(std, config, *, force: bool) -> int:
     if not projects and not ws_data:
         print("No project session data found.")
         return 0
+
+    if projects:
+        refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
+    for ws_name, ws, project_list in ws_data:
+        if any(status != STATUS_NO_DATA for _, status in project_list):
+            refuse_inherited_per_owner(ws.root, _early_scope(std, BoxMode.named, ws_name))
 
     total = len(projects)
     for _, _, project_list in ws_data:

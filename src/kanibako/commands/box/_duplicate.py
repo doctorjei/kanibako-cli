@@ -38,6 +38,21 @@ from kanibako.settings.paths import (
     unregister_primary_box_name,
 )
 from kanibako.utils import confirm_prompt
+from kanibako.channels.channels import workset_name_token, workset_root
+from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
+
+
+def _refuse_inherited(std, source, target: tuple[Path, EarlyScope]) -> None:
+    """Before ``--force`` overwrites: refuse a collided value the source's or target's workset inherits."""
+    refuse_inherited_per_owner(
+        workset_root(source, std), EarlyScope(std.early_system, workset_name_token(source)))
+    refuse_inherited_per_owner(*target)
+
+
+def _local_target(std, mode: BoxMode, new_path: Path) -> tuple[Path, EarlyScope]:
+    if mode is BoxMode.primary:
+        return std.primary_workset, _early_scope(std, BoxMode.primary)
+    return new_path, _early_scope(std, BoxMode.standalone)
 
 
 # -- External-source detection --
@@ -112,6 +127,8 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
     # Confirm with user.
     target_mode = to_mode
+    if args.force:
+        _refuse_inherited(std, src_proj, _local_target(std, target_mode, new_path))
 
     # F-3 (guard-before-copy): for a PRIMARY (local) target, front-run the
     # one-box-per-workspace-path (Guard-1) refusal BEFORE prompting or copying, so
@@ -548,6 +565,8 @@ def _duplicate_to_workset(args, std, config) -> int:
     if not src_proj.metadata_path.is_dir():
         print(f"Error: no project data found for source path: {source_path}", file=sys.stderr)
         return 1
+    if args.force:
+        _refuse_inherited(std, src_proj, (ws.root, ws.early_scope))
 
     # Lock file warning.
     lock_file = src_proj.metadata_path / ".kanibako.lock"
@@ -605,6 +624,8 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         return 1
 
     target_mode = BoxMode(args.to_mode)
+    if args.force:
+        _refuse_inherited(std, src_proj, _local_target(std, target_mode, new_path))
 
     # Lock file warning.
     lock_file = src_proj.metadata_path / ".kanibako.lock"
@@ -740,6 +761,9 @@ def run_duplicate(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+
+    if args.force:
+        refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
 
     # 4. Non-bare: destination workspace must not already exist (unless --force).
     if not args.bare and new_path.exists() and not args.force:

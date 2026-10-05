@@ -25,6 +25,8 @@ from kanibako.settings.paths import (
 )
 from kanibako.tree_copy import copy_tree_keeping_links
 from kanibako.utils import confirm_prompt
+from kanibako.channels.channels import workset_name_token, workset_root
+from kanibako.settings.workset_dirkeys import EarlyScope, refuse_inherited_per_owner
 
 
 def _keep_links_filter(member: tarfile.TarInfo, dest_path: str) -> tarfile.TarInfo:
@@ -126,6 +128,8 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
         project_dir=str(project_dir) if project_dir else None,
         initialize=False,
     )
+    refuse_inherited_per_owner(
+        workset_root(proj, std), EarlyScope(std.early_system, workset_name_token(proj)))
 
     # ⚑ NAME COLLISION IS A TRUE PRE-FLIGHT, exactly as in ``box create``.  Extract
     # DELETES the destination tree before copying, so a collision discovered at
