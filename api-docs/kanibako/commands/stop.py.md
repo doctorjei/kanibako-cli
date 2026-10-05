@@ -13,5 +13,6 @@ def _warn_settings(exc: ConfigError) -> None
 def _load_paths(config: BootstrapConfig) -> tuple[StandardPaths, ConfigError | None]
 def _resolve_target(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> tuple[ProjectPaths, ConfigError | None]
 def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int
+def _boxes_rendering_no_name() -> list[tuple[str, str, Path | None]]
 def _stop_all(runtime: ContainerRuntime, *, force: bool=False) -> int
 ```

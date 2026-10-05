@@ -150,6 +150,18 @@ def _resolve_code_cli() -> str | None:
     return code_bin
 
 
+def _no_container_name(name: str) -> str:
+    """The sentence for a box whose name renders NO container name.
+
+    ⚑ NOT the shared ``start``/``stop`` refusal: the keyspec row puts THAT at ``start``,
+    and this door only REPORTS that there is no container to attach to.
+    """
+    return (
+        f"Error: box '{name}' has no container name (the box-name rule renders "
+        f"none); there is nothing to attach to."
+    )
+
+
 def run_code(args: argparse.Namespace) -> int:
     dest = getattr(args, "remote", None)
     if dest:
@@ -199,6 +211,12 @@ def run_code(args: argparse.Namespace) -> int:
         print(_no_box_error(project_dir, std), file=sys.stderr)
         return 1
     cname = container_name_for(proj)
+    # ⚑ ADDRESSABLE, so the ``None`` must not reach the runtime.  ⚑ NOT the start
+    # refusal: the row puts that at ``start``, and this door only REPORTS that there is
+    # no container to attach to.  (Auto-start below would refuse it with the cure.)
+    if cname is None:
+        print(_no_container_name(proj.name), file=sys.stderr)
+        return 1
 
     # Fail fast if the host `code` CLI is missing or is the in-container remote
     # shim — BEFORE auto-starting a box, so a missing/wrong prerequisite never
@@ -244,6 +262,9 @@ def run_code(args: argparse.Namespace) -> int:
         # refresh, not a materialization.)
         proj = resolve_box_target(std, config, project_dir, initialize=False)
         cname = container_name_for(proj)
+        if cname is None:
+            print(_no_container_name(name), file=sys.stderr)
+            return 1
         if not runtime.is_running(cname):
             print(
                 f"Error: box '{name}' did not come up after auto-start.",
