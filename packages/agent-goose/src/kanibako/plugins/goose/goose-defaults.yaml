@@ -26,6 +26,7 @@ descriptor:
     - key: binary
       origin: binary
       box_dest: "{$GUEST_HOME}/.local/bin/goose"
+      owner: shared
       kind: file
       scope: agent_critical
       ro: true
@@ -45,6 +46,7 @@ descriptor:
       origin: literal
       literal_src_pkg: "data/KICKOFF.md"
       box_dest: "{$GUEST_HOME}/.config/kanibako/kickoff.md"
+      owner: shared
       kind: file
       scope: agent
       ro: true
@@ -131,6 +133,7 @@ descriptor:
   cred_files:
     - home_rel: ".config/goose/secrets.yaml"
       host_rel: ".config/goose/secrets.yaml"
+      owner: shared
       cadence: sync
       mtime_gate: true
       filtered: false
@@ -141,11 +144,13 @@ descriptor:
     # GOOSE_MODE is preserved; every other key the user changed in-box still flows.
     - home_rel: ".config/goose/config.yaml"
       host_rel: ".config/goose/config.yaml"
+      owner: shared
       cadence: sync
       mtime_gate: true
       filtered: true
     - home_rel: ".config/goose/custom_providers"
       host_rel: ".config/goose/custom_providers"
+      owner: shared
       cadence: sync
       mtime_gate: true
       filtered: false

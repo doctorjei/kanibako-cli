@@ -364,6 +364,65 @@ KEY_TYPES: dict[str, str] = {
     "box.images_store": "path",
 }
 
+# The OWNER of every key that names a host resource (keyspec §0 "Per-owner
+# resources") — the code carrier of the registry's ``owner:`` column, asserted equal
+# to it by the ``key-owners`` ``[[parity]]``.  ``box``, ``workset``, ``partition`` and
+# ``agent`` keys are per-owner: their value must reach that owner's identity.
+# ``shared`` keys name one resource for the whole host.
+# ⚑ THE PARAMETRIC ROWS ARE SPELLED AS THE MANIFEST SPELLS THEM (``<agent>``), unlike
+# :data:`KEY_TYPES`: an owner is a property of the row, not of a CLI write.
+# ⚑ Bind ENTRIES are not keys; their owners ride on the entry rows themselves
+# (``core-defaults.yaml``, the plugin descriptors, the manifest's entry tables).
+KEY_OWNERS: dict[str, str] = {
+    # Layer 1 and the ``system.*`` paths are host-wide by construction (P13).
+    **{key: "shared" for key in CONFIG_PATH_DEFAULTS},
+    **{key: "shared" for key in SYSTEM_PATH_DEFAULTS},
+    "meta.runtime.ws_root": "shared",
+    "meta.runtime.user.config": "shared",
+    "meta.runtime.admin.config": "shared",
+    "meta.runtime.admin.settings": "shared",
+    "box.image": "shared",
+    "box.images_store": "shared",
+    "workset.template": "shared",
+    "agent.default.template": "shared",
+    "agent.default.canon": "shared",
+    "agent.shell.template": "shared",
+    "agent.shell.canon": "shared",
+    "agent.<agent>.template": "shared",
+    "agent.<agent>.canon": "shared",
+    "workset.workspaces": "workset",
+    "workset.boxes": "workset",
+    "workset.logs": "workset",
+    "workset.registry": "workset",
+    "workset.auth.path": "workset",
+    "workset.vault_ro": "workset",
+    "workset.vault_rw": "workset",
+    "workset.canon": "workset",
+    "workset.channelroot": "workset",
+    "workset.channels.common": "workset",
+    "workset.channels.chat": "workset",
+    "workset.channels.broadcast": "workset",
+    "workset.channels.share": "workset",
+    "meta.workset.settings": "workset",
+    "meta.box.auth.workset_path": "workset",
+    "workset.channels.mailboxes": "partition",
+    "workset.channels.share_global": "partition",
+    "box.canon": "box",
+    "meta.box.path": "box",
+    "meta.box.home": "box",
+    "meta.box.settings": "box",
+    "meta.box.workspace": "box",
+    "meta.box.inbox": "box",
+    "meta.box.share_global": "box",
+    "meta.box.share_workset": "box",
+    "meta.box.container_name": "box",
+    "meta.agent.default.path": "agent",
+    "meta.agent.shell.path": "agent",
+    "meta.agent.shell.settings": "agent",
+    "meta.agent.<agent>.path": "agent",
+    "meta.agent.<agent>.settings": "agent",
+}
+
 
 @dataclass(frozen=True)
 class CoercionError:

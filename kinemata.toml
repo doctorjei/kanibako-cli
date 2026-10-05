@@ -1884,6 +1884,20 @@ source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:cli_typed_key" }
 
+# FACT: `config_keys.KEY_OWNERS` carries exactly the manifest rows that declare an
+# `owner:`, with the same owner. Decision 3 of the per-owner DETECT plan: TWO
+# CARRIERS, ASSERTED EQUAL (the manifest header's own phrase).
+# AUTHORITY: `declared` -- the keyspec's `OWNER <level>` markers (§0 "Per-owner
+# resources"), projected per row into the manifest's `owner:` column.
+# CATCHES: an owner changed on one side only; a row given an owner the code table
+# lacks, or a code entry for a row the manifest does not mark.
+[[registry]]
+name = "key-owners"
+kind = "yaml-mapping"
+source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
+section = "keys"
+where = { present = "owner" }
+
 # FACT: `config_keys._KEY_ROUTES` routes exactly the fixed-scope `set: cli+file`
 # rows. `test_manifest_conformance` `test_every_routed_key_is_a_declared_manifest_row`
 # (#42) asserts routes ⊆ manifest; this view is the equality over the rows a
@@ -3622,6 +3636,18 @@ for key, kind in sorted(KEY_TYPES.items()):
 """]
 extract = '(?m)^kanibako-key-type: ([^\s=]+)=(\S+)$'
 field = "type"
+authority = "declared"
+
+# FACT: `KEY_OWNERS` == the manifest's `owner:` column, row for row.
+[[parity]]
+registry = "key-owners"
+command = ["{python}", "-c", """
+from kanibako.settings.config_keys import KEY_OWNERS
+for key, owner in sorted(KEY_OWNERS.items()):
+    print(f"kanibako-key-owner: {key}={owner}")
+"""]
+extract = '(?m)^kanibako-key-owner: ([^\s=]+)=(\S+)$'
+field = "owner"
 authority = "declared"
 
 # FACT: `_KEY_ROUTES` routes exactly the fixed-scope `set: cli+file` rows.
@@ -5510,6 +5536,28 @@ registry = "keyspace"
   [[shape.rule]]
   name = "spec-on-every-row"
   present = "spec"
+
+  # FACT: every `type: path` row declares its owner, from the spec's five-word
+  # vocabulary.
+  # AUTHORITY: keyspec §0 "Per-owner resources": "Every key or declared bind entry
+  # that names one declares its owner: `box`, `workset`, `partition`, `agent`, or
+  # `shared`." DESIGN § 8 rules 1-2, with the spec's `owner` in place of DESIGN's
+  # `sharing` (per-owner DETECT plan, decision 3).
+  # CATCHES: a path key added without an owner, which the per-owner checks would
+  # then never police; an owner word outside the vocabulary.
+  # ⚑ THE GUARD IS `type: path` ONLY. A `str` row naming a host resource (`box.image`,
+  # `meta.box.container_name`) carries an owner too, but nothing marks a `str` row as
+  # naming one, so the vocabulary rule below reaches it and this one cannot.
+  [[shape.rule]]
+  name = "path-key-declares-owner"
+  when = { field = "type", equals = "path" }
+  present = "owner"
+
+  [[shape.rule]]
+  name = "owner-vocabulary"
+  when = { present = "owner" }
+  field = "owner"
+  choices = ["box", "workset", "partition", "agent", "shared"]
 
 # ---------------------------------------------------------------------------
 # FACT: the nine delivery families split into TWO KEY SHAPES, and each shape is
