@@ -1450,6 +1450,10 @@ NEITHER_CELL_REASONS: dict[str, str] = {
 #: read from the checkout — which is where CI's ``test`` job runs pytest.
 KINEMATA_CONFIG = Path(__file__).resolve().parents[2] / "kinemata.toml"
 
+#: The SPEC-reading views (``spec-2g-*``, ``agent-<node>-stated``): run locally only, because
+#: their oracles read the keyspace spec, which is not in this repository or in CI.
+KINEMATA_SPEC_CONFIG = Path(__file__).resolve().parents[2] / "kinemata-spec.toml"
+
 #: The workflow that runs it.
 TEST_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "test.yml"
 
@@ -1701,9 +1705,11 @@ class TestKinemataCarrier:
             )
         }
         # The `spec-2g-*` views compare the manifest with the SPEC, the authority, so a
-        # baselined finding there would accept spec drift silently.
+        # baselined finding there would accept spec drift silently.  They live in
+        # ``kinemata-spec.toml`` (local only: CI has no spec), which shares this baseline.
+        spec_config = tomllib.loads(KINEMATA_SPEC_CONFIG.read_text(encoding="utf-8"))
         spec_views = {
-            str(parity["registry"]) for parity in _kinemata_config().get("parity", [])
+            str(parity["registry"]) for parity in spec_config.get("parity", [])
             if str(parity["registry"]).startswith("spec-2g-")
         }
         assert spec_views == {"spec-2g-defaults", "spec-2g-keys", "spec-2g-not-keys"}, spec_views
