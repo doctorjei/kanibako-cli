@@ -18,6 +18,8 @@ from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.errors import ConfigError, WorksetError
 from kanibako.settings.paths import (
+    BoxMode,
+    _early_scope,
     load_std_paths,
     primary_box_name_for_workspace,
     remove_box_logs,
@@ -405,7 +407,7 @@ def run_create(args: argparse.Namespace) -> int:
     from kanibako.launch.templates import check_workset_template, install_workset_template
 
     try:
-        check_workset_template(std, path)
+        check_workset_template(std, path, workset_name=name)
     except TemplateScopeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -417,7 +419,7 @@ def run_create(args: argparse.Namespace) -> int:
         return 1
 
     # J-6 A-action (INSTANTIATION): stamp the new workset store from the host mold.
-    install_workset_template(std, ws.root)
+    install_workset_template(std, ws.root, workset_name=ws.name)
 
     # ⚑ These flags set BOX-SCOPE keys at the WORKSET tier — ``box.image`` and
     # ``box.enable_vault``.  Both reach a contained box as an OVERRIDABLE DOWNWARD DEFAULT
@@ -479,7 +481,7 @@ def run_list(args: argparse.Namespace) -> int:
     for name in sorted(registry):
         root = registry[name]
         try:
-            ws = load_workset(root, name)
+            ws = load_workset(root, name, early_system=std.early_system)
             count = len(ws.projects)
         except WorksetError:
             count = 0
@@ -510,7 +512,8 @@ def run_rm(args: argparse.Namespace) -> int:
     label_name = args.name if stored is None else stored
     if stored is not None:
         try:
-            members = len(load_workset(registry[stored], stored).projects)
+            members = len(load_workset(
+                registry[stored], stored, early_system=std.early_system).projects)
             unreadable: ConfigError | None = None
         except WorksetError:
             members, unreadable = 0, None
@@ -518,7 +521,9 @@ def run_rm(args: argparse.Namespace) -> int:
             # ⚑⚑ A BROKEN workset.yaml KEEPS THE PROJECT GUARD, ``--purge`` included: members
             # are counted at the DEFAULT registry path, ``delete_workset``'s fallback.
             members = 0 if args.force else len(load_workset_boxes(
-                resolve_workset_registry_path(registry[stored].resolve(), None),
+                resolve_workset_registry_path(
+                    registry[stored].resolve(), None,
+                    early=_early_scope(std, BoxMode.named, stored)),
             ))
             unreadable = exc
         if members and not args.force:
@@ -562,7 +567,7 @@ def run_connect(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        ws = load_workset(registry[stored], stored)
+        ws = load_workset(registry[stored], stored, early_system=std.early_system)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -580,7 +585,8 @@ def run_connect(args: argparse.Namespace) -> int:
     in_tree = is_in_tree_workspace(ws, resolved)
     if in_tree:
         try:
-            refuse_null_workspaces(ws.root, f"a workspace for '{project_name}'")
+            refuse_null_workspaces(ws.root, f"a workspace for '{project_name}'",
+                                   early=ws.early_scope)
         except WorksetError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
@@ -620,7 +626,8 @@ def run_connect(args: argparse.Namespace) -> int:
     # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected — it would
     # stay registered beside the new member.  ``box convert`` changes an EXTERNAL
     # workspace's owner; inside the tree it does not reach the box.
-    owner = primary_box_name_for_workspace(std.primary_workset, str(resolved))
+    owner = primary_box_name_for_workspace(std.primary_workset, str(resolved),
+                                           early=_early_scope(std, BoxMode.primary))
     if owner is not None:
         how = (f"remove it first with 'kanibako box rm {owner}'" if in_tree else
                f"to make it a member of '{ws.name}', run "
@@ -667,7 +674,7 @@ def run_disconnect(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        ws = load_workset(registry[stored], stored)
+        ws = load_workset(registry[stored], stored, early_system=std.early_system)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

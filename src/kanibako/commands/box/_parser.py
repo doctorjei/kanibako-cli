@@ -19,6 +19,7 @@ from pathlib import Path
 from kanibako.launch.box_identity import Designation, classify_designation, validate_box_name
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config_io import refuse_scalar_sections
+from kanibako.settings.workset_dirkeys import EarlyScope
 from kanibako.settings.config import (
     WORKSET_META_FILE,
     user_config_file,
@@ -41,6 +42,7 @@ from kanibako.settings.paths import (
     DesignationRoute,
     WorksetSpec,
     _box_settings_files,
+    _early_scope,
     _find_workset_for_path,
     _primary_box_paths,
     _standalone_settings_files,
@@ -838,7 +840,7 @@ def _orphaned_primary_box_dir(args, std, probe) -> "Path | None":
     if not orphan.is_dir():
         return None
     if find_identifier(
-        basename, load_primary_boxes(std.primary_workset)
+        basename, load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
     ) is not None:
         return None
     # ⚑ A DEREGISTERED entry is a CLAIM, and this picker refuses only what NOTHING
@@ -896,7 +898,7 @@ def _plan_workset_member(std, workset: str, name: str,
         print(f"Error: Working set '{workset}' is not registered.", file=sys.stderr)
         return None
     try:
-        ws = load_workset(registry[stored], stored)
+        ws = load_workset(registry[stored], stored, early_system=std.early_system)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return None
@@ -946,7 +948,8 @@ def _new_member_undo(ws: Workset, name: str) -> Callable[[], None]:
     # ⚑ LEAVES BEFORE PARENTS: a parent this run made holds only what it made.
     leaves = (box_dir, *(base / name for base in bases[1:]), ws.workspaces_dir / name)
     parents = (*bases, ws.workspaces_dir)
-    registry = resolve_workset_registry_path(ws.root, load_workset_settings_doc(ws.root))
+    registry = resolve_workset_registry_path(ws.root, load_workset_settings_doc(ws.root),
+                                             early=ws.early_scope)
 
     def _new(path: Path) -> bool:
         return not path.exists() and not path.is_symlink()
@@ -1072,7 +1075,7 @@ def run_create(args: argparse.Namespace) -> int:
             check_primary_box_name_free(
                 std.primary_workset, std.registry,
                 args.name, str(effective_path),
-                force=getattr(args, "force", False),
+                force=getattr(args, "force", False), early=_early_scope(std, BoxMode.primary),
             )
             # ⚑ I4 data-loss guard — the HOME check the name check above does not make.
             _assert_primary_home_free_for_create(std, args.name)
@@ -1450,7 +1453,7 @@ def run_list(args: argparse.Namespace) -> int:
 
     # Build reverse lookup from path → name using the PRIMARY membership.
     path_to_name: dict[str, str] = {
-        v: k for k, v in load_primary_boxes(std.primary_workset).items()
+        v: k for k, v in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).items()
     }
 
     def _norm(p: object) -> str:
@@ -1650,7 +1653,7 @@ def _list_orphans(
         return 0
 
     path_to_name: dict[str, str] = {
-        v: k for k, v in load_primary_boxes(std.primary_workset).items()
+        v: k for k, v in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).items()
     }
 
     if ac_orphans:
@@ -1736,7 +1739,9 @@ def _teardown_primary_box(std, name: str, metadata_dir: Path) -> bool:
 _StandaloneTeardown = tuple[list[Path], list[Path], "Path | None", str]
 
 
-def _standalone_teardown_plan(root: Path, registered_name: str) -> _StandaloneTeardown:
+def _standalone_teardown_plan(
+    root: Path, registered_name: str, *, early: EarlyScope,
+) -> _StandaloneTeardown:
     """Resolve what :func:`_teardown_standalone_box` deletes — vault split, logs dir, box name.
 
     ⚑⚑ RESOLVE BEFORE ANYTHING IS DELETED — or unregistered.  Two reasons, and both bite:
@@ -1752,27 +1757,22 @@ def _standalone_teardown_plan(root: Path, registered_name: str) -> _StandaloneTe
     from kanibako.project.workset import standalone_vault_teardown
     from kanibako.settings.paths import standalone_logs_dir
 
-    removable_vault, retained_vault = standalone_vault_teardown(root)
-    return (removable_vault, retained_vault, standalone_logs_dir(root),
+    removable_vault, retained_vault = standalone_vault_teardown(root, early=early)
+    return (removable_vault, retained_vault, standalone_logs_dir(root, early=early),
             standalone_box_name(root, registered_name))
 
 
-def _teardown_standalone_box(
-    root: Path, registered_name: str, *, plan: _StandaloneTeardown | None = None,
-) -> bool:
+def _teardown_standalone_box(root: Path, plan: _StandaloneTeardown) -> bool:
     """Delete a STANDALONE box's in-tree metadata + its logs; the workspace and *root* stay.
 
-    *registered_name* is the box's STORED registry name — the name a pre-kuid box's
-    logs were written under (:func:`~kanibako.launch.box_resolve.standalone_box_name`).
-    *plan* is :func:`_standalone_teardown_plan`, from a caller that resolved it before an
+    *plan* is :func:`_standalone_teardown_plan`, resolved by the caller before an
     irreversible step of its own.
     """
     from kanibako.project.workset import report_retained_vaults
     from kanibako.settings.paths import STANDALONE_META_DIR
 
     metadata_dir = root / STANDALONE_META_DIR
-    removable_vault, retained_vault, logs_dir, box_name = (
-        plan or _standalone_teardown_plan(root, registered_name))
+    removable_vault, retained_vault, logs_dir, box_name = plan
     # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
     # ``box_data/`` goes too.
     for log_file in remove_box_logs(logs_dir, box_name):
@@ -1843,7 +1843,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         ) if metadata else None
     else:
         # ⚑ Case-blind (spec §0), and the STORED spelling is what gets reported.
-        active_owner = find_identifier(name, load_primary_boxes(std.primary_workset))
+        active_owner = find_identifier(name, load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)))
     if active_owner is not None:
         print(
             f"'{name}' now refers to an active box (its metadata at {metadata} is "
@@ -1890,7 +1890,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
             return 2
 
     if kind == "standalone":
-        _teardown_standalone_box(root, name)
+        _teardown_standalone_box(root, _standalone_teardown_plan(root, name, early=_early_scope(std, BoxMode.standalone)))
     else:
         _teardown_primary_box(std, name, metadata_dir)
 
@@ -1949,7 +1949,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     # box is still registered (see :func:`_standalone_teardown_plan`).
     plan = None
     if args.purge and root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
-        plan = _standalone_teardown_plan(root_path, box_name)
+        plan = _standalone_teardown_plan(root_path, box_name, early=_early_scope(std, BoxMode.standalone))
     registry_store.unregister_standalone(std.registry, box_name)
     print(f"Removed '{box_name}' from the registry")
 
@@ -1965,7 +1965,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
                 except UserCanceled:
                     print("Aborted (box was already unregistered).")
                     return 2
-            _teardown_standalone_box(root_path, box_name, plan=plan)
+            _teardown_standalone_box(root_path, plan)
         else:
             print(f"No metadata directory found at {metadata_dir}")
     elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
@@ -2009,7 +2009,7 @@ def run_rm(args: argparse.Namespace) -> int:
         return 1
     # Boxes only, never the ``worksets`` section: a name that is only a workset
     # is refused as not found below.  ``workset rm`` removes worksets.
-    primary_boxes = load_primary_boxes(std.primary_workset)
+    primary_boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
 
     # Resolve the target: as a registered name first, then as a path.
     name: str | None = None
@@ -2024,7 +2024,7 @@ def run_rm(args: argparse.Namespace) -> int:
         name, section, path = primary_hit_name, "projects", primary_boxes[primary_hit_name]
 
     if name is None:
-        primary_hit = primary_box_name_for_workspace(std.primary_workset, target)
+        primary_hit = primary_box_name_for_workspace(std.primary_workset, target, early=_early_scope(std, BoxMode.primary))
         if primary_hit is not None:
             name, section, path = primary_hit, "projects", primary_boxes.get(primary_hit)
 
@@ -2052,7 +2052,7 @@ def run_rm(args: argparse.Namespace) -> int:
 
     print(f"Removing project: {name} ({path})")
 
-    unregister_primary_box_name(std.primary_workset, name)
+    unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
     print(f"Removed '{name}' from the registry")
 
     if args.purge:
@@ -2158,6 +2158,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
     try:
         register_primary_box_name(
             std.primary_workset, std.registry, name, str(workspace), force=force,
+            early=_early_scope(std, BoxMode.primary),
         )
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -2200,7 +2201,7 @@ def run_register(args: argparse.Namespace) -> int:
     # ⚑ All three guards compare case-blind (spec §0) and report the STORED spelling —
     # a user told "'Foo' is already registered" who cannot find ``Foo`` anywhere learns
     # nothing.
-    primary_boxes = load_primary_boxes(std.primary_workset)
+    primary_boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
     held = find_identifier(target, primary_boxes) if by_name else None
     if held is not None:
         print(f"'{held}' is already registered (primary box at {primary_boxes[held]}).")

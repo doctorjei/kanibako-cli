@@ -800,7 +800,7 @@ def _workset_stamp_copy(std: StandardPaths, workset_path: Path, canon_only: bool
     return mold, workset_path
 
 
-def check_workset_template(std: StandardPaths, workset_path: Path, *,
+def check_workset_template(std: StandardPaths, workset_path: Path, *, workset_name: str,
                            canon_only: bool = False) -> None:
     """PRE-FLIGHT the workset mold against the workset whitelist; write nothing.
 
@@ -814,8 +814,10 @@ def check_workset_template(std: StandardPaths, workset_path: Path, *,
     never deletes, so a refusal cannot be cleaned up by removing the destination.  The
     refusal has to land before the first byte, not after.
     """
+    from kanibako.settings.workset_dirkeys import EarlyScope
+
     canon_root, template_root = _workset_stamp_dirs(
-        workset_path, canon_only=canon_only,
+        workset_path, canon_only=canon_only, early=EarlyScope(std.early_system, workset_name),
     )
     stamp = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
     if stamp is None:
@@ -825,7 +827,7 @@ def check_workset_template(std: StandardPaths, workset_path: Path, *,
               scope=WorksetStampScope(workset_path, canon_root, template_root))
 
 
-def install_workset_template(std: StandardPaths, workset_path: Path, *,
+def install_workset_template(std: StandardPaths, workset_path: Path, *, workset_name: str,
                              canon_only: bool = False) -> None:
     """Stamp a NEW workset store from the host workset mold — the J-6 A-action.
 
@@ -873,8 +875,10 @@ def install_workset_template(std: StandardPaths, workset_path: Path, *,
     respells to the entry ``'.'``, which is every relative path's prefix in fact and
     matches none of them as a STRING, so the check would refuse a stamp that works.
     """
+    from kanibako.settings.workset_dirkeys import EarlyScope
+
     canon_root, template_root = _workset_stamp_dirs(
-        workset_path, canon_only=canon_only,
+        workset_path, canon_only=canon_only, early=EarlyScope(std.early_system, workset_name),
     )
     stamp = _workset_stamp_copy(std, workset_path, canon_only, canon_root)
     if stamp is not None:

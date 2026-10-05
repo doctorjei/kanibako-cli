@@ -2272,7 +2272,9 @@ class TestConsolidateResolvesTheRootsOwnKeys:
         from kanibako.commands.box._lifecycle import (
             _STANDALONE_ROOT_DIR_KEYS, _standalone_root_artifacts,
         )
+        from kanibako.channels.channels import WS_TOKEN_STANDALONE
         from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.workset_dirkeys import EarlyScope
 
         config, std, tmp_home = env
         assert _STANDALONE_ROOT_DIR_KEYS, "the key table must not be empty"
@@ -2285,7 +2287,8 @@ class TestConsolidateResolvesTheRootsOwnKeys:
             })
             answered = {
                 k: (p, repointed)
-                for k, p, repointed in _standalone_root_artifacts(root)
+                for k, p, repointed in _standalone_root_artifacts(
+                    root, early=EarlyScope(std.early_system, WS_TOKEN_STANDALONE))
             }
             path, repointed = answered[key]
             assert path == root / f"moved_{leaf}", key

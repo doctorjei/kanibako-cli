@@ -35,7 +35,7 @@ def _primary_source_own_name(state: ProjectState, std: StandardPaths) -> str | N
 def _ownership_to_mode(ownership: str) -> tuple[BoxMode, str | None]
 def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None
 def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
-def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_external: bool=False) -> ProjectState
+def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, early: EarlyScope, is_external: bool=False) -> ProjectState
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
 def _run_steps(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, plan: dict, unwind: _Unwind) -> ProjectState
@@ -54,15 +54,15 @@ def _carry_box_logs(state: ProjectState, std: StandardPaths, unwind: _Unwind, *,
 def _unreceived_vault_leaves(src_arms: tuple[Path | None, Path | None], dst_vault: tuple[Path | None, Path | None], leaf_name: str='', *, vault_enabled: bool=True) -> list[tuple[Path, str]]
 def _report_unreceived_vaults(kept: list[tuple[Path, str]]) -> None
 def _carried_member_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], *, vault_enabled: bool=True) -> tuple[tuple[Path, ...], list[tuple[Path, str]]]
-def _nulled_arm_stores(ws_root: Path, name: str) -> list[tuple[Path, str]]
+def _nulled_arm_stores(ws: Workset, name: str) -> list[tuple[Path, str]]
 def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, dst_vault: tuple[Path | None, Path | None], preserve_name: str | None=None, preserve_root: Path | None=None) -> None
 def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], vault_enabled: bool=True, *, reraise: bool=False) -> None
 def _report_store_leftovers(ws: Workset, name: str, err: OSError | None=None, *, keep: list[tuple[Path, str]] | None=None) -> None
 def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str='', force: bool=False) -> ProjectState
-def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None) -> Path
-def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]
+def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope) -> Path
+def _standalone_root_artifacts(root: Path, *, early: EarlyScope) -> list[tuple[str, Path, bool]]
 def _artifact_claiming(child: Path, artifacts: list[tuple[str, Path, bool]]) -> tuple[str, Path, bool] | None
-def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind) -> None
+def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None
 def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path]) -> None
 def _unconsolidate_workspace_subdir(workspace_subdir: Path, root: Path, unwind: _Unwind) -> None
 def _to_standalone(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, root: Path, requested_name: str='') -> ProjectState

@@ -2331,10 +2331,11 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         # which is safe only because IT made the root.  A standalone root is a
         # directory the USER already had — ``root.is_dir()`` is required above — so the
         # same unwind would delete their project.  That is the trap in the refactor.
+        from kanibako.channels.channels import WS_TOKEN_STANDALONE
         from kanibako.launch.templates import check_workset_template, install_workset_template
 
-        check_workset_template(std, root, canon_only=True)
-        install_workset_template(std, root, canon_only=True)
+        check_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
+        install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert resolved_vault is not None
         _init_standalone_project(std, box_data, shell_path, vault_ro_path, vault_rw_path,
                                  project_path, enable_vault=resolved_vault)
