@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 from kanibako._atomic import atomic_write_text
 from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (BOXES_PATH, CONFIG_FILE, CONFIG_PATH_DEFAULTS,
@@ -18,6 +18,9 @@ from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_L
                                         ERR_CONFIG_NULL_PATH_CURE,
                                         ERR_CONFIG_NULL_PATH_HEAD,
                                         ERR_CONFIG_PATH_REF_SCOPE, ERR_CONFIG_REF_ORDER)
+
+if TYPE_CHECKING:
+    from kanibako.settings.paths import BoxMode
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -1132,6 +1135,48 @@ def chain_reaches(
                 if isinstance(nxt, str) and nxt:
                     pending.append(nxt)
     return reached
+
+
+def reaches_identity(
+    value: object, owner: str, mode: "BoxMode", *, key: str, stored: "Callable[[str], object]",
+) -> bool:
+    """True iff *value* of *key*, a per-*owner* key or entry, reaches its owner's identity in *mode*.
+
+    The anchors are :data:`~kanibako.settings.kb_store.IDENTITY_ANCHORS` plus every key
+    ``KEY_OWNERS`` gives *owner* (keyspec §0: a per-owner key is itself an anchor of its
+    level), less *key* itself. One walk, :func:`chain_reaches`, through *stored*.
+    ⚑ ``shared`` names no owner and raises ``KeyError``: there is nothing to reach.
+    ⚑ An ``agent`` *key* names its agent (``agent.<a>.…`` or ``meta.agent.<a>.…``); only
+    that agent's anchors count.
+    """
+    from kanibako.settings.config_keys import KEY_OWNERS
+    from kanibako.settings.kb_store import IDENTITY_ANCHORS, IDENTITY_PAIRED
+
+    agent = _agent_of(key) if owner == "agent" else None
+
+    def alternatives(level: str) -> list[frozenset[str]]:
+        meta = [frozenset({a}) for a in IDENTITY_ANCHORS[level][mode.value]]
+        if level in IDENTITY_PAIRED:
+            meta = [m | w for m in meta for w in alternatives(IDENTITY_PAIRED[level])]
+        own = [frozenset({k}) for k, o in KEY_OWNERS.items() if o == level]
+        found = meta + own
+        if agent is not None:
+            found = [frozenset(k.replace("<agent>", agent) for k in alt) for alt in found]
+            found = [alt for alt in found if all(_agent_of(k) == agent for k in alt)]
+        return found
+
+    wanted = [alt for alt in alternatives(owner) if key not in alt]
+    reached = set(chain_reaches(value, set().union(*wanted), key=key, stored=stored))
+    return any(alt <= reached for alt in wanted)
+
+
+def _agent_of(key: str) -> str:
+    """The agent an ``agent.<a>.…`` or ``meta.agent.<a>.…`` key belongs to."""
+    parts = key.split(".")
+    head = 1 if parts[0] == "meta" else 0
+    if len(parts) < head + 3 or parts[head] != "agent":
+        raise ValueError(f"{key!r} names no agent")
+    return parts[head + 1]
 
 
 def refuses_null_box_scalar(canonical: str) -> bool:
