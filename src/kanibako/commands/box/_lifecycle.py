@@ -532,13 +532,15 @@ def _resolve_target_workset(
 def _cure_ref(state: ProjectState) -> str:
     """The reference a printed ``box convert`` / ``box move`` reaches *state* by.
 
-    ⚑ A STANDALONE box is in no registry the lifecycle route reads: a bare name is
-    resolved through the primary and workset indexes only (never the standalone
-    one), so it is path-ified against the shell's cwd and misses.  Only the PATH
-    names a standalone box.
+    ⚑ A STANDALONE box is in no registry the lifecycle route reads: a bare name
+    resolves through the primary and workset indexes only, never the standalone
+    one, so it is path-ified against the shell's cwd and misses.  ⚑ Its METADATA
+    path (the box root) is the reference, not its workspace: a workspace nested
+    under a box root is itself inside whatever workset path space the root sits
+    in, and the mode is then detected from the path space rather than from the box.
     """
     if state.mode is BoxMode.standalone:
-        return str(state.workspace_path)
+        return str(state.metadata_path)
     return state.name
 
 
@@ -661,9 +663,9 @@ def _validate(
                           f"{target_ws.name}{rename}` (or `{bare}`)")
             raise ProjectError(
                 f"Refusing to record {dest} for a workset member: inside workset "
-                f"'{target_ws.name}' a box lives at `{leaf}`, and no other in-tree "
-                f"path is the workspace the box records. {advice}, or choose a "
-                "destination outside the workset."
+                f"'{target_ws.name}' a member would live at `{leaf}`, and no other "
+                f"in-tree path is the workspace the box records. {advice}, or "
+                "choose a destination outside the workset."
             )
 
     # --- an IN-PLACE convert whose landing leaf is not the source's own tree would
