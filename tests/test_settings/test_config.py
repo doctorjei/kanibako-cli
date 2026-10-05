@@ -1238,6 +1238,106 @@ class TestBoxEnableVault:
         )
         assert p.read_text() == "box: /x\n"
 
+    #: A ``box`` SECTION that is not a table, one per YAML shape and per truth value.
+    #: The corpus carries the falsy/non-falsy split deliberately: ``or {}`` used to swallow
+    #: the falsy rows into a silent default while the non-falsy ones reached ``in``.
+    _SCALAR_BOX_BODIES = [
+        pytest.param("box:\n", id="null"),
+        pytest.param("box: ''\n", id="empty-string"),
+        pytest.param("box: 0\n", id="zero"),
+        pytest.param("box: false\n", id="false"),
+        pytest.param("box: []\n", id="empty-list"),
+        pytest.param("box: /x\n", id="path-string"),
+        pytest.param("box: 42\n", id="nonzero-int"),
+        pytest.param("box: true\n", id="true"),
+        pytest.param("box: [enable_vault]\n", id="list-holding-the-key"),
+        pytest.param("box: 'enable_vault: false'\n", id="string-holding-the-key"),
+    ]
+
+    @pytest.mark.parametrize("body", _SCALAR_BOX_BODIES)
+    def test_the_authored_reader_refuses_a_scalar_box_by_name(self, tmp_path, body):
+        """A ``box`` that is not a table REFUSES by name, whatever shape or truth value.
+
+        ⚑ THE RULE, not an inventory: a present non-table ``box`` is refused wherever it
+        sits, so every row above must reach the SAME named refusal with the file left
+        byte-identical.  The rows split on whether ``"enable_vault" in box_tbl`` BLOWS UP
+        (``42``, ``true``, a list or string holding the key — a ``TypeError`` out of the
+        reader) or answers ``False`` (everything falsy, plus ``/x`` — the default read
+        SILENTLY), which is why a corpus and not one example is the pin.
+        MUTATION: drop the ``refuse_scalar_sections`` call in ``read_box_enable_vault``
+        and the four ``in``-throws rows red with a ``TypeError``; the rest red by not
+        raising.
+        """
+        from kanibako.settings.config_io import render_stored_scalar
+
+        p = tmp_path / BOX_META_FILE
+        p.write_text(body)
+        stored = load_doc(p)["box"]
+
+        with pytest.raises(ConfigError) as exc:
+            read_box_enable_vault(p)
+        assert str(exc.value) == (
+            f"the config file {p} holds {render_stored_scalar(stored)} at 'box', "
+            f"where a table of keys belongs, so 'box.' keys cannot be written under it. "
+            f"Fix or delete 'box' in that file by hand, then retry."
+        )
+        assert p.read_text() == body
+
+    def test_a_falsy_and_a_non_falsy_box_scalar_reach_one_verdict(self, tmp_path):
+        """``box: 0`` and ``box: 42`` are the same YAML shape and must answer alike.
+
+        ⚑ THE ASYMMETRY, pinned.  ``load_doc(path).get("box") or {}`` sent every FALSY
+        scalar down the ``{}`` arm — so ``0``/``false``/``""``/``null``/``[]`` read as *no
+        override present* and returned the default — while a NON-falsy scalar reached
+        ``"enable_vault" in box_tbl``, a containment test on a string, a list or a number.
+        One YAML kind (a number) therefore produced two opposite verdicts from one reader.
+        """
+        verdicts = {}
+        for label, body in (("falsy", "box: 0\n"), ("non-falsy", "box: 42\n")):
+            p = tmp_path / f"{label}.yaml"
+            p.write_text(body)
+            with pytest.raises(ConfigError) as exc:
+                read_box_enable_vault(p)
+            verdicts[label] = str(exc.value).split(" at 'box'")[0]
+        assert verdicts["falsy"] == verdicts["non-falsy"]
+
+    def test_the_authored_reader_and_its_writer_speak_one_message(self, tmp_path):
+        """One stored value, one refusal — the reader and the writer of the key agree.
+
+        ⚑ ``box.enable_vault`` has one writer and one reader, so a scalar ``box`` must not
+        produce two answers for one file: the reader's text is built from the same
+        :func:`~kanibako.settings.config_io.render_stored_scalar` the writer's is.
+        """
+        p = tmp_path / BOX_META_FILE
+        p.write_text("box: /x\n")
+
+        with pytest.raises(ConfigError) as from_reader:
+            read_box_enable_vault(p)
+        with pytest.raises(ConfigError) as from_writer:
+            write_box_enable_vault(p, enable_vault=False)
+        assert str(from_reader.value) == str(from_writer.value)
+        assert p.read_text() == "box: /x\n"
+
+    @pytest.mark.parametrize("body", ["", "image: custom:v1\n"])
+    def test_a_box_tier_without_a_box_section_still_reads_the_default(
+        self, tmp_path, body,
+    ):
+        """Anti-over-refusal: the guard is the SHAPE rule, not a presence test.
+
+        ⚑ An ABSENT section, an EMPTY file, and a doc with no ``box:`` at all are all
+        *no override authored*, and must keep answering the default.  Only a present
+        NON-TABLE ``box`` refuses; a present table does not.
+        """
+        p = tmp_path / BOX_META_FILE
+        p.write_text(body)
+        assert read_box_enable_vault(p) is True
+
+    def test_a_table_box_keeps_reading_its_leaf(self, tmp_path):
+        """The named refusal must not reach a ``box`` that IS a table."""
+        p = tmp_path / BOX_META_FILE
+        p.write_text('box:\n  image: custom:v1\n  enable_vault: "false"\n')
+        assert read_box_enable_vault(p) is False
+
     def test_a_hand_quoted_false_is_not_the_truthy_string(self, tmp_path):
         """The anchor case: ``enable_vault: "false"`` is False, not the truthy ``"false"``.
 
