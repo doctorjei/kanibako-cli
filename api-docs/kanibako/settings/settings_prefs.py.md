@@ -21,6 +21,7 @@ def prefs_from_partial(partial: KeyStore, *, level: str, path: Path | None=None)
 def collect_prefs(workset_path: Path | None, box_path: Path | None) -> list[PrefRequest]
 def refuse_pref_table(raw: Any, *, level: str, path: Path | None) -> Any
 def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None
+def agent_segment_reason(name: str, *, valid_agents: Collection[str] | None=None) -> str | None
 def allowlist_reason(target: str, *, valid_agents: Collection[str], allowlist: Sequence[str]=PREF_ALLOWLIST) -> str | None
 def forbidden_tier_reason(target: str, *, level: str) -> str | None
 def refuse_deferred_pref_shapes(req: PrefRequest) -> None
