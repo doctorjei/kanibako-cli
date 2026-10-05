@@ -191,10 +191,10 @@ shortcuts for common operations:
 
 | Subcommand | Description |
 |------------|-------------|
-| `box remap <old> [<new>]` | Update kanibako's recorded path after you moved the folder yourself (records only: nothing is moved, copied or deleted, and a previous workspace is left in place; `<new>` defaults to `./`; inside a workset `<new>` must be the box's own `{workset.workspaces}/<name>`) |
+| `box remap <old> [<new>]` | Update kanibako's recorded path after you moved the folder yourself (records only: no workspace file is moved, copied, or deleted, and a previous workspace is left in place; `<new>` defaults to `./`; inside a workset `<new>` must be the box's own `{workset.workspaces}/<name>`) |
 | `box move <old> <new>` / `box mv` | Physically relocate the workspace (both paths required; a target flag also changes ownership; inside a workset the destination must be the box's own `{workset.workspaces}/<name>` and `--force` does not override that; an external-connected box is refused) |
-| `box convert [<old>] (--default \| --standalone \| --workset <ws>)` | Change ownership/mode (in-place by default; `--move [path]` relocates, bare `--move` moves into the target workset; `--name` renames; moving between worksets needs `--move`; `--move` of an external-connected box is refused; inside a workset the destination must be the box's own `{workset.workspaces}/<name>`) |
-| `box duplicate <source> [dest]` | Copy project (`--name`, `--bare`, `--force`; with `--to named` a leftover directory already on the box's leaf needs `--force`, while a name already registered in that workset is refused outright) |
+| `box convert [<old>] (--default \| --standalone \| --workset <ws>)` | Change ownership/mode (in-place by default; `--move [path]` relocates, bare `--move` moves into the target workset; `--name` renames; moving between worksets needs `--move` unless the box is external-connected, which changes workset in place; `--move` of an external-connected box is refused; inside a workset the destination must be the box's own `{workset.workspaces}/<name>`) |
+| `box duplicate <source> [dest]` | Copy project (`--name`, `--bare`, `--force`; with `--to named` a leftover `{workset.workspaces}/<name>` (not checked with `--bare`, which adopts it) or `{workset.boxes}/<name>` needs `--force`, which merges the copy into it, while a name already registered in that workset is refused outright) |
 | `box archive [project]` | Pack session data to .txz (`--all`, `--allow-uncommitted`, `--allow-unpushed`, `--force`) |
 | `box extract <archive> [dest]` | Unpack from archive (`--name`, `--force`) |
 

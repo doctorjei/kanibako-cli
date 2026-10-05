@@ -218,9 +218,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Records-only relocation. Use this when you have ALREADY moved or\n"
             "renamed a project's directory and just need kanibako to catch up.\n"
-            "Updates the recorded workspace path, hash, and markers. Does NOT\n"
-            "move files and never changes ownership: nothing is copied or\n"
-            "deleted, and a previous workspace is left where it is.\n"
+            "Updates the recorded workspace path, hash, and markers. No workspace\n"
+            "file is moved, copied, or deleted, a previous workspace is left\n"
+            "where it is, and ownership never changes.\n"
             "Inside a workset, <new> must be the box's own {workset.workspaces}/<name>;\n"
             "any other in-tree path is refused."
         ),
@@ -276,7 +276,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "all modes (the workspace does not move). Add `--move <path>` to\n"
             "relocate, or a bare `--move` (only with --workset) to move into the\n"
             "target workset. `--name` renames in the target.\n"
-            "Moving between two worksets needs `--move`; in place is refused.\n"
+            "Moving a box whose workspace is inside its workset to another\n"
+            "workset needs `--move`; in place is refused. An external-connected\n"
+            "box changes workset in place.\n"
             "`--move` of an external-connected box is refused (use `remap`, or\n"
             "`convert` without `--move`).\n"
             "Inside a workset, the destination must be the box's own\n"
@@ -311,8 +313,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "Copy a project's workspace directory and kanibako metadata to a new path.\n"
             "The metadata is re-keyed under the new path's hash.\n"
             "With --to, duplicate into a different mode. With `--to named`, a\n"
-            "leftover directory already sitting on the box's leaf needs --force;\n"
-            "a name already registered in that workset is refused outright."
+            "leftover {workset.workspaces}/<name> (not checked with --bare, which\n"
+            "adopts it) or {workset.boxes}/<name> needs --force, which merges the\n"
+            "copy into it; a name already registered in that workset is refused\n"
+            "outright, --force or not."
         ),
     )
     duplicate_p.add_argument("source_path", help="Existing project directory to duplicate")

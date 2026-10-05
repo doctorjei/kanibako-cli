@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`box remap`, `box move`, `box convert`, and `box duplicate` now say what they refuse.** The
+  `--help` text and the README rows for the four relocation commands state the rules the code
+  enforces: a destination inside a workset must be the box's own `{workset.workspaces}/<name>`, and
+  `--force` does not override that; `remap` moves, copies, and deletes no workspace file; moving a
+  box whose workspace is inside its workset to another workset needs `--move`, while an
+  external-connected box changes workset in place; `--move` of an external-connected box is refused;
+  and at `duplicate --to named` a leftover `{workset.workspaces}/<name>` or `{workset.boxes}/<name>`
+  needs `--force`, while a name already registered in that workset is refused outright. Help text
+  and the README only; no behavior changes. See *A leftover directory at `box duplicate --to named`
+  needs `--force`; a registered name is refused* in [MIGRATION.md](MIGRATION.md).
+
 - **A `set` refused for a dangling `@`-reference now says why the reference fails.** A reference to a
   declared key that the command's settings do not reach says so. Any other reference gets the
   keyspace's own reason, such as `'zzz' is not a valid agent (valid: …)` or `'zork' is not a declared
