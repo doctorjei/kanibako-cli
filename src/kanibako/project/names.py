@@ -189,15 +189,15 @@ def lookup_by_path(
     return None
 
 
-def _early(early_system: EarlySystem | None, workset_name: str) -> EarlyScope | None:
-    """*early_system* scoped to the workset registered as *workset_name*; ``None`` without one."""
+def _early(early_system: EarlySystem, workset_name: str) -> EarlyScope:
+    """The scope of the workset registered as *workset_name*."""
     from kanibako.settings.workset_dirkeys import EarlyScope
 
-    return None if early_system is None else EarlyScope(early_system, workset_name)
+    return EarlyScope(early_system, workset_name)
 
 
 def _workset_member_paths(
-    worksets: dict[str, str], name: str, *, early_system: EarlySystem | None = None,
+    worksets: dict[str, str], name: str, *, early_system: EarlySystem,
 ) -> list[tuple[str, str, str]]:
     """Return the ``(workset name, box name, workspace path)`` triples for box *name*.
 
@@ -237,7 +237,7 @@ def resolve_name(
     cwd: Path | None = None,
     primary_workset: Path | None = None,
     *,
-    early_system: EarlySystem | None = None,
+    early_system: EarlySystem,
 ) -> tuple[str, str]:
     """Look up a bare name and return ``(path, kind)``.
 
@@ -369,7 +369,7 @@ def resolve_qualified_name(
     registry: Path,
     qualified: str,
     *,
-    early_system: EarlySystem | None = None,
+    early_system: EarlySystem,
 ) -> tuple[str, str]:
     """Resolve a qualified name (``workset/project``).
 

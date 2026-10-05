@@ -19,7 +19,7 @@ import pytest
 from kanibako.channels.channels import WS_TOKEN_PRIMARY
 from kanibako.project import workset, workset_registry
 from kanibako.settings.config import system_settings_path
-from kanibako.settings.config_io import dump_doc
+from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_keys import _KEY_ROUTES
 from kanibako.settings.paths import resolve_system_paths
 from kanibako.settings.settings_resolve import UNSET, SettingsError
@@ -29,6 +29,7 @@ from kanibako.settings.workset_dirkeys import (
     EarlyScope,
     early_repoint,
     early_system,
+    early_tier,
     resolve_workset_dir_key,
 )
 
@@ -269,6 +270,15 @@ def _write_system(workset_table: dict) -> Path:
     return path
 
 
+def _system_scope(path: Path, tmp_path: Path) -> EarlyScope:
+    """The record built from the system document at *path*, as the ``std`` load builds it."""
+    resolved = {
+        **resolve_system_paths({}, data_home=tmp_path / "data", home=tmp_path),
+        "config.settings": path,
+    }
+    return EarlyScope(early_system(early_tier(load_doc(path)), resolved), "ws")
+
+
 def _routed(key: str, value: object) -> dict:
     """A ``workset:`` table carrying *value* at ``workset.<key>``'s routed slot."""
     sections, slot = _KEY_ROUTES[f"workset.{key}"]
@@ -279,48 +289,62 @@ def _routed(key: str, value: object) -> dict:
 
 
 class TestTheSystemFileIsTheTierBeneath:
-    """``system < workset`` for every early key: a system value applies, the workset's wins."""
+    """``system < workset`` for every early key: a system value applies, the workset's wins.
+
+    The system tier is the record built from the system file the test writes.
+    """
 
     @pytest.mark.parametrize("key", sorted(WORKSET_EARLY_KEYS))
     def test_every_early_key_reads_the_system_tier(self, key, tmp_path):
         system = _write_system(_routed(key, "/sys/x"))
-        assert early_repoint(tmp_path, None, key) == ("/sys/x", system)
+        scope = _system_scope(system, tmp_path)
+        assert early_repoint(tmp_path, None, key, early=scope) == ("/sys/x", system)
 
     @pytest.mark.parametrize("key", sorted(WORKSET_EARLY_KEYS))
     def test_the_workset_file_wins_its_null_included(self, key, tmp_path):
-        _write_system(_routed(key, "/sys/x"))
+        scope = _system_scope(_write_system(_routed(key, "/sys/x")), tmp_path)
         own = tmp_path / "workset.yaml"
-        assert early_repoint(tmp_path, {"workset": _routed(key, "/own")}, key) == ("/own", own)
-        assert early_repoint(tmp_path, {"workset": _routed(key, None)}, key) == (None, own)
+        assert early_repoint(
+            tmp_path, {"workset": _routed(key, "/own")}, key, early=scope,
+        ) == ("/own", own)
+        assert early_repoint(
+            tmp_path, {"workset": _routed(key, None)}, key, early=scope,
+        ) == (None, own)
 
     def test_a_system_value_reaches_the_faces(self, tmp_path):
-        _write_system({"boxes": "/sys/boxes", "registry": "@meta.workset.path/r.yaml"})
-        assert workset.resolve_workset_boxes(tmp_path, None) == Path("/sys/boxes")
-        assert workset_registry.resolve_workset_registry_path(tmp_path, None) == (
+        scope = _system_scope(
+            _write_system({"boxes": "/sys/boxes", "registry": "@meta.workset.path/r.yaml"}),
+            tmp_path,
+        )
+        assert workset.resolve_workset_boxes(tmp_path, None, early=scope) == Path("/sys/boxes")
+        assert workset_registry.resolve_workset_registry_path(tmp_path, None, early=scope) == (
             tmp_path / "r.yaml"
         )
 
     def test_a_workset_value_beats_it_at_the_face(self, tmp_path):
-        _write_system({"boxes": "/sys/boxes"})
+        scope = _system_scope(_write_system({"boxes": "/sys/boxes"}), tmp_path)
         doc = {"workset": {"boxes": "/own/boxes"}}
-        assert workset.resolve_workset_boxes(tmp_path, doc) == Path("/own/boxes")
+        assert workset.resolve_workset_boxes(tmp_path, doc, early=scope) == Path("/own/boxes")
 
     def test_a_workset_null_beats_a_system_value(self, tmp_path):
-        _write_system({"logs": "/sys/logs"})
-        assert workset.resolve_workset_logs(tmp_path, {"workset": {"logs": None}}) is None
+        scope = _system_scope(_write_system({"logs": "/sys/logs"}), tmp_path)
+        assert workset.resolve_workset_logs(
+            tmp_path, {"workset": {"logs": None}}, early=scope,
+        ) is None
 
     def test_a_system_null_is_honored_like_a_workset_one(self, tmp_path):
         system = _write_system({"logs": None, "boxes": None})
-        assert workset.resolve_workset_logs(tmp_path, None) is None
+        scope = _system_scope(system, tmp_path)
+        assert workset.resolve_workset_logs(tmp_path, None, early=scope) is None
         with pytest.raises(SettingsError) as excinfo:
-            workset.resolve_workset_boxes(tmp_path, None)
+            workset.resolve_workset_boxes(tmp_path, None, early=scope)
         assert str(system) in str(excinfo.value)
         assert "workset.boxes" in str(excinfo.value)
 
     def test_a_refusal_names_the_system_file(self, tmp_path):
         system = _write_system({"boxes": "/z/$AGENT"})
         with pytest.raises(SettingsError) as excinfo:
-            workset.resolve_workset_boxes(tmp_path, None)
+            workset.resolve_workset_boxes(tmp_path, None, early=_system_scope(system, tmp_path))
         assert str(system) in str(excinfo.value)
 
 
@@ -341,9 +365,10 @@ class TestSameSetRefs:
         ) == tmp_path / "channels" / "chat" / "broadcast.md"
 
     def test_a_referent_reads_the_system_tier(self, tmp_path):
-        _write_system({"channelroot": "/sys/chan"})
+        scope = _system_scope(_write_system({"channelroot": "/sys/chan"}), tmp_path)
         assert resolve_workset_dir_key(
             tmp_path, "@workset.channelroot/chat", "", key="channels.chat", standalone=False,
+            early=scope,
         ) == Path("/sys/chan/chat")
 
     @pytest.mark.parametrize(("standalone", "leaf"), [(True, "box_data"), (False, "boxes")])
@@ -419,7 +444,6 @@ def no_system_open(monkeypatch):
         raise AssertionError("the early route opened the system settings file")
 
     monkeypatch.setattr(workset_dirkeys, "load_doc", refuse)
-    monkeypatch.setattr(workset_dirkeys, "system_settings_path", refuse)
 
 
 def _scope(tmp_path: Path, tier: dict, name: str = "ws") -> EarlyScope:

@@ -1257,7 +1257,7 @@ def _early_scope(std: StandardPaths, mode: BoxMode, workset_name: str | None = N
 
 
 def _standalone_box_paths(
-    root: Path, *, early: EarlyScope | None = None,
+    root: Path, *, early: EarlyScope,
 ) -> tuple[Path, Path | None, Path | None]:
     """Fixed STANDALONE-mode ``(home, vault_ro, vault_rw)`` (no layout axis).
 
@@ -1338,7 +1338,7 @@ def remove_box_logs(logs_dir: Path | None, box: str) -> list[Path]:
     return removed
 
 
-def standalone_logs_dir(root: Path, *, early: EarlyScope | None = None) -> Path | None:
+def standalone_logs_dir(root: Path, *, early: EarlyScope) -> Path | None:
     """The resolved ``workset.logs`` of the standalone box rooted at *root*.
 
     *root* is the workset root of the degenerate workset, so the key is read from the
@@ -1367,12 +1367,13 @@ def box_logs_dir_for(
         return standalone_logs_dir(metadata_path, early=_early_scope(std, mode))
 
     if mode is BoxMode.named:
+        if workset_name is None:
+            raise ValueError("a named box's logs dir needs its workset name")
         # ⚑ The fallback still assumes the DEFAULT box layout; it is unreachable from
         # ``resolve_workset_project``, which always supplies the group.
         root = ws_root if ws_root is not None else metadata_path.parent.parent
         return resolve_workset_logs(
-            root, load_workset_settings_doc(root),
-            early=None if workset_name is None else _early_scope(std, mode, workset_name),
+            root, load_workset_settings_doc(root), early=_early_scope(std, mode, workset_name),
         )
     # PRIMARY: the PRIMARY workset's logs dir — ``std.primary_logs`` is already the
     # RESOLVED ``workset.logs`` of the primary root (:func:`resolve_system_paths`).
@@ -1656,7 +1657,7 @@ def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | 
 
 
 def _workset_box_name_for_workspace(ws_root: Path, workspace: str,
-                                    *, early: EarlyScope | None = None) -> str | None:
+                                    *, early: EarlyScope) -> str | None:
     """Reverse-look-up *workspace* in *ws_root*'s per-workset ``boxes:`` membership (Guard 2)."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
@@ -1667,7 +1668,7 @@ def _workset_box_name_for_workspace(ws_root: Path, workspace: str,
 
 
 def _workset_box_workspace_for_name(ws_root: Path, box_name: str,
-                                    *, early: EarlyScope | None = None) -> str | None:
+                                    *, early: EarlyScope) -> str | None:
     """Forward-look-up *box_name* in *ws_root*'s per-workset ``boxes:`` membership."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
@@ -1678,7 +1679,7 @@ def _workset_box_workspace_for_name(ws_root: Path, box_name: str,
 
 
 def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path,
-                                     *, early: EarlyScope | None = None) -> None:
+                                     *, early: EarlyScope) -> None:
     """Register *box_name* → *workspace* in *ws_root*'s per-workset registry (idempotent)."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
@@ -1689,7 +1690,7 @@ def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Pa
 
 
 def _unregister_workset_box_membership(ws_root: Path, box_name: str,
-                                       *, early: EarlyScope | None = None) -> None:
+                                       *, early: EarlyScope) -> None:
     """Drop *box_name* from *ws_root*'s per-workset registry (compensating action, idempotent)."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
@@ -1704,7 +1705,7 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str,
 # ---------------------------------------------------------------------------
 # The SOLE store of default-mode box names; mirrors the retired ``names.py`` API.
 
-def load_primary_boxes(primary_workset: Path, *, early: EarlyScope | None = None) -> dict[str, str]:
+def load_primary_boxes(primary_workset: Path, *, early: EarlyScope) -> dict[str, str]:
     """Return the PRIMARY box membership as ``{box_name: workspace_path_str}``."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
@@ -1715,13 +1716,13 @@ def load_primary_boxes(primary_workset: Path, *, early: EarlyScope | None = None
 
 
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str,
-                                   *, early: EarlyScope | None = None) -> str | None:
+                                   *, early: EarlyScope) -> str | None:
     """Return the PRIMARY box name registered for *workspace*, or ``None`` (resolved-path aware)."""
     return _workset_box_name_for_workspace(primary_workset, workspace, early=early)
 
 
 def _primary_name_domain(primary_workset: Path, registry: Path,
-                         *, early: EarlyScope | None = None) -> set[str]:
+                         *, early: EarlyScope) -> set[str]:
     """The PRIMARY-box name collision domain: primary membership ∪ global worksets."""
     from kanibako.project import registry_store
 
@@ -1731,7 +1732,7 @@ def _primary_name_domain(primary_workset: Path, registry: Path,
 
 
 def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str, workspace: str,
-                                *, force: bool = False, early: EarlyScope | None = None) -> None:
+                                *, force: bool = False, early: EarlyScope) -> None:
     """Raise ``ProjectError`` if *name* collides in the PRIMARY-box domain (no write)."""
     from kanibako.project import registry_store
 
@@ -1772,7 +1773,7 @@ def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
 
 
 def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str,
-                          boxes_dir: Path | None = None, *, early: EarlyScope | None = None) -> str:
+                          boxes_dir: Path | None = None, *, early: EarlyScope) -> str:
     """Pick a collision-free PRIMARY box name from *workspace*'s basename (no write)."""
     base = Path(workspace).name or "project"
     taken_names = _primary_name_domain(primary_workset, registry, early=early)
@@ -1795,7 +1796,7 @@ def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str,
 
 def register_primary_box_name(primary_workset: Path, registry: Path, name: str,
                               workspace: Path | str, *, force: bool = False,
-                              early: EarlyScope | None = None) -> None:
+                              early: EarlyScope) -> None:
     """Register *name* → *workspace* in the PRIMARY membership (with guards)."""
     check_primary_box_name_free(primary_workset, registry, name, str(workspace), force=force,
                                 early=early)
@@ -1804,7 +1805,7 @@ def register_primary_box_name(primary_workset: Path, registry: Path, name: str,
 
 def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, name: str,
                                         workspace: Path | str, *, force: bool = False,
-                                        early: EarlyScope | None = None) -> None:
+                                        early: EarlyScope) -> None:
     """Idempotent :func:`register_primary_box_name` for deferred-create recovery."""
     from kanibako.project.workset_registry import _same_workspace
 
@@ -1817,7 +1818,7 @@ def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, n
 
 
 def assign_primary_box_name(primary_workset: Path, registry: Path, workspace: Path | str,
-                            boxes_dir: Path | None = None, *, early: EarlyScope | None = None) -> str:
+                            boxes_dir: Path | None = None, *, early: EarlyScope) -> str:
     """Auto-assign + register a PRIMARY box name from *workspace*'s basename."""
     candidate = pick_primary_box_name(primary_workset, registry, str(workspace),
                                       boxes_dir=boxes_dir, early=early)
@@ -1826,7 +1827,7 @@ def assign_primary_box_name(primary_workset: Path, registry: Path, workspace: Pa
 
 
 def unregister_primary_box_name(primary_workset: Path, name: str,
-                                *, early: EarlyScope | None = None) -> None:
+                                *, early: EarlyScope) -> None:
     """Drop *name* from the PRIMARY membership (the membership ``unregister_name``)."""
     _unregister_workset_box_membership(primary_workset, name, early=early)
 

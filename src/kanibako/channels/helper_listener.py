@@ -46,7 +46,7 @@ class HelperContext:
     boxes: Path | None = None          # resolved PRIMARY workset.boxes (std.boxes)
     registry: Path | None = None       # resolved config.registry file (std.registry)
     primary_workset: Path | None = None  # resolved config.primary_workset (std.primary_workset)
-    early: EarlyScope | None = None    # the PRIMARY early scope (paths._early_scope)
+    early: EarlyScope = field(kw_only=True)  # the PRIMARY early scope (paths._early_scope)
 
 
 class HelperHub:

@@ -139,7 +139,7 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
 
 def resolve_workset_workspaces(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, standalone: bool = False, early: EarlyScope | None = None,
+    *, standalone: bool = False, early: EarlyScope,
 ) -> Path | None:
     """Return the resolved ``workset.workspaces`` dir (*standalone* selects the singular default).
 
@@ -160,7 +160,7 @@ def resolve_workset_workspaces(
 
 def resolve_workspaces_locator(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, early: EarlyScope | None = None,
+    *, early: EarlyScope,
 ) -> Path:
     """Where a named root's in-tree members are FOUND: :func:`resolve_workset_workspaces`,
     or its default leaf under a null — for DETECTION only, never a place to create in.
@@ -176,7 +176,7 @@ def resolve_workspaces_locator(
 
 
 def _workspaces_null_file(
-    workset_root: Path, *, early: EarlyScope | None = None,
+    workset_root: Path, *, early: EarlyScope,
 ) -> Path | None:
     """The settings file whose present ``<None>`` nulls *workset_root*'s ``workset.workspaces``."""
     repoint, where = early_repoint(
@@ -185,7 +185,7 @@ def _workspaces_null_file(
     return where if repoint is None else None
 
 
-def workset_workspaces_nulled(workset_root: Path, *, early: EarlyScope | None = None) -> bool:
+def workset_workspaces_nulled(workset_root: Path, *, early: EarlyScope) -> bool:
     """True when *workset_root*'s ``workset.workspaces`` is a present ``<None>`` — no workspace dir.
 
     ⚑ Read off the root's workset.yaml and the system file beneath it, like every face here.
@@ -196,7 +196,7 @@ def workset_workspaces_nulled(workset_root: Path, *, early: EarlyScope | None = 
 
 
 def refuse_null_workspaces(
-    workset_root: Path, what: str, *, standalone: bool = False, early: EarlyScope | None = None,
+    workset_root: Path, what: str, *, standalone: bool = False, early: EarlyScope,
 ) -> None:
     """RAISE, naming ``workset.workspaces`` and the file, when *workset_root* nulls it ([R177], Q96).
 
@@ -213,7 +213,7 @@ def refuse_null_workspaces(
 
 def refuse_null_box_workspace(
     workset_root: Path, workspace: Path | None, box: str, *, standalone: bool,
-    early: EarlyScope | None = None,
+    early: EarlyScope,
 ) -> None:
     """RAISE when a box's ``meta.box.workspace`` resolves through a null ``workset.workspaces`` (Q106).
 
@@ -232,7 +232,7 @@ def refuse_null_box_workspace(
 
 def resolve_workset_boxes(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, standalone: bool = False, early: EarlyScope | None = None,
+    *, standalone: bool = False, early: EarlyScope,
 ) -> Path:
     """Return the resolved ``workset.boxes`` dir (*standalone* selects the ``box_data`` default).
 
@@ -262,7 +262,7 @@ def resolve_workset_boxes(
 
 def resolve_workset_logs(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, standalone: bool = False, early: EarlyScope | None = None,
+    *, standalone: bool = False, early: EarlyScope,
 ) -> Path | None:
     """Return the resolved ``workset.logs`` dir (*standalone* takes the box-anchored default).
 
@@ -286,7 +286,7 @@ def resolve_workset_logs(
 
 def resolve_workset_channelroot(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, early: EarlyScope | None = None,
+    *, early: EarlyScope,
 ) -> Path | None:
     """Return the resolved ``workset.channelroot`` — ⚑ primary/named ONLY; callers gate on mode.
 
@@ -306,7 +306,7 @@ def resolve_workset_channelroot(
 
 def resolve_workset_canon(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, early: EarlyScope | None = None,
+    *, early: EarlyScope,
 ) -> Path | None:
     """Return the resolved ``workset.canon`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included.
 
@@ -325,7 +325,7 @@ def resolve_workset_canon(
 
 def resolve_workset_template(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, early: EarlyScope | None = None,
+    *, early: EarlyScope,
 ) -> Path | None:
     """Return the resolved ``workset.template`` dir — ⚑ primary/named ONLY; <None> in standalone.
 
@@ -345,7 +345,7 @@ def resolve_workset_template(
 
 def resolve_workset_vault_ro(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, early: EarlyScope | None = None,
+    *, early: EarlyScope,
 ) -> Path | None:
     """Return the resolved ``workset.vault_ro`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included.
 
@@ -366,7 +366,7 @@ def resolve_workset_vault_ro(
 
 def resolve_workset_vault_rw(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, early: EarlyScope | None = None,
+    *, early: EarlyScope,
 ) -> Path | None:
     """Return the resolved ``workset.vault_rw`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included.
 
@@ -385,7 +385,7 @@ def resolve_workset_vault_rw(
 
 
 def resolve_workset_vault_pair(
-    workset_root: Path, *, early: EarlyScope | None = None,
+    workset_root: Path, *, early: EarlyScope,
 ) -> tuple[Path | None, Path | None]:
     """The resolved ``(vault_ro, vault_rw)`` for *workset_root*, off ONE workset.yaml read.
 
@@ -400,7 +400,7 @@ def resolve_workset_vault_pair(
 
 
 def standalone_vault_teardown(
-    root: Path, *, early: EarlyScope | None = None,
+    root: Path, *, early: EarlyScope,
 ) -> tuple[list[Path], list[Path]]:
     """Split a STANDALONE box's vault into ``(removable, retained)`` for a teardown.
 
@@ -622,13 +622,11 @@ class Workset:
     root: Path
     projects: list[WorksetProject] = field(default_factory=list)
     is_default: bool = False                 # True = synthesized default workset
-    early_system: EarlySystem | None = None
+    early_system: EarlySystem = field(kw_only=True)
 
     @property
-    def early_scope(self) -> EarlyScope | None:
+    def early_scope(self) -> EarlyScope:
         """The scope this workset's early readers take: its record and its partition name."""
-        if self.early_system is None:
-            return None
         return EarlyScope(self.early_system, WS_TOKEN_PRIMARY if self.is_default else self.name)
 
     # Convenience paths -------------------------------------------------------
@@ -725,7 +723,7 @@ class Workset:
 # identity — there is none there to read.
 # ---------------------------------------------------------------------------
 
-def _load_workset(root: Path, name: str, *, early_system: EarlySystem | None) -> Workset:
+def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset:
     """Build the :class:`Workset` for the globally-registered *name* rooted at *root*."""
     # ⚑ A root still carrying a RETIRED identity table refuses here, with the named
     # cure — it is the load path, not detection, that a 1.6/1.7 user reaches first
@@ -838,7 +836,7 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 # already ([R139]).
 # ---------------------------------------------------------------------------
 
-def _workset_skeleton_dirs(root: Path, *, early: EarlyScope | None = None) -> tuple[Path, ...]:
+def _workset_skeleton_dirs(root: Path, *, early: EarlyScope) -> tuple[Path, ...]:
     """The four dirs a workset root is made of — ⚑ three RESOLVED, ``vault`` alone literal.
 
     Fewer when ``workset.logs`` or ``workset.workspaces`` is a present ``<None>``: that key
@@ -864,7 +862,7 @@ def _workset_skeleton_dirs(root: Path, *, early: EarlyScope | None = None) -> tu
     return tuple(d for d in dirs if d is not None)
 
 
-def is_workset_skeleton(root: Path, *, early: EarlyScope | None = None) -> bool:
+def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool:
     """True when *root* carries the WHOLE skeleton — ⚑ the NAMED-root detection primitive.
 
     ⚑ Presence-only, and it names nothing.  A workset root records no name anywhere
@@ -976,7 +974,7 @@ def create_workset(
     return ws
 
 
-def load_workset(root: Path, name: str, *, early_system: EarlySystem | None = None) -> Workset:
+def load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset:
     """Load the workset registered as *name* at *root* (raises ``WorksetError`` if absent).
 
     ⚑ *name* is REQUIRED and comes from the global registry's ``worksets:`` section —
