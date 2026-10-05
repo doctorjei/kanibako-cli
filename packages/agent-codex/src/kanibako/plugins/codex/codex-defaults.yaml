@@ -28,6 +28,7 @@ descriptor:
     - key: binary
       origin: binary
       box_dest: "{$GUEST_HOME}/.local/bin/codex"
+      owner: shared
       kind: file
       scope: agent_critical
       ro: true
@@ -46,6 +47,7 @@ descriptor:
       origin: literal
       literal_src_pkg: "data/KICKOFF.md"
       box_dest: "{$GUEST_HOME}/.config/kanibako/kickoff.md"
+      owner: shared
       kind: file
       scope: agent
       ro: true
@@ -154,6 +156,7 @@ descriptor:
   cred_files:
     - home_rel: ".codex/auth.json"
       host_rel: ".codex/auth.json"
+      owner: shared
       cadence: sync
       mtime_gate: true
       filtered: false

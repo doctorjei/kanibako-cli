@@ -23,6 +23,10 @@
 #     them).  The gate is a MODE test, not a filesystem test — the loader adds the
 #     `workset_*` source names only when `proj.mode` is not standalone, then drops
 #     any entry whose `source:` is missing from that map.  Nothing stats a path.
+#
+# `owner:` on a bind entry row is its owner per keyspec §0 "Per-owner resources"
+# (box · workset · partition · agent · shared), the same cell the manifest's
+# entry tables carry.  `images_conf` has none: it is generated machinery, not a key.
 
 # box.masks default (decision B): EMPTY — there is no default tmpfs mask.  The
 # vault moved OUT of ~/workspace in 1.6.0, so there is nothing in the workspace
@@ -59,21 +63,25 @@ channels:
     source: channels_common
     meta_ref: "{system.channels.common}"
     box_dest: "~/channels/common"
+    owner: shared
     scope: system
   - key: global_chat
     source: channels_chat
     meta_ref: "{system.channels.chat}"
     box_dest: "~/channels/chat"
+    owner: shared
     scope: system
   - key: global_share
     source: channels_share
     meta_ref: "{system.channels.share}"
     box_dest: "~/channels/share"
+    owner: shared
     scope: system
   - key: mailboxes
     source: channels_mailboxes
     meta_ref: "{system.channels.mailboxes}"
     box_dest: "~/channels/mailboxes"
+    owner: shared
     scope: system
   # Own inbox alias (A2): same host dir as mailboxes/<ws>/<self>, surfaced at the
   # (C)-stable path ~/channels/inbox.  The depth-sort lands this deeper dest
@@ -88,6 +96,7 @@ channels:
     source: inbox
     meta_ref: "{meta.box.inbox}"
     box_dest: "~/channels/inbox"
+    owner: box
     scope: system
   # Workset-local channels (PRIMARY/NAMED only; standalone omits — gated at the
   # seam by `proj.mode`, via the `source:` names below).  B2b: routed through
@@ -99,16 +108,19 @@ channels:
     source: workset_common
     meta_ref: "{workset.channels.common}"
     box_dest: "~/channels/workset/common"
+    owner: workset
     scope: workset
   - key: workset_chat
     source: workset_chat
     meta_ref: "{workset.channels.chat}"
     box_dest: "~/channels/workset/chat"
+    owner: workset
     scope: workset
   - key: workset_share
     source: workset_share
     meta_ref: "{workset.channels.share}"
     box_dest: "~/channels/workset/share"
+    owner: workset
     scope: workset
 
 # Core box mounts (step 3).  Each entry becomes a `box.bindings.{ro,rw}` default
@@ -157,6 +169,7 @@ core:
     source: project_path
     meta_ref: "{meta.box.workspace}"
     box_dest: "~/workspace"
+    owner: box
     options: "Z,U"
     scope: system
   # Read-only vault (only when vault enabled; source is created if missing).
@@ -175,6 +188,7 @@ core:
       named: "{workset.vault_ro}/{meta.box.name}"
       standalone: "{workset.vault_ro}"
     box_dest: "~/vault/ro"
+    owner: box
     options: "ro"
     scope: vault
   # Read-write vault (only when vault enabled; source is created if missing).
@@ -188,6 +202,7 @@ core:
       named: "{workset.vault_rw}/{meta.box.name}"
       standalone: "{workset.vault_rw}"
     box_dest: "~/vault/rw"
+    owner: box
     options: "Z,U"
     scope: vault
 
@@ -207,12 +222,14 @@ kani:
     category: bindings.ro
     source: kani_pkg
     box_dest: "/opt/kanibako/kanibako"
+    owner: shared
     options: "ro"
   # Entry script → ~/.local/bin/kanibako (ro).
   - key: kani_bin
     category: bindings.ro
     source: kani_bin
     box_dest: "~/.local/bin/kanibako"
+    owner: shared
     options: "ro"
   # Universal secret export → /etc/profile.d/kanibako-secrets.sh (ro).  A generic,
   # self-adapting profile.d snippet that every LOGIN shell sources; it exports each
@@ -227,6 +244,7 @@ kani:
     category: bindings.ro
     source: secret_export
     box_dest: "/etc/profile.d/kanibako-secrets.sh"
+    owner: shared
     options: "ro"
   # NOTE: the read-only packaged CANON is not a hand-declared entry here either.
   # ``core_defaults.rom_default_categories`` emits FIVE SIBLING binds from the
@@ -273,6 +291,7 @@ kickoff:
     category: bindings.ro
     source: kickoff
     box_dest: "~/.config/kanibako/kickoff.md"
+    owner: shared
     options: "ro"
 
 # CANON — the HANDBOOK book's five SIBLING binds (spec §2c, J-7).  Sources are the
@@ -324,28 +343,33 @@ canon:
     category: bindings.ro
     meta_ref: "{system.canon}/handbook/SYS_CONTENTS.md"
     box_dest: "~/canon/handbook/SYS_CONTENTS.md"
+    owner: shared
     options: "ro"
   # The GENERAL chapter — the global handbook IS the general chapter.
   - key: canon_hb_general
     category: bindings.ro
     meta_ref: "{system.canon}/handbook/general"
     box_dest: "~/canon/handbook/general"
+    owner: shared
     options: "ro"
   # The three per-scope chapters.  `<active>` is interpolated.
   - key: canon_hb_agent
     category: bindings.ro
     meta_ref: "{agent.<active>.canon}/handbook"
     box_dest: "~/canon/handbook/agent"
+    owner: shared
     options: "ro"
   - key: canon_hb_workset
     category: bindings.ro
     meta_ref: "{workset.canon}/handbook"
     box_dest: "~/canon/handbook/workset"
+    owner: workset
     options: "ro"
   - key: canon_hb_box
     category: bindings.ro
     meta_ref: "{box.canon}/handbook"
     box_dest: "~/canon/handbook/box"
+    owner: box
     options: "ro"
 
 # Helper hub binds (Phase B).  The live helper unix SOCKET + the per-box helper
@@ -372,6 +396,7 @@ helpers:
     category: bindings.rw
     source: helper_sock
     box_dest: "~/.kanibako/state/helper.sock"
+    owner: box
     options: ""
   # Per-box helper message log → ~/.kanibako/state/helpers.jsonl (ro).
   # THE SPEC'S OWN SPELLING (§2c ALL PROJECTS): {workset.logs}/{meta.box.name}.jsonl
@@ -387,6 +412,7 @@ helpers:
     source: helper_log
     meta_ref: "{workset.logs}/{meta.box.name}.jsonl"
     box_dest: "~/.kanibako/state/helpers.jsonl"
+    owner: box
     options: "ro"
 
 # Image-sharing bind (Phase B, D-M8).  The host image store + the GENERATED
@@ -415,6 +441,7 @@ images:
     source: images_store
     meta_ref: "{box.images_store}"
     box_dest: "/var/lib/shared-images"
+    owner: shared
     options: "ro"
   # Generated storage.conf → ~/.config/containers/storage.conf (ro).
   # INTERNAL bind, NOT a key (not_keys.never_a_key): fixed location, generated
