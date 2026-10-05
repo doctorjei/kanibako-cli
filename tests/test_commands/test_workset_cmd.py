@@ -7,7 +7,7 @@ import argparse
 import pytest
 
 from kanibako.settings.config import load_config
-from kanibako.settings.paths import load_std_paths
+from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
 from kanibako.settings.settings_resolve import normalize_bind_dest
 from kanibako.project.workset import (
     add_project,
@@ -23,6 +23,7 @@ def _workset_boxes(ws):
 
     registry_path = workset_registry.resolve_workset_registry_path(
         ws.root, load_doc(ws.root / "workset.yaml"),
+        early=ws.early_scope,
     )
     return workset_registry.load_workset_boxes(registry_path)
 
@@ -127,6 +128,7 @@ class TestWorksetCreate:
         std = load_std_paths(config)
         register_primary_box_name(
             std.primary_workset, std.registry, "common", str(tmp_home / "box"),
+            early=_early_scope(std, BoxMode.primary),
         )
 
         ws_root = tmp_home / "shared_ws"
@@ -152,6 +154,7 @@ class TestWorksetCreate:
         std = load_std_paths(config)
         register_primary_box_name(
             std.primary_workset, std.registry, "common", str(tmp_home / "box"),
+            early=_early_scope(std, BoxMode.primary),
         )
 
         ws_root = tmp_home / "shared_ws"
@@ -673,7 +676,8 @@ class TestWorksetConnect:
         assert run_connect(args) == 1
         assert capsys.readouterr().err.strip() == expect
         assert not (root / "workspaces" / name).exists()
-        reloaded = load_workset(list_worksets(std)["extmiss"], "extmiss")
+        reloaded = load_workset(list_worksets(std)["extmiss"], "extmiss",
+                early_system=std.early_system)
         assert reloaded.projects == []
         assert _workset_boxes(reloaded) == {}
         assert journal.read_journal(std.journal) == {}
@@ -850,7 +854,7 @@ class TestWorksetConnect:
         assert not (root / "workspaces" / "ws_own").exists()
         assert not (root / "workspaces" / "notes").exists()
         assert (notes / "file.txt").read_text() == "mine\n"
-        reloaded = load_workset(list_worksets(std)["own"], "own")
+        reloaded = load_workset(list_worksets(std)["own"], "own", early_system=std.early_system)
         assert reloaded.projects == []
         assert _workset_boxes(reloaded) == {}
         assert journal.read_journal(std.journal) == {}
@@ -892,7 +896,7 @@ class TestWorksetConnect:
         assert "its directory name 'alpha' and --name 'beta' differ" in reasons[1]
         assert "inside the working set root or its workspaces directory" in reasons[0]
         assert (member / "keep.txt").read_text() == "kept\n"
-        reloaded = load_workset(list_worksets(std)["sub"], "sub")
+        reloaded = load_workset(list_worksets(std)["sub"], "sub", early_system=std.early_system)
         assert reloaded.projects == []
         assert _workset_boxes(reloaded) == {}
         assert journal.read_journal(std.journal) == {}
@@ -936,7 +940,7 @@ class TestWorksetConnect:
         assert not (outside / "extws").exists()
         assert not (outside / "alpha").exists()
         assert (outside / "x" / "sub" / "f.txt").read_text() == "mine\n"
-        reloaded = load_workset(list_worksets(std)["rp"], "rp")
+        reloaded = load_workset(list_worksets(std)["rp"], "rp", early_system=std.early_system)
         assert reloaded.projects == []
         assert _workset_boxes(reloaded) == {}
         assert journal.read_journal(std.journal) == {}
@@ -965,7 +969,7 @@ class TestWorksetConnect:
         )
         assert run_connect(args) == 0
         assert "Added project 'alpha'" in capsys.readouterr().out
-        reloaded = load_workset(list_worksets(std)["rpok"], "rpok")
+        reloaded = load_workset(list_worksets(std)["rpok"], "rpok", early_system=std.early_system)
         assert _workset_boxes(reloaded) == {"alpha": str(leaf)}
         assert (leaf / "keep.txt").read_text() == "kept\n"
 
@@ -993,7 +997,8 @@ class TestWorksetConnect:
         assert f"it takes an existing '{missing}' directory" in err
 
         assert not missing.exists()
-        reloaded = load_workset(list_worksets(std)["ghost"], "ghost")
+        reloaded = load_workset(list_worksets(std)["ghost"], "ghost",
+                early_system=std.early_system)
         assert reloaded.projects == []
         assert _workset_boxes(reloaded) == {}
         assert journal.read_journal(std.journal) == {}
@@ -1014,7 +1019,8 @@ class TestWorksetConnect:
         outside = (tmp_home / "extws3").resolve()
         leaf = outside / "beta"
         leaf.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(leaf))
+        register_primary_box_name(std.primary_workset, std.registry, "beta", str(leaf),
+                early=_early_scope(std, BoxMode.primary))
         root = (tmp_home / "ws_pb").resolve()
         create_workset("pb", root, std)
         dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
@@ -1025,7 +1031,7 @@ class TestWorksetConnect:
         assert run_connect(args) == 1
         err = capsys.readouterr().err
         assert f"Cannot connect '{leaf}': it is already the workspace of primary box 'beta'" in err
-        reloaded = load_workset(list_worksets(std)["pb"], "pb")
+        reloaded = load_workset(list_worksets(std)["pb"], "pb", early_system=std.early_system)
         assert reloaded.projects == []
         assert _workset_boxes(reloaded) == {}
         assert not (reloaded.projects_dir / "beta").exists()
@@ -1057,7 +1063,8 @@ class TestWorksetConnect:
         assert run_connect(args) == 1
         err = capsys.readouterr().err
         assert "already connected as project 'beta' in workset 'other'" in err
-        assert _workset_boxes(load_workset(list_worksets(std)["tw"], "tw")) == {}
+        assert _workset_boxes(load_workset(list_worksets(std)["tw"], "tw",
+                early_system=std.early_system)) == {}
 
     def test_connect_external_workspace_of_a_primary_box_refuses(
         self, config_file, tmp_home, capsys,
@@ -1072,7 +1079,8 @@ class TestWorksetConnect:
         std = load_std_paths(config)
         ext = (tmp_home / "ext_pb" / "beta").resolve()
         ext.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(ext))
+        register_primary_box_name(std.primary_workset, std.registry, "beta", str(ext),
+                early=_early_scope(std, BoxMode.primary))
         create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
 
         args = argparse.Namespace(
@@ -1082,7 +1090,8 @@ class TestWorksetConnect:
         err = capsys.readouterr().err
         assert "it is already the workspace of primary box 'beta'" in err
         assert "'kanibako box convert beta --workset xpb'" in err
-        assert _workset_boxes(load_workset(list_worksets(std)["xpb"], "xpb")) == {}
+        assert _workset_boxes(load_workset(list_worksets(std)["xpb"], "xpb",
+                early_system=std.early_system)) == {}
 
     def test_connect_standalone_refused_without_force(
         self, config_file, tmp_home, capsys

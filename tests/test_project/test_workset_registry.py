@@ -12,15 +12,25 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.channels.channels import WS_TOKEN_PRIMARY
 from kanibako.project import workset_registry
 from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.paths import resolve_system_paths
 from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.workset_dirkeys import EarlyScope, early_system
 
 
 @pytest.fixture
 def reg(tmp_path: Path) -> Path:
     """The resolved per-workset ``registry.yaml`` path under a fresh workset."""
     return tmp_path / "workset" / "registry.yaml"
+
+
+def _bare_early(home: Path) -> EarlyScope:
+    """A primary early scope over the default record under *home*; these tests hold no ``std``."""
+    return EarlyScope(
+        early_system({}, resolve_system_paths({}, data_home=home, home=home)), WS_TOKEN_PRIMARY,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -221,17 +231,19 @@ def test_resolve_default_is_workset_root_registry(tmp_path: Path) -> None:
     workset_root = tmp_path / "myws"
     # None settings and empty settings both fall through to the default.
     assert (
-        workset_registry.resolve_workset_registry_path(workset_root, None)
+        workset_registry.resolve_workset_registry_path(workset_root, None,
+                early=_bare_early(tmp_path))
         == workset_root / "registry.yaml"
     )
     assert (
-        workset_registry.resolve_workset_registry_path(workset_root, {})
+        workset_registry.resolve_workset_registry_path(workset_root, {},
+                early=_bare_early(tmp_path))
         == workset_root / "registry.yaml"
     )
     # A ``workset`` table without ``registry`` also uses the default.
     assert (
         workset_registry.resolve_workset_registry_path(
-            workset_root, {"workset": {"image": "x"}}
+            workset_root, {"workset": {"image": "x"}}, early=_bare_early(tmp_path)
         )
         == workset_root / "registry.yaml"
     )
@@ -246,7 +258,7 @@ def test_resolve_honors_absolute_repoint(tmp_path: Path) -> None:
     workset_root = tmp_path / "myws"
     custom = tmp_path / "elsewhere" / "myreg.yaml"
     resolved = workset_registry.resolve_workset_registry_path(
-        workset_root, {"workset": {"registry": str(custom)}}
+        workset_root, {"workset": {"registry": str(custom)}}, early=_bare_early(tmp_path)
     )
     assert resolved == custom
     assert resolved != workset_root / "registry.yaml"
@@ -256,7 +268,7 @@ def test_resolve_expands_user_home_repoint(tmp_path: Path) -> None:
     """A ``~``-based repoint expands the user home (like sibling path keys)."""
     workset_root = tmp_path / "myws"
     resolved = workset_registry.resolve_workset_registry_path(
-        workset_root, {"workset": {"registry": "~/custom/reg.yaml"}}
+        workset_root, {"workset": {"registry": "~/custom/reg.yaml"}}, early=_bare_early(tmp_path)
     )
     assert resolved == Path("~/custom/reg.yaml").expanduser()
     assert resolved.is_absolute()
@@ -273,7 +285,7 @@ def test_resolve_bare_relative_repoint_is_refused(tmp_path: Path) -> None:
     workset_root = tmp_path / "myws"
     with pytest.raises(SettingsError) as excinfo:
         workset_registry.resolve_workset_registry_path(
-            workset_root, {"workset": {"registry": "sub/reg.yaml"}}
+            workset_root, {"workset": {"registry": "sub/reg.yaml"}}, early=_bare_early(tmp_path)
         )
     message = str(excinfo.value)
     assert str(workset_root / "sub" / "reg.yaml") in message
@@ -284,7 +296,8 @@ def test_resolve_root_relative_repoint_is_spelled_with_the_ref(tmp_path: Path) -
     """Keeping the registry with the workset stays expressible — it has to be SAID."""
     workset_root = tmp_path / "myws"
     resolved = workset_registry.resolve_workset_registry_path(
-        workset_root, {"workset": {"registry": "@meta.workset.path/sub/reg.yaml"}}
+        workset_root, {"workset": {"registry": "@meta.workset.path/sub/reg.yaml"}},
+                early=_bare_early(tmp_path)
     )
     assert resolved == workset_root / "sub" / "reg.yaml"
 
@@ -292,7 +305,7 @@ def test_resolve_root_relative_repoint_is_spelled_with_the_ref(tmp_path: Path) -
 def test_resolve_is_pure_no_side_effects(tmp_path: Path) -> None:
     """The resolver touches no filesystem (pure function of its inputs)."""
     workset_root = tmp_path / "myws"
-    workset_registry.resolve_workset_registry_path(workset_root, None)
+    workset_registry.resolve_workset_registry_path(workset_root, None, early=_bare_early(tmp_path))
     assert not workset_root.exists()
 
 
@@ -312,7 +325,7 @@ def test_a_null_registry_refuses_naming_the_key_and_the_file(tmp_path: Path) -> 
     workset_root = tmp_path / "myws"
     with pytest.raises(SettingsError) as excinfo:
         workset_registry.resolve_workset_registry_path(
-            workset_root, {"workset": {"registry": None}}
+            workset_root, {"workset": {"registry": None}}, early=_bare_early(tmp_path)
         )
     message = str(excinfo.value)
     assert "workset.registry" in message
@@ -330,7 +343,7 @@ def test_the_null_refusal_is_the_path_key_carriers_own(tmp_path: Path) -> None:
     workset_root = tmp_path / "myws"
     with pytest.raises(SettingsError) as excinfo:
         workset_registry.resolve_workset_registry_path(
-            workset_root, {"workset": {"registry": None}}
+            workset_root, {"workset": {"registry": None}}, early=_bare_early(tmp_path)
         )
     assert str(excinfo.value) == null_path_keys_error(
         workset_root / "workset.yaml", ("workset.registry",)
@@ -382,6 +395,7 @@ def test_an_absent_registry_key_still_takes_the_default(
     """
     workset_root = tmp_path / "myws"
     assert (
-        workset_registry.resolve_workset_registry_path(workset_root, settings_doc)
+        workset_registry.resolve_workset_registry_path(workset_root, settings_doc,
+                early=_bare_early(tmp_path))
         == workset_root / "registry.yaml"
     )

@@ -25,6 +25,7 @@ from kanibako.commands.start import (
 )
 from kanibako.settings.paths import (
     BoxMode,
+    _early_scope,
     detect_project_mode,
     load_std_paths,
 )
@@ -359,6 +360,7 @@ class TestStalePrimaryWorksetBoxListSafety:
         from kanibako.project import workset_registry
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset, None,
+            early=_early_scope(std, BoxMode.primary),
         )
         workset_registry.register_workset_box(prim_reg, "jjb", home.resolve())
         # Intentionally do NOT create boxes/jjb/

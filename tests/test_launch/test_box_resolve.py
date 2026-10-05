@@ -20,7 +20,7 @@ from pathlib import Path
 from kanibako.project import registry_store, workset_registry
 from kanibako.launch import box_resolve
 from kanibako.settings.config import WORKSET_META_FILE
-from kanibako.settings.paths import BoxMode, STANDALONE_META_DIR
+from kanibako.settings.paths import BoxMode, STANDALONE_META_DIR, _early_scope
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,8 @@ def _make_named_workset(std, root: Path, name: str) -> Path:
     section = registry_store.load_section(std.registry, "worksets")
     section[name] = str(root)
     registry_store.save_section(std.registry, "worksets", section)
-    return workset_registry.resolve_workset_registry_path(root, None)
+    return workset_registry.resolve_workset_registry_path(root, None,
+            early=_early_scope(std, BoxMode.named, name))
 
 
 def _register_box(registry_path: Path, box_name: str, box_path: Path) -> None:
