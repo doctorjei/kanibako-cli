@@ -812,8 +812,7 @@ def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]:
     # ⚑ ``vault`` is the one literal, and correctly so — no key names it (see _VAULT_LEAF).
     # ⚑ ONE read feeds all three resolutions; reading workset.yaml per key would open a
     # window for the three to disagree about the same file.  At create time *root* has no
-    # workset.yaml yet, so the read yields None and every leaf is its default — the same
-    # four dirs the pre-refactor literals made.
+    # workset.yaml yet, so each leaf is the system file's value, else its default.
     settings_doc = load_workset_settings_doc(root)
     dirs = (
         resolve_workset_boxes(root, settings_doc),
@@ -909,15 +908,14 @@ def create_workset(
         # no registry.yaml (a workset with no members has no membership to record).
         root.mkdir(parents=True)
         unwind.push(lambda: shutil.rmtree(root, ignore_errors=True))
-        # ⚑ The bare ``mkdir()`` (no parents) is safe BECAUSE of the line above and the
-        # ``root.exists()`` refusal before it: *root* was just created empty, so it has no
-        # workset.yaml, so all three resolved leaves fall back to their defaults and every
-        # path here is exactly one level under *root*.  ⚑ A repoint can never reach this
-        # call — reaching it would need a workset.yaml inside a root that did not exist a
-        # moment ago.  Do NOT paper over a future violation with ``parents=True``: that
-        # would silently stamp a skeleton somewhere other than the root being created.
+        # ⚑ *root* was just created empty, so it has no workset.yaml; a resolved leaf
+        # differs from its default only through the system file.  A leaf outside *root*
+        # (or at it) is the user's directory, never created here; the rest lie under
+        # *root*, so ``parents`` and ``exist_ok`` can only fill in this root: a system
+        # value may nest a leaf or name one twice.
         for subdir_path in _workset_skeleton_dirs(root):
-            subdir_path.mkdir()
+            if _path_in_tree(subdir_path, root) and subdir_path.resolve() != root:
+                subdir_path.mkdir(parents=True, exist_ok=True)
 
         ws = Workset(name=name, root=root)
 

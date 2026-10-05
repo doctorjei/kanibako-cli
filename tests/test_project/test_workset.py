@@ -2438,3 +2438,33 @@ class TestStandaloneVaultTeardownSkeleton:
         removable, retained = standalone_vault_teardown(root)
         assert root / "vault" in removable
         assert retained == []
+
+
+class TestCreateUnderASystemBoxesValue:
+    """A system ``workset.boxes`` shapes the skeleton ``create_workset`` stamps in each new root."""
+
+    def _system_boxes(self, value: str) -> None:
+        from kanibako.settings.config import system_settings_path
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(system_settings_path(), {"workset": {"boxes": value}})
+
+    def test_an_outside_dir_is_not_created(self, tmp_home, std):
+        outside = tmp_home / "shared-boxes"
+        self._system_boxes(str(outside))
+        for name in ("one", "two"):
+            ws = create_workset(name, tmp_home / "worksets" / name, std)
+            assert not (ws.root / "boxes").exists()
+        assert not outside.exists()
+
+    def test_an_existing_outside_dir_is_left_alone(self, tmp_home, std):
+        outside = tmp_home / "shared-boxes"
+        (outside / "a").mkdir(parents=True)
+        self._system_boxes(str(outside))
+        create_workset("one", tmp_home / "worksets" / "one", std)
+        assert [p.name for p in outside.iterdir()] == ["a"]
+
+    def test_a_nested_leaf_inside_the_root_is_created(self, tmp_home, std):
+        self._system_boxes("@meta.workset.path/x/boxes")
+        ws = create_workset("nested", tmp_home / "worksets" / "nested", std)
+        assert (ws.root / "x" / "boxes").is_dir()

@@ -245,15 +245,19 @@ def _referent_value(
     return _expand_early(workset_root, doc, raw, key=key, standalone=standalone, chain=chain)
 
 
+def _declared_default(key: str) -> object:
+    """``workset.<key>``'s manifest default: one value, or a mapping of box mode to value."""
+    from kanibako.settings.keyspace_manifest import manifest_doc
+
+    return manifest_doc()["keys"][f"workset.{key}"]["default"]
+
+
 def _mode_default(referent: str, *, key: str, standalone: bool | None) -> str:
     """``workset.<referent>``'s declared default in the modes ``workset.<key>`` is read in."""
-    from kanibako.settings.keyspace_manifest import manifest_doc
     from kanibako.settings.paths import BoxMode
 
-    keys = manifest_doc()["keys"]
-
     def arm(dotted: str, mode: str) -> object:
-        declared = keys[dotted]["default"]
+        declared = _declared_default(dotted.removeprefix("workset."))
         return declared.get(mode) if isinstance(declared, Mapping) else declared
 
     if standalone is None:
@@ -273,7 +277,29 @@ def _mode_default(referent: str, *, key: str, standalone: bool | None) -> str:
     )
 
 
-def early_key_set_error(canonical: str, value: str | None, *, written_file: Path) -> str | None:
+def _reader_modes(key: str, *, standalone_reads: bool) -> tuple[bool | None, ...]:
+    """The *standalone* values ``workset.<key>``'s readers pass, among the modes reading a file.
+
+    A key declared with one default is read with no mode (``None``).  A per-mode key is read
+    as primary/named (``False``) where either arm is declared, and as standalone (``True``)
+    where that arm is, when *standalone_reads* says a standalone box reads the file.
+    """
+    from kanibako.settings.paths import BoxMode
+
+    declared = _declared_default(key)
+    if not isinstance(declared, Mapping):
+        return (None,)
+    modes: list[bool | None] = []
+    if any(declared.get(m.value) is not None for m in (BoxMode.primary, BoxMode.named)):
+        modes.append(False)
+    if standalone_reads and declared.get(BoxMode.standalone.value) is not None:
+        modes.append(True)
+    return tuple(modes)
+
+
+def early_key_set_error(
+    canonical: str, value: str | None, *, written_file: Path, standalone_reads: bool,
+) -> str | None:
     """The reader's refusal of *value* at a workset early key, or ``None``; the SET door's twin.
 
     Runs :func:`resolve_workset_dir_key` itself on the value about to be written to
@@ -282,8 +308,9 @@ def early_key_set_error(canonical: str, value: str | None, *, written_file: Path
     but this reader cannot (``$AGENT``, an ``@``-ref outside :data:`WORKSET_PATH_REF` and
     the early keys) is refused, because this reader reads it first.  The resolved path is
     discarded, so the file's directory stands in for the workset root, and the file is the
-    first tier a referent is read from.  The box mode is taken as not known, the reader's
-    strictest reading, so a value accepted here resolves for every reader.
+    first tier a referent is read from.  It resolves once per mode the key's readers pass
+    (:func:`_reader_modes`; *standalone_reads*: a standalone box reads *written_file*), so a
+    value accepted here resolves for every reader of that file.
     """
     if not isinstance(value, str) or not canonical.startswith("workset."):
         return None
@@ -291,10 +318,12 @@ def early_key_set_error(canonical: str, value: str | None, *, written_file: Path
     if key not in WORKSET_EARLY_KEYS:
         return None
     try:
-        resolve_workset_dir_key(
-            written_file.parent, value, "", key=key, where=written_file,
-            workset_settings=load_doc(written_file),
-        )
+        doc = load_doc(written_file)
+        for standalone in _reader_modes(key, standalone_reads=standalone_reads):
+            resolve_workset_dir_key(
+                written_file.parent, value, "", key=key, where=written_file,
+                standalone=standalone, workset_settings=doc,
+            )
     except (SettingsError, ConfigError) as exc:
         return str(exc)
     return None

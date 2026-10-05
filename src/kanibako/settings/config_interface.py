@@ -1778,6 +1778,7 @@ def set_config_value(
     )
     early_err = None if early_dest is None else early_key_set_error(
         canonical, value, written_file=early_dest.file,
+        standalone_reads=command_scope is ConfigLevel.system,
     )
     if early_err is not None:
         return _refusal("Error: " + ERR_WORKSET_EARLY_SET_HEAD % early_err)
