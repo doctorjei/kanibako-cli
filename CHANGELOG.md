@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refused cases move from 0 to 1, and a new `Error: …` line is printed on stderr. A well-shaped file
   sets exactly as before.
 
+- **`system set`, `workset set`, and `box set` refuse a dotted spelling they do not overwrite.**
+  A settings file storing `box: {"env.X": …}` (or a top-level `box.env.X: …`) let
+  `set box.env.X=…` through at exit 0, as though the edit replaced that entry; it writes
+  `box.env: {X: …}` beside it, and the dotted entry stayed. Per keyspec §2a the dotted entry is
+  now a bad entry like any other: the set reports it and writes nothing, exiting 1, and with
+  `--force` it warns and writes, leaving the entry in place. **Exit code change:** these sets
+  move from 0 to 1. An entry the edit lands at, the key itself or a table above it, is still exempt.
+
 - **A box and a workset may share a name.** Box and workset names are separate namespaces, and
   only a name already held by the same kind is refused. `box create --name`, `box register`,
   `kanibako register`, `box move`/`convert --name`, and `workset create` no longer refuse a name a

@@ -727,7 +727,7 @@ def _cascade_bad_entries(
         kept = [
             (segs, shown, v) for segs, (shown, v)
             in sorted(_undeclared_stored_entries(read.view).items())
-            if not _overwritten_by(edited, ".".join(segs))
+            if not _overwritten_by(edited, segs)
         ]
         if kept:
             grouped.append((read.path, [f"{shown} = {v}" for _segs, shown, v in kept]))
@@ -745,10 +745,10 @@ def _first_dotted(views: "list[dict]", dotted: str) -> object:
     return None
 
 
-def _overwritten_by(edited: "str | None", entry: str) -> bool:
-    """Whether setting *edited* replaces the stored *entry* — the entry is the key itself,
-    a dotted spelling of it (``pref: {"system.agent": …}``), or a non-table above it."""
-    return edited is not None and (edited == entry or edited.startswith(entry + "."))
+def _overwritten_by(edited: "str | None", entry: "tuple[str, ...]") -> bool:
+    """Whether setting *edited* writes at the stored *entry* — the key itself, or the table
+    above it, BY SEGMENT: ``box: {"env.X": …}`` is one segment the write leaves."""
+    return edited is not None and tuple(edited.split("."))[:len(entry)] == entry
 
 
 def _set_time_snapshot(
