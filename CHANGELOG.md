@@ -118,6 +118,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when the bare name is also a primary box or a workset member, the earlier claim wins and
   the shadowed registration is named with its root, because the registration says "resolves
   by name" and the ordering says otherwise. No exit-code change.
+- **A standalone box's store now follows `workset.boxes`.** `workset.boxes` is a repointable
+  workset key whose standalone value is the `{meta.workset.path}/box_data` default, so `box_data/`
+  named the store only while the key was unset. Home, the box tier (`box_data/box.yaml`) and both
+  standalone teardowns composed `<root>/box_data` directly, so a box whose store was relocated was
+  read from — and deleted at — a directory it did not use. They now resolve the key through the
+  same `resolve_workset_boxes` the `workset.logs` default already chains through, and a box created
+  with a repointed store stamps its `vault/` skeleton at the box root rather than at the store's
+  parent. **A relocated store is no longer deleted by a teardown.** Where the store lies outside the
+  box root it is the user's own directory, so `purge` and the `box move`/`convert` source teardown
+  keep it and name it (`Note: left the box store at … in place`) instead of removing it — the same
+  line the vault arms already took. A store that lies strictly below the root is still removed,
+  whether or not it was relocated. A `workset.boxes` that is `<null>` still refuses by name. An
+  existing standalone box whose store was never repointed is unaffected: with the key unset the
+  resolved store is `<root>/box_data`. **Detection is unchanged** and still uses the `box_data/`
+  marker as its locator, so a box whose store is relocated is found only while that marker is in
+  place.
 
 - **A box verb reaches a box whose name a workset also holds.** Box and workset names are
   per-kind namespaces (system-design § *Cross-kind name semantics*), but `resolve_name` checked
