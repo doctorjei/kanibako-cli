@@ -17,6 +17,7 @@ from kanibako.errors import ProjectError, UserCanceled, WorksetError
 from kanibako.git import is_git_repo
 from kanibako.settings.paths import (
     BoxMode,
+    _early_scope,
     check_primary_box_name_free,
     load_std_paths,
     primary_box_name_for_workspace,
@@ -142,14 +143,15 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
     # semantics (a create must never land on an existing name).  The re-materialize
     # exception belongs to extract, so extract states it, here.
     if name and proj.mode is BoxMode.primary:
+        early = _early_scope(std, BoxMode.primary)
         owner = primary_box_name_for_workspace(
-            std.primary_workset, str(proj.project_path),
+            std.primary_workset, str(proj.project_path), early=early,
         )
         if owner != name:
             try:
                 check_primary_box_name_free(
                     std.primary_workset, std.registry, name,
-                    str(proj.project_path), force=False,
+                    str(proj.project_path), force=False, early=early,
                 )
             except (ProjectError, WorksetError) as e:
                 print(f"Error: {e}", file=sys.stderr)
