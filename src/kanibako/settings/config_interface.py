@@ -1130,9 +1130,22 @@ def _node_noun_file_value(
         return None
     if "agent" in cascade_drop_set(command_scope.value):
         return None
-    return _read_slot(
-        canonical, AgentFileSlot(noun_file, slot.tail, slot.node, self_root=False),
-    )
+    return _read_slot(canonical, _noun_file_slot(slot, noun_file))
+
+
+def _noun_file_slot(slot: AgentFileSlot, noun_file: Path) -> AgentFileSlot:
+    """*slot* moved into the NOUN's file, at ``agent: <node>:`` (never ``self:``)."""
+    return AgentFileSlot(noun_file, slot.tail, slot.node, self_root=False)
+
+
+def _system_verb_slot(
+    slot: "AgentFileSlot | str | None", noun_file: "Path | None", node_store: bool,
+) -> "AgentFileSlot | str | None":
+    """The slot a per-node write lands in: the node's own store for the ``agent`` verb,
+    the system file for the ``system`` verb (spec §2a, ladder L2.2 vs L3.1)."""
+    if node_store or noun_file is None or not isinstance(slot, AgentFileSlot):
+        return slot
+    return _noun_file_slot(slot, noun_file)
 
 
 def _stored_shape_for(canonical: str, value: object) -> object:
@@ -1179,6 +1192,7 @@ def get_config_value(
     active_agent: str | None = None,
     cascade_system_path: Path | None = None,
     cascade_workset_path: Path | None = None,
+    node_store: bool = True,
 ) -> str | None:
     """Read one config value STORED AT THIS NOUN, or ``None`` when it is not set there.
 
@@ -1260,7 +1274,7 @@ def get_config_value(
         bind_target = _node_bind_target(canonical, agents_root)
         if bind_target is None:
             return None
-        val = read_leaf(bind_target)
+        val = read_leaf(bind_target) if node_store else None
         if val is not None:
             return val
         return _node_noun_file_value(
@@ -1276,7 +1290,7 @@ def get_config_value(
         secret_target = _node_secret_target(canonical, agents_root)
         if not isinstance(secret_target, AgentFileSlot):
             return None  # no store here, or a refused node — a read reports neither
-        val = _read_slot(canonical, secret_target)
+        val = _read_slot(canonical, secret_target) if node_store else None
         if val is not None:
             return val
         return _node_noun_file_value(
@@ -1294,7 +1308,8 @@ def get_config_value(
             )
         return None
 
-    # ``agent.<node>.<key>`` — the PER-PERSONA agent key (B1), read from the node's own file.
+    # ``agent.<node>.<key>`` — the PER-PERSONA agent key (B1), read from the node's own file
+    # (the noun file alone without *node_store*).
     # ⚑ EXCEPT THE RESERVED ``default`` NODE, WHICH IS NOT A PERSONA: it is the any-agent
     # tier, its value lives in the NOUN's settings file, and there is no
     # ``agents/default/agent.yaml`` to read. It falls THROUGH to the routed read below, where
@@ -1309,7 +1324,7 @@ def get_config_value(
         target = _persona_agent_target(canonical, agents_root, verb="read")
         if not isinstance(target, AgentFileSlot):
             return None
-        val = _read_slot(canonical, target)
+        val = _read_slot(canonical, target) if node_store else None
         if val is not None:
             return val
         return _node_noun_file_value(
@@ -1530,6 +1545,7 @@ def set_config_value(
     ws: Any = None,
     target_error: "str | None" = None,
     force: bool = False,
+    node_store: bool = True,
 ) -> str:
     """Write a config value to the appropriate store; returns a message or error, NEVER raises.
 
@@ -1869,7 +1885,9 @@ def set_config_value(
     # ``agent.<node>.secret_path.<VAR>`` — a SCALAR path write to the node's OWN settings file
     # at the DISCRIMINATED sub-table. ⚑ BEFORE the persona branch.
     if _is_agent_node_secret_key(canonical):
-        secret_target = _node_secret_target(canonical, agents_root)
+        secret_target = _system_verb_slot(
+            _node_secret_target(canonical, agents_root), system_settings_path, node_store,
+        )
         if isinstance(secret_target, str):
             return secret_target  # malformed node ref
         if secret_target is None:
@@ -1902,9 +1920,12 @@ def set_config_value(
         return _set_confirmation(canonical, value)
 
     # ``agent.<node>.<key>`` — the PER-PERSONA key (B1): a VERBATIM write to the node's OWN
-    # ``agents/<node>/agent.yaml``, sparse by construction (``write_nested_key`` is RMW).
+    # ``agents/<node>/agent.yaml`` (the system file without *node_store*), sparse (RMW).
     if _is_persona_agent_key(canonical):
-        target = _persona_agent_target(canonical, agents_root, verb="set")
+        target = _system_verb_slot(
+            _persona_agent_target(canonical, agents_root, verb="set"),
+            system_settings_path, node_store,
+        )
         if isinstance(target, str):
             return target  # malformed node ref
         if target is None:
@@ -2001,6 +2022,7 @@ def reset_config_value(
     cascade_box_path: Path | None = None,
     cascade_agent_name: str = "",
     agents_root: Path | None = None,
+    node_store: bool = True,
 ) -> str:
     """Remove an override for a single key; returns a confirmation or an error, NEVER raises."""
     canonical = resolve_key(key)
@@ -2093,7 +2115,9 @@ def reset_config_value(
     # ``agent.<node>.secret_path.<VAR>`` — remove the stored pointer from the node's OWN file.
     # ⚑ BEFORE the persona branch.
     if _is_agent_node_secret_key(canonical):
-        secret_target = _node_secret_target(canonical, agents_root)
+        secret_target = _system_verb_slot(
+            _node_secret_target(canonical, agents_root), system_settings_path, node_store,
+        )
         if isinstance(secret_target, str):
             return secret_target  # malformed node ref
         if secret_target is None:
@@ -2123,7 +2147,10 @@ def reset_config_value(
     # ``agent.<node>.<key>`` — remove the stored override from the node's OWN settings file
     # (``remove_nested_key`` prunes now-empty tables, keeping the file sparse).
     if _is_persona_agent_key(canonical):
-        target = _persona_agent_target(canonical, agents_root, verb="reset")
+        target = _system_verb_slot(
+            _persona_agent_target(canonical, agents_root, verb="reset"),
+            system_settings_path, node_store,
+        )
         if isinstance(target, str):
             return target  # malformed node ref
         if target is None:
