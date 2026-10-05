@@ -18,6 +18,7 @@ from pathlib import Path
 
 from kanibako.launch.box_identity import Designation, classify_designation, validate_box_name
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
+from kanibako.settings.config_io import refuse_scalar_sections
 from kanibako.settings.config import (
     WORKSET_META_FILE,
     user_config_file,
@@ -1000,6 +1001,10 @@ def run_create(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    # ⚑ BEFORE ANY WRITE
+    if args.standalone:
+        refuse_scalar_sections(_standalone_settings_files(effective_path)[1], ("workset",))
 
     # ⚑ THE SPACE IS THE CWD'S, NOT THE TARGET'S: "a command's workset path space is
     # the named workset whose root contains the current directory".
