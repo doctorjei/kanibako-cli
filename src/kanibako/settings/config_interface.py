@@ -899,17 +899,18 @@ def _set_time_snapshot(
     return merge(levels), ctx
 
 
-def _floor_blind_default(
+def _floor_blind_referents(
     key: str, value: str, candidate: "Any", command_scope: "ConfigLevel | None",
-) -> bool:
-    """True iff *key* is a DOWNWARD DEFAULT and this floor's only objection is a ref it cannot see.
+) -> list[str]:
+    """The refs this floor cannot see when *key* is a DOWNWARD DEFAULT, else ``[]``.
 
     ⚑ SPEC §0: a scope's file may hold keys of the scopes it CONTAINS as overridable
     defaults, and the set-time snapshot is the COMMAND's cascade — so a referent that lives
     in the contained scope is absent from it BY CONSTRUCTION, and the expander's "no such
     config key" is this floor's blindness rather than a dangling ref. A referent that is not
-    a DECLARED key IS a dangling ref, and is not forgiven. A defect that is not a missing
-    referent — a cycle, the depth cap, a reserved leaf — is not this function's business.
+    a DECLARED key IS a dangling ref, and is not listed. A defect that is not a missing
+    referent — a cycle, the depth cap, a reserved leaf — is not this function's business:
+    the caller re-expands with these refs supplied, and any defect left stands.
 
     ⚑ WHICH sets a ref may name at all is :func:`config.ref_order_error`'s verdict, which
     the set door runs FIRST; this function only forgives what that verdict let through.
@@ -918,17 +919,19 @@ def _floor_blind_default(
     from kanibako.settings.settings_drops import writable_scopes
 
     if command_scope is None:
-        return False
+        return []
     key_scope = key.split(".", 1)[0]
     if key_scope == command_scope.value or key_scope not in writable_scopes(command_scope.value):
-        return False
+        return []
     unseen: list[str] = []
-    pending, followed = [value], set()
+    pending, followed = [value], set[str]()
     while pending:
         try:
             refs, _vars = scan_tokens(pending.pop())
         except ValueError:
-            return False  # a malformed token is the expander's own verdict; keep it
+            if not followed:
+                return []  # a malformed token is the expander's own verdict; keep it
+            continue
         for name in refs:
             if name in followed:
                 continue
@@ -941,18 +944,14 @@ def _floor_blind_default(
                 if isinstance(stored, str):
                     pending.append(stored)
                 continue
-            unseen.append(name)
-    for name in unseen:
-        segs = name.split(".", 2)
-        ref_scope = segs[1] if segs[0] == "meta" and len(segs) > 1 else segs[0]
-        # ⚑ A scopeless ref — ``@config.*``, ``@meta.runtime.*`` — names no scope, so the
-        # command's cascade is not what hides it, and it is not forgiven. A
-        # ``@meta.<scope>.*`` ref is judged by its SCOPE token.
-        if ref_scope not in SCOPE_CONTAINMENT:
-            return False
-    return bool(unseen) and all(
-        key_validity(name, valid_agents=()) is None for name in unseen
-    )
+            segs = name.split(".", 2)
+            ref_scope = segs[1] if segs[0] == "meta" and len(segs) > 1 else segs[0]
+            # ⚑ A scopeless ref — ``@config.*``, ``@meta.runtime.*`` — names no scope, so the
+            # command's cascade is not what hides it, and it is not listed. A
+            # ``@meta.<scope>.*`` ref is judged by its SCOPE token.
+            if ref_scope in SCOPE_CONTAINMENT and key_validity(name, valid_agents=()) is None:
+                unseen.append(name)
+    return unseen
 
 
 def _category_set_lookups(
@@ -996,8 +995,18 @@ def _category_set_lookups(
         errors = result[1]
         if key not in errors:
             return None
-        if _floor_blind_default(key, value, candidate, command_scope):
-            return None
+        unseen = _floor_blind_referents(key, value, candidate, command_scope)
+        if unseen:
+            supplied = _clone_keystore(candidate)
+            try:
+                for name in unseen:
+                    _set_leaf(supplied, name.split("."), "/")
+            except ReservedKeyError:
+                return errors[key]
+            again = expand(supplied, ctx, collect_errors=True)
+            assert isinstance(again, tuple)
+            if key not in again[1]:
+                return None
         return errors[key]
 
     def raw_bind(key: str) -> "Any | None":
@@ -1879,7 +1888,9 @@ def set_config_value(
             )
         for report in bad.warn_reports():
             _log.warning("Warning: %s", report)
-    owner_err = _per_owner_set_error(
+    owner_err = None if (
+        _is_pref_key(canonical) and _pref_target_error(canonical, command_scope) is not None
+    ) else _per_owner_set_error(
         canonical, value, command_scope=command_scope, ws=ws, stored=bad.stored,
         written=noun_settings_file(config_path, system_settings_path),
     )

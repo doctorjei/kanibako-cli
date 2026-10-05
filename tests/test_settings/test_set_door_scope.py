@@ -20,7 +20,7 @@ NOT write a setting in a containing (higher) level". The set-time resolution pro
 candidate value against the COMMAND's cascade, so a referent living in the contained scope is
 absent from that snapshot by construction — and ``system set workset.auth.path=@workset.channelroot/x``
 was refused as a "dangling @-reference" for a key that is declared and that every launch
-resolves. :func:`_floor_blind_default` forgives exactly that
+resolves. :func:`_floor_blind_referents` forgives exactly that
 blindness and nothing else.
 
 ⚑ SO THE ASYMMETRY IS THE POINT, and both halves are pinned: ``TestAnUpwardWriteStaysRefused``
