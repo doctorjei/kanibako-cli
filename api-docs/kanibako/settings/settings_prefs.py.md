@@ -23,6 +23,7 @@ def refuse_pref_table(raw: Any, *, level: str, path: Path | None) -> Any
 def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None
 def allowlist_reason(target: str, *, valid_agents: Collection[str], allowlist: Sequence[str]=PREF_ALLOWLIST) -> str | None
 def forbidden_tier_reason(target: str, *, level: str) -> str | None
+def refuse_deferred_pref_shapes(req: PrefRequest) -> None
 def validate_pref(req: PrefRequest, *, valid_agents: Collection[str], allowlist: Sequence[str]=PREF_ALLOWLIST) -> str | None
 def pref_overlay(requests: Iterable[PrefRequest]) -> KeyStore
 def apply_prefs(requests: Sequence[PrefRequest], *, valid_agents: 'Collection[str] | None'=None, allowlist: Sequence[str]=PREF_ALLOWLIST) -> tuple[KeyStore, KeyStore]
@@ -33,6 +34,7 @@ def pref_request_for(requests: Sequence[PrefRequest], target: str) -> PrefReques
 def pref_entry_keys(req: PrefRequest) -> tuple[str, ...]
 def pref_origin(target_key: str, requests: Sequence[PrefRequest]) -> PrefRequest | None
 def _flatten_pref_node(node: KeyStore, prefix: tuple[str, ...], *, level: str, path: Path | None) -> list[PrefRequest]
+def _bind_category_of(target: str) -> str | None
 def _needs_agent_discovery(requests: Sequence[PrefRequest]) -> bool
 ```
 
