@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now a bad entry like any other: the set reports it and writes nothing, exiting 1, and with
   `--force` it warns and writes, leaving the entry in place. **Exit code change:** these sets
   move from 0 to 1. An entry the edit lands at, the key itself or a table above it, is still exempt.
+  A `set` of a pref whose `pref:` table holds the dotted spelling
+  (`pref: {system.agent: …}`) is refused the same way (exit 0 → 1): the write lands beside the
+  entry, which only a hand edit to the nested form cures.
 
 - **A box and a workset may share a name.** Box and workset names are separate namespaces, and
   only a name already held by the same kind is refused. `box create --name`, `box register`,
