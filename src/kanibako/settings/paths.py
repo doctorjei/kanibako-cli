@@ -163,8 +163,8 @@ def _default_project_group(std: StandardPaths) -> ProjectGroup:
 @dataclass
 class ProjectPaths:
     """Resolved paths for a specific project."""
-    # ⚑ ``None`` when the box has NO workspace (Q106): a standalone box, or a named member
-    # whose workspace is in-tree, under a null ``workset.workspaces``.
+    # ⚑ ``None`` under a null ``workset.workspaces`` (Q106): a standalone box, or an
+    # in-tree named member.
     project_path: Path | None
     project_hash: str
     metadata_path: Path      # host-only: workset.yaml, breadcrumb, lock
@@ -1807,10 +1807,9 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
         metadata_path, ws.vault_ro_dir, ws.vault_rw_dir, project_name)
     resolved_vault = enable_vault
 
-    # Hash the workspace: the box's identity, so a null must not rename it.
+    # Hash the workspace (identity): a null must not rename the box.
     phash = project_hash(str(workspace.resolve()))
-    # ⚑ An IN-TREE member has NO workspace once the root nulls ``workset.workspaces``, and the
-    # launch refuses it (Q106).  Asked of the LAUNCH's own refusal — one reader owns the rule.
+    # None for an in-tree member under a null ``workset.workspaces`` (Q106).
     project_path: Path | None = workspace
     from kanibako.project.workset import refuse_null_box_workspace
     try:
@@ -1825,8 +1824,7 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
             project_toml,
             enable_vault if enable_vault is not None else read_box_enable_vault(project_toml),
         )
-        # P5a dual-register (idempotent): the SOLE on-disk identity record.  Sourced from the
-        # box's workspace, so an external-connect override seeds the external dir.
+        # P5a dual-register (idempotent), the SOLE identity record; *workspace* seeds external.
         _register_workset_box_membership(ws.root, project_name, workspace)
         is_new = True
 

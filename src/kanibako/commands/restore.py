@@ -187,7 +187,9 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
         info = _parse_info(info_file)
         archive_path = info.get("Project path", "")
         archive_basename = Path(archive_path).name if archive_path else ""
-        current_basename = proj.project_path.name if proj.project_path is not None else ""
+        from kanibako.commands.archive import _recorded_workspace_of
+        workspace = _recorded_workspace_of(proj)
+        current_basename = workspace.name if workspace is not None else ""
 
         # Validate hash match
         hash_match = (
@@ -199,7 +201,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             print("Warning: Project path mismatch")
             print()
             print(f"Archive from: {archive_path}")
-            print(f"Restoring to: {proj.project_path or '<None>'}")
+            print(f"Restoring to: {workspace or '<None>'}")
             print()
             try:
                 confirm_prompt("Continue anyway? Type 'yes' to confirm: ")
@@ -210,7 +212,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
         # Validate git state
         git_in_archive = info.get("Git repository", "") == "yes"
         if git_in_archive:
-            rc = _validate_git_state(proj, info, force)
+            rc = _validate_git_state(workspace, info, force)
             if rc != 0:
                 return rc
 
@@ -300,7 +302,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             return 1
 
         print("done.")
-        print(f"Session data restored to {proj.project_path or '<None>'}")
+        print(f"Session data restored to {workspace or '<None>'}")
         print(f"  box: {proj.name} ({proj.mode.value})")
         return 0
 
@@ -402,10 +404,10 @@ def _parse_info(info_file: Path) -> dict[str, str]:
     return result
 
 
-def _validate_git_state(proj, info: dict[str, str], force: bool) -> int:
+def _validate_git_state(workspace: Path | None, info: dict[str, str], force: bool) -> int:
     """Validate git state between archive and workspace. Returns 0 to continue."""
     # A box with no workspace (a null ``workset.workspaces``) has no repo to compare.
-    if proj.project_path is None or not is_git_repo(proj.project_path):
+    if workspace is None or not is_git_repo(workspace):
         if not force:
             print(
                 "Warning: Archive came from a git repository, "
@@ -426,7 +428,7 @@ def _validate_git_state(proj, info: dict[str, str], force: bool) -> int:
     archive_commit = info.get("Commit", "")
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
-        cwd=proj.project_path,
+        cwd=workspace,
         capture_output=True,
         text=True,
     )
@@ -443,7 +445,7 @@ def _validate_git_state(proj, info: dict[str, str], force: bool) -> int:
         print("Current workspace:")
         branch_result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=proj.project_path,
+            cwd=workspace,
             capture_output=True,
             text=True,
         )

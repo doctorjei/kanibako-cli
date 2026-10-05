@@ -372,10 +372,8 @@ def _resolve_workset_state(
     proj = resolve_workset_project(
         WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
     )
-    # ⚑ THE RECORDED workspace: a null takes the resolved value, not the files ops move.
     recorded = recorded_workspace_for(ws, proj_name, proj.project_path)
     if recorded is None:
-        # Defensive; the member row is guaranteed above.
         refuse_null_workspaces(ws.root, f"a workspace for '{proj_name}'")
     assert recorded is not None  # refused on the line above
     is_external = not is_in_tree_workspace(ws, recorded)
@@ -390,14 +388,8 @@ def recorded_workspace_for(
 ) -> Path | None:
     """The member's recorded ``source_path`` — its files — else *resolved*.
 
-    THE one accessor for "where are this member's files", shared by lifecycle,
-    ``box duplicate`` and ``box archive`` so the three cannot drift.  A null
-    ``workset.workspaces`` makes the RESOLVED ``project_path`` ``None`` while the
-    registry's ``boxes:`` row still names the real directory; guarding on the
-    resolved value alone turns "nulled" into "nothing there".
-
-    Named ``..._for`` because the bare ``recorded_workspace`` is already used as a
-    LOCAL three times below in this module — legal, but a shadow that reads as a bug.
+    Shared by lifecycle, ``box duplicate``, and ``box archive``: a null
+    ``workset.workspaces`` nulls the resolved path, never the ``boxes:`` row.
     """
     for member in ws.projects:
         if member.name == box_name:
@@ -417,7 +409,7 @@ def _state_from_paths(
     # the box authored, so a lifecycle op never persists the workset's default as a
     # box-scope override (see ``ProjectState.box_authored_vault``).
     box_tier, _ = box_workset_settings_paths(proj)
-    # ⚑ *workspace* is a named caller's RECORDED path; only STANDALONE falls through here.
+    # ⚑ A named caller passes its recorded *workspace*.
     recorded = workspace if workspace is not None else proj.project_path
     if recorded is None:
         # A standalone root that nulls ``workset.workspaces``: no workspace to move or copy.
