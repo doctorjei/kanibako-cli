@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from kanibako.channels.helpers import HELPER_SCRIPTS_RELPATH, INIT_SCRIPT_NAME, SPAWN_CONFIG_FILENAME
+from kanibako.errors import ContainerError
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, GUEST_HOME
@@ -293,6 +294,15 @@ class HelperHub:
         container_name = render_container_name(
             *ctx.container_name_segments, helper_num=helper_num,
         )
+        # ⚑ ADDRESSABLE — a helper's name goes straight to ``runtime.run``.  The hub only
+        # exists for a STARTED director, and ``start`` refuses a box that renders no name,
+        # so this is unreachable in practice; the guard keeps a ``None`` from ever
+        # reaching the runtime if that ever stops being true.
+        if container_name is None:
+            raise ContainerError(
+                f"director box {ctx.container_name_segments[1]!r} renders no helper "
+                f"container name; start refuses such a box."
+            )
 
         mounts = _build_helper_mounts(ctx, helper_num, helpers_dir_host)
 

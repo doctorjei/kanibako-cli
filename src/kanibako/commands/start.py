@@ -93,7 +93,7 @@ from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
 from kanibako.utils import (
     container_name_for, container_name_segments, legacy_container_names,
-    render_socket_identity, short_hash,
+    render_socket_identity, short_hash, unrenderable_box_name_refusal,
 )
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
 # :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker
@@ -2786,6 +2786,26 @@ def _run_container(
 
     logger = get_logger("start")
 
+    # The keyspec row's SECOND obligation: a box name that renders no name cannot be
+    # started, because there is no container name to start.  Refused HERE — ahead of the
+    # reattach fast path and before a runtime is opened — and every later
+    # ``container_name_for(proj)`` in this function is therefore reached only for a box
+    # that HAS a name.  Nothing is stopped: no container carries the name.
+    rendered = container_name_for(proj)
+    if rendered is None:
+        print(
+            unrenderable_box_name_refusal(
+                proj.name or "", proj.mode.value, proj.project_path,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    # ⚑ THE ONE NAME for the rest of this function.  Every later use is the same box's
+    # same name, and every one of them ADDRESSES a container, so ``None`` must not reach
+    # the runtime — the gate above is what guarantees that, and binding it once makes the
+    # guarantee visible to the type checker instead of implied by line order.
+    container_name: str = rendered
+
     # Detect the container runtime up front: agent resolution below needs it to
     # honor a REATTACH to an already-running persistent box (the box's stored
     # agent supersedes the cascade), and the image step further down needs it
@@ -2824,10 +2844,10 @@ def _run_container(
     # either way.  No container at all is NOT an error — there is nothing to
     # clear, and erroring would make a ``--restart`` alias/script fail purely
     # because it won the race.
-    if restart and runtime.container_exists(container_name_for(proj)):
+    if restart and runtime.container_exists(container_name):
         from kanibako.commands.stop import _stop_one
         _stop_one(runtime, project_dir=project_dir)
-        if runtime.is_running(container_name_for(proj)):
+        if runtime.is_running(container_name):
             print(
                 f"Error: --restart could not stop box '{proj.name}' — it is "
                 f"still running. Stop it manually (`kanibako stop "
@@ -2859,13 +2879,13 @@ def _run_container(
     # two values: the override gate below must refuse an explicit ``--ephemeral``
     # at a live box, and that invocation is precisely one where the box IS
     # running but a reattach is NOT what would happen.
-    box_running = runtime.is_running(container_name_for(proj))
+    box_running = runtime.is_running(container_name)
     reattach_running = False
     stored_agent: str | None = None
     if persistent and box_running:
         reattach_running = True
         stored_agent = runtime.inspect_env(
-            container_name_for(proj), "KANIBAKO_AGENT"
+            container_name, "KANIBAKO_AGENT"
         )
         if stored_agent:
             # 🛑 CANONICALIZE ON READ, ONCE, AND USE THAT VALUE ONWARDS.
@@ -3290,7 +3310,7 @@ def _run_container(
         #   surfaced after the bootstrap session closes.
         if persistent:
             if _check_launch_baseline(
-                runtime, image, bootstrap_program, container_name_for(proj), std,
+                runtime, image, bootstrap_program, container_name, std,
                 setting=_bootstrap_setting(bootstrap),
             ) is _BOOTSTRAP_MISSING:
                 return 1
@@ -3388,7 +3408,6 @@ def _run_container(
     #     a running agent is precisely the hazard ``reattach_config_notice``
     #     exists to warn about.
     if reattach_running:
-        container_name = container_name_for(proj)
         # ⚑ EVERY ARM BELOW BRANCHES ON ``running_door``, never on the values
         # that decided it.  That is the whole point of the table: the override
         # gate above and this regime read ONE answer, so the gate can never
@@ -3626,7 +3645,6 @@ def _run_container(
     ensure_persona_share_symlinks(std, agent_id, target)
 
     # Deterministic container name for stop/cleanup
-    container_name = container_name_for(proj)
 
     logger.debug("Project: %s (mode=%s)", proj.project_path, proj.mode)
     logger.debug("Image: %s", image)
@@ -9944,9 +9962,14 @@ def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path:
     if not proj.name:
         raise ValueError("box has no name; cannot derive its helper socket name.")
     workset, box = container_name_segments(proj)
-    socket_path = run_dir / bounded_socket_name(
-        render_socket_identity(box, workset), run_dir,
-    )
+    # ⛔ ADDRESSABLE, never a path join on ``None``: a box that renders no name has no
+    # socket.  Reached only for a started box, so this is a guard, not a user path.
+    identity = render_socket_identity(box, workset)
+    if identity is None:
+        raise ValueError(
+            "box name renders no helper-socket identity; start refuses it first."
+        )
+    socket_path = run_dir / bounded_socket_name(identity, run_dir)
     validate_socket_path(socket_path)
     return socket_path
 

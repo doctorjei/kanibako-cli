@@ -1463,6 +1463,9 @@ def run_list(args: argparse.Namespace) -> int:
             dir_name = settings_path.name
             proj_name = path_to_name.get(str(project_path), dir_name) if project_path else dir_name
             # ⚑ A running container is ``active`` even with no workspace folder.
+            # ⚑ REPORT, never a refusal: a box whose name renders NO name has no
+            # container under 1.8.0, so it reads as any other non-running box — one
+            # legacy box must never blank the listing.
             running = container_name_for_box_name(
                 proj_name, WORKSET_SEGMENT_PRIMARY,
             ) in running_containers
@@ -1546,8 +1549,10 @@ def run_list(args: argparse.Namespace) -> int:
     sa_items: list[tuple[str, str, str]] = []
     for box_name, root_str in sorted(standalone.items()):
         root = Path(root_str)
-        cname = container_name_for_box_name(box_name, WORKSET_SEGMENT_STANDALONE)
-        running = cname in running_containers
+        sa_cname = container_name_for_box_name(box_name, WORKSET_SEGMENT_STANDALONE)
+        # ⚑ REPORT: a box rendering NO name has no container under 1.8.0, so it reads as
+        # any other non-running box — it must never blank the listing.
+        running = sa_cname is not None and sa_cname in running_containers
         status = "active" if running else ("stopped" if root.is_dir() else "missing")
         if active_only and status != "active":
             continue
@@ -2261,6 +2266,10 @@ def _format_credential_age(creds_path: Path) -> str:
 def _check_container_running(proj) -> tuple[bool, str]:
     """Is a kanibako container running for this project? Returns ``(is_running, detail)``."""
     container_name = container_name_for(proj)
+    # ⚑ REPORT, and the absent value the listing already shows: a box whose name renders
+    # NO name has no container under 1.8.0.  ⛔ Never let the ``None`` reach the runtime.
+    if container_name is None:
+        return False, "no container name (the box-name rule renders none)"
     try:
         runtime = ContainerRuntime()
     except ContainerError:

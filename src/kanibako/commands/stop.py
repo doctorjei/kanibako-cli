@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from kanibako.settings.config import user_config_file, load_config, BootstrapConfig
 from kanibako.runtime.container import ContainerRuntime
@@ -15,7 +16,7 @@ from kanibako.settings.paths import (
     resolve_box_target,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.utils import container_name_for
+from kanibako.utils import container_name_for, unrenderable_box_name_refusal
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -218,6 +219,17 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
         _warn_settings(refusal)
 
     container_name = container_name_for(proj)
+    # ⚑ NO legacy-name fallback: 1.8.0 is a clean break, no aliases.  A box that renders
+    # NO name has no container under 1.8.0, so there is nothing here to address — say so
+    # and name the cure, the same text ``start`` uses (one carrier, in ``utils``).
+    if container_name is None:
+        print(
+            unrenderable_box_name_refusal(
+                proj.name or "", proj.mode.value, proj.project_path,
+            ),
+            file=sys.stderr,
+        )
+        return 1
 
     lock_file = proj.metadata_path / ".kanibako.lock"
 
@@ -269,8 +281,35 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     return 0
 
 
+def _boxes_rendering_no_name() -> list[tuple[str, str, Path | None]]:
+    """Registered boxes whose name renders NO name, as ``(name, mode, path)``.
+
+    ⚑ ``stop --all`` sweeps CONTAINER names, and such a box has none under 1.8.0, so it
+    never appears in ``list_running``.  Enumerating the boxes is what lets the sweep SAY
+    that it skipped one instead of silently omitting it.
+    """
+    from kanibako.settings.config import user_config_file, load_config
+    from kanibako.settings.paths import load_primary_boxes, load_std_paths
+    from kanibako.utils import renders_no_name
+
+    try:
+        std = load_std_paths(load_config(user_config_file()))
+    except Exception:
+        return []
+    skipped: list[tuple[str, str, Path | None]] = []
+    for name in load_primary_boxes(std.primary_workset):
+        if renders_no_name(name):
+            skipped.append((name, "primary", None))
+    return skipped
+
+
 def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
     """Stop all running kanibako containers."""
+    # ⚑ SKIP AND CONTINUE: a box that renders no name is named here once, and the sweep
+    # carries on with every container that does have a name.
+    for name, _mode, _path in _boxes_rendering_no_name():
+        print(f"Skipped box '{name}': it has no container name under the box-name rule.")
+
     containers = runtime.list_running()
     if not containers:
         print("No running kanibako containers found.")

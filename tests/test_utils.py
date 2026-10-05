@@ -22,7 +22,9 @@ from kanibako.utils import (
     project_hash,
     render_container_name,
     render_socket_identity,
+    renders_no_name,
     short_hash,
+    unrenderable_box_name_refusal,
     workset_segment,
 )
 
@@ -265,11 +267,16 @@ class TestCollisions:
         )
 
     def test_two_worksets_whose_escapes_overlap(self):
-        assert render_container_name("a", "b") != render_container_name("a-b", "")
+        assert render_container_name("a", "b") == "kb-a-b"
+        assert render_container_name("a-b", "") is None
 
 
 class TestInjectivity:
-    """No two distinct triples may spell one name — the property the escape buys."""
+    """No two distinct RENDERABLE triples may spell one name.
+
+    A ``<B>`` two boxes could share renders no name at all
+    (:class:`TestRendersNoName`), so it is not in the population swept here.
+    """
 
     _ADVERSARIAL = (
         "", "-", "--", "---", "a", "a-b", "a--b", "-a", "a-", "b-c", "a-b-c",
@@ -278,17 +285,17 @@ class TestInjectivity:
         "a b", "A", "aA", "\u00e9", "\u00e9-", "-e\u0301", "tab\tsep",
     )
 
-    def test_no_two_triples_collide(self):
+    def test_no_two_renderable_triples_collide(self):
+        boxes = [s for s in self._ADVERSARIAL if s and not s.startswith("-")]
         seen: dict[str, tuple[str, str, object]] = {}
         for workset in self._ADVERSARIAL:
-            for box in self._ADVERSARIAL:
+            for box in boxes:
                 for helper in (None, 0, 1, 7):
                     name = render_container_name(workset, box, helper)
                     key = (workset, box, helper)
-                    if name in seen:
-                        assert seen[name] == key, (
-                            f"{name!r} is spelled by both {seen[name]!r} and {key!r}"
-                        )
+                    assert seen.get(name, key) == key, (
+                        f"{name!r} is spelled by both {seen[name]!r} and {key!r}"
+                    )
                     seen[name] = key
 
     def test_the_same_triple_is_stable(self):
@@ -300,6 +307,99 @@ class TestInjectivity:
         assert render_container_name(long_a, "x") != render_container_name(long_b, "x")
 
 
+class TestRendersNoName:
+    """A ``<B>`` two boxes could render alike yields NO NAME — a value, never a raise."""
+
+    def test_an_empty_box_name_renders_no_name(self):
+        assert render_container_name("primary", "") is None
+
+    def test_a_dash_leading_box_name_renders_no_name(self):
+        assert render_container_name("primary", "-droste") is None
+
+    def test_the_predicate_names_the_two_shapes(self):
+        assert renders_no_name("") is True
+        assert renders_no_name("-droste") is True
+        assert renders_no_name("droste") is False
+
+    def test_a_helper_number_does_not_rescue_the_box_name(self):
+        assert render_container_name("primary", "-droste", 3) is None
+
+    def test_only_one_side_of_the_colliding_pair_renders(self):
+        """``kb-primary---b`` has two readings; the one needing a leading ``-`` is absent."""
+        assert render_container_name("primary-", "b") == "kb-primary---b"
+        assert render_container_name("primary", "-b") is None
+
+    def test_the_workset_segment_is_not_the_judged_one(self):
+        assert render_container_name("-", "b") == "kb----b"
+
+    def test_only_a_name_is_judged(self):
+        """A non-``str`` is not a name, so the render proceeds and fails in its own way."""
+        with pytest.raises(AttributeError):
+            render_container_name("primary", object())
+
+    def test_a_conforming_name_renders_exactly_the_same_string(self):
+        assert render_container_name("primary", "droste") == "kb-primary-droste"
+        assert render_container_name("kento", "droste", 3) == "kb-kento-droste-helper-3"
+        assert render_container_name("kento", "droste", 0) == "kb-kento-droste-helper-0"
+        assert render_container_name("a-b", "c") == "kb-a--b-c"
+        assert render_container_name("a", "b-c") == "kb-a-b--c"
+        assert container_name_for_box_name("droste", "kento") == "kb-kento-droste"
+
+    def test_a_nameless_primary_box_falls_back_to_its_hash(self):
+        """The hash is a conforming name, so a nameless box still renders."""
+        assert container_name_for(_mock_proj(name="")).startswith("kb-primary-")
+
+
+class TestStartUnrenderableBoxNameRefusal:
+    """The shared text names the rule and the command that gives a valid name.
+
+    ⚑ ONE carrier in ``utils`` for every door that reports it — ``start`` and ``stop``.
+    """
+
+    RULE = "box name must not start with '-' (collides with CLI flags)"
+    PATH = "/home/user/myproj"
+
+    @staticmethod
+    def _text(mode: str = "primary") -> str:
+        return unrenderable_box_name_refusal(
+            "-droste", mode, TestStartUnrenderableBoxNameRefusal.PATH,
+        )
+
+    def test_it_names_the_box_name_rule(self):
+        assert self.RULE in self._text()
+
+    def test_a_primary_box_is_cured_by_moving_it(self):
+        assert f"kanibako box move {self.PATH} <new-path> --name <new-name>" in (
+            self._text("primary")
+        )
+
+    def test_a_named_box_is_cured_by_moving_it(self):
+        assert f"kanibako box move {self.PATH} <new-path> --name <new-name>" in (
+            self._text("named")
+        )
+
+    def test_a_standalone_box_is_cured_by_converting_it_in_place(self):
+        text = self._text("standalone")
+        assert f"kanibako box convert {self.PATH} --standalone --name <new-name>" in text
+        assert "box move" not in text
+
+    def test_the_cure_never_addresses_the_box_by_the_refused_name(self):
+        """A leading ``-`` is read as a flag, so naming the box would not reach it."""
+        for mode in ("primary", "named", "standalone"):
+            text = self._text(mode)
+            assert "kanibako box move -droste" not in text
+            assert "kanibako box convert -droste" not in text
+
+    def test_a_box_with_no_project_path_is_cured_from_inside_itself(self):
+        text = unrenderable_box_name_refusal("-droste", "primary", None)
+        assert "kanibako box move <new-path> --name <new-name>" in text
+        assert "None" not in text
+
+    def test_it_never_names_a_rename_command(self):
+        assert "rename" not in self._text("primary")
+        assert "rename" not in self._text("standalone")
+
+
 class TestRenderSocketIdentity:
     def test_the_two_segments_lead_with_the_box(self):
         assert render_socket_identity("droste", "primary") == "droste-primary"
@@ -307,8 +407,12 @@ class TestRenderSocketIdentity:
     def test_the_dash_boundary_is_not_a_segment_boundary(self):
         assert render_socket_identity("a-b", "c") != render_socket_identity("a", "b-c")
 
-    def test_a_name_of_only_dashes(self):
-        assert render_socket_identity("-", "-") == "----"
+    def test_a_dash_leading_box_renders_no_identity(self):
+        assert render_socket_identity("-", "primary") is None
+
+    def test_a_conforming_pair_renders_exactly_the_same_string(self):
+        assert render_socket_identity("a-b", "c") == "a--b-c"
+        assert render_socket_identity("droste", "kento") == "droste-kento"
 
 
 class TestContainerNameSegments:

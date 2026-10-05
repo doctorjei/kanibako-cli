@@ -35,7 +35,7 @@ def mock_ctx(tmp_path):
     return HelperContext(
         runtime=runtime,
         image="test:latest",
-        container_name_prefix="kanibako-testproj",
+        container_name_segments=("primary", "testproj"),
         shell_path=tmp_path / "shell",
         helpers_dir=helpers_dir,
         socket_path=socket_path,
@@ -97,7 +97,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-testproj",
+            container_name_segments=("primary", "testproj"),
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=sock,
@@ -118,7 +118,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-testproj",
+            container_name_segments=("primary", "testproj"),
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "helper.sock",
@@ -141,7 +141,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-testproj",
+            container_name_segments=("primary", "testproj"),
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "helper.sock",
@@ -161,7 +161,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-testproj",
+            container_name_segments=("primary", "testproj"),
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=sock,
@@ -179,7 +179,7 @@ class TestBuildHelperMounts:
         ctx = HelperContext(
             runtime=MagicMock(),
             image="test:latest",
-            container_name_prefix="kanibako-testproj",
+            container_name_segments=("primary", "testproj"),
             shell_path=tmp_path,
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "nonexistent.sock",
@@ -239,7 +239,7 @@ class TestHubSpawn:
         })
         assert resp["status"] == "ok"
         assert "container_name" in resp
-        assert resp["container_name"] == "kanibako-testproj-helper-1"
+        assert resp["container_name"] == "kb-primary-testproj-helper-1"
 
         # Verify runtime.run was called with detach=True
         ctx.runtime.run.assert_called_once()
