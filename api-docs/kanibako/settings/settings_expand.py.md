@@ -61,7 +61,7 @@ class _Expander:
     def _expand_bind_entry(self, entry: BindEntry, *, chain: tuple[str, ...], null_refs: list[str] | None=None) -> StoreValue | _Absent
     def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...], null_refs: list[str] | None=None) -> StoreValue | _Absent
     def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent
-    def _resolve_ref(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent
+    def _resolve_ref(self, dotted: str, *, chain: tuple[str, ...], absent_ok: bool=False) -> StoreValue | _Absent
     def _derived(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent
     def _lookup_raw(self, dotted: str) -> StoreValue | _Absent
     def _expand_embedded(self, value: str, *, space: str, chain: tuple[str, ...], none_refs: list[str]) -> str

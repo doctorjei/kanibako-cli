@@ -434,6 +434,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`set` no longer refuses a reference to a key the launch derives.** A value naming a
+  `meta.box.agent.<key>` mirror key or a computed `meta.*.auth.*_active` key, such as
+  `box set box.env.X={meta.box.auth.global_active}`, was refused as a dangling reference although
+  the launch resolves it. The set-time check now derives those keys the way the launch does, from
+  the settings the command reads. A reference to an undeclared key is still refused.
+
 - **A bind whose destination has a symlinked parent is refused, naming the link and its target.**
   The check now judges every parent between the mountpoint and the box home or project directory,
   not only the one directly above the destination, so a link further up is found. A link that leads

@@ -2403,10 +2403,10 @@ def build_launch_snapshot(
     null_sources: NullSources = {}
     expanded = expand(
         snapshot, ctx, null_sources=null_sources, refs_read=refs_read, dest_keys=dest_keys,
-        derive=_post_expand_keys(snapshot, agent_name),
+        derive=post_expand_keys(snapshot, agent_name),
     )
     # The meta.box.agent.* RO mirror (B5) — a COPY step, AFTER expand so the values
-    # are resolved terminals; a reference read them already (:func:`_post_expand_keys`).
+    # are resolved terminals; a reference read them already (:func:`post_expand_keys`).
     _materialize_box_agent_mirror(expanded, active_agent=agent_name)
     # The three computed sharing-state keys (Q61) — a COMPUTE step, AFTER expand
     # for the same reason: expand does not evaluate &&, so the ANDs only exist in
@@ -2942,7 +2942,7 @@ def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> N
 _MIRROR_SEGMENTS: tuple[str, ...] = ("meta", "box", "agent")
 
 
-def _post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
+def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive:
     """Answer, during ``expand`` of the RAW *snapshot*, a reference to a key the two
     materializers above write only afterwards: the mirror and the auth keys (spec §2b).
 

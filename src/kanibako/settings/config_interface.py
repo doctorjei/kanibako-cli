@@ -428,7 +428,6 @@ def _target_scope_anchors(
     if target is None:
         return {}
     from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_expand import expand
 
     # ⚑ THE ANCHOR ONLY NAMES A DIRECTORY IN A REFUSAL that is issued either way, so a
     # cascade that cannot be assembled leaves the anchor spelled, never a crash.
@@ -438,9 +437,7 @@ def _target_scope_anchors(
         )
     except Exception:
         return {}
-    result = expand(_clone_keystore(snapshot), ctx, collect_errors=True)
-    assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
-    expanded, errors = result
+    expanded, errors = _lenient_expand(_clone_keystore(snapshot), ctx, agent_name)
     anchors: dict[str, object] = {}
     for ref in ("meta.workset.path", "meta.box.path"):
         if ref in errors:
@@ -950,7 +947,6 @@ def _category_set_lookups(
     target: "LaunchInputs | None" = None,
 ):
     """The set-time lookups over ONE merged cascade snapshot: ``(resolves, raw_bind)``."""
-    from kanibako.settings.settings_expand import expand
 
     base_snapshot, ctx = _set_time_snapshot(
         target=target,
@@ -972,9 +968,7 @@ def _category_set_lookups(
         except ReservedKeyError as exc:
             # ⚑ A RESERVED leaf name is a set-time DEFECT, not a crash (the H1 never-raises rule).
             return str(exc)
-        result = expand(candidate, ctx, collect_errors=True)
-        assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
-        errors = result[1]
+        errors = _lenient_expand(candidate, ctx, agent_name)[1]
         if key not in errors:
             return None
         if _floor_blind_default(key, value, candidate, command_scope):
@@ -996,6 +990,23 @@ def _category_set_lookups(
         return node if isinstance(node, Bind) else None
 
     return resolves, raw_bind
+
+
+def _lenient_expand(snapshot: "Any", ctx: "Any", agent_name: str) -> "tuple[Any, dict[str, str]]":
+    """LENIENT ``expand`` of *snapshot*: ``(expanded, errors)``, deriving what the launch derives.
+
+    The mirror and auth keys exist only after the launch's expand, which answers a
+    reference to them through ``settings_launch.post_expand_keys``; the same derivation
+    here keeps a value the launch resolves from reading as dangling at set time.
+    """
+    from kanibako.settings.settings_expand import expand
+    from kanibako.settings.settings_launch import post_expand_keys
+
+    result = expand(
+        snapshot, ctx, collect_errors=True, derive=post_expand_keys(snapshot, agent_name),
+    )
+    assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
+    return result
 
 
 def _clone_keystore(store: "Any") -> "Any":
@@ -2284,7 +2295,6 @@ def effective_value(
         return None
     from kanibako.settings.kb_store import Bind
     from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_assemble import ReadPurpose, cascade_files
     from kanibako.settings.settings_launch import (
         ResolveSubject,
@@ -2369,9 +2379,7 @@ def effective_value(
     found, raw = _reads(snapshot, key_path)
     if not found or isinstance(raw, (Bind, KeyStore, list)) or raw is None:
         return None  # a bind/subtree/list/present-None has no single scalar to print
-    result = expand(snapshot, ctx, collect_errors=True)
-    assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
-    resolved_snap, errors = result
+    resolved_snap, errors = _lenient_expand(snapshot, ctx, agent_name)
     if canonical in errors:
         return None  # unresolved (dangling ref / cycle) — no guess.
     found, eff = _reads(resolved_snap, key_path)
