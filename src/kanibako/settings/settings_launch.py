@@ -473,8 +473,10 @@ def meta_agent_grammar_floor(
 class BoxAddressArgs(TypedDict):
     """The three channel-address arguments of :func:`meta_identity_floor`."""
 
-    inbox: str
-    share_global: str
+    # ⚑ ``None`` rides the same terms as the addresses themselves: a null partition key
+    # nulls the address, and the floor's job is to carry that, not to spell it "None".
+    inbox: str | None
+    share_global: str | None
     share_workset: str | None
 
 
@@ -487,9 +489,14 @@ def box_address_args(addr: "BoxChannelAddresses") -> BoxAddressArgs:
     floor call, and the kinemata ``box-*`` views unpack the same answer, so a slot
     wired to the wrong address reds there.
     """
+    # ⚑ A NULL ADDRESS STAYS ``None``: the inbox row's source is ``@meta.box.inbox``,
+    # so the bind is omitted when this is null (spec §2a), and ``str(None)`` would
+    # instead reach the expander as the four-character path ``"None"``.
     return BoxAddressArgs(
-        inbox=str(addr.inbox),
-        share_global=str(addr.share_global),
+        inbox=None if addr.inbox is None else str(addr.inbox),
+        share_global=(
+            None if addr.share_global is None else str(addr.share_global)
+        ),
         share_workset=(
             str(addr.share_workset) if addr.share_workset is not None else None
         ),
@@ -500,8 +507,11 @@ def meta_identity_floor(
     *,
     box_name: str,
     project_path: str | None,
-    inbox: str,
-    share_global: str,
+    # ⚑ A NULL ADDRESS IS A REAL ``None`` IN THE FLOOR, on the terms
+    # :func:`box_address_args` states: §0 collapses the sourced bind rather than
+    # naming a directory called ``None``.
+    inbox: str | None,
+    share_global: str | None,
     share_workset: str | None,
     box_settings: str | None = None,
     agent_name: str | None = None,
@@ -546,8 +556,8 @@ def meta_identity_floor(
         "meta.box.workspace": literal(project_path),
         # This box's own channel partition addresses (inbox routed to
         # box.bindings.rw.inbox; the two share dirs are anchors for parity).
-        "meta.box.inbox": literal_expr(inbox),
-        "meta.box.share_global": literal_expr(share_global),
+        "meta.box.inbox": literal(inbox),
+        "meta.box.share_global": literal(share_global),
         "meta.box.share_workset": literal(share_workset),
         # The RO box-TIER settings-file anchor — the file the cascade reads and
         # `config set` writes.
@@ -685,7 +695,7 @@ def workset_anchor_floor(
     mode: str,
     channelroot: str | None = None,
     workspaces: str | None = None,
-    workset_channels: Mapping[str, str] | None = None,
+    workset_channels: Mapping[str, str | None] | None = None,
 ) -> dict[str, object]:
     """Build the LAYOUT-anchor floor keys — workset roots + the box root (spec §2c).
 
@@ -879,7 +889,13 @@ def workset_anchor_floor(
                     "channels); the floor supplies that None itself, so no caller "
                     "may emit a path for it."
                 )
-            floor[f"workset.channels.{leaf}"] = literal_expr(path)
+            # ⚑ A NULL LEAF IS SUPPLIED AS A PRESENT ``None``, like every other
+            # ``<None>`` arm above — the caller reached it through the keys, and a
+            # stored ``<None>`` is a value, not a missing key.  ``literal_expr`` takes
+            # a path, so a null arm must not be spelled through it.
+            floor[f"workset.channels.{leaf}"] = (
+                None if path is None else literal_expr(path)
+            )
     return floor
 
 
@@ -1540,7 +1556,7 @@ def internal_bind_refusals(
 
 def _workset_channel_floor_values(
     part: "WorksetPartition", wch: "WorksetChannels | None",
-) -> "tuple[str | None, dict[str, str]]":
+) -> "tuple[str | None, dict[str, str | None]]":
     """The ``(workset.channelroot, workset.channels.*)`` floor values from the two
     resolved channel sets.
 
@@ -1550,18 +1566,28 @@ def _workset_channel_floor_values(
     ``share_global``) are ALL PROJECTS (§2c) and a standalone box installs them like
     anyone else.  Reading the whole family off a single ``None``-for-standalone
     helper is how three of the six ended up installed by no floor in any mode.
+
+    ⚑ A NULL LEAF IS HANDED OVER AS ``None``, not stringified.  ``str(None)`` is the
+    four-character path ``"None"``, which the expander accepts and the mount then
+    reads as a relative source (or, for a MOUNT, a named volume).  A present ``None``
+    is a value the floor already knows how to carry — :func:`workset_anchor_floor`
+    SUPPLIES ``<None>`` for every arm §2c declares null.
     """
-    leaves: "dict[str, str]" = {
-        "mailboxes": str(part.mailboxes),
-        "share_global": str(part.share_global),
+    leaves: "dict[str, str | None]" = {
+        "mailboxes": None if part.mailboxes is None else str(part.mailboxes),
+        "share_global": (
+            None if part.share_global is None else str(part.share_global)
+        ),
     }
     if wch is None:
         return None, leaves
     leaves.update({
-        "common": str(wch.common),
-        "chat": str(wch.chat),
-        "broadcast": str(wch.chat_broadcast),
-        "share": str(wch.share),
+        "common": None if wch.common is None else str(wch.common),
+        "chat": None if wch.chat is None else str(wch.chat),
+        "broadcast": (
+            None if wch.chat_broadcast is None else str(wch.chat_broadcast)
+        ),
+        "share": None if wch.share is None else str(wch.share),
     })
     return str(wch.root), leaves
 
@@ -1645,7 +1671,7 @@ class LaunchInputs:
     subject: ResolveSubject
     ctx: ResolveCtx
     system_path: Path | None
-    system_floor: Mapping[str, str]
+    system_floor: Mapping[str, str | None]
     meta_runtime: Mapping[str, object]
     meta_identity: Mapping[str, object]
     workset_anchor: Mapping[str, object]

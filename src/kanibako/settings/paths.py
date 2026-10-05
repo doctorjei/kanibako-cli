@@ -44,8 +44,8 @@ from kanibako.errors import (AmbiguousNameError, ConfigError, ProjectError,
 from kanibako.settings.agent_config import (ambiguous_path_value_error,
                                             is_unambiguous_path_value)
 from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsError,
-                                                _Unset, expand_expr, literal_map,
-                                                resolve_value)
+                                                _Unset, expand_expr, literal_expr,
+                                                literal_map, resolve_value)
 
 from kanibako.project.names import (resolve_name, resolve_qualified_name)
 from kanibako.launch.box_identity import Designation, classify_designation
@@ -94,7 +94,9 @@ class StandardPaths:
     # ``template/box/home``, NOT the root and NOT ``box/``.
     template: Path
     # ``system.canon`` — this SCOPE'S CANON CONTRIBUTION root (spec §2g), not the assembly.
-    canon: Path
+    # ⚑ ``None`` when a settings file nulls it: it is a STANDARD bind's source key, so the
+    # handbook binds collapse (§0/§2a) and no canon store is rooted anywhere.
+    canon: Path | None
     settings: Path
     primary_workset: Path
     registry: Path
@@ -109,11 +111,15 @@ class StandardPaths:
     state: Path
     runtime: Path
     # Channels skeleton — keys/defaults only; sub-key wiring is Phase 6.
-    channels_common: Path
-    channels_chat: Path
-    channels_broadcast: Path
-    channels_mailboxes: Path
-    channels_share: Path
+    # ⚑ ``None`` on the same terms as :attr:`canon`: each is a STANDARD bind's source key,
+    # so a null leaf omits that guest mount and the seeder writes nothing there.  The two
+    # null INDEPENDENTLY — ``system.channels.broadcast`` is its own key, and an explicit
+    # repoint of it still resolves when ``system.channels.chat`` is null (§0).
+    channels_common: Path | None
+    channels_chat: Path | None
+    channels_broadcast: Path | None
+    channels_mailboxes: Path | None
+    channels_share: Path | None
     # PRIMARY-workset box store: ``@config.primary_workset/boxes`` (per-box meta + shell).
     boxes: Path
     # PRIMARY-workset vault roots.  ⚑ ``None`` when the PRIMARY workset nulls the arm:
@@ -508,7 +514,8 @@ def _refuse_bare_relative(key: str, raw: object, default: str, *,
     ))
 
 
-def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path,
+def resolve_config_paths(set_values: Mapping[str, str | None], *, data_home: Path,
+                         home: Path,
                          xdg_vars: Mapping[str, str] | None = None) -> dict[str, str]:
     """Resolve the Layer-1 CONFIG-key foundation to concrete host paths (flat by design).
 
@@ -537,7 +544,7 @@ def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home
     return resolved
 
 
-def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str], *,
+def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterable[str], *,
                               data_home: Path, home: Path, xdg_vars: Mapping[str, str],
                               ) -> tuple[dict[str, str], dict[str, Path]]:
     """Resolve *keys* of the Layer-2 ``system.*`` table over the Layer-1 foundation.
@@ -553,7 +560,9 @@ def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str]
     still sees the whole table, so a stored ``@system.<other>`` resolves for a one-key
     caller exactly as it does for the full pass.
     """
-    # Split the merged set-values by layer prefix.
+    # Split the merged set-values by layer prefix.  ⚑ ``config.*`` is not narrowed to text
+    # here: a ``None`` on the Layer-2 side is a bind SOURCE (the omission §2a asks for),
+    # and the one place that could mistake it for a path is Layer 1, which says so.
     config_set = {k: v for k, v in set_values.items() if k.startswith("config.")}
     system_set = {k: v for k, v in set_values.items() if k.startswith("system.")}
 
@@ -563,6 +572,18 @@ def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str]
     ctx = ResolveCtx(agent_name=None, workset_name=None,
                      host_home=str(home), xdg=dict(xdg_vars), config=config)
     levels = [LevelView("system", values=system_set, defaults=SYSTEM_PATH_DEFAULTS)]
+
+    # ⚑ §0's EMBEDDED-REF RULE, made EXPRESSIBLE in a ``-> str`` lookup.
+    # ``expand_expr``'s lookup is typed ``Callable[..., str]``, so a present-``<None>``
+    # referent cannot travel back through it AS a null — it arrives as the WORD "None".
+    # This cell is how the null travels instead: ``lookup`` records the ref, and the key
+    # being resolved is then omitted whole, which is what §0 says an embedded reference
+    # to a present ``<None>`` means.  ⭐ MEASURED, not hypothetical: without it
+    # ``system.channels.broadcast`` (``@system.channels.chat/broadcast.md``) resolved to
+    # the path ``None/broadcast.md`` under a null chat, and the chat seeder created that
+    # directory in the CWD.  ⚑ REBOUND PER KEY below — a null referent nulls only the
+    # value that NAMES it, never a sibling that happens to resolve after it.
+    nulled: set[str] = set()
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         # Resolver SPLIT (spec §1A / JC-2), prefix-driven: ``@config.*`` vs ``@system.*``.
@@ -574,22 +595,40 @@ def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str]
         rv = resolve_value(ref, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):
             raise SettingsError(ERR_SETTINGS_BAD_REF % ("", ref))
+        if rv.value is None:
+            nulled.add(ref)
+            return ""
         # system.* config paths are always scalar strings; narrow the ``object``-typed value.
         return expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup, chain=chain)
 
     # Layer 2 system path keys, resolving ``@config.*`` via the foundation.
     resolved: dict[str, Path] = {}
     for key in keys:
+        nulled = set()
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):  # Unreachable: every key has a default.
             raise SettingsError(ERR_SETTINGS_BAD_PATH % ("system", key))
+        if rv.value is None:
+            # ⚑ A NULL THE DOORS ADMIT IS OMITTED, NOT RESOLVED (spec §2a): it is a bind's
+            # SOURCE key, so the omission is what collapses the bind (§0).  ⚑ AND ONLY
+            # THAT ONE — a key the doors still REFUSE must reach
+            # :func:`_refuse_bare_relative` below, which carries the [R177] message that
+            # names a present ``<None>`` as ``<None>``.  Omitting those too would turn a
+            # refusal the user is told about into a silent one, and the membership is the
+            # doors' own so the two cannot disagree about which is which.
+            from kanibako.settings.config import refuses_null_path_key
+
+            if not refuses_null_path_key(key):
+                continue
         _refuse_bare_relative(key, rv.value, SYSTEM_PATH_DEFAULTS[key], ctx=ctx, lookup=lookup)
         expanded = expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup)
+        if nulled:
+            continue  # ⚑ §0: an embedded reference to a present ``<None>`` nulls the value.
         resolved[key] = Path(expanded)
     return config, resolved
 
 
-def resolve_system_paths(set_values: Mapping[str, str],
+def resolve_system_paths(set_values: Mapping[str, str | None],
                          *, data_home: Path, home: Path) -> dict[str, Path]:
     """Resolve the path tier (Layer-1 ``config.*`` + Layer-2 ``system.*``) to concrete host paths."""
     config, resolved = _resolve_system_path_keys(set_values, SYSTEM_PATH_DEFAULTS,
@@ -694,7 +733,7 @@ def _floor_field(key: str) -> str:
     return _FLOOR_FIELD_ALIASES.get(key, key.split(".", 1)[1].replace(".", "_"))
 
 
-def system_path_floor(std: StandardPaths) -> dict[str, str]:
+def system_path_floor(std: StandardPaths) -> dict[str, str | None]:
     """The RESOLVED Layer-2 ``system.*`` path tier, keyed by its own dotted key names.
 
     Every consumer folds this into a floor so a stored ``@system.*`` source resolves.
@@ -702,6 +741,11 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     :func:`~kanibako.settings.settings_resolve.literal_expr` — the same flat foundation
     resolves both — so an ``@``-ref-routed bind is byte-identical to a runtime-probed
     literal.
+
+    ⭐ A NULL KEY IS A REAL ``None`` HERE, and that is the whole point of the map: a
+    STANDARD bind's source is an ``@``-ref into it, so a present ``<None>`` makes the
+    embedded reference ``<None>`` (spec §0) and the bind COLLAPSES — the omission §2a
+    asks for.  A ``"None"`` string would instead name a directory called ``None``.
 
     ⚑⚑ ONE CARRIER, AND IT IS ONE BECAUSE TWO HAD ALREADY DRIFTED — in BOTH directions.
     ``settings_launch.resolve_inputs`` (the launch snapshot) and
@@ -740,14 +784,16 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     floor itself).  ``tests/test_channels/test_system_channel_keys.py`` carried the
     by-name pin on the omission; it is INVERTED, not deleted.
     """
-    return literal_map(
-        {key: str(getattr(std, _floor_field(key))) for key in SYSTEM_PATH_DEFAULTS}
-    )
+    return {
+        key: (None if (value := getattr(std, _floor_field(key))) is None
+              else literal_expr(str(value)))
+        for key in SYSTEM_PATH_DEFAULTS
+    }
 
 
 def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path,
                           xdg_vars: Mapping[str, str],
-                          tolerate_bad_settings: bool = False) -> dict[str, str]:
+                          tolerate_bad_settings: bool = False) -> dict[str, str | None]:
     """The path tier's merged SET-VALUES: ``/etc`` config base < user config < SETTINGS file.
 
     ⚑⚑ THE SETTINGS FILE IS THE TOP LAYER, AND IT IS THE WHOLE POINT OF THE THIRD
@@ -788,7 +834,7 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
     # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist.
     from kanibako.settings.config import (bootstrap_config_paths, config_base_path,
                                           system_path_set_values)
-    raw: dict[str, str] = {}
+    raw: dict[str, str | None] = {}
 
     # base < user; an absent file yields {}, so missing layers are skipped automatically.
     # ⚑⚑ ``config.*`` BY CONSTRUCTION (2026-08-31).  The CONFIG files carry the Layer-1
@@ -973,16 +1019,19 @@ def load_std_paths(config: BootstrapConfig | None = None, *,
                      data=resolved["config.data"],
                      backup=resolved["system.backup"], agents=resolved["config.agents"],
                      channels=resolved["system.channelroot"], template=resolved["system.template"],
-                     canon=resolved["system.canon"], settings=resolved["config.settings"],
+                     # ⚑ ``.get`` on the five a ``<None>`` OMITS, and a subscript on the
+                     # rest: the resolved table is keyed by what RESOLVED, so a null key is
+                     # ABSENT and a subscript would raise KeyError on a legal settings file.
+                     canon=resolved.get("system.canon"), settings=resolved["config.settings"],
                      primary_workset=resolved["config.primary_workset"],
                      registry=resolved["config.registry"], journal=resolved["config.journal"],
                      cache=resolved["system.cache"], state=resolved["system.state"],
                      runtime=resolved["system.runtime"],
-                     channels_common=resolved["system.channels.common"],
-                     channels_chat=resolved["system.channels.chat"],
-                     channels_broadcast=resolved["system.channels.broadcast"],
-                     channels_mailboxes=resolved["system.channels.mailboxes"],
-                     channels_share=resolved["system.channels.share"],
+                     channels_common=resolved.get("system.channels.common"),
+                     channels_chat=resolved.get("system.channels.chat"),
+                     channels_broadcast=resolved.get("system.channels.broadcast"),
+                     channels_mailboxes=resolved.get("system.channels.mailboxes"),
+                     channels_share=resolved.get("system.channels.share"),
                      boxes=resolved["_primary_boxes"],
                      primary_vault_ro=resolved.get("_primary_vault_ro"),
                      primary_vault_rw=resolved.get("_primary_vault_rw"),

@@ -6789,15 +6789,19 @@ class TestLoneNoneStandardBind:
 
 class TestHalfNullCureOnlyWhereADoorAdmitsIt:
     """The half-null warning offers its source key as the cure only where a door would
-    admit that ``<None>``.  A key both path doors refuse is still NAMED — the companion
-    "Delivery at launch" warning names both keys and the file — and is never offered, so
-    the sentence can never name a remedy the ``set`` and read doors refuse.
+    admit that ``<None>``, so the sentence can never name a remedy the ``set`` and read
+    doors refuse.
+
+    ⚑ ``system.canon`` WAS the refused example here: it is a STANDARD bind's source key,
+    so a null at it is now an OMISSION (spec §2a) and BOTH branches of this class moved.
+    It is the OFFERED side now, and the refused side is a ``system.*`` key that sources
+    no bind — ``system.channelroot``, which the same membership still refuses.
     """
 
-    _CANON_DEST = f"{GUEST_HOME}/canon/handbook/general"
-    _CANON_FLOOR = {
-        "system.canon": "/h/canon",
-        "box.bindings.ro": {_CANON_DEST: ("@system.canon/handbook/general", "ro")},
+    _ROOT_DEST = f"{GUEST_HOME}/cache"
+    _ROOT_FLOOR = {
+        "system.cache": "/h/cache",
+        "box.bindings.ro": {_ROOT_DEST: ("@system.cache", "ro")},
     }
     _LOG_DEST = f"{GUEST_HOME}/.kanibako/state/helpers.jsonl"
     _LOG_FLOOR = {
@@ -6825,15 +6829,34 @@ class TestHalfNullCureOnlyWhereADoorAdmitsIt:
         ]
 
     def test_a_refused_source_key_is_named_but_not_offered(self, tmp_path, caplog):
+        """``system.cache`` sources no STANDARD bind, so its null stays a refusal."""
         warnings = self._resolve(
-            tmp_path, caplog, floor=self._CANON_FLOOR, entry_dest="~/canon/handbook/general",
+            tmp_path, caplog, floor=self._ROOT_FLOOR, entry_dest="~/cache",
         )
         assert len(warnings) == 1, warnings
         text = warnings[0]
-        assert f"box.bindings.ro[{self._CANON_DEST}]" in text
+        assert f"box.bindings.ro[{self._ROOT_DEST}]" in text
         assert str(tmp_path / "box.yaml") in text
-        assert "system.canon" in text  # NAMED: the warning names both keys and the file
-        assert "Set system.canon to null" not in text  # ...never offered as the cure
+        assert "system.cache" in text  # NAMED: the warning names both keys and the file
+        assert "Set system.cache to null" not in text  # ...never offered as the cure
+
+    def test_a_source_key_the_doors_admit_is_offered_the_cure(self, tmp_path, caplog):
+        """⭐ THE OTHER SIDE, and the reason the message filters at all: ``system.canon``
+        is a STANDARD bind's source, so ``system set --null system.canon`` is ACCEPTED
+        and the sentence it offers is a command that works."""
+        canon_dest = f"{GUEST_HOME}/canon/handbook/general"
+        warnings = self._resolve(
+            tmp_path, caplog,
+            floor={
+                "system.canon": "/h/canon",
+                "box.bindings.ro": {canon_dest: ("@system.canon/handbook/general", "ro")},
+            },
+            entry_dest="~/canon/handbook/general",
+        )
+        assert len(warnings) == 1, warnings
+        text = warnings[0]
+        assert "system.canon" in text
+        assert "Set system.canon to null" in text  # ...and it is a remedy that WORKS
 
     def test_an_admitted_source_key_is_still_offered(self, tmp_path, caplog):
         warnings = self._resolve(
@@ -6848,8 +6871,12 @@ class TestHalfNullCureOnlyWhereADoorAdmitsIt:
 
         for key in ("system.canon", "system.channels.common", "system.channels.chat",
                     "system.channels.mailboxes", "system.channels.share"):
-            assert refuses_null_path_key(key), key  # both doors refuse it today
-        assert not refuses_null_path_key("workset.logs")  # ...and admit this one
+            assert not refuses_null_path_key(key), key  # a null there OMITS a bind
+        # ...and a key that sources no bind still refuses, which is what keeps the
+        # OFFERED side above honest: the filter is not "never offer".
+        for key in ("system.cache", "system.channelroot"):
+            assert refuses_null_path_key(key), key
+        assert not refuses_null_path_key("workset.logs")  # never a path key to begin with
 
 
 class TestNullRefSecretPath:

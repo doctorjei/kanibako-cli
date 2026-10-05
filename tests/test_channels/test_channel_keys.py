@@ -153,6 +153,78 @@ class TestWorksetLocalLeafRepoints:
         # ⚑ general.md is NOT a declared key, so it stays inside the chat dir.
         assert wch.chat_general == wch.chat / "general.md"
 
+    @pytest.mark.parametrize(
+        "leaf, attr",
+        [("common", "common"), ("chat", "chat"),
+         ("share", "share"), ("broadcast", "chat_broadcast")],
+    )
+    def test_a_null_leaf_is_OMITTED_not_defaulted(
+        self, named_proj, std, leaf, attr,
+    ):
+        """A present ``<None>`` answers ``None``; only an ABSENT key takes the default.
+
+        Spec §2a: a null arm is a declared value, so the bind that leaf feeds is
+        omitted rather than pointed at the default directory.
+        """
+        ws_root = named_proj.group.root
+        _repoint(ws_root, f"workset.channels.{leaf}", None)
+        wch = channels.workset_channel_paths(named_proj, std)
+        assert wch is not None
+        assert getattr(wch, attr) is None
+        # The siblings are UNTOUCHED — one null leaf is not a null channel root.  The
+        # one exception is ``broadcast``, whose manifest row is an EMBEDDED ref off
+        # ``chat``: a null ``chat`` carries it (see the next test).
+        for sib, sib_attr in (
+            ("common", "common"), ("chat", "chat"),
+            ("share", "share"), ("broadcast", "chat_broadcast"),
+        ):
+            if sib == leaf:
+                continue
+            if leaf == "chat" and sib == "broadcast":
+                continue  # an embedded ref off chat — chat carries it (next test)
+            assert getattr(wch, sib_attr) is not None, sib
+
+    def test_a_null_chat_takes_broadcast_with_it(self, named_proj, std):
+        """A null ``chat`` takes ``general.md`` AND ``broadcast`` with it.
+
+        ``general.md`` names no key, so it follows ``chat`` into nothing.  ``broadcast``
+        is a key, but its manifest row is ``@workset.channels.chat/broadcast.md`` — an
+        EMBEDDED ref, and §0: an embedded reference to a present ``<None>`` makes the
+        whole value ``<None>``.
+        """
+        ws_root = named_proj.group.root
+        _repoint(ws_root, "workset.channels.chat", None)
+        wch = channels.workset_channel_paths(named_proj, std)
+        assert wch is not None
+        assert wch.chat is None
+        assert wch.chat_general is None
+        assert wch.chat_broadcast is None
+
+    def test_an_explicit_broadcast_repoint_survives_a_null_chat(self, named_proj, std):
+        """A stored value REPLACES the manifest formula, so it still resolves."""
+        ws_root = named_proj.group.root
+        _repoint(ws_root, "workset.channels.chat", None)
+        _repoint(ws_root, "workset.channels.broadcast", str(ws_root / "shout.md"))
+        wch = channels.workset_channel_paths(named_proj, std)
+        assert wch is not None
+        assert wch.chat is None
+        assert wch.chat_broadcast == ws_root / "shout.md"
+
+    def test_an_absent_leaf_still_takes_the_default(self, named_proj, std):
+        """The other half of the three states: absent is not null."""
+        wch = channels.workset_channel_paths(named_proj, std)
+        assert wch is not None
+        assert wch.chat == wch.root / "chat"
+        assert wch.common == wch.root / "common"
+        assert wch.chat_general == wch.root / "chat" / "general.md"
+
+    def test_a_null_share_reaches_meta_box_share_workset(self, named_proj, std):
+        """The address follows the leaf: a null ``share`` has no address either."""
+        ws_root = named_proj.group.root
+        _repoint(ws_root, "workset.channels.share", None)
+        addr = channels.box_channel_addresses(named_proj, std)
+        assert addr.share_workset is None
+
     def test_an_unresolvable_repoint_is_REFUSED_BY_NAME(self, named_proj, std):
         """A key that cannot be resolved is an error naming the key, never a fallback.
 

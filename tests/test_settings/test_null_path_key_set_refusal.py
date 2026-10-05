@@ -35,6 +35,7 @@ from kanibako.settings.config import (
     BOX_META_FILE,
     WORKSET_META_FILE,
     null_path_keys_error,
+    STANDARD_BIND_SOURCE_KEYS,
     refuses_null_path_key,
     system_path_set_values,
 )
@@ -47,13 +48,17 @@ from kanibako.settings.messages import (
 from kanibako.settings.paths import load_system_config
 from tests.support.filenames import CONFIG_FILENAME
 
-#: THE TWO SHAPES A ``--null`` LANDS AS, as the stored YAML spells them.  ``system.canon`` is
-#: the plain leaf; ``system.channels.common`` is an entry of a MAPPING — the file holds
-#: ``channels: {common: null}``, which is why the one carrier has to name the key the way
+#: THE TWO SHAPES A ``--null`` LANDS AS, as the stored YAML spells them.  ``system.channelroot``
+#: is the plain leaf; ``system.channels.broadcast`` is an entry of a MAPPING — the file holds
+#: ``channels: {broadcast: null}``, which is why the one carrier has to name the key the way
 #: the reader's walk spells it (``_flatten_leaves`` flattens the nested table to
-#: ``system.channels.common``) rather than the leaf the writer was handed.
-_SYSTEM_LEAF = "system.canon"
-_SYSTEM_MAPPED = "system.channels.common"
+#: ``system.channels.broadcast``) rather than the leaf the writer was handed.
+#: ⚑ BOTH WERE ``system.canon`` / ``system.channels.common`` until a null at a STANDARD
+#: bind's source key became an OMISSION instead of a refusal (spec §2a) — see
+#: ``test_null_system_path_key.py``.  They are the two closest keys that still refuse, so
+#: each test here still exercises the door it was written for.
+_SYSTEM_LEAF = "system.channelroot"
+_SYSTEM_MAPPED = "system.channels.broadcast"
 _WORKSET_BOXES = f"workset.{BOXES_PATH}"
 
 def _files(tmp_path: Path) -> dict:
@@ -157,7 +162,7 @@ class TestTheLaunchStillRefusesTheStoredValue:
     def test_the_system_path_tier_reader_refuses_a_stored_null(self, std, tmp_path):
         files = _files(tmp_path)
         files["system"].parent.mkdir(parents=True, exist_ok=True)
-        files["system"].write_text("system:\n  canon: null\n")
+        files["system"].write_text("system:\n  channelroot: null\n")
         with pytest.raises(Exception) as caught:
             system_path_set_values(files["system"])
         assert ERR_CONFIG_NULL_PATH_REASON in str(caught.value)
@@ -168,8 +173,11 @@ class TestTheLaunchStillRefusesTheStoredValue:
         # launch command runs first, so this is the launch-time half of the round trip.
         from kanibako.settings.config_io import dump_doc
 
+        # ⚑ WRITES ``_SYSTEM_MAPPED`` (see the constants above): ``channels: {common: null}``
+        # is a legal file and is now an OMISSION, so this door must still have a member to
+        # refuse, or the test would be pinning the superseded rule.
         settings = std.settings
-        dump_doc(settings, {"system": {"channels": {"common": None}}})
+        dump_doc(settings, {"system": {"channels": {"broadcast": None}}})
         with pytest.raises(Exception) as caught:
             load_system_config(config_file, data_home=std.data_home, home=tmp_home)
         assert ERR_CONFIG_NULL_PATH_REASON in str(caught.value)
@@ -206,7 +214,7 @@ class TestTheRefusalCarriesTheLaunchsOwnReason:
         # not, this reds.  The LEAD and the CUE after it are per-door by contract and are
         # NOT compared here.
         files = _files(tmp_path)
-        files["system"].write_text("system:\n  canon: null\n")
+        files["system"].write_text("system:\n  channelroot: null\n")
         with pytest.raises(Exception) as caught:
             system_path_set_values(files["system"])
         at_launch = str(caught.value)
@@ -228,7 +236,12 @@ class TestTheRefusalCarriesTheLaunchsOwnReason:
     def test_the_membership_is_the_readers_own(self):
         # ⚑ DERIVED (P13), NOT A LIST BESIDE THEM: every key of the two path tables the
         # readers refuse, plus the one workset leaf whose reader does.
-        assert all(refuses_null_path_key(key) for key in SYSTEM_PATH_DEFAULTS)
+        # ⚑ AND THE ONE EXCLUSION, which is not a second rule but the spec's: a ``<None>``
+        # at a STANDARD bind's SOURCE KEY OMITS the bind (spec §2a), so both doors admit it
+        # and the launch omits the bind rather than refusing to start.
+        refusing = sorted(k for k in SYSTEM_PATH_DEFAULTS if refuses_null_path_key(k))
+        assert refusing == sorted(set(SYSTEM_PATH_DEFAULTS) - STANDARD_BIND_SOURCE_KEYS)
+        assert not any(refuses_null_path_key(k) for k in STANDARD_BIND_SOURCE_KEYS)
         assert refuses_null_path_key(_WORKSET_BOXES)
 
     def test_the_cure_names_the_door_that_wrote_nothing(self, tmp_path):
@@ -250,7 +263,7 @@ class TestTheWholeMembershipRefuses:
         assert len(SYSTEM_PATH_DEFAULTS) > 10
         assert {_SYSTEM_LEAF, _SYSTEM_MAPPED} <= set(SYSTEM_PATH_DEFAULTS)
 
-    @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
+    @pytest.mark.parametrize("key", sorted(set(SYSTEM_PATH_DEFAULTS) - STANDARD_BIND_SOURCE_KEYS))
     def test_every_system_path_key_refuses_a_null(self, key, tmp_path):
         files = _files(tmp_path)
         _assert_refused_without_writing(
@@ -264,7 +277,7 @@ class TestTheWholeMembershipRefuses:
             _WORKSET_BOXES, files, ConfigLevel.workset,
         )
 
-    @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
+    @pytest.mark.parametrize("key", sorted(set(SYSTEM_PATH_DEFAULTS) - STANDARD_BIND_SOURCE_KEYS))
     def test_and_the_launch_reader_refuses_every_one_of_them(self, key, tmp_path):
         # ⚑ THE ROUND TRIP, one key at a time: the membership is only worth having if each
         # member really is a key the reader refuses.  This is what a membership list
@@ -286,6 +299,13 @@ class TestWhatStaysLenient:
 
     @pytest.mark.parametrize("key,scope_name", [
         ("system.agent", "system"),          # "no default agent" (spec §2b)
+        # ⚑ THE FIVE A NULL OMITS A BIND FOR (spec §2a) — a null at a STANDARD bind's
+        # source key is an omission, not a refusal, so the set door WRITES it.
+        ("system.canon", "system"),
+        ("system.channels.common", "system"),
+        ("system.channels.chat", "system"),
+        ("system.channels.share", "system"),
+        ("system.channels.mailboxes", "system"),
         ("workset.workspaces", "workset"),    # "no workspace dir" (spec §2c)
         ("workset.logs", "workset"),          # "no logs dir"
         ("workset.canon", "workset"),         # another workset dir key, not a member
