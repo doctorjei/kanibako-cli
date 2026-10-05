@@ -26,6 +26,7 @@ from kanibako.settings.paths import (
     resolve_system_paths,
     system_path_floor,
 )
+from kanibako.settings.settings_resolve import match_braced
 
 
 def _settings(tmp_path, doc: str):
@@ -49,9 +50,10 @@ class TestTheSetIsExactlyTheStandardBindSources:
         for section in ("channels", "canon"):
             for row in doc.get(section, []) or []:
                 ref = str(row.get("meta_ref", ""))
-                for word in ref.replace("/", " ").split():
-                    if word.startswith("@system."):
-                        named.add(word[1:].split("/")[0])
+                for i, c in enumerate(ref):
+                    braced = match_braced(ref, i) if c == "{" else None
+                    if braced and braced[0] == "ref" and braced[1].startswith("system."):
+                        named.add(braced[1])
         return named
 
     def test_it_is_exactly_the_keys_the_shipped_binds_name(self):
@@ -211,12 +213,14 @@ class TestTheChannelTableKeepsANullArmNull:
     def test_the_shipped_rows_carry_no_probed_host_path(
         self, std, config, project_dir,
     ):
-        """⚑ WITH THE MANIFEST AS SHIPPED: every source is an ``@``-ref, so the table
+        """⚑ WITH THE MANIFEST AS SHIPPED: every source is a braced ``{key}`` ref, so the table
         never holds a host path at all — which is why the null arm needs the row above
         to be observable, and why this file does not pretend otherwise."""
         proj = self._primary(std, config, project_dir)
         table = self._table(std, proj)
-        assert all(s.startswith("@") for srcs in table.values() for s in srcs)
+        assert all(
+            match_braced(s, 0) is not None for srcs in table.values() for s in srcs
+        )
         assert not [s for srcs in table.values() for s in srcs if s == "None"]
 
 

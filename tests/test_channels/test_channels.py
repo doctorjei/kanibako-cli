@@ -274,6 +274,7 @@ class TestNullChannelroot:
 
     def test_the_three_workset_rows_stay_in_the_floor(self, primary_proj, std):
         from kanibako.settings import core_defaults
+        from kanibako.settings.settings_expand import _is_whole_value_ref
 
         self._null_channelroot(std.primary_workset)
         table = core_defaults.channel_default_categories(std, primary_proj)
@@ -281,7 +282,8 @@ class TestNullChannelroot:
         # …and every one of them names the nulled key, so the collapse can omit it.
         for dest, value in _ws_dests(table).items():
             if dest in self._WS_DESTS:
-                assert value[0].startswith("@workset.channels."), (dest, value)
+                ref = _is_whole_value_ref(value[0])
+                assert ref is not None and ref.startswith("workset.channels."), (dest, value)
 
     def test_a_standalone_box_still_omits_the_three_rows(self, standalone_proj, std):
         from kanibako.settings import core_defaults
