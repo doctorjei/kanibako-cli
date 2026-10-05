@@ -7371,7 +7371,7 @@ class TestAFloorNullAddressNamesTheFileKeyBehindIt:
 
         reset_none_warnings()
         caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-        snap = build_launch_snapshot(
+        build_launch_snapshot(  # the WARNINGS are the subject; the snapshot is the vehicle
             agent_name="claude", ctx=_ctx(), system_path=system, agent_path=None,
             workset_path=None, box_path=None,
             default_categories=self._FLOOR, meta_identity={"meta.box.name": "b1"},
@@ -7395,7 +7395,7 @@ class TestAFloorNullAddressNamesTheFileKeyBehindIt:
 
         reset_none_warnings()
         caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
-        snap = build_launch_snapshot(
+        build_launch_snapshot(  # the WARNINGS are the subject; the snapshot is the vehicle
             agent_name="claude", ctx=_ctx(), system_path=system, agent_path=None,
             workset_path=_write_yaml(
                 tmp_path / "workset.yaml",
