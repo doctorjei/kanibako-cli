@@ -36,11 +36,12 @@ def xdg(env_var: str, default_suffix: str) -> Path
 def user_config_home() -> Path
 def spec_default_xdg_map(data_home: Path | None) -> dict[str, str]
 def host_xdg_map(data_home: Path | None=None) -> dict[str, str]
-def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str] | None=None) -> dict[str, str]
-def resolve_system_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path) -> dict[str, Path]
+def resolve_config_paths(set_values: Mapping[str, str | None], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str] | None=None) -> dict[str, str]
+def resolve_system_paths(set_values: Mapping[str, str | None], *, data_home: Path, home: Path) -> dict[str, Path]
 def host_config_map(std: StandardPaths) -> dict[str, str]
 def system_path_floor(std: StandardPaths) -> dict[str, str]
 def layer1_set_values(user_config_path: Path) -> dict[str, str]
+def load_system_tier(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> tuple[dict[str, Path], EarlySystem]
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> dict[str, Path]
 def resolve_data_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def resolve_state_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
@@ -81,9 +82,10 @@ def _narrow_box_scalar_cascade(global_path: Path, *, workset_path: Path | None, 
 def _fallback_runtime_dir(var_name: str) -> Path
 def _runtime_base_usable(base: Path, *, follow_symlinks: bool=True, require_private: bool=False) -> bool
 def _refuse_bare_relative(key: str, raw: object, default: str, *, ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> None
-def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str]) -> tuple[dict[str, str], dict[str, Path]]
+def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterable[str], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str]) -> tuple[dict[str, str], dict[str, Path]]
+def _resolve_system_tier(set_values: Mapping[str, str | None], *, data_home: Path, home: Path, system_refusal: str | None=None) -> tuple[dict[str, Path], EarlySystem]
 def _floor_field(key: str) -> str
-def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path, xdg_vars: Mapping[str, str], tolerate_bad_settings: bool=False) -> dict[str, str]
+def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path, xdg_vars: Mapping[str, str], tolerate_bad_settings: bool=False) -> tuple[dict[str, str | None], str | None]
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]
 def _primary_box_paths(std: StandardPaths, metadata_path: Path, box_name: str) -> tuple[Path, Path | None, Path | None]
 def _workset_box_paths(metadata_path: Path, vault_ro_base: Path | None, vault_rw_base: Path | None, box_name: str) -> tuple[Path, Path | None, Path | None]
@@ -153,6 +155,7 @@ class StandardPaths:
     primary_vault_ro: Path | None
     primary_vault_rw: Path | None
     primary_logs: Path | None
+    early_system: EarlySystem
 
 @dataclass(frozen=True)
 class ProjectGroup:
