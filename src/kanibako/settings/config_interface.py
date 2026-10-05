@@ -2014,10 +2014,6 @@ def set_config_value(
     # The setup VERSION MARKER — written to the ``system:`` table of the SYSTEM SETTINGS
     # file (``@config.settings``), which is where ``setup`` puts it and where every reader
     # looks (spec §2g: "PERSISTS, user-resettable"); the route is ``_KEY_ROUTES``.
-    # ⚑ A REFUSAL STOOD HERE UNTIL 2026-08-23, and it named the config file as the cure —
-    # telling the user to hand-edit a file the CLI can write, for a key the registry
-    # declares ``set: cli+file``. The ``config.*`` half of that refusal is unaffected: it
-    # short-circuits at the top of this function with its own ruled message.
     if canonical == SETUP_MARKER_KEY:
         dest = _write_dest(
             canonical, command_scope=command_scope,
@@ -2029,10 +2025,8 @@ def set_config_value(
 
     # Regular config keys — the single known-key table (H1: an unknown key returns an error
     # string and NEVER raises).
-    # ⚑ THE CANONICAL DOTTED SPELLING, AND ONLY IT. The flat underscore form used to be
-    # normalized in here; it is undeclared (spec §0), ``get`` always refused it, and it
-    # routed to a different FILE than its dotted twin. There is nothing to normalize now,
-    # so it falls out here as the unknown key it is, named in the refusal.
+    # ⚑ THE CANONICAL DOTTED SPELLING, AND ONLY IT. The flat underscore form is undeclared
+    # (spec §0), so it falls out here as the unknown key it is, named in the refusal.
     route = _KEY_ROUTES.get(canonical)
     if route is None:
         # ⚑ MIRRORS ``reset_config_value``'s tail: a name §0 declares no key gets the
