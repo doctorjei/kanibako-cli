@@ -2568,7 +2568,7 @@ class TestPersonaShareSymlinks:
         if category_binds is None:
             category_binds = {
                 "agent.claude.caches": {
-                    "@system.cache/tweakcc": (
+                    "{system.cache}/tweakcc": (
                         "@meta.agent.claude.path/caches/tweakcc",
                     ),
                 },
