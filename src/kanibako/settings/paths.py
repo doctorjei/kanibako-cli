@@ -474,6 +474,26 @@ def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
     return xdg_map
 
 
+#: The ``system.*`` keys :func:`load_std_paths` reads with ``.get``, so an ABSENT one is a
+#: value the consumer can hold.  Every OTHER key in the table it subscripts, and a missing
+#: key there is a ``KeyError`` rather than a ``None``.
+#: ⚑ THE CONSUMER IS THE DISCRIMINATOR, not the doors' nullability.  ``system.channels.broadcast``
+#: REFUSES a written ``null`` and is read with ``.get``, and its DEFAULT is
+#: ``@system.channels.chat/broadcast.md`` — so a null chat reaches it as a derived null that
+#: must be OMITTED, or the chat seeder's own log vanishes with the chat it belongs to.  A
+#: key that refuses a null the user WROTE is a different question from one whose value went
+#: null because a key it reads went null; refusing the second would make the first
+#: meaningless.
+SUBSCRIBED_SYSTEM_PATH_KEYS: frozenset[str] = frozenset({
+    "system.backup",
+    "system.channelroot",
+    "system.template",
+    "system.cache",
+    "system.state",
+    "system.runtime",
+})
+
+
 def _refused_null_path_value_error(key: str, default: str, *,
                                     referent: "str | None" = None) -> str:
     """THE null-path refusal for a path key that REFUSES a ``<None>`` (spec §2a).
@@ -619,15 +639,20 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
     # Layer 2 system path keys, resolving ``@config.*`` via the foundation.
     resolved: dict[str, Path] = {}
     # ⚑⚑ THE ASYMMETRY, IN ONE PLACE, BECAUSE IT IS ONE DECISION AND NOT TWO.
-    # ``system.channels.broadcast: null`` WRITTEN is REFUSED, and a DERIVED null — the same
-    # key nulled by its own value's reference to a null key — is ADMITTED.  Both ask the same
-    # membership, :func:`config.refuses_null_path_key`, and the difference is not the key:
-    # it is that a WRITTEN null is a CLAIM about a key the launch needs, so the doors own it
-    # and refuse it by name, while a DERIVED null is a CONSEQUENCE of a claim about a
-    # DIFFERENT key (``system.channels.chat``, a standard-bind SOURCE, where §2a gives a
-    # null its meaning).  Refusing the consequence would refuse the source's own semantics
-    # one layer up, and the source is the key the user can actually act on.  A reader who
-    # meets both is looking at this line, not at a bug.
+    # ``system.channels.broadcast: null`` WRITTEN is REFUSED (it is not a standard-bind
+    # SOURCE, so ``refuses_null_path_key`` claims it), and the same key nulled by its own
+    # value's reference to a null key is ADMITTED and OMITTED.  The difference is not the
+    # key and not the doors' membership — it is WHICH ROAD the null arrived by.  A WRITTEN
+    # null is a claim about this key, and the launch gives it no meaning.  A DERIVED null is
+    # a CONSEQUENCE of a claim about a DIFFERENT key (``system.channels.chat``, whose own
+    # default broadcasts through this one), and that consequence is the omission §2a asks
+    # for: the broadcast log belongs to the chat it is derived from, so a null chat takes it
+    # with it.  Refusing it would make the source key's own semantics unreachable one layer
+    # up, and the source is the key the user can act on.
+    # ⚑ THE DERIVED ROAD'S REAL DISCRIMINATOR IS THE CONSUMER, though — see
+    # :data:`SUBSCRIBED_SYSTEM_PATH_KEYS` and the arm below.  A key ``load_std_paths``
+    # subscripts has nowhere to put an absence, so there the derived null is refused BY NAME
+    # instead of dropped.  A reader who meets both is looking at these two lines, not a bug.
     from kanibako.settings.config import refuses_null_path_key
 
     for key in keys:
@@ -649,15 +674,14 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
         if nulled:
             # ⚑ §0: an embedded reference to a present ``<None>`` makes the whole value
             # ``<None>`` — the DERIVED null, which a bind's own source key also travels on.
-            # ⚑⚑ BUT ONLY WHERE A NULL IS A MEANING (the asymmetry above), and the
-            # membership is the DOORS' OWN, so this cannot disagree with the ``set`` door,
-            # the read-time refusal and the [R185] cure about which keys those are.  A key
-            # that REFUSES a null must be OMITTED FROM NOWHERE: the consumer reads it by
-            # subscript (``load_std_paths``), so dropping it turns a refusal the user is told
-            # about into a raw ``KeyError`` at the consumer.  This is the same rule the arm
-            # above applies to a STORED null — a derived one is the same fact about the key,
-            # reached by a reference instead of by a literal.
-            if not refuses_null_path_key(key):
+            # ⚑⚑ A key the CONSUMER SUBSCRIPTS must be OMITTED FROM NOWHERE:
+            # :func:`load_std_paths` reads those by key, so dropping one turns a value the
+            # user wrote into a raw ``KeyError`` there instead of anything they are told.
+            # Everywhere else the resolved table is keyed by what RESOLVED, so an absent key
+            # IS what a ``<None>`` means and the consumer's ``.get`` holds it — including
+            # ``system.channels.broadcast``, which refuses a WRITTEN null and is read with
+            # ``.get`` (:data:`SUBSCRIBED_SYSTEM_PATH_KEYS`, and the asymmetry above).
+            if key not in SUBSCRIBED_SYSTEM_PATH_KEYS:
                 continue
             raise SettingsError(_refused_null_path_value_error(
                 key, SYSTEM_PATH_DEFAULTS[key],
