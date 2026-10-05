@@ -5916,9 +5916,25 @@ and `remap` there. `--force` does not override this.
 
 **What changed.** The directory it names (`workspaces/<name>`, `boxes/<name>`, or a vault directory)
 belongs to no registered box and used to be merged into. A box's own directories, and `box remap`,
-are not affected.
+are not affected. `box duplicate --to named` does not print this refusal; see the next entry.
 
 **What to do.** Move it aside or choose another `--name`.
+
+### A leftover directory at `box duplicate --to named` needs `--force`; a registered name is refused
+
+**Read this if `box duplicate --to named --workset <ws> --name <name>` stops with
+`destination already exists: <path>` or `project '<name>' already exists in workset '<ws>'`.**
+
+**What changed.** These are two refusals, and only the first yields to `--force`. A leftover
+`workspaces/<name>` (under `workset.workspaces` if you repointed it) or `boxes/<name>` belongs to no
+registered box; `--force` merges the copy into it, and a file of the same name is overwritten by the
+source's. With `--bare` the workspace directory is adopted on purpose and not checked, but
+`boxes/<name>` still is. A name already registered in that workset is refused outright, compared
+without regard to case; `--force` does not override it, and nothing is written. `box move` and
+`box convert` refuse a leftover directory either way.
+
+**What to do.** For a leftover directory, move it aside, or check what is in it and pass `--force`.
+For a registered name, choose another `--name`.
 
 ### A `null` workset vault, canon, template or channel root means no directory
 
