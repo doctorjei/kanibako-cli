@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file, load_config
+from kanibako.settings.messages import ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
 from kanibako.errors import ConfigError, WorksetError
 from kanibako.settings.paths import (
     load_std_paths,
@@ -617,17 +618,15 @@ def run_connect(args: argparse.Namespace) -> int:
         print(f"Error: Cannot connect '{source.resolve()}': {present}", file=sys.stderr)
         return 1
 
-    # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected — it would
-    # stay registered beside the new member.  ``box convert`` changes an EXTERNAL
-    # workspace's owner; inside the tree it does not reach the box.
+    # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected.  ONE cure
+    # for both arms — a box at this workset's member leaf converts in place.
     owner = primary_box_name_for_workspace(std.primary_workset, str(resolved))
     if owner is not None:
-        how = (f"remove it first with 'kanibako box rm {owner}'" if in_tree else
-               f"to make it a member of '{ws.name}', run "
-               f"'kanibako box convert {owner} --workset {ws.name}'")
         print(
-            f"Error: Cannot connect '{resolved}': it is already the workspace of "
-            f"primary box '{owner}'; {how}.",
+            f"Error: Cannot connect '{resolved}': "
+            + ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX % (
+                owner, ws.name, owner, ws.name, owner, ws.name, owner, owner,
+            ),
             file=sys.stderr,
         )
         return 1

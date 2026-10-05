@@ -196,6 +196,17 @@ ERR_PROJECT_DIR_IS_WS = ("Name '%s' is already in use by a workset. Box and work
                          "to create the box under this name anyway.") # name
 
 ERR_WORKSET_NO_PROJECT = "Project '%s' not found in workset '%s'" # project name, workset name
+# ONE cure for both arms of ``workset connect`` on a primary box's workspace: every
+# command named here reaches the box, in place for a box that already stands at the
+# member leaf and by relocation for one that does not.
+ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX = (
+    "it is already the workspace of primary box '%s'; to make it a member of '%s' "
+    "instead, convert that box ('kanibako box convert %s --workset %s', or 'kanibako "
+    "box convert %s --workset %s --name <member> --move' to give it another name), "
+    "move it out of the way ('kanibako box move %s <path>'), or drop the box "
+    "('kanibako box rm %s')."
+    # box, ws, box, ws, box, ws, box, box
+)
 ERR_WORKSET_NO_WORKSET = "No workset found for path: %s" # project dir
 ERR_WORKSET_WS_NOT_BOX = ("'%s' is a workset, not a single project box. Name a project inside it " +
                           "(e.g. '%s/<project>') or run the command from a project workspace " +
