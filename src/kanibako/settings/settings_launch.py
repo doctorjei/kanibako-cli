@@ -2529,6 +2529,36 @@ def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]:
     return refs
 
 
+#: A floor-supplied ``<None>`` source key, and the FILE keys whose ``<None>`` is what
+#: produces it — in the order the derivation reads them (spec §Channels table:
+#: ``workset.channels.mailboxes`` is ``{system.channels.mailboxes}/{meta.workset.name}``,
+#: and ``meta.box.inbox`` is ``{workset.channels.mailboxes}/{meta.box.name}``).
+#: ⚑ THE FLOOR KEY IS NOT WHAT A USER SET, so naming it is naming something they cannot
+#: act on; these are the keys ``config set`` and ``workset set`` write.  ``meta.*`` is
+#: read-only (§0), so there is no spelling of "null the inbox" to offer as a cure.
+_META_NULL_ORIGIN: dict[str, tuple[str, ...]] = {
+    "meta.box.inbox": ("workset.channels.mailboxes", "system.channels.mailboxes"),
+    "meta.box.share_global": ("workset.channels.share_global", "system.channels.share"),
+    "meta.box.share_workset": ("workset.channels.share", "system.channels.share"),
+}
+
+
+def _null_origin(written: Sequence[_WrittenLevel], ref: str) -> "tuple[str, str] | None":
+    """The ``(file key, file)`` whose ``<None>`` FLOORED *ref* at ``<None>``, or ``None``.
+
+    ⚑ Walks :data:`_META_NULL_ORIGIN` in DERIVATION order and returns the FIRST key a
+    settings file actually wrote as ``<None>``: the workset-local repoint shadows the
+    system default, so the first writer is the one the user set.  Returns ``None`` when
+    no file nulled any of them, which is the DEFAULT (a root that resolved) — nothing to
+    report, since §2a judges what was SET.
+    """
+    for key in _META_NULL_ORIGIN.get(ref, ()):
+        where = _none_setter(written, key, None)
+        if where is not None:
+            return key, where
+    return None
+
+
 def _warn_lone_none_standard_binds(
     floor: Mapping[str, object],
     merged: KeyStore,
@@ -2547,10 +2577,12 @@ def _warn_lone_none_standard_binds(
     core-defaults tables, plugin binds ([Q95] 2) and the helper log alike.  A
     literal-source entry is INTERNAL; a user-added entry is not in the floor ([Q94] 2).
     ⚑ ``seeded`` is out: §2a skips a ``<None>`` layer.  ⚑ A ``<None>`` the floor itself
-    supplies is not SET by anyone, so only a settings file's value warns.  The ONE
-    exception is the four workset-LOCAL ``workset.channels.*`` leaves under a null channel
-    root: the key a user CAN act on is ``workset.channelroot``, so that key and its file
-    are the ones to name — and ONE message answers for every bind they omit.
+    supplies is not SET by anyone, so only a settings file's value warns — but the key
+    such a floor null must still be TRACED to the file key behind it (:func:`_null_origin`),
+    or the warning names a read-only ``meta.*`` address nobody can set.  The workset-LOCAL
+    ``workset.channels.*`` leaves under a null channel root are the ONE case the key a user
+    acts on is a DIFFERENT one (``workset.channelroot``), and ONE message answers for every
+    bind it took (:func:`_warn_rootless_channel_binds`).
     """
     # (label, source key) for each bind a FLOOR-SUPPLIED ``<None>`` source omits.
     rootless: list[tuple[str, str]] = []
@@ -2577,11 +2609,31 @@ def _warn_lone_none_standard_binds(
                     if (where := _none_setter(written, ref, None)) is not None
                 ]
                 if not set_refs:
-                    # ⚑ A source the FLOOR nulled: only the workset-LOCAL channel
-                    # leaves are nulled that way, and the key a user can act on is
-                    # ``workset.channelroot``, so only a ``<None>`` the user wrote makes
-                    # this a warning.  A merely MISSING source says nothing: no file
-                    # nulled it, and §2a judges what was SET.
+                    # ⚑ A source the FLOOR nulled.  Two shapes reach here and they want
+                    # DIFFERENT keys named.  (1) A floor ``meta.*`` address — ``meta.box.inbox``
+                    # is null because the mailboxes key a user CAN set is; the file key is
+                    # the one they wrote, and :func:`_null_origin` finds it.  (2) The
+                    # workset-LOCAL ``workset.channels.*`` leaves under a null channel root;
+                    # there the key a user acts on IS ``workset.channelroot``, and ONE
+                    # message answers for every bind it took — :func:`_warn_rootless_channel_binds`.
+                    # A merely MISSING source says nothing: no file nulled it, and §2a
+                    # judges what was SET.
+                    origins = {
+                        origin for ref in refs
+                        if (origin := _null_origin(written, ref)) is not None
+                    }
+                    if origins:
+                        named = ", ".join(
+                            f"{shown_key(key)} (in {where})"
+                            for key, where in sorted(origins)
+                        )
+                        _warn_once(
+                            f"The standard bind {label} is omitted: its source "
+                            f"references {named}, which is null, but the entry itself "
+                            f"is not. Set {label} to null as well to omit it without "
+                            f"this warning."
+                        )
+                        continue
                     if any(snapshot_leaf(expanded, ref) is None for ref in refs):
                         rootless.append((label, ", ".join(dict.fromkeys(refs))))
                     continue
