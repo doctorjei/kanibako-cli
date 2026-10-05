@@ -33,6 +33,7 @@ from kanibako.settings.config import (
     refuses_null_box_scalar,
     refuses_null_path_key,
     system_path_ref_error,
+    uniform_anchor,
     unset_project_config_key,
 )
 from kanibako.agent_ref import GENERAL_SLOT, display_agent_ref
@@ -146,7 +147,7 @@ from kanibako.settings.config_io import (
 )
 from kanibako.errors import KanibakoError, UserCanceled
 from kanibako.log import get_logger
-from kanibako.settings.kb_store import IDENTITY_ANCHORS, IDENTITY_PAIRED, SCOPE_CONTAINMENT, __MISSING__
+from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
 from kanibako.settings.settings_categories import (
     refuse_non_scalar_family_value,
 )
@@ -1566,19 +1567,11 @@ def _per_owner_set_error(
     if all(reaches_identity(value, owner, mode, key=key, stored=stored) for mode in modes):
         return None
     noun, identity, shared_by, file_owner = PER_OWNER_SET_WORDS[owner]
-    cure = f"{value.rstrip('/')}/{_uniform_anchor(owner, agent)}"
+    cure = f"{value.rstrip('/')}/{uniform_anchor(owner, agent)}"
     return "Error: " + ERR_PER_OWNER_SET % (
         canonical, value, command_scope.value, written, noun, identity, shared_by, cure,
         canonical, file_owner,
     )
-
-
-def _uniform_anchor(level: str, agent: "str | None") -> str:
-    """The anchor spelling that reaches *level* in every box mode, for a cure."""
-    common = set.intersection(*(set(anchors) for anchors in IDENTITY_ANCHORS[level].values()))
-    spelled = "{" + min(common).replace("<agent>", agent or "<agent>") + "}"
-    paired = sorted(set(IDENTITY_PAIRED.get(level, {}).values()))
-    return "/".join([*(_uniform_anchor(p, agent) for p in paired), spelled])
 
 
 def set_config_value(

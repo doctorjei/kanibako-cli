@@ -940,7 +940,7 @@ class TestStopUnderAPerOwnerCollision:
             main(argv)
         return excinfo.value.code, writeback
 
-    @pytest.mark.parametrize("system", [None, {"canon": None}], ids=["collided", "null-canon"])
+    @pytest.mark.parametrize("system", [None, {"cache": None}], ids=["collided", "null-cache"])
     def test_stop_a_box_refuses_once_and_touches_nothing(
         self, std, config, tmp_home, live_runtime, capsys, system,
     ):
@@ -949,6 +949,13 @@ class TestStopUnderAPerOwnerCollision:
         if system is not None:
             doc["system"] = system
         self._write_system(std, doc)
+        if system is not None:
+            # The control: the strict read fails on the refused system: table first, so the
+            # per-owner refusal below comes from stop's TOLERANT retry, which keeps the tier.
+            from kanibako.settings.paths import load_std_paths
+
+            with pytest.raises(ConfigError, match="system.cache"):
+                load_std_paths(config)
         capsys.readouterr()
 
         rc, writeback = self._main(live_runtime, ["stop", name])
@@ -996,11 +1003,12 @@ class TestStopUnderAPerOwnerCollision:
         assert [p for p in opened if p.startswith(str(tmp_home))] == []
         writeback.assert_not_called()
 
-    def test_a_valid_system_registry_survives_a_null_canon(
+    def test_a_valid_system_registry_survives_a_refused_system_table(
         self, std, config, tmp_home, live_runtime, capsys,
     ):
-        """``system.canon: null`` drops only the ``system:`` table; the early tier, with its
-        ``workset.registry``, is kept, so the box resolves through ``members.yaml``.
+        """A null ``system.cache`` refuses the ``system:`` table, which tolerance drops; the
+        early tier, with its ``workset.registry``, is kept, so the box resolves through
+        ``members.yaml``.
         """
         from kanibako.settings.paths import load_std_paths
 
@@ -1015,8 +1023,10 @@ class TestStopUnderAPerOwnerCollision:
         (std.primary_workset / "registry.yaml").write_text(decoy)
         self._write_system(std, {
             "workset": {"registry": "{meta.workset.path}/members.yaml"},
-            "system": {"canon": None},
+            "system": {"cache": None},
         })
+        tolerant = load_std_paths(config, tolerate_bad_settings=True)
+        assert tolerant.early_system.system_refusal is not None
         capsys.readouterr()
 
         rc, _writeback = self._main(live_runtime, ["stop", str(workspace)])

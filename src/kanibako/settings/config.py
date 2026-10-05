@@ -1172,6 +1172,16 @@ def reaches_identity(
     return any(alt <= reached for alt in wanted)
 
 
+def uniform_anchor(level: str, agent: "str | None") -> str:
+    """The anchor spelling that reaches *level* in every box mode, for a cure."""
+    from kanibako.settings.kb_store import IDENTITY_ANCHORS, IDENTITY_PAIRED
+
+    common = set.intersection(*(set(anchors) for anchors in IDENTITY_ANCHORS[level].values()))
+    spelled = "{" + min(common).replace("<agent>", agent or "<agent>") + "}"
+    paired = sorted(set(IDENTITY_PAIRED.get(level, {}).values()))
+    return "/".join([*(uniform_anchor(p, agent) for p in paired), spelled])
+
+
 def _agent_of(key: str) -> str:
     """The agent an ``agent.<a>.…`` or ``meta.agent.<a>.…`` key belongs to."""
     parts = key.split(".")

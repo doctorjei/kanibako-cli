@@ -121,8 +121,7 @@ def _refuse_unanchored(
     The set door's judgment, :func:`~kanibako.settings.config.reaches_identity` in every box
     mode, through the raw cascade values, so the two doors agree on what is a collision.
     """
-    from kanibako.settings.config import reaches_identity
-    from kanibako.settings.config_interface import _uniform_anchor
+    from kanibako.settings.config import reaches_identity, uniform_anchor
     from kanibako.settings.config_keys import KEY_OWNERS
     from kanibako.settings.messages import ERR_PER_OWNER_READ, PER_OWNER_SET_WORDS
     from kanibako.settings.paths import BoxMode
@@ -144,7 +143,7 @@ def _refuse_unanchored(
     noun, identity, shared_by, file_owner = PER_OWNER_SET_WORDS[owner]
     raise ConfigError(ERR_PER_OWNER_READ % (
         dotted, value, early.system.file, noun, identity, shared_by,
-        dotted, f"{value.rstrip('/')}/{_uniform_anchor(owner, None)}", dotted, dotted,
+        dotted, f"{value.rstrip('/')}/{uniform_anchor(owner, None)}", dotted, dotted,
         file_owner,
     ))
 
