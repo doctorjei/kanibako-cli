@@ -922,16 +922,27 @@ def _floor_blind_default(
     key_scope = key.split(".", 1)[0]
     if key_scope == command_scope.value or key_scope not in writable_scopes(command_scope.value):
         return False
-    try:
-        refs, _vars = scan_tokens(value)
-    except ValueError:
-        return False  # a malformed token is the expander's own verdict; keep it
     unseen: list[str] = []
-    for name in refs:
-        # ⚑ ``snapshot_leaf``, not a walk of our own: a present-``None`` leaf COUNTS as
-        # seen, so a probe disagreeing here would refuse a value the launch takes.
-        if snapshot_leaf(candidate, name) is not __MISSING__:
-            continue
+    pending, followed = [value], set()
+    while pending:
+        try:
+            refs, _vars = scan_tokens(pending.pop())
+        except ValueError:
+            return False  # a malformed token is the expander's own verdict; keep it
+        for name in refs:
+            if name in followed:
+                continue
+            followed.add(name)
+            # ⚑ ``snapshot_leaf``, not a walk of our own: a present-``None`` leaf COUNTS as
+            # seen, so a probe disagreeing here would refuse a value the launch takes.
+            # A seen referent's own refs are the value's upstream chain too.
+            stored = snapshot_leaf(candidate, name)
+            if stored is not __MISSING__:
+                if isinstance(stored, str):
+                    pending.append(stored)
+                continue
+            unseen.append(name)
+    for name in unseen:
         segs = name.split(".", 2)
         ref_scope = segs[1] if segs[0] == "meta" and len(segs) > 1 else segs[0]
         # ⚑ A scopeless ref — ``@config.*``, ``@meta.runtime.*`` — names no scope, so the
@@ -939,7 +950,6 @@ def _floor_blind_default(
         # ``@meta.<scope>.*`` ref is judged by its SCOPE token.
         if ref_scope not in SCOPE_CONTAINMENT:
             return False
-        unseen.append(name)
     return bool(unseen) and all(
         key_validity(name, valid_agents=()) is None for name in unseen
     )
