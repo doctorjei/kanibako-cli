@@ -747,9 +747,10 @@ class TestLayeredHomeSeed:
     ):
         """A CLI-set ``agent.<a>.template`` seeds at create, like a settings-file one.
 
-        The key is ``set: cli+file``, and both verbs write it to the agent settings
-        file (``agents/<a>/agent.yaml``), the ``agent.<active>`` cascade level (spec §2).
-        §2a: create builds the launch snapshot to resolve the seed sources, so the
+        The key is ``set: cli+file``.  ``agent set`` writes the node's own file
+        (``agents/<a>/agent.yaml``, the ``agent.<active>`` cascade level); ``system set``
+        writes the system settings file's ``agent: <a>:`` table (keyspec §2a), a lower
+        cascade level the create resolve must still see.  §2a: create builds the launch snapshot to resolve the seed sources, so the
         create resolve must read that file's scalars as the launch does.  It used to
         read only the file's category tables, and the value did nothing.  For
         ``claude`` the store file is the discriminator: the user's value REPLACES
@@ -772,7 +773,12 @@ class TestLayeredHomeSeed:
 
         _cli_set_agent_key(std, verb, node, "template", str(root))
         agent_file = std.agents / node / "agent.yaml"
-        assert load_doc(agent_file)["self"]["template"] == str(root)
+        node_doc = load_doc(agent_file) if agent_file.exists() else {}
+        if verb == "agent set":
+            assert node_doc["self"]["template"] == str(root)
+        else:
+            assert load_doc(std.settings)["agent"][node]["template"] == str(root)
+            assert "template" not in (node_doc.get("self") or {}), node_doc
 
         _apply_init_seeds(
             std=std, proj=primary_proj, agent_name=node,
@@ -791,7 +797,7 @@ class TestLayeredHomeSeed:
     ):
         """``system set --null agent.claude.template`` SKIPS layer 2 at create (§2a).
 
-        The verb writes ``template: null`` to the agent file.  A create resolve that
+        The verb writes ``template: null`` to the system file.  A create resolve that
         ignores the file keeps the floor's store path, and the store file seeds.
         (``agent set --null`` is refused at agent scope; ``agent reset`` is its verb.)
         """
@@ -1545,7 +1551,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
     ):
         """``system set agent.shell.template=…`` feeds the handbook's agent layer too.
 
-        The verb writes the agent settings file, and the handbook copy reads the
+        The verb writes the system settings file, and the handbook copy reads the
         snapshot the create seed resolve built, so that resolve must read the file.
         """
         self._populate(std)
