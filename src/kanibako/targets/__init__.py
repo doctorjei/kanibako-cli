@@ -12,7 +12,6 @@ from pathlib import Path
 
 from kanibako.agent_ref import AGENT_ENTRY_POINT_GROUP, reserved_pseudo_agent_reason
 from kanibako.identifiers import agent_node_case, find_identifier
-from kanibako.settings.bootstrap import STANDALONE_META_DIR
 from kanibako.targets.base import AgentInstall, Mount, Target, TargetSetting
 from kanibako.targets.shell import ShellTarget
 
@@ -254,7 +253,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     2. ``kanibako.plugins.*`` module scan (bind-mount fallback)
     3. User directory (``<config.data>/plugins/``, by default
        ``~/.local/share/kanibako/plugins/``)
-    4. Project directory (``{project}/box_data/plugins/``)
+    4. Project directory (the project's RESOLVED box store, ``.../plugins/``)
     """
     targets: dict[str, type[Target]] = {}
     # node -> (declared name, tier), so ``_register`` can tell a CASE COLLISION from
@@ -343,14 +342,17 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # ⚑ ``resolve_data_path`` is PURE and TOTAL (creates nothing, never raises, degrades to
     # the default): discovery runs on every command, including before a config file exists,
     # so it must not acquire a failure mode here.
-    from kanibako.settings.paths import resolve_data_path
+    from kanibako.settings.paths import resolve_data_path, standalone_box_store
 
     _scan_directory_plugins(resolve_data_path() / "plugins", targets, declared)
 
     # Project-level file-drop plugins.  Absence is not an error.
     if project_path is not None:
+        # ⚑ RESOLVED: the plugins dir hangs off the box's own store, so a store
+        # repointed by ``workset.boxes`` moves it — composing ``box_data/`` here
+        # would scan a directory the box does not use, and miss the one it does.
         _scan_directory_plugins(
-            project_path / STANDALONE_META_DIR / "plugins", targets, declared,
+            standalone_box_store(project_path) / "plugins", targets, declared,
         )
 
     return targets

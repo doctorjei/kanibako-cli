@@ -1747,25 +1747,36 @@ def _standalone_teardown_plan(
             standalone_box_name(root, registered_name))
 
 
-def _teardown_standalone_box(root: Path, plan: _StandaloneTeardown) -> bool:
+def _teardown_standalone_box(
+    root: Path, plan: _StandaloneTeardown, *, early: EarlyScope,
+) -> bool:
     """Delete a STANDALONE box's in-tree metadata + its logs; the workspace and *root* stay.
 
     *plan* is :func:`_standalone_teardown_plan`, resolved by the caller before an
     irreversible step of its own.
     """
     from kanibako.project.workset import report_retained_vaults
-    from kanibako.settings.paths import STANDALONE_META_DIR
+    from kanibako.settings.paths import (
+        report_retained_store, standalone_store_teardown_plan)
 
-    metadata_dir = root / STANDALONE_META_DIR
+# ⚑⚑ RESOLVED, and only a store STRICTLY BELOW *root* is removed: the split and its
+    # reason are :func:`standalone_store_teardown_plan`'s, not restated here.
+    metadata_dir, retained_store = standalone_store_teardown_plan(root, early=early)
     removable_vault, retained_vault, logs_dir, box_name = plan
     # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
-    # ``box_data/`` goes too.
+    # the store goes too.
     for log_file in remove_box_logs(logs_dir, box_name):
         print(f"Removed log: {log_file}")
+    if retained_store is not None:
+        report_retained_store(retained_store, root)
+    if metadata_dir is None:
+        # ⚑ Nothing in-root to remove: the store was retained above, and unlinking the
+        # ROOT workset.yaml now would strand a box whose metadata is still on disk.
+        return False
     if _purge_dir(metadata_dir):
         print(f"Removed metadata: {metadata_dir}")
         # ⚑ The ROOT workset.yaml is the WORKSET tier AND half the §5 detection marker —
-        # drop it too, or the box is re-detected.  (The BOX tier went with box_data/.)
+        # drop it too, or the box is re-detected.  (The BOX tier went with the store.)
         settings_file = root / WORKSET_META_FILE
         if settings_file.is_file():
             settings_file.unlink()
@@ -1806,7 +1817,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
     """Handle ``rm <name>`` when *name* resolves only to a deregistered entry."""
     from kanibako.project import registry_store
     from kanibako.errors import UserCanceled
-    from kanibako.settings.paths import STANDALONE_META_DIR
+    from kanibako.settings.paths import standalone_box_store
     from kanibako.utils import confirm_prompt
 
     kind = entry.get("kind")
@@ -1856,7 +1867,7 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         return 1
 
     if kind == "standalone":
-        exists = (root / STANDALONE_META_DIR).is_dir()
+        exists = standalone_box_store(root).is_dir()
     else:
         exists = metadata_dir.is_dir()
 
@@ -1880,7 +1891,10 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
             return 2
 
     if kind == "standalone":
-        _teardown_standalone_box(root, _standalone_teardown_plan(root, name, early=_early_scope(std, BoxMode.standalone)))
+        _teardown_standalone_box(
+            root, _standalone_teardown_plan(
+                root, name, early=_early_scope(std, BoxMode.standalone)),
+            early=_early_scope(std, BoxMode.standalone))
     else:
         _teardown_primary_box(std, name, metadata_dir)
 
@@ -1929,14 +1943,13 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
 
     from kanibako.project import registry_store
     from kanibako.errors import UserCanceled
-    from kanibako.settings.paths import STANDALONE_META_DIR
+    from kanibako.settings.paths import standalone_box_store
     from kanibako.utils import confirm_prompt
 
     print(f"Removing standalone box: {box_name} ({root})")
     root_path = Path(root) if root is not None else None
-    metadata_dir = root_path / STANDALONE_META_DIR if root_path is not None else None
-    if args.purge and root_path is not None:
-        refuse_inherited_per_owner(root_path, _early_scope(std, BoxMode.standalone))
+    metadata_dir = (standalone_box_store(root_path, early=_early_scope(std, BoxMode.standalone))
+                    if root_path is not None else None)
     # ⚑ Resolved BEFORE the unregister: a teardown that refuses stops ``rm`` while the
     # box is still registered (see :func:`_standalone_teardown_plan`).
     plan = None
@@ -1957,7 +1970,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
                 except UserCanceled:
                     print("Aborted (box was already unregistered).")
                     return 2
-            _teardown_standalone_box(root_path, plan)
+            _teardown_standalone_box(root_path, plan, early=_early_scope(std, BoxMode.standalone))
         else:
             print(f"No metadata directory found at {metadata_dir}")
     elif root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
