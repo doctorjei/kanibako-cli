@@ -114,12 +114,11 @@ class TestWorksetCreate:
         err = capsys.readouterr().err
         assert "already in use" in err
 
-    def test_create_refuses_primary_box_name_collision(
-        self, config_file, tmp_home, capsys
+    def test_create_takes_a_primary_box_name(
+        self, config_file, tmp_home, capsys, caplog
     ):
-        """Cross-kind (per-kind name policy, Jei 2026-07-08): a new workset whose
-        name is ALREADY a primary box name refuses (teaching --force), leaving no
-        on-disk skeleton."""
+        """Box and workset names are separate namespaces (spec § Detection & import):
+        a workset named like a primary box is created, and nothing is said."""
         from kanibako.commands.workset_cmd import run_create
         from kanibako.settings.paths import load_std_paths, register_primary_box_name
 
@@ -132,36 +131,15 @@ class TestWorksetCreate:
         ws_root = tmp_home / "shared_ws"
         args = argparse.Namespace(
             path=str(ws_root), name="common",
-            standalone=False, image=None, no_vault=False, force=False,
+            standalone=False, image=None, no_vault=False,
         )
-        rc = run_create(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "primary box" in err and "--force" in err
-        # Refused before side effects — no workset skeleton on disk.
-        assert not ws_root.exists()
-
-    def test_create_force_allows_primary_box_name_collision(
-        self, config_file, tmp_home, capsys
-    ):
-        """--force lets a workset take a primary-box name (deliberate shadow)."""
-        from kanibako.commands.workset_cmd import run_create
-        from kanibako.settings.paths import load_std_paths, register_primary_box_name
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        register_primary_box_name(
-            std.primary_workset, std.registry, "common", str(tmp_home / "box"),
-        )
-
-        ws_root = tmp_home / "shared_ws"
-        args = argparse.Namespace(
-            path=str(ws_root), name="common",
-            standalone=False, image=None, no_vault=False, force=True,
-        )
-        rc = run_create(args)
+        with caplog.at_level("WARNING"):
+            rc = run_create(args)
         assert rc == 0
-        assert "Created working set" in capsys.readouterr().out
+        captured = capsys.readouterr()
+        assert "Created working set" in captured.out
+        assert "primary box" not in captured.err
+        assert [r for r in caplog.records if r.levelname == "WARNING"] == []
         assert ws_root.resolve().is_dir()
 
     def test_create_reserved_sentinel_error(self, config_file, tmp_home, capsys):

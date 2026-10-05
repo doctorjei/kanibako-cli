@@ -65,7 +65,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     ws_sub = p.add_subparsers(dest="workset_command", metavar="COMMAND")
 
-    # workset create [path] [--name N] [--standalone] [-i IMAGE] [--no-vault] [--force]
+    # workset create [path] [--name N] [--standalone] [-i IMAGE] [--no-vault]
     create_p = ws_sub.add_parser(
         "create",
         help="Create a new working set",
@@ -94,11 +94,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     create_p.add_argument(
         "--no-vault", action="store_true",
         help="Disable vault directories",
-    )
-    create_p.add_argument(
-        "--force", action="store_true",
-        help="Create even if the name is already used by a primary box "
-             "(the box shadows this workset in bare-name resolution)",
     )
     create_p.set_defaults(func=run_create)
 
@@ -412,7 +407,7 @@ def run_create(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        ws = create_workset(name, path, std, force=getattr(args, "force", False))
+        ws = create_workset(name, path, std)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -423,7 +418,7 @@ def run_create(args: argparse.Namespace) -> int:
     # ⚑ These flags set BOX-SCOPE keys at the WORKSET tier — ``box.image`` and
     # ``box.enable_vault``.  Both reach a contained box as an OVERRIDABLE DOWNWARD DEFAULT
     # through the ordinary settings cascade (``paths.resolve_box_enable_vault`` for the
-    # vault flag; it was a hand-opened two-file read until 2026-08-29).  A
+    # vault flag).  A
     # top-level ``enable_vault``/``standalone`` is not a declared key at all
     # (spec §0: the keyspace is CLOSED), so it would be carried into the store as
     # an undeclared path, not merely ignored.
@@ -1329,12 +1324,7 @@ def _workset_preview_collapse(entries: "list[CategoryEntry]") -> "CollapsedStore
 
     # ⚑⚑ THE ARBITRATION IS THE LAUNCH'S OWN — the same two calls
     # ``commands.start._install_assembly_collapse`` makes, not a second walk.
-    # Until 2026-08-26 this display printed the ENTRY LIST: every stored binding,
-    # pre-collapse, with no mask, no containment and no §0 row applied. So a
-    # workset that ALSO declared ``workset.masks`` over a share's destination
-    # listed that share as a live mount while the box received nothing at all
-    # (rc 0, no message), and one whose declarations a launch REFUSES outright
-    # listed cleanly. ⚑ The COLLISION WARNINGS a launch emits are not raised
+    # ⚑ The COLLISION WARNINGS a launch emits are not raised
     # here: §0's exempt pair is an ambiguity between two ABSTRACT declarations, and a
     # share is never one of the two — the surviving share is unaffected.
     # ⚑ THE ENTRY LIST GOES IN AS WELL, and it buys exactly one thing: the

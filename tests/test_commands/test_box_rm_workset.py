@@ -93,12 +93,7 @@ def _primary_names() -> list[str]:
 
 
 def _make_box(name: str, root: Path) -> Path:
-    """Create a REAL primary box *name* (data under ``std.boxes/<name>``).
-
-    Must run BEFORE the workset of the same name: a box created second is
-    refused, which is what makes the shadowing an explicit, sanctioned state
-    (``workset create --force``) rather than an accident.
-    """
+    """Create a REAL primary box *name* (data under ``std.boxes/<name>``)."""
     from kanibako.settings.config import load_config, user_config_file
     from kanibako.settings.paths import resolve_project
 
@@ -110,11 +105,11 @@ def _make_box(name: str, root: Path) -> Path:
     return _std().boxes / name
 
 
-def _make_workset(name: str, root: Path, *, force: bool = False) -> Path:
+def _make_workset(name: str, root: Path) -> Path:
     """Create a REAL workset *name* and register it in the global index."""
     from kanibako.project.workset import create_workset
 
-    create_workset(name, root, _std(), force=force)
+    create_workset(name, root, _std())
     return root
 
 
@@ -140,7 +135,7 @@ def test_rm_of_a_workset_name_refuses_and_keeps_the_box_data_sharing_the_name(
     """`box rm <workset> --purge` refuses and leaves `std.boxes/<name>` intact."""
     env = _make_env(tmp_path, monkeypatch)
     boxes = _make_box("foo", tmp_path / "box" / "foo")
-    ws_root = _make_workset("foo", tmp_path / "ws" / "foo", force=True)
+    ws_root = _make_workset("foo", tmp_path / "ws" / "foo")
     _drop_membership("foo")                       # box data, no membership
     marker = boxes / "MARKER.txt"
     marker.write_text("user data a workset rm must not delete\n")
@@ -163,7 +158,7 @@ def test_rm_of_a_deregistered_box_purges_it_and_leaves_the_workset_alone(
     """The name routes to the BOX: retained data goes, the workset stays put."""
     env = _make_env(tmp_path, monkeypatch)
     boxes = _make_box("foo", tmp_path / "box" / "foo")
-    ws_root = _make_workset("foo", tmp_path / "ws" / "foo", force=True)
+    ws_root = _make_workset("foo", tmp_path / "ws" / "foo")
     # Deregister the box the supported way — its metadata is RETAINED.
     assert _cli(env, "box", "rm", "foo").returncode == 0
     marker = boxes / "MARKER.txt"
@@ -205,7 +200,7 @@ def test_rm_of_a_name_shared_with_a_workset_removes_the_box_only(
     """Both registered: the BOX goes (data included), the workset stays."""
     env = _make_env(tmp_path, monkeypatch)
     boxes = _make_box("foo", tmp_path / "box" / "foo")
-    ws_root = _make_workset("foo", tmp_path / "ws" / "foo", force=True)
+    ws_root = _make_workset("foo", tmp_path / "ws" / "foo")
     marker = boxes / "MARKER.txt"
     marker.write_text("box data\n")
     ws_files = _snapshot(ws_root)
@@ -227,7 +222,7 @@ def test_workset_rm_still_removes_the_workset_of_a_shared_name(
     """`workset rm` is the one carrier for workset removal — it still works."""
     env = _make_env(tmp_path, monkeypatch)
     boxes = _make_box("foo", tmp_path / "box" / "foo")
-    _make_workset("foo", tmp_path / "ws" / "foo", force=True)
+    _make_workset("foo", tmp_path / "ws" / "foo")
     marker = boxes / "MARKER.txt"
     marker.write_text("box data\n")
 

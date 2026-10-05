@@ -85,9 +85,9 @@ _MISSING_WORKSPACE = "missing workspace"
 _CREATE_SHAPING_FLAGS = ("name", "image", "agent", "private", "no_vault")
 
 # SUBJECT — writes no stored box state.  Each one selects WHICH box, bypasses a
-# refusal, or performs the deferred registration (``--register``, governed by
-# ``--force``) that is itself part of what a recovery completes.
-_CREATE_SUBJECT_FLAGS = ("path", "standalone", "allow_home", "force", "register")
+# refusal, or performs the deferred registration (``--register``) that is itself
+# part of what a recovery completes.
+_CREATE_SUBJECT_FLAGS = ("path", "standalone", "allow_home", "register")
 
 
 def _add_target_group(
@@ -173,11 +173,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--private", action="store_true",
         help="Create a PRIVATE box: disable global and workset credential "
              "sharing so the host's OAuth token is never seeded into it.",
-    )
-    create_p.add_argument(
-        "--force", action="store_true",
-        help="Create even if --name is already used by a workset (the box "
-             "shadows that workset in bare-name resolution)",
     )
     create_p.add_argument(
         "--recover", action="store_true",
@@ -393,11 +388,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     register_p.add_argument(
         "target",
         help="Deregistered box name, or path to a standalone box on disk",
-    )
-    register_p.add_argument(
-        "--force", action="store_true",
-        help="Re-register even if the name is used by a workset (the box then "
-             "shadows that workset in bare-name resolution)",
     )
     register_p.set_defaults(func=run_register)
 
@@ -1058,14 +1048,13 @@ def run_create(args: argparse.Namespace) -> int:
         ), file=sys.stderr)
         return 1
 
-    # ⚑ Cross-kind name guard, run HERE so it refuses BEFORE the box dir + seed materialize.
+    # ⚑ Same-kind name guard, run HERE so it refuses BEFORE the box dir + seed materialize.
     # A NAMED box's name is its membership, guarded above.
     if _named_spec is None and getattr(args, "name", None) and not args.standalone:
         try:
             check_primary_box_name_free(
                 std.primary_workset, std.registry,
                 args.name, str(effective_path),
-                force=getattr(args, "force", False),
             )
             # ⚑ I4 data-loss guard — the HOME check the name check above does not make.
             _assert_primary_home_free_for_create(std, args.name)
@@ -1174,17 +1163,15 @@ def run_create(args: argparse.Namespace) -> int:
     # ``args.agent`` at any of them again reopens the defect (pinned by
     # ``TestAgentFlagIsReadOnce``).  ``None`` here is "resolve from settings", NEVER
     # "no agent": it routes each consumer to the ``pref.system.agent`` the persist
-    # wrote, so seed and settings cannot disagree.  The module's llm-doc carries the
-    # full reasoning.
+    # wrote, so seed and settings cannot disagree.
     _agent_arg = None if is_recovery else getattr(args, "agent", None)
     # ⚑⚑ "GIVEN" IS ``is not None`` AT EVERY DOOR — argparse's own absent-vs-present
     # answer, and the ONE predicate both the store check here and the
     # ``pref.system.agent`` persist below ask.  Truthiness and ``.strip()`` truthiness
     # are DIFFERENT questions and they disagreed on ``--agent "  "``: it cleared the
-    # truthy door and was dropped by the stripping one.  A flag the user TYPED is given
+    # truthy door and was dropped by the other.  A flag the user TYPED is given
     # even when its value is blank, so it is validated rather than quietly read as
-    # "resolve from settings" — silently steering the box to a different agent than the
-    # one asked for is the dishonest half of that disagreement.
+    # "resolve from settings".
     if _agent_arg is not None:
         # ⚑ ``parse_agent_address`` (which strips) OWNS what a legal SELECTING ref is —
         # charset, pseudo-agent reservation, and empty-after-strip — so a blank ref is
@@ -1195,8 +1182,7 @@ def run_create(args: argparse.Namespace) -> int:
         # ``Error:`` line.  The parse is for the REFUSAL only; the RAW ref is what is
         # stored and passed on (selection canonicalizes on read).
         parse_agent_address(_agent_arg)
-        # The ONE normalized value every consumer below reads — the persist used to
-        # strip again on its own, which is how the two doors drifted apart (P10).
+        # The ONE normalized value every consumer below reads (P10).
         _agent_arg = _agent_arg.strip()
         # ⚑ The store check runs BEFORE the verdict below, so a broken store is reported
         # as itself rather than as the verdict's downstream "no endpoint configured".
@@ -1237,7 +1223,6 @@ def run_create(args: argparse.Namespace) -> int:
         try:
             add_project(
                 _named_ws, _member, _named_ws.workspaces_dir / _member, std,
-                force=getattr(args, "force", False),
             )
         except WorksetError as e:  # ``add_project`` unwinds its own writes
             print(f"Error: {e}", file=sys.stderr)
@@ -1360,7 +1345,7 @@ def run_create(args: argparse.Namespace) -> int:
     # workset, so it always registers; a standalone box only opts in.  An unregistered
     # box is adopted later by ``kanibako box register <path>`` (index-only, seed-free).
     if not args.standalone or standalone_register:
-        _register_new_box(std, proj, force=getattr(args, "force", False))
+        _register_new_box(std, proj)
     _clear_create_entry(std, proj)
 
     mode = (
@@ -2093,7 +2078,7 @@ def run_rm(args: argparse.Namespace) -> int:
     return 0
 
 
-def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
+def _readopt_deregistered(std, name: str, entry: dict) -> int:
     """⚑ INDEX-ONLY, SEED-FREE readopt: move a box from ``deregistered`` back to active."""
     from kanibako.project import registry_store
     from kanibako.launch.box_resolve import standalone_settings_present
@@ -2150,7 +2135,7 @@ def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int:
     # ⚑ The REUSED registration API carries every conflict guard — do not inline a write.
     try:
         register_primary_box_name(
-            std.primary_workset, std.registry, name, str(workspace), force=force,
+            std.primary_workset, std.registry, name, str(workspace),
         )
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -2175,8 +2160,6 @@ def run_register(args: argparse.Namespace) -> int:
         print("Error: no box specified to register.", file=sys.stderr)
         return 1
 
-    force = getattr(args, "force", False)
-
     # 1. DEREGISTERED readopt — a bare name resolves here FIRST; the blob's ``kind`` routes.
     # ⚑ Case-blind (spec §0), and the readopt takes the STORED spelling: it re-registers
     # the box's name, membership entry, home and log paths, all of which a typed
@@ -2186,7 +2169,7 @@ def run_register(args: argparse.Namespace) -> int:
     dereg_name = find_identifier(target, deregistered) if by_name else None
     if dereg_name is not None:
         return _readopt_deregistered(
-            std, dereg_name, dict(deregistered[dereg_name]), force=force,
+            std, dereg_name, dict(deregistered[dereg_name]),
         )
 
     # 2. Already-ACTIVE guards — rc 0 no-op for a live box, a redirect for a workset.
