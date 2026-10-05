@@ -25,6 +25,7 @@ from kanibako.project import import_reconcile, registry_store
 from kanibako.launch import journal
 from kanibako.settings.paths import (
     BoxMode,
+    _early_scope,
     detect_project_mode,
     resolve_project,
     resolve_standalone_project,
@@ -100,14 +101,16 @@ class TestImportBehavioralEquivalence:
         assert proj.name
         # Drop the PRIMARY-membership entry (the sole store since the global
         # ``projects:`` section retired).
-        unregister_primary_box_name(std.primary_workset, proj.name)
+        unregister_primary_box_name(std.primary_workset, proj.name,
+                early=_early_scope(std, BoxMode.primary))
         capsys.readouterr()
 
         proj2 = resolve_project(
             std, config, project_dir=str(project_dir), initialize=False,
         )
         assert proj2.name == ""  # not recovered from disk
-        assert load_primary_boxes(std.primary_workset) == {}
+        assert load_primary_boxes(std.primary_workset,
+                early=_early_scope(std, BoxMode.primary)) == {}
         assert journal.read_journal(std.journal) == {}
 
     def test_named_workset_import_empty_journal_at_rest(
@@ -358,7 +361,7 @@ class TestConnectJournal:
         rc = run_connect(_connect_args("cjws", src, "cjproj"))
         assert rc == 0
         assert journal.read_journal(std.journal) == {}
-        reloaded = load_workset(ws.root, ws.name)
+        reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)
         assert any(p.name == "cjproj" for p in reloaded.projects)
 
     def test_connect_entry_present_during_membership_write(
@@ -463,7 +466,7 @@ class TestConnectSelfHealOnResolve:
         assert journal.pending_import(std.journal, box_key) is not None
 
         # Resolve the already-member box → self-heal clears the stale entry.
-        ws = load_workset(tmp_home / "heal_ws", "healws")
+        ws = load_workset(tmp_home / "heal_ws", "healws", early_system=std.early_system)
         proj = resolve_workset_project(
             WorksetSpec.from_workset(ws), "healproj", std, config,
             initialize=False,
@@ -504,7 +507,7 @@ class TestConnectSelfHealOnResolve:
         )
         capsys.readouterr()
 
-        ws = load_workset(tmp_home / "cr_ws", "crws")
+        ws = load_workset(tmp_home / "cr_ws", "crws", early_system=std.early_system)
         resolve_workset_project(
             WorksetSpec.from_workset(ws), "crproj", std, config,
             initialize=False,
@@ -537,7 +540,7 @@ class TestDeferredPipelinesDoNotJournalConnect:
         add_project(ws, "dpproj", src, std)  # std passed — but NO journal entry.
 
         assert journal.read_journal(std.journal) == {}
-        reloaded = load_workset(ws.root, ws.name)
+        reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)
         assert any(p.name == "dpproj" for p in reloaded.projects)
 
     def test_copy_into_workset_writes_no_journal_entry(
@@ -569,7 +572,7 @@ class TestDeferredPipelinesDoNotJournalConnect:
 
         # The pipeline registered the project but journaled NO connect op.
         assert journal.read_journal(std.journal) == {}
-        reloaded = load_workset(ws.root, ws.name)
+        reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)
         assert any(p.name == "ciproj" for p in reloaded.projects)
 
     def test_no_journal_connect_call_in_lifecycle_module(self) -> None:

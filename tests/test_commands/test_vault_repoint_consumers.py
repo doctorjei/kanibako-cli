@@ -23,6 +23,8 @@ import pytest
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import (
+    BoxMode,
+    _early_scope,
     load_std_paths,
     resolve_project,
     resolve_standalone_project,
@@ -192,7 +194,7 @@ class TestMoveIntoRepointedWorksetReportsTheRealVault:
             std, config, force=True,
         )
 
-        ws = load_workset(ws_root, "ws")
+        ws = load_workset(ws_root, "ws", early_system=std.early_system)
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), "proj", std, config,
                                        initialize=False)
         # The dir that EXISTS is the one under the resolved arm...
@@ -231,7 +233,7 @@ class TestMoveIntoRepointedWorksetReportsTheRealVault:
             std, config, force=True,
         )
 
-        ws = load_workset(ws_root, "wsp")
+        ws = load_workset(ws_root, "wsp", early_system=std.early_system)
         proj = resolve_workset_project(WorksetSpec.from_workset(ws), "projp", std, config,
                                        initialize=False)
         assert proj.vault_ro_path == ws_root / "vault" / "ro" / "projp"
@@ -647,7 +649,7 @@ class TestDuplicateGitignoreTargetsTheSkeletonParent:
         new_path.mkdir()
         establish_standalone(std, new_path, enable_vault=True)
 
-        ro, rw = resolve_workset_vault_pair(new_path)
+        ro, rw = resolve_workset_vault_pair(new_path, early=_early_scope(std, BoxMode.standalone))
         assert ro == new_path / "vault" / "ro"
         assert rw == new_path / "vault" / "rw"
         assert ro.parent == new_path / "vault"

@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 
 from kanibako.errors import LegacyWorksetIdentityError, WorksetError
-from kanibako.settings.paths import BoxMode, StandardPaths
+from kanibako.channels.channels import workset_token
+from kanibako.settings.paths import BoxMode, StandardPaths, _early_scope, resolve_system_paths
+from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem, early_system
 from kanibako.project.workset import (
     DEFAULT_WORKSET_ALIAS,
     DEFAULT_WORKSET_ID,
@@ -20,6 +22,16 @@ from kanibako.project.workset import (
     remove_project,
     resolve_workset_name,
 )
+
+
+def _bare_early_system(home: Path) -> EarlySystem:
+    """The early-system record a test with no ``std`` builds from the defaults under *home*."""
+    return early_system({}, resolve_system_paths({}, data_home=home, home=home))
+
+
+def _bare_early(home: Path, mode: BoxMode, workset_name: str | None = None) -> EarlyScope:
+    """:func:`_bare_early_system`, scoped to a *mode* box in *workset_name*."""
+    return EarlyScope(_bare_early_system(home), workset_token(mode, workset_name))
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +131,8 @@ class TestCreateWorkset:
 
         proj = tmp_home / "proj"
         proj.mkdir()
-        register_primary_box_name(std.primary_workset, std.registry, "foo", str(proj))
+        register_primary_box_name(std.primary_workset, std.registry, "foo", str(proj),
+                early=_early_scope(std, BoxMode.primary))
 
         root = tmp_home / "worksets" / "Foo"
         with pytest.raises(WorksetError, match="already in use by a primary box"):
@@ -133,7 +146,8 @@ class TestCreateWorkset:
 
         proj = tmp_home / "proj"
         proj.mkdir()
-        register_primary_box_name(std.primary_workset, std.registry, "foo", str(proj))
+        register_primary_box_name(std.primary_workset, std.registry, "foo", str(proj),
+                early=_early_scope(std, BoxMode.primary))
 
         with pytest.raises(WorksetError, match="the box is named 'foo'"):
             create_workset("Foo", tmp_home / "worksets" / "Foo", std)
@@ -223,8 +237,10 @@ class TestDefaultWorkset:
         proj_b.mkdir()
         # default_workset synthesizes members from the PRIMARY membership (the
         # sole store since the global ``projects:`` section retired).
-        register_primary_box_name(std.primary_workset, std.registry, "alpha", str(proj_a))
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(proj_b))
+        register_primary_box_name(std.primary_workset, std.registry, "alpha", str(proj_a),
+                early=_early_scope(std, BoxMode.primary))
+        register_primary_box_name(std.primary_workset, std.registry, "beta", str(proj_b),
+                early=_early_scope(std, BoxMode.primary))
 
         ws = default_workset(std)
         by_name = {p.name: p.source_path for p in ws.projects}
@@ -271,7 +287,8 @@ class TestResolveWorksetName:
 
         proj = tmp_home / "proj"
         proj.mkdir()
-        register_primary_box_name(std.primary_workset, std.registry, "proj", str(proj))
+        register_primary_box_name(std.primary_workset, std.registry, "proj", str(proj),
+                early=_early_scope(std, BoxMode.primary))
         # --force: the workset shares the shadowed name deliberately.
         create_workset("proj", tmp_home / "worksets" / "proj", std, force=True)
 
@@ -300,7 +317,7 @@ class TestLoadWorkset:
         root = tmp_home / "worksets" / "my-set"
         ws = create_workset("my-set", root, std)
 
-        loaded = load_workset(root, "my-set")
+        loaded = load_workset(root, "my-set", early_system=std.early_system)
         assert loaded.name == ws.name
         assert loaded.root == ws.root
         assert loaded.projects == []
@@ -310,20 +327,21 @@ class TestLoadWorkset:
         ws = create_workset("my-set", root, std)
         add_project(ws, "proj-a", tmp_home / "project")
 
-        loaded = load_workset(root, "my-set")
+        loaded = load_workset(root, "my-set", early_system=std.early_system)
         assert len(loaded.projects) == 1
         assert loaded.projects[0].name == "proj-a"
 
     def test_missing_root_raises(self, std, tmp_home):
         with pytest.raises(WorksetError, match="does not exist"):
-            load_workset(tmp_home / "nonexistent", "nonexistent")
+            load_workset(tmp_home / "nonexistent", "nonexistent", early_system=std.early_system)
 
     def test_the_name_comes_from_the_caller_not_from_disk(self, std, tmp_home):
         """⚑⚑ Nothing under the root records a name, so the caller's is the only one."""
         root = tmp_home / "worksets" / "my-set"
         create_workset("my-set", root, std)
 
-        assert load_workset(root, "whatever-the-registry-said").name == (
+        assert load_workset(root, "whatever-the-registry-said",
+                early_system=std.early_system).name == (
             "whatever-the-registry-said"
         )
 
@@ -332,7 +350,7 @@ class TestLoadWorkset:
         root = tmp_home / "worksets" / "no-registry"
         root.mkdir(parents=True)
 
-        loaded = load_workset(root, "no-registry")
+        loaded = load_workset(root, "no-registry", early_system=std.early_system)
         assert loaded.name == "no-registry"
         assert loaded.projects == []
 
@@ -434,7 +452,7 @@ class TestAddProject:
         ws = create_workset("my-set", root, std)
         add_project(ws, "cool-app", tmp_home / "project")
 
-        loaded = load_workset(root, "my-set")
+        loaded = load_workset(root, "my-set", early_system=std.early_system)
         assert len(loaded.projects) == 1
         assert loaded.projects[0].name == "cool-app"
         # ⚑ The REAL workspace, not the caller's source: an in-tree member runs on
@@ -459,7 +477,7 @@ class TestAddProject:
         add_project(ws, "alpha", proj_a)
         add_project(ws, "beta", proj_b)
 
-        loaded = load_workset(root, "my-set")
+        loaded = load_workset(root, "my-set", early_system=std.early_system)
         assert len(loaded.projects) == 2
         names = {p.name for p in loaded.projects}
         assert names == {"alpha", "beta"}
@@ -642,7 +660,7 @@ class TestUnifiedProjectRecord:
         ws = create_workset("my-set", root, std)
         add_project(ws, "proj", tmp_home / "project")
 
-        loaded = load_workset(root, "my-set")
+        loaded = load_workset(root, "my-set", early_system=std.early_system)
         assert len(loaded.projects) == 1
         rec = loaded.projects[0]
         assert rec.name == "proj"
@@ -682,7 +700,7 @@ class TestRemoveProject:
         assert removed.name == "proj"
         assert len(ws.projects) == 0
 
-        loaded = load_workset(root, "my-set")
+        loaded = load_workset(root, "my-set", early_system=std.early_system)
         assert len(loaded.projects) == 0
 
     def test_drops_the_membership_row_for_an_in_tree_member(self, std, tmp_home):
@@ -873,8 +891,10 @@ class TestWorksetWorkspacesResolved:
             resolve_workset_workspaces,
         )
 
-        assert resolve_workset_workspaces(tmp_path, None) == tmp_path / "workspaces"
-        assert resolve_workset_channelroot(tmp_path, None) == tmp_path / "channels"
+        assert resolve_workset_workspaces(tmp_path, None,
+                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "workspaces"
+        assert resolve_workset_channelroot(tmp_path, None,
+                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "channels"
 
     def test_resolver_root_relative_repoint_is_spelled_with_the_ref(self, tmp_path):
         from kanibako.project.workset import (
@@ -887,8 +907,10 @@ class TestWorksetWorkspacesResolved:
         # directory with the workset is still expressible — it just has to be SAID.
         doc = {"workset": {"workspaces": "@meta.workset.path/pods",
                            "channelroot": "@meta.workset.path/comms"}}
-        assert resolve_workset_workspaces(tmp_path, doc) == tmp_path / "pods"
-        assert resolve_workset_channelroot(tmp_path, doc) == tmp_path / "comms"
+        assert resolve_workset_workspaces(tmp_path, doc,
+                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "pods"
+        assert resolve_workset_channelroot(tmp_path, doc,
+                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "comms"
 
     def test_resolver_bare_relative_repoint_is_refused(self, tmp_path):
         """[R147]: the anchor is ~50/50 between the workset root and the cwd, so the
@@ -899,7 +921,8 @@ class TestWorksetWorkspacesResolved:
 
         doc = {"workset": {"channelroot": "comms"}}
         with pytest.raises(SettingsError) as excinfo:
-            resolve_workset_channelroot(tmp_path, doc)
+            resolve_workset_channelroot(tmp_path, doc,
+                    early=_bare_early(tmp_path, BoxMode.primary))
         message = str(excinfo.value)
         assert str(tmp_path / "comms") in message
         assert str(Path.cwd() / "comms") in message
@@ -908,14 +931,16 @@ class TestWorksetWorkspacesResolved:
         from kanibako.project.workset import resolve_workset_workspaces
 
         doc = {"workset": {"workspaces": "/srv/pods"}}
-        assert resolve_workset_workspaces(tmp_path, doc) == Path("/srv/pods")
+        assert resolve_workset_workspaces(tmp_path, doc,
+                early=_bare_early(tmp_path, BoxMode.primary)) == Path("/srv/pods")
 
     def test_resolver_ignores_malformed_or_empty_slots(self, tmp_path):
         from kanibako.project.workset import resolve_workset_workspaces
 
         for doc in (None, {}, {"workset": "oops"}, {"workset": {"workspaces": ""}}):
             assert (
-                resolve_workset_workspaces(tmp_path, doc)
+                resolve_workset_workspaces(tmp_path, doc,
+                        early=_bare_early(tmp_path, BoxMode.primary))
                 == tmp_path / "workspaces"
             )
 
@@ -924,17 +949,21 @@ class TestWorksetWorkspacesResolved:
         from kanibako.project.workset import resolve_workset_workspaces
 
         doc = {"workset": {"workspaces": None}}
-        assert resolve_workset_workspaces(tmp_path, doc) is None
-        assert resolve_workset_workspaces(tmp_path, doc, standalone=True) is None
+        assert resolve_workset_workspaces(tmp_path, doc,
+                early=_bare_early(tmp_path, BoxMode.primary)) is None
+        assert resolve_workset_workspaces(tmp_path, doc, standalone=True,
+                early=_bare_early(tmp_path, BoxMode.standalone)) is None
 
     def test_the_locator_finds_members_at_the_default_under_a_null(self, tmp_path):
         """Detection still looks where pre-null in-tree members sit; nothing else reads it."""
         from kanibako.project.workset import resolve_workspaces_locator
 
-        assert (resolve_workspaces_locator(tmp_path, {"workset": {"workspaces": None}})
+        assert (resolve_workspaces_locator(tmp_path, {"workset": {"workspaces": None}},
+                early=_bare_early(tmp_path, BoxMode.primary))
                 == tmp_path / "workspaces")
         doc = {"workset": {"workspaces": "/srv/pods"}}
-        assert resolve_workspaces_locator(tmp_path, doc) == Path("/srv/pods")
+        assert resolve_workspaces_locator(tmp_path, doc,
+                early=_bare_early(tmp_path, BoxMode.primary)) == Path("/srv/pods")
 
     def test_boxes_and_logs_resolvers_default_to_the_spec_formula(self, tmp_path):
         """⚑ ``workset.boxes``/``workset.logs`` are declared keys and resolve exactly
@@ -945,12 +974,16 @@ class TestWorksetWorkspacesResolved:
             resolve_workset_logs,
         )
 
-        assert resolve_workset_boxes(tmp_path, None) == tmp_path / "boxes"
-        assert resolve_workset_logs(tmp_path, None) == tmp_path / "logs"
+        assert resolve_workset_boxes(tmp_path, None,
+                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "boxes"
+        assert resolve_workset_logs(tmp_path, None,
+                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "logs"
 
         doc = {"workset": {"boxes": "@meta.workset.path/trees", "logs": "/var/log/kani"}}
-        assert resolve_workset_boxes(tmp_path, doc) == tmp_path / "trees"
-        assert resolve_workset_logs(tmp_path, doc) == Path("/var/log/kani")
+        assert resolve_workset_boxes(tmp_path, doc,
+                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "trees"
+        assert resolve_workset_logs(tmp_path, doc,
+                early=_bare_early(tmp_path, BoxMode.primary)) == Path("/var/log/kani")
 
     def test_boxes_and_logs_resolvers_ignore_malformed_or_empty_slots(self, tmp_path):
         from kanibako.project.workset import (
@@ -959,8 +992,10 @@ class TestWorksetWorkspacesResolved:
         )
 
         for doc in (None, {}, {"workset": "oops"}, {"workset": {"boxes": "", "logs": ""}}):
-            assert resolve_workset_boxes(tmp_path, doc) == tmp_path / "boxes"
-            assert resolve_workset_logs(tmp_path, doc) == tmp_path / "logs"
+            assert resolve_workset_boxes(tmp_path, doc,
+                    early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "boxes"
+            assert resolve_workset_logs(tmp_path, doc,
+                    early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "logs"
 
     # -- NAMED: load_workset captures the repoint --------------------------
 
@@ -976,11 +1011,12 @@ class TestWorksetWorkspacesResolved:
         data.setdefault("workset", {})["workspaces"] = "@meta.workset.path/pods"
         dump_doc(settings, data)
 
-        ws = load_workset(root, "repointed")
+        ws = load_workset(root, "repointed", early_system=std.early_system)
         assert ws.workspaces_dir == root.resolve() / "pods"
         # Unset → the default composition, unchanged.
         ws_default = load_workset(
             create_workset("plain", tmp_home / "worksets" / "plain", std).root, "plain",
+            early_system=std.early_system,
         )
         assert (
             ws_default.workspaces_dir
@@ -1096,7 +1132,7 @@ class TestInTreeWorkspacePredicate:
         data = load_doc(ws.root / "workset.yaml")
         data.setdefault("workset", {})["workspaces"] = str(tmp_home / "wsdata1")
         dump_doc(ws.root / "workset.yaml", data)
-        return load_workset(ws.root, name)
+        return load_workset(ws.root, name, early_system=std.early_system)
 
     def test_a_path_under_the_root_is_in_tree(self, std, tmp_home):
         from kanibako.project.workset import is_in_tree_workspace
@@ -1324,7 +1360,8 @@ class TestWorksetLogsPresentNone:
         from kanibako.settings.workset_dirkeys import early_repoint
 
         def read(doc):
-            return early_repoint(tmp_path, doc, "logs")[0]
+            return early_repoint(tmp_path, doc, "logs",
+                    early=_bare_early(tmp_path, BoxMode.primary))[0]
 
         assert read(None) is UNSET
         assert read({"workset": {}}) is UNSET
@@ -1337,8 +1374,10 @@ class TestWorksetLogsPresentNone:
         from kanibako.project.workset import resolve_workset_logs
 
         doc = {"workset": {"logs": None}}
-        assert resolve_workset_logs(tmp_path, doc) is None
-        assert resolve_workset_logs(tmp_path, doc, standalone=True) is None
+        assert resolve_workset_logs(tmp_path, doc,
+                early=_bare_early(tmp_path, BoxMode.primary)) is None
+        assert resolve_workset_logs(tmp_path, doc, standalone=True,
+                early=_bare_early(tmp_path, BoxMode.standalone)) is None
 
     def test_a_named_workset_has_no_logs_dir_and_still_detects(self, std, tmp_home):
         from kanibako.project.workset import is_workset_skeleton
@@ -1350,7 +1389,7 @@ class TestWorksetLogsPresentNone:
         assert ws.logs_dir is None
         # The skeleton is the other three dirs; the default ``logs/`` is irrelevant.
         (root / "logs").rmdir()
-        assert is_workset_skeleton(root)
+        assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "nolog"))
 
     def test_named_box_log_paths_are_none_and_removal_is_a_no_op(self, std, tmp_home):
         from kanibako.settings.config_io import dump_doc
@@ -1414,10 +1453,13 @@ class TestWorksetBoxesPresentNone:
 
         doc = {"workset": {"boxes": None}}
         for call in (
-            lambda: resolve_workset_boxes(tmp_path, doc),
-            lambda: resolve_workset_boxes(tmp_path, doc, standalone=True),
+            lambda: resolve_workset_boxes(tmp_path, doc,
+                    early=_bare_early(tmp_path, BoxMode.primary)),
+            lambda: resolve_workset_boxes(tmp_path, doc, standalone=True,
+                    early=_bare_early(tmp_path, BoxMode.standalone)),
             # A lone box's default logs dir is ``@workset.boxes``.
-            lambda: resolve_workset_logs(tmp_path, doc, standalone=True),
+            lambda: resolve_workset_logs(tmp_path, doc, standalone=True,
+                    early=_bare_early(tmp_path, BoxMode.standalone)),
         ):
             with pytest.raises(SettingsError) as exc:
                 call()
@@ -1436,7 +1478,7 @@ class TestWorksetBoxesPresentNone:
         with pytest.raises(SettingsError, match="workset.boxes"):
             add_project(ws, "ex", source, std)
         assert not (root / "boxes" / "ex").exists()
-        assert load_workset(root, "nobox").projects == []
+        assert load_workset(root, "nobox", early_system=std.early_system).projects == []
 
     def _member_then_null_store(self, std, tmp_home, ws_name):
         from kanibako.settings.config_io import dump_doc
@@ -1465,10 +1507,11 @@ class TestWorksetBoxesPresentNone:
         from kanibako.settings.settings_resolve import SettingsError
 
         root = self._member_then_null_store(std, tmp_home, "keepme")
-        ws = load_workset(root, "keepme")
+        ws = load_workset(root, "keepme", early_system=std.early_system)
         with pytest.raises(SettingsError, match="workset.boxes"):
             remove_project(ws, "m", remove_files=True)
-        assert [p.name for p in load_workset(root, "keepme").projects] == ["m"]
+        assert [p.name for p in load_workset(root, "keepme",
+                early_system=std.early_system).projects] == ["m"]
         assert (root / "boxes" / "m").is_dir()
 
 
@@ -1557,14 +1600,14 @@ class TestWorksetWorkspacesPresentNone:
         assert str(root / "workset.yaml") in str(exc.value)
         assert not (root / "workspaces" / "app").exists()
         assert not (root / "boxes" / "app").exists()
-        assert load_workset(root, "nows").projects == []
+        assert load_workset(root, "nows", early_system=std.early_system).projects == []
 
     def test_an_external_member_connects_without_a_link(self, std, tmp_home):
         ws, root = self._null_workspaces(std, tmp_home, "extws")
         source = (tmp_home / "ext-src").resolve()
         source.mkdir()
         add_project(ws, "ext", source, std)
-        [member] = load_workset(root, "extws").projects
+        [member] = load_workset(root, "extws", early_system=std.early_system).projects
         assert (member.name, member.source_path) == ("ext", source)
         assert not (root / "workspaces" / "ext").exists()
         assert not (root / "workspaces" / "ext").is_symlink()
@@ -1572,7 +1615,7 @@ class TestWorksetWorkspacesPresentNone:
     def test_workspaces_dir_is_none_never_the_default_leaf(self, std, tmp_home):
         ws, root = self._null_workspaces(std, tmp_home, "nodir")
         assert ws.workspaces_dir is None
-        assert load_workset(root, "nodir").workspaces_dir is None
+        assert load_workset(root, "nodir", early_system=std.early_system).workspaces_dir is None
         with pytest.raises(WorksetError) as exc:
             ws.require_workspaces_dir("a workspace for 'app'")
         assert "workset.workspaces" in str(exc.value)
@@ -1583,8 +1626,9 @@ class TestWorksetWorkspacesPresentNone:
         source = (tmp_home / "ext-rm").resolve()
         source.mkdir()
         add_project(ws, "ext", source, std)
-        remove_project(load_workset(root, "extrm"), "ext", remove_files=True)
-        assert load_workset(root, "extrm").projects == []
+        remove_project(load_workset(root, "extrm",
+                early_system=std.early_system), "ext", remove_files=True)
+        assert load_workset(root, "extrm", early_system=std.early_system).projects == []
         assert source.is_dir()  # an external source dir is never touched
 
     def test_remove_files_deletes_an_in_tree_members_recorded_leaf(self, std, tmp_home):
@@ -1594,7 +1638,8 @@ class TestWorksetWorkspacesPresentNone:
         ws = create_workset("inrm", root, std)
         add_project(ws, "app", root / "workspaces" / "app", std)
         dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
-        remove_project(load_workset(root, "inrm"), "app", remove_files=True)
+        remove_project(load_workset(root, "inrm",
+                early_system=std.early_system), "app", remove_files=True)
         assert not (root / "workspaces" / "app").exists()
 
     def test_a_link_made_before_the_null_is_unlinked_on_disconnect(self, std, tmp_home):
@@ -1607,7 +1652,7 @@ class TestWorksetWorkspacesPresentNone:
         add_project(ws, "ext", source, std)
         assert (root / "workspaces" / "ext").is_symlink()
         dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
-        remove_project(load_workset(root, "oldlink"), "ext")
+        remove_project(load_workset(root, "oldlink", early_system=std.early_system), "ext")
         assert not (root / "workspaces" / "ext").is_symlink()
         assert source.is_dir()
 
@@ -1619,7 +1664,7 @@ class TestWorksetWorkspacesPresentNone:
         ws = create_workset("rootrm", root, std)
         add_project(ws, "app", root / "workspaces" / "app", std)
         dump_doc(root / "workset.yaml", {"workset": {"workspaces": None}})
-        loaded = load_workset(root, "rootrm")
+        loaded = load_workset(root, "rootrm", early_system=std.early_system)
         loaded.projects[0].source_path = root
         remove_project(loaded, "app", remove_files=True)
         assert root.is_dir()
@@ -1710,8 +1755,9 @@ class TestWorksetIdentityIsTheGlobalRegistry:
         add_project(ws, "proj", ws.workspaces_dir / "proj")
         assert not ws.settings_path.exists()
 
-        assert load_workset(root, "sparse").name == "sparse"
-        assert [p.name for p in load_workset(root, "sparse").projects] == ["proj"]
+        assert load_workset(root, "sparse", early_system=std.early_system).name == "sparse"
+        assert [p.name for p in load_workset(root, "sparse",
+                early_system=std.early_system).projects] == ["proj"]
         assert detect_project_mode(root, std, config).mode is BoxMode.named
 
 
@@ -1727,7 +1773,7 @@ class TestWorksetSkeletonMarker:
 
         root = tmp_home / "worksets" / "whole"
         create_workset("whole", root, std)
-        assert is_workset_skeleton(root)
+        assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "whole"))
 
     def test_create_and_detect_share_one_definition(self, std, tmp_home):
         """⚑⚑ MUTATION-PROOF against drift: the dirs ``create_workset`` stamps are
@@ -1740,13 +1786,15 @@ class TestWorksetSkeletonMarker:
         root = tmp_home / "worksets" / "shared"
         create_workset("shared", root, std)
         stamped = sorted(p for p in root.resolve().iterdir() if p.is_dir())
-        assert stamped == sorted(_workset_skeleton_dirs(root.resolve()))
+        assert stamped == sorted(_workset_skeleton_dirs(root.resolve(),
+                early=_early_scope(std, BoxMode.named, "shared")))
 
         for missing in stamped:
             shutil.move(str(missing), str(root.resolve() / "parked"))
-            assert not is_workset_skeleton(root), missing
+            assert not is_workset_skeleton(root,
+                    early=_early_scope(std, BoxMode.named, "shared")), missing
             shutil.move(str(root.resolve() / "parked"), str(missing))
-            assert is_workset_skeleton(root)
+            assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "shared"))
 
     def test_a_partial_skeleton_is_not_a_workset(self, tmp_home):
         """A directory with SOME of the leaf names is an ordinary directory."""
@@ -1755,15 +1803,17 @@ class TestWorksetSkeletonMarker:
         root = tmp_home / "partial"
         (root / "boxes").mkdir(parents=True)
         (root / "workspaces").mkdir()
-        assert not is_workset_skeleton(root)
+        assert not is_workset_skeleton(root, early=_bare_early(tmp_home, BoxMode.named, root.name))
 
     def test_an_empty_or_absent_dir_is_not_a_workset(self, tmp_home):
         from kanibako.project.workset import is_workset_skeleton
 
         empty = tmp_home / "empty"
         empty.mkdir()
-        assert not is_workset_skeleton(empty)
-        assert not is_workset_skeleton(tmp_home / "does-not-exist")
+        assert not is_workset_skeleton(empty,
+                early=_bare_early(tmp_home, BoxMode.named, empty.name))
+        assert not is_workset_skeleton(tmp_home / "does-not-exist",
+                early=_bare_early(tmp_home, BoxMode.named, "does-not-exist"))
 
     def test_a_file_named_like_a_skeleton_dir_does_not_count(self, tmp_home):
         """⚑ The test is ``is_dir``: a FILE called ``logs`` is not the logs dir."""
@@ -1773,7 +1823,7 @@ class TestWorksetSkeletonMarker:
         for leaf in ("boxes", "workspaces", "vault"):
             (root / leaf).mkdir(parents=True, exist_ok=True)
         (root / "logs").write_text("not a directory\n", encoding="utf-8")
-        assert not is_workset_skeleton(root)
+        assert not is_workset_skeleton(root, early=_bare_early(tmp_home, BoxMode.named, root.name))
 
     def test_a_repointed_workspaces_dir_still_detects(self, std, tmp_home):
         """⚑ ``workspaces`` is resolved through ``workset.workspaces``, so a
@@ -1788,12 +1838,12 @@ class TestWorksetSkeletonMarker:
         elsewhere.mkdir()
         dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(elsewhere)}})
         # The repoint is honored: the default ``workspaces/`` dir is now irrelevant.
-        assert is_workset_skeleton(root)
+        assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "moved"))
         (root / "workspaces").rmdir()
-        assert is_workset_skeleton(root)
+        assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "moved"))
         # ...and the repoint TARGET is what must exist.
         elsewhere.rmdir()
-        assert not is_workset_skeleton(root)
+        assert not is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "moved"))
 
     def test_a_repointed_boxes_dir_still_detects(self, std, tmp_home):
         """⚑ ``workset.boxes`` is a DECLARED, repointable key (keyspec:
@@ -1809,13 +1859,13 @@ class TestWorksetSkeletonMarker:
         elsewhere = tmp_home / "elsewhere-boxes"
         elsewhere.mkdir()
         dump_doc(root / "workset.yaml", {"workset": {"boxes": str(elsewhere)}})
-        assert is_workset_skeleton(root)
+        assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "boxmoved"))
         # The default leaf is now irrelevant...
         (root / "boxes").rmdir()
-        assert is_workset_skeleton(root)
+        assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "boxmoved"))
         # ...and the repoint TARGET is what must exist.
         elsewhere.rmdir()
-        assert not is_workset_skeleton(root)
+        assert not is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "boxmoved"))
 
     def test_a_repointed_logs_dir_still_detects(self, std, tmp_home):
         """⚑ Same for ``workset.logs`` (keyspec: ``@meta.workset.path/logs``).  The
@@ -1830,11 +1880,11 @@ class TestWorksetSkeletonMarker:
         elsewhere = tmp_home / "elsewhere-logs"
         elsewhere.mkdir()
         dump_doc(root / "workset.yaml", {"workset": {"logs": str(elsewhere)}})
-        assert is_workset_skeleton(root)
+        assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "logmoved"))
         (root / "logs").rmdir()
-        assert is_workset_skeleton(root)
+        assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "logmoved"))
         elsewhere.rmdir()
-        assert not is_workset_skeleton(root)
+        assert not is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "logmoved"))
 
     def test_absent_settings_file_yields_the_default_leaves(self, tmp_home):
         """⚑⚑ LOOK AT workset.yaml, never DEPEND on it.  A workset root's settings
@@ -1847,7 +1897,8 @@ class TestWorksetSkeletonMarker:
         root = tmp_home / "nofile"
         root.mkdir()
         assert not (root / "workset.yaml").exists()
-        assert _workset_skeleton_dirs(root) == (
+        assert _workset_skeleton_dirs(root,
+                early=_bare_early(tmp_home, BoxMode.named, root.name)) == (
             root / "boxes", root / "workspaces", root / "vault", root / "logs",
         )
 
@@ -1865,11 +1916,12 @@ class TestWorksetSkeletonMarker:
             "vault_ro": str(tmp_home / "vro"),
             "vault_rw": str(tmp_home / "vrw"),
         }})
-        assert root / "vault" in _workset_skeleton_dirs(root)
-        assert is_workset_skeleton(root)
+        assert root / "vault" in _workset_skeleton_dirs(root,
+                early=_early_scope(std, BoxMode.named, "vaulted"))
+        assert is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "vaulted"))
         # It is load-bearing for detection despite naming no key.
         (root / "vault").rmdir()
-        assert not is_workset_skeleton(root)
+        assert not is_workset_skeleton(root, early=_early_scope(std, BoxMode.named, "vaulted"))
 
 
 # ---------------------------------------------------------------------------
@@ -2045,14 +2097,14 @@ class TestRetiredWorksetIdentityLocation:
         root = tmp_home / "worksets" / "goodws"
         create_workset("goodws", root, std)
         refuse_retired_workset_identity(root.resolve())
-        assert load_workset(root, "goodws").name == "goodws"
+        assert load_workset(root, "goodws", early_system=std.early_system).name == "goodws"
 
     def test_load_workset_refuses_legacy_root(self, tmp_home):
         """The LOAD path gets the named cure too, not a silently empty workset."""
         root = tmp_home / "legacyws"
         _write_legacy_root(root)
         with pytest.raises(LegacyWorksetIdentityError):
-            load_workset(root, "legacyws")
+            load_workset(root, "legacyws", early_system=_bare_early_system(tmp_home))
 
     def test_refusal_survives_the_ancestor_walk(self, std, tmp_home, config):
         """⚑⚑ THE POINT: ``detect_project_mode``'s upward walk propagates it, from a SUBDIR."""
@@ -2168,7 +2220,7 @@ class TestMalformedWorksetSettingsDoc:
         (root / "workset.yaml").write_text(malformed)
 
         with pytest.raises(ConfigError) as excinfo:
-            load_workset(root.resolve(), "brokenws")
+            load_workset(root.resolve(), "brokenws", early_system=_bare_early_system(tmp_home))
         assert expected in str(excinfo.value)
 
     @pytest.mark.parametrize("malformed", [
@@ -2245,7 +2297,7 @@ class TestRetiredRegistrySections:
         root = tmp_home / "worksets" / "reg-legacy"
         _write_legacy_registry(root)
         with pytest.raises(LegacyRegistryIdentityError):
-            load_workset(root, "reg-legacy")
+            load_workset(root, "reg-legacy", early_system=std.early_system)
 
     def test_a_live_registry_does_not_refuse(self, std, tmp_home):
         from kanibako.project import workset_registry
@@ -2345,7 +2397,8 @@ class TestAddProjectFailConsistent:
         assert not (resolved / "vault" / "ro" / "proj").exists()
         assert not (resolved / "vault" / "rw" / "proj").exists()
         assert all(p.name != "proj" for p in ws.projects)
-        assert all(p.name != "proj" for p in load_workset(root, "my-set").projects)
+        assert all(p.name != "proj" for p in load_workset(root, "my-set",
+                early_system=std.early_system).projects)
 
     def test_external_membership_write_failure_unwinds_symlink(
         self, std, tmp_home, monkeypatch
@@ -2396,7 +2449,8 @@ class TestRemoveProjectFailConsistent:
 
         # Still a member on disk, so a re-run completes the removal cleanly, and the
         # external source is untouched throughout.
-        assert "extproj" in {p.name for p in load_workset(ws.root, ws.name).projects}
+        assert "extproj" in {p.name for p in load_workset(ws.root, ws.name,
+                early_system=std.early_system).projects}
         assert external.is_dir()
 
 
@@ -2415,7 +2469,8 @@ class TestStandaloneVaultTeardownSkeleton:
         from kanibako.project.workset import standalone_vault_teardown
 
         root = self._root(tmp_path)
-        removable, retained = standalone_vault_teardown(root)
+        removable, retained = standalone_vault_teardown(root,
+                early=_bare_early(tmp_path, BoxMode.standalone))
         assert root / "vault" in removable
         assert retained == []
 
@@ -2425,7 +2480,8 @@ class TestStandaloneVaultTeardownSkeleton:
         root = self._root(tmp_path)
         (root / "vault" / "rw" / "data.txt").write_text("mine")
         (root / "workset.yaml").write_text("workset:\n  vault_rw: null\n")
-        removable, retained = standalone_vault_teardown(root)
+        removable, retained = standalone_vault_teardown(root,
+                early=_bare_early(tmp_path, BoxMode.standalone))
         assert root / "vault" not in removable
         assert removable == [root / "vault" / "ro"]
         assert retained == [root / "vault" / "rw"]
@@ -2435,7 +2491,8 @@ class TestStandaloneVaultTeardownSkeleton:
 
         root = self._root(tmp_path)
         (root / "workset.yaml").write_text("workset:\n  vault_rw: null\n")
-        removable, retained = standalone_vault_teardown(root)
+        removable, retained = standalone_vault_teardown(root,
+                early=_bare_early(tmp_path, BoxMode.standalone))
         assert root / "vault" in removable
         assert retained == []
 
