@@ -1159,6 +1159,29 @@ class TestWriteProjectConfigKey:
         write_project_config(p, "compat:v1")
         assert load_doc(p) == {"box": {"image": "compat:v1"}}
 
+    def test_a_scalar_section_refuses_rather_than_being_replaced(self, tmp_path):
+        """This writer's generic section arm refuses a scalar by name and writes NOTHING.
+
+        Before the fix a scalar where the section table belongs was silently discarded and a
+        fresh table written over it.  Same rule, same wording as
+        ``TestNestedWriteRefusesANonTableSection`` in ``test_settings/test_config.py``.
+        MUTATION: drop the ``refuse_scalar_sections`` call in ``write_project_config_key``
+        and this reds.
+        """
+        from kanibako.errors import ConfigError
+
+        p = tmp_path / "box.yaml"
+        p.write_text("box: /x\n")
+
+        with pytest.raises(ConfigError) as exc:
+            write_project_config_key(p, "box_image", "myimg:v1")
+        assert str(exc.value) == (
+            f"the config file {p} holds /x at 'box', where a table of keys belongs, "
+            f"so 'box.' keys cannot be written under it. "
+            f"Fix or delete 'box' in that file by hand, then retry."
+        )
+        assert p.read_text() == "box: /x\n"
+
 
 class TestUnsetProjectConfigKey:
     def test_unset_removes_key(self, tmp_path):

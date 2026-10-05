@@ -431,6 +431,10 @@ def persist_creation_flags(
     if not updates:
         return
     data = load_doc(box_settings_path)
+    # ⚑ THE SHAPE RULE (spec §0), asked BEFORE anything changes: a present non-table ``box``
+    # REFUSES by name and leaves the file byte-identical.  The branch below therefore only ever
+    # CREATES an absent section — it must never be read as license to replace a value.
+    refuse_scalar_sections(box_settings_path, ("box",), data=data)
     sec = data.get("box")
     if not isinstance(sec, dict):
         sec = {}
@@ -440,8 +444,18 @@ def persist_creation_flags(
 
 
 def write_box_enable_vault(path: Path, enable_vault: bool = True) -> None:
-    """Sparsely persist the box-scope ``box.enable_vault`` key at *path* (reader: :func:`read_box_enable_vault`)."""
+    """Sparsely persist the box-scope ``box.enable_vault`` key at *path* (reader: :func:`read_box_enable_vault`).
+
+    A present non-table ``box`` refuses by name (:func:`refuse_scalar_sections`) and the file is
+    left byte-identical.  ⚑ This site's shape was a CRASH, not a clobber — ``setdefault`` hands
+    back the scalar it found rather than a table, so the item assignment below raised
+    ``TypeError: 'str' object does not support item assignment``.  No value was ever lost, but
+    the user got a traceback where the named refusal is the cure.  The guard sits at the top, so
+    the ``True`` arm — which used to no-op silently against a scalar ``box`` — now refuses too,
+    rather than quietly doing nothing the user asked for.
+    """
     existing = load_doc(path)
+    refuse_scalar_sections(path, ("box",), data=existing)
     ev = coerce_bool(enable_vault)
     if ev is False:
         existing.setdefault("box", {})["enable_vault"] = False
@@ -553,6 +567,7 @@ def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
         data[key] = value
         dump_doc(path, data)
         return
+    refuse_scalar_sections(path, (section,), data=data)
     sec = data.get(section)
     if not isinstance(sec, dict):
         sec = {}
@@ -915,8 +930,15 @@ def resolve_agent(
 
 
 def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None:
-    """Write a single agent-state override under ``agent.<agent_name>``, preserving every other section."""
+    """Write a single agent-state override under ``agent.<agent_name>``, preserving every other section.
+
+    A present non-table at EITHER level it walks — ``agent`` itself, or ``agent.<agent_name>`` —
+    refuses by name (:func:`refuse_scalar_sections`) and leaves the file byte-identical, rather
+    than throwing away what the user wrote to build the table.
+    """
     existing = load_doc(path)
+    # ⚑ ONE refusal covers BOTH levels this writer walks; both were replace-a-scalar sites.
+    refuse_scalar_sections(path, ("agent", agent_name), data=existing)
     agent = existing.get("agent")
     if not isinstance(agent, dict):
         agent = {}
