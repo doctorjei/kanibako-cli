@@ -660,7 +660,7 @@ class _Expander:
                     f"{holder}: '@{dotted}' references no key: "
                     f"{verdict.reason}{trail}."
                 )
-            if not self._collect_errors:  # a lenient direct ref to it must still record it
+            if not self._collect_errors:
                 self._memo[dotted] = _ABSENT
             return _ABSENT
         # Resolve the referent's value AS A LEAF, with the cycle chain threaded so

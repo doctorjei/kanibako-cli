@@ -1,6 +1,6 @@
-"""Keyspec §2a: set time resolves the edited value as the launch does, so a reference to a
-key the launch derives after its expand (the ``meta.box.agent.*`` mirror, the computed
-``*_active`` auth keys) is accepted, while a reference to nothing is still refused."""
+"""Keyspec §2a: set time derives the keys the launch derives after its expand (the
+``meta.box.agent.*`` mirror, the computed ``*_active`` auth keys) from the command's cascade,
+while a reference to nothing is still refused."""
 
 from __future__ import annotations
 
@@ -38,7 +38,9 @@ def _stored(path, *keys):
 
 
 class TestDerivedReferentsResolve:
-    def test_a_mirror_ref_is_accepted_at_box_scope(self, tmp_path):
+    def test_a_mirror_ref_derives_once_the_agent_tier_is_present(self, tmp_path):
+        """The derivation, given an agent tier through ``cascade_agent_path``; ``box set``
+        threads no agent tier yet, so through the CLI a mirror ref is still refused."""
         msg = _box_set(
             tmp_path, "box.env.FOO", "{meta.box.agent.canon}/x",
             agent_doc={"agent": {"claude": {"canon": "/c"}}},
