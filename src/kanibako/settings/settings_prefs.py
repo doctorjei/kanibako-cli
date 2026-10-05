@@ -424,6 +424,69 @@ def forbidden_tier_reason(target: str, *, level: str) -> str | None:
     return None
 
 
+def refuse_deferred_pref_shapes(req: PrefRequest) -> None:
+    """RAISE on a bind-shaped pref value the parse left unjudged; pass when every entry is well-formed.
+
+    ⚑ THE DEFERRED HALF OF §2h's ORDER. The parse reads a ``pref:`` table without
+    ``valid_agents`` (:func:`~kanibako.settings.settings_assemble._under_pref`), so it cannot
+    know whether the target's agent segment names a real agent; a per-entry shape verdict
+    raised there would name the entry's shape for a request whose real fault is the AGENT
+    NAME. The parse therefore carries a malformed entry verbatim
+    (:func:`~kanibako.settings.settings_assemble.parse_bind_map`) and this judges it here —
+    after :func:`validate_pref` has ruled on the target, so the agent verdict is the one the
+    user reads first.
+
+    ⚑ ONE JUDGE, THE SAME CALL THE PARSE DEFERS: the offenders go back through
+    :func:`~kanibako.settings.settings_resolve.check_bind_map`, so the wording and the
+    ``(in settings file …)`` clause are the parse's own and cannot drift from it. Only a
+    non-``BindEntry`` value is an offender — a well-formed entry was already unpacked, and a
+    ``None`` entry is §2h's per-entry OMIT, not a shape fault.
+    """
+    from kanibako.settings.kb_store import BindEntry
+    from kanibako.settings.settings_resolve import check_bind_map
+
+    if not isinstance(req.value, KeyStore):
+        return
+    category = _bind_category_of(req.target)
+    if category is None:
+        return
+    offenders = {
+        dest: value for dest, value in req.value.items()
+        if value is not None and not isinstance(value, BindEntry)
+    }
+    if not offenders:
+        return
+    try:
+        check_bind_map(offenders, category=category)
+    except SettingsError as exc:
+        where = str(req.source) if req.source is not None else None
+        suffix = f" (in settings file {where})" if where is not None else ""
+        raise SettingsError(f"{exc}{suffix}") from exc
+
+
+def _bind_category_of(target: str) -> str | None:
+    """The dest-keyed bind CATEGORY *target* names, or ``None`` when it names no bind map.
+
+    ⚑ A bind-shaped pref target is the WHOLE CATEGORY KEY — ``<agent>.seeded`` or
+    ``<agent>.bindings.ro`` — because a destination is data inside its value and never a key
+    segment (§2h's "no bind-shaped category is such a family"). So the category is the
+    target's own TRAILING token, matched against
+    :data:`~kanibako.settings.settings_keyspace.BIND_CATEGORIES` rather than re-listed here.
+    Both spellings are tried because the members disagree on depth: the four categories are
+    ONE token (``seeded``), the two ``bindings`` arms are TWO (``bindings.rw``), and
+    ``<agent>.bindings.rw`` ends in the bare arm name. ``masks`` is dest-keyed too but is a
+    MARKER map, not a bind map, and its entries are 3-state markers — it is deliberately
+    absent.
+    """
+    from kanibako.settings.settings_keyspace import BIND_CATEGORIES
+
+    head, _, leaf = target.rpartition(".")
+    for candidate in (leaf, f"{head.rpartition('.')[2]}.{leaf}"):
+        if candidate in BIND_CATEGORIES:
+            return candidate
+    return None
+
+
 def validate_pref(
     req: PrefRequest,
     *,
@@ -524,6 +587,10 @@ def apply_prefs(
                 f"legal "
                 f"only at {' / '.join(PREF_LEGAL_LEVELS)} (spec §2h)."
             )
+        # ⚑ ORDER, and it is the whole point: the TARGET is judged first, so a request
+        # naming an unknown agent is told THAT, and only a target the allowlist accepted
+        # reaches the entry-shape verdict the parse deferred.
+        refuse_deferred_pref_shapes(req)
         if req.level == "box":
             box.append(req)
         else:
