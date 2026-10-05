@@ -1007,3 +1007,143 @@ class TestPrefEntryKeys:
             "pref.agent.claude.caches[~/c]"
         )
         assert entry_label("pref.box.env", "FOO") == "pref.box.env.FOO"
+
+
+# ---------------------------------------------------------------------------
+# THE ORDER of §2h's agent verdict against the parse-time entry shape
+# ---------------------------------------------------------------------------
+
+class TestPrefShapeVerdictFollowsTheAgentVerdict:
+    """A ``pref:`` map is read without ``valid_agents``, so the parse cannot judge the
+    agent segment — the entry-shape verdict therefore has to come AFTER
+    :func:`validate_pref`, or the user is told to reshape an entry whose only defect
+    is a name."""
+
+    def test_an_unknown_agent_is_reported_as_the_agent_not_the_entry(self, tmp_path):
+        """INVERT: judge the shape at parse time -> reddens on the missing agent name."""
+        src = write(tmp_path / "workset.yaml", {
+            "pref": {"agent": {"zippity": {"seeded": {"somebox": "some-scalar"}}}},
+        })
+        with pytest.raises(SettingsError) as exc:
+            apply_prefs(
+                collect_prefs(src, None), valid_agents=AGENTS,
+            )
+        msg = str(exc.value)
+        assert "is not a valid agent" in msg
+        assert "zippity" in msg
+        assert "structured entry" not in msg
+
+    def test_a_valid_agent_still_gets_the_entry_shape(self, tmp_path):
+        """The deferral ORDERS two verdicts; it does not drop one. INVERT: skip the
+        deferred pass -> reddens on the silent accept."""
+        src = write(tmp_path / "workset.yaml", {
+            "pref": {"agent": {"claude": {"seeded": {"somebox": "some-scalar"}}}},
+        })
+        with pytest.raises(SettingsError) as exc:
+            apply_prefs(collect_prefs(src, None), valid_agents=AGENTS)
+        msg = str(exc.value)
+        assert "must be a structured entry" in msg
+        assert "somebox" in msg
+        assert str(src) in msg
+
+    @pytest.mark.parametrize("category", [
+        "seeded", "common", "caches", "synced", "bindings.ro", "bindings.rw",
+    ])
+    def test_every_bind_shaped_category_defers(self, category, tmp_path):
+        """The deferral is a property of the SHAPE, so it holds for each of the six
+        bind-shaped categories and neither arm is left behind. INVERT: defer only the
+        category tokens -> reddens on the arms.
+
+        A settings file nests a key as TABLES (§0), so an arm is ``bindings: {ro: …}``;
+        the dotted spelling is a different refusal and is not what this row is about.
+        """
+        head, _, arm = category.rpartition(".")
+        node: dict = {"somebox": "some-scalar"}
+        slot: dict = {arm: node} if head else node
+        leaf: dict = {"agent": {"zippity": {head: slot} if head else slot}}
+        src = write(tmp_path / "workset.yaml", {"pref": leaf})
+        with pytest.raises(SettingsError) as exc:
+            apply_prefs(collect_prefs(src, None), valid_agents=AGENTS)
+        assert "is not a valid agent" in str(exc.value)
+        assert "structured entry" not in str(exc.value)
+
+    def test_a_retired_sub_table_still_refuses_at_the_parse(self, tmp_path):
+        """A sub-table is a verdict about a SPELLING, not a bare scalar, so it is NOT
+        in the deferred set — and
+        ``test_a_pref_file_parse_refusal_NAMES_THE_FILE[retired-shape]`` pins that it
+        refuses while the file is being read, naming the file. INVERT: widen the
+        deferred set to every non-``BindEntry`` value -> reddens there, not here."""
+        src = write(tmp_path / "workset.yaml", {
+            "pref": {"agent": {"zippity": {"seeded": {"somebox": {"nested": 1}}}}},
+        })
+        with pytest.raises(SettingsError) as exc:
+            collect_prefs(src, None)
+        assert "RETIRED name-keyed shape" in str(exc.value)
+
+    def test_a_wrong_arity_entry_still_refuses_at_the_parse(self, tmp_path):
+        """A list is a structured-entry ATTEMPT, so its arity is judgeable at the
+        parse; only a bare scalar waits. INVERT: defer lists too -> reddens here."""
+        src = write(tmp_path / "workset.yaml", {
+            "pref": {"agent": {"zippity": {"seeded": {"somebox": ["a", "b", "c"]}}}},
+        })
+        with pytest.raises(SettingsError) as exc:
+            collect_prefs(src, None)
+        assert "1 or 2 elements" in str(exc.value)
+
+    def test_a_well_formed_entry_is_installed_unchanged(self, tmp_path):
+        """The deferral must not disturb a GOOD request — a guard for behaviour that
+        was already correct, so it is expected to pass before the fix as well."""
+        src = write(tmp_path / "workset.yaml", {
+            "pref": {"agent": {"claude": {"seeded": {"somebox": ["src"]}}}},
+        })
+        ws, _box = apply_prefs(collect_prefs(src, None), valid_agents=AGENTS)
+        # A pref is installed AT ITS TARGET (spec §2h) — the overlay is keyed by the
+        # target, so there is no ``pref.`` node above it.
+        entry = ws["agent"]["claude"]["seeded"]["somebox"]
+        assert isinstance(entry, BindEntry)
+
+    def test_a_null_entry_is_still_the_per_entry_omit(self, tmp_path):
+        """spec §2h — a present-``None`` entry is an OMIT, not a shape fault, and the
+        deferred pass must not start refusing it. INVERT: treat None as an offender
+        -> reddens here."""
+        src = write(tmp_path / "workset.yaml", {
+            "pref": {"agent": {"claude": {"seeded": {"somebox": None}}}},
+        })
+        apply_prefs(collect_prefs(src, None), valid_agents=AGENTS)
+
+    def test_a_marker_map_is_not_a_bind_map(self, tmp_path):
+        """``masks`` is dest-keyed but holds 3-state markers, so its entries are NOT
+        bind entries and the deferred pass must leave it alone. INVERT: judge it as a
+        bind map -> reddens on the refused marker."""
+        src = write(tmp_path / "workset.yaml", {
+            "pref": {"agent": {"claude": {"masks": {"somebox": True}}}},
+        })
+        apply_prefs(collect_prefs(src, None), valid_agents=AGENTS)
+
+    def test_a_doubly_spelled_destination_is_refused_at_the_parse(self, tmp_path):
+        """The per-MAP check is not a shape verdict, so it still fires during the
+        parse rather than waiting for the agent. INVERT: defer it too -> reddens."""
+        src = write(tmp_path / "workset.yaml", {
+            "pref": {"agent": {"claude": {
+                # ``~`` expands to GUEST_HOME and a trailing slash is DROPPED, so
+                # these two keys are one destination — they must not both land.
+                "seeded": {"~/x": ["src"], "/home/agent/x/": ["src"]},
+            }}},
+        })
+        with pytest.raises(SettingsError) as exc:
+            apply_prefs(collect_prefs(src, None), valid_agents=AGENTS)
+        msg = str(exc.value)
+        assert "spells one destination twice" in msg
+        # Refused at the PARSE, so the request never reached the agent verdict: the
+        # target here is a VALID agent, and the map fault outranks nothing else.
+        assert "is not a valid agent" not in msg
+
+    def test_a_non_pref_bind_map_is_unaffected(self):
+        """The deferral is scoped to a ``pref.`` head: the same malformed map read as
+        a settings value is still refused by the parse. INVERT: defer every map
+        -> reddens here."""
+        from kanibako.settings.settings_assemble import _file_partial
+
+        with pytest.raises(SettingsError) as exc:
+            _file_partial({"agent": {"claude": {"seeded": {"somebox": "some-scalar"}}}})
+        assert "must be a structured entry" in str(exc.value)
