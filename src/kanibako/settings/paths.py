@@ -828,7 +828,7 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
     ``kanibako.cfg``) — and since 2026-08-31
     that is a property of the READS rather than of filters applied after them:
     ``bootstrap_config_paths`` walks the ``config:`` table and REFUSES anything else in the
-    file, while ``system_path_set_values`` walks the ``system:`` table.  The one filter left
+    file, while ``system_table_set_values`` walks the ``system:`` table.  The one filter left
     below is the P13 path-tier selection, which is a different question.
 
     ⚑⚑ *tolerate_bad_settings* SPLITS IN TWO ARMS, because the one ``try`` it used to be
