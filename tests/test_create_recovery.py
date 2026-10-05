@@ -553,6 +553,203 @@ class TestRunCreateJournalLifecycle:
         assert "already initialized" in capsys.readouterr().err
 
 
+class TestRunCreatePreWriteRootShape:
+    """A STANDALONE create refuses a malformed root ``workset.yaml`` BEFORE it writes.
+
+    The create's ``workset.kuid`` write walks the root's ``workset`` section, and a
+    scalar there is where it refuses — after ``box_data/``, ``canon/``, ``vault/`` and
+    ``workspace/`` are on disk, stranding a half-built box that no ``--recover`` can
+    finish.  Asking the writer's own shape rule first is what makes the refusal cost
+    nothing on disk.
+    """
+
+    MALFORMED = "workset: /x\n"
+
+    def _malformed_root(self, root: Path, text: str | None = None) -> Path:
+        root.mkdir(parents=True, exist_ok=True)
+        settings = root / "workset.yaml"
+        settings.write_text(self.MALFORMED if text is None else text)
+        return settings
+
+    def test_create_standalone_malformed_root_leaves_disk_untouched(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """FULL-TREE snapshot equality across the refusal, plus the file's own bytes.
+
+        Pinned: a refused standalone create creates NOTHING — no ``box_data/``,
+        ``canon/``, ``vault/`` or ``workspace/`` — and leaves the malformed file exactly
+        as the user wrote it, so fixing the file and re-running is the whole remedy.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import ConfigError
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        root = tmp_home / "sa-proj"
+        settings = self._malformed_root(root)
+        before = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+
+        with pytest.raises(ConfigError):
+            run_create(_create_args(root, standalone=True))
+
+        assert sorted(str(p.relative_to(root)) for p in root.rglob("*")) == before
+        assert settings.read_text() == self.MALFORMED
+
+    def test_create_standalone_malformed_root_names_the_file_and_key(
+        self, config_file, tmp_home, credentials_dir, monkeypatch,
+    ):
+        """The refusal names the file, the stored value and the section — the SAME text
+        the mid-create write produced, so the fix it asks for does not change."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import ConfigError
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        settings = self._malformed_root(tmp_home / "sa-proj")
+
+        with pytest.raises(ConfigError) as exc:
+            run_create(_create_args(tmp_home / "sa-proj", standalone=True))
+
+        assert str(exc.value) == (
+            f"the config file {settings.resolve()} holds /x at 'workset', where a "
+            f"table of keys belongs, so 'workset.' keys cannot be written under it. "
+            f"Fix or delete 'workset' in that file by hand, then retry."
+        )
+
+    def test_create_standalone_over_a_corrected_root_succeeds(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """The refusal is the FILE's, not the box's: correct the root and the same create
+        completes, so the pre-write check is a placement and not a new prohibition."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import ConfigError
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        root = tmp_home / "sa-proj"
+        settings = self._malformed_root(root)
+
+        with pytest.raises(ConfigError):
+            run_create(_create_args(root, standalone=True))
+        settings.write_text("")
+
+        assert run_create(_create_args(root, standalone=True)) == 0
+        assert (root / "box_data").is_dir()
+        assert (root / "workspace").is_dir()
+
+    @pytest.mark.parametrize("text, found", [
+        ("workset:\n", "null"),
+        ("workset: 0\n", "0"),
+        ("workset: ''\n", '""'),
+        ("workset: []\n", "[]"),
+        ("workset: /x\n", "/x"),
+    ])
+    def test_any_non_table_at_workset_is_refused_before_any_write(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, text, found,
+    ):
+        """EVERY non-table at ``workset`` is refused, falsy ones included — ``null``
+        included — and the refusal costs the root nothing.  A falsy scalar is the shape
+        most likely to be a user's "clear this" edit, so it is pinned alongside ``/x``."""
+        from kanibako.commands.box._parser import run_create
+        from kanibako.errors import ConfigError
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        root = tmp_home / "sa-proj"
+        settings = self._malformed_root(root, text)
+        before = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
+
+        with pytest.raises(ConfigError) as exc:
+            run_create(_create_args(root, standalone=True))
+
+        assert f"holds {found} at 'workset', where a table of keys belongs" in str(exc.value)
+        assert sorted(str(p.relative_to(root)) for p in root.rglob("*")) == before
+        assert settings.read_text() == text
+
+    @pytest.mark.parametrize("text", [
+        "",
+        "box:\n  enable_vault: false\n",
+    ])
+    def test_a_usable_root_file_does_not_refuse(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, text,
+    ):
+        """The control: a root file the create can write into still creates, so the check
+        refuses a non-TABLE at ``workset`` and not the presence of the file."""
+        from kanibako.commands.box._parser import run_create
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        root = tmp_home / "sa-proj"
+        root.mkdir(parents=True)
+        (root / "workset.yaml").write_text(text)
+
+        assert run_create(_create_args(root, standalone=True)) == 0
+        assert (root / "box_data").is_dir()
+
+    def test_a_root_that_does_not_exist_yet_still_creates(
+        self, config_file, tmp_home, credentials_dir, monkeypatch
+    ):
+        """The control: a first create into a directory that does not exist yet makes it,
+        and an ABSENT root file is nothing to refuse — the writer creates the section."""
+        from kanibako.commands.box._parser import run_create
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        root = tmp_home / "not-yet"
+
+        assert run_create(_create_args(root, standalone=True)) == 0
+        assert (root / "box_data").is_dir()
+
+    def test_a_pending_create_is_still_refused_by_the_journal(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys
+    ):
+        """THE RECOVERY ARM IS UNTOUCHED: a pending entry still gets the journal's own
+        refusal naming the box, not a settings refusal — the pre-write check asks about a
+        file shape, and this one is a well-formed file with an interrupted create behind
+        it."""
+        from types import SimpleNamespace
+
+        from kanibako.commands.box._parser import run_create
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        monkeypatch.setattr(
+            "kanibako.commands.start.seed_new_box",
+            lambda std, config, proj, **kw: None,
+        )
+        root = tmp_home / "sa-proj"
+        assert run_create(_create_args(root, standalone=True)) == 0
+
+        # A well-formed root file, and a pending entry for a box that never finished.
+        (root / "workset.yaml").write_text("workset:\n  kuid: k1\n")
+        std = load_std_paths(load_config(config_file))
+        proj = SimpleNamespace(
+            shell_path=root / "box_data" / "home", mode=BoxMode.standalone,
+            name="sa-proj", project_path=root / "workspace", group=None,
+        )
+        assert journal.pending_create(std.journal, _box_journal_key(proj)) is None
+        _write_create_entry(std, proj)
+
+        capsys.readouterr()
+        assert run_create(_create_args(root, standalone=True)) == 1
+
+        err = capsys.readouterr().err
+        assert "interrupted 'create' is pending" in err
+        assert "where a table of keys belongs" not in err
+
+
 class TestRunCreateCrossKindName:
     """`box create --name <workset-name>` (per-kind name policy, Jei 2026-07-08).
 

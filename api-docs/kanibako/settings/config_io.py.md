@@ -24,6 +24,7 @@ def load_doc(path: Path | None) -> dict
 def dump_doc(path: Path, data: dict) -> None
 def write_root_key(path: Path, key: str, value: object) -> None
 def remove_root_key(path: Path, key: str) -> bool
+def refuse_scalar_sections(path: Path, sections: tuple[str, ...], *, data: dict | None=None) -> None
 def write_nested_key(path: Path, sections: tuple[str, ...], key: str, value: object) -> None
 def remove_nested_key(path: Path, sections: tuple[str, ...], key: str) -> bool
 def count_leaves(node: object) -> int

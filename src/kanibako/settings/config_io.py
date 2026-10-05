@@ -305,23 +305,23 @@ def remove_root_key(path: Path, key: str) -> bool:
     return True
 
 
-def write_nested_key(
-    path: Path, sections: tuple[str, ...], key: str, value: object,
+def refuse_scalar_sections(
+    path: Path, sections: tuple[str, ...], *, data: dict | None = None,
 ) -> None:
-    """Write *key* into a nested table (e.g. ``("system", "path")``), creating ABSENT intermediates.
+    """RAISE :class:`ConfigError` when *sections* walks into a value that is not a table.
 
-    Raises ConfigError when an intermediate is present but not a table, ``null`` included: every
-    section walked is a namespace, where no value is a setting the closed keyspace accepts (spec §0).
-
-    ⚑ A NODE SECTION is stored as a human writes it, ``persona+harness`` -- see
-    :func:`_resolved_section`, which this walk and ``stored_leaf_object``'s share.
+    Every section walked is a namespace, so a value where a table belongs refuses,
+    ``null`` included (spec §0).  ⚑ THE SHAPE RULE, STATED HERE: an absent section, or a
+    *path* that is not a file, is a writer's to create, so neither refuses.  *data* is the
+    ALREADY-READ doc, not re-read.
     """
-    data = load_doc(path)
-    node = data
+    if not path.is_file():
+        return
+    node = load_doc(path) if data is None else data
     for depth, sec in enumerate(sections):
         sec = _resolved_section(node, sec)
         if sec not in node:
-            node[sec] = {}
+            return
         child = node[sec]
         if not isinstance(child, dict):
             dotted = ".".join((*sections[:depth], sec))
@@ -331,6 +331,26 @@ def write_nested_key(
                 f"Fix or delete '{dotted}' in that file by hand, then retry."
             )
         node = child
+
+
+def write_nested_key(
+    path: Path, sections: tuple[str, ...], key: str, value: object,
+) -> None:
+    """Write *key* into a nested table (e.g. ``("system", "path")``), creating ABSENT intermediates.
+
+    Raises ConfigError when an intermediate is present but not a table, ``null`` included:
+    every section walked is a namespace, where no value is a setting the closed keyspace
+    accepts (spec §0) — :func:`refuse_scalar_sections` owns that refusal.
+
+    ⚑ A NODE SECTION is stored as a human writes it, ``persona+harness`` -- see
+    :func:`_resolved_section`, which this walk and ``stored_leaf_object``'s share.
+    """
+    data = load_doc(path)
+    refuse_scalar_sections(path, sections, data=data)
+    node = data
+    for sec in sections:
+        sec = _resolved_section(node, sec)
+        node = node.setdefault(sec, {})
     node[key] = value
     dump_doc(path, data)
 

@@ -2037,6 +2037,44 @@ class TestNestedWriteRefusesANonTableSection:
         write_nested_key(path, ("box", "env"), "FOO", "bar")
         assert load_doc(path) == {"box": {"image": "ok:1", "env": {"FOO": "bar"}}}
 
+    @pytest.mark.parametrize("text, sections, dotted, found", [
+        ("workset: /x\n", ("workset",), "workset", "/x"),
+        ("box: 7\n", ("box",), "box", "7"),
+        ("box:\n  env: [a, b]\n", ("box", "env"), "box.env", "['a', 'b']"),
+        ("system:\n", ("system",), "system", "null"),
+    ])
+    def test_reader_asks_the_same_refusal_as_the_writer(
+        self, tmp_path, text, sections, dotted, found,
+    ):
+        """The reader-side twin: the SAME message, with nothing written, for the shapes
+        the writer refuses — so a caller that must refuse BEFORE writing can ask."""
+        from kanibako.settings.config_io import refuse_scalar_sections
+
+        path = tmp_path / "settings.yaml"
+        path.write_text(text)
+
+        with pytest.raises(ConfigError) as exc:
+            refuse_scalar_sections(path, sections)
+        assert str(exc.value) == (
+            f"the config file {path} holds {found} at '{dotted}', where a table of keys "
+            f"belongs, so '{dotted}.' keys cannot be written under it. "
+            f"Fix or delete '{dotted}' in that file by hand, then retry."
+        )
+        assert path.read_text() == text
+
+    def test_reader_has_nothing_to_refuse_in_a_missing_path_or_section(self, tmp_path):
+        """The controls: a path that is not a file, and a section that is absent, are both
+        what the writer creates — so neither is a refusal for a pre-write reader."""
+        from kanibako.settings.config_io import refuse_scalar_sections
+
+        refuse_scalar_sections(tmp_path / "absent.yaml", ("workset",))
+
+        path = tmp_path / "settings.yaml"
+        path.write_text("box:\n  enable_vault: false\n")
+        refuse_scalar_sections(path, ("workset",))
+        refuse_scalar_sections(path, ("workset", "kuid"))
+        assert path.read_text() == "box:\n  enable_vault: false\n"
+
     # The verb resolves the cascade before writing, so the census sees the fixture's ``box.env: 7``.
     @pytest.mark.writes_undeclared("box.env")
     def test_set_verb_exits_rc1_and_keeps_the_value(self, tmp_path, config_file, capsys):
