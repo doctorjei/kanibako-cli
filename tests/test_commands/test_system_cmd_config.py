@@ -497,26 +497,25 @@ class TestSystemStructuralFileOnly:
 
 
 class TestSystemPersonaAgentKeys:
-    """B1: ``system set agent.<persona+harness>.<key>`` — CLI-configurable
-    personas routed to the agent's OWN ``agents/<node>/agent.yaml`` (the
-    global ``config.agents`` store), end-to-end through the ``system`` verbs.
+    """B1: ``system set agent.<persona+harness>.<key>`` — CLI-configurable personas,
+    stored in the SYSTEM settings file's ``agent: <node>:`` table (spec §2a: the
+    command's scope file), end-to-end through the ``system`` verbs.  The node's own
+    ``agents/<node>/agent.yaml`` is the ``agent`` verb's file, never touched here.
     """
 
-    def _file(self, std, node="navigator℘claude"):
-        # ⚑ The dirname comes from the production helper; the spelling itself is
-        # pinned with literals in ``test_set_endpoint_writes_the_plus_dir``.
-        return std.agents / store_dirname(node) / "agent.yaml"
+    def _file(self, std):
+        return std.settings
 
-    def test_set_endpoint_writes_the_plus_dir(self, config_file, tmp_home):
+    def test_set_endpoint_writes_the_system_file(self, config_file, tmp_home):
         rc = _set("agent.navigator+claude.endpoint=https://ep")
         assert rc == 0
         std = _std(config_file)
-        assert load_doc(std.agents / "navigator+claude" / "agent.yaml") == {
-            "self": {"endpoint": "https://ep"},
+        assert load_doc(std.settings) == {
+            "agent": {"navigator+claude": {"endpoint": "https://ep"}},
         }
-        # ⚑ NO ``℘`` REACHES THE DISK: it is a key-path device, and a store dir the
-        # user lists and cd's into is not a key.
+        # ⚑ NO ``℘`` REACHES THE DISK, and no node store is made for a system write.
         assert not (std.agents / "navigator℘claude").exists()
+        assert not (std.agents / "navigator+claude").exists()
 
     def test_get_reads_back_via_plus_and_script_p(
         self, config_file, tmp_home, capsys,
@@ -536,27 +535,83 @@ class TestSystemPersonaAgentKeys:
         assert rc == 0
         std = _std(config_file)
         # The now-empty agent table is pruned → the file stays sparse (empty doc).
+        assert self._file(std).exists()
         assert load_doc(self._file(std)) == {}
 
-    def test_secret_path_token_lands_in_self_section(
+    def test_secret_path_token_lands_in_the_node_table(
         self, config_file, tmp_home,
     ):
         rc = _set("agent.navigator+claude.secret_path.ANTHROPIC_AUTH_TOKEN=/t/tok")
         assert rc == 0
         std = _std(config_file)
-        # DIRECTLY under self.secret_path — self IS agent.<node>, so no second
-        # <node> embedding (RENAMED from rc-only env_file, clean break).
-        assert load_doc(self._file(std)) == {
-            "self": {
-                "secret_path": {"ANTHROPIC_AUTH_TOKEN": "/t/tok"},
-            },
-        }
+        assert load_doc(self._file(std)) == {"agent": {"navigator+claude": {
+            "secret_path": {"ANTHROPIC_AUTH_TOKEN": "/t/tok"},
+        }}}
 
     def test_default_only_persona_file_stays_sparse(self, config_file, tmp_home):
         _set("agent.navigator+claude.endpoint=https://ep")
         std = _std(config_file)
         data = load_doc(self._file(std))
-        assert data == {"self": {"endpoint": "https://ep"}}
+        assert data == {"agent": {"navigator+claude": {"endpoint": "https://ep"}}}
+
+
+class TestSystemVerbsTouchOnlyTheSystemFile:
+    """``system set/get/reset agent.<node>.*`` work on the SYSTEM settings file alone.
+
+    Spec §2a: ``config set`` edits the file at the COMMAND's scope, and plain ``get``
+    returns the value stored at that scope's file, never another tier's.  The system
+    scope's file is ``{config.settings}`` (ladder L2.2); the node's own
+    ``agents/<node>/agent.yaml`` is the agent scope's (L3.1), reached by ``agent set``.
+    """
+
+    KEY = "agent.claude.env.Y"
+
+    def _node_file(self, std):
+        path = std.agents / store_dirname("claude") / "agent.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(path, {"self": {"env": {"A": "agent-file-value"}}})
+        return path
+
+    def test_round_trip_never_touches_the_node_file(self, config_file, tmp_home, capsys):
+        import hashlib
+
+        std = _std(config_file)
+        node_file = self._node_file(std)
+        before = hashlib.sha256(node_file.read_bytes()).hexdigest()
+
+        assert _set(f"{self.KEY}=1") == 0
+        assert load_doc(std.settings) == {"agent": {"claude": {"env": {"Y": "1"}}}}
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        assert capsys.readouterr().out == f"{self.KEY}=1\n"
+        assert _reset(self.KEY) == 0
+        assert load_doc(std.settings) == {}
+        capsys.readouterr()
+        assert _get(self.KEY) == 0
+        assert capsys.readouterr().out == f"{self.KEY}: (not set)\n"
+
+        assert hashlib.sha256(node_file.read_bytes()).hexdigest() == before
+
+    def test_get_does_not_answer_from_the_node_file(self, config_file, tmp_home, capsys):
+        self._node_file(_std(config_file))
+        capsys.readouterr()
+        assert _get("agent.claude.env.A") == 0
+        assert capsys.readouterr().out == "agent.claude.env.A: (not set)\n"
+
+    def test_the_agent_verb_still_owns_the_node_file(self, config_file, tmp_home, capsys):
+        from kanibako.commands.agent_cmd import run_get as agent_get
+        from kanibako.commands.agent_cmd import run_set as agent_set
+
+        std = _std(config_file)
+        node_file = self._node_file(std)
+        assert agent_set(argparse.Namespace(
+            agent_id="claude", key_value="env.Y=2", force=True,
+        )) == 0
+        assert load_doc(node_file)["self"]["env"]["Y"] == "2"
+        assert not std.settings.exists() or "agent" not in load_doc(std.settings)
+        capsys.readouterr()
+        assert agent_get(argparse.Namespace(agent_id="claude", key="env.Y")) == 0
+        assert capsys.readouterr().out == "2\n"
 
 
 class TestSystemSetJudgesTheNodeAsGetDoes:
@@ -647,6 +702,16 @@ class TestSystemGetReadsTheNodeKeysTheNounFileHolds:
         std.settings.parent.mkdir(parents=True, exist_ok=True)
         write_nested_key(std.settings, sections, leaf, value)
 
+    def _node_store_get(self, config_file, key):
+        """The engine's read of the node's OWN file (``node_store`` left at its default)."""
+        from kanibako.settings.config_interface import get_config_value
+
+        std = _std(config_file)
+        return get_config_value(
+            key, global_config_path=config_file, system_settings_path=std.settings,
+            agents_root=std.agents, command_scope=ConfigLevel.system,
+        )
+
     def _seed_node_file(self, std, node, sections, leaf, value):
         """The node's OWN store, at the address ``agent_file._read_address`` produces."""
         path = std.agents / store_dirname(node) / "agent.yaml"
@@ -693,17 +758,21 @@ class TestSystemGetReadsTheNodeKeysTheNounFileHolds:
         assert "(not set)" not in out, out
         assert "the-system-file-value" in out, out
 
-    def test_the_node_own_file_keeps_its_precedence(
+    def test_the_node_own_file_is_not_this_verb_s_file(
         self, config_file, tmp_home, capsys,
     ):
-        """Both files spelling ONE key is a cascade, not a contest: the node's own file
-        wins, which is what asking the second home only on a miss buys."""
+        """Plain ``get`` answers for THIS scope's file (spec §2a), never another tier's:
+        the node's own file is the ``agent`` verb's, so its value is not reported here,
+        whether or not the system file holds the key too."""
         std = _std(config_file)
         self._seed_noun_file(std, ("agent", "claude", "env"), "BOTH", "from-system-file")
         self._seed_node_file(std, "claude", ("env",), "BOTH", "from-agent-file")
+        self._seed_node_file(std, "claude", ("env",), "ONLY", "from-agent-file")
         capsys.readouterr()
         assert _get("agent.claude.env.BOTH") == 0
-        assert capsys.readouterr().out == "agent.claude.env.BOTH=from-agent-file\n"
+        assert capsys.readouterr().out == "agent.claude.env.BOTH=from-system-file\n"
+        assert _get("agent.claude.env.ONLY") == 0
+        assert capsys.readouterr().out == "agent.claude.env.ONLY: (not set)\n"
 
     def test_a_key_neither_file_holds_is_still_reported_unset(
         self, config_file, tmp_home, capsys,
@@ -726,16 +795,17 @@ class TestSystemGetReadsTheNodeKeysTheNounFileHolds:
         """⚑ THE PAIRING ``agent_cmd``'s D-6 block pins, measured over the two HOMES
         instead of the record and the file: a stored ``""`` and a stored null each have
         their own spelling (spec §2h), so a value that read one way through one home and
-        another way through the other would be two vocabularies for one key."""
+        another way through the other would be two vocabularies for one key.  ``system
+        get`` reads the system file only, so the node's own file is read through the
+        engine's node-store route, which the box and workset ``get`` still use."""
         std = _std(config_file)
         self._seed_noun_file(std, ("agent", "claude", "env"), "V", stored)
         self._seed_node_file(std, "codex", ("env",), "V", stored)
         capsys.readouterr()
         assert _get("agent.claude.env.V") == 0
         from_noun_file = capsys.readouterr().out
-        assert _get("agent.codex.env.V") == 0
-        from_node_file = capsys.readouterr().out
-        assert from_noun_file.split("=", 1)[1] == from_node_file.split("=", 1)[1], (
+        from_node_file = f"{self._node_store_get(config_file, 'agent.codex.env.V')}\n"
+        assert from_noun_file.split("=", 1)[1] == from_node_file, (
             from_noun_file, from_node_file
         )
 
@@ -752,10 +822,9 @@ class TestSystemGetReadsTheNodeKeysTheNounFileHolds:
         capsys.readouterr()
         assert _get("agent.claude.run_args") == 0
         from_noun_file = capsys.readouterr().out
-        assert _get("agent.codex.run_args") == 0
-        from_node_file = capsys.readouterr().out
+        from_node_file = self._node_store_get(config_file, "agent.codex.run_args")
         assert from_noun_file == "agent.claude.run_args=--sys --two\n", from_noun_file
-        assert from_node_file == "agent.codex.run_args=--sys --two\n", from_node_file
+        assert from_node_file == "--sys --two", from_node_file
 
     def test_the_reserved_any_agent_tier_is_read_where_it_already_was(
         self, config_file, tmp_home, capsys,
@@ -863,21 +932,20 @@ class TestSystemAgentNodeBindWriteRouteRetired:
         assert rc == 1
         err = capsys.readouterr().err
         assert "RETIRED" in err, err
-        # And the persona-scalar model still writes verbatim (unchanged path).
+        # And the persona-scalar model still writes verbatim, to the system file.
         assert _set("agent.claude.model=opus") == 0
         std = _std(config_file)
-        assert load_doc(self._file(std))["self"]["model"] == "opus"
+        assert load_doc(std.settings)["agent"]["claude"]["model"] == "opus"
 
     def test_get_still_reads_a_hand_authored_bind(
         self, config_file, tmp_home, capsys,
     ):
-        """The read survives — the refusal tells the user to edit the node settings
-        file, and this is how they check that the edit took."""
+        """The read survives for a bind hand-authored in THIS scope's file, the system
+        settings file's ``agent: <node>:`` table (spec §2a)."""
         std = _std(config_file)
-        node_file = self._file(std)
-        node_file.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(node_file, {"self": {"bindings": {"ro": {
-            "launcher": ["/newsrc", "/box/launcher", "ro"]}}}})
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(std.settings, {"agent": {"claude": {"bindings": {"ro": {
+            "launcher": ["/newsrc", "/box/launcher", "ro"]}}}}})
         capsys.readouterr()
         rc = _get(self.KEY)
         assert rc == 0
@@ -1206,12 +1274,11 @@ class TestSystemGetClosedKeyspaceReadGate:
         in ``TestSystemAgentNodeBindWriteRouteRetired``.
         """
         std = _std(config_file)
-        node_file = std.agents / store_dirname("claude") / "agent.yaml"
-        node_file.parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(node_file, {"self": {
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(std.settings, {"agent": {"claude": {
             "bindings": {"ro": {"launcher": ["/newsrc", "/box/launcher", "ro"]}},
             "caches": {"cachey": ["/csrc", "/box/cache", "rw"]},
-        }})
+        }}})
         capsys.readouterr()
         # The BIND reads back its tuple ...
         assert _get("agent.claude.bindings.ro.launcher") == 0
@@ -1454,8 +1521,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
     VALUE = "@meta.agent.claude.path/canon"
 
     def _stored(self, config_file):
-        std = _std(config_file)
-        return load_doc(std.agents / store_dirname("claude") / "agent.yaml")
+        return load_doc(_std(config_file).settings)["agent"]["claude"]
 
     def test_the_node_s_own_store_root_resolves(self, config_file, tmp_home, capsys):
         """MUTATION PROOF: drop ``cascade_agent_name`` from ``system_cmd``'s
@@ -1465,7 +1531,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
         capsys.readouterr()
         rc = _set(f"{self.KEY}={self.VALUE}")
         assert rc == 0, capsys.readouterr().err
-        assert self._stored(config_file)["self"]["canon"] == self.VALUE
+        assert self._stored(config_file)["canon"] == self.VALUE
 
     def test_a_bogus_ref_is_still_refused_by_name(self, config_file, tmp_home, capsys):
         """The floor anchors ONE node, so it cannot become a blanket accept."""
@@ -1489,7 +1555,7 @@ class TestSystemSetAnchorsTheNodeItWrites:
         value = "@meta.agent.claude.path/tok"
         rc = _set(f"agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN={value}")
         assert rc == 0, capsys.readouterr().err
-        assert self._stored(config_file)["self"]["secret_path"][
+        assert self._stored(config_file)["secret_path"][
             "ANTHROPIC_AUTH_TOKEN"
         ] == value
 

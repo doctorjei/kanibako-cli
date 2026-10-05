@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`system set`, `get`, and `reset` on `agent.<node>.*` use the system settings file.** They used
+  to write and clear `agents/<node>/agent.yaml`, and `get` read that file first; per keyspec §2a
+  they now work on `<data>/global/settings.yaml` alone, under `agent: <node>:`. **Printed-line
+  change:** `system get agent.<node>.<key>` answers `(not set)` for a value only the agent's own file
+  holds. `agent set`/`get`/`reset` are unchanged. See *`system set agent.<node>.*` writes the system
+  settings file* in `MIGRATION.md`.
 - **`agent set` now refuses an agent file it cannot read.** A `set` whose target
   `agents/<node>/agent.yaml` carries an entry that is not a key outside the edited value's chain —
   a stray top-level key, or a retired `auto_approve` — previously answered `Set <key>=<value>` and

@@ -406,7 +406,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             key, config_path=cf, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
             cascade_system_path=ssp,
-            agents_root=agents_root,
+            agents_root=agents_root, node_store=False,
         )
         if msg.startswith("Error:"):
             print(msg, file=sys.stderr)
@@ -461,7 +461,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
         val = get_config_value(
             key, global_config_path=cf,
             system_settings_path=ssp,
-            agents_root=agents_root,
+            agents_root=agents_root, node_store=False,
             # ⚑ The scope is threaded even though every other handler threads it
             # for a REASON this one does not have: ``get`` consumes command_scope
             # only for the box-scope redirect, so at the system scope it changes
@@ -539,7 +539,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             cascade_system_path=ssp,
             cascade_agent_name=agent_node_of(resolve_key(key)),
             command_scope=ConfigLevel.system,
-            agents_root=agents_root,
+            agents_root=agents_root, node_store=False,
             std=set_std,
             target_error=set_std_error,
             force=args.force,

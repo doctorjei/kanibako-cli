@@ -396,7 +396,9 @@ inside boxes. In order of likely impact:
     space*; and `create` refuses a directory a named box holds as its workspace — see *`create` in a
     directory connected to a workset is refused*; and an endpoint is read and stored as written, so
     a `\` that escaped a character in it must go — see *An endpoint is text: remove a `\` you
-    wrote to escape a character in it*.
+    wrote to escape a character in it*; and `system set`, `get`, and `reset` on an `agent.<node>.…`
+    key work on the system settings file, not the agent's own file — see *`system set
+    agent.<node>.*` writes the system settings file*.
 
 ---
 
@@ -6525,6 +6527,23 @@ and `\` escaped the next character, so `https://user:key@host/v1` had to be writ
 **What to do.** Remove each `\` you wrote as an escape: `https://user:key\@host/v1` becomes
 `https://user:key@host/v1`. An endpoint that referred to another key or variable (`@…`, `$…`, `~`)
 must be written out in full.
+
+### `system set agent.<node>.*` writes the system settings file
+
+**Read this if you have run `kanibako system set` or `system reset` on an `agent.<node>.…` key.**
+
+**What changed.** `kanibako system set agent.<node>.<key>=…` used to write the agent's own
+`agents/<node>/agent.yaml`, and `system get` read that file first. The `system` verbs now work on the
+system settings file alone (`<data>/global/settings.yaml`, under `agent: <node>:`): `set` writes
+there, `reset` clears there, and `get` reports only what that file stores. The agent's own file
+belongs to `kanibako agent set`, `agent get`, and `agent reset`, which have not changed. The
+launch reads both files, and the agent's own file outranks the system file for the same key.
+
+**What to do.** Nothing moves by itself. A value an earlier `system set` wrote is still in
+`agents/<node>/agent.yaml` and still applies; read it with `kanibako agent get <node> <key>`, and
+clear it with `kanibako agent reset <node> <key>`. `kanibako system get agent.<node>.<key>` now
+answers `(not set)` for it. To keep a value at the system scope instead, `system set` it again and
+`agent reset` the old copy, since the agent's own file wins while both hold the key.
 
 ---
 
