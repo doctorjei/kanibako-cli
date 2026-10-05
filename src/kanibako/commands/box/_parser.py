@@ -71,12 +71,8 @@ from kanibako.utils import (
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
 _MODE_CHOICES = [m.value for m in BoxMode]
 
-# ONE help string for ``list -a`` and ``ps -a`` — both verbs reach the same listing
-# through ``--all``, so they state the same thing about it.
 _SHOW_ALL_HELP = "Include every box, not just the running ones"
 
-# ⚑ The workspace condition rides on the PATH/SOURCE cell of a row whose STATUS cell
-# already reads ``active``, so a running box is never shown as healthy-and-fine.
 _MISSING_WORKSPACE = "missing workspace"
 
 # The two ``create`` flag classes.  Their union is pinned against the parser by
@@ -1467,10 +1463,7 @@ def run_list(args: argparse.Namespace) -> int:
             # The directory name IS the project name (or a hash, for legacy trees).
             dir_name = settings_path.name
             proj_name = path_to_name.get(str(project_path), dir_name) if project_path else dir_name
-            # ⚑ THE RUNNING CONTAINER DECIDES ``active`` — a box whose workspace folder
-            # is gone is still running while its container is up, so the container is
-            # consulted for EVERY box here and never only for the ones whose folder
-            # happens to still be there.
+            # ⚑ A running container is ``active`` even with no workspace folder.
             running = container_name_for_box_name(proj_name) in running_containers
             if project_path is None:
                 status = "active" if running else "unknown"
@@ -1479,9 +1472,6 @@ def run_list(args: argparse.Namespace) -> int:
                 status = "active" if running else "stopped"
                 label = str(project_path)
             else:
-                # A stopped box with a gone workspace reports ``missing`` in the STATUS
-                # cell; a RUNNING one reports ``active`` there, so its PATH cell carries
-                # the condition instead.
                 status = "active" if running else "missing"
                 label = (
                     f"{project_path} ({_MISSING_WORKSPACE})" if running else str(project_path)
@@ -1507,9 +1497,6 @@ def run_list(args: argparse.Namespace) -> int:
     for ws_name, ws, project_list in ws_data:
         ws_items: list[tuple[str, str, str]] = []
         for proj_name, proj_status in project_list:
-            # Activity status, for EVERY member — a member whose workspace is gone is
-            # still running while its container is up, and its SOURCE cell carries the
-            # condition where the STATUS cell reads ``active``.
             running = container_name_for_box_name(proj_name) in running_containers
             if proj_status == "missing":
                 display_status = "active" if running else proj_status
@@ -1558,9 +1545,6 @@ def run_list(args: argparse.Namespace) -> int:
     sa_items: list[tuple[str, str, str]] = []
     for box_name, root_str in sorted(standalone.items()):
         root = Path(root_str)
-        # A STANDALONE box's container is keyed by its ROOT, which names the box whether
-        # or not the root is still on disk — so the running container decides ``active``
-        # here too, and the ROOT cell carries the condition when the root is gone.
         cname = container_name_for_standalone_root(root)
         running = cname in running_containers
         status = "active" if running else ("stopped" if root.is_dir() else "missing")
