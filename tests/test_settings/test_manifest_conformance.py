@@ -119,7 +119,8 @@ from kanibako.settings.settings_launch import (
 )
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
-from kanibako.settings.workset_dirkeys import EarlyScope, early_system
+from kanibako.settings.workset_dirkeys import early_system
+from tests.conftest import early_record
 
 # --------------------------------------------------------------------------- #
 # Fixtures of fact
@@ -342,9 +343,7 @@ class TestWorksetWorkspacesDefault:
         )
         assert resolve_workset_workspaces(
             tmp_path, load_workset_settings_doc(tmp_path),
-            early=EarlyScope(
-                early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path)), "ws",
-            ),
+            early=early_record(tmp_path, mode=BoxMode.named, name="ws"),
         ) == tmp_path / "pods"
 
 

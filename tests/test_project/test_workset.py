@@ -7,9 +7,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.errors import LegacyWorksetIdentityError, WorksetError
-from kanibako.channels.channels import workset_token
-from kanibako.settings.paths import BoxMode, StandardPaths, _early_scope, resolve_system_paths
-from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem, early_system
+from kanibako.settings.paths import BoxMode, StandardPaths, _early_scope
 from kanibako.project.workset import (
     DEFAULT_WORKSET_ALIAS,
     DEFAULT_WORKSET_ID,
@@ -22,16 +20,7 @@ from kanibako.project.workset import (
     remove_project,
     resolve_workset_name,
 )
-
-
-def _bare_early_system(home: Path) -> EarlySystem:
-    """The early-system record a test with no ``std`` builds from the defaults under *home*."""
-    return early_system({}, resolve_system_paths({}, data_home=home, home=home))
-
-
-def _bare_early(home: Path, mode: BoxMode, workset_name: str | None = None) -> EarlyScope:
-    """:func:`_bare_early_system`, scoped to a *mode* box in *workset_name*."""
-    return EarlyScope(_bare_early_system(home), workset_token(mode, workset_name))
+from tests.conftest import early_record
 
 
 # ---------------------------------------------------------------------------
@@ -892,9 +881,9 @@ class TestWorksetWorkspacesResolved:
         )
 
         assert resolve_workset_workspaces(tmp_path, None,
-                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "workspaces"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "workspaces"
         assert resolve_workset_channelroot(tmp_path, None,
-                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "channels"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "channels"
 
     def test_resolver_root_relative_repoint_is_spelled_with_the_ref(self, tmp_path):
         from kanibako.project.workset import (
@@ -908,9 +897,9 @@ class TestWorksetWorkspacesResolved:
         doc = {"workset": {"workspaces": "@meta.workset.path/pods",
                            "channelroot": "@meta.workset.path/comms"}}
         assert resolve_workset_workspaces(tmp_path, doc,
-                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "pods"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "pods"
         assert resolve_workset_channelroot(tmp_path, doc,
-                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "comms"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "comms"
 
     def test_resolver_bare_relative_repoint_is_refused(self, tmp_path):
         """[R147]: the anchor is ~50/50 between the workset root and the cwd, so the
@@ -922,7 +911,7 @@ class TestWorksetWorkspacesResolved:
         doc = {"workset": {"channelroot": "comms"}}
         with pytest.raises(SettingsError) as excinfo:
             resolve_workset_channelroot(tmp_path, doc,
-                    early=_bare_early(tmp_path, BoxMode.primary))
+                    early=early_record(tmp_path, mode=BoxMode.primary))
         message = str(excinfo.value)
         assert str(tmp_path / "comms") in message
         assert str(Path.cwd() / "comms") in message
@@ -932,7 +921,7 @@ class TestWorksetWorkspacesResolved:
 
         doc = {"workset": {"workspaces": "/srv/pods"}}
         assert resolve_workset_workspaces(tmp_path, doc,
-                early=_bare_early(tmp_path, BoxMode.primary)) == Path("/srv/pods")
+                early=early_record(tmp_path, mode=BoxMode.primary)) == Path("/srv/pods")
 
     def test_resolver_ignores_malformed_or_empty_slots(self, tmp_path):
         from kanibako.project.workset import resolve_workset_workspaces
@@ -940,7 +929,7 @@ class TestWorksetWorkspacesResolved:
         for doc in (None, {}, {"workset": "oops"}, {"workset": {"workspaces": ""}}):
             assert (
                 resolve_workset_workspaces(tmp_path, doc,
-                        early=_bare_early(tmp_path, BoxMode.primary))
+                        early=early_record(tmp_path, mode=BoxMode.primary))
                 == tmp_path / "workspaces"
             )
 
@@ -950,20 +939,20 @@ class TestWorksetWorkspacesResolved:
 
         doc = {"workset": {"workspaces": None}}
         assert resolve_workset_workspaces(tmp_path, doc,
-                early=_bare_early(tmp_path, BoxMode.primary)) is None
+                early=early_record(tmp_path, mode=BoxMode.primary)) is None
         assert resolve_workset_workspaces(tmp_path, doc, standalone=True,
-                early=_bare_early(tmp_path, BoxMode.standalone)) is None
+                early=early_record(tmp_path, mode=BoxMode.standalone)) is None
 
     def test_the_locator_finds_members_at_the_default_under_a_null(self, tmp_path):
         """Detection still looks where pre-null in-tree members sit; nothing else reads it."""
         from kanibako.project.workset import resolve_workspaces_locator
 
         assert (resolve_workspaces_locator(tmp_path, {"workset": {"workspaces": None}},
-                early=_bare_early(tmp_path, BoxMode.primary))
+                early=early_record(tmp_path, mode=BoxMode.primary))
                 == tmp_path / "workspaces")
         doc = {"workset": {"workspaces": "/srv/pods"}}
         assert resolve_workspaces_locator(tmp_path, doc,
-                early=_bare_early(tmp_path, BoxMode.primary)) == Path("/srv/pods")
+                early=early_record(tmp_path, mode=BoxMode.primary)) == Path("/srv/pods")
 
     def test_boxes_and_logs_resolvers_default_to_the_spec_formula(self, tmp_path):
         """⚑ ``workset.boxes``/``workset.logs`` are declared keys and resolve exactly
@@ -975,15 +964,15 @@ class TestWorksetWorkspacesResolved:
         )
 
         assert resolve_workset_boxes(tmp_path, None,
-                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "boxes"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "boxes"
         assert resolve_workset_logs(tmp_path, None,
-                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "logs"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "logs"
 
         doc = {"workset": {"boxes": "@meta.workset.path/trees", "logs": "/var/log/kani"}}
         assert resolve_workset_boxes(tmp_path, doc,
-                early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "trees"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "trees"
         assert resolve_workset_logs(tmp_path, doc,
-                early=_bare_early(tmp_path, BoxMode.primary)) == Path("/var/log/kani")
+                early=early_record(tmp_path, mode=BoxMode.primary)) == Path("/var/log/kani")
 
     def test_boxes_and_logs_resolvers_ignore_malformed_or_empty_slots(self, tmp_path):
         from kanibako.project.workset import (
@@ -993,9 +982,9 @@ class TestWorksetWorkspacesResolved:
 
         for doc in (None, {}, {"workset": "oops"}, {"workset": {"boxes": "", "logs": ""}}):
             assert resolve_workset_boxes(tmp_path, doc,
-                    early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "boxes"
+                    early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "boxes"
             assert resolve_workset_logs(tmp_path, doc,
-                    early=_bare_early(tmp_path, BoxMode.primary)) == tmp_path / "logs"
+                    early=early_record(tmp_path, mode=BoxMode.primary)) == tmp_path / "logs"
 
     # -- NAMED: load_workset captures the repoint --------------------------
 
@@ -1361,7 +1350,7 @@ class TestWorksetLogsPresentNone:
 
         def read(doc):
             return early_repoint(tmp_path, doc, "logs",
-                    early=_bare_early(tmp_path, BoxMode.primary))[0]
+                    early=early_record(tmp_path, mode=BoxMode.primary))[0]
 
         assert read(None) is UNSET
         assert read({"workset": {}}) is UNSET
@@ -1375,9 +1364,9 @@ class TestWorksetLogsPresentNone:
 
         doc = {"workset": {"logs": None}}
         assert resolve_workset_logs(tmp_path, doc,
-                early=_bare_early(tmp_path, BoxMode.primary)) is None
+                early=early_record(tmp_path, mode=BoxMode.primary)) is None
         assert resolve_workset_logs(tmp_path, doc, standalone=True,
-                early=_bare_early(tmp_path, BoxMode.standalone)) is None
+                early=early_record(tmp_path, mode=BoxMode.standalone)) is None
 
     def test_a_named_workset_has_no_logs_dir_and_still_detects(self, std, tmp_home):
         from kanibako.project.workset import is_workset_skeleton
@@ -1454,12 +1443,12 @@ class TestWorksetBoxesPresentNone:
         doc = {"workset": {"boxes": None}}
         for call in (
             lambda: resolve_workset_boxes(tmp_path, doc,
-                    early=_bare_early(tmp_path, BoxMode.primary)),
+                    early=early_record(tmp_path, mode=BoxMode.primary)),
             lambda: resolve_workset_boxes(tmp_path, doc, standalone=True,
-                    early=_bare_early(tmp_path, BoxMode.standalone)),
+                    early=early_record(tmp_path, mode=BoxMode.standalone)),
             # A lone box's default logs dir is ``@workset.boxes``.
             lambda: resolve_workset_logs(tmp_path, doc, standalone=True,
-                    early=_bare_early(tmp_path, BoxMode.standalone)),
+                    early=early_record(tmp_path, mode=BoxMode.standalone)),
         ):
             with pytest.raises(SettingsError) as exc:
                 call()
@@ -1547,7 +1536,7 @@ class TestWorksetFiveDirKeysCarryNull:
         return getattr(ws_mod, name)
 
     def test_a_present_null_carries_and_never_takes_the_default_leaf(self, tmp_path):
-        early = _bare_early(tmp_path / "home", BoxMode.named, "ws")
+        early = early_record(tmp_path / "home", mode=BoxMode.named, name="ws")
         for key, resolver_name, default in self._NULL_CARRYING_KEYS:
             resolver = self._resolver(resolver_name)
             assert resolver(tmp_path, {"workset": {key: None}}, early=early) is None, key
@@ -1557,7 +1546,7 @@ class TestWorksetFiveDirKeysCarryNull:
 
     def test_an_absent_key_still_takes_its_default_leaf(self, tmp_path):
         """GUARD for the other half of the rule: UNSET (key absent) still falls back."""
-        early = _bare_early(tmp_path / "home", BoxMode.named, "ws")
+        early = early_record(tmp_path / "home", mode=BoxMode.named, name="ws")
         for key, resolver_name, default in self._NULL_CARRYING_KEYS:
             resolver = self._resolver(resolver_name)
             assert resolver(tmp_path, None, early=early) == tmp_path / default, key
@@ -1569,7 +1558,7 @@ class TestWorksetFiveDirKeysCarryNull:
     def test_one_null_arm_leaves_the_other_on_its_own_default(self, tmp_path):
         """GUARD: the two vault arms resolve INDEPENDENTLY, so neither answers for the other."""
         doc = {"workset": {"vault_ro": None}}
-        early = _bare_early(tmp_path / "home", BoxMode.named, "ws")
+        early = early_record(tmp_path / "home", mode=BoxMode.named, name="ws")
         assert self._resolver("resolve_workset_vault_ro")(tmp_path, doc, early=early) is None
         assert self._resolver("resolve_workset_vault_rw")(tmp_path, doc, early=early) == (
             tmp_path / "vault" / "rw"
@@ -1806,7 +1795,7 @@ class TestWorksetSkeletonMarker:
         root = tmp_home / "partial"
         (root / "boxes").mkdir(parents=True)
         (root / "workspaces").mkdir()
-        assert not is_workset_skeleton(root, early=_bare_early(tmp_home, BoxMode.named, root.name))
+        assert not is_workset_skeleton(root, early=early_record(tmp_home, mode=BoxMode.named, name=root.name))
 
     def test_an_empty_or_absent_dir_is_not_a_workset(self, tmp_home):
         from kanibako.project.workset import is_workset_skeleton
@@ -1814,9 +1803,9 @@ class TestWorksetSkeletonMarker:
         empty = tmp_home / "empty"
         empty.mkdir()
         assert not is_workset_skeleton(empty,
-                early=_bare_early(tmp_home, BoxMode.named, empty.name))
+                early=early_record(tmp_home, mode=BoxMode.named, name=empty.name))
         assert not is_workset_skeleton(tmp_home / "does-not-exist",
-                early=_bare_early(tmp_home, BoxMode.named, "does-not-exist"))
+                early=early_record(tmp_home, mode=BoxMode.named, name="does-not-exist"))
 
     def test_a_file_named_like_a_skeleton_dir_does_not_count(self, tmp_home):
         """⚑ The test is ``is_dir``: a FILE called ``logs`` is not the logs dir."""
@@ -1826,7 +1815,7 @@ class TestWorksetSkeletonMarker:
         for leaf in ("boxes", "workspaces", "vault"):
             (root / leaf).mkdir(parents=True, exist_ok=True)
         (root / "logs").write_text("not a directory\n", encoding="utf-8")
-        assert not is_workset_skeleton(root, early=_bare_early(tmp_home, BoxMode.named, root.name))
+        assert not is_workset_skeleton(root, early=early_record(tmp_home, mode=BoxMode.named, name=root.name))
 
     def test_a_repointed_workspaces_dir_still_detects(self, std, tmp_home):
         """⚑ ``workspaces`` is resolved through ``workset.workspaces``, so a
@@ -1901,7 +1890,7 @@ class TestWorksetSkeletonMarker:
         root.mkdir()
         assert not (root / "workset.yaml").exists()
         assert _workset_skeleton_dirs(root,
-                early=_bare_early(tmp_home, BoxMode.named, root.name)) == (
+                early=early_record(tmp_home, mode=BoxMode.named, name=root.name)) == (
             root / "boxes", root / "workspaces", root / "vault", root / "logs",
         )
 
@@ -2107,7 +2096,7 @@ class TestRetiredWorksetIdentityLocation:
         root = tmp_home / "legacyws"
         _write_legacy_root(root)
         with pytest.raises(LegacyWorksetIdentityError):
-            load_workset(root, "legacyws", early_system=_bare_early_system(tmp_home))
+            load_workset(root, "legacyws", early_system=early_record(tmp_home))
 
     def test_refusal_survives_the_ancestor_walk(self, std, tmp_home, config):
         """⚑⚑ THE POINT: ``detect_project_mode``'s upward walk propagates it, from a SUBDIR."""
@@ -2223,7 +2212,7 @@ class TestMalformedWorksetSettingsDoc:
         (root / "workset.yaml").write_text(malformed)
 
         with pytest.raises(ConfigError) as excinfo:
-            load_workset(root.resolve(), "brokenws", early_system=_bare_early_system(tmp_home))
+            load_workset(root.resolve(), "brokenws", early_system=early_record(tmp_home))
         assert expected in str(excinfo.value)
 
     @pytest.mark.parametrize("malformed", [
@@ -2473,7 +2462,7 @@ class TestStandaloneVaultTeardownSkeleton:
 
         root = self._root(tmp_path)
         removable, retained = standalone_vault_teardown(root,
-                early=_bare_early(tmp_path, BoxMode.standalone))
+                early=early_record(tmp_path, mode=BoxMode.standalone))
         assert root / "vault" in removable
         assert retained == []
 
@@ -2484,7 +2473,7 @@ class TestStandaloneVaultTeardownSkeleton:
         (root / "vault" / "rw" / "data.txt").write_text("mine")
         (root / "workset.yaml").write_text("workset:\n  vault_rw: null\n")
         removable, retained = standalone_vault_teardown(root,
-                early=_bare_early(tmp_path, BoxMode.standalone))
+                early=early_record(tmp_path, mode=BoxMode.standalone))
         assert root / "vault" not in removable
         assert removable == [root / "vault" / "ro"]
         assert retained == [root / "vault" / "rw"]
@@ -2495,7 +2484,7 @@ class TestStandaloneVaultTeardownSkeleton:
         root = self._root(tmp_path)
         (root / "workset.yaml").write_text("workset:\n  vault_rw: null\n")
         removable, retained = standalone_vault_teardown(root,
-                early=_bare_early(tmp_path, BoxMode.standalone))
+                early=early_record(tmp_path, mode=BoxMode.standalone))
         assert root / "vault" in removable
         assert retained == []
 

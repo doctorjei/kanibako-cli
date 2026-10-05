@@ -32,6 +32,8 @@ from kanibako.settings.workset_dirkeys import (
     early_tier,
     resolve_workset_dir_key,
 )
+from kanibako.settings.paths import BoxMode
+from tests.conftest import early_record
 
 # The modules that carry a no-snapshot resolver face.  ⚑ A LIST OF MODULES, not of
 # functions: the resolvers themselves are discovered by SHAPE below.
@@ -447,9 +449,8 @@ def no_system_open(monkeypatch):
 
 
 def _scope(tmp_path: Path, tier: dict, name: str = "ws") -> EarlyScope:
-    """A record whose system tier is *tier*, built by the constructor from a resolved path tier."""
-    resolved = resolve_system_paths({}, data_home=tmp_path / "data", home=tmp_path)
-    return EarlyScope(early_system(tier, resolved), name)
+    """A record whose system tier is *tier*, scoped to the named workset *name*."""
+    return early_record(tmp_path, tier, mode=BoxMode.named, name=name, data_home=tmp_path / "data")
 
 
 class TestARecordIsTheSystemTier:

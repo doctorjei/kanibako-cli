@@ -15,7 +15,6 @@ import shutil
 import pytest
 from pathlib import Path
 
-from kanibako.channels.channels import workset_token
 from kanibako.errors import ProjectError
 from kanibako.project.names import (
     lookup_by_path,
@@ -25,8 +24,8 @@ from kanibako.project.names import (
     resolve_qualified_name,
     unregister_name,
 )
-from kanibako.settings.paths import BoxMode, _early_scope, resolve_system_paths
-from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem, early_system
+from kanibako.settings.paths import BoxMode, _early_scope
+from tests.conftest import early_record
 
 
 # ---------------------------------------------------------------------------
@@ -45,16 +44,6 @@ def registry(tmp_path: Path) -> Path:
     return dp / "global" / "registry.yaml"
 
 
-def _bare_early_system(home: Path) -> EarlySystem:
-    """The early-system record a test with no ``std`` builds from the defaults under *home*."""
-    return early_system({}, resolve_system_paths({}, data_home=home, home=home))
-
-
-def _bare_early(home: Path, mode: BoxMode, workset_name: str | None = None) -> EarlyScope:
-    """:func:`_bare_early_system`, scoped to a *mode* box in *workset_name*."""
-    return EarlyScope(_bare_early_system(home), workset_token(mode, workset_name))
-
-
 def _register_primary_box(
     primary_workset: Path, name: str, workspace: Path | str,
 ) -> None:
@@ -62,7 +51,7 @@ def _register_primary_box(
     from kanibako.project import workset_registry
 
     reg = workset_registry.resolve_workset_registry_path(primary_workset, None,
-            early=_bare_early(primary_workset.parent, BoxMode.primary))
+            early=early_record(primary_workset.parent, mode=BoxMode.primary))
     workset_registry.register_workset_box(reg, name, Path(workspace))
 
 
@@ -162,7 +151,7 @@ class TestResolveName:
         _register_primary_box(primary, "myapp", ws)
 
         path, kind = resolve_name(registry, "myapp", primary_workset=primary,
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert path == str(ws)
         assert kind == "project"
 
@@ -173,11 +162,11 @@ class TestResolveName:
         primary = tmp_path / "primary_workset"
         _register_primary_box(primary, "myapp", tmp_path / "myapp")
         with pytest.raises(ProjectError, match="Unknown project"):
-            resolve_name(registry, "myapp", early_system=_bare_early_system(tmp_path))
+            resolve_name(registry, "myapp", early_system=early_record(tmp_path))
 
     def test_resolve_workset(self, registry: Path, tmp_path: Path) -> None:
         register_name(registry, "ws1", "/home/user/ws", section="worksets")
-        path, kind = resolve_name(registry, "ws1", early_system=_bare_early_system(tmp_path))
+        path, kind = resolve_name(registry, "ws1", early_system=early_record(tmp_path))
         assert path == "/home/user/ws"
         assert kind == "workset"
 
@@ -192,7 +181,7 @@ class TestResolveName:
         register_name(registry, "proj", "/ws", section="worksets")
 
         path, kind = resolve_name(registry, "proj", primary_workset=primary,
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert kind == "project"
         assert path == str(ws)
 
@@ -211,7 +200,7 @@ class TestResolveName:
 
         with caplog.at_level("WARNING"):
             path, kind = resolve_name(registry, "proj", primary_workset=primary,
-                    early_system=_bare_early_system(tmp_path))
+                    early_system=early_record(tmp_path))
         assert (path, kind) == (str(ws), "project")
         warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
         assert len(warnings) == 1, warnings
@@ -230,12 +219,12 @@ class TestResolveName:
 
         with caplog.at_level("WARNING"):
             resolve_name(registry, "solo", primary_workset=primary,
-                    early_system=_bare_early_system(tmp_path))
+                    early_system=early_record(tmp_path))
         assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
     def test_unknown_name_raises(self, registry: Path, tmp_path: Path) -> None:
         with pytest.raises(ProjectError, match="Unknown project"):
-            resolve_name(registry, "nope", early_system=_bare_early_system(tmp_path))
+            resolve_name(registry, "nope", early_system=early_record(tmp_path))
 
     def test_cwd_context_finds_workset_project(
         self, registry: Path, tmp_path: Path
@@ -248,7 +237,7 @@ class TestResolveName:
 
         path, kind = resolve_name(
             registry, "api", cwd=ws_root / "workspaces" / "api",
-                    early_system=_bare_early_system(tmp_path)
+                    early_system=early_record(tmp_path)
         )
         assert path == str(ws_root / "workspaces" / "api")
         assert kind == "project"
@@ -269,7 +258,7 @@ class TestResolveName:
         register_name(registry, "myws", str(ws_root), section="worksets")
 
         path, kind = resolve_name(registry, "api", cwd=ws_root,
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert path == str(ws_root / "pods" / "api")
         assert kind == "project"
 
@@ -290,7 +279,7 @@ class TestResolveName:
         path, kind = resolve_name(
             registry, "other", cwd=ws_root / "workspaces",
             primary_workset=primary,
-            early_system=_bare_early_system(tmp_path),
+            early_system=early_record(tmp_path),
         )
         assert path == str(other)
         assert kind == "project"
@@ -311,7 +300,7 @@ class TestResolveName:
         box_ws.mkdir(parents=True)
         register_name(registry, ws_name, str(ws_root), section="worksets")
         reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                early=_bare_early(tmp_path, BoxMode.named, ws_name))
+                early=early_record(tmp_path, mode=BoxMode.named, name=ws_name))
         workset_registry.register_workset_box(reg_path, box_name, box_ws)
         return box_ws
 
@@ -330,7 +319,7 @@ class TestResolveName:
         ws_root.mkdir(exist_ok=True)
         register_name(registry, ws_name, str(ws_root), section="worksets")
         reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                early=_bare_early(tmp_path, BoxMode.named, ws_name))
+                early=early_record(tmp_path, mode=BoxMode.named, name=ws_name))
         workset_registry.register_workset_box(reg_path, box_name, box_ws)
         return box_ws
 
@@ -346,7 +335,7 @@ class TestResolveName:
 
         # cwd is OUTSIDE the workset (tmp_path is the parent of the ws root).
         path, kind = resolve_name(registry, "cluster2", cwd=tmp_path,
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert kind == "project"
         assert Path(path).resolve() == box_ws.resolve()
 
@@ -358,7 +347,7 @@ class TestResolveName:
         self._register_ws_member(registry, tmp_path, "ws2", "dup")
 
         with pytest.raises(ProjectError, match="Ambiguous"):
-            resolve_name(registry, "dup", cwd=tmp_path, early_system=_bare_early_system(tmp_path))
+            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
 
     def test_workset_member_unknown_still_raises(
         self, registry: Path, tmp_path: Path
@@ -367,7 +356,7 @@ class TestResolveName:
         self._register_ws_member(registry, tmp_path, "myws", "cluster2")
         with pytest.raises(ProjectError, match="Unknown"):
             resolve_name(registry, "not-a-member", cwd=tmp_path,
-                    early_system=_bare_early_system(tmp_path))
+                    early_system=early_record(tmp_path))
 
     # -- The ambiguity message must make its own cure derivable --------------
 
@@ -389,7 +378,7 @@ class TestResolveName:
         ws2 = self._register_ws_member(registry, tmp_path, "ws2", "dup")
 
         with pytest.raises(ProjectError) as excinfo:
-            resolve_name(registry, "dup", cwd=tmp_path, early_system=_bare_early_system(tmp_path))
+            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
         message = str(excinfo.value)
         assert "ws1/dup" in message
         assert "ws2/dup" in message
@@ -423,11 +412,11 @@ class TestResolveName:
             )
             register_name(registry, ws_name, str(ws_root), section="worksets")
             reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                    early=_bare_early(tmp_path, BoxMode.named, ws_name))
+                    early=early_record(tmp_path, mode=BoxMode.named, name=ws_name))
             workset_registry.register_workset_box(reg_path, "dup", member)
 
         with pytest.raises(ProjectError) as excinfo:
-            resolve_name(registry, "dup", cwd=tmp_path, early_system=_bare_early_system(tmp_path))
+            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
         message = str(excinfo.value)
         assert "alpha-ws/dup" in message
         assert "beta-ws/dup" in message
@@ -450,7 +439,7 @@ class TestResolveName:
             self._register_member_at(registry, tmp_path, ws_name, "dup", shared)
 
         path, kind = resolve_name(registry, "dup", cwd=tmp_path,
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert kind == "project"
         assert Path(path).resolve() == shared.resolve()
 
@@ -468,7 +457,7 @@ class TestResolveName:
         assert not box_ws.exists()
 
         path, kind = resolve_name(registry, "gone", cwd=tmp_path,
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert kind == "project"
         assert path == str(box_ws)
 
@@ -485,7 +474,7 @@ class TestResolveName:
         shutil.rmtree(gone)
 
         with pytest.raises(ProjectError) as excinfo:
-            resolve_name(registry, "dup", cwd=tmp_path, early_system=_bare_early_system(tmp_path))
+            resolve_name(registry, "dup", cwd=tmp_path, early_system=early_record(tmp_path))
         message = str(excinfo.value)
         assert "ws1/dup" in message
         assert "ws2/dup [workspace missing]" in message
@@ -506,7 +495,7 @@ class TestResolveName:
         self._register_ws_member(registry, tmp_path, "cluster-b", "foo")
 
         with pytest.raises(ProjectError) as excinfo:
-            resolve_name(registry, "FOO", cwd=tmp_path, early_system=_bare_early_system(tmp_path))
+            resolve_name(registry, "FOO", cwd=tmp_path, early_system=early_record(tmp_path))
         message = str(excinfo.value)
         assert "(Cluster-A/Foo, cluster-b/foo)" in message
         assert "Cluster-A/FOO" not in message
@@ -536,7 +525,7 @@ class TestResolveName:
         dump_doc(ws_root / "workset.yaml", doc)
 
         path, kind = resolve_name(registry, "dup", cwd=ws_root,
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert kind == "project"
         assert Path(path).resolve() == box_ws.resolve()
 
@@ -562,12 +551,12 @@ class TestResolveName:
         )
         register_name(registry, "ws-a", str(ws_root), section="worksets")
         reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                early=_bare_early(tmp_path, BoxMode.named, "ws-a"))
+                early=early_record(tmp_path, mode=BoxMode.named, name="ws-a"))
         workset_registry.register_workset_box(reg_path, "dup", member)
         self._register_ws_member(registry, tmp_path, "ws-b", "dup")
 
         path, kind = resolve_name(registry, "dup", cwd=member,
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert kind == "project"
         assert Path(path).resolve() == member.resolve()
 
@@ -583,7 +572,7 @@ class TestResolveQualifiedName:
         register_name(registry, "myws", str(ws_root), section="worksets")
 
         path, ws_name = resolve_qualified_name(registry, "myws/api",
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert path == str(ws_root / "workspaces" / "api")
         assert ws_name == "myws"
 
@@ -600,7 +589,7 @@ class TestResolveQualifiedName:
         register_name(registry, "myws", str(ws_root), section="worksets")
 
         path, ws_name = resolve_qualified_name(registry, "myws/api",
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert path == str(ws_root / "pods" / "api")
         assert ws_name == "myws"
 
@@ -620,7 +609,7 @@ class TestResolveQualifiedName:
         member.mkdir(parents=True)
         register_name(registry, "myws", str(ws_root), section="worksets")
         reg_path = workset_registry.resolve_workset_registry_path(ws_root, None,
-                early=_bare_early(tmp_path, BoxMode.named, "myws"))
+                early=early_record(tmp_path, mode=BoxMode.named, name="myws"))
         workset_registry.register_workset_box(reg_path, "api", member)
         dump_doc(
             ws_root / "workset.yaml",
@@ -628,13 +617,13 @@ class TestResolveQualifiedName:
         )
 
         path, ws_name = resolve_qualified_name(registry, "myws/api",
-                early_system=_bare_early_system(tmp_path))
+                early_system=early_record(tmp_path))
         assert Path(path).resolve() == member.resolve()
         assert ws_name == "myws"
 
     def test_unknown_workset_raises(self, registry: Path, tmp_path: Path) -> None:
         with pytest.raises(ProjectError, match="Unknown workset"):
-            resolve_qualified_name(registry, "nope/api", early_system=_bare_early_system(tmp_path))
+            resolve_qualified_name(registry, "nope/api", early_system=early_record(tmp_path))
 
     def test_unknown_project_in_workset_raises(
         self, registry: Path, tmp_path: Path
@@ -645,12 +634,12 @@ class TestResolveQualifiedName:
 
         with pytest.raises(ProjectError, match="not found in workset"):
             resolve_qualified_name(registry, "myws/nope",
-                    early_system=_bare_early_system(tmp_path))
+                    early_system=early_record(tmp_path))
 
     def test_not_qualified_raises(self, registry: Path, tmp_path: Path) -> None:
         with pytest.raises(ProjectError, match="Not a qualified name"):
             resolve_qualified_name(registry, "bare-name",
-                    early_system=_bare_early_system(tmp_path))
+                    early_system=early_record(tmp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -665,19 +654,19 @@ class TestPrimaryBoxNameApi:
         primary = tmp_path / "primary_workset"
         ws = tmp_path / "projects" / "myapp"
         name = assign_primary_box_name(primary, registry, str(ws),
-                early=_bare_early(tmp_path, BoxMode.primary))
+                early=early_record(tmp_path, mode=BoxMode.primary))
         assert name == "myapp"
         assert load_primary_boxes(primary,
-                early=_bare_early(tmp_path, BoxMode.primary))[name] == str(ws)
+                early=early_record(tmp_path, mode=BoxMode.primary))[name] == str(ws)
 
     def test_collision_numbering(self, registry: Path, tmp_path: Path) -> None:
         from kanibako.settings.paths import assign_primary_box_name
 
         primary = tmp_path / "primary_workset"
         assert assign_primary_box_name(primary, registry, "/a/myapp",
-                early=_bare_early(tmp_path, BoxMode.primary)) == "myapp"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp"
         assert assign_primary_box_name(primary, registry, "/b/myapp",
-                early=_bare_early(tmp_path, BoxMode.primary)) == "myapp2"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp2"
 
     def test_cross_domain_collision_with_workset(
         self, registry: Path, tmp_path: Path
@@ -688,7 +677,7 @@ class TestPrimaryBoxNameApi:
         register_name(registry, "myapp", "/ws", section="worksets")
         primary = tmp_path / "primary_workset"
         assert assign_primary_box_name(primary, registry, "/proj/myapp",
-                early=_bare_early(tmp_path, BoxMode.primary)) == "myapp2"
+                early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp2"
 
     def test_register_refuses_workset_name_collision_unless_forced(
         self, registry: Path, tmp_path: Path
@@ -702,15 +691,15 @@ class TestPrimaryBoxNameApi:
         primary = tmp_path / "primary_workset"
         with pytest.raises(ProjectError, match="workset"):
             register_primary_box_name(primary, registry, "myapp", "/proj/myapp",
-                    early=_bare_early(tmp_path, BoxMode.primary))
+                    early=early_record(tmp_path, mode=BoxMode.primary))
 
         # --force bypasses the CROSS-KIND refusal → the box registers.
         register_primary_box_name(
             primary, registry, "myapp", "/proj/myapp", force=True,
-            early=_bare_early(tmp_path, BoxMode.primary),
+            early=early_record(tmp_path, mode=BoxMode.primary),
         )
         assert load_primary_boxes(primary,
-                early=_bare_early(tmp_path, BoxMode.primary))["myapp"] == "/proj/myapp"
+                early=early_record(tmp_path, mode=BoxMode.primary))["myapp"] == "/proj/myapp"
 
     def test_force_never_bypasses_same_kind_primary_collision(
         self, registry: Path, tmp_path: Path
@@ -721,11 +710,11 @@ class TestPrimaryBoxNameApi:
 
         primary = tmp_path / "primary_workset"
         register_primary_box_name(primary, registry, "myapp", "/a/myapp",
-                early=_bare_early(tmp_path, BoxMode.primary))
+                early=early_record(tmp_path, mode=BoxMode.primary))
         with pytest.raises(ProjectError, match="already registered"):
             register_primary_box_name(
                 primary, registry, "myapp", "/b/myapp", force=True,
-                early=_bare_early(tmp_path, BoxMode.primary),
+                early=early_record(tmp_path, mode=BoxMode.primary),
             )
 
     def test_pick_skips_existing_box_dir(
@@ -737,7 +726,7 @@ class TestPrimaryBoxNameApi:
         boxes = tmp_path / "boxes"
         (boxes / "myapp").mkdir(parents=True)  # half-built box, unregistered.
         name = pick_primary_box_name(primary, registry, "/x/myapp", boxes_dir=boxes,
-                early=_bare_early(tmp_path, BoxMode.primary))
+                early=early_record(tmp_path, mode=BoxMode.primary))
         assert name == "myapp2"
 
     def test_if_absent_noop_on_identical(
@@ -750,10 +739,10 @@ class TestPrimaryBoxNameApi:
 
         primary = tmp_path / "primary_workset"
         register_primary_box_name(primary, registry, "myapp", "/p/myapp",
-                early=_bare_early(tmp_path, BoxMode.primary))
+                early=early_record(tmp_path, mode=BoxMode.primary))
         # Recovery re-entry: same name → same path is a silent no-op.
         register_primary_box_name_if_absent(primary, registry, "myapp", "/p/myapp",
-                early=_bare_early(tmp_path, BoxMode.primary))
+                early=early_record(tmp_path, mode=BoxMode.primary))
 
     def test_if_absent_raises_on_different_path(
         self, registry: Path, tmp_path: Path
@@ -765,11 +754,11 @@ class TestPrimaryBoxNameApi:
 
         primary = tmp_path / "primary_workset"
         register_primary_box_name(primary, registry, "myapp", "/p/myapp",
-                early=_bare_early(tmp_path, BoxMode.primary))
+                early=early_record(tmp_path, mode=BoxMode.primary))
         with pytest.raises(ProjectError):
             register_primary_box_name_if_absent(
                 primary, registry, "myapp", "/OTHER/myapp",
-                early=_bare_early(tmp_path, BoxMode.primary),
+                early=early_record(tmp_path, mode=BoxMode.primary),
             )
 
     def test_home_guard(self, registry: Path, tmp_path: Path, monkeypatch) -> None:
@@ -781,7 +770,7 @@ class TestPrimaryBoxNameApi:
         primary = tmp_path / "primary_workset"
         with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
             register_primary_box_name(primary, registry, "bad", str(home),
-                    early=_bare_early(tmp_path, BoxMode.primary))
+                    early=early_record(tmp_path, mode=BoxMode.primary))
 
     def test_unregister(self, registry: Path, tmp_path: Path) -> None:
         from kanibako.settings.paths import (
@@ -792,10 +781,10 @@ class TestPrimaryBoxNameApi:
 
         primary = tmp_path / "primary_workset"
         register_primary_box_name(primary, registry, "myapp", "/p/myapp",
-                early=_bare_early(tmp_path, BoxMode.primary))
-        unregister_primary_box_name(primary, "myapp", early=_bare_early(tmp_path, BoxMode.primary))
+                early=early_record(tmp_path, mode=BoxMode.primary))
+        unregister_primary_box_name(primary, "myapp", early=early_record(tmp_path, mode=BoxMode.primary))
         assert "myapp" not in load_primary_boxes(primary,
-                early=_bare_early(tmp_path, BoxMode.primary))
+                early=early_record(tmp_path, mode=BoxMode.primary))
 
 
 # ---------------------------------------------------------------------------

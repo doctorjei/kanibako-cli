@@ -39,6 +39,7 @@ from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
 # ``podman unshare`` works and silently passes where it does not.  That asymmetry is
 # what makes a local green vacuous; ``remove_box_tree`` is the sanctioned deleter.
 from kanibako.runtime.container import remove_box_tree
+from tests.conftest import early_record
 
 
 def _primary_names(std):
@@ -140,17 +141,14 @@ class TestRegisterNewBox:
         """NAMED boxes carry no deferred registration on create."""
         from types import SimpleNamespace
 
-        from kanibako.settings.paths import resolve_system_paths
         from kanibako.channels.channels import WS_TOKEN_PRIMARY
-        from kanibako.settings.workset_dirkeys import EarlyScope, early_system
+        from kanibako.settings.workset_dirkeys import EarlyScope
 
         registry = tmp_path / "registry.yaml"
         primary = tmp_path / "primary_workset"
         std = SimpleNamespace(
             registry=registry, primary_workset=primary,
-            early_system=early_system(
-                {}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path),
-            ),
+            early_system=early_record(tmp_path),
         )
         proj = SimpleNamespace(
             mode=BoxMode.named, name="proj",

@@ -17,13 +17,14 @@ from kanibako.project.workset import create_workset
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.config_interface import set_config_value
 from kanibako.settings.config_keys import ConfigLevel
-from kanibako.settings.paths import BoxMode, _early_scope, resolve_system_paths
+from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import (
-  WORKSET_EARLY_KEYS, EarlyScope, early_system, resolve_workset_dir_key,
+  WORKSET_EARLY_KEYS, EarlyScope, resolve_workset_dir_key,
 )
 from tests.support.filenames import CONFIG_FILENAME
+from tests.conftest import early_record
 
 _EARLY = sorted(f"workset.{key}" for key in WORKSET_EARLY_KEYS)
 #: Values the reader refuses that the ordering rule alone allows: a ref into the key's own
@@ -75,7 +76,7 @@ class TestTheTableIsTheMembership:
     assert {f"channels.{leaf}" for leaf in DECLARED_WORKSET_CHANNEL_LEAVES} <= WORKSET_EARLY_KEYS
 
   def test_the_reader_refuses_a_key_outside_it(self, tmp_path):
-    record = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
+    record = early_record(tmp_path)
     with pytest.raises(ValueError, match="workset.kuid"):
       resolve_workset_dir_key(Path("/ws"), "/lit", "kuid", key="kuid", early=EarlyScope(record, "ws"))
 

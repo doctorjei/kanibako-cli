@@ -27,11 +27,11 @@ from kanibako.settings.paths import (
     load_std_paths,
     resolve_project,
     resolve_standalone_project,
-    resolve_system_paths,
     resolve_workset_project,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.workset_dirkeys import EarlyScope, early_system
+from kanibako.settings.paths import BoxMode
+from tests.conftest import early_record
 
 
 def _repoint(root, key, value):
@@ -47,9 +47,7 @@ class TestVaultResolverFaces:
     @pytest.fixture
     def early(self, tmp_path):
         """An early scope whose system tier is empty: no system file states a vault key."""
-        return EarlyScope(
-            early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path)), "ws",
-        )
+        return early_record(tmp_path, mode=BoxMode.named, name="ws")
 
     def test_unset_takes_the_declared_default_leaf(self, tmp_path, early):
         assert resolve_workset_vault_ro(tmp_path, None, early=early) == tmp_path / "vault" / "ro"
