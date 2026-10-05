@@ -33,9 +33,10 @@ IDENTITY_ANCHORS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
     "agent": {"primary": ("meta.agent.<agent>.name",), "named": ("meta.agent.<agent>.name",),
               "standalone": ("meta.agent.<agent>.name",)},
 }
-# A level whose ``meta.*`` anchors count only together with an anchor of another level:
-# box names are unique within a workset, not across worksets.
-IDENTITY_PAIRED: Final[dict[str, str]] = {"box": "workset"}
+# Per mode, a level whose ``meta.*`` anchors count only with another level's anchor.
+IDENTITY_PAIRED: Final[dict[str, dict[str, str]]] = {"box": {"primary": "workset", "named": "workset"}}
+# Per mode, a level any of whose anchors alone reaches this one: a standalone workset holds one box.
+IDENTITY_IMPLIED: Final[dict[str, dict[str, str]]] = {"box": {"standalone": "workset"}}
 
 
 class Bind(NamedTuple):
