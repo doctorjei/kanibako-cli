@@ -289,6 +289,11 @@ def _routed(key: str, value: object) -> dict:
     return table
 
 
+#: A system-tier value that reaches every owner's identity (keyspec §0), so the read door
+#: passes it in every mode, partition keys included.
+_ANCHORED = "/sys/x/{meta.workset.name}/@meta.workset.path"
+
+
 class TestTheSystemFileIsTheTierBeneath:
     """``system < workset`` for every early key: a system value applies, the workset's wins.
 
@@ -297,9 +302,9 @@ class TestTheSystemFileIsTheTierBeneath:
 
     @pytest.mark.parametrize("key", sorted(WORKSET_EARLY_KEYS))
     def test_every_early_key_reads_the_system_tier(self, key, tmp_path):
-        system = _write_system(_routed(key, "/sys/x"))
+        system = _write_system(_routed(key, _ANCHORED))
         scope = _system_scope(system, tmp_path)
-        assert early_repoint(tmp_path, None, key, early=scope) == ("/sys/x", system)
+        assert early_repoint(tmp_path, None, key, early=scope) == (_ANCHORED, system)
 
     @pytest.mark.parametrize("key", sorted(WORKSET_EARLY_KEYS))
     def test_the_workset_file_wins_its_null_included(self, key, tmp_path):
@@ -314,10 +319,14 @@ class TestTheSystemFileIsTheTierBeneath:
 
     def test_a_system_value_reaches_the_faces(self, tmp_path):
         scope = _system_scope(
-            _write_system({"boxes": "/sys/boxes", "registry": "@meta.workset.path/r.yaml"}),
+            _write_system({
+                "boxes": "/sys/boxes/@meta.workset.path", "registry": "@meta.workset.path/r.yaml",
+            }),
             tmp_path,
         )
-        assert workset.resolve_workset_boxes(tmp_path, None, early=scope) == Path("/sys/boxes")
+        assert workset.resolve_workset_boxes(tmp_path, None, early=scope) == Path(
+            f"/sys/boxes/{tmp_path}",
+        )
         assert workset_registry.resolve_workset_registry_path(tmp_path, None, early=scope) == (
             tmp_path / "r.yaml"
         )
@@ -343,7 +352,7 @@ class TestTheSystemFileIsTheTierBeneath:
         assert "workset.boxes" in str(excinfo.value)
 
     def test_a_refusal_names_the_system_file(self, tmp_path):
-        system = _write_system({"boxes": "/z/$AGENT"})
+        system = _write_system({"boxes": "/z/$AGENT/{meta.workset.path}"})
         with pytest.raises(SettingsError) as excinfo:
             workset.resolve_workset_boxes(tmp_path, None, early=_system_scope(system, tmp_path))
         assert str(system) in str(excinfo.value)
@@ -366,11 +375,13 @@ class TestSameSetRefs:
         ) == tmp_path / "channels" / "chat" / "broadcast.md"
 
     def test_a_referent_reads_the_system_tier(self, tmp_path):
-        scope = _system_scope(_write_system({"channelroot": "/sys/chan"}), tmp_path)
+        scope = _system_scope(
+            _write_system({"channelroot": "/sys/chan/{meta.workset.path}"}), tmp_path,
+        )
         assert resolve_workset_dir_key(
             tmp_path, "@workset.channelroot/chat", "", key="channels.chat", standalone=False,
             early=scope,
-        ) == Path("/sys/chan/chat")
+        ) == Path(f"/sys/chan/{tmp_path}/chat")
 
     @pytest.mark.parametrize(("standalone", "leaf"), [(True, "box_data"), (False, "boxes")])
     def test_the_mode_picks_the_referents_default(self, standalone, leaf, tmp_path):
@@ -462,8 +473,8 @@ class TestARecordIsTheSystemTier:
     @pytest.mark.parametrize("key", sorted(WORKSET_EARLY_KEYS))
     def test_early_repoint_reads_the_record(self, key, tmp_path, no_system_open):
         _write_system(_routed(key, "/file/x"))
-        scope = _scope(tmp_path, {f"workset.{key}": "/rec/x"})
-        assert early_repoint(tmp_path, None, key, early=scope) == ("/rec/x", scope.system.file)
+        scope = _scope(tmp_path, {f"workset.{key}": _ANCHORED})
+        assert early_repoint(tmp_path, None, key, early=scope) == (_ANCHORED, scope.system.file)
 
     def test_a_key_the_record_omits_is_unset(self, tmp_path, no_system_open):
         scope = _scope(tmp_path, {})
@@ -482,18 +493,21 @@ class TestARecordIsTheSystemTier:
 
     def test_a_referent_reads_the_record(self, tmp_path, no_system_open):
         _write_system({"channelroot": "/file/chan"})
-        scope = _scope(tmp_path, {"workset.channelroot": "/rec/chan"})
+        scope = _scope(tmp_path, {"workset.channelroot": "/rec/chan/{meta.workset.path}"})
         assert resolve_workset_dir_key(
             tmp_path, "@workset.channelroot/chat", "", key="channels.chat", standalone=False,
             early=scope,
-        ) == Path("/rec/chan/chat")
+        ) == Path(f"/rec/chan/{tmp_path}/chat")
 
     def test_the_faces_read_the_record(self, tmp_path, no_system_open):
         _write_system({"boxes": "/file/boxes", "registry": "/file/r.yaml"})
         scope = _scope(tmp_path, {
-            "workset.boxes": "/rec/boxes", "workset.registry": "@meta.workset.path/r.yaml",
+            "workset.boxes": "/rec/boxes/{meta.workset.path}",
+            "workset.registry": "@meta.workset.path/r.yaml",
         })
-        assert workset.resolve_workset_boxes(tmp_path, None, early=scope) == Path("/rec/boxes")
+        assert workset.resolve_workset_boxes(tmp_path, None, early=scope) == Path(
+            f"/rec/boxes/{tmp_path}",
+        )
         assert workset_registry.resolve_workset_registry_path(
             tmp_path, None, early=scope,
         ) == tmp_path / "r.yaml"
@@ -505,10 +519,10 @@ class TestARecordIsTheSystemTier:
         assert str(scope.system.file) in str(excinfo.value)
 
     def test_a_workset_carries_its_record_to_its_readers(self, tmp_path, no_system_open):
-        scope = _scope(tmp_path, {"workset.boxes": "/rec/boxes"})
+        scope = _scope(tmp_path, {"workset.boxes": "/rec/boxes/@meta.workset.path"})
         ws = workset.Workset(name="ws", root=tmp_path, early_system=scope.system)
         assert ws.early_scope == scope
-        assert ws.projects_dir == Path("/rec/boxes")
+        assert ws.projects_dir == Path(f"/rec/boxes/{tmp_path}")
 
     def test_the_default_worksets_scope_is_the_primary_partition(self, tmp_path):
         scope = _scope(tmp_path, {})
@@ -522,11 +536,14 @@ class TestARecordIsTheSystemTier:
         from kanibako.channels.channels import workset_channels_at
 
         scope = _scope(tmp_path, {
-            "workset.channelroot": "/rec/chan", "workset.channels.chat": "/rec/chat",
+            "workset.channelroot": "/rec/chan/{meta.workset.path}",
+            "workset.channels.chat": "/rec/chat/{meta.workset.path}",
         })
         channels = workset_channels_at(tmp_path, early=scope)
         assert channels is not None
-        assert (channels.root, channels.chat) == (Path("/rec/chan"), Path("/rec/chat"))
+        assert (channels.root, channels.chat) == (
+            Path(f"/rec/chan/{tmp_path}"), Path(f"/rec/chat/{tmp_path}"),
+        )
 
     def test_the_stamp_dirs_read_the_record(self, tmp_path, no_system_open):
         from kanibako.launch.templates import _workset_stamp_dirs
@@ -540,10 +557,13 @@ class TestARecordIsTheSystemTier:
         from kanibako.settings.paths import load_system_tier
 
         settings_file().parent.mkdir(parents=True, exist_ok=True)
-        dump_doc(settings_file(), {"workset": {"boxes": "/sys/boxes", "logs": None}})
+        boxes = "/sys/boxes/{meta.workset.path}"
+        dump_doc(settings_file(), {"workset": {"boxes": boxes, "logs": None}})
         resolved, record = load_system_tier(
             config_file, data_home=tmp_home / "data", home=tmp_home / "home",
         )
-        assert record.tier == {"workset.boxes": "/sys/boxes", "workset.logs": None}
-        assert resolved["_primary_boxes"] == Path("/sys/boxes")
+        assert record.tier == {"workset.boxes": boxes, "workset.logs": None}
+        assert resolved["_primary_boxes"] == Path(
+            f"/sys/boxes/{resolved['config.primary_workset']}",
+        )
         assert "_primary_logs" not in resolved

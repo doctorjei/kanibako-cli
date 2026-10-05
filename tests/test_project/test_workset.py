@@ -2503,7 +2503,7 @@ class TestCreateUnderASystemBoxesValue:
 
     def test_an_outside_dir_is_not_created(self, tmp_home, config_file):
         outside = tmp_home / "shared-boxes"
-        std = self._system_boxes(str(outside), config_file)
+        std = self._system_boxes(f"{outside}/{{meta.workset.path}}", config_file)
         for name in ("one", "two"):
             ws = create_workset(name, tmp_home / "worksets" / name, std)
             assert not (ws.root / "boxes").exists()
@@ -2512,7 +2512,7 @@ class TestCreateUnderASystemBoxesValue:
     def test_an_existing_outside_dir_is_left_alone(self, tmp_home, config_file):
         outside = tmp_home / "shared-boxes"
         (outside / "a").mkdir(parents=True)
-        std = self._system_boxes(str(outside), config_file)
+        std = self._system_boxes(f"{outside}/@meta.workset.path", config_file)
         create_workset("one", tmp_home / "worksets" / "one", std)
         assert [p.name for p in outside.iterdir()] == ["a"]
 
