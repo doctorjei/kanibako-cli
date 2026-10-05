@@ -339,9 +339,8 @@ def _resolve_watch_context(box: str | None):
     std = load_std_paths(config)
     proj = resolve_box_target(std, config, box, initialize=False)
     container_name = container_name_for(proj)
-    # ⚑ ADDRESSABLE, so the ``None`` must not reach the runtime.  This is a background
-    # watcher with no user to address, so it does what it already does when there is no
-    # agent stamp: nothing to do.  A loud refusal here would only spam the log.
+    # ⚑ No user to address, so this does what it already does with no agent stamp:
+    # nothing.  A loud refusal here would only spam the log.
     if container_name is None:
         log.info("box %s has no container name; nothing to write back", proj.name)
         return None

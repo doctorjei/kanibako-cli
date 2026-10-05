@@ -211,9 +211,8 @@ def run_code(args: argparse.Namespace) -> int:
         print(_no_box_error(project_dir, std), file=sys.stderr)
         return 1
     cname = container_name_for(proj)
-    # ⚑ ADDRESSABLE, so the ``None`` must not reach the runtime.  ⚑ NOT the start
-    # refusal: the row puts that at ``start``, and this door only REPORTS that there is
-    # no container to attach to.  (Auto-start below would refuse it with the cure.)
+    # ⚑ NOT the start refusal: the row puts that at ``start``.  This door only REPORTS
+    # that there is no container to attach to.  (Auto-start below refuses with the cure.)
     if cname is None:
         print(_no_container_name(proj.name), file=sys.stderr)
         return 1
