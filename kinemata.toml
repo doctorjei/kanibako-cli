@@ -3865,12 +3865,21 @@ import json
 from kanibako.settings.settings_launch import (
     _BOX_MODES, _workset_workspaces_floor_value, workset_anchor_floor,
 )
-from kinemata_views import REF_WORKSET_PATH, every_mode_cell, literal_text
+from kanibako.channels.channels import workset_token
+from kanibako.settings.paths import BoxMode
+from kanibako.settings.workset_dirkeys import EarlyScope
+from kinemata_views import (
+    REF_WORKSET_PATH, every_mode_cell, literal_text, ref_token_standard_paths,
+)
 floors = {}
 for mode in _BOX_MODES:
     root = None if mode == "primary" else REF_WORKSET_PATH
+    early = EarlyScope(
+        ref_token_standard_paths(mode).early_system,
+        workset_token(BoxMode(mode), "@meta.workset.name"),
+    )
     floor = workset_anchor_floor(
-        mode=mode, workspaces=_workset_workspaces_floor_value(mode, root),
+        mode=mode, workspaces=_workset_workspaces_floor_value(mode, root, early=early),
     )
     floors[mode] = {"workset.workspaces": literal_text(floor["workset.workspaces"])}
 for key, cell in sorted(every_mode_cell(floors).items()):

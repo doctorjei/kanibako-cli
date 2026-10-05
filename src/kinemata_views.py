@@ -382,16 +382,25 @@ def ref_token_standard_paths(mode: str) -> Any:
     otherwise (`_ROOT_ATTRIBUTE`). Deliberately NOT a `StandardPaths`:
     constructing one probes the host's XDG environment, and a sentinel run is
     about a composition, not about the host.
+
+    `early_system` is the early-system record the workset-key readers take, built
+    by the product's own pure builder over an EMPTY tier (no system file states a
+    `workset.*` repoint) and a resolved tier whose every path is its own `@`-ref.
     """
     from pathlib import Path
     from types import SimpleNamespace
 
+    from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
+    from kanibako.settings.workset_dirkeys import early_system
+
+    resolved = {key: Path(f"@{key}") for key in (*SYSTEM_PATH_DEFAULTS, "config.settings")}
     return SimpleNamespace(
         primary_workset=_root_or_decoy(mode, "primary_workset"),
         channels_common=Path("@system.channels.common"),
         channels_chat=Path("@system.channels.chat"),
         channels_mailboxes=Path("@system.channels.mailboxes"),
         channels_share=Path("@system.channels.share"),
+        early_system=early_system({}, resolved),
     )
 
 

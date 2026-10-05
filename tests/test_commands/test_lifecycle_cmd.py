@@ -957,7 +957,7 @@ class TestANullPartitionArmIsSkippedNotWarned:
         rc = run_move(_move_args(pdir, tmp_home / "dest_ext", to_workset="ws"))
         err = capsys.readouterr().err
         assert rc == 0, err
-        ws2 = load_workset(tmp_home / "ws_root", "ws")
+        ws2 = load_workset(tmp_home / "ws_root", "ws", early_system=std.early_system)
         assert any(p.name == "proj" for p in ws2.projects)
         assert "could not relocate channel" not in err, err
         assert "Traceback" not in err
