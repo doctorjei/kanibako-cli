@@ -6831,10 +6831,10 @@ becomes `kb-<new name>-<box>`.
 
 ### 2.108 Standalone boxes: a relocated store is read where it is, and never deleted for you
 
-**Read this if you have ever set `workset.boxes` in a standalone box's root `workset.yaml`.**
+**Read this if you have ever set `workset.boxes` in the root workset file of a standalone box.**
 
 **What changed.** `workset.boxes` is a repointable workset key, and its standalone value is the
-`{meta.workset.path}/box_data` *default* — so `box_data/` named a standalone box's store only
+`{meta.workset.path}/box_data` *default* — so `box_data` named a standalone box's store only
 while the key was unset. Home, the box-scope settings file and both standalone teardowns composed
 `<root>/box_data` directly, so a hand-repointed store was read from a directory the box did not
 use. All of them now resolve the key.
