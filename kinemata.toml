@@ -1898,6 +1898,29 @@ source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { present = "owner" }
 
+# FACT: the `owner:` cells `core-defaults.yaml` and the plugin descriptors carry
+# beside the manifest's own: `entry-owners` every one, `core-entry-owners` the
+# core bind rows by `box_dest`, `cred-entry-owners` the descriptors' `cred_files`
+# rows by guest dest. The manifest's TWO CARRIERS, ASSERTED EQUAL, for the entry
+# tables: the two narrowed views by `[[parity]]`, the full one by `[[shape]]`.
+[[registry]]
+name = "entry-owners"
+kind = "import"
+target = "kinemata_views:EntryOwners"
+rows = "all"
+
+[[registry]]
+name = "core-entry-owners"
+kind = "import"
+target = "kinemata_views:EntryOwners"
+rows = "core"
+
+[[registry]]
+name = "cred-entry-owners"
+kind = "import"
+target = "kinemata_views:EntryOwners"
+rows = "creds"
+
 # FACT: `config_keys._KEY_ROUTES` routes exactly the fixed-scope `set: cli+file`
 # rows. `test_manifest_conformance` `test_every_routed_key_is_a_declared_manifest_row`
 # (#42) asserts routes ⊆ manifest; this view is the equality over the rows a
@@ -3649,6 +3672,48 @@ for key, owner in sorted(KEY_OWNERS.items()):
 extract = '(?m)^kanibako-key-owner: ([^\s=]+)=(\S+)$'
 field = "owner"
 authority = "declared"
+
+# FACT: each `core-defaults.yaml` bind row's `owner:` is the manifest's
+# `bind_default_entries` cell for its dest, and a row carries one exactly when
+# that cell does. The oracle prints the manifest's owner for every dest the file
+# declares (`bind_dest_families`, the reader that matches them to the manifest).
+[[parity]]
+registry = "core-entry-owners"
+command = ["{python}", "-c", """
+from kanibako.settings.core_defaults import bind_dest_families
+from kanibako.settings.keyspace_manifest import manifest_doc
+arms = manifest_doc()["bind_default_entries"].values()
+cells = {dest: row for arm in arms for dest, row in arm.items()}
+for dest in sorted(bind_dest_families()):
+    owner = (cells.get(dest) or {}).get("owner")
+    if owner is not None:
+        print(f"kanibako-entry-owner: {dest}={owner}")
+"""]
+extract = '(?m)^kanibako-entry-owner: ([^\s=]+)=(\S+)$'
+field = "owner"
+authority = "produced"
+
+# FACT: each descriptor `cred_files` row the manifest's `plugin_contributed`
+# `agent.<agent>.synced` tables name carries that cell's `owner:`, and carries one
+# exactly when the cell does. The view holds only the rows a cell names: the spec
+# names one per agent, and goose's other two sync rows have no cell to equal.
+[[parity]]
+registry = "cred-entry-owners"
+command = ["{python}", "-c", """
+import pathlib, yaml
+from kinemata_views import plugin_descriptors, synced_cells
+cells = synced_cells()
+for source in plugin_descriptors():
+    doc = yaml.safe_load(pathlib.Path(source).read_text())
+    for cred in (doc.get("descriptor") or {}).get("cred_files") or []:
+        dest = f"~/{cred['home_rel']}"
+        owner = (cells.get(dest) or {}).get("owner")
+        if owner is not None:
+            print(f"kanibako-entry-owner: {dest}={owner}")
+"""]
+extract = '(?m)^kanibako-entry-owner: ([^\s=]+)=(\S+)$'
+field = "owner"
+authority = "produced"
 
 # FACT: `_KEY_ROUTES` routes exactly the fixed-scope `set: cli+file` rows.
 # `test_manifest_conformance` #42 asserts routes ⊆ manifest; this is the
@@ -5651,6 +5716,17 @@ registry = "seed-whitelist-fields"
   name = "traversal-defenses-is-still-a-policy-field"
   when = { id_matches = '^traversal_defenses$' }
   absent = "root"
+
+# FACT: every `owner:` the defaults files carry is from the spec's five-word
+# vocabulary -- the `keyspace` block's `owner-vocabulary` list, for the rows no
+# manifest cell twins (the parities above hold the rest equal to one).
+[[shape]]
+registry = "entry-owners"
+
+  [[shape.rule]]
+  name = "entry-owner-vocabulary"
+  field = "owner"
+  choices = ["box", "workset", "partition", "agent", "shared"]
 
 # ---------------------------------------------------------------------------
 # THE GATE INVENTORY. `[[gate]]` is verified by the `claims` command, so a gate

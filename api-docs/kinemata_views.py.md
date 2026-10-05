@@ -23,6 +23,7 @@ _ROOT_ATTRIBUTE = {'primary': 'primary_workset', 'named': 'group_root', 'standal
 _VALUE_END = re.compile('\\s{2,}')
 _BRACES = re.compile('^(?P<head>[^{}]*)\\{(?P<alts>[^{}]+)\\}(?P<tail>[^{}]*)$')
 _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
+_TREE = Path(__file__).resolve().parents[1]
 ```
 
 ## Functions
@@ -60,6 +61,10 @@ def node_spec_rows(node: str) -> dict[str, tuple[str, str]]
 def node_spec_defaults(node: str) -> dict[str, str]
 def node_not_expressible(node: str) -> list[str]
 def agent_tier_defaults(node: str) -> dict[str, str]
+def core_defaults_file() -> str
+def plugin_descriptors() -> list[str]
+def owner_rows(source: str) -> list[tuple[str, dict[str, Any]]]
+def synced_cells() -> dict[str, dict[str, Any]]
 def _standalone_arm(entry: Any) -> tuple[bool, Any]
 def _root_or_decoy(mode: str, attribute: str) -> Any
 def _keyspec_extract() -> Any
@@ -77,7 +82,14 @@ class AgentStatedDefaults(_AgentRegistry):
 
     def _rows(self) -> list[dict[str, object]]
 
-class _AgentRegistry:
+class EntryOwners(_ViewRegistry):
+    VIEWS = ('all', 'core', 'creds')
+
+    def __init__(self, *, rows: str, name: str='entry-owners', **options: object) -> None
+
+    def _rows(self) -> list[dict[str, object]]
+
+class _ViewRegistry:
     match_mode = 'strings'
     suffixes: tuple[str, ...] | None = None
     machinery: tuple[str, ...] = ()
@@ -86,7 +98,7 @@ class _AgentRegistry:
     line_budget = 160
     boundary = ''
 
-    def __init__(self, *, node: str, name: str='agent-tier', **options: object) -> None
+    def __init__(self, *, name: str, **options: object) -> None
 
     def entries(self) -> list[Any]
     def declared(self, identifier: str) -> bool
@@ -98,4 +110,7 @@ class _AgentRegistry:
     def notices(self) -> tuple[str, ...]
 
     def _rows(self) -> list[dict[str, object]]
+
+class _AgentRegistry(_ViewRegistry):
+    def __init__(self, *, node: str, name: str='agent-tier', **options: object) -> None
 ```

@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import contextlib
 import re
+from pathlib import Path
 from typing import Any
 
 
@@ -1161,8 +1162,8 @@ def _agent_tier_floors(node: str) -> dict[str, str | None]:
     return rows
 
 
-class _AgentRegistry:
-    """Shared construction for the ``agent.<node>.*`` registry below.
+class _ViewRegistry:
+    """Shared construction for the registry classes below.
 
     ⚑ STRUCTURAL, NOT INHERITED -- the trade `KeyspaceRegistry` makes: kinemata is
     not a dependency of this project and must not become one, so a registry class
@@ -1179,11 +1180,8 @@ class _AgentRegistry:
     line_budget = 160
     boundary = ""
 
-    def __init__(self, *, node: str, name: str = "agent-tier", **options: object) -> None:
-        if node not in AGENT_TIER_NODES:
-            raise ValueError(f"registry {name!r}: {node!r} is not one of {AGENT_TIER_NODES}")
+    def __init__(self, *, name: str, **options: object) -> None:
         self.name = name
-        self.node = node
         self.closed = False
         self.options = dict(options)
         self.rows = self._rows()
@@ -1221,6 +1219,16 @@ class _AgentRegistry:
         return ()
 
 
+class _AgentRegistry(_ViewRegistry):
+    """An ``agent.<node>.*`` registry: the base, for one node."""
+
+    def __init__(self, *, node: str, name: str = "agent-tier", **options: object) -> None:
+        if node not in AGENT_TIER_NODES:
+            raise ValueError(f"registry {name!r}: {node!r} is not one of {AGENT_TIER_NODES}")
+        self.node = node
+        super().__init__(name=name, **options)
+
+
 class AgentStatedDefaults(_AgentRegistry):
     """The defaults one node's descriptor STATES, as ``key: {default: value}``.
 
@@ -1238,3 +1246,98 @@ class AgentStatedDefaults(_AgentRegistry):
             {"key": key, "default": value}
             for key, value in agent_tier_defaults(self.node).items()
         ]
+
+
+_TREE = Path(__file__).resolve().parents[1]
+
+
+def core_defaults_file() -> str:
+    """`core-defaults.yaml`, tree-relative."""
+    from kanibako.settings.core_defaults import CORE_DEFAULTS_FILENAME
+
+    return f"src/kanibako/data/rom/settings/{CORE_DEFAULTS_FILENAME}"
+
+
+def plugin_descriptors() -> list[str]:
+    """Every plugin descriptor, tree-relative.
+
+    Read from the TREE: CI installs no plugin package, so an import would see none.
+    """
+    found = sorted(
+        str(path.relative_to(_TREE))
+        for path in _TREE.glob("packages/agent-*/src/kanibako/plugins/*/*-defaults.yaml")
+    )
+    if not found:
+        raise ValueError(f"no plugin descriptor under {_TREE / 'packages'}")
+    return found
+
+
+def owner_rows(source: str) -> list[tuple[str, dict[str, Any]]]:
+    """`(location, row)` for every mapping in *source* that carries `owner:`."""
+    import yaml
+
+    found: list[tuple[str, dict[str, Any]]] = []
+
+    def walk(node: Any, where: str) -> None:
+        if isinstance(node, dict):
+            if "owner" in node:
+                found.append((where, node))
+            for key, value in node.items():
+                walk(value, f"{where}.{key}" if where else str(key))
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                walk(value, f"{where}[{index}]")
+
+    walk(yaml.safe_load((_TREE / source).read_text()), "")
+    return found
+
+
+def synced_cells() -> dict[str, dict[str, Any]]:
+    """The manifest's `plugin_contributed` `agent.<agent>.synced` cells, by guest dest."""
+    from kanibako.settings.keyspace_manifest import manifest_doc
+
+    manifest = manifest_doc()
+    return {
+        dest: row
+        for name, table in manifest["plugin_contributed"]["category_default_entries"].items()
+        if name.endswith(".synced")
+        for dest, row in table.items()
+    }
+
+
+class EntryOwners(_ViewRegistry):
+    """The `owner:` cells the defaults files carry beside the manifest's.
+
+    `rows` picks the view: `all` (every one, keyed `<file>:<location>`), `core`
+    (`core-defaults.yaml`'s bind rows, keyed by `box_dest`) or `creds` (the
+    descriptors' `cred_files` rows a synced cell names, keyed by that cell's dest).
+    """
+
+    VIEWS = ("all", "core", "creds")
+
+    def __init__(self, *, rows: str, name: str = "entry-owners", **options: object) -> None:
+        if rows not in self.VIEWS:
+            raise ValueError(f"registry {name!r}: rows {rows!r} is not one of {self.VIEWS}")
+        self.view = rows
+        super().__init__(name=name, **options)
+
+    def _rows(self) -> list[dict[str, object]]:
+        out: list[dict[str, object]] = []
+        synced = synced_cells() if self.view == "creds" else {}
+        core = core_defaults_file()
+        for source in [core, *plugin_descriptors()]:
+            for where, row in owner_rows(source):
+                if self.view == "all":
+                    key = f"{source}:{where}"
+                elif self.view == "core" and source == core and "box_dest" in row:
+                    key = str(row["box_dest"])
+                elif (
+                    self.view == "creds"
+                    and where.startswith("descriptor.cred_files[")
+                    and f"~/{row['home_rel']}" in synced
+                ):
+                    key = f"~/{row['home_rel']}"
+                else:
+                    continue
+                out.append({"key": key, "owner": row["owner"]})
+        return out
