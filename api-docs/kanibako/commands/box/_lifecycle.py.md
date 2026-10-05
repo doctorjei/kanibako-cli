@@ -23,6 +23,7 @@ _BARE_MOVE = _Sentinel('BARE_MOVE')
 ```
 def owner_token(mode: BoxMode, ws_name: str | None=None) -> str
 def resolve_lifecycle_target(old: str | None, std: StandardPaths, config: BootstrapConfig | None=None) -> ProjectState
+def recorded_workspace_for(ws: '_WorksetLike', box_name: str, resolved: Path | None) -> Path | None
 def copy_into_workset(ws: Workset, proj_name: str, metadata_path: Path, shell_path: Path, source_path: Path, source_mode: BoxMode, *, copy_workspace: bool, std: StandardPaths) -> None
 def execute_lifecycle(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig | None=None, *, force: bool=False, confirm: Callable[[], bool] | None=None) -> ProjectState
 def run_remap(args) -> int
@@ -37,7 +38,6 @@ def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool
 def _resolve_primary_state(root: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
 def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None
 def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
-def _recorded_workspace(ws: Workset, box_name: str, resolved: Path | None) -> Path | None
 def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_external: bool=False, workspace: Path | None=None) -> ProjectState
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str

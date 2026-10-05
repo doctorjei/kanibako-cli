@@ -475,6 +475,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refused at set time, because the check does not yet read the agent's settings. A reference to an
   undeclared key is still refused.
 
+- **`box duplicate` and `box archive` read a named member's recorded workspace when
+  `workset.workspaces` is null.** Duplicate copies the files the registry names. When no
+  workspace is recorded, or the recorded directory is gone, it refuses before the confirmation
+  prompt. Archive runs its git checks on that workspace and records it as the project path, so
+  `extract --all` restores the box there.
+
 - **A bind whose destination has a symlinked parent is refused, naming the link and its target.**
   The check now judges every parent between the mountpoint and the box home or project directory,
   not only the one directly above the destination, so a link further up is found. A link that leads

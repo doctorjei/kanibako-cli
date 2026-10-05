@@ -634,24 +634,13 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
         _source_authored_vault(src_proj) if target_mode == BoxMode.standalone else None
     )
 
-    if not args.force:
-        mode = "metadata only (bare)" if args.bare else "workspace + metadata"
-        print(f"Duplicate workset project ({mode}) to {target_mode.value} mode:")
-        print(f"  from: {ws.name}/{proj_name}")
-        print(f"    to: {new_path}")
-        print()
-        try:
-            confirm_prompt("Type 'yes' to confirm: ")
-        except Exception:
-            print("Aborted.")
-            return 2
-
     # Copy workspace (unless --bare).  Copy from the member's RECORDED workspace, not
     # the RESOLVED one: a null ``workset.workspaces`` leaves ``project_path`` None while
     # the registry's ``boxes:`` row still names the real directory, so guarding on the
     # resolved value turned "nulled" into "nothing there" and registered an EMPTY box
     # with no warning at all.  One accessor for lifecycle / duplicate / archive, so the
     # three cannot drift.  For an ordinary internal member the two are the same path.
+    ws_workspace: Path | None = None
     if not args.bare:
         from kanibako.commands.box._lifecycle import recorded_workspace_for
         from kanibako.project.workset import refuse_null_workspaces
@@ -667,6 +656,20 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    if not args.force:
+        mode = "metadata only (bare)" if args.bare else "workspace + metadata"
+        print(f"Duplicate workset project ({mode}) to {target_mode.value} mode:")
+        print(f"  from: {ws.name}/{proj_name}")
+        print(f"    to: {new_path}")
+        print()
+        try:
+            confirm_prompt("Type 'yes' to confirm: ")
+        except Exception:
+            print("Aborted.")
+            return 2
+
+    if ws_workspace is not None:
         _merge_workspace(ws_workspace, new_path, args.force)
 
     # Copy metadata into target layout.

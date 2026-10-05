@@ -51,13 +51,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def _recorded_workspace_of(proj) -> Path | None:
-    """Where this box's FILES are, not where its resolved path says they are.
-
-    A named in-tree member under a null ``workset.workspaces`` resolves to
-    ``project_path is None`` while the registry row still names the real directory.
-    Delegates to the ONE accessor lifecycle and ``box duplicate`` use; anything that is
-    not a named member keeps its resolved value.
-    """
+    """Where a named member's files are: its RECORDED workspace, else ``project_path``."""
     from kanibako.commands.box._lifecycle import recorded_workspace_for
     from kanibako.errors import WorksetError
     from kanibako.project.workset import load_workset
@@ -88,17 +82,15 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
 
     # Prepare metadata
     info_file = proj.metadata_path / "kanibako-archive-info.txt"
+    # Recorded, not resolved: a null ``workset.workspaces`` leaves ``project_path`` None.
+    workspace = _recorded_workspace_of(proj)
     lines = [
-        f"Project path: {proj.project_path or '<None>'}",
+        f"Project path: {workspace or '<None>'}",
         f"Project hash: {proj.project_hash}",
         f"Archive date: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
         "",
     ]
 
-    # Git checks — against the member's RECORDED workspace, not the RESOLVED one: a
-    # null ``workset.workspaces`` leaves ``project_path`` None while the registry row
-    # still names the real directory, so guarding on it skipped these checks entirely.
-    workspace = _recorded_workspace_of(proj)
     if workspace is not None and workspace.is_dir() and is_git_repo(workspace):
         if not args.allow_uncommitted:
             try:
