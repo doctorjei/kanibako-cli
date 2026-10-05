@@ -24,6 +24,7 @@ _BOX_ONLY_PREFIXES: Final = ('meta.box.',)
 _WORKSET_ONLY_PREFIXES: Final = ('meta.workset.', 'workset.')
 _WORKSET_RUNTIME_KEYS: Final = frozenset({'meta.runtime.ws_root', 'meta.runtime.ws_name', 'meta.runtime.project_type'})
 _NONE_WARNED: 'set[str]' = set()
+_META_NULL_ORIGIN: dict[str, tuple[str, ...]] = {'meta.box.inbox': ('workset.channels.mailboxes', 'system.channels.mailboxes'), 'meta.box.share_global': ('workset.channels.share_global', 'system.channels.share'), 'meta.box.share_workset': ('workset.channels.share', 'system.channels.share')}
 _FLOOR_WHERE = "kanibako's defaults for this box"
 _BOX_ROOT_KEY = 'meta.box.path'
 _BOX_STORE_KEY = 'workset.boxes'
@@ -95,6 +96,7 @@ def _internal_floor_binds(floor: Mapping[str, object]) -> dict[str, object]
 def _warn_once(message: str) -> None
 def _none_setter(written: Sequence[_WrittenLevel], key: str, dest: str | None) -> str | None
 def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]
+def _null_origin(written: Sequence[_WrittenLevel], ref: str) -> 'tuple[str, str] | None'
 def _warn_lone_none_standard_binds(floor: Mapping[str, object], merged: KeyStore, expanded: KeyStore, *, null_sources: NullSources, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
 def _warn_rootless_channel_binds(rootless: Sequence[tuple[str, str]], expanded: KeyStore, *, written: Sequence[_WrittenLevel]) -> None
 def _warn_null_ref_secrets(merged: KeyStore, expanded: KeyStore, *, active_agent: str, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
