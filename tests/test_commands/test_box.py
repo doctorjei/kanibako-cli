@@ -42,8 +42,8 @@ class TestBoxList:
         assert "stopped" in out
         assert str(tmp_home / "project") in out
 
-    def test_list_hides_orphans_by_default(self, config_file, tmp_home, credentials_dir, capsys):
-        """By default, orphaned (missing) projects are not shown."""
+    def test_list_shows_orphans_and_flags_them(self, config_file, tmp_home, credentials_dir, capsys):
+        """An orphaned (missing) project is listed, with its condition on the row."""
         from kanibako.commands.box import run_list
 
         config = load_config(config_file)
@@ -64,7 +64,8 @@ class TestBoxList:
         assert rc == 0
         out = capsys.readouterr().out
         assert "alive_proj" in out
-        assert "missing" not in out
+        assert "missing" in out
+        assert "gone_project" in out
 
     def test_list_all_includes_orphans(self, config_file, tmp_home, credentials_dir, capsys):
         """--all flag includes orphaned projects in the listing."""
