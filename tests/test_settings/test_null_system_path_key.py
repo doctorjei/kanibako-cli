@@ -143,7 +143,7 @@ class TestTheChannelTableKeepsANullArmNull:
     put the four-character path ``"None"`` in a table of host paths.
     """
 
-    #: Every shipped ``channels:`` row names an ``@``-ref, so ``entry.get("meta_ref",
+    #: Every shipped ``channels:`` row names a braced ``{key}`` ref, so ``entry.get("meta_ref",
     #: sources[source])`` never reads the probed source and no shipped row can observe
     #: the map's VALUE.  Dropping the ref leaves the fallback as what answers, which is
     #: the arm the code carries for a row that reads its probe directly.
@@ -219,7 +219,8 @@ class TestTheChannelTableKeepsANullArmNull:
         proj = self._primary(std, config, project_dir)
         table = self._table(std, proj)
         assert all(
-            match_braced(s, 0) is not None for srcs in table.values() for s in srcs
+            s.startswith("{") and (match_braced(s, 0) or ("",))[0] == "ref"
+            for srcs in table.values() for s in srcs
         )
         assert not [s for srcs in table.values() for s in srcs if s == "None"]
 
