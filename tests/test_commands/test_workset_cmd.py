@@ -1031,6 +1031,67 @@ class TestWorksetConnect:
         assert not (reloaded.projects_dir / "beta").exists()
         assert journal.read_journal(std.journal) == {}
 
+    def test_connect_in_tree_cure_names_the_operations_that_reach_the_box(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The refusal's cure names ``convert``, ``move`` and ``rm`` — the three
+        operations that reach a box whose workspace is a primary box's, wherever the
+        workset's path space puts it.  ONE message for both arms of the refusal."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import create_workset
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import register_primary_box_name
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        outside = (tmp_home / "extws_cure").resolve()
+        leaf = outside / "beta"
+        leaf.mkdir(parents=True)
+        register_primary_box_name(std.primary_workset, std.registry, "beta", str(leaf))
+        root = (tmp_home / "ws_cure").resolve()
+        create_workset("cure", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+
+        args = argparse.Namespace(
+            workset="cure", source=str(leaf), project_name="beta", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "kanibako box convert beta --workset cure" in err
+        assert "kanibako box move beta <path>" in err
+        assert "kanibako box rm beta" in err
+        # ⚑ A rename under a new member name must name the RELOCATING form: the
+        # in-place ``--name`` convert is refused, so advising it would be a dead end.
+        assert "kanibako box convert beta --workset cure --name <member> --move" in err
+        assert "--workset cure --name" not in err.replace(
+            "kanibako box convert beta --workset cure --name <member> --move", ""
+        )
+
+    def test_connect_external_cure_names_the_same_operations(
+        self, config_file, tmp_home, capsys,
+    ):
+        """PIN: the EXTERNAL arm states the SAME cure, from the one constant."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import create_workset
+        from kanibako.settings.paths import register_primary_box_name
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        leaf = (tmp_home / "elsewhere" / "gamma").resolve()
+        leaf.mkdir(parents=True)
+        register_primary_box_name(std.primary_workset, std.registry, "gamma", str(leaf))
+        root = (tmp_home / "ws_ext_cure").resolve()
+        create_workset("extcure", root, std)
+
+        args = argparse.Namespace(
+            workset="extcure", source=str(leaf), project_name="gamma", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "kanibako box convert gamma --workset extcure" in err
+        assert "kanibako box move gamma <path>" in err
+        assert "kanibako box rm gamma" in err
+
     def test_connect_in_tree_leaf_another_workset_connects_refuses(
         self, config_file, tmp_home, capsys,
     ):
