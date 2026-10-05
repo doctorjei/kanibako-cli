@@ -9,8 +9,7 @@ import pytest
 
 from kanibako.settings.config import KanibakoConfig
 from kanibako.runtime.rig_resolve import RigResolution, resolve_rig
-from kanibako.settings.paths import resolve_system_paths
-from kanibako.settings.workset_dirkeys import early_system
+from tests.conftest import early_record
 
 
 def _runtime(has: list[str] | None = None) -> MagicMock:
@@ -25,7 +24,7 @@ def _std(tmp_path: Path) -> MagicMock:
     """A StandardPaths-like object with a tmp data_path."""
     std = MagicMock()
     std.data_path = tmp_path
-    std.early_system = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
+    std.early_system = early_record(tmp_path)
     return std
 
 

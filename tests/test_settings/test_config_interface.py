@@ -26,6 +26,8 @@ from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES
 from kanibako.settings.settings_resolve import normalize_bind_dest
 
 from tests.support.filenames import CONFIG_FILENAME
+from kanibako.settings.paths import BoxMode
+from tests.conftest import early_record
 
 
 # ---------------------------------------------------------------------------
@@ -1923,13 +1925,10 @@ class TestH1NoCrashOnAdvertisedKeys:
         location, no drift."""
         from pathlib import Path
 
-        from kanibako.channels.channels import WS_TOKEN_PRIMARY
         from kanibako.project.workset import (
             load_workset_settings_doc,
             resolve_workset_workspaces,
         )
-        from kanibako.settings.paths import resolve_system_paths
-        from kanibako.settings.workset_dirkeys import EarlyScope, early_system
 
         # ⚑ The destination is the WORKSET tier, which is what the consumer reads:
         # ``load_workset_settings_doc`` opens ``<root>/workset.yaml``.  Before the
@@ -1939,10 +1938,7 @@ class TestH1NoCrashOnAdvertisedKeys:
         set_config_value(
             "workset.workspaces", "/srv/pods", config_path=ws_file
         )
-        early = EarlyScope(
-            early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path)),
-            WS_TOKEN_PRIMARY,
-        )
+        early = early_record(tmp_path, mode=BoxMode.primary)
         assert resolve_workset_workspaces(
             tmp_path, load_workset_settings_doc(tmp_path), early=early,
         ) == Path("/srv/pods")
