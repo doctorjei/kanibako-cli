@@ -148,3 +148,24 @@ def test_a_referent_whose_default_splits_by_mode_is_refused(ws, std, tmp_path):
   message = _workset_set("workset.canon", "@workset.boxes/cn", ws, std, tmp_path)
   assert message.startswith("Error: nothing was written"), message
   assert "'@workset.boxes' is unset" in message, message
+
+
+def test_the_workset_door_reads_an_unset_referent_as_primary_and_named(ws, std, tmp_path):
+  """A named workset's file is read as primary/named, where ``workset.boxes`` is one path."""
+  message = _workset_set("workset.logs", "@workset.boxes/lg", ws, std, tmp_path)
+  assert not message.startswith("Error:"), message
+  assert "@workset.boxes/lg" in (ws.root / WORKSET_META_FILE).read_text()
+
+
+def test_the_system_door_reads_it_in_each_mode_its_readers_pass(std, tmp_path):
+  """Standalone reads the system file too; its ``workset.logs`` reader resolves the ref there."""
+  message = _system_set("workset.logs", "@workset.boxes/lg", std, tmp_path)
+  assert not message.startswith("Error:"), message
+  assert "@workset.boxes/lg" in (tmp_path / "settings.yaml").read_text()
+
+
+def test_a_referent_split_between_primary_and_named_is_refused(ws, std, tmp_path):
+  """An unset ``workset.workspaces`` is null in primary and a dir in named: refused."""
+  message = _workset_set("workset.logs", "@workset.workspaces/lg", ws, std, tmp_path)
+  assert message.startswith("Error: nothing was written"), message
+  assert "'@workset.workspaces' is unset" in message, message
