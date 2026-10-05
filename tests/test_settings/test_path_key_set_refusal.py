@@ -441,16 +441,16 @@ class TestTheAnchorDegradesHONESTLY:
 #: snapshot reads the file it sits in, so the census sees it written.
 _WRITES_THE_DOTTED_PREF = pytest.mark.writes_undeclared(
     "pref.system.agent",
-    reason="a DOTTED pref entry in box.yaml is the broken config these cases repair; "
+    reason="a DOTTED pref entry in box.yaml is the broken config these cases write beside; "
            "the target-less set-time snapshot reads that file.",
 )
 
 
-class TestABrokenTargetDoesNotBlockTheRepair:
-    """Spec §2a: ``config set`` MUST stay usable to FIX a broken config.  A defect in
-    the target's own files (a DOTTED ``pref:`` entry, which ``collect_prefs`` refuses)
-    stops ``resolve_inputs``; the write is then judged WITHOUT the target, which can only
-    refuse more, and a refusal says why the target was missing."""
+class TestABrokenTargetIsJudgedWithoutTheTarget:
+    """Spec §2a: a defect in the target's own files (a DOTTED ``pref:`` entry, which
+    ``collect_prefs`` refuses) stops ``resolve_inputs``; the write is then judged WITHOUT
+    the target, which can only refuse more, and a refusal says why the target was missing.
+    No ``set`` repairs that entry: it is cured by a hand edit to the nested form."""
 
     @staticmethod
     def _break(proj):
@@ -475,11 +475,31 @@ class TestABrokenTargetDoesNotBlockTheRepair:
         assert message == "Set box.canon=/abs/canon", message
 
     @_WRITES_THE_DOTTED_PREF
-    def test_the_pref_cure_itself_is_still_written(self, std, config_file, tmp_home):
+    def test_setting_the_pref_does_not_overwrite_the_dotted_entry(
+        self, std, config_file, tmp_home,
+    ):
+        """Keyspec §2a: ``set pref.system.agent`` writes ``pref: {system: {agent: …}}`` BESIDE
+        the dotted entry, so the entry is outside the edit — refused without ``--force``
+        (the door's ``Error:`` is exit 1), and with it the write lands and the entry stays,
+        so ``collect_prefs`` still refuses the file."""
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import box_workset_settings_paths
+        from kanibako.settings.settings_prefs import collect_prefs
+        from kanibako.settings.settings_resolve import SettingsError
+
         proj = _primary_box(std, config_file, tmp_home)
         self._break(proj)
+        box_file, _ = box_workset_settings_paths(proj)
+        before = box_file.read_bytes()
         message = _set_box("pref.system.agent", "claude", std, proj)
-        assert not message.startswith("Error:"), message
+        assert message.startswith("Error:") and "pref | system.agent" in message, message
+        assert box_file.read_bytes() == before
+        message = _set_box("pref.system.agent", "claude", std, proj, force=True)
+        assert message == "Set pref.system.agent=claude", message
+        pref = load_doc(box_file)["pref"]
+        assert pref["system.agent"] == "claude" and pref["system"]["agent"] == "claude"
+        with pytest.raises(SettingsError, match="DOTTED"):
+            collect_prefs(None, box_file)
 
     @_WRITES_THE_DOTTED_PREF
     def test_a_value_needing_the_missing_anchor_names_why_it_is_missing(
