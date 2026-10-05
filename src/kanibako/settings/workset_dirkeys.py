@@ -107,7 +107,61 @@ def early_repoint(
     if value is not UNSET:
         return value, own_file
     value = early.system.tier.get(f"workset.{key}", UNSET)
+    if isinstance(value, str):
+        _refuse_unanchored(workset_settings, key, value, early=early)
     return value, (own_file if value is UNSET else early.system.file)
+
+
+def _refuse_unanchored(
+    workset_settings: Mapping[str, Any] | None, key: str, value: str, *, early: EarlyScope,
+) -> None:
+    """Keyspec §0 "Per-owner resources" at the read door: refuse an inherited *value* of
+    ``workset.<key>`` that reaches no owner identity, naming the file.
+
+    The set door's judgment, :func:`~kanibako.settings.config.reaches_identity` in every box
+    mode, through the raw cascade values, so the two doors agree on what is a collision.
+    """
+    from kanibako.settings.config import reaches_identity
+    from kanibako.settings.config_interface import _uniform_anchor
+    from kanibako.settings.config_keys import KEY_OWNERS
+    from kanibako.settings.messages import ERR_PER_OWNER_READ, PER_OWNER_SET_WORDS
+    from kanibako.settings.paths import BoxMode
+
+    dotted = f"workset.{key}"
+    owner = KEY_OWNERS[dotted]
+    if owner == "shared":
+        return
+
+    def stored(ref: str) -> object:
+        referent = ref.removeprefix("workset.")
+        if referent == ref or referent not in WORKSET_EARLY_KEYS:
+            return None
+        raw = _stored_repoint(workset_settings, referent)
+        return early.system.tier.get(ref) if isinstance(raw, _Unset) else raw
+
+    if all(reaches_identity(value, owner, mode, key=dotted, stored=stored) for mode in BoxMode):
+        return
+    noun, identity, shared_by, file_owner = PER_OWNER_SET_WORDS[owner]
+    raise ConfigError(ERR_PER_OWNER_READ % (
+        dotted, value, early.system.file, noun, identity, shared_by,
+        dotted, f"{value.rstrip('/')}/{_uniform_anchor(owner, None)}", dotted, dotted,
+        file_owner,
+    ))
+
+
+def refuse_inherited_per_owner(workset_root: Path, early: EarlyScope) -> None:
+    """Refuse, before a verb changes anything, any per-owner early key *workset_root*'s
+    workset inherits from the system tier with a value that reaches no owner identity.
+
+    Runs :func:`early_repoint` over every per-owner key in :data:`WORKSET_EARLY_KEYS`; raises
+    its :class:`~kanibako.errors.ConfigError`.
+    """
+    from kanibako.settings.config_keys import KEY_OWNERS
+
+    doc = load_doc(workset_root / WORKSET_META_FILE)
+    for key in sorted(WORKSET_EARLY_KEYS):
+        if KEY_OWNERS[f"workset.{key}"] != "shared":
+            early_repoint(workset_root, doc, key, early=early)
 
 
 @dataclass(frozen=True)

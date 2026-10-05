@@ -168,6 +168,16 @@ PER_OWNER_SET_WORDS = {
     "box": ("box", "box", "Every box would share it.", "box"),
     "agent": ("agent", "agent", "Every agent would share it.", "agent"),
 }
+#: The READ door's twin, for a value the system file already holds; the same words per owner.
+ERR_PER_OWNER_READ = (
+                        "%s is set to %r in %s, which gives every %s one shared path, "
+                        "because the value names no %s identity. %s Nothing was changed. "
+                        "Spell the identity into the value: kanibako system set "
+                        "'%s=%s'; or run kanibako system reset %s, then kanibako workset "
+                        "set <workset> '%s=…' in each %s. To stop running boxes "
+                        "meanwhile: kanibako stop --all reads no settings; it lists the "
+                        "running boxes and asks before stopping them.")
+                                                    # key, value, file, the words, the cure
 #: The SET door's lead for ``workset_dirkeys.early_key_set_error``'s refusal.
 ERR_WORKSET_EARLY_SET_HEAD = (
                         "nothing was written: this value could not be read back.\n  %s")

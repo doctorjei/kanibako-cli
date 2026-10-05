@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from kanibako.commands.stop import run, _stop_one, _stop_all
+from kanibako.errors import ConfigError
 from kanibako.settings.settings_launch import AuthSource
 
 _SHARED_AUTH = AuthSource(
@@ -899,3 +901,125 @@ class TestStopRefusalIsNotPrecededByADeceptiveWarning:
         assert err.startswith("Error: "), err
         assert err.count("Fix or remove the file, then retry.") == 1, err
         live_runtime.stop.assert_not_called()
+
+
+class TestStopUnderAPerOwnerCollision:
+    """Keyspec §0 "Per-owner resources": ``stop <box>`` refuses a system file whose inherited
+    per-owner value reaches no owner identity, and ``stop --all`` still stops running boxes.
+
+    ⚑ The refusal propagates out of both of ``stop``'s retries, so nothing is stopped,
+    removed, or written back; ``stop --all`` reads no settings file at all.
+    """
+
+    @pytest.fixture
+    def live_runtime(self):
+        rt = MagicMock()
+        rt.stop.return_value = True
+        rt.is_running.return_value = True
+        rt.inspect_env.return_value = None
+        rt.container_exists.return_value = True
+        rt.rm.return_value = True
+        return rt
+
+    @staticmethod
+    def _write_system(std, doc):
+        import yaml
+
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        std.settings.write_text(yaml.safe_dump(doc))
+
+    @staticmethod
+    def _main(live_runtime, argv):
+        from kanibako.cli import main
+
+        with (
+            patch("kanibako.commands.stop.ContainerRuntime", return_value=live_runtime),
+            patch("kanibako.commands.stop._writeback_on_stop") as writeback,
+            pytest.raises(SystemExit) as excinfo,
+        ):
+            main(argv)
+        return excinfo.value.code, writeback
+
+    @pytest.mark.parametrize("system", [None, {"canon": None}], ids=["collided", "null-canon"])
+    def test_stop_a_box_refuses_once_and_touches_nothing(
+        self, std, config, tmp_home, live_runtime, capsys, system,
+    ):
+        workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
+        doc: dict = {"workset": {"boxes": "/srv/kb"}}
+        if system is not None:
+            doc["system"] = system
+        self._write_system(std, doc)
+        capsys.readouterr()
+
+        rc, writeback = self._main(live_runtime, ["stop", name])
+
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert err.startswith(f"Error: workset.boxes is set to '/srv/kb' in {std.settings},"), err
+        assert err.count("workset.boxes is set to") == 1, err
+        assert err.count("kanibako stop --all reads no settings") == 1, err
+        assert "Warning: " not in err, err
+        assert live_runtime.method_calls == []
+        writeback.assert_not_called()
+
+    def test_stop_all_stops_and_opens_no_settings_file(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        import sys
+
+        _workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
+        self._write_system(std, {"workset": {"boxes": "/srv/kb"}})
+        live_runtime.list_running.return_value = [(f"kanibako-{name}", "img", "Up")]
+        opened: list[str] = []
+        watching = [True]
+
+        def audit(event, args):
+            if watching[0] and event == "open" and isinstance(args[0], (str, Path)):
+                opened.append(str(args[0]))
+
+        sys.addaudithook(audit)
+        try:
+            # The positive control: the hook sees a strict read open the settings file.
+            from kanibako.settings.paths import load_std_paths
+
+            with pytest.raises(ConfigError):
+                load_std_paths(config)
+            assert str(std.settings) in opened
+            opened.clear()
+            rc, writeback = self._main(live_runtime, ["stop", "--all", "--force"])
+        finally:
+            watching[0] = False
+
+        assert rc == 0
+        live_runtime.stop.assert_called_once_with(f"kanibako-{name}")
+        live_runtime.rm.assert_called_once_with(f"kanibako-{name}")
+        assert [p for p in opened if p.startswith(str(tmp_home))] == []
+        writeback.assert_not_called()
+
+    def test_a_valid_system_registry_survives_a_null_canon(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        """``system.canon: null`` drops only the ``system:`` table; the early tier, with its
+        ``workset.registry``, is kept, so the box resolves through ``members.yaml``.
+        """
+        from kanibako.settings.paths import load_std_paths
+
+        self._write_system(
+            std, {"workset": {"registry": "{meta.workset.path}/members.yaml"}},
+        )
+        std = load_std_paths(config)
+        workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
+        members = std.primary_workset / "members.yaml"
+        assert name in members.read_text()
+        decoy = members.read_text().replace(name, "decoy")
+        (std.primary_workset / "registry.yaml").write_text(decoy)
+        self._write_system(std, {
+            "workset": {"registry": "{meta.workset.path}/members.yaml"},
+            "system": {"canon": None},
+        })
+        capsys.readouterr()
+
+        rc, _writeback = self._main(live_runtime, ["stop", str(workspace)])
+
+        assert rc == 0
+        live_runtime.stop.assert_called_once_with(f"kanibako-{name}")
