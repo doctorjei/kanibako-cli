@@ -21,7 +21,7 @@ from kanibako.project import workset, workset_registry
 from kanibako.settings.config import system_settings_path
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_keys import _KEY_ROUTES
-from kanibako.settings.paths import resolve_system_paths
+from kanibako.settings.paths import BoxMode, resolve_system_paths
 from kanibako.settings.settings_resolve import UNSET, SettingsError
 from kanibako.settings.workset_dirkeys import (
     WORKSET_EARLY_KEYS,
@@ -32,8 +32,7 @@ from kanibako.settings.workset_dirkeys import (
     early_tier,
     resolve_workset_dir_key,
 )
-from kanibako.settings.paths import BoxMode
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 # The modules that carry a no-snapshot resolver face.  ⚑ A LIST OF MODULES, not of
 # functions: the resolvers themselves are discovered by SHAPE below.

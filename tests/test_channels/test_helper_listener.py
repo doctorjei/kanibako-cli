@@ -19,7 +19,7 @@ from kanibako.channels.helper_listener import (
 )
 import kanibako.channels.helper_listener as helper_listener
 from kanibako.settings.paths import BoxMode
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 @pytest.fixture

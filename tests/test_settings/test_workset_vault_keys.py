@@ -23,6 +23,7 @@ from kanibako.project.workset import (
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import (
+    BoxMode,
     WorksetSpec,
     load_std_paths,
     resolve_project,
@@ -30,8 +31,7 @@ from kanibako.settings.paths import (
     resolve_workset_project,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.paths import BoxMode
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 def _repoint(root, key, value):

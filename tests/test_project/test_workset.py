@@ -20,7 +20,7 @@ from kanibako.project.workset import (
     remove_project,
     resolve_workset_name,
 )
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 # ---------------------------------------------------------------------------

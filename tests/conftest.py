@@ -13,20 +13,14 @@ pytest_plugins = [
 
 import json
 import subprocess
-from collections.abc import Mapping
 from contextlib import contextmanager
-from pathlib import Path
 from types import SimpleNamespace
-from typing import overload
 from unittest.mock import DEFAULT, MagicMock, patch
 
 import pytest
 
-from kanibako.channels.channels import workset_token
 from kanibako.settings.agent_select import AgentSelection as _AgentSelection
 from kanibako.settings.config import KanibakoConfig, load_config, write_global_config
-from kanibako.settings.paths import BoxMode, resolve_system_paths
-from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem, early_system
 
 # The REAL launch-snapshot orchestrator, captured at import time (before any
 # ``start_mocks`` patch replaces the module attribute) so the ``start_mocks``
@@ -36,25 +30,8 @@ from kanibako.commands.start import (
     _resolve_launch_snapshot as _REAL_RESOLVE_LAUNCH_SNAPSHOT,
 )
 from tests._user_dirs import user_dir_tree
+from tests.support.early import early_record
 from tests.support.filenames import CONFIG_FILENAME
-
-
-@overload
-def early_record(home: Path, tier: Mapping[str, str | None] | None = None, *,
-                 data_home: Path | None = None) -> EarlySystem: ...
-@overload
-def early_record(home: Path, tier: Mapping[str, str | None] | None = None, *,
-                 mode: BoxMode, name: str | None = None,
-                 data_home: Path | None = None) -> EarlyScope: ...
-def early_record(home, tier=None, *, mode=None, name=None, data_home=None):
-    """The early-system record over *tier* (empty by default) and the default paths under *home*.
-
-    *data_home* defaults to *home*.  Given *mode*, the record comes back as the
-    :class:`EarlyScope` of a *mode* box in the workset *name*.
-    """
-    resolved = resolve_system_paths({}, data_home=home if data_home is None else data_home, home=home)
-    record = early_system({} if tier is None else tier, resolved)
-    return record if mode is None else EarlyScope(record, workset_token(mode, name))
 
 
 @pytest.fixture(autouse=True)

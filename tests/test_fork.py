@@ -12,7 +12,7 @@ import pytest
 
 from kanibako.channels.helper_listener import HelperContext, HelperHub
 from kanibako.settings.paths import BoxMode
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 # ---------------------------------------------------------------------------

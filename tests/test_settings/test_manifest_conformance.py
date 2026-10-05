@@ -84,7 +84,7 @@ from kanibako.settings.keyspace_manifest import (
     KEYSPACE_MANIFEST_FILENAME,
     manifest_doc,
 )
-from kanibako.settings.paths import BoxMode, resolve_system_paths
+from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_keyspace import (
     BIND_CATEGORIES,
     DECLARED_AGENT_LEAVES,
@@ -119,8 +119,7 @@ from kanibako.settings.settings_launch import (
 )
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
-from kanibako.settings.workset_dirkeys import early_system
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 # --------------------------------------------------------------------------- #
 # Fixtures of fact
@@ -419,9 +418,7 @@ class TestShellTierDefaults:
 _PROBE_ROOT = Path("/nonexistent/kanibako-conformance-probe")
 #: The early-system record the stub carries: an empty tier, so every channel formula answers
 #: from its declared default alone, never from a system file on this host.
-_PROBE_EARLY = early_system(
-    {}, resolve_system_paths({}, data_home=_PROBE_ROOT / "data", home=_PROBE_ROOT / "home"),
-)
+_PROBE_EARLY = early_record(_PROBE_ROOT / "home", data_home=_PROBE_ROOT / "data")
 
 
 class _StubChannelPaths:

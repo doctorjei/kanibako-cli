@@ -11,7 +11,7 @@ import pytest
 from kanibako.box_supervisor import CONTINUE_MARKER
 from kanibako.commands.start import _run_container
 from kanibako.errors import ContainerError
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 # ---------------------------------------------------------------------------
