@@ -43,9 +43,9 @@ spec §0/§1/§1A/§2a/§2c/§2h) and the seams S3/S17/S18/S19 are all in
 
 from __future__ import annotations
 
-from typing import overload
+from typing import Callable, cast, overload
 
-from kanibako.settings.kb_store import Bind, BindEntry, StoreValue
+from kanibako.settings.kb_store import Bind, BindEntry, StoreValue, __MISSING__
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD
 from kanibako.settings.settings_keyspace import KeyClass, entry_label
@@ -204,25 +204,29 @@ NullSources = dict[tuple[str, ...], tuple[str, ...]]
 RefsRead = dict[tuple[str, ...], frozenset[str]]
 #: A bind entry's arm path plus its STORED destination → the arm key it was filed under.
 DestKeys = dict[tuple[str, ...], str]
+#: A key the snapshot holds only after expansion → its value, read through the resolver
+#: it is handed; ``__MISSING__`` for a key it does not derive.
+Derive = Callable[[str, Callable[[str], object]], object]
 
 
 @overload
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None = None,
     refs_read: RefsRead | None = None, dest_keys: DestKeys | None = None,
+    derive: Derive | None = None,
 ) -> KeyStore: ...
 @overload
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool,
     null_sources: NullSources | None = None, refs_read: RefsRead | None = None,
-    dest_keys: DestKeys | None = None,
+    dest_keys: DestKeys | None = None, derive: Derive | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]: ...
 
 
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False,
     null_sources: NullSources | None = None, refs_read: RefsRead | None = None,
-    dest_keys: DestKeys | None = None,
+    dest_keys: DestKeys | None = None, derive: Derive | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]:
     """Expand *snapshot*'s tokens to terminals, returning a FRESH KeyStore (S19).
 
@@ -251,9 +255,12 @@ def expand(
     was filed under, so a reader holding the stored destination finds the entry
     without expanding it a second time.
 
+    *derive* answers a reference to a key the caller materializes after this pass
+    (:data:`Derive`); it is asked only when the snapshot does not hold the key.
+
     The input snapshot is never mutated (S19).
     """
-    expander = _Expander(snapshot, ctx, collect_errors=collect_errors)
+    expander = _Expander(snapshot, ctx, collect_errors=collect_errors, derive=derive)
     expanded = expander.run()
     if null_sources is not None:
         null_sources.update(expander.null_sources)
@@ -281,10 +288,12 @@ class _Expander:
     """
 
     def __init__(
-        self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False
+        self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False,
+        derive: Derive | None = None,
     ) -> None:
         self._snapshot = snapshot
         self._ctx = ctx
+        self._derive = derive
         # Memo: dotted path -> fully-resolved value (or _ABSENT). ⚑ None and
         # _ABSENT are both VALID memo values, so membership is tested with ``in``,
         # never by comparing to a sentinel. A path mid-resolution is not in the
@@ -627,6 +636,10 @@ class _Expander:
                 f"'{dotted}'."
             )
         raw = self._lookup_raw(dotted)
+        if raw is _ABSENT and self._derive is not None:
+            derived = self._derived(dotted, chain=chain)
+            if derived is not _ABSENT:
+                return derived
         if raw is _ABSENT:
             if self._collect_errors:
                 # LENIENT (Q9): a DANGLING ref is a set-time defect to record, NOT
@@ -675,6 +688,28 @@ class _Expander:
         self._deps[dotted] = frozenset(deps)
         for reading in self._reading:
             reading.update(deps)
+        self._memo[dotted] = resolved
+        return resolved
+
+    def _derived(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent:
+        """Ask *derive* for *dotted*, its reads resolved on this pass and memoized."""
+        assert self._derive is not None
+
+        def read(key: str) -> object:
+            got = self._resolve_ref(key, chain=(*chain, key))
+            return __MISSING__ if got is _ABSENT else got
+
+        self._reading.append(set())
+        try:
+            got = self._derive(dotted, read)
+        finally:
+            deps = self._reading.pop()
+        if got is __MISSING__:
+            return _ABSENT
+        self._deps[dotted] = frozenset(deps)
+        for reading in self._reading:
+            reading.update(deps)
+        resolved = cast(StoreValue, got)
         self._memo[dotted] = resolved
         return resolved
 
