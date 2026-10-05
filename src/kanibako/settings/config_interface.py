@@ -21,7 +21,7 @@ from kanibako.settings.config import (
     _BOX_SCALAR_FIELDS,
     _LAYER1_TABLE,
     agent_settings_of,
-    chain_bad_entries,
+    chain_reaches,
     load_config,
     load_project_overrides,
     null_path_keys_error,
@@ -670,7 +670,7 @@ class _BadEntries(NamedTuple):
 
     #: ``(file path, one "key = value" line per entry)``, in the cascade's file order
     files: "list[tuple[Path | None, list[str]]]"
-    #: dotted names across the files, for :func:`config.chain_bad_entries`
+    #: dotted names across the files, for :func:`config.chain_reaches`
     names: "list[str]"
     #: reads a dotted STORED value, most-specific file first (§2 precedence)
     stored: "Callable[[str], object]"
@@ -1787,7 +1787,7 @@ def set_config_value(
     if early_err is not None:
         return _refusal("Error: " + ERR_WORKSET_EARLY_SET_HEAD % early_err)
     # Spec §2a: an entry that is not a key, in a file this command reads. TWO ARMS, and the
-    # split is a fact about the VALUE (:func:`config.chain_bad_entries`): one the edited
+    # split is a fact about the VALUE (:func:`config.chain_reaches`): one the edited
     # value's own upstream chain reaches is a HARD error no ``--force`` reaches, because
     # storing it would store a value that resolves through a name that is not a key; the
     # rest are an error unless ``--force``, which warns and writes. ``set`` never removes
@@ -1801,7 +1801,7 @@ def set_config_value(
     except KanibakoError:
         bad = _BadEntries([], [], lambda _dotted: None)  # that file's own reader refuses it
     if bad.files:
-        on_chain = chain_bad_entries(
+        on_chain = chain_reaches(
             value, bad.names, key=canonical, stored=bad.stored,
         )
         if on_chain:

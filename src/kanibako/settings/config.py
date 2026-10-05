@@ -1086,19 +1086,20 @@ def refuses_box_store_value(canonical: str, value: object) -> bool:
     return not usable_box_store_value(value)
 
 
-def chain_bad_entries(
-    value: object, bad: Iterable[str], *, key: str, stored: "Callable[[str], object]",
+def chain_reaches(
+    value: object, targets: Iterable[str], *, key: str, stored: "Callable[[str], object]",
 ) -> list[str]:
-    """The *bad* entries the edited *value* of *key* REACHES on its own ``@``-chain (spec §2a).
+    """The *targets* the edited *value* of *key* REACHES on its own ``@``-chain, in walk order.
 
-    ⚑ THE SPLIT, STATED ONCE.  A bad entry in a file the command reads has two arms: one the
-    edited value's own chain depends on, which is a HARD error ``--force`` does not override,
-    and one it does not, which is an error unless ``--force``.  Only the first is a question
+    ⚑ THE SPLIT, STATED ONCE.  The set door passes a file's bad entries as *targets* (spec
+    §2a).  A bad entry in a file the command reads has two arms: one the edited value's own
+    chain depends on, which is a HARD error ``--force`` does not override, and one it does
+    not, which is an error unless ``--force``.  Only the first is a question
     about the value; the second is a question about the file, and belongs to the door.
 
     ⚑ TRANSITIVE, through DECLARED keys only.  The walk follows a ref to a value ``stored``
     reads, so a chain of two hops (``@a.b`` whose value is ``@c.d``) reaches ``c.d``.  A ref
-    that is itself bad ends the walk there — its value is not a key's value to follow.
+    that is itself a target ends the walk there — its value is not a key's value to follow.
     *stored* answers ``None`` for a name no file holds, and the walk stops.
 
     ⚑ A TEXT value (:func:`~kanibako.settings.settings_configset.holds_verbatim_text`) has
@@ -1112,7 +1113,7 @@ def chain_bad_entries(
 
     if not isinstance(value, str) or not value or holds_verbatim_text(key):
         return []
-    remaining = set(bad)
+    remaining = set(targets)
     reached: list[str] = []
     seen: set[str] = set()
     pending = [value]
