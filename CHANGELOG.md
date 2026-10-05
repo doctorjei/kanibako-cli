@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change:** `system get agent.<node>.<key>` answers `(not set)` for a value only the agent's own file
   holds. `agent set`/`get`/`reset` are unchanged. See *`system set agent.<node>.*` writes the system
   settings file* in `MIGRATION.md`.
+
 - **A registered standalone box now resolves by its bare name.** `box create --standalone
   --register` has always promised that registering "index[es] a new STANDALONE box in the
   registry so it resolves by name from other directories"; nothing delivered it — `box show
@@ -30,9 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--box` selector used to read that section FIRST, which both duplicated the lookup and
   inverted the precedence — a registered standalone beat a primary box of the same name; it
   now goes through the one resolver. **A name collision now prints a warning on stderr**:
-  when the bare name is also a primary box, a workset, or a workset member, the earlier
-  claim wins and the shadowed registration is named with its root, because the registration
-  says "resolves by name" and the ordering says otherwise. No exit-code change.
+  when the bare name is also a primary box or a workset member, the earlier claim wins and
+  the shadowed registration is named with its root, because the registration says "resolves
+  by name" and the ordering says otherwise. No exit-code change.
 
 - **`agent set` now refuses an agent file it cannot read.** A `set` whose target
   `agents/<node>/agent.yaml` carries an entry that is not a key outside the edited value's chain —
