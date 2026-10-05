@@ -448,6 +448,17 @@ class TestWorksetKuidKeys:
         from kanibako.settings.config import read_workset_skip_kuid_check
         assert read_workset_skip_kuid_check(project_toml) is False
 
+    @pytest.mark.parametrize("reader", ["read_workset_kuid", "read_workset_skip_kuid_check"])
+    def test_scalar_workset_section_refuses_by_name(self, tmp_path, reader):
+        # A scalar where the ``workset:`` table belongs is the named shape refusal,
+        # not a raw AttributeError from ``.get`` on a str.
+        from kanibako.errors import ConfigError
+        from kanibako.settings import config
+        f = tmp_path / WORKSET_META_FILE
+        f.write_text("workset: /x\n")
+        with pytest.raises(ConfigError, match="where a table of keys belongs"):
+            getattr(config, reader)(f)
+
     def test_kuid_default_is_sentinel_for_absent_file(self, tmp_path):
         # #3: primary/named (and any unset box) default workset.kuid = "00000".
         from kanibako import kuid
