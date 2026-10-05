@@ -155,6 +155,19 @@ ERR_CONFIG_REF_ORDER = (
                         "\"Ordering rule\"). Reference one of those keys instead, or set the "
                         "value you mean.")
                                                     # the key, the value, the ref, its set, the key's set
+#: The SET door's per-owner refusal (keyspec §0 "Per-owner resources"), and its words per owner.
+ERR_PER_OWNER_SET = (
+                        "nothing was written: %s = %r (%s scope, %s) would give every %s "
+                        "one shared path, because the value names no %s identity. %s Spell "
+                        "the identity into the value: %r, or set %s in each %s's own file.")
+PER_OWNER_SET_WORDS = {
+    "workset": ("working set", "working-set", "Same-named boxes in different working sets, "
+                "and every standalone box, would share it.", "working set"),
+    "partition": ("channel partition", "partition", "Same-named boxes in different working "
+                  "sets would share it.", "working set"),
+    "box": ("box", "box", "Every box would share it.", "box"),
+    "agent": ("agent", "agent", "Every agent would share it.", "agent"),
+}
 #: The SET door's lead for ``workset_dirkeys.early_key_set_error``'s refusal.
 ERR_WORKSET_EARLY_SET_HEAD = (
                         "nothing was written: this value could not be read back.\n  %s")
