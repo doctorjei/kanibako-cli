@@ -17,13 +17,13 @@ correctly.  Two carriers, two answers.
 ⚑ What this module does instead: it is a THIRD CALLER of the single expression scanner
 :func:`~kanibako.settings.settings_resolve.expand_expr` (seam S25), with a lookup
 NARROWED to the references that are knowable without a snapshot: :data:`WORKSET_PATH_REF`,
-whose value is the workset root the caller already holds, and the OTHER workset early
-keys, which this same route resolves (the spec's own channel defaults are
-``@workset.channelroot/<leaf>``, a same-set reference the ordering rule allows).  The
-scanner's chain guards a cycle among them.  ``~`` and ``$XDG_*`` expand host-side exactly
-as they do at launch.  Every other reference is REFUSED BY NAME.  A refusal that names
-the key and the token is a correct answer to "this cannot be resolved yet"; a directory
-called ``@config.registry`` is not.
+whose value is the workset root the caller already holds, the scope's name, the ``system.*``
+paths, and the OTHER workset early keys, which this same route resolves (the spec's own
+channel defaults are ``@workset.channelroot/<leaf>``, a same-set reference the ordering
+rule allows).  The scanner's chain guards a cycle among them.  ``~`` and ``$XDG_*``
+expand host-side exactly as they do at launch.  Every other reference is REFUSED BY NAME.
+A refusal that names the key and the token is a correct answer to "this cannot be
+resolved yet"; a directory called ``@config.registry`` is not.
 """
 
 from __future__ import annotations
@@ -48,15 +48,15 @@ from kanibako.settings.settings_resolve import (
     UNSET, ResolveCtx, SettingsError, _Unset, expand_expr, literal_expr,
 )
 
-#: The one non-``workset.*`` ``@``-ref a workset dir key can resolve before a snapshot
-#: exists: the workset root, which every caller of :func:`resolve_workset_dir_key` already
-#: has in hand.  It anchors the keys' spec-declared defaults, so the documented value
+#: The workset root, which every caller of :func:`resolve_workset_dir_key` already has in
+#: hand.  It anchors the keys' spec-declared defaults, so the documented value
 #: resolves here without the snapshot the rest of the keyspace needs.
 WORKSET_PATH_REF = "meta.workset.path"
+#: The scope's workset name: ``EarlyScope.workset_name``.
+WORKSET_NAME_REF = "meta.workset.name"
 
 #: The workset EARLY keys (under ``workset.``): the keys this route reads, so the ones that
-#: may depend only on :data:`WORKSET_PATH_REF` and on each other (system-design "Ordering
-#: rule").
+#: may depend only on :data:`_USABLE_REFS` (system-design "Ordering rule").
 WORKSET_EARLY_KEYS: frozenset[str] = frozenset({
     WORKSPACES_PATH, BOXES_PATH, LOGS_PATH, "channelroot", "registry", "canon", "template",
     "vault_ro", "vault_rw",
@@ -282,7 +282,8 @@ def resolve_workset_dir_key(
 
 #: The references a workset early key may use, as a refusal names them.
 _USABLE_REFS = (
-    f"'@{WORKSET_PATH_REF}' (this workset's root) or another workset early key "
+    f"'@{WORKSET_PATH_REF}' (this workset's root), '@{WORKSET_NAME_REF}' (its partition "
+    f"name), a system path ('@system.channels.mailboxes', …), or another workset early key "
     f"('@workset.boxes', '@workset.channelroot', …)"
 )
 
@@ -295,6 +296,13 @@ def _expand_early(
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
         if ref == WORKSET_PATH_REF:
             return str(workset_root)
+        if ref == WORKSET_NAME_REF:
+            return early.workset_name
+        if ref in SYSTEM_PATH_DEFAULTS:
+            return expand_expr(
+                _system_path(ref, early.system), space="host", ctx=_host_ctx(), lookup=lookup,
+                chain=chain,
+            )
         referent = ref.removeprefix("workset.")
         if referent != ref and referent in WORKSET_EARLY_KEYS:
             return _referent_value(
@@ -307,6 +315,16 @@ def _expand_early(
         )
 
     return expand_expr(value, space="host", ctx=_host_ctx(), lookup=lookup, chain=chain)
+
+
+def _system_path(ref: str, system: EarlySystem) -> str:
+    """The stored expression of ``@<ref>``, a ``system.*`` path: the record's, never a re-read."""
+    if system.system_refusal is not None:
+        raise SettingsError(f"'@{ref}' cannot be read: {system.system_refusal}")
+    value = system.system_paths.get(ref)
+    if value is None:
+        raise SettingsError(f"'@{ref}' is null in {system.file}, so it names no directory")
+    return value
 
 
 def _referent_value(
@@ -397,8 +415,8 @@ def early_key_set_error(
     Runs :func:`resolve_workset_dir_key` itself on the value about to be written to
     *written_file*: a workset's own file, or the system settings file that
     :func:`early_repoint` reads beneath it.  So a value the launch snapshot would resolve
-    but this reader cannot (``$AGENT``, an ``@``-ref outside :data:`WORKSET_PATH_REF` and
-    the early keys) is refused, because this reader reads it first.  The resolved path is
+    but this reader cannot (``$AGENT``, an ``@``-ref outside :data:`_USABLE_REFS`) is
+    refused, because this reader reads it first.  The resolved path is
     discarded, so the file's directory stands in for the workset root, and the file is the
     first tier a referent is read from.  It resolves once per mode the key's readers pass
     (:func:`_reader_modes`; *standalone_reads*: a standalone box reads *written_file*), so a
