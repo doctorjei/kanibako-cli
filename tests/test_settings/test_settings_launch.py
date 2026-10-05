@@ -3475,7 +3475,7 @@ def test_the_shell_floor_supplies_every_universal_row():
     assert fence.leaves - floored == {"transform_settings", "template", "canon"}
     for key in ("continue_mode", "model", "endpoint"):
         assert pseudo_tier_defaults()[f"agent.shell.{key}"] is None
-    assert env_default_categories()["agent.shell.env.TERM"] == "$TERM"
+    assert env_default_categories()["agent.shell.env.TERM"] == "{$TERM}"
 
 
 def test_a_users_agent_default_values_reach_no_shell_launch(tmp_path: Path):

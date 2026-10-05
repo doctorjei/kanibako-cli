@@ -6,7 +6,7 @@
 # here is non-agent-specific (per-agent defaults live in each plugin package).
 # It is read by the thin loader :mod:`kanibako.settings.core_defaults`, which emits these
 # entries through the existing category seam exactly as the old in-code emitters
-# did — so the resolver still expands `@`-refs / `$vars` and applies the D-B1
+# did — so the resolver still expands references / variables and applies the D-B1
 # precedence + depth-sort + L7 guarantee-create.
 #
 # What lives here (STATIC) vs what stays code-injected at the seam (DYNAMIC):
@@ -49,65 +49,65 @@ masks: {}
 # ~/channels/inbox.
 channels:
   # System channel type roots (every mode).
-  # B2b: routed through @system.channels.* (spec §2c ALL PROJECTS) — the
-  # host_src is the @system.* REF (not the runtime-probed literal), which `expand`
+  # B2b: routed through {system.channels.*} (spec §2c ALL PROJECTS) — the
+  # host_src is the {system.*} REF (not the runtime-probed literal), which `expand`
   # resolves to the SAME resolved system channel root (`std.channels_* ==
   # resolved["system.channels.*"]`; the same flat foundation, byte-identical). The
   # `source` symbolic name is kept for documentation; the loader emits `meta_ref`
   # as the host_src and folds the resolved system.channels.* literal into the floor.
   - key: global_common
     source: channels_common
-    meta_ref: "@system.channels.common"
+    meta_ref: "{system.channels.common}"
     box_dest: "~/channels/common"
     scope: system
   - key: global_chat
     source: channels_chat
-    meta_ref: "@system.channels.chat"
+    meta_ref: "{system.channels.chat}"
     box_dest: "~/channels/chat"
     scope: system
   - key: global_share
     source: channels_share
-    meta_ref: "@system.channels.share"
+    meta_ref: "{system.channels.share}"
     box_dest: "~/channels/share"
     scope: system
   - key: mailboxes
     source: channels_mailboxes
-    meta_ref: "@system.channels.mailboxes"
+    meta_ref: "{system.channels.mailboxes}"
     box_dest: "~/channels/mailboxes"
     scope: system
   # Own inbox alias (A2): same host dir as mailboxes/<ws>/<self>, surfaced at the
   # (C)-stable path ~/channels/inbox.  The depth-sort lands this deeper dest
   # after ~/channels/mailboxes — both binds are kept.
   #
-  # B2: routed through @meta.box.inbox (spec §2c) — the host_src is the @meta.*
+  # B2: routed through {meta.box.inbox} (spec §2c) — the host_src is the {meta.*}
   # REF (not the runtime-probed literal), which `expand` resolves to the SAME
   # materialized inbox address (byte-identical, JC-B2-4). `source: inbox` is kept
   # for the standalone-omit gate (a standalone box still has an inbox, so it is NOT
-  # gated — but the loader maps `meta_ref` to the @-ref host_src for this entry).
+  # gated — but the loader maps `meta_ref` to the reference host_src for this entry).
   - key: inbox
     source: inbox
-    meta_ref: "@meta.box.inbox"
+    meta_ref: "{meta.box.inbox}"
     box_dest: "~/channels/inbox"
     scope: system
   # Workset-local channels (PRIMARY/NAMED only; standalone omits — gated at the
   # seam by `proj.mode`, via the `source:` names below).  B2b: routed through
-  # @workset.channels.* (spec §2c ALL WORKSETS) — the loader folds the
+  # {workset.channels.*} (spec §2c ALL WORKSETS) — the loader folds the
   # resolved workset channel literal into the floor under that key and emits the
-  # @-ref as the host_src (byte-identical to the runtime-probed `wch.*`).  The
+  # reference as the host_src (byte-identical to the runtime-probed `wch.*`).  The
   # `source` gate still drops these entries for a standalone box (no workset paths).
   - key: workset_common
     source: workset_common
-    meta_ref: "@workset.channels.common"
+    meta_ref: "{workset.channels.common}"
     box_dest: "~/channels/workset/common"
     scope: workset
   - key: workset_chat
     source: workset_chat
-    meta_ref: "@workset.channels.chat"
+    meta_ref: "{workset.channels.chat}"
     box_dest: "~/channels/workset/chat"
     scope: workset
   - key: workset_share
     source: workset_share
-    meta_ref: "@workset.channels.share"
+    meta_ref: "{workset.channels.share}"
     box_dest: "~/channels/workset/share"
     scope: workset
 
@@ -148,45 +148,45 @@ channels:
 # which the collapse refuses by name.
 core:
   # Project workspace — bound rw at ~/workspace.  B2: routed through
-  # @meta.box.workspace (spec §2c) — the host_src is the @meta.* REF, which
+  # {meta.box.workspace} (spec §2c) — the host_src is the {meta.*} REF, which
   # `expand` resolves to the SAME materialized workspace source (= str(proj.
   # project_path); byte-identical, JC-B2-4).  `source: project_path` is kept as the
   # documentary symbolic name; the loader emits `meta_ref` as the host_src.
   - key: workspace
     category: bindings.rw
     source: project_path
-    meta_ref: "@meta.box.workspace"
+    meta_ref: "{meta.box.workspace}"
     box_dest: "~/workspace"
     options: "Z,U"
     scope: system
   # Read-only vault (only when vault enabled; source is created if missing).
-  # Routed per-mode (spec §2c) — BOTH arms now root at the SAME `@workset.vault_ro`
+  # Routed per-mode (spec §2c) — BOTH arms now root at the SAME `{workset.vault_ro}`
   # anchor, which is UNIFORM across modes (§2c ALL PROJECTS: `workset.vault_ro |
-  # @meta.workset.path/vault/ro`).  Only the BIND differs, and it differs for a real
-  # reason: primary/named get the per-box `/@meta.box.name` subdir (§2c ALL WORKSETS)
+  # {meta.workset.path}/vault/ro`).  Only the BIND differs, and it differs for a real
+  # reason: primary/named get the per-box `/{meta.box.name}` subdir (§2c ALL WORKSETS)
   # that a lone standalone box does not need (§2c STANDALONE).  The standalone arm
-  # used to spell `@meta.workset.path/vault/ro` — a SECOND spelling of the same root;
+  # used to spell `{meta.workset.path}/vault/ro` — a SECOND spelling of the same root;
   # that duplication is what this collapses.
   - key: vault
     category: bindings.ro
     source: vault_ro_path
     mode_meta_ref:
-      primary: "@workset.vault_ro/@meta.box.name"
-      named: "@workset.vault_ro/@meta.box.name"
-      standalone: "@workset.vault_ro"
+      primary: "{workset.vault_ro}/{meta.box.name}"
+      named: "{workset.vault_ro}/{meta.box.name}"
+      standalone: "{workset.vault_ro}"
     box_dest: "~/vault/ro"
     options: "ro"
     scope: vault
   # Read-write vault (only when vault enabled; source is created if missing).
   # Same shape as the ro vault above: both arms root at the UNIFORM
-  # `@workset.vault_rw`; only the per-box `/@meta.box.name` subdir is per-mode.
+  # `{workset.vault_rw}`; only the per-box `/{meta.box.name}` subdir is per-mode.
   - key: vault
     category: bindings.rw
     source: vault_rw_path
     mode_meta_ref:
-      primary: "@workset.vault_rw/@meta.box.name"
-      named: "@workset.vault_rw/@meta.box.name"
-      standalone: "@workset.vault_rw"
+      primary: "{workset.vault_rw}/{meta.box.name}"
+      named: "{workset.vault_rw}/{meta.box.name}"
+      standalone: "{workset.vault_rw}"
     box_dest: "~/vault/rw"
     options: "Z,U"
     scope: vault
@@ -218,7 +218,7 @@ kani:
   # self-adapting profile.d snippet that every LOGIN shell sources; it exports each
   # mounted secret from SECRET_MOUNT_DIR (/run/kanibako/secrets) in-box, so a
   # `podman exec` login shell (VS Code integrated terminal, codex panel app-server)
-  # sees $API_KEY etc. — the paths the PID-1 `_secret_export_shim` cannot reach
+  # sees the API-key env vars — the paths the PID-1 `_secret_export_shim` cannot reach
   # (those non-login execs never inherit its env).  UNCONDITIONAL/universal: the
   # snippet no-ops when nothing is mounted, so it is safe on every box.  The value
   # is still read IN-BOX from the ro mount — kanibako only binds the snippet PATH,
@@ -300,10 +300,10 @@ kickoff:
 # ⚑⚑ THE NAMING TRAP, stated here because this is where both spellings meet: a box
 # store holds TWO different `canon` dirs.  `<box_dir>/home/canon` is the ASSEMBLED
 # GUEST VIEW (`~/canon`, delivered by the home bind).  `<box_dir>/canon` (= the key
-# `@box.canon`, this file's `canon_hb_box` source) is the box's CONTRIBUTION root.
-# **`@box.canon` is NOT `~/canon`.**  Same word, adjacent paths, opposite directions.
+# `{box.canon}`, this file's `canon_hb_box` source) is the box's CONTRIBUTION root.
+# **`{box.canon}` is NOT `~/canon`.**  Same word, adjacent paths, opposite directions.
 #
-# `@agent.<active>.canon` is NOT spellable statically — the discriminator is the
+# `{agent.<active>.canon}` is NOT spellable statically — the discriminator is the
 # ACTIVE AGENT NODE, known only at the seam — so the loader interpolates it (and
 # omits the whole entry for a NO-AGENT box).  These keys are not `config set`-
 # repointable (R-9 retired the `bindings.{ro,rw}` write route at every scope),
@@ -322,29 +322,29 @@ canon:
   # The handbook's table of contents — a FILE bind over the 0-byte mountpoint.
   - key: canon_hb_contents
     category: bindings.ro
-    meta_ref: "@system.canon/handbook/SYS_CONTENTS.md"
+    meta_ref: "{system.canon}/handbook/SYS_CONTENTS.md"
     box_dest: "~/canon/handbook/SYS_CONTENTS.md"
     options: "ro"
   # The GENERAL chapter — the global handbook IS the general chapter.
   - key: canon_hb_general
     category: bindings.ro
-    meta_ref: "@system.canon/handbook/general"
+    meta_ref: "{system.canon}/handbook/general"
     box_dest: "~/canon/handbook/general"
     options: "ro"
   # The three per-scope chapters.  `<active>` is interpolated.
   - key: canon_hb_agent
     category: bindings.ro
-    meta_ref: "@agent.<active>.canon/handbook"
+    meta_ref: "{agent.<active>.canon}/handbook"
     box_dest: "~/canon/handbook/agent"
     options: "ro"
   - key: canon_hb_workset
     category: bindings.ro
-    meta_ref: "@workset.canon/handbook"
+    meta_ref: "{workset.canon}/handbook"
     box_dest: "~/canon/handbook/workset"
     options: "ro"
   - key: canon_hb_box
     category: bindings.ro
-    meta_ref: "@box.canon/handbook"
+    meta_ref: "{box.canon}/handbook"
     box_dest: "~/canon/handbook/box"
     options: "ro"
 
@@ -354,12 +354,12 @@ canon:
 # destinations are STATIC and DECLARED HERE, under the FIXED pinned root
 # `~/.kanibako/state/` — the resolve-before-liveness root (single source of truth:
 # `settings_resolve.BOX_PINNED_ROOT_RELPATH`).  They deliberately do NOT carry a
-# `$XDG_STATE_HOME` token: a mount destination is written into the container
+# `{$XDG_STATE_HOME}` token: a mount destination is written into the container
 # runtime's arguments before the box is live, so honoring the box's XDG settings
 # host-side meant four resolvers kept in agreement by hand — and they had already
-# drifted (`start.py` derived the dest from `$XDG_STATE_HOME` while hardcoding the
+# drifted (`start.py` derived the dest from `{$XDG_STATE_HOME}` while hardcoding the
 # matching `mkdir` at `~/.local/state`).  XDG compliance is restored AFTER boot by
-# `box_supervisor.project_pinned_xdg`, which symlinks `$XDG_STATE_HOME/kanibako`
+# `box_supervisor.project_pinned_xdg`, which symlinks `{$XDG_STATE_HOME}/kanibako`
 # onto this pinned dir.  Only the host SOURCES (socket_path / log_path) are
 # runtime-probed and injected at the seam, gated on `.exists()` there.
 #
@@ -374,21 +374,18 @@ helpers:
     box_dest: "~/.kanibako/state/helper.sock"
     options: ""
   # Per-box helper message log → ~/.kanibako/state/helpers.jsonl (ro).
-  # THE SPEC'S OWN SPELLING (§2c ALL PROJECTS): @workset.logs/@{meta.box.name}.jsonl
+  # THE SPEC'S OWN SPELLING (§2c ALL PROJECTS): {workset.logs}/{meta.box.name}.jsonl
   # — ONE row for every mode, because `workset.logs` carries the per-mode variation
-  # (primary/named @meta.workset.path/logs · standalone @meta.box.path).
+  # (primary/named {meta.workset.path}/logs · standalone {meta.box.path}).
   #
-  # ⚑ THE BRACES ARE LOAD-BEARING, do not "simplify" them away.  A literal `.jsonl`
-  # follows a dotted @-ref here, and the BARE form cannot express that: an @-ref name
-  # is a GREEDY dotted run, so `@meta.box.name.jsonl` parses as the single ref name
-  # `meta.box.name.jsonl`, which resolves ABSENT and then coerces to "" under the
-  # embedded rule — silently yielding a host_src that has lost both the box name and
-  # the extension.  `@{...}` delimits the name explicitly so the suffix stays a
-  # literal (resolver: settings_resolve.match_ref; ruled by Jei 2026-07-30b, PHASE R).
+  # ⚑ The closing brace ends the reference name, so the `.jsonl` after it stays a
+  # literal suffix; `{meta.box.name.jsonl}` would instead name the absent key
+  # `meta.box.name.jsonl`, which coerces to "" under the embedded rule and loses both
+  # the box name and the extension (resolver: settings_resolve.match_braced).
   - key: helper_log
     category: bindings.ro
     source: helper_log
-    meta_ref: "@workset.logs/@{meta.box.name}.jsonl"
+    meta_ref: "{workset.logs}/{meta.box.name}.jsonl"
     box_dest: "~/.kanibako/state/helpers.jsonl"
     options: "ro"
 
@@ -397,16 +394,16 @@ helpers:
 # (the seam is `image_sharing.detect_graph_root` + `image_sharing.
 # write_storage_conf` feeding `core_defaults.image_default_categories`).  GATED:
 # the table is injected only when image-sharing applies (the caller's conditional
-# gate realizes the spec's `%if @box.share_images%` condition).  ⚑ 11a
+# gate realizes the spec's `%if {box.share_images}%` condition).  ⚑ 11a
 # (2026-08-02): the PROBE feeds ONLY the `box.images_store` DEFAULT, so a failed
 # probe does not gate the table — the RESOLVED key decides, and probe-fail with
-# no set value leaves `@box.images_store` absent (the seam then warns and skips).
+# no set value leaves `{box.images_store}` absent (the seam then warns and skips).
 # box-side destinations + options are STATIC; the host SOURCES (the probed store
 # default + the generated conf path) are injected at the seam.
 images:
   # Host graph root → /var/lib/shared-images (ro).
   # THE SPEC'S OWN SPELLING (§2c ALL PROJECTS row `images`, D-M8): the host_src
-  # is the @-ref `@box.images_store` — the USER KEY whose DEFAULT is the
+  # is the reference `{box.images_store}` — the USER KEY whose DEFAULT is the
   # runtime-probed podman graph root, injected as a floor scalar at the same
   # seam (`image_default_categories`).  Repointing `box.images_store` at any
   # cascade tier (box > workset > system file) moves this mount.  ⚑ Entry
@@ -416,7 +413,7 @@ images:
   - key: images
     category: bindings.ro
     source: images_store
-    meta_ref: "@box.images_store"
+    meta_ref: "{box.images_store}"
     box_dest: "/var/lib/shared-images"
     options: "ro"
   # Generated storage.conf → ~/.config/containers/storage.conf (ro).
@@ -500,8 +497,8 @@ agent_shell:
 # ---------------------------------------------------------------------------
 # STATIC core `<scope>.env.<VAR>` defaults (spec §2d) — the file route for core
 # environment variables whose whole value a FILE can hold: a literal, or a
-# settings EXPRESSION the shared engine resolves (`$TERM` below, the same
-# dispatch every `@`-ref in this file goes through).
+# settings EXPRESSION the shared engine resolves (`{$TERM}` below, the same
+# dispatch every reference in this file goes through).
 #
 # ⚑ SHAPE: scope-keyed sub-tables of `<VAR>: "<value>"` — the `box:` table below
 # is the worked example; a second scope is a sibling table beside it.
@@ -517,7 +514,7 @@ agent_shell:
 # `true`/`1` would reach the box as "True"/"1" rather than what the author wrote.
 #
 # ⚑ AN EXPRESSION IS RESOLVED, NOT PASSED THROUGH.  The floor folds under the base
-# level and the whole snapshot is expanded before any entry is walked, so `$TERM`
+# level and the whole snapshot is expanded before any entry is walked, so `{$TERM}`
 # reaches a box as the HOST's terminal type.  That is the one thing this route can
 # do that `start._core_env_default_categories` exists for — a value it CANNOT do is
 # one derived from the launch itself (a resolved project, a resolved agent), which
@@ -545,7 +542,7 @@ agent_shell:
 # is a CLAIM ABOUT THE HOST rather than a preference of ours.  `COLORTERM` is
 # unstandardized and its modern meaning is "this display does 24-bit color"; the
 # shipped literal `truecolor` asserted that on the host's behalf while `TERM`
-# right beside it was faithfully inherited.  `$COLORTERM` carries the host's own
+# right beside it was faithfully inherited.  `{$COLORTERM}` carries the host's own
 # signal, and where the host sets none it resolves to ABSENCE and the key is
 # DROPPED — the box gets no such variable rather than an empty one, which is a
 # third state readers misparse (`settings_resolve._host_colorterm`).
@@ -554,21 +551,21 @@ agent_shell:
 # default for **all** agents (host, then xterm fallback) this isnt just for shell"*.
 # The DEFAULT tier rather than a per-node row because the agent tier's two cascade
 # levels are overlaid PER NAME (spec §2a), so a plugin descriptor or any settings
-# file overrides it for ONE agent and the rest keep inheriting.  The `$TERM`
+# file overrides it for ONE agent and the rest keep inheriting.  The `{$TERM}`
 # dispatch and the `xterm` fallback are `settings_resolve._host_term`.
 # ⚑ `agent.shell` states it again because a pseudo-agent does not inherit
-# `agent.default` (spec §2d shell fence, `agent.shell.env.TERM | $TERM`).
+# `agent.default` (spec §2d shell fence, `agent.shell.env.TERM | {$TERM}`).
 #
 # `KANIBAKO_DIRECTIVE_FINAL` (spec §2d shell fence, `~/AGENTS.md`): the file a
 # plain-shell launch renders the canon into.  Its presence in the resolved
 # container env is what wraps the launch in the directive-flatten shim
 # (`start._directive_flatten_shim`), as it does for every real agent's own FINAL.
-# A leading `$GUEST_HOME` is expanded by `env_default_categories`.
+# A leading `{$GUEST_HOME}` is expanded by `env_default_categories`.
 env:
   agent.default:
-    TERM: "$TERM"
+    TERM: "{$TERM}"
   agent.shell:
-    TERM: "$TERM"
-    KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/AGENTS.md"
+    TERM: "{$TERM}"
+    KANIBAKO_DIRECTIVE_FINAL: "{$GUEST_HOME}/AGENTS.md"
   box:
-    COLORTERM: "$COLORTERM"
+    COLORTERM: "{$COLORTERM}"
