@@ -1094,6 +1094,18 @@ def _under_pref(parts: tuple[str, ...]) -> bool:
     return parts[:1] == (PREF_ROOT,)
 
 
+def _is_bare_scalar_entry(value: Any) -> bool:
+    """Is *value* a bind-map entry that is a BARE SCALAR — the one shape nothing can salvage?
+
+    A dest-keyed entry is ``[src[, options]]``, so a list or a tuple is a structured-entry
+    attempt (its arity is judgeable here) and a table is the retired name-keyed shape (a
+    verdict about a SPELLING). A bare scalar is neither: it can only ever be refused for
+    being what it is, and saying so is what §2h's agent verdict has to precede. A present
+    ``None`` is §2h's per-entry OMIT and is never one of these.
+    """
+    return value is not None and not isinstance(value, (list, tuple, dict))
+
+
 def _at_declared_category(parts: tuple[str, ...]) -> bool:
     """Is *parts* a DECLARED dest-keyed category position, a ``pref.`` head stripped (spec §2h)?
 
@@ -1208,12 +1220,13 @@ def parse_bind_map(
     root is supplied HERE (:func:`_declared_source`) and never downstream — rooting at
     ASSEMBLY is FORBIDDEN by §2a.
 
-    ⚑ *defer_shape* is a ``pref.`` path's (§2h) — see :func:`_under_pref`. It withholds ONLY
-    the per-ENTRY SHAPE verdict, leaving the offending value in the store verbatim for
-    :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`; every other check
-    (the doubly-spelled destination, the unrooted source) still runs HERE. A value that
-    unrolled is stored as a :class:`BindEntry` whatever *defer_shape* says, so a well-formed
-    entry is never carried into the deferred pass.
+    ⚑ *defer_shape* is a ``pref.`` path's (§2h) — see :func:`_under_pref`. It withholds
+    ONLY the verdict on a BARE-SCALAR entry (:func:`_is_bare_scalar_entry`), leaving that
+    value in the store verbatim for
+    :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`; the
+    doubly-spelled-destination, retired-sub-table and unrooted-source checks all still run
+    HERE. A value that unpacked is stored as a :class:`BindEntry` whatever *defer_shape*
+    says, so a well-formed entry is never carried into the deferred pass.
     """
     if not isinstance(raw, dict):
         raise SettingsError(
@@ -1225,11 +1238,15 @@ def parse_bind_map(
     else:
         # ⚑ THE PER-MAP CHECK IS NOT A SHAPE VERDICT, so it still runs on the WHOLE
         # map: two spellings of one destination is a fact about the map, not about
-        # any entry's shape. The per-ENTRY loop then judges only what can be a
-        # well-formed entry, which is what leaves the unrooted-source refusal here.
+        # any entry's shape.
         refuse_dest_spelled_twice(raw, category=category)
+        # ⚑ AND THE DEFERRED SET IS THE BARE SCALAR, the one value that can never be a
+        # ``[src[, options]]`` entry. A sub-table is a table, not a scalar, and stays
+        # here: the retired-shape verdict names a SPELLING, and it holds whatever the
+        # agent segment says. A list is a structured-entry attempt, so its arity is
+        # judged here too — only the value that is not an entry at all waits.
         check_bind_map(
-            {k: v for k, v in raw.items() if isinstance(v, (list, tuple))},
+            {k: v for k, v in raw.items() if not _is_bare_scalar_entry(v)},
             category=category, declared=declared,
         )
     store = KeyStore()
@@ -1238,15 +1255,13 @@ def parse_bind_map(
         # ONE entry. Producers normalize too; the function is idempotent, so neither place is
         # load-bearing alone. ⚑ The VALUE is never canonicalized: a host_src stays as authored.
         dest = normalize_bind_dest(str(key))
-        try:
-            entry = _parse_node(sub, in_binds=True, dest_keyed=True)
-        except SettingsError:
-            # ⚑ A malformed ENTRY is the deferred verdict's business, and it names the
-            # category, so re-raising it here would only pre-empt §2h's agent verdict.
-            if not defer_shape:
-                raise
+        if defer_shape and _is_bare_scalar_entry(sub):
+            # ⚑ Carried VERBATIM for the deferred verdict, and never unpacked: a
+            # ``BindEntry`` is what says the entry is well-formed, so deferring the
+            # shape means deferring the unpack that would have proved it.
             store[dest] = sub
             continue
+        entry = _parse_node(sub, in_binds=True, dest_keyed=True)
         if isinstance(entry, BindEntry):
             entry = BindEntry(
                 _declared_source(entry.src, category, dest, root_ref), entry.opts,
