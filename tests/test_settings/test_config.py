@@ -1157,12 +1157,7 @@ class TestWriteProjectConfig:
         assert "img:v1" not in text
 
     def test_add_image_to_container_section(self, tmp_path):
-        # ⚑ FIXTURE CHANGED 2026-10-05 (kanibako ruling A, task scalarwriters).  It was
-        # "box:\n  # empty section\n", which YAML parses as ``{'box': None}`` -- a NULL
-        # section, and the shape rule refuses a null like any other non-table ("null
-        # included", spec §0; ``write_nested_key`` already refused this exact fixture).
-        # A real table keeps what this test actually asserts: an image lands in an EXISTING
-        # box section, beside what was already there.
+        # A real table: an empty ``box:`` header parses as null, which is refused.
         p = tmp_path / BOX_META_FILE
         p.write_text("box:\n  shell: bash\n")
         write_project_config(p, "new:img")

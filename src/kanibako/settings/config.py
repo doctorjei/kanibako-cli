@@ -446,13 +446,8 @@ def persist_creation_flags(
 def write_box_enable_vault(path: Path, enable_vault: bool = True) -> None:
     """Sparsely persist the box-scope ``box.enable_vault`` key at *path* (reader: :func:`read_box_enable_vault`).
 
-    A present non-table ``box`` refuses by name (:func:`refuse_scalar_sections`) and the file is
-    left byte-identical.  ⚑ This site's shape was a CRASH, not a clobber — ``setdefault`` hands
-    back the scalar it found rather than a table, so the item assignment below raised
-    ``TypeError: 'str' object does not support item assignment``.  No value was ever lost, but
-    the user got a traceback where the named refusal is the cure.  The guard sits at the top, so
-    the ``True`` arm — which used to no-op silently against a scalar ``box`` — now refuses too,
-    rather than quietly doing nothing the user asked for.
+    A present non-table ``box``, null included, refuses by name on both arms
+    (:func:`refuse_scalar_sections`) and leaves the file untouched.
     """
     existing = load_doc(path)
     refuse_scalar_sections(path, ("box",), data=existing)
