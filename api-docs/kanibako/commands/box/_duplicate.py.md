@@ -10,7 +10,8 @@ def run_duplicate(args: argparse.Namespace) -> int
 def _source_is_external(args: argparse.Namespace, std) -> bool
 def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int
 def _merge_workspace(src: Path, dst: Path, force: bool) -> None
-def _duplicate_to_standalone(src_proj, new_path, std, force)
+def _source_authored_vault(src_proj) -> bool
+def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault)
 def _unwind_local_name(std, project_name: str, dst_project: Path) -> None
 def _assert_dup_home_free(std, name: str) -> None
 def _duplicate_to_local(src_proj, new_path, std, config, force)

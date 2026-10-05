@@ -495,8 +495,7 @@ def read_box_enable_vault(path: Path) -> bool:
     if not path.exists():
         return True
     data = load_doc(path)
-    # ⚑ THE SHAPE RULE, asked before the leaf is read — the same guard
-    # :func:`write_box_enable_vault` asks, so one stored value cannot have two answers.
+    # ⚑ THE SHAPE RULE: the same guard :func:`write_box_enable_vault` asks, so one stored value cannot have two answers.
     refuse_scalar_sections(path, ("box",), data=data)
     box_tbl = data["box"] if "box" in data else {}
     if "enable_vault" in box_tbl:
