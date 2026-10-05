@@ -1088,12 +1088,7 @@ def _under_pref(parts: tuple[str, ...]) -> bool:
 
 
 def _pref_agent_segment(parts: tuple[str, ...]) -> str | None:
-    """The agent segment *parts* sits under — ``zippity`` for ``(pref, agent, zippity, …)``.
-
-    ``None`` for every other key path. The name is ONE segment (§2d), so both bind-map
-    spellings land on index 2: the terminal category ``pref.agent.zippity.seeded`` and the
-    ``bindings`` arm ``pref.agent.zippity.bindings.ro``.
-    """
+    """The agent segment under ``pref.agent`` (ONE segment, §2d, so index 2), else ``None``."""
     if parts[:2] != (PREF_ROOT, "agent") or len(parts) < 3:
         return None
     return parts[2]
@@ -1231,10 +1226,8 @@ def parse_bind_map(
     :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`. Every other check
     still runs here, on the WHOLE map.
 
-    ⚑ *pref_agent* is the agent segment this map sits under. It is consulted ONLY when
-    *defer_shape* is False: with no consumer to defer to, this parse is the last reader.
-    Why that check outranks the shape is stated by the judge itself,
-    :func:`~kanibako.settings.settings_prefs.agent_segment_reason`.
+    ⚑ *pref_agent* is the agent segment this map sits under; BOTH parses pass it, so it is
+    judged before any shape (:func:`~kanibako.settings.settings_prefs.agent_segment_reason`).
     """
     if not isinstance(raw, dict):
         raise SettingsError(
@@ -1247,13 +1240,8 @@ def parse_bind_map(
         # ⚑ NOT A SHAPE VERDICT, so it runs on the WHOLE map: a destination spelled twice
         # is a fact about the map, and the sub-map cannot see one straddling the carve-out.
         refuse_dest_spelled_twice(raw, category=category)
-        # ⚑⚑ *pref_agent* RIDES ALONG HERE TOO, and that is the whole point: the carve-out
-        # above defers the BARE-SCALAR verdict only, so this call still judges the sub-table,
-        # the arity and the unrooted source AT PARSE TIME. Q2 requires the name to precede
-        # every shape check, and a shape check reached without *pref_agent* cannot honor
-        # that — a sub-table or a wrong-arity list under a bogus agent would report its
-        # shape and send the user to reshape an entry whose only defect is the name. A
-        # bare scalar is still absent from this map, so its verdict stays deferred in full.
+        # ⚑⚑ *pref_agent* TOO: this call still judges shapes AT PARSE TIME, and Q2 puts the
+        # name ahead of every shape check.
         check_bind_map(
             {k: v for k, v in raw.items() if not _is_bare_scalar_entry(v)},
             category=category, declared=declared, pref_agent=pref_agent,
