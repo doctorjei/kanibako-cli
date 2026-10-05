@@ -6787,6 +6787,71 @@ class TestLoneNoneStandardBind:
         ) == (set(), [])
 
 
+class TestHalfNullCureOnlyWhereADoorAdmitsIt:
+    """The half-null warning offers its source key as the cure only where a door would
+    admit that ``<None>``.  A key both path doors refuse is still NAMED — the companion
+    "Delivery at launch" warning names both keys and the file — and is never offered, so
+    the sentence can never name a remedy the ``set`` and read doors refuse.
+    """
+
+    _CANON_DEST = f"{GUEST_HOME}/canon/handbook/general"
+    _CANON_FLOOR = {
+        "system.canon": "/h/canon",
+        "box.bindings.ro": {_CANON_DEST: ("@system.canon/handbook/general", "ro")},
+    }
+    _LOG_DEST = f"{GUEST_HOME}/.kanibako/state/helpers.jsonl"
+    _LOG_FLOOR = {
+        "workset.logs": "/h/logs",
+        "box.bindings.ro": {_LOG_DEST: ("@workset.logs/@{meta.box.name}.jsonl", "ro")},
+    }
+
+    def _resolve(self, tmp_path, caplog, *, floor, entry_dest):
+        from kanibako.settings.settings_launch import reset_none_warnings
+
+        reset_none_warnings()
+        box_path = _write_yaml(
+            tmp_path / "box.yaml", {"box": {"bindings": {"ro": {entry_dest: None}}}},
+        )
+        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+        build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+            workset_path=None, box_path=box_path,
+            default_categories=floor, meta_identity={"meta.box.name": "b1"},
+            valid_agents=("claude",),
+        )
+        return [
+            r.getMessage() for r in caplog.records
+            if r.name == "kanibako.settings.settings_launch"
+        ]
+
+    def test_a_refused_source_key_is_named_but_not_offered(self, tmp_path, caplog):
+        warnings = self._resolve(
+            tmp_path, caplog, floor=self._CANON_FLOOR, entry_dest="~/canon/handbook/general",
+        )
+        assert len(warnings) == 1, warnings
+        text = warnings[0]
+        assert f"box.bindings.ro[{self._CANON_DEST}]" in text
+        assert str(tmp_path / "box.yaml") in text
+        assert "system.canon" in text  # NAMED: the warning names both keys and the file
+        assert "Set system.canon to null" not in text  # ...never offered as the cure
+
+    def test_an_admitted_source_key_is_still_offered(self, tmp_path, caplog):
+        warnings = self._resolve(
+            tmp_path, caplog, floor=self._LOG_FLOOR,
+            entry_dest="~/.kanibako/state/helpers.jsonl",
+        )
+        assert len(warnings) == 1, warnings
+        assert "Set workset.logs to null" in warnings[0]
+
+    def test_the_cure_follows_the_doors_own_membership(self):
+        from kanibako.settings.config import refuses_null_path_key
+
+        for key in ("system.canon", "system.channels.common", "system.channels.chat",
+                    "system.channels.mailboxes", "system.channels.share"):
+            assert refuses_null_path_key(key), key  # both doors refuse it today
+        assert not refuses_null_path_key("workset.logs")  # ...and admit this one
+
+
 class TestNullRefSecretPath:
     """[Q94] 3: a ``secret_path`` whose value references a present ``<None>`` is
     ``<None>`` itself ([R186], spec §0), so the box starts WITHOUT that secret, and the

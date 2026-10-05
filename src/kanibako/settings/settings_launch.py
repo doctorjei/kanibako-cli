@@ -72,6 +72,7 @@ from kanibako.settings.config import (
     config_base_path,
     null_path_keys_error,
     refuses_null_box_scalar,
+    refuses_null_path_key,
     settings_base_path,
     usable_box_store_value,
     user_config_file,
@@ -2572,8 +2573,13 @@ def _warn_lone_none_standard_binds(
                     continue  # not set by a settings file.
                 if any(snapshot_leaf(expanded, ref) is None for ref in refs):
                     continue  # its source is <None> too: both, silent.
-                # ``meta.*`` is read-only (§0): named, but never offered as the cure.
-                settable = [r for r in dict.fromkeys(refs) if not r.startswith("meta.")]
+                # Read-only ``meta.*`` (§0), and any key the launch refuses a null at, are
+                # named but never offered as the cure — the latter by the doors' own
+                # membership, :func:`config.refuses_null_path_key`.
+                settable = [
+                    r for r in dict.fromkeys(refs)
+                    if not r.startswith("meta.") and not refuses_null_path_key(r)
+                ]
                 keys = ", ".join(map(shown_key, settable or dict.fromkeys(refs)))
                 message = (
                     f"The standard bind {label} is set to null in {where}, so it is "

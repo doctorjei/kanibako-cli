@@ -396,6 +396,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The warning for a standard bind set to null offers its source key as the cure only when that key
+  can be set to null.** Before, nulling a canon or system channel bind told you to set `system.canon` or
+  `system.channels.*` to null as well, and both `system set --null` and the settings read refuse that.
+  The warning still names the bind, the file, and the source key.
+
 - **`kanibako system get agent.<node>.<key>` no longer prints `(not set)` for a value the system
   settings file holds under `agent: <node>:`.** The launch applies a per-node value from either the
   node's `agents/<node>/agent.yaml` or the system file's `agent: <node>:` table, but `get` only read the
