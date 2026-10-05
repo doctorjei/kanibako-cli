@@ -1089,7 +1089,7 @@ keys:
     type: path
     set: cli+file
     default: {primary: "@meta.workset.path/logs", named: "@meta.workset.path/logs",
-              standalone: "@meta.box.path"}
+              standalone: "@workset.boxes"}
     note: "standalone: the box root IS the log home (R-28); the helper-log bind
            stays a SINGLE row for all modes because this key carries the variation"
     spec: "§2c / §2e (R-28)"

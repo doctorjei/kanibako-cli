@@ -210,34 +210,15 @@ def system_partition(std: StandardPaths, ws_token: str) -> SystemPartition:
 CHAT_GENERAL_LEAF = "general.md"
 
 
-def _channels_repoint(
-    workset_settings: Mapping[str, Any] | None, leaf: str
-) -> str | None:
-    """Return the RAW ``workset.channels.<leaf>`` repoint from an already-loaded doc.
-
-    ⚑ The file slot comes from ``config_keys._KEY_ROUTES`` — the same table
-    ``config set`` writes through — so the slot this reads and the slot the CLI writes
-    cannot drift into two places.  Absent, empty and unreadable all mean "not
-    repointed", which is what makes the key's DEFAULT the value in the common case.
-    """
-    from kanibako.settings.config_keys import _KEY_ROUTES
-
-    sections, slot = _KEY_ROUTES[f"workset.channels.{leaf}"]
-    node: object = workset_settings
-    for section in sections:
-        if not isinstance(node, Mapping):
-            return None
-        node = node.get(section)
-    if not isinstance(node, Mapping):
-        return None
-    value = node.get(slot)
-    return str(value) if value else None
-
-
 def _channel_key(
-    ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path
+    ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path,
+    *, standalone: bool | None,
 ) -> Path:
-    """Resolve ``workset.channels.<leaf>``: its stored repoint, else *default*.
+    """Resolve ``workset.channels.<leaf>``: its stored repoint (``early_repoint``), else *default*.
+
+    *standalone* is the box mode the leaf is read in, as ``resolve_workset_dir_key`` takes it:
+    ``False`` for the workset-local leaves, ``None`` for the two partition leaves, read in
+    every mode.
 
     ⚑ THE DEFAULT IS THE CALLER'S because these defaults hang off the resolved
     ``workset.channelroot`` (or the system partition), and that is the one thing
@@ -246,12 +227,15 @@ def _channel_key(
     anchor, and the refusal that names the key) stays that ONE pre-snapshot route's
     business; this adds no second grammar.
     """
-    from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
+    from kanibako.settings.workset_dirkeys import early_repoint, resolve_workset_dir_key
 
-    repoint = _channels_repoint(workset_settings, leaf)
-    if repoint is None:
+    repoint, where = early_repoint(ws_root, workset_settings, f"channels.{leaf}")
+    if not isinstance(repoint, str):
         return default
-    return resolve_workset_dir_key(ws_root, repoint, leaf, key=f"channels.{leaf}")
+    return resolve_workset_dir_key(
+        ws_root, repoint, leaf, key=f"channels.{leaf}", where=where, standalone=standalone,
+        workset_settings=workset_settings,
+    )
 
 
 def workset_channel_paths(
@@ -289,16 +273,16 @@ def workset_channels_at(ws_root: Path) -> WorksetChannels | None:
     root = resolve_workset_channelroot(ws_root, doc)
     if root is None:
         return None
-    chat = _channel_key(ws_root, doc, "chat", root / "chat")
+    chat = _channel_key(ws_root, doc, "chat", root / "chat", standalone=False)
     return WorksetChannels(
         root=root,
-        common=_channel_key(ws_root, doc, "common", root / "common"),
+        common=_channel_key(ws_root, doc, "common", root / "common", standalone=False),
         chat=chat,
         chat_general=chat / CHAT_GENERAL_LEAF,
         chat_broadcast=_channel_key(
-            ws_root, doc, "broadcast", chat / "broadcast.md",
+            ws_root, doc, "broadcast", chat / "broadcast.md", standalone=False,
         ),
-        share=_channel_key(ws_root, doc, "share", root / "share"),
+        share=_channel_key(ws_root, doc, "share", root / "share", standalone=False),
     )
 
 
@@ -326,8 +310,12 @@ def partition_key_paths(
     doc = load_workset_settings_doc(ws_root)
     return WorksetPartition(
         ws_token=ws_token,
-        mailboxes=_channel_key(ws_root, doc, "mailboxes", default.mailboxes),
-        share_global=_channel_key(ws_root, doc, "share_global", default.share),
+        mailboxes=_channel_key(
+            ws_root, doc, "mailboxes", default.mailboxes, standalone=None,
+        ),
+        share_global=_channel_key(
+            ws_root, doc, "share_global", default.share, standalone=None,
+        ),
     )
 
 

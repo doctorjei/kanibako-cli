@@ -745,6 +745,24 @@ def system_path_floor(std: StandardPaths) -> dict[str, str]:
     )
 
 
+def layer1_set_values(user_config_path: Path) -> dict[str, str]:
+    """The Layer-1 ``config.*`` SET-VALUES: the ``/etc`` config base < *user_config_path*.
+
+    An absent file yields ``{}``, so a missing layer is skipped.  ⚑⚑ ``config.*`` BY
+    CONSTRUCTION (2026-08-31).  The CONFIG files carry the Layer-1 foundation and NOTHING
+    ELSE — Jei: *"kanibako_config.yaml <-- cannot have settings. Period."*  The read
+    (``bootstrap_config_paths``) REFUSES a ``system:`` table hand-written into one, naming
+    the file and the keys.
+    """
+    # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist.
+    from kanibako.settings.config import bootstrap_config_paths, config_base_path
+
+    raw: dict[str, str] = {}
+    for path in (config_base_path(), user_config_path):
+        raw.update(bootstrap_config_paths(path))
+    return raw
+
+
 def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path,
                           xdg_vars: Mapping[str, str],
                           tolerate_bad_settings: bool = False) -> dict[str, str]:
@@ -786,20 +804,9 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
     nothing; the CONFIG files above are still read strictly.
     """
     # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist.
-    from kanibako.settings.config import (bootstrap_config_paths, config_base_path,
-                                          system_path_set_values)
-    raw: dict[str, str] = {}
+    from kanibako.settings.config import system_path_set_values
 
-    # base < user; an absent file yields {}, so missing layers are skipped automatically.
-    # ⚑⚑ ``config.*`` BY CONSTRUCTION (2026-08-31).  The CONFIG files carry the Layer-1
-    # foundation and NOTHING ELSE — Jei: *"kanibako_config.yaml <-- cannot have settings.
-    # Period."*  A ``system:`` table hand-written into one used to enter ``raw`` here as a
-    # real (if lowest) layer of the Layer-2 path tier, which made the bootstrap file a
-    # settings source; then it was dropped in silence; now the read REFUSES it, naming the
-    # file and the keys.
-    for path in (config_base_path(), user_config_path):
-        raw.update(bootstrap_config_paths(path))
-
+    raw = layer1_set_values(user_config_path)
     config = resolve_config_paths(raw, data_home=data_home, home=home, xdg_vars=xdg_vars)
     try:
         stored = system_path_set_values(Path(config["config.settings"]))
@@ -1177,7 +1184,7 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None:
     user repointed ``workset.logs`` — the mount moved and the writer did not (migration
     M-14).  ⚑ ALL THREE arms now RESOLVE the key, so there is one answer in every mode.
     STANDALONE resolves it against the degenerate workset rooted at the project dir,
-    whose declared default is ``@meta.box.path`` = ``box_data/`` — the same directory
+    whose declared default is ``@workset.boxes`` = ``box_data/`` — the same directory
     the composed form named, now reached through the key that may move it.
     """
     logs_dir, box = box_logs_location(std, proj)
@@ -1233,7 +1240,7 @@ def standalone_logs_dir(root: Path) -> Path | None:
     """The resolved ``workset.logs`` of the standalone box rooted at *root*.
 
     *root* is the workset root of the degenerate workset, so the key is read from the
-    root ``workset.yaml``; its default is ``@meta.box.path`` = ``box_data/``.  ``None``
+    root ``workset.yaml``; its default is ``@workset.boxes`` = ``box_data/``.  ``None``
     when the key is a present ``<None>``.
     """
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.

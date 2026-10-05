@@ -3889,7 +3889,7 @@ def test_workset_anchor_floor_meta_box_path_per_mode():
     assert floor["meta.box.path"] == "@workset.boxes"
     assert not floor["meta.box.path"].endswith("/")
     assert floor["workset.boxes"] == "@meta.workset.path/box_data"
-    assert floor["workset.logs"] == "@meta.box.path"
+    assert floor["workset.logs"] == "@workset.boxes"
 
     # The vault roots are UNIFORM in every mode (spec §2c ALL PROJECTS) — only the
     # BOX BIND differs (the per-box subdir a lone box does not need).
