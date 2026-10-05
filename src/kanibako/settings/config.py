@@ -219,14 +219,14 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
     return paths
 
 
-def system_path_set_values(settings_path: Path) -> dict[str, str]:
-    """A SETTINGS file's ``system.*`` set-values, dotted — the Layer-2 half of the path tier.
+def system_table_set_values(settings_path: Path, doc: dict) -> dict[str, str]:
+    """A SETTINGS DOCUMENT's ``system.*`` set-values, dotted — the Layer-2 half of the path tier.
 
-    ⚑ ITS OWN READER since 2026-08-31.  This was ``load_config(path).config_paths`` — the
-    very call the LAYER-1 read used, over one field that held ``config.*`` and ``system.*``
-    together.  One function answering two layers' questions is what let each layer's file
-    speak for the other; the walk here starts at the ``system:`` table, so ``system.`` is
-    the only prefix it can produce.
+    ⚑ *doc* is the ALREADY-READ document, never re-read here.  The path tier opens the settings
+    file ONCE and feeds this and :func:`~kanibako.settings.workset_dirkeys.early_tier` from that
+    one load; a second ``load_doc`` on each side is how the two tiers drift apart.
+    *settings_path* is what a refusal names.
+
     ⚑ NOT filtered to the path tier — that is :func:`~kanibako.settings.paths.load_system_config`'s
     own P13 job, and this file's ``system:`` table legitimately holds ``system.agent`` and
     the category families too.  That is also why the ``null`` refusal is scoped to
@@ -237,11 +237,20 @@ def system_path_set_values(settings_path: Path) -> dict[str, str]:
     is not a key (spec §0), so a refusal here would be a second carrier.  Layer 1 is
     outside the keyspace, and no later read would catch it.
     """
-    table = load_doc(settings_path).get("system")
+    table = doc.get("system")
     if not isinstance(table, dict):
         return {}
     _refuse_null_paths(settings_path, table, "system", SYSTEM_PATH_DEFAULTS)
     return _flatten_dotted(table, "system")
+
+
+def system_path_set_values(settings_path: Path) -> dict[str, str]:
+    """A SETTINGS file's ``system.*`` set-values, dotted — the wrapper that reads the file.
+
+    Same contract as :func:`system_table_set_values`, whose body this is; use that one when the
+    document is already in hand.
+    """
+    return system_table_set_values(settings_path, load_doc(settings_path))
 
 
 def config_base_path() -> Path:

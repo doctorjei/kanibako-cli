@@ -144,14 +144,17 @@ def run_info(args: argparse.Namespace) -> int:
         from pathlib import Path
 
         from kanibako.settings.config import bootstrap_config_paths
-        from kanibako.settings.paths import resolve_system_paths
+        from kanibako.settings.paths import resolve_config_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
         # ⚑ ``bootstrap_config_paths``, not ``load_config(cf).config_paths``: the raw
         # capture also carries whatever ``system:`` table the file happens to hold, and
         # the Layer-1 file may not supply settings (Jei, 2026-08-26).
-        data_path = resolve_system_paths(
+        # ⚑ ``resolve_config_paths`` — LAYER 1 ALONE.  This prints ``config.data`` and
+        # nothing else, and it is the Layer-2 read that fails on a bad SYSTEM settings file;
+        # the Data line should not go dark because of a file it is not reporting.
+        data_path = Path(resolve_config_paths(
             bootstrap_config_paths(cf), data_home=data_home, home=Path.home(),
-        )["config.data"]
+        )["config.data"])
         print(f"Data:      {data_path}")
     else:
         print(

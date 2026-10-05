@@ -335,7 +335,7 @@ def _ensure_initialized() -> None:
     )
     from pathlib import Path
 
-    from kanibako.settings.paths import resolve_system_paths, xdg
+    from kanibako.settings.paths import load_system_config, xdg
 
     cf = user_config_file()
 
@@ -349,7 +349,7 @@ def _ensure_initialized() -> None:
     write_global_config(cf)
 
     # ⚑ ONE handler for the WHOLE first run.  Every step in this block can fail AFTER
-    # the config file exists: ``xdg``/``resolve_system_paths``, the three ``mkdir``
+    # the config file exists: ``xdg``/``load_system_config``, the three ``mkdir``
     # calls, ``discover_targets()``, ``save_agent_file``, ``load_std_paths()`` and
     # ``install_packaged_templates``.  ANY exception from ANY of them — ConfigError,
     # OSError, or a Ctrl-C, which is not an ``Exception`` — removes the config file,
@@ -359,13 +359,15 @@ def _ensure_initialized() -> None:
     # always safe here.
     try:
         # Create data directories.
-        # ⚑ NO SET-VALUES, spelled as the empty mapping: the file was just written EMPTY two
-        # lines above, so the Layer-1 foundation here is the DECLARED DEFAULTS and nothing else.
-        # It used to read ``KanibakoConfig().config_paths``, which was the same ``{}`` wearing a
-        # settings object's name.
+        # ⚑ ``load_system_config``, NOT ``resolve_system_paths({})``.  The empty mapping
+        # resolved the box store off the DECLARED DEFAULTS alone, so a system settings file
+        # that repoints ``workset.boxes`` had first-run create a directory no later reader
+        # would ever use -- the store silently in the wrong place, with nothing pointing at it.
+        # Reading the files makes init create the store every reader resolves.  The Layer-1
+        # file was just written EMPTY, so its own contribution is the declared defaults.
         data_home = xdg("XDG_DATA_HOME", ".local/share")
-        sys_paths = resolve_system_paths(
-            {}, data_home=data_home, home=Path.home(),
+        sys_paths = load_system_config(
+            cf, data_home=data_home, home=Path.home(),
         )
         data_path = sys_paths["config.data"]
         (data_path / "containers").mkdir(parents=True, exist_ok=True)

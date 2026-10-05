@@ -600,14 +600,19 @@ def run_system_diagnose(args: object) -> int:
     try:
         cf = user_config_file()
         from kanibako.settings.config import bootstrap_config_paths
-        from kanibako.settings.paths import resolve_system_paths
+        from kanibako.settings.paths import resolve_config_paths
         data_home = xdg("XDG_DATA_HOME", ".local/share")
         # ⚑ ``bootstrap_config_paths``, not ``load_config(cf).config_paths``: the raw
         # capture also carries whatever ``system:`` table the file happens to hold, and
         # the Layer-1 file may not supply settings (Jei, 2026-08-26).
-        data_path = resolve_system_paths(
+        # ⚑ ``resolve_config_paths`` — LAYER 1 ALONE.  This line reports ``config.data`` and
+        # nothing else, and it is the Layer-2 read that fails on a bad SYSTEM settings file.
+        # A storage line that cannot print because some other file is broken reports the wrong
+        # thing; the system file still gets its own report from this command's
+        # ``load_std_paths`` check.
+        data_path = Path(resolve_config_paths(
             bootstrap_config_paths(cf), data_home=data_home, home=Path.home(),
-        )["config.data"]
+        )["config.data"])
         status, detail = _check_storage(data_path)
         print(_format_check(status, "Storage", detail))
     except KanibakoError as e:
