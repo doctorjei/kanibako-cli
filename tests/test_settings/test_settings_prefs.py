@@ -1096,7 +1096,7 @@ class TestPrefShapeVerdictFollowsTheAgentVerdict:
         assert "1 or 2 elements" in str(exc.value)
 
     def test_a_well_formed_entry_is_installed_unchanged(self, tmp_path):
-        """The deferral must not disturb a GOOD request — a guard for behaviour that
+        """The deferral must not disturb a GOOD request — a guard for behavior that
         was already correct, so it is expected to pass before the fix as well."""
         src = write(tmp_path / "workset.yaml", {
             "pref": {"agent": {"claude": {"seeded": {"somebox": ["src"]}}}},
