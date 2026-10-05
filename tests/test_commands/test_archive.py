@@ -9,6 +9,7 @@ from pathlib import Path
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
+from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.project.workset import add_project, create_workset
 
 
@@ -257,6 +258,7 @@ class TestStubProject:
         reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset,
             load_doc(std.primary_workset / "workset.yaml"),
+            early=_early_scope(std, BoxMode.primary),
         )
         workset_registry.register_workset_box(reg, "regkey", gone_ws)
 

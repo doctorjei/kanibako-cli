@@ -23,7 +23,7 @@ from kanibako.commands.box._lifecycle import (
 from kanibako.settings.config import load_config
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.errors import AmbiguousNameError, ProjectError, WorksetError
-from kanibako.settings.paths import load_primary_boxes
+from kanibako.settings.paths import _early_scope, load_primary_boxes
 from kanibako.settings.paths import (
     BoxMode,
     detect_project_mode,
@@ -60,7 +60,7 @@ def _connected_index(std):
     ).items():
         root = Path(root_str)
         registry_path = workset_registry.resolve_workset_registry_path(
-            root, load_doc(root / "workset.yaml"),
+            root, load_doc(root / "workset.yaml"), early=_early_scope(std, BoxMode.named, name),
         )
         for box_name, box_path in workset_registry.load_workset_boxes(
             registry_path
@@ -319,7 +319,8 @@ class TestConvertInPlace:
         assert new.mode == BoxMode.standalone
         assert load_standalone(std.registry).get(new.name) == str(pdir)
         # default-mode name unregistered.
-        assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
+        assert str(pdir) not in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
 
     def test_convert_to_standalone_is_detectable(self, env):
         config, std, tmp_home = env
@@ -350,7 +351,8 @@ class TestConvertInPlace:
         src_state = resolve_lifecycle_target(str(pdir), std, config)
         src_name = src_state.name
         # The primary source is registered in the primary membership at the project path.
-        assert str(pdir) in load_primary_boxes(std.primary_workset).values()
+        assert str(pdir) in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
 
         new = execute_lifecycle(
             src_state, TargetSpec(location=INPLACE, ownership="standalone"),
@@ -378,8 +380,10 @@ class TestConvertInPlace:
         assert standalone[new_name] == str(pdir)
 
         # (4) The old primary membership entry is gone (no dangling registration).
-        assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
-        assert src_name not in load_primary_boxes(std.primary_workset)
+        assert str(pdir) not in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
+        assert src_name not in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))
 
     def test_convert_standalone_no_name_generates_fresh(self, env):
         """No --name on a standalone convert → a freshly generated canonical id
@@ -471,7 +475,8 @@ class TestConvertInPlace:
         # old in-tree metadata gone.
         assert not (pdir / "box_data").exists()
         # name registered.
-        assert str(pdir) in load_primary_boxes(std.primary_workset).values()
+        assert str(pdir) in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
 
     def test_default_to_workset_external(self, env):
         config, std, tmp_home = env
@@ -486,7 +491,7 @@ class TestConvertInPlace:
         # workspace still where it was.
         assert pdir.is_dir() and (pdir / "file.txt").is_file()
         # workset registration + external markers.
-        ws2 = load_workset(ws.root, ws.name)
+        ws2 = load_workset(ws.root, ws.name, early_system=std.early_system)
         assert any(p.name == "proj" for p in ws2.projects)
         # P8b/Option A: mode + external workspace live in the returned state and
         # the workset's per-workset ``boxes:`` registry, not an on-disk section.
@@ -497,11 +502,13 @@ class TestConvertInPlace:
         reg = workset_registry.load_workset_boxes(
             workset_registry.resolve_workset_registry_path(
                 ws.root, load_doc(ws.root / "workset.yaml"),
+                early=_early_scope(std, BoxMode.named, ws.name),
             )
         )
         assert reg.get("proj") == str(pdir.resolve())
         # old default name unregistered.
-        assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
+        assert str(pdir) not in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
 
     def test_standalone_to_workset_external(self, env):
         config, std, tmp_home = env
@@ -534,7 +541,8 @@ class TestConvertInPlace:
                 TargetSpec(location=INPLACE, ownership="default", name="proj2"),
                 std, config, confirm=_conf_yes(),
             )
-        projects = load_primary_boxes(std.primary_workset)
+        projects = load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))
         # Registry unchanged: original name still maps to the path, no new entry.
         assert projects.get("proj") == str(pdir)
         assert "proj2" not in projects
@@ -555,7 +563,7 @@ class TestConvertInPlace:
         # external dir preserved (NEVER deleted).
         assert external.is_dir() and (external / "file.txt").is_file()
         # workset registration removed.
-        ws2 = load_workset(ws.root, ws.name)
+        ws2 = load_workset(ws.root, ws.name, early_system=std.early_system)
         assert not any(p.name == "ep" for p in ws2.projects)
         # connected.yaml cleared.
         assert str(external.resolve()) not in _connected_index(std)
@@ -602,8 +610,10 @@ class TestWorksetToWorkset:
         assert new.is_external
         assert external.is_dir()
         # wsa no longer owns it; wsb does.
-        assert not any(p.name == "p" for p in load_workset(ws_a.root, ws_a.name).projects)
-        assert any(p.name == "p" for p in load_workset(tmp_home / "wsb_root", "wsb").projects)
+        assert not any(p.name == "p" for p in load_workset(
+            ws_a.root, ws_a.name, early_system=std.early_system).projects)
+        assert any(p.name == "p" for p in load_workset(
+            tmp_home / "wsb_root", "wsb", early_system=std.early_system).projects)
         # connected.yaml points at wsb now.
         entry = _connected_index(std)[str(external.resolve())]
         assert entry["workset"] == "wsb"
@@ -648,8 +658,10 @@ class TestMoveSameOwner:
         assert "project" not in load_doc(new.metadata_path / "box.yaml")
         assert new.workspace_path == dest.resolve()
         # primary membership updated.
-        assert str(dest) in load_primary_boxes(std.primary_workset).values()
-        assert str(pdir) not in load_primary_boxes(std.primary_workset).values()
+        assert str(dest) in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
+        assert str(pdir) not in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
 
     def test_move_with_a_case_variant_name_is_not_refused_as_its_own_twin(self, env):
         # §0: ``--name PROJ`` on a box stored as ``proj`` names the SAME box, so the
@@ -667,7 +679,7 @@ class TestMoveSameOwner:
         )
         assert new.mode == BoxMode.primary
         assert (dest / "file.txt").read_text() == "casevariant"
-        boxes = load_primary_boxes(std.primary_workset)
+        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
         # ONE row, under the spelling it was created with, now at the new location.
         assert [k for k in boxes if k.casefold() == "proj"] == ["proj"]
         assert boxes["proj"] == str(dest)
@@ -732,7 +744,8 @@ class TestNullWorkspacesTarget:
     def _assert_untouched(self, env, pdir):
         _config, std, _tmp_home = env
         assert (pdir / "file.txt").read_text() == "hello"
-        assert load_primary_boxes(std.primary_workset)["proj"] == str(pdir)
+        assert load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))["proj"] == str(pdir)
 
     def test_bare_into_workset_refuses(self, env):
         config, std, _tmp_home = env
@@ -818,7 +831,7 @@ class TestNullWorkspacesTarget:
                 state, TargetSpec(location=BARE_INTO_WS, ownership="ws2"),
                 std, config, confirm=_conf_yes(),
             )
-        members = load_workset(ws1.root, "ws1").projects
+        members = load_workset(ws1.root, "ws1", early_system=std.early_system).projects
         assert [(p.name, p.source_path) for p in members] == [("b1", leaf)]
         assert (leaf / "file.txt").read_text() == "hello"
 
@@ -831,7 +844,8 @@ class TestNullWorkspacesTarget:
                 state, TargetSpec(location=INPLACE, ownership=UNCHANGED, name="b2"),
                 std, config, confirm=_conf_yes(),
             )
-        assert [p.name for p in load_workset(ws.root, "ws").projects] == ["b1"]
+        assert [p.name for p in load_workset(
+            ws.root, "ws", early_system=std.early_system).projects] == ["b1"]
         assert (leaf / "file.txt").read_text() == "hello"
         assert not (ws.root / "workspaces" / "b2").exists()
 
@@ -1228,7 +1242,8 @@ class TestUnwind:
         state = resolve_lifecycle_target(str(pdir), std, config)
         dest = tmp_home / "unwind_dest"
 
-        names_before = dict(load_primary_boxes(std.primary_workset))
+        names_before = dict(load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)))
         meta_before = load_doc(state.metadata_path / "box.yaml")
 
         # Force the standalone ownership step to raise AFTER file move + name
@@ -1248,7 +1263,8 @@ class TestUnwind:
         assert not dest.exists()
         assert pdir.is_dir() and (pdir / "file.txt").read_text() == "unwind"
         # Names + metadata unchanged.
-        assert dict(load_primary_boxes(std.primary_workset)) == names_before
+        assert dict(load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))) == names_before
         assert load_doc(state.metadata_path / "box.yaml") == meta_before
 
     def test_workset_failure_unwinds_registration(self, env, monkeypatch):
@@ -1276,10 +1292,11 @@ class TestUnwind:
         assert calls["n"] >= 1  # the patched seam actually fired
 
         # workset registration unwound.
-        ws2 = load_workset(ws.root, ws.name)
+        ws2 = load_workset(ws.root, ws.name, early_system=std.early_system)
         assert not any(p.name == "proj" for p in ws2.projects)
         # original default project intact + still resolves as primary in place.
-        assert str(pdir) in load_primary_boxes(std.primary_workset).values()
+        assert str(pdir) in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
         assert resolve_lifecycle_target(str(pdir), std, config).mode == BoxMode.primary
 
 
@@ -1329,7 +1346,8 @@ class TestNoWorkspaceLossBeforeSuccess:
             )
         assert (leaf / "file.txt").read_text() == "keep"
         assert not (ws.workspaces_dir / "beta").exists()
-        assert [p.name for p in load_workset(ws.root, ws.name).projects] == ["alpha"]
+        assert [p.name for p in load_workset(
+            ws.root, ws.name, early_system=std.early_system).projects] == ["alpha"]
 
     @pytest.mark.parametrize("shape", ["ws_to_ws_bare", "same_ws_external", "ws_to_ws_external"])
     def test_late_failure_keeps_the_source_workspace(self, env, monkeypatch, shape):
@@ -1349,7 +1367,8 @@ class TestNoWorkspaceLossBeforeSuccess:
             execute_lifecycle(state, spec, std, config, confirm=_conf_yes())
         assert (leaf / "file.txt").read_text() == "keep"
         assert not (tmp_home / "ext" / "alpha").exists()
-        assert [p.name for p in load_workset(ws1.root, ws1.name).projects] == ["alpha"]
+        assert [p.name for p in load_workset(
+            ws1.root, ws1.name, early_system=std.early_system).projects] == ["alpha"]
 
     def test_same_workset_external_move_links_after_the_retire(self, env):
         """F2 control: the retired in-tree leaf becomes the discoverability link."""
@@ -1408,7 +1427,7 @@ class TestTheWorksetsOwnWorkspaceIsInTree:
         data = load_doc(settings)
         data.setdefault("workset", {})["workspaces"] = str(tmp_home / f"{name}-data")
         dump_doc(settings, data)
-        ws = load_workset(ws.root, ws.name)
+        ws = load_workset(ws.root, ws.name, early_system=std.early_system)
         leaf = ws.workspaces_dir / member
         leaf.mkdir(parents=True)
         (leaf / "file.txt").write_text(contents)
@@ -1630,7 +1649,8 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
                 std, config, confirm=_conf_yes(),
             )
         self._assert_source_whole(ws1, leaf, state)
-        assert [p.name for p in load_workset(ws1.root, ws1.name).projects] == ["alpha"]
+        assert [p.name for p in load_workset(
+            ws1.root, ws1.name, early_system=std.early_system).projects] == ["alpha"]
         assert list(stash_root.iterdir()) == []
 
     def test_a_keyboard_interrupt_after_the_release_still_unwinds(
@@ -1658,7 +1678,8 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
                 std, config, confirm=_conf_yes(),
             )
         self._assert_source_whole(ws1, leaf, state)
-        assert [p.name for p in load_workset(ws1.root, ws1.name).projects] == ["alpha"]
+        assert [p.name for p in load_workset(
+            ws1.root, ws1.name, early_system=std.early_system).projects] == ["alpha"]
         assert list(stash_root.iterdir()) == []
 
     def test_restore_steps_run_independently(self, env, monkeypatch, tmp_path, capsys):
@@ -1779,7 +1800,7 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         assert new.mode == BoxMode.primary
         assert (dest / "file.txt").read_text() == "keep"
         assert (new.shell_path / "h.txt").read_text() == "home"
-        assert load_workset(ws1.root, ws1.name).projects == []
+        assert load_workset(ws1.root, ws1.name, early_system=std.early_system).projects == []
         err = capsys.readouterr().err
         assert ("Note: could not remove the old store of 'alpha': injected store "
                 f"failure; left {ws1.projects_dir / 'alpha'}") in err
@@ -1801,7 +1822,8 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         (leaf / "file.txt").write_text("n1b")
         add_project(ws, "proj", leaf, std)
         state = resolve_lifecycle_target(str(leaf), std, config)
-        vault_ro_base, vault_rw_base = resolve_workset_vault_pair(ws.root)
+        vault_ro_base, vault_rw_base = resolve_workset_vault_pair(
+            ws.root, early=_early_scope(std, BoxMode.named, ws.name))
         for base in (vault_ro_base, vault_rw_base):
             (base / "proj").mkdir(parents=True, exist_ok=True)
             (base / "proj" / "keep.txt").write_text("mine")
@@ -1820,7 +1842,8 @@ class TestRollbacksDeleteOnlyWhatTheOpCreated:
         # ... and the store this op released came back whole.
         for base in (vault_ro_base, vault_rw_base):
             assert (base / "proj" / "keep.txt").read_text() == "mine"
-        assert [p.name for p in load_workset(ws.root, ws.name).projects] == ["proj"]
+        assert [p.name for p in load_workset(
+            ws.root, ws.name, early_system=std.early_system).projects] == ["proj"]
         assert not dest.exists()
 
 
@@ -2428,7 +2451,8 @@ class TestStandaloneRootIsNotAPositionInThePath:
         # ``workset.yaml`` that named it is gone — so it does not outlive the convert.
         assert not (root / "nested").exists()
         # The box the user will open is registered AT the root, not below it.
-        assert str(root) in load_primary_boxes(std.primary_workset).values()
+        assert str(root) in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
 
     def test_absolute_repoint_keeps_the_users_workspace_and_reports_it(self, env, capsys):
         """⚑⚑ [R144] — the case a positional parent cannot express AT ALL.  The parent of
@@ -2451,7 +2475,8 @@ class TestStandaloneRootIsNotAPositionInThePath:
         assert (elsewhere / "file.txt").read_text() == "mine"
         # ⚑ The parent is NOT ours: nothing of the user's was moved up into it.
         assert not (elsewhere.parent / "file.txt").exists()
-        assert str(elsewhere) in load_primary_boxes(std.primary_workset).values()
+        assert str(elsewhere) in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
         # A keep that cannot name the path as the user's is just a leak.
         err = capsys.readouterr().err
         assert str(elsewhere) in err

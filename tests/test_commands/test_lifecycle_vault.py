@@ -261,7 +261,8 @@ class TestVaultCarry:
         _assert_carried(new, seed)
         assert not (ws_a.root / "vault" / "ro" / "b1").exists()
         assert not (ws_a.root / "vault" / "rw" / "b1").exists()
-        assert any(p.name == "b1" for p in load_workset(ws_b.root, ws_b.name).projects)
+        assert any(p.name == "b1" for p in load_workset(
+            ws_b.root, ws_b.name, early_system=std.early_system).projects)
 
     def test_workset_to_workset_unwind_restores_source_vault(self, env, monkeypatch):
         """A leg-2 failure restores membership AND the source vault from the stash."""
@@ -294,7 +295,8 @@ class TestVaultCarry:
                 std, config, confirm=_conf_yes(),
             )
         # Membership is restored, and the workspace was never deleted ...
-        assert any(p.name == "b1" for p in load_workset(ws_a.root, ws_a.name).projects)
+        assert any(p.name == "b1" for p in load_workset(
+            ws_a.root, ws_a.name, early_system=std.early_system).projects)
         assert (internal / "ws-note.txt").read_text() == "workspace"
         # ... and the source vault is restored whole, byte for byte.
         assert (src_ro / "ro-note.txt").read_text() == seed["ro-note.txt"]
@@ -653,7 +655,8 @@ class TestNullArmAcrossTheLifecycle:
         assert new.owner == "workset:wsb"
         assert new.vault_ro is None  # anti-vacuity: the null reached the new member
         assert not (ws_b.root / "vault" / "ro" / "b1").exists()
-        assert any(p.name == "b1" for p in load_workset(ws_b.root, ws_b.name).projects)
+        assert any(p.name == "b1" for p in load_workset(
+            ws_b.root, ws_b.name, early_system=std.early_system).projects)
 
 
 class TestNullDestinationArmRetainsTheSourceVault:

@@ -7,6 +7,7 @@ import argparse
 
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import WorksetSpec, load_std_paths, resolve_project, resolve_workset_project
+from kanibako.settings.paths import BoxMode, _early_scope
 from kanibako.project.workset import add_project, create_workset
 
 
@@ -64,14 +65,17 @@ class TestClean:
         resolve_project(std, config, project_dir=project_dir, initialize=True)
 
         # Initialized → registered.
-        assert primary_box_name_for_workspace(std.primary_workset, project_dir) is not None
+        assert primary_box_name_for_workspace(
+            std.primary_workset, project_dir, early=_early_scope(std, BoxMode.primary)) is not None
 
         args = argparse.Namespace(path=project_dir, all_projects=False, force=True)
         assert run(args) == 0
 
         # No dangling name → path entry remains.
-        assert primary_box_name_for_workspace(std.primary_workset, project_dir) is None
-        assert project_dir not in load_primary_boxes(std.primary_workset).values()
+        assert primary_box_name_for_workspace(
+            std.primary_workset, project_dir, early=_early_scope(std, BoxMode.primary)) is None
+        assert project_dir not in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
 
     def test_purge_also_unregisters_primary_boxes_membership(
         self, config_file, tmp_home, credentials_dir,
@@ -97,6 +101,7 @@ class TestClean:
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset,
             load_doc(std.primary_workset / "workset.yaml"),
+            early=_early_scope(std, BoxMode.primary),
         )
         assert proj.name in workset_registry.load_workset_boxes(prim_reg)
 
@@ -123,7 +128,8 @@ class TestClean:
         args = argparse.Namespace(path=None, all_projects=True, force=True)
         assert run(args) == 0
 
-        projects = load_primary_boxes(std.primary_workset)
+        projects = load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))
         assert a not in projects.values()
         assert b not in projects.values()
 

@@ -21,7 +21,7 @@ import pytest
 
 from kanibako.project.workset import create_workset, list_worksets, load_workset
 from kanibako.settings.config import load_config
-from kanibako.settings.paths import load_primary_boxes, load_std_paths
+from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes, load_std_paths
 
 #: A line that reads as a shell command the user could paste.
 _COMMAND_LINE = re.compile(r"^\s*kanibako\s+\S")
@@ -53,7 +53,7 @@ def _assert_nothing_written(std, *names):
 
     for name in names:
         assert not (std.boxes / name).exists(), f"box dir {name} was written"
-    assert load_primary_boxes(std.primary_workset) == {}
+    assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
     assert journal.read_journal(std.journal) == {}
 
 
@@ -167,7 +167,7 @@ class TestCreateOutsideANamedWorkset:
         capsys.readouterr()
         assert run_create(_args(target, name="collide")) == 1
         assert "already" in capsys.readouterr().err.lower()
-        assert load_primary_boxes(std.primary_workset)
+        assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
 
     def test_create_outside_any_workset_still_makes_a_primary_box(
         self, config_file, tmp_home, credentials_dir, capsys,
@@ -178,7 +178,8 @@ class TestCreateOutsideANamedWorkset:
         target = tmp_home / "plain"
         assert run_create(_args(target)) == 0
         assert "Created default project" in capsys.readouterr().out
-        assert list(load_primary_boxes(std.primary_workset)) == ["plain"]
+        assert list(load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))) == ["plain"]
         assert (std.boxes / "plain").is_dir()
 
     def test_the_primary_workset_is_not_a_named_workset(self, tmp_home, wsa):
@@ -201,10 +202,13 @@ class TestCreateOutsideANamedWorkset:
         from kanibako.project.workset import add_project
 
         root, std = wsa
-        add_project(load_workset(root, "wsa"), "x", root / "workspaces" / "x", std)
+        add_project(load_workset(
+            root, "wsa", early_system=std.early_system), "x", root / "workspaces" / "x", std)
         assert (root / "workspaces" / "x").is_dir()
-        assert [p.name for p in load_workset(root, "wsa").projects] == ["x"]
-        assert load_primary_boxes(std.primary_workset) == {}
+        assert [p.name for p in load_workset(
+            root, "wsa", early_system=std.early_system).projects] == ["x"]
+        assert load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
         assert list_worksets(std)["wsa"] == root
         assert not _printed_commands(capsys.readouterr().err)
 
@@ -225,11 +229,12 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
 
         assert run_create(_args("newbox")) == 0
         capsys.readouterr()
-        ws = load_workset(root, "wsa")
+        ws = load_workset(root, "wsa", early_system=std.early_system)
         assert [p.name for p in ws.projects] == ["newbox"]
         # The member's workspace is the in-tree one, never ``<cwd>/<identifier>``.
         assert (root / "workspaces" / "newbox").is_dir()
-        assert load_primary_boxes(std.primary_workset) == {}
+        assert load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
 
     def test_resolves_as_a_named_box(self, wsa, credentials_dir, monkeypatch):
         """A named resolve: the box dir is the working set's, under its own vault."""
@@ -244,7 +249,8 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
 
         assert run_create(_args("newbox")) == 0
         proj = resolve_workset_project(
-            WorksetSpec.from_workset(load_workset(root, "wsa")), "newbox", std,
+            WorksetSpec.from_workset(load_workset(
+                root, "wsa", early_system=std.early_system)), "newbox", std,
             load_config(user_config_file()),
         )
         assert proj.mode is BoxMode.named
@@ -264,15 +270,17 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
         assert "already exists in working set 'wsa'" in err
         assert "workset connect" not in err
         assert not _printed_commands(err)
-        assert [p.name for p in load_workset(root, "wsa").projects] == ["newbox"]
-        assert load_primary_boxes(std.primary_workset) == {}
+        assert [p.name for p in load_workset(
+            root, "wsa", early_system=std.early_system).projects] == ["newbox"]
+        assert load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
         from kanibako.launch import journal
         assert journal.read_journal(std.journal) == {}
 
     def test_a_case_variant_of_a_taken_name_is_refused(self, wsa, capsys, monkeypatch):
         """The membership key is folded, so a case variant would REPLACE the taken
         member's recorded workspace and strand its box — it refuses instead."""
-        root, _std = wsa
+        root, std = wsa
         monkeypatch.chdir(root)
         from kanibako.commands.box._parser import run_create
 
@@ -283,12 +291,13 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
         assert "already exists in working set 'wsa'" in err
         assert not _printed_commands(err)
         # The first member keeps its own recorded workspace.
-        assert [p.name for p in load_workset(root, "wsa").projects] == ["newbox"]
+        assert [p.name for p in load_workset(
+            root, "wsa", early_system=std.early_system).projects] == ["newbox"]
         assert (root / "workspaces" / "NEWBOX").exists() is False
 
     def test_a_second_name_for_one_box_is_refused(self, wsa, capsys, monkeypatch):
         """A named box's name IS its member name, so ``--name`` may not add one."""
-        root, _std = wsa
+        root, std = wsa
         monkeypatch.chdir(root)
         from kanibako.commands.box._parser import run_create
 
@@ -296,7 +305,7 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
         err = capsys.readouterr().err
         assert "two names for one box" in err
         assert not _printed_commands(err)
-        assert list(load_workset(root, "wsa").projects) == []
+        assert list(load_workset(root, "wsa", early_system=std.early_system).projects) == []
 
     def test_recover_is_refused_before_the_membership_write(self, wsa, capsys, monkeypatch):
         """No member and no pending create, so ``--recover`` has nothing to resume —
@@ -309,7 +318,7 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
         err = capsys.readouterr().err
         assert "no interrupted 'create' of 'fresh' in working set 'wsa'" in err
         assert not _printed_commands(err)
-        assert list(load_workset(root, "wsa").projects) == []
+        assert list(load_workset(root, "wsa", early_system=std.early_system).projects) == []
         assert not (root / "boxes" / "fresh").exists()
         assert not (root / "workspaces" / "fresh").exists()
         from kanibako.launch import journal
@@ -317,14 +326,14 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
 
     def test_standalone_stays_refused_in_the_space(self, wsa, capsys, monkeypatch):
         """``--standalone`` asks for a standalone box, which the space rejects."""
-        root, _std = wsa
+        root, std = wsa
         monkeypatch.chdir(root)
         from kanibako.commands.box._parser import run_create
 
         assert run_create(_args("solo", standalone=True)) == 1
         err = _refusal(capsys.readouterr().err)
         assert "would be a STANDALONE box" in err
-        assert list(load_workset(root, "wsa").projects) == []
+        assert list(load_workset(root, "wsa", early_system=std.early_system).projects) == []
 
     def test_an_identifier_outside_every_space_stays_a_primary_box(
         self, wsa, tmp_home, capsys, credentials_dir, monkeypatch,
@@ -338,7 +347,8 @@ class TestAnIdentifierMakesANamedBoxOfTheSpace:
 
         assert run_create(_args("plain")) == 0
         assert "Created default project" in capsys.readouterr().out
-        assert list(load_primary_boxes(std.primary_workset)) == ["plain"]
+        assert list(load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary))) == ["plain"]
 
 
 def _tree(root):
@@ -377,7 +387,8 @@ class TestAnInterruptedNamedCreateIsRecoverable:
         root, std = wsa
         monkeypatch.chdir(root)
         self._crash(monkeypatch, "crashbox")
-        assert [p.name for p in load_workset(root, "wsa").projects] == ["crashbox"]
+        assert [p.name for p in load_workset(
+            root, "wsa", early_system=std.early_system).projects] == ["crashbox"]
         pending = journal.pending_create(std.journal, str(root / "boxes" / "crashbox"))
         assert pending is not None and pending["mode"] == "named"
         capsys.readouterr()
@@ -394,9 +405,11 @@ class TestAnInterruptedNamedCreateIsRecoverable:
         assert run_create(_args("crashbox", recover=True, no_vault=False)) == 0
         assert "Resumed interrupted named project" in capsys.readouterr().out
         assert journal.read_journal(std.journal) == {}
-        assert [p.name for p in load_workset(root, "wsa").projects] == ["crashbox"]
+        assert [p.name for p in load_workset(
+            root, "wsa", early_system=std.early_system).projects] == ["crashbox"]
         assert (root / "boxes" / "crashbox" / "home").is_dir()
-        assert load_primary_boxes(std.primary_workset) == {}
+        assert load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
 
     def test_recover_on_a_complete_member_is_refused(self, wsa, capsys, monkeypatch, tmp_home):
         from kanibako.commands.box._parser import run_create
@@ -427,7 +440,7 @@ class TestNoRefusalStrandsAMember:
         from kanibako.commands.box._parser import run_create
         from kanibako.errors import KanibakoError
 
-        root, _std = wsa
+        root, std = wsa
         monkeypatch.chdir(root)
         before = _tree(tmp_home)
         try:
@@ -436,7 +449,7 @@ class TestNoRefusalStrandsAMember:
             rc = 1
         assert rc == 1
         assert _tree(tmp_home) == before
-        assert list(load_workset(root, "wsa").projects) == []
+        assert list(load_workset(root, "wsa", early_system=std.early_system).projects) == []
 
     @pytest.mark.parametrize("over", [{"private": True}, {"agent": "claude"}],
                              ids=["private-persist", "agent-persist"])
@@ -449,7 +462,7 @@ class TestNoRefusalStrandsAMember:
         from kanibako.commands.box._parser import run_create
         from kanibako.errors import KanibakoError
 
-        root, _std = wsa
+        root, std = wsa
         (root / "workspaces").mkdir(exist_ok=True)
         monkeypatch.chdir(root)
         monkeypatch.setattr(
@@ -463,7 +476,7 @@ class TestNoRefusalStrandsAMember:
             rc = 1
         assert rc == 1
         assert _tree(tmp_home) == before
-        assert list(load_workset(root, "wsa").projects) == []
+        assert list(load_workset(root, "wsa", early_system=std.early_system).projects) == []
 
     @pytest.mark.parametrize("kind", ["dir", "link"])
     def test_a_kept_workspace_survives_the_undo(self, wsa, tmp_home, monkeypatch, kind):
@@ -504,8 +517,9 @@ class TestNoRefusalStrandsAMember:
         monkeypatch.chdir(root)
 
         def persist_then_fail(*_a, **_kw):
-            if not [p for p in load_workset(root, "wsa").projects if p.name == "intruder"]:
-                ws = load_workset(root, "wsa")
+            if not [p for p in load_workset(
+                root, "wsa", early_system=std.early_system).projects if p.name == "intruder"]:
+                ws = load_workset(root, "wsa", early_system=std.early_system)
                 add_project(ws, "intruder", ws.workspaces_dir / "intruder", std)
             return "Error: simulated persist failure"
 
@@ -514,13 +528,14 @@ class TestNoRefusalStrandsAMember:
         )
         with pytest.raises(KanibakoError):
             run_create(_args("pvbox", private=True))
-        assert [p.name for p in load_workset(root, "wsa").projects] == ["intruder"]
+        assert [p.name for p in load_workset(
+            root, "wsa", early_system=std.early_system).projects] == ["intruder"]
         assert not (root / "boxes" / "pvbox").exists()
 
     def test_a_stale_box_dir_is_refused_and_left_alone(self, wsa, tmp_home, capsys, monkeypatch):
         from kanibako.commands.box._parser import run_create
 
-        root, _std = wsa
+        root, std = wsa
         (root / "boxes" / "stale").mkdir(parents=True)
         monkeypatch.chdir(root)
         before = _tree(tmp_home)
@@ -529,7 +544,7 @@ class TestNoRefusalStrandsAMember:
         # It names the box dir that is in the way, not the workspace.
         assert str(root / "boxes" / "stale") in err
         assert _tree(tmp_home) == before
-        assert list(load_workset(root, "wsa").projects) == []
+        assert list(load_workset(root, "wsa", early_system=std.early_system).projects) == []
 
     @pytest.mark.parametrize("second", ["newbox", "NEWBOX"])
     def test_a_taken_name_leaves_nothing(self, wsa, tmp_home, capsys, monkeypatch, second):
