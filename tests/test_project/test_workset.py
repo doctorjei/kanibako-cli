@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from kanibako.errors import LegacyWorksetIdentityError, WorksetError
-from kanibako.settings.paths import BoxMode
+from kanibako.settings.paths import BoxMode, StandardPaths
 from kanibako.project.workset import (
     DEFAULT_WORKSET_ALIAS,
     DEFAULT_WORKSET_ID,
@@ -2443,28 +2443,31 @@ class TestStandaloneVaultTeardownSkeleton:
 class TestCreateUnderASystemBoxesValue:
     """A system ``workset.boxes`` shapes the skeleton ``create_workset`` stamps in each new root."""
 
-    def _system_boxes(self, value: str) -> None:
-        from kanibako.settings.config import system_settings_path
+    def _system_boxes(self, value: str, config_file: Path) -> StandardPaths:
+        """Write the system ``workset.boxes``, then load ``std`` from the files as they now are."""
+        from kanibako.settings.config import load_config, system_settings_path
         from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
 
         dump_doc(system_settings_path(), {"workset": {"boxes": value}})
+        return load_std_paths(load_config(config_file))
 
-    def test_an_outside_dir_is_not_created(self, tmp_home, std):
+    def test_an_outside_dir_is_not_created(self, tmp_home, config_file):
         outside = tmp_home / "shared-boxes"
-        self._system_boxes(str(outside))
+        std = self._system_boxes(str(outside), config_file)
         for name in ("one", "two"):
             ws = create_workset(name, tmp_home / "worksets" / name, std)
             assert not (ws.root / "boxes").exists()
         assert not outside.exists()
 
-    def test_an_existing_outside_dir_is_left_alone(self, tmp_home, std):
+    def test_an_existing_outside_dir_is_left_alone(self, tmp_home, config_file):
         outside = tmp_home / "shared-boxes"
         (outside / "a").mkdir(parents=True)
-        self._system_boxes(str(outside))
+        std = self._system_boxes(str(outside), config_file)
         create_workset("one", tmp_home / "worksets" / "one", std)
         assert [p.name for p in outside.iterdir()] == ["a"]
 
-    def test_a_nested_leaf_inside_the_root_is_created(self, tmp_home, std):
-        self._system_boxes("@meta.workset.path/x/boxes")
+    def test_a_nested_leaf_inside_the_root_is_created(self, tmp_home, config_file):
+        std = self._system_boxes("@meta.workset.path/x/boxes", config_file)
         ws = create_workset("nested", tmp_home / "worksets" / "nested", std)
         assert (ws.root / "x" / "boxes").is_dir()
