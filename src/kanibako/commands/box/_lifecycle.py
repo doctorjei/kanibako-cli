@@ -532,12 +532,10 @@ def _resolve_target_workset(
 def _cure_ref(state: ProjectState) -> str:
     """The reference a printed ``box convert`` / ``box move`` reaches *state* by.
 
-    ⚑ A STANDALONE box is in no registry the lifecycle route reads: a bare name
-    resolves through the primary and workset indexes only, never the standalone
-    one, so it is path-ified against the shell's cwd and misses.  ⚑ Its METADATA
-    path (the box root) is the reference, not its workspace: a workspace nested
-    under a box root is itself inside whatever workset path space the root sits
-    in, and the mode is then detected from the path space rather than from the box.
+    ⚑ A STANDALONE box is in no registry the lifecycle route reads, so a bare
+    name misses.  ⚑ Its METADATA path (the box root) is the reference, NOT its
+    workspace: a workspace nested under a root is itself inside whatever workset
+    path space the root sits in, and the mode is then read from that path space.
     """
     if state.mode is BoxMode.standalone:
         return str(state.metadata_path)
@@ -776,10 +774,10 @@ def _validate(
     #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt
     #     (its files ARE meant to be at *dest*), and so is a leaf that IS the source's
     #     own — the same-workset, same-name case releases and re-records it, and so is
-    #     the source's OWN workspace when that is the landing leaf.  ⚑ The second
-    #     exemption reads no relocation test: the leaf the box already stands in is
-    #     not a stranger's, whether the box stays put (an in-place convert re-records
-    #     it) or moves on (a relocation vacates it).
+    #     the source's OWN workspace when that is the landing leaf.  ⚑ That second
+    #     exemption reads no relocation test: the leaf the box stands in is not a
+    #     stranger's, whether it stays put (an in-place convert re-records it) or
+    #     moves on (a relocation vacates it).
     if (
         not spec.records_only
         and target_mode == BoxMode.named
