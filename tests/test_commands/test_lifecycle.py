@@ -1879,6 +1879,53 @@ class TestDefaultStateFromMeta:
         assert state.name == "nosettings"
         assert state.enable_vault is True  # default via read_box_enable_vault
 
+    def test_a_scalar_box_tier_refuses_the_lifecycle_resolve_by_name(self, env):
+        """The PRODUCTION resolve refuses a scalar ``box`` tier, with the box tier it derives.
+
+        ⚑ THE REAL DOOR, not the reader called directly: ``resolve_lifecycle_target`` is what
+        ``box remap``/``move``/``convert`` all call, and it is what derives the box tier and
+        hands it to the authored reader.  A caller may not rely on some LATER lifecycle step
+        writing the same file and catching the defect there — ``box: 42`` reached the reader
+        and raised ``TypeError: argument of type 'int' is not iterable`` there, before any
+        step ran.  MUTATION: drop the ``refuse_scalar_sections`` call in
+        ``read_box_enable_vault`` and this reds with that ``TypeError``.
+        """
+        from kanibako.errors import ConfigError
+        from kanibako.settings.config_io import write_nested_key
+
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="scalarbox")
+        box_tier = std.boxes / "scalarbox" / "box.yaml"
+        # Write through the store's own writer, then replace the table with a scalar by
+        # hand — settings files are a hand-edit surface, and a scalar section is the shape
+        # the shape rule refuses.
+        write_nested_key(box_tier, ("box",), "enable_vault", False)
+        box_tier.write_text("box: 42\n")
+
+        with pytest.raises(ConfigError) as exc:
+            resolve_lifecycle_target(str(pdir), std, config)
+        assert f"holds 42 at 'box'" in str(exc.value)
+        assert str(box_tier) in str(exc.value)
+        # The refusal leaves the file exactly as the user wrote it.
+        assert box_tier.read_text() == "box: 42\n"
+
+    def test_a_table_box_tier_still_resolves_through_the_production_door(self, env):
+        """Anti-over-refusal at the same door: a real ``box`` table still resolves.
+
+        ⚑ Without this the previous test would also pass a guard that refused every
+        ``box.yaml``, so the pair pins the refusal to the SHAPE.
+        """
+        config, std, tmp_home = env
+        pdir = _make_default(env, name="tablebox")
+        (std.boxes / "tablebox" / "box.yaml").write_text(
+            "box:\n  enable_vault: false\n"
+        )
+
+        state = resolve_lifecycle_target(str(pdir), std, config)
+        assert state.name == "tablebox"
+        assert state.enable_vault is False
+        assert state.box_authored_vault is False
+
 
 # ---------------------------------------------------------------------------
 # A ``box.enable_vault`` published at the WORKSET tier is an OVERRIDABLE DEFAULT:
