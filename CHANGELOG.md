@@ -407,6 +407,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A bind whose destination has a symlinked parent is refused, naming the link and its target.**
+  The check now judges every parent between the mountpoint and the box home or project directory,
+  not only the one directly above the destination, so a link further up is found. A link that leads
+  out of that root, one that does not resolve, and one that resolves to a file rather than a
+  directory are each refused, and a symlink at the destination itself is still replaced by a real
+  directory. A link resolving to a directory inside the root is stubbed where it points, as before.
+  Before, a link above the immediate parent was never reached: a live link leaving the root was
+  stubbed at its target, so a directory was created outside the box home, and a dangling one failed
+  its `mkdir` at `[Errno 17]` with the error logged at debug and dropped, so the launch carried on
+  and failed naming neither the link nor the destination. A link to a file failed the same way, at
+  `[Errno 20]`. The trade: a link whose target exists only inside the box, such as one into the
+  workspace bind, reads as dangling on the host and is refused with the same message.
+
 - **A reference to `meta.box.agent.<key>` or to a computed `meta.*.auth.*_active` key now sees its
   value at launch.** Before, a value such as a bind source of `{meta.box.agent.canon}/q` resolved the
   reference as absent and mounted `/q`. An agent key whose value reaches its own mirror is now refused
