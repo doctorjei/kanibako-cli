@@ -1992,7 +1992,7 @@ class TestDuplicateRefusalCreatesNothing:
                    return_value=True) as confirm:
             with pytest.raises(ConfigError):
                 _duplicate_to_standalone(pdir, dst, force=False)
-        assert confirm.called
+        assert not confirm.called
         assert not dst.exists()
 
         # The cure, exactly as the refusal prints it: hand-fix the section, retry.
@@ -2004,6 +2004,35 @@ class TestDuplicateRefusalCreatesNothing:
         assert rc == 0
         assert (dst / "box_data" / "box.yaml").is_file()
         assert (dst / "workspace").is_dir()
+
+    def test_a_scalar_box_tier_refuses_a_workset_duplicate_before_the_prompt(self, env):
+        """The workset-source door refuses before it prompts, and creates nothing."""
+        from unittest.mock import patch
+
+        from kanibako.errors import ConfigError
+        from kanibako.project.workset import load_workset
+        from kanibako.settings.paths import (
+            WorksetSpec, box_workset_settings_paths, resolve_workset_project,
+        )
+
+        config, std, tmp_home = env
+        src = _make_materialized_member(env, "wsdup", "member")
+        src_proj = resolve_workset_project(
+            WorksetSpec.from_workset(load_workset(tmp_home / "worksets" / "wsdup", "wsdup")),
+            "member", std, config,
+            initialize=False,
+        )
+        box_tier, _ = box_workset_settings_paths(src_proj)
+        box_tier.write_text("box: 42\n")
+        dst = tmp_home / "wsdst"
+
+        with patch("kanibako.commands.box._duplicate.confirm_prompt",
+                   return_value=True) as confirm:
+            with pytest.raises(ConfigError) as exc:
+                _duplicate_to_standalone(src, dst, force=False)
+        assert str(box_tier) in str(exc.value)
+        assert not confirm.called
+        assert not dst.exists()
 
 
 # ---------------------------------------------------------------------------
