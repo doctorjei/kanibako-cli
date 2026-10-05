@@ -219,7 +219,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "Records-only relocation. Use this when you have ALREADY moved or\n"
             "renamed a project's directory and just need kanibako to catch up.\n"
             "Updates the recorded workspace path, hash, and markers. Does NOT\n"
-            "move files and never changes ownership."
+            "move files and never changes ownership: nothing is copied or\n"
+            "deleted, and a previous workspace is left where it is.\n"
+            "Inside a workset, <new> must be the box's own {workset.workspaces}/<name>;\n"
+            "any other in-tree path is refused."
         ),
     )
     remap_p.add_argument(
@@ -245,7 +248,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "Move a project's workspace from <old> to <new> (both required) and\n"
             "update its records/markers. An optional target flag also changes\n"
             "ownership; without one the owner is unchanged.\n"
-            "Refuses external-connected projects (use `remap` or `convert`)."
+            "Refuses external-connected projects (use `remap` or `convert`).\n"
+            "Inside a workset, <new> must be the box's own {workset.workspaces}/<name>;\n"
+            "any other in-tree path is refused, and --force does not override that."
         ),
     )
     move_p.add_argument("old", help="Current project (name or path)")
@@ -270,7 +275,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             "Change which mode/workset owns a project. In-place by default for\n"
             "all modes (the workspace does not move). Add `--move <path>` to\n"
             "relocate, or a bare `--move` (only with --workset) to move into the\n"
-            "target workset. `--name` renames in the target."
+            "target workset. `--name` renames in the target.\n"
+            "Moving between two worksets needs `--move`; in place is refused.\n"
+            "`--move` of an external-connected box is refused (use `remap`, or\n"
+            "`convert` without `--move`).\n"
+            "Inside a workset, the destination must be the box's own\n"
+            "{workset.workspaces}/<name>; any other in-tree path is refused."
         ),
     )
     convert_p.add_argument(
@@ -300,7 +310,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Copy a project's workspace directory and kanibako metadata to a new path.\n"
             "The metadata is re-keyed under the new path's hash.\n"
-            "With --to, duplicate into a different mode."
+            "With --to, duplicate into a different mode. With `--to named`, a\n"
+            "leftover directory already sitting on the box's leaf needs --force;\n"
+            "a name already registered in that workset is refused outright."
         ),
     )
     duplicate_p.add_argument("source_path", help="Existing project directory to duplicate")
