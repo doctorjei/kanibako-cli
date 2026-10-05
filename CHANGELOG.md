@@ -415,7 +415,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A launch no longer adopts a standalone box whose `create` was interrupted.** Before, the launch
   printed `Imported standalone box '…'`, dropped the pending create entry, and ran the half-built box.
   Now any launch of a box with a pending create entry exits 1 and names
-  `kanibako create --standalone --recover <root>` (or the primary/named form); the entry is kept.
+  `kanibako create --standalone --recover <root>` (or the primary form, or for a named box
+  `cd <working-set root> && kanibako create --recover <member>`, which runs from any directory); the
+  entry is kept.
   `kanibako box register <root>` refuses such a box the same way and names
   `kanibako create --standalone --recover --register <root>`.
 
