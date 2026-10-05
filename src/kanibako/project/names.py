@@ -20,7 +20,11 @@ This module reads/writes ONLY the ``worksets`` section; the
 callers and preserved across writes by :mod:`kanibako.project.registry_store`.
 :func:`resolve_name` additionally consults the PRIMARY per-workset membership
 (when a *primary_workset* is supplied) so a bare primary-box name still resolves
-at the same precedence the retired ``projects`` section held.
+at the same precedence the retired ``projects`` section held, and — LAST, after
+every step above — the ``standalone`` section, so a REGISTERED standalone box
+resolves by name too (an unregistered one stays path-only; spec § Detection &
+import).  Reading that section does not make this module its owner:
+:mod:`kanibako.project.registry_store` still is.
 """
 
 from __future__ import annotations
@@ -216,6 +220,53 @@ def resolve_name(
 ) -> tuple[str, str]:
     """Look up a bare name and return ``(path, kind)``.
 
+    Resolution order (system-design § Detection & import, "Box designation & workset
+    path space"): steps 1-4 below, then the REGISTERED STANDALONE box of that name
+    LAST (:func:`kanibako.project.registry_store.standalone_root`).  An UNregistered
+    standalone is reachable only by path or from within its own tree, so it never
+    reaches this step and the lookup misses as it always did.
+
+    A registered standalone that LOSES to an earlier step is shadowed, and the
+    shadow is announced rather than left for the user to discover: the registration
+    says "resolves by name", the ordering says otherwise, and silence reads as a
+    broken registry.  It stays reachable by path.
+
+    *kind* is ``"project"`` or ``"workset"``.
+    Raises ``ProjectError`` if no match is found, or ``AmbiguousNameError`` if
+    the name is a member of more than one workset.
+    """
+    try:
+        path, kind = _resolve_before_standalone(
+            registry, name, cwd=cwd, primary_workset=primary_workset,
+        )
+    except AmbiguousNameError:
+        # Standing LAST does not settle a tie between two EARLIER steps; the
+        # standalone section is not a tiebreaker for someone else's collision.
+        raise
+    except ProjectError:
+        root = registry_store.standalone_root(registry, name)
+        if root is None:
+            raise
+        return root, "project"
+
+    shadow = registry_store.standalone_root(registry, name)
+    if shadow is not None and Path(shadow).resolve() != Path(path).resolve():
+        logger.warning(
+            "bare name '%s' resolved to the %s at %s; the registered standalone "
+            "box of the same name at %s is shadowed — reach it by path.",
+            name, kind, path, shadow,
+        )
+    return path, kind
+
+
+def _resolve_before_standalone(
+    registry: Path,
+    name: str,
+    cwd: Path | None = None,
+    primary_workset: Path | None = None,
+) -> tuple[str, str]:
+    """Steps 1-4 of :func:`resolve_name` — everything but the standalone section.
+
     Resolution order:
 
     1. If *cwd* is inside a workset → check that workset's projects first
@@ -227,9 +278,9 @@ def resolve_name(
        per-workset registry ``boxes:`` membership (so a member box is
        addressable from OUTSIDE its workset)
 
-    *kind* is ``"project"`` or ``"workset"``.
-    Raises ``ProjectError`` if no match is found, or ``AmbiguousNameError`` if
-    the name is a member of more than one workset.
+    *kind* is ``"project"`` or ``"workset"``.  Raises ``ProjectError`` if no
+    match is found, or ``AmbiguousNameError`` if the name is a member of more
+    than one workset.
     """
     names = _load(registry)
 

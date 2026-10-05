@@ -2097,23 +2097,10 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
             _flag_missing_vault(proj)
         return proj
 
-    # NAME-first: the standalone-name domain, which resolve_name does NOT cover.  Only an
-    # IDENTIFIER can be a name; ``.``, ``..`` and every other PATH skip it.
-    if classify_designation(value) is Designation.IDENTIFIER:
-        assert value is not None
-        from kanibako.project import registry_store
-
-        standalone = registry_store.load_standalone(std.registry)
-        # ⚑ BOTH sides fold (spec §0, ⚑ NAMING RULES).  This folded the QUERY alone, which
-        # was only ever correct while storage was folded too — a box stored as ``Foo``
-        # would have been unreachable by any spelling.
-        stored = find_identifier(value, standalone)
-        if stored is not None:
-            return _flag(resolve_standalone_project(std, config, standalone[stored],
-                                                    initialize=initialize, register=register))
-
     # A registered box name wins over a same-named folder (README: "box name
-    # (precedence) or path"), hence *name_first*.
+    # (precedence) or path"), hence *name_first*.  A registered standalone resolves here
+    # too, through the one resolver, which reads the ``standalone`` section LAST (spec
+    # § Detection & import) — this door used to read it FIRST, ahead of a primary box.
     raw = resolve_designation(std, value, unknown_name_is_path=initialize, name_first=True)
     return _flag(_resolve_designated_path(std, config, raw, initialize=initialize,
                                           register=register))

@@ -525,6 +525,145 @@ class TestResolveName:
 
 
 # ---------------------------------------------------------------------------
+# Standalone names (the LAST resolution step)
+# ---------------------------------------------------------------------------
+
+class TestStandaloneNameResolution:
+    """A REGISTERED standalone box resolves by bare name; an UNregistered one does
+    not (system-design § Detection & import: registration is opt-in, and the
+    standalone name is checked AFTER the primary boxes, the worksets, and their
+    members — ``box create --standalone --register`` promises name resolution, and
+    until now nothing delivered it)."""
+
+    def _register_standalone(
+        self, registry: Path, tmp_path: Path, name: str, root: Path | None = None,
+    ) -> Path:
+        """Record a standalone box *name* → *root* (default ``tmp_path/<name>``)."""
+        from kanibako.project import registry_store
+
+        root = tmp_path / name if root is None else root
+        root.mkdir(parents=True, exist_ok=True)
+        registry_store.register_standalone(registry, name, root)
+        return root
+
+    def _register_ws_member(
+        self, registry: Path, tmp_path: Path, ws_name: str, box_name: str,
+    ) -> Path:
+        """Register a NAMED workset with one member; return the member workspace."""
+        from kanibako.project import workset_registry
+
+        ws_root = tmp_path / ws_name
+        ws_root.mkdir(exist_ok=True)
+        register_name(registry, ws_name, str(ws_root), section="worksets")
+        member = ws_root / "workspaces" / box_name
+        member.mkdir(parents=True)
+        reg_path = workset_registry.resolve_workset_registry_path(ws_root, None)
+        workset_registry.register_workset_box(reg_path, box_name, member)
+        return member
+
+    def test_a_registered_standalone_resolves_by_name(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """Step 5: a registered standalone answers to its bare name from anywhere."""
+        root = self._register_standalone(registry, tmp_path, "solo_box")
+
+        path, kind = resolve_name(registry, "solo_box")
+        assert kind == "project"
+        assert path == str(root)
+
+    def test_a_registered_standalone_name_is_case_folded(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """§0 NAMING RULES: ``SOLO_BOX`` and ``solo_box`` are the SAME name."""
+        root = self._register_standalone(registry, tmp_path, "solo_box")
+
+        path, kind = resolve_name(registry, "SOLO_BOX")
+        assert (path, kind) == (str(root), "project")
+
+    def test_a_workset_outranks_a_registered_standalone(
+        self, registry: Path, tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The standalone step is LAST: a same-named workset (step 3) wins, and the
+        shadowed registration is announced rather than left silently unreachable."""
+        register_name(registry, "solo_box", str(tmp_path / "ws"), section="worksets")
+        root = self._register_standalone(registry, tmp_path, "solo_box")
+
+        with caplog.at_level("WARNING"):
+            path, kind = resolve_name(registry, "solo_box")
+        assert (path, kind) == (str(tmp_path / "ws"), "workset")
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1, warnings
+        assert "solo_box" in warnings[0] and "standalone" in warnings[0]
+        assert str(root) in warnings[0]
+
+    def test_a_primary_box_outranks_a_registered_standalone(
+        self, registry: Path, tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The collision the spec names: a name that is BOTH a primary box and a
+        registered standalone resolves to the PRIMARY box, and warns."""
+        primary = tmp_path / "primary_workset"
+        workspace = tmp_path / "primary_ws_dir" / "solo_box"
+        workspace.mkdir(parents=True)
+        _register_primary_box(primary, "solo_box", workspace)
+        root = self._register_standalone(
+            registry, tmp_path, "solo_box", root=tmp_path / "sa_root" / "solo_box",
+        )
+
+        with caplog.at_level("WARNING"):
+            path, kind = resolve_name(registry, "solo_box", primary_workset=primary)
+        assert (path, kind) == (str(workspace), "project")
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1, warnings
+        assert "standalone" in warnings[0] and "shadowed" in warnings[0]
+        assert str(root) in warnings[0]
+
+    def test_a_workset_member_outranks_a_registered_standalone(
+        self, registry: Path, tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A workset-MEMBER box (step 4) wins over a same-named registered
+        standalone — the member is the earlier, more specific claim."""
+        member = self._register_ws_member(registry, tmp_path, "myws", "solo_box")
+        self._register_standalone(registry, tmp_path, "solo_box")
+
+        with caplog.at_level("WARNING"):
+            path, kind = resolve_name(registry, "solo_box", cwd=tmp_path)
+        assert kind == "project"
+        assert Path(path).resolve() == member.resolve()
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1, warnings
+        assert "standalone" in warnings[0]
+
+    def test_an_unregistered_standalone_does_not_resolve_by_name(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """PIN (unchanged, and it must STAY unchanged): registration is opt-in, and
+        an unregistered standalone is reachable only by path or from inside its own
+        tree — a bare name for it still misses."""
+        (tmp_path / "unregistered_box").mkdir()
+
+        with pytest.raises(ProjectError, match="Unknown project"):
+            resolve_name(registry, "unregistered_box")
+
+    def test_an_ambiguous_member_name_is_not_broken_by_a_standalone(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """PIN: standing LAST does not settle someone else's tie.  A name that is a
+        member of TWO worksets stays ``AmbiguousNameError`` even when a standalone
+        happens to hold the same name — the standalone is not a tiebreaker."""
+        from kanibako.errors import AmbiguousNameError
+
+        self._register_ws_member(registry, tmp_path, "ws1", "dup")
+        self._register_ws_member(registry, tmp_path, "ws2", "dup")
+        self._register_standalone(registry, tmp_path, "dup")
+
+        with pytest.raises(AmbiguousNameError):
+            resolve_name(registry, "dup", cwd=tmp_path)
+
+
+# ---------------------------------------------------------------------------
 # resolve_qualified_name
 # ---------------------------------------------------------------------------
 
