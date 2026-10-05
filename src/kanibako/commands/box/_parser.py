@@ -730,7 +730,9 @@ def _create_recovery_refusal(
     *already* says whether the box tree is materialized — both read off the
     non-materializing probe, before anything is written.
     """
-    from kanibako.commands.start import _box_journal_key
+    from kanibako.commands.start import (
+        _box_journal_key, _create_designation, recover_cure,
+    )
 
     recover = bool(getattr(args, "recover", False))
     # ⚑ GIVEN, NEVER COMPARED: the journal records the INTENT, not the arguments, so
@@ -738,16 +740,7 @@ def _create_recovery_refusal(
     # an unrolled chain would restate it and drift.
     given = [flag for flag in _CREATE_SHAPING_FLAGS if getattr(args, flag, None)]
 
-    # ⚑ EVERY CURE LINE NAMES THE ROOT THE USER PASSED, NEVER THE RESOLVED
-    # WORKSPACE: a STANDALONE box's ``<root>/workspace`` is no ``create`` argument,
-    # and a NAMED member is created by its NAME (a path in its space is refused).
-    _standalone = probe.mode is BoxMode.standalone
-    mode_flag = " --standalone" if _standalone else ""
-    root = str(
-        probe.metadata_path if _standalone
-        else probe.name if probe.mode is BoxMode.named
-        else probe.project_path or "<None>"
-    )
+    mode_flag, root = _create_designation(probe)
 
     if pending is None:
         if not recover:
@@ -800,14 +793,14 @@ def _create_recovery_refusal(
     if recover:
         lines += [
             "Re-run without them:",
-            f"  kanibako create{mode_flag} --recover {root}",
+            f"  {recover_cure(probe)}",
         ]
         return "\n".join(lines)
 
     lines += [
         "Finish that attempt — the box keeps the name and the settings it "
         "already has:",
-        f"  kanibako create{mode_flag} --recover {root}",
+        f"  {recover_cure(probe)}",
     ]
     if given:
         if "name" in given:
@@ -2236,6 +2229,14 @@ def run_register(args: argparse.Namespace) -> int:
                 )
             except import_reconcile.ImportConflictError as e:
                 print(f"Error: {e}", file=sys.stderr)
+                return 1
+            if sa_name is None:
+                print(
+                    f"Error: an interrupted 'create' is pending for {root}; "
+                    "finish it and register it in one step:\n"
+                    f"  kanibako create --standalone --recover --register {root}",
+                    file=sys.stderr,
+                )
                 return 1
             print(f"Registered standalone box '{sa_name}' at {root}.")
             return 0

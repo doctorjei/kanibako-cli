@@ -145,7 +145,9 @@ def import_standalone(
 
     *root* is the standalone project root (the dir containing ``box_data/`` and,
     at the root, ``workset.yaml``).  Returns the registered box name, or
-    ``None`` when *root* carries no standalone MARKER.
+    ``None`` when *root* carries no standalone MARKER or an interrupted ``create``
+    is pending for it — that box is ``create --recover``'s, and an import would
+    overwrite its journal entry.
     """
     root = root.resolve()
     root_str = str(root)
@@ -162,6 +164,11 @@ def import_standalone(
 
     if not box_resolve.standalone_settings_present(root):
         return None
+    if journal is not None:
+        from kanibako.launch import journal as journal_mod
+
+        if journal_mod.pending_create(journal, root / STANDALONE_META_DIR) is not None:
+            return None
 
     # ⚑ The LIVE name, by THE one naming rule; an unregistered box has no stored
     # registry name, so a pre-kuid box falls back to its leaf.
