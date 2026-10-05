@@ -399,7 +399,9 @@ def resolve_workset_vault_pair(
             resolve_workset_vault_rw(workset_root, settings_doc, early=early))
 
 
-def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]:
+def standalone_vault_teardown(
+    root: Path, *, early: EarlyScope | None = None,
+) -> tuple[list[Path], list[Path]]:
     """Split a STANDALONE box's vault into ``(removable, retained)`` for a teardown.
 
     ⚑⚑ A standalone box's vault IS the resolved arm — there is NO per-box leaf under it
@@ -430,7 +432,7 @@ def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]:
     """
     removable: list[Path] = []
     retained: list[Path] = []
-    for arm in resolve_workset_vault_pair(root):
+    for arm in resolve_workset_vault_pair(root, early=early):
         # ⚑ A NULL ARM IS NO SUCH DIR: it names nothing to remove and nothing to keep.
         if arm is None:
             continue
@@ -947,16 +949,15 @@ def create_workset(
         # no registry.yaml (a workset with no members has no membership to record).
         root.mkdir(parents=True)
         unwind.push(lambda: shutil.rmtree(root, ignore_errors=True))
+        ws = Workset(name=name, root=root, early_system=std.early_system)
         # ⚑ *root* was just created empty, so it has no workset.yaml; a resolved leaf
         # differs from its default only through the system file.  A leaf outside *root*
         # (or at it) is the user's directory, never created here; the rest lie under
         # *root*, so ``parents`` and ``exist_ok`` can only fill in this root: a system
         # value may nest a leaf or name one twice.
-        for subdir_path in _workset_skeleton_dirs(root):
+        for subdir_path in _workset_skeleton_dirs(root, early=ws.early_scope):
             if _path_in_tree(subdir_path, root) and subdir_path.resolve() != root:
                 subdir_path.mkdir(parents=True, exist_ok=True)
-
-        ws = Workset(name=name, root=root)
 
         # ⚑⚑ THE REGISTRATION IS THE CREATION: this line is what makes the directory a
         # workset, because the name→root entry it writes IS the workset's identity.
@@ -1159,7 +1160,7 @@ def add_project(
     # ⚑ An in-tree member IS a workspace under ``workset.workspaces``; a null there refuses
     # before anything is created.  An external member keeps its own dir and still connects.
     if not is_external and not restoring:
-        refuse_null_workspaces(ws.root, f"a workspace for '{name}'")
+        refuse_null_workspaces(ws.root, f"a workspace for '{name}'", early=ws.early_scope)
 
     # ⚑ Validate up front: every EXTERNAL refusal fires BEFORE any directory is created.
     # Internal sources and std-less callers (e.g. migrate) skip this block entirely.
@@ -1210,7 +1211,7 @@ def add_project(
         # ⚑ The per-box leaves are composed by the one NAMED-mode accessor, off the
         # RESOLVED arms: a null arm gets no leaf, for there is no dir to nest one under.
         _shell, vault_ro_proj, vault_rw_proj = _workset_box_paths(
-            proj_box, *resolve_workset_vault_pair(ws.root), name,
+            proj_box, *resolve_workset_vault_pair(ws.root, early=ws.early_scope), name,
         )
         if vault_ro_proj is not None:
             existed_vault_ro = vault_ro_proj.exists()
@@ -1372,7 +1373,7 @@ def _member_store_bases(ws: Workset) -> tuple[Path, ...]:
     ⚑ A NULL VAULT ARM CONTRIBUTES NO BASE: there is no such dir, so no per-box leaf
     under it is removed.  The boxes dir is always first.
     """
-    vault_ro, vault_rw = resolve_workset_vault_pair(ws.root)
+    vault_ro, vault_rw = resolve_workset_vault_pair(ws.root, early=ws.early_scope)
     return tuple(base for base in (ws.projects_dir, vault_ro, vault_rw) if base is not None)
 
 
