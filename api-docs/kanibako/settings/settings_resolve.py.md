@@ -48,12 +48,14 @@ def check_bind_map(raw: Mapping[str, Any], *, category: str, where: str | None=N
 def check_bind_tables(tables: Mapping[str, Any], *, root: str, scope: str, contained: Sequence[str], where: str | None) -> None
 def match_var(expr: str, i: int) -> tuple[str, int]
 def match_ref(expr: str, i: int) -> tuple[str, int]
+def match_braced(expr: str, i: int) -> tuple[Literal['ref', 'var'], str, int] | None
 def expand_expr(expr: str, *, space: Literal['host', 'guest'], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]=(), defer_env: bool=False) -> str
 def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset
 def resolve_value(key: str, *, levels: list[LevelView], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> ResolvedValue | _Unset
 def _host_term() -> str
 def _host_colorterm() -> str | None
 def _unescape(s: str) -> str
+def _brace_literal(c: str) -> str
 def _check_node_binds(table: Mapping[str, Any], *, where: str | None) -> None
 def _check_dest_map(raw: Mapping[str, Any], *, category: str, where: str | None) -> None
 def _in_file(where: str | None) -> str
@@ -61,6 +63,7 @@ def _scan_var_span(expr: str, i: int) -> tuple[str, int]
 def _expand_var(expr: str, i: int, ctx: ResolveCtx) -> tuple[str, int]
 def _resolve_var(name: str, ctx: ResolveCtx) -> str
 def _expand_ref(expr: str, i: int, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]) -> tuple[str, int]
+def _lookup_ref(ref_name: str, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]) -> str
 def _no_lookup(ref: str, chain: tuple[str, ...]) -> str
 ```
 

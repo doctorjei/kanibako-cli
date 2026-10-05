@@ -494,9 +494,9 @@ def test_expand_ref_admits_non_ascii_node_name(node: str) -> None:
     assert seen == [ref_name, ref_name]
 
 
-def test_expand_brace_not_after_at_is_literal() -> None:
-    # A ``{`` that does NOT immediately follow ``@`` is an ordinary literal: the
-    # bare ref ends at it, and the braces pass through untouched.
+def test_expand_brace_not_after_at_opens_a_braced_ref() -> None:
+    # The bare ref ends at a ``{`` that does NOT immediately follow ``@``; that ``{``
+    # opens a braced reference of its own, and ``{{``/``}}`` are the literal braces.
     seen: list[str] = []
 
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
@@ -504,9 +504,12 @@ def test_expand_brace_not_after_at_is_literal() -> None:
         return "/x"
 
     assert (
-        expand_expr("@a.b{x}", space="host", ctx=make_ctx(), lookup=lookup) == "/x{x}"
+        expand_expr("@a.b{x}", space="host", ctx=make_ctx(), lookup=lookup) == "/x/x"
     )
-    assert seen == ["a.b"]
+    assert (
+        expand_expr("@a.b{{x}}", space="host", ctx=make_ctx(), lookup=lookup) == "/x{x}"
+    )
+    assert seen == ["a.b", "x", "a.b"]
 
 
 def test_expand_escaped_at_brace_is_literal() -> None:
@@ -664,8 +667,8 @@ def test_literal_expr_expands_to_itself_host_side(text: str) -> None:
 
 @pytest.mark.parametrize("text", _LITERAL_CASES)
 def test_literal_expr_has_no_refs_and_survives_deferral(text: str) -> None:
-    """The deferred scan reads no ``@``-ref in it, and keeps ``$ ~ \\`` ESCAPED for the later
-    resolver (the deferral rule in :func:`expand_expr`)."""
+    """The deferred scan reads no reference in it, and keeps ``$ ~ \\`` ESCAPED and braces
+    DOUBLED for the later resolver (the deferral rule in :func:`expand_expr`)."""
     refs: list[str] = []
 
     def record(ref: str, chain: tuple[str, ...]) -> str:
@@ -676,7 +679,9 @@ def test_literal_expr_has_no_refs_and_survives_deferral(text: str) -> None:
         literal_expr(text), space="host", ctx=make_ctx(), lookup=record, defer_env=True,
     )
     assert refs == []
-    assert deferred == "".join(f"\\{c}" if c in "\\$~" else c for c in text)
+    assert deferred == "".join(
+        f"\\{c}" if c in "\\$~" else c * 2 if c in "{}" else c for c in text
+    )
 
 
 # ---------------------------------------------------------------------------

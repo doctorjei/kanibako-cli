@@ -404,9 +404,9 @@ policy:
       XDG_CACHE_HOME: "~/.cache"
       XDG_RUNTIME_DIR: null           # NO spec default — fall back + WARN, never silent
     box_side_deferred: true           # host pass MUST NOT expand a box-side $XDG/~
-    escapes:                          # deferred residue escape contract
-      carried_verbatim: ['\$', '\~', '\\']
-      unescaped_by_host: ['\@']
+    escapes:                          # deferred residue: what the host pass keeps for the box pass
+      carried_verbatim: ['\$', '\~', '\\', '{{', '}}']
+      unescaped_by_host: ['\@']        # old grammar only; braced-refs plan step 5 drops it
   xdg_spec: "§1 (clause 3′ bless, Jei 2026-07-02)"
 
   # CLI LEVEL (§1A; R-11): the command line is its OWN level — the highest, above

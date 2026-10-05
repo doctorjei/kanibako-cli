@@ -19,7 +19,7 @@ from typing import Final, Mapping
 from kanibako.agent_ref import display_agent_ref
 from kanibako.settings.config import AGENT_META_FILE
 from kanibako.settings.settings_categories import ABSTRACT_CATEGORIES, DECLARATION_ROOT_REF
-from kanibako.settings.settings_resolve import SettingsError, match_var
+from kanibako.settings.settings_resolve import SettingsError, match_braced, match_var
 
 
 @dataclass
@@ -166,7 +166,7 @@ _SELF_RESOLVING_TOKENS: Final[tuple[str, ...]] = ("~", "$", "@")
 
 
 def is_self_resolving(src: str) -> bool:
-    r"""Whether *src* resolves on its own — absolute, or an unescaped ``~``/``$``/``@``.
+    r"""Whether *src* resolves on its own — absolute, an unescaped ``~``/``$``/``@``, or a braced reference.
 
     ⚑ NOT a plain first-char test.  Escapes are read the way the RESOLVER reads
     them, and the two leading-escape cases fall on OPPOSITE sides: ``\/foo``
@@ -176,6 +176,8 @@ def is_self_resolving(src: str) -> bool:
     """
     if src[:1] in _SELF_RESOLVING_TOKENS:
         return True
+    if src[:1] == "{" and match_braced(src, 0) is not None:
+        return True
     # A leading ``/``, escaped or not, is absolute once the resolver unescapes it.
     return src[:1] == "/" or src[:2] == "\\/"
 
@@ -183,7 +185,7 @@ def is_self_resolving(src: str) -> bool:
 def is_unambiguous_path_value(value: str) -> bool:
     r"""Whether a STORED PATH-KEY value says ON ITS OWN where it points ([R147]).
 
-    Legal: absolute, ``~``-rooted, ``$XDG_*`` or an ``@``-ref.  Anything else — a
+    Legal: absolute, ``~``-rooted, an ``XDG_*`` variable or a key reference.  Anything else — a
     bare leaf, ``./x``, ``../x`` — is AMBIGUOUS and is refused rather than anchored
     (:func:`ambiguous_path_value_error` says why and names both readings).
 
@@ -201,6 +203,12 @@ def is_unambiguous_path_value(value: str) -> bool:
     """
     if value[:1] in ("~", "@"):
         return True
+    if value[:1] == "{":
+        braced = match_braced(value, 0)
+        if braced is None:
+            return False
+        kind, name, _ = braced
+        return kind == "ref" or name.startswith("XDG_")
     if value[:1] == "$":
         try:
             name, _ = match_var(value, 0)

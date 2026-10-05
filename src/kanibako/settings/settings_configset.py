@@ -17,6 +17,7 @@ from kanibako.settings.config_keys import KEY_TYPES, CoercionError, _coerce_valu
 from kanibako.settings.settings_resolve import (
     SettingsError,
     is_verbatim_text,
+    match_braced,
     match_ref,
     match_var,
 )
@@ -65,7 +66,7 @@ ResolveProbe = Callable[[str, str], "str | None"]
 
 
 def scan_tokens(value: str) -> tuple[list[str], list[str]]:
-    """Scan *value* for ``@``-ref and ``$VAR`` token NAMES, resolving nothing.
+    """Scan *value* for key-reference and variable token NAMES, resolving nothing.
 
     ⚑ THE ONE grammar for a value: a second scanner is a second opinion on the
     value, and one that never parsed the ``$`` family is blind to it. Malformed →
@@ -78,8 +79,9 @@ def scan_tokens(value: str) -> tuple[list[str], list[str]]:
     while i < n:
         c = value[i]
         if c == "\\":
-            # An escape consumes the next char, so ``\@`` / ``\$`` are NOT tokens.
-            i += 2
+            # An escape consumes the next char, so ``\@`` / ``\$`` are NOT tokens; nor is
+            # the ``{`` of an old-grammar literal ``\@{`` (the expander's same rule).
+            i += 3 if value[i + 1:i + 3] == "@{" and value[i + 3:i + 4] != "{" else 2
             continue
         if c == "$":
             try:
@@ -96,6 +98,15 @@ def scan_tokens(value: str) -> tuple[list[str], list[str]]:
                 raise ValueError(str(exc)) from None
             refs.append(name)
             continue
+        if c == "{":
+            if value[i + 1:i + 2] == "{":
+                i += 2  # ``{{`` is a literal brace, not a token.
+                continue
+            braced = match_braced(value, i)
+            if braced is not None:
+                kind, name, i = braced
+                (var_names if kind == "var" else refs).append(name)
+                continue
         i += 1
     return refs, var_names
 

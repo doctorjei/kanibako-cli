@@ -626,7 +626,7 @@ _ODD_REFERENT = "/d/a@b$c\\e~f"
 ], ids=["escaped-at", "escaped-backslash-then-at", "embedded-ref", "whole-value-ref",
         "env-escapes"])
 def test_a_box_dest_reaches_the_box_path_verbatim(dest, expected) -> None:
-    r"""Keyspec escape contract, through the launch seam: ``\@`` unescapes to ``@``,
+    r"""Keyspec "References", through the launch seam: ``\@`` unescapes to ``@``,
     which the box side reads as a literal like a referent's own ``@``; ``\$ \~ \\``
     survive the deferral and unescape box-side; an ``@ref`` resolves host-side."""
     snap = KeyStore({
