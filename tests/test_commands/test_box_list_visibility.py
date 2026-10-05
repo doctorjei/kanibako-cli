@@ -17,6 +17,7 @@ Pinned here:
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -29,6 +30,24 @@ from kanibako.settings.paths import (
 )
 from kanibako.project.workset import add_project, create_workset
 from kanibako.utils import container_name_for_box_name, container_name_for_standalone_root
+
+
+@pytest.fixture(autouse=True)
+def _kanibako_logger_keeps_its_handlers():
+    """Hand the ``kanibako`` logger back the handlers it had.
+
+    ``cli.main`` runs ``setup_logging``, which installs a ``StreamHandler`` bound to
+    whatever ``sys.stderr`` is at that moment — this test's capture buffer — and
+    nothing removes it afterwards.  A later test's log record then lands on a buffer
+    pytest has already closed, and logging answers with ``--- Logging error ---`` plus
+    ``ValueError: I/O operation on closed file`` on ITS stderr, which reds any test
+    asserting that stderr is clean.  The leak is in ``kanibako.log.setup_logging``,
+    not here; this keeps it inside the file that provokes it.
+    """
+    logger = logging.getLogger("kanibako")
+    saved = list(logger.handlers)
+    yield
+    logger.handlers[:] = saved
 
 _ALIVE = "alive"     # primary box, workspace folder present
 _GONE = "gone"       # primary box, workspace folder deleted
