@@ -203,6 +203,71 @@ class TestAnEndpointHasNoChain:
         assert chain_bad_entries("@box.bogus/x", bad, key="box.canon", stored=stored) == bad
 
 
+def _scoped_set(tmp_path, scope, key, value, **kw):
+    """Set *key* at *scope*; returns ``(message, the file the scope writes)``."""
+    if scope is ConfigLevel.system:
+        return _system_set(tmp_path, key, value, **kw), tmp_path / "settings.yaml"
+    path = tmp_path / f"{scope.value}.yaml"
+    if not path.exists():
+        _write(path, {})
+    extra = {"cascade_box_path": path} if scope is ConfigLevel.box else {}
+    return set_config_value(
+        key, value, config_path=path, cascade_system_path=tmp_path / "settings.yaml",
+        command_scope=scope, **extra, **kw,
+    ), path
+
+
+_SCOPES = [ConfigLevel.system, ConfigLevel.workset, ConfigLevel.box]
+
+
+class TestADottedSpellingIsNotOverwritten:
+    """§2a exempts only the entry an edit OVERWRITES. ``box: {"env.X": …}`` is one stored
+    segment, and setting ``box.env.X`` writes ``box.env: {X: …}`` beside it, so the dotted
+    entry is a bad entry outside the edit like any other."""
+
+    @pytest.mark.parametrize("scope", _SCOPES)
+    @pytest.mark.writes_undeclared("box.env.X", reason=_JUDGES)
+    def test_refused_naming_the_dotted_entry(self, tmp_path, scope):
+        path = tmp_path / ("settings.yaml" if scope is ConfigLevel.system else f"{scope.value}.yaml")
+        _write(path, {"box": {"env.X": "1"}})
+        before = path.read_text()
+        msg, _ = _scoped_set(tmp_path, scope, "box.env.X", "2")
+        assert msg.startswith("Error: "), msg
+        assert "box | env.X = 1" in msg and "--force" in msg
+        assert path.read_text() == before
+
+    @pytest.mark.parametrize("scope", _SCOPES)
+    @pytest.mark.writes_undeclared("box.env.X", reason=_JUDGES)
+    def test_force_warns_writes_and_leaves_it(self, tmp_path, caplog, scope):
+        path = tmp_path / ("settings.yaml" if scope is ConfigLevel.system else f"{scope.value}.yaml")
+        _write(path, {"box": {"env.X": "1"}})
+        with caplog.at_level(logging.WARNING, logger=_LOGGER):
+            msg, _ = _scoped_set(tmp_path, scope, "box.env.X", "2", force=True)
+        assert msg == "Set box.env.X=2", msg
+        assert "box | env.X = 1" in caplog.text
+        assert yaml.safe_load(path.read_text())["box"] == {"env.X": "1", "env": {"X": "2"}}
+
+    @pytest.mark.parametrize("scope", _SCOPES)
+    def test_an_empty_table_above_the_key_is_still_exempt(self, tmp_path, caplog, scope):
+        """``box.auth: {}`` is marked, and the edit fills it — the write lands at it."""
+        path = tmp_path / ("settings.yaml" if scope is ConfigLevel.system else f"{scope.value}.yaml")
+        _write(path, {"box": {"auth": {}}})
+        with caplog.at_level(logging.WARNING, logger=_LOGGER):
+            msg, _ = _scoped_set(tmp_path, scope, "box.auth.global_enabled", "true")
+        assert msg == "Set box.auth.global_enabled=true", msg
+        assert "not keys" not in caplog.text
+
+    def test_the_exemption_compares_segments(self):
+        from kanibako.settings.config_interface import _overwritten_by
+
+        assert _overwritten_by("box.env.X", ("box", "env", "X"))  # the key itself
+        assert _overwritten_by("box.env.X", ("box", "env"))       # the table above it
+        assert not _overwritten_by("box.env.X", ("box", "env.X"))
+        assert not _overwritten_by("box.env.X", ("box.env.X",))
+        assert not _overwritten_by("box.env.X", ("box", "env", "Y"))
+        assert not _overwritten_by(None, ("box",))
+
+
 class TestGetWarnsOnTheSameEntries:
     """``get`` warns and reads on — and says NOTHING ELSE about the file it read."""
 
