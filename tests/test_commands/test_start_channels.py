@@ -410,7 +410,7 @@ class TestWorksetChannelFloorLeaf:
     names the channel, and ``settings_launch.workset_anchor_floor`` f-strings that
     leaf into ``workset.channels.{leaf}``.  A rename of the channel type root that
     updates only the literal spellings leaves the floor installing the OLD key
-    while ``core-defaults.yaml`` asks for the NEW ``@workset.channels.common`` —
+    while ``core-defaults.yaml`` asks for the NEW ``{workset.channels.common}`` —
     the @-ref does not resolve and the workset common bind SILENTLY VANISHES (no
     error, no warning).
 
@@ -437,7 +437,7 @@ class TestWorksetChannelFloorLeaf:
         assert "workset.channels.commons" not in floor
 
     def test_floor_leaves_match_the_bind_refs(self, primary_proj, std):
-        """The floor's leaf set == the ``@workset.channels.*`` refs the binds use.
+        """The floor's leaf set == the ``{workset.channels.*}`` refs the binds use.
 
         The two halves of the seam are declared in different files; this asserts
         they agree, so neither side can be renamed alone.
@@ -448,12 +448,12 @@ class TestWorksetChannelFloorLeaf:
         # Dest-keyed arms: the sources live INSIDE each arm's map, one level down,
         # and an entry is ``(src,)`` — the destination is the key, not element 1.
         referenced = {
-            str(entry[0]).lstrip("@")
+            str(entry[0])[1:-1]
             for arm in cats.values()
             for entry in arm.values()
-            if str(entry[0]).startswith("@workset.channels.")
+            if str(entry[0]).startswith("{workset.channels.")
         }
-        assert referenced, "expected @workset.channels.* routed binds"
+        assert referenced, "expected {workset.channels.*} routed binds"
         assert referenced <= installed, (
             f"bind @-refs with no floor key: {sorted(referenced - installed)}"
         )

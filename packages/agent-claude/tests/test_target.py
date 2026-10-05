@@ -544,7 +544,7 @@ class TestDefaultShares:
 class TestDefaultCategoryBinds:
     """claude declares the tweakcc cache as an AGENT-scope ``caches`` entry.
 
-    The spec's ``agent.claude.caches[@system.cache/tweakcc]`` instantiation:
+    The spec's ``agent.claude.caches[{system.cache}/tweakcc]`` instantiation:
     ONE terminal key whose value is the dest-keyed map
     ``{box_dest: (host_src,)}``.  The SOURCE is the agent DECLARATION ROOT
     and the DEST the standard cache dir — INDEPENDENT, never an identity mount
@@ -555,7 +555,7 @@ class TestDefaultCategoryBinds:
     def test_declares_the_tweakcc_cache(self):
         assert ClaudeTarget().default_category_binds() == {
             "agent.claude.caches": {
-                "@system.cache/tweakcc": (
+                "{system.cache}/tweakcc": (
                     "@meta.agent.claude.path/caches/tweakcc",
                 ),
             },

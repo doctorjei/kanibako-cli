@@ -9,7 +9,7 @@
 # exactly as the old hand-written `target.py` values did.
 #
 # What lives here (DECLARATIVE) vs what stays code-resolved in target.py:
-#   * DECLARATIVE — everything below (in-box destinations are `$GUEST_HOME`
+#   * DECLARATIVE — everything below (in-box destinations are `{$GUEST_HOME}`
 #     expressions the loader expands; no `/home/agent` literal here).
 #   * CODE-RESOLVED — the CRITICAL host binary path is runtime-PROBED in
 #     `target.py` `detect()`: codex has no fixed contract path, so detect resolves
@@ -27,7 +27,7 @@ descriptor:
   bindings:
     - key: binary
       origin: binary
-      box_dest: "$GUEST_HOME/.local/bin/codex"
+      box_dest: "{$GUEST_HOME}/.local/bin/codex"
       kind: file
       scope: agent_critical
       ro: true
@@ -45,7 +45,7 @@ descriptor:
     - key: managed_pointer
       origin: literal
       literal_src_pkg: "data/KICKOFF.md"
-      box_dest: "$GUEST_HOME/.config/kanibako/kickoff.md"
+      box_dest: "{$GUEST_HOME}/.config/kanibako/kickoff.md"
       kind: file
       scope: agent
       ro: true
@@ -177,7 +177,7 @@ descriptor:
   # sandbox, so the panel app-server must not attempt a nested one).
   vscode_extension: openai.chatgpt
 
-# The former Route-A `category_binds:` `instructions` entry (@system.instructions →
+# The former Route-A `category_binds:` `instructions` entry ({system.instructions} →
 # ~/.codex/AGENTS.md) is RETIRED: the box guide now reaches the box INSIDE the RO
 # `general` chapter bind at `~/canon/charter/general` + the flattened per-agent FINAL file
 # (seeded by the `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.
@@ -222,8 +222,8 @@ behavior:
 # ordinary settings keys, not a private channel: a user overrides one by writing the
 # SAME key in a nearer file, and naming the same VAR at a second scope (say
 # `box.env.KANIBAKO_DIRECTIVE_FINAL`) REFUSES the launch naming both keys.  Values
-# are STRINGS (quote them); `$GUEST_HOME` is expanded by the loader.
+# are STRINGS (quote them); `{$GUEST_HOME}` is expanded by the loader.
 env:
   # The native instruction slot the box-start flattener writes the flattened
   # per-agent FINAL file to (codex reads ~/.codex/AGENTS.md natively).
-  KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.codex/AGENTS.md"
+  KANIBAKO_DIRECTIVE_FINAL: "{$GUEST_HOME}/.codex/AGENTS.md"

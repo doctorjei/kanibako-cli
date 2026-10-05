@@ -697,7 +697,7 @@ class TestHelperDefaultCategories:
         # ⚑ Re-derived for dest-keying: the dest is the map key now.
         assert cats["box.bindings.ro"] == {
             "/home/agent/.kanibako/state/helpers.jsonl": (
-                "@workset.logs/@{meta.box.name}.jsonl",
+                "{workset.logs}/{meta.box.name}.jsonl",
                 "ro",
             ),
         }
@@ -743,7 +743,7 @@ class TestHelperDefaultCategories:
         # snapshot_category_entries → ``narrow_table_winners`` over the helper
         # table's own dests), the same single route the real helper-hub resolve
         # takes. B2b: helper_log routes through
-        # ``@workset.logs/@{meta.box.name}.jsonl``, so the floor below STANDS IN FOR
+        # ``{workset.logs}/{meta.box.name}.jsonl``, so the floor below STANDS IN FOR
         # ``workset_anchor_floor`` / ``meta_identity_floor`` with LITERALS.
         # ⚑ Not the same thing: the real ``workset_anchor_floor`` materializes
         # ``workset.logs`` as the FORMULA ``@meta.workset.path/logs``, so this test

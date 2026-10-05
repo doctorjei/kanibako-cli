@@ -1395,7 +1395,7 @@ class TestWorksetLogsPresentNone:
         sources = {dest: entry[0] for arm in table.values() for dest, entry in arm.items()}
         assert set(sources) == set(core_defaults.helper_bind_dests())
         log_dest = next(d for d in sources if d.endswith(".jsonl"))
-        assert sources[log_dest].startswith("@workset.logs/")
+        assert sources[log_dest].startswith("{workset.logs}/")
 
 
 class TestWorksetBoxesPresentNone:
