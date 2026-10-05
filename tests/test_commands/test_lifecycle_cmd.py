@@ -1660,6 +1660,33 @@ class TestRefusalCuresReachTheBoxTheyName:
         with pytest.raises(ProjectError):
             resolve_lifecycle_target(proj.name, std, config)
 
+    @pytest.mark.parametrize("owner", ["beta", "foo"])
+    def test_the_connect_in_place_cure_runs(self, env, capsys, owner):
+        """PIN: ``workset connect`` on a primary box's in-tree leaf prints an in-place
+        convert that lands the box at that leaf, whether or not its name is the leaf's."""
+        from kanibako.commands.workset_cmd import run_connect
+
+        config, std, tmp_home = env
+        leaf = tmp_home / "extws" / "beta"
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("keep")
+        resolve_project(std, config, project_dir=str(leaf), initialize=True,
+                        name_override=owner)
+        ws = create_workset("wsa", tmp_home / "wsa_root", std)
+        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": str(leaf.parent)}})
+        assert run_connect(argparse.Namespace(
+            workset="wsa", source=str(leaf), project_name=None, force=False,
+        )) == 1
+        err = capsys.readouterr().err
+        route = re.findall(r"'(kanibako box convert [^']+)'", err)[0]
+
+        assert _run_printed(route) == 0
+        members = load_workset(ws.root, "wsa").projects
+        assert [p.name for p in members] == ["beta"]
+        assert Path(members[0].source_path).resolve() == leaf.resolve()
+        assert (leaf / "file.txt").read_text() == "keep"
+        assert load_primary_boxes(std.primary_workset) == {}
+
 
 class TestRelocationOutOfTheLandingLeaf:
     """A box moving OUT of the leaf it stands in is not a collision with itself."""
