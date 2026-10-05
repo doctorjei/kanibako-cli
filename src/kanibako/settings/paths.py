@@ -1600,6 +1600,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
             import_reconcile.import_named_workset(
                 std.registry, current,
                 primary_workset=std.primary_workset, journal=std.journal,
+                early=_early_scope(std, BoxMode.primary),
             )
             ws_after = _check_workset(resolved, std)
             if ws_after is not None:

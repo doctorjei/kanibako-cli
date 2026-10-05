@@ -173,3 +173,19 @@ class TestRestoreSites:
         assert "conflicting box" in capsys.readouterr().err
         assert owners == [WS_TOKEN_PRIMARY]
         assert frees == [WS_TOKEN_PRIMARY]
+
+
+class TestImportSites:
+    def test_the_import_pass_reads_the_primary_boxes_under_the_primary_name(
+        self, std, tmp_home, early_reads,
+    ):
+        """The cross-kind check of an imported workset reads the PRIMARY membership."""
+        from kanibako.project import registry_store
+
+        root = tmp_home / "found"
+        workset.create_workset("found", root, std, force=True)
+        registry_store.save_section(std.registry, "worksets", {})
+        early_reads.clear()
+        assert paths.detect_project_mode(root, std, load_config(std.config_file)).mode is \
+            BoxMode.named
+        assert set(early_reads) == {"found", WS_TOKEN_PRIMARY}
