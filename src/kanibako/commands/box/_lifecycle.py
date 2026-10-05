@@ -1544,12 +1544,8 @@ def _remove_old_metadata(
                 registry_store.unregister_standalone(std.registry, state.name)
             except Exception:  # noqa: BLE001
                 pass
-        # ⚑⚑ THE STORE IS RESOLVED, and only a store STRICTLY BELOW *root* is removed.
-        # ``workset.boxes`` is repointable, so the composed ``box_data/`` is the box's
-        # store only while the key is unset — deleting it unconditionally would remove a
-        # directory this box never used AND strand the real store; deleting the resolved
-        # store without the containment test would take a user directory they merely
-        # nominated.  Both arms print: a store left behind is the user's to remove.
+# ⚑⚑ RESOLVED, and only a store STRICTLY BELOW *root* is removed: the split and
+        # its reason are :func:`standalone_store_teardown_plan`'s, not restated here.
         removable_store, retained_store = standalone_store_teardown_plan(
             root, early=_early_scope(std, BoxMode.standalone))
         if removable_store is not None:

@@ -302,9 +302,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault):
 
     src_box, _ = box_workset_settings_paths(src_proj)
 
-    # ⚑ RESOLVED, for the same reason ``resolve_standalone_project`` resolves it: the
-    # destination is a standalone box, so its store is whatever its ``workset.boxes`` says
-    # — the default leaf only while that key is unset.
+# ⚑ RESOLVED, as ``resolve_standalone_project`` resolves it: the destination is a
+    # standalone box, so its store is whatever its ``workset.boxes`` says.
     dst_metadata = standalone_box_store(new_path, early=_early_scope(std, BoxMode.standalone))
     dst_shell = dst_metadata / "home"
     # (The destination ROOT workset.yaml is written by ``establish_standalone`` below

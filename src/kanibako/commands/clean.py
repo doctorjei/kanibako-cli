@@ -193,11 +193,8 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         removable_vault, retained_vault = standalone_vault_teardown(
             root, early=_early_scope(std, BoxMode.standalone))
         # ⚑ The store holds the box home + its root-owned canon skeleton (J-7), so its
-        # removal needs the podman-unshare escalation, not a bare rmtree.  ⚑⚑ AND IT IS
-        # RESOLVED, under the same strictly-below-root line the vault arms take: a store
-        # the user pointed outside the root is their own directory, and deleting the
-        # composed default in its place would both strand the real store and remove a
-        # directory this box never used.
+# removal needs the podman-unshare escalation, not a bare rmtree; the split
+        # between a removable store and a retained one is the plan's own.
         removable_store, retained_store = standalone_store_teardown_plan(
             root, early=_early_scope(std, BoxMode.standalone))
         if removable_store is not None and not remove_box_tree(removable_store):
