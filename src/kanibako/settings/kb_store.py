@@ -18,6 +18,25 @@ RESOLUTION_ORDER: tuple[str, ...] = (
 )
 BINDING_DERIVATIONS_NODE: Final[str] = "binding_derivations"  # ⚑ Reserved internal node, NOT a key
 
+# The ``meta.*`` identity a per-owner value must reach, per owner level and box mode
+# (keyspec §0 "Per-owner resources"). ``shared`` has no entry: it names no owner.
+# ⚑ A per-owner key is itself an anchor of its level; ``reaches_identity`` adds those
+# from ``KEY_OWNERS``, so they are not listed here.
+IDENTITY_ANCHORS: Final[dict[str, dict[str, tuple[str, ...]]]] = {
+    "workset": {"primary": ("meta.workset.path", "meta.workset.name"),
+                "named": ("meta.workset.path", "meta.workset.name"),
+                "standalone": ("meta.workset.path",)},
+    "partition": {"primary": ("meta.workset.name",), "named": ("meta.workset.name",),
+                  "standalone": ("meta.workset.name",)},
+    "box": {"primary": ("meta.box.name",), "named": ("meta.box.name",),
+            "standalone": ("meta.box.name",)},
+    "agent": {"primary": ("meta.agent.<agent>.name",), "named": ("meta.agent.<agent>.name",),
+              "standalone": ("meta.agent.<agent>.name",)},
+}
+# A level whose ``meta.*`` anchors count only together with an anchor of another level:
+# box names are unique within a workset, not across worksets.
+IDENTITY_PAIRED: Final[dict[str, str]] = {"box": "workset"}
+
 
 class Bind(NamedTuple):
     """A binding value: ``(host_src, box_dest[, opts])``; never a colon-joined ``host:box`` str."""
