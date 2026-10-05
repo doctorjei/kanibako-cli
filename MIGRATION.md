@@ -6835,15 +6835,16 @@ becomes `kb-<new name>-<box>`.
 
 **What changed.** `workset.boxes` is a repointable workset key, and its standalone value is the
 `{meta.workset.path}/box_data` *default* — so `box_data` named a standalone box's store only
-while the key was unset. Home, the box-scope settings file and both standalone teardowns composed
-`<root>/box_data` directly, so a hand-repointed store was read from a directory the box did not
-use. All of them now resolve the key.
+while the key was unset. Home, the box-scope settings file, both standalone teardowns, the
+`box rm` purge and the project file-drop plugin scan composed the leaf directly, so a
+hand-repointed store was read from a directory the box did not use. All of them now resolve
+the key.
 
 Two things follow that are worth stating plainly.
 
 **A teardown no longer deletes a store that sits outside the box root.** Where the resolved store
-lies outside the root it is a directory you nominated, so `purge` and the `box move`/`convert`
-source teardown leave it and tell you so:
+lies outside the root it is a directory you nominated, so `purge`, `box rm --purge` and the
+`box move`/`convert` source teardown leave it and tell you so:
 
 ```
 Note: left the box store at /path/to/store/box_data in place — outside /path/to/box and is yours to remove.
@@ -6852,7 +6853,13 @@ Note: left the box store at /path/to/store/box_data in place — outside /path/t
 That is the same line a relocated `vault_ro`/`vault_rw` arm already took (§2.9). Before, a
 relocated store survived but silently, and the leftover `<root>/box_data` was deleted instead — a
 directory the box had stopped using. A store lying strictly *below* the root is still removed,
-relocated or not.
+relocated or not. A store kept this way leaves the box's own root settings file in place, because
+that file carries the repoint: remove it by hand only if you are removing the whole box.
+
+**The project plugin dir moved with the store.** A plugin dropped in a project's plugins
+directory was read from the composed default leaf, so for a box with a relocated store it was
+never loaded, and one dropped in the leftover default leaf was loaded even though the box had
+stopped using it. Both follow the resolved store now.
 
 **Detection has not changed.** It still uses the `box_data/` marker as its locator, so a box whose
 store was relocated is discovered only while that marker is in place. Move the store and keep the

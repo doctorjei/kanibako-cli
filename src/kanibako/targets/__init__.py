@@ -348,9 +348,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
 
     # Project-level file-drop plugins.  Absence is not an error.
     if project_path is not None:
-        # ⚑ RESOLVED: the plugins dir hangs off the box's own store, so a store
-        # repointed by ``workset.boxes`` moves it — composing ``box_data/`` here
-        # would scan a directory the box does not use, and miss the one it does.
+        # ⚑ RESOLVED; composing the leaf instead is ``standalone_box_store``'s own case.
         _scan_directory_plugins(
             standalone_box_store(project_path) / "plugins", targets, declared,
         )
