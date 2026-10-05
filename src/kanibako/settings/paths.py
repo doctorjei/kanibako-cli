@@ -628,32 +628,33 @@ def _resolve_system_tier(set_values: Mapping[str, str | None], *, data_home: Pat
     # the CLOSED keyspace (spec §0).  A consumer filtering this table by ``config.`` /
     # ``system.`` prefix never sees them.
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
+    # ⚑ The record is built HERE, after ``system.*`` resolved, so it carries the RESOLVED tier
+    # rather than a second read of the file, and the primary-root reads below take it.
+    from kanibako.channels.channels import WS_TOKEN_PRIMARY
+    from kanibako.settings.workset_dirkeys import EarlyScope, early_system
+
+    record = early_system(set_values, resolved, system_refusal=system_refusal)
+    early = EarlyScope(record, WS_TOKEN_PRIMARY)
     pw = resolved["config.primary_workset"]
     from kanibako.project.workset import (load_workset_settings_doc, resolve_workset_boxes,
                                           resolve_workset_logs, resolve_workset_vault_ro,
                                           resolve_workset_vault_rw)
 
     pw_settings = load_workset_settings_doc(pw)
-    resolved["_primary_boxes"] = resolve_workset_boxes(pw, pw_settings)
+    resolved["_primary_boxes"] = resolve_workset_boxes(pw, pw_settings, early=early)
     # ⚑ Each arm is OMITTED when nulled, as ``_primary_logs`` below.
-    primary_vault_ro = resolve_workset_vault_ro(pw, pw_settings)
+    primary_vault_ro = resolve_workset_vault_ro(pw, pw_settings, early=early)
     if primary_vault_ro is not None:
         resolved["_primary_vault_ro"] = primary_vault_ro
-    primary_vault_rw = resolve_workset_vault_rw(pw, pw_settings)
+    primary_vault_rw = resolve_workset_vault_rw(pw, pw_settings, early=early)
     if primary_vault_rw is not None:
         resolved["_primary_vault_rw"] = primary_vault_rw
     # ⚑ ``_primary_logs`` is OMITTED when ``workset.logs`` is a present ``<None>`` — the
     # table holds paths only; :func:`load_std_paths` reads the omission as ``None``.
-    primary_logs = resolve_workset_logs(pw, pw_settings)
+    primary_logs = resolve_workset_logs(pw, pw_settings, early=early)
     if primary_logs is not None:
         resolved["_primary_logs"] = primary_logs
-
-    # ⚑ The record is built HERE, after ``system.*`` resolved, so it carries the RESOLVED tier
-    # rather than a second read of the file.  The primary-root reads above still open the
-    # settings file for themselves; feeding them this record is S2a's change (decision 5).
-    from kanibako.settings.workset_dirkeys import early_system
-
-    return resolved, early_system(set_values, resolved, system_refusal=system_refusal)
+    return resolved, record
 
 
 def resolve_system_paths(set_values: Mapping[str, str | None],

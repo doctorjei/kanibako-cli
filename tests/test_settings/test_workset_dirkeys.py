@@ -16,15 +16,19 @@ from pathlib import Path
 
 import pytest
 
+from kanibako.channels.channels import WS_TOKEN_PRIMARY
 from kanibako.project import workset, workset_registry
 from kanibako.settings.config import system_settings_path
 from kanibako.settings.config_io import dump_doc
 from kanibako.settings.config_keys import _KEY_ROUTES
-from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.paths import resolve_system_paths
+from kanibako.settings.settings_resolve import UNSET, SettingsError
 from kanibako.settings.workset_dirkeys import (
     WORKSET_EARLY_KEYS,
     WORKSET_PATH_REF,
+    EarlyScope,
     early_repoint,
+    early_system,
     resolve_workset_dir_key,
 )
 
@@ -382,3 +386,118 @@ class TestSameSetRefs:
         assert workset.resolve_workset_logs(tmp_path, doc, standalone=True) == (
             tmp_path / "store"
         )
+
+
+@pytest.fixture
+def no_system_open(monkeypatch):
+    """Make the early route's own read of the system settings file raise."""
+    from kanibako.settings import workset_dirkeys
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("the early route opened the system settings file")
+
+    monkeypatch.setattr(workset_dirkeys, "load_doc", refuse)
+    monkeypatch.setattr(workset_dirkeys, "system_settings_path", refuse)
+
+
+def _scope(tmp_path: Path, tier: dict, name: str = "ws") -> EarlyScope:
+    """A record whose system tier is *tier*, built by the constructor from a resolved path tier."""
+    resolved = resolve_system_paths({}, data_home=tmp_path / "data", home=tmp_path)
+    return EarlyScope(early_system(tier, resolved), name)
+
+
+class TestARecordIsTheSystemTier:
+    """Given a record, every early reader takes the system tier from it and opens no file.
+
+    The system file on disk states a DIFFERENT value, so a reader that reached it would answer
+    that value even without the probe.
+    """
+
+    @pytest.mark.parametrize("key", sorted(WORKSET_EARLY_KEYS))
+    def test_early_repoint_reads_the_record(self, key, tmp_path, no_system_open):
+        _write_system(_routed(key, "/file/x"))
+        scope = _scope(tmp_path, {f"workset.{key}": "/rec/x"})
+        assert early_repoint(tmp_path, None, key, early=scope) == ("/rec/x", scope.system.file)
+
+    def test_a_key_the_record_omits_is_unset(self, tmp_path, no_system_open):
+        scope = _scope(tmp_path, {})
+        value, where = early_repoint(tmp_path, None, "boxes", early=scope)
+        assert value is UNSET
+        assert where == tmp_path / "workset.yaml"
+
+    def test_a_record_null_is_a_null(self, tmp_path, no_system_open):
+        scope = _scope(tmp_path, {"workset.logs": None})
+        assert early_repoint(tmp_path, None, "logs", early=scope) == (None, scope.system.file)
+
+    def test_the_workset_file_still_wins(self, tmp_path, no_system_open):
+        scope = _scope(tmp_path, {"workset.boxes": "/rec/boxes"})
+        doc = {"workset": {"boxes": "/own/boxes"}}
+        assert workset.resolve_workset_boxes(tmp_path, doc, early=scope) == Path("/own/boxes")
+
+    def test_a_referent_reads_the_record(self, tmp_path, no_system_open):
+        _write_system({"channelroot": "/file/chan"})
+        scope = _scope(tmp_path, {"workset.channelroot": "/rec/chan"})
+        assert resolve_workset_dir_key(
+            tmp_path, "@workset.channelroot/chat", "", key="channels.chat", standalone=False,
+            early=scope,
+        ) == Path("/rec/chan/chat")
+
+    def test_the_faces_read_the_record(self, tmp_path, no_system_open):
+        _write_system({"boxes": "/file/boxes", "registry": "/file/r.yaml"})
+        scope = _scope(tmp_path, {
+            "workset.boxes": "/rec/boxes", "workset.registry": "@meta.workset.path/r.yaml",
+        })
+        assert workset.resolve_workset_boxes(tmp_path, None, early=scope) == Path("/rec/boxes")
+        assert workset_registry.resolve_workset_registry_path(
+            tmp_path, None, early=scope,
+        ) == tmp_path / "r.yaml"
+
+    def test_a_refusal_names_the_records_file(self, tmp_path, no_system_open):
+        scope = _scope(tmp_path, {"workset.boxes": None})
+        with pytest.raises(SettingsError) as excinfo:
+            workset.resolve_workset_boxes(tmp_path, None, early=scope)
+        assert str(scope.system.file) in str(excinfo.value)
+
+    def test_a_workset_carries_its_record_to_its_readers(self, tmp_path, no_system_open):
+        scope = _scope(tmp_path, {"workset.boxes": "/rec/boxes"})
+        ws = workset.Workset(name="ws", root=tmp_path, early_system=scope.system)
+        assert ws.early_scope == scope
+        assert ws.projects_dir == Path("/rec/boxes")
+
+    def test_the_default_worksets_scope_is_the_primary_partition(self, tmp_path):
+        scope = _scope(tmp_path, {})
+        ws = workset.Workset(
+            name=workset.DEFAULT_WORKSET_ID, root=tmp_path, is_default=True,
+            early_system=scope.system,
+        )
+        assert ws.early_scope == EarlyScope(scope.system, WS_TOKEN_PRIMARY)
+
+    def test_the_channel_keys_read_the_record(self, tmp_path, no_system_open):
+        from kanibako.channels.channels import workset_channels_at
+
+        scope = _scope(tmp_path, {
+            "workset.channelroot": "/rec/chan", "workset.channels.chat": "/rec/chat",
+        })
+        channels = workset_channels_at(tmp_path, early=scope)
+        assert channels is not None
+        assert (channels.root, channels.chat) == (Path("/rec/chan"), Path("/rec/chat"))
+
+    def test_the_stamp_dirs_read_the_record(self, tmp_path, no_system_open):
+        from kanibako.launch.templates import _workset_stamp_dirs
+
+        scope = _scope(tmp_path, {"workset.canon": "@meta.workset.path/c"})
+        canon, template = _workset_stamp_dirs(tmp_path, canon_only=False, early=scope)
+        assert (canon, template) == (tmp_path / "c", tmp_path / "template")
+
+    def test_the_primary_roots_read_the_record(self, config_file, tmp_home, no_system_open):
+        from kanibako.settings.config import system_settings_path as settings_file
+        from kanibako.settings.paths import load_system_tier
+
+        settings_file().parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(settings_file(), {"workset": {"boxes": "/sys/boxes", "logs": None}})
+        resolved, record = load_system_tier(
+            config_file, data_home=tmp_home / "data", home=tmp_home / "home",
+        )
+        assert record.tier == {"workset.boxes": "/sys/boxes", "workset.logs": None}
+        assert resolved["_primary_boxes"] == Path("/sys/boxes")
+        assert "_primary_logs" not in resolved

@@ -41,7 +41,7 @@ from kanibako.identifiers import find_identifier
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.messages import ERR_CONFIG_NULL_PATH
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.workset_dirkeys import early_repoint, resolve_workset_dir_key
+from kanibako.settings.workset_dirkeys import EarlyScope, early_repoint, resolve_workset_dir_key
 from kanibako.errors import LegacyRegistryIdentityError, ProjectError
 
 # The DEFAULT leaf ``workset.registry`` falls back to — ⚑ a fallback, never a path
@@ -241,6 +241,7 @@ def reverse_lookup_workset_box(
 
 def resolve_workset_registry_path(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, early: EarlyScope | None = None,
 ) -> Path:
     """Return the resolved per-workset registry FILE path (pure; no global state).
 
@@ -255,11 +256,11 @@ def resolve_workset_registry_path(
     workset's MEMBERSHIP and its entry keys are the only source of box names, so the
     default would read a file the user says is not there.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, "registry")
+    repoint, where = early_repoint(workset_root, workset_settings, "registry", early=early)
     if repoint is None:
         raise SettingsError(ERR_CONFIG_NULL_PATH % (where, "workset.registry"))
     return resolve_workset_dir_key(
         workset_root, repoint if isinstance(repoint, str) else None,
         _REGISTRY_FILE, key="registry", where=where, standalone=False,
-        workset_settings=workset_settings,
+        workset_settings=workset_settings, early=early,
     )
