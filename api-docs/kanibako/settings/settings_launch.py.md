@@ -106,7 +106,7 @@ def _warn_null_ref_secrets(merged: KeyStore, expanded: KeyStore, *, active_agent
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
 def _post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive
-def _mirror_sources(snapshot: KeyStore, active_agent: str) -> KeyStore
+def _mirror_sources(snapshot: KeyStore, active_agent: str) -> tuple[KeyStore, object]
 def _source_keys(node: KeyStore, prefix: str) -> KeyStore
 def _drop_non_mirror_keys(effective: KeyStore) -> None
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None
