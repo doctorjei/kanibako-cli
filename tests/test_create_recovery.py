@@ -39,7 +39,7 @@ from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
 # ``podman unshare`` works and silently passes where it does not.  That asymmetry is
 # what makes a local green vacuous; ``remove_box_tree`` is the sanctioned deleter.
 from kanibako.runtime.container import remove_box_tree
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 def _primary_names(std):

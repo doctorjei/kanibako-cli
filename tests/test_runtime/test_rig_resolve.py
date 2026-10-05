@@ -9,7 +9,7 @@ import pytest
 
 from kanibako.settings.config import KanibakoConfig
 from kanibako.runtime.rig_resolve import RigResolution, resolve_rig
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 def _runtime(has: list[str] | None = None) -> MagicMock:

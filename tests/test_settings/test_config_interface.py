@@ -27,7 +27,7 @@ from kanibako.settings.settings_resolve import normalize_bind_dest
 
 from tests.support.filenames import CONFIG_FILENAME
 from kanibako.settings.paths import BoxMode
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 # ---------------------------------------------------------------------------

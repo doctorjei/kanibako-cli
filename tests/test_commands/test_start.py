@@ -28,7 +28,7 @@ from kanibako.targets.base import (
 )
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 from tests.support.filenames import CONFIG_FILENAME
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 
 def _rejected(status: int = 403, provider_text: str = "", **kw):

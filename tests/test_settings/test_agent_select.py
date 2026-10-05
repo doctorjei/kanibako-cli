@@ -27,7 +27,7 @@ from kanibako.settings.settings_assemble import refuse_retired_keys
 from kanibako.settings.settings_launch import build_launch_snapshot, resolve_selected_agent
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS
-from tests.conftest import early_record
+from tests.support.early import early_record
 
 AGENTS = frozenset({"claude", "goose", "codex"})
 
