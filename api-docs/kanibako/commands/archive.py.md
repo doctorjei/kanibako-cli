@@ -8,6 +8,7 @@ _Signatures only: no comments, no docstrings, no bodies._
 ```
 def add_parser(subparsers: argparse._SubParsersAction) -> None
 def run(args: argparse.Namespace) -> int
+def _recorded_workspace_of(proj) -> Path | None
 def _archive_one(std, config, proj, *, output_file, args) -> int
 def _archive_all(std, config, args) -> int
 def _stub_project(metadata_path, project_path, std, config)

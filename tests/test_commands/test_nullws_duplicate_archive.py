@@ -80,6 +80,31 @@ class TestDuplicateReadsTheRecordedWorkspace:
         )
         assert copied[0].read_text() == "payload\n"
 
+    def test_a_missing_recorded_workspace_refuses_before_the_prompt(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        import argparse
+        import shutil
+
+        from kanibako.commands.box import _duplicate
+
+        config, std, _root, recorded = _nulled_member(tmp_home, config_file)
+        shutil.rmtree(recorded)
+
+        def _prompted(*_a, **_k):
+            raise AssertionError("prompted before refusing")
+
+        monkeypatch.setattr(_duplicate, "confirm_prompt", _prompted)
+        # Called below ``run_duplicate``, whose own source-path check fires first.
+        rc = _duplicate._duplicate_from_workset(
+            argparse.Namespace(to_mode="standalone", bare=False, force=False),
+            recorded, (tmp_home / "dup-target").resolve(), std, config,
+        )
+        cap = capsys.readouterr()
+
+        assert rc == 1, cap.out + cap.err
+        assert "does not exist; nothing to copy" in cap.err
+
 
 class TestArchiveRunsGitChecksOnTheRecordedWorkspace:
     """D2: the git safety check must run against the recorded workspace, so uncommitted
@@ -127,3 +152,48 @@ def _archive_args(out_file):
         file=out_file, allow_uncommitted=False, allow_unpushed=False,
         all_projects=False,
     )
+
+
+class TestArchiveRoundTripRestoresTheRecordedWorkspace:
+    """The archive records the member's RECORDED workspace, so ``extract --all`` finds it
+    again instead of failing on a literal ``<None>`` path."""
+
+    def test_archive_then_extract_all_restores_the_nulled_member(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
+    ):
+        import argparse
+
+        from kanibako.commands.archive import _archive_one
+        from kanibako.commands.restore import run as extract_run
+        from kanibako.settings.paths import resolve_any_project
+
+        config, std, _root, recorded = _nulled_member(tmp_home, config_file)
+        proj = resolve_any_project(std, config, project_dir=str(recorded), initialize=False)
+        (proj.metadata_path / "mydata.txt").write_text("important")
+
+        arc_dir = (tmp_home / "arcs").resolve()
+        arc_dir.mkdir()
+        out_file = str(arc_dir / "kanibako-app-x.txz")
+        rc = _archive_one(std, config, proj, output_file=out_file, args=_archive_args(out_file))
+        assert rc == 0, capsys.readouterr()
+
+        (proj.metadata_path / "mydata.txt").unlink()
+        monkeypatch.chdir(arc_dir)
+        capsys.readouterr()
+        rc = extract_run(argparse.Namespace(
+            file=None, path=None, name=None, all_archives=True, force=True,
+        ))
+        cap = capsys.readouterr()
+
+        assert rc == 0, cap.out + cap.err
+        assert "<None>" not in cap.out + cap.err
+        assert str(recorded) in cap.out
+        assert (proj.metadata_path / "mydata.txt").read_text() == "important"
+
+        # And by path: ``extract <file> <path>`` names the recorded workspace too.
+        rc = extract_run(argparse.Namespace(
+            file=out_file, path=str(recorded), name=None, all_archives=False, force=True,
+        ))
+        cap = capsys.readouterr()
+        assert rc == 0, cap.out + cap.err
+        assert f"Session data restored to {recorded}" in cap.out
