@@ -1219,16 +1219,16 @@ class TestValueBoxAddresses:
             "named": "@workset.channels.share/@meta.box.name",
             "standalone": None,
         }
-        assert _value("meta.box.settings") == "@meta.box.path/box.yaml"
+        assert _value("meta.box.settings") == "{meta.box.path}/box.yaml"
         assert _per_mode(_value("meta.box.workspace")) == {
             "primary": "<the user's real project dir>",
-            "named": "@workset.workspaces/@meta.box.name",
-            "standalone": "@workset.workspaces",
+            "named": "{workset.workspaces}/{meta.box.name}",
+            "standalone": "{workset.workspaces}",
         }
         assert _per_mode(_value("meta.box.name")) == {
             "primary": "<construct-time>",
             "named": "<construct-time>",
-            "standalone": "<@workset.kuid>_%leaf(@meta.workset.path)%",
+            "standalone": "{workset.kuid}_%leaf({meta.workset.path})%",
         }
 
     @pytest.mark.parametrize("mode", ["primary", "standalone"])
@@ -1265,7 +1265,7 @@ class TestValueBoxAddresses:
         assert floor["meta.box.name"] == "conformance-box"
 
     def test_the_standalone_name_is_the_composed_kuid_leaf(self):
-        """The standalone arm's formula ``<@workset.kuid>_%leaf(@meta.workset.path)%``
+        """The standalone arm's formula ``{workset.kuid}_%leaf({meta.workset.path})%``
         IS what ``launch.box_identity`` composes: the stored kuid, joined by ``_`` to
         the sanitized, capped project-root leaf — against a HAND-computed leaf, not the
         composer's own helper, so the leaf grammar is pinned too."""
@@ -1328,14 +1328,14 @@ class TestNoValueExemptions:
             "standalone=__STANDALONE__ · primary=__PRIMARY__ · named=<detected name>"
         )
         assert _value("meta.runtime.ws_root") == (
-            "standalone=<runtime project dir> · primary=@config.primary_workset · "
+            "standalone=<runtime project dir> · primary={config.primary_workset} · "
             "named=<detected workset root>"
         )
 
     def test_the_bootstrap_rows_name_their_off_snapshot_carrier(self):
         """E7: the manifest's prose verbatim, and the bootstrap constant it names."""
         assert _value("meta.runtime.user.config") == (
-            "$XDG_CONFIG_HOME/kanibako.cfg, or ~/.config/ if unset / not absolute"
+            "{$XDG_CONFIG_HOME}/kanibako.cfg, or ~/.config/ if unset / not absolute"
         )
 
         from kanibako.settings.bootstrap import CONFIG_FILE
@@ -1369,8 +1369,8 @@ class TestNoValueExemptions:
         ``container_name_for`` answers off proj attrs (no snapshot in, no ``%if`` out),
         so equality with the template is unstatable without a second resolver."""
         assert _value("meta.box.container_name") == (
-            "kanibako-@meta.box.name%if @meta.box.helper_num: "
-            "-helper-@meta.box.helper_num%"
+            "kanibako-{meta.box.name}%if {meta.box.helper_num}: "
+            "-helper-{meta.box.helper_num}%"
         )
 
         from types import SimpleNamespace

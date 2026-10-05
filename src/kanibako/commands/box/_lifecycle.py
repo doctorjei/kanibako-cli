@@ -2289,6 +2289,11 @@ def _relocate_channel_partition(
         (src.mailbox, dst.mailbox, "mailbox"),
         (src.share_global, dst.share_global, "share"),
     ):
+        if src_dir is None or dst_dir is None:
+            # ⚑ A NULL PARTITION KEY IS AN ADDRESS THAT DOES NOT EXIST — the same fact as
+            # the ``is_dir()`` arm below, so it takes the same way out.  ⛔ NOT IN MY
+            # GRANT; named in the report (a reader my first-round census did not reach).
+            continue
         try:
             if not src_dir.is_dir():
                 continue  # nothing published yet under the old address

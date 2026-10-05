@@ -2793,7 +2793,7 @@ class TestEarlySystemTierIsData:
 
     @pytest.mark.parametrize("text, arm", [
         ("- a\n- b\n", "the document does not load"),
-        ("system:\n  canon: null\n", "it loads, the system: table is refused"),
+        ("system:\n  cache: null\n", "it loads, the system: table is refused"),
     ])
     def test_strict_raises_in_both_arms(self, tmp_home, text, arm):
         """Neither arm is a silent anything on the strict read: both raise ``ConfigError``."""
@@ -2833,13 +2833,14 @@ class TestEarlySystemTierIsData:
     def test_a_refused_system_table_keeps_the_early_tier(self, tmp_home):
         """ARM 2 under tolerance: the table goes, the EARLY TIER STAYS, the refusal is kept.
 
-        A null ``system.canon`` refuses the ``system:`` table.  The early keys were read from
+        A null ``system.cache`` refuses the ``system:`` table (``system.canon`` would not: it
+        sources a standard bind, so its null is admitted).  The early keys were read from
         the loaded document BEFORE that read, so they survive -- which is what lets the
         per-owner check (decision 9) still run, and a valid ``workset.registry`` still be read.
         """
         baseline, _ = self._tier(tolerate=True)   # NO settings file yet: the declared defaults
         self._settings(
-            "system:\n  canon: null\n"
+            "system:\n  cache: null\n"
             "workset:\n  boxes: /srv/kb\n  registry: /srv/reg.yaml\n",
         )
 
@@ -2847,11 +2848,11 @@ class TestEarlySystemTierIsData:
         assert rec.tier["workset.boxes"] == "/srv/kb"
         assert rec.tier["workset.registry"] == "/srv/reg.yaml"
         assert rec.system_refusal is not None
-        assert "canon" in rec.system_refusal
+        assert "cache" in rec.system_refusal
         # The resolved-system carrier is EMPTY when the refusal is set.
         assert rec.system_paths == {}
-        # The dropped table really is gone: system.canon falls back to its declared default.
-        assert resolved["system.canon"] == baseline["system.canon"]
+        # The dropped table really is gone: system.cache falls back to its declared default.
+        assert resolved["system.cache"] == baseline["system.cache"]
         # ...while the early tier the file DID state is live.
         assert resolved["_primary_boxes"] == Path("/srv/kb")
 

@@ -14,7 +14,7 @@
 #     install field supplies the host source — a declarative NAME, not a probed
 #     value), box-side destinations, the mode/operations grammar, settings flags,
 #     cred-file specs, host_prep/init_dirs, the AGENT-scope `env:` keys, the agent-share
-#     box_dests.  In-box destinations are `$GUEST_HOME` EXPRESSIONS expanded by the
+#     box_dests.  In-box destinations are `{$GUEST_HOME}` EXPRESSIONS expanded by the
 #     loader from the single GUEST_HOME constant (no `/home/agent` literal here).
 #   * CODE-RESOLVED — the CRITICAL host binary/launcher/install paths stay in
 #     `target.py` `detect()` (the `_LAUNCHER`/`_INSTALL_DIR` contract constants):
@@ -33,18 +33,18 @@ descriptor:
   bindings:
     - key: share
       origin: install_dir
-      box_dest: "$GUEST_HOME/.local/share/claude"
+      box_dest: "{$GUEST_HOME}/.local/share/claude"
       kind: dir
       scope: agent_critical
       ro: true
     - key: launcher
       origin: launcher
-      box_dest: "$GUEST_HOME/.local/bin/claude"
+      box_dest: "{$GUEST_HOME}/.local/bin/claude"
       kind: file
       scope: agent_critical
       ro: true
     # The KICKOFF-LOADER (the flattener SEED).  A tiny plugin-shipped static file
-    # (constant, claude-specific — NOT an @system.instructions keyspace source)
+    # (constant, claude-specific — NOT an {system.instructions} keyspace source)
     # delivered RO to ~/.config/kanibako/kickoff.md.  Its content is the canon entry
     # import `@~/canon/COLLECTION.md`, and since M-12 that is the ONLY import it
     # carries (the pre-canon transition line is gone) — the entrypoint the
@@ -61,7 +61,7 @@ descriptor:
     - key: managed_pointer
       origin: literal
       literal_src_pkg: "data/KICKOFF.md"
-      box_dest: "$GUEST_HOME/.config/kanibako/kickoff.md"
+      box_dest: "{$GUEST_HOME}/.config/kanibako/kickoff.md"
       kind: file
       scope: agent
       ro: true
@@ -179,7 +179,7 @@ behavior:
 # are ordinary settings keys, not a private channel: a user overrides one by writing
 # the SAME key in a nearer file, and naming the same VAR at a second scope (say
 # `box.env.DISABLE_AUTOUPDATER`) REFUSES the launch naming both keys.  Values are
-# STRINGS (quote them); `$GUEST_HOME` is expanded by the loader.
+# STRINGS (quote them); `{$GUEST_HOME}` is expanded by the loader.
 env:
   # Disable the in-box self-updater: a mid-session update would repoint the writable
   # ~/.local/bin/claude to a version the read-only host bind cannot have.
@@ -187,16 +187,16 @@ env:
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
   # The native instruction slot the box-start flattener writes the flattened
   # per-agent FINAL file to (claude's user-memory slot, loaded every session).
-  KANIBAKO_DIRECTIVE_FINAL: "$GUEST_HOME/.claude/CLAUDE.md"
+  KANIBAKO_DIRECTIVE_FINAL: "{$GUEST_HOME}/.claude/CLAUDE.md"
 
 # AGENT-scope common dirs (plugins + cache), stored under the per-agent store dir
-# @meta.agent.claude.path = @config.agents/claude — spec §2a's agent DECLARATION
+# {meta.agent.claude.path} = {config.agents}/claude — spec §2a's agent DECLARATION
 # ROOT.  ROOTED AT DECLARATION: the bare `host_src` leaf written here is turned by
-# the loader into the full self-resolving `@meta.agent.claude.path/common/<leaf>`,
+# the loader into the full self-resolving `{meta.agent.claude.path}/common/<leaf>`,
 # so the STORED value needs no later prepend (§2a) and the dirs live at
 # `agents/claude/common/{plugins,cache}`.  An already-self-resolving host_src
-# (absolute / ~ / $var / @-ref) is stored verbatim instead (§2a).
-# box_dest is a $GUEST_HOME expression (kanibako owns the HOST layout only — the
+# (absolute / ~ / {$VAR} / {key}) is stored verbatim instead (§2a).
+# box_dest is a {$GUEST_HOME} expression (kanibako owns the HOST layout only — the
 # guest dest is always spelled out) and it is the ENTRY'S IDENTITY: the loader
 # emits ONE discriminated TERMINAL key `agent.claude.common` whose value is the
 # whole map `{box_dest: (host_src,)}`.
@@ -208,14 +208,14 @@ env:
 # store dir to share), `box_dest` is where it lands in the box.
 common:
   - host_src: plugins
-    box_dest: "$GUEST_HOME/.claude/plugins"
+    box_dest: "{$GUEST_HOME}/.claude/plugins"
   - host_src: cache
-    box_dest: "$GUEST_HOME/.claude/cache"
+    box_dest: "{$GUEST_HOME}/.claude/cache"
 
-# AGENT-scope `@`-ref-sourced category binds (spec §2d): the tweakcc
-# patched-binary cache (the spec's `agent.claude.caches[@system.cache/tweakcc]`
+# AGENT-scope reference-sourced category binds (spec §2d): the tweakcc
+# patched-binary cache (the spec's `agent.claude.caches[{system.cache}/tweakcc]`
 # instantiation).  The SOURCE is the agent DECLARATION ROOT
-# (`@meta.agent.claude.path/caches/tweakcc`, so the patched binaries live at
+# (`{meta.agent.claude.path}/caches/tweakcc`, so the patched binaries live at
 # `agents/claude/caches/tweakcc`); the DEST is the standard cache dir.  Dest and
 # source are INDEPENDENT: this is NOT an identity mount.  No `ro`: `caches`
 # folds into the `rw` arm and the collapse REFUSES a mode-contradicting option
@@ -227,10 +227,10 @@ common:
 # helper reuses this same emitted mount.
 category_binds:
   - category: caches
-    box_dest: "@system.cache/tweakcc"
+    box_dest: "{system.cache}/tweakcc"
     meta_ref: "@meta.agent.claude.path/caches/tweakcc"
 
-# The former Route-A `category_binds:` `instructions` entry (@system.instructions →
+# The former Route-A `category_binds:` `instructions` entry ({system.instructions} →
 # ~/.claude/KANIBAKO.md) is RETIRED: the box guide now reaches the box INSIDE the RO
 # `general` chapter bind at `~/canon/charter/general` + the flattened per-agent FINAL file
 # (seeded by the `managed_pointer` kickoff-loader above), not a per-agent native-slot bind.
