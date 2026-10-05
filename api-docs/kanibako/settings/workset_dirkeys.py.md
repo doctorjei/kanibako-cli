@@ -8,8 +8,9 @@ _Signatures only: no comments, no docstrings, no bodies._
 
 ```
 WORKSET_PATH_REF = 'meta.workset.path'
+WORKSET_NAME_REF = 'meta.workset.name'
 WORKSET_EARLY_KEYS: frozenset[str] = frozenset({WORKSPACES_PATH, BOXES_PATH, LOGS_PATH, 'channelroot', 'registry', 'canon', 'template', 'vault_ro', 'vault_rw', *(f'channels.{leaf}' for leaf in DECLARED_WORKSET_CHANNEL_LEAVES)})
-_USABLE_REFS = f"'@{WORKSET_PATH_REF}' (this workset's root) or another workset early key ('@workset.boxes', '@workset.channelroot', …)"
+_USABLE_REFS = f"'@{WORKSET_PATH_REF}' (this workset's root), '@{WORKSET_NAME_REF}' (its partition name), a system path ('@system.channels.mailboxes', …), or another workset early key ('@workset.boxes', '@workset.channelroot', …)"
 ```
 
 ## Functions
@@ -22,6 +23,7 @@ def early_key_set_error(canonical: str, value: str | None, *, written_file: Path
 def _stored_repoint(doc: Mapping[str, Any] | None, key: str) -> str | None | _Unset
 def _host_ctx() -> ResolveCtx
 def _expand_early(workset_root: Path, doc: Mapping[str, Any] | None, value: str, *, key: str, standalone: bool | None, chain: tuple[str, ...], early: EarlyScope) -> str
+def _system_path(ref: str, system: EarlySystem) -> str
 def _referent_value(workset_root: Path, doc: Mapping[str, Any] | None, referent: str, *, key: str, standalone: bool | None, chain: tuple[str, ...], early: EarlyScope) -> str
 def _declared_default(key: str) -> object
 def _mode_default(referent: str, *, key: str, standalone: bool | None) -> str

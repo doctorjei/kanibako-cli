@@ -290,3 +290,31 @@ def test_the_door_opens_no_file_twice(door, std, ws, tmp_path, door_probe):
       _workset_set(key, "@{workset.boxes}/x", ws, std, tmp_path)
       written = ws.root / WORKSET_META_FILE
     assert opens == [written], (key, opens)
+
+
+# --- The early grammar's anchors at the system door (DESIGN § 7 step 3) -------------------
+
+_MAILBOXES = "workset.channels.mailboxes"
+
+
+@pytest.mark.parametrize("value", [
+  "{system.channels.mailboxes}/{meta.workset.name}",
+  "@system.channels.mailboxes/@meta.workset.name",
+  "/srv/mb/{meta.workset.name}",
+  "/srv/mb/@meta.workset.name",
+])
+def test_the_system_door_takes_the_spec_mailboxes_default_and_the_case_3_cure(value, std):
+  message = _std_system_set(_MAILBOXES, value, std)
+  assert not message.startswith("Error:"), message
+  assert value in std.settings.read_text()
+
+
+@pytest.mark.parametrize("value", [
+  "{system.channels.mailboxes}/{meta.workset.name}",
+  "@system.channels.mailboxes/@meta.workset.name",
+])
+def test_a_failed_std_refuses_a_system_ref_naming_the_failure(value, std):
+  message = _std_system_set(_MAILBOXES, value, std, target_error="std boom")
+  assert message.startswith("Error: nothing was written"), message
+  assert "'@system.channels.mailboxes' cannot be read: std boom" in message, message
+  assert not std.settings.exists() or value not in std.settings.read_text()
