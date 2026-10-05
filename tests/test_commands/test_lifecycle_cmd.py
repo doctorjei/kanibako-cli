@@ -1610,25 +1610,38 @@ class TestRefusalCuresReachTheBoxTheyName:
                 str(tmp_home / "extws" / "beta" / "workspace"), std, config,
             )
 
-    def test_a_standalone_is_not_reachable_by_the_name_it_prints(
+    def test_an_unregistered_standalone_is_not_reachable_by_name(
         self, env, capsys,
     ):
-        """PIN: why the cure prints a path.  A standalone box is in no registry
-        the lifecycle route reads, so its bare name is path-ified against the
-        shell's cwd and misses — whether or not the standalone index records it."""
+        """PIN: why the cure prints a path.  An UNregistered standalone is in no
+        registry the lifecycle route reads, so its bare name is path-ified against
+        the shell's cwd and misses; the box stays reachable by path (spec
+        § Detection & import: unregistered ⇒ path or ancestor-walk only)."""
         from kanibako.errors import ProjectError
         from kanibako.project import registry_store
 
         config, std, tmp_home = env
         proj, ws = _standalone_under_repointed(env)
+        registry_store.unregister_standalone(std.registry, proj.name)
+        assert proj.name not in registry_store.load_standalone(std.registry)
         with pytest.raises(ProjectError):
             resolve_lifecycle_target(proj.name, std, config)
-        dump_doc(std.registry, {
-            "standalone": {proj.name: str(tmp_home / "extws" / "beta")},
-        })
+
+    def test_a_registered_standalone_is_reachable_by_name(self, env, capsys):
+        """The other side of that same door: once the standalone IS registered,
+        ``box create --standalone --register``'s promise holds — the bare name
+        resolves to the box instead of being path-ified against the cwd."""
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        root = tmp_home / "extws" / "beta"
         assert proj.name in registry_store.load_standalone(std.registry)
-        with pytest.raises(ProjectError):
-            resolve_lifecycle_target(proj.name, std, config)
+
+        state = resolve_lifecycle_target(proj.name, std, config)
+        assert state.mode is BoxMode.standalone
+        assert state.name == proj.name
+        assert Path(state.metadata_path).resolve() == root.resolve()
 
     @pytest.mark.parametrize("owner", ["beta", "foo"])
     def test_the_connect_in_place_cure_runs(self, env, capsys, owner):

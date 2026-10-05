@@ -86,6 +86,34 @@ class TestResolveByName:
         proj = resolve_box_target(std, config, "myapp")
         assert proj.project_path == proj_root.resolve()
 
+    def test_a_primary_box_outranks_a_registered_standalone_of_the_same_name(
+        self, std, config, tmp_home, caplog,
+    ):
+        """Spec order at the ``--box`` door (system-design § Detection & import):
+        the PRIMARY box wins over a registered standalone holding the same name,
+        and the shadow is announced.  This door used to read the ``standalone``
+        section FIRST, which inverted that precedence."""
+        from kanibako.project import registry_store
+
+        primary_ws = tmp_home / "solo_box"
+        primary_ws.mkdir()
+        resolve_project(std, config, project_dir=str(primary_ws), initialize=True)
+
+        sa_root = tmp_home / "sa" / "solo_box"
+        sa_root.mkdir(parents=True)
+        (sa_root / "box_data").mkdir()
+        (sa_root / "workset.yaml").write_text("box:\n  image: ghcr.io/x:1\n")
+        registry_store.register_standalone(std.registry, "solo_box", sa_root)
+
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_box_target(std, config, "solo_box")
+        assert proj.mode is BoxMode.primary
+        assert proj.project_path == primary_ws.resolve()
+        shadowed = [r.getMessage() for r in caplog.records
+                    if r.levelname == "WARNING" and "standalone" in r.getMessage()]
+        assert len(shadowed) == 1, shadowed
+        assert str(sa_root) in shadowed[0]
+
 
 # ---------------------------------------------------------------------------
 # PATH resolution
