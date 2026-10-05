@@ -2117,7 +2117,14 @@ def fold_floor(
             # coarsen the smallest suppressible unit from an entry to a whole
             # category — a behavior change nobody ruled.
             if _is_bind_floor_key(key) and isinstance(val, dict):
-                floor[key] = {d: v for d, v in val.items() if v != ""}
+                kept: dict[str, object] = {}
+                for d, v in val.items():
+                    if v == "":
+                        continue
+                    floored = _floored_bind_entry(d, v)
+                    if floored is not __MISSING__:
+                        kept[d] = floored
+                floor[key] = kept
                 continue
             floor[key] = val
 
@@ -2143,6 +2150,41 @@ def fold_floor(
         for key, val in workset_anchor.items():
             floor[key] = val
     return floor
+
+
+def _floored_bind_entry(dest: str, entry: object) -> object:
+    """One FLOOR bind entry as it enters the floor -- with a ``<None>`` source repointed.
+
+    Returns the entry to fold, or ``__MISSING__`` to leave it out.  Anything that is
+    not a null-sourced entry -- a null ENTRY included -- comes back UNCHANGED.
+
+    ⚑ A ``<None>`` SOURCE IS AN OMIT, NEVER A HOST PATH (spec §2a: "any layer whose
+    source/dest is ``<None>`` is SKIPPED").  A packaged ``channels:`` row that reads
+    its PROBE directly leaves the slot's value null when the probe answers nothing --
+    the producer keeps the slot on purpose, since the slot is the standalone-omit gate.
+    Left alone, that null reaches the bind parse and is stringified to the
+    four-character path ``"None"``, which :func:`refuse_unrooted_source` refuses: a
+    HARD LAUNCH FAILURE for a bind the spec omits.
+
+    ⚑ SO IT IS REPPOINTED AT THE SOURCE KEY THE ROW DECLARES, which is what every
+    ``meta_ref`` row already carries.  The ref resolves to the same ``<None>`` through
+    :func:`~kanibako.settings.paths.system_path_floor`, the collapse omits the bind,
+    and :func:`_warn_lone_none_standard_binds` gives the lone null the ONE warning it
+    is owed -- naming the entry, the source key and the file that set it.  Nothing
+    downstream ever holds a ``None`` source: it is a ref string here, exactly as it is
+    for a row that shipped with one.
+
+    ⚑ A row with NO declared source key is a literal-source INTERNAL entry with no key
+    to name, so it is left OUT -- the same omit, without a report nobody can act on.
+    """
+    if not isinstance(entry, (tuple, list)) or not entry or entry[0] is not None:
+        return entry
+    from kanibako.settings.core_defaults import channel_source_key
+
+    key = channel_source_key(dest)
+    if key is None:
+        return __MISSING__
+    return (f"{{{key}}}", *tuple(entry)[1:])
 
 
 @dataclass(frozen=True)
