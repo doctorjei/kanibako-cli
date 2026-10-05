@@ -70,7 +70,9 @@ from kanibako.settings.settings_keyspace import (
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, literal_expr
 from kanibako.settings.settings_cli_level import SELECTION_KEY, build_cli_level
 from kanibako.settings.paths import (
+    BoxMode,
     DesignationRoute,
+    _early_scope,
     _upgrade_shell,
     box_workset_settings_paths,
     creds_watcher_log_path,
@@ -1651,7 +1653,7 @@ def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
     )
 
 
-def _refuse_null_workspace_bind(proj: ProjectPaths) -> None:
+def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None:
     """RAISE when *proj*'s workspace bind resolves through a null ``workset.workspaces`` (Q106).
 
     Called by ``_run_container`` on its NON-materializing probe, before anything is created.
@@ -1667,7 +1669,9 @@ def _refuse_null_workspace_bind(proj: ProjectPaths) -> None:
     else:
         return
     refuse_null_box_workspace(root, proj.project_path, proj.name or str(proj.project_path or root),
-                              standalone=proj.mode is BoxMode.standalone)
+                              standalone=proj.mode is BoxMode.standalone,
+                              early=_early_scope(std, proj.mode,
+                                                  proj.group.name if proj.group is not None else None))
 
 
 # Sentinel returned by _check_launch_baseline when the launch-critical bootstrap
@@ -2437,6 +2441,7 @@ def _start_helper_hub(
         boxes=std.boxes,
         registry=std.registry,
         primary_workset=std.primary_workset,
+        early=_early_scope(std, BoxMode.primary),
     )
 
     msg_log = MessageLog(log_path) if log_path is not None else None
@@ -2706,7 +2711,7 @@ def _run_container(
         return 1
     # Q106: the workspace bind is mounted at every launch, so a box whose workspace resolves
     # through a null ``workset.workspaces`` refuses here, on the probe, like MBR-6 above.
-    _refuse_null_workspace_bind(_existing)
+    _refuse_null_workspace_bind(std, _existing)
 
     proj = resolve_box_target(
         std, config, project_dir,
@@ -5742,6 +5747,7 @@ def _name_new_box_probe(std, proj) -> None:
         proj.name = pick_primary_box_name(
             std.primary_workset, std.registry,
             str(proj.project_path), boxes_dir=std.boxes,
+            early=_early_scope(std, BoxMode.primary),
         )
     else:
         proj.name = short_hash(proj.project_hash)
@@ -8636,6 +8642,7 @@ def _register_new_box(std, proj, *, force: bool = False) -> None:
         register_primary_box_name_if_absent(
             std.primary_workset, std.registry,
             proj.name, str(proj.project_path), force=force,
+            early=_early_scope(std, BoxMode.primary),
         )
     # NAMED: no deferred registration on create (membership written at resolve).
 

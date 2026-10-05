@@ -98,27 +98,21 @@ class TestCreateEntryHelpers:
 # ---------------------------------------------------------------------------
 
 class TestRegisterNewBox:
-    def test_primary_registers_name_path(self, tmp_path: Path) -> None:
+    def test_primary_registers_name_path(self, std, tmp_path: Path) -> None:
         from types import SimpleNamespace
 
-        registry = tmp_path / "registry.yaml"
-        primary = tmp_path / "primary_workset"
-        std = SimpleNamespace(registry=registry, primary_workset=primary)
         proj = SimpleNamespace(
             mode=BoxMode.primary, name="myapp",
             project_path=tmp_path / "ws" / "myapp",
         )
         _register_new_box(std, proj)
-        assert load_primary_boxes(primary)["myapp"] == str(
+        assert load_primary_boxes(std.primary_workset)["myapp"] == str(
             tmp_path / "ws" / "myapp"
         )
 
-    def test_primary_idempotent_same_mapping(self, tmp_path: Path) -> None:
+    def test_primary_idempotent_same_mapping(self, std, tmp_path: Path) -> None:
         """Recovery re-entry on an already-registered box is a no-op (no raise)."""
         from types import SimpleNamespace
-        registry = tmp_path / "registry.yaml"
-        primary = tmp_path / "primary_workset"
-        std = SimpleNamespace(registry=registry, primary_workset=primary)
         proj = SimpleNamespace(
             mode=BoxMode.primary, name="myapp",
             project_path=tmp_path / "ws" / "myapp",

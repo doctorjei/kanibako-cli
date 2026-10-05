@@ -921,8 +921,9 @@ def create_workset(
     # ⚑⚑ BOTH SIDES FOLD.  Comparing a raw workset name against box keys assumed already
     # folded let ``Foo`` walk past a box named ``foo`` — the asymmetric compare §0 closes.
     if not force:
-        from kanibako.settings.paths import load_primary_boxes
-        shadowing = find_identifier(name, load_primary_boxes(std.primary_workset))
+        from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
+        shadowing = find_identifier(name, load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)))
         if shadowing is not None:
             as_stored = "" if shadowing == name else f" (the box is named '{shadowing}')"
             raise WorksetError(
@@ -995,9 +996,9 @@ def list_worksets(std: StandardPaths) -> dict[str, Path]:
 
 def default_workset(std: StandardPaths) -> Workset:
     """Synthesize the default workset — ⚑ VIRTUAL: no registry write, no identity on disk."""
-    from kanibako.settings.paths import load_primary_boxes
+    from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
 
-    projects_map = load_primary_boxes(std.primary_workset)
+    projects_map = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
     projects = [
         WorksetProject(name=name, source_path=Path(path))
         for name, path in projects_map.items()
@@ -1283,8 +1284,8 @@ def add_project(
             _unregister_workset_box_membership,
         )
 
-        _register_workset_box_membership(ws.root, name, recorded_workspace)
-        unwind.push(lambda: _unregister_workset_box_membership(ws.root, name))
+        _register_workset_box_membership(ws.root, name, recorded_workspace, early=ws.early_scope)
+        unwind.push(lambda: _unregister_workset_box_membership(ws.root, name, early=ws.early_scope))
 
         proj = WorksetProject(name=name, source_path=recorded_workspace)
         ws.projects.append(proj)
@@ -1362,7 +1363,7 @@ def release_project(ws: Workset, name: str, *, keep_link: bool = False) -> Works
     # under any name, with no way back short of hand-editing registry.yaml.
     from kanibako.settings.paths import _unregister_workset_box_membership
 
-    _unregister_workset_box_membership(ws.root, name)
+    _unregister_workset_box_membership(ws.root, name, early=ws.early_scope)
     ws.projects.remove(target)
     return target
 
