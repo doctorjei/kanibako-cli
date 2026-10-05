@@ -777,7 +777,7 @@ class TestRunBoxDiagnose:
         from kanibako.project import workset_registry
         from kanibako.settings.config import load_config
         from kanibako.settings.config_io import load_doc
-        from kanibako.settings.paths import load_std_paths
+        from kanibako.settings.paths import BoxMode, _early_scope, load_std_paths
 
         proj = self._register_default_project(
             config_file, tmp_home, credentials_dir
@@ -789,6 +789,7 @@ class TestRunBoxDiagnose:
         reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset,
             load_doc(std.primary_workset / "workset.yaml"),
+            early=_early_scope(std, BoxMode.primary),
         )
         workset_registry.unregister_workset_box(reg, proj.name)
 
