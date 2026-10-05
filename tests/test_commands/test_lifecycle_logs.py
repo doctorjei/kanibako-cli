@@ -19,8 +19,10 @@ from kanibako.commands.box._lifecycle import (
     resolve_lifecycle_target,
 )
 from kanibako.settings.config import load_config
+from kanibako.channels.channels import WS_TOKEN_STANDALONE
 from kanibako.settings.paths import (
     BoxMode,
+    _early_scope,
     box_log_files,
     box_logs_dir_for,
     load_std_paths,
@@ -28,6 +30,7 @@ from kanibako.settings.paths import (
     resolve_standalone_project,
     standalone_logs_dir,
 )
+from kanibako.settings.workset_dirkeys import EarlyScope
 from kanibako.project.workset import add_project, create_workset
 
 
@@ -54,6 +57,7 @@ def _state_logs_dir(state, std):
     return box_logs_dir_for(
         std, state.mode, state.metadata_path,
         state.ws.root if state.ws is not None else None,
+        workset_name=state.ws.name if state.ws is not None else None,
     )
 
 
@@ -123,7 +127,9 @@ class TestLogCarry:
             std, config, project_dir=str(pdir), initialize=True,
         )
         state = resolve_lifecycle_target(str(pdir), std, config)
-        src_logs = standalone_logs_dir(state.metadata_path)
+        src_logs = standalone_logs_dir(
+            state.metadata_path, early=_early_scope(std, BoxMode.standalone),
+        )
         _seed_logs(src_logs, state.name)
 
         new = execute_lifecycle(
@@ -148,7 +154,10 @@ class TestLogCarry:
             std, config, confirm=_conf_yes(),
         )
 
-        _assert_both_present(standalone_logs_dir(new.metadata_path), new.name)
+        _assert_both_present(
+            standalone_logs_dir(new.metadata_path, early=_early_scope(std, BoxMode.standalone)),
+            new.name,
+        )
         _assert_neither_present(src_logs, state.name)
 
     def test_rollback_leaves_logs_in_place(self, env, monkeypatch):
@@ -190,7 +199,7 @@ class TestLogCarry:
         src_logs = _state_logs_dir(state, std)
         _seed_logs(src_logs, state.name)
         dst_logs = box_logs_dir_for(
-            std, BoxMode.named, ws_b.projects_dir / "b2", ws_b.root,
+            std, BoxMode.named, ws_b.projects_dir / "b2", ws_b.root, workset_name=ws_b.name,
         )
         assert dst_logs != src_logs
 
@@ -225,7 +234,7 @@ class TestLogCarry:
         src_logs = _state_logs_dir(state, std)
         _seed_logs(src_logs, state.name, text="source")
         dst_logs = box_logs_dir_for(
-            std, BoxMode.named, ws_b.projects_dir / "b2", ws_b.root,
+            std, BoxMode.named, ws_b.projects_dir / "b2", ws_b.root, workset_name=ws_b.name,
         )
         _seed_logs(dst_logs, "b2", text="resident")
 
@@ -251,7 +260,7 @@ class TestLogCarry:
         src_logs = _state_logs_dir(state, std)
         _seed_logs(src_logs, state.name, text="source")
         dst_logs = box_logs_dir_for(
-            std, BoxMode.named, ws_b.projects_dir / "b2", ws_b.root,
+            std, BoxMode.named, ws_b.projects_dir / "b2", ws_b.root, workset_name=ws_b.name,
         )
         _seed_logs(dst_logs, "b2", text="resident")
 
@@ -335,10 +344,13 @@ class TestCarryBoxLogs:
         from kanibako.commands.box._lifecycle import _Unwind
 
         state = self._standalone(tmp_path)
-        src_logs = standalone_logs_dir(state.metadata_path)
+        std = _NullPrimaryLogsStd(tmp_path)
+        src_logs = standalone_logs_dir(
+            state.metadata_path, early=EarlyScope(std.early_system, WS_TOKEN_STANDALONE),
+        )
         seeded = _seed_logs(src_logs, state.name)
         _carry_box_logs(
-            state, _NullPrimaryLogsStd(tmp_path), _Unwind(), dst_logs=None, dst_name="b1",
+            state, std, _Unwind(), dst_logs=None, dst_name="b1",
         )
         for log_file in seeded:
             assert log_file.exists(), log_file
@@ -348,10 +360,13 @@ class TestCarryBoxLogs:
         from kanibako.commands.box._lifecycle import _Unwind
 
         state = self._standalone(tmp_path)
-        src_logs = standalone_logs_dir(state.metadata_path)
+        std = _NullPrimaryLogsStd(tmp_path)
+        src_logs = standalone_logs_dir(
+            state.metadata_path, early=EarlyScope(std.early_system, WS_TOKEN_STANDALONE),
+        )
         seeded = _seed_logs(src_logs, state.name)
         _carry_box_logs(
-            state, _NullPrimaryLogsStd(tmp_path), _Unwind(),
+            state, std, _Unwind(),
             dst_logs=src_logs, dst_name=state.name,
         )
         for log_file in seeded:
@@ -362,12 +377,15 @@ class TestCarryBoxLogs:
         from kanibako.commands.box._lifecycle import _Unwind
 
         state = self._standalone(tmp_path)
-        src_logs = standalone_logs_dir(state.metadata_path)
+        std = _NullPrimaryLogsStd(tmp_path)
+        src_logs = standalone_logs_dir(
+            state.metadata_path, early=EarlyScope(std.early_system, WS_TOKEN_STANDALONE),
+        )
         dst_logs = tmp_path / "elsewhere"
         seeded = _seed_logs(src_logs, state.name)
         unwind = _Unwind()
         _carry_box_logs(
-            state, _NullPrimaryLogsStd(tmp_path), unwind,
+            state, std, unwind,
             dst_logs=dst_logs, dst_name="b2",
         )
         _assert_both_present(dst_logs, "b2")
@@ -385,7 +403,10 @@ class TestCarryBoxLogs:
         from kanibako.commands.box._lifecycle import _Unwind
 
         state = self._standalone(tmp_path)
-        src_logs = standalone_logs_dir(state.metadata_path)
+        std = _NullPrimaryLogsStd(tmp_path)
+        src_logs = standalone_logs_dir(
+            state.metadata_path, early=EarlyScope(std.early_system, WS_TOKEN_STANDALONE),
+        )
         dst_logs = tmp_path / "elsewhere"
         _seed_logs(src_logs, state.name, text="source")
         dst = box_log_files(dst_logs, "b2")
@@ -394,7 +415,7 @@ class TestCarryBoxLogs:
 
         unwind = _Unwind()
         _carry_box_logs(
-            state, _NullPrimaryLogsStd(tmp_path), unwind, dst_logs=dst_logs, dst_name="b2",
+            state, std, unwind, dst_logs=dst_logs, dst_name="b2",
         )
 
         # The occupied file is untouched and its source is untouched; the free one moved.

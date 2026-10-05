@@ -32,7 +32,7 @@ from kanibako.commands.start import (
     _register_new_box,
     _write_create_entry,
 )
-from kanibako.settings.paths import BoxMode, load_primary_boxes
+from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
 
 # ⚑ NEVER ``shutil.rmtree`` A BOX TREE FROM A TEST BODY — ``run_create`` materializes
 # the J-7 canon skeleton root-owned + 555, so a bare ``rmtree`` dies with EACCES where
@@ -43,7 +43,7 @@ from kanibako.runtime.container import remove_box_tree
 
 def _primary_names(std):
     """Return the PRIMARY box membership (the sole store since projects retired)."""
-    return load_primary_boxes(std.primary_workset)
+    return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ class TestRegisterNewBox:
             project_path=tmp_path / "ws" / "myapp",
         )
         _register_new_box(std, proj)
-        assert load_primary_boxes(std.primary_workset)["myapp"] == str(
+        assert _primary_names(std)["myapp"] == str(
             tmp_path / "ws" / "myapp"
         )
 
@@ -140,15 +140,26 @@ class TestRegisterNewBox:
         """NAMED boxes carry no deferred registration on create."""
         from types import SimpleNamespace
 
+        from kanibako.settings.paths import resolve_system_paths
+        from kanibako.channels.channels import WS_TOKEN_PRIMARY
+        from kanibako.settings.workset_dirkeys import EarlyScope, early_system
+
         registry = tmp_path / "registry.yaml"
         primary = tmp_path / "primary_workset"
-        std = SimpleNamespace(registry=registry, primary_workset=primary)
+        std = SimpleNamespace(
+            registry=registry, primary_workset=primary,
+            early_system=early_system(
+                {}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path),
+            ),
+        )
         proj = SimpleNamespace(
             mode=BoxMode.named, name="proj",
             project_path=tmp_path / "ws" / "workspaces" / "proj",
         )
         _register_new_box(std, proj)  # no-op.
-        assert load_primary_boxes(primary) == {}
+        assert load_primary_boxes(
+            primary, early=EarlyScope(std.early_system, WS_TOKEN_PRIMARY),
+        ) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -813,6 +824,7 @@ class TestRunCreateCrossKindName:
         std = load_std_paths(config)
         register_primary_box_name(
             std.primary_workset, std.registry, "common", str(tmp_home / "other"),
+            early=_early_scope(std, BoxMode.primary),
         )
 
         monkeypatch.setattr(

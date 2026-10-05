@@ -189,7 +189,7 @@ def import_standalone(
 
 def import_named_workset(
     registry: Path, root: Path, *,
-    primary_workset: Path, journal: Path | None = None, early: EarlyScope | None = None,
+    primary_workset: Path, journal: Path | None = None, early: EarlyScope,
 ) -> str | None:
     """Reconcile an on-disk workset at *root* against ``registry.worksets``.
 

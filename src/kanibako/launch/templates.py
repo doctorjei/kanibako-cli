@@ -631,7 +631,7 @@ def ensure_agent_stores(
 
 def _assert_stamp_leaf_in_root(
     workset_path: Path, doc: Mapping[str, Any] | None, resolved: Path, leaf: str,
-    *, early: EarlyScope | None = None,
+    *, early: EarlyScope,
 ) -> None:
     """RAISE — NAMING ``workset.<leaf>`` — unless its resolved dir stays under the root.
 
@@ -674,7 +674,7 @@ def _assert_stamp_leaf_in_root(
 
 
 def _workset_stamp_dirs(
-    workset_path: Path, *, canon_only: bool, early: EarlyScope | None = None,
+    workset_path: Path, *, canon_only: bool, early: EarlyScope,
 ) -> tuple[Path | None, Path | None]:
     """*workset_path*'s RESOLVED ``(workset.canon, workset.template)`` dirs.
 
