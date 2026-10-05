@@ -11442,7 +11442,7 @@ class TestReattachFastPath(_RunningBoxDriver):
             assert self._start(detach=True, print_container=True) == 0
             out = capsys.readouterr()
         assert "is already running" in out.err
-        assert out.out.strip().splitlines()[-1] == "kanibako-testproject"
+        assert out.out.strip().splitlines()[-1] == "kb-primary-testproject"
         m.runtime.exec.assert_not_called()
 
     def test_entrypoint_on_a_running_box_execs_instead_of_attaching(
@@ -11517,7 +11517,7 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
             m.runtime.container_image.return_value = self._LIVE_IMAGE
             self._running(m)
             assert self._shell() == 0
-            m.runtime.container_image.assert_called_once_with("kanibako-testproject")
+            m.runtime.container_image.assert_called_once_with("kb-primary-testproject")
             kwargs = m_resolve.call_args.kwargs
         assert kwargs["image"] == self._LIVE_IMAGE
         # ... and NOT the configured rig the merged config carries.
@@ -12023,7 +12023,7 @@ class TestDetachAtALiveBoxRefusesThePerRunFlags(_RunningBoxDriver):
         assert rc == 0
         assert "Box 'testproject' is already running." in out.err
         assert "cannot be applied" not in out.err
-        assert out.out.strip().splitlines()[-1] == "kanibako-testproject"
+        assert out.out.strip().splitlines()[-1] == "kb-primary-testproject"
         m.runtime.exec.assert_not_called()
 
 
@@ -12975,3 +12975,46 @@ class TestContainerExitCodeUndeterminable:
         runtime = MagicMock(cmd="podman")
         with patch("kanibako.commands.start.subprocess.run", return_value=done):
             assert _container_exit_code(runtime, "box", undeterminable=None) == 3
+
+
+class TestStartRefusesALegacyRunningContainer:
+    """``start`` refuses while the box still runs under its PRE-``kb-`` container name.
+
+    Launching under the rendered name while the old one is live would leave TWO
+    containers running for one box, so the door refuses and names the cure.
+    Nothing is stopped here — stopping a box is ``stop``'s verb, not ``start``'s.
+    """
+
+    @staticmethod
+    def _start():
+        return _run_container(
+            project_dir=None, entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False,
+            extra_args=[],
+        )
+
+    def test_a_legacy_container_still_running_refuses_the_start(
+        self, start_mocks, capsys,
+    ):
+        from kanibako.utils import legacy_container_names
+
+        with start_mocks() as m:
+            proj = m.resolve_any_project.return_value
+            legacy = legacy_container_names(proj)[0]
+            m.runtime.live_names.add(legacy)
+            rc = self._start()
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert legacy in err, err
+        assert "two boxes running" in err, err
+        assert f"podman stop {legacy}" in err, err
+        m.runtime.run.assert_not_called()
+
+    def test_the_control_nothing_under_the_old_name_starts_normally(
+        self, start_mocks,
+    ):
+        """The other half of the ruling: the guard is INVISIBLE to an ordinary box."""
+        with start_mocks() as m:
+            rc = self._start()
+        assert rc == 0
+        m.runtime.run.assert_called()

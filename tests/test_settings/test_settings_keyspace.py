@@ -666,7 +666,7 @@ def test_supporting_surface_is_valid(key):
     "meta.box.settings", "meta.box.inbox", "meta.box.share_global",
     "meta.box.share_workset", "meta.box.auth.workset_path",
     "meta.box.auth.global_active", "meta.box.auth.workset_active",
-    "meta.box.home", "meta.box.container_name", "meta.box.helper_num",
+    "meta.box.home", "meta.box.container", "meta.box.helper_num",
     "meta.box.agent.model", "meta.box.agent.common",
     "meta.agent.claude.name", "meta.agent.claude.path",
     "meta.agent.claude.settings", "meta.agent.claude.mode",
@@ -874,7 +874,7 @@ def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
 # ---------------------------------------------------------------------------
 
 #: The ``meta.box`` leaves the manifest and the spec declare while NOTHING writes
-#: them: ``container_name`` renders in ``utils.container_name_for`` off ``proj``
+#: them: ``container`` renders in ``utils.container_name_for`` off ``proj``
 #: attrs rather than the store, and ``helper_num`` travels as a structured field in
 #: helper messages.
 #: ⚑ ``home`` WAS HERE AND IS NOT ANY MORE. It IS produced —
@@ -883,7 +883,7 @@ def test_a_collapse_output_is_indistinguishable_from_a_produced_sibling(leaf):
 #: the box home there is: the ``core-defaults`` row that used to bind home is gone,
 #: and the assembly seam reads this key. Declared-but-unproduced is what this tuple
 #: is for, and home no longer qualifies.
-UNPRODUCED_BOX_LEAVES = ("container_name", "helper_num")
+UNPRODUCED_BOX_LEAVES = ("container", "helper_num")
 
 
 def test_the_meta_box_declaration_matches_the_manifest():

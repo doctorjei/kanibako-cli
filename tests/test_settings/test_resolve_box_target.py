@@ -207,9 +207,9 @@ class TestWorksetMemberFromOutside:
         proj = resolve_box_target(std, config, "cluster2", initialize=False)
         assert proj.mode is BoxMode.named
         assert proj.name == "cluster2"
-        # The container name is now the real kanibako-cluster2, not a hash.
+        # The container name is now the real kb-cluster-cluster2, not a hash.
         from kanibako.utils import container_name_for
-        assert container_name_for(proj) == "kanibako-cluster2"
+        assert container_name_for(proj) == "kb-cluster-cluster2"
 
 
 # ---------------------------------------------------------------------------
