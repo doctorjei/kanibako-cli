@@ -132,10 +132,8 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
     # box was already gone — destroy-then-fail. Check before touching anything.
     #
     # ⚑ BUT ONLY WHEN THE NAME IS SOMEONE ELSE'S.  ``check_primary_box_name_free``
-    # refuses on MEMBERSHIP alone, so asking it about a box's OWN name always refuses.  Naming your
-    # own box on a restore (``extract --name mybox`` into mybox's workspace) is the
-    # single most natural way to spell this command, and unguarded it failed with a
-    # cure that told the user to delete the very box they were restoring.
+    # refuses on MEMBERSHIP alone, so asking it about a box's OWN name always refuses,
+    # and naming your own box (``extract --name mybox`` into its workspace) is natural.
     #
     # The checker is NOT widened: ``box create`` depends on its refuse-on-membership
     # semantics (a create must never land on an existing name).  The re-materialize
@@ -147,7 +145,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
         if owner != name:
             try:
                 check_primary_box_name_free(
-                    std.primary_workset, std.registry, name,
+                    std.primary_workset, name,
                     str(proj.project_path),
                 )
             except (ProjectError, WorksetError) as e:

@@ -790,7 +790,7 @@ class TestRunCreateCrossKindName:
         config = load_config(config_file)
         std = load_std_paths(config)
         register_primary_box_name(
-            std.primary_workset, std.registry, "common", str(tmp_home / "other"),
+            std.primary_workset, "common", str(tmp_home / "other"),
         )
 
         monkeypatch.setattr(

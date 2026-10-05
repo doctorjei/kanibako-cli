@@ -455,12 +455,10 @@ class HelperHub:
             if candidate.is_dir() and candidate.parent.resolve() == boxes_base.resolve():
                 source_meta_dir = candidate
 
-        # Assign + register a new name for the fork in the PRIMARY membership
-        # (was global-only before — a fork now joins the membership like any
-        # other primary box).
+        # Assign + register a new name for the fork in the PRIMARY membership.
         try:
             new_name = assign_primary_box_name(
-                ctx.primary_workset, ctx.registry, str(new_path),
+                ctx.primary_workset, str(new_path),
             )
         except Exception as e:
             return {"status": "error", "message": f"name assignment failed: {e}"}

@@ -5753,7 +5753,7 @@ def _name_new_box_probe(std, proj) -> None:
     if proj.mode is BoxMode.primary:
         from kanibako.settings.paths import pick_primary_box_name
         proj.name = pick_primary_box_name(
-            std.primary_workset, std.registry,
+            std.primary_workset,
             str(proj.project_path), boxes_dir=std.boxes,
         )
     else:
@@ -8647,8 +8647,7 @@ def _register_new_box(std, proj) -> None:
     Idempotent for the SAME box (recovery re-entry after a crash in the tiny
     register -> clear-entry window leaves the box already registered): PRIMARY
     uses :func:`paths.register_primary_box_name_if_absent` (writes the primary
-    per-workset ``boxes:`` membership — the sole store since the global
-    ``projects:`` section retired; no-op iff the identical name->path mapping is
+    per-workset ``boxes:`` membership, the sole store; no-op iff the identical name->path mapping is
     present, re-raises a real collision); STANDALONE uses
     :func:`registry_store.register_standalone` (already idempotent — overwrites a
     matching name->root).  NAMED boxes carry no deferred registry entry on create
@@ -8666,7 +8665,7 @@ def _register_new_box(std, proj) -> None:
     elif proj.mode is BoxMode.primary:
         from kanibako.settings.paths import register_primary_box_name_if_absent
         register_primary_box_name_if_absent(
-            std.primary_workset, std.registry,
+            std.primary_workset,
             proj.name, str(proj.project_path),
         )
     # NAMED: no deferred registration on create (membership written at resolve).

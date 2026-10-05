@@ -58,12 +58,12 @@ def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
 def load_primary_boxes(primary_workset: Path) -> dict[str, str]
 def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str | None
-def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str, workspace: str) -> None
+def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str) -> None
 def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None
-def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str, boxes_dir: Path | None=None) -> str
-def register_primary_box_name(primary_workset: Path, registry: Path, name: str, workspace: Path | str) -> None
-def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, name: str, workspace: Path | str) -> None
-def assign_primary_box_name(primary_workset: Path, registry: Path, workspace: Path | str, boxes_dir: Path | None=None) -> str
+def pick_primary_box_name(primary_workset: Path, workspace: str, boxes_dir: Path | None=None) -> str
+def register_primary_box_name(primary_workset: Path, name: str, workspace: Path | str) -> None
+def register_primary_box_name_if_absent(primary_workset: Path, name: str, workspace: Path | str) -> None
+def assign_primary_box_name(primary_workset: Path, workspace: Path | str, boxes_dir: Path | None=None) -> str
 def unregister_primary_box_name(primary_workset: Path, name: str) -> None
 def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPaths, config: BootstrapConfig, *, initialize: bool=False, enable_vault: bool | None=None) -> ProjectPaths
 def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Path, Path | None]]
@@ -101,7 +101,6 @@ def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
 def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None
 def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path) -> None
 def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None
-def _primary_name_domain(primary_workset: Path, registry: Path) -> set[str]
 def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: Path) -> None
 def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
 def _resolve_workset_or_connected(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
