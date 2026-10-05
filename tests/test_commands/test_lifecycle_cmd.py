@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -1495,3 +1496,194 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
         state = resolve_lifecycle_target("delta", std, config)
         assert state.mode is BoxMode.named
         assert state.owner == "workset:wsa3"
+
+
+# ---------------------------------------------------------------------------
+# a refusal's cure is the next command the user runs
+# ---------------------------------------------------------------------------
+
+def _printed_routes(err):
+    """The ``kanibako box …`` commands a refusal printed, in the order printed."""
+    return re.findall(r"`(kanibako box (?:convert|move) [^`]+)`", err)
+
+
+def _run_printed(route, *, move_dest=None):
+    """Re-dispatch a printed route to the entry point it names.
+
+    PIN BY RUNNING, NOT BY TEXT: the argv the refusal printed is what reaches
+    ``run_convert`` / ``run_move``.  Only ``<path>`` is filled in — a refusal
+    prints a placeholder where the user supplies their own destination — and
+    ``force`` stands in for the confirmation a human types.
+    """
+    argv = route.split()[2:]  # drop the leading `kanibako box`
+    verb, rest = argv[0], list(argv[1:])
+    if move_dest is not None:
+        rest = [move_dest if a == "<path>" else a for a in rest]
+
+    def flag(name):
+        return rest[rest.index(name) + 1] if name in rest else None
+
+    if verb == "convert":
+        return run_convert(_convert_args(
+            rest[0], to_workset=flag("--workset"),
+            move=(_BARE_MOVE if "--move" in rest else None),
+            name=flag("--name"),
+        ))
+    return run_move(_move_args(
+        rest[0], rest[1], to_workset=flag("--workset"), name=flag("--name"),
+    ))
+
+
+def _standalone_under_repointed(env, box="beta", ws_name="wsa", dir_name="extws"):
+    """A STANDALONE box whose ROOT sits under a repointed ``workset.workspaces``.
+
+    The repointed dir is the box root's own parent, so a destination beside it
+    is outside the workset's path space.
+    """
+    config, std, tmp_home = env
+    root = tmp_home / dir_name / box
+    root.mkdir(parents=True)
+    (root / "file.txt").write_text("keep")
+    proj = resolve_standalone_project(
+        std, config, project_dir=str(root), initialize=True,
+    )
+    ws = create_workset(ws_name, tmp_home / f"{ws_name}_root", std)
+    dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": str(root.parent)}})
+    return proj, load_workset(ws.root, ws.name)
+
+
+class TestRefusalCuresReachTheBoxTheyName:
+    """Every command an in-tree refusal prints, RUN as printed.
+
+    A bare box NAME is not a reference every mode answers to, so the reference
+    a refusal prints is the one its source's mode resolves.
+    """
+
+    def _in_place_refusal(self, env, capsys):
+        config, std, tmp_home = env
+        assert run_convert(_convert_args(str(tmp_home / "extws" / "beta"),
+                                         to_workset="wsa")) == 1
+        return _printed_routes(capsys.readouterr().err)
+
+    def _in_tree_refusal(self, env, capsys):
+        config, std, tmp_home = env
+        assert run_move(_move_args(
+            str(tmp_home / "extws" / "beta"), tmp_home / "extws" / "other",
+            to_workset="wsa",
+        )) == 1
+        return _printed_routes(capsys.readouterr().err)
+
+    @pytest.mark.parametrize("route_index", [0, 1])
+    def test_both_in_place_convert_cures_run_for_a_standalone_source(
+        self, env, capsys, route_index,
+    ):
+        """PIN: each cure the in-place convert names, run as printed, lands the
+        standalone box."""
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        routes = self._in_place_refusal(env, capsys)
+        assert len(routes) == 2
+
+        move_dest = tmp_home / "elsewhere" / "beta"
+        assert _run_printed(routes[route_index], move_dest=str(move_dest)) == 0
+
+        members = load_workset(ws.root, "wsa").projects
+        if routes[route_index].split()[2] == "convert":
+            # the member now stands at the workset's own leaf
+            assert [p.name for p in members] == [proj.name]
+            assert Path(members[0].source_path).resolve() == (
+                tmp_home / "extws" / proj.name
+            ).resolve()
+        else:
+            # moved OUT of the workset: standalone again, at the path the user gave
+            assert members == []
+            from kanibako.project import registry_store
+
+            assert list(registry_store.load_standalone(std.registry).values()) == [
+                str(move_dest)
+            ]
+
+    @pytest.mark.parametrize("route_index", [0, 1])
+    def test_both_in_tree_landing_cures_run_for_a_standalone_source(
+        self, env, capsys, route_index,
+    ):
+        """PIN: each cure the in-tree-landing refusal names, run as printed, puts
+        the member at the leaf the refusal named."""
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        routes = self._in_tree_refusal(env, capsys)
+        assert len(routes) == 2
+
+        assert _run_printed(routes[route_index]) == 0
+
+        members = load_workset(ws.root, "wsa").projects
+        assert [p.name for p in members] == [proj.name]
+        leaf = tmp_home / "extws" / proj.name
+        assert Path(members[0].source_path).resolve() == leaf.resolve()
+        assert not (tmp_home / "extws" / "other").exists()
+
+    def test_the_cure_is_a_reference_the_resolver_takes_back(self, env, capsys):
+        """PIN: the reference printed resolves to the SAME box the refusal fired
+        on, and the box's own workspace path does NOT — it is nested under the
+        root, so a root inside a workset's path space makes the mode read from
+        the path space rather than from the box."""
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        for route in self._in_place_refusal(env, capsys):
+            again = resolve_lifecycle_target(route.split()[3], std, config)
+            assert again.mode is BoxMode.standalone
+            assert again.name == proj.name
+        from kanibako.errors import WorksetError
+
+        with pytest.raises(WorksetError):
+            resolve_lifecycle_target(
+                str(tmp_home / "extws" / "beta" / "workspace"), std, config,
+            )
+
+    def test_a_standalone_is_not_reachable_by_the_name_it_prints(
+        self, env, capsys,
+    ):
+        """PIN: why the cure prints a path.  A standalone box is in no registry
+        the lifecycle route reads, so its bare name is path-ified against the
+        shell's cwd and misses — whether or not the standalone index records it."""
+        from kanibako.errors import ProjectError
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        with pytest.raises(ProjectError):
+            resolve_lifecycle_target(proj.name, std, config)
+        dump_doc(std.registry, {
+            "standalone": {proj.name: str(tmp_home / "extws" / "beta")},
+        })
+        assert proj.name in registry_store.load_standalone(std.registry)
+        with pytest.raises(ProjectError):
+            resolve_lifecycle_target(proj.name, std, config)
+
+
+class TestRelocationOutOfTheLandingLeaf:
+    """A box moving OUT of the leaf it stands in is not a collision with itself."""
+
+    def test_box_move_out_of_the_repointed_leaf_is_exempt(self, env):
+        """PIN: the unregistered-leaf exemption reads no relocation test.  The
+        whole workspace moves, the workset records the new path as an EXTERNAL
+        member, the in-path-space leaf is left as a link to it, and exactly one
+        copy of the tree exists."""
+        config, std, tmp_home = env
+        pdir = tmp_home / "extws" / "beta"
+        pdir.mkdir(parents=True)
+        (pdir / "file.txt").write_text("keep")
+        resolve_project(std, config, project_dir=str(pdir), initialize=True)
+        ws = create_workset("wsa", tmp_home / "wsa_root", std)
+        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": str(pdir.parent)}})
+
+        dest = tmp_home / "elsewhere" / "beta"
+        assert run_move(_move_args("beta", dest, to_workset="wsa")) == 0
+
+        assert pdir.is_symlink()
+        assert pdir.resolve() == dest.resolve()
+        assert (dest / "file.txt").read_text() == "keep"
+        assert load_primary_boxes(std.primary_workset) == {}
+        member = next(p for p in load_workset(ws.root, "wsa").projects
+                      if p.name == "beta")
+        assert Path(member.source_path).resolve() == dest.resolve()
