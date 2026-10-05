@@ -29,6 +29,7 @@ from pathlib import Path
 
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
+from kanibako.utils import CONTAINER_NAME_PREFIX
 from kanibako.settings.core_defaults import CANON_SEED_DENY_PREFIXES
 from kanibako.settings.settings_resolve import (
     GUEST_GID,
@@ -557,7 +558,9 @@ class ContainerRuntime:
             return None
         return image_ref_or_none(result.stdout)
 
-    def list_running(self, prefix: str = "kanibako-") -> list[tuple[str, str, str]]:
+    def list_running(
+        self, prefix: str = CONTAINER_NAME_PREFIX,
+    ) -> list[tuple[str, str, str]]:
         """Return running containers matching *prefix* as (name, image, status) tuples."""
         result = subprocess.run(
             [

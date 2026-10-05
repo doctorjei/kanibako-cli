@@ -14,10 +14,16 @@ from kanibako.errors import UserCanceled
 from kanibako.utils import (
     confirm_prompt,
     container_name_for,
+    container_name_for_box_name,
+    container_name_segments,
     cp_if_newer,
-    escape_path,
+    legacy_container_names,
+    name_segment,
     project_hash,
+    render_container_name,
+    render_socket_identity,
     short_hash,
+    workset_segment,
 )
 
 
@@ -135,80 +141,220 @@ class TestShortHash:
 
 
 # ---------------------------------------------------------------------------
-# escape_path
-# ---------------------------------------------------------------------------
-
-class TestEscapePath:
-    def test_simple_path(self):
-        assert escape_path("/home/user/project") == "home-user-project"
-
-    def test_path_with_dashes(self):
-        assert escape_path("/home/user/my-project/app") == "home-user-my-.project-app"
-
-    def test_single_component(self):
-        assert escape_path("/app") == "app"
-
-    def test_multiple_dashes(self):
-        """Multiple consecutive dashes in the path are each escaped."""
-        original = "/a-b-c"
-        encoded = escape_path(original)
-        assert encoded == "a-.b-.c"
-
-
-# ---------------------------------------------------------------------------
 # container_name_for
 # ---------------------------------------------------------------------------
 
 def _mock_proj(*, mode="primary", name="", project_path="/home/user/proj",
-               metadata_path=None,
+               metadata_path=None, group=None,
                project_hash="abcdef1234567890abcdef1234567890"):
     """Create a duck-typed ProjectPaths-like object for testing."""
     mode_ns = SimpleNamespace(value=mode)
     return SimpleNamespace(
         mode=mode_ns,
         name=name,
+        group=SimpleNamespace(name=group) if group is not None else None,
         project_path=Path(project_path),
-        # For standalone, metadata_path is the ROOT (project_path is the
-        # workspace subdir); container naming keys off the root.
         metadata_path=Path(metadata_path if metadata_path is not None else project_path),
         project_hash=project_hash,
     )
 
 
 class TestContainerNameFor:
-    def test_local_with_name(self):
+    def test_primary_with_name(self):
         proj = _mock_proj(name="myapp")
-        assert container_name_for(proj) == "kanibako-myapp"
+        assert container_name_for(proj) == "kb-primary-myapp"
 
-    def test_local_without_name_fallback(self):
+    def test_primary_without_name_fallback(self):
         proj = _mock_proj(name="")
-        assert container_name_for(proj) == f"kanibako-{short_hash(proj.project_hash)}"
+        assert container_name_for(proj) == f"kb-primary-{short_hash(proj.project_hash)}"
 
-    def test_workset_uses_hash_fallback(self):
-        proj = _mock_proj(mode="named", name="")
-        assert container_name_for(proj) == f"kanibako-{short_hash(proj.project_hash)}"
+    def test_named_carries_the_workset_name(self):
+        proj = _mock_proj(mode="named", name="myapp", group="kento")
+        assert container_name_for(proj) == "kb-kento-myapp"
 
-    def test_standalone_uses_escaped_path(self):
-        # Standalone names off the ROOT (metadata_path), not the workspace subdir.
+    def test_named_uses_hash_fallback(self):
+        proj = _mock_proj(mode="named", name="", group="kento")
+        assert container_name_for(proj) == f"kb-kento-{short_hash(proj.project_hash)}"
+
+    def test_standalone_carries_the_standalone_segment(self):
         proj = _mock_proj(
             mode="standalone",
+            name="7xk9q_ws",
             metadata_path="/home/user/my-project",
             project_path="/home/user/my-project/workspace",
         )
-        result = container_name_for(proj)
-        assert result == f"kanibako-ronin-{escape_path('/home/user/my-project')}"
-        assert result == "kanibako-ronin-home-user-my-.project"
+        assert container_name_for(proj) == "kb-standalone-7xk9q_ws"
 
-    def test_standalone_ignores_name(self):
-        """Even if a standalone project has a name, use escaped path."""
-        proj = _mock_proj(mode="standalone", name="myapp",
-                          metadata_path="/home/user/proj",
-                          project_path="/home/user/proj/workspace")
-        result = container_name_for(proj)
-        assert result.startswith("kanibako-ronin-")
-        assert "myapp" not in result
+    def test_named_without_a_workset_name_refuses(self):
+        """A NAMED box with no workset has no ``<W>`` to render."""
+        proj = _mock_proj(mode="named", name="myapp", group=None)
+        with pytest.raises(ValueError, match="workset name"):
+            container_name_for(proj)
 
     def test_local_name_with_number_suffix(self):
-        """Collision-numbered names work correctly."""
         proj = _mock_proj(name="myapp2")
-        assert container_name_for(proj) == "kanibako-myapp2"
+        assert container_name_for(proj) == "kb-primary-myapp2"
+
+
+class TestNameSegment:
+    def test_a_dash_is_written_double(self):
+        assert name_segment("a-b") == "a--b"
+
+    def test_no_dash_is_unchanged(self):
+        assert name_segment("droste") == "droste"
+
+    def test_empty_segment_renders_empty(self):
+        assert name_segment("") == ""
+
+    def test_a_name_of_only_dashes(self):
+        assert name_segment("---") == "------"
+
+    def test_non_ascii_is_untouched(self):
+        assert name_segment("\u30c9\u30ed") == "\u30c9\u30ed"
+
+
+class TestWorksetSegment:
+    def test_primary(self):
+        assert workset_segment("primary", None) == "primary"
+
+    def test_standalone(self):
+        assert workset_segment("standalone", "ignored") == "standalone"
+
+    def test_named_is_the_workset_name(self):
+        assert workset_segment("named", "kento") == "kento"
+
+    def test_named_without_a_name_refuses(self):
+        with pytest.raises(ValueError, match="workset name"):
+            workset_segment("named", None)
+
+
+class TestRenderContainerName:
+    def test_a_plain_pair(self):
+        assert render_container_name("primary", "droste") == "kb-primary-droste"
+
+    def test_a_helper_carries_its_index(self):
+        assert render_container_name("kento", "droste", 3) == "kb-kento-droste-helper-3"
+
+    def test_helper_zero_is_not_the_absent_helper(self):
+        assert render_container_name("kento", "droste", 0) == "kb-kento-droste-helper-0"
+
+    def test_escaping_happens_per_segment(self):
+        assert render_container_name("a-b", "c") == "kb-a--b-c"
+        assert render_container_name("a", "b-c") == "kb-a-b--c"
+
+
+class TestCollisions:
+    """Each pair is two DISTINCT boxes the render must not spell alike."""
+
+    def test_the_dash_boundary_is_not_a_segment_boundary(self):
+        assert render_container_name("a-b", "c") != render_container_name("a", "b-c")
+
+    def test_primary_and_named_boxes_of_one_name(self):
+        assert render_container_name("primary", "droste") != (
+            render_container_name("kento", "droste")
+        )
+
+    def test_a_box_named_like_a_helper_suffix(self):
+        assert render_container_name("primary", "x-helper-1") != (
+            render_container_name("primary", "x", 1)
+        )
+
+    def test_a_helper_of_a_box_named_like_a_helper_suffix(self):
+        assert render_container_name("primary", "x-helper-1", 1) != (
+            render_container_name("primary", "x-helper-1")
+        )
+
+    def test_two_worksets_whose_escapes_overlap(self):
+        assert render_container_name("a", "b") != render_container_name("a-b", "")
+
+
+class TestInjectivity:
+    """No two distinct triples may spell one name — the property the escape buys."""
+
+    _ADVERSARIAL = (
+        "", "-", "--", "---", "a", "a-b", "a--b", "-a", "a-", "b-c", "a-b-c",
+        "a--b--c", "\u30c9\u30ed", "\u0440\u043e", "x-helper-1", "helper-1",
+        "1", "0", "0-helper-0", "primary", "standalone", "kento", " " * 3,
+        "a b", "A", "aA", "\u00e9", "\u00e9-", "-e\u0301", "tab\tsep",
+    )
+
+    def test_no_two_triples_collide(self):
+        seen: dict[str, tuple[str, str, object]] = {}
+        for workset in self._ADVERSARIAL:
+            for box in self._ADVERSARIAL:
+                for helper in (None, 0, 1, 7):
+                    name = render_container_name(workset, box, helper)
+                    key = (workset, box, helper)
+                    if name in seen:
+                        assert seen[name] == key, (
+                            f"{name!r} is spelled by both {seen[name]!r} and {key!r}"
+                        )
+                    seen[name] = key
+
+    def test_the_same_triple_is_stable(self):
+        assert render_container_name("a-b", "c", 2) == render_container_name("a-b", "c", 2)
+
+    def test_a_200_byte_name_still_renders_uniquely(self):
+        long_a = "a" * 100 + "-" + "b" * 99
+        long_b = "a" * 100 + "--" + "b" * 98
+        assert render_container_name(long_a, "x") != render_container_name(long_b, "x")
+
+
+class TestRenderSocketIdentity:
+    def test_the_two_segments_lead_with_the_box(self):
+        assert render_socket_identity("droste", "primary") == "droste-primary"
+
+    def test_the_dash_boundary_is_not_a_segment_boundary(self):
+        assert render_socket_identity("a-b", "c") != render_socket_identity("a", "b-c")
+
+    def test_a_name_of_only_dashes(self):
+        assert render_socket_identity("-", "-") == "----"
+
+
+class TestContainerNameSegments:
+    def test_primary(self):
+        assert container_name_segments(_mock_proj(name="myapp")) == ("primary", "myapp")
+
+    def test_named(self):
+        segs = container_name_segments(_mock_proj(mode="named", name="myapp", group="kento"))
+        assert segs == ("kento", "myapp")
+
+    def test_the_pair_renders_to_the_name(self):
+        proj = _mock_proj(mode="named", name="myapp", group="kento")
+        assert render_container_name(*container_name_segments(proj)) == (
+            container_name_for(proj)
+        )
+
+
+class TestContainerNameForBoxName:
+    def test_the_workset_is_part_of_the_name(self):
+        assert container_name_for_box_name("droste", "kento") == "kb-kento-droste"
+
+    def test_the_same_name_in_two_worksets(self):
+        assert container_name_for_box_name("droste", "kento") != (
+            container_name_for_box_name("droste", "juno")
+        )
+
+
+class TestLegacyContainerNames:
+    """The pre-``kb-`` spellings, one carrier, for the upgrade guard alone."""
+
+    def test_a_primary_box(self):
+        assert legacy_container_names(_mock_proj(name="myapp")) == ("kanibako-myapp",)
+
+    def test_a_named_box_carried_no_workset(self):
+        assert legacy_container_names(
+            _mock_proj(mode="named", name="myapp", group="kento")
+        ) == ("kanibako-myapp",)
+
+    def test_a_nameless_box_fell_back_to_its_hash(self):
+        proj = _mock_proj(name="")
+        assert legacy_container_names(proj) == (f"kanibako-{short_hash(proj.project_hash)}",)
+
+    def test_a_standalone_box_keyed_off_its_root(self):
+        proj = _mock_proj(
+            mode="standalone", name="7xk9q_ws",
+            metadata_path="/home/user/my-project",
+            project_path="/home/user/my-project/workspace",
+        )
+        assert legacy_container_names(proj) == ("kanibako-ronin-home-user-my-.project",)

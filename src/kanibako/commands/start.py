@@ -91,7 +91,10 @@ from kanibako.agent_ref import (
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
-from kanibako.utils import container_name_for, short_hash
+from kanibako.utils import (
+    container_name_for, container_name_segments, legacy_container_names,
+    render_socket_identity, short_hash,
+)
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
 # :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker
 # write-side hook command; IMPORTED rather than re-derived so this file's
@@ -2426,7 +2429,7 @@ def _start_helper_hub(
     helper_ctx = HelperContext(
         runtime=runtime,
         image=image,
-        container_name_prefix=container_name,
+        container_name_segments=container_name_segments(proj),
         shell_path=proj.shell_path,
         helpers_dir=helpers_dir,
         socket_path=socket_path,
@@ -2832,6 +2835,11 @@ def _run_container(
                 file=sys.stderr,
             )
             return 1
+
+    legacy_refusal = _refuse_legacy_container(runtime, proj)
+    if legacy_refusal:
+        print(legacy_refusal, file=sys.stderr)
+        return 1
 
     # Reattach fast-source: for a PERSISTENT box that is ALREADY RUNNING, the
     # box's identity is its container name (agent-independent) and `kanibako
@@ -9932,16 +9940,36 @@ def bounded_socket_name(identity: str, run_dir: Path) -> str:
 
 def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path:
     """Return *proj*'s host helper socket, named from ``<box name>-<workset name>``."""
-    from kanibako.channels.channels import workset_name_token
-
     # ``meta.box.name`` is ``proj.name``; a nameless box has no identity to render.
     if not proj.name:
         raise ValueError("box has no name; cannot derive its helper socket name.")
+    workset, box = container_name_segments(proj)
     socket_path = run_dir / bounded_socket_name(
-        f"{proj.name}-{workset_name_token(proj)}", run_dir,
+        render_socket_identity(box, workset), run_dir,
     )
     validate_socket_path(socket_path)
     return socket_path
+
+
+def _refuse_legacy_container(runtime, proj: ProjectPaths) -> str | None:
+    """Return the refusal for a box still running under its pre-``kb-`` name, else ``None``.
+
+    A container started by an earlier release holds a name no current verb addresses,
+    so launching under the rendered one would leave TWO live containers for one box.
+    The cure is named in the message; nothing is stopped here.
+    """
+    for legacy in legacy_container_names(proj):
+        if not runtime.is_running(legacy):
+            continue
+        return (
+            f"Error: box '{proj.name}' is still running as '{legacy}', the name it "
+            f"had before the container naming change. Starting it again would "
+            f"leave two boxes running, so this is refused. Stop it, then start "
+            f"it again:\n"
+            f"  kanibako stop {proj.name}\n"
+            f"  podman stop {legacy}"
+        )
+    return None
 
 
 def validate_socket_path(socket_path: Path) -> None:
