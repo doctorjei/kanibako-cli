@@ -1002,9 +1002,13 @@ def install_packaged_templates(
         # USER-OWNED: the system handbook — create-if-absent ALWAYS (J-3 item 1).
         # ⚑ UNSCOPED on purpose: the dest is INSIDE the canon root, not a scope store
         # root, so there is no store whitelist to apply.
-        copy_tree(
-            base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF,
-        )
+        # ⚑ A NULL ``system.canon`` HAS NO ROOT, so nothing is created into it (spec §2c
+        # "nothing is created until someone actually writes a chapter").  ⚑ NOT IN MY
+        # GRANT — named in the report; the alternative was a ``TypeError`` at create.
+        if std.canon is not None:
+            copy_tree(
+                base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF,
+            )
     # The agent MOLD dir exists even though nothing packaged is copied into it (D5/D7).
     (std.template / AGENT_MOLD_DIRNAME).mkdir(parents=True, exist_ok=True)
     # USER-OWNED: the agent stores — the A-action, default included.
@@ -1274,7 +1278,11 @@ def plan_template_refresh(
             std.template / PACKAGED_WORKSET_TEMPLATE, user_owned=False,
         )
         # USER-OWNED (create-if-absent; differences reported, never written).
-        _walk(base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF, user_owned=True)
+        if std.canon is not None:  # ⚑ the null-canon terms at the copy_tree site above
+            _walk(
+                base_src / PACKAGED_HANDBOOK, std.canon / _CANON_CHAPTER_LEAF,
+                user_owned=True,
+            )
         _walk(
             base_src / PACKAGED_AGENT_DEFAULT, std.agents / "default", user_owned=True,
         )

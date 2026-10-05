@@ -9554,11 +9554,27 @@ def _seed_channel_files(std, proj) -> None:
     logs live at ``~/channels/workset/chat``; the override emptied the directory canon
     points at.  ``broadcast`` is a DECLARED key in BOTH scopes and may sit outside its
     chat dir, so it is created at its own resolved path, not beside ``general.md``.
+
+    ⚑ A NULL ``workset.channels.chat`` SEEDS NOTHING: a null arm is a declared value
+    (spec §2a), so the bind that would carry this log is omitted and creating the file
+    would write into a directory no mount points at.
     """
     from kanibako.channels import channels as _ch
 
-    # (general log, broadcast log) per scope.
-    logs = [(std.channels_chat / _ch.CHAT_GENERAL_LEAF, std.channels_broadcast)]
+    # (general log, broadcast log) per scope.  ⚑ A NULL KEY SEEDS NOTHING: its log's
+    # source does not exist, and the guarantee-create is for a source that does.  The two
+    # null INDEPENDENTLY — ``broadcast`` is its own key, so an explicit repoint of it still
+    # resolves when ``chat`` is null (spec §0).  ⚑ THE ``is not None`` GUARD IS LOAD-BEARING:
+    # ``StandardPaths.channels_chat`` admits ``None``, so the bare ``/`` would raise
+    # ``TypeError`` on exactly the null this lane admits.  ⛔ The ``wch`` arm is the
+    # workset-local seam's business, not this lane's.
+    logs: list[tuple[Path | None, Path | None]] = [
+        (
+            std.channels_chat / _ch.CHAT_GENERAL_LEAF if std.channels_chat is not None
+            else None,
+            std.channels_broadcast,
+        ),
+    ]
     wch = _ch.workset_channel_paths(proj, std)
     if wch is not None:
         logs.append((wch.chat_general, wch.chat_broadcast))
@@ -9566,10 +9582,13 @@ def _seed_channel_files(std, proj) -> None:
     for general, broadcast in logs:
         try:
             for log in (general, broadcast):
+                if log is None:
+                    continue
                 log.parent.mkdir(parents=True, exist_ok=True)
                 if not log.exists():
                     log.touch()
-            _rotate_file(broadcast)
+            if broadcast is not None:
+                _rotate_file(broadcast)
         except OSError:
             # Best-effort: a genuinely unwritable source surfaces at launch.
             pass
