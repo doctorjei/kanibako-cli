@@ -44,6 +44,7 @@ from kanibako.project.names import cross_kind_shadow_hatch, register_name
 from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.settings.bootstrap import STANDALONE_META_DIR
+from kanibako.settings.workset_dirkeys import EarlyScope
 
 logger = get_logger("import_reconcile")
 
@@ -188,7 +189,7 @@ def import_standalone(
 
 def import_named_workset(
     registry: Path, root: Path, *,
-    primary_workset: Path, journal: Path | None = None,
+    primary_workset: Path, journal: Path | None = None, early: EarlyScope | None = None,
 ) -> str | None:
     """Reconcile an on-disk workset at *root* against ``registry.worksets``.
 
@@ -200,6 +201,7 @@ def import_named_workset(
     ⚑ *primary_workset* is REQUIRED, not defaulted: it is the sole input to the
     cross-kind check below, and a caller free to omit it would import a shadowed
     workset without the one warning that tells the user how to reach it.
+    *early* scopes that PRIMARY-membership read; callers pass the primary partition's scope.
     """
     root = root.resolve()
     root_str = str(root)
@@ -244,7 +246,7 @@ def import_named_workset(
 
     # ⚑ Case-blind (spec §0, ⚑ NAMING RULES) — the twin of the shadow WARN in
     # ``names.resolve_name``, and it must see the same collisions that one does.
-    if find_identifier(name, load_primary_boxes(primary_workset)) is not None:
+    if find_identifier(name, load_primary_boxes(primary_workset, early=early)) is not None:
         logger.warning(
             "imported workset '%s' shares its bare name with a primary box; the "
             "bare name resolves to the box, so %s.",
