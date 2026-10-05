@@ -29,20 +29,23 @@ called ``@config.registry`` is not.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from kanibako.errors import ConfigError
 from kanibako.settings.agent_config import (
     ambiguous_path_value_error,
     is_unambiguous_path_value,
 )
-from kanibako.settings.bootstrap import BOXES_PATH, LOGS_PATH, WORKSPACES_PATH
+from kanibako.settings.bootstrap import (
+    BOXES_PATH, LOGS_PATH, SYSTEM_PATH_DEFAULTS, WORKSPACES_PATH,
+)
 from kanibako.settings.config import WORKSET_META_FILE, ref_order_error, system_settings_path
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 from kanibako.settings.settings_resolve import (
-    UNSET, ResolveCtx, SettingsError, _Unset, expand_expr,
+    UNSET, ResolveCtx, SettingsError, _Unset, expand_expr, literal_map,
 )
 
 #: The one non-``workset.*`` ``@``-ref a workset dir key can resolve before a snapshot
@@ -105,6 +108,89 @@ def early_repoint(
     system_file = system_settings_path()
     value = _stored_repoint(load_doc(system_file), key)
     return value, (own_file if value is UNSET else system_file)
+
+
+@dataclass(frozen=True)
+class EarlySystem:
+    """The EARLY SYSTEM TIER as DATA — read once, passed down, never re-read.
+
+    ⚑ WHY A RECORD RATHER THAN A RE-READ.  Each early reader used to open the system settings
+    file for itself (:func:`early_repoint`'s ``load_doc``), so one command could read that file
+    several times and see a different tier in each read than the path resolve had already
+    settled.  This record IS the file's early contribution, settled once at the load and
+    carried by :class:`~kanibako.settings.paths.StandardPaths`.
+
+    ``tier``
+        The raw ``workset.<key>`` values the system settings file carries, dotted and stored
+        as written; a present null is ``None``.  A key the file does not state is OMITTED, so
+        ``k in tier`` means "this file states it" — the same line :func:`_stored_repoint`
+        draws with :data:`UNSET`.
+    ``file``
+        The system settings path: the file a refusal names.
+    ``system_paths``
+        The resolved ``system.*`` tier, dotted, each value a
+        :func:`~kanibako.settings.settings_resolve.literal_expr` — the same shape and the same
+        values as :func:`~kanibako.settings.paths.system_path_floor`.  EMPTY when
+        ``system_refusal`` is set: those values were dropped, so there is nothing here to name.
+    ``system_refusal``
+        The text of a ``system:``-table refusal that TOLERANCE dropped, else ``None``.  ⚑ Set
+        only where the document LOADED and its ``system:`` table was refused.  A document that
+        does not load empties the whole tier instead, and carries no refusal text — the two
+        tolerance arms are deliberately not the same thing.
+    """
+
+    tier: dict[str, str | None]
+    file: Path
+    system_paths: dict[str, str]
+    system_refusal: str | None = None
+
+
+class EarlyScope(NamedTuple):
+    """What an early reader needs to resolve without a launch snapshot: the tier, and the name.
+
+    ``workset_name`` rides beside the tier so a reader never has to go find it — from
+    ``Workset.name``, the registry key, or the reserved partition name of the mode.
+    """
+
+    system: EarlySystem
+    workset_name: str
+
+
+def early_tier(doc: Mapping[str, Any] | None) -> dict[str, str | None]:
+    """Every ``workset.*`` EARLY value *doc* carries, dotted — the system tier, as data.
+
+    Built on :func:`_stored_repoint`, the ONE extractor, so this and the cascade read the same
+    slot the same way.  A key the document does not state is OMITTED (``UNSET`` is not a
+    value); a present null is ``None``.
+    """
+    tier: dict[str, str | None] = {}
+    for key in WORKSET_EARLY_KEYS:
+        value = _stored_repoint(doc, key)
+        if isinstance(value, _Unset):
+            continue
+        tier[f"workset.{key}"] = value
+    return tier
+
+
+def early_system(set_values: Mapping[str, str | None],
+                resolved: Mapping[str, Path],
+                *, system_refusal: str | None = None) -> EarlySystem:
+    """Build the record from the merged set-values and the resolved tier.  PURE — reads no file.
+
+    *set_values* carries the early tier among its ``workset.`` entries (see
+    :func:`~kanibako.settings.paths._path_tier_set_values`); *resolved* is the resolved path
+    tier, which supplies both ``config.settings`` — the file a refusal names — and every
+    ``system.*`` value.
+    """
+    return EarlySystem(
+        tier={k: v for k, v in set_values.items() if k.startswith("workset.")},
+        file=resolved["config.settings"],
+        system_paths=(
+            {} if system_refusal is not None
+            else literal_map({key: str(resolved[key]) for key in SYSTEM_PATH_DEFAULTS})
+        ),
+        system_refusal=system_refusal,
+    )
 
 
 def _host_ctx() -> ResolveCtx:

@@ -61,6 +61,7 @@ from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
 
 if TYPE_CHECKING:
     from kanibako.settings.keystore import KeyStore
+    from kanibako.settings.workset_dirkeys import EarlySystem
 
 
 class BoxMode(Enum):
@@ -122,6 +123,11 @@ class StandardPaths:
     primary_vault_rw: Path | None
     # ``None`` when the PRIMARY ``workset.logs`` is a present ``<None>``: no logs dir.
     primary_logs: Path | None
+    # ⚑ The EARLY SYSTEM TIER as DATA: the system settings file's raw ``workset.*`` values,
+    # the resolved ``system.*`` tier, and any ``system:``-table refusal that tolerance
+    # dropped.  Read ONCE at this load and carried from here, so an early reader never opens
+    # that file again to answer a question this load already settled.
+    early_system: EarlySystem
 
 
 @dataclass(frozen=True)
@@ -508,7 +514,7 @@ def _refuse_bare_relative(key: str, raw: object, default: str, *,
     ))
 
 
-def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home: Path,
+def resolve_config_paths(set_values: Mapping[str, str | None], *, data_home: Path, home: Path,
                          xdg_vars: Mapping[str, str] | None = None) -> dict[str, str]:
     """Resolve the Layer-1 CONFIG-key foundation to concrete host paths (flat by design).
 
@@ -537,7 +543,7 @@ def resolve_config_paths(set_values: Mapping[str, str], *, data_home: Path, home
     return resolved
 
 
-def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str], *,
+def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterable[str], *,
                               data_home: Path, home: Path, xdg_vars: Mapping[str, str],
                               ) -> tuple[dict[str, str], dict[str, Path]]:
     """Resolve *keys* of the Layer-2 ``system.*`` table over the Layer-1 foundation.
@@ -589,9 +595,15 @@ def _resolve_system_path_keys(set_values: Mapping[str, str], keys: Iterable[str]
     return config, resolved
 
 
-def resolve_system_paths(set_values: Mapping[str, str],
-                         *, data_home: Path, home: Path) -> dict[str, Path]:
-    """Resolve the path tier (Layer-1 ``config.*`` + Layer-2 ``system.*``) to concrete host paths."""
+def _resolve_system_tier(set_values: Mapping[str, str | None], *, data_home: Path, home: Path,
+                         system_refusal: str | None = None,
+                         ) -> tuple[dict[str, Path], EarlySystem]:
+    """Resolve the whole path tier AND build the early-system record from the SAME inputs.
+
+    The single implementation; :func:`resolve_system_paths` and :func:`load_system_tier` are
+    its two projections.  *system_refusal* is the text tolerance dropped upstream
+    (:func:`_path_tier_set_values`); a direct caller passes none, because no tolerance ran.
+    """
     config, resolved = _resolve_system_path_keys(set_values, SYSTEM_PATH_DEFAULTS,
                                                  data_home=data_home, home=home,
                                                  xdg_vars=host_xdg_map(data_home))
@@ -635,7 +647,19 @@ def resolve_system_paths(set_values: Mapping[str, str],
     primary_logs = resolve_workset_logs(pw, pw_settings)
     if primary_logs is not None:
         resolved["_primary_logs"] = primary_logs
-    return resolved
+
+    # ⚑ The record is built HERE, after ``system.*`` resolved, so it carries the RESOLVED tier
+    # rather than a second read of the file.  The primary-root reads above still open the
+    # settings file for themselves; feeding them this record is S2a's change (decision 5).
+    from kanibako.settings.workset_dirkeys import early_system
+
+    return resolved, early_system(set_values, resolved, system_refusal=system_refusal)
+
+
+def resolve_system_paths(set_values: Mapping[str, str | None],
+                         *, data_home: Path, home: Path) -> dict[str, Path]:
+    """Resolve the path tier (Layer-1 ``config.*`` + Layer-2 ``system.*``) to concrete host paths."""
+    return _resolve_system_tier(set_values, data_home=data_home, home=home)[0]
 
 
 def host_config_map(std: StandardPaths) -> dict[str, str]:
@@ -765,8 +789,15 @@ def layer1_set_values(user_config_path: Path) -> dict[str, str]:
 
 def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path,
                           xdg_vars: Mapping[str, str],
-                          tolerate_bad_settings: bool = False) -> dict[str, str]:
-    """The path tier's merged SET-VALUES: ``/etc`` config base < user config < SETTINGS file.
+                          tolerate_bad_settings: bool = False,
+                          ) -> tuple[dict[str, str | None], str | None]:
+    """The path tier's merged SET-VALUES, and the text of a dropped ``system:`` refusal.
+
+    Returns ``(set_values, system_refusal)``.  The set-values carry the Layer-1 ``config.*``
+    base, the Layer-2 ``system.*`` path tier, AND the early ``workset.*`` tier — the early keys
+    ride in the SAME mapping so :func:`resolve_system_paths` needs no extra parameter and no
+    second read of the settings file.  ``system_refusal`` is the text of a ``system:``-table
+    refusal that tolerance dropped, else ``None``.
 
     ⚑⚑ THE SETTINGS FILE IS THE TOP LAYER, AND IT IS THE WHOLE POINT OF THE THIRD
     ``update`` BELOW.  ``system.{template,canon,runtime,cache,backup,channelroot}`` and
@@ -800,31 +831,83 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
     file, while ``system_path_set_values`` walks the ``system:`` table.  The one filter left
     below is the P13 path-tier selection, which is a different question.
 
-    ⚑ *tolerate_bad_settings* lets a SETTINGS file that will not parse contribute
-    nothing; the CONFIG files above are still read strictly.
+    ⚑⚑ *tolerate_bad_settings* SPLITS IN TWO ARMS, because the one ``try`` it used to be
+    covered both cases with one answer, and the two cases must NOT have the same answer.  The
+    CONFIG files above are still read strictly either way.
+      1. **The document does not load** — ``load_doc`` refuses it: invalid YAML, a duplicate
+         key, not a mapping.  Nothing in the file is readable, so tolerance drops BOTH the
+         ``system:`` table AND the early tier.  This is the only arm that empties the tier,
+         and it is what E2 review finding 2 pins: ``stop`` degrades on a malformed system
+         file as base did.
+      2. **The document loads, but its ``system:`` table is refused** — a null ``system.*``
+         path.  Tolerance drops ONLY the ``system:`` set-values, so ``system.*`` takes its
+         defaults as it always has, and KEEPS the early tier, which was read from the loaded
+         document BEFORE this read.  The refusal text is returned so it can ride in
+        :class:`~kanibako.settings.workset_dirkeys.EarlySystem` rather than vanish.
     """
-    # ⚑ Lazy import to avoid a config <-> paths import cycle at module load — do not hoist.
-    from kanibako.settings.config import system_path_set_values
+    # ⚑ Lazy imports to avoid a config <-> paths import cycle at module load — do not hoist.
+    from kanibako.settings.config import system_table_set_values
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.workset_dirkeys import early_tier
 
-    raw = layer1_set_values(user_config_path)
-    config = resolve_config_paths(raw, data_home=data_home, home=home, xdg_vars=xdg_vars)
+    layer1 = layer1_set_values(user_config_path)
+    config = resolve_config_paths(layer1, data_home=data_home, home=home, xdg_vars=xdg_vars)
+    settings_path = Path(config["config.settings"])
+    # ⚑ The merged mapping widens to ``str | None`` because the EARLY tier carries a present
+    # null as ``None``.  Layer 1 never holds one, so it stays ``str`` on its own.
+    merged: dict[str, str | None] = dict(layer1)
+
+    # ⚑ ONE OPEN feeds BOTH tiers.  The early tier is taken from the loaded document BEFORE
+    # the ``system:`` table is read, because the two have different tolerance arms and the
+    # early keys must survive the one the table does not.
     try:
-        stored = system_path_set_values(Path(config["config.settings"]))
+        doc = load_doc(settings_path)
     except ConfigError:
+        # ARM 1 — the document does not load.  Nothing here is readable.
         if not tolerate_bad_settings:
             raise
-        stored = {}
-    raw.update({k: v for k, v in stored.items() if k in SYSTEM_PATH_DEFAULTS})
-    return raw
+        return merged, None
+
+    tier = early_tier(doc)
+    try:
+        stored = system_table_set_values(settings_path, doc)
+    except ConfigError as exc:
+        # ARM 2 — the document loaded; its ``system:`` table is refused.  Keep the early tier.
+        if not tolerate_bad_settings:
+            raise
+        merged.update(tier)
+        return merged, str(exc)
+
+    merged.update({k: v for k, v in stored.items() if k in SYSTEM_PATH_DEFAULTS})
+    merged.update(tier)
+    return merged, None
+
+
+def load_system_tier(user_config_path: Path, *, data_home: Path, home: Path,
+                      tolerate_bad_settings: bool = False,
+                      ) -> tuple[dict[str, Path], EarlySystem]:
+    """Resolve the whole path tier AND return the early-system record, from the files that set it.
+
+    THE ONE loader.  :func:`load_system_config` is this projected to the resolved tier, so the
+    two can never disagree about what the files said.
+    """
+    raw, system_refusal = _path_tier_set_values(
+        user_config_path, data_home=data_home, home=home,
+        xdg_vars=host_xdg_map(data_home), tolerate_bad_settings=tolerate_bad_settings,
+    )
+    return _resolve_system_tier(raw, data_home=data_home, home=home,
+                               system_refusal=system_refusal)
 
 
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path,
                        tolerate_bad_settings: bool = False) -> dict[str, Path]:
-    """Resolve the whole path tier to concrete host paths, from the files that set it."""
-    raw = _path_tier_set_values(user_config_path, data_home=data_home, home=home,
-                                xdg_vars=host_xdg_map(data_home),
-                                tolerate_bad_settings=tolerate_bad_settings)
-    return resolve_system_paths(raw, data_home=data_home, home=home)
+    """Resolve the whole path tier to concrete host paths, from the files that set it.
+
+    :func:`load_system_tier` projected to the resolved tier; use that one when the
+    early-system record is wanted as well.
+    """
+    return load_system_tier(user_config_path, data_home=data_home, home=home,
+                           tolerate_bad_settings=tolerate_bad_settings)[0]
 
 
 def resolve_data_path(*, config_home: Path | None = None,
@@ -899,8 +982,8 @@ def resolve_state_path(*, config_home: Path | None = None,
                                                       XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
     xdg_vars = spec_default_xdg_map(dh)
     try:
-        raw = _path_tier_set_values(config_file_path(ch), data_home=dh, home=Path.home(),
-                                    xdg_vars=xdg_vars)
+        raw, _system_refusal = _path_tier_set_values(config_file_path(ch), data_home=dh,
+                                                     home=Path.home(), xdg_vars=xdg_vars)
         _, resolved = _resolve_system_path_keys(raw, ("system.state",), data_home=dh,
                                                 home=Path.home(), xdg_vars=xdg_vars)
         return resolved["system.state"]
@@ -935,8 +1018,8 @@ def resolve_cache_path(*, config_home: Path | None = None,
                                                       XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
     xdg_vars = spec_default_xdg_map(dh)
     try:
-        raw = _path_tier_set_values(config_file_path(ch), data_home=dh, home=Path.home(),
-                                    xdg_vars=xdg_vars)
+        raw, _system_refusal = _path_tier_set_values(config_file_path(ch), data_home=dh,
+                                                     home=Path.home(), xdg_vars=xdg_vars)
         _, resolved = _resolve_system_path_keys(raw, ("system.cache",), data_home=dh,
                                                 home=Path.home(), xdg_vars=xdg_vars)
         return resolved["system.cache"]
@@ -971,8 +1054,10 @@ def load_std_paths(config: BootstrapConfig | None = None, *,
         config = load_config(config_file)
 
     # Resolve the system-level path tier from the CONFIG file set: /etc base < user-global.
-    resolved = load_system_config(config_file, data_home=data_home, home=Path.home(),
-                                  tolerate_bad_settings=tolerate_bad_settings)
+    # ⚑ ``load_system_tier``, not ``load_system_config``: this load is the ONE place the
+    # settings file is read, and the early tier it carries rides out on the record below.
+    resolved, early = load_system_tier(config_file, data_home=data_home, home=Path.home(),
+                                       tolerate_bad_settings=tolerate_bad_settings)
     data_path = resolved["config.data"]
 
     return StandardPaths(config_home=config_home, data_home=data_home, state_home=state_home,
@@ -993,7 +1078,8 @@ def load_std_paths(config: BootstrapConfig | None = None, *,
                      boxes=resolved["_primary_boxes"],
                      primary_vault_ro=resolved.get("_primary_vault_ro"),
                      primary_vault_rw=resolved.get("_primary_vault_rw"),
-                     primary_logs=resolved.get("_primary_logs"))
+                     primary_logs=resolved.get("_primary_logs"),
+                     early_system=early)
 
 
 def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None, *,

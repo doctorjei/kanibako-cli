@@ -2701,3 +2701,223 @@ class TestPathLeafDefaultsHaveOneCarrier:
             "settings/messages.py may import ONLY kanibako.settings.bootstrap "
             f"(a terminal leaf); found {imports}"
         )
+
+
+class TestEarlySystemTierIsData:
+    """S1 (plan decision 4): the EARLY SYSTEM TIER is read ONCE and carried as a record.
+
+    Before S1, ``_path_tier_set_values`` read the settings file for the ``system:`` table and
+    ``early_repoint`` opened it AGAIN for the ``workset.*`` keys, under ONE ``try`` that gave
+    both reads the SAME tolerance answer.  S1 loads the document once, takes the early tier
+    from it BEFORE the table read, and splits tolerance into the two arms that must never be
+    confused:
+
+      * a document that does NOT load drops BOTH the ``system:`` table AND the early tier;
+      * a document that loads but whose ``system:`` table is refused drops ONLY the
+        ``system:`` set-values, KEEPS the early tier, and records the refusal text.
+
+    MUTATION: collapse the two arms back into one ``try`` and the null-``system.canon`` cases
+    red, because the early tier would vanish along with the table.
+    """
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+
+    def _paths(self):
+        """The user CONFIG file and the SYSTEM SETTINGS file Layer 1 points at."""
+        from kanibako.settings.config import config_file_path, system_settings_path
+        from kanibako.settings.paths import user_config_home, xdg
+
+        return (
+            config_file_path(user_config_home()),
+            system_settings_path(),
+            xdg("XDG_DATA_HOME", ".local/share"),
+        )
+
+    def _settings(self, text: str) -> Path:
+        """Write the SYSTEM SETTINGS file where Layer 1 points, and return its path."""
+        from kanibako.settings.config import system_settings_path
+
+        sp = system_settings_path()
+        sp.parent.mkdir(parents=True, exist_ok=True)
+        sp.write_text(text)
+        return sp
+
+    def _tier(self, *, tolerate: bool = False):
+        """``load_system_tier`` against the isolated Layer-1 file."""
+        from kanibako.settings.paths import load_system_tier
+
+        cfg, _sp, data_home = self._paths()
+        return load_system_tier(cfg, data_home=data_home, home=Path.home(),
+                               tolerate_bad_settings=tolerate)
+
+    def _std(self):
+        """A real ``StandardPaths`` off an initialized (empty) Layer-1 file."""
+        from kanibako.settings.config import config_file_path, load_config, write_global_config
+        from kanibako.settings.paths import load_std_paths, user_config_home
+
+        cfg = config_file_path(user_config_home())
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        if not cfg.exists():
+            write_global_config(cfg)
+        return load_std_paths(load_config(cfg))
+
+    def _count_reads(self, monkeypatch, target: Path) -> dict:
+        """Count reads of *target*; ``load_doc`` reaches the file through ``Path.read_text``."""
+        counts = {"n": 0}
+        real = Path.read_text
+
+        def spy(self, *a, **kw):
+            if Path(self) == target:
+                counts["n"] += 1
+            return real(self, *a, **kw)
+
+        monkeypatch.setattr(Path, "read_text", spy)
+        return counts
+
+    # ── the two tolerance arms ───────────────────────────────────────────────
+
+    @pytest.mark.parametrize("text, arm", [
+        ("- a\n- b\n", "the document does not load"),
+        ("system:\n  canon: null\n", "it loads, the system: table is refused"),
+    ])
+    def test_strict_raises_in_both_arms(self, tmp_home, text, arm):
+        """Neither arm is a silent anything on the strict read: both raise ``ConfigError``."""
+        self._settings(text)
+        with pytest.raises(ConfigError):
+            self._tier()
+
+    def test_a_document_that_does_not_load_empties_the_tier(self, tmp_home):
+        """ARM 1 at the tier build: the file is indistinguishable from NO file at all.
+
+        Nothing in it can be read, so BOTH the ``system:`` table AND the early tier are
+        dropped, and there is no refusal text to carry.  This is the only arm that empties
+        the tier, and it is what E2 review finding 2 pins.
+
+        ⚑ Asserted on ``_path_tier_set_values``, the arm's OWN seam.  Through
+        ``load_system_tier`` this still raises, because the four primary-root reads inside
+        ``resolve_system_paths`` re-open the file unguarded -- that is exactly the second
+        open S2a removes, and why the malformed-settings ``test_stop.py`` cases stay red
+        until S2b rather than turning green here.
+        """
+        from kanibako.settings.paths import _path_tier_set_values, host_xdg_map
+
+        cfg, _s, data_home = self._paths()
+        kw = dict(data_home=data_home, home=Path.home(), xdg_vars=host_xdg_map(data_home))
+        baseline, baseline_refusal = _path_tier_set_values(
+            cfg, **kw, tolerate_bad_settings=True,
+        )
+
+        self._settings("- a\n- b\n")
+        values, refusal = _path_tier_set_values(cfg, **kw, tolerate_bad_settings=True)
+
+        assert refusal is None
+        assert baseline_refusal is None
+        assert values == baseline
+        assert not any(k.startswith(("workset.", "system.")) for k in values)
+
+    def test_a_refused_system_table_keeps_the_early_tier(self, tmp_home):
+        """ARM 2 under tolerance: the table goes, the EARLY TIER STAYS, the refusal is kept.
+
+        A null ``system.canon`` refuses the ``system:`` table.  The early keys were read from
+        the loaded document BEFORE that read, so they survive -- which is what lets the
+        per-owner check (decision 9) still run, and a valid ``workset.registry`` still be read.
+        """
+        baseline, _ = self._tier(tolerate=True)   # NO settings file yet: the declared defaults
+        self._settings(
+            "system:\n  canon: null\n"
+            "workset:\n  boxes: /srv/kb\n  registry: /srv/reg.yaml\n",
+        )
+
+        resolved, rec = self._tier(tolerate=True)
+        assert rec.tier["workset.boxes"] == "/srv/kb"
+        assert rec.tier["workset.registry"] == "/srv/reg.yaml"
+        assert rec.system_refusal is not None
+        assert "canon" in rec.system_refusal
+        # The resolved-system carrier is EMPTY when the refusal is set.
+        assert rec.system_paths == {}
+        # The dropped table really is gone: system.canon falls back to its declared default.
+        assert resolved["system.canon"] == baseline["system.canon"]
+        # ...while the early tier the file DID state is live.
+        assert resolved["_primary_boxes"] == Path("/srv/kb")
+
+    # ── the record's contents ────────────────────────────────────────────────
+
+    def test_the_record_holds_the_raw_early_values_including_a_present_null(self, tmp_home):
+        """``tier`` is the file's raw ``workset.*``: a present null is ``None``, an ABSENT
+        key is not in the mapping at all, and ``file`` is the path a refusal names."""
+        sp = self._settings("workset:\n  boxes: /srv/kb\n  logs: null\n")
+
+        _resolved, rec = self._tier()
+        assert rec.tier["workset.boxes"] == "/srv/kb"
+        assert rec.tier["workset.logs"] is None
+        assert "workset.registry" not in rec.tier
+        assert rec.file == sp
+        assert rec.system_refusal is None
+
+    def test_system_paths_are_the_resolved_tier_built_after_the_resolve(self, tmp_home):
+        """The record carries the RESOLVED ``system.*``, which is only possible because it is
+        built AFTER the resolve -- not a second read of the stored expression."""
+        self._settings(
+            "system:\n  canon: '@config.data/global/canon'\n"
+            "workset:\n  boxes: /srv/kb\n",
+        )
+
+        resolved, rec = self._tier()
+        assert rec.system_paths["system.canon"].endswith("/kanibako/global/canon")
+        assert "@" not in rec.system_paths["system.canon"]
+        # The primary root came from the early tier, resolved after system.*.
+        assert resolved["_primary_boxes"] == Path("/srv/kb")
+
+    def test_the_record_matches_system_path_floor_for_a_repointed_key(self, tmp_home):
+        """``std.early_system.system_paths == system_path_floor(std)``, with one ``system.*``
+        key repointed and no refusal -- the two carriers are ONE carrier."""
+        self._settings("system:\n  canon: /srv/canon\n")
+        std = self._std()
+
+        from kanibako.settings.paths import system_path_floor
+
+        assert std.early_system.system_refusal is None
+        assert std.early_system.system_paths == system_path_floor(std)
+        assert std.early_system.system_paths["system.canon"] == "/srv/canon"
+
+    # ── one open ─────────────────────────────────────────────────────────────
+
+    def test_the_tier_build_opens_the_settings_file_once(self, tmp_home, monkeypatch):
+        """``_path_tier_set_values`` reads the settings document ONCE and feeds BOTH the
+        ``system:`` table and the early tier from that one load.
+
+        ⚑ Scoped to the tier build deliberately.  The four primary-root reads inside
+        ``resolve_system_paths`` still open the file for themselves; taking the record there
+        is S2a's change (decision 5), not this step's.
+        """
+        from kanibako.settings.paths import _path_tier_set_values, host_xdg_map
+
+        sp = self._settings("workset:\n  boxes: /srv/kb\nsystem:\n  canon: /srv/canon\n")
+        cfg, _s, data_home = self._paths()
+        counts = self._count_reads(monkeypatch, sp)
+
+        _values, _refusal = _path_tier_set_values(
+            cfg, data_home=data_home, home=Path.home(), xdg_vars=host_xdg_map(data_home),
+        )
+        assert counts["n"] == 1, (
+            f"the system settings file was read {counts['n']} times by the tier build; it "
+            f"must open ONCE and feed both the system: table and the early tier"
+        )
+
+    # ── the one loader ───────────────────────────────────────────────────────
+
+    def test_load_system_config_is_load_system_tier_projected(self, tmp_home):
+        """``load_system_config`` IS ``load_system_tier(...)[0]`` -- one loader, so the two
+        can never disagree about what the files said."""
+        from kanibako.settings.paths import load_system_config, load_system_tier
+
+        self._settings("workset:\n  boxes: /srv/kb\nsystem:\n  canon: /srv/canon\n")
+        cfg, _s, data_home = self._paths()
+        kw = dict(data_home=data_home, home=Path.home())
+
+        assert load_system_config(cfg, **kw) == load_system_tier(cfg, **kw)[0]
+        for tolerate in (False, True):
+            assert (
+                load_system_config(cfg, tolerate_bad_settings=tolerate, **kw)
+                == load_system_tier(cfg, tolerate_bad_settings=tolerate, **kw)[0]
+            )
