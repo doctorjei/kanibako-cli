@@ -516,10 +516,9 @@ def check_bind_map(
     a value that is not a list is left to the §0 refusal, which names the whole key.
 
     ⚑ *pref_agent* is the agent segment the map sits under — ``zippity`` for a
-    ``pref.agent.zippity.<category>`` entry — or ``None`` for every other key. Judged FIRST
-    and by the shared helper (:func:`~kanibako.settings.settings_prefs.agent_segment_reason`,
-    which states why it runs ahead of the shape): only the NON-deferred parse passes it, the
-    deferred one carrying that verdict to :func:`~kanibako.settings.settings_prefs.apply_prefs`.
+    ``pref.agent.zippity.<category>`` entry — or ``None`` for every other key. The bind-map
+    parse passes it deferred or not, and it is judged FIRST, by
+    :func:`~kanibako.settings.settings_prefs.agent_segment_reason`, which says why.
     """
     if pref_agent is not None:
         # ⚑ FUNCTION-SCOPE: ``settings_prefs`` imports THIS module at module scope, so a

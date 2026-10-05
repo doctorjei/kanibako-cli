@@ -327,28 +327,18 @@ def agent_segment_reason(
     *,
     valid_agents: Collection[str] | None = None,
 ) -> str | None:
-    """§2h — WHY ``pref.agent.<name>``'s agent segment is refused, or ``None`` when it is valid.
+    """§2h — WHY agent segment *name* is refused, or ``None`` if valid.
 
-    ⚑⚑ THE ONE JUDGE OF THE AGENT SEGMENT, and BOTH ``pref`` READ PATHS reach it: the DEFERRED
-    one through :func:`allowlist_reason` (a ``pref:`` table is parsed without ``valid_agents``, so
-    its verdict waits for :func:`apply_prefs`) and the NON-DEFERRED one, the settings tier's own
-    bind-map parse, which has no such consumer to wait for. One judgment means one refusal, so the
-    two cannot drift into two messages for one defect — and it must outrank the shape there, since
-    a shape verdict about an entry whose only defect is its agent name sends the user to reshape
-    the wrong thing.
-
-    *valid_agents* defaults to :func:`default_valid_agents`, the memoized production supplier,
-    for the reader that holds no set of its own. Discovery is reached only for an entry ALREADY
-    under ``pref.agent.``, so a file carrying no such map never pays for it.
+    ⚑⚑ THE ONE JUDGE of the segment: one defect, one refusal. Both bind-map parses under
+    ``pref.agent.`` reach it, deferred included, AHEAD of any shape check, lest a shape verdict
+    send the user to reshape an entry whose only defect is its name. So does
+    :func:`allowlist_reason`.
     """
     if valid_agents is None:
         valid_agents = default_valid_agents()
     if is_valid_agent_segment(name, valid_agents):
         return None
     if getattr(valid_agents, "discovery_failed", False):
-        # ⚑ An ENVIRONMENT fault, not a user mistake. Reporting
-        # "'claude' is not a valid agent" when the plugin registry
-        # could not be read sends the user to fix a correct name.
         return (
             f"agent DISCOVERY FAILED, so '{display_agent_ref(name)}' could not be "
             f"validated. This is an environment fault, not a "
@@ -377,9 +367,6 @@ def allowlist_reason(
     reserved PSEUDO-AGENT tier (:func:`~kanibako.settings.settings_keyspace.
     is_valid_agent_segment`) — and the test is *is it a VALID agent*, NOT *is it
     the ACTIVE agent*, so pre-configuring an agent you may switch to is legal.
-
-    ⚑ The segment's verdict is :func:`agent_segment_reason`'s; this filter supplies the
-    context (the target, the level, the file) and never a second opinion about the name.
     """
     pattern = pref_allowlist_entry(target, allowlist=allowlist)
     if pattern is not None:

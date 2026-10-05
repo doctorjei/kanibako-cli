@@ -106,7 +106,7 @@ def _door_message(door: str, project_dir: str, capsys) -> str:
                 workset="default", key_value="workset.auth.share_allowed=false", force=False,
             ))
         else:
-            # ``shell`` is a CLI SHORTCOT, driven through ``cli.main`` so the shortcut
+            # ``shell`` is a CLI SHORTCUT, driven through ``cli.main`` so the shortcut
             # mapping onto ``start`` is the one under test.
             from kanibako.cli import main as cli_main
 
