@@ -16,6 +16,7 @@ from kanibako.settings.paths import (
     _find_local_ancestor,
     _find_workset_for_path,
     _resolve_workset_or_connected,
+    _early_scope,
     _upgrade_shell,
     detect_project_mode,
     load_primary_boxes,
@@ -35,12 +36,15 @@ def _reg_primary(std, name: str, workspace) -> None:
     The membership replacement for the retired ``register_name(..., "projects")``
     setup used across these tests.
     """
-    register_primary_box_name(std.primary_workset, std.registry, name, str(workspace))
+    register_primary_box_name(
+        std.primary_workset, std.registry, name, str(workspace),
+        early=_early_scope(std, BoxMode.primary),
+    )
 
 
 def _primary_names(std):
     """Return the PRIMARY box membership as ``{name: workspace_str}``."""
-    return load_primary_boxes(std.primary_workset)
+    return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
 
 
 class TestLoadStdPaths:
@@ -227,6 +231,7 @@ class TestResolveProject:
         # Seed the primary-workset boxes: membership (the sole store).
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.primary),
         )
         workset_registry.register_workset_box(prim_reg, "ghost", ws)
         assert "ghost" not in read_names(std.registry)["worksets"]
@@ -263,6 +268,7 @@ class TestResolveProject:
         # dir is missing (so the create branch runs).
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.primary),
         )
         workset_registry.register_workset_box(prim_reg, "orig", ws)
 
@@ -297,6 +303,7 @@ class TestResolveProject:
         # when the create tries to register "orphan" for the same workspace.
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.primary),
         )
         workset_registry.register_workset_box(prim_reg, "orig", ws)
 
@@ -1002,6 +1009,7 @@ class TestResolveProjectHomeGuard:
         # box registered before the $HOME guard existed.
         prim_reg = workset_registry.resolve_workset_registry_path(
             std.primary_workset, None,
+            early=_early_scope(std, BoxMode.primary),
         )
         workset_registry.register_workset_box(prim_reg, "home", home.resolve())
         boxes_dir = std.boxes / "home"
@@ -1469,11 +1477,12 @@ class TestP7ConnectRegistry:
         add_project(ws, "extproj", external, std)
         return config, std, ws, external
 
-    def _boxes(self, ws):
+    def _boxes(self, ws, std):
         from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
         registry_path = workset_registry.resolve_workset_registry_path(
             ws.root, load_doc(ws.root / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.named, ws.name),
         )
         return workset_registry.load_workset_boxes(registry_path)
 
@@ -1483,8 +1492,8 @@ class TestP7ConnectRegistry:
         """Test 1 — connect records the box in the workset's ``boxes:`` with the
         EXTERNAL path.  Mutation: skip the per-workset registration in add_project
         → this assert goes RED."""
-        _config, _std, ws, external = self._setup(config_file, tmp_home)
-        assert self._boxes(ws).get("extproj") == str(external)
+        _config, std, ws, external = self._setup(config_file, tmp_home)
+        assert self._boxes(ws, std).get("extproj") == str(external)
 
     def test_connect_round_trip_resolves_to_external_workspace(
         self, config_file, tmp_home
@@ -1558,6 +1567,7 @@ class TestP7ConnectRegistry:
         internal.mkdir(parents=True)
         registry_path = workset_registry.resolve_workset_registry_path(
             ws.root, load_doc(ws.root / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.named, ws.name),
         )
         workset_registry.register_workset_box(registry_path, "inbox", internal)
         assert box_resolve.find_connected_external_box(internal, std) is None
@@ -1611,6 +1621,7 @@ class TestA0RepointStrandedMembers:
         # first launch; connect registers external ones at connect time).
         registry_path = workset_registry.resolve_workset_registry_path(
             ws.root, load_doc(ws.root / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.named, ws.name),
         )
         workset_registry.register_workset_box(registry_path, "boxa", internal)
         # Absolute repoint AFTER the member exists (workset.yaml is created here
@@ -1687,7 +1698,7 @@ class TestA0RepointStrandedMembers:
         from kanibako.project.workset import load_workset
 
         config, std, ws, internal = self._setup(config_file, tmp_home)
-        ws_reloaded = load_workset(ws.root, ws.name)  # captures the repoint
+        ws_reloaded = load_workset(ws.root, ws.name, early_system=std.early_system)  # captures the repoint
         proj = resolve_workset_project(
             WorksetSpec.from_workset(ws_reloaded), "boxa", std, config,
             initialize=False,
@@ -1710,6 +1721,7 @@ class TestA0RepointStrandedMembers:
         pods_member.mkdir()
         registry_path = workset_registry.resolve_workset_registry_path(
             ws.root, load_doc(ws.root / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.named, ws.name),
         )
         workset_registry.register_workset_box(registry_path, "boxb", pods_member)
         assert box_resolve.find_connected_external_box(pods_member, std) is None
@@ -1731,6 +1743,7 @@ class TestP5aCreateThenResolve:
         return workset_registry.resolve_workset_registry_path(
             std.primary_workset,
             load_doc(std.primary_workset / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.primary),
         )
 
     def test_primary_create_registers_and_resolves(
@@ -1787,6 +1800,7 @@ class TestP5aCreateThenResolve:
         # register_workset_box call in resolve_workset_project → fails.)
         reg = workset_registry.resolve_workset_registry_path(
             ws.root, load_doc(ws.root / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.named, ws.name),
         )
         boxes = workset_registry.load_workset_boxes(reg)
         assert "boxa" in boxes
@@ -1937,6 +1951,7 @@ class TestP5aCreateThenResolve:
         reg_path = workset_registry.resolve_workset_registry_path(
             std.primary_workset,
             load_doc(std.primary_workset / WORKSET_META_FILE),
+            early=_early_scope(std, BoxMode.primary),
         )
         workset_registry.register_workset_box(reg_path, "mybox", registry_ws)
 
