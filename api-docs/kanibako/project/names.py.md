@@ -4,6 +4,12 @@ _Signatures only: no comments, no docstrings, no bodies._
 **GENERATED — do not hand-edit; regenerate with `scripts/gen-api-doc.py`.**
 
 
+## Variables
+
+```
+logger = get_logger('names')
+```
+
 ## Functions
 ```
 def read_names(registry: Path) -> dict[str, dict[str, str]]
@@ -16,4 +22,5 @@ def resolve_qualified_name(registry: Path, qualified: str) -> tuple[str, str]
 def _load(registry: Path) -> dict[str, dict[str, str]]
 def _save(registry: Path, names: dict[str, dict[str, str]]) -> None
 def _workset_member_paths(worksets: dict[str, str], name: str) -> list[tuple[str, str, str]]
+def _resolve_before_standalone(registry: Path, name: str, cwd: Path | None=None, primary_workset: Path | None=None) -> tuple[str, str]
 ```

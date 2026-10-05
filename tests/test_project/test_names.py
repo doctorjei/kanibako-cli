@@ -584,18 +584,17 @@ class TestStandaloneNameResolution:
         self, registry: Path, tmp_path: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """The standalone step is LAST: a same-named workset (step 3) wins, and the
-        shadowed registration is announced rather than left silently unreachable."""
+        """The standalone step is LAST: a same-named workset (step 3) wins, with NO
+        warning — box and workset names are per-kind namespaces (spec § Detection &
+        import), so a box sharing a workset's name is not a collision."""
         register_name(registry, "solo_box", str(tmp_path / "ws"), section="worksets")
-        root = self._register_standalone(registry, tmp_path, "solo_box")
+        self._register_standalone(registry, tmp_path, "solo_box")
 
         with caplog.at_level("WARNING"):
             path, kind = resolve_name(registry, "solo_box")
         assert (path, kind) == (str(tmp_path / "ws"), "workset")
         warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-        assert len(warnings) == 1, warnings
-        assert "solo_box" in warnings[0] and "standalone" in warnings[0]
-        assert str(root) in warnings[0]
+        assert warnings == [], warnings
 
     def test_a_primary_box_outranks_a_registered_standalone(
         self, registry: Path, tmp_path: Path,
