@@ -130,7 +130,7 @@ def _make_materialized_member(env, ws_name, member_name):
     return Path(ws.workspaces_dir) / member_name
 
 
-def _duplicate_to_standalone(src, dst):
+def _duplicate_to_standalone(src, dst, force=True):
     """Run the real ``box duplicate --to standalone`` CLI entry point."""
     import argparse
 
@@ -138,7 +138,7 @@ def _duplicate_to_standalone(src, dst):
 
     return run_duplicate(argparse.Namespace(
         source_path=str(src), new_path=str(dst), to_mode="standalone",
-        bare=False, force=True, box=None, workset=None, project_name=None,
+        bare=False, force=force, box=None, workset=None, project_name=None,
     ))
 
 
@@ -1894,20 +1894,17 @@ class TestDefaultStateFromMeta:
         ``read_box_enable_vault`` and this reds with that ``TypeError``.
         """
         from kanibako.errors import ConfigError
-        from kanibako.settings.config_io import write_nested_key
 
         config, std, tmp_home = env
         pdir = _make_default(env, name="scalarbox")
         box_tier = std.boxes / "scalarbox" / "box.yaml"
-        # Write through the store's own writer, then replace the table with a scalar by
-        # hand — settings files are a hand-edit surface, and a scalar section is the shape
-        # the shape rule refuses.
-        write_nested_key(box_tier, ("box",), "enable_vault", False)
+        # Replace the box tier with a scalar by hand — settings files are a hand-edit
+        # surface, and a scalar section is the shape the shape rule refuses.
         box_tier.write_text("box: 42\n")
 
         with pytest.raises(ConfigError) as exc:
             resolve_lifecycle_target(str(pdir), std, config)
-        assert f"holds 42 at 'box'" in str(exc.value)
+        assert "holds 42 at 'box'" in str(exc.value)
         assert str(box_tier) in str(exc.value)
         # The refusal leaves the file exactly as the user wrote it.
         assert box_tier.read_text() == "box: 42\n"
@@ -1928,6 +1925,85 @@ class TestDefaultStateFromMeta:
         assert state.name == "tablebox"
         assert state.enable_vault is False
         assert state.box_authored_vault is False
+
+
+# ---------------------------------------------------------------------------
+# A duplicate's refusal must land with NOTHING created: the printed cure says
+# "Fix or delete 'box' … then retry", so a retry has to be able to succeed.
+# ---------------------------------------------------------------------------
+
+class TestDuplicateRefusalCreatesNothing:
+    @staticmethod
+    def _scalar_box_tier(pdir):
+        """Replace a standalone box's own tier with a scalar, by hand."""
+        box_tier = pdir / "box_data" / "box.yaml"
+        box_tier.write_text("box: 42\n")
+        return box_tier
+
+    def test_a_scalar_box_tier_refuses_the_duplicate_with_no_destination(self, env):
+        """The PRODUCTION ``box duplicate --to standalone`` door refuses a scalar ``box``
+        tier, and leaves no destination to collide with the cure.
+
+        ⚑ ``assert not dst.exists()`` IS the pin, not the raise: a refusal that already
+        built ``box_data/`` and ``workspace/`` raises just the same, and the retry the cure
+        recommends then dies on FileExistsError over the leftover ``workspace``.  The
+        ``ConfigError`` is what ``kanibako.cli.main`` turns into ``rc 1`` and the printed
+        ``Error: …`` line; the door itself raises, as every other refusal on it does.
+        MUTATION: move ``read_box_enable_vault`` back below the mkdir/copy and this reds
+        on the ``not dst.exists()`` assertion.
+        """
+        from kanibako.errors import ConfigError
+
+        config, std, tmp_home = env
+        pdir = _make_standalone(env, name="dupsrc")
+        box_tier = self._scalar_box_tier(pdir)
+        dst = tmp_home / "dstdst"
+
+        with pytest.raises(ConfigError) as exc:
+            _duplicate_to_standalone(pdir, dst)
+
+        assert "holds 42 at 'box'" in str(exc.value)
+        assert str(box_tier) in str(exc.value)
+        # The cure the refusal prints.
+        assert "Fix or delete 'box' in that file by hand, then retry" in str(exc.value)
+        # ⚑ NO side effects: nothing was created or copied.
+        assert not dst.exists()
+        # The refusal leaves the source file byte-identical.
+        assert box_tier.read_text() == "box: 42\n"
+
+    def test_the_cure_the_refusal_prints_then_succeeds_on_a_no_force_duplicate(self, env):
+        """Following the printed cure, then retrying WITHOUT ``--force``, succeeds.
+
+        ⚑ The no-force path is the one that collides: ``_merge_workspace`` copies with
+        ``dirs_exist_ok=force``, so a ``workspace/`` an earlier attempt left behind is
+        what the retry trips over.  With the read ahead of the mkdir, the first attempt
+        creates nothing and the retry has a clean destination.
+        """
+        from kanibako.errors import ConfigError
+
+        config, std, tmp_home = env
+        from unittest.mock import patch
+
+        pdir = _make_standalone(env, name="curedsrc")
+        box_tier = self._scalar_box_tier(pdir)
+        dst = tmp_home / "curedst"
+
+        with patch("kanibako.commands.box._duplicate.confirm_prompt",
+                   return_value=True) as confirm:
+            with pytest.raises(ConfigError):
+                _duplicate_to_standalone(pdir, dst, force=False)
+        assert confirm.called
+        assert not dst.exists()
+
+        # The cure, exactly as the refusal prints it: hand-fix the section, retry.
+        box_tier.write_text("box:\n  enable_vault: false\n")
+        with patch("kanibako.commands.box._duplicate.confirm_prompt",
+                   return_value=True):
+            rc = _duplicate_to_standalone(pdir, dst, force=False)
+
+        assert rc == 0
+        assert (dst / "box_data" / "box.yaml").is_file()
+        assert (dst / "workspace").is_dir()
 
 
 # ---------------------------------------------------------------------------

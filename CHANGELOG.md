@@ -1090,6 +1090,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   where a table of keys belongs`, and the file is left as it was. See `MIGRATION.md` § *2.98 A
   `set` refuses to write under a section the file holds as a value instead of replacing it*.
 
+- **A box lifecycle door no longer reads past a section its own box tier holds as a value.** In
+  v1.7.2 and v1.8.0-rc2, a `box:` section stored as a single value rather than a table of keys was
+  read, not refused, by the doors that carry a box's `box.enable_vault` to its new box — `box
+  duplicate`, `remap`, `move` and `convert`. With `box: /x` in the box's own `box.yaml`, each
+  answered as if the key were absent and used the default, exit code 0 and no message; with
+  `box: 42` the same doors raised `TypeError: argument of type 'int' is not iterable`. They now
+  stop, exit code 1, with `the config file <path> holds /x at 'box', where a table of keys
+  belongs, so 'box.' keys cannot be written under it. Fix or delete 'box' in that file by hand,
+  then retry`, and the file is left as it was. On `box duplicate --to standalone` the refusal now
+  lands before anything is created or copied, so the destination the cure asks you to retry into
+  is one the retry can use. A `box:` section held as `null` is refused the same way, like any
+  non-table.
+
 - **`kanibako workset show` and `kanibako system show` printed a declaration's sources as a Python
   list, under the destination as the file spelled it.** A `caches: {~/.cache/uv/: [uv]}` entry in a
   working set's file printed `workset.caches.~/.cache/uv/ = ['uv']`. It now prints
