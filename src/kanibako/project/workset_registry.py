@@ -241,7 +241,7 @@ def reverse_lookup_workset_box(
 
 def resolve_workset_registry_path(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, early: EarlyScope | None = None,
+    *, early: EarlyScope,
 ) -> Path:
     """Return the resolved per-workset registry FILE path (pure; no global state).
 

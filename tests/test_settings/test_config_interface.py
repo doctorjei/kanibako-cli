@@ -8,6 +8,7 @@ import re
 import pytest
 import yaml
 
+from kanibako.project.workset import Workset
 from kanibako.settings.config import BOX_META_FILE, WORKSET_META_FILE
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.config_keys import ConfigLevel, is_known_key
@@ -1873,13 +1874,14 @@ class TestH1NoCrashOnAdvertisedKeys:
         assert "workset" in msg and "box" in msg
         assert not f.exists()
 
-    def test_set_workset_boxes_at_workset_scope_allowed(self, tmp_path):
+    def test_set_workset_boxes_at_workset_scope_allowed(self, tmp_path, std):
         """P6a: the SAME-scope (workset) write is accepted and lands in the workset
         settings file (the sibling behavior for ``workset.auth.share_allowed``)."""
         f = tmp_path / "ws-settings.yaml"
         msg = set_config_value(
             "workset.boxes", "/srv/boxes",
             config_path=f, command_scope=ConfigLevel.workset,
+            std=std, ws=Workset(name="ws", root=tmp_path, early_system=std.early_system),
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(f)["workset"]["boxes"] == "/srv/boxes"
@@ -3664,7 +3666,7 @@ class TestScopeDirectionGuard:
         assert "--effective" in msg
         assert not f.exists()
 
-    def test_workset_scope_allows_workset_key(self, tmp_path):
+    def test_workset_scope_allows_workset_key(self, tmp_path, std):
         # ⚑ VEHICLE: a routed workset SCALAR. This row is about the DIRECTION guard
         # (own-namespace write is allowed), and it used to ride on a category
         # repoint — a route DS-BL1 = (a) retired, so a category key here would now
@@ -3675,6 +3677,7 @@ class TestScopeDirectionGuard:
             "workset.boxes", "/new",
             config_path=f, cascade_workset_path=f,
             command_scope=ConfigLevel.workset,
+            std=std, ws=Workset(name="ws", root=tmp_path, early_system=std.early_system),
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(f)["workset"]["boxes"] == "/new"
@@ -4231,12 +4234,13 @@ class TestBareAgentKeyAtWorksetScope:
             assert "can't be reset at workset scope" in msg, (key, msg)
             assert load_doc(f)["agent"]["default"][key] == "x", (key, "must survive")
 
-    def test_workset_scope_keys_unaffected(self, tmp_path):
+    def test_workset_scope_keys_unaffected(self, tmp_path, std):
         # A legitimate workset.* key is NOT an agent key — still writes normally.
         f = tmp_path / "ws-settings.yaml"
         msg = set_config_value(
             "workset.boxes", "/srv/boxes",
             config_path=f, command_scope=ConfigLevel.workset,
+            std=std, ws=Workset(name="ws", root=tmp_path, early_system=std.early_system),
         )
         assert not msg.startswith("Error:"), msg
         assert load_doc(f)["workset"]["boxes"] == "/srv/boxes"
@@ -5535,7 +5539,7 @@ class TestSetTimeResolutionProbe:
             system_path=None, agent_path=None, workset_path=cfg, box_path=None,
         ) is None
 
-    def test_an_unrelated_pre_existing_defect_still_allows_the_set(self, tmp_path):
+    def test_an_unrelated_pre_existing_defect_still_allows_the_set(self, tmp_path, std):
         """``config set`` must stay usable to REPAIR a broken config: the probe
         blocks only on the EDITED value's own transitive upstream chain."""
         cfg = tmp_path / BOX_META_FILE
@@ -5544,6 +5548,7 @@ class TestSetTimeResolutionProbe:
             "workset.boxes", "/abs/boxes",
             config_path=cfg, cascade_workset_path=cfg,
             command_scope=ConfigLevel.workset,
+            std=std, ws=Workset(name="ws", root=tmp_path, early_system=std.early_system),
         )
         assert not msg.startswith("Error:"), msg
 

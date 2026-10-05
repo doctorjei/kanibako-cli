@@ -671,9 +671,7 @@ def system_settings_path() -> Path:
 
     ⚑ Path resolution only, deliberately NOT ``paths.load_std_paths``: that one
     RAISES when no Layer-1 file exists, which a pre-cascade reader may not do to a
-    box that has never been set up.  ⚑ And NOT ``paths.load_system_config``: that
-    resolves the primary workset's dir keys, which read this file through
-    ``workset_dirkeys.early_repoint``.  ⚑ ``spec_default_xdg_map``, not ``host_xdg_map``,
+    box that has never been set up.  ⚑ ``spec_default_xdg_map``, not ``host_xdg_map``,
     so a reader on the detection side creates nothing.
     ⚑ The returned path need not exist — every reader here treats an absent file as
     "unset", which is exactly what a fresh install is.

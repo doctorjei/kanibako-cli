@@ -13,6 +13,8 @@ from unittest.mock import patch
 from kanibako.settings.config import load_config
 from kanibako.errors import UserCanceled
 from kanibako.settings.paths import (
+    BoxMode,
+    _early_scope,
     load_std_paths,
     resolve_any_project,
     resolve_project,
@@ -236,7 +238,9 @@ class TestExtract:
         dest_ws.mkdir()
         assert self._extract(file=archive_path, path=str(dest_ws)) == 0
 
-        registered = primary_box_name_for_workspace(std.primary_workset, str(dest_ws))
+        registered = primary_box_name_for_workspace(
+            std.primary_workset, str(dest_ws), early=_early_scope(std, BoxMode.primary),
+        )
         assert registered, f"{dest_ws} was not registered after extract"
         assert (std.boxes / registered / "mydata.txt").is_file()
 

@@ -10,7 +10,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from kanibako.channels.channels import WS_TOKEN_PRIMARY
 from kanibako.channels.helper_listener import HelperContext, HelperHub
+from kanibako.settings.paths import resolve_system_paths
+from kanibako.settings.workset_dirkeys import EarlyScope, early_system
+
+
+def _bare_early(home: Path) -> EarlyScope:
+    """A primary early scope over the default record under *home*; these tests hold no ``std``."""
+    return EarlyScope(
+        early_system({}, resolve_system_paths({}, data_home=home, home=home)), WS_TOKEN_PRIMARY,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +85,7 @@ def fork_ctx(tmp_path):
         registry=data_path / "global" / "registry.yaml",
         boxes=data_path / "boxes",
         primary_workset=data_path / "primary_workset",
+        early=_bare_early(tmp_path),
     )
 
 
@@ -134,6 +145,7 @@ def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
         registry=registry,
         boxes=boxes,
         primary_workset=data_path / "primary_workset",
+        early=_bare_early(tmp_path),
     )
 
 
@@ -192,7 +204,7 @@ class TestHandleFork:
         assert "name" in resp
         # The assigned name should be registered in the PRIMARY membership.
         from kanibako.settings.paths import load_primary_boxes
-        assert resp["name"] in load_primary_boxes(ctx.primary_workset)
+        assert resp["name"] in load_primary_boxes(ctx.primary_workset, early=ctx.early)
 
     def test_fork_copies_metadata_excluding_lock_and_helpers(self, fork_hub):
         hub, sock_path, ctx = fork_hub
@@ -253,6 +265,7 @@ class TestHandleFork:
             socket_path=tmp_path / "helper.sock",
             project_path=None,
             data_path=None,
+            early=_bare_early(tmp_path),
         )
         sock_path = tmp_path / "helper.sock"
         hub = HelperHub()
@@ -280,7 +293,7 @@ class TestForkSourceMetaDirFallback:
         ctx = _fallback_ctx(tmp_path, boxes_leaf)
         # Guard: the PRIMARY route must genuinely miss, or this exercises the wrong arm.
         assert primary_box_name_for_workspace(
-            ctx.primary_workset, str(ctx.project_path)) is None
+            ctx.primary_workset, str(ctx.project_path), early=ctx.early) is None
 
         with _running_hub(ctx) as sock_path:
             resp = _send(sock_path, {"action": "fork", "name": "fallback"})

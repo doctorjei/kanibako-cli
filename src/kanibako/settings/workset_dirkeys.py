@@ -41,7 +41,7 @@ from kanibako.settings.agent_config import (
 from kanibako.settings.bootstrap import (
     BOXES_PATH, LOGS_PATH, SYSTEM_PATH_DEFAULTS, WORKSPACES_PATH,
 )
-from kanibako.settings.config import WORKSET_META_FILE, ref_order_error, system_settings_path
+from kanibako.settings.config import WORKSET_META_FILE, ref_order_error
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 from kanibako.settings.settings_resolve import (
@@ -90,16 +90,15 @@ def _stored_repoint(doc: Mapping[str, Any] | None, key: str) -> str | None | _Un
 
 def early_repoint(
     workset_root: Path, workset_settings: Mapping[str, Any] | None, key: str,
-    *, early: EarlyScope | None = None,
+    *, early: EarlyScope,
 ) -> tuple[str | None | _Unset, Path]:
     """The RAW ``workset.<key>`` this route resolves, and the file that carries it.
 
     The cascade ``system < workset``: *workset_settings*, the root's own ``workset.yaml``,
     wins, a PRESENT ``<None>`` included (spec §2h); only a key it does not carry falls
-    through to the system settings file.  :data:`UNSET` when neither tier carries it, so
-    the key takes its per-mode default.  The file is what a refusal names: the one the
-    value came from, else the root's own.  The system tier is *early*'s record; ``None``
-    opens the system settings file instead (transitional, removed at S2g).
+    through to the system tier, *early*'s record.  :data:`UNSET` when neither tier carries
+    it, so the key takes its per-mode default.  A refusal names the file the value came
+    from, else the root's own.
     """
     if key not in WORKSET_EARLY_KEYS:
         raise ValueError(f"workset.{key} is not a workset early key")
@@ -107,24 +106,13 @@ def early_repoint(
     value = _stored_repoint(workset_settings, key)
     if value is not UNSET:
         return value, own_file
-    if early is None:
-        system_file = system_settings_path()
-        value = _stored_repoint(load_doc(system_file), key)
-    else:
-        system_file = early.system.file
-        value = early.system.tier.get(f"workset.{key}", UNSET)
-    return value, (own_file if value is UNSET else system_file)
+    value = early.system.tier.get(f"workset.{key}", UNSET)
+    return value, (own_file if value is UNSET else early.system.file)
 
 
 @dataclass(frozen=True)
 class EarlySystem:
     """The EARLY SYSTEM TIER as DATA — read once, passed down, never re-read.
-
-    ⚑ WHY A RECORD RATHER THAN A RE-READ.  Each early reader used to open the system settings
-    file for itself (:func:`early_repoint`'s ``load_doc``), so one command could read that file
-    several times and see a different tier in each read than the path resolve had already
-    settled.  This record IS the file's early contribution, settled once at the load and
-    carried by :class:`~kanibako.settings.paths.StandardPaths`.
 
     ``tier``
         The raw ``workset.<key>`` values the system settings file carries, dotted and stored
@@ -221,7 +209,7 @@ def _host_ctx() -> ResolveCtx:
 def resolve_workset_dir_key(
     workset_root: Path, repoint: str | None, default_leaf: str, *, key: str,
     where: Path | None = None, standalone: bool | None = None,
-    workset_settings: Mapping[str, Any] | None = None, early: EarlyScope | None = None,
+    workset_settings: Mapping[str, Any] | None = None, early: EarlyScope,
 ) -> Path:
     """Resolve the ``workset.<key>`` *repoint* (or its ``<root>/<default_leaf>`` default).
 
@@ -297,7 +285,7 @@ _USABLE_REFS = (
 
 def _expand_early(
     workset_root: Path, doc: Mapping[str, Any] | None, value: str, *, key: str,
-    standalone: bool | None, chain: tuple[str, ...], early: EarlyScope | None = None,
+    standalone: bool | None, chain: tuple[str, ...], early: EarlyScope,
 ) -> str:
     """Expand *value* with the references knowable before the snapshot; *chain* guards cycles."""
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
@@ -319,7 +307,7 @@ def _expand_early(
 
 def _referent_value(
     workset_root: Path, doc: Mapping[str, Any] | None, referent: str, *, key: str,
-    standalone: bool | None, chain: tuple[str, ...], early: EarlyScope | None = None,
+    standalone: bool | None, chain: tuple[str, ...], early: EarlyScope,
 ) -> str:
     """The resolved ``@workset.<referent>``: its value in the cascade, else its declared default.
 
@@ -397,7 +385,7 @@ def _reader_modes(key: str, *, standalone_reads: bool) -> tuple[bool | None, ...
 
 def early_key_set_error(
     canonical: str, value: str | None, *, written_file: Path, standalone_reads: bool,
-    early_system: EarlySystem | None = None, std_error: str | None = None,
+    early_system: EarlySystem | None, std_error: str | None = None,
     workset_name: str | None = None,
 ) -> str | None:
     """The reader's refusal of *value* at a workset early key, or ``None``; the SET door's twin.
@@ -414,7 +402,7 @@ def early_key_set_error(
 
     ⚑ THE DOOR OPENS ONE FILE, ONCE: *written_file*.  The system tier beneath it is
     *early_system*, the record the command's ``std`` load already settled, never a re-read.
-    *workset_name* is the workset door's scope name (``ws.name``).  At the SYSTEM door
+    *workset_name* is the workset door's scope name.  At the SYSTEM door
     (*standalone_reads*: only the system file is read by a standalone box) the file is read
     by every workset, so each pass takes its reader mode's reserved partition name instead,
     and a missing *early_system* means the ``std`` load failed (*std_error*, its text): the
@@ -426,20 +414,20 @@ def early_key_set_error(
     key = canonical.removeprefix("workset.")
     if key not in WORKSET_EARLY_KEYS:
         return None
+    if not standalone_reads and (early_system is None or workset_name is None):
+        raise ValueError("the workset set door needs the std record and the workset name")
     try:
         doc = load_doc(written_file)
-        if standalone_reads and early_system is None:
-            early_system = EarlySystem(
-                tier=early_tier(doc), file=written_file, system_paths={},
-                system_refusal=std_error,
-            )
+        record = early_system if early_system is not None else EarlySystem(
+            tier=early_tier(doc), file=written_file, system_paths={},
+            system_refusal=std_error,
+        )
         for standalone in _reader_modes(key, standalone_reads=standalone_reads):
             resolve_workset_dir_key(
                 written_file.parent, value, "", key=key, where=written_file,
                 standalone=standalone, workset_settings=doc,
                 early=_door_scope(
-                    early_system, workset_name, system_door=standalone_reads,
-                    standalone=standalone,
+                    record, None if standalone_reads else workset_name, standalone=standalone,
                 ),
             )
     except (SettingsError, ConfigError) as exc:
@@ -448,24 +436,17 @@ def early_key_set_error(
 
 
 def _door_scope(
-    early_system: EarlySystem | None, workset_name: str | None, *, system_door: bool,
-    standalone: bool | None,
-) -> EarlyScope | None:
-    """The set door's scope for one reader-mode pass; ``None`` only while the series is unlanded.
-
-    The workset door names its workset.  The system door names the reserved partition of
-    the pass's mode: standalone's, else primary's, which also stands for a key read with
-    no mode (one declared default, so every mode resolves it alike).
+    early_system: EarlySystem, workset_name: str | None, *, standalone: bool | None,
+) -> EarlyScope:
+    """The set door's scope for one reader-mode pass: *workset_name*, else (the system door)
+    the reserved partition of the pass's mode, standalone's or primary's; primary's also
+    stands for a key read with no mode.
     """
     from kanibako.channels.channels import workset_token
     from kanibako.settings.paths import BoxMode
 
-    if early_system is None:
-        return None  # transitional: a workset-door caller with no ``std`` (S2g)
-    if system_door:
-        return EarlyScope(early_system, workset_token(
-            BoxMode.standalone if standalone else BoxMode.primary, None,
-        ))
-    if workset_name is None:
-        return None  # transitional: a workset-door caller with no ``ws`` (S2g)
-    return EarlyScope(early_system, workset_name)
+    if workset_name is not None:
+        return EarlyScope(early_system, workset_name)
+    return EarlyScope(early_system, workset_token(
+        BoxMode.standalone if standalone else BoxMode.primary, None,
+    ))

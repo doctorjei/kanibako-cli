@@ -64,7 +64,7 @@ def _files(tmp_path: Path) -> dict:
     }
 
 
-def _set(key: str, value, files: dict, scope: ConfigLevel) -> str:
+def _set(key: str, value, files: dict, scope: ConfigLevel, *, std=None, ws=None) -> str:
     """Drive ``set_config_value`` with the threading the matching noun command uses."""
     if scope is ConfigLevel.system:
         return set_config_value(
@@ -76,7 +76,7 @@ def _set(key: str, value, files: dict, scope: ConfigLevel) -> str:
         return set_config_value(
             key, value, config_path=files["workset"],
             cascade_system_path=files["system"], cascade_workset_path=files["workset"],
-            command_scope=scope,
+            command_scope=scope, std=std, ws=ws,
         )
     return set_config_value(
         key, value, config_path=files["box"],
@@ -390,14 +390,17 @@ class TestTheRuleDoesNotOVERREACH:
         files = _files(tmp_path)
         assert not _set(key, value, files, scope).startswith("Error:")
 
-    def test_an_EMPTY_value_is_not_this_rules_business(self, tmp_path):
+    def test_an_EMPTY_value_is_not_this_rules_business(self, tmp_path, std):
         """The guard matches the read-time one (``paths._refuse_bare_relative``): there
         is no bare relative to disambiguate, and calling ``''`` a relative path would be
         a refusal a user cannot act on."""
+        from kanibako.project.workset import Workset
+
         files = _files(tmp_path)
-        assert not _set("workset.canon", "", files, ConfigLevel.workset).startswith(
-            "Error:"
-        )
+        ws = Workset(name="ws", root=files["workset"].parent, early_system=std.early_system)
+        assert not _set(
+            "workset.canon", "", files, ConfigLevel.workset, std=std, ws=ws,
+        ).startswith("Error:")
 
     def test_an_explicit_null_is_not_refused(self, tmp_path):
         """``--null`` writes a present-``None``; there is no path to judge."""

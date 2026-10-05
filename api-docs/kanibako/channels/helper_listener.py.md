@@ -38,7 +38,7 @@ class HelperContext:
     boxes: Path | None = None
     registry: Path | None = None
     primary_workset: Path | None = None
-    early: EarlyScope | None = None
+    early: EarlyScope = field(kw_only=True)
 
 class HelperHub:
     def __init__(self) -> None

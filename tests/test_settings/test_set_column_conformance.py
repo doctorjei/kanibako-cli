@@ -35,7 +35,7 @@ from kanibako.settings.config_keys import (
 )
 from kanibako.settings.keyspace_manifest import manifest_doc
 
-from tests.test_settings.test_config_dest_parity import Bench
+from tests.test_settings.test_config_dest_parity import Bench, workset_door
 
 
 # A benign, well-typed value per declared ``type:``.  A TYPE table, not a key list —
@@ -93,7 +93,7 @@ def _rows_with(set_column: str) -> "dict[str, dict]":
     return {k: v for k, v in _static_rows().items() if v.get("set") == set_column}
 
 
-def _refusal(tmp: Path, key: str, row: dict) -> "str | None":
+def _refusal(tmp: Path, key: str, row: dict, std) -> "str | None":
     """The ``Error: …`` text a real ``set`` answers for *key*, or ``None`` if it took."""
     value = _VALUE_FOR_TYPE.get(str(row.get("type")), "probe")
     # ⚑ Q16: ``system.state`` refuses a path that does not exist, so its probe dir is
@@ -102,17 +102,19 @@ def _refusal(tmp: Path, key: str, row: dict) -> "str | None":
     if key == "system.state":
         Path(value).mkdir(parents=True, exist_ok=True)
     scope = _SCOPE_FOR_TOKEN[key.split(".", 1)[0]]
-    message = Bench(tmp).set(scope, _cli_spelling(key), value)
+    bench = Bench(tmp)
+    door = workset_door(bench, std) if scope is ConfigLevel.workset else {}
+    message = bench.set(scope, _cli_spelling(key), value, **door)
     return message if message.startswith("Error:") else None
 
 
 class TestSetColumnIsWhatTheVerbDoes:
 
-    def test_every_cli_settable_row_accepts_a_set(self, tmp_path):
+    def test_every_cli_settable_row_accepts_a_set(self, tmp_path, std):
         """``set: cli+file`` ⇒ the CLI verb WRITES it. No key is silently structural."""
         findings: list[str] = []
         for i, (key, row) in enumerate(sorted(_rows_with("cli+file").items())):
-            refusal = _refusal(tmp_path / f"c{i}", key, row)
+            refusal = _refusal(tmp_path / f"c{i}", key, row, std)
             if refusal is not None:
                 findings.append(f"  {key} -> {refusal.splitlines()[0]}")
         assert not findings, (
@@ -121,21 +123,21 @@ class TestSetColumnIsWhatTheVerbDoes:
             "refused):\n" + "\n".join(findings)
         )
 
-    def test_every_file_only_row_is_refused(self, tmp_path):
+    def test_every_file_only_row_is_refused(self, tmp_path, std):
         """``set: file`` ⇒ REFUSED — the §2a carve-outs, and only those."""
         accepted = [
             key for i, (key, row) in enumerate(sorted(_rows_with("file").items()))
-            if _refusal(tmp_path / f"f{i}", key, row) is None
+            if _refusal(tmp_path / f"f{i}", key, row, std) is None
         ]
         assert not accepted, (
             f"the registry declares these keys file-only and the CLI wrote them: {accepted}"
         )
 
-    def test_every_never_settable_row_is_refused(self, tmp_path):
+    def test_every_never_settable_row_is_refused(self, tmp_path, std):
         """``set: never`` ⇒ REFUSED — the derived/RO ``meta.*`` group (§0 construct-set)."""
         accepted = [
             key for i, (key, row) in enumerate(sorted(_rows_with("never").items()))
-            if _refusal(tmp_path / f"n{i}", key, row) is None
+            if _refusal(tmp_path / f"n{i}", key, row, std) is None
         ]
         assert not accepted, (
             f"the registry declares these keys never-settable and the CLI wrote them: "

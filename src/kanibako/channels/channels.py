@@ -213,7 +213,7 @@ CHAT_GENERAL_LEAF = "general.md"
 
 def _channel_key(
     ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path,
-    *, standalone: bool | None, early: EarlyScope | None = None,
+    *, standalone: bool | None, early: EarlyScope,
 ) -> Path:
     """Resolve ``workset.channels.<leaf>``: its stored repoint (``early_repoint``), else *default*.
 
@@ -262,7 +262,7 @@ def workset_channel_paths(
 
 
 def workset_channels_at(
-    ws_root: Path, *, early: EarlyScope | None = None,
+    ws_root: Path, *, early: EarlyScope,
 ) -> WorksetChannels | None:
     """Derive the WORKSET-local channel roots of *ws_root*; ``None`` for a nulled
     ``workset.channelroot``.

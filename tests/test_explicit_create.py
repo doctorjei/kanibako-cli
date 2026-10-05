@@ -34,6 +34,7 @@ from kanibako.commands.start import (
 # is the sanctioned escalating deleter the product's own lifecycle verbs use, so the
 # test tree carries no second, driftable copy of the escalation.
 from kanibako.runtime.container import remove_box_tree
+from kanibako.settings.paths import BoxMode, _early_scope
 
 
 def _launch(project_dir, **over):
@@ -69,6 +70,13 @@ def _std(config_file):
     return config, load_std_paths(config)
 
 
+def _primary_boxes(std):
+    """The PRIMARY membership, read with *std*'s early record."""
+    from kanibako.settings.paths import load_primary_boxes
+
+    return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+
+
 # ---------------------------------------------------------------------------
 # `create` at a path a NAMED box already holds → refused, nothing written
 # ---------------------------------------------------------------------------
@@ -97,7 +105,6 @@ class TestCreateRefusesNamedBoxWorkspace:
         self, config_file, tmp_home, credentials_dir, capsys
     ):
         from kanibako.commands.box._parser import run_create
-        from kanibako.settings.paths import load_primary_boxes
 
         _config, std = _std(config_file)
         member = _connected_member(tmp_home, std)
@@ -109,7 +116,7 @@ class TestCreateRefusesNamedBoxWorkspace:
         # ⚑ Qualified: a bare name tries the PRIMARY workset first.
         assert "kanibako box show wsa/extbox" in err
         # The WRITE is what the refusal is for: no membership row, no box dir.
-        assert load_primary_boxes(std.primary_workset) == {}
+        assert _primary_boxes(std) == {}
         assert not any(std.boxes.iterdir()) if std.boxes.exists() else True
 
     def test_create_inside_a_connected_path_is_refused(
@@ -117,7 +124,6 @@ class TestCreateRefusesNamedBoxWorkspace:
     ):
         """The resolver matches the DEEPEST registered ANCESTOR, as ``connect`` does."""
         from kanibako.commands.box._parser import run_create
-        from kanibako.settings.paths import load_primary_boxes
 
         _config, std = _std(config_file)
         member = _connected_member(tmp_home, std)
@@ -126,21 +132,20 @@ class TestCreateRefusesNamedBoxWorkspace:
 
         assert run_create(_create_args(inner)) == 1
         assert "already the workspace of named box 'extbox'" in capsys.readouterr().err
-        assert load_primary_boxes(std.primary_workset) == {}
+        assert _primary_boxes(std) == {}
 
     def test_force_does_not_override_the_path(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
         """``--force`` overrides the CROSS-KIND name check only (spec § Detection & import)."""
         from kanibako.commands.box._parser import run_create
-        from kanibako.settings.paths import load_primary_boxes
 
         _config, std = _std(config_file)
         member = _connected_member(tmp_home, std)
 
         assert run_create(_create_args(member, force=True)) == 1
         assert "--force does not override this" in capsys.readouterr().err
-        assert load_primary_boxes(std.primary_workset) == {}
+        assert _primary_boxes(std) == {}
 
     def test_a_neighbour_path_is_not_refused(
         self, config_file, tmp_home, credentials_dir, capsys
@@ -198,7 +203,6 @@ class TestCreateRefusesNamedBoxWorkspace:
     ):
         """The named cure is the verb the refusal prints, run as printed."""
         from kanibako.commands.box._parser import run_create
-        from kanibako.settings.paths import load_primary_boxes
 
         _config, std = _std(config_file)
         member = _connected_member(tmp_home, std)
@@ -216,7 +220,7 @@ class TestCreateRefusesNamedBoxWorkspace:
         capsys.readouterr()
         # The path is free now, so the same create that was refused succeeds.
         assert run_create(_create_args(member)) == 0
-        assert list(load_primary_boxes(std.primary_workset)) == ["ext"]
+        assert list(_primary_boxes(std)) == ["ext"]
 
 
 # ---------------------------------------------------------------------------
@@ -332,7 +336,7 @@ class TestInterruptedCreateBoundary:
         is what completes it (forward-recovery belongs to create)."""
         from kanibako.commands.box._parser import run_create
         from kanibako.commands.start import _pending_create_entry, _write_create_entry
-        from kanibako.settings.paths import load_primary_boxes, resolve_project
+        from kanibako.settings.paths import resolve_project
 
         config, std = _std(config_file)
         project_dir = str(tmp_home / "project")
@@ -346,7 +350,7 @@ class TestInterruptedCreateBoundary:
         _write_create_entry(std, proj)
         assert (std.boxes / "project").is_dir()
         assert _pending_create_entry(std, proj) is not None
-        assert load_primary_boxes(std.primary_workset) == {}  # unregistered
+        assert _primary_boxes(std) == {}  # unregistered
 
         # LAUNCH must treat the not-yet-registered box as "no box" → error, NOT
         # resurrect/complete it.
@@ -363,7 +367,7 @@ class TestInterruptedCreateBoundary:
         )
         assert rc_create == 0
         assert _pending_create_entry(std, proj) is None
-        assert load_primary_boxes(std.primary_workset).get("project") == project_dir
+        assert _primary_boxes(std).get("project") == project_dir
         assert _resolve_existing_box(std, config, None) is not None
 
 
@@ -390,7 +394,6 @@ class TestLaunchRefusesUnbuiltBox:
         self, config_file, tmp_home, credentials_dir, capsys, protected_canon
     ):
         from kanibako.commands.box._parser import run_create
-        from kanibako.settings.paths import load_primary_boxes
 
         config, std = _std(config_file)
         assert run_create(_create_args(tmp_home / "project")) == 0
@@ -400,7 +403,7 @@ class TestLaunchRefusesUnbuiltBox:
 
         # The box dir goes; the registration survives.  That IS the case.
         assert remove_box_tree(box_dir), "the box tree must actually be gone"
-        assert load_primary_boxes(std.primary_workset).get("project") == str(
+        assert _primary_boxes(std).get("project") == str(
             tmp_home / "project"
         )
 
@@ -414,7 +417,7 @@ class TestLaunchRefusesUnbuiltBox:
         assert not box_dir.exists()
         # ...and the registration is left exactly as it was, so the cure below
         # has something to work with.
-        assert load_primary_boxes(std.primary_workset).get("project") == str(
+        assert _primary_boxes(std).get("project") == str(
             tmp_home / "project"
         )
 
@@ -978,7 +981,9 @@ class TestStandaloneNullWorkspaceHasNoPath:
         config, std = _std(config_file)
         proj = resolve_standalone_project(std, config, str(root), initialize=True)
         assert proj.project_path is None
-        assert _workset_workspaces_floor_value("standalone", str(root)) is None
+        assert _workset_workspaces_floor_value(
+            "standalone", str(root), early=_early_scope(std, BoxMode.standalone),
+        ) is None
         inputs = _box_inputs(std=std, proj=proj, agent_name="", system_path=None)
         assert inputs.meta_identity is not None
         assert inputs.meta_identity["meta.box.workspace"] is None

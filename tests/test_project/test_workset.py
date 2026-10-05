@@ -1547,28 +1547,31 @@ class TestWorksetFiveDirKeysCarryNull:
         return getattr(ws_mod, name)
 
     def test_a_present_null_carries_and_never_takes_the_default_leaf(self, tmp_path):
+        early = _bare_early(tmp_path / "home", BoxMode.named, "ws")
         for key, resolver_name, default in self._NULL_CARRYING_KEYS:
             resolver = self._resolver(resolver_name)
-            assert resolver(tmp_path, {"workset": {key: None}}) is None, key
+            assert resolver(tmp_path, {"workset": {key: None}}, early=early) is None, key
             # 🛑 The regression this pins: the default leaf is a path the user said does
             # not exist, and it is a real directory underneath this root.
             assert not (tmp_path / default).exists(), key
 
     def test_an_absent_key_still_takes_its_default_leaf(self, tmp_path):
         """GUARD for the other half of the rule: UNSET (key absent) still falls back."""
+        early = _bare_early(tmp_path / "home", BoxMode.named, "ws")
         for key, resolver_name, default in self._NULL_CARRYING_KEYS:
             resolver = self._resolver(resolver_name)
-            assert resolver(tmp_path, None) == tmp_path / default, key
-            assert resolver(tmp_path, {"workset": {}}) == tmp_path / default, key
-            assert resolver(tmp_path, {"workset": {key: "/srv/elsewhere"}}) == Path(
+            assert resolver(tmp_path, None, early=early) == tmp_path / default, key
+            assert resolver(tmp_path, {"workset": {}}, early=early) == tmp_path / default, key
+            assert resolver(tmp_path, {"workset": {key: "/srv/elsewhere"}}, early=early) == Path(
                 "/srv/elsewhere"
             ), key
 
     def test_one_null_arm_leaves_the_other_on_its_own_default(self, tmp_path):
         """GUARD: the two vault arms resolve INDEPENDENTLY, so neither answers for the other."""
         doc = {"workset": {"vault_ro": None}}
-        assert self._resolver("resolve_workset_vault_ro")(tmp_path, doc) is None
-        assert self._resolver("resolve_workset_vault_rw")(tmp_path, doc) == (
+        early = _bare_early(tmp_path / "home", BoxMode.named, "ws")
+        assert self._resolver("resolve_workset_vault_ro")(tmp_path, doc, early=early) is None
+        assert self._resolver("resolve_workset_vault_rw")(tmp_path, doc, early=early) == (
             tmp_path / "vault" / "rw"
         )
 

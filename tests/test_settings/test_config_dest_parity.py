@@ -248,6 +248,14 @@ class Bench:
         )
 
 
+def workset_door(bench: Bench, std) -> dict:
+    """The ``std``/``ws`` a ``workset set`` threads, for a workset rooted at *bench*'s file."""
+    from kanibako.project.workset import Workset
+
+    return {"std": std, "ws": Workset(name="ws", root=bench.ws.parent,
+                                      early_system=std.early_system)}
+
+
 @pytest.fixture
 def bench(tmp_path: Path) -> Bench:
     return Bench(tmp_path)
@@ -1138,7 +1146,7 @@ class TestChannelTypeRootsRouteUNIFORMLY:
             k.rsplit(".", 1)[1] for k in slots
         }, slots
 
-    def test_a_CLI_set_of_any_member_round_trips(self, bench):
+    def test_a_CLI_set_of_any_member_round_trips(self, bench, std):
         """⚑ THE ASYMMETRY ITSELF — a ``set`` the matching ``get`` cannot read.
 
         Manifest ``set: cli+file`` promises BOTH surfaces, and spec §0 forbids the
@@ -1149,7 +1157,9 @@ class TestChannelTypeRootsRouteUNIFORMLY:
         """
         for key in self._families()["workset"]:
             leaf = key.rsplit(".", 1)[1]
-            msg = bench.set(ConfigLevel.workset, key, f"/rt/{leaf}")
+            msg = bench.set(
+                ConfigLevel.workset, key, f"/rt/{leaf}", **workset_door(bench, std),
+            )
             assert not msg.startswith("Error:"), (key, msg)
             assert load_doc(bench.ws)["workset"]["channels"][leaf] == f"/rt/{leaf}", key
             assert bench.get(ConfigLevel.workset, key) == f"/rt/{leaf}", key

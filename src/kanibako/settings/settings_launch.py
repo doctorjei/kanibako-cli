@@ -1568,7 +1568,7 @@ def _workset_channel_floor_values(
 
 
 def _workset_workspaces_floor_value(
-    mode: str, ws_root_literal: "str | None", *, early: EarlyScope | None = None,
+    mode: str, ws_root_literal: "str | None", *, early: EarlyScope,
 ) -> "str | None":
     """The resolved ``workset.workspaces`` the caller hands the launch floor — ⚑ NOT primary.
 

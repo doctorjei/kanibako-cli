@@ -409,7 +409,9 @@ class TestRunCreate:
         """`box create --name X` registers the project under name X,
         not the directory basename."""
         from kanibako.settings.config import config_file_path, load_config
-        from kanibako.settings.paths import load_primary_boxes, load_std_paths, xdg
+        from kanibako.settings.paths import (
+            BoxMode, _early_scope, load_primary_boxes, load_std_paths, xdg,
+        )
 
         parser = build_parser()
         args = parser.parse_args(
@@ -419,7 +421,7 @@ class TestRunCreate:
 
         assert rc == 0
         std = load_std_paths(load_config(config_file_path(xdg("XDG_CONFIG_HOME", ".config"))))
-        boxes = load_primary_boxes(std.primary_workset)
+        boxes = load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
         assert "custom-name" in boxes, (
             f"Expected 'custom-name' in the PRIMARY membership, got: {boxes}"
         )

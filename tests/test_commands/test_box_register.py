@@ -22,6 +22,7 @@ from kanibako.project import registry_store
 from kanibako.commands.box._parser import run_create, run_register, run_rm
 from kanibako.project.names import resolve_name, register_name
 from kanibako.settings.paths import load_primary_boxes
+from kanibako.settings.paths import BoxMode, _early_scope
 
 
 # ---------------------------------------------------------------------------
@@ -101,17 +102,19 @@ class TestReadoptPrimary:
         assert run_create(_create_args(proj_dir, name="mybox")) == 0
         # Deregister (rm without --purge parks a deregistered entry).
         assert run_rm(_rm_args("mybox")) == 0
-        assert load_primary_boxes(std.primary_workset) == {}  # membership gone
+        early = _early_scope(std, BoxMode.primary)
+        assert load_primary_boxes(std.primary_workset, early=early) == {}  # membership gone
         assert "mybox" in registry_store.load_deregistered(std.registry)
 
         # Readopt.
         assert run_register(_register_args("mybox")) == 0
 
         # Active membership restored → resolve_name finds the box again.
-        boxes = load_primary_boxes(std.primary_workset)
+        boxes = load_primary_boxes(std.primary_workset, early=early)
         assert boxes.get("mybox") == str(proj_dir)
         path, kind = resolve_name(
             std.registry, "mybox", primary_workset=std.primary_workset,
+            early_system=std.early_system,
         )
         assert kind == "project"
         assert Path(path) == proj_dir
@@ -144,11 +147,15 @@ class TestReadoptPrimary:
         from kanibako.errors import ProjectError
         import pytest
         with pytest.raises(ProjectError):
-            resolve_name(std.registry, "loop", primary_workset=std.primary_workset)
+            resolve_name(
+                std.registry, "loop", primary_workset=std.primary_workset,
+                early_system=std.early_system,
+            )
 
         assert run_register(_register_args("loop")) == 0
         path, kind = resolve_name(
             std.registry, "loop", primary_workset=std.primary_workset,
+            early_system=std.early_system,
         )
         assert kind == "project"
         assert Path(path) == proj_dir
@@ -295,6 +302,7 @@ class TestConflictSafety:
         dir_b.mkdir()
         register_primary_box_name(
             std.primary_workset, std.registry, "dup", str(dir_b),
+            early=_early_scope(std, BoxMode.primary),
         )
         capsys.readouterr()
 
@@ -306,7 +314,9 @@ class TestConflictSafety:
         assert "already registered" in err.lower() or "dup" in err
         # The active box is unchanged; the deregistered entry is preserved (not
         # silently dropped) so the user can still purge it.
-        assert load_primary_boxes(std.primary_workset).get("dup") == str(dir_b)
+        assert load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary),
+        ).get("dup") == str(dir_b)
         assert "dup" in registry_store.load_deregistered(std.registry)
 
     def test_standalone_register_refused_on_name_collision(
@@ -388,7 +398,9 @@ class TestPathDesignationIsNeverAName:
         monkeypatch.chdir(tmp_home)
         (tmp_home / ".hidden").mkdir()
         assert run_create(_create_args(".hidden")) == 0
-        assert ".hidden" in load_primary_boxes(std.primary_workset)
+        assert ".hidden" in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary),
+        )
         empty = tmp_home / "empty"
         empty.mkdir()
         monkeypatch.chdir(empty)
@@ -401,7 +413,9 @@ class TestPathDesignationIsNeverAName:
         capsys.readouterr()
         assert run_rm(_rm_args(".hidden")) == 1
         assert "'.hidden' is not a registered box" in capsys.readouterr().err
-        assert ".hidden" in load_primary_boxes(std.primary_workset)
+        assert ".hidden" in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary),
+        )
 
     def test_register_does_not_resolve_it_by_name(
         self, config_file, tmp_home, credentials_dir, capsys, monkeypatch,
@@ -619,4 +633,6 @@ class TestCreateStandaloneOptIn:
 
         assert run_create(_create_args(proj_dir, name="mybox")) == 0
 
-        assert load_primary_boxes(std.primary_workset).get("mybox") == str(proj_dir)
+        assert load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary),
+        ).get("mybox") == str(proj_dir)

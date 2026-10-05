@@ -182,9 +182,12 @@ class TestTheLaunchRefusesWhatSetAccepted:
         assert ERR_BOX_STORE_EMPTY_REASON in message, message
         assert not files["system"].exists(), message
 
-    def test_a_valid_box_store_is_still_accepted_and_written(self, tmp_path):
+    def test_a_valid_box_store_is_still_accepted_and_written(self, tmp_path, std):
+        from kanibako.project.workset import Workset
+
         files = _files(tmp_path)
-        message = _set(_BOXES, "/tmp/boxstore", files, ConfigLevel.workset)
+        ws = Workset(name="ws", root=files["workset"].parent, early_system=std.early_system)
+        message = _set(_BOXES, "/tmp/boxstore", files, ConfigLevel.workset, std=std, ws=ws)
         assert not message.startswith("Error:"), message
         assert files["workset"].exists(), "a valid store was not written"
         assert "boxstore" in files["workset"].read_text()

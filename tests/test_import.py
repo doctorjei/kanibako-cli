@@ -19,6 +19,7 @@ from kanibako.project import import_reconcile, registry_store
 from kanibako.project.import_reconcile import ImportConflictError
 from kanibako.settings.paths import (
     BoxMode,
+    _early_scope,
     detect_project_mode,
     resolve_project,
     resolve_standalone_project,
@@ -197,13 +198,14 @@ def _stamp_skeleton_onto(target: Path, tmp_home: Path, std) -> Path:
     import shutil
 
     from kanibako.project.workset import is_workset_skeleton
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
     seed = tmp_home / "skeleton_seed"
     create_workset("skeleton-seed", seed, std)
     for subdir in seed.resolve().iterdir():
         shutil.move(str(subdir), str(target / subdir.name))
     seed.resolve().rmdir()
-    assert is_workset_skeleton(target), target
+    assert is_workset_skeleton(target, early=EarlyScope(std.early_system, target.name)), target
     return target
 
 
@@ -289,6 +291,7 @@ class TestNamedWorksetImport:
 
         assert import_reconcile.import_named_workset(
             std.registry, ws_root, primary_workset=std.primary_workset,
+            early=_early_scope(std, BoxMode.primary),
         ) == "noop"
         assert registry_store.load_section(std.registry, "worksets") == before
         assert capsys.readouterr().err == ""
@@ -310,6 +313,7 @@ class TestNamedWorksetImport:
         with pytest.raises(ImportConflictError, match="already registered"):
             import_reconcile.import_named_workset(
                 std.registry, other, primary_workset=std.primary_workset,
+                early=_early_scope(std, BoxMode.primary),
             )
         # Nothing mutated, and the refused tree is untouched on disk.
         assert registry_store.load_section(std.registry, "worksets") == {
@@ -332,6 +336,7 @@ class TestNamedWorksetImport:
         box_dir.mkdir()
         register_primary_box_name(
             std.primary_workset, std.registry, "clash", str(box_dir),
+            early=_early_scope(std, BoxMode.primary),
         )
         ws_root = tmp_home / "worksets" / "clash"
         create_workset("clash", ws_root, std, force=True)
@@ -373,6 +378,7 @@ class TestNamedWorksetImport:
 
         assert import_reconcile.import_named_workset(
             std.registry, root, primary_workset=std.primary_workset,
+            early=_early_scope(std, BoxMode.primary),
         ) is None
         assert registry_store.load_section(std.registry, "worksets") == {}
         assert capsys.readouterr().err == ""
@@ -389,6 +395,7 @@ class TestNamedWorksetImport:
 
         assert import_reconcile.import_named_workset(
             std.registry, home, primary_workset=std.primary_workset,
+            early=_early_scope(std, BoxMode.primary),
         ) is None
         assert registry_store.load_section(std.registry, "worksets") == {}
         assert capsys.readouterr().err == ""
@@ -435,8 +442,9 @@ class TestPrimaryBoxImport:
         # Drop the PRIMARY-membership entry (the sole store since the global
         # ``projects:`` section retired) — the on-disk box dir survives,
         # unregistered.
-        unregister_primary_box_name(std.primary_workset, proj.name)
-        assert load_primary_boxes(std.primary_workset) == {}
+        early = _early_scope(std, BoxMode.primary)
+        unregister_primary_box_name(std.primary_workset, proj.name, early=early)
+        assert load_primary_boxes(std.primary_workset, early=early) == {}
         capsys.readouterr()
 
         # Re-resolving the same workspace does NOT silently re-register the box.
@@ -444,7 +452,7 @@ class TestPrimaryBoxImport:
             std, config, project_dir=str(project_dir), initialize=False,
         )
         assert proj2.name == ""  # not recovered from disk
-        assert load_primary_boxes(std.primary_workset) == {}
+        assert load_primary_boxes(std.primary_workset, early=early) == {}
         assert "Imported primary box" not in capsys.readouterr().err
 
     # NOTE (P8c): the direct unit tests of ``import_primary_box`` /

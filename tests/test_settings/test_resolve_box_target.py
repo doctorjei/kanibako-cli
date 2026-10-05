@@ -15,6 +15,7 @@ from kanibako.project import registry_store
 from kanibako.errors import AmbiguousNameError, ProjectError
 from kanibako.settings.paths import (
     BoxMode,
+    _early_scope,
     establish_standalone,
     load_primary_boxes,
     resolve_any_project,
@@ -458,7 +459,9 @@ class TestAmbiguousNameNotShadowedByFolder:
         # Asserted on the MEMBERSHIP, the store ``register_primary_box_name``
         # writes to -- not on ``cwd / "beta"``, a directory this path never
         # created, so that assertion could not have failed.
-        assert "beta" not in load_primary_boxes(std.primary_workset)
+        assert "beta" not in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary),
+        )
 
     def test_ambiguous_member_name_raises_through_resolve_project(
         self, std, config, tmp_home, monkeypatch,

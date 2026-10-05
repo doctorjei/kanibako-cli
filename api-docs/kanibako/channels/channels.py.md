@@ -22,11 +22,11 @@ def workset_root(proj: ProjectPaths, std: StandardPaths) -> Path
 def has_workset_channels(proj: ProjectPaths) -> bool
 def system_partition(std: StandardPaths, ws_token: str) -> SystemPartition
 def workset_channel_paths(proj: ProjectPaths, std: StandardPaths) -> WorksetChannels | None
-def workset_channels_at(ws_root: Path, *, early: EarlyScope | None=None) -> WorksetChannels | None
+def workset_channels_at(ws_root: Path, *, early: EarlyScope) -> WorksetChannels | None
 def partition_key_paths(std: StandardPaths, ws_token: str, ws_root: Path) -> WorksetPartition
 def workset_partition_paths(proj: ProjectPaths, std: StandardPaths) -> WorksetPartition
 def box_channel_addresses(proj: ProjectPaths, std: StandardPaths) -> BoxChannelAddresses
-def _channel_key(ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path, *, standalone: bool | None, early: EarlyScope | None=None) -> Path
+def _channel_key(ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path, *, standalone: bool | None, early: EarlyScope) -> Path
 ```
 
 ## Classes
