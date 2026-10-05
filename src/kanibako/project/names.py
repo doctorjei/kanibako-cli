@@ -26,12 +26,16 @@ at the same precedence the retired ``projects`` section held.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.errors import AmbiguousNameError, ProjectError
 from kanibako.log import get_logger
+
+if TYPE_CHECKING:
+    from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
 
 logger = get_logger("names")
 
@@ -185,8 +189,15 @@ def lookup_by_path(
     return None
 
 
+def _early(early_system: EarlySystem | None, workset_name: str) -> EarlyScope | None:
+    """*early_system* scoped to the workset registered as *workset_name*; ``None`` without one."""
+    from kanibako.settings.workset_dirkeys import EarlyScope
+
+    return None if early_system is None else EarlyScope(early_system, workset_name)
+
+
 def _workset_member_paths(
-    worksets: dict[str, str], name: str,
+    worksets: dict[str, str], name: str, *, early_system: EarlySystem | None = None,
 ) -> list[tuple[str, str, str]]:
     """Return the ``(workset name, box name, workspace path)`` triples for box *name*.
 
@@ -211,7 +222,7 @@ def _workset_member_paths(
     for ws_name, ws_root_str in worksets.items():
         ws_root = Path(ws_root_str)
         registry_path = workset_registry.resolve_workset_registry_path(
-            ws_root, load_doc(ws_root / WORKSET_META_FILE),
+            ws_root, load_doc(ws_root / WORKSET_META_FILE), early=_early(early_system, ws_name),
         )
         boxes = workset_registry.load_workset_boxes(registry_path)
         stored = find_identifier(name, boxes)  # ⚑ case-blind membership test (§0)
@@ -225,6 +236,8 @@ def resolve_name(
     name: str,
     cwd: Path | None = None,
     primary_workset: Path | None = None,
+    *,
+    early_system: EarlySystem | None = None,
 ) -> tuple[str, str]:
     """Look up a bare name and return ``(path, kind)``.
 
@@ -264,7 +277,8 @@ def resolve_name(
         for ws_name, ws_root in names["worksets"].items():
             ws_path = Path(ws_root)
             settings_doc = load_workset_settings_doc(ws_path)
-            ws_workspaces = resolve_workspaces_locator(ws_path, settings_doc)
+            ws_early = _early(early_system, ws_name)
+            ws_workspaces = resolve_workspaces_locator(ws_path, settings_doc, early=ws_early)
             ws_workspaces_str = str(ws_workspaces)
             inside = (
                 cwd_str == ws_root
@@ -275,7 +289,7 @@ def resolve_name(
             if not inside:
                 continue
             registry_path = workset_registry.resolve_workset_registry_path(
-                ws_path, settings_doc
+                ws_path, settings_doc, early=ws_early,
             )
             registered = workset_registry.workset_box_path(registry_path, name)
             if registered is not None:
@@ -289,11 +303,13 @@ def resolve_name(
     #    precedence position).  Only consulted when the caller passes the primary
     #    workset root (a lookup with no *primary_workset* skips this step).
     if primary_workset is not None:
+        from kanibako.channels.channels import WS_TOKEN_PRIMARY
         from kanibako.project import workset_registry
         from kanibako.settings.config_io import load_doc
 
         primary_reg = workset_registry.resolve_workset_registry_path(
             primary_workset, load_doc(primary_workset / WORKSET_META_FILE),
+            early=_early(early_system, WS_TOKEN_PRIMARY),
         )
         primary_path = workset_registry.workset_box_path(primary_reg, name)
         if primary_path is not None:
@@ -323,7 +339,7 @@ def resolve_name(
     #    is otherwise unaddressable from outside that workset (the cwd-inside
     #    case is handled by step 1) — resolve it to the member's registered
     #    WORKSPACE path, the form ``resolve_project`` takes.
-    members = _workset_member_paths(names["worksets"], name)
+    members = _workset_member_paths(names["worksets"], name, early_system=early_system)
     if members:
         # Collapse identical targets (a symlinked workspace can normalize to the same
         # path), keeping the first workset claiming each so a shared box is named once;
@@ -352,6 +368,8 @@ def resolve_name(
 def resolve_qualified_name(
     registry: Path,
     qualified: str,
+    *,
+    early_system: EarlySystem | None = None,
 ) -> tuple[str, str]:
     """Resolve a qualified name (``workset/project``).
 
@@ -380,12 +398,13 @@ def resolve_qualified_name(
 
     ws_root = Path(names["worksets"][stored_ws])
     settings_doc = load_workset_settings_doc(ws_root)
+    ws_early = _early(early_system, stored_ws)
     # Registered membership FIRST (the authoritative name → workspace store):
     # a member keeps its REGISTERED path wherever a composition epoch put it —
     # a ``workset.workspaces`` repoint must not orphan a pre-repoint member
     # (bifrost A0).
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, settings_doc
+        ws_root, settings_doc, early=ws_early,
     )
     registered = workset_registry.workset_box_path(registry_path, proj_name)
     if registered is not None:
@@ -393,7 +412,7 @@ def resolve_qualified_name(
     # Fallback: a workspace subdir under the resolved ``workset.workspaces``
     # (repoint honored — §3.3) — e.g. an in-tree connect before its first start
     # (no ``boxes:`` entry yet).
-    candidate = resolve_workspaces_locator(ws_root, settings_doc) / proj_name
+    candidate = resolve_workspaces_locator(ws_root, settings_doc, early=ws_early) / proj_name
     if not candidate.is_dir():
         raise ProjectError(
             f"Project '{proj_name}' not found in workset '{stored_ws}'"

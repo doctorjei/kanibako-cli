@@ -61,7 +61,7 @@ from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
 
 if TYPE_CHECKING:
     from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.workset_dirkeys import EarlySystem
+    from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
 
 
 class BoxMode(Enum):
@@ -1114,7 +1114,8 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
     # Registration-layer reverse-lookup (Bug A durable fix — Guard 2, defense in depth).
     if not project_name and register:
         try:
-            _member = _workset_box_name_for_workspace(std.primary_workset, project_path_str)
+            _member = _workset_box_name_for_workspace(
+                std.primary_workset, project_path_str, early=_early_scope(std, BoxMode.primary))
 
         except (OSError, RuntimeError):
             _member = None
@@ -1147,14 +1148,16 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
         if name_override:
             if register:
                 check_primary_box_name_free(std.primary_workset, std.registry,
-                                              name_override, project_path_str)
+                                              name_override, project_path_str,
+                                              early=_early_scope(std, BoxMode.primary))
             project_name = name_override
         elif project_name:
             # Bug A: the workspace is ALREADY registered; reuse the name (re-register is a no-op).
             pass
         else:
             project_name = pick_primary_box_name(std.primary_workset, std.registry,
-                                                 project_path_str, boxes_dir=std.boxes)
+                                                 project_path_str, boxes_dir=std.boxes,
+                                                 early=_early_scope(std, BoxMode.primary))
 
         project_dir_path = std.boxes / project_name
         metadata_path = project_dir_path
@@ -1178,7 +1181,8 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
         # The except-arm is the belt-and-suspenders unwind for a Guard-1 refusal.
         if register:
             try:
-                _register_workset_box_membership(std.primary_workset, project_name, project_path)
+                _register_workset_box_membership(std.primary_workset, project_name, project_path,
+                                                 early=_early_scope(std, BoxMode.primary))
 
             except Exception:
                 if not _dir_existed:
@@ -1206,7 +1210,8 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]:
     """Find the boxes directory for a default-mode project; ``("", empty_path)`` when unregistered."""
     try:
-        name = primary_box_name_for_workspace(std.primary_workset, project_path_str)
+        name = primary_box_name_for_workspace(std.primary_workset, project_path_str,
+                                              early=_early_scope(std, BoxMode.primary))
     except (OSError, RuntimeError):
         name = None
     if name is not None:
@@ -1243,7 +1248,17 @@ def _workset_box_paths(metadata_path: Path, vault_ro_base: Path | None,
             None if vault_rw_base is None else vault_rw_base / box_name)
 
 
-def _standalone_box_paths(root: Path) -> tuple[Path, Path | None, Path | None]:
+def _early_scope(std: StandardPaths, mode: BoxMode, workset_name: str | None = None) -> EarlyScope:
+    """*std*'s early-system record, scoped to the partition of a *mode* box in *workset_name*."""
+    from kanibako.channels.channels import workset_token
+    from kanibako.settings.workset_dirkeys import EarlyScope
+
+    return EarlyScope(std.early_system, workset_token(mode, workset_name))
+
+
+def _standalone_box_paths(
+    root: Path, *, early: EarlyScope | None = None,
+) -> tuple[Path, Path | None, Path | None]:
     """Fixed STANDALONE-mode ``(home, vault_ro, vault_rw)`` (no layout axis).
 
     ⚑ STANDALONE roots a degenerate workset at *root*, so *root*'s own ``workset.yaml``
@@ -1255,7 +1270,7 @@ def _standalone_box_paths(root: Path) -> tuple[Path, Path | None, Path | None]:
     from kanibako.project.workset import resolve_workset_vault_pair
 
     home = root / STANDALONE_META_DIR / HOME_PATH
-    vault_ro, vault_rw = resolve_workset_vault_pair(root)
+    vault_ro, vault_rw = resolve_workset_vault_pair(root, early=early)
     return home, vault_ro, vault_rw
 
 
@@ -1323,7 +1338,7 @@ def remove_box_logs(logs_dir: Path | None, box: str) -> list[Path]:
     return removed
 
 
-def standalone_logs_dir(root: Path) -> Path | None:
+def standalone_logs_dir(root: Path, *, early: EarlyScope | None = None) -> Path | None:
     """The resolved ``workset.logs`` of the standalone box rooted at *root*.
 
     *root* is the workset root of the degenerate workset, so the key is read from the
@@ -1333,11 +1348,12 @@ def standalone_logs_dir(root: Path) -> Path | None:
     # ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_logs
 
-    return resolve_workset_logs(root, load_workset_settings_doc(root), standalone=True)
+    return resolve_workset_logs(root, load_workset_settings_doc(root), standalone=True, early=early)
 
 
 def box_logs_dir_for(
     std: StandardPaths, mode: BoxMode, metadata_path: Path, ws_root: Path | None,
+    *, workset_name: str | None = None,
 ) -> Path | None:
     """The resolved ``workset.logs`` dir for a box in *mode*; ``None`` under a present ``<None>``.
 
@@ -1348,13 +1364,16 @@ def box_logs_dir_for(
 
     if mode is BoxMode.standalone:
         # ``metadata_path`` IS the standalone root (drift I).
-        return standalone_logs_dir(metadata_path)
+        return standalone_logs_dir(metadata_path, early=_early_scope(std, mode))
 
     if mode is BoxMode.named:
         # ⚑ The fallback still assumes the DEFAULT box layout; it is unreachable from
         # ``resolve_workset_project``, which always supplies the group.
         root = ws_root if ws_root is not None else metadata_path.parent.parent
-        return resolve_workset_logs(root, load_workset_settings_doc(root))
+        return resolve_workset_logs(
+            root, load_workset_settings_doc(root),
+            early=None if workset_name is None else _early_scope(std, mode, workset_name),
+        )
     # PRIMARY: the PRIMARY workset's logs dir — ``std.primary_logs`` is already the
     # RESOLVED ``workset.logs`` of the primary root (:func:`resolve_system_paths`).
     return std.primary_logs
@@ -1364,7 +1383,8 @@ def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | No
     """``(resolved workset.logs dir, box name)`` for *proj*'s mode; the dir is ``None`` under ``<None>``."""
     box = proj.name if proj.name else short_hash(proj.project_hash)
     ws_root = proj.group.root if proj.group else proj.metadata_path.parent.parent
-    return box_logs_dir_for(std, proj.mode, proj.metadata_path, ws_root), box
+    return box_logs_dir_for(std, proj.mode, proj.metadata_path, ws_root,
+                            workset_name=proj.group.name if proj.group else None), box
 
 
 def _bootstrap_shell(shell_path: Path) -> None:
@@ -1506,7 +1526,8 @@ def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None:
     boxes_dir = std.boxes
     best: Path | None = None
     best_depth = -1
-    for name, path_str in load_primary_boxes(std.primary_workset).items():
+    for name, path_str in load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary)).items():
         registered = Path(path_str)
         try:
             target.relative_to(registered)
@@ -1563,6 +1584,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
     from kanibako.project.workset import (
         is_workset_skeleton, refuse_retired_workset_identity,
     )
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
     current = resolved
     while True:
@@ -1574,7 +1596,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
         refuse_retired_workset_identity(current)
 
         # NAMED: an unregistered workset root; import it, then the standard check resolves it.
-        if is_workset_skeleton(current):
+        if is_workset_skeleton(current, early=EarlyScope(std.early_system, current.name)):
             import_reconcile.import_named_workset(
                 std.registry, current,
                 primary_workset=std.primary_workset, journal=std.journal,
@@ -1609,10 +1631,13 @@ def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | 
     if not worksets_section:
         return None
 
-    for _root_str in worksets_section.values():
+    for ws_name, _root_str in worksets_section.items():
         ws_root = Path(_root_str).resolve()
         # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).
-        ws_workspaces = resolve_workspaces_locator(ws_root, load_workset_settings_doc(ws_root))
+        ws_workspaces = resolve_workspaces_locator(
+            ws_root, load_workset_settings_doc(ws_root),
+            early=_early_scope(std, BoxMode.named, ws_name),
+        )
         # Check workspaces/ first (more specific).
         try:
             resolved_dir.relative_to(ws_workspaces)
@@ -1629,43 +1654,47 @@ def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | 
     return None
 
 
-def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None:
+def _workset_box_name_for_workspace(ws_root: Path, workspace: str,
+                                    *, early: EarlyScope | None = None) -> str | None:
     """Reverse-look-up *workspace* in *ws_root*'s per-workset ``boxes:`` membership (Guard 2)."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / WORKSET_META_FILE))
+        ws_root, load_doc(ws_root / WORKSET_META_FILE), early=early)
     return workset_registry.reverse_lookup_workset_box(registry_path, workspace)
 
 
-def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None:
+def _workset_box_workspace_for_name(ws_root: Path, box_name: str,
+                                    *, early: EarlyScope | None = None) -> str | None:
     """Forward-look-up *box_name* in *ws_root*'s per-workset ``boxes:`` membership."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / WORKSET_META_FILE))
+        ws_root, load_doc(ws_root / WORKSET_META_FILE), early=early)
     return workset_registry.workset_box_path(registry_path, box_name)
 
 
-def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path) -> None:
+def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path,
+                                     *, early: EarlyScope | None = None) -> None:
     """Register *box_name* → *workspace* in *ws_root*'s per-workset registry (idempotent)."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / WORKSET_META_FILE))
+        ws_root, load_doc(ws_root / WORKSET_META_FILE), early=early)
     workset_registry.register_workset_box(registry_path, box_name, workspace)
 
 
-def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None:
+def _unregister_workset_box_membership(ws_root: Path, box_name: str,
+                                       *, early: EarlyScope | None = None) -> None:
     """Drop *box_name* from *ws_root*'s per-workset registry (compensating action, idempotent)."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        ws_root, load_doc(ws_root / WORKSET_META_FILE))
+        ws_root, load_doc(ws_root / WORKSET_META_FILE), early=early)
     workset_registry.unregister_workset_box(registry_path, box_name)
 
 
@@ -1674,32 +1703,34 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None:
 # ---------------------------------------------------------------------------
 # The SOLE store of default-mode box names; mirrors the retired ``names.py`` API.
 
-def load_primary_boxes(primary_workset: Path) -> dict[str, str]:
+def load_primary_boxes(primary_workset: Path, *, early: EarlyScope | None = None) -> dict[str, str]:
     """Return the PRIMARY box membership as ``{box_name: workspace_path_str}``."""
     from kanibako.project import workset_registry
     from kanibako.settings.config_io import load_doc
 
     registry_path = workset_registry.resolve_workset_registry_path(
-        primary_workset, load_doc(primary_workset / WORKSET_META_FILE))
+        primary_workset, load_doc(primary_workset / WORKSET_META_FILE), early=early)
     return workset_registry.load_workset_boxes(registry_path)
 
 
-def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str | None:
+def primary_box_name_for_workspace(primary_workset: Path, workspace: str,
+                                   *, early: EarlyScope | None = None) -> str | None:
     """Return the PRIMARY box name registered for *workspace*, or ``None`` (resolved-path aware)."""
-    return _workset_box_name_for_workspace(primary_workset, workspace)
+    return _workset_box_name_for_workspace(primary_workset, workspace, early=early)
 
 
-def _primary_name_domain(primary_workset: Path, registry: Path) -> set[str]:
+def _primary_name_domain(primary_workset: Path, registry: Path,
+                         *, early: EarlyScope | None = None) -> set[str]:
     """The PRIMARY-box name collision domain: primary membership ∪ global worksets."""
     from kanibako.project import registry_store
 
-    primary = set(load_primary_boxes(primary_workset))
+    primary = set(load_primary_boxes(primary_workset, early=early))
     worksets = set(registry_store.load_section(registry, "worksets"))
     return primary | worksets
 
 
 def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str, workspace: str,
-                                *, force: bool = False) -> None:
+                                *, force: bool = False, early: EarlyScope | None = None) -> None:
     """Raise ``ProjectError`` if *name* collides in the PRIMARY-box domain (no write)."""
     from kanibako.project import registry_store
 
@@ -1710,7 +1741,7 @@ def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str
     # ⚑ Case-blind on BOTH sides (spec §0, ⚑ NAMING RULES).  The second check used to
     # compare a raw name against workset keys assumed folded — the asymmetric compare
     # that let a box slip past a same-named workset.
-    if find_identifier(name, load_primary_boxes(primary_workset)) is not None:
+    if find_identifier(name, load_primary_boxes(primary_workset, early=early)) is not None:
         from kanibako.errors import ProjectError
         raise ProjectError(ERR_PROJECT_NAME_USED % name)
 
@@ -1740,10 +1771,10 @@ def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
 
 
 def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str,
-                          boxes_dir: Path | None = None) -> str:
+                          boxes_dir: Path | None = None, *, early: EarlyScope | None = None) -> str:
     """Pick a collision-free PRIMARY box name from *workspace*'s basename (no write)."""
     base = Path(workspace).name or "project"
-    taken_names = _primary_name_domain(primary_workset, registry)
+    taken_names = _primary_name_domain(primary_workset, registry, early=early)
 
     def taken(cand: str) -> bool:
         # ⚑ TWO questions under TWO rules, and the split is deliberate: the NAME domain
@@ -1762,37 +1793,41 @@ def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str,
 
 
 def register_primary_box_name(primary_workset: Path, registry: Path, name: str,
-                              workspace: Path | str, *, force: bool = False) -> None:
+                              workspace: Path | str, *, force: bool = False,
+                              early: EarlyScope | None = None) -> None:
     """Register *name* → *workspace* in the PRIMARY membership (with guards)."""
-    check_primary_box_name_free(primary_workset, registry, name, str(workspace), force=force)
-    _register_workset_box_membership(primary_workset, name, Path(workspace))
+    check_primary_box_name_free(primary_workset, registry, name, str(workspace), force=force,
+                                early=early)
+    _register_workset_box_membership(primary_workset, name, Path(workspace), early=early)
 
 
 def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, name: str,
-                                        workspace: Path | str, *, force: bool = False) -> None:
+                                        workspace: Path | str, *, force: bool = False,
+                                        early: EarlyScope | None = None) -> None:
     """Idempotent :func:`register_primary_box_name` for deferred-create recovery."""
     from kanibako.project.workset_registry import _same_workspace
 
-    boxes = load_primary_boxes(primary_workset)
+    boxes = load_primary_boxes(primary_workset, early=early)
     stored = find_identifier(name, boxes)
     existing = None if stored is None else boxes[stored]
     if existing is not None and _same_workspace(existing, str(workspace)):
         return
-    register_primary_box_name(primary_workset, registry, name, workspace, force=force)
+    register_primary_box_name(primary_workset, registry, name, workspace, force=force, early=early)
 
 
 def assign_primary_box_name(primary_workset: Path, registry: Path, workspace: Path | str,
-                            boxes_dir: Path | None = None) -> str:
+                            boxes_dir: Path | None = None, *, early: EarlyScope | None = None) -> str:
     """Auto-assign + register a PRIMARY box name from *workspace*'s basename."""
     candidate = pick_primary_box_name(primary_workset, registry, str(workspace),
-                                      boxes_dir=boxes_dir)
-    register_primary_box_name(primary_workset, registry, candidate, workspace)
+                                      boxes_dir=boxes_dir, early=early)
+    register_primary_box_name(primary_workset, registry, candidate, workspace, early=early)
     return candidate
 
 
-def unregister_primary_box_name(primary_workset: Path, name: str) -> None:
+def unregister_primary_box_name(primary_workset: Path, name: str,
+                                *, early: EarlyScope | None = None) -> None:
     """Drop *name* from the PRIMARY membership (the membership ``unregister_name``)."""
-    _unregister_workset_box_membership(primary_workset, name)
+    _unregister_workset_box_membership(primary_workset, name, early=early)
 
 
 def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPaths,
@@ -1810,7 +1845,8 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
     # Workspace override (P7/D10): the REGISTERED path IS the workspace; unregistered
     # members fall back to the composed default.  ⚑ Never re-derive a registered member.
     project_toml, workset_toml = _box_settings_files(BoxMode.named, metadata_path, ws)
-    registered_workspace = _workset_box_workspace_for_name(ws.root, project_name)
+    ws_early = _early_scope(std, BoxMode.primary if ws.is_default else BoxMode.named, ws.name)
+    registered_workspace = _workset_box_workspace_for_name(ws.root, project_name, early=ws_early)
     if registered_workspace is not None:
         project_path = Path(registered_workspace)
     else:
@@ -1841,7 +1877,7 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
         )
         # P5a dual-register (idempotent): the SOLE on-disk identity record.  Sourced from the
         # RESOLVED *project_path* so an external-connect override seeds the external dir.
-        _register_workset_box_membership(ws.root, project_name, project_path)
+        _register_workset_box_membership(ws.root, project_name, project_path, early=ws_early)
         is_new = True
 
     if initialize:
@@ -1891,7 +1927,8 @@ def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Pat
     from kanibako.settings.config_io import load_doc
 
     primary_registry = workset_registry.resolve_workset_registry_path(
-        std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE))
+        std.primary_workset, load_doc(std.primary_workset / WORKSET_META_FILE),
+        early=_early_scope(std, BoxMode.primary))
     registered = workset_registry.load_workset_boxes(primary_registry)
     results: list[tuple[Path, Path | None]] = []
     for entry in sorted(projects_dir.iterdir()):
@@ -1922,7 +1959,7 @@ def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _Works
             print(WARN_WS_NO_ROOT % (ws_name, root), file=sys.stderr)
             continue
         try:
-            ws = load_workset(root, ws_name)
+            ws = load_workset(root, ws_name, early_system=std.early_system)
         except Exception as exc:
             print(WARN_WS_BAD_LOAD % (ws_name, exc), file=sys.stderr)
             continue
@@ -1960,19 +1997,22 @@ def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_Work
     for ws_name, root in registry.items():
         ws_root = root.resolve()
         # The RESOLVED ``workset.workspaces`` — a repoint is honored (§3.3).
-        ws_workspaces = resolve_workspaces_locator(ws_root, load_workset_settings_doc(ws_root))
+        ws_workspaces = resolve_workspaces_locator(
+            ws_root, load_workset_settings_doc(ws_root),
+            early=_early_scope(std, BoxMode.named, ws_name),
+        )
         # Check workspaces/ first (specific project).
         try:
             rel = resolved.relative_to(ws_workspaces)
             project_name = rel.parts[0] if rel.parts else None
-            ws = load_workset(root, ws_name)
+            ws = load_workset(root, ws_name, early_system=std.early_system)
             return ws, project_name
         except ValueError:
             pass
         # Then check workset root itself.
         try:
             resolved.relative_to(ws_root)
-            ws = load_workset(root, ws_name)
+            ws = load_workset(root, ws_name, early_system=std.early_system)
             return ws, None
         except ValueError:
             continue
@@ -1993,7 +2033,8 @@ def _resolve_workset_or_connected(project_dir: Path,
         from kanibako.project.workset import load_workset
         owned = box_resolve.find_connected_external_box(project_dir.resolve(), std)
         if owned is not None:
-            ws, proj_name = (load_workset(owned.workset_root, owned.workset_name),
+            ws, proj_name = (load_workset(owned.workset_root, owned.workset_name,
+                                          early_system=std.early_system),
                              owned.box_name)
     if ws is None:
         raise WorksetError(ERR_WORKSET_NO_WORKSET % project_dir)
@@ -2055,13 +2096,14 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
         return value
     if route is DesignationRoute.QUALIFIED:
         try:
-            return resolve_qualified_name(std.registry, value)[0]
+            return resolve_qualified_name(std.registry, value, early_system=std.early_system)[0]
         except ProjectError:
             return value
     on_disk = Path(value).exists()
     try:
         resolved, kind = resolve_name(std.registry, value, cwd=Path.cwd(),
-                                      primary_workset=std.primary_workset)
+                                      primary_workset=std.primary_workset,
+                                      early_system=std.early_system)
     except AmbiguousNameError:
         raise
     except ProjectError:
@@ -2193,7 +2235,8 @@ def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool,
     from kanibako.project import registry_store
     from kanibako.launch import box_identity
 
-    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
+    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(
+        root, early=_early_scope(std, BoxMode.standalone))
 
     existing = registry_store.standalone_box_names(std.registry)
     box_name = box_identity.resolve_standalone_name(root, name, existing)
@@ -2232,14 +2275,15 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
     # ``None`` when the root nulls it.
     metadata_path = root
     box_data = root / STANDALONE_META_DIR
+    standalone_early = _early_scope(std, BoxMode.standalone)
     project_path = resolve_workset_workspaces(root, load_workset_settings_doc(root),
-                                              standalone=True)
+                                              standalone=True, early=standalone_early)
     # The mode-aware tier pair from the ONE derivation (M-8).
     box_settings, project_toml = _standalone_settings_files(root)
 
     # ⚑ STANDALONE paths derive from the CURRENT root, never stored absolutes — that is
     # what makes a default-shaped tree drop-in portable BY CONSTRUCTION.
-    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root)
+    shell_path, vault_ro_path, vault_rw_path = _standalone_box_paths(root, early=standalone_early)
     resolved_vault = enable_vault
     if initialize and resolved_vault is None:
         resolved_vault = resolve_box_enable_vault(
@@ -2267,7 +2311,8 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         # ⚑ A null ``workset.workspaces`` in a pre-existing root file: no workspace dir to
         # create (Q96), refused here, before the first write, not at the later mkdir.
         from kanibako.project.workset import refuse_null_workspaces
-        refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True)
+        refuse_null_workspaces(root, f"a workspace for '{root.name}'", standalone=True,
+                               early=standalone_early)
         assert project_path is not None  # a null root refused on the line above
         # ⚑ The WORKSET CANON tier, stamped CANON-ONLY.  ``workset.canon`` is UNIFORM
         # IN EVERY MODE (spec ``:962``) so a lone box has one; ``workset.template`` is

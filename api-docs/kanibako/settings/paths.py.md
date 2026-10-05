@@ -52,20 +52,20 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 def creds_watcher_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None
 def box_log_files(logs_dir: Path, box: str) -> BoxLogFiles
 def remove_box_logs(logs_dir: Path | None, box: str) -> list[Path]
-def standalone_logs_dir(root: Path) -> Path | None
-def box_logs_dir_for(std: StandardPaths, mode: BoxMode, metadata_path: Path, ws_root: Path | None) -> Path | None
+def standalone_logs_dir(root: Path, *, early: EarlyScope | None=None) -> Path | None
+def box_logs_dir_for(std: StandardPaths, mode: BoxMode, metadata_path: Path, ws_root: Path | None, *, workset_name: str | None=None) -> Path | None
 def box_logs_location(std: StandardPaths, proj: ProjectPaths) -> tuple[Path | None, str]
 def write_vault_gitignore(vault_root: Path, vault_rw_path: Path) -> None
 def detect_project_mode(project_dir: Path, std: StandardPaths, config: BootstrapConfig) -> DetectionResult
-def load_primary_boxes(primary_workset: Path) -> dict[str, str]
-def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str | None
-def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str, workspace: str, *, force: bool=False) -> None
+def load_primary_boxes(primary_workset: Path, *, early: EarlyScope | None=None) -> dict[str, str]
+def primary_box_name_for_workspace(primary_workset: Path, workspace: str, *, early: EarlyScope | None=None) -> str | None
+def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str, workspace: str, *, force: bool=False, early: EarlyScope | None=None) -> None
 def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None
-def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str, boxes_dir: Path | None=None) -> str
-def register_primary_box_name(primary_workset: Path, registry: Path, name: str, workspace: Path | str, *, force: bool=False) -> None
-def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, name: str, workspace: Path | str, *, force: bool=False) -> None
-def assign_primary_box_name(primary_workset: Path, registry: Path, workspace: Path | str, boxes_dir: Path | None=None) -> str
-def unregister_primary_box_name(primary_workset: Path, name: str) -> None
+def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str, boxes_dir: Path | None=None, *, early: EarlyScope | None=None) -> str
+def register_primary_box_name(primary_workset: Path, registry: Path, name: str, workspace: Path | str, *, force: bool=False, early: EarlyScope | None=None) -> None
+def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, name: str, workspace: Path | str, *, force: bool=False, early: EarlyScope | None=None) -> None
+def assign_primary_box_name(primary_workset: Path, registry: Path, workspace: Path | str, boxes_dir: Path | None=None, *, early: EarlyScope | None=None) -> str
+def unregister_primary_box_name(primary_workset: Path, name: str, *, early: EarlyScope | None=None) -> None
 def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPaths, config: BootstrapConfig, *, initialize: bool=False, enable_vault: bool | None=None) -> ProjectPaths
 def iter_projects(std: StandardPaths, config: BootstrapConfig) -> list[tuple[Path, Path | None]]
 def iter_workset_projects(std: StandardPaths, config: BootstrapConfig) -> _WorksetProjectRows
@@ -89,7 +89,8 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]
 def _primary_box_paths(std: StandardPaths, metadata_path: Path, box_name: str) -> tuple[Path, Path | None, Path | None]
 def _workset_box_paths(metadata_path: Path, vault_ro_base: Path | None, vault_rw_base: Path | None, box_name: str) -> tuple[Path, Path | None, Path | None]
-def _standalone_box_paths(root: Path) -> tuple[Path, Path | None, Path | None]
+def _early_scope(std: StandardPaths, mode: BoxMode, workset_name: str | None=None) -> EarlyScope
+def _standalone_box_paths(root: Path, *, early: EarlyScope | None=None) -> tuple[Path, Path | None, Path | None]
 def _bootstrap_shell(shell_path: Path) -> None
 def _upgrade_shell(shell_path: Path) -> None
 def _init_common(std: StandardPaths, metadata_path: Path, shell_path: Path, vault_ro_path: Path | None, vault_rw_path: Path | None, project_path: Path, *, enable_vault: bool=True, vault_root: Path) -> None
@@ -98,11 +99,11 @@ def _init_project(std: StandardPaths, metadata_path: Path, shell_path: Path, vau
 def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None
 def _is_standalone_meta_dir(root: Path) -> bool
 def _check_workset(resolved_dir: Path, std: StandardPaths) -> DetectionResult | None
-def _workset_box_name_for_workspace(ws_root: Path, workspace: str) -> str | None
-def _workset_box_workspace_for_name(ws_root: Path, box_name: str) -> str | None
-def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path) -> None
-def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None
-def _primary_name_domain(primary_workset: Path, registry: Path) -> set[str]
+def _workset_box_name_for_workspace(ws_root: Path, workspace: str, *, early: EarlyScope | None=None) -> str | None
+def _workset_box_workspace_for_name(ws_root: Path, box_name: str, *, early: EarlyScope | None=None) -> str | None
+def _register_workset_box_membership(ws_root: Path, box_name: str, workspace: Path, *, early: EarlyScope | None=None) -> None
+def _unregister_workset_box_membership(ws_root: Path, box_name: str, *, early: EarlyScope | None=None) -> None
+def _primary_name_domain(primary_workset: Path, registry: Path, *, early: EarlyScope | None=None) -> set[str]
 def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: Path) -> None
 def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
 def _resolve_workset_or_connected(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]

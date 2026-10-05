@@ -79,11 +79,15 @@ def _find_owning_box(
     ``resolve()``d, so symlink / relative / trailing-slash forms compare equal.
     ``None`` when no workset owns the dir.
     """
+    from kanibako.channels.channels import workset_token
+    from kanibako.settings.workset_dirkeys import EarlyScope
+
     target = project_dir.resolve()
     for workset_name, root, mode in _enumerate_worksets(std):
         settings: Any = load_doc(root / WORKSET_META_FILE)
         registry_path = workset_registry.resolve_workset_registry_path(
-            root, settings
+            root, settings,
+            early=EarlyScope(std.early_system, workset_token(mode, workset_name)),
         )
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():
@@ -115,6 +119,7 @@ def find_connected_external_box(
     OLD composition — bifrost A0, 2026-08-02.  Reasoning: the llm-doc.
     """
     from kanibako.project.workset import resolve_workspaces_locator
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
     target = project_dir.resolve()
     best: _OwnedBox | None = None
@@ -124,11 +129,12 @@ def find_connected_external_box(
     ).items():
         root = Path(root_str)
         settings: Any = load_doc(root / WORKSET_META_FILE)
+        early = EarlyScope(std.early_system, name)
         registry_path = workset_registry.resolve_workset_registry_path(
-            root, settings
+            root, settings, early=early,
         )
         # No mapping check needed: ``load_doc`` returns a mapping or refuses the file.
-        workspaces_resolved = resolve_workspaces_locator(root, settings).resolve()
+        workspaces_resolved = resolve_workspaces_locator(root, settings, early=early).resolve()
         boxes = workset_registry.load_workset_boxes(registry_path)
         for box_name, box_path_str in boxes.items():
             box_path = Path(box_path_str).resolve()
