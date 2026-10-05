@@ -329,10 +329,10 @@ def agent_segment_reason(
 ) -> str | None:
     """§2h — WHY agent segment *name* is refused, or ``None`` if valid.
 
-    ⚑⚑ THE ONE JUDGE of the segment: one defect, one refusal. Both bind-map parses under
-    ``pref.agent.`` reach it, deferred included, AHEAD of any shape check, lest a shape verdict
-    send the user to reshape an entry whose only defect is its name. So does
-    :func:`allowlist_reason`.
+    ⚑⚑ THE ONE JUDGE of the segment. Both bind-map parses under ``pref.agent.`` reach it,
+    deferred included, AHEAD of every per-entry shape check, lest a shape verdict send the user
+    to reshape an entry whose only defect is its name; on the deferred parse the whole-map
+    twice-spelled-destination check still runs first. So does :func:`allowlist_reason`.
     """
     if valid_agents is None:
         valid_agents = default_valid_agents()
