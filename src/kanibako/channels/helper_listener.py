@@ -294,10 +294,8 @@ class HelperHub:
         container_name = render_container_name(
             *ctx.container_name_segments, helper_num=helper_num,
         )
-        # ⚑ ADDRESSABLE — a helper's name goes straight to ``runtime.run``.  The hub only
-        # exists for a STARTED director, and ``start`` refuses a box that renders no name,
-        # so this is unreachable in practice; the guard keeps a ``None`` from ever
-        # reaching the runtime if that ever stops being true.
+        # ⚑ ADDRESSABLE, and unreachable: the hub exists only for a STARTED director.
+        # The ``None`` guard is :func:`render_container_name`'s contract.
         if container_name is None:
             raise ContainerError(
                 f"director box {ctx.container_name_segments[1]!r} renders no helper "

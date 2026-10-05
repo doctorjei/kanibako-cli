@@ -76,8 +76,7 @@ WORKSET_SEGMENT_PRIMARY = "primary"
 WORKSET_SEGMENT_STANDALONE = "standalone"
 
 #: The ``kb-`` every rendered container name starts with — the ``kanibako ps`` listing's
-#: own filter.  A second spelling of this prefix is a second carrier, so a box whose name
-#: no longer carries it would silently leave the listing.
+#: own filter, and one carrier so it cannot be spelled two ways.
 CONTAINER_NAME_PREFIX = "kb-"
 
 
@@ -89,8 +88,8 @@ def renders_no_name(box: str) -> bool:
     ``<B>`` leaves the same run at the end.  Both are names the box-name rule no longer
     allows, so both render nothing rather than a name another box could also carry.
 
-    Only a ``str`` is judged: a caller that hands over something which is not a name at
-    all has a different fault, and a collision argument does not apply to it.
+    Only a ``str`` is judged: a value which is not a name at all is a different fault,
+    and a collision argument does not apply to it.
     """
     return isinstance(box, str) and (not box or box.startswith("-"))
 
@@ -104,10 +103,8 @@ def unrenderable_box_name_refusal(
     cannot drift.  The cure names the box by its PROJECT path, never by *box*: a leading
     ``-`` is read as a flag, so the very name being refused could not address it.  A
     standalone box's ROOT is its identity, so it is renamed in place with
-    ``convert --standalone``; any other box is moved to a new path.  A box with no
-    recorded project path has no addressable path, and the verb is printed without one —
-    run from inside the box, where the designation is the current directory.
-    """
+    ``convert --standalone``; any other box is moved.  With no recorded project path the
+    verb prints bare — run from inside the box."""
     from kanibako.launch.box_identity import box_name_reason
 
     reason = box_name_reason(box) or "box name must not be empty"
@@ -131,9 +128,8 @@ def unrenderable_box_name_refusal(
 def name_segment(segment: str) -> str:
     """Render one SEGMENT of a container or socket name: every ``-`` written ``--``.
 
-    The escape alone does NOT make a two-segment name decodable — see
-    :func:`renders_no_name`, which is what keeps two boxes apart.  An empty
-    segment renders empty; the caller decides what a nameless box is.
+    The escape alone does NOT make a two-segment name decodable; :func:`renders_no_name`
+    is what keeps two boxes apart.  An empty segment renders empty.
     """
     return segment.replace("-", "--")
 
@@ -160,12 +156,14 @@ def render_container_name(
 ) -> str | None:
     """``kb-<W>-<B>`` (plus ``-helper-<n>``), or ``None`` when the box renders NO name.
 
-    *workset* and *box* are the ``<W>`` / ``<B>`` segments as spelled by
-    :func:`workset_segment` and the caller's box name; each is escaped by
-    :func:`name_segment`.  A helper's number is a STRUCTURED argument, never
-    recovered from a name — ``meta.box.container`` renders the pair, it is never a
-    source to parse back from.  :func:`renders_no_name` decides the ``None``; it is a
-    VALUE, not an error, so a door that only reports prints that there is none.
+    *workset* and *box* are the segments from :func:`workset_segment` and the caller's box
+    name, each escaped by :func:`name_segment`.  A helper's number is a STRUCTURED
+    argument, never recovered from a name.
+
+    ⚑ THE CONTRACT, owned here and nowhere else: :func:`renders_no_name` decides the
+    ``None``, and it is a VALUE, not an error.  So a door that only REPORTS prints that
+    there is none, and a door that ADDRESSES a container must handle ``None`` before it
+    reaches the runtime or a path.  ⛔ Point here.
     """
     if renders_no_name(box):
         return None
@@ -179,8 +177,7 @@ def render_socket_identity(box: str, workset: str) -> str | None:
     """``I`` — the helper-socket name's stem: ``<B>-<W>``, or ``None`` for no name.
 
     The socket is bound per DIRECTOR box, so its two segments are in the opposite order
-    from the container's; both render through :func:`name_segment`.  The ``<B>`` is
-    judged by the same :func:`renders_no_name` the container render uses.
+    from the container's.  ``None`` is :func:`render_container_name`'s contract.
     """
     if renders_no_name(box):
         return None
@@ -192,7 +189,8 @@ def container_name_for_box_name(name: str, workset: str) -> str | None:
 
     *workset* is the ``<W>`` segment, so two boxes of one name in two worksets do not
     collide.  :func:`container_name_for` also passes a short project hash here for a
-    nameless (legacy) primary box, so *name* is not always a box name.
+    nameless (legacy) primary box, so *name* is not always a box name.  ``None`` is
+    :func:`render_container_name`'s contract, not this function's.
     """
     return render_container_name(workset, name)
 
@@ -200,8 +198,8 @@ def container_name_for_box_name(name: str, workset: str) -> str | None:
 def container_name_segments(proj: ProjectPaths) -> tuple[str, str]:
     """The ``(<W>, <B>)`` pair *proj* renders from — its identity, before rendering.
 
-    A caller that must name something DERIVED from a box (a helper's container) takes
-    the pair here, not a rendered name it would have to take apart again.
+    A caller naming something DERIVED from a box (a helper's container) takes the pair
+    here rather than taking a rendered name apart again.
     """
     group_name = proj.group.name if proj.group is not None else None
     workset = workset_segment(proj.mode.value, group_name)
@@ -209,12 +207,11 @@ def container_name_segments(proj: ProjectPaths) -> tuple[str, str]:
 
 
 def container_name_for(proj: ProjectPaths) -> str | None:
-    """Deterministic container name for a project, or ``None`` when it renders no name.
+    """Deterministic container name for a project, or ``None`` per the render contract.
 
     ⚑ A caller holding a registry row rather than a :class:`ProjectPaths` (``box ps``)
-    passes the two segments to :func:`render_container_name` directly; it never
-    re-spells one by hand.  ⛔ A door that ADDRESSES a container must handle ``None``
-    before it reaches the runtime or a path — there is nothing to address.
+    passes the two segments to :func:`render_container_name` directly; it never re-spells
+    one by hand.
     """
     return render_container_name(*container_name_segments(proj))
 
@@ -222,15 +219,12 @@ def container_name_for(proj: ProjectPaths) -> str | None:
 def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]:
     """The names *proj*'s container carried BEFORE the ``kb-<W>-<B>`` render.
 
-    A container started by an earlier release keeps its old name, which the current
-    verbs no longer address — so ``start`` refuses while one runs
-    (``commands.start._refuse_legacy_container``).  ⚑ ONE carrier of the old spelling:
-    it is here, beside the render it replaced, and nothing else may re-spell it.
-
-    Primary and named boxes were ``kanibako-<box name>``; a standalone box was
-    ``kanibako-ronin-<escaped root>`` (leading ``/`` dropped, ``-`` written ``-.``,
-    ``/`` written ``-``).  A nameless primary box falls back to its project hash, as
-    the current render does.
+    A container started by an earlier release keeps its old name, which the current verbs
+    no longer address — so ``start`` refuses while one runs
+    (``commands.start._refuse_legacy_container``).  ⚑ ONE carrier of the old spelling, so
+    nothing else re-spells it: primary and named boxes were ``kanibako-<box name>``, a
+    standalone box ``kanibako-ronin-<escaped root>``, and a nameless primary box its
+    project hash — the same fallback the current render uses.
     """
     box = proj.name or short_hash(proj.project_hash)
     if proj.mode.value == "standalone":

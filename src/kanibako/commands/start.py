@@ -2786,11 +2786,10 @@ def _run_container(
 
     logger = get_logger("start")
 
-    # The keyspec row's SECOND obligation: a box name that renders no name cannot be
-    # started, because there is no container name to start.  Refused HERE — ahead of the
-    # reattach fast path and before a runtime is opened — and every later
-    # ``container_name_for(proj)`` in this function is therefore reached only for a box
-    # that HAS a name.  Nothing is stopped: no container carries the name.
+    # The keyspec row's SECOND obligation — no name, no container to start.  Refused HERE,
+    # ahead of the reattach fast path and before a runtime opens, so every later
+    # ``container_name_for(proj)`` below is reached only for a box that HAS a name.  It
+    # stops nothing: no container carries the name.
     rendered = container_name_for(proj)
     if rendered is None:
         print(
@@ -2800,10 +2799,9 @@ def _run_container(
             file=sys.stderr,
         )
         return 1
-    # ⚑ THE ONE NAME for the rest of this function.  Every later use is the same box's
-    # same name, and every one of them ADDRESSES a container, so ``None`` must not reach
-    # the runtime — the gate above is what guarantees that, and binding it once makes the
-    # guarantee visible to the type checker instead of implied by line order.
+    # ⚑ THE ONE NAME for the rest of this function: every later use is this box's
+    # same name, so the gate above is what makes binding it once safe rather than
+    # implied by line order.
     container_name: str = rendered
 
     # Detect the container runtime up front: agent resolution below needs it to
@@ -9962,8 +9960,7 @@ def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path:
     if not proj.name:
         raise ValueError("box has no name; cannot derive its helper socket name.")
     workset, box = container_name_segments(proj)
-    # ⛔ ADDRESSABLE, never a path join on ``None``: a box that renders no name has no
-    # socket.  Reached only for a started box, so this is a guard, not a user path.
+    # ⛔ Never a path join on ``None``; that contract is :func:`render_container_name`'s.
     identity = render_socket_identity(box, workset)
     if identity is None:
         raise ValueError(

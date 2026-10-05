@@ -219,9 +219,8 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
         _warn_settings(refusal)
 
     container_name = container_name_for(proj)
-    # ⚑ NO legacy-name fallback: 1.8.0 is a clean break, no aliases.  A box that renders
-    # NO name has no container under 1.8.0, so there is nothing here to address — say so
-    # and name the cure, the same text ``start`` uses (one carrier, in ``utils``).
+    # ⚑ NO legacy-name fallback: 1.8.0 is a clean break, no aliases.  So there is
+    # nothing here to address — say so and name the cure (one carrier, in ``utils``).
     if container_name is None:
         print(
             unrenderable_box_name_refusal(
@@ -284,9 +283,8 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
 def _boxes_rendering_no_name() -> list[tuple[str, str, Path | None]]:
     """Registered boxes whose name renders NO name, as ``(name, mode, path)``.
 
-    ⚑ ``stop --all`` sweeps CONTAINER names, and such a box has none under 1.8.0, so it
-    never appears in ``list_running``.  Enumerating the boxes is what lets the sweep SAY
-    that it skipped one instead of silently omitting it.
+    ⚑ Enumerating REGISTRY boxes is what lets the sweep SAY it skipped one: such a box
+    has no container, so it never appears in ``list_running``.
     """
     from kanibako.settings.config import user_config_file, load_config
     from kanibako.settings.paths import load_primary_boxes, load_std_paths
@@ -305,8 +303,7 @@ def _boxes_rendering_no_name() -> list[tuple[str, str, Path | None]]:
 
 def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
     """Stop all running kanibako containers."""
-    # ⚑ SKIP AND CONTINUE: a box that renders no name is named here once, and the sweep
-    # carries on with every container that does have a name.
+    # ⚑ SKIP AND CONTINUE: the sweep carries on with every container that has a name.
     for name, _mode, _path in _boxes_rendering_no_name():
         print(f"Skipped box '{name}': it has no container name under the box-name rule.")
 
