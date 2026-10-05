@@ -259,7 +259,7 @@ def test_route_a_instructions_bind_retired(agent: str):
     binds = resolve_target(agent, None).default_category_binds()
     # And nothing left points a category bind at @system.instructions.
     assert not any(
-        isinstance(v, tuple) and v and v[0] == "@system.instructions"
+        isinstance(v, tuple) and v and v[0] in ("@system.instructions", "{system.instructions}")
         for v in binds.values()
     ), f"{agent}: a category bind still references @system.instructions: {binds!r}"
 
