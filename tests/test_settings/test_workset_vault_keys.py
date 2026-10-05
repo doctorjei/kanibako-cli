@@ -27,9 +27,11 @@ from kanibako.settings.paths import (
     load_std_paths,
     resolve_project,
     resolve_standalone_project,
+    resolve_system_paths,
     resolve_workset_project,
 )
 from kanibako.settings.settings_resolve import SettingsError
+from kanibako.settings.workset_dirkeys import EarlyScope, early_system
 
 
 def _repoint(root, key, value):
@@ -42,54 +44,61 @@ def _repoint(root, key, value):
 # ---------------------------------------------------------------------------
 
 class TestVaultResolverFaces:
-    def test_unset_takes_the_declared_default_leaf(self, tmp_path):
-        assert resolve_workset_vault_ro(tmp_path, None) == tmp_path / "vault" / "ro"
-        assert resolve_workset_vault_rw(tmp_path, None) == tmp_path / "vault" / "rw"
+    @pytest.fixture
+    def early(self, tmp_path):
+        """An early scope whose system tier is empty: no system file states a vault key."""
+        return EarlyScope(
+            early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path)), "ws",
+        )
 
-    def test_declared_default_written_out_degenerates_to_the_default(self, tmp_path):
+    def test_unset_takes_the_declared_default_leaf(self, tmp_path, early):
+        assert resolve_workset_vault_ro(tmp_path, None, early=early) == tmp_path / "vault" / "ro"
+        assert resolve_workset_vault_rw(tmp_path, None, early=early) == tmp_path / "vault" / "rw"
+
+    def test_declared_default_written_out_degenerates_to_the_default(self, tmp_path, early):
         _repoint(tmp_path, "vault_ro", "@meta.workset.path/vault/ro")
         _repoint(tmp_path, "vault_rw", "@meta.workset.path/vault/rw")
         doc = load_workset_settings_doc(tmp_path)
-        assert resolve_workset_vault_ro(tmp_path, doc) == tmp_path / "vault" / "ro"
-        assert resolve_workset_vault_rw(tmp_path, doc) == tmp_path / "vault" / "rw"
+        assert resolve_workset_vault_ro(tmp_path, doc, early=early) == tmp_path / "vault" / "ro"
+        assert resolve_workset_vault_rw(tmp_path, doc, early=early) == tmp_path / "vault" / "rw"
 
-    def test_absolute_repoint_is_honored(self, tmp_path):
+    def test_absolute_repoint_is_honored(self, tmp_path, early):
         elsewhere = tmp_path / "elsewhere"
         _repoint(tmp_path, "vault_ro", str(elsewhere / "ro"))
         _repoint(tmp_path, "vault_rw", str(elsewhere / "rw"))
         doc = load_workset_settings_doc(tmp_path)
-        assert resolve_workset_vault_ro(tmp_path, doc) == elsewhere / "ro"
-        assert resolve_workset_vault_rw(tmp_path, doc) == elsewhere / "rw"
+        assert resolve_workset_vault_ro(tmp_path, doc, early=early) == elsewhere / "ro"
+        assert resolve_workset_vault_rw(tmp_path, doc, early=early) == elsewhere / "rw"
 
-    def test_bare_relative_repoint_is_refused_naming_both_readings(self, tmp_path):
+    def test_bare_relative_repoint_is_refused_naming_both_readings(self, tmp_path, early):
         # ⚑ INVERTED BY [R147]: this used to assert the value anchored under the
         # workset root.  A vault is exactly the case the ruling is about — the
         # directory gets created and then holds the user's data.
         _repoint(tmp_path, "vault_ro", "store/readonly")
         doc = load_workset_settings_doc(tmp_path)
         with pytest.raises(SettingsError) as exc:
-            resolve_workset_vault_ro(tmp_path, doc)
+            resolve_workset_vault_ro(tmp_path, doc, early=early)
         message = str(exc.value)
         assert "workset.vault_ro" in message
         assert str(tmp_path / "store" / "readonly") in message
         assert str(Path.cwd() / "store" / "readonly") in message
 
-    def test_tilde_repoint_expands_host_side(self, tmp_path, tmp_home):
+    def test_tilde_repoint_expands_host_side(self, tmp_path, tmp_home, early):
         _repoint(tmp_path, "vault_rw", "~/outside/rw")
         doc = load_workset_settings_doc(tmp_path)
         # ``tmp_home`` returns the tmp ROOT; the isolated $HOME is its ``home`` child.
-        assert resolve_workset_vault_rw(tmp_path, doc) == tmp_home / "home" / "outside" / "rw"
+        assert resolve_workset_vault_rw(tmp_path, doc, early=early) == tmp_home / "home" / "outside" / "rw"
 
-    def test_workset_path_ref_with_a_repointed_leaf(self, tmp_path):
+    def test_workset_path_ref_with_a_repointed_leaf(self, tmp_path, early):
         _repoint(tmp_path, "vault_ro", "@meta.workset.path/data/ro")
         doc = load_workset_settings_doc(tmp_path)
-        assert resolve_workset_vault_ro(tmp_path, doc) == tmp_path / "data" / "ro"
+        assert resolve_workset_vault_ro(tmp_path, doc, early=early) == tmp_path / "data" / "ro"
 
-    def test_unresolvable_ref_refuses_and_names_the_key(self, tmp_path):
+    def test_unresolvable_ref_refuses_and_names_the_key(self, tmp_path, early):
         _repoint(tmp_path, "vault_ro", "@config.registry/ro")
         doc = load_workset_settings_doc(tmp_path)
         with pytest.raises(SettingsError) as exc:
-            resolve_workset_vault_ro(tmp_path, doc)
+            resolve_workset_vault_ro(tmp_path, doc, early=early)
         assert "workset.vault_ro" in str(exc.value)
         assert "@config.registry" in str(exc.value)
 

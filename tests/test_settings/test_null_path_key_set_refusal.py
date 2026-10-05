@@ -44,7 +44,7 @@ from kanibako.settings.messages import (
     ERR_CONFIG_NULL_PATH_REASON,
     ERR_CONFIG_NULL_PATH_SET_HEAD,
 )
-from kanibako.settings.paths import load_system_config
+from kanibako.settings.paths import BoxMode, _early_scope, load_system_config
 from tests.support.filenames import CONFIG_FILENAME
 
 #: THE TWO SHAPES A ``--null`` LANDS AS, as the stored YAML spells them.  ``system.canon`` is
@@ -180,7 +180,10 @@ class TestTheLaunchStillRefusesTheStoredValue:
 
         dump_doc(workset.settings_path, {"workset": {BOXES_PATH: None}})
         with pytest.raises(Exception) as caught:
-            resolve_workset_boxes(workset.root, load_workset_settings_doc(workset.root))
+            resolve_workset_boxes(
+                workset.root, load_workset_settings_doc(workset.root),
+                early=_early_scope(std, BoxMode.named, workset.name),
+            )
         assert ERR_CONFIG_NULL_PATH_REASON in str(caught.value)
         assert _WORKSET_BOXES in str(caught.value)
 

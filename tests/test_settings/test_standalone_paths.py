@@ -12,6 +12,7 @@ from kanibako.settings.bootstrap import CREDS_WATCHER_LOG_SUFFIX
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import (
     BoxMode,
+    _early_scope,
     creds_watcher_log_path,
     detect_project_mode,
     helper_log_path,
@@ -329,6 +330,7 @@ class TestStandaloneFixedPaths:
         assert log == resolved / "box_data" / f"{proj.name}.jsonl"
         assert log.parent == resolve_workset_logs(
             resolved, load_workset_settings_doc(resolved), standalone=True,
+            early=_early_scope(std, BoxMode.standalone),
         )
 
     def test_helper_log_follows_a_standalone_logs_repoint(
@@ -358,7 +360,7 @@ class TestStandaloneFixedPaths:
         )
         resolved = project_dir.resolve()
         self._set_workset_key(resolved, "logs", None)
-        assert standalone_logs_dir(resolved) is None
+        assert standalone_logs_dir(resolved, early=_early_scope(std, BoxMode.standalone)) is None
         assert helper_log_path(std, proj) is None
         assert creds_watcher_log_path(std, proj) is None
 

@@ -17,9 +17,12 @@ from kanibako.project.workset import create_workset
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.config_interface import set_config_value
 from kanibako.settings.config_keys import ConfigLevel
+from kanibako.settings.paths import BoxMode, _early_scope, resolve_system_paths
 from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.workset_dirkeys import WORKSET_EARLY_KEYS, resolve_workset_dir_key
+from kanibako.settings.workset_dirkeys import (
+  WORKSET_EARLY_KEYS, EarlyScope, early_system, resolve_workset_dir_key,
+)
 from tests.support.filenames import CONFIG_FILENAME
 
 _EARLY = sorted(f"workset.{key}" for key in WORKSET_EARLY_KEYS)
@@ -37,9 +40,9 @@ _SPEC_CHANNEL_DEFAULTS = {
 }
 
 
-def _reader_refuses(key: str, value: str) -> bool:
+def _reader_refuses(key: str, value: str, early: EarlyScope) -> bool:
   try:
-    resolve_workset_dir_key(Path("/ws"), value, "", key=key.removeprefix("workset."))
+    resolve_workset_dir_key(Path("/ws"), value, "", key=key.removeprefix("workset."), early=early)
   except SettingsError:
     return True
   return False
@@ -71,9 +74,10 @@ class TestTheTableIsTheMembership:
   def test_it_holds_every_declared_channel_leaf(self):
     assert {f"channels.{leaf}" for leaf in DECLARED_WORKSET_CHANNEL_LEAVES} <= WORKSET_EARLY_KEYS
 
-  def test_the_reader_refuses_a_key_outside_it(self):
+  def test_the_reader_refuses_a_key_outside_it(self, tmp_path):
+    record = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
     with pytest.raises(ValueError, match="workset.kuid"):
-      resolve_workset_dir_key(Path("/ws"), "/lit", "kuid", key="kuid")
+      resolve_workset_dir_key(Path("/ws"), "/lit", "kuid", key="kuid", early=EarlyScope(record, "ws"))
 
 
 @pytest.mark.parametrize("key", _EARLY)
@@ -82,7 +86,7 @@ class TestTheWorksetDoorAgreesWithTheReader:
   def test_a_value_the_reader_refuses_is_refused_and_not_written(
     self, key, value, ws, std, tmp_path,
   ):
-    assert _reader_refuses(key, value)
+    assert _reader_refuses(key, value, _early_scope(std, BoxMode.named, ws.name))
     message = _workset_set(key, value, ws, std, tmp_path)
     assert message.startswith("Error: nothing was written"), message
     assert f"{key} is set to {value!r}" in message, message
@@ -92,7 +96,7 @@ class TestTheWorksetDoorAgreesWithTheReader:
 
   @pytest.mark.parametrize("value", _ACCEPTED)
   def test_a_value_the_reader_reads_is_written(self, key, value, ws, std, tmp_path):
-    assert not _reader_refuses(key, value)
+    assert not _reader_refuses(key, value, _early_scope(std, BoxMode.named, ws.name))
     message = _workset_set(key, value, ws, std, tmp_path)
     assert not message.startswith("Error:"), message
     assert value in (ws.root / WORKSET_META_FILE).read_text()
