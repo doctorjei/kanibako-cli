@@ -2858,7 +2858,7 @@ class TestEarlySystemTierIsData:
         """The record carries the RESOLVED ``system.*``, which is only possible because it is
         built AFTER the resolve -- not a second read of the stored expression."""
         self._settings(
-            "system:\n  canon: '@config.data/global/canon'\n"
+            "system:\n  canon: '{config.data}/global/canon'\n"
             "workset:\n  boxes: /srv/kb\n",
         )
 
