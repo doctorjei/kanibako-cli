@@ -474,6 +474,25 @@ def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
     return xdg_map
 
 
+def _refused_null_path_value_error(key: str, default: str, *,
+                                    referent: "str | None" = None) -> str:
+    """THE null-path refusal for a path key that REFUSES a ``<None>`` (spec §2a).
+
+    ⚑ ONE CARRIER, TWO ROADS IN.  A key can be nulled by a stored ``null`` or by a
+    DERIVED one — an embedded reference to a present ``<None>`` (spec §0) — and the launch
+    gives a null path key no meaning either way, so both raise THIS.  *referent* names the
+    key the value pointed at, when the null arrived that way: it is the line the user must
+    read, since their own line holds a reference and not a null.
+    """
+    via = (f" Its value references {referent}, which is null, so the value is null too."
+           if referent else "")
+    return (
+        f"{key} is set to <None>, which is not a path. A <None> is a value: "
+        f"it does not fall back to the default.{via} Delete the line to take the "
+        f"default ({default}), or set a path."
+    )
+
+
 def _refuse_bare_relative(key: str, raw: object, default: str, *,
                           ctx: ResolveCtx,
                           lookup: Callable[[str, tuple[str, ...]], str]) -> None:
@@ -496,11 +515,7 @@ def _refuse_bare_relative(key: str, raw: object, default: str, *,
     back to the key's default, so the cure named here is the real one.
     """
     if raw is None:
-        raise SettingsError(
-            f"{key} is set to <None>, which is not a path. A <None> is a value: "
-            f"it does not fall back to the default. Delete the line to take the "
-            f"default ({default}), or set a path."
-        )
+        raise SettingsError(_refused_null_path_value_error(key, default))
     value = str(raw)
     if not value or is_unambiguous_path_value(value):
         return
@@ -603,12 +618,24 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
 
     # Layer 2 system path keys, resolving ``@config.*`` via the foundation.
     resolved: dict[str, Path] = {}
+    # ⚑⚑ THE ASYMMETRY, IN ONE PLACE, BECAUSE IT IS ONE DECISION AND NOT TWO.
+    # ``system.channels.broadcast: null`` WRITTEN is REFUSED, and a DERIVED null — the same
+    # key nulled by its own value's reference to a null key — is ADMITTED.  Both ask the same
+    # membership, :func:`config.refuses_null_path_key`, and the difference is not the key:
+    # it is that a WRITTEN null is a CLAIM about a key the launch needs, so the doors own it
+    # and refuse it by name, while a DERIVED null is a CONSEQUENCE of a claim about a
+    # DIFFERENT key (``system.channels.chat``, a standard-bind SOURCE, where §2a gives a
+    # null its meaning).  Refusing the consequence would refuse the source's own semantics
+    # one layer up, and the source is the key the user can actually act on.  A reader who
+    # meets both is looking at this line, not at a bug.
+    from kanibako.settings.config import refuses_null_path_key
+
     for key in keys:
         nulled = set()
         rv = resolve_value(key, levels=levels, ctx=ctx, lookup=lookup)
         if isinstance(rv, _Unset):  # Unreachable: every key has a default.
             raise SettingsError(ERR_SETTINGS_BAD_PATH % ("system", key))
-        if rv.value is None:
+        if rv.value is None and not refuses_null_path_key(key):
             # ⚑ A NULL THE DOORS ADMIT IS OMITTED, NOT RESOLVED (spec §2a): it is a bind's
             # SOURCE key, so the omission is what collapses the bind (§0).  ⚑ AND ONLY
             # THAT ONE — a key the doors still REFUSE must reach
@@ -616,14 +643,26 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
             # names a present ``<None>`` as ``<None>``.  Omitting those too would turn a
             # refusal the user is told about into a silent one, and the membership is the
             # doors' own so the two cannot disagree about which is which.
-            from kanibako.settings.config import refuses_null_path_key
-
-            if not refuses_null_path_key(key):
-                continue
+            continue
         _refuse_bare_relative(key, rv.value, SYSTEM_PATH_DEFAULTS[key], ctx=ctx, lookup=lookup)
         expanded = expand_expr(str(rv.value), space="host", ctx=ctx, lookup=lookup)
         if nulled:
-            continue  # ⚑ §0: an embedded reference to a present ``<None>`` nulls the value.
+            # ⚑ §0: an embedded reference to a present ``<None>`` makes the whole value
+            # ``<None>`` — the DERIVED null, which a bind's own source key also travels on.
+            # ⚑⚑ BUT ONLY WHERE A NULL IS A MEANING (the asymmetry above), and the
+            # membership is the DOORS' OWN, so this cannot disagree with the ``set`` door,
+            # the read-time refusal and the [R185] cure about which keys those are.  A key
+            # that REFUSES a null must be OMITTED FROM NOWHERE: the consumer reads it by
+            # subscript (``load_std_paths``), so dropping it turns a refusal the user is told
+            # about into a raw ``KeyError`` at the consumer.  This is the same rule the arm
+            # above applies to a STORED null — a derived one is the same fact about the key,
+            # reached by a reference instead of by a literal.
+            if not refuses_null_path_key(key):
+                continue
+            raise SettingsError(_refused_null_path_value_error(
+                key, SYSTEM_PATH_DEFAULTS[key],
+                referent=sorted(nulled)[0],
+            ))
         resolved[key] = Path(expanded)
     return config, resolved
 
