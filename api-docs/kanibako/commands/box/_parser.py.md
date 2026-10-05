@@ -9,6 +9,8 @@ Prose for these symbols lives in `llm-docs/kanibako/commands/box/_parser.py.md`.
 
 ```
 _MODE_CHOICES = [m.value for m in BoxMode]
+_SHOW_ALL_HELP = 'Include every box, not just the running ones'
+_MISSING_WORKSPACE = 'missing workspace'
 _CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
 _CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'force', 'register')
 _SHAPING_SET_CURE = {'image': ('box.image=<value>',), 'agent': ('pref.system.agent=<value>',), 'private': ('box.auth.global_enabled=false', 'box.auth.workset_enabled=false'), 'no_vault': ('box.enable_vault=false',)}
