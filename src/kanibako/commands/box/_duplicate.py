@@ -140,6 +140,10 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
         refuse_null_workspaces(new_path, f"a workspace for '{new_path.name}'", standalone=True)
 
+    src_enable_vault = (
+        _source_authored_vault(src_proj) if target_mode == BoxMode.standalone else None
+    )
+
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
         print(f"Duplicate project ({mode}) to {target_mode.value} mode:")
@@ -168,8 +172,6 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
 
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
-        # ⚑ Ahead of the copy below, so a refusal leaves no destination.
-        src_enable_vault = _source_authored_vault(src_proj)
         if not args.bare and workspace_src is not None and workspace_src.is_dir():
             # The copy DESTINATION is the destination root's resolved
             # ``workset.workspaces`` (ruled 10, 2026-08-02) — the STANDALONE
@@ -249,8 +251,7 @@ def _source_authored_vault(src_proj) -> bool:
 
     ⚑ Each duplicate door calls this BEFORE its copy and destination mkdir, so a
     shape-rule refusal leaves nothing behind — the cure it prints needs a destination the
-    retry can land on.  The value is PASSED to :func:`_duplicate_to_standalone`, not
-    re-read there, so the door owning the ordering owns the read.
+    retry can land on.
     """
     src_box, _ = box_workset_settings_paths(src_proj)
     return read_box_enable_vault(src_box)
@@ -629,6 +630,10 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             print("Aborted.")
             return 2
 
+    src_enable_vault = (
+        _source_authored_vault(src_proj) if target_mode == BoxMode.standalone else None
+    )
+
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
         print(f"Duplicate workset project ({mode}) to {target_mode.value} mode:")
@@ -646,10 +651,6 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     # the latter is only the discoverability symlink, while project_path (set
     # via resolve_workset_project's meta["workspace"] override) is the live
     # workspace.  No-op difference for ordinary internal workset sources.
-    # ⚑ Ahead of the copy below, so a refusal leaves no destination; a PRIMARY target never did.
-    src_enable_vault = (
-        _source_authored_vault(src_proj) if target_mode == BoxMode.standalone else None
-    )
     if not args.bare:
         ws_workspace = src_proj.project_path
         if ws_workspace is not None and ws_workspace.is_dir():
