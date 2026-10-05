@@ -177,15 +177,19 @@ class TestRestoreSites:
 
 class TestImportSites:
     def test_the_import_pass_reads_the_primary_boxes_under_the_primary_name(
-        self, std, tmp_home, early_reads,
+        self, std, tmp_home, scoped_calls,
     ):
-        """The cross-kind check of an imported workset reads the PRIMARY membership."""
+        """The cross-kind check of an imported workset reads the PRIMARY membership.
+
+        ``import_named_workset`` imports ``load_primary_boxes`` at call time, so the spy on
+        ``paths`` sees that call as well as the ancestor walk's: every one must be primary.
+        """
         from kanibako.project import registry_store
 
         root = tmp_home / "found"
         workset.create_workset("found", root, std, force=True)
         registry_store.save_section(std.registry, "worksets", {})
-        early_reads.clear()
+        reads = scoped_calls(paths, "load_primary_boxes")
         assert paths.detect_project_mode(root, std, load_config(std.config_file)).mode is \
             BoxMode.named
-        assert set(early_reads) == {"found", WS_TOKEN_PRIMARY}
+        assert reads and set(reads) == {WS_TOKEN_PRIMARY}
