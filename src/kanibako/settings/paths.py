@@ -474,10 +474,10 @@ def host_xdg_map(data_home: Path | None = None) -> dict[str, str]:
     return xdg_map
 
 
-#: The ``system.*`` keys :func:`load_std_paths` reads with ``.get``, so an ABSENT one is a
-#: value the consumer can hold.  Every OTHER key in the table it subscripts, and a missing
-#: key there is a ``KeyError`` rather than a ``None``.
-SUBSCRIBED_SYSTEM_PATH_KEYS: frozenset[str] = frozenset({
+#: The ``system.*`` keys :func:`load_std_paths` SUBSCRIPTS, so a missing one is a ``KeyError``
+#: rather than a ``None``.  Every OTHER key in the table it reads with ``.get``, so an ABSENT
+#: one is a value the consumer can hold.
+SUBSCRIPTED_SYSTEM_PATH_KEYS: frozenset[str] = frozenset({
     "system.backup",
     "system.channelroot",
     "system.template",
@@ -641,7 +641,7 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
     # consequence is the omission §2a asks for — the broadcast log belongs to the chat it
     # derives from, so a null chat takes it along.  Refusing the consequence would make the
     # chat key's semantics unreachable one layer up, and chat is the key a user can act on.
-    # ⚑ THE DERIVED ROAD'S DISCRIMINATOR IS THE CONSUMER, though — :data:`SUBSCRIBED_SYSTEM_PATH_KEYS`
+    # ⚑ THE DERIVED ROAD'S DISCRIMINATOR IS THE CONSUMER, though — :data:`SUBSCRIPTED_SYSTEM_PATH_KEYS`
     # and the arm below — because a key ``load_std_paths`` subscripts has nowhere to put an
     # absence.  A reader who meets both is looking at these lines, not at a bug.
     from kanibako.settings.config import refuses_null_path_key
@@ -669,7 +669,7 @@ def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterab
             # a value the user wrote into a raw ``KeyError`` there); every other key is read
             # with ``.get``, so the resolved table being keyed by what RESOLVED is exactly
             # what a ``<None>`` means and the key is simply absent.
-            if key not in SUBSCRIBED_SYSTEM_PATH_KEYS:
+            if key not in SUBSCRIPTED_SYSTEM_PATH_KEYS:
                 continue
             raise SettingsError(_refused_null_path_value_error(
                 key, SYSTEM_PATH_DEFAULTS[key],

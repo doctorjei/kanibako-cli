@@ -287,7 +287,7 @@ class TestADerivedNullIsRefusedWhereAStoredOneIs:
         exactly what a ``<None>`` means there and the key is simply absent.
         """
         from kanibako.errors import KanibakoError
-        from kanibako.settings.paths import SUBSCRIBED_SYSTEM_PATH_KEYS
+        from kanibako.settings.paths import SUBSCRIPTED_SYSTEM_PATH_KEYS
 
         leaf = key.rsplit(".", 1)[1]
         if leaf == "canon":
@@ -304,7 +304,7 @@ class TestADerivedNullIsRefusedWhereAStoredOneIs:
             doc = f'system:\n  canon: null\n  {leaf}: "@system.canon/x"\n'
             target = key
         _load, resolve, values = self._resolve(tmp_path, doc)
-        if target in SUBSCRIBED_SYSTEM_PATH_KEYS:
+        if target in SUBSCRIPTED_SYSTEM_PATH_KEYS:
             with pytest.raises(KanibakoError) as caught:
                 resolve(values, data_home=tmp_path / "data", home=tmp_path / "home")
             assert target in str(caught.value)
