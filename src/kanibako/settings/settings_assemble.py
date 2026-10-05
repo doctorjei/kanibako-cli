@@ -1247,9 +1247,16 @@ def parse_bind_map(
         # ⚑ NOT A SHAPE VERDICT, so it runs on the WHOLE map: a destination spelled twice
         # is a fact about the map, and the sub-map cannot see one straddling the carve-out.
         refuse_dest_spelled_twice(raw, category=category)
+        # ⚑⚑ *pref_agent* RIDES ALONG HERE TOO, and that is the whole point: the carve-out
+        # above defers the BARE-SCALAR verdict only, so this call still judges the sub-table,
+        # the arity and the unrooted source AT PARSE TIME. Q2 requires the name to precede
+        # every shape check, and a shape check reached without *pref_agent* cannot honour
+        # that — a sub-table or a wrong-arity list under a bogus agent would report its
+        # shape and send the user to reshape an entry whose only defect is the name. A
+        # bare scalar is still absent from this map, so its verdict stays deferred in full.
         check_bind_map(
             {k: v for k, v in raw.items() if not _is_bare_scalar_entry(v)},
-            category=category, declared=declared,
+            category=category, declared=declared, pref_agent=pref_agent,
         )
     store = KeyStore()
     for key, sub in raw.items():
