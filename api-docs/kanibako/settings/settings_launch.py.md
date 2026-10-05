@@ -67,6 +67,7 @@ def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path
 def reset_none_warnings() -> None
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
 def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
+def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive
 def behavior_pick(snapshot: KeyStore, *, active_agent: str, key: str) -> 'tuple[str | None, object]'
 def behavior_slot(snapshot: KeyStore, *, active_agent: str, key: str) -> 'str | None'
 def effective_behavior(snapshot: KeyStore, *, active_agent: str, keys: 'list[str] | None'=None) -> dict[str, str]
@@ -105,7 +106,6 @@ def _warn_rootless_channel_binds(rootless: Sequence[tuple[str, str]], expanded: 
 def _warn_null_ref_secrets(merged: KeyStore, expanded: KeyStore, *, active_agent: str, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
-def _post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive
 def _mirror_sources(snapshot: KeyStore, active_agent: str) -> tuple[KeyStore, object]
 def _source_keys(node: KeyStore, prefix: str) -> KeyStore
 def _drop_non_mirror_keys(effective: KeyStore) -> None

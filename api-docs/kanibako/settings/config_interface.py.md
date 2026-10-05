@@ -40,6 +40,7 @@ def _overwritten_by(edited: 'str | None', entry: str) -> bool
 def _set_time_snapshot(*, target: 'LaunchInputs | None', agent_name: str, agent_path: 'Path | None', config_path: 'Path | None'=None, command_scope: 'ConfigLevel | None'=None, system_settings_path: 'Path | None'=None, system_path: 'Path | None'=None, workset_path: 'Path | None'=None, box_path: 'Path | None'=None) -> 'tuple[Any, Any]'
 def _floor_blind_default(key: str, value: str, candidate: 'Any', command_scope: 'ConfigLevel | None') -> bool
 def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: 'ConfigLevel | None'=None, system_settings_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, agent_name: str='', target: 'LaunchInputs | None'=None)
+def _lenient_expand(snapshot: 'Any', ctx: 'Any', agent_name: str) -> 'tuple[Any, dict[str, str]]'
 def _clone_keystore(store: 'Any') -> 'Any'
 def _set_leaf(store: 'Any', parts: list, value: object) -> None
 def _argv_aware(leaf: str, fallback: 'Callable[[object], str]') -> 'Callable[[object], str]'

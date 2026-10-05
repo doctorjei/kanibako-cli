@@ -597,7 +597,7 @@ class _Expander:
     # ------------------------------------------------------------------ #
 
     def _resolve_ref(
-        self, dotted: str, *, chain: tuple[str, ...]
+        self, dotted: str, *, chain: tuple[str, ...], absent_ok: bool = False,
     ) -> StoreValue | _Absent:
         """Fully resolve the value at snapshot path *dotted*, transitively (§6h).
 
@@ -609,6 +609,7 @@ class _Expander:
 
         *chain* is the in-progress ref trail, ending in *dotted*: already checked
         and appended by the caller, mirroring ``expand_expr``'s contract.
+        *absent_ok* returns :data:`_ABSENT` for an absent *dotted* in LENIENT mode too.
         """
         # CYCLE GUARD (B7 — whole-value AND embedded paths): a PRIOR occurrence of
         # *dotted* means we re-entered a ref still in progress. ⚑ Checked BEFORE
@@ -641,7 +642,7 @@ class _Expander:
             if derived is not _ABSENT:
                 return derived
         if raw is _ABSENT:
-            if self._collect_errors:
+            if self._collect_errors and not absent_ok:
                 # LENIENT (Q9): a DANGLING ref is a set-time defect to record, NOT
                 # the strict §6b silent drop. Raised so the OWNING leaf gets it.
                 raise _LenientDefect(
@@ -659,7 +660,8 @@ class _Expander:
                     f"{holder}: '@{dotted}' references no key: "
                     f"{verdict.reason}{trail}."
                 )
-            self._memo[dotted] = _ABSENT
+            if not self._collect_errors:  # a lenient direct ref to it must still record it
+                self._memo[dotted] = _ABSENT
             return _ABSENT
         # Resolve the referent's value AS A LEAF, with the cycle chain threaded so
         # a ref back into this path (directly or transitively) is caught.
@@ -696,7 +698,7 @@ class _Expander:
         assert self._derive is not None
 
         def read(key: str) -> object:
-            got = self._resolve_ref(key, chain=(*chain, key))
+            got = self._resolve_ref(key, chain=(*chain, key), absent_ok=True)
             return __MISSING__ if got is _ABSENT else got
 
         self._reading.append(set())
