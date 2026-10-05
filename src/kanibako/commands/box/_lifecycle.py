@@ -46,6 +46,7 @@ from kanibako.settings.paths import (
     _find_workset_for_path,
     _primary_box_paths,
     _register_workset_box_membership,
+    _workset_box_name_for_workspace,
     _workset_box_paths,
     _box_settings_files,
     _default_project_group,
@@ -266,6 +267,13 @@ def resolve_lifecycle_target(
     detection = detect_project_mode(raw_path, std, config)
 
     if detection.mode == BoxMode.named:
+        # ⚑ THE PRIMARY REGISTRY IS CONSULTED BEFORE A WORKSET PATH-SPACE CLAIM: a
+        # path inside a resolved ``workset.workspaces`` is where a member MAY live, and
+        # only a per-workset ``boxes:`` entry makes one a member (spec § Detection &
+        # import).  A member a workset DOES record keeps the workset.
+        if (primary_box_name_for_workspace(std.primary_workset, str(raw_path)) is not None
+                and not _workset_records_member_at(raw_path, std)):
+            return _resolve_primary_state(raw_path, std, config)
         return _resolve_workset_state(raw_path, std, config)
     if detection.mode == BoxMode.standalone:
         proj = resolve_standalone_project(
@@ -273,8 +281,30 @@ def resolve_lifecycle_target(
         )
         return _state_from_paths("standalone", proj, ws=None)
 
-    # default mode
-    root = detection.project_root
+    return _resolve_primary_state(detection.project_root, std, config)
+
+
+def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool:
+    """Whether a NAMED workset records a member box AT *resolved* (``False`` for a bare claim).
+
+    ⚑ THE TWO READERS: an in-tree leaf is under the resolved ``workset.workspaces``
+    dir, while an EXTERNAL connect is outside every workset root.
+    """
+    from kanibako.launch import box_resolve
+
+    if box_resolve.find_connected_external_box(resolved, std) is not None:
+        return True
+    try:
+        ws, _ = _find_workset_for_path(resolved, std)  # type: ignore[assignment]
+    except WorksetError:
+        return False
+    return _workset_box_name_for_workspace(ws.root, str(resolved)) is not None
+
+
+def _resolve_primary_state(
+    root: Path, std: StandardPaths, config: BootstrapConfig,
+) -> ProjectState:
+    """Resolve a PRIMARY (default-mode) workspace to a :class:`ProjectState`."""
     if not root.is_dir():
         # ⚑ Workspace dir gone (moved before `remap`): resolve_project requires it, so
         # fall back to the registered metadata alone.
@@ -622,6 +652,30 @@ def _validate(
                 "destination outside the workset."
             )
 
+    # --- an IN-PLACE convert whose landing leaf is not the source's own tree would
+    #     have to COPY the workspace in, and the source's tree is then left behind with
+    #     no owner: the convert drops the source's registration and nothing retires its
+    #     dir.  So an in-place convert may only record the box where it already stands.
+    #     (A relocation moves the tree, so its landing is genuinely new.)
+    if (target_mode == BoxMode.named and target_ws is not None
+            and not relocating and not spec.records_only
+            and state.mode is not BoxMode.named):
+        landing_leaf = target_ws.workspaces_dir
+        if (landing_leaf is not None
+                and is_in_tree_workspace(target_ws, state.workspace_path)
+                and (landing_leaf / new_name).resolve() != state.workspace_path.resolve()):
+            rename = "" if _same_box_name(new_name, state.name) else f" --name {new_name}"
+            raise ProjectError(
+                f"Refusing to convert '{state.name}' in place: a member of workset "
+                f"'{target_ws.name}' lives at {(landing_leaf / new_name)}, and "
+                f"'{state.name}' already has its workspace at "
+                f"{state.workspace_path} — an in-place convert would leave that tree "
+                f"behind with no box owning it. Run `kanibako box convert "
+                f"{state.name} --workset {target_ws.name}{rename} --move` to move it "
+                f"there, or `kanibako box move {state.name} <path>` to move it out of "
+                f"the workset."
+            )
+
     # --- membership guard: refuse landing inside a workset the project is
     #     not (becoming) a member of ---
     landing = dest if dest is not None else state.workspace_path
@@ -704,7 +758,9 @@ def _validate(
     # --- an UNREGISTERED leaf of the target's new name is the same collision on disk:
     #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt
     #     (its files ARE meant to be at *dest*), and so is a leaf that IS the source's
-    #     own — the same-workset, same-name case releases and re-records it.
+    #     own — the same-workset, same-name case releases and re-records it, and so is
+    #     the source's OWN workspace when that is the landing leaf (an in-place convert
+    #     records the box in the directory it already occupies).
     if (
         not spec.records_only
         and target_mode == BoxMode.named
@@ -717,6 +773,10 @@ def _validate(
                 leaf for leaf in _member_leaves(state.ws, state.name)
                 if leaf is not None
             )
+        landing_leaf = target_ws.workspaces_dir
+        if (landing_leaf is not None
+                and (landing_leaf / new_name).resolve() == state.workspace_path.resolve()):
+            own = own | {state.workspace_path}
         taken = [p for p in sorted(_existing_member_leaves(target_ws, new_name))
                  if p not in own]
         if taken:

@@ -54,6 +54,7 @@ ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
 ERR_PROJECT_PATH_IS_NAMED_BOX = 'Refusing to create a box at %s: it is already the workspace of ' + "named box '%s' in workset '%s', and one path is one project's record. " + "--force does not override this. Use that box ('kanibako box show %s/%s'), " + 'or free the path first:\n  kanibako workset disconnect %s %s --force'
 ERR_PROJECT_DIR_IS_WS = "Name '%s' is already in use by a workset. Box and workset names are " + 'separate namespaces, but this bare name would then resolve to the ' + 'box, shadowing the workset in bare-name lookups. Re-run with --force ' + 'to create the box under this name anyway.'
 ERR_WORKSET_NO_PROJECT = "Project '%s' not found in workset '%s'"
+ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX = "it is already the workspace of primary box '%s'; to make it a member of '%s' instead, convert that box ('kanibako box convert %s --workset %s', or 'kanibako box convert %s --workset %s --name <member> --move' to give it another name), move it out of the way ('kanibako box move %s <path>'), or drop the box ('kanibako box rm %s')."
 ERR_WORKSET_NO_WORKSET = 'No workset found for path: %s'
 ERR_WORKSET_WS_NOT_BOX = "'%s' is a workset, not a single project box. Name a project inside it " + "(e.g. '%s/<project>') or run the command from a project workspace " + 'under that workset.'
 ERR_WORKSET_NOT_IN_BOX = "Inside workset '%s' but not in a specific project workspace. Change " + 'to a project directory under %s/.'
