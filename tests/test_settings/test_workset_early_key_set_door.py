@@ -226,21 +226,9 @@ _LOGS_ON_BOXES = "@{workset.boxes}/lg"
 _SYSTEM_NAMES = ["__PRIMARY__", "__STANDALONE__"]
 
 
-#: Staged by hand: the door refuses this literal (keyspec §0), and the transitive E3 probe
-#: refuses ``workset.logs`` on any anchored ``workset.boxes`` the system file stores.
-_STAGED_BOXES = "/srv/kb"
-
-
-def _stage_system_boxes(std) -> None:
-  import yaml
-
-  std.settings.parent.mkdir(parents=True, exist_ok=True)
-  std.settings.write_text(yaml.safe_dump({"workset": {"boxes": _STAGED_BOXES}}))
-
-
 class TestTheSystemDoorReadsTheTierOnce:
   def test_a_referent_stored_in_the_system_file(self, std, config_file, door_probe):
-    _stage_system_boxes(std)
+    assert not _std_system_set("workset.boxes", _SYSTEM_BOXES, std).startswith("Error:")
     std = _reload(config_file)
     opens, scopes = door_probe
     opens.clear()
@@ -250,7 +238,7 @@ class TestTheSystemDoorReadsTheTierOnce:
     assert opens == [std.settings]
     assert [s.workset_name for s in scopes if s is not None] == _SYSTEM_NAMES
     assert all(s is not None and s.system is std.early_system for s in scopes)
-    assert std.early_system.tier["workset.boxes"] == _STAGED_BOXES
+    assert std.early_system.tier["workset.boxes"] == _SYSTEM_BOXES
 
   def test_a_referent_at_its_per_mode_default(self, std, door_probe):
     message = _std_system_set("workset.logs", _LOGS_ON_BOXES, std)
@@ -261,7 +249,7 @@ class TestTheSystemDoorReadsTheTierOnce:
     assert all(s is not None and s.system is std.early_system for s in scopes)
 
   def test_a_failed_std_takes_the_record_from_the_one_read(self, std, door_probe):
-    _stage_system_boxes(std)
+    assert not _std_system_set("workset.boxes", _SYSTEM_BOXES, std).startswith("Error:")
     opens, scopes = door_probe
     opens.clear()
     scopes.clear()
@@ -273,7 +261,7 @@ class TestTheSystemDoorReadsTheTierOnce:
     assert len(records) == 1 and len(scopes) == 2
     record = scopes[0].system
     assert record.file == std.settings
-    assert record.tier["workset.boxes"] == _STAGED_BOXES
+    assert record.tier["workset.boxes"] == _SYSTEM_BOXES
     assert record.system_paths == {}
     assert record.system_refusal == "std boom"
 

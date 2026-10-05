@@ -3253,11 +3253,11 @@ class TestCommandFileTakesTheCommandScopeSlot:
         ws_f = tmp_path / WORKSET_META_FILE
         dump_doc(ws_f, {"workset": {"vault_ro": "/srv/vault/ro"}})
         msg = set_config_value(
-            "box.canon", "@workset.vault_ro/sub",
+            "box.canon", "@workset.vault_ro/@meta.box.name/sub",
             config_path=ws_f, command_scope=ConfigLevel.workset,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(ws_f)["box"]["canon"] == "@workset.vault_ro/sub"
+        assert load_doc(ws_f)["box"]["canon"] == "@workset.vault_ro/@meta.box.name/sub"
         # The workset table survived the write, too.
         assert load_doc(ws_f)["workset"]["vault_ro"] == "/srv/vault/ro"
 
@@ -3275,7 +3275,7 @@ class TestCommandFileTakesTheCommandScopeSlot:
         caplog.clear()
         with caplog.at_level("WARNING", logger="kanibako.settings.settings_assemble"):
             msg = set_config_value(
-                "box.canon", "/w",
+                "box.canon", "/w/@meta.workset.path/@meta.box.name",
                 config_path=cf, system_settings_path=ssp,
                 command_scope=ConfigLevel.system,
                 cascade_system_path=ssp,
@@ -3293,13 +3293,17 @@ class TestCommandFileTakesTheCommandScopeSlot:
         ssp = tmp_path / "settings.yaml"
         dump_doc(ssp, {"box": {"shell": "/srv/from-settings"}})
         msg = set_config_value(
-            "box.canon", "@box.shell/sub",
+            "box.canon", "@box.shell/@meta.workset.path/@meta.box.name",
             config_path=cf, system_settings_path=ssp,
             command_scope=ConfigLevel.system,
             cascade_system_path=ssp,
         )
         assert not msg.startswith("Error:"), msg
-        assert load_doc(ssp)["box"]["canon"] == "@box.shell/sub"
+        assert load_doc(ssp)["box"]["canon"] == "@box.shell/@meta.workset.path/@meta.box.name"
+
+
+#: ``@box.image`` with the identity a containing scope's ``box.canon`` must reach (keyspec §0).
+_BOX_CANON_ANCHORED = "@box.image/@meta.workset.path/@meta.box.name"
 
 
 class TestLayer1FileIsNotASettingsSourceAtAll:
@@ -3344,7 +3348,8 @@ class TestLayer1FileIsNotASettingsSourceAtAll:
         self._plant(config_file)
         f = tmp_path / f"{scope.value}.yaml"
         msg = set_config_value(
-            "box.canon", "@box.image", config_path=f, command_scope=scope,
+            "box.canon", "@box.image" if scope is ConfigLevel.box else _BOX_CANON_ANCHORED,
+            config_path=f, command_scope=scope,
         )
         assert not msg.startswith("Error:"), msg
         # The STORED form keeps the ref; the probe is what had to resolve it. Resolve
