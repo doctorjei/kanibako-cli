@@ -529,6 +529,19 @@ def _resolve_target_workset(
     return load_workset(registry[stored], stored)
 
 
+def _cure_ref(state: ProjectState) -> str:
+    """The reference a printed ``box convert`` / ``box move`` reaches *state* by.
+
+    ⚑ A STANDALONE box is in no registry the lifecycle route reads: a bare name is
+    resolved through the primary and workset indexes only (never the standalone
+    one), so it is path-ified against the shell's cwd and misses.  Only the PATH
+    names a standalone box.
+    """
+    if state.mode is BoxMode.standalone:
+        return str(state.workspace_path)
+    return state.name
+
+
 def _validate(
     state: ProjectState,
     spec: TargetSpec,
@@ -635,7 +648,8 @@ def _validate(
                 and dest != (ws_dir / new_name).resolve()):
             leaf = ws_dir / new_name
             rename = "" if _same_box_name(new_name, state.name) else f" --name {new_name}"
-            bare = (f"kanibako box convert {state.name} --workset {target_ws.name} "
+            ref = _cure_ref(state)
+            bare = (f"kanibako box convert {ref} --workset {target_ws.name} "
                     f"--move{rename}")
             if spec.records_only:
                 advice = (f"Move the files to `{leaf}` and run `kanibako box remap` "
@@ -643,7 +657,7 @@ def _validate(
             elif spec.verb == "convert":
                 advice = f"Run `{bare}`"
             else:
-                advice = (f"Run `kanibako box move {state.name} {leaf} --workset "
+                advice = (f"Run `kanibako box move {ref} {leaf} --workset "
                           f"{target_ws.name}{rename}` (or `{bare}`)")
             raise ProjectError(
                 f"Refusing to record {dest} for a workset member: inside workset "
@@ -665,14 +679,15 @@ def _validate(
                 and is_in_tree_workspace(target_ws, state.workspace_path)
                 and (landing_leaf / new_name).resolve() != state.workspace_path.resolve()):
             rename = "" if _same_box_name(new_name, state.name) else f" --name {new_name}"
+            ref = _cure_ref(state)
             raise ProjectError(
                 f"Refusing to convert '{state.name}' in place: a member of workset "
-                f"'{target_ws.name}' lives at {(landing_leaf / new_name)}, and "
+                f"'{target_ws.name}' would live at {(landing_leaf / new_name)}, and "
                 f"'{state.name}' already has its workspace at "
                 f"{state.workspace_path} — an in-place convert would leave that tree "
                 f"behind with no box owning it. Run `kanibako box convert "
-                f"{state.name} --workset {target_ws.name}{rename} --move` to move it "
-                f"there, or `kanibako box move {state.name} <path>` to move it out of "
+                f"{ref} --workset {target_ws.name}{rename} --move` to move it "
+                f"there, or `kanibako box move {ref} <path>` to move it out of "
                 f"the workset."
             )
 
@@ -759,8 +774,10 @@ def _validate(
     #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt
     #     (its files ARE meant to be at *dest*), and so is a leaf that IS the source's
     #     own — the same-workset, same-name case releases and re-records it, and so is
-    #     the source's OWN workspace when that is the landing leaf (an in-place convert
-    #     records the box in the directory it already occupies).
+    #     the source's OWN workspace when that is the landing leaf.  ⚑ The second
+    #     exemption reads no relocation test: the leaf the box already stands in is
+    #     not a stranger's, whether the box stays put (an in-place convert re-records
+    #     it) or moves on (a relocation vacates it).
     if (
         not spec.records_only
         and target_mode == BoxMode.named
