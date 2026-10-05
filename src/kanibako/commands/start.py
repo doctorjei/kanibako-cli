@@ -8637,18 +8637,12 @@ def _pending_create_entry(std, proj) -> dict | None:
     return journal.pending_create(std.journal, _box_journal_key(proj))
 
 
-def _register_new_box(std, proj, *, force: bool = False) -> None:
+def _register_new_box(std, proj) -> None:
     """Register a freshly-created box (idempotent), mode-appropriate (B3).
 
     The deferred-registration commit step: the create paths resolve with
     ``register=False`` (the resolver creates the dir + meta + sets ``is_new`` but
     does NOT write the registry), seed the home, then call this to register.
-
-    *force* is forwarded to the PRIMARY registration only (the cross-kind
-    workset-name refusal is bypassable; SAME-kind primary-box uniqueness is not).
-    A ``box create --name <workset-name> --force`` create passes it so the
-    deferred commit does not re-refuse what the up-front CLI check already
-    allowed.
 
     Idempotent for the SAME box (recovery re-entry after a crash in the tiny
     register -> clear-entry window leaves the box already registered): PRIMARY
@@ -8673,7 +8667,7 @@ def _register_new_box(std, proj, *, force: bool = False) -> None:
         from kanibako.settings.paths import register_primary_box_name_if_absent
         register_primary_box_name_if_absent(
             std.primary_workset, std.registry,
-            proj.name, str(proj.project_path), force=force,
+            proj.name, str(proj.project_path),
         )
     # NAMED: no deferred registration on create (membership written at resolve).
 

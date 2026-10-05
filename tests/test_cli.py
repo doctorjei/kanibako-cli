@@ -198,6 +198,17 @@ class TestParser:
         assert args.all_projects is True
         assert args.path is None
 
+    @pytest.mark.parametrize("argv", [
+        ["box", "create", "/tmp/project", "--force"],
+        ["create", "/tmp/project", "--force"],
+        ["box", "register", "name", "--force"],
+        ["workset", "create", "/tmp/ws", "--force"],
+    ])
+    def test_cross_kind_force_is_gone(self, argv):
+        """`--force` on these existed only to bypass the cross-kind name refusal."""
+        with pytest.raises(SystemExit):
+            build_parser().parse_args(argv)
+
     def test_box_purge_command(self):
         parser = build_parser()
         args = parser.parse_args(["box", "purge", "/tmp/project", "--force"])
@@ -663,15 +674,6 @@ class TestParser:
         assert args.path == "/tmp/ws"
         assert args.name is None
 
-    def test_workset_create_force(self):
-        parser = build_parser()
-        args = parser.parse_args(
-            ["workset", "create", "/tmp/ws", "--name", "myws", "--force"]
-        )
-        assert args.force is True
-        args = parser.parse_args(["workset", "create", "/tmp/ws"])
-        assert args.force is False
-
     def test_workset_list(self):
         parser = build_parser()
         args = parser.parse_args(["workset", "list"])
@@ -886,20 +888,6 @@ class TestParser:
         args = parser.parse_args(["create", "/tmp/proj", "--standalone"])
         assert args.command == "create"
         assert args.standalone is True
-
-    def test_create_top_level_force(self):
-        parser = build_parser()
-        args = parser.parse_args(["create", "/tmp/proj", "--name", "x", "--force"])
-        assert args.force is True
-        args = parser.parse_args(["create", "/tmp/proj"])
-        assert args.force is False
-
-    def test_box_create_force(self):
-        parser = build_parser()
-        args = parser.parse_args(["box", "create", "/tmp/proj", "--name", "x", "--force"])
-        assert args.force is True
-        args = parser.parse_args(["box", "create", "/tmp/proj"])
-        assert args.force is False
 
     def test_create_top_level_with_image(self):
         parser = build_parser()

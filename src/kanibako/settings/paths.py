@@ -17,7 +17,7 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               ERR_CONFIG_NO_FILE, ERR_PROJECT_NO_PATH,
                                               ERR_PROJECT_BAD_DESIGNATION,
                                               ERR_PROJECT_NEW_HOME, ERR_PROJECT_REG_HOME,
-                                              ERR_PROJECT_NAME_USED, ERR_PROJECT_DIR_IS_WS,
+                                              ERR_PROJECT_NAME_USED,
                                               ERR_PROJECT_PATH_IS_NAMED_BOX,
                                               ERR_WORKSET_NO_PROJECT, ERR_WORKSET_NO_WORKSET,
                                               ERR_WORKSET_WS_NOT_BOX, ERR_WORKSET_NOT_IN_BOX,
@@ -172,8 +172,7 @@ class ProjectPaths:
     metadata_path: Path      # host-only: workset.yaml, breadcrumb, lock
     shell_path: Path         # mounted as /home/agent
     # ⚑ The RESOLVED ``workset.{vault_ro,vault_rw}`` (+ a ``<box-name>`` leaf in primary
-    # and named mode) — NOT ``project_path/vault/ro``.  🛑 That stale spelling is what the
-    # comment here used to say, and ``commands/archive.py`` was written against it.
+    # and named mode) — NOT ``project_path/vault/ro``.
     # ⚑ ``None`` for a nulled arm, as ``StandardPaths.primary_vault_*`` above.
     vault_ro_path: Path | None   # → /home/agent/vault/ro
     vault_rw_path: Path | None   # → /home/agent/vault/rw
@@ -888,12 +887,9 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
     raw: dict[str, str | None] = {}
 
     # base < user; an absent file yields {}, so missing layers are skipped automatically.
-    # ⚑⚑ ``config.*`` BY CONSTRUCTION (2026-08-31).  The CONFIG files carry the Layer-1
-    # foundation and NOTHING ELSE — Jei: *"kanibako_config.yaml <-- cannot have settings.
-    # Period."*  A ``system:`` table hand-written into one used to enter ``raw`` here as a
-    # real (if lowest) layer of the Layer-2 path tier, which made the bootstrap file a
-    # settings source; then it was dropped in silence; now the read REFUSES it, naming the
-    # file and the keys.
+    # ⚑⚑ ``config.*`` BY CONSTRUCTION.  The CONFIG files carry the Layer-1 foundation and
+    # NOTHING ELSE; a ``system:`` table hand-written into one is REFUSED by the read, naming
+    # the file and the keys.
     for path in (config_base_path(), user_config_path):
         raw.update(bootstrap_config_paths(path))
 
@@ -950,8 +946,7 @@ def resolve_data_path(*, config_home: Path | None = None,
         from kanibako.settings.config import bootstrap_config_paths, config_base_path
 
         raw: dict[str, str] = {}
-        # ⚑ ``bootstrap_config_paths`` IS the filter this function used to spell inline —
-        # it is now the one carrier, shared with ``load_system_config`` (2026-08-26).
+        # ⚑ ``bootstrap_config_paths`` is the one filter, shared with ``load_system_config``.
         raw.update(bootstrap_config_paths(config_base_path()))
         raw.update(bootstrap_config_paths(config_file_path(ch)))
         resolved = resolve_config_paths(raw, data_home=dh, home=Path.home(),
@@ -1582,8 +1577,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
         # NAMED: an unregistered workset root; import it, then the standard check resolves it.
         if is_workset_skeleton(current):
             import_reconcile.import_named_workset(
-                std.registry, current,
-                primary_workset=std.primary_workset, journal=std.journal,
+                std.registry, current, journal=std.journal,
             )
             ws_after = _check_workset(resolved, std)
             if ws_after is not None:
@@ -1704,27 +1698,21 @@ def _primary_name_domain(primary_workset: Path, registry: Path) -> set[str]:
     return primary | worksets
 
 
-def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str, workspace: str,
-                                *, force: bool = False) -> None:
-    """Raise ``ProjectError`` if *name* collides in the PRIMARY-box domain (no write)."""
-    from kanibako.project import registry_store
+def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str,
+                                workspace: str) -> None:
+    """Raise ``ProjectError`` if *name* is already a PRIMARY box's (no write).
 
+    ⚑ Same-kind only: a workset of the same name is a separate namespace (spec § Detection
+    & import).
+    """
     if Path(workspace).resolve() == Path.home().resolve():
         from kanibako.errors import ProjectError
         raise ProjectError(ERR_PROJECT_REG_HOME)
 
-    # ⚑ Case-blind on BOTH sides (spec §0, ⚑ NAMING RULES).  The second check used to
-    # compare a raw name against workset keys assumed folded — the asymmetric compare
-    # that let a box slip past a same-named workset.
+    # ⚑ Case-blind (spec §0, ⚑ NAMING RULES).
     if find_identifier(name, load_primary_boxes(primary_workset)) is not None:
         from kanibako.errors import ProjectError
         raise ProjectError(ERR_PROJECT_NAME_USED % name)
-
-    if not force and find_identifier(
-        name, registry_store.load_section(registry, "worksets")
-    ) is not None:
-        from kanibako.errors import ProjectError
-        raise ProjectError(ERR_PROJECT_DIR_IS_WS % name)
 
 
 def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
@@ -1768,14 +1756,14 @@ def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str,
 
 
 def register_primary_box_name(primary_workset: Path, registry: Path, name: str,
-                              workspace: Path | str, *, force: bool = False) -> None:
+                              workspace: Path | str) -> None:
     """Register *name* → *workspace* in the PRIMARY membership (with guards)."""
-    check_primary_box_name_free(primary_workset, registry, name, str(workspace), force=force)
+    check_primary_box_name_free(primary_workset, registry, name, str(workspace))
     _register_workset_box_membership(primary_workset, name, Path(workspace))
 
 
 def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, name: str,
-                                        workspace: Path | str, *, force: bool = False) -> None:
+                                        workspace: Path | str) -> None:
     """Idempotent :func:`register_primary_box_name` for deferred-create recovery."""
     from kanibako.project.workset_registry import _same_workspace
 
@@ -1784,7 +1772,7 @@ def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, n
     existing = None if stored is None else boxes[stored]
     if existing is not None and _same_workspace(existing, str(workspace)):
         return
-    register_primary_box_name(primary_workset, registry, name, workspace, force=force)
+    register_primary_box_name(primary_workset, registry, name, workspace)
 
 
 def assign_primary_box_name(primary_workset: Path, registry: Path, workspace: Path | str,

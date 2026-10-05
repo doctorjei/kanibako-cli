@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refused cases move from 0 to 1, and a new `Error: …` line is printed on stderr. A well-shaped file
   sets exactly as before.
 
+- **A box and a workset may share a name.** Box and workset names are separate namespaces, and
+  only a name already held by the same kind is refused. `box create --name`, `box register`,
+  `box move`/`convert --name`, and `workset create` no longer refuse a name a workset (or, for
+  `workset create`, a primary box) already uses, and the `--force` that bypassed that refusal is
+  gone from `box create`, `kanibako create`, `box register`, and `workset create`, where it had no
+  other job. A bare name held by both a primary box and a workset still resolves to the box, with
+  no warning; noun-scoped `workset` commands reach the workset. Importing a workset whose name a
+  primary box holds no longer warns.
+
 - **`box remap`, `box move`, `box convert`, and `box duplicate` now say what they refuse.** The
   `--help` text and the README rows for the four relocation commands state the rules the code
   enforces: a destination inside a workset must be the box's own `{workset.workspaces}/<name>`, and

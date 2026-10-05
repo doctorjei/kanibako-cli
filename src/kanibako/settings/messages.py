@@ -52,8 +52,7 @@ WARN_BOX_NO_VAULT =    ("Warning: cannot find vault for box '%s' (expected at %s
 ERR_SETTINGS_BAD_PATH = "Unresolvable %s path: %s" # "config" | "system", key
 ERR_SETTINGS_BAD_REF =  "Unknown @%s-reference: %s" # "" | "config", ref
 ERR_CONFIG_NO_FILE =    "%s is missing. Run any kanibako command to initialize." # config file path
-# ⚑ The LOUD half of R153 (Jei, 2026-08-31). A stale settings table in the Layer-1 file used
-# to be DROPPED in silence, so a box ran a different image than its owner's file said.
+# ⚑ The LOUD half of R153: a stale settings table in the Layer-1 file refuses, never drops.
 # ⚑ THE CURE IS ORDERED, AND THE ORDER IS LOAD-BEARING: the hand-edit comes FIRST. Every
 # verb resolves its paths through this read, ``system set`` included, so a message that
 # led with the command would send the user to a command that refuses for this same reason.
@@ -63,11 +62,8 @@ ERR_CONFIG_LAYER1_SETTINGS = (
                         "Delete those lines from it, then set what you meant with " +
                         "'kanibako system set <key>=<value>', which writes the settings file.")
                                                     # the Layer-1 file path, the offending keys
-# ⚑⚑ THE OTHER DIRECTION OF THE SAME RULE (2026-09-09). The refusal above catches a
-# settings table OUTSIDE ``config:``; an UNDECLARED leaf INSIDE it was accepted in
-# silence, so a bare ``nonsense`` was loud while ``config.nonsense`` was not — one rule
-# with two answers (Convention 0). Spec §1: "The Layer-1 set is exactly the config keys
-# in the table below."
+# ⚑⚑ THE OTHER DIRECTION OF THE SAME RULE: an UNDECLARED leaf INSIDE ``config:`` refuses too
+# (Convention 0). Spec §1: "The Layer-1 set is exactly the config keys in the table below."
 ERR_CONFIG_LAYER1_UNDECLARED = (
                         "%s carries config keys that do not exist:\n  %s\n" +
                         "Layer 1 declares exactly these (spec §1): %s. Fix or delete " +
@@ -187,13 +183,9 @@ ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
 # ⚑ "one record per project" (spec § Detection & import) asked at the PATH, not the name.
 ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already the workspace of " +
                          "named box '%s' in workset '%s', and one path is one project's record. " +
-                         "--force does not override this. Use that box ('kanibako box show %s/%s'), " +
+                         "Use that box ('kanibako box show %s/%s'), " +
                          "or free the path first:\n"
                          "  kanibako workset disconnect %s %s --force") # path, box, workset (ws, box, ws, box)
-ERR_PROJECT_DIR_IS_WS = ("Name '%s' is already in use by a workset. Box and workset names are " +
-                         "separate namespaces, but this bare name would then resolve to the " +
-                         "box, shadowing the workset in bare-name lookups. Re-run with --force " +
-                         "to create the box under this name anyway.") # name
 
 ERR_WORKSET_NO_PROJECT = "Project '%s' not found in workset '%s'" # project name, workset name
 ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX = (

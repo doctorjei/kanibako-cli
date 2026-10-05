@@ -5936,6 +5936,19 @@ without regard to case; `--force` does not override it, and nothing is written. 
 **What to do.** For a leftover directory, move it aside, or check what is in it and pass `--force`.
 For a registered name, choose another `--name`.
 
+### A box and a workset may share a name; `--force` is gone from create and register
+
+**Read this if `box create`, `kanibako create`, `box register`, or `workset create` now fails with
+`unrecognized arguments: --force`.**
+
+**What changed.** Box and workset names are separate namespaces, and only a name the same kind
+already holds is refused. Creating, registering, or renaming a box with a workset's name, or
+creating a workset with a primary box's name, now succeeds without `--force`, and that `--force`
+was removed because bypassing this refusal was its only job. A bare name held by both still
+resolves to the box, with no warning; `kanibako workset <cmd> <name>` reaches the workset.
+
+**What to do.** Drop `--force` from those four commands.
+
 ### A `null` workset vault, canon, template or channel root means no directory
 
 **Read this if a `<workset>/workset.yaml` sets `workset.vault_ro`, `workset.vault_rw`,
@@ -7793,9 +7806,8 @@ What this means for you:
   already-registered entity **of the same kind** — a workset against a workset, a box
   against a box — kanibako refuses, leaves the tree untouched, and prints a clear
   error. (A future `rename` mechanism — not in 1.6.0 — will resolve collisions.)
-  ⚑ A workset name colliding with a primary BOX name is a different case and does
-  **not** refuse: the import proceeds and warns. Bare-name resolution prefers the box,
-  so reach the workset as `kanibako workset <cmd> <name>`.
+  ⚑ A workset name matching a primary BOX name is not a collision: box and workset
+  names are separate namespaces, so the import proceeds normally.
 
 Practical upshot for migration: after you have hand-moved trees into the new layout
 (§3–§5), you do **not** strictly need to hand-edit the registry for every box — a
