@@ -10,7 +10,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.channels.channels import WS_TOKEN_PRIMARY
 from kanibako.channels.helper_listener import (
     HelperContext,
     HelperHub,
@@ -19,15 +18,8 @@ from kanibako.channels.helper_listener import (
     _send_json,
 )
 import kanibako.channels.helper_listener as helper_listener
-from kanibako.settings.paths import resolve_system_paths
-from kanibako.settings.workset_dirkeys import EarlyScope, early_system
-
-
-def _bare_early(home: Path) -> EarlyScope:
-    """A primary early scope over the default record under *home*; these tests hold no ``std``."""
-    return EarlyScope(
-        early_system({}, resolve_system_paths({}, data_home=home, home=home)), WS_TOKEN_PRIMARY,
-    )
+from kanibako.settings.paths import BoxMode
+from tests.conftest import early_record
 
 
 @pytest.fixture
@@ -53,7 +45,7 @@ def mock_ctx(tmp_path):
         env=None,
         entrypoint=None,
         default_entrypoint="claude",
-        early=_bare_early(tmp_path),
+        early=early_record(tmp_path, mode=BoxMode.primary),
     )
 
 
@@ -113,7 +105,7 @@ class TestBuildHelperMounts:
             helpers_dir=helpers_dir,
             socket_path=sock,
             binary_mounts=[],
-            early=_bare_early(tmp_path),
+            early=early_record(tmp_path, mode=BoxMode.primary),
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
@@ -135,7 +127,7 @@ class TestBuildHelperMounts:
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "helper.sock",
             binary_mounts=[binary_mount],
-            early=_bare_early(tmp_path),
+            early=early_record(tmp_path, mode=BoxMode.primary),
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
@@ -159,7 +151,7 @@ class TestBuildHelperMounts:
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "helper.sock",
             binary_mounts=[],
-            early=_bare_early(tmp_path),
+            early=early_record(tmp_path, mode=BoxMode.primary),
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
@@ -180,7 +172,7 @@ class TestBuildHelperMounts:
             helpers_dir=helpers_dir,
             socket_path=sock,
             binary_mounts=[],
-            early=_bare_early(tmp_path),
+            early=early_record(tmp_path, mode=BoxMode.primary),
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)
@@ -199,7 +191,7 @@ class TestBuildHelperMounts:
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "nonexistent.sock",
             binary_mounts=[],
-            early=_bare_early(tmp_path),
+            early=early_record(tmp_path, mode=BoxMode.primary),
         )
 
         mounts = _build_helper_mounts(ctx, 1, helpers_dir)

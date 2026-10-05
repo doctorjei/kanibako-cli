@@ -33,6 +33,7 @@ from kanibako.settings.settings_resolve import (
 )
 from tests.support.filenames import CONFIG_FILENAME
 from tests.support.narrow_resolve import table_bind_dests
+from tests.conftest import early_record
 
 HOST_HOME = "/home/u"
 GUEST_HOME = "/home/agent"
@@ -377,9 +378,8 @@ def _probe_cases(tmp_path):
         _primary_box_paths,
         _standalone_box_paths,
         _workset_box_paths,
-        resolve_system_paths,
     )
-    from kanibako.settings.workset_dirkeys import EarlyScope, early_system
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
     pw = tmp_path / "pw"
     md = pw / "boxes" / "mybox"
@@ -404,7 +404,7 @@ def _probe_cases(tmp_path):
     )
 
     root = tmp_path / "proj"
-    record = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
+    record = early_record(tmp_path)
     sh, vro, vrw = _standalone_box_paths(root, early=EarlyScope(record, WS_TOKEN_STANDALONE))
     yield (
         "standalone",

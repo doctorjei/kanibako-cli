@@ -10,17 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kanibako.channels.channels import WS_TOKEN_PRIMARY
 from kanibako.channels.helper_listener import HelperContext, HelperHub
-from kanibako.settings.paths import resolve_system_paths
-from kanibako.settings.workset_dirkeys import EarlyScope, early_system
-
-
-def _bare_early(home: Path) -> EarlyScope:
-    """A primary early scope over the default record under *home*; these tests hold no ``std``."""
-    return EarlyScope(
-        early_system({}, resolve_system_paths({}, data_home=home, home=home)), WS_TOKEN_PRIMARY,
-    )
+from kanibako.settings.paths import BoxMode
+from tests.conftest import early_record
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +77,7 @@ def fork_ctx(tmp_path):
         registry=data_path / "global" / "registry.yaml",
         boxes=data_path / "boxes",
         primary_workset=data_path / "primary_workset",
-        early=_bare_early(tmp_path),
+        early=early_record(tmp_path, mode=BoxMode.primary),
     )
 
 
@@ -145,7 +137,7 @@ def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
         registry=registry,
         boxes=boxes,
         primary_workset=data_path / "primary_workset",
-        early=_bare_early(tmp_path),
+        early=early_record(tmp_path, mode=BoxMode.primary),
     )
 
 
@@ -265,7 +257,7 @@ class TestHandleFork:
             socket_path=tmp_path / "helper.sock",
             project_path=None,
             data_path=None,
-            early=_bare_early(tmp_path),
+            early=early_record(tmp_path, mode=BoxMode.primary),
         )
         sock_path = tmp_path / "helper.sock"
         hub = HelperHub()

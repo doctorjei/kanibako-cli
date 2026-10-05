@@ -18,9 +18,8 @@ from kanibako.commands.start import (
     run_start,
 )
 from kanibako.settings.kb_store import __MISSING__
-from kanibako.settings.paths import BoxMode, resolve_system_paths
+from kanibako.settings.paths import BoxMode
 from kanibako.settings.settings_launch import AuthSource
-from kanibako.settings.workset_dirkeys import early_system
 from kanibako.targets.base import (
     PersonaProbeOutcome,
     ProbeEvidence,
@@ -29,6 +28,7 @@ from kanibako.targets.base import (
 )
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
 from tests.support.filenames import CONFIG_FILENAME
+from tests.conftest import early_record
 
 
 def _rejected(status: int = 403, provider_text: str = "", **kw):
@@ -4548,7 +4548,7 @@ class TestTweakccCacheDir:
         from kanibako.commands.start import _tweakcc_cache_dir
 
         std = MagicMock()
-        std.early_system = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
+        std.early_system = early_record(tmp_path)
         std.agents.__str__.return_value = str(tmp_path / "agents")
         assert _tweakcc_cache_dir(std, "claude") == (
             tmp_path / "agents" / "claude" / "caches" / "tweakcc"
@@ -4964,7 +4964,7 @@ class TestApplyInitSeeds:
             # B2b: the PRIMARY logs dir helper_log_path reads (= the resolved
             # workset.logs anchor the helper-log bind routes through).
             primary_logs=tmp_path / "primary_workset" / "logs",
-            early_system=early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path)),
+            early_system=early_record(tmp_path),
         )
 
     def test_the_std_double_carries_every_declared_leaf(self, tmp_path):
@@ -6699,7 +6699,7 @@ class TestSeedNewBoxCreateEntry:
         from kanibako.commands.start import seed_new_box
 
         std = MagicMock()
-        std.early_system = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
+        std.early_system = early_record(tmp_path)
         config = MagicMock()
         proj = MagicMock()
         proj.group = None
@@ -6741,7 +6741,7 @@ class TestSeedNewBoxCreateEntry:
         from kanibako.commands.start import seed_new_box
 
         std = MagicMock()
-        std.early_system = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
+        std.early_system = early_record(tmp_path)
         config = MagicMock()
         proj = MagicMock()
         proj.group = None
