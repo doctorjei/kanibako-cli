@@ -47,6 +47,7 @@ if TYPE_CHECKING:
         BoxChannelAddresses, WorksetChannels, WorksetPartition,
     )
     from kanibako.project.workset import Workset
+    from kanibako.settings.workset_dirkeys import EarlyScope
     from kanibako.targets.base import PluginDescriptor
 
 from kanibako import kuid
@@ -1567,7 +1568,7 @@ def _workset_channel_floor_values(
 
 
 def _workset_workspaces_floor_value(
-    mode: str, ws_root_literal: "str | None",
+    mode: str, ws_root_literal: "str | None", *, early: EarlyScope | None = None,
 ) -> "str | None":
     """The resolved ``workset.workspaces`` the caller hands the launch floor — ⚑ NOT primary.
 
@@ -1602,7 +1603,7 @@ def _workset_workspaces_floor_value(
         )
     root = Path(ws_root_literal)
     workspaces = resolve_workset_workspaces(
-        root, load_workset_settings_doc(root), standalone=(mode == "standalone"),
+        root, load_workset_settings_doc(root), standalone=(mode == "standalone"), early=early,
     )
     return str(workspaces) if workspaces is not None else None
 
@@ -1876,7 +1877,7 @@ def resolve_inputs(
             mode=mode.value,
             ws_token=_channels.workset_token(mode, ws.name),
             ws_root=ws.root,
-            local_channels=_channels.workset_channels_at(ws.root),
+            local_channels=_channels.workset_channels_at(ws.root, early=ws.early_scope),
             agent_name=agent_name,
         )
         cascade_workset_path = workset_settings_path(ws)
@@ -1918,6 +1919,7 @@ def _workset_floors(
     ``workset.workspaces`` is resolved off that same root.
     """
     from kanibako.channels import channels as _channels
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
     ws_root_literal = None if mode == "primary" else str(ws_root)
     meta_runtime = meta_runtime_floor(
@@ -1932,7 +1934,9 @@ def _workset_floors(
     workset_anchor = workset_anchor_floor(
         mode=mode,
         channelroot=channelroot,
-        workspaces=_workset_workspaces_floor_value(mode, ws_root_literal),
+        workspaces=_workset_workspaces_floor_value(
+            mode, ws_root_literal, early=EarlyScope(std.early_system, ws_token),
+        ),
         workset_channels=ws_channels,
     )
     return meta_runtime, workset_anchor, auth_chain_floor(mode=mode, agent_name=agent_name)

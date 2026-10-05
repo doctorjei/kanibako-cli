@@ -292,6 +292,13 @@ class _NullPrimaryLogsStd:
 
     primary_logs = None
 
+    def __init__(self, tmp_path):
+        from kanibako.settings.paths import resolve_system_paths
+        from kanibako.settings.workset_dirkeys import early_system
+
+        self.early_system = early_system(
+            {}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
+
 
 class TestCarryBoxLogs:
     """The carry's own guards — the cases the relocating paths above never reach."""
@@ -318,7 +325,7 @@ class TestCarryBoxLogs:
             shell_path=tmp_path / "meta" / "home", vault_ro=None, vault_rw=None,
         )
         _carry_box_logs(
-            state, _NullPrimaryLogsStd(), _Unwind(),
+            state, _NullPrimaryLogsStd(tmp_path), _Unwind(),
             dst_logs=tmp_path / "dst", dst_name="b1",
         )
         assert not (tmp_path / "dst").exists()
@@ -331,7 +338,7 @@ class TestCarryBoxLogs:
         src_logs = standalone_logs_dir(state.metadata_path)
         seeded = _seed_logs(src_logs, state.name)
         _carry_box_logs(
-            state, _NullPrimaryLogsStd(), _Unwind(), dst_logs=None, dst_name="b1",
+            state, _NullPrimaryLogsStd(tmp_path), _Unwind(), dst_logs=None, dst_name="b1",
         )
         for log_file in seeded:
             assert log_file.exists(), log_file
@@ -344,7 +351,7 @@ class TestCarryBoxLogs:
         src_logs = standalone_logs_dir(state.metadata_path)
         seeded = _seed_logs(src_logs, state.name)
         _carry_box_logs(
-            state, _NullPrimaryLogsStd(), _Unwind(),
+            state, _NullPrimaryLogsStd(tmp_path), _Unwind(),
             dst_logs=src_logs, dst_name=state.name,
         )
         for log_file in seeded:
@@ -360,7 +367,7 @@ class TestCarryBoxLogs:
         seeded = _seed_logs(src_logs, state.name)
         unwind = _Unwind()
         _carry_box_logs(
-            state, _NullPrimaryLogsStd(), unwind,
+            state, _NullPrimaryLogsStd(tmp_path), unwind,
             dst_logs=dst_logs, dst_name="b2",
         )
         _assert_both_present(dst_logs, "b2")
@@ -387,7 +394,7 @@ class TestCarryBoxLogs:
 
         unwind = _Unwind()
         _carry_box_logs(
-            state, _NullPrimaryLogsStd(), unwind, dst_logs=dst_logs, dst_name="b2",
+            state, _NullPrimaryLogsStd(tmp_path), unwind, dst_logs=dst_logs, dst_name="b2",
         )
 
         # The occupied file is untouched and its source is untouched; the free one moved.
