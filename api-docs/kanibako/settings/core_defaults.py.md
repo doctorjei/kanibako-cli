@@ -54,6 +54,7 @@ def pseudo_tier_defaults() -> dict[str, str | None]
 def pseudo_tier_default(agent_id: str, key: str) -> str
 def env_default_categories() -> dict[str, str]
 def add_bind(binds: dict[str, Any], category: str, box_dest: str, host_src: str, options: str | None=None, *, scope: str='box') -> None
+def channel_source_key(dest: str) -> str | None
 def channel_default_categories(std: StandardPaths, proj: ProjectPaths) -> BindArmTable
 def core_default_categories(std: StandardPaths, proj: ProjectPaths, *, enable_vault: bool, mode: str, guarantee_create: bool=True) -> BindArmTable
 def kani_default_categories() -> BindArmTable

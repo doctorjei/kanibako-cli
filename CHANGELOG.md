@@ -468,6 +468,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `channels:` row whose source probe answers `null` no longer stops the launch.** A packaged
+  `channels:` row that reads its probed host path directly — the shape a row takes when it carries
+  no `meta_ref` — left a `null` in the bind table when its source key was set to `<None>`, and the
+  launch failed with `bindings.rw entry at '…/channels/common' declares a bare-relative host source
+  'None'`. That row is a STANDARD bind whose source key is null, so the launch now omits the bind
+  and warns once, naming the entry, the source key, and the file that set it — the same behavior
+  every other standard bind gets when only its source is null. Setting the entry to `null` as well
+  omits it without the warning. A row whose source is a literal path is untouched.
+
 - **`set` no longer refuses a reference to a computed sharing-state key.** A value naming a
   `meta.*.auth.*_active` key, such as `box set box.env.X={meta.box.auth.global_active}`, was
   refused as a dangling reference although the launch resolves it. The set-time check now computes
