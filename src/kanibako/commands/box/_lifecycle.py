@@ -62,12 +62,15 @@ from kanibako.settings.paths import (
     detect_project_mode,
     primary_box_name_for_workspace,
     register_primary_box_name,
+    report_retained_store,
     resolve_box_enable_vault,
     resolve_designation,
     resolve_project,
     resolve_standalone_project,
     resolve_workset_project,
+    standalone_box_store,
     standalone_logs_dir,
+    standalone_store_teardown_plan,
     unregister_primary_box_name,
     write_vault_gitignore,
 )
@@ -1541,11 +1544,20 @@ def _remove_old_metadata(
                 registry_store.unregister_standalone(std.registry, state.name)
             except Exception:  # noqa: BLE001
                 pass
-        box_data = root / STANDALONE_META_DIR
-        if box_data.is_dir():
+        # ⚑⚑ THE STORE IS RESOLVED, and only a store STRICTLY BELOW *root* is removed.
+        # ``workset.boxes`` is repointable, so the composed ``box_data/`` is the box's
+        # store only while the key is unset — deleting it unconditionally would remove a
+        # directory this box never used AND strand the real store; deleting the resolved
+        # store without the containment test would take a user directory they merely
+        # nominated.  Both arms print: a store left behind is the user's to remove.
+        removable_store, retained_store = standalone_store_teardown_plan(
+            root, early=_early_scope(std, BoxMode.standalone))
+        if removable_store is not None:
             # ⚑ Escalating removal: the root-owned canon skeleton makes a bare rmtree
             # fail with EACCES and leave the old box behind (J-7).
-            remove_box_tree(box_data)
+            remove_box_tree(removable_store)
+        if retained_store is not None:
+            report_retained_store(retained_store, root)
         settings = root / WORKSET_META_FILE
         if settings.is_file():
             settings.unlink()
@@ -1709,7 +1721,8 @@ def _to_default(
     # ⚑ Copy from the box METADATA DIR, never ``metadata_path``: for a standalone source
     # those differ (root vs ``box_data/``), and the root would drag workspace+vault into
     # the box dir AND land the source's WORKSET-tier file at the dest's BOX tier (M-8).
-    src_meta_dir = box_metadata_dir(state.mode, state.metadata_path)
+    src_meta_dir = box_metadata_dir(state.mode, state.metadata_path,
+                                    early=_early_scope(std, state.mode))
     # Name reused in place ⇒ the metadata IS already at the destination; copying it
     # would be a failing copy-onto-self.
     if dst_metadata.resolve() == state.metadata_path.resolve():
@@ -1983,7 +1996,7 @@ def _to_standalone(
     # ⚑ ORDER: consolidate the source's top-level files into the workspace dir FIRST, THEN
     # lay down the kanibako artifacts — otherwise the artifacts get swept in with them.
     root.mkdir(parents=True, exist_ok=True)
-    dst_metadata = root / STANDALONE_META_DIR
+    dst_metadata = standalone_box_store(root, early=_early_scope(std, BoxMode.standalone))
     # ⚑ RESOLVED, and it MUST agree with ``resolve_standalone_project``, which reads the same
     # key to answer ``project_path``.  A literal ``root / "workspace"`` is the right answer
     # only until the root carries a ``workset.workspaces`` repoint, and then it fills a
@@ -1993,7 +2006,8 @@ def _to_standalone(
     )
     # ⚑ The box METADATA DIR (``box_data/`` for a standalone source) — the ROOT would
     # strand ``<dst>/box_data/box_data/`` on a standalone→standalone move.
-    src_meta_dir = box_metadata_dir(state.mode, state.metadata_path)
+    src_meta_dir = box_metadata_dir(state.mode, state.metadata_path,
+                                    early=_early_scope(std, state.mode))
     # ⚑⚑ REUSED IN PLACE — a standalone box renamed AT ITS OWN ROOT.  Everything below
     # that treats *root* as freshly converted is then wrong twice over.
     reused_in_place = dst_metadata.resolve() == src_meta_dir.resolve()
@@ -2096,7 +2110,8 @@ def _to_workset(
 
     # ⚑ The box METADATA DIR, not ``metadata_path``: for a standalone source those differ
     # (root vs ``box_data/``) — see :func:`box_metadata_dir` (M-8).
-    metadata_source = box_metadata_dir(state.mode, state.metadata_path)
+    metadata_source = box_metadata_dir(state.mode, state.metadata_path,
+                                        early=_early_scope(std, state.mode))
     shell_source = state.shell_path
 
     source_is_workset = state.mode == BoxMode.named

@@ -10,14 +10,16 @@ from kanibako.settings.config import WORKSET_META_FILE, load_config
 from kanibako.runtime.container import remove_box_tree
 from kanibako.errors import UserCanceled
 from kanibako.settings.paths import (
-    STANDALONE_META_DIR,
     BoxMode,
     _early_scope,
     _primary_box_paths,
     box_logs_location,
     load_std_paths,
     remove_box_logs,
+    report_retained_store,
     resolve_any_project,
+    standalone_box_store,
+    standalone_store_teardown_plan,
 )
 from kanibako.utils import confirm_prompt
 from kanibako.channels.channels import workset_name_token, workset_root
@@ -146,7 +148,8 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     # box metadata lives in box_data/ + the root workset.yaml + vault/.  "No
     # session data" means no box_data/ dir (the root always exists).
     if proj.mode is BoxMode.standalone:
-        if not (proj.metadata_path / STANDALONE_META_DIR).is_dir():
+        if not standalone_box_store(proj.metadata_path,
+                                 early=_early_scope(std, BoxMode.standalone)).is_dir():
             print(f"No session data found for project {proj.project_path or '<None>'}")
             return 0
     elif not proj.metadata_path.is_dir():
@@ -189,11 +192,18 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # box's vault once one is set.
         removable_vault, retained_vault = standalone_vault_teardown(
             root, early=_early_scope(std, BoxMode.standalone))
-        # box_data/ holds the box home + its root-owned canon skeleton (J-7), so
-        # the deletion needs the podman-unshare escalation, not a bare rmtree.
-        box_data = root / STANDALONE_META_DIR
-        if box_data.is_dir() and not remove_box_tree(box_data):
-            _warn_undeleted(box_data)
+        # ⚑ The store holds the box home + its root-owned canon skeleton (J-7), so its
+        # removal needs the podman-unshare escalation, not a bare rmtree.  ⚑⚑ AND IT IS
+        # RESOLVED, under the same strictly-below-root line the vault arms take: a store
+        # the user pointed outside the root is their own directory, and deleting the
+        # composed default in its place would both strand the real store and remove a
+        # directory this box never used.
+        removable_store, retained_store = standalone_store_teardown_plan(
+            root, early=_early_scope(std, BoxMode.standalone))
+        if removable_store is not None and not remove_box_tree(removable_store):
+            _warn_undeleted(removable_store)
+        if retained_store is not None:
+            report_retained_store(retained_store, root)
         (root / WORKSET_META_FILE).unlink(missing_ok=True)
         for vault_dir in removable_vault:
             shutil.rmtree(vault_dir, ignore_errors=True)

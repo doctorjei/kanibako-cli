@@ -133,6 +133,7 @@ def _clear_stale_import(journal: Path | None, box_path: Path) -> None:
 
 def import_standalone(
     registry: Path, root: Path, *, journal: Path | None = None,
+    early: "EarlyScope | None" = None,
 ) -> str | None:
     """Reconcile an on-disk standalone box at *root* against ``registry.standalone``.
 
