@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # avoid an import cycle (paths.py would import this later)
     from kanibako.settings.paths import BoxMode, ProjectPaths, StandardPaths
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
 
 # Reserved workset-name tokens for the system-scope partition key (a named
@@ -212,7 +213,7 @@ CHAT_GENERAL_LEAF = "general.md"
 
 def _channel_key(
     ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path,
-    *, standalone: bool | None,
+    *, standalone: bool | None, early: EarlyScope | None = None,
 ) -> Path:
     """Resolve ``workset.channels.<leaf>``: its stored repoint (``early_repoint``), else *default*.
 
@@ -229,12 +230,12 @@ def _channel_key(
     """
     from kanibako.settings.workset_dirkeys import early_repoint, resolve_workset_dir_key
 
-    repoint, where = early_repoint(ws_root, workset_settings, f"channels.{leaf}")
+    repoint, where = early_repoint(ws_root, workset_settings, f"channels.{leaf}", early=early)
     if not isinstance(repoint, str):
         return default
     return resolve_workset_dir_key(
         ws_root, repoint, leaf, key=f"channels.{leaf}", where=where, standalone=standalone,
-        workset_settings=workset_settings,
+        workset_settings=workset_settings, early=early,
     )
 
 
@@ -251,12 +252,18 @@ def workset_channel_paths(
     ``broadcast`` had no consumer at all.  A closed keyspace that accepts a key and
     then ignores it is worse than one that refuses it.
     """
+    from kanibako.settings.workset_dirkeys import EarlyScope
+
     if not has_workset_channels(proj):
         return None
-    return workset_channels_at(workset_root(proj, std))
+    return workset_channels_at(
+        workset_root(proj, std), early=EarlyScope(std.early_system, workset_name_token(proj)),
+    )
 
 
-def workset_channels_at(ws_root: Path) -> WorksetChannels | None:
+def workset_channels_at(
+    ws_root: Path, *, early: EarlyScope | None = None,
+) -> WorksetChannels | None:
     """Derive the WORKSET-local channel roots of *ws_root*; ``None`` for a nulled
     ``workset.channelroot``.
 
@@ -270,19 +277,21 @@ def workset_channels_at(ws_root: Path) -> WorksetChannels | None:
     )
 
     doc = load_workset_settings_doc(ws_root)
-    root = resolve_workset_channelroot(ws_root, doc)
+    root = resolve_workset_channelroot(ws_root, doc, early=early)
     if root is None:
         return None
-    chat = _channel_key(ws_root, doc, "chat", root / "chat", standalone=False)
+    chat = _channel_key(ws_root, doc, "chat", root / "chat", standalone=False, early=early)
     return WorksetChannels(
         root=root,
-        common=_channel_key(ws_root, doc, "common", root / "common", standalone=False),
+        common=_channel_key(
+            ws_root, doc, "common", root / "common", standalone=False, early=early,
+        ),
         chat=chat,
         chat_general=chat / CHAT_GENERAL_LEAF,
         chat_broadcast=_channel_key(
-            ws_root, doc, "broadcast", chat / "broadcast.md", standalone=False,
+            ws_root, doc, "broadcast", chat / "broadcast.md", standalone=False, early=early,
         ),
-        share=_channel_key(ws_root, doc, "share", root / "share", standalone=False),
+        share=_channel_key(ws_root, doc, "share", root / "share", standalone=False, early=early),
     )
 
 
@@ -305,16 +314,18 @@ def partition_key_paths(
     function exists to end.
     """
     from kanibako.project.workset import load_workset_settings_doc
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
     default = system_partition(std, ws_token)
     doc = load_workset_settings_doc(ws_root)
+    early = EarlyScope(std.early_system, ws_token)
     return WorksetPartition(
         ws_token=ws_token,
         mailboxes=_channel_key(
-            ws_root, doc, "mailboxes", default.mailboxes, standalone=None,
+            ws_root, doc, "mailboxes", default.mailboxes, standalone=None, early=early,
         ),
         share_global=_channel_key(
-            ws_root, doc, "share_global", default.share, standalone=None,
+            ws_root, doc, "share_global", default.share, standalone=None, early=early,
         ),
     )
 

@@ -18,6 +18,7 @@ from kanibako.settings.core_defaults import HANDBOOK_REL, ROM_ROOT_PARTS, packag
 
 if TYPE_CHECKING:
     from kanibako.settings.paths import ProjectPaths, StandardPaths
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
 
 # Layered box seed (spec §2a): three ordered sources — system -> agent -> workset,
@@ -630,6 +631,7 @@ def ensure_agent_stores(
 
 def _assert_stamp_leaf_in_root(
     workset_path: Path, doc: Mapping[str, Any] | None, resolved: Path, leaf: str,
+    *, early: EarlyScope | None = None,
 ) -> None:
     """RAISE — NAMING ``workset.<leaf>`` — unless its resolved dir stays under the root.
 
@@ -656,7 +658,7 @@ def _assert_stamp_leaf_in_root(
     # of the root, so the message has to be able to say that instead of printing the
     # sentinel.  ⚑ A null ``workset.<leaf>`` never names a layer to check — see
     # :func:`_workset_stamp_dirs`.
-    repoint, where = early_repoint(workset_path, doc, leaf)
+    repoint, where = early_repoint(workset_path, doc, leaf, early=early)
     origin = (
         f"is set to {repoint!r} in {where}"
         if isinstance(repoint, str)
@@ -672,7 +674,7 @@ def _assert_stamp_leaf_in_root(
 
 
 def _workset_stamp_dirs(
-    workset_path: Path, *, canon_only: bool,
+    workset_path: Path, *, canon_only: bool, early: EarlyScope | None = None,
 ) -> tuple[Path | None, Path | None]:
     """*workset_path*'s RESOLVED ``(workset.canon, workset.template)`` dirs.
 
@@ -708,12 +710,14 @@ def _workset_stamp_dirs(
     )
 
     doc = load_workset_settings_doc(workset_path)
-    canon_root = resolve_workset_canon(workset_path, doc)
-    template_root = resolve_workset_template(workset_path, doc)
+    canon_root = resolve_workset_canon(workset_path, doc, early=early)
+    template_root = resolve_workset_template(workset_path, doc, early=early)
     if canon_root is not None:
-        _assert_stamp_leaf_in_root(workset_path, doc, canon_root, _CANON_LEAF)
+        _assert_stamp_leaf_in_root(workset_path, doc, canon_root, _CANON_LEAF, early=early)
     if not canon_only and template_root is not None:
-        _assert_stamp_leaf_in_root(workset_path, doc, template_root, _TEMPLATE_LEAF)
+        _assert_stamp_leaf_in_root(
+            workset_path, doc, template_root, _TEMPLATE_LEAF, early=early,
+        )
     return canon_root, template_root
 
 
