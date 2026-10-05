@@ -304,7 +304,10 @@ def literal_text(value: Any) -> Any:
 
     if not isinstance(value, str):
         return value
-    text = re.sub(r"\\(.)", r"\1", value, flags=re.DOTALL)
+    # Inverts both of `literal_expr`'s marks: a backslash escape and a doubled brace.
+    text = re.sub(
+        r"\\(.)|\{\{|\}\}", lambda m: m.group(1) or m.group(0)[0], value, flags=re.DOTALL,
+    )
     if literal_expr(text) != value:
         raise ValueError(f"not a literal floor value: {value!r}")
     return text
