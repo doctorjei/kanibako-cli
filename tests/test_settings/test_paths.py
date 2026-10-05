@@ -2841,12 +2841,13 @@ class TestEarlySystemTierIsData:
         baseline, _ = self._tier(tolerate=True)   # NO settings file yet: the declared defaults
         self._settings(
             "system:\n  cache: null\n"
-            "workset:\n  boxes: /srv/kb\n  registry: /srv/reg.yaml\n",
+            "workset:\n  boxes: /srv/kb/{meta.workset.path}\n"
+            "  registry: /srv/reg/@meta.workset.path/r.yaml\n",
         )
 
         resolved, rec = self._tier(tolerate=True)
-        assert rec.tier["workset.boxes"] == "/srv/kb"
-        assert rec.tier["workset.registry"] == "/srv/reg.yaml"
+        assert rec.tier["workset.boxes"] == "/srv/kb/{meta.workset.path}"
+        assert rec.tier["workset.registry"] == "/srv/reg/@meta.workset.path/r.yaml"
         assert rec.system_refusal is not None
         assert "cache" in rec.system_refusal
         # The resolved-system carrier is EMPTY when the refusal is set.
@@ -2854,17 +2855,17 @@ class TestEarlySystemTierIsData:
         # The dropped table really is gone: system.cache falls back to its declared default.
         assert resolved["system.cache"] == baseline["system.cache"]
         # ...while the early tier the file DID state is live.
-        assert resolved["_primary_boxes"] == Path("/srv/kb")
+        assert resolved["_primary_boxes"] == Path(f"/srv/kb/{resolved['config.primary_workset']}")
 
     # ── the record's contents ────────────────────────────────────────────────
 
     def test_the_record_holds_the_raw_early_values_including_a_present_null(self, tmp_home):
         """``tier`` is the file's raw ``workset.*``: a present null is ``None``, an ABSENT
         key is not in the mapping at all, and ``file`` is the path a refusal names."""
-        sp = self._settings("workset:\n  boxes: /srv/kb\n  logs: null\n")
+        sp = self._settings("workset:\n  boxes: /srv/kb/{meta.workset.path}\n  logs: null\n")
 
         _resolved, rec = self._tier()
-        assert rec.tier["workset.boxes"] == "/srv/kb"
+        assert rec.tier["workset.boxes"] == "/srv/kb/{meta.workset.path}"
         assert rec.tier["workset.logs"] is None
         assert "workset.registry" not in rec.tier
         assert rec.file == sp
@@ -2875,14 +2876,14 @@ class TestEarlySystemTierIsData:
         built AFTER the resolve -- not a second read of the stored expression."""
         self._settings(
             "system:\n  canon: '{config.data}/global/canon'\n"
-            "workset:\n  boxes: /srv/kb\n",
+            "workset:\n  boxes: /srv/kb/@meta.workset.path\n",
         )
 
         resolved, rec = self._tier()
         assert rec.system_paths["system.canon"].endswith("/kanibako/global/canon")
         assert "@" not in rec.system_paths["system.canon"]
         # The primary root came from the early tier, resolved after system.*.
-        assert resolved["_primary_boxes"] == Path("/srv/kb")
+        assert resolved["_primary_boxes"] == Path(f"/srv/kb/{resolved['config.primary_workset']}")
 
     def test_the_record_matches_system_path_floor_for_a_repointed_key(self, tmp_home):
         """``std.early_system.system_paths == system_path_floor(std)``, with one ``system.*``
@@ -2927,7 +2928,9 @@ class TestEarlySystemTierIsData:
         can never disagree about what the files said."""
         from kanibako.settings.paths import load_system_config, load_system_tier
 
-        self._settings("workset:\n  boxes: /srv/kb\nsystem:\n  canon: /srv/canon\n")
+        self._settings(
+            "workset:\n  boxes: /srv/kb/{meta.workset.path}\nsystem:\n  canon: /srv/canon\n",
+        )
         cfg, _s, data_home = self._paths()
         kw = dict(data_home=data_home, home=Path.home())
 
