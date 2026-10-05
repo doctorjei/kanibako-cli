@@ -184,7 +184,7 @@ class TestTheShippedCachesRowAdaptsToAPersona:
             table, node_name=NODE, harness=HARNESS,
         ) == {
             f"agent.{NODE}.caches": {
-                "@system.cache/tweakcc": (
+                "{system.cache}/tweakcc": (
                     f"@meta.agent.{NODE}.path/caches/tweakcc",
                 ),
             },

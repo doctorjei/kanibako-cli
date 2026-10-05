@@ -243,7 +243,14 @@ def collect_prefs(
                 # ⚑ *path* IS THE FILE THIS TABLE CAME OFF, and the parse must name it: a
                 # refusal raised in here is about the file the loop is holding, not about
                 # the synthesized ``{pref: …}`` wrapper built to carry it.
-                _file_partial({PREF_ROOT: table}, path=path),
+                # ⚑⚑ AND ``for_pref_requests`` — this is the ONE reader with no
+                # ``valid_agents``, whose requests :func:`apply_prefs` judges. It is why a
+                # bare-scalar entry's verdict waits for the agent segment rather than
+                # pre-empting it here; the cascade's own read of the same file is NOT that
+                # reader and still judges it.
+                _file_partial(
+                    {PREF_ROOT: table}, path=path, for_pref_requests=True,
+                ),
                 level=level, path=path,
             )
         )
@@ -424,6 +431,62 @@ def forbidden_tier_reason(target: str, *, level: str) -> str | None:
     return None
 
 
+def refuse_deferred_pref_shapes(req: PrefRequest) -> None:
+    """RAISE on a bind-shaped pref value the parse left unjudged; pass when every entry is well-formed.
+
+    ⚑ THE DEFERRED HALF OF §2h's ORDER. A ``pref:`` table is read without ``valid_agents``,
+    so the parse cannot judge the AGENT SEGMENT, and a shape verdict raised there would send
+    the user to reshape an entry whose only defect is a name. The parse carries the entry
+    verbatim (:func:`~kanibako.settings.settings_assemble.parse_bind_map`); this judges it
+    after :func:`validate_pref` has ruled on the target, so the agent verdict reads first.
+
+    ⚑ ONE JUDGE, THE CALL THE PARSE DEFERS: the offenders go back through
+    :func:`~kanibako.settings.settings_resolve.check_bind_map`, so the wording and the file
+    clause are the parse's own and cannot drift. A ``None`` entry is §2h's per-entry OMIT,
+    not a shape fault, and is never an offender.
+    """
+    from kanibako.settings.kb_store import BindEntry
+    from kanibako.settings.settings_resolve import check_bind_map
+
+    if not isinstance(req.value, KeyStore):
+        return
+    category = _bind_category_of(req.target)
+    if category is None:
+        return
+    offenders = {
+        dest: value for dest, value in req.value.items()
+        if value is not None and not isinstance(value, BindEntry)
+    }
+    if not offenders:
+        return
+    try:
+        check_bind_map(offenders, category=category)
+    except SettingsError as exc:
+        where = str(req.source) if req.source is not None else None
+        suffix = f" (in settings file {where})" if where is not None else ""
+        raise SettingsError(f"{exc}{suffix}") from exc
+
+
+def _bind_category_of(target: str) -> str | None:
+    """The dest-keyed bind CATEGORY *target* names, or ``None`` when it names no bind map.
+
+    ⚑ A bind-shaped pref target is the WHOLE CATEGORY KEY — ``<agent>.seeded`` or
+    ``<agent>.bindings.ro`` — because a destination is data inside its value and never a key
+    segment (§2h's "no bind-shaped category is such a family"). The category is therefore
+    the target's TRAILING token, read from
+    :data:`~kanibako.settings.settings_keyspace.BIND_CATEGORIES` rather than re-listed here;
+    both depths are tried because the members disagree (one token vs ``bindings.<arm>``).
+    ``masks`` is dest-keyed too but holds 3-state markers, so it is deliberately absent.
+    """
+    from kanibako.settings.settings_keyspace import BIND_CATEGORIES
+
+    head, _, leaf = target.rpartition(".")
+    for candidate in (leaf, f"{head.rpartition('.')[2]}.{leaf}"):
+        if candidate in BIND_CATEGORIES:
+            return candidate
+    return None
+
+
 def validate_pref(
     req: PrefRequest,
     *,
@@ -524,6 +587,9 @@ def apply_prefs(
                 f"legal "
                 f"only at {' / '.join(PREF_LEGAL_LEVELS)} (spec §2h)."
             )
+        # ⚑ ORDER: the TARGET is judged first, so a request naming an unknown agent is
+        # told THAT; only an accepted target reaches the deferred shape verdict.
+        refuse_deferred_pref_shapes(req)
         if req.level == "box":
             box.append(req)
         else:

@@ -1697,6 +1697,53 @@ class TestBoxHandbookHostCopyThroughTheSeam:
 # Packaged curated-template install (Phase 9c) — the packaged->runtime copy.
 # ---------------------------------------------------------------------------
 
+class TestANullSystemCanonInstallsNoChapter:
+    """A null ``system.canon`` has no ROOT, so nothing is created into it.
+
+    ``system.canon`` is a standard bind's SOURCE key, so ``StandardPaths.canon`` admits
+    ``None`` — the value a user who set the key to ``<None>`` gets.  The handbook copy
+    is create-if-absent into ``std.canon / handbook``, so the dest is the one expression
+    in the installer that divides a possibly-null path, and both the installer and the
+    refresh preview reach it.
+    """
+
+    @staticmethod
+    def _nulled_canon(std):
+        from kanibako.settings.config_io import write_nested_key
+        from kanibako.settings.paths import load_std_paths
+
+        write_nested_key(std.settings, ("system",), "canon", None)
+        nulled = load_std_paths()
+        assert nulled.canon is None
+        return nulled
+
+    def test_install_creates_nothing_and_does_not_raise(self, std, tmp_home):
+        nulled = self._nulled_canon(std)
+        install_packaged_templates(nulled, ["claude"])
+        # ⚑ NO DIRECTORY NAMED ``None``: a crash-avoiding fallback that wrote the four
+        # characters would satisfy "did not raise" on its own.
+        assert sorted(p for p in tmp_home.rglob("None")) == []
+
+    def test_the_sibling_stores_still_install(self, std):
+        """The control: a null canon suppresses ONE dest, not the whole install."""
+        nulled = self._nulled_canon(std)
+        install_packaged_templates(nulled, ["claude"])
+        assert (nulled.agents / "default" / "canon" / "handbook" / "SYS_AGENT.md").is_file()
+        assert (nulled.template / "box" / "home" / "canon" / "notebook").is_dir()
+
+    def test_the_refresh_preview_classifies_without_the_chapter(self, std):
+        """``plan_template_refresh`` is a PURE classification, and the same dest is
+        reached from its own ``_walk`` — a second site with the same division."""
+        nulled = self._nulled_canon(std)
+        added, overwritten, kept = plan_template_refresh(nulled, ["claude"])
+        reported = [*added, *overwritten, *kept]
+        assert not [p for p in reported if p is None]
+        assert any(p.parent.name == "handbook" for p in reported), (
+            "the preview classified nothing at all, so this would pass on a null canon "
+            "for the wrong reason"
+        )
+
+
 class TestInstallPackagedTemplates:
     """The ENUMERATED install (P-S2): four (packaged subtree → host dest) pairs, each
     with its own owner and therefore its own copy rule."""

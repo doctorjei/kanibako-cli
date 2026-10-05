@@ -24,6 +24,7 @@ _BOX_ONLY_PREFIXES: Final = ('meta.box.',)
 _WORKSET_ONLY_PREFIXES: Final = ('meta.workset.', 'workset.')
 _WORKSET_RUNTIME_KEYS: Final = frozenset({'meta.runtime.ws_root', 'meta.runtime.ws_name', 'meta.runtime.project_type'})
 _NONE_WARNED: 'set[str]' = set()
+_META_NULL_ORIGIN: dict[str, tuple[str, ...]] = {'meta.box.inbox': ('workset.channels.mailboxes', 'system.channels.mailboxes')}
 _FLOOR_WHERE = "kanibako's defaults for this box"
 _BOX_ROOT_KEY = 'meta.box.path'
 _BOX_STORE_KEY = 'workset.boxes'
@@ -45,9 +46,9 @@ def meta_runtime_floor(*, mode: str, ws_name: str, ws_root_literal: str | None=N
 def meta_agent_path_floor(agent_name: str) -> dict[str, object]
 def meta_agent_grammar_floor(agent_name: str, descriptor: 'PluginDescriptor | None') -> dict[str, object]
 def box_address_args(addr: 'BoxChannelAddresses') -> BoxAddressArgs
-def meta_identity_floor(*, box_name: str, project_path: str | None, inbox: str, share_global: str, share_workset: str | None, box_settings: str | None=None, agent_name: str | None=None, agent_real_name: str | None=None, agent_auth_share_support: bool=False) -> dict[str, object]
+def meta_identity_floor(*, box_name: str, project_path: str | None, inbox: str | None, share_global: str | None, share_workset: str | None, box_settings: str | None=None, agent_name: str | None=None, agent_real_name: str | None=None, agent_auth_share_support: bool=False) -> dict[str, object]
 def meta_agent_identity_floor(agent_name: str, agent_real_name: str | None, agent_auth_share_support: bool) -> dict[str, object]
-def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str] | None=None) -> dict[str, object]
+def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str | None] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
 def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[SettingsFile], subject: ResolveSubject) -> None
 def internal_bind_refusals(arm: str, entries: dict[str, object], *, where: str, when: Literal['write', 'stored'], floor_entries: dict[str, object] | None=None) -> list[str]
@@ -83,7 +84,7 @@ def _carrying_files(findings: Sequence[tuple[tuple[str, ...], Judgment]], writte
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None
-def _workset_channel_floor_values(part: 'WorksetPartition', wch: 'WorksetChannels | None') -> 'tuple[str | None, dict[str, str]]'
+def _workset_channel_floor_values(part: 'WorksetPartition', wch: 'WorksetChannels | None') -> 'tuple[str | None, dict[str, str | None]]'
 def _workset_workspaces_floor_value(mode: str, ws_root_literal: 'str | None', *, early: EarlyScope) -> 'str | None'
 def _box_less_omits(key: str, *, in_workset: bool) -> bool
 def _omit_derived(ctx: ResolveCtx, is_seed: Callable[[str], bool], *floors: dict[str, object]) -> None
@@ -95,6 +96,7 @@ def _internal_floor_binds(floor: Mapping[str, object]) -> dict[str, object]
 def _warn_once(message: str) -> None
 def _none_setter(written: Sequence[_WrittenLevel], key: str, dest: str | None) -> str | None
 def _source_refs(src: str, expanded: KeyStore, ctx: ResolveCtx) -> list[str]
+def _null_origin(written: Sequence[_WrittenLevel], ref: str) -> 'tuple[str, str] | None'
 def _warn_lone_none_standard_binds(floor: Mapping[str, object], merged: KeyStore, expanded: KeyStore, *, null_sources: NullSources, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
 def _warn_rootless_channel_binds(rootless: Sequence[tuple[str, str]], expanded: KeyStore, *, written: Sequence[_WrittenLevel]) -> None
 def _warn_null_ref_secrets(merged: KeyStore, expanded: KeyStore, *, active_agent: str, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
@@ -122,8 +124,8 @@ def _refuse_null_box_scalars(resolved: 'Mapping[str, object]', written: 'Sequenc
 
 ```
 class BoxAddressArgs(TypedDict):
-    inbox: str
-    share_global: str
+    inbox: str | None
+    share_global: str | None
     share_workset: str | None
 
 @dataclass(frozen=True)
@@ -149,7 +151,7 @@ class LaunchInputs:
     subject: ResolveSubject
     ctx: ResolveCtx
     system_path: Path | None
-    system_floor: Mapping[str, str]
+    system_floor: Mapping[str, str | None]
     meta_runtime: Mapping[str, object]
     meta_identity: Mapping[str, object]
     workset_anchor: Mapping[str, object]

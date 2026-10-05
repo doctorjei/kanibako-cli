@@ -286,7 +286,7 @@ class TestB2bWorksetAnchors:
         assert floor["workset.channels.common"] == "/ws/ch/common"
         # ⚑ NO construct-time literals here — every anchor is a FORMULA. The
         # retired ``meta.box.helper_log`` was the last one; the helper-log bind
-        # now spells itself ``@workset.logs/@{meta.box.name}.jsonl`` (PHASE R).
+        # now spells itself ``{workset.logs}/{meta.box.name}.jsonl`` (PHASE R).
         assert "meta.box.helper_log" not in floor
         assert all(
             not isinstance(v, str) or v.startswith("@")
@@ -328,7 +328,7 @@ class TestB2bWorksetAnchors:
         assert not floor["meta.box.path"].endswith("/")
         # No invented resolved-literal anchors remain — not for home/vault, and
         # (since PHASE R made the spec's spelling expressible) not for the log
-        # either: the bind is ``@workset.logs/@{meta.box.name}.jsonl``, and
+        # either: the bind is ``{workset.logs}/{meta.box.name}.jsonl``, and
         # ``workset.logs = @workset.boxes`` above is what makes it standalone.
         assert "meta.box.home_src" not in floor
         assert "meta.box.helper_log" not in floor
@@ -567,7 +567,7 @@ class TestP1BoxRootAnchor:
         PHASE R. ``test_vault_and_logs_resolve_identically_in_all_three_modes``
         proves the chain RESOLVES to the right absolute path; this proves it is
         spelled the way the spec says (§2c ALL PROJECTS,
-        ``@workset.logs/@{meta.box.name}.jsonl``) rather than resolving correctly
+        ``{workset.logs}/{meta.box.name}.jsonl``) rather than resolving correctly
         by some other route. Two things it stops from creeping back:
 
         * the retired ``@meta.box.helper_log`` construct-time literal, which
@@ -594,7 +594,7 @@ class TestP1BoxRootAnchor:
         # and additionally that the helper contributes nothing else to the arm.
         assert emitted == {
             "/home/agent/.kanibako/state/helpers.jsonl": (
-                "@workset.logs/@{meta.box.name}.jsonl",
+                "{workset.logs}/{meta.box.name}.jsonl",
                 "ro",
             ),
         }
@@ -680,7 +680,7 @@ class TestB3ImagesStoreKey:
             storage_conf_path=Path("/host/staging/storage.conf"),
         )
         arm = emitted["box.bindings.ro"]
-        assert arm["/var/lib/shared-images"] == ("@box.images_store", "ro")
+        assert arm["/var/lib/shared-images"] == ("{box.images_store}", "ro")
         # The probed graphroot IS the user key's default, entering here.
         assert emitted["box.images_store"] == "/host/graph"
         # The rider, structurally: the arm is TERMINAL (no per-name key survives),
@@ -788,7 +788,7 @@ class TestB3ImagesStoreKey:
         )
         assert "box.images_store" not in emitted
         arm = emitted["box.bindings.ro"]
-        assert arm["/var/lib/shared-images"] == ("@box.images_store", "ro")
+        assert arm["/var/lib/shared-images"] == ("{box.images_store}", "ro")
         assert arm["/home/agent/.config/containers/storage.conf"] == (
             "/host/staging/storage.conf",
             "ro",

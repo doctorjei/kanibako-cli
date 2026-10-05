@@ -1157,11 +1157,13 @@ class TestWriteProjectConfig:
         assert "img:v1" not in text
 
     def test_add_image_to_container_section(self, tmp_path):
+        # A real table: an empty ``box:`` header parses as null, which is refused.
         p = tmp_path / BOX_META_FILE
-        p.write_text("box:\n  # empty section\n")
+        p.write_text("box:\n  shell: bash\n")
         write_project_config(p, "new:img")
         text = p.read_text()
         assert "image: new:img" in text
+        assert "shell: bash" in text
 
     def test_create_new_file(self, tmp_path):
         p = tmp_path / "sub" / BOX_META_FILE
@@ -1208,6 +1210,33 @@ class TestBoxEnableVault:
         data = load_doc(p)
         assert "enable_vault" not in data.get("box", {})
         assert read_box_enable_vault(p) is True
+
+    @pytest.mark.parametrize("enable_vault", [False, True])
+    def test_a_scalar_box_refuses_by_name_instead_of_raising_typeerror(
+        self, tmp_path, enable_vault,
+    ):
+        """(c2) A scalar ``box`` refuses BY NAME and the file is left byte-identical.
+
+        This site's old shape was a CRASH, not a clobber: ``setdefault`` hands back the scalar
+        it found instead of a table, so the item assignment raised
+        ``TypeError: 'str' object does not support item assignment`` — a traceback where the
+        named refusal is the cure.  Nothing was ever lost here, but the user read a crash.
+        Both arms are covered: the ``True`` arm used to no-op SILENTLY against a scalar ``box``,
+        so the guard makes it say so instead.
+        MUTATION: drop the ``refuse_scalar_sections`` call in ``write_box_enable_vault`` and
+        the ``False`` param reds with the ``TypeError``, the ``True`` param reds by not raising.
+        """
+        p = tmp_path / BOX_META_FILE
+        p.write_text("box: /x\n")
+
+        with pytest.raises(ConfigError) as exc:
+            write_box_enable_vault(p, enable_vault=enable_vault)
+        assert str(exc.value) == (
+            f"the config file {p} holds /x at 'box', where a table of keys belongs, "
+            f"so 'box.' keys cannot be written under it. "
+            f"Fix or delete 'box' in that file by hand, then retry."
+        )
+        assert p.read_text() == "box: /x\n"
 
     def test_a_hand_quoted_false_is_not_the_truthy_string(self, tmp_path):
         """The anchor case: ``enable_vault: "false"`` is False, not the truthy ``"false"``.
@@ -1362,6 +1391,33 @@ class TestTargetSettings:
         settings = read_agent_settings(p, "claude")
         assert settings == {"model": "sonnet", "access": "permissive"}
 
+    @pytest.mark.parametrize("text, dotted, found", [
+        ("agent: /x\n", "agent", "/x"),
+        ("agent:\n  claude: /x\n", "agent.claude", "/x"),
+    ])
+    def test_a_scalar_at_either_walked_level_refuses_rather_than_being_replaced(
+        self, tmp_path, text, dotted, found,
+    ):
+        """``write_agent_setting`` walks TWO levels; a scalar at EITHER refuses by name and
+        leaves the file byte-identical.
+
+        Before the fix both were replace-a-scalar sites — the ``agent`` table itself, and the
+        per-agent ``agent.<name>`` sub-table beneath it.  One
+        :func:`refuse_scalar_sections` call over the walked tuple covers both.
+        MUTATION: drop that call in ``write_agent_setting`` and BOTH params red.
+        """
+        p = tmp_path / BOX_META_FILE
+        p.write_text(text)
+
+        with pytest.raises(ConfigError) as exc:
+            write_agent_setting(p, "model", "sonnet", "claude")
+        assert str(exc.value) == (
+            f"the config file {p} holds {found} at '{dotted}', where a table of keys belongs, "
+            f"so '{dotted}.' keys cannot be written under it. "
+            f"Fix or delete '{dotted}' in that file by hand, then retry."
+        )
+        assert p.read_text() == text
+
     def test_backward_compat_no_section(self, tmp_path):
         """box.yaml without a [agent] section returns empty dict."""
         p = tmp_path / BOX_META_FILE
@@ -1499,6 +1555,30 @@ class TestPersistCreationFlags:
         doc = load_doc(p)
         assert doc["box"] == {"enable_vault": False, "image": "custom:v1"}
         assert doc["agent"] == {"claude": {"model": "opus"}}
+
+    def test_a_scalar_box_refuses_rather_than_being_replaced(self, tmp_path):
+        """A scalar where the ``box`` TABLE belongs refuses by name, and the file is left
+        byte-identical.
+
+        Before the fix this gate silently threw the user's ``/x`` away and wrote a fresh
+        table over it.  The refusal is the one :func:`refuse_scalar_sections` owns, so the
+        wording matches ``TestNestedWriteRefusesANonTableSection`` exactly.
+        MUTATION: drop the ``refuse_scalar_sections`` call in ``persist_creation_flags``
+        and this reds.
+        """
+        from kanibako.settings.config import persist_creation_flags
+
+        p = tmp_path / BOX_META_FILE
+        p.write_text("box: /x\n")
+
+        with pytest.raises(ConfigError) as exc:
+            persist_creation_flags(p, materializing=True, image="custom:v1")
+        assert str(exc.value) == (
+            f"the config file {p} holds /x at 'box', where a table of keys belongs, "
+            f"so 'box.' keys cannot be written under it. "
+            f"Fix or delete 'box' in that file by hand, then retry."
+        )
+        assert p.read_text() == "box: /x\n"
 
 
 class TestMergedConfigKeyspaceResolve:

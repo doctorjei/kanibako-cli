@@ -45,7 +45,7 @@ from kanibako.settings.config import WORKSET_META_FILE, ref_order_error
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.settings_keyspace import DECLARED_WORKSET_CHANNEL_LEAVES
 from kanibako.settings.settings_resolve import (
-    UNSET, ResolveCtx, SettingsError, _Unset, expand_expr, literal_map,
+    UNSET, ResolveCtx, SettingsError, _Unset, expand_expr, literal_expr,
 )
 
 #: The one non-``workset.*`` ``@``-ref a workset dir key can resolve before a snapshot
@@ -123,8 +123,8 @@ class EarlySystem:
         The system settings path: the file a refusal names.
     ``system_paths``
         The resolved ``system.*`` tier, dotted, each value a
-        :func:`~kanibako.settings.settings_resolve.literal_expr` — the same shape and the same
-        values as :func:`~kanibako.settings.paths.system_path_floor`.  EMPTY when
+        :func:`~kanibako.settings.settings_resolve.literal_expr`, or ``None`` for a null key —
+        the same shape and the same values as :func:`~kanibako.settings.paths.system_path_floor`.  EMPTY when
         ``system_refusal`` is set: those values were dropped, so there is nothing here to name.
     ``system_refusal``
         The text of a ``system:``-table refusal that TOLERANCE dropped, else ``None``.  ⚑ Set
@@ -137,7 +137,7 @@ class EarlySystem:
 
     tier: dict[str, str | None]
     file: Path
-    system_paths: dict[str, str]
+    system_paths: dict[str, str | None]
     system_refusal: str | None = None
 
 
@@ -181,9 +181,13 @@ def early_system(set_values: Mapping[str, str | None],
     return EarlySystem(
         tier={k: v for k, v in set_values.items() if k.startswith("workset.")},
         file=resolved["config.settings"],
+        # ⚑ A null ``system.*`` key is ABSENT from *resolved* and carried as ``None``,
+        # exactly as :func:`~kanibako.settings.paths.system_path_floor` carries it.
         system_paths=(
             {} if system_refusal is not None
-            else literal_map({key: str(resolved[key]) for key in SYSTEM_PATH_DEFAULTS})
+            else {key: (None if (value := resolved.get(key)) is None
+                        else literal_expr(str(value)))
+                  for key in SYSTEM_PATH_DEFAULTS}
         ),
         system_refusal=system_refusal,
     )

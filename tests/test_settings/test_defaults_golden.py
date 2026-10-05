@@ -135,7 +135,7 @@ def _assert_structured_entry(value: object, where: str) -> None:
     # ...and the options slot must NOT look like a destination — that is the
     # stale-fixture tell described above.
     if len(value) == 2:
-        assert not value[1].startswith(("/", "~", "$GUEST_HOME")), (
+        assert not value[1].startswith(("/", "~", "{$GUEST_HOME}")), (
             f"{where}: 2nd slot {value[1]!r} looks like a box_dest, not mount "
             f"options — the entry is still in the RETIRED name-keyed shape"
         )
@@ -260,7 +260,7 @@ class TestCoreDefaultsShape:
           row and the scalar user key ``box.images_store`` must not share a name
           (the B3 rider; a revived ``images_store`` entry here would silently
           re-open the collision the rename closed);
-        * the store bind's emitted host_src is the @-ref ``@box.images_store``
+        * the store bind's emitted host_src is the reference ``{box.images_store}``
           (``meta_ref``), so the mount follows the USER KEY (spec §2b/D-M8) —
           a bare probed literal here would disconnect the key from its bind.
         """
@@ -285,7 +285,7 @@ class TestCoreDefaultsShape:
             f"images table must be exactly the store bind ('images' — renamed "
             f"from 'images_store', B3 rider) + the internal 'images_conf': {keys}"
         )
-        assert images[0].get("meta_ref") == "@box.images_store", (
+        assert images[0].get("meta_ref") == "{box.images_store}", (
             "the store bind's host_src must be the @-ref to the user key "
             f"box.images_store (spec §2b/D-M8): {images[0]!r}"
         )
@@ -302,7 +302,7 @@ class TestAgentDefaultsShape:
         """Every ``descriptor.bindings`` entry is a structured mapping (not a string).
 
         The file declares each binding's ORIGIN (which detected install field
-        supplies the host source) + a ``$GUEST_HOME`` box_dest EXPRESSION + the
+        supplies the host source) + a ``{$GUEST_HOME}`` box_dest EXPRESSION + the
         kind/scope enums — a structured mapping, never a colon-joined string.
         """
         for package, filename in _AGENT_DEFAULTS:
@@ -321,10 +321,10 @@ class TestAgentDefaultsShape:
                 HostSrcOrigin(b["origin"])
                 BindKind(b["kind"])
                 BindScope(b["scope"])
-                # box_dest is a $GUEST_HOME expression (de-hardcoded) — never a
+                # box_dest is a {$GUEST_HOME} expression (de-hardcoded) — never a
                 # raw /home/agent literal, never colon/comma-joined.
-                assert b["box_dest"].startswith("$GUEST_HOME"), (
-                    f"{filename}: binding box_dest must be a $GUEST_HOME expression "
+                assert b["box_dest"].startswith("{$GUEST_HOME}"), (
+                    f"{filename}: binding box_dest must be a {{$GUEST_HOME}} expression "
                     f"(de-hardcoded), got {b['box_dest']!r}"
                 )
                 _assert_no_joined_string(
@@ -386,8 +386,8 @@ class TestAgentDefaultsShape:
                     f"{filename}: common entry declares a retired entry name "
                     f"'key:' — the destination is the identity now: {entry!r}"
                 )
-                assert entry["box_dest"].startswith("$GUEST_HOME"), (
-                    f"{filename}: common box_dest must be a $GUEST_HOME expression: "
+                assert entry["box_dest"].startswith("{$GUEST_HOME}"), (
+                    f"{filename}: common box_dest must be a {{$GUEST_HOME}} expression: "
                     f"{entry!r}"
                 )
                 assert isinstance(entry["host_src"], str) and entry["host_src"], (
@@ -395,8 +395,8 @@ class TestAgentDefaultsShape:
                     f"{entry!r}"
                 )
                 # Index the AUTHORED source by the destination the loader will key
-                # on, mirroring the loader's one-token $GUEST_HOME expansion.
-                authored[GUEST_HOME + entry["box_dest"][len("$GUEST_HOME"):]] = (
+                # on, mirroring the loader's one-token {$GUEST_HOME} expansion.
+                authored[GUEST_HOME + entry["box_dest"][len("{$GUEST_HOME}"):]] = (
                     entry["host_src"]
                 )
 
@@ -841,13 +841,13 @@ class TestCoreStaticEnvDefaults:
     #: plain-shell launch renders the canon into; its ``$GUEST_HOME`` is expanded by
     #: the emitter, so the emitted value is the guest path.
     _SHIPPED_ENV = {
-        "agent.default": {"TERM": "$TERM"},
+        "agent.default": {"TERM": "{$TERM}"},
         # A pseudo-agent does not inherit agent.default (§2d shell fence).
         "agent.shell": {
-            "TERM": "$TERM",
-            "KANIBAKO_DIRECTIVE_FINAL": "$GUEST_HOME/AGENTS.md",
+            "TERM": "{$TERM}",
+            "KANIBAKO_DIRECTIVE_FINAL": "{$GUEST_HOME}/AGENTS.md",
         },
-        "box": {"COLORTERM": "$COLORTERM"},
+        "box": {"COLORTERM": "{$COLORTERM}"},
     }
 
     def test_the_shipped_env_section_is_exactly_the_declared_content(self):
@@ -879,10 +879,10 @@ class TestCoreStaticEnvDefaults:
                     f"value round-trips to the box as its Python repr"
                 )
         assert core_defaults.env_default_categories() == {
-            "agent.default.env.TERM": "$TERM",
-            "agent.shell.env.TERM": "$TERM",
+            "agent.default.env.TERM": "{$TERM}",
+            "agent.shell.env.TERM": "{$TERM}",
             "agent.shell.env.KANIBAKO_DIRECTIVE_FINAL": "/home/agent/AGENTS.md",
-            "box.env.COLORTERM": "$COLORTERM",
+            "box.env.COLORTERM": "{$COLORTERM}",
         }, "the emitter must hand back the file's declaration under its dotted key"
 
     def test_an_unknown_scope_head_refuses_by_name(self, monkeypatch):

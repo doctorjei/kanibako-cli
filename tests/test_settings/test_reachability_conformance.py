@@ -317,18 +317,23 @@ def _partition(mode: str, termini, ctx) -> "tuple[list[str], list[str], list[str
 # The demand graph — who @-references whom.
 # ---------------------------------------------------------------------------
 
-# Braced form first (it delimits the name explicitly); the bare form is GREEDY over
-# dot-separated segments, exactly as the manifest's ``reference_forms`` says.
-_BRACED_REF = re.compile(r"@\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\}")
-_BARE_REF = re.compile(r"@([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)")
+# Braced forms first (they delimit the name explicitly); the old bare form is GREEDY
+# over dot-separated segments. The manifest is mid-transition (braced-refs plan), so
+# both grammars are read: ``{K}`` (new), ``@{K}`` and ``@K`` (old, until step 5).
+_REF_NAME = r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*"
+_OLD_BRACED_REF = re.compile(rf"@\{{({_REF_NAME})\}}")
+_NEW_REF = re.compile(rf"(?<!\{{)\{{({_REF_NAME})\}}")
+_BARE_REF = re.compile(rf"@({_REF_NAME})")
 
 
 def _refs_in(value: object) -> "set[str]":
-  """Every ``@K`` / ``@{K}`` reference name spelled inside *value*."""
+  """Every ``{K}`` / ``@K`` / ``@{K}`` reference name spelled inside *value*."""
   if not isinstance(value, str):
     return set()
-  found = set(_BRACED_REF.findall(value))
-  found |= set(_BARE_REF.findall(_BRACED_REF.sub(" ", value)))
+  found = set(_OLD_BRACED_REF.findall(value))
+  rest = _OLD_BRACED_REF.sub(" ", value)
+  found |= set(_NEW_REF.findall(rest))
+  found |= set(_BARE_REF.findall(_NEW_REF.sub(" ", rest)))
   return {name.rstrip(".") for name in found if name}
 
 

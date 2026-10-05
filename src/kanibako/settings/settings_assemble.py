@@ -1082,12 +1082,27 @@ def _is_table_valued_agent_leaf(parts: tuple[str, ...]) -> bool:
     return len(parts) == 3 and parts[0] == "agent" and parts[2] in TABLE_VALUED_AGENT_LEAVES
 
 
+def _under_pref(parts: tuple[str, ...]) -> bool:
+    """Is *parts* a key path under a ``pref.`` head? (§2h)"""
+    return parts[:1] == (PREF_ROOT,)
+
+
+def _is_bare_scalar_entry(value: Any) -> bool:
+    """Is *value* a bind-map entry that is a BARE SCALAR?
+
+    ⚑ A list is a structured-entry ATTEMPT (its arity is judgeable at the parse) and a table
+    is the retired SPELLING; a bare scalar is neither, and is the one verdict §2h's agent
+    judgment must precede. ``None`` is the per-entry OMIT.
+    """
+    return value is not None and not isinstance(value, (list, tuple, dict))
+
+
 def _at_declared_category(parts: tuple[str, ...]) -> bool:
     """Is *parts* a DECLARED dest-keyed category position, a ``pref.`` head stripped (spec §2h)?
 
     A pref target counts only when it is requestable, so §2h's allowlist refusal names it.
     """
-    if parts[:1] == (PREF_ROOT,):
+    if _under_pref(parts):
         parts = parts[1:]
         if pref_allowlist_entry(".".join(parts)) is None:
             return False
@@ -1096,7 +1111,7 @@ def _at_declared_category(parts: tuple[str, ...]) -> bool:
 
 def _parse_node(
     value: Any, *, in_binds: bool, dest_keyed: bool = False, at_bindings: bool = False,
-    path: tuple[str, ...] = (),
+    path: tuple[str, ...] = (), for_pref_requests: bool = False,
 ) -> Any:
     """Recursively coerce a raw settings node into the ``StoreValue`` space.
 
@@ -1120,6 +1135,7 @@ def _parse_node(
                     store[key_s] = parse_bind_map(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
                         declared=_at_declared_category((*path, key_s)),
+                        defer_shape=for_pref_requests and _under_pref(path),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1133,6 +1149,7 @@ def _parse_node(
                         sub, category=key_s,
                         root_ref=_declaration_root_ref(path, key_s),
                         declared=_at_declared_category((*path, key_s)),
+                        defer_shape=for_pref_requests and _under_pref(path),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1151,6 +1168,7 @@ def _parse_node(
                 sub,
                 in_binds=descend_binds,
                 dest_keyed=dest_keyed,
+                for_pref_requests=for_pref_requests,
                 at_bindings=(not in_binds and key_s == _DEST_KEYED_CATEGORY),
                 path=(*path, key_s),
             )
@@ -1181,7 +1199,7 @@ def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore:
 
 def parse_bind_map(
     raw: Any, *, category: str = "bindings", root_ref: str | None = None,
-    declared: bool = True,
+    declared: bool = True, defer_shape: bool = False,
 ) -> KeyStore:
     """Parse a raw DEST-KEYED category map into a :class:`KeyStore` of :class:`BindEntry`.
 
@@ -1193,19 +1211,37 @@ def parse_bind_map(
     ⚑⚑ THIS IS THE DECLARATION-LOAD SEAM: what gets STORED must resolve on its own, so the
     root is supplied HERE (:func:`_declared_source`) and never downstream — rooting at
     ASSEMBLY is FORBIDDEN by §2a.
+
+    ⚑ *defer_shape* withholds ONLY the bare-scalar entry verdict, carrying that value for
+    :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`. Every other check
+    still runs here, on the WHOLE map.
     """
     if not isinstance(raw, dict):
         raise SettingsError(
             f"A dest-keyed {category!r} map must be a mapping "
             f"{{box_dest: [src[, options]]}}, got {type(raw).__name__}: {raw!r}."
         )
-    check_bind_map(raw, category=category, declared=declared)
+    if not defer_shape:
+        check_bind_map(raw, category=category, declared=declared)
+    else:
+        # ⚑ NOT A SHAPE VERDICT, so it runs on the WHOLE map: a destination spelled twice
+        # is a fact about the map, and the sub-map cannot see one straddling the carve-out.
+        refuse_dest_spelled_twice(raw, category=category)
+        check_bind_map(
+            {k: v for k, v in raw.items() if not _is_bare_scalar_entry(v)},
+            category=category, declared=declared,
+        )
     store = KeyStore()
     for key, sub in raw.items():
         # ⚑ THE ONE PLACE A STORED DEST IS CANONICALIZED ON READ (R-11) — ``~`` and ``~/`` must be
         # ONE entry. Producers normalize too; the function is idempotent, so neither place is
         # load-bearing alone. ⚑ The VALUE is never canonicalized: a host_src stays as authored.
         dest = normalize_bind_dest(str(key))
+        if defer_shape and _is_bare_scalar_entry(sub):
+            # ⚑ Carried VERBATIM and never unpacked: a ``BindEntry`` is what SAYS an
+            # entry is well-formed, so deferring the shape defers that proof.
+            store[dest] = sub
+            continue
         entry = _parse_node(sub, in_binds=True, dest_keyed=True)
         if isinstance(entry, BindEntry):
             entry = BindEntry(
@@ -1231,6 +1267,7 @@ def _declared_source(
 
 def _parse_naming_file(
     raw: dict, *, file_path: Path | None, key_path: tuple[str, ...] = (),
+    for_pref_requests: bool = False,
 ) -> KeyStore:
     """Parse one settings file's node, NAMING *file_path* in every refusal the parse raises.
 
@@ -1246,7 +1283,9 @@ def _parse_naming_file(
     difference between them (the agent file's walk starts one scope in).
     """
     try:
-        parsed = _parse_node(raw, in_binds=False, path=key_path)
+        parsed = _parse_node(
+            raw, in_binds=False, path=key_path, for_pref_requests=for_pref_requests,
+        )
     except (ReservedKeyError, SettingsError) as exc:
         where = str(file_path) if file_path is not None else "<settings>"
         raise SettingsError(f"{exc} (in settings file {where})") from exc
@@ -1255,7 +1294,7 @@ def _parse_naming_file(
 
 
 def _file_partial(
-    raw: dict, *, path: Path | None = None,
+    raw: dict, *, path: Path | None = None, for_pref_requests: bool = False,
 ) -> KeyStore:
     """Build ONE level partial from a settings file's WHOLE nested content, SCOPE TOKEN KEPT (§0).
 
@@ -1269,6 +1308,11 @@ def _file_partial(
     leaf name (``box: get:``) and the RETIRED name-keyed §2a shape both named the offending KEY and
     left the user to work out WHICH of six cascade files to edit — the key is the defect, but the
     file is the address, and a cure with no address is a cure the user has to hunt for.
+    ⚑ *for_pref_requests* marks the ONE reader whose consumer judges the agent segment
+    (:func:`~kanibako.settings.settings_prefs.apply_prefs`), so only there is a bare-scalar
+    entry's verdict deferred. The CASCADE's own read of the same file has no such consumer
+    and keeps the verdict here: a value installed at a target is read AT that target (§2h).
+
     ⚑ NO LIVE CALLER OMITS IT ANY MORE. It stayed optional for the one that parsed a SYNTHESIZED
     table — ``collect_prefs``' ``{pref: …}`` wrapper — but that table is still read OFF a real
     workset or box file, and that file is what its refusals must name, so it passes the path too.
@@ -1277,7 +1321,10 @@ def _file_partial(
     """
     if not isinstance(raw, dict):
         return KeyStore()
-    return _parse_naming_file(fold_agent_nodes(raw, path=path), file_path=path)
+    return _parse_naming_file(
+        fold_agent_nodes(raw, path=path), file_path=path,
+        for_pref_requests=for_pref_requests,
+    )
 
 
 def _agent_partial(
