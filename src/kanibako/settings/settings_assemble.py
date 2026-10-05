@@ -1250,7 +1250,7 @@ def parse_bind_map(
         # ⚑⚑ *pref_agent* RIDES ALONG HERE TOO, and that is the whole point: the carve-out
         # above defers the BARE-SCALAR verdict only, so this call still judges the sub-table,
         # the arity and the unrooted source AT PARSE TIME. Q2 requires the name to precede
-        # every shape check, and a shape check reached without *pref_agent* cannot honour
+        # every shape check, and a shape check reached without *pref_agent* cannot honor
         # that — a sub-table or a wrong-arity list under a bogus agent would report its
         # shape and send the user to reshape an entry whose only defect is the name. A
         # bare scalar is still absent from this map, so its verdict stays deferred in full.
