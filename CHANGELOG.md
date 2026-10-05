@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`agent set` now refuses an agent file it cannot read.** A `set` whose target
+  `agents/<node>/agent.yaml` carries an entry that is not a key outside the edited value's chain —
+  a stray top-level key, or a retired `auto_approve` — previously answered `Set <key>=<value>` and
+  wrote at exit 0, leaving the bad entry in place to be silently ignored at launch. It now reports
+  the file and the offending entry and writes nothing, exiting 1. The refusal is the agent file's own
+  reader's, the same verdict the launch and `agent show` / `info` / `list` / `get` already reach, so
+  one file keeps one verdict; it names the `self:` alias and the cure. Per keyspec §2a the
+  refusal carries its `--force` arm: with `--force` the same text is reported as a warning and
+  the value is written, and `set` never removes the bad entry — that is the supported repair path
+  for a poisoned agent file. **Setting the bad key itself to a valid value is not blocked**, also per
+  §2a: the entry the edit overwrites is exempt from the refusal, so
+  `self: {model: {x: 1}}` plus `agent set claude model=opus` lands at exit 0 with no warning, while
+  a bad entry anywhere else in the file still refuses it. **Exit code change:** the
+  refused cases move from 0 to 1, and a new `Error: …` line is printed on stderr. A well-shaped file
+  sets exactly as before.
+
 - **`box remap`, `box move`, `box convert`, and `box duplicate` now say what they refuse.** The
   `--help` text and the README rows for the four relocation commands state the rules the code
   enforces: a destination inside a workset must be the box's own `{workset.workspaces}/<name>`, and

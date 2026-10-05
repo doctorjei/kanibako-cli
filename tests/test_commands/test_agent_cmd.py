@@ -2326,21 +2326,39 @@ class TestAgentSetRoutesThroughTheOneSetter:
         """The set-time snapshot must NOT read the node's OWN file, and this is why.
 
         A nested ``self.<sub>:`` sub-table is refused by ``agent_file``'s cascade reader, and the
-        repair verbs deliberately never go through it — a poisoned file can still be fixed
-        from the command line.  MEASURED: threading the agent
+        repair verbs deliberately never go through the CASCADE — a poisoned file can still be
+        fixed from the command line.  MEASURED: threading the agent
         tier into the set-time cascade raises ``SettingsError`` out of ``assemble_levels``, which
         would both break ``set_config_value``'s never-raises contract and take the repair path
         away on the one file that needs it.  MUTATION PROOF: add ``cascade_agent_path=path`` to
         the verb's ``set_config_value`` call and this reddens with that traceback.
+
+        ⚑ WHICH ARM REPAIRS IT is keyspec §2a, not a code choice: "ERROR by default — name it,
+        write nothing, and say ``--force`` will set anyway.  With ``--force``, WARN and write
+        (the value must still pass the checks above).  ``set`` never removes the bad entry."
+        So a plain ``set`` against a poisoned file refuses and names the entry; the repair is
+        ``--force``, which lands the value and LEAVES the poison to be cleared by hand.
         """
         from kanibako.commands.agent_cmd import run_set
 
         _write_sparse(
             agent_env, "claude", {"self": {"claude": {"env": {"FOO": "bar"}}}},
         )
-        rc = run_set(argparse.Namespace(agent_id="claude", key_value="model=opus"))
-        assert rc == 0
-        assert _stored_doc(agent_env)["self"]["model"] == "opus"
+
+        plain = run_set(argparse.Namespace(agent_id="claude", key_value="model=opus"))
+        cap = capsys.readouterr()
+        assert plain == 1
+        assert "self.claude" in cap.err   # names the offending entry
+        assert "--force" in cap.err       # …and says what will set anyway
+        assert "model" not in _stored_doc(agent_env)["self"]  # nothing written
+
+        forced = run_set(argparse.Namespace(
+            agent_id="claude", key_value="model=opus", force=True,
+        ))
+        assert forced == 0
+        doc = _stored_doc(agent_env)
+        assert doc["self"]["model"] == "opus"                    # the repair landed
+        assert doc["self"]["claude"] == {"env": {"FOO": "bar"}}  # poison left in place
 
 
 class TestAgentResetRoutesThroughTheOneSetter:
