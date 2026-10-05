@@ -1212,8 +1212,7 @@ def parse_bind_map(
     root is supplied HERE (:func:`_declared_source`) and never downstream — rooting at
     ASSEMBLY is FORBIDDEN by §2a.
 
-    ⚑ *defer_shape* is a ``pref.`` path's (:func:`_under_pref`): it withholds ONLY the
-    bare-scalar entry verdict, carrying that value for
+    ⚑ *defer_shape* withholds ONLY the bare-scalar entry verdict, carrying that value for
     :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`. Every other check
     still runs here, on the WHOLE map.
     """
@@ -1311,9 +1310,8 @@ def _file_partial(
     file is the address, and a cure with no address is a cure the user has to hunt for.
     ⚑ *for_pref_requests* marks the ONE reader whose consumer judges the agent segment
     (:func:`~kanibako.settings.settings_prefs.apply_prefs`), so only there is a bare-scalar
-    entry's verdict deferred — see :func:`_is_bare_scalar_entry`. The CASCADE's own read of
-    the same file is a different reader with a different consumer and keeps the verdict here,
-    because a value installed at a target is read at that target (spec §2h).
+    entry's verdict deferred. The CASCADE's own read of the same file has no such consumer
+    and keeps the verdict here: a value installed at a target is read AT that target (§2h).
 
     ⚑ NO LIVE CALLER OMITS IT ANY MORE. It stayed optional for the one that parsed a SYNTHESIZED
     table — ``collect_prefs``' ``{pref: …}`` wrapper — but that table is still read OFF a real
