@@ -91,15 +91,16 @@ def _absent_reason(dotted: str) -> str:
     """Why *dotted* is not in the snapshot — a DECLARED key is NOT a keyspace breach.
 
     ⚑ A set-time command judges a value against ITS OWN cascade, so a declared key living
-    in a scope that cascade does not reach is absent BY CONSTRUCTION, and
-    :func:`~kanibako.settings.settings_keyspace.key_validity` is the oracle the set door
-    uses.
+    in a scope that cascade does not reach is absent BY CONSTRUCTION. Declared is the set
+    door's verdict (:func:`~kanibako.settings.config_keys.scope_key_reason`, agent names
+    discovered); an undeclared name gets that verdict's own reason.
     """
-    from kanibako.settings.settings_keyspace import key_validity
+    from kanibako.settings.config_keys import scope_key_reason
 
-    if key_validity(dotted, valid_agents=()) is None:
+    reason = scope_key_reason(dotted)
+    if reason is None:
         return "declared in the keyspace, but not in this command's cascade"
-    return "no such config key in the keyspace"
+    return reason
 
 #: The top-level table holding ``pref.*`` REQUESTS (spec §2h): carried through
 #: UNEXPANDED and never ``@``-referenceable. Spelled here rather than imported —

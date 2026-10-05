@@ -750,13 +750,13 @@ def test_lenient_names_a_DECLARED_referent_as_declared_and_not_as_a_keyspace_bre
     assert "no such config key in the keyspace" not in errors["a"]
 
 
-def test_lenient_still_calls_an_UNDECLARED_referent_no_such_config_key() -> None:
+def test_lenient_names_an_UNDECLARED_referent_by_the_keyspace_reason() -> None:
     # ⚑ THE OTHER HALF, and the reason the wording above is a refinement and not a
     # softening: a name that is not a key at all IS a keyspace breach, whichever cascade
     # was asked.
     snap = KeyStore({"a": "@nope.missing", "c": "/ok"})
     _expanded, errors = expand(snap, _ctx(), collect_errors=True)
-    assert "no such config key in the keyspace" in errors["a"]
+    assert "'nope' is not a declared namespace" in errors["a"]
     assert "declared in the keyspace" not in errors["a"]
 
 
