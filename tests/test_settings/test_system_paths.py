@@ -28,7 +28,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from kanibako.settings.config import load_config
+from kanibako.settings.config import STANDARD_BIND_SOURCE_KEYS, load_config
 from kanibako.settings.paths import (
     CONFIG_PATH_DEFAULTS,
     SYSTEM_PATH_DEFAULTS,
@@ -205,7 +205,12 @@ class TestAPresentNoneIsRefusedAsNoneNotAsTheWordNone:
         assert "<None>" in message
         assert "'None'" not in message
 
-    @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
+    # ⚑ THE CORPUS IS THE KEYS THAT STILL REFUSE.  A ``<None>`` at a STANDARD bind's
+    # SOURCE KEY is an OMISSION, not a refusal (spec §2a) — ``config.STANDARD_BIND_SOURCE_KEYS``
+    # — and the omission is pinned in ``test_null_system_path_key.py``.
+    @pytest.mark.parametrize("key", sorted(
+        set(SYSTEM_PATH_DEFAULTS) - STANDARD_BIND_SOURCE_KEYS,
+    ))
     def test_a_present_none_is_refused_as_none_for_system_keys(self, key, tmp_path):
         with pytest.raises(SettingsError) as exc:
             resolve_system_paths({key: None}, data_home=tmp_path, home=tmp_path)
@@ -303,7 +308,13 @@ class TestLoadConfigPaths:
         settings.write_text('system:\n  channels:\n    common: "/c"\n')
         assert system_path_set_values(settings) == {"system.channels.common": "/c"}
 
-    @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
+    # ⚑ THE KEYS THAT STILL REFUSE.  A null at a STANDARD bind's SOURCE KEY is an
+    # OMISSION now (spec §2a), so this sweep would otherwise be pinning the superseded
+    # rule for the five in ``config.STANDARD_BIND_SOURCE_KEYS``; their omission is pinned
+    # in ``test_null_system_path_key.py``.
+    @pytest.mark.parametrize("key", sorted(
+        set(SYSTEM_PATH_DEFAULTS) - STANDARD_BIND_SOURCE_KEYS,
+    ))
     def test_a_null_system_path_key_refuses_by_name(self, tmp_path, key):
         """A ``null`` path key used to read as the text ``None`` (bare-relative refusal).
 

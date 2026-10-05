@@ -40,6 +40,9 @@ from kanibako.settings.paths import (
     resolve_workset_project,
 )
 from kanibako.project.workset import add_project, create_workset
+from kanibako.settings.config import WORKSET_META_FILE
+from kanibako.settings.config_io import write_nested_key
+from kanibako.settings.config_keys import _KEY_ROUTES
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +253,142 @@ class TestChannelDefaultCategories:
         is the ``channel-binds-standalone`` kinemata view's."""
         cats = _channel_default_categories(std, standalone_proj)
         assert set(cats) == {"box.bindings.rw"}
+
+
+class TestNullWorksetChatIsNotSeeded:
+    """A present ``<None>`` at ``workset.channels.chat`` seeds NOTHING (spec §2a).
+
+    The seeder runs on every launch.  A null chat omits the ``~/channels/workset/chat``
+    bind, so creating anything under the chat dir would write into a directory no
+    mount points at.  The DIRECTORY is part of that: a tip that writes no file but
+    still leaves an empty ``channels/chat/`` behind has still published a chat root
+    the keyspace was told does not exist.
+    """
+
+    def test_nothing_is_created_under_a_null_chat(self, named_proj, std):
+        ws_root = named_proj.group.root
+        sections, leaf = _KEY_ROUTES["workset.channels.chat"]
+        write_nested_key(ws_root / WORKSET_META_FILE, sections, leaf, None)
+        _seed_channel_files(std, named_proj)
+        # ``general.md`` names no key and ``broadcast`` is ``@workset.channels.chat``/
+        # ``broadcast.md`` — an embedded ref, so §0 makes the whole value null with it.
+        assert not (ws_root / "channels" / "chat").exists()
+        # The SYSTEM-scope log is unconditional — only the workset arm is nulled.
+        assert (std.channels_chat / "general.md").is_file()
+
+    def test_an_absent_chat_still_seeds_both_logs(self, named_proj, std):
+        _seed_channel_files(std, named_proj)
+        wch = _ch.workset_channel_paths(named_proj, std)
+        assert wch is not None
+        assert wch.chat_general.is_file()
+        assert wch.chat_broadcast.is_file()
+
+
+class TestNullSystemChannelSeedsNothing:
+    """The SYSTEM-scope arm of the seeder, which the workset-local case above does not reach.
+
+    ``_seed_channel_files`` runs on EVERY launch and divides ``std.channels_chat`` by
+    ``general.md`` to name the system log.  ``StandardPaths.channels_chat`` admits
+    ``None`` — a null at a standard bind's source key is a declared value, so the bind
+    is omitted (spec §2a) — so that division is a ``TypeError`` on exactly the null the
+    tree admits, and the guard in the list build is what keeps the launch alive.
+    """
+
+    @staticmethod
+    def _nulled(std, key):
+        """*std* re-read with ``key`` stored null — written into the settings FILE by the
+        product's own writer and read back by the product's own reader, so the seeder is
+        handed what a user who set the key gets."""
+        from kanibako.settings.paths import _floor_field, load_std_paths
+
+        sections, slot = _KEY_ROUTES[key]
+        write_nested_key(std.settings, sections, slot, None)
+        reloaded = load_std_paths()
+        assert getattr(reloaded, _floor_field(key)) is None, key
+        return reloaded
+
+    def test_a_null_system_chat_does_not_raise_and_seeds_nothing(self, named_proj, std):
+        nulled = self._nulled(std, "system.channels.chat")
+        # ``broadcast`` is ``@system.channels.chat/broadcast.md`` — an embedded ref, so
+        # §0 makes the whole value null with it.  Both logs of the system arm are null.
+        assert nulled.channels_broadcast is None
+        _seed_channel_files(nulled, named_proj)
+        # The workset arm is untouched by a SYSTEM key — it is the control.
+        wch = _ch.workset_channel_paths(named_proj, nulled)
+        assert wch is not None
+        assert wch.chat_general.is_file()
+        assert wch.chat_broadcast.is_file()
+
+    def test_a_null_system_chat_leaves_no_path_named_None(self, named_proj, std, tmp_home):
+        nulled = self._nulled(std, "system.channels.chat")
+        _seed_channel_files(nulled, named_proj)
+        named = sorted(p for p in tmp_home.rglob("None"))
+        assert named == [], f"the seeder created a None-named path: {named}"
+
+    def test_the_system_rotation_is_skipped_for_a_null_broadcast(self, named_proj, std, monkeypatch):
+        """The rotation is the half of the seeder that a null reaches AFTER the skip.
+
+        The general log is skipped, then ``broadcast`` — null with it, since its row is
+        ``@system.channels.chat/broadcast.md`` — would be handed to the rotator, which
+        stats a path no bind mounts.  Spied rather than asserted through a side effect,
+        because the rotator's own threshold is not this test's subject.
+        """
+        nulled = self._nulled(std, "system.channels.chat")
+        assert nulled.channels_broadcast is None
+        rotated = []
+        monkeypatch.setattr(
+            "kanibako.commands.start._rotate_file", lambda path: rotated.append(path),
+        )
+        _seed_channel_files(nulled, named_proj)
+        wch = _ch.workset_channel_paths(named_proj, nulled)
+        assert wch is not None
+        # The control: the workset arm is a real address and IS still rotated, so a
+        # green here cannot come from the seeder not running at all.
+        assert wch.chat_broadcast in rotated
+        assert not [path for path in rotated if path is None]
+
+    def test_an_absent_system_broadcast_is_still_rotated(self, named_proj, std, monkeypatch):
+        """The other half: a key that is merely unset is not a null, so the rotate runs."""
+        rotated = []
+        monkeypatch.setattr(
+            "kanibako.commands.start._rotate_file", lambda path: rotated.append(path),
+        )
+        _seed_channel_files(std, named_proj)
+        assert std.channels_broadcast in rotated
+
+
+class TestNullPartitionLeafOmitsItsBind:
+    """A present ``<None>`` at ``workset.channels.{mailboxes,share_global}`` omits the
+    bind that key is the source of (spec §2a / §2h).
+
+    The inbox row's source is ``@meta.box.inbox``, and that key is a LITERAL the
+    identity floor builds from ``box_channel_addresses`` — so the null has to survive
+    the floor as a null.  The failure this pins is the one that made the widening
+    unsafe to ship blind: ``str(None)`` reaches the expander as the four-character
+    path ``"None"``, which for a MOUNT podman reads as a NAMED VOLUME.
+    """
+
+    @pytest.mark.parametrize("leaf", ["mailboxes", "share_global"])
+    def test_the_partition_address_is_none(self, named_proj, std, leaf):
+        ws_root = named_proj.group.root
+        sections, name = _KEY_ROUTES[f"workset.channels.{leaf}"]
+        write_nested_key(ws_root / WORKSET_META_FILE, sections, name, None)
+        addr = _ch.box_channel_addresses(named_proj, std)
+        assert getattr(addr, "inbox" if leaf == "mailboxes" else "share_global") is None
+
+    def test_a_null_mailboxes_omits_the_inbox_bind(self, named_proj, std):
+        ws_root = named_proj.group.root
+        sections, name = _KEY_ROUTES["workset.channels.mailboxes"]
+        write_nested_key(ws_root / WORKSET_META_FILE, sections, name, None)
+        by_dest, _ = _build(std, named_proj)
+        # ⚑ THE PIN: absent, NOT the four-character path "None".
+        assert "/home/agent/channels/inbox" not in by_dest
+        assert not any(src == "None" for src, _ in by_dest.values())
+
+    def test_an_absent_partition_leaf_still_binds_the_inbox(self, named_proj, std):
+        by_dest, _ = _build(std, named_proj)
+        addr = _ch.box_channel_addresses(named_proj, std)
+        assert by_dest["/home/agent/channels/inbox"][0] == str(addr.inbox)
 
 
 def _workset_anchor(std, proj):

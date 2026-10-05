@@ -914,6 +914,88 @@ def _convert_case(env):
     return run_convert, _convert_args(_default(env), to_standalone=True)
 
 
+class TestANullPartitionArmIsSkippedNotWarned:
+    """A null partition arm is an ADDRESS THAT DOES NOT EXIST, so the relocation skips
+    it the way it skips a directory that was never published.
+
+    ⚑ THE SHAPE, measured: ``workset.channels.{mailboxes,share_global}`` DEFAULT to the
+    system partition, so a null ``system.channels.mailboxes`` — a declared value that
+    omits the bind (spec §2a) — reaches the relocation as a null arm on BOTH sides.  The
+    per-arm loop then divides nothing and stats nothing; without the skip, ``None``
+    raises ``AttributeError`` inside the best-effort ``except Exception`` and the user
+    is told a channel could not be relocated, naming an address that never existed.
+    """
+
+    @staticmethod
+    def _null_mailboxes(std):
+        """Null the SYSTEM key, through the production writer — the key the workset-local
+        partition keys default to, so both sides of the move read the null."""
+        from kanibako.settings.config_io import write_nested_key
+
+        write_nested_key(std.settings, ("system", "channels"), "mailboxes", None)
+        nulled = load_std_paths()
+        assert nulled.channels_mailboxes is None
+        return nulled
+
+    def test_the_move_completes_and_names_no_relocation_failure(self, env, capsys):
+        config, std, tmp_home = env
+        pdir = _default(env, contents="movedata")
+        create_workset("ws", tmp_home / "ws_root", std)
+        self._null_mailboxes(std)
+        capsys.readouterr()
+
+        # A move ACROSS partitions: same name and same address would be the idempotent
+        # no-op that returns before the loop, so the arms would never be read.
+        rc = run_move(_move_args(pdir, tmp_home / "dest_ext", to_workset="ws"))
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        ws2 = load_workset(tmp_home / "ws_root", "ws")
+        assert any(p.name == "proj" for p in ws2.projects)
+        assert "could not relocate channel" not in err, err
+        assert "Traceback" not in err
+
+    def test_the_arms_reach_the_loop_as_nulls(self, env, capsys):
+        """⚑ THE OTHER HALF: the null really is present at the loop's own inputs, so the
+        silent pass above is the skip and not a loop that never ran."""
+        from kanibako.channels.channels import (
+            WS_TOKEN_PRIMARY, own_partition_dirs, partition_key_paths,
+        )
+
+        config, std, tmp_home = env
+        ws = create_workset("ws", tmp_home / "ws_root", std)
+        nulled = self._null_mailboxes(std)
+        part = partition_key_paths(nulled, WS_TOKEN_PRIMARY, std.primary_workset)
+        assert part.mailboxes is None
+        assert part.share_global is not None  # the control: one key, one arm
+        own = own_partition_dirs(
+            nulled, WS_TOKEN_PRIMARY, "proj", ws_root=ws.root,
+        )
+        assert own.mailbox is None
+        assert own.share_global is not None
+
+    def test_a_live_arm_still_moves(self, env, capsys):
+        """The control: with both arms live the loop MOVES a published directory, so the
+        skip above cannot pass because the relocation never ran at all."""
+        from kanibako.channels.channels import WS_TOKEN_PRIMARY, own_partition_dirs
+
+        config, std, tmp_home = env
+        pdir = _default(env, contents="movedata")
+        create_workset("ws", tmp_home / "ws_root", std)
+        src = own_partition_dirs(
+            std, WS_TOKEN_PRIMARY, "proj", ws_root=std.primary_workset,
+        )
+        assert src.mailbox is not None
+        src.mailbox.mkdir(parents=True, exist_ok=True)
+        (src.mailbox / "mail.md").write_text("m")
+        capsys.readouterr()
+
+        rc = run_move(_move_args(pdir, tmp_home / "dest_ext", to_workset="ws"))
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        assert not (src.mailbox / "mail.md").exists(), "the live arm did not move"
+        assert "could not relocate channel" not in err
+
+
 class TestRelocationOSErrorReported:
     """``run_remap`` / ``run_move`` / ``run_convert`` print a named ``Error:`` line and return 1."""
 
