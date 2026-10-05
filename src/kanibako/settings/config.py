@@ -494,7 +494,15 @@ def read_box_enable_vault(path: Path) -> bool:
     """
     if not path.exists():
         return True
-    box_tbl = load_doc(path).get("box") or {}
+    data = load_doc(path)
+    # ⚑ THE SHAPE RULE (spec §0), asked BEFORE the leaf is read, so it is the same guard
+    # :func:`write_box_enable_vault` asks and one stored value cannot have two answers.
+    # A section walked is a namespace, so a present non-table ``box`` refuses by name
+    # whichever shape it holds; without it a number or a bool raised ``TypeError`` out of
+    # the containment test below and every FALSY scalar took the ``or {}`` arm and read
+    # the default silently.
+    refuse_scalar_sections(path, ("box",), data=data)
+    box_tbl = data["box"] if "box" in data else {}
     if "enable_vault" in box_tbl:
         # ⚑ COERCED IN PLACE, through the SAME :func:`_typed_box_scalar` the resolved
         # reader uses (2026-08-29).  A settings file is hand-editable, so the stored leaf

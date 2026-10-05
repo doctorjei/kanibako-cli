@@ -1290,16 +1290,22 @@ class TestBoxEnableVault:
         scalar down the ``{}`` arm — so ``0``/``false``/``""``/``null``/``[]`` read as *no
         override present* and returned the default — while a NON-falsy scalar reached
         ``"enable_vault" in box_tbl``, a containment test on a string, a list or a number.
-        One YAML kind (a number) therefore produced two opposite verdicts from one reader.
+        One YAML kind (a number) therefore produced two opposite verdicts from one reader:
+        a silent default against a ``TypeError``.  The stored value and the file name are
+        masked so what is compared is the refusal's SHAPE, which is the one thing both rows
+        must now share.
         """
-        verdicts = {}
-        for label, body in (("falsy", "box: 0\n"), ("non-falsy", "box: 42\n")):
-            p = tmp_path / f"{label}.yaml"
+        outcomes = []
+        for stored, body in (("0", "box: 0\n"), ("42", "box: 42\n")):
+            p = tmp_path / BOX_META_FILE
             p.write_text(body)
             with pytest.raises(ConfigError) as exc:
                 read_box_enable_vault(p)
-            verdicts[label] = str(exc.value).split(" at 'box'")[0]
-        assert verdicts["falsy"] == verdicts["non-falsy"]
+            # Mask the PATH first — a digit in a tmp_path would otherwise be masked as
+            # the stored value.
+            outcomes.append(str(exc.value).replace(str(p), "<PATH>").replace(stored, "<VALUE>"))
+        assert outcomes[0] == outcomes[1]
+        assert "<PATH> holds <VALUE> at 'box'" in outcomes[0]
 
     def test_the_authored_reader_and_its_writer_speak_one_message(self, tmp_path):
         """One stored value, one refusal — the reader and the writer of the key agree.

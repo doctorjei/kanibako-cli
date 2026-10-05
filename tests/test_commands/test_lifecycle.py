@@ -1879,6 +1879,9 @@ class TestDefaultStateFromMeta:
         assert state.name == "nosettings"
         assert state.enable_vault is True  # default via read_box_enable_vault
 
+    @pytest.mark.writes_undeclared(
+        "box", reason="the scalar box IS the input the shape rule judges",
+    )
     def test_a_scalar_box_tier_refuses_the_lifecycle_resolve_by_name(self, env):
         """The PRODUCTION resolve refuses a scalar ``box`` tier, with the box tier it derives.
 
