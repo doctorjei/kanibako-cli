@@ -798,8 +798,8 @@ def _validate(
     if target_mode == BoxMode.primary:
         landing_ws = dest if dest is not None else state.workspace_path
         mint = _default_rename_name(state, std, landing_ws, requested_name)
-        # ⚑ FIX1: a same-name relocate reuses the SOURCE's OWN registration — self-reuse,
-        # not a collision, so it is exempt from the same-kind guard.
+        # ⚑ FIX1: a same-name relocate reuses the SOURCE's OWN registration, so it is
+        # exempt from the same-kind guard.
         own_name = _primary_source_own_name(state, std)
         # ⚑ The same-path edge reuses the box in place too (``_to_default``).
         landed = _primary_name_at(state, std, landing_ws)
@@ -809,7 +809,7 @@ def _validate(
         )
         if mint is not None and not _same_box_name(mint, own_name):
             check_primary_box_name_free(
-                std.primary_workset, std.registry, mint, str(landing_ws),
+                std.primary_workset, mint, str(landing_ws),
             )
 
     # --- a disabled vault that still holds data would be left behind (Q64) ---
@@ -1651,12 +1651,12 @@ def _to_default(
     # Honored --name goes through the per-kind guard; else the auto-suffix path.
     if mint is not None:
         register_primary_box_name(
-            std.primary_workset, std.registry, mint, new_workspace,
+            std.primary_workset, mint, new_workspace,
         )
         project_name = mint
     else:
         project_name = assign_primary_box_name(
-            std.primary_workset, std.registry, str(new_workspace),
+            std.primary_workset, str(new_workspace),
         )
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name

@@ -55,11 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
         add_help=False,
     )
 
-    # ``parser_class`` (B-5): every subcommand — and, since add_subparsers
-    # defaults the class to its own parser's type, every NESTED subcommand —
-    # accepts its flags in ANY position, including between two positionals.
-    # Inert for parsers that argparse already interleaves correctly; see
-    # kanibako.commands.flags.hoist_optionals.
+    # ``parser_class`` (B-5): every subcommand, nested ones included, accepts its
+    # flags in ANY position; see kanibako.commands.flags.hoist_optionals.
     from kanibako.commands.flags import OptionsAnywhereParser
 
     subparsers = parser.add_subparsers(
@@ -200,10 +197,6 @@ def build_parser() -> argparse.ArgumentParser:
     register_p.add_argument(
         "target",
         help="Deregistered box name, or path to a standalone box on disk",
-    )
-    register_p.add_argument(
-        "--force", action="store_true",
-        help="Re-register even if the name is used by a workset",
     )
     register_p.set_defaults(func=run_register)
 

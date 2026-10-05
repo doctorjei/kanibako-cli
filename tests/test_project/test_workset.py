@@ -103,7 +103,7 @@ class TestCreateWorkset:
 
         proj = tmp_home / "proj"
         proj.mkdir()
-        register_primary_box_name(std.primary_workset, std.registry, "foo", str(proj))
+        register_primary_box_name(std.primary_workset, "foo", str(proj))
 
         root = tmp_home / "worksets" / ws_name
         with caplog.at_level("WARNING"):
@@ -197,8 +197,8 @@ class TestDefaultWorkset:
         proj_b.mkdir()
         # default_workset synthesizes members from the PRIMARY membership (the
         # sole store since the global ``projects:`` section retired).
-        register_primary_box_name(std.primary_workset, std.registry, "alpha", str(proj_a))
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(proj_b))
+        register_primary_box_name(std.primary_workset, "alpha", str(proj_a))
+        register_primary_box_name(std.primary_workset, "beta", str(proj_b))
 
         ws = default_workset(std)
         by_name = {p.name: p.source_path for p in ws.projects}
@@ -243,7 +243,7 @@ class TestResolveWorksetName:
 
         proj = tmp_home / "proj"
         proj.mkdir()
-        register_primary_box_name(std.primary_workset, std.registry, "proj", str(proj))
+        register_primary_box_name(std.primary_workset, "proj", str(proj))
         create_workset("proj", tmp_home / "worksets" / "proj", std)
 
         with caplog.at_level("WARNING"):

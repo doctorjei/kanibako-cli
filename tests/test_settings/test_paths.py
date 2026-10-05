@@ -35,7 +35,7 @@ def _reg_primary(std, name: str, workspace) -> None:
     The membership replacement for the retired ``register_name(..., "projects")``
     setup used across these tests.
     """
-    register_primary_box_name(std.primary_workset, std.registry, name, str(workspace))
+    register_primary_box_name(std.primary_workset, name, str(workspace))
 
 
 def _primary_names(std):

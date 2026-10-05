@@ -104,9 +104,7 @@ class StandardPaths:
     journal: Path
     # ⚑ ``system.cache`` and ``system.state`` are THE host cache and state roots, and the
     # only things a cache or a state store derives from.  Neither has any relationship to
-    # ``config.data``: the ``cache_path`` / ``state_path`` fields that tracked that key's
-    # LEAF under the XDG base were one defect with two spellings, and both are gone
-    # ([R166] removed the state half).  Do not re-derive either from a leaf.
+    # ``config.data`` ([R166]).  Do not re-derive either from a leaf.
     cache: Path
     state: Path
     runtime: Path
@@ -1125,7 +1123,7 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
 
     metadata_path = project_dir_path
 
-    # B2b (Option A, Jei-ruled): the per-box custom home/vault path OVERRIDE is DROPPED.
+    # B2b: the per-box custom home/vault path OVERRIDE is DROPPED.
     primary_group = _default_project_group(std)
     project_toml, workset_toml = _box_settings_files(BoxMode.primary, metadata_path,
                                                      primary_group)
@@ -1147,14 +1145,14 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
         # below — eager for register=True, deferred to the caller for register=False.
         if name_override:
             if register:
-                check_primary_box_name_free(std.primary_workset, std.registry,
+                check_primary_box_name_free(std.primary_workset,
                                               name_override, project_path_str)
             project_name = name_override
         elif project_name:
             # Bug A: the workspace is ALREADY registered; reuse the name (re-register is a no-op).
             pass
         else:
-            project_name = pick_primary_box_name(std.primary_workset, std.registry,
+            project_name = pick_primary_box_name(std.primary_workset,
                                                  project_path_str, boxes_dir=std.boxes)
 
         project_dir_path = std.boxes / project_name
@@ -1689,22 +1687,8 @@ def primary_box_name_for_workspace(primary_workset: Path, workspace: str) -> str
     return _workset_box_name_for_workspace(primary_workset, workspace)
 
 
-def _primary_name_domain(primary_workset: Path, registry: Path) -> set[str]:
-    """The PRIMARY-box name collision domain: primary membership ∪ global worksets."""
-    from kanibako.project import registry_store
-
-    primary = set(load_primary_boxes(primary_workset))
-    worksets = set(registry_store.load_section(registry, "worksets"))
-    return primary | worksets
-
-
-def check_primary_box_name_free(primary_workset: Path, registry: Path, name: str,
-                                workspace: str) -> None:
-    """Raise ``ProjectError`` if *name* is already a PRIMARY box's (no write).
-
-    ⚑ Same-kind only: a workset of the same name is a separate namespace (spec § Detection
-    & import).
-    """
+def check_primary_box_name_free(primary_workset: Path, name: str, workspace: str) -> None:
+    """Raise ``ProjectError`` if *name* is already a PRIMARY box's; worksets are not consulted."""
     if Path(workspace).resolve() == Path.home().resolve():
         from kanibako.errors import ProjectError
         raise ProjectError(ERR_PROJECT_REG_HOME)
@@ -1733,15 +1717,15 @@ def check_workspace_not_named_box(std: StandardPaths, workspace: str) -> None:
         ))
 
 
-def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str,
+def pick_primary_box_name(primary_workset: Path, workspace: str,
                           boxes_dir: Path | None = None) -> str:
-    """Pick a collision-free PRIMARY box name from *workspace*'s basename (no write)."""
+    """Pick a PRIMARY box name from *workspace*'s basename, free among primary boxes."""
     base = Path(workspace).name or "project"
-    taken_names = _primary_name_domain(primary_workset, registry)
+    taken_names = load_primary_boxes(primary_workset)
 
     def taken(cand: str) -> bool:
-        # ⚑ TWO questions under TWO rules, and the split is deliberate: the NAME domain
-        # compares case-blind (§0), the DIRECTORY probe is a PATH and is never folded.
+        # ⚑ TWO rules, deliberately: the NAME domain compares case-blind (§0), the
+        # DIRECTORY probe is a PATH and is never folded.
         return (
             find_identifier(cand, taken_names) is not None
             or (boxes_dir is not None and (boxes_dir / cand).exists())
@@ -1755,14 +1739,14 @@ def pick_primary_box_name(primary_workset: Path, registry: Path, workspace: str,
     return candidate
 
 
-def register_primary_box_name(primary_workset: Path, registry: Path, name: str,
+def register_primary_box_name(primary_workset: Path, name: str,
                               workspace: Path | str) -> None:
     """Register *name* → *workspace* in the PRIMARY membership (with guards)."""
-    check_primary_box_name_free(primary_workset, registry, name, str(workspace))
+    check_primary_box_name_free(primary_workset, name, str(workspace))
     _register_workset_box_membership(primary_workset, name, Path(workspace))
 
 
-def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, name: str,
+def register_primary_box_name_if_absent(primary_workset: Path, name: str,
                                         workspace: Path | str) -> None:
     """Idempotent :func:`register_primary_box_name` for deferred-create recovery."""
     from kanibako.project.workset_registry import _same_workspace
@@ -1772,15 +1756,15 @@ def register_primary_box_name_if_absent(primary_workset: Path, registry: Path, n
     existing = None if stored is None else boxes[stored]
     if existing is not None and _same_workspace(existing, str(workspace)):
         return
-    register_primary_box_name(primary_workset, registry, name, workspace)
+    register_primary_box_name(primary_workset, name, workspace)
 
 
-def assign_primary_box_name(primary_workset: Path, registry: Path, workspace: Path | str,
+def assign_primary_box_name(primary_workset: Path, workspace: Path | str,
                             boxes_dir: Path | None = None) -> str:
     """Auto-assign + register a PRIMARY box name from *workspace*'s basename."""
-    candidate = pick_primary_box_name(primary_workset, registry, str(workspace),
+    candidate = pick_primary_box_name(primary_workset, str(workspace),
                                       boxes_dir=boxes_dir)
-    register_primary_box_name(primary_workset, registry, candidate, workspace)
+    register_primary_box_name(primary_workset, candidate, workspace)
     return candidate
 
 
@@ -1817,7 +1801,7 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
         identity = box_resolve.resolve_box_identity(project_path, std, config)
         if identity is not None:
             project_path = Path(identity["workspace"])
-    # B2b (Option A, Jei-ruled): the per-box custom home/vault path OVERRIDE is DROPPED;
+    # B2b: the per-box custom home/vault path OVERRIDE is DROPPED;
     # the workspace override above is a SEPARATE concern and STAYS.
     shell_path, vault_ro_path, vault_rw_path = _workset_box_paths(
         metadata_path, ws.vault_ro_dir, ws.vault_rw_dir, project_name)

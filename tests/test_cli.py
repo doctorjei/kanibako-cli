@@ -202,6 +202,7 @@ class TestParser:
         ["box", "create", "/tmp/project", "--force"],
         ["create", "/tmp/project", "--force"],
         ["box", "register", "name", "--force"],
+        ["register", "name", "--force"],
         ["workset", "create", "/tmp/ws", "--force"],
     ])
     def test_cross_kind_force_is_gone(self, argv):

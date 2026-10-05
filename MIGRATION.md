@@ -5938,16 +5938,18 @@ For a registered name, choose another `--name`.
 
 ### A box and a workset may share a name; `--force` is gone from create and register
 
-**Read this if `box create`, `kanibako create`, `box register`, or `workset create` now fails with
-`unrecognized arguments: --force`.**
+**Read this if `box create`, `kanibako create`, `box register`, `kanibako register`, or
+`workset create` now fails with `unrecognized arguments: --force`.**
 
 **What changed.** Box and workset names are separate namespaces, and only a name the same kind
 already holds is refused. Creating, registering, or renaming a box with a workset's name, or
 creating a workset with a primary box's name, now succeeds without `--force`, and that `--force`
 was removed because bypassing this refusal was its only job. A bare name held by both still
-resolves to the box, with no warning; `kanibako workset <cmd> <name>` reaches the workset.
+resolves to the box, with no warning; `kanibako workset <cmd> <name>` reaches the workset. An
+auto-named box no longer skips a workset's name: a new box beside a workset `solo` is named `solo`,
+where it used to be `solo2`.
 
-**What to do.** Drop `--force` from those four commands.
+**What to do.** Drop `--force` from those five commands.
 
 ### A `null` workset vault, canon, template or channel root means no directory
 

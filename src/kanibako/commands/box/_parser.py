@@ -1053,7 +1053,7 @@ def run_create(args: argparse.Namespace) -> int:
     if _named_spec is None and getattr(args, "name", None) and not args.standalone:
         try:
             check_primary_box_name_free(
-                std.primary_workset, std.registry,
+                std.primary_workset,
                 args.name, str(effective_path),
             )
             # ⚑ I4 data-loss guard — the HOME check the name check above does not make.
@@ -1062,7 +1062,7 @@ def run_create(args: argparse.Namespace) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-    # ⚑ The PATH's conflict arm — the NAME arm above cannot see this collision.
+    # ⚑ The PATH's conflict arm, which the NAME arm above cannot see.
     # A NAMED member's workspace is ``workspaces/<name>``, never ``effective_path``.
     # ⚑ Mode-free: a STANDALONE box there is as unreachable as a primary one, since
     # detection finds the connected box before the standalone marker.
@@ -2135,7 +2135,7 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
     # ⚑ The REUSED registration API carries every conflict guard — do not inline a write.
     try:
         register_primary_box_name(
-            std.primary_workset, std.registry, name, str(workspace),
+            std.primary_workset, name, str(workspace),
         )
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)

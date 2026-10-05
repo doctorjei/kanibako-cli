@@ -125,7 +125,7 @@ class TestWorksetCreate:
         config = load_config(config_file)
         std = load_std_paths(config)
         register_primary_box_name(
-            std.primary_workset, std.registry, "common", str(tmp_home / "box"),
+            std.primary_workset, "common", str(tmp_home / "box"),
         )
 
         ws_root = tmp_home / "shared_ws"
@@ -992,7 +992,7 @@ class TestWorksetConnect:
         outside = (tmp_home / "extws3").resolve()
         leaf = outside / "beta"
         leaf.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(leaf))
+        register_primary_box_name(std.primary_workset, "beta", str(leaf))
         root = (tmp_home / "ws_pb").resolve()
         create_workset("pb", root, std)
         dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
@@ -1025,7 +1025,7 @@ class TestWorksetConnect:
         outside = (tmp_home / "extws_cure").resolve()
         leaf = outside / "beta"
         leaf.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(leaf))
+        register_primary_box_name(std.primary_workset, "beta", str(leaf))
         root = (tmp_home / "ws_cure").resolve()
         create_workset("cure", root, std)
         dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
@@ -1057,7 +1057,7 @@ class TestWorksetConnect:
         std = load_std_paths(config)
         leaf = (tmp_home / "elsewhere" / "gamma").resolve()
         leaf.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, std.registry, "gamma", str(leaf))
+        register_primary_box_name(std.primary_workset, "gamma", str(leaf))
         root = (tmp_home / "ws_ext_cure").resolve()
         create_workset("extcure", root, std)
 
@@ -1111,7 +1111,7 @@ class TestWorksetConnect:
         std = load_std_paths(config)
         ext = (tmp_home / "ext_pb" / "beta").resolve()
         ext.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(ext))
+        register_primary_box_name(std.primary_workset, "beta", str(ext))
         create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
 
         args = argparse.Namespace(

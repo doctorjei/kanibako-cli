@@ -1359,7 +1359,7 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
         resolve_workset_project(
             WorksetSpec.from_workset(ws), member, std, config, initialize=True,
         )
-        register_primary_box_name(std.primary_workset, std.registry, member, leaf)
+        register_primary_box_name(std.primary_workset, member, leaf)
         return ws, leaf
 
     def test_the_primary_registry_decides_not_the_workset_path_space(self, env):
@@ -1462,7 +1462,7 @@ class TestPrimaryBoxUnderARepointedWorkspaces:
         resolve_workset_project(
             WorksetSpec.from_workset(ws), "delta", std, config, initialize=True,
         )
-        register_primary_box_name(std.primary_workset, std.registry, "delta", leaf)
+        register_primary_box_name(std.primary_workset, "delta", leaf)
         state = resolve_lifecycle_target("delta", std, config)
         assert state.mode is BoxMode.named
         assert state.owner == "workset:wsa3"
