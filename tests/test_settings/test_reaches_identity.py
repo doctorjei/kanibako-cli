@@ -91,8 +91,13 @@ class TestCase4Sharing:
             _reaches("/srv/tmpl", "shared", NAMED, key="workset.template")
 
     @pytest.mark.parametrize("mode", ALL_MODES)
-    @pytest.mark.parametrize("value", ["/srv/data", "/srv/ws", *_forms("/srv/ws/<meta.box.name>")])
+    @pytest.mark.parametrize("value", ["/srv/data", "/srv/ws"])
     def test_a_box_entry_naming_no_box_is_refused(self, mode, value):
+        assert not _reaches(value, "box", mode, key=self.KEY)
+
+    @pytest.mark.parametrize("mode", [PRIMARY, NAMED])
+    @pytest.mark.parametrize("value", _forms("/srv/ws/<meta.box.name>"))
+    def test_the_box_name_alone_is_refused_outside_standalone(self, mode, value):
         assert not _reaches(value, "box", mode, key=self.KEY)
 
     @pytest.mark.parametrize("mode", [PRIMARY, NAMED])
@@ -100,21 +105,37 @@ class TestCase4Sharing:
     def test_the_cure_reaches_the_box(self, mode, value):
         assert _reaches(value, "box", mode, key=self.KEY)
 
-    @pytest.mark.parametrize("value", _forms("/srv/ws/<meta.workset.name>/<meta.box.name>"))
-    def test_standalone_pairs_the_box_name_with_a_standalone_workset_anchor(self, value):
-        # Keyspec §0: box = {meta.box.name} plus a workset anchor, and meta.workset.name is
-        # no workset anchor in standalone.
+    @pytest.mark.parametrize("value", [*_forms("/srv/ws/<meta.workset.name>/<meta.box.name>"),
+                                       *_forms("/srv/ws/<meta.box.name>"),
+                                       *_forms("/srv/ws/<meta.workset.path>"),
+                                       *_forms("<workset.boxes>/x")])
+    def test_standalone_the_box_name_or_a_workset_anchor_alone_reaches_the_box(self, value):
+        assert _reaches(value, "box", STANDALONE, key=self.KEY)
+
+    @pytest.mark.parametrize("value", ["/srv/x", *_forms("/srv/ws/<meta.workset.name>"),
+                                       *_forms("<workset.channels.mailboxes>/x"),
+                                       *_forms("/srv/ws/<meta.agent.claude.name>")])
+    def test_standalone_a_partition_or_agent_anchor_alone_is_refused(self, value):
         assert not _reaches(value, "box", STANDALONE, key=self.KEY)
-        assert _reaches(value.replace("workset.name", "workset.path"), "box", STANDALONE, key=self.KEY)
+
+    @pytest.mark.parametrize(("key", "default"), [
+        ("meta.box.inbox", "<workset.channels.mailboxes>/<meta.box.name>"),
+        ("meta.box.share_global", "<workset.channels.share_global>/<meta.box.name>"),
+        ("meta.box.workspace", "<workset.workspaces>"),
+        ("meta.box.path", "<workset.boxes>"),
+    ])
+    def test_the_standalone_spec_defaults_reach_the_box(self, key, default):
+        for value in _forms(default):
+            assert _reaches(value, "box", STANDALONE, key=key), value
 
 
 class TestAPerOwnerKeyIsAnAnchorOfItsLevel:
     @pytest.mark.parametrize("mode", ALL_MODES)
     @pytest.mark.parametrize("value", _forms("<workset.boxes>/<meta.box.name>"))
-    def test_the_box_path_default_reaches_box_identity(self, mode, value):
+    def test_workset_boxes_plus_the_box_name_reaches_box_identity(self, mode, value):
         assert _reaches(value, "box", mode, key="meta.box.path")
 
-    @pytest.mark.parametrize("mode", ALL_MODES)
+    @pytest.mark.parametrize("mode", [PRIMARY, NAMED])
     @pytest.mark.parametrize("value", _forms("<workset.boxes>/x"))
     def test_a_workset_anchor_alone_is_no_box_identity(self, mode, value):
         assert not _reaches(value, "box", mode, key="box.bindings.rw")

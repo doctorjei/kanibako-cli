@@ -1144,22 +1144,24 @@ def reaches_identity(
 
     The anchors are :data:`~kanibako.settings.kb_store.IDENTITY_ANCHORS` plus every key
     ``KEY_OWNERS`` gives *owner* (keyspec §0: a per-owner key is itself an anchor of its
-    level), less *key* itself. One walk, :func:`chain_reaches`, through *stored*.
+    level) and, per ``IDENTITY_IMPLIED``, every anchor of a level that implies it, less *key* itself. One walk, :func:`chain_reaches`, through *stored*.
     ⚑ ``shared`` names no owner and raises ``KeyError``: there is nothing to reach.
     ⚑ An ``agent`` *key* names its agent (``agent.<a>.…`` or ``meta.agent.<a>.…``); only
     that agent's anchors count.
     """
     from kanibako.settings.config_keys import KEY_OWNERS
-    from kanibako.settings.kb_store import IDENTITY_ANCHORS, IDENTITY_PAIRED
+    from kanibako.settings.kb_store import IDENTITY_ANCHORS, IDENTITY_IMPLIED, IDENTITY_PAIRED
 
     agent = _agent_of(key) if owner == "agent" else None
 
     def alternatives(level: str) -> list[frozenset[str]]:
         meta = [frozenset({a}) for a in IDENTITY_ANCHORS[level][mode.value]]
-        if level in IDENTITY_PAIRED:
-            meta = [m | w for m in meta for w in alternatives(IDENTITY_PAIRED[level])]
+        if paired := IDENTITY_PAIRED.get(level, {}).get(mode.value):
+            meta = [m | w for m in meta for w in alternatives(paired)]
         own = [frozenset({k}) for k, o in KEY_OWNERS.items() if o == level]
         found = meta + own
+        if implied := IDENTITY_IMPLIED.get(level, {}).get(mode.value):
+            found += alternatives(implied)
         if agent is not None:
             found = [frozenset(k.replace("<agent>", agent) for k in alt) for alt in found]
             found = [alt for alt in found if all(_agent_of(k) == agent for k in alt)]
