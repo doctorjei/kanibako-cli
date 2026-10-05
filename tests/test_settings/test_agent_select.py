@@ -27,6 +27,8 @@ from kanibako.settings.settings_assemble import refuse_retired_keys
 from kanibako.settings.settings_launch import build_launch_snapshot, resolve_selected_agent
 from kanibako.settings.settings_resolve import ResolveCtx, SettingsError
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS
+from kanibako.settings.paths import resolve_system_paths
+from kanibako.settings.workset_dirkeys import early_system
 
 AGENTS = frozenset({"claude", "goose", "codex"})
 
@@ -422,6 +424,7 @@ def _std(tmp_path):
         registry=data / "global" / "registry.yaml",
         primary_workset=tmp_path / "ws",
         journal=data / "global" / "journal.yaml",
+        early_system=early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path)),
     )
     missing = [k for k in CONFIG_PATH_DEFAULTS if not hasattr(std, k.split(".", 1)[1])]
     assert not missing, f"the std double is short of the Layer-1 tier: {missing}"

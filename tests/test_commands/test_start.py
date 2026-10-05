@@ -18,8 +18,9 @@ from kanibako.commands.start import (
     run_start,
 )
 from kanibako.settings.kb_store import __MISSING__
-from kanibako.settings.paths import BoxMode
+from kanibako.settings.paths import BoxMode, resolve_system_paths
 from kanibako.settings.settings_launch import AuthSource
+from kanibako.settings.workset_dirkeys import early_system
 from kanibako.targets.base import (
     PersonaProbeOutcome,
     ProbeEvidence,
@@ -4547,6 +4548,7 @@ class TestTweakccCacheDir:
         from kanibako.commands.start import _tweakcc_cache_dir
 
         std = MagicMock()
+        std.early_system = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
         std.agents.__str__.return_value = str(tmp_path / "agents")
         assert _tweakcc_cache_dir(std, "claude") == (
             tmp_path / "agents" / "claude" / "caches" / "tweakcc"
@@ -4962,6 +4964,7 @@ class TestApplyInitSeeds:
             # B2b: the PRIMARY logs dir helper_log_path reads (= the resolved
             # workset.logs anchor the helper-log bind routes through).
             primary_logs=tmp_path / "primary_workset" / "logs",
+            early_system=early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path)),
         )
 
     def test_the_std_double_carries_every_declared_leaf(self, tmp_path):
@@ -6692,10 +6695,11 @@ class TestSeedNewBoxCreateEntry:
     shared seed implementation with the box it was given.
     """
 
-    def test_delegates_to_seed_box_home(self):
+    def test_delegates_to_seed_box_home(self, tmp_path):
         from kanibako.commands.start import seed_new_box
 
         std = MagicMock()
+        std.early_system = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
         config = MagicMock()
         proj = MagicMock()
         proj.group = None
@@ -6722,7 +6726,7 @@ class TestSeedNewBoxCreateEntry:
         # <None> endpoint → the seed is NOT told to suppress the OAuth cred (bare).
         assert kwargs["suppress_oauth"] is False
 
-    def test_the_create_time_SYNC_runs_here_too_and_AFTER_the_seed(self):
+    def test_the_create_time_SYNC_runs_here_too_and_AFTER_the_seed(self, tmp_path):
         """⚖️ RULED 2026-08-11 — the ``synced`` write happens ONCE, at create.
 
         🛑 THE WIRING, not the mechanism: RED if the ``_sync_box_at_create`` call is
@@ -6737,6 +6741,7 @@ class TestSeedNewBoxCreateEntry:
         from kanibako.commands.start import seed_new_box
 
         std = MagicMock()
+        std.early_system = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
         config = MagicMock()
         proj = MagicMock()
         proj.group = None

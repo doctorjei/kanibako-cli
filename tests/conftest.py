@@ -21,6 +21,8 @@ import pytest
 
 from kanibako.settings.agent_select import AgentSelection as _AgentSelection
 from kanibako.settings.config import KanibakoConfig, load_config, write_global_config
+from kanibako.settings.paths import resolve_system_paths
+from kanibako.settings.workset_dirkeys import early_system
 
 # The REAL launch-snapshot orchestrator, captured at import time (before any
 # ``start_mocks`` patch replaces the module attribute) so the ``start_mocks``
@@ -587,6 +589,10 @@ def start_mocks():
             # name; it is now refused post-expansion, which is what surfaced the double
             # as under-specified rather than the double being newly wrong.
             m_load_std.return_value.template = Path(_store_tmp.name) / "template"
+            # A REAL early-system record, so no MagicMock attribute reaches an early reader as one.
+            m_load_std.return_value.early_system = early_system(
+                {}, resolve_system_paths({}, data_home=Path(_store_tmp.name), home=Path(_store_tmp.name)),
+            )
             # ⚑ ``agents`` gets the same realism, but only on its STRING form, and the
             # split is deliberate.  ``host_config_map`` publishes ``config.agents`` as
             # ``str(std.agents)``, which every ``@agent.<a>.template`` /

@@ -11,6 +11,8 @@ import pytest
 from kanibako.box_supervisor import CONTINUE_MARKER
 from kanibako.commands.start import _run_container
 from kanibako.errors import ContainerError
+from kanibako.settings.paths import resolve_system_paths
+from kanibako.settings.workset_dirkeys import early_system
 
 
 # ---------------------------------------------------------------------------
@@ -1339,6 +1341,7 @@ class TestCredsWatcherSpawnAndFlagHygiene:
         import kanibako.commands.start as start_mod
 
         std, proj = MagicMock(), MagicMock()
+        std.early_system = early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path))
         log_path = tmp_path / "logs" / "b.creds-watcher.log"
         with (
             patch.object(start_mod.subprocess, "Popen") as popen,
