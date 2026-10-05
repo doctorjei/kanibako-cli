@@ -1082,12 +1082,24 @@ def _is_table_valued_agent_leaf(parts: tuple[str, ...]) -> bool:
     return len(parts) == 3 and parts[0] == "agent" and parts[2] in TABLE_VALUED_AGENT_LEAVES
 
 
+def _under_pref(parts: tuple[str, ...]) -> bool:
+    """Is *parts* a key path under a ``pref.`` head? (§2h)
+
+    ⚑ THE DEFERRAL PREDICATE. A ``pref:`` table is the ONE reader of this parse that has no
+    ``valid_agents``, so a ``pref.`` path cannot judge the AGENT SEGMENT here — and §2h's
+    allowlist is what judges it. The parse's entry-shape check would otherwise report
+    ``<category> entry '<dest>': must be a structured entry`` for a map whose real fault is an
+    unknown agent, so the user is sent to reshape an entry whose only defect is a name.
+    """
+    return parts[:1] == (PREF_ROOT,)
+
+
 def _at_declared_category(parts: tuple[str, ...]) -> bool:
     """Is *parts* a DECLARED dest-keyed category position, a ``pref.`` head stripped (spec §2h)?
 
     A pref target counts only when it is requestable, so §2h's allowlist refusal names it.
     """
-    if parts[:1] == (PREF_ROOT,):
+    if _under_pref(parts):
         parts = parts[1:]
         if pref_allowlist_entry(".".join(parts)) is None:
             return False
@@ -1120,6 +1132,7 @@ def _parse_node(
                     store[key_s] = parse_bind_map(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
                         declared=_at_declared_category((*path, key_s)),
+                        defer_shape=_under_pref(path),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1133,6 +1146,7 @@ def _parse_node(
                         sub, category=key_s,
                         root_ref=_declaration_root_ref(path, key_s),
                         declared=_at_declared_category((*path, key_s)),
+                        defer_shape=_under_pref(path),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1181,7 +1195,7 @@ def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore:
 
 def parse_bind_map(
     raw: Any, *, category: str = "bindings", root_ref: str | None = None,
-    declared: bool = True,
+    declared: bool = True, defer_shape: bool = False,
 ) -> KeyStore:
     """Parse a raw DEST-KEYED category map into a :class:`KeyStore` of :class:`BindEntry`.
 
@@ -1193,20 +1207,46 @@ def parse_bind_map(
     ⚑⚑ THIS IS THE DECLARATION-LOAD SEAM: what gets STORED must resolve on its own, so the
     root is supplied HERE (:func:`_declared_source`) and never downstream — rooting at
     ASSEMBLY is FORBIDDEN by §2a.
+
+    ⚑ *defer_shape* is a ``pref.`` path's (§2h) — see :func:`_under_pref`. It withholds ONLY
+    the per-ENTRY SHAPE verdict, leaving the offending value in the store verbatim for
+    :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`; every other check
+    (the doubly-spelled destination, the unrooted source) still runs HERE. A value that
+    unrolled is stored as a :class:`BindEntry` whatever *defer_shape* says, so a well-formed
+    entry is never carried into the deferred pass.
     """
     if not isinstance(raw, dict):
         raise SettingsError(
             f"A dest-keyed {category!r} map must be a mapping "
             f"{{box_dest: [src[, options]]}}, got {type(raw).__name__}: {raw!r}."
         )
-    check_bind_map(raw, category=category, declared=declared)
+    if not defer_shape:
+        check_bind_map(raw, category=category, declared=declared)
+    else:
+        # ⚑ THE PER-MAP CHECK IS NOT A SHAPE VERDICT, so it still runs on the WHOLE
+        # map: two spellings of one destination is a fact about the map, not about
+        # any entry's shape. The per-ENTRY loop then judges only what can be a
+        # well-formed entry, which is what leaves the unrooted-source refusal here.
+        refuse_dest_spelled_twice(raw, category=category)
+        check_bind_map(
+            {k: v for k, v in raw.items() if isinstance(v, (list, tuple))},
+            category=category, declared=declared,
+        )
     store = KeyStore()
     for key, sub in raw.items():
         # ⚑ THE ONE PLACE A STORED DEST IS CANONICALIZED ON READ (R-11) — ``~`` and ``~/`` must be
         # ONE entry. Producers normalize too; the function is idempotent, so neither place is
         # load-bearing alone. ⚑ The VALUE is never canonicalized: a host_src stays as authored.
         dest = normalize_bind_dest(str(key))
-        entry = _parse_node(sub, in_binds=True, dest_keyed=True)
+        try:
+            entry = _parse_node(sub, in_binds=True, dest_keyed=True)
+        except SettingsError:
+            # ⚑ A malformed ENTRY is the deferred verdict's business, and it names the
+            # category, so re-raising it here would only pre-empt §2h's agent verdict.
+            if not defer_shape:
+                raise
+            store[dest] = sub
+            continue
         if isinstance(entry, BindEntry):
             entry = BindEntry(
                 _declared_source(entry.src, category, dest, root_ref), entry.opts,
