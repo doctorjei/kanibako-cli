@@ -28,6 +28,7 @@ from kanibako.settings.paths import (
     detect_project_mode,
     load_std_paths,
 )
+from kanibako.utils import WORKSET_SEGMENT_PRIMARY
 from kanibako.settings.config import load_config
 from kanibako.targets.base import Mount
 from kanibako.plugins.claude import ClaudeTarget
@@ -241,7 +242,9 @@ class TestHelperSocketPath:
         run_dir = Path("/run/user/1000/kanibako")
         proj = MagicMock(mode=BoxMode.primary, group=None)
         proj.name = "app"
-        assert helper_socket_path(proj, run_dir) == run_dir / "app-__PRIMARY__.sock"
+        # The ``<W>`` segment is the bare word, not the ``__PRIMARY__`` partition
+        # directory name — the socket names a box, it does not address a path.
+        assert helper_socket_path(proj, run_dir) == run_dir / f"app-{WORKSET_SEGMENT_PRIMARY}.sock"
 
     def test_nameless_box_is_refused(self):
         """A box without ``meta.box.name`` has no identity to render."""

@@ -607,6 +607,32 @@ def start_mocks():
             runtime.run.side_effect = _run_side_effect
             m_rt_cls.return_value = runtime
 
+            # ⚑⚑ IS_RUNNING IS NAME-SENSITIVE, AND IT HAS TO BE.  ``start`` asks
+            # about MORE THAN ONE NAME for the same box: ``_refuse_legacy_container``
+            # probes the box's PRE-``kb-`` names before it launches, and a real
+            # runtime answers False for a name the box was never started with.  A
+            # blanket ``True`` here made every "the box is running" test refuse its
+            # own start — 91 reds that were a property of the FAKE, not of the
+            # product.  ⚑ ``return_value`` still governs the box's OWN container, so
+            # crash-path tests that flip it False (and read it back) are untouched;
+            # only a name that is NOT the box's rendered one now answers False.  A
+            # test that wants the legacy refusal says so by putting the OLD name in
+            # ``runtime.live_names``.
+            runtime.live_names = set()
+
+            def _is_running(name=None, *a, **kw):
+                if name in runtime.live_names:
+                    return True
+                try:
+                    from kanibako.utils import container_name_for
+                    own = container_name_for(m_resolve_any.return_value)
+                except Exception:
+                    return runtime.is_running.return_value
+                if name is not None and name != own:
+                    return False
+                return runtime.is_running.return_value
+            runtime.is_running.side_effect = _is_running
+
             # The std roots the box-store resolution reads (see the note at the
             # top of this factory): REAL paths, so @meta.box.path resolves to
             # <primary_workset>/boxes/testproject and the seed dests are contained.
