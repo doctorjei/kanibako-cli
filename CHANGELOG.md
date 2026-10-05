@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A `set` refused for a dangling `@`-reference now says why the reference fails.** A reference to a
+  declared key that the command's settings do not reach says so. Any other reference gets the
+  keyspace's own reason, such as `'zzz' is not a valid agent (valid: …)` or `'zork' is not a declared
+  agent key of 'agent.claude'`. Before, every agent-scope reference, real ones like
+  `@agent.goose.provider` included, was reported as `no such config key in the keyspace`.
+
 - **An `@`-reference to a name that is not a key stops a launch and `box show --effective`, naming the
   reference and the entry that holds it.** A bind destination `@meta.agent.home/x` used to mount at
   `/x`, a source `@box.nope/sub` mounted `/sub`, and an env value `/e@v\$q` became `/e$q`, all without
