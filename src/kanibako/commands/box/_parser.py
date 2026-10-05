@@ -1006,7 +1006,10 @@ def run_create(args: argparse.Namespace) -> int:
 
     # ⚑ BEFORE ANY WRITE
     if args.standalone:
-        refuse_scalar_sections(_standalone_settings_files(effective_path)[1], ("workset",))
+        refuse_scalar_sections(
+            _standalone_settings_files(
+                effective_path, early=_early_scope(std, BoxMode.standalone))[1],
+            ("workset",))
 
     # ⚑ THE SPACE IS THE CWD'S, NOT THE TARGET'S: "a command's workset path space is
     # the named workset whose root contains the current directory".
@@ -1968,7 +1971,9 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
             metadata=str(root_path),
             # Best-effort capture for a later readopt; either read failing is ``None``.
             image=_read_box_image_tiered(
-                *_standalone_settings_files(root_path)
+                *_standalone_settings_files(
+                    root_path, early=_early_scope(std, BoxMode.standalone)
+                )
             ),
             deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )

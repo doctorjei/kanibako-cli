@@ -20,7 +20,6 @@ from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.tree_copy import copy_tree_keeping_links, failed_entries
 from kanibako.settings.paths import (
-    STANDALONE_META_DIR,
     BoxMode,
     WorksetSpec,
     _early_scope,
@@ -298,12 +297,15 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault):
     presence-only since D4) would resolve the two boxes to one (BUG#3).
     """
     from kanibako.errors import ProjectError
-    from kanibako.settings.paths import establish_standalone, write_vault_gitignore
+    from kanibako.settings.paths import establish_standalone, standalone_box_store, write_vault_gitignore
     from kanibako.utils import write_project_gitignore
 
     src_box, _ = box_workset_settings_paths(src_proj)
 
-    dst_metadata = new_path / STANDALONE_META_DIR
+    # ⚑ RESOLVED, for the same reason ``resolve_standalone_project`` resolves it: the
+    # destination is a standalone box, so its store is whatever its ``workset.boxes`` says
+    # — the default leaf only while that key is unset.
+    dst_metadata = standalone_box_store(new_path, early=_early_scope(std, BoxMode.standalone))
     dst_shell = dst_metadata / "home"
     # (The destination ROOT workset.yaml is written by ``establish_standalone`` below
     # — it is the WORKSET tier and carries the FRESH workset.kuid, never a copy of the
@@ -330,7 +332,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault):
     # re-roots a box.  The stray nested root is not inert: ``<dst>/box_data`` would
     # then carry BOTH ``box_data/`` and a ``workset.yaml``, i.e. the standalone
     # MARKER (``box_resolve.standalone_settings_present``), under the SOURCE's kuid.
-    src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path)
+    src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path,
+                                    early=src_proj._require_early())
     copy_tree_keeping_links(
         src_meta_dir, dst_metadata,
         ignore=shutil.ignore_patterns(".kanibako.lock", "home", BOX_META_FILE),
@@ -477,7 +480,8 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     # travel; the destination resolves the PRIMARY workset's tier instead.
     src_box, _ = box_workset_settings_paths(src_proj)
     carried = carried_box_settings(src_box)
-    src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path)
+    src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path,
+                                    early=src_proj._require_early())
 
     # Failure-consistency: a crash AFTER assign_primary_box_name (which registers it)
     # but DURING the metadata/shell copy below would otherwise strand a

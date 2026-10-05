@@ -55,10 +55,15 @@ from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          CREDS_WATCHER_LOG_SUFFIX, HOME_PATH,
                                          IGNORE_FILE, KANIBAKO_PATH, KIND_PROJECT, KIND_WORKSET,
                                          PROFILE_FILE, RUN_USER_UID_PATH, SHELL_D_FILE,
-                                         STANDALONE_META_DIR, SYSTEM_PATH_DEFAULTS,
+                                         SYSTEM_PATH_DEFAULTS,
                                          UNREGISTERED_MARKER, VAULT_PATH, XDG_CACHE_HOME,
                                          XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_RUNTIME_DIR,
                                          XDG_SPEC_DEFAULTS, XDG_STATE_HOME)
+from kanibako.settings import bootstrap
+
+#: RE-EXPORT: the standalone marker/store leaf.  ``commands.box._parser`` reads it from
+#: here, and ``bootstrap`` stays the designated path-literal carrier it is defined in.
+STANDALONE_META_DIR = bootstrap.STANDALONE_META_DIR
 
 if TYPE_CHECKING:
     from kanibako.settings.keystore import KeyStore
@@ -187,6 +192,10 @@ class ProjectPaths:
     group: ProjectGroup | None = field(default=None)
     _config_path: Path | None = field(default=None, repr=False)
     _enable_vault: bool | None = field(default=None, repr=False)
+    #: The :class:`~kanibako.settings.workset_dirkeys.EarlyScope` this project's resolver
+    #: held — carried because the STANDALONE store is answered through ``workset.boxes``,
+    #: which is a repointable key and so needs the scope its own resolver read.
+    _early: "EarlyScope | None" = field(default=None, repr=False)
 
     def vault_enabled(self) -> bool:
         """Resolve ``box.enable_vault`` only when a consumer needs it."""
@@ -198,36 +207,121 @@ class ProjectPaths:
             )
         return self._enable_vault
 
+    def _require_early(self) -> EarlyScope:
+        """The scope this project's resolver held.
+
+        ⚑ Set by every resolver, so a ``ProjectPaths`` a caller HAND-BUILT is the one
+        case with none — and a hand-built one names a directory rather than a resolved
+        project, which is the shape :mod:`kanibako.commands.archive` builds.
+        """
+        assert self._early is not None, "ProjectPaths carries no early scope"
+        return self._early
+
 
 def box_tree_materialized(proj: ProjectPaths) -> bool:
     """True when the box tree a ``create`` would materialize is ALREADY on disk."""
-    return box_metadata_dir(proj.mode, proj.metadata_path).is_dir()
+    return box_metadata_dir(proj.mode, proj.metadata_path,
+                            early=proj._require_early()).is_dir()
 
 
-def _standalone_settings_files(root: Path) -> tuple[Path, Path]:
+def standalone_box_store(root: Path, *, early: EarlyScope) -> Path:
+    """The RESOLVED ``workset.boxes`` of the standalone box rooted at *root* — ITS store.
+
+    ⭐ THE ONE PLACE A STANDALONE STORE PATH IS ANSWERED; every reader and deleter goes
+    through here or through :func:`box_metadata_dir`, which calls it.  ``workset.boxes`` is
+    a repointable workset key, so the store is ``box_data/`` only while the key is unset
+    (spec §2c) — composing that literal anywhere else reads a directory the box does not
+    use, which for a deleter means a directory the user never nominated.
+
+    ⚑ Deferred import: the documented ``settings.paths`` <-> ``project.workset`` cycle.
+    ⚑ A repoint the route REFUSES — a null ``workset.boxes`` ([R177]), a bare-relative
+    value — raises here, as it already does for this root's logs and vault arms; the box
+    has no store without it, and a silent default would put one where the user said none.
+    """
+    from kanibako.project.workset import load_workset_settings_doc, resolve_workset_boxes
+
+    return resolve_workset_boxes(root, load_workset_settings_doc(root), standalone=True,
+                                 early=early)
+
+
+def standalone_store_teardown_plan(
+    root: Path, *, early: EarlyScope,
+) -> tuple[Path | None, Path | None]:
+    """The standalone box store as ``(removable, retained)`` for a teardown — ONE split.
+
+    ⚑⚑ A standalone store the user pointed OUTSIDE *root* (or AT it) is the USER'S OWN
+    directory, and no verb ``rm -rf``\\ s it on their behalf — the same line
+    :func:`~kanibako.project.workset.standalone_vault_teardown` draws for a vault arm, and
+    the same one :func:`~kanibako.project.workset.delete_workset` draws for a workset
+    store.  Resolving the store is what makes this reachable: at the composed default the
+    store was always under the root by construction, so no guard was needed there.
+
+    A store strictly below *root* is kanibako's own skeleton inside the tree the teardown
+    is already clearing, so it goes with the box, repointed or not.  ``None`` on either arm
+    means there is nothing to act on.
+    """
+    store = standalone_box_store(root, early=early)
+    if not store.is_dir() or store.is_symlink():
+        return None, None
+    if root in store.parents:
+        return store, None
+    return None, store
+
+
+def report_retained_store(store: Path, root: Path) -> None:
+    """Print the retained-store Note: name the store that stays, and why it stays.
+
+    ⚑ ONE text for every teardown that leaves a relocated store on disk, and it names
+    the STORE — :func:`~kanibako.project.workset.report_retained_vault` would announce a
+    store as a vault.  A keep that cannot name the path as the user's is just a leak.
+    """
+    import sys
+
+    print(f"Note: left the box store at {store} in place — outside {root} "
+          f"and is yours to remove.", file=sys.stderr)
+
+
+def _standalone_settings_files(root: Path, *, early: EarlyScope) -> tuple[Path, Path]:
     """The STANDALONE ``(box_tier, workset_tier)`` pair — BOTH always real paths."""
-    return root / STANDALONE_META_DIR / BOX_META_FILE, root / WORKSET_META_FILE
+    return standalone_box_store(root, early=early) / BOX_META_FILE, root / WORKSET_META_FILE
 
 
-def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path:
-    """The DIR holding a box's own metadata — home, session state, box tier."""
-    return metadata_path / STANDALONE_META_DIR if mode is BoxMode.standalone else metadata_path
+def box_metadata_dir(mode: BoxMode, metadata_path: Path, *,
+                     early: EarlyScope | None = None) -> Path:
+    """The DIR holding a box's own metadata — home, session state, box tier.
+
+    ⚑ *early* is read on the STANDALONE arm ONLY, which is the arm that answers the
+    store through ``workset.boxes``; the primary/named arm is ``metadata_path`` itself
+    and needs no scope.
+    """
+    if mode is not BoxMode.standalone:
+        return metadata_path
+    assert early is not None, "the standalone store is resolved, so it needs its scope"
+    return standalone_box_store(metadata_path, early=early)
 
 
 def _box_settings_files(mode: BoxMode, metadata_path: Path,
-                        group: "_WorksetRooted | None") -> tuple[Path, Path | None]:
+                        group: "_WorksetRooted | None", *,
+                        early: EarlyScope | None = None) -> tuple[Path, Path | None]:
     """THE ``(box_tier, workset_tier)`` settings-file derivation (spec §2c) — spelled ONCE.
     ⚑ The box tier is non-optional BY TYPE; do not widen the return to ``Path | None``.
     ⚑ *group* is anything rooted at ``@meta.workset.path``: a :class:`ProjectGroup` OR a
     :class:`WorksetSpec`, since the NAMED resolver builds its group only at return time."""
     if mode is BoxMode.standalone:
-        return _standalone_settings_files(metadata_path)
+        assert early is not None, "the standalone store is resolved, so it needs its scope"
+        return _standalone_settings_files(metadata_path, early=early)
     return metadata_path / BOX_META_FILE, workset_settings_path(group)
 
 
 def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]:
-    """The :class:`ProjectPaths` ADAPTER over :func:`_box_settings_files` (no logic of its own)."""
-    return _box_settings_files(proj.mode, proj.metadata_path, proj.group)
+    """The :class:`ProjectPaths` ADAPTER over :func:`_box_settings_files` (no logic of its own).
+
+    ⚑ Reads the scope off *proj* rather than taking one: the standalone box tier sits in
+    the RESOLVED store, so answering it is this seam's job on every mode, and a caller
+    holding only a ``ProjectPaths`` is the normal case.
+    """
+    return _box_settings_files(proj.mode, proj.metadata_path, proj.group,
+                               early=proj._early)
 
 
 def resolve_box_enable_vault(global_path: Path, *, box_path: Path,
@@ -1302,7 +1396,8 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
                         vault_rw_path=vault_rw_path,
                         is_new=is_new, mode=BoxMode.primary, name=project_name,
                         group=_default_project_group(std), _config_path=std.config_file,
-                        _enable_vault=resolved_vault)
+                        _enable_vault=resolved_vault,
+                        _early=_early_scope(std, BoxMode.primary))
 
 
 def _resolve_local_dir(std: StandardPaths, project_path_str: str) -> tuple[str, Path]:
@@ -1367,7 +1462,7 @@ def _standalone_box_paths(
     """
     from kanibako.project.workset import resolve_workset_vault_pair
 
-    home = root / STANDALONE_META_DIR / HOME_PATH
+    home = standalone_box_store(root, early=early) / HOME_PATH
     vault_ro, vault_rw = resolve_workset_vault_pair(root, early=early)
     return home, vault_ro, vault_rw
 
@@ -1985,7 +2080,8 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
                         name=project_name, group=ProjectGroup(name=ws.name, root=ws.root,
                                                               is_default=False,
                                                               local_shared_base=ws.root),
-                        _config_path=std.config_file, _enable_vault=resolved_vault)
+                        _config_path=std.config_file, _enable_vault=resolved_vault,
+                        _early=_early_scope(std, BoxMode.named, ws.name))
 
 
 def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: Path) -> None:
@@ -2332,7 +2428,8 @@ def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool,
     existing = registry_store.standalone_box_names(std.registry)
     box_name = box_identity.resolve_standalone_name(root, name, existing)
 
-    box_settings, settings_file = _standalone_settings_files(root)
+    box_settings, settings_file = _standalone_settings_files(
+        root, early=_early_scope(std, BoxMode.standalone))
     # ⚑ Sparse create, EACH KEY AT ITS OWN SCOPE'S TIER (M-8): box-scope ``box.enable_vault``
     # to the BOX tier — the same file ``config set box.*`` writes.
     write_box_enable_vault(box_settings, enable_vault)
@@ -2368,12 +2465,12 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
     # Metadata at the ROOT; ``project_path`` is the RESOLVED ``workset.workspaces`` (ruled 10),
     # ``None`` when the root nulls it.
     metadata_path = root
-    box_data = root / STANDALONE_META_DIR
     standalone_early = _early_scope(std, BoxMode.standalone)
+    box_data = standalone_box_store(root, early=standalone_early)
     project_path = resolve_workset_workspaces(root, load_workset_settings_doc(root),
                                               standalone=True, early=standalone_early)
     # The mode-aware tier pair from the ONE derivation (M-8).
-    box_settings, project_toml = _standalone_settings_files(root)
+    box_settings, project_toml = _standalone_settings_files(root, early=standalone_early)
 
     # ⚑ STANDALONE paths derive from the CURRENT root, never stored absolutes — that is
     # what makes a default-shaped tree drop-in portable BY CONSTRUCTION.
@@ -2432,7 +2529,8 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
         install_workset_template(std, root, workset_name=WS_TOKEN_STANDALONE, canon_only=True)
         assert resolved_vault is not None
         _init_standalone_project(std, box_data, shell_path, vault_ro_path, vault_rw_path,
-                                 project_path, enable_vault=resolved_vault)
+                                 project_path, enable_vault=resolved_vault,
+                                 workset_root=root)
         # Identity + meta + registration via the shared establish core (fresh identity here).
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
             std, root, enable_vault=resolved_vault, name=requested_name, register=register)
@@ -2450,18 +2548,21 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
                         shell_path=shell_path, vault_ro_path=vault_ro_path,
                         vault_rw_path=vault_rw_path, is_new=is_new, mode=BoxMode.standalone,
                         name=box_name, _config_path=std.config_file,
-                        _enable_vault=resolved_vault)
+                        _enable_vault=resolved_vault, _early=standalone_early)
 
 
 def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path: Path,
                              vault_ro_path: Path | None, vault_rw_path: Path | None,
-                             project_path: Path, *, enable_vault: bool = True) -> None:
+                             project_path: Path, *, enable_vault: bool = True,
+                             workset_root: Path) -> None:
     """First-time standalone project setup: all state inside the project dir (vault included).
 
-    ⚑ *metadata_path* is the ``box_data/`` dir; the WORKSET root is its parent, and that
-    is what owns the ``vault/`` skeleton the ``.gitignore`` belongs to.
+    ⚑ *metadata_path* is the box's store and *workset_root* is the ROOT that owns the
+    ``vault/`` skeleton its ``.gitignore`` belongs to.  ⚑ They are passed apart because a
+    repointed ``workset.boxes`` puts the store outside the root, and deriving the root from
+    the store's parent would hand ``write_vault_gitignore`` the store's directory instead.
     """
     _init_common(std, metadata_path, shell_path, vault_ro_path, vault_rw_path, project_path,
-                 enable_vault=enable_vault, vault_root=metadata_path.parent)
+                 enable_vault=enable_vault, vault_root=workset_root)
     # The workspace is a SUBDIR of the root (drift H); create the bind source.
     project_path.mkdir(parents=True, exist_ok=True)
