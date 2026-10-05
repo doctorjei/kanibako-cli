@@ -2507,7 +2507,7 @@ class TestBoxListStandalone:
         out = capsys.readouterr().out.splitlines()
         assert proj.name in out
 
-    def test_list_hides_missing_standalone_by_default(
+    def test_list_shows_missing_standalone_and_flags_it(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
         import shutil
@@ -2524,9 +2524,11 @@ class TestBoxListStandalone:
         args = argparse.Namespace(show_all=False, orphan=False, quiet=False)
         rc = run_list(args)
         assert rc == 0
-        assert proj.name not in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert proj.name in out
+        assert "missing" in out
 
-        # --all surfaces the missing standalone box.
+        # --all shows the same row.
         args_all = argparse.Namespace(show_all=True, orphan=False, quiet=False)
         rc = run_list(args_all)
         assert rc == 0
