@@ -2326,11 +2326,11 @@ class TestAPrefRequestIsReadUnderTheArmKeyItWasFiledUnder:
     def test_a_ref_to_a_key_added_after_expansion_reads_what_the_launch_filed(
         self, tmp_path,
     ):
-        """``meta.box.agent.*`` is mirrored AFTER ``expand``, so the launch files this
-        entry under ``/q`` although the finished snapshot holds ``canon = /cn``; the
-        display reports what was filed, not a re-expansion against that snapshot."""
+        """``meta.box.agent.*`` is mirrored AFTER ``expand``, but ``expand`` derives a
+        reference to it from the agent key the mirror copies, so the launch files this
+        entry under ``/cn/q``; were the reference read as absent it would print ``/q``."""
         text = self._pref_block(tmp_path, {"@meta.box.agent.canon/q": ["/src"]}, "shell")
-        assert "-> agent.shell.bindings.ro[@meta.box.agent.canon/q] = /src -> /q\n" in text, text
+        assert "-> agent.shell.bindings.ro[@meta.box.agent.canon/q] = /src -> /cn/q\n" in text, text
 
     def test_a_suppressed_at_ref_entry_is_still_reported_suppressed(self, tmp_path):
         text = self._pref_block(tmp_path, {"@box.env.ODD/gone": None})
