@@ -327,7 +327,7 @@ class TestNamedWorksetImport:
         box_dir = tmp_home / "boxproj"
         box_dir.mkdir()
         register_primary_box_name(
-            std.primary_workset, std.registry, "clash", str(box_dir),
+            std.primary_workset, "clash", str(box_dir),
         )
         ws_root = tmp_home / "worksets" / "clash"
         create_workset("scratch", ws_root, std)

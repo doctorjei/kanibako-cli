@@ -294,7 +294,7 @@ class TestConflictSafety:
         dir_b = tmp_home / "b"
         dir_b.mkdir()
         register_primary_box_name(
-            std.primary_workset, std.registry, "dup", str(dir_b),
+            std.primary_workset, "dup", str(dir_b),
         )
         capsys.readouterr()
 

@@ -610,7 +610,7 @@ class TestPrimaryBoxNameApi:
 
         primary = tmp_path / "primary_workset"
         ws = tmp_path / "projects" / "myapp"
-        name = assign_primary_box_name(primary, registry, str(ws))
+        name = assign_primary_box_name(primary, str(ws))
         assert name == "myapp"
         assert load_primary_boxes(primary)[name] == str(ws)
 
@@ -618,18 +618,19 @@ class TestPrimaryBoxNameApi:
         from kanibako.settings.paths import assign_primary_box_name
 
         primary = tmp_path / "primary_workset"
-        assert assign_primary_box_name(primary, registry, "/a/myapp") == "myapp"
-        assert assign_primary_box_name(primary, registry, "/b/myapp") == "myapp2"
+        assert assign_primary_box_name(primary, "/a/myapp") == "myapp"
+        assert assign_primary_box_name(primary, "/b/myapp") == "myapp2"
 
-    def test_cross_domain_collision_with_workset(
+    def test_auto_name_does_not_skip_a_workset_name(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """A WORKSET name prevents using the same PRIMARY box name (new domain)."""
+        """Per-kind namespaces: a WORKSET name does not push an auto-named PRIMARY box
+        off its basename (spec § Detection & import)."""
         from kanibako.settings.paths import assign_primary_box_name
 
         register_name(registry, "myapp", "/ws", section="worksets")
         primary = tmp_path / "primary_workset"
-        assert assign_primary_box_name(primary, registry, "/proj/myapp") == "myapp2"
+        assert assign_primary_box_name(primary, "/proj/myapp") == "myapp"
 
     def test_register_takes_a_workset_name(
         self, registry: Path, tmp_path: Path
@@ -640,7 +641,7 @@ class TestPrimaryBoxNameApi:
 
         register_name(registry, "myapp", "/ws", section="worksets")
         primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, registry, "myapp", "/proj/myapp")
+        register_primary_box_name(primary, "myapp", "/proj/myapp")
         assert load_primary_boxes(primary)["myapp"] == "/proj/myapp"
 
     def test_same_kind_primary_collision_refuses(
@@ -650,9 +651,9 @@ class TestPrimaryBoxNameApi:
         from kanibako.settings.paths import register_primary_box_name
 
         primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, registry, "myapp", "/a/myapp")
+        register_primary_box_name(primary, "myapp", "/a/myapp")
         with pytest.raises(ProjectError, match="already registered"):
-            register_primary_box_name(primary, registry, "myapp", "/b/myapp")
+            register_primary_box_name(primary, "myapp", "/b/myapp")
 
     def test_pick_skips_existing_box_dir(
         self, registry: Path, tmp_path: Path
@@ -662,7 +663,7 @@ class TestPrimaryBoxNameApi:
         primary = tmp_path / "primary_workset"
         boxes = tmp_path / "boxes"
         (boxes / "myapp").mkdir(parents=True)  # half-built box, unregistered.
-        name = pick_primary_box_name(primary, registry, "/x/myapp", boxes_dir=boxes)
+        name = pick_primary_box_name(primary, "/x/myapp", boxes_dir=boxes)
         assert name == "myapp2"
 
     def test_if_absent_noop_on_identical(
@@ -674,9 +675,9 @@ class TestPrimaryBoxNameApi:
         )
 
         primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, registry, "myapp", "/p/myapp")
+        register_primary_box_name(primary, "myapp", "/p/myapp")
         # Recovery re-entry: same name → same path is a silent no-op.
-        register_primary_box_name_if_absent(primary, registry, "myapp", "/p/myapp")
+        register_primary_box_name_if_absent(primary, "myapp", "/p/myapp")
 
     def test_if_absent_raises_on_different_path(
         self, registry: Path, tmp_path: Path
@@ -687,10 +688,10 @@ class TestPrimaryBoxNameApi:
         )
 
         primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, registry, "myapp", "/p/myapp")
+        register_primary_box_name(primary, "myapp", "/p/myapp")
         with pytest.raises(ProjectError):
             register_primary_box_name_if_absent(
-                primary, registry, "myapp", "/OTHER/myapp",
+                primary, "myapp", "/OTHER/myapp",
             )
 
     def test_home_guard(self, registry: Path, tmp_path: Path, monkeypatch) -> None:
@@ -701,7 +702,7 @@ class TestPrimaryBoxNameApi:
         monkeypatch.setenv("HOME", str(home))
         primary = tmp_path / "primary_workset"
         with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
-            register_primary_box_name(primary, registry, "bad", str(home))
+            register_primary_box_name(primary, "bad", str(home))
 
     def test_unregister(self, registry: Path, tmp_path: Path) -> None:
         from kanibako.settings.paths import (
@@ -711,7 +712,7 @@ class TestPrimaryBoxNameApi:
         )
 
         primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, registry, "myapp", "/p/myapp")
+        register_primary_box_name(primary, "myapp", "/p/myapp")
         unregister_primary_box_name(primary, "myapp")
         assert "myapp" not in load_primary_boxes(primary)
 
@@ -1485,7 +1486,7 @@ class TestPurgeStaleDeregisteredGuard:
         (home / "home").mkdir(parents=True, exist_ok=True)
         (home / "home" / "LIVE.txt").write_text("live-box-data")
         register_primary_box_name(
-            std.primary_workset, std.registry, "dup", str(ws),
+            std.primary_workset, "dup", str(ws),
         )
         assert "dup" in load_primary_boxes(std.primary_workset)
 

@@ -416,10 +416,9 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     """
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
-    # Registers the PRIMARY membership (the sole store; a duplicate now joins the
-    # membership like any other primary box — closing the old global-only gap).
+    # Registers the PRIMARY membership (the sole store).
     project_name = assign_primary_box_name(
-        std.primary_workset, std.registry, str(new_path),
+        std.primary_workset, str(new_path),
     )
     projects_base = std.boxes
     dst_project = projects_base / project_name
@@ -793,7 +792,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
     from kanibako.errors import ProjectError
     try:
         dup_name = assign_primary_box_name(
-            std.primary_workset, std.registry, str(new_path),
+            std.primary_workset, str(new_path),
         )
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)
