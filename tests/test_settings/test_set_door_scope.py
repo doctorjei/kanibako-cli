@@ -300,7 +300,7 @@ class TestAContainedScopeKeyIsAcceptedAtTheContainingDoor:
     def test_a_contained_key_with_a_bare_value_is_unaffected(self, tmp_path, std):
         """The cure is about a ref this floor cannot see; a plain value never went near it."""
         files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, "/srv/canon", files, ConfigLevel.system, std=std)
+        message = _set("workset.template", "/srv/canon", files, ConfigLevel.system, std=std)
         assert not message.startswith("Error:"), message
 
 
@@ -317,7 +317,7 @@ class TestAMetaRefIsJudgedByItsScopeToken:
 
     @pytest.mark.parametrize("key, value", [
         ("workset.template", "@meta.workset.path/t2"),   # own scope
-        ("box.canon", "@meta.workset.path/c3"),          # a preceding set
+        ("box.canon", "@meta.workset.path/@meta.box.name/c3"),  # preceding sets
     ])
     def test_own_or_containing_meta_scope_is_accepted_at_the_system_door(
         self, tmp_path, std, key, value,
@@ -367,7 +367,7 @@ class TestAnUpwardWriteStaysRefused:
         """The blindness is a property of the ABSENCE, not a blanket pass: at the system
         door the ``@system.*`` referent IS in the floor, so the probe judges it as always."""
         files = _files(tmp_path)
-        message = _set(_CONTAINED_KEY, "@system.canon", files, ConfigLevel.system, std=std)
+        message = _set("workset.template", "@system.canon", files, ConfigLevel.system, std=std)
         assert not message.startswith("Error:"), message
 
 

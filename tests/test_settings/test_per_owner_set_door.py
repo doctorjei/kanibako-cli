@@ -165,3 +165,25 @@ def test_a_box_value_at_the_box_door_is_its_own_level(tmp_path, std):
         cascade_box_path=box, command_scope=ConfigLevel.box,
     )
     assert message == "Set box.canon=/srv/c", message
+
+
+class TestTheCureChainsAtTheSystemDoor:
+    """A system value built on a stored, anchored system ``workset.boxes``: the set-time probe
+    forgives the referent's ``meta.workset.*`` refs as it forgives a direct one (keyspec §0
+    defaults-down), and still refuses a referent that dangles."""
+
+    @pytest.mark.parametrize("ref", ["@workset.boxes", "{workset.boxes}"])
+    @pytest.mark.parametrize("boxes", _forms("/srv/kb/<meta.workset.path>"))
+    def test_a_value_on_the_stored_cure_is_written(self, boxes, ref, seeded):
+        assert _system_set("workset.boxes", boxes, seeded) == f"Set workset.boxes={boxes}"
+        value = f"{ref}/lg"
+        assert _system_set("workset.logs", value, seeded) == f"Set workset.logs={value}"
+
+    @pytest.mark.parametrize("boxes", [*_forms("<meta.workset.path>/<meta.workset.nope>"),
+                                       *_forms("<meta.workset.path>/<config.nope>")])
+    def test_a_stored_referent_that_dangles_is_still_refused(self, boxes, seeded):
+        seeded.settings.write_text(yaml.safe_dump({"workset": {"boxes": boxes}}))
+        before = _digest(seeded.settings)
+        message = _system_set("workset.logs", "{workset.boxes}/lg", seeded)
+        assert message.startswith("Error:") and "dangling @-reference" in message, message
+        assert _digest(seeded.settings) == before
