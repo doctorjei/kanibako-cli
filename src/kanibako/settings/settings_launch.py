@@ -3246,7 +3246,7 @@ def resolve_box_dest(raw: str, box_ctx: ResolveCtx) -> str:
 
     An escaped ``\\$`` survives the deferral verbatim and unescapes here, so a literal
     dollar the user meant stays one. Every ``@`` is literal here: the build resolved
-    the ``@``-refs, and the box never processes ``@`` (keyspec escape contract).
+    the ``@``-refs, and the box never processes ``@`` (keyspec "References").
     """
     return expand_expr(
         raw.replace("@", "\\@"), space="guest", ctx=box_ctx, lookup=_no_lookup,
