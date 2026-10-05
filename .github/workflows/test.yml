@@ -69,7 +69,7 @@ jobs:
       # ⚑ FULL HISTORY IS REQUIRED, NOT AN OPTIMIZATION TO UNDO. The default
       # shallow clone (depth 1) has no commit objects, so every `commit does not
       # resolve` claim in `llm-docs/` fails here while resolving locally. That is
-      # what reddened this job the first time it ever ran: 24 of 1650 claims, all
+      # what reddened this job the first time it ever ran: 24 claims, all
       # of them true, none of them checkable in a shallow tree.
       - uses: actions/checkout@v6
         with:
