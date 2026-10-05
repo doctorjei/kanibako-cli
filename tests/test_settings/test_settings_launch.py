@@ -7297,3 +7297,121 @@ def test_the_refusal_names_a_binding_entry_by_its_index(tmp_path: Path):
             }}),
         )
     assert str(exc.value).startswith("box.bindings.ro[/opt/u]: '@box.nope'"), exc.value
+
+
+# --------------------------------------------------------------------------- #
+# A floor-supplied ``<None>`` bind address traces back to the FILE key          #
+# --------------------------------------------------------------------------- #
+
+
+class TestAFloorNullAddressNamesTheFileKeyBehindIt:
+    """``meta.box.inbox`` is SUPPLIED as a ``<None>`` whenever the mailboxes key it reads
+    is null, so a file that nulled that key dropped the ``~/channels/inbox`` bind without
+    saying which key did it.  ``meta.*`` is read-only (§0): naming the address names
+    something the user cannot set, so the warning must name the file key instead.
+
+    ⚑ THE ORDER IS DERIVATION ORDER — ``workset.channels.mailboxes`` reads
+    ``{system.channels.mailboxes}`` (spec §Channels table) — so a workset-local null is
+    reported ahead of the system default it shadows, and the two are not conflated.
+    """
+
+    _DEST = f"{GUEST_HOME}/.kanibako/state/inbox"
+    _INBOX = f"{GUEST_HOME}/channels/inbox"
+    _FLOOR = {
+        "box.bindings.rw": {_DEST: ("@meta.box.inbox",)},
+        "meta.box.inbox": None,
+    }
+
+    def _resolve(self, tmp_path, caplog, *, workset=None, floor=None):
+        from kanibako.settings.settings_launch import reset_none_warnings
+
+        reset_none_warnings()
+        ws_path = _write_yaml(tmp_path / "workset.yaml", workset) if workset else None
+        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
+            workset_path=ws_path, box_path=None,
+            default_categories=self._FLOOR if floor is None else floor,
+            meta_identity={"meta.box.name": "b1"}, valid_agents=("claude",),
+        )
+        mounted = {
+            e.box_dest for e in snapshot_category_entries(
+                snap, active_agent="claude", box_ctx=_ctx(),
+            )
+            if e.category.startswith("bindings")
+        }
+        warnings = [
+            r.getMessage() for r in caplog.records
+            if r.name == "kanibako.settings.settings_launch"
+        ]
+        return mounted, warnings
+
+    def test_the_control_mounts_and_is_silent(self, tmp_path, caplog):
+        floor = {**self._FLOOR, "meta.box.inbox": "/h/inbox/b1"}
+        assert self._resolve(tmp_path, caplog, floor=floor) == ({self._DEST}, [])
+
+    def test_a_null_workset_mailboxes_names_that_key_and_its_file(self, tmp_path, caplog):
+        mounted, warnings = self._resolve(
+            tmp_path, caplog, workset={"workset": {"channels": {"mailboxes": None}}},
+        )
+        assert mounted == set()
+        assert len(warnings) == 1, warnings
+        text = warnings[0]
+        assert f"box.bindings.rw[{self._DEST}]" in text
+        assert "workset.channels.mailboxes" in text          # the key a user can set
+        assert str(tmp_path / "workset.yaml") in text        # and the file that set it
+        assert "meta.box.inbox" not in text                  # read-only: never the blame
+
+    def test_a_null_system_mailboxes_names_that_key_instead(self, tmp_path, caplog):
+        """The SYSTEM key is the origin when no workset file nulled the local one."""
+        system = _write_yaml(tmp_path / "system.yaml", {"system": {"channels": {
+            "mailboxes": None,
+        }}})
+        from kanibako.settings.settings_launch import reset_none_warnings
+
+        reset_none_warnings()
+        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(), system_path=system, agent_path=None,
+            workset_path=None, box_path=None,
+            default_categories=self._FLOOR, meta_identity={"meta.box.name": "b1"},
+            valid_agents=("claude",),
+        )
+        warnings = [
+            r.getMessage() for r in caplog.records
+            if r.name == "kanibako.settings.settings_launch"
+        ]
+        assert len(warnings) == 1, warnings
+        assert "system.channels.mailboxes" in warnings[0]
+        assert str(system) in warnings[0]
+        assert "meta.box.inbox" not in warnings[0]
+
+    def test_the_workset_local_key_is_named_ahead_of_the_system_one(self, tmp_path, caplog):
+        """Both null: the local repoint SHADOWS the system default, so it is named."""
+        system = _write_yaml(tmp_path / "system.yaml", {"system": {"channels": {
+            "mailboxes": None,
+        }}})
+        from kanibako.settings.settings_launch import reset_none_warnings
+
+        reset_none_warnings()
+        caplog.set_level("WARNING", logger="kanibako.settings.settings_launch")
+        snap = build_launch_snapshot(
+            agent_name="claude", ctx=_ctx(), system_path=system, agent_path=None,
+            workset_path=_write_yaml(
+                tmp_path / "workset.yaml",
+                {"workset": {"channels": {"mailboxes": None}}},
+            ),
+            box_path=None, default_categories=self._FLOOR,
+            meta_identity={"meta.box.name": "b1"}, valid_agents=("claude",),
+        )
+        warnings = [
+            r.getMessage() for r in caplog.records
+            if r.name == "kanibako.settings.settings_launch"
+        ]
+        assert len(warnings) == 1, warnings
+        assert "workset.channels.mailboxes" in warnings[0]
+        assert "system.channels.mailboxes" not in warnings[0]
+
+    def test_a_floor_null_nobody_wrote_is_silent(self, tmp_path, caplog):
+        """A ``<None>`` the floor itself supplies is not SET by anyone: §2a is silent."""
+        assert self._resolve(tmp_path, caplog) == (set(), [])

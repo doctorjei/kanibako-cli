@@ -230,3 +230,108 @@ def test_the_launch_reader_accepts_a_stored_null(tmp_path, std, config_file):
     )
     assert "system.canon" not in resolved
     assert "system.channels.common" in resolved
+
+
+class TestADerivedNullIsRefusedWhereAStoredOneIs:
+    """A key can be nulled by a WRITTEN ``null`` or by a DERIVED one — its value
+    references a present ``<None>`` (spec §0) — and the launch gives a null path key no
+    meaning EITHER WAY (spec §2a).  Only the written one was checked, so a derived null
+    silently DROPPED a key the consumer subscripts, and the refusal reached the user as
+    a raw ``KeyError`` out of :func:`load_std_paths` instead of a named refusal.
+
+    ⚑ THE CONSUMER IS WHY THIS MATTERS: ``load_std_paths`` reads five of these by
+    subscript, so an omitted one is a traceback, not a default.
+    """
+
+    @staticmethod
+    def _resolve(tmp_path, doc: str):
+        path = _settings(tmp_path, doc)
+        values = system_path_set_values(path)
+        return load_std_paths, resolve_system_paths, values
+
+    def test_a_derived_null_at_a_refusing_key_is_refused_not_dropped(self, tmp_path):
+        from kanibako.errors import KanibakoError
+
+        _load, resolve, values = self._resolve(
+            tmp_path, 'system:\n  canon: null\n  cache: "@system.canon/cache"\n',
+        )
+        with pytest.raises(KanibakoError) as caught:
+            resolve(values, data_home=tmp_path / "data", home=tmp_path / "home")
+        text = str(caught.value)
+        assert "system.cache" in text          # the key whose value is null
+        assert "system.canon" in text          # and the key it referenced
+        assert "KeyError" not in text
+
+    def test_the_consumer_reads_it_rather_than_raising_a_bare_KeyError(self, tmp_path, std):
+        """The production call site: ``load_std_paths`` subscripts ``system.cache``."""
+        from kanibako.errors import KanibakoError
+        from kanibako.settings.config_io import dump_doc
+
+        dump_doc(std.settings, {"system": {
+            "canon": None, "cache": "@system.canon/cache",
+        }})
+        with pytest.raises(KanibakoError) as caught:
+            load_std_paths()
+        assert "KeyError" not in str(caught.value)
+        assert "system.cache" in str(caught.value)
+
+    @pytest.mark.parametrize("key", sorted(SYSTEM_PATH_DEFAULTS))
+    def test_every_key_lands_where_its_consumer_can_read_it(
+        self, tmp_path, key,
+    ):
+        """One rule, both roads, every key — measured against the CONSUMER.
+
+        A key ``load_std_paths`` SUBSCRIPTS has nowhere to put an absence, so a derived
+        null there is REFUSED BY NAME (a raw ``KeyError`` is not a message).  Every other
+        key is read with ``.get``, so the resolved table being keyed by what RESOLVED is
+        exactly what a ``<None>`` means there and the key is simply absent.
+        """
+        from kanibako.errors import KanibakoError
+        from kanibako.settings.paths import SUBSCRIBED_SYSTEM_PATH_KEYS
+
+        leaf = key.rsplit(".", 1)[1]
+        if leaf == "canon":
+            # A self-reference is a CYCLE, not a null: null the REFERENT this key reads
+            # instead, and assert on the key the cycle would otherwise have hidden.
+            doc = "system:\n  channels:\n    chat: null\n"
+            target = "system.channels.broadcast"
+        elif leaf in ("chat", "common", "mailboxes", "share", "broadcast"):
+            # These hang under ``system.channels``, so the doc is NESTED and the referent
+            # must be a key of the same file that is not itself derived from the target.
+            doc = f'system:\n  canon: null\n  channels:\n    {leaf}: "@system.canon/x"\n'
+            target = key
+        else:
+            doc = f'system:\n  canon: null\n  {leaf}: "@system.canon/x"\n'
+            target = key
+        _load, resolve, values = self._resolve(tmp_path, doc)
+        if target in SUBSCRIBED_SYSTEM_PATH_KEYS:
+            with pytest.raises(KanibakoError) as caught:
+                resolve(values, data_home=tmp_path / "data", home=tmp_path / "home")
+            assert target in str(caught.value)
+        else:
+            resolved = resolve(
+                values, data_home=tmp_path / "data", home=tmp_path / "home",
+            )
+            assert target not in resolved
+
+    def test_a_null_chat_still_omits_the_broadcast_it_derives(self, tmp_path):
+        """⚑ THE ASYMMETRY, PINNED FROM BOTH ENDS.  ``system.channels.broadcast`` REFUSES
+        a written ``null`` and is read with ``.get``, so a null CHAT omits it rather than
+        refusing the whole file — the broadcast log belongs to the chat it derives from.
+
+        This is the case ``refuses_null_path_key`` alone gets wrong: using it as the
+        derived road's discriminator refuses the file, which is why the discriminator is
+        the consumer instead.
+        """
+        from kanibako.settings.config import refuses_null_path_key
+        from kanibako.settings.paths import resolve_system_paths
+
+        assert refuses_null_path_key("system.channels.broadcast")  # a WRITTEN null is refused
+        _load, _resolve, values = self._resolve(
+            tmp_path, "system:\n  channels:\n    chat: null\n",
+        )
+        resolved = resolve_system_paths(
+            values, data_home=tmp_path / "data", home=tmp_path / "home",
+        )
+        assert "system.channels.broadcast" not in resolved
+        assert "system.channels.common" in resolved  # its siblings stand
