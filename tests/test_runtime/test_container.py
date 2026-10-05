@@ -2448,3 +2448,107 @@ class TestSymlinkedParentRefusal:
 
         launched.assert_not_called()
         assert not (shell / "canon" / "notebook").exists()
+
+    def test_grandparent_symlink_leading_outside_the_box_home_refused(self, tmp_path):
+        """A symlink ABOVE the immediate parent is refused, and nothing is written out.
+
+        The walk is by path position, so a link at any depth between the stub and the
+        root is judged. A link at the GRANDPARENT used to be reached by no refusal at
+        all: the stub was then created under the link's target, outside the home.
+        """
+        shell, project, src = self._roots(tmp_path)
+        outside = tmp_path / "outside"
+        (outside / "sub").mkdir(parents=True)
+        (shell / "dl").symlink_to(outside)  # the GRANDPARATH of dl/sub/notebook
+
+        with pytest.raises(ContainerError, match="is a symlink to") as exc:
+            self._stubs(shell, project, src, "/home/agent/dl/sub/notebook")
+
+        message = str(exc.value)
+        assert str(shell / "dl") in message
+        assert str(outside) in message
+        assert f"the box home is {shell}" in message
+        # The refusal is read-only, and the write it prevents is the host path.
+        assert (shell / "dl").is_symlink()
+        assert not (outside / "sub" / "notebook").exists()
+
+    def test_grandparent_dangling_symlink_outside_the_box_home_refused(self, tmp_path):
+        """A grandparent link whose target is ABSENT is refused on the same terms.
+
+        Its stub had nowhere to go, so ``mkdir`` failed on the link itself at
+        ``[Errno 17]``, which the stub helpers log at debug and swallow — the launch
+        then failed naming neither the link nor the destination.
+        """
+        shell, project, src = self._roots(tmp_path)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (shell / "dl").symlink_to(outside / "gone")  # absolute, absent, outside
+
+        with pytest.raises(
+            ContainerError, match="does not resolve to an existing directory"
+        ) as exc:
+            self._stubs(shell, project, src, "/home/agent/dl/sub/notebook")
+
+        assert str(shell / "dl") in str(exc.value)
+        assert (shell / "dl").is_symlink()
+
+    def test_symlinked_parent_to_a_regular_file_refused(self, tmp_path):
+        """A symlink pointing at a FILE is refused like a dangling one.
+
+        A file is not a directory a stub can be made under, so ``mkdir`` failed on it
+        at ``[Errno 20]``, logged at debug and swallowed.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (shell / "afile").write_text("x")
+        (shell / "canon").symlink_to("afile")
+
+        with pytest.raises(
+            ContainerError, match="does not resolve to an existing directory"
+        ) as exc:
+            self._stubs(shell, project, src, self.GUEST_DEST)
+
+        assert str(shell / "canon") in str(exc.value)
+        assert (shell / "canon").is_symlink()
+
+    def test_grandparent_symlink_inside_the_box_home_is_not_refused(self, tmp_path):
+        """A grandparent link that still lands inside the home is stubbed.
+
+        The walk is by path position, so it now judges links at every depth; only
+        WHERE the link lands decides. A live in-home link is stubbed where it points.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (shell / "realtarget" / "sub").mkdir(parents=True)
+        (shell / "dl").symlink_to(shell / "realtarget")
+
+        self._stubs(shell, project, src, "/home/agent/dl/sub/notebook")
+
+        assert (shell / "dl").is_symlink()
+        assert (shell / "realtarget" / "sub" / "notebook").is_dir()
+
+    def test_run_refuses_a_grandparent_symlinked_parent_leading_outside(self, tmp_path):
+        """The production caller refuses a grandparent link too, before podman runs."""
+        from kanibako.runtime.container import ContainerRuntime
+        from kanibako.targets.base import Mount
+        shell, project, src = self._roots(tmp_path)
+        outside = tmp_path / "outside"
+        (outside / "sub").mkdir(parents=True)
+        (shell / "dl").symlink_to(outside)
+        rt = ContainerRuntime(command="/bin/true")
+
+        with patch("kanibako.runtime.container.subprocess.run") as launched:
+            with pytest.raises(ContainerError, match="is a symlink to"):
+                rt.run(
+                    "img",
+                    shell_path=shell,
+                    project_path=project,
+                    vault_ro_path=None,
+                    vault_rw_path=None,
+                    extra_mounts=[Mount(source=src,
+                                        destination="/home/agent/dl/sub/notebook",
+                                        options="")],
+                    tmpfs_masks=[],
+                    enable_vault=False,
+                )
+
+        launched.assert_not_called()
+        assert not (outside / "sub" / "notebook").exists()
