@@ -119,10 +119,10 @@ class TestNoResolverLeaksAToken:
     """THE RULE: a resolved workset dir key never contains ``@`` or ``$``."""
 
     @pytest.mark.parametrize("poison", _UNRESOLVABLE)
-    def test_unresolvable_token_refuses_rather_than_becoming_a_directory(self, poison):
+    def test_unresolvable_token_refuses_rather_than_becoming_a_directory(self, poison, tmp_path):
         for label, resolver in _discover_resolvers().items():
             with pytest.raises(SettingsError) as excinfo:
-                resolver(Path("/ws"), _poisoned(poison))
+                resolver(Path("/ws"), _poisoned(poison), early=_scope(tmp_path, {}))
             message = str(excinfo.value)
             assert poison in message, f"{label}: refusal does not quote the value"
             assert "/ws/workset.yaml" in message, f"{label}: refusal names no file"
@@ -132,16 +132,16 @@ class TestNoResolverLeaksAToken:
     @pytest.mark.parametrize(
         "value", ["@meta.workset.path/leaf", "$XDG_DATA_HOME/leaf", "~/leaf"]
     )
-    def test_resolvable_value_leaves_no_token_behind(self, value):
+    def test_resolvable_value_leaves_no_token_behind(self, value, tmp_path):
         for label, resolver in _discover_resolvers().items():
-            resolved = str(resolver(Path("/ws"), _poisoned(value)))
+            resolved = str(resolver(Path("/ws"), _poisoned(value), early=_scope(tmp_path, {})))
             assert "@" not in resolved, f"{label}: '@' survived into {resolved}"
             assert "$" not in resolved, f"{label}: '$' survived into {resolved}"
             assert "~" not in resolved, f"{label}: '~' survived into {resolved}"
 
-    def test_default_when_unset_carries_no_token(self):
+    def test_default_when_unset_carries_no_token(self, tmp_path):
         for label, resolver in _discover_resolvers().items():
-            resolved = str(resolver(Path("/ws"), None))
+            resolved = str(resolver(Path("/ws"), None, early=_scope(tmp_path, {})))
             assert not any(c in resolved for c in "@$~"), f"{label}: {resolved}"
 
 
@@ -154,10 +154,10 @@ class TestNoResolverAnchorsAnAmbiguousValue:
     """
 
     @pytest.mark.parametrize("value", _AMBIGUOUS)
-    def test_bare_relative_refuses_rather_than_anchoring(self, value):
+    def test_bare_relative_refuses_rather_than_anchoring(self, value, tmp_path):
         for label, resolver in _discover_resolvers().items():
             with pytest.raises(SettingsError) as excinfo:
-                resolver(Path("/ws"), _poisoned(value))
+                resolver(Path("/ws"), _poisoned(value), early=_scope(tmp_path, {}))
             message = str(excinfo.value)
             assert value in message, f"{label}: refusal does not quote the value"
             # BOTH readings, spelled out — the whole point of the refusal ([R147]).
@@ -168,9 +168,10 @@ class TestNoResolverAnchorsAnAmbiguousValue:
 class TestEveryFaceRoutesThroughTheOneResolver:
     """Proof BY MUTATION: break the route and every face must break with it."""
 
-    def test_each_resolver_calls_the_route(self, monkeypatch):
+    def test_each_resolver_calls_the_route(self, monkeypatch, tmp_path):
         resolvers = _discover_resolvers()
         assert resolvers
+        early = _scope(tmp_path, {})  # built before the tripwire: the record build reads the faces
         for label, resolver in resolvers.items():
             module_name = label.rsplit(".", 1)[0]
             module = next(m for m in _FACE_MODULES if m.__name__ == module_name)
@@ -181,64 +182,74 @@ class TestEveryFaceRoutesThroughTheOneResolver:
                 return Path("/sentinel")
 
             monkeypatch.setattr(module, "resolve_workset_dir_key", _tripwire)
-            assert resolver(Path("/ws"), _poisoned("leaf")) == Path("/sentinel")
+            assert resolver(Path("/ws"), _poisoned("leaf"), early=early) == Path("/sentinel")
             assert calls == [label], f"{label} does not route through the one resolver"
             monkeypatch.undo()
 
 
 class TestTheRouteItself:
-    def test_spec_default_formula_resolves_to_the_root_leaf(self):
+    def test_spec_default_formula_resolves_to_the_root_leaf(self, tmp_path):
         # The exact value the keyspec declares as the default for all five keys.
         assert resolve_workset_dir_key(
             Path("/ws"), f"@{WORKSET_PATH_REF}/boxes", "boxes", key="boxes",
+            early=_scope(tmp_path, {}),
         ) == Path("/ws/boxes")
 
-    def test_unset_takes_the_default_leaf(self):
+    def test_unset_takes_the_default_leaf(self, tmp_path):
         assert resolve_workset_dir_key(
             Path("/ws"), None, "workspace", key="workspaces",
+            early=_scope(tmp_path, {}),
         ) == Path("/ws/workspace")
 
-    def test_absolute_repoint_is_not_reanchored(self):
+    def test_absolute_repoint_is_not_reanchored(self, tmp_path):
         assert resolve_workset_dir_key(
             Path("/ws"), "/elsewhere/boxes", "boxes", key="boxes",
+            early=_scope(tmp_path, {}),
         ) == Path("/elsewhere/boxes")
 
-    def test_bare_relative_repoint_is_refused_naming_both_readings(self):
+    def test_bare_relative_repoint_is_refused_naming_both_readings(self, tmp_path):
         # ⚑ INVERTED, NOT DELETED, by [R147] (2026-08-29).  It used to assert
         # ``== Path("/ws/sub/dir")``.  The reason to set one of these keys at all is
         # to move the directory OFF the workset root, so anchoring there assumes the
         # very intent the user is overriding — and a wrong guess is not a confusing
         # message, it is data written to the wrong directory.
         with pytest.raises(SettingsError) as excinfo:
-            resolve_workset_dir_key(Path("/ws"), "sub/dir", "boxes", key="boxes")
+            resolve_workset_dir_key(
+                Path("/ws"), "sub/dir", "boxes", key="boxes", early=_scope(tmp_path, {}),
+            )
         message = str(excinfo.value)
         assert "/ws/sub/dir" in message
         assert str(Path.cwd() / "sub/dir") in message
         assert "workset.boxes" in message
         assert "/ws/workset.yaml" in message
 
-    def test_embedded_ref_resolves_mid_path(self):
+    def test_embedded_ref_resolves_mid_path(self, tmp_path):
         assert resolve_workset_dir_key(
             Path("/ws"), f"/mnt/@{{{WORKSET_PATH_REF}}}/b", "boxes", key="boxes",
+            early=_scope(tmp_path, {}),
         ) == Path("/mnt/ws/b")
 
-    def test_refusal_names_the_key(self):
+    def test_refusal_names_the_key(self, tmp_path):
         with pytest.raises(SettingsError, match=r"workset\.channelroot"):
             resolve_workset_dir_key(
                 Path("/ws"), "@config.data/c", "channels", key="channelroot",
+                early=_scope(tmp_path, {}),
             )
 
-    def test_refusal_names_the_only_available_reference(self):
+    def test_refusal_names_the_only_available_reference(self, tmp_path):
         with pytest.raises(SettingsError, match=WORKSET_PATH_REF):
             resolve_workset_dir_key(
                 Path("/ws"), "@config.data/c", "boxes", key="boxes",
+                early=_scope(tmp_path, {}),
             )
 
-    def test_resolving_has_no_side_effects_on_the_runtime_dir(self, monkeypatch):
+    def test_resolving_has_no_side_effects_on_the_runtime_dir(self, monkeypatch, tmp_path):
         # ⚑ Detection walks ancestors that may not be worksets; ``host_xdg_map`` would
         # mkdir an XDG_RUNTIME_DIR fallback here.  The route must use the
         # side-effect-free map instead.
         import kanibako.settings.paths as paths_mod
+
+        early = _scope(tmp_path, {})  # built before the probe, so it watches the route alone
 
         def _boom(*args, **kwargs):
             raise AssertionError("the no-snapshot route touched XDG_RUNTIME_DIR")
@@ -247,6 +258,7 @@ class TestTheRouteItself:
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
         assert resolve_workset_dir_key(
             Path("/ws"), "$XDG_DATA_HOME/b", "boxes", key="boxes",
+            early=early,
         ).is_absolute()
 
 
@@ -319,13 +331,13 @@ class TestSameSetRefs:
         doc = {"workset": {"channelroot": "@meta.workset.path/chan"}}
         assert resolve_workset_dir_key(
             tmp_path, "@workset.channelroot/chat", "chat", key="channels.chat",
-            standalone=False, workset_settings=doc,
+            standalone=False, workset_settings=doc, early=_scope(tmp_path, {}),
         ) == tmp_path / "chan" / "chat"
 
     def test_an_unset_referent_takes_its_declared_default_through_a_chain(self, tmp_path):
         assert resolve_workset_dir_key(
             tmp_path, "@workset.channels.chat/broadcast.md", "", key="channels.broadcast",
-            standalone=False,
+            standalone=False, early=_scope(tmp_path, {}),
         ) == tmp_path / "channels" / "chat" / "broadcast.md"
 
     def test_a_referent_reads_the_system_tier(self, tmp_path):
@@ -338,11 +350,14 @@ class TestSameSetRefs:
     def test_the_mode_picks_the_referents_default(self, standalone, leaf, tmp_path):
         assert resolve_workset_dir_key(
             tmp_path, "@workset.boxes/x", "", key="logs", standalone=standalone,
+            early=_scope(tmp_path, {}),
         ) == tmp_path / leaf / "x"
 
     def test_an_unknown_mode_refuses_a_mode_split_default(self, tmp_path):
         with pytest.raises(SettingsError) as excinfo:
-            resolve_workset_dir_key(tmp_path, "@workset.boxes/x", "", key="canon")
+            resolve_workset_dir_key(
+                tmp_path, "@workset.boxes/x", "", key="canon", early=_scope(tmp_path, {}),
+            )
         message = str(excinfo.value)
         assert "'@workset.boxes' is unset" in message
         assert "box_data" in message
@@ -355,7 +370,7 @@ class TestSameSetRefs:
         with pytest.raises(SettingsError, match="Cyclic @-reference: workset.channelroot"):
             resolve_workset_dir_key(
                 tmp_path, "@workset.channels.chat/x", "", key="channelroot",
-                standalone=False, workset_settings=doc,
+                standalone=False, workset_settings=doc, early=_scope(tmp_path, {}),
             )
 
     def test_a_null_referent_is_refused(self, tmp_path):
@@ -363,27 +378,34 @@ class TestSameSetRefs:
             resolve_workset_dir_key(
                 tmp_path, "@workset.channelroot/chat", "", key="channels.chat",
                 standalone=False, workset_settings={"workset": {"channelroot": None}},
+                early=_scope(tmp_path, {}),
             )
 
     def test_a_workset_key_outside_the_early_keys_is_refused(self, tmp_path):
         with pytest.raises(SettingsError, match="'@workset.kuid' cannot be resolved here"):
-            resolve_workset_dir_key(tmp_path, "@workset.kuid/x", "", key="logs")
+            resolve_workset_dir_key(
+                tmp_path, "@workset.kuid/x", "", key="logs", early=_scope(tmp_path, {}),
+            )
 
     def test_a_ref_into_a_later_set_gets_the_ordering_verdict(self, tmp_path):
         with pytest.raises(SettingsError) as excinfo:
             resolve_workset_dir_key(
-                tmp_path, "@meta.box.path", "", key="logs", standalone=True,
+                tmp_path, "@meta.box.path", "", key="logs", standalone=True, early=_scope(tmp_path, {}),
             )
         message = str(excinfo.value)
         assert 'system-design "Ordering rule"' in message
         assert str(tmp_path / "workset.yaml") in message
 
     def test_the_standalone_logs_default_is_the_box_store(self, tmp_path):
-        assert workset.resolve_workset_logs(tmp_path, None, standalone=True) == (
+        assert workset.resolve_workset_logs(
+            tmp_path, None, standalone=True, early=_scope(tmp_path, {}),
+        ) == (
             tmp_path / "box_data"
         )
         doc = {"workset": {"boxes": "@meta.workset.path/store"}}
-        assert workset.resolve_workset_logs(tmp_path, doc, standalone=True) == (
+        assert workset.resolve_workset_logs(
+            tmp_path, doc, standalone=True, early=_scope(tmp_path, {}),
+        ) == (
             tmp_path / "store"
         )
 

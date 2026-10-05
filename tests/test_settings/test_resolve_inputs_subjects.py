@@ -17,6 +17,7 @@ from kanibako.settings.keystore import KeyStore
 from kanibako.settings.paths import (
     BoxMode,
     WorksetSpec,
+    _early_scope,
     resolve_project,
     resolve_workset_project,
 )
@@ -137,7 +138,9 @@ class TestAWorkingSetResolvesAsItsBoxesDoMinusTheBox:
         assert _leaf(snap, "meta.workset.settings") == f"{root}/{WORKSET_META_FILE}"
         assert _leaf(snap, "workset.auth.path") == f"{root}/auth"
         assert _leaf(snap, "workset.channelroot") == str(
-            channels.workset_channels_at(named_ws.root).root
+            channels.workset_channels_at(
+            named_ws.root, early=_early_scope(std, BoxMode.named, named_ws.name),
+        ).root
         )
         for key in ("workset.boxes", "workset.vault_ro", "workset.logs", "workset.canon"):
             assert str(_leaf(snap, key)).startswith(root), key
@@ -233,7 +236,9 @@ class TestTheWorksetKeyedChannelHelpersAreTheOnlyCarriers:
     """The ``ProjectPaths`` forms delegate, so a box and its working set agree."""
 
     def test_channels_and_token(self, std, named_ws, named_box):
-        assert channels.workset_channels_at(named_ws.root) == (
+        assert channels.workset_channels_at(
+            named_ws.root, early=_early_scope(std, BoxMode.named, named_ws.name),
+        ) == (
             channels.workset_channel_paths(named_box, std)
         )
         assert channels.workset_token(BoxMode.named, named_ws.name) == (

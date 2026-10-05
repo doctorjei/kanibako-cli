@@ -84,7 +84,7 @@ from kanibako.settings.keyspace_manifest import (
     KEYSPACE_MANIFEST_FILENAME,
     manifest_doc,
 )
-from kanibako.settings.paths import BoxMode
+from kanibako.settings.paths import BoxMode, resolve_system_paths
 from kanibako.settings.settings_keyspace import (
     BIND_CATEGORIES,
     DECLARED_AGENT_LEAVES,
@@ -119,6 +119,7 @@ from kanibako.settings.settings_launch import (
 )
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
+from kanibako.settings.workset_dirkeys import EarlyScope, early_system
 
 # --------------------------------------------------------------------------- #
 # Fixtures of fact
@@ -341,6 +342,9 @@ class TestWorksetWorkspacesDefault:
         )
         assert resolve_workset_workspaces(
             tmp_path, load_workset_settings_doc(tmp_path),
+            early=EarlyScope(
+                early_system({}, resolve_system_paths({}, data_home=tmp_path, home=tmp_path)), "ws",
+            ),
         ) == tmp_path / "pods"
 
 
@@ -414,10 +418,15 @@ class TestShellTierDefaults:
 #: arm of every channel key at once.  The REPOINT half is a different question and is
 #: measured against real worksets in ``tests/test_channels/test_channel_keys.py``.
 _PROBE_ROOT = Path("/nonexistent/kanibako-conformance-probe")
+#: The early-system record the stub carries: an empty tier, so every channel formula answers
+#: from its declared default alone, never from a system file on this host.
+_PROBE_EARLY = early_system(
+    {}, resolve_system_paths({}, data_home=_PROBE_ROOT / "data", home=_PROBE_ROOT / "home"),
+)
 
 
 class _StubChannelPaths:
-    """The three ``StandardPaths`` attributes the channel derivations read.
+    """The four ``StandardPaths`` attributes the channel derivations read.
 
     Deliberately NOT a ``StandardPaths``: constructing one probes the host XDG
     environment, and this case is about a formula, not about the host.
@@ -426,6 +435,7 @@ class _StubChannelPaths:
     primary_workset = _PROBE_ROOT / "primary"
     channels_mailboxes = _PROBE_ROOT / "channels" / "mailboxes"
     channels_share = _PROBE_ROOT / "channels" / "share"
+    early_system = _PROBE_EARLY
 
 
 class _StubGroup:
