@@ -65,8 +65,8 @@ from kanibako.settings.paths import (
 from kanibako.agent_ref import GENERAL_SLOT, harness_of, parse_agent_address, with_harness
 from kanibako.targets import resolve_target
 from kanibako.utils import (
-    container_name_for, container_name_for_box_name, container_name_for_standalone_root,
-    short_hash, write_project_gitignore,
+    WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
+    container_name_for, container_name_for_box_name, short_hash, write_project_gitignore,
 )
 
 # ``box duplicate --to`` takes the mode enum's own tokens, never a hand-kept spelling list.
@@ -1463,7 +1463,9 @@ def run_list(args: argparse.Namespace) -> int:
             dir_name = settings_path.name
             proj_name = path_to_name.get(str(project_path), dir_name) if project_path else dir_name
             # ⚑ A running container is ``active`` even with no workspace folder.
-            running = container_name_for_box_name(proj_name) in running_containers
+            running = container_name_for_box_name(
+                proj_name, WORKSET_SEGMENT_PRIMARY,
+            ) in running_containers
             if project_path is None:
                 status = "active" if running else "unknown"
                 label = "(no breadcrumb)"
@@ -1496,7 +1498,7 @@ def run_list(args: argparse.Namespace) -> int:
     for ws_name, ws, project_list in ws_data:
         ws_items: list[tuple[str, str, str]] = []
         for proj_name, proj_status in project_list:
-            running = container_name_for_box_name(proj_name) in running_containers
+            running = container_name_for_box_name(proj_name, ws_name) in running_containers
             if proj_status == "missing":
                 display_status = "active" if running else proj_status
             elif running:
@@ -1544,7 +1546,7 @@ def run_list(args: argparse.Namespace) -> int:
     sa_items: list[tuple[str, str, str]] = []
     for box_name, root_str in sorted(standalone.items()):
         root = Path(root_str)
-        cname = container_name_for_standalone_root(root)
+        cname = container_name_for_box_name(box_name, WORKSET_SEGMENT_STANDALONE)
         running = cname in running_containers
         status = "active" if running else ("stopped" if root.is_dir() else "missing")
         if active_only and status != "active":

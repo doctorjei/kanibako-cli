@@ -59,6 +59,7 @@ from kanibako.settings.messages import (
 )
 from kanibako.settings.settings_resolve import UNSET, SettingsError, _Unset
 from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
+from kanibako.utils import WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
@@ -570,8 +571,20 @@ RESERVED_WORKSET_IDENTIFIERS = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_AL
 #: these two literals, and a second spelling of a path segment is a second carrier.
 WORKSET_PARTITION_TOKENS = frozenset({WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE})
 
+#: Reserved RENDERED SEGMENTS — the ``<W>`` a container name carries for a box that is
+#: not in a named workset (``utils.WORKSET_SEGMENT_PRIMARY`` / ``_STANDALONE``).  A named
+#: workset of this name would render the same ``<W>`` for every box of one name in both
+#: worksets, so the two would be ONE container.
+#: ⚑ IMPORTED from :mod:`kanibako.utils`, never re-spelled: that module owns the render,
+#: and a second copy of these two literals is a second carrier free to drift.
+WORKSET_RENDERED_SEGMENTS = frozenset({
+    WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
+})
+
 #: Every name a user may not give a workset — the refusal's subject, and its message.
-RESERVED_WORKSET_NAMES = RESERVED_WORKSET_IDENTIFIERS | WORKSET_PARTITION_TOKENS
+RESERVED_WORKSET_NAMES = (
+    RESERVED_WORKSET_IDENTIFIERS | WORKSET_PARTITION_TOKENS | WORKSET_RENDERED_SEGMENTS
+)
 
 
 def is_reserved_workset_name(name: str) -> bool:

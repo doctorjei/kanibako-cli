@@ -15,6 +15,7 @@ from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, GUEST_HOME
 from kanibako.targets.base import Mount
+from kanibako.utils import render_container_name
 
 logger = get_logger("helper_listener")
 
@@ -25,7 +26,10 @@ class HelperContext:
 
     runtime: ContainerRuntime
     image: str
-    container_name_prefix: str  # e.g. "kanibako-myapp" (project container name)
+    #: The DIRECTOR box's ``(<W>, <B>)`` identity pair.  A helper's container name is
+    #: rendered from it plus the request's structured ``helper_num`` — never appended to
+    #: a rendered box name, which would make the rendering the only carrier of identity.
+    container_name_segments: tuple[str, str]
     shell_path: Path      # director's shell_path (parent of helpers/)
     helpers_dir: Path     # absolute host path to helpers/ inside shell_path
     socket_path: Path     # host path to helper.sock
@@ -286,7 +290,9 @@ class HelperHub:
         else:
             helpers_dir_host = ctx.helpers_dir
 
-        container_name = f"{ctx.container_name_prefix}-helper-{helper_num}"
+        container_name = render_container_name(
+            *ctx.container_name_segments, helper_num=helper_num,
+        )
 
         mounts = _build_helper_mounts(ctx, helper_num, helpers_dir_host)
 
