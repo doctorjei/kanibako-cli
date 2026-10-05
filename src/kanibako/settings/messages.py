@@ -160,7 +160,7 @@ ERR_WORKSET_EARLY_SET_HEAD = (
                         "nothing was written: this value could not be read back.\n  %s")
                                                     # the reader's refusal
 # ⚑ The §2a bad-ENTRY report, ONE per file the command reads, and the only thing ``get``
-# says about them.  ``config.chain_bad_entries`` separates the two arms below.
+# says about them.  ``config.chain_reaches`` separates the two arms below.
 WARN_CONFIG_BAD_ENTRIES = "%s stores entries that are not keys (spec §0):\n  %s"
                                                     # the file path, the entries
 #: The OUT-of-chain refusal's tail — what it did not do, and the two cures.

@@ -147,13 +147,13 @@ class TestAnInChainBadEntryIsHard:
     def test_the_walk_terminates_on_a_loop_through_declared_keys(self):
         """The door's E3 probe refuses a cyclic value first, so the walk's own SEEN set is
         pinned on the function: a two-key loop that reaches no bad entry ends empty."""
-        from kanibako.settings.config import chain_bad_entries
+        from kanibako.settings.config import chain_reaches
 
         stored = {"box.canon": "@box.shell/x", "box.shell": "@box.canon/y"}.get
-        assert chain_bad_entries("@box.canon/z", key="box.shell", bad=["box.bogus"], stored=stored) == []
-        assert chain_bad_entries("@box.canon/z", key="box.shell", bad=["box.shell"], stored=stored) == ["box.shell"]
+        assert chain_reaches("@box.canon/z", key="box.shell", targets=["box.bogus"], stored=stored) == []
+        assert chain_reaches("@box.canon/z", key="box.shell", targets=["box.shell"], stored=stored) == ["box.shell"]
         stored2 = {"box.canon": "@box.bogus/x"}.get
-        assert chain_bad_entries("@box.canon/z", key="box.shell", bad=["box.bogus"], stored=stored2) == ["box.bogus"]
+        assert chain_reaches("@box.canon/z", key="box.shell", targets=["box.bogus"], stored=stored2) == ["box.bogus"]
 
 
 class TestAnEndpointHasNoChain:
@@ -194,13 +194,13 @@ class TestAnEndpointHasNoChain:
         assert msg == f"Set pref.agent.claude.endpoint={self._EP}", msg
 
     def test_the_walk_skips_text_and_still_follows_other_refs(self):
-        from kanibako.settings.config import chain_bad_entries
+        from kanibako.settings.config import chain_reaches
 
         stored = {"agent.default.endpoint": "https://u:k@box.bogus/v1"}.get
         bad = ["box.bogus"]
-        assert chain_bad_entries(self._EP, ["host.invalid"], key="endpoint", stored=stored) == []
-        assert chain_bad_entries("@agent.default.endpoint", bad, key="box.canon", stored=stored) == []
-        assert chain_bad_entries("@box.bogus/x", bad, key="box.canon", stored=stored) == bad
+        assert chain_reaches(self._EP, ["host.invalid"], key="endpoint", stored=stored) == []
+        assert chain_reaches("@agent.default.endpoint", bad, key="box.canon", stored=stored) == []
+        assert chain_reaches("@box.bogus/x", bad, key="box.canon", stored=stored) == bad
 
 
 class TestGetWarnsOnTheSameEntries:
