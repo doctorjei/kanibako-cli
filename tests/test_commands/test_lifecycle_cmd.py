@@ -414,70 +414,46 @@ class TestLockGuard:
 
 
 # ---------------------------------------------------------------------------
-# F-7: cross-kind (box-vs-workset) name policy on DEFAULT-mode rename edges
+# F-7: per-kind (box-vs-workset) name policy on DEFAULT-mode rename edges
 # ---------------------------------------------------------------------------
 
 class TestConvertMoveCrossKindName:
-    """``box convert/move --default --name <X>`` enforces the SAME per-kind name
-    policy as ``create`` (``system-design-1.8.0.md`` § "Detection & import",
-    "Cross-kind name semantics"; Jei 2026-07-08).
-
-    A ``--name`` that lands a box in primary/default mode and collides with a
-    WORKSET name shadows that workset in bare-name resolution, so it REFUSES
-    unless ``--force``; a SAME-KIND (another primary box) collision refuses
-    UNCONDITIONALLY.  Pre-fix these rename edges ignored ``--name`` and routed
-    through ``assign_primary_box_name`` (basename auto-suffix only), never
-    consulting the cross-kind arm.
+    """``box convert/move --default --name <X>`` follows the SAME per-kind name
+    policy as ``create`` (``system-design-1.8.0.md`` § "Detection & import"):
+    box and workset names are separate namespaces, so a WORKSET's name is
+    taken freely, while a SAME-KIND (another primary box) collision refuses.
     """
 
-    def test_convert_default_name_collides_workset_refuses(self, env):
-        """t1: convert --default --name <workset> without --force → clean rc=1,
-        teaches --force, and mints NO box (refused before any copy)."""
+    def test_convert_default_name_shared_with_a_workset_succeeds(
+        self, env, caplog, monkeypatch,
+    ):
+        """t1: convert --default --name <workset> needs no --force (the confirmation
+        is answered, not forced); both names coexist, a bare resolve hits the BOX,
+        and nothing warns."""
         config, std, tmp_home = env
         create_workset("common", tmp_home / "ws_root", std)
         pdir = _standalone(env)  # standalone source → true mint path
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda _msg: None)
 
-        import io
-        from contextlib import redirect_stderr
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        with caplog.at_level("WARNING"):
             rc = run_convert(
                 _convert_args(pdir, to_default=True, name="common", force=False)
             )
-        assert rc == 1
-        assert "--force" in buf.getvalue()
-        # No primary box minted under the workset name; workset intact; source
-        # still standalone (nothing copied/registered on refusal).
-        assert "common" not in load_primary_boxes(std.primary_workset)
-        assert not (std.boxes / "common").exists()
-        from kanibako.project import registry_store
-        assert "common" in registry_store.load_section(std.registry, "worksets")
-        assert (pdir / "box_data").is_dir()
-
-    def test_convert_default_name_collides_workset_force_shadows(self, env):
-        """t2: with --force the box takes the workset name (deliberate shadow);
-        both coexist and a bare resolve now hits the BOX."""
-        config, std, tmp_home = env
-        create_workset("common", tmp_home / "ws_root", std)
-        pdir = _standalone(env)
-
-        rc = run_convert(
-            _convert_args(pdir, to_default=True, name="common", force=True)
-        )
         assert rc == 0
-        # Box registered under the shadowed name; workset still registered.
         assert "common" in load_primary_boxes(std.primary_workset)
         from kanibako.project import registry_store
         assert "common" in registry_store.load_section(std.registry, "worksets")
-        # Bare resolution is deterministic — the primary box wins (shadow).
         from pathlib import Path
 
         from kanibako.settings.paths import resolve_name
-        _resolved, kind = resolve_name(
-            std.registry, "common", cwd=Path(tmp_home),
-            primary_workset=std.primary_workset,
-        )
+        with caplog.at_level("WARNING"):
+            _resolved, kind = resolve_name(
+                std.registry, "common", cwd=Path(tmp_home),
+                primary_workset=std.primary_workset,
+            )
         assert kind == "project"
+        assert [r.getMessage() for r in caplog.records
+                if r.levelname == "WARNING" and "shadow" in r.getMessage()] == []
 
     def test_convert_default_name_collides_primary_box_force_still_refuses(
         self, env,
@@ -502,31 +478,25 @@ class TestConvertMoveCrossKindName:
         assert load_primary_boxes(std.primary_workset).get("taken") == str(taken_dir)
         assert (pdir / "box_data").is_dir()
 
-    def test_move_default_name_collides_workset_refuses(self, env):
-        """t4: box move --default --name <workset> mirror of t1 — refuses without
-        --force and moves no files."""
+    def test_move_default_name_shared_with_a_workset_succeeds(self, env, monkeypatch):
+        """t4: box move --default --name <workset> mirror of t1 — the move lands
+        under the workset's name (the confirmation is answered, not forced)."""
         config, std, tmp_home = env
         create_workset("common", tmp_home / "ws_root", std)
         pdir = _default(env, name="mvsrc")
         dest = tmp_home / "mv_dest"
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda _msg: None)
 
-        import io
-        from contextlib import redirect_stderr
-        buf = io.StringIO()
-        with redirect_stderr(buf):
-            rc = run_move(
-                _move_args(pdir, dest, to_default=True, name="common", force=False)
-            )
-        assert rc == 1
-        assert "--force" in buf.getvalue()
-        # No copy performed (refused up front); dest absent, source intact.
-        assert not dest.exists()
-        assert pdir.is_dir()
-        assert "common" not in load_primary_boxes(std.primary_workset)
+        rc = run_move(
+            _move_args(pdir, dest, to_default=True, name="common", force=False)
+        )
+        assert rc == 0
+        assert dest.is_dir()
+        assert "common" in load_primary_boxes(std.primary_workset)
 
     def test_convert_named_workset_name_equals_global_workset_succeeds(self, env):
-        """t5: the cross-kind guard must NOT reach a NAMED-workset target — a
-        project named the same as a global workset still converts."""
+        """t5: a NAMED-workset target named the same as a global workset
+        still converts."""
         config, std, tmp_home = env
         create_workset("tw", tmp_home / "tw_root", std)
         create_workset("gname", tmp_home / "g_root", std)

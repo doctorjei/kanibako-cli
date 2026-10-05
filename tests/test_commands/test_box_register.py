@@ -32,7 +32,7 @@ def _create_args(path, **over):
     ns = argparse.Namespace(
         path=str(path), standalone=False, no_vault=True,
         name=None, image=None, agent=None, allow_home=False,
-        private=False, force=False, register=False,
+        private=False, register=False,
     )
     for k, v in over.items():
         setattr(ns, k, v)
@@ -45,7 +45,7 @@ _A_KUID = "pznvh"
 
 
 def _register_args(target, **over):
-    ns = argparse.Namespace(target=str(target), box=None, force=False)
+    ns = argparse.Namespace(target=str(target), box=None)
     for k, v in over.items():
         setattr(ns, k, v)
     return ns

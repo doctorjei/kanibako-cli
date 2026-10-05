@@ -173,11 +173,6 @@ def build_parser() -> argparse.ArgumentParser:
              "sharing so the host's OAuth token is never seeded into it.",
     )
     create_p.add_argument(
-        "--force", action="store_true",
-        help="Create even if --name is already used by a workset (the box "
-             "shadows that workset in bare-name resolution)",
-    )
-    create_p.add_argument(
         "--recover", action="store_true",
         help="Finish an interrupted 'create' on this path instead of starting a "
              "new box; it keeps the name and settings the first attempt chose",
@@ -361,8 +356,6 @@ def _ensure_initialized() -> None:
         # Create data directories.
         # ⚑ NO SET-VALUES, spelled as the empty mapping: the file was just written EMPTY two
         # lines above, so the Layer-1 foundation here is the DECLARED DEFAULTS and nothing else.
-        # It used to read ``KanibakoConfig().config_paths``, which was the same ``{}`` wearing a
-        # settings object's name.
         data_home = xdg("XDG_DATA_HOME", ".local/share")
         sys_paths = resolve_system_paths(
             {}, data_home=data_home, home=Path.home(),
@@ -371,13 +364,8 @@ def _ensure_initialized() -> None:
         (data_path / "containers").mkdir(parents=True, exist_ok=True)
         sys_paths["_primary_boxes"].mkdir(parents=True, exist_ok=True)
 
-        # NOTE (block #3a, JC-3): the channel type-root skeleton is NO LONGER
-        # pre-created here.  ``channelroot`` moved to Layer 2 (a ``system.*`` settings
-        # key), and the launch path already creates the full skeleton — the L7
-        # guarantee-create for the type-root bind sources + ``_seed_channel_files``
-        # for the chat logs (start.py).  No host-side pre-launch consumer of the
-        # skeleton exists (audit: every reader is on the box-launch path), so the
-        # setup/init pre-creation was redundant and is dropped.
+        # The channel type-root skeleton is not pre-created here: the launch path creates
+        # it (start.py), and no host-side pre-launch consumer of it exists.
 
         # Create agents directory and generate default per-agent settings files.
         # Each agent's settings live INSIDE its store dir as

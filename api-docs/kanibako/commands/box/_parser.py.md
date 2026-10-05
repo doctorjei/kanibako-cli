@@ -12,7 +12,7 @@ _MODE_CHOICES = [m.value for m in BoxMode]
 _SHOW_ALL_HELP = 'Include every box, not just the running ones'
 _MISSING_WORKSPACE = 'missing workspace'
 _CREATE_SHAPING_FLAGS = ('name', 'image', 'agent', 'private', 'no_vault')
-_CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'force', 'register')
+_CREATE_SUBJECT_FLAGS = ('path', 'standalone', 'allow_home', 'register')
 _SHAPING_SET_CURE = {'image': ('box.image=<value>',), 'agent': ('pref.system.agent=<value>',), 'private': ('box.auth.global_enabled=false', 'box.auth.workset_enabled=false'), 'no_vault': ('box.enable_vault=false',)}
 ```
 
@@ -55,7 +55,7 @@ def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None
 def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -> int
 def _resolve_standalone_target(std, config, target: str) -> tuple[str | None, Path | None]
 def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int
-def _readopt_deregistered(std, name: str, entry: dict, *, force: bool) -> int
+def _readopt_deregistered(std, name: str, entry: dict) -> int
 def _format_credential_age(creds_path: Path) -> str
 def _check_container_running(proj) -> tuple[bool, str]
 def _resolve_config_subject(std, config, project_dir: str | None)

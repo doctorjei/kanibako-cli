@@ -53,7 +53,7 @@ def report_retained_vaults(root: Path, retained: Iterable[Path]) -> None
 def is_reserved_workset_name(name: str) -> bool
 def refuse_retired_workset_identity(root: Path) -> None
 def is_workset_skeleton(root: Path) -> bool
-def create_workset(name: str, root: Path, std: StandardPaths, force: bool=False) -> Workset
+def create_workset(name: str, root: Path, std: StandardPaths) -> Workset
 def load_workset(root: Path, name: str) -> Workset
 def list_worksets(std: StandardPaths) -> dict[str, Path]
 def default_workset(std: StandardPaths) -> Workset

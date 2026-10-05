@@ -128,20 +128,6 @@ class TestCreateRefusesNamedBoxWorkspace:
         assert "already the workspace of named box 'extbox'" in capsys.readouterr().err
         assert load_primary_boxes(std.primary_workset) == {}
 
-    def test_force_does_not_override_the_path(
-        self, config_file, tmp_home, credentials_dir, capsys
-    ):
-        """``--force`` overrides the CROSS-KIND name check only (spec § Detection & import)."""
-        from kanibako.commands.box._parser import run_create
-        from kanibako.settings.paths import load_primary_boxes
-
-        _config, std = _std(config_file)
-        member = _connected_member(tmp_home, std)
-
-        assert run_create(_create_args(member, force=True)) == 1
-        assert "--force does not override this" in capsys.readouterr().err
-        assert load_primary_boxes(std.primary_workset) == {}
-
     def test_a_neighbour_path_is_not_refused(
         self, config_file, tmp_home, credentials_dir, capsys
     ):
@@ -419,7 +405,7 @@ class TestInterruptedCreateBoundary:
         proj = self._half_created_standalone(std, config, root)
 
         assert run_register(
-            argparse.Namespace(target=str(root), box=None, force=False)
+            argparse.Namespace(target=str(root), box=None)
         ) == 1
         err = capsys.readouterr().err
         assert (f"kanibako create --standalone --recover --register {root}"

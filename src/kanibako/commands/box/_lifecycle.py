@@ -328,10 +328,8 @@ def _default_state_from_meta(
     shell_path, vault_ro, vault_rw = _primary_box_paths(std, metadata_path, name)
     # ⚑ The GROUP is the PRIMARY workset — the same one ``resolve_project`` derives — so
     # this fallback resolves ``box.enable_vault`` through the SAME CASCADE the launch path
-    # uses.  Passing ``None`` here made a ``remap`` answer differently depending only on
-    # whether the workspace dir was still on disk; reading the two tiers DIRECTLY (which
-    # this did until 2026-08-29) made it answer differently from ``resolve_project``
-    # whenever a base- or system-tier value existed, which is the same defect one tier up.
+    # uses, so a ``remap`` answers as ``resolve_project`` does whether or not the
+    # workspace dir is still on disk.
     box_tier, workset_tier = _box_settings_files(
         BoxMode.primary, metadata_path, _default_project_group(std),
     )
@@ -789,7 +787,7 @@ def _validate(
                 "Move it aside, or choose another name."
             )
 
-    # --- cross-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
+    # --- same-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
     # ⚑ Checked UP FRONT so a name refusal costs no file copy.
     requested_name = spec.name or ""
     # The reuse-in-place edges, whose teardown is skipped: the box keeps its own vault.
@@ -812,7 +810,6 @@ def _validate(
         if mint is not None and not _same_box_name(mint, own_name):
             check_primary_box_name_free(
                 std.primary_workset, std.registry, mint, str(landing_ws),
-                force=force,
             )
 
     # --- a disabled vault that still holds data would be left behind (Q64) ---
@@ -837,7 +834,6 @@ def _validate(
         "relocating": relocating,
         "no_owner_change": no_owner_change,
         "new_name": new_name,
-        "force": force,
         # ⚑ The EXPLICIT --name (empty when absent) — distinct from ``new_name``, which
         # defaults to the source name. Standalone needs the distinction (R1/R3).
         "requested_name": requested_name,
@@ -898,7 +894,6 @@ def _run_steps(
     relocating: bool = plan["relocating"]
     new_name: str = plan["new_name"]
     requested_name: str = plan["requested_name"]
-    force: bool = plan["force"]
 
     # --- STEP 2 — Move files (only when relocating a real workspace tree) ---
     records_only: bool = spec.records_only
@@ -967,7 +962,6 @@ def _run_steps(
         relocating=relocating,
         dest=dest,
         requested_name=requested_name,
-        force=force,
     )
 
     # --- STEP 4b — Relocate this box's OWN channel partition (best-effort, D-M10).
@@ -1032,7 +1026,6 @@ def _apply_ownership_and_markers(
     relocating: bool,
     dest: Path | None,
     requested_name: str = "",
-    force: bool = False,
 ) -> ProjectState:
     """Re-root metadata/shell/vault into the target owner + rewrite markers."""
     if target_mode == BoxMode.named:
@@ -1056,7 +1049,7 @@ def _apply_ownership_and_markers(
     return _to_default(
         state, std, config, unwind,
         new_name=new_name, new_workspace=new_workspace,
-        requested_name=requested_name, force=force,
+        requested_name=requested_name,
     )
 
 
@@ -1632,7 +1625,6 @@ def _to_default(
     new_name: str,
     new_workspace: Path,
     requested_name: str = "",
-    force: bool = False,
 ) -> ProjectState:
     """Convert/relocate the project so its owner becomes the default workset."""
     # ⚑ ORDER: decide the mint BEFORE the reuse-unregister below, or the same-path reuse
@@ -1659,7 +1651,7 @@ def _to_default(
     # Honored --name goes through the per-kind guard; else the auto-suffix path.
     if mint is not None:
         register_primary_box_name(
-            std.primary_workset, std.registry, mint, new_workspace, force=force,
+            std.primary_workset, std.registry, mint, new_workspace,
         )
         project_name = mint
     else:

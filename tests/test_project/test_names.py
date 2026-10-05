@@ -180,13 +180,13 @@ class TestResolveName:
         assert kind == "project"
         assert path == str(ws)
 
-    def test_shadowed_bare_name_returns_box_and_warns(
+    def test_a_name_both_kinds_hold_resolves_to_the_box_without_a_warning(
         self, registry: Path, tmp_path: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Cross-kind shadow (per-kind name policy): a bare name that is BOTH a
-        primary box and a workset resolves to the BOX (step 2 precedes step 3)
-        and emits a ONE-LINE warning naming the shadowed workset."""
+        """Per-kind namespaces (spec § Detection & import): a bare name that is BOTH a
+        primary box and a workset resolves to the BOX (step 2 precedes step 3), and
+        nothing is said — the workset's noun-scoped commands reach it."""
         primary = tmp_path / "primary_workset"
         ws = tmp_path / "proj"
         ws.mkdir()
@@ -196,23 +196,6 @@ class TestResolveName:
         with caplog.at_level("WARNING"):
             path, kind = resolve_name(registry, "proj", primary_workset=primary)
         assert (path, kind) == (str(ws), "project")
-        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-        assert len(warnings) == 1, warnings
-        assert "proj" in warnings[0] and "workset" in warnings[0]
-
-    def test_unshadowed_primary_resolve_does_not_warn(
-        self, registry: Path, tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """A primary box with NO same-named workset resolves silently (the warn
-        fires ONLY on a live collision)."""
-        primary = tmp_path / "primary_workset"
-        ws = tmp_path / "solo"
-        ws.mkdir()
-        _register_primary_box(primary, "solo", ws)
-
-        with caplog.at_level("WARNING"):
-            resolve_name(registry, "solo", primary_workset=primary)
         assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
     def test_unknown_name_raises(self, registry: Path) -> None:
@@ -648,38 +631,28 @@ class TestPrimaryBoxNameApi:
         primary = tmp_path / "primary_workset"
         assert assign_primary_box_name(primary, registry, "/proj/myapp") == "myapp2"
 
-    def test_register_refuses_workset_name_collision_unless_forced(
+    def test_register_takes_a_workset_name(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """Cross-kind (per-kind name policy, Jei 2026-07-08): an EXPLICIT primary
-        box name that collides with a WORKSET name refuses UNLESS ``force`` — and
-        the refusal teaches ``--force``.  With ``force=True`` it registers."""
+        """Per-kind namespaces: an EXPLICIT primary box name a WORKSET already holds
+        registers (spec § Detection & import)."""
         from kanibako.settings.paths import load_primary_boxes, register_primary_box_name
 
         register_name(registry, "myapp", "/ws", section="worksets")
         primary = tmp_path / "primary_workset"
-        with pytest.raises(ProjectError, match="workset"):
-            register_primary_box_name(primary, registry, "myapp", "/proj/myapp")
-
-        # --force bypasses the CROSS-KIND refusal → the box registers.
-        register_primary_box_name(
-            primary, registry, "myapp", "/proj/myapp", force=True,
-        )
+        register_primary_box_name(primary, registry, "myapp", "/proj/myapp")
         assert load_primary_boxes(primary)["myapp"] == "/proj/myapp"
 
-    def test_force_never_bypasses_same_kind_primary_collision(
+    def test_same_kind_primary_collision_refuses(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """SAME-kind (two primary boxes, one name) is UNCONDITIONAL — ``force``
-        never bypasses it."""
+        """SAME-kind (two primary boxes, one name) refuses."""
         from kanibako.settings.paths import register_primary_box_name
 
         primary = tmp_path / "primary_workset"
         register_primary_box_name(primary, registry, "myapp", "/a/myapp")
         with pytest.raises(ProjectError, match="already registered"):
-            register_primary_box_name(
-                primary, registry, "myapp", "/b/myapp", force=True,
-            )
+            register_primary_box_name(primary, registry, "myapp", "/b/myapp")
 
     def test_pick_skips_existing_box_dir(
         self, registry: Path, tmp_path: Path
@@ -1462,7 +1435,7 @@ class TestRmPurgeDeletesTheBoxLogsByName:
         assert run_rm(argparse.Namespace(target="project", purge=False, force=True)) == 0
         assert "project" in load_deregistered(std.registry)
 
-        assert run_register(argparse.Namespace(target="PROJECT", box=None, force=False)) == 0
+        assert run_register(argparse.Namespace(target="PROJECT", box=None)) == 0
 
         # The membership entry, the home it names, and the log names all agree on
         # the STORED spelling; the typed variant is written nowhere.

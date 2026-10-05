@@ -751,41 +751,11 @@ class TestRunCreatePreWriteRootShape:
 
 
 class TestRunCreateCrossKindName:
-    """`box create --name <workset-name>` (per-kind name policy, Jei 2026-07-08).
+    """`box create --name <workset-name>`: box and workset names are separate
+    namespaces (spec § Detection & import), so only a same-kind name refuses."""
 
-    Box and workset names are SEPARATE namespaces, but a bare name shared across
-    kinds resolves to the box (shadowing the workset).  An explicit --name that
-    collides with a WORKSET name refuses UNLESS --force; the refusal is an
-    up-front CLI check (clean rc=1) BEFORE the box dir + seed materialize.
-    """
-
-    def test_name_collides_with_workset_refuses_cleanly(
-        self, config_file, tmp_home, credentials_dir, monkeypatch
-    ):
-        from kanibako.commands.box._parser import run_create
-        from kanibako.settings.config import load_config
-        from kanibako.project.names import register_name
-        from kanibako.settings.paths import load_std_paths
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        register_name(std.registry, "common", str(tmp_home / "ws"), section="worksets")
-
-        seed_called = {"v": False}
-        monkeypatch.setattr(
-            "kanibako.commands.start.seed_new_box",
-            lambda std, config, proj, **kw: seed_called.__setitem__("v", True),
-        )
-
-        rc = run_create(_create_args(tmp_home / "project", name="common"))
-        assert rc == 1
-        # Refused up front: nothing materialized or seeded.
-        assert seed_called["v"] is False
-        assert not std.boxes.exists() or not any(std.boxes.iterdir())
-        assert _primary_names(std) == {}
-
-    def test_name_collides_with_workset_force_creates(
-        self, config_file, tmp_home, credentials_dir, monkeypatch
+    def test_name_shared_with_a_workset_creates_without_a_warning(
+        self, config_file, tmp_home, credentials_dir, monkeypatch, capsys, caplog
     ):
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.config import load_config
@@ -801,16 +771,18 @@ class TestRunCreateCrossKindName:
             lambda std, config, proj, **kw: None,
         )
 
-        rc = run_create(_create_args(tmp_home / "project", name="common", force=True))
+        with caplog.at_level("WARNING"):
+            rc = run_create(_create_args(tmp_home / "project", name="common"))
         assert rc == 0
-        # --force let the box take the shadowed name → registered in membership.
         assert "common" in _primary_names(std)
+        assert "workset" not in capsys.readouterr().err
+        assert [r.getMessage() for r in caplog.records
+                if r.levelname == "WARNING" and "shadow" in r.getMessage()] == []
 
-    def test_name_collides_with_primary_box_refuses_even_with_force(
+    def test_name_collides_with_primary_box_refuses(
         self, config_file, tmp_home, credentials_dir, monkeypatch
     ):
-        """SAME-KIND: a --name already owned by another PRIMARY box refuses even
-        with --force (per-kind uniqueness is unconditional)."""
+        """SAME-KIND: a --name already owned by another PRIMARY box refuses."""
         from kanibako.commands.box._parser import run_create
         from kanibako.settings.config import load_config
         from kanibako.settings.paths import load_std_paths, register_primary_box_name
@@ -826,7 +798,7 @@ class TestRunCreateCrossKindName:
             lambda std, config, proj, **kw: None,
         )
 
-        rc = run_create(_create_args(tmp_home / "project", name="common", force=True))
+        rc = run_create(_create_args(tmp_home / "project", name="common"))
         assert rc == 1
 
 

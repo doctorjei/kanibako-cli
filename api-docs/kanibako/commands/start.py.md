@@ -147,7 +147,7 @@ def _create_designation(probe) -> 'tuple[str, str]'
 def _write_create_entry(std, proj) -> None
 def _clear_create_entry(std, proj) -> None
 def _pending_create_entry(std, proj) -> dict | None
-def _register_new_box(std, proj, *, force: bool=False) -> None
+def _register_new_box(std, proj) -> None
 def _synced_uptodate(src: Path, dest: Path) -> bool
 def _apply_shell_copy(src: Path, dest: Path, *, label: str, name: str, host_src: str, logger, if_absent: bool, skip_if: 'Callable[[Path, Path], bool] | None'=None) -> None
 def _host_copy_dest(box_dest: str, box_root: Path, *, label: str, name: str, logger) -> Path | None
