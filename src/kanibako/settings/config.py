@@ -12,7 +12,7 @@ from kanibako.errors import ConfigError
 from kanibako.settings.bootstrap import (BOXES_PATH, CONFIG_FILE, CONFIG_PATH_DEFAULTS,
                                          SITE_CONFIG_DIR, SITE_CONFIG_FILE,
                                          SITE_SETTINGS_FILE, SYSTEM_PATH_DEFAULTS)
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc, refuse_scalar_sections
 from kanibako.settings.messages import (ERR_CONFIG_LAYER1_SETTINGS, ERR_CONFIG_LAYER1_TABLE,
                                         ERR_CONFIG_LAYER1_UNDECLARED,
                                         ERR_CONFIG_NULL_PATH_CURE,
@@ -508,22 +508,30 @@ def carried_box_settings(box_tier: Path) -> dict:
 
 
 def read_workset_kuid(path: Path) -> str:
-    """The stored ``workset.kuid`` at *path*, defaulting to :data:`kanibako.kuid.SENTINEL`."""
+    """The stored ``workset.kuid`` at *path*, defaulting to :data:`kanibako.kuid.SENTINEL`.
+
+    A ``workset`` holding a non-table value raises :class:`ConfigError`.
+    """
     from kanibako import kuid
 
     if not path.exists():
         return kuid.SENTINEL
     data = load_doc(path)
-    value = (data.get("workset") or {}).get("kuid", kuid.SENTINEL)
+    refuse_scalar_sections(path, ("workset",), data=data)
+    value = data.get("workset", {}).get("kuid", kuid.SENTINEL)
     return str(value)
 
 
 def read_workset_skip_kuid_check(path: Path) -> bool:
-    """The stored ``workset.skip_kuid_check`` bool at *path*, defaulting to ``True`` (checking OFF)."""
+    """The stored ``workset.skip_kuid_check`` bool at *path*, defaulting to ``True`` (checking OFF).
+
+    A ``workset`` holding a non-table value raises :class:`ConfigError`.
+    """
     if not path.exists():
         return True
     data = load_doc(path)
-    return bool((data.get("workset") or {}).get("skip_kuid_check", True))
+    refuse_scalar_sections(path, ("workset",), data=data)
+    return bool(data.get("workset", {}).get("skip_kuid_check", True))
 
 
 def _split_config_key(flat_key: str) -> tuple[str, str]:
