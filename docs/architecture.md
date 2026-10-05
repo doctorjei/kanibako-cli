@@ -10,8 +10,7 @@ subpackage (`settings/`, `runtime/`, `launch/`, `channels/`, `vscode/`); the
 cross-cutting entry points and utilities stay at the package root.
 
 The table is a map for finding your way in, not an inventory, and its coverage
-is uneven: `settings/store_collapse.py` and `persona_store.py` are both central
-and both missing, so an absence here says nothing about a module's weight. Every
+is uneven, so an absence here says nothing about a module's weight. Every
 module's role lives in its own docstring, beside the code; these rows are finding
 aids, not the authority.
 
