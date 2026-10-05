@@ -57,6 +57,7 @@ def refuses_null_path_key(canonical: str) -> bool
 def usable_box_store_value(value: object) -> bool
 def refuses_box_store_value(canonical: str, value: object) -> bool
 def chain_reaches(value: object, targets: Iterable[str], *, key: str, stored: 'Callable[[str], object]') -> list[str]
+def reaches_identity(value: object, owner: str, mode: 'BoxMode', *, key: str, stored: 'Callable[[str], object]') -> bool
 def refuses_null_box_scalar(canonical: str) -> bool
 def system_path_ref_error(canonical: str, value: 'str | None') -> 'str | None'
 def ref_order_error(canonical: str, value: 'str | None') -> 'str | None'
@@ -68,6 +69,7 @@ def _system_settings_path(global_path: Path) -> Path | None
 def _split_config_key(flat_key: str) -> tuple[str, str]
 def _flatten_leaves(data: dict, prefix: str='') -> dict[str, object]
 def _flatten_dotted(data: dict, prefix: str='') -> dict[str, str]
+def _agent_of(key: str) -> str
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None
 def _resolution_set(dotted: str) -> 'str | None'
 ```

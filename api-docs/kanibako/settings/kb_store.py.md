@@ -11,6 +11,8 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/kb_store.py.md`.
 SCOPE_CONTAINMENT: tuple[str, ...] = ('system', 'agent', 'workset', 'box')
 RESOLUTION_ORDER: tuple[str, ...] = ('config', 'meta.runtime', 'meta.agent', 'meta.workset', 'base', 'system', 'agent', 'workset', 'meta.box', 'box')
 BINDING_DERIVATIONS_NODE: Final[str] = 'binding_derivations'
+IDENTITY_ANCHORS: Final[dict[str, dict[str, tuple[str, ...]]]] = {'workset': {'primary': ('meta.workset.path', 'meta.workset.name'), 'named': ('meta.workset.path', 'meta.workset.name'), 'standalone': ('meta.workset.path',)}, 'partition': {'primary': ('meta.workset.name',), 'named': ('meta.workset.name',), 'standalone': ('meta.workset.name',)}, 'box': {'primary': ('meta.box.name',), 'named': ('meta.box.name',), 'standalone': ('meta.box.name',)}, 'agent': {'primary': ('meta.agent.<agent>.name',), 'named': ('meta.agent.<agent>.name',), 'standalone': ('meta.agent.<agent>.name',)}}
+IDENTITY_PAIRED: Final[dict[str, str]] = {'box': 'workset'}
 __MISSING__: __Missing__ = __Missing__()
 ```
 
