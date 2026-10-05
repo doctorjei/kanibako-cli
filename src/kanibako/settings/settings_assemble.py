@@ -1090,8 +1090,8 @@ def _under_pref(parts: tuple[str, ...]) -> bool:
 def _pref_agent_segment(parts: tuple[str, ...]) -> str | None:
     """The agent segment *parts* sits under — ``zippity`` for ``(pref, agent, zippity, …)``.
 
-    ``None`` for every other key path. The agent name is one segment (§2d), so both bind-map
-    spellings land on index 2: a terminal category ``pref.agent.zippity.seeded`` and a
+    ``None`` for every other key path. The name is ONE segment (§2d), so both bind-map
+    spellings land on index 2: the terminal category ``pref.agent.zippity.seeded`` and the
     ``bindings`` arm ``pref.agent.zippity.bindings.ro``.
     """
     if parts[:2] != (PREF_ROOT, "agent") or len(parts) < 3:
@@ -1231,10 +1231,10 @@ def parse_bind_map(
     :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`. Every other check
     still runs here, on the WHOLE map.
 
-    ⚑ *pref_agent* is the agent segment this map sits under, and it is consulted ONLY when
-    *defer_shape* is False: with no consumer to defer to, this parse is the last reader, so it
-    judges the agent name itself — before the entry shape, since a name that is the entry's only
-    defect must not be reported as a shape fault.
+    ⚑ *pref_agent* is the agent segment this map sits under. It is consulted ONLY when
+    *defer_shape* is False: with no consumer to defer to, this parse is the last reader.
+    Why that check outranks the shape is stated by the judge itself,
+    :func:`~kanibako.settings.settings_prefs.agent_segment_reason`.
     """
     if not isinstance(raw, dict):
         raise SettingsError(

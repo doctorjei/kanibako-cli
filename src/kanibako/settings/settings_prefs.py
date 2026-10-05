@@ -333,9 +333,9 @@ def agent_segment_reason(
     one through :func:`allowlist_reason` (a ``pref:`` table is parsed without ``valid_agents``, so
     its verdict waits for :func:`apply_prefs`) and the NON-DEFERRED one, the settings tier's own
     bind-map parse, which has no such consumer to wait for. One judgment means one refusal, so the
-    two cannot drift into two messages for one defect — and the non-deferred refusal has to come
-    FIRST there, since a shape verdict about an entry whose only defect is its agent name sends
-    the user to reshape the wrong thing.
+    two cannot drift into two messages for one defect — and it must outrank the shape there, since
+    a shape verdict about an entry whose only defect is its agent name sends the user to reshape
+    the wrong thing.
 
     *valid_agents* defaults to :func:`default_valid_agents`, the memoized production supplier,
     for the reader that holds no set of its own. Discovery is reached only for an entry ALREADY
@@ -378,9 +378,8 @@ def allowlist_reason(
     is_valid_agent_segment`) — and the test is *is it a VALID agent*, NOT *is it
     the ACTIVE agent*, so pre-configuring an agent you may switch to is legal.
 
-    ⚑ The segment's verdict is :func:`agent_segment_reason`'s, shared with the settings tier's
-    NON-deferred bind-map parse; this filter supplies the context (the target, the level, the
-    file) and never a second opinion about the name.
+    ⚑ The segment's verdict is :func:`agent_segment_reason`'s; this filter supplies the
+    context (the target, the level, the file) and never a second opinion about the name.
     """
     pattern = pref_allowlist_entry(target, allowlist=allowlist)
     if pattern is not None:

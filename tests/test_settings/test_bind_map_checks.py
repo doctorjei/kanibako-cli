@@ -640,8 +640,8 @@ def test_a_map_outside_pref_agent_reaches_no_agent_verdict(tmp_path: Path, doc: 
     Every other bind map is judged for shape alone. This row is the boundary of the check:
     without it, discovery would be reached by parses that never named an agent at all.
 
-    INVERT: judge the segment for every map -> the ``agent:`` rows go red, naming a name
-    this map never wrote.
+    INVERT: judge the segment for every map -> the ``agent.<node>.bindings.<arm>`` row goes
+    red, naming a name this map never wrote.
     """
     store = _file_partial(doc, path=_settings_file(tmp_path, doc))
     assert len(store) == 1
