@@ -39,7 +39,7 @@ def _cascade_bad_entries(cmd: 'Path | None', command_scope: 'ConfigLevel | None'
 def _first_dotted(views: 'list[dict]', dotted: str) -> object
 def _overwritten_by(edited: 'str | None', entry: str) -> bool
 def _set_time_snapshot(*, target: 'LaunchInputs | None', agent_name: str, agent_path: 'Path | None', config_path: 'Path | None'=None, command_scope: 'ConfigLevel | None'=None, system_settings_path: 'Path | None'=None, system_path: 'Path | None'=None, workset_path: 'Path | None'=None, box_path: 'Path | None'=None) -> 'tuple[Any, Any]'
-def _floor_blind_default(key: str, value: str, candidate: 'Any', command_scope: 'ConfigLevel | None') -> bool
+def _floor_blind_referents(key: str, value: str, candidate: 'Any', command_scope: 'ConfigLevel | None') -> list[str]
 def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: 'ConfigLevel | None'=None, system_settings_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, agent_name: str='', target: 'LaunchInputs | None'=None)
 def _clone_keystore(store: 'Any') -> 'Any'
 def _set_leaf(store: 'Any', parts: list, value: object) -> None

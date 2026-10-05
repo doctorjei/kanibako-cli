@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from kanibako.project.workset import create_workset
+from kanibako.project.workset import create_workset, default_workset
 from kanibako.settings.config import WORKSET_META_FILE
 from kanibako.settings.config_interface import set_config_value
 from kanibako.settings.config_keys import KEY_OWNERS, ConfigLevel
@@ -148,13 +148,12 @@ class TestTheWorksetDoor:
         assert _workset_set("workset.boxes", "/srv/kb", ws, std) == "Set workset.boxes=/srv/kb"
         assert _workset_set("workset.channels.mailboxes", "/srv/mb", ws, std).startswith("Set ")
 
-    def test_a_pref_is_judged_as_the_key_it_targets(self, ws, std, monkeypatch):
-        monkeypatch.setitem(KEY_OWNERS, "agent.<agent>.canon", "box")
+    def test_a_pref_the_allowlist_refuses_gets_its_own_refusal(self, ws, std):
         file = ws.root / WORKSET_META_FILE
         before = _digest(file)
-        message = _workset_set("pref.agent.claude.canon", "/srv/c", ws, std)
-        _refused(message, "pref.agent.claude.canon", "/srv/c", file,
-                 "/srv/c/{meta.workset.path}/{meta.box.name}")
+        message = _workset_set("pref.box.canon", "/srv/pc", ws, std)
+        assert message.startswith("Error:") and "pref.box.canon" in message, message
+        assert "Spell the identity" not in message, message
         assert _digest(file) == before
 
 
@@ -187,3 +186,33 @@ class TestTheCureChainsAtTheSystemDoor:
         message = _system_set("workset.logs", "{workset.boxes}/lg", seeded)
         assert message.startswith("Error:") and "dangling @-reference" in message, message
         assert _digest(seeded.settings) == before
+
+
+_CYCLE = "/s/<meta.workset.path>/<meta.box.name>/<box.canon>"
+_UNKNOWN_VAR = "/s/<meta.workset.path>/<meta.box.name>/{$NOPE_UNKNOWN}"
+
+
+class TestOnlyTheFloorsBlindnessIsForgiven:
+    """The set-time probe forgives a ref the command's files cannot see by construction, and
+    nothing else on the chain: a cycle or an unknown variable the edit does not fix stands
+    (keyspec §2a)."""
+
+    @pytest.mark.parametrize("value", _forms("/c/<meta.workset.path>/<meta.box.name>"))
+    def test_the_primary_workset_takes_the_cure(self, value, std):
+        assert _workset_set("box.canon", value, default_workset(std), std) == f"Set box.canon={value}"
+
+    @pytest.mark.parametrize("stored", [*_forms(_CYCLE), *_forms(_UNKNOWN_VAR)])
+    def test_a_stored_defect_is_refused_at_the_system_door(self, stored, seeded):
+        seeded.settings.write_text(yaml.safe_dump({"box": {"shell": stored}}))
+        before = _digest(seeded.settings)
+        assert _system_set("box.canon", "{box.shell}", seeded).startswith("Error:")
+        assert _digest(seeded.settings) == before
+
+    @pytest.mark.parametrize("stored", [*_forms(_CYCLE), *_forms(_UNKNOWN_VAR)])
+    def test_a_stored_defect_is_refused_at_the_workset_door(self, stored, ws, std):
+        file = ws.root / WORKSET_META_FILE
+        doc = (yaml.safe_load(file.read_text()) if file.exists() else None) or {}
+        file.write_text(yaml.safe_dump(doc | {"box": {"shell": stored}}))
+        before = _digest(file)
+        assert _workset_set("box.canon", "{box.shell}", ws, std).startswith("Error:")
+        assert _digest(file) == before
