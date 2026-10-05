@@ -1079,7 +1079,7 @@ class TestPrefShapeVerdictFollowsTheAgentVerdict:
         refuses while the file is being read, naming the file. INVERT: widen the
         deferred set to every non-``BindEntry`` value -> reddens there, not here."""
         src = write(tmp_path / "workset.yaml", {
-            "pref": {"agent": {"zippity": {"seeded": {"somebox": {"nested": 1}}}}},
+            "pref": {"agent": {"claude": {"seeded": {"somebox": {"nested": 1}}}}},
         })
         with pytest.raises(SettingsError) as exc:
             collect_prefs(src, None)
@@ -1089,11 +1089,44 @@ class TestPrefShapeVerdictFollowsTheAgentVerdict:
         """A list is a structured-entry ATTEMPT, so its arity is judgeable at the
         parse; only a bare scalar waits. INVERT: defer lists too -> reddens here."""
         src = write(tmp_path / "workset.yaml", {
-            "pref": {"agent": {"zippity": {"seeded": {"somebox": ["a", "b", "c"]}}}},
+            "pref": {"agent": {"claude": {"seeded": {"somebox": ["a", "b", "c"]}}}},
         })
         with pytest.raises(SettingsError) as exc:
             collect_prefs(src, None)
         assert "1 or 2 elements" in str(exc.value)
+
+    @pytest.mark.parametrize(("shape", "entry"), [
+        pytest.param("sub-table", {"somebox": {"nested": 1}}, id="sub-table"),
+        pytest.param("wrong-arity", {"somebox": ["a", "b", "c"]}, id="wrong-arity"),
+        pytest.param("bare-scalar", {"somebox": "some-scalar"}, id="bare-scalar"),
+    ])
+    def test_a_bogus_agent_names_the_agent_for_every_shape(
+        self, tmp_path, shape, entry
+    ):
+        """Q2 AT THIS DOOR: a BOGUS agent is named for every shape, not the shape itself.
+
+        The two rows above pin the deferral-set boundary for a VALID agent. This is their
+        counterpart for a name that is not valid, and it sits here rather than only in
+        ``test_bind_map_checks`` because ``collect_prefs`` is the entry point those rows share
+        and it parses with the deferral ON: the shape it judges at parse time and the one it
+        carries both have to name the agent, or the same file reports a different defect
+        depending on the entry's shape.
+
+        INVERT: drop ``pref_agent`` from the deferred ``check_bind_map`` call -> the
+        sub-table and wrong-arity rows red on their own shape messages, and the bare-scalar
+        row red on no refusal at all.
+        """
+        src = write(tmp_path / "workset.yaml", {
+            "pref": {"agent": {"zippity": {"seeded": entry}}},
+        })
+        with pytest.raises(SettingsError) as exc:
+            collect_prefs(src, None)
+        msg = str(exc.value)
+        assert "it names agent 'zippity', which is not a valid agent" in msg, msg
+        assert "RETIRED name-keyed shape" not in msg, msg
+        assert "1 or 2 elements" not in msg, msg
+        assert "structured entry" not in msg, msg
+
 
     def test_a_well_formed_entry_is_installed_unchanged(self, tmp_path):
         """The deferral must not disturb a GOOD request — a guard for behavior that
