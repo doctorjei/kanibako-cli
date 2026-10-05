@@ -433,11 +433,11 @@ class TestCanonDefaultCategories:
         )["box.bindings.ro"]
         # Slot 0 is still the host_src; only the destination moved out of the tuple.
         assert arm[f"{GUEST_HOME}/canon/handbook/workset"][0] == (
-            "@workset.canon/handbook"
+            "{workset.canon}/handbook"
         )
-        assert arm[f"{GUEST_HOME}/canon/handbook/box"][0] == "@box.canon/handbook"
+        assert arm[f"{GUEST_HOME}/canon/handbook/box"][0] == "{box.canon}/handbook"
         assert arm[f"{GUEST_HOME}/canon/handbook/general"][0] == (
-            "@system.canon/handbook/general"
+            "{system.canon}/handbook/general"
         )
 
     def test_the_guest_dests_carry_no_node_segment(self, tmp_path):

@@ -36,7 +36,7 @@ def _door_scope(early_system: EarlySystem, workset_name: str | None, *, standalo
 class EarlySystem:
     tier: dict[str, str | None]
     file: Path
-    system_paths: dict[str, str]
+    system_paths: dict[str, str | None]
     system_refusal: str | None = None
 
 class EarlyScope(NamedTuple):

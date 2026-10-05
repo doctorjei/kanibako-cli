@@ -12,6 +12,7 @@ BOX_META_FILE = 'box.yaml'
 WORKSET_META_FILE = 'workset.yaml'
 AGENT_META_FILE = 'agent.yaml'
 SYSTEM_HELPERS_SECTION: 'tuple[str, ...]' = ('system', 'helpers')
+STANDARD_BIND_SOURCE_KEYS: frozenset[str] = frozenset({'system.canon', 'system.channels.chat', 'system.channels.common', 'system.channels.mailboxes', 'system.channels.share'})
 _BOOL_TRUE = frozenset({'true', '1', 'yes', 'on'})
 _BOOL_FALSE = frozenset({'false', '0', 'no', 'off'})
 _DEFAULTS: _BoxScalarDefaults = {'box_image': 'ghcr.io/doctorjei/kanibako-oci:latest', 'box_shell': None}
@@ -25,8 +26,8 @@ def coerce_bool(value: object) -> bool | None
 def config_file_path(config_home: Path) -> Path
 def user_config_file() -> Path
 def bootstrap_config_paths(path: Path) -> dict[str, str]
-def system_table_set_values(settings_path: Path, doc: dict) -> dict[str, str]
-def system_path_set_values(settings_path: Path) -> dict[str, str]
+def system_table_set_values(settings_path: Path, doc: dict) -> dict[str, str | None]
+def system_path_set_values(settings_path: Path) -> dict[str, str | None]
 def config_base_path() -> Path
 def settings_base_path() -> Path
 def load_config(path: Path) -> BootstrapConfig

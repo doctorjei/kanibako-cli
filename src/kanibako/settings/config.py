@@ -219,7 +219,7 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
     return paths
 
 
-def system_table_set_values(settings_path: Path, doc: dict) -> dict[str, str]:
+def system_table_set_values(settings_path: Path, doc: dict) -> dict[str, str | None]:
     """A SETTINGS DOCUMENT's ``system.*`` set-values, dotted — the Layer-2 half of the path tier.
 
     ⚑ *doc* is the ALREADY-READ document, never re-read here.  The path tier opens the settings
@@ -241,10 +241,19 @@ def system_table_set_values(settings_path: Path, doc: dict) -> dict[str, str]:
     if not isinstance(table, dict):
         return {}
     _refuse_null_paths(settings_path, table, "system", SYSTEM_PATH_DEFAULTS)
-    return _flatten_dotted(table, "system")
+    # ⚑ A NULL AT AN ADMITTED KEY CARRIES AS ``None``, never as ``"None"``: the value is a
+    # bind's SOURCE, and §0 resolves an embedded reference to a present ``<None>`` to
+    # ``<None>`` — which is what collapses the bind.  The string would instead name a
+    # directory called ``None`` (or a bare-relative path the resolver refuses to guess).
+    values: dict[str, str | None] = dict(_flatten_dotted(table, "system"))
+    leaves = _flatten_leaves(table, "system")
+    for key in STANDARD_BIND_SOURCE_KEYS & leaves.keys():
+        if leaves[key] is None:
+            values[key] = None
+    return values
 
 
-def system_path_set_values(settings_path: Path) -> dict[str, str]:
+def system_path_set_values(settings_path: Path) -> dict[str, str | None]:
     """A SETTINGS file's ``system.*`` set-values, dotted — the wrapper that reads the file.
 
     Same contract as :func:`system_table_set_values`, whose body this is; use that one when the
@@ -440,6 +449,10 @@ def persist_creation_flags(
     if not updates:
         return
     data = load_doc(box_settings_path)
+    # ⚑ THE SHAPE RULE (spec §0), asked BEFORE anything changes: a present non-table ``box``
+    # REFUSES by name and leaves the file byte-identical.  The branch below therefore only ever
+    # CREATES an absent section — it must never be read as license to replace a value.
+    refuse_scalar_sections(box_settings_path, ("box",), data=data)
     sec = data.get("box")
     if not isinstance(sec, dict):
         sec = {}
@@ -449,8 +462,13 @@ def persist_creation_flags(
 
 
 def write_box_enable_vault(path: Path, enable_vault: bool = True) -> None:
-    """Sparsely persist the box-scope ``box.enable_vault`` key at *path* (reader: :func:`read_box_enable_vault`)."""
+    """Sparsely persist the box-scope ``box.enable_vault`` key at *path* (reader: :func:`read_box_enable_vault`).
+
+    A present non-table ``box``, null included, refuses by name on both arms
+    (:func:`refuse_scalar_sections`) and leaves the file untouched.
+    """
     existing = load_doc(path)
+    refuse_scalar_sections(path, ("box",), data=existing)
     ev = coerce_bool(enable_vault)
     if ev is False:
         existing.setdefault("box", {})["enable_vault"] = False
@@ -562,6 +580,7 @@ def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
         data[key] = value
         dump_doc(path, data)
         return
+    refuse_scalar_sections(path, (section,), data=data)
     sec = data.get(section)
     if not isinstance(sec, dict):
         sec = {}
@@ -927,8 +946,15 @@ def resolve_agent(
 
 
 def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None:
-    """Write a single agent-state override under ``agent.<agent_name>``, preserving every other section."""
+    """Write a single agent-state override under ``agent.<agent_name>``, preserving every other section.
+
+    A present non-table at EITHER level it walks — ``agent`` itself, or ``agent.<agent_name>`` —
+    refuses by name (:func:`refuse_scalar_sections`) and leaves the file byte-identical, rather
+    than throwing away what the user wrote to build the table.
+    """
     existing = load_doc(path)
+    # ⚑ ONE refusal covers BOTH levels this writer walks; both were replace-a-scalar sites.
+    refuse_scalar_sections(path, ("agent", agent_name), data=existing)
     agent = existing.get("agent")
     if not isinstance(agent, dict):
         agent = {}
@@ -969,8 +995,10 @@ def _flatten_dotted(data: dict, prefix: str = "") -> dict[str, str]:
 
     ⚑ NOT a scope-category helper — its callers are the Layer-1 ``config:`` read, the
     Layer-2 ``system:`` path-tier read, and the Layer-1 refusal that names its keys.
-    ⚑ A ``null`` leaf becomes the string ``"None"``: both path reads call
-    :func:`_refuse_null_paths` first.
+    ⚑ A ``null`` leaf becomes the string ``"None"``, and the two path reads call
+    :func:`_refuse_null_paths` first — so the string is unreachable for a key that read
+    REFUSES, and :func:`system_path_set_values` puts a real ``None`` back for the
+    :data:`STANDARD_BIND_SOURCE_KEYS` it admits.
     """
     return {key: str(v) for key, v in _flatten_leaves(data, prefix).items()}
 
@@ -997,6 +1025,20 @@ def null_path_keys_error(
     return lead + cure
 
 
+#: The ``system.*`` path keys a ``<None>`` OMITS rather than refuses — the ones that source
+#: a STANDARD bind (spec §2a; companion § "Delivery at launch").  🛑 NOT a nullability
+#: column: the manifest declares ``set: cli+file`` for these and for the keys below alike,
+#: so the discriminator is the bind.  ⚑ ``test_null_system_path_key.py`` pins this set
+#: against the shipped bind rows, so a sixth source cannot be added unnoticed.
+STANDARD_BIND_SOURCE_KEYS: frozenset[str] = frozenset({
+    "system.canon",
+    "system.channels.chat",
+    "system.channels.common",
+    "system.channels.mailboxes",
+    "system.channels.share",
+})
+
+
 def refuses_null_path_key(canonical: str) -> bool:
     """True iff the LAUNCH refuses a present ``null`` at *canonical* (spec §2a).
 
@@ -1010,11 +1052,16 @@ def refuses_null_path_key(canonical: str) -> bool:
     either: ``workset.boxes`` (leaf :data:`BOXES_PATH`) and ``workset.registry``.  The
     rest MEAN something: ``workset.workspaces: null`` is "no workspace dir" (spec §2c),
     ``workset.logs: null`` "no logs dir".
+
+    ⭐ :data:`STANDARD_BIND_SOURCE_KEYS` is the one exclusion, and it exists because the
+    SPEC says so: a refusal there would contradict §2a and leave the [R185] warning
+    offering a remedy no door accepts.
     """
     return (
         canonical in SYSTEM_PATH_DEFAULTS
-        or canonical in CONFIG_PATH_DEFAULTS
-        or canonical in (f"workset.{BOXES_PATH}", "workset.registry")
+        and canonical not in STANDARD_BIND_SOURCE_KEYS
+    ) or canonical in CONFIG_PATH_DEFAULTS or canonical in (
+        f"workset.{BOXES_PATH}", "workset.registry",
     )
 
 
@@ -1106,10 +1153,16 @@ def refuses_null_box_scalar(canonical: str) -> bool:
 
 
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None:
-    """Refuse a ``null`` at any of *path_keys* in *table*, naming *path* and the keys."""
+    """Refuse a ``null`` at any of *path_keys* in *table*, naming *path* and the keys.
+
+    ⚑ THE MEMBERSHIP IS :func:`refuses_null_path_key`, the same one the ``set`` door and
+    the [R185] warning ask, so a key a file may null is null in the SAME set the CLI
+    accepts and the one the warning offers.
+    """
     leaves = _flatten_leaves(table, prefix)
     error = null_path_keys_error(
-        path, (key for key in path_keys if key in leaves and leaves[key] is None),
+        path, (key for key in path_keys
+               if key in leaves and leaves[key] is None and refuses_null_path_key(key)),
     )
     if error is not None:
         raise ConfigError(error)

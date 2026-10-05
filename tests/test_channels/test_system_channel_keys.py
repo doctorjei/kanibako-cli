@@ -29,13 +29,17 @@ Indent note: 4 spaces, matching every sibling in ``tests/test_channels/``.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import pytest
 
 from kanibako.settings.config import WORKSET_META_FILE
-from kanibako.settings.config_io import dump_doc, load_doc
+from kanibako.settings.config_io import dump_doc, load_doc, write_nested_key
+from kanibako.settings.config_keys import _KEY_ROUTES
 from kanibako.settings.paths import (
+    _floor_field,
     box_workset_settings_paths,
+    load_std_paths,
     resolve_project,
     system_path_floor,
 )
@@ -47,6 +51,37 @@ from kanibako.settings.bootstrap import SYSTEM_PATH_DEFAULTS
 @pytest.fixture
 def primary_proj(std, config, project_dir):
     return resolve_project(std, config, str(project_dir), initialize=True)
+
+
+def nulled_std(std, key: str):
+    """*std* re-read with ``key`` stored null, through the production writer and reader.
+
+    ⚑ NOT a hand-built ``StandardPaths``: the null goes into the settings FILE through
+    ``write_nested_key`` and comes back out through ``load_std_paths`` — the same pair a
+    launch uses — so the readers below are handed what a user who set the key gets.
+    """
+    sections, slot = _KEY_ROUTES[key]
+    write_nested_key(std.settings, sections, slot, None)
+    reloaded = load_std_paths()
+    assert getattr(reloaded, _floor_field(key)) is None, key
+    return reloaded
+
+
+def _paths_of(*values):
+    """Every ``Path`` among *values*, flattened out of dataclasses and dicts."""
+    from dataclasses import fields, is_dataclass
+
+    out = []
+    for value in values:
+        if isinstance(value, dict):
+            out.extend(_paths_of(*value.values()))
+        elif is_dataclass(value):
+            out.extend(_paths_of(*(getattr(value, f.name) for f in fields(value))))
+        elif isinstance(value, (list, tuple)):
+            out.extend(_paths_of(*value))
+        elif isinstance(value, Path):
+            out.append(value)
+    return out
 
 
 def _snapshot(std, proj):
@@ -154,7 +189,6 @@ class TestTheLaunchFloorCarriesTheWholeFamily:
         eleven keys — the parametrized leaf case above rebuilds per leaf and this one
         deliberately does not.
         """
-        from kanibako.settings.paths import _floor_field
         from kanibako.settings.settings_launch import snapshot_leaf
 
         snapshot, _deliveries = _snapshot(std, primary_proj)
@@ -242,3 +276,100 @@ class TestTheEffectiveDisplayIsTheLaunchTier:
         assert f"{std.channels_broadcast} -> /home/agent/bcast-ro" in out
         assert f"{std.channels} -> /home/agent/root-ro" in out
         assert "/tmp -> /home/agent/lit-ro" in out
+
+
+class TestANullSystemChannelKeyYieldsANullArm:
+    """A null at a ``system.channels.*`` key is a DECLARED value, so the reader that
+    partitions it answers ``None`` — it does not raise, and it does not divide.
+
+    ⚑ THE SYSTEM ARM, which is the arm no test here reached.  ``test_channel_keys.py``
+    nulls a ``workset.channels.*`` leaf and lands on ``_channel_key``'s three-state
+    answer; this family nulls the SYSTEM key those leaves DEFAULT to, so the two
+    readers that hang off ``std`` itself are the subject.  Each of them divides a
+    possibly-null path by a box name, so an unguarded arm is a ``TypeError`` at exactly
+    the null this tree admits.
+    """
+
+    @pytest.mark.parametrize("nulled, sibling", [
+        ("system.channels.mailboxes", "share"),
+        ("system.channels.share", "mailboxes"),
+    ])
+    def test_the_system_partition_arm_is_null(self, std, nulled, sibling):
+        from kanibako.channels.channels import system_partition
+
+        part = system_partition(nulled_std(std, nulled), "WS-abc")
+        assert getattr(part, sibling) is not None, sibling
+        null_arm = "mailboxes" if sibling == "share" else "share"
+        assert getattr(part, null_arm) is None
+
+    @pytest.mark.parametrize("nulled, live", [
+        ("system.channels.mailboxes", "share_global"),
+        ("system.channels.share", "mailbox"),
+    ])
+    def test_the_own_partition_arm_is_null(self, std, nulled, live):
+        """``own_partition_dirs`` is the RAW-INPUT primitive ``box move`` relocates off.
+
+        ⛔ A NULL ARM PROPAGATES HERE, naming no error: ``workset.channels.*`` DEFAULT to
+        the system partition, so a null system key is a LEGAL configuration arriving at
+        the relocation path.  It is the same ``None`` whether the user nulled the
+        workset key or the system key it defaults to, so the reader cannot tell them
+        apart — and refusing would reject what the spec says to OMIT.
+        """
+        from kanibako.channels.channels import (
+            WS_TOKEN_PRIMARY,
+            own_partition_dirs,
+        )
+
+        own = own_partition_dirs(
+            nulled_std(std, nulled), WS_TOKEN_PRIMARY, "proj",
+            ws_root=std.primary_workset,
+        )
+        assert getattr(own, live) is not None, live
+        null_arm = "mailbox" if live == "share_global" else "share_global"
+        assert getattr(own, null_arm) is None
+
+    def test_the_own_inbox_address_is_null(self, std, primary_proj):
+        """``meta.box.inbox`` is a LITERAL the identity floor builds from this address,
+        so a ``"None"`` here reaches the expander as a four-character path — which for a
+        MOUNT podman reads as a NAMED VOLUME."""
+        from kanibako.channels.channels import box_channel_addresses
+
+        addr = box_channel_addresses(primary_proj, nulled_std(std, "system.channels.mailboxes"))
+        assert addr.inbox is None
+        assert addr.share_global is not None
+
+    @pytest.mark.parametrize("key", [
+        "system.channels.common", "system.channels.chat",
+        "system.channels.share", "system.channels.mailboxes",
+    ])
+    def test_no_reader_names_a_directory_None(self, std, primary_proj, key):
+        """Every reader over a null system key, and every path any of them hands back.
+
+        ``str()`` of a null used to be born here, and a bind carrying ``"None"`` is a
+        directory named ``None`` — so this walks the resolved values rather than the one
+        arm under test.
+        """
+        from kanibako.channels import channels as ch
+
+        nulled = nulled_std(std, key)
+        part = ch.system_partition(nulled, "WS-abc")
+        own = ch.own_partition_dirs(
+            nulled, ch.WS_TOKEN_PRIMARY, "proj", ws_root=std.primary_workset,
+        )
+        addr = ch.box_channel_addresses(primary_proj, nulled)
+        wch = ch.workset_channel_paths(primary_proj, nulled)
+        for path in _paths_of(part, own, addr, wch):
+            assert "None" not in path.parts, f"{key} produced {path}"
+
+    def test_no_directory_named_None_is_left_on_disk(self, std, primary_proj, tmp_home):
+        """⚑ The filesystem half: a reader that merely avoided the crash by naming a
+        directory ``None`` would pass the value assertions above."""
+        from kanibako.channels import channels as ch
+
+        nulled = nulled_std(std, "system.channels.mailboxes")
+        ch.box_channel_addresses(primary_proj, nulled)
+        ch.own_partition_dirs(
+            nulled, ch.WS_TOKEN_PRIMARY, "proj", ws_root=std.primary_workset,
+        )
+        named = [p for p in tmp_home.rglob("None")]
+        assert named == [], f"a None-named path was created: {named}"

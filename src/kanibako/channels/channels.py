@@ -33,20 +33,27 @@ class SystemPartition:
     """The per-workset SYSTEM-scope partition roots — the PARENTS of each box's own subdir."""
 
     ws_token: str
-    mailboxes: Path
-    share: Path
+    # ⚑ ``None`` on a null system key — why, is ``paths._resolve_system_path_keys``; WHAT
+    # a null workset-local key means is the workset-local seam's, not this primitive.
+    mailboxes: Path | None
+    share: Path | None
 
 
 @dataclass(frozen=True)
 class WorksetChannels:
-    """The workset-local channel roots under ``@workset.channelroot`` (PRIMARY/NAMED only)."""
+    """The workset-local channel roots under ``@workset.channelroot`` (PRIMARY/NAMED only).
+
+    ⚑ ``None`` on a leaf whose own key is null, the two INDEPENDENTLY.  ⚑ TYPE ONLY —
+    what a null leaf DOES is the workset-local seam's; this exists so a ``None`` reaches
+    ``settings_launch._workset_channel_floor_values`` instead of ``str()``'d.
+    """
 
     root: Path
-    common: Path
-    chat: Path
-    chat_general: Path
-    chat_broadcast: Path
-    share: Path
+    common: Path | None
+    chat: Path | None
+    chat_general: Path | None
+    chat_broadcast: Path | None
+    share: Path | None
 
 
 @dataclass(frozen=True)
@@ -60,8 +67,10 @@ class WorksetPartition:
     """
 
     ws_token: str
-    mailboxes: Path
-    share_global: Path
+    # ⚑ ``None`` on the terms :class:`SystemPartition` states, carried one step: the
+    # default is the system partition, so a null system key nulls the workset-local key.
+    mailboxes: Path | None
+    share_global: Path | None
 
 
 @dataclass(frozen=True)
@@ -70,8 +79,10 @@ class BoxChannelAddresses:
 
     ws_token: str
     box_name: str
-    inbox: Path
-    share_global: Path
+    # ⚑ ``None`` on :class:`SystemPartition`'s terms; a null inbox is what omits the
+    # ``~/channels/inbox`` bind, which sources ``meta.box.inbox``.
+    inbox: Path | None
+    share_global: Path | None
     share_workset: Path | None
 
 
@@ -87,8 +98,9 @@ class OwnPartition:
 
     ws_token: str
     box_name: str
-    mailbox: Path
-    share_global: Path
+    # ⚑ ``None`` on :class:`BoxChannelAddresses`' terms.
+    mailbox: Path | None
+    share_global: Path | None
 
 
 def own_partition_dirs(
@@ -109,13 +121,29 @@ def own_partition_dirs(
     empty directory and left every message the box had received stranded at an address
     no longer registered to it.  An OPTIONAL root would have reproduced that silently
     for any caller who omitted it, so the caller is made to answer.
+
+    ⚑⚑ A NULL PARTITION ARM **PROPAGATES** HERE, naming no error.  ⚑ MERGE DECISION —
+    the `channelnull` lane REFUSED this arm (``SettingsError``), and that refusal is
+    correct for a workset-local key the user explicitly nulled.  ⚑ It is NOT correct
+    in this tree: ``workset.channels.{mailboxes,share_global}`` DEFAULT to
+    :func:`system_partition`, and a null SYSTEM key is now a declared value (spec §2a),
+    so a legal configuration reaches here as a null arm.  Refusing it would reject
+    what the spec says to OMIT.  Ⓣ :func:`partition_key_paths` collapses "present
+    ``<None>``" and "absent, defaulting to a null system key" into the same ``None``,
+    so the two cannot be told apart here without changing that function's shape —
+    which neither lane's grant named.  ⛔ If the refusal is wanted for the EXPLICIT
+    case, that is a follow-up: thread the defaulted-vs-declared bit out of
+    ``_channel_key``.  ⭐ ``_lifecycle._relocate_channel_partition`` already takes the
+    matching arm (it skips a null src/dst), so omit-and-skip is the coherent whole.
     """
     part = partition_key_paths(std, ws_token, ws_root)
     return OwnPartition(
         ws_token=ws_token,
         box_name=box_name,
-        mailbox=part.mailboxes / box_name,
-        share_global=part.share_global / box_name,
+        mailbox=None if part.mailboxes is None else part.mailboxes / box_name,
+        share_global=(
+            None if part.share_global is None else part.share_global / box_name
+        ),
     )
 
 
@@ -196,8 +224,10 @@ def system_partition(std: StandardPaths, ws_token: str) -> SystemPartition:
     """
     return SystemPartition(
         ws_token=ws_token,
-        mailboxes=std.channels_mailboxes / ws_token,
-        share=std.channels_share / ws_token,
+        mailboxes=None if std.channels_mailboxes is None
+        else std.channels_mailboxes / ws_token,
+        share=None if std.channels_share is None
+        else std.channels_share / ws_token,
     )
 
 
@@ -212,9 +242,9 @@ CHAT_GENERAL_LEAF = "general.md"
 
 
 def _channel_key(
-    ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path,
-    *, standalone: bool | None, early: EarlyScope,
-) -> Path:
+    ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str,
+    default: Path | None, *, standalone: bool | None, early: EarlyScope,
+) -> Path | None:
     """Resolve ``workset.channels.<leaf>``: its stored repoint (``early_repoint``), else *default*.
 
     *standalone* is the box mode the leaf is read in, as ``resolve_workset_dir_key`` takes it:
@@ -227,15 +257,22 @@ def _channel_key(
     Everything a repoint can contain (``@``-refs, ``$XDG_*``, ``~``, the relative
     anchor, and the refusal that names the key) stays that ONE pre-snapshot route's
     business; this adds no second grammar.
+
+    ⚑ A PRESENT ``<None>`` ANSWERS ``None`` (spec §2a: a null arm is a declared value,
+    so the dependent bind is OMITTED); only an ABSENT key takes *default*, and a
+    ``None`` default is how a caller whose OWN key is null passes that on.
     """
+    from kanibako.settings.settings_resolve import UNSET
     from kanibako.settings.workset_dirkeys import early_repoint, resolve_workset_dir_key
 
     repoint, where = early_repoint(ws_root, workset_settings, f"channels.{leaf}", early=early)
-    if not isinstance(repoint, str):
+    if repoint is UNSET:
         return default
+    if repoint is None:
+        return None
     return resolve_workset_dir_key(
-        ws_root, repoint, leaf, key=f"channels.{leaf}", where=where, standalone=standalone,
-        workset_settings=workset_settings, early=early,
+        ws_root, str(repoint), leaf, key=f"channels.{leaf}", where=where,
+        standalone=standalone, workset_settings=workset_settings, early=early,
     )
 
 
@@ -287,9 +324,16 @@ def workset_channels_at(
             ws_root, doc, "common", root / "common", standalone=False, early=early,
         ),
         chat=chat,
-        chat_general=chat / CHAT_GENERAL_LEAF,
+        chat_general=None if chat is None else chat / CHAT_GENERAL_LEAF,
+        # ⚑ ``broadcast`` DEFAULTS OFF ``chat`` (keyspec §2c: the row is
+        # ``@workset.channels.chat/broadcast.md``), so a null ``chat`` makes the
+        # whole value null — §0: an embedded reference to a present ``<None>``
+        # makes the whole value ``<None>``.  Only an EXPLICIT ``broadcast``
+        # repoint still resolves, because a stored value replaces the formula.
         chat_broadcast=_channel_key(
-            ws_root, doc, "broadcast", chat / "broadcast.md", standalone=False, early=early,
+            ws_root, doc, "broadcast",
+            None if chat is None else chat / "broadcast.md",
+            standalone=False, early=early,
         ),
         share=_channel_key(ws_root, doc, "share", root / "share", standalone=False, early=early),
     )
@@ -312,6 +356,7 @@ def partition_key_paths(
     every other pre-snapshot key read.  A best-effort caller catches it; it is not
     softened here, because a silent fallback to the default is the failure this
     function exists to end.
+
     """
     from kanibako.project.workset import load_workset_settings_doc
     from kanibako.settings.workset_dirkeys import EarlyScope
@@ -371,7 +416,11 @@ def box_channel_addresses(
     return BoxChannelAddresses(
         ws_token=part.ws_token,
         box_name=proj.name,
-        inbox=part.mailboxes / proj.name,
-        share_global=part.share_global / proj.name,
-        share_workset=(wch.share / proj.name) if wch is not None else None,
+        inbox=None if part.mailboxes is None else part.mailboxes / proj.name,
+        share_global=(
+            None if part.share_global is None else part.share_global / proj.name
+        ),
+        share_workset=(
+            None if wch is None or wch.share is None else wch.share / proj.name
+        ),
     )

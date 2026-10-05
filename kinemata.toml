@@ -5024,7 +5024,7 @@ from kinemata_views import guest_bind_arm, sentinel_helper_binds
 with tempfile.TemporaryDirectory() as scratch:
     os.chdir(scratch)
     binds = sentinel_helper_binds()
-log = box_log_files(pathlib.Path("@workset.logs"), "@{meta.box.name}").helper
+log = box_log_files(pathlib.Path("{workset.logs}"), "{meta.box.name}").helper
 for dest, _ in guest_bind_arm(binds, "bindings.ro"):
     print(f"kanibako-helper-log-writer: {dest}={log}")
 """]

@@ -26,7 +26,7 @@ def workset_channels_at(ws_root: Path, *, early: EarlyScope) -> WorksetChannels 
 def partition_key_paths(std: StandardPaths, ws_token: str, ws_root: Path) -> WorksetPartition
 def workset_partition_paths(proj: ProjectPaths, std: StandardPaths) -> WorksetPartition
 def box_channel_addresses(proj: ProjectPaths, std: StandardPaths) -> BoxChannelAddresses
-def _channel_key(ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path, *, standalone: bool | None, early: EarlyScope) -> Path
+def _channel_key(ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf: str, default: Path | None, *, standalone: bool | None, early: EarlyScope) -> Path | None
 ```
 
 ## Classes
@@ -35,36 +35,36 @@ def _channel_key(ws_root: Path, workset_settings: Mapping[str, Any] | None, leaf
 @dataclass(frozen=True)
 class SystemPartition:
     ws_token: str
-    mailboxes: Path
-    share: Path
+    mailboxes: Path | None
+    share: Path | None
 
 @dataclass(frozen=True)
 class WorksetChannels:
     root: Path
-    common: Path
-    chat: Path
-    chat_general: Path
-    chat_broadcast: Path
-    share: Path
+    common: Path | None
+    chat: Path | None
+    chat_general: Path | None
+    chat_broadcast: Path | None
+    share: Path | None
 
 @dataclass(frozen=True)
 class WorksetPartition:
     ws_token: str
-    mailboxes: Path
-    share_global: Path
+    mailboxes: Path | None
+    share_global: Path | None
 
 @dataclass(frozen=True)
 class BoxChannelAddresses:
     ws_token: str
     box_name: str
-    inbox: Path
-    share_global: Path
+    inbox: Path | None
+    share_global: Path | None
     share_workset: Path | None
 
 @dataclass(frozen=True)
 class OwnPartition:
     ws_token: str
     box_name: str
-    mailbox: Path
-    share_global: Path
+    mailbox: Path | None
+    share_global: Path | None
 ```

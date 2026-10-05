@@ -9,6 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/paths.py.md`.
 
 ```
 logger = get_logger('paths')
+SUBSCRIPTED_SYSTEM_PATH_KEYS: frozenset[str] = frozenset({'system.backup', 'system.channelroot', 'system.template', 'system.cache', 'system.state', 'system.runtime'})
 _runtime_fallback_cache: dict[tuple[str, str], Path] = {}
 _RUNTIME_TMP_PREFIX = 'kanibako-runtime-'
 _FLOOR_FIELD_ALIASES: dict[str, str] = {'system.channelroot': 'channels'}
@@ -39,7 +40,7 @@ def host_xdg_map(data_home: Path | None=None) -> dict[str, str]
 def resolve_config_paths(set_values: Mapping[str, str | None], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str] | None=None) -> dict[str, str]
 def resolve_system_paths(set_values: Mapping[str, str | None], *, data_home: Path, home: Path) -> dict[str, Path]
 def host_config_map(std: StandardPaths) -> dict[str, str]
-def system_path_floor(std: StandardPaths) -> dict[str, str]
+def system_path_floor(std: StandardPaths) -> dict[str, str | None]
 def layer1_set_values(user_config_path: Path) -> dict[str, str]
 def load_system_tier(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> tuple[dict[str, Path], EarlySystem]
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> dict[str, Path]
@@ -81,6 +82,7 @@ def _box_settings_files(mode: BoxMode, metadata_path: Path, group: '_WorksetRoot
 def _narrow_box_scalar_cascade(global_path: Path, *, workset_path: Path | None, box_path: Path | None) -> 'KeyStore'
 def _fallback_runtime_dir(var_name: str) -> Path
 def _runtime_base_usable(base: Path, *, follow_symlinks: bool=True, require_private: bool=False) -> bool
+def _refused_null_path_value_error(key: str, default: str, *, referent: 'str | None'=None) -> str
 def _refuse_bare_relative(key: str, raw: object, default: str, *, ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> None
 def _resolve_system_path_keys(set_values: Mapping[str, str | None], keys: Iterable[str], *, data_home: Path, home: Path, xdg_vars: Mapping[str, str]) -> tuple[dict[str, str], dict[str, Path]]
 def _resolve_system_tier(set_values: Mapping[str, str | None], *, data_home: Path, home: Path, system_refusal: str | None=None) -> tuple[dict[str, Path], EarlySystem]
@@ -139,7 +141,7 @@ class StandardPaths:
     agents: Path
     channels: Path
     template: Path
-    canon: Path
+    canon: Path | None
     settings: Path
     primary_workset: Path
     registry: Path
@@ -147,11 +149,11 @@ class StandardPaths:
     cache: Path
     state: Path
     runtime: Path
-    channels_common: Path
-    channels_chat: Path
-    channels_broadcast: Path
-    channels_mailboxes: Path
-    channels_share: Path
+    channels_common: Path | None
+    channels_chat: Path | None
+    channels_broadcast: Path | None
+    channels_mailboxes: Path | None
+    channels_share: Path | None
     boxes: Path
     primary_vault_ro: Path | None
     primary_vault_rw: Path | None

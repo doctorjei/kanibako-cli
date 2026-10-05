@@ -1011,10 +1011,10 @@ class TestCoreDefaultCategories:
         # foundation's point, which the collapse refuses by name.
         assert "/home/agent" not in binds["box.bindings.rw"]
         # workspace: rw bind at /home/agent/workspace, options Z,U.  B2: the host_src
-        # is the @meta.box.workspace REF (routed through the materialized identity
+        # is the {meta.box.workspace} REF (routed through the materialized identity
         # anchor, spec §2c L476); it resolves to str(proj.project_path) at expand.
         assert binds["box.bindings.rw"]["/home/agent/workspace"] == (
-            "@meta.box.workspace",
+            "{meta.box.workspace}",
             "Z,U",
         )
         # Every entry is STRUCTURED (spec §2a), never a colon-string — asserted one
@@ -1049,14 +1049,14 @@ class TestCoreDefaultCategories:
         assert "/home/agent" not in binds["box.bindings.rw"]
         assert "/home/agent" not in primary["box.bindings.rw"]
         assert binds["box.bindings.ro"]["/home/agent/vault/ro"] == (
-            "@workset.vault_ro", "ro",
+            "{workset.vault_ro}", "ro",
         )
         assert binds["box.bindings.rw"]["/home/agent/vault/rw"] == (
-            "@workset.vault_rw", "Z,U",
+            "{workset.vault_rw}", "Z,U",
         )
         # The vault BIND is still per-mode — primary/named carry the box-name leaf.
         assert primary["box.bindings.ro"]["/home/agent/vault/ro"] == (
-            "@workset.vault_ro/@meta.box.name", "ro",
+            "{workset.vault_ro}/{meta.box.name}", "ro",
         )
 
     def test_vault_keys_present_when_enabled_and_dirs_exist(self, tmp_path):
@@ -1066,14 +1066,14 @@ class TestCoreDefaultCategories:
         binds = core_defaults.core_default_categories(
             None, proj, enable_vault=True, mode="primary",
         )
-        # B2b: PRIMARY vault host_src routes through @workset.vault_{ro,rw}/
-        # @meta.box.name (spec §2c L442/445), resolved at launch to the proj vault.
+        # B2b: PRIMARY vault host_src routes through {workset.vault_ro}/{meta.box.name}
+        # (and its rw twin; spec §2c L442/445), resolved at launch to the proj vault.
         assert binds["box.bindings.ro"]["/home/agent/vault/ro"] == (
-            "@workset.vault_ro/@meta.box.name",
+            "{workset.vault_ro}/{meta.box.name}",
             "ro",
         )
         assert binds["box.bindings.rw"]["/home/agent/vault/rw"] == (
-            "@workset.vault_rw/@meta.box.name",
+            "{workset.vault_rw}/{meta.box.name}",
             "Z,U",
         )
 
@@ -1112,13 +1112,13 @@ class TestCoreDefaultCategories:
             None, proj, enable_vault=True, mode="primary",
         )
 
-        # The bind is emitted even though the source did not exist (host_src = @-ref).
+        # The bind is emitted even though the source did not exist (host_src = a reference).
         assert binds["box.bindings.ro"]["/home/agent/vault/ro"] == (
-            "@workset.vault_ro/@meta.box.name",
+            "{workset.vault_ro}/{meta.box.name}",
             "ro",
         )
         assert binds["box.bindings.rw"]["/home/agent/vault/rw"] == (
-            "@workset.vault_rw/@meta.box.name",
+            "{workset.vault_rw}/{meta.box.name}",
             "Z,U",
         )
         # ...and the missing source dirs were created (create-if-missing) — the gate

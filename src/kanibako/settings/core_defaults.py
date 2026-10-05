@@ -295,21 +295,36 @@ def channel_default_categories(
     addr = _ch.box_channel_addresses(proj, std)
     wch = _ch.workset_channel_paths(proj, std)
 
+    def _src(path: "Path | None") -> "str | None":
+        """A probed source as a ``literal_expr``; a NULL ARM STAYS ``None``.
+
+        ⚑ The row's own ``meta_ref`` is what a channel bind emits, so a null arm
+        needs its SLOT KEPT (that is the standalone-omit gate) and its VALUE left
+        null — ``str(None)`` would put the four-character path ``"None"`` in the
+        slot the table reads.
+        """
+        return None if path is None else literal_expr(str(path))
+
     # Symbolic source name -> runtime-probed host path, as a ``literal_expr``.  ⚑ Workset
     # sources exist only for PRIMARY/NAMED, and their absence IS the standalone-omit gate below.
-    sources: dict[str, str] = literal_map({
-        "channels_common": str(std.channels_common),
-        "channels_chat": str(std.channels_chat),
-        "channels_share": str(std.channels_share),
-        "channels_mailboxes": str(std.channels_mailboxes),
-        "inbox": str(addr.inbox),
-    })
+    # ⚑ A NULL ``std`` STAYS ``None`` HERE, on the terms
+    # :func:`core_default_categories` states below: ``str()`` would write the WORD "None"
+    # into a table of host paths.  The bind itself omits through the ``@system.channels.*``
+    # ref and the launch floor (``paths.system_path_floor``); this map is the mode gate.
+    # ⛔ NOT the workset rows below — those belong to ``_workset_channel_floor_values``.
+    sources: dict[str, str | None] = {
+        "channels_common": _src(std.channels_common),
+        "channels_chat": _src(std.channels_chat),
+        "channels_share": _src(std.channels_share),
+        "channels_mailboxes": _src(std.channels_mailboxes),
+        "inbox": _src(addr.inbox),
+    }
     if wch is not None:
-        sources.update(literal_map({
-            "workset_common": str(wch.common),
-            "workset_chat": str(wch.chat),
-            "workset_share": str(wch.share),
-        }))
+        sources.update({
+            "workset_common": _src(wch.common),
+            "workset_chat": _src(wch.chat),
+            "workset_share": _src(wch.share),
+        })
     elif _ch.has_workset_channels(proj):
         # ⚑ A NULL ``workset.channelroot`` KEEPS THE THREE ROWS: each emits its own
         # ``@workset.channels.*`` ref, which resolves to null — the floor SUPPLIES that
