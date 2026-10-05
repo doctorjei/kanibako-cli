@@ -58,7 +58,9 @@ from kanibako.settings.messages import (
     ERR_WORKSET_NULL_WORKSPACES,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.settings.workset_dirkeys import early_repoint, resolve_workset_dir_key
+from kanibako.settings.workset_dirkeys import (
+    EarlyScope, EarlySystem, early_repoint, resolve_workset_dir_key,
+)
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
@@ -137,14 +139,14 @@ def load_workset_settings_doc(root: Path) -> Mapping[str, Any] | None:
 
 def resolve_workset_workspaces(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, standalone: bool = False,
+    *, standalone: bool = False, early: EarlyScope | None = None,
 ) -> Path | None:
     """Return the resolved ``workset.workspaces`` dir (*standalone* selects the singular default).
 
     ``None`` when ``workset.workspaces`` is a present ``<None>`` ([R177]): there is no
     workspaces dir, and the default leaf would be a path the user said does not exist.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _WORKSPACES_LEAF)
+    repoint, where = early_repoint(workset_root, workset_settings, _WORKSPACES_LEAF, early=early)
     if repoint is None:
         return None
     return resolve_workset_dir_key(
@@ -152,43 +154,50 @@ def resolve_workset_workspaces(
         _STANDALONE_WORKSPACE_LEAF if standalone else _WORKSPACES_LEAF,
         key=_WORKSPACES_LEAF,
         where=where, standalone=standalone,
-        workset_settings=workset_settings,
+        workset_settings=workset_settings, early=early,
     )
 
 
 def resolve_workspaces_locator(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, early: EarlyScope | None = None,
 ) -> Path:
     """Where a named root's in-tree members are FOUND: :func:`resolve_workset_workspaces`,
     or its default leaf under a null — for DETECTION only, never a place to create in.
 
     Members made before a null still sit at the default, and a lookup must still find them.
     """
-    workspaces = resolve_workset_workspaces(workset_root, workset_settings)
+    workspaces = resolve_workset_workspaces(workset_root, workset_settings, early=early)
     if workspaces is not None:
         return workspaces
-    return resolve_workset_dir_key(workset_root, None, _WORKSPACES_LEAF, key=_WORKSPACES_LEAF)
+    return resolve_workset_dir_key(
+        workset_root, None, _WORKSPACES_LEAF, key=_WORKSPACES_LEAF, early=early,
+    )
 
 
-def _workspaces_null_file(workset_root: Path) -> Path | None:
+def _workspaces_null_file(
+    workset_root: Path, *, early: EarlyScope | None = None,
+) -> Path | None:
     """The settings file whose present ``<None>`` nulls *workset_root*'s ``workset.workspaces``."""
     repoint, where = early_repoint(
-        workset_root, load_workset_settings_doc(workset_root), _WORKSPACES_LEAF,
+        workset_root, load_workset_settings_doc(workset_root), _WORKSPACES_LEAF, early=early,
     )
     return where if repoint is None else None
 
 
-def workset_workspaces_nulled(workset_root: Path) -> bool:
+def workset_workspaces_nulled(workset_root: Path, *, early: EarlyScope | None = None) -> bool:
     """True when *workset_root*'s ``workset.workspaces`` is a present ``<None>`` — no workspace dir.
 
     ⚑ Read off the root's workset.yaml and the system file beneath it, like every face here.
     The PRIMARY workset's <None> is the launch floor's (spec §2c), not a file value, so a
     primary root answers from its files.
     """
-    return _workspaces_null_file(workset_root) is not None
+    return _workspaces_null_file(workset_root, early=early) is not None
 
 
-def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool = False) -> None:
+def refuse_null_workspaces(
+    workset_root: Path, what: str, *, standalone: bool = False, early: EarlyScope | None = None,
+) -> None:
     """RAISE, naming ``workset.workspaces`` and the file, when *workset_root* nulls it ([R177], Q96).
 
     For every operation that would CREATE or COPY a workspace under the root: a null means the
@@ -196,7 +205,7 @@ def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool = 
     completes "cannot hold …" (e.g. ``"a new workspace for 'app'"``).  *standalone* selects
     the lone-box cure: a standalone root has no outside member to connect instead.
     """
-    null_file = _workspaces_null_file(workset_root)
+    null_file = _workspaces_null_file(workset_root, early=early)
     if null_file is not None:
         message = ERR_STANDALONE_NULL_WORKSPACES if standalone else ERR_WORKSET_NULL_WORKSPACES
         raise WorksetError(message % (null_file, what))
@@ -204,6 +213,7 @@ def refuse_null_workspaces(workset_root: Path, what: str, *, standalone: bool = 
 
 def refuse_null_box_workspace(
     workset_root: Path, workspace: Path | None, box: str, *, standalone: bool,
+    early: EarlyScope | None = None,
 ) -> None:
     """RAISE when a box's ``meta.box.workspace`` resolves through a null ``workset.workspaces`` (Q106).
 
@@ -213,7 +223,7 @@ def refuse_null_box_workspace(
     *workspace* lies outside *workset_root* and resolves through no key, so it still launches.
     Primary is not asked: its workspace is the project dir.
     """
-    null_file = _workspaces_null_file(workset_root)
+    null_file = _workspaces_null_file(workset_root, early=early)
     if null_file is None:
         return
     if standalone or workspace is None or _path_in_tree(workspace, workset_root):
@@ -222,7 +232,7 @@ def refuse_null_box_workspace(
 
 def resolve_workset_boxes(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, standalone: bool = False,
+    *, standalone: bool = False, early: EarlyScope | None = None,
 ) -> Path:
     """Return the resolved ``workset.boxes`` dir (*standalone* selects the ``box_data`` default).
 
@@ -238,7 +248,7 @@ def resolve_workset_boxes(
     default instead would put boxes where the user said there is no store.
     """
     default_leaf = _STANDALONE_BOXES_LEAF if standalone else BOXES_DIR_NAME
-    repoint, where = early_repoint(workset_root, workset_settings, BOXES_DIR_NAME)
+    repoint, where = early_repoint(workset_root, workset_settings, BOXES_DIR_NAME, early=early)
     if repoint is None:
         # ⚑ The config/system path keys' own null refusal text (``config._refuse_null_paths``).
         raise SettingsError(ERR_CONFIG_NULL_PATH % (where, f"workset.{BOXES_DIR_NAME}"))
@@ -246,13 +256,13 @@ def resolve_workset_boxes(
         workset_root, repoint if isinstance(repoint, str) else None, default_leaf,
         key=BOXES_DIR_NAME,
         where=where, standalone=standalone,
-        workset_settings=workset_settings,
+        workset_settings=workset_settings, early=early,
     )
 
 
 def resolve_workset_logs(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
-    *, standalone: bool = False,
+    *, standalone: bool = False, early: EarlyScope | None = None,
 ) -> Path | None:
     """Return the resolved ``workset.logs`` dir (*standalone* takes the box-anchored default).
 
@@ -263,25 +273,26 @@ def resolve_workset_logs(
     the boxes dir, with no name leaf.  It is a same-set ref, so the route resolves it like
     a set value, through the same ``workset.boxes`` face answer.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _LOGS_LEAF)
+    repoint, where = early_repoint(workset_root, workset_settings, _LOGS_LEAF, early=early)
     if repoint is None:
         return None
     if not isinstance(repoint, str):
         repoint = f"@{_BOXES_REF}" if standalone else None
     return resolve_workset_dir_key(
         workset_root, repoint, _LOGS_LEAF, key=_LOGS_LEAF, where=where, standalone=standalone,
-        workset_settings=workset_settings,
+        workset_settings=workset_settings, early=early,
     )
 
 
 def resolve_workset_channelroot(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, early: EarlyScope | None = None,
 ) -> Path | None:
     """Return the resolved ``workset.channelroot`` — ⚑ primary/named ONLY; callers gate on mode.
 
     ``None`` for a present ``<None>``: no channel root, so no channel bind.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, "channelroot")
+    repoint, where = early_repoint(workset_root, workset_settings, "channelroot", early=early)
     if repoint is None:
         return None
     return resolve_workset_dir_key(
@@ -289,36 +300,38 @@ def resolve_workset_channelroot(
         _CHANNELROOT_LEAF,
         key="channelroot",
         where=where, standalone=False,
-        workset_settings=workset_settings,
+        workset_settings=workset_settings, early=early,
     )
 
 
 def resolve_workset_canon(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, early: EarlyScope | None = None,
 ) -> Path | None:
     """Return the resolved ``workset.canon`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included.
 
     ``None`` for a present ``<None>``: the canon layer is SKIPPED (spec §2a).
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _CANON_LEAF)
+    repoint, where = early_repoint(workset_root, workset_settings, _CANON_LEAF, early=early)
     if repoint is None:
         return None
     return resolve_workset_dir_key(
         workset_root, repoint if isinstance(repoint, str) else None,
         _CANON_LEAF,
         key=_CANON_LEAF,
-        where=where, workset_settings=workset_settings,
+        where=where, workset_settings=workset_settings, early=early,
     )
 
 
 def resolve_workset_template(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, early: EarlyScope | None = None,
 ) -> Path | None:
     """Return the resolved ``workset.template`` dir — ⚑ primary/named ONLY; <None> in standalone.
 
     ``None`` for a present ``<None>``, and in STANDALONE (spec §2c): no template layer.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _TEMPLATE_LEAF)
+    repoint, where = early_repoint(workset_root, workset_settings, _TEMPLATE_LEAF, early=early)
     if repoint is None:
         return None
     return resolve_workset_dir_key(
@@ -326,12 +339,13 @@ def resolve_workset_template(
         _TEMPLATE_LEAF,
         key=_TEMPLATE_LEAF,
         where=where, standalone=False,
-        workset_settings=workset_settings,
+        workset_settings=workset_settings, early=early,
     )
 
 
 def resolve_workset_vault_ro(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, early: EarlyScope | None = None,
 ) -> Path | None:
     """Return the resolved ``workset.vault_ro`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included.
 
@@ -339,37 +353,40 @@ def resolve_workset_vault_ro(
     `null` setting inside a bind's source leaves the bind out…") and
     ``StandardPaths.primary_vault_ro`` is ``None``.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _VAULT_RO_KEY)
+    repoint, where = early_repoint(workset_root, workset_settings, _VAULT_RO_KEY, early=early)
     if repoint is None:
         return None
     return resolve_workset_dir_key(
         workset_root, repoint if isinstance(repoint, str) else None,
         _VAULT_RO_LEAF,
         key=_VAULT_RO_KEY,
-        where=where, workset_settings=workset_settings,
+        where=where, workset_settings=workset_settings, early=early,
     )
 
 
 def resolve_workset_vault_rw(
     workset_root: Path, workset_settings: Mapping[str, Any] | None,
+    *, early: EarlyScope | None = None,
 ) -> Path | None:
     """Return the resolved ``workset.vault_rw`` dir — ⚑ UNIFORM IN EVERY MODE, standalone included.
 
     ``None`` for a present ``<None>``, on the terms of :func:`resolve_workset_vault_ro` —
     the two arms resolve INDEPENDENTLY, so either may carry it alone.
     """
-    repoint, where = early_repoint(workset_root, workset_settings, _VAULT_RW_KEY)
+    repoint, where = early_repoint(workset_root, workset_settings, _VAULT_RW_KEY, early=early)
     if repoint is None:
         return None
     return resolve_workset_dir_key(
         workset_root, repoint if isinstance(repoint, str) else None,
         _VAULT_RW_LEAF,
         key=_VAULT_RW_KEY,
-        where=where, workset_settings=workset_settings,
+        where=where, workset_settings=workset_settings, early=early,
     )
 
 
-def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path | None, Path | None]:
+def resolve_workset_vault_pair(
+    workset_root: Path, *, early: EarlyScope | None = None,
+) -> tuple[Path | None, Path | None]:
     """The resolved ``(vault_ro, vault_rw)`` for *workset_root*, off ONE workset.yaml read.
 
     ⚑ The pair form exists because EVERY consumer wants both arms, and reading the file
@@ -378,8 +395,8 @@ def resolve_workset_vault_pair(workset_root: Path) -> tuple[Path | None, Path | 
     ⚑ Either arm may be ``None``: a workset may null one arm and not the other.
     """
     settings_doc = load_workset_settings_doc(workset_root)
-    return (resolve_workset_vault_ro(workset_root, settings_doc),
-            resolve_workset_vault_rw(workset_root, settings_doc))
+    return (resolve_workset_vault_ro(workset_root, settings_doc, early=early),
+            resolve_workset_vault_rw(workset_root, settings_doc, early=early))
 
 
 def standalone_vault_teardown(root: Path) -> tuple[list[Path], list[Path]]:
@@ -603,6 +620,14 @@ class Workset:
     root: Path
     projects: list[WorksetProject] = field(default_factory=list)
     is_default: bool = False                 # True = synthesized default workset
+    early_system: EarlySystem | None = None
+
+    @property
+    def early_scope(self) -> EarlyScope | None:
+        """The scope this workset's early readers take: its record and its partition name."""
+        if self.early_system is None:
+            return None
+        return EarlyScope(self.early_system, WS_TOKEN_PRIMARY if self.is_default else self.name)
 
     # Convenience paths -------------------------------------------------------
 
@@ -618,20 +643,25 @@ class Workset:
         (``settings_launch``, ``meta.box.path | @workset.boxes/@meta.box.name``); this
         property is a FACE on that answer, never a second one.
         """
-        return resolve_workset_boxes(self.root, load_workset_settings_doc(self.root))
+        return resolve_workset_boxes(
+            self.root, load_workset_settings_doc(self.root), early=self.early_scope,
+        )
 
     @property
     def workspaces_dir(self) -> Path | None:
         """The resolved ``workset.workspaces`` dir; ``None`` when the root nulls it (no dir, Q106)."""
         # ⚑ RESOLVED, not composed (§3.3: real and USED), and read off the root's file
         # each time, like :attr:`projects_dir`.
-        return resolve_workset_workspaces(self.root, load_workset_settings_doc(self.root))
+        return resolve_workset_workspaces(
+            self.root, load_workset_settings_doc(self.root), early=self.early_scope,
+        )
 
     def require_workspaces_dir(self, what: str) -> Path:
         """:attr:`workspaces_dir` for an op that needs the dir; a null REFUSES, naming *what*."""
         workspaces = self.workspaces_dir
         if workspaces is None:
-            raise WorksetError(ERR_WORKSET_NULL_WORKSPACES % (_workspaces_null_file(self.root), what))
+            null_file = _workspaces_null_file(self.root, early=self.early_scope)
+            raise WorksetError(ERR_WORKSET_NULL_WORKSPACES % (null_file, what))
         return workspaces
 
     @property
@@ -645,12 +675,16 @@ class Workset:
     @property
     def vault_ro_dir(self) -> Path | None:
         """The resolved ``workset.vault_ro`` — ⚑ RESOLVED, not composed; ``None`` when nulled."""
-        return resolve_workset_vault_ro(self.root, load_workset_settings_doc(self.root))
+        return resolve_workset_vault_ro(
+            self.root, load_workset_settings_doc(self.root), early=self.early_scope,
+        )
 
     @property
     def vault_rw_dir(self) -> Path | None:
         """The resolved ``workset.vault_rw`` — ⚑ RESOLVED, not composed; ``None`` when nulled."""
-        return resolve_workset_vault_rw(self.root, load_workset_settings_doc(self.root))
+        return resolve_workset_vault_rw(
+            self.root, load_workset_settings_doc(self.root), early=self.early_scope,
+        )
 
     @property
     def logs_dir(self) -> Path | None:
@@ -665,7 +699,9 @@ class Workset:
         same key with ``standalone=True``, not through this property, which is a
         WORKSET face; see ``settings/paths.py::helper_log_path``.
         """
-        return resolve_workset_logs(self.root, load_workset_settings_doc(self.root))
+        return resolve_workset_logs(
+            self.root, load_workset_settings_doc(self.root), early=self.early_scope,
+        )
 
     @property
     def settings_path(self) -> Path:
@@ -676,7 +712,7 @@ class Workset:
     def registry_path(self) -> Path:
         """The resolved per-workset ``registry.yaml`` — the ``boxes:`` membership, and only that."""
         return workset_registry.resolve_workset_registry_path(
-            self.root, load_workset_settings_doc(self.root),
+            self.root, load_workset_settings_doc(self.root), early=self.early_scope,
         )
 
 
@@ -687,23 +723,26 @@ class Workset:
 # identity — there is none there to read.
 # ---------------------------------------------------------------------------
 
-def _load_workset(root: Path, name: str) -> Workset:
+def _load_workset(root: Path, name: str, *, early_system: EarlySystem | None) -> Workset:
     """Build the :class:`Workset` for the globally-registered *name* rooted at *root*."""
     # ⚑ A root still carrying a RETIRED identity table refuses here, with the named
     # cure — it is the load path, not detection, that a 1.6/1.7 user reaches first
     # (their workset IS globally registered, so detection resolves it fine).
     refuse_retired_workset_identity(root)
     settings_doc = load_workset_settings_doc(root)
-    registry_path = workset_registry.resolve_workset_registry_path(root, settings_doc)
+    ws = Workset(name=name, root=root, early_system=early_system)
+    registry_path = workset_registry.resolve_workset_registry_path(
+        root, settings_doc, early=ws.early_scope,
+    )
     # ⚑ Members come from ``boxes:``, which is the WHOLE of what that file holds, and
     # the path is recorded there exactly once.
-    projects = [
+    ws.projects = [
         WorksetProject(name=box_name, source_path=Path(box_path))
         for box_name, box_path in workset_registry.load_workset_boxes(
             registry_path,
         ).items()
     ]
-    return Workset(name=name, root=root, projects=projects)
+    return ws
 
 
 def refuse_retired_workset_identity(root: Path) -> None:
@@ -797,7 +836,7 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 # already ([R139]).
 # ---------------------------------------------------------------------------
 
-def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]:
+def _workset_skeleton_dirs(root: Path, *, early: EarlyScope | None = None) -> tuple[Path, ...]:
     """The four dirs a workset root is made of — ⚑ three RESOLVED, ``vault`` alone literal.
 
     Fewer when ``workset.logs`` or ``workset.workspaces`` is a present ``<None>``: that key
@@ -815,15 +854,15 @@ def _workset_skeleton_dirs(root: Path) -> tuple[Path, ...]:
     # workset.yaml yet, so each leaf is the system file's value, else its default.
     settings_doc = load_workset_settings_doc(root)
     dirs = (
-        resolve_workset_boxes(root, settings_doc),
-        resolve_workset_workspaces(root, settings_doc),
+        resolve_workset_boxes(root, settings_doc, early=early),
+        resolve_workset_workspaces(root, settings_doc, early=early),
         root / _VAULT_LEAF,
-        resolve_workset_logs(root, settings_doc),
+        resolve_workset_logs(root, settings_doc, early=early),
     )
     return tuple(d for d in dirs if d is not None)
 
 
-def is_workset_skeleton(root: Path) -> bool:
+def is_workset_skeleton(root: Path, *, early: EarlyScope | None = None) -> bool:
     """True when *root* carries the WHOLE skeleton — ⚑ the NAMED-root detection primitive.
 
     ⚑ Presence-only, and it names nothing.  A workset root records no name anywhere
@@ -837,7 +876,7 @@ def is_workset_skeleton(root: Path) -> bool:
     that has repointed ``workset.boxes``, ``workset.workspaces`` or ``workset.logs``.
     """
     try:
-        dirs = _workset_skeleton_dirs(root)
+        dirs = _workset_skeleton_dirs(root, early=early)
     except ConfigError:
         return False
     return all(subdir.is_dir() for subdir in dirs)
@@ -935,7 +974,7 @@ def create_workset(
     return ws
 
 
-def load_workset(root: Path, name: str) -> Workset:
+def load_workset(root: Path, name: str, *, early_system: EarlySystem | None = None) -> Workset:
     """Load the workset registered as *name* at *root* (raises ``WorksetError`` if absent).
 
     ⚑ *name* is REQUIRED and comes from the global registry's ``worksets:`` section —
@@ -945,7 +984,7 @@ def load_workset(root: Path, name: str) -> Workset:
     root = root.resolve()
     if not root.is_dir():
         raise WorksetError(f"Workset root does not exist: {root}")
-    return _load_workset(root, name)
+    return _load_workset(root, name, early_system=early_system)
 
 
 def list_worksets(std: StandardPaths) -> dict[str, Path]:
@@ -968,6 +1007,7 @@ def default_workset(std: StandardPaths) -> Workset:
         root=std.primary_workset,
         projects=projects,
         is_default=True,
+        early_system=std.early_system,
     )
 
 
@@ -981,7 +1021,7 @@ def resolve_workset_name(name: str, std: StandardPaths) -> Workset:
     stored = find_identifier(name, registry)
     if stored is None:
         raise WorksetError(f"Working set '{name}' is not registered.")
-    return load_workset(registry[stored], stored)
+    return load_workset(registry[stored], stored, early_system=std.early_system)
 
 
 def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False) -> Path:
@@ -1001,7 +1041,10 @@ def delete_workset(name: str, std: StandardPaths, *, remove_files: bool = False)
         ws_settings = load_workset_settings_doc(root) if purge else None
     except ConfigError:
         ws_settings = None
-    boxes_dir = resolve_workset_boxes(root, ws_settings) if purge else None
+    boxes_dir = (
+        resolve_workset_boxes(root, ws_settings, early=EarlyScope(std.early_system, stored))
+        if purge else None
+    )
 
     # Drop the ONE ``worksets`` entry, by the STORED spelling.  Idempotent: a missing
     # entry is a no-op.
@@ -1304,7 +1347,9 @@ def release_project(ws: Workset, name: str, *, keep_link: bool = False) -> Works
     # ⚑ Under a null ``workset.workspaces`` a link made before the null still sits at the
     # DEFAULT place; unlink it there (never create anything), or a later in-tree member of
     # the same name would inherit the old external folder through it.
-    link = resolve_workspaces_locator(ws.root, load_workset_settings_doc(ws.root)) / name
+    link = resolve_workspaces_locator(
+        ws.root, load_workset_settings_doc(ws.root), early=ws.early_scope,
+    ) / name
     if (not keep_link and link.is_symlink()
             and _unfollowed(target.source_path) != _unfollowed(link)):
         link.unlink()

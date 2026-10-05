@@ -90,6 +90,7 @@ def _stored_repoint(doc: Mapping[str, Any] | None, key: str) -> str | None | _Un
 
 def early_repoint(
     workset_root: Path, workset_settings: Mapping[str, Any] | None, key: str,
+    *, early: EarlyScope | None = None,
 ) -> tuple[str | None | _Unset, Path]:
     """The RAW ``workset.<key>`` this route resolves, and the file that carries it.
 
@@ -97,7 +98,8 @@ def early_repoint(
     wins, a PRESENT ``<None>`` included (spec §2h); only a key it does not carry falls
     through to the system settings file.  :data:`UNSET` when neither tier carries it, so
     the key takes its per-mode default.  The file is what a refusal names: the one the
-    value came from, else the root's own.
+    value came from, else the root's own.  The system tier is *early*'s record; ``None``
+    opens the system settings file instead (transitional, removed at S2g).
     """
     if key not in WORKSET_EARLY_KEYS:
         raise ValueError(f"workset.{key} is not a workset early key")
@@ -105,8 +107,12 @@ def early_repoint(
     value = _stored_repoint(workset_settings, key)
     if value is not UNSET:
         return value, own_file
-    system_file = system_settings_path()
-    value = _stored_repoint(load_doc(system_file), key)
+    if early is None:
+        system_file = system_settings_path()
+        value = _stored_repoint(load_doc(system_file), key)
+    else:
+        system_file = early.system.file
+        value = early.system.tier.get(f"workset.{key}", UNSET)
     return value, (own_file if value is UNSET else system_file)
 
 
@@ -213,7 +219,7 @@ def _host_ctx() -> ResolveCtx:
 def resolve_workset_dir_key(
     workset_root: Path, repoint: str | None, default_leaf: str, *, key: str,
     where: Path | None = None, standalone: bool | None = None,
-    workset_settings: Mapping[str, Any] | None = None,
+    workset_settings: Mapping[str, Any] | None = None, early: EarlyScope | None = None,
 ) -> Path:
     """Resolve the ``workset.<key>`` *repoint* (or its ``<root>/<default_leaf>`` default).
 
@@ -222,7 +228,8 @@ def resolve_workset_dir_key(
     *standalone* is the box mode the caller reads *key* in (``None``: not known); it picks
     the declared default of an unset referent (see :func:`_referent_value`).
     *workset_settings* is the root's ``workset.yaml`` document the caller read (``None``: no
-    file); a referent is read from it, then from the system file.
+    file); a referent is read from it, then from the system tier (*early*, as
+    :func:`early_repoint` takes it).
     *key* must be in :data:`WORKSET_EARLY_KEYS`; any other raises :class:`ValueError`.
     An unset repoint takes the default leaf under *workset_root*.  Raises
     :class:`~kanibako.settings.settings_resolve.SettingsError`, naming the key, the file
@@ -265,7 +272,7 @@ def resolve_workset_dir_key(
     try:
         expanded = _expand_early(
             workset_root, workset_settings, repoint, key=key, standalone=standalone,
-            chain=(f"workset.{key}",),
+            chain=(f"workset.{key}",), early=early,
         )
     except SettingsError as exc:
         raise SettingsError(
@@ -288,7 +295,7 @@ _USABLE_REFS = (
 
 def _expand_early(
     workset_root: Path, doc: Mapping[str, Any] | None, value: str, *, key: str,
-    standalone: bool | None, chain: tuple[str, ...],
+    standalone: bool | None, chain: tuple[str, ...], early: EarlyScope | None = None,
 ) -> str:
     """Expand *value* with the references knowable before the snapshot; *chain* guards cycles."""
     def lookup(ref: str, chain: tuple[str, ...]) -> str:
@@ -298,6 +305,7 @@ def _expand_early(
         if referent != ref and referent in WORKSET_EARLY_KEYS:
             return _referent_value(
                 workset_root, doc, referent, key=key, standalone=standalone, chain=chain,
+                early=early,
             )
         raise SettingsError(
             f"'@{ref}' cannot be resolved here: this key is read before the launch "
@@ -309,7 +317,7 @@ def _expand_early(
 
 def _referent_value(
     workset_root: Path, doc: Mapping[str, Any] | None, referent: str, *, key: str,
-    standalone: bool | None, chain: tuple[str, ...],
+    standalone: bool | None, chain: tuple[str, ...], early: EarlyScope | None = None,
 ) -> str:
     """The resolved ``@workset.<referent>``: its value in the cascade, else its declared default.
 
@@ -319,7 +327,7 @@ def _referent_value(
     is not known here, and a guess would place a directory.  A present ``<None>`` is refused
     the same way, since it names no directory.
     """
-    raw, where = early_repoint(workset_root, doc, referent)
+    raw, where = early_repoint(workset_root, doc, referent, early=early)
     if raw is None:
         raise SettingsError(f"'@workset.{referent}' is null in {where}, so it names no directory")
     if isinstance(raw, _Unset):
@@ -328,7 +336,9 @@ def _referent_value(
         raise SettingsError(
             f"'@workset.{referent}' is set to the bare relative path {raw!r} in {where}"
         )
-    return _expand_early(workset_root, doc, raw, key=key, standalone=standalone, chain=chain)
+    return _expand_early(
+        workset_root, doc, raw, key=key, standalone=standalone, chain=chain, early=early,
+    )
 
 
 def _declared_default(key: str) -> object:
