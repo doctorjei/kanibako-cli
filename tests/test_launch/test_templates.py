@@ -1587,9 +1587,12 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         # The DEFAULT workset template dir is no longer read.
         assert not (hb / "workset-only.md").exists()
 
-    def _set_box_canon(self, std, value):
-        """Repoint ``box.canon`` in the workset settings file — the user's route."""
-        wsf = std.primary_workset / "workset.yaml"
+    def _set_box_canon(self, proj, value):
+        """Repoint ``box.canon`` in the box's own settings file (keyspec §0: an absolute
+        per-owner path is the box's to set, not one a containing scope may share)."""
+        from kanibako.settings.paths import box_workset_settings_paths
+
+        wsf, _ = box_workset_settings_paths(proj)
         doc = (yaml.safe_load(wsf.read_text()) if wsf.exists() else {}) or {}
         doc.setdefault("box", {})["canon"] = str(value)
         wsf.write_text(yaml.safe_dump(doc))
@@ -1606,7 +1609,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
         the box's other seeds must still be on disk afterwards."""
         self._populate(std)
         escape = tmp_path / "ESCAPED"
-        self._set_box_canon(std, escape)
+        self._set_box_canon(primary_proj, escape)
         with caplog.at_level(logging.WARNING):
             _seed_box(std, primary_proj)     # steps 1-3, as ``box create`` runs
         # Nothing was written outside the box store...
@@ -1644,7 +1647,7 @@ class TestBoxHandbookHostCopyThroughTheSeam:
 
         self._populate(std)
         box_root = primary_proj.shell_path.parent
-        self._set_box_canon(std, box_root / "canon2")
+        self._set_box_canon(primary_proj, box_root / "canon2")
         hb = box_root / "canon2" / "handbook"
 
         _seed_box(std, primary_proj)         # steps 1-3; must NOT raise
