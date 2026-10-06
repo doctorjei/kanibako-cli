@@ -2800,7 +2800,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already deleted, so this was a migration notice and nothing more — and with no installed base to
   migrate, the file it looks for cannot exist. Launching no longer stats those three paths, and
   nothing is printed. ⚑ **If you are carrying a pre-1.8.0 `env` file, you now get no reminder:**
-  [MIGRATION.md](MIGRATION.md) §2.19 lists the three locations and what to move where. Exit codes
+  [MIGRATION.md](MIGRATION.md) § *2.19 The `env` family: the `env` FILES are gone and `env.<VAR>` is
+  refused* lists the three locations and what to move where. Exit codes
   are unchanged — the notice was informational.
 
 - **The pre-1.7 `kanibako/` → `boxes/` workset rename, and the `Migrated workset:` line it printed.**
@@ -2830,7 +2831,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   warning naming the stale file whenever it sat there without the new one. Nothing else changes:
   the file was already never read and never touched, and it still is — you simply no longer hear
   about it. v1.8.0 renames every tier's settings file and opens no deprecation window for any of
-  them (see [MIGRATION.md](MIGRATION.md) §2.45, which lists each old path and its new name); a
+  them (see [MIGRATION.md](MIGRATION.md) § *2.45 Each settings file is now named for its tier:
+  `box.yaml`, `workset.yaml`, `agent.yaml`*, which lists each old path and its new name); a
   notice that survived for one of those paths alone would be a rule kanibako applies to one legacy
   file and refuses to the rest. If you have such a file, move the values you still want into
   `@config.primary_workset/workset.yaml` or re-set them with `kanibako workset set default
@@ -3750,7 +3752,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one honest line and two bland ones in a single run.
   Only errors kanibako raises deliberately — the ones whose text is already written for a user —
   are reported this way; an unforeseen failure still produces the old `cannot check` line, and
-  `setup` still runs on past it to its summary. See [MIGRATION.md](MIGRATION.md) §2.49.
+  `setup` still runs on past it to its summary. See [MIGRATION.md](MIGRATION.md) § *2.49
+  `kanibako setup` stops at a settings error instead of finishing, and the diagnostics name it*.
 
 - **A reserved name in a settings file is refused on one line instead of crashing with a Python
   traceback.** A file containing `box: get:` — or `items:`, or any other name the settings store
@@ -3880,7 +3883,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the seeded log files, and the `meta.box.inbox` / `meta.box.share_global` / `meta.box.share_workset`
   addresses together. `workset.channelroot` is now a value the launch resolves too: it carried a
   documented default that nothing supplied, so a settings file could reference `@workset.channelroot`
-  and get nothing back. See [MIGRATION.md](MIGRATION.md) §2.51.
+  and get nothing back. See [MIGRATION.md](MIGRATION.md) § *2.51 The six `workset.channels.*` keys
+  are read, and three of them did nothing before*.
 
 - **The any-agent defaults `template`, `canon`, `run_args` and `transform` are settable, and the
   refusal that pointed at them stopped lying.** Six agent behavior keys were settable by their bare
@@ -4132,7 +4136,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dropped rather than relocated, so `workset info` no longer prints a `Created:` line; nothing
   records when a workset was made. Both retired spellings (`workset.meta`, and the `meta.workset`
   one an unreleased dev build wrote) hard-refuse by name, with the fold-and-delete cure in the
-  message; **MIGRATION.md §2.43** is the guide. A per-workset `registry.yaml` still carrying the
+  message; **MIGRATION.md** § *2.43 A workset root no longer carries an identity table; an
+  un-migrated root refuses* is the guide. A per-workset `registry.yaml` still carrying the
   `workset:` or `projects:` sections that same dev build wrote refuses too, for the same reason:
   the `projects:` map held a second copy of every member path, and the two copies drifted.
 
@@ -4160,7 +4165,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   newer.** Either half upgraded alone leaves a box whose kickoff resolves nothing and whose
   directives silently stop loading, so upgrade through the `kanibako` meta package, or upgrade the
   plugins and the base in one step. The launch warning is gone with the line, which makes any
-  future one a real signal rather than expected noise. See [MIGRATION.md](MIGRATION.md) §2.6.
+  future one a real signal rather than expected noise. See [MIGRATION.md](MIGRATION.md) § *2.6 The
+  kickoff — upgrade base and plugins TOGETHER*.
 
 - **A spawned helper's entrypoint script moved out of `playbook/`.** A helper box's directory
   layout carried a `playbook/scripts/` directory holding `helper-init.sh` — `playbook` being the
@@ -4171,7 +4177,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   move it, because a copy left at the old path is read by nothing and warned about by nothing. The
   two sides are addressed differently on purpose: a parent is a real box with a canon, while a
   helper home has no canon binds at all, and giving one a `canon/` directory would make the launch
-  materialize a canon skeleton it was never meant to have. See [MIGRATION.md](MIGRATION.md) §2.44.
+  materialize a canon skeleton it was never meant to have. See [MIGRATION.md](MIGRATION.md) § *2.44
+  Helper boxes: the entrypoint script moved out of `playbook/`*.
 
 - **BREAKING: the flattened directives file has a new link format, and generated section headers
   are gone.** Kanibako assembles your directive tree into one file for the agent to read. That file
@@ -4226,7 +4233,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **any other** scope is a contested slot and refuses the launch (§2.33) — re-spell it
   `box.env.COLORTERM`. The launch notice about retired `env` files says so too: `COLORTERM` was the
   one line kanibako itself put in them, and it is the one line that must be deleted rather than
-  migrated. See [MIGRATION.md](MIGRATION.md) §2.42.
+  migrated. See [MIGRATION.md](MIGRATION.md) § *2.42 `COLORTERM` passes your host's value through,
+  and is absent when your host sets none*.
 
 - **`kanibako box show --effective` lists the behavior defaults it always applied.**
   `allow_helpers`, `continue_mode`, `bootstrap` and `access` were literals inside the launch code, so
@@ -4248,7 +4256,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is a bare **name** used from elsewhere (`kanibako start <name>`, `box info <name>`, `--box
   <name>`), which reports the token as unresolvable until the box is indexed. `--register` is
   standalone-only: a default-mode box's registration is its workset membership, which is not
-  optional. See [MIGRATION.md](MIGRATION.md) §2.41.
+  optional. See [MIGRATION.md](MIGRATION.md) § *2.41 `create --standalone` no longer registers the
+  box; `--register` opts in*.
 
 - **BREAKING: the variables kanibako derives for an agent are settings entries now, and a key
   naming one refuses the launch.** Five environment variables are *computed* from an agent's
@@ -4265,7 +4274,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `access` key, or use `-S` / `-A`. The other four refuse only when their driving key resolves to a
   value: set `model`, `provider` or `endpoint` instead, or pass `-e VAR=value` for one launch.
   Nothing kanibako ships declares any of the five as a key, so a default install cannot hit this.
-  See [MIGRATION.md](MIGRATION.md) §2.40.
+  See [MIGRATION.md](MIGRATION.md) § *2.40 Realized variables are settings entries, and setting one
+  by hand now refuses*.
 
 - **BREAKING: an environment variable may be declared at one scope only.** Declaring the same
   variable at two scopes — `system.env.EDITOR` and `box.env.EDITOR`, say — used to start the box
@@ -4278,7 +4288,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ordinary cascade, so a system file may set `box.env.EDITOR` as a default for every box and a
   box's own file may set `box.env.EDITOR` and win. Nothing kanibako ships declares an `env` entry
   at two scopes, so a default install cannot hit this. See
-  [MIGRATION.md](MIGRATION.md) §2.33.
+  [MIGRATION.md](MIGRATION.md) § *2.33 An environment variable may be declared at ONE scope only*.
 
 - **A `synced` copy may now share a destination with a binding, and both are delivered.** Until
   now, declaring a `synced` copy whose destination was exactly a binding's destination refused the
@@ -4293,7 +4303,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *file* copied at a mask's own destination is delivered, and that mask is then not mounted for the
   box at all**: one file filling one void is total, so nothing is left half-hidden. A copy whose
   covering binding is read-only is still skipped with a warning. See
-  [MIGRATION.md](MIGRATION.md) §2.29.
+  [MIGRATION.md](MIGRATION.md) § *2.29 A `synced` entry lands inside the bind that covers it, and is
+  applied later in the launch*.
 
 - **BREAKING: the environment variables an agent plugin sets are now ordinary settings, and you
   can override them.** Each plugin used to hand its variables straight to the container —
@@ -4306,7 +4317,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box.env.DISABLE_AUTOUPDATER` — your value used to be silently discarded in favor of the
   plugin's; that configuration now **refuses the launch and names both keys.** The cure is the
   same one owner: drop your key and override the plugin's key instead, at whatever scope you like.
-  See [MIGRATION.md](MIGRATION.md) §2.34.
+  See [MIGRATION.md](MIGRATION.md) § *2.34 An agent's own environment variables are settings now,
+  and you can override them*.
 
 - **BREAKING: an agent's own environment variables are ordinary settings now, resolving where the
   agent scope resolves — and arrangements that launch today will refuse: a twin of a variable at
@@ -4339,7 +4351,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kanibako agent set <agent> env.VAR=…` writes that shape for you. ⚑ `secret_path` is worth
   checking even if you never hand-edited an agent file — that nesting predates the move to the
   flat table. `bindings:` moved with them; the entry below has the whole file shape. See
-  [MIGRATION.md](MIGRATION.md) §2.35.
+  [MIGRATION.md](MIGRATION.md) § *2.35 An agent's own environment variables now resolve where an
+  agent-scope key should*.
 
 - **BREAKING: an agent's settings file has one level — every category is written directly under
   `self:`, and a nested `self: <agent>:` table refuses the launch.** `self:` is not a key: it is
@@ -4359,7 +4372,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same file used to beat it silently. The reason for refusing rather than continuing to accept: it
   was never one spelling but two, and a file carrying both lost the nested table *wholesale* —
   entries spelled only there were absent, not overridden, with nothing said. See
-  [MIGRATION.md](MIGRATION.md) §2.37.
+  [MIGRATION.md](MIGRATION.md) § *2.37 An agent's settings file has ONE level: everything sits
+  directly under `self:`*.
 
 - **BREAKING: the `agent` verbs joined the closed keyspace — `agent set`, `get` and `reset` refuse
   what is not a key, and an undeclared scalar in an agent file refuses the launch.** `agent set`
@@ -4376,7 +4390,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launch by name, while `agent list`/`info` still display the file and `agent reset --all`
   remains the recovery. Also fixed: a dotted destination reads back whole (`agent get claude
   "bindings.ro.~/.cache/uv"`), where it used to print "(not set)". See
-  [MIGRATION.md](MIGRATION.md) §2.38.
+  [MIGRATION.md](MIGRATION.md) § *2.38 The `agent` verbs joined the closed keyspace: `set`, `get`
+  and `reset` refuse what is not a key*.
 
 - **BREAKING: the permission axis is a tier, not a boolean — `auto_approve` is now `access`.** The
   agent-scope `auto_approve: true|false` is retired and replaced by `access`, which takes
@@ -4392,7 +4407,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   specific to this key — an undeclared key is not read at all, so a box you had deliberately set
   to `auto_approve: false` would otherwise have come up at the permissive default with nothing
   said. An unrecognized tier is rejected at both ends, `set` time and launch, and never treated as
-  permissive. See [MIGRATION.md](MIGRATION.md) §2.1.
+  permissive. See [MIGRATION.md](MIGRATION.md) § *2.1 Settings keys renamed or retired*.
 
 - **BREAKING: an undeclared key in ANY settings file now stops the command, naming every one it
   found.** The keyspace is closed, and *setting* a key kanibako does not declare was already an
@@ -4406,7 +4421,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   merged snapshot). `box show` without `--effective` never resolves and so never carries THIS
   message — it marks the line instead (see the `box get` / `workset get` entry below), and
   `setup`/`system diagnose`/`rig diagnose` print it in full, `setup` stopping at rc 1 (see the
-  `kanibako setup` entry under **Fixed**) — see [MIGRATION.md](MIGRATION.md) §2.47 for which is
+  `kanibako setup` entry under **Fixed**) — see [MIGRATION.md](MIGRATION.md) § *2.47 An undeclared
+  key in a settings file now stops the command, and the cure is a hand-edit* for which is
   which. **The cure is a hand-edit and the message says so**: `box reset` cannot remove what is
   not a key, and `box show --effective` resolves through the same seam, so it refuses as well.
   Two deliberate non-refusals: an agent whose plugin is not installed here is not judged at all —
@@ -4417,13 +4433,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what is installed: `agent: common:`, `agent: env:`, `agent: seeded:` and every other category
   spelling are judged wherever an `agent:` table is read at all, because kanibako declares that
   list itself and an agent can never be named from it. (Which files read one is a separate
-  question with its own answer — see [MIGRATION.md](MIGRATION.md) §2.11.) **The cost that remains, stated: a name kanibako has simply never heard of is
+  question with its own answer — see [MIGRATION.md](MIGRATION.md) § *2.11 Housekeeping: renames you
+  almost certainly don't carry*.) **The cost that remains, stated: a name kanibako has simply never
+  heard of is
   indistinguishable from a harness you have not installed**, so both `agent: goose: zippity:` and a
   typo'd `agent: clade: zippity:` resolve on a machine without goose, and `zippity` refuses on one
   with it. There is no list of every agent that will ever exist to check a name against.
   `agent: default:` is judged everywhere. §2.38 closed this same
   passthrough for the per-agent `agent.yaml` file; this is the same rule over every settings file
-  and the whole resolved snapshot. See [MIGRATION.md](MIGRATION.md) §2.47.
+  and the whole resolved snapshot. See [MIGRATION.md](MIGRATION.md) § *2.47 An undeclared key in a
+  settings file now stops the command, and the cure is a hand-edit*.
   **A key kanibako RETIRED still gets the message written for it**, not this generic one: before
   printing, the refusal asks whether the files it loaded carry a spelling it has a cure for — asking
   only of the tables those files actually contribute, so a table your settings drop before the merge
@@ -4437,7 +4456,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of which explains what changed and hands over a command to paste. One thing is lost at this
   earlier seam and is stated rather than hidden: it runs before kanibako settles which box it is
   looking at, so a cure that names a `box set` / `workset set` subject carries the `<box>` /
-  `<workset>` placeholder instead of the name. See [MIGRATION.md](MIGRATION.md) §2.1.
+  `<workset>` placeholder instead of the name. See [MIGRATION.md](MIGRATION.md) § *2.1 Settings keys
+  renamed or retired*.
 
 - **BREAKING: `box get` and `workset get` refuse a name that is not a key, and the stored view
   lists the entries your settings file carries that are not keys.** Both verbs answered
@@ -4460,7 +4480,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the value is echoed as the file spells it. It marks only what the keyspace refuses — data
   inside a declared key stays unmarked, and so does a table that is declared but that this file's
   tier may not set (an `agent:` table in a `box.yaml`), which is a different fact.
-  See [MIGRATION.md](MIGRATION.md) §2.48.
+  See [MIGRATION.md](MIGRATION.md) § *2.48 `box get` and `workset get` refuse a name that is not a
+  key, and `show` marks the entry*.
 
 - **BREAKING: the four `KANIBAKO_*` variables kanibako sets for itself are ordinary settings now,
   and a twin of one at another scope will refuse the launch.** `KANIBAKO_NAME`, `KANIBAKO_AGENT`,
@@ -4482,7 +4503,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kanibako itself (`kanibako stop`, `kanibako code` and the credential watcher inspect
   `KANIBAKO_AGENT`; the in-box supervisor watches `KANIBAKO_AGENT_MARKERS_DIR`; the flatten step at
   agent start opens `KANIBAKO_DIRECTIVE_SEED`), so overriding one is telling kanibako something
-  about the box that has to be true. See [MIGRATION.md](MIGRATION.md) §2.36.
+  about the box that has to be true. See [MIGRATION.md](MIGRATION.md) § *2.36 The four `KANIBAKO_*`
+  variables kanibako sets for itself are settings now*.
 
 - **BREAKING: `-e` overrides the key that owns the variable, and a malformed `-e` item now stops
   the launch.** `kanibako start -e VAR=value` used to be pasted onto the container's environment
@@ -4500,7 +4522,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box is touched** — a flag that overrides a key must not look accepted and do nothing. A variable
   name is a letter or underscore followed by letters, digits or underscores, the same shape an
   `<scope>.env.<VAR>` key is held to; an empty value is still legal (`-e QUIET=`). See
-  [MIGRATION.md](MIGRATION.md) §2.39.
+  [MIGRATION.md](MIGRATION.md) § *2.39 `-e` overrides the key, not the environment*.
 
 - **BREAKING: a bare-relative host source is refused where it is declared, and an abstract
   category's bare leaf is rooted where it is declared — at all four scopes and in your own settings
@@ -4527,7 +4549,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   teaches the spelling — no shipped default, example or doc; claude's own `common` entries are the
   one place a bare leaf appears, and they go through the loader that already rooted it — so it
   reaches only a settings file written by hand. See
-  [MIGRATION.md](MIGRATION.md) §2.50.
+  [MIGRATION.md](MIGRATION.md) § *2.50 A bare-relative host source is refused, and a bare leaf is
+  rooted where it is declared*.
 
 ### Removed
 
@@ -4631,7 +4654,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the one place that resolves it. Two mounts landing on one of those internal destinations (from
   your settings and from kanibako's own) is now refused by name rather than resolved silently — the
   same rule, and the same message, as everywhere else in 1.8.0. See
-  [MIGRATION.md](MIGRATION.md) §2.2.
+  [MIGRATION.md](MIGRATION.md) § *2.2 Mount collisions are now hard errors (a working config can
+  start failing)*.
 
 - **A settings key named for one of the store's own members was accepted, then unreadable.**
   `insert_segments` is a public method on the resolved store, and it was not a reserved leaf
@@ -4654,7 +4678,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box (read-only), which is the opposite of what a mask is for: a mask is a void, and there is
   nothing inside it. Masks are now mounted `notmpcopyup` and show empty. **This changes what an
   existing mask does at your next launch** — content you could read through a mask disappears. See
-  [MIGRATION.md](MIGRATION.md) §2.25.
+  [MIGRATION.md](MIGRATION.md) § *2.25 A mask now hides its path instead of making it read-only*.
 
 - **A box with the vault disabled silently got no masks at all.** Turning the vault off
   (`box.enable_vault`) also discarded every `masks` entry the box declared — no tmpfs, no warning,
@@ -4664,7 +4688,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolver; only the wrapper stayed, gating an ordinary user key on an unrelated setting. A declared
   mask is now emitted regardless. **This changes what a vault-disabled box sees at your next
   launch** — a path you asked to hide, which has been readable all along, becomes empty. See
-  [MIGRATION.md](MIGRATION.md) §2.26.
+  [MIGRATION.md](MIGRATION.md) § *2.26 Masks now work in a box with the vault disabled*.
 
 - **A `masks` list in a settings file was silently dropped.** `box.masks: ["~/secret"]` — the
   spelling v1.7.x used — reached the launch as a plain list, missed the shape guard that emits the
@@ -4674,7 +4698,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`{box_dest: true}`). A category that vanishes without a word is the one outcome the closed
   keyspace forbids. The shipped defaults file no longer spells its own (empty) `masks` default as a
   list either. See
-  [MIGRATION.md](MIGRATION.md) §2.24.
+  [MIGRATION.md](MIGRATION.md) § *2.24 `masks` is a map keyed by destination; a list is refused*.
 
 - **A blocked template seed blamed the wrong thing.** Seeding into the managed canon region
   (`canon/COLLECTION.md`, `canon/bible/…`, `canon/handbook/…`) is refused, but the refusal said the
@@ -4763,7 +4787,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is the foundation the rest of the set folds over rather than a binding among them, so an entry at
   `~` is a second claim on one place and refuses (see the next entry). The refusal for two bindings
   at one destination also states the cure the same way its sibling does — suppress the entry you do
-  not want, since an override is not enough. See [MIGRATION.md](MIGRATION.md) §2.31.
+  not want, since an override is not enough. See [MIGRATION.md](MIGRATION.md) § *2.31 A mount set
+  that cannot be assembled now stops the launch*.
 
 - **A box's home is no longer a binding, and can no longer be repointed with one.** Writing an entry
   at `~` in a settings file used to override the home binding kanibako ships and win — the
@@ -4776,7 +4801,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from it. Home also leaves the per-scope `bindings.*` listing in `kanibako box show --effective`
   and appears at the top of that block as a labeled foundation line, so the one mount every box has
   is still visible in the view that exists to show what a box gets. See
-  [MIGRATION.md](MIGRATION.md) §2.32.
+  [MIGRATION.md](MIGRATION.md) § *2.32 You can no longer repoint a box's home with a binding*.
 
 - **A mask now hides the binds nested under it.** A box's mounts are assembled by folding every
   scope's declarations over the box home in scope order, and in that fold a `masks` entry clears
@@ -4791,7 +4816,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spell `rw` explicitly (`Z,U,rw` rather than `Z,U`) — podman's default either way — and a bind
   dropped for a missing source names its destination rather than the destination as you spelled it
   (`/home/agent/canon`, not `~/canon`) — as do the two warnings on the create-time seed path, which
-  is assembled by the same fold. See [MIGRATION.md](MIGRATION.md) §2.27.
+  is assembled by the same fold. See [MIGRATION.md](MIGRATION.md) § *2.27 A mask hides the binds
+  nested under it*.
 
   A mask and a bind that name the **same** destination are decided by that same fold now: the one
   declared at the more specific scope takes the destination (`system` → `agent` → `workset` → `box`),
@@ -4839,7 +4865,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is final, after the plugin's credential sync (so a `synced` entry aimed at the same host file wins
   where it used to lose), and after the three checks that can abort a launch, so a launch that fails
   one of them no longer refreshes your synced files on the way out. See
-  [MIGRATION.md](MIGRATION.md) §2.29.
+  [MIGRATION.md](MIGRATION.md) § *2.29 A `synced` entry lands inside the bind that covers it, and is
+  applied later in the launch*.
 
 - **`synced` entries are now written once when the box is created, and a `seeded` entry at the same
   destination is no longer discarded.** Two changes that only make sense together. A `synced` entry
@@ -4854,7 +4881,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compares against the sync's own previous write and the problem cannot arise. The consequence you
   may notice: a destination declared under **both** `seeded` and `synced` now keeps both entries —
   the seed is applied first and the sync overwrites it — where the seed entry used to be dropped
-  outright. See [MIGRATION.md](MIGRATION.md) §2.30.
+  outright. See [MIGRATION.md](MIGRATION.md) § *2.30 `synced` is written once at box creation, and a
+  `seeded` entry sharing that destination is kept*.
 
 - **`agent.<agent>.transform` now decides whether a binary transform runs.** The key names WHICH
   transform an agent uses; until now nothing read it, and the tweakcc patch ran for any agent whose
@@ -4877,7 +4905,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.kanibako/state`, so the old path keeps resolving. ⚑ One exception, for boxes created
   before this release: they already have a real `~/.local/state/kanibako` directory, which
   kanibako will not delete — remove it inside the box once to get the symlink. See
-  [MIGRATION.md](MIGRATION.md) §2.22.
+  [MIGRATION.md](MIGRATION.md) § *2.22 New fixed box directory `~/.kanibako/`; the helper socket and
+  log moved into it*.
 
 - **Every bind-shaped category entry is now written keyed by its DESTINATION, and entry names are
   gone.** `caches`, `seeded`, `common` and `synced` join `bindings.ro` / `bindings.rw`: the category
@@ -4887,7 +4916,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   There is no shim and no deprecation window; a file still in the old shape is refused loudly,
   naming the entry. A `get` of `<scope>.<category>` now reads the whole map (it also reads
   `<scope>.bindings.{ro,rw}` and `<scope>.masks`, which had silently answered `(not set)` since
-  they went dest-keyed). See [MIGRATION.md](MIGRATION.md) §2.23.
+  they went dest-keyed). See [MIGRATION.md](MIGRATION.md) § *2.23 Bind entries are keyed by
+  DESTINATION; entry names are gone*.
   ⚑ `seeded` and `synced` are still **copies**, not mounts. Sharing a way of writing an entry down
   says nothing about what is done with it.
 
@@ -4898,11 +4928,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   category table is read at the **agent** noun instead (`kanibako agent get <agent> caches`);
   asking a file-scope noun for `agent.<agent>.caches` is refused and points there. A readable
   form is planned and its shape is not decided, so treat today's behavior as provisional. See
-  [MIGRATION.md](MIGRATION.md) §2.23 for how to verify an edit meanwhile.
+  [MIGRATION.md](MIGRATION.md) § *2.23 Bind entries are keyed by DESTINATION; entry names are gone*
+  for how to verify an edit meanwhile.
 - **Seed and sync destinations are spelled guest-side.** The three template seed layers target
   `~/` rather than a host path under the box store, and kanibako resolves that to the box store when
   the copy runs. Nothing about *where the files land* changes; the spelling is now the same one
-  every other category uses. See [MIGRATION.md](MIGRATION.md) §2.23.
+  every other category uses. See [MIGRATION.md](MIGRATION.md) § *2.23 Bind entries are keyed by
+  DESTINATION; entry names are gone*.
 
 ### Removed
 
@@ -4913,7 +4945,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The categories are *not* retired — they are still declared, still read by the launch cascade so
   every existing entry keeps being delivered, and **`get` still reads them** (at the
   category key; see the dest-key entry above). Only the write verb is gone.
-  See [MIGRATION.md](MIGRATION.md) §2.20.
+  See [MIGRATION.md](MIGRATION.md) § *2.20 Bind entries are edited in the settings file, not from
+  the CLI*.
   Rationale: these categories are now a single key whose value is a map keyed by the mount
   destination, so there is no per-entry key left for `set` to name — and keeping the route for four
   categories while two refused would have been two rules for one shape.
@@ -4974,7 +5007,7 @@ migration code.** Four released config surfaces are removed outright
     directory the read-only chapter bind then reads. Repoint the sources with
     `system.template` / `agent.<agent>.template` / `workset.template` and the
     destination with `box.canon`; there is no separate seed key for it
-    (MIGRATION.md §2.5(c)).
+    (MIGRATION.md § *2.5 Template and per-agent store moves*, part (c)).
   - `notebook/` and `workbook/` — box-owned and writable: box directives/procedures, and
     box working state (devnotes, tasks, plans). Seeded once at `create`.
 
@@ -4986,7 +5019,8 @@ migration code.** Four released config surfaces are removed outright
   verbs escalate to delete or copy a protected tree. If a host cannot root-own the
   skeleton, `create` says so loudly and the box works normally, unprotected.
   **New boxes only** — an existing box keeps launching and gains the new bible, but its
-  own `~/playbook` directives stop being loaded (MIGRATION.md §2.4 has the recipe).
+  own `~/playbook` directives stop being loaded (MIGRATION.md § *2.4 The canon books — where your
+  instruction files now live* has the recipe).
 - **`<scope>.canon` keys** — `system.canon`, `agent.<agent>.canon`, `workset.canon` and
   `box.canon` name each scope's handbook-contribution root; repointing a scope's
   contribution goes through its key. `workset.canon` / `box.canon` are CLI-settable,
@@ -5195,7 +5229,8 @@ migration code.** Four released config surfaces are removed outright
   launch and resolved directly, as a cascade level below the agent settings file. Nothing is
   written; a launch leaves that file byte-identical and `create` imports nothing. **A value the old
   sync wrote there still OUTRANKS the live store** — delete persona values you did not write
-  yourself, or edits to the store will silently do nothing (see `MIGRATION.md` §2.15). A broken
+  yourself, or edits to the store will silently do nothing (see `MIGRATION.md` § *2.15 Personas: the
+  store is read live, and stray values in the agent file now win*). A broken
   store config is now a hard error naming the cause instead of a silent fall back to stale values,
   and a token the endpoint rejects (401/403) refuses the launch. An unreachable endpoint only warns.
   ⚑ A `start` that merely **reattaches to an already-running box does not probe** — the box's agent
@@ -5291,7 +5326,8 @@ migration code.** Four released config surfaces are removed outright
   while `--detach` closed both of them further down. The refusal is now driven by *which* of the
   running-box regime's exits a launch will take, resolved once, so the gate and the regime cannot
   disagree. ⚑ **Check scripts that
-  pass flags to `kanibako start` without knowing whether the box is up** (`MIGRATION.md` §2.17).
+  pass flags to `kanibako start` without knowing whether the box is up** (`MIGRATION.md` § *2.17
+  Reattaching to a running box: flags are now refused instead of ignored*).
 - **BREAKING: a launch no longer rebuilds a box whose directory has been deleted — it refuses.**
   If a box's registration survives but its box directory is gone, `kanibako start` used to
   silently re-create the directory and re-seed the home, reporting nothing. That is a *repair*,
@@ -5302,7 +5338,7 @@ migration code.** Four released config surfaces are removed outright
   member. Unaffected: `create`, `box extract`, and the first launch of a box added with `workset
   connect` (connect registers the box without seeding it, so that launch is a genuine
   materialization). ⚑ **Check anything that deletes box directories and relies on the next
-  `start` to put them back** (`MIGRATION.md` §2.18).
+  `start` to put them back** (`MIGRATION.md` § *2.18 A launch never rebuilds anything*).
 - **BREAKING: a box-config verb run from a directory that is not a box now errors.** `kanibako
   box set box.<key>=<value>` (and `get`/`show`/`reset`) with no box named, run from a cwd with no
   box, used to write `boxes/__unregistered__/settings.yaml` and report success at rc 0 — a
@@ -5325,7 +5361,7 @@ migration code.** Four released config surfaces are removed outright
   must be normalized (`normalize_bind_dest`): arm keys merge as strings but resolve to paths, so an
   unnormalized `~/x` neither matches nor is matched by an override written `/home/agent/x` — the
   two survive as separate entries and then collide at launch as two bindings on one destination.
-  See `MIGRATION.md` §3 item 7.
+  See `MIGRATION.md` § *3 For plugin authors* item 7.
 
 ### Fixed
 
