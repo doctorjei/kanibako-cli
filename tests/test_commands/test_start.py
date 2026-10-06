@@ -13091,8 +13091,52 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         assert "Rebuild" not in msg
         assert "where workset.boxes used to point" in msg
         assert msg.endswith(
-            f"mkdir -p {tmp_home / 'kb4'} && mv <old store> {tmp_home / 'kb4' / 'project'}"
+            f"mkdir -p {tmp_home / 'kb4'} && mv OLD_STORE {tmp_home / 'kb4' / 'project'}\n"
+            "  (Replace OLD_STORE with the directory workset.boxes used to name.)"
         )
+        assert "<" not in msg.splitlines()[-2]
+
+    def test_repointed_into_the_old_store_offers_no_move(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """``workset.boxes`` -> ``<root>/boxes/project`` puts the new box dir INSIDE the old
+        store; ``mv old old/project`` cannot run, so no move is printed, nor a Rebuild."""
+        from kanibako.commands.start import _resolve_existing_box, _unbuilt_box_error
+
+        old, marker = self._primary_box(config_file, tmp_home)
+        config, std = self._std(config_file)
+        self._repoint_primary_boxes(std, old)
+        config, std = self._std(config_file)
+        proj = _resolve_existing_box(std, config, None)
+        assert proj is not None and proj.metadata_path == old / "project"
+
+        msg = _unbuilt_box_error(proj)
+        assert msg is not None
+        assert "Rebuild" not in msg
+        assert " mv " not in msg
+        assert msg.endswith(f"It belongs at {old / 'project'}, inside its old place; a "
+                            "directory cannot be moved into itself, so no move is offered.")
+        assert marker.read_text() == "data"
+
+    def test_a_file_at_the_destination_offers_no_move(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        from kanibako.commands.start import _resolve_existing_box, _unbuilt_box_error
+
+        old, _marker = self._primary_box(config_file, tmp_home)
+        config, std = self._std(config_file)
+        self._repoint_primary_boxes(std, tmp_home / "kb5")
+        (tmp_home / "kb5").mkdir()
+        (tmp_home / "kb5" / "project").write_text("a file")
+        config, std = self._std(config_file)
+        proj = _resolve_existing_box(std, config, None)
+        assert proj is not None
+
+        msg = _unbuilt_box_error(proj)
+        assert msg is not None
+        assert " mv " not in msg and "Rebuild" not in msg
+        assert msg.endswith("which already exists; a move would not land it at that "
+                            "path, so none is offered.")
 
     def test_key_at_its_default_rebuilds_as_today(
         self, config_file, tmp_home, credentials_dir, protected_canon,
@@ -13141,7 +13185,8 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         assert "box rm" not in msg
         assert f" {root / 'box_data'}\n" not in msg and not msg.endswith(str(root / "box_data"))
         assert msg.endswith(
-            f"Move it, with the box stopped:  mkdir -p {new.parent} && mv <old store> {new}"
+            f"Move it, with the box stopped:  mkdir -p {new.parent} && mv OLD_STORE {new}\n"
+            "  (Replace OLD_STORE with the directory workset.boxes used to name.)"
         )
 
     def test_standalone_key_dir_already_there_offers_no_move_and_no_rebuild(
@@ -13163,7 +13208,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         assert "Rebuild" not in msg
         assert " mv " not in msg
         assert msg.endswith(f"It belongs at {store}, which already exists; a move would "
-                            "put it inside that directory, so none is offered.")
+                            "not land it at that path, so none is offered.")
         assert (store / "kept.txt").read_text() == "data"
 
     def test_standalone_at_its_default_rebuilds_as_today(
