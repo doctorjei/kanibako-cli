@@ -909,14 +909,13 @@ def scope_view(raw: Any, *, node: str) -> dict:
     as the one ``agent.<node>`` table they are."""
     tables = contributed_tables(raw)
     root = tables.pop(_ROOT, None)
-    own = root if isinstance(root, dict) else {}
     scope = tables.get(FILE_SCOPE)
-    others = {}
-    for seg, sub in scope.items() if isinstance(scope, dict) else ():
-        if isinstance(sub, dict) and _node_identity(seg) == _node_identity(node):
-            own = deep_merge(own, sub)
-        else:
-            others[seg] = sub
+    own = _own_node_settings(root if isinstance(root, dict) else {}, scope, node=node)
+    own_id = _node_identity(node)
+    others = {
+        seg: sub for seg, sub in (scope.items() if isinstance(scope, dict) else ())
+        if not (isinstance(sub, dict) and _node_identity(seg) == own_id)
+    }
     tables[FILE_SCOPE] = {**others, node: own}
     return tables
 
