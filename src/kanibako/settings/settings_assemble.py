@@ -361,13 +361,15 @@ def refuse_retired_keys(
         cure = _retired_key_cure(
             key, level=level, value=value or "<name>", box_name=box_name, mirror=mirror,
         )
+        where = path if path is not None else "<settings>"
         raise SettingsError(
             f"'{key}' is RETIRED and is still set in the {level} settings file "
-            f"{path if path is not None else '<settings>'} "
-            f"(as `{': '.join(parts)}:`).\n"
+            f"{where} "
+            f"(as `{' '.join(parts)}:`).\n"
             f"{_MIRROR_STORY if mirror is not None else _SELECTION_STORY}\n"
-            f"  Fix: {cure}\n"
-            f"  then delete the `{': '.join(parts)}` entry from {path}."
+            f"  Delete the `{' '.join(parts)}` entry from {where} FIRST — the `set` "
+            f"below reads that file, and the stale entry refuses the write.\n"
+            f"  Fix: {cure}"
         )
 
 
@@ -441,6 +443,11 @@ def _retired_behavior_cure(
     """
     named = node or subject
     agent = display_agent_ref(named) if named else "<agent>"
+    if agent == _AGENT_DEFAULT_SUB and level not in PREF_LEGAL_LEVELS:
+        # ⚑ The reserved any-agent tier owns NO persona store, so the cure must not
+        # address it as one: `agent set default access=…` is refused rc 1. The tier's
+        # default is written at the SYSTEM scope as the BARE key (spec §2d).
+        return f"kanibako system set {successor}={tier}"
     if level == "agent":
         return f"kanibako agent set {agent} {successor}={tier}"
     if level in PREF_LEGAL_LEVELS:
@@ -450,8 +457,6 @@ def _retired_behavior_cure(
             f"kanibako {level} set {_cure_subject(level, box_name)} "
             f"pref.agent.{agent}.{successor}={tier}"
         )
-    if agent == _AGENT_DEFAULT_SUB:
-        return f"kanibako system set {successor}={tier}"
     return f"kanibako system set agent.{agent}.{successor}={tier}"
 
 
