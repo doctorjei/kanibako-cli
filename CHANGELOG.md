@@ -567,6 +567,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`set` now refuses a whole-table reference whose table holds a broken key.** With a stored
+  `agent.default.env.Y: '{agent.default.env.Y}'`, `system set box.env.B={agent.default.env}` was accepted and
+  written, though launch refused it; it is now refused, naming the broken key inside the table. A table that
+  holds its own referrer (`system set box.env.B={box.env}`) crashed `set` and launch with a Python
+  `RecursionError`; both now refuse it as a cyclic reference.
+
 - **The `{key}`-reference depth cap (64) no longer depends on the order keys resolve in.** A reference
   that reached an already-resolved key skipped the depth that key stood on, so a chain past the cap passed
   whenever its tail had resolved first. With a stored 70-deep `box.env.V*` chain,
