@@ -2085,8 +2085,15 @@ class TestBoxWorksetSettingsPaths:
 
     def _proj(self, tmp_path: Path, *, mode: "BoxMode", group):
         from kanibako.settings.paths import ProjectPaths
+        from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
+        from kanibako.channels.channels import (
+            WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE,
+        )
 
         meta = tmp_path / "meta"
+        # ⚑ The scope a resolver would have held: the STANDALONE box tier is answered
+        # through ``workset.boxes``, so a hand-built ``ProjectPaths`` carries one too.
+        token = WS_TOKEN_STANDALONE if mode is BoxMode.standalone else WS_TOKEN_PRIMARY
         return ProjectPaths(
             project_path=meta / "workspace",
             project_hash="h",
@@ -2096,6 +2103,10 @@ class TestBoxWorksetSettingsPaths:
             vault_rw_path=meta / "vault" / "rw" / "b",
             mode=mode,
             group=group,
+            _early=EarlyScope(
+                EarlySystem(tier={}, file=meta / "workset.yaml", system_paths={}),
+                token,
+            ),
         )
 
     def test_standalone_box_tier_is_the_box_data_settings_file(self, tmp_path: Path):
@@ -2922,6 +2933,26 @@ class TestEarlySystemTierIsData:
         )
 
     # ── the one loader ───────────────────────────────────────────────────────
+
+    def test_total_standalone_early_degrades_without_a_config(self, tmp_home, monkeypatch):
+        """The STANDALONE scope for a reader that holds no ``StandardPaths`` NEVER raises.
+
+        The plugin scan runs where the config is unavailable, so this arm must hand back a
+        scope even when the tier load fails outright, and it must name the file whose load
+        failed so a refusal it produced points at a real one.
+        """
+        import kanibako.settings.paths as paths_mod
+
+        def boom(*_args, **_kwargs):
+            raise OSError("no config here")
+
+        monkeypatch.setattr(paths_mod, "load_system_tier", boom)
+        scope = paths_mod.total_standalone_early()
+        cfg, _settings, _data_home = self._paths()
+
+        assert scope.system.file == cfg, "the refusal must name the file that failed"
+        assert scope.system.tier == {}, "an unreadable config states no early tier"
+        assert scope.system.system_paths == {}, "and resolves no system.* value"
 
     def test_load_system_config_is_load_system_tier_projected(self, tmp_home):
         """``load_system_config`` IS ``load_system_tier(...)[0]`` -- one loader, so the two

@@ -31,10 +31,10 @@ def workset_settings_path(group: _WorksetRooted) -> Path
 def workset_settings_path(group: None) -> None
 def workset_settings_path(group: _WorksetRooted | None) -> Path | None
 def box_tree_materialized(proj: ProjectPaths) -> bool
-def standalone_box_store(root: Path) -> Path
-def standalone_store_teardown_plan(root: Path) -> tuple[Path | None, Path | None]
+def standalone_box_store(root: Path, *, early: EarlyScope) -> Path
+def standalone_store_teardown_plan(root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]
 def report_retained_store(store: Path, root: Path) -> None
-def box_metadata_dir(mode: BoxMode, metadata_path: Path) -> Path
+def box_metadata_dir(mode: BoxMode, metadata_path: Path, *, early: EarlyScope | None=None) -> Path
 def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]
 def resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path: Path | None) -> bool
 def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path
@@ -50,6 +50,7 @@ def layer1_set_values(user_config_path: Path) -> dict[str, str]
 def load_system_tier(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> tuple[dict[str, Path], EarlySystem]
 def load_system_config(user_config_path: Path, *, data_home: Path, home: Path, tolerate_bad_settings: bool=False) -> dict[str, Path]
 def resolve_data_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
+def total_standalone_early() -> 'EarlyScope'
 def resolve_state_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def resolve_cache_path(*, config_home: Path | None=None, data_home: Path | None=None) -> Path
 def load_std_paths(config: BootstrapConfig | None=None, *, tolerate_bad_settings: bool=False) -> StandardPaths
@@ -82,8 +83,8 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
 def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool, name: str='', register: bool=True) -> tuple[str, Path, Path | None, Path | None]
 def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None=None, *, initialize: bool=False, enable_vault: bool | None=None, name: str='', register: bool=True) -> ProjectPaths
 def _default_project_group(std: StandardPaths) -> ProjectGroup
-def _standalone_settings_files(root: Path) -> tuple[Path, Path]
-def _box_settings_files(mode: BoxMode, metadata_path: Path, group: '_WorksetRooted | None') -> tuple[Path, Path | None]
+def _standalone_settings_files(root: Path, *, early: EarlyScope) -> tuple[Path, Path]
+def _box_settings_files(mode: BoxMode, metadata_path: Path, group: '_WorksetRooted | None', *, early: EarlyScope | None=None) -> tuple[Path, Path | None]
 def _narrow_box_scalar_cascade(global_path: Path, *, workset_path: Path | None, box_path: Path | None) -> 'KeyStore'
 def _fallback_runtime_dir(var_name: str) -> Path
 def _runtime_base_usable(base: Path, *, follow_symlinks: bool=True, require_private: bool=False) -> bool
@@ -186,8 +187,11 @@ class ProjectPaths:
     group: ProjectGroup | None = field(default=None)
     _config_path: Path | None = field(default=None, repr=False)
     _enable_vault: bool | None = field(default=None, repr=False)
+    _early: 'EarlyScope | None' = field(default=None, repr=False)
 
     def vault_enabled(self) -> bool
+
+    def _require_early(self) -> EarlyScope
 
 @dataclass(frozen=True)
 class WorksetSpec:

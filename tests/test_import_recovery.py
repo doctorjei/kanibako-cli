@@ -143,7 +143,7 @@ class TestImportBehavioralEquivalence:
         capsys.readouterr()
 
         # Direct call WITHOUT journal= → plain register, no journal write.
-        got = import_reconcile.import_standalone(std.registry, project_dir)
+        got = import_reconcile.import_standalone(std.registry, project_dir, early=_early_scope(std, BoxMode.standalone))
         assert got == name
         assert registry_store.load_standalone(std.registry).get(name) == str(
             project_dir.resolve()
@@ -184,6 +184,7 @@ class TestImportWriteAheadOrdering:
         )
         import_reconcile.import_standalone(
             std.registry, project_dir, journal=std.journal,
+            early=_early_scope(std, BoxMode.standalone),
         )
 
         # Write-ahead: entry was present during the register, gone at rest.
@@ -212,6 +213,7 @@ class TestImportWriteAheadOrdering:
         with pytest.raises(RuntimeError, match="simulated"):
             import_reconcile.import_standalone(
                 std.registry, project_dir, journal=std.journal,
+                early=_early_scope(std, BoxMode.standalone),
             )
         # Entry LEFT — recovery resumes it on the next resolve.
         assert journal.pending_import(std.journal, box_key) is not None

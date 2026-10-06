@@ -241,11 +241,9 @@ def resolve_workset_boxes(
     ⚑ THE FLAG SELECTS A DEFAULT LEAF, NOTHING ELSE — the same shape as
     ``resolve_workset_workspaces``: spec §2c gives standalone
     ``@meta.workset.path/box_data`` where primary/named get ``.../boxes``.
-    ⚑ THE REPOINT IS END TO END for every reader and deleter —
-    home, the box tier, ``box purge``/``box rm``, the plugin scan — all through
-    :func:`kanibako.settings.paths.standalone_box_store`.  ⚑ DETECTION is the one thing
-    still composed: ``box_data/`` remains the spec's standalone LOCATOR
-    (``system-design``), and is a marker rather than the store.
+    ⚑ Readers and deleters repoint through ``standalone_box_store``; ⚑ DETECTION still
+    composes ``box_data/``, the spec's standalone LOCATOR (``system-design``) — a
+    marker, not the store.
 
     🛑 A present ``<None>`` REFUSES, naming the key and the file ([R177], Q96): every box's
     home and settings live under this dir, so there is no box without it, and taking the

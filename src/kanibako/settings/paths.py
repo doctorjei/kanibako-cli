@@ -192,9 +192,8 @@ class ProjectPaths:
     group: ProjectGroup | None = field(default=None)
     _config_path: Path | None = field(default=None, repr=False)
     _enable_vault: bool | None = field(default=None, repr=False)
-    #: The :class:`~kanibako.settings.workset_dirkeys.EarlyScope` this project's resolver
-    #: held — carried because the STANDALONE store is answered through ``workset.boxes``,
-    #: which is a repointable key and so needs the scope its own resolver read.
+    #: The scope this project's resolver held — the STANDALONE store answers through
+    #: ``workset.boxes``, a repointable key, so it needs the scope that read it.
     _early: "EarlyScope | None" = field(default=None, repr=False)
 
     def vault_enabled(self) -> bool:
@@ -208,12 +207,7 @@ class ProjectPaths:
         return self._enable_vault
 
     def _require_early(self) -> EarlyScope:
-        """The scope this project's resolver held.
-
-        ⚑ Set by every resolver, so a ``ProjectPaths`` a caller HAND-BUILT is the one
-        case with none — and a hand-built one names a directory rather than a resolved
-        project, which is the shape :mod:`kanibako.commands.archive` builds.
-        """
+        """The scope this project's resolver held; every resolver sets it."""
         assert self._early is not None, "ProjectPaths carries no early scope"
         return self._early
 
@@ -281,9 +275,8 @@ def box_metadata_dir(mode: BoxMode, metadata_path: Path, *,
                      early: EarlyScope | None = None) -> Path:
     """The DIR holding a box's own metadata — home, session state, box tier.
 
-    ⚑ *early* is read on the STANDALONE arm ONLY, which is the arm that answers the
-    store through ``workset.boxes``; the primary/named arm is ``metadata_path`` itself
-    and needs no scope.
+    ⚑ *early* is read on the STANDALONE arm ONLY — the arm that answers the store through
+    ``workset.boxes``; the primary/named arm is ``metadata_path`` itself.
     """
     if mode is not BoxMode.standalone:
         return metadata_path
@@ -310,9 +303,14 @@ def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]:
     ⚑ Reads the scope off *proj* rather than taking one: the standalone box tier sits in
     the RESOLVED store, so answering it is this seam's job on every mode, and a caller
     holding only a ``ProjectPaths`` is the normal case.
+
+    ⚑ ``getattr`` because a caller may pass a STAND-IN for a resolved project (a
+    ``SimpleNamespace`` naming the paths it needs), and such a stand-in carries no scope —
+    which is fine, because the arm that needs one is STANDALONE and a stand-in that
+    answers for a standalone box is the caller's own modeling choice.
     """
     return _box_settings_files(proj.mode, proj.metadata_path, proj.group,
-                               early=proj._early)
+                               early=getattr(proj, "_early", None))
 
 
 def resolve_box_enable_vault(global_path: Path, *, box_path: Path,
@@ -1138,26 +1136,22 @@ def total_standalone_early() -> "EarlyScope":
     """The STANDALONE :class:`EarlyScope` for a reader that holds no ``StandardPaths``.
 
     :func:`resolve_data_path`'s contract, for the tier rather than the path: PURE and
-    TOTAL — creates nothing, never raises.  ``load_std_paths`` REQUIRES a config file,
-    and the plugin scan runs on paths where it is unavailable, so the one caller that
-    needs a scope without ``std`` degrades to the same default the composed store names.
+    TOTAL — creates nothing, never raises.  ``load_std_paths`` REQUIRES a config file and
+    the plugin scan runs where it is unavailable, so this degrades to the same tier an
+    unreadable config yields everywhere else: never worse than the composed default.
     """
     from kanibako.channels.channels import WS_TOKEN_STANDALONE
     from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
 
+    dh = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+    layer1 = config_file_path(user_config_home())
     try:
-        config_file = user_config_file()
-        dh = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
-        resolved, record = load_system_tier(
-            config_file, data_home=dh, home=Path.home())
+        _, record = load_system_tier(layer1, data_home=dh, home=Path.home())
         return EarlyScope(record, WS_TOKEN_STANDALONE)
     except Exception:
-        # ⚑ The SAME tier an unreadable config yields everywhere else: no ``workset.*``
-        # repoint, so a repointed store is not visible here — never worse than the
-        # composed default this replaces.
+        # *layer1* is the file whose load failed; the refusal names it.
         return EarlyScope(
-            EarlySystem(tier={}, file=Path.home() / KANIBAKO_PATH / "config.yaml",
-                        system_paths={}),
+            EarlySystem(tier={}, file=layer1, system_paths={}),
             WS_TOKEN_STANDALONE,
         )
 
