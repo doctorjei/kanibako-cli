@@ -428,7 +428,10 @@ def _agent_file_verdict_after_edit(
     from pathlib import Path
 
     from kanibako.errors import ConfigError, KanibakoError
-    from kanibako.settings.agent_file import AgentFileSlot, write_leaf
+    from kanibako.settings.agent_file import AgentFileSlot, scope_view, write_leaf
+    from kanibako.settings.config_interface import _ill_typed_stored_entries
+    from kanibako.settings.config_io import load_doc
+    from kanibako.settings.messages import WARN_CONFIG_ILL_TYPED_ENTRIES
     from kanibako.settings.settings_assemble import ReadPurpose, agent_record
     from kanibako.settings.settings_resolve import SettingsError
 
@@ -448,6 +451,9 @@ def _agent_file_verdict_after_edit(
             agent_record(probe, node=agent_id, purpose=ReadPurpose.RESOLVE)
         except SettingsError as exc:
             return real(exc)
+        typed = _ill_typed_stored_entries(scope_view(load_doc(probe), node=agent_id))
+    if typed:
+        return WARN_CONFIG_ILL_TYPED_ENTRIES % (path, "\n  ".join(typed.values()))
     return None
 
 

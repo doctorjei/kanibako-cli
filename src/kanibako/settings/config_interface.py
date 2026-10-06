@@ -50,6 +50,7 @@ from kanibako.settings.messages import (
     ERR_CONFIG_CHAIN_BAD_ENTRY,
     ERR_CONFIG_NULL_PATH_REASON,
     ERR_CONFIG_NULL_PATH_SET_HEAD,
+    ERR_STORED_NON_SCALAR,
     ERR_PER_OWNER_SET,
     PER_OWNER_SET_WORDS,
     WARN_CONFIG_BAD_ENTRIES,
@@ -697,7 +698,8 @@ class _BadEntries(NamedTuple):
     def chain_block(self) -> str:
         """The same entries, nested under their file — for a message that already has a lead."""
         return "\n".join(
-            f"  {path} stores:\n    " + "\n    ".join(lines) for path, lines in self.files
+            f"  {path} stores:\n    " + "\n    ".join(lines)
+            for path, lines in [*self.files, *self.ill_typed]
         )
 
 
@@ -741,6 +743,7 @@ def _cascade_bad_entries(
     ill_typed: "list[tuple[Path | None, list[str]]]" = []
     names: list[str] = []
     views: list[dict] = []
+    workset_files = {path for level, path in files if level == "workset"}
     for read in read_settings_files(files, purpose=ReadPurpose.DISPLAY):
         if not isinstance(read.view, dict):
             continue
@@ -754,11 +757,13 @@ def _cascade_bad_entries(
             grouped.append((read.path, [f"{shown} = {v}" for _segs, shown, v in kept]))
             names.extend(".".join(segs) for segs, _shown, _v in kept)
         typed = [
-            line for segs, line in sorted(_ill_typed_stored_entries(read.view).items())
-            if not _overwritten_by(edited, segs)
+            (segs, line) for segs, line in sorted(_ill_typed_stored_entries(
+                read.view, registry_marker=read.path in workset_files,
+            ).items()) if not _overwritten_by(edited, segs)
         ]
         if typed:
-            ill_typed.append((read.path, typed))
+            ill_typed.append((read.path, [line for _segs, line in typed]))
+            names.extend(".".join(segs) for segs, _line in typed)
     return _BadEntries(
         grouped, names, lambda dotted: _first_dotted(views, dotted), ill_typed,
     )
@@ -2841,10 +2846,16 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
     return out
 
 
-def _ill_typed_stored_entries(data: dict) -> dict[tuple[str, ...], str]:
+def _ill_typed_stored_entries(
+    data: dict, *, registry_marker: bool = False,
+) -> dict[tuple[str, ...], str]:
     """DECLARED entries STORED in a settings doc holding a value their key's own validators
     refuse — ``segments → "key = value: reason"`` (keyspec §2a); the twin of
-    :func:`_undeclared_stored_entries`, which judges the NAME."""
+    :func:`_undeclared_stored_entries`, which judges the NAME.
+
+    ⚑ *registry_marker*: *data* is a WORKSET file, whose null ``workset.registry`` is the
+    standalone marker (system-design § Detection & import), not a refused null.
+    """
     from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 
     out: dict[tuple[str, ...], str] = {}
@@ -2856,7 +2867,8 @@ def _ill_typed_stored_entries(data: dict) -> dict[tuple[str, ...], str]:
                 continue
             segments = (*parent, str(k))
             key = ".".join(segments)
-            reason = _stored_value_reason(key, v, family=family)
+            reason = (None if registry_marker and key == "workset.registry" and v is None
+                      else _stored_value_reason(key, v, family=family))
             if reason is not None:
                 out[segments] = f"{key} = {render_stored_scalar(v)}: {reason}"
             elif isinstance(v, dict) and family is None and key not in KEY_TYPES:
@@ -2867,10 +2879,7 @@ def _ill_typed_stored_entries(data: dict) -> dict[tuple[str, ...], str]:
 
 
 def _stored_value_reason(key: str, value: object, *, family: "str | None") -> "str | None":
-    """Why a set-time validator refuses *value* STORED at the declared *key*, or ``None``.
-
-    ⚑ workset.registry's null is the standalone MARKER (system-design § Detection & import).
-    """
+    """Why a set-time validator refuses *value* STORED at the declared *key*, or ``None``."""
     from kanibako.settings.settings_resolve import SettingsError
 
     if family is not None:
@@ -2879,20 +2888,29 @@ def _stored_value_reason(key: str, value: object, *, family: "str | None") -> "s
         except SettingsError as exc:
             return str(exc)
         return None
-    kind = KEY_TYPES.get(key)
+    kind = KEY_TYPES.get(key) or ("path" if "." in key and is_path_valued_key(key) else None)
     if kind is None and key not in _BOX_SCALAR_FIELDS:
         return None
-    if isinstance(value, (dict, list)):
-        return f"a {_value_shape(value)} where one {kind or 'scalar'} value goes"
     if value is None:
         if refuses_null_box_scalar(key):
             return ERR_BOX_SCALAR_NULL_REASON
-        if refuses_null_path_key(key) and key != "workset.registry":
+        if refuses_null_path_key(key):
             return ERR_CONFIG_NULL_PATH_REASON
         return None
+    if kind == "path":
+        return _path_value_reason(value)
+    if isinstance(value, (dict, list)):
+        return ERR_STORED_NON_SCALAR % (_value_shape(value), kind or "scalar")
     coerced = _coerce_value(key, str(value).lower() if isinstance(value, bool) else str(value))
     if isinstance(coerced, CoercionError):
         return coerced.message.removeprefix("Error: ")
+    return None
+
+
+def _path_value_reason(value: object) -> "str | None":
+    """⚑ THE ONE CALL SITE of the path-key SHAPE rule here, to be pointed at its shared carrier."""
+    if isinstance(value, (dict, list)):
+        return ERR_STORED_NON_SCALAR % (_value_shape(value), "path")
     return None
 
 

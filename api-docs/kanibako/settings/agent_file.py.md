@@ -45,6 +45,7 @@ def clear_overrides(path: Path) -> int
 def record(level: AgentFileLevel, *, node: str) -> AgentConfig
 def save(path: Path, cfg: AgentConfig) -> None
 def contributed_tables(raw: Any) -> dict
+def scope_view(raw: Any, *, node: str) -> dict
 def refuse_node_spelled_twice(table: dict, *, prefix: str, path: Path | None) -> None
 def level_table(raw: Any, *, sub_key: str, node: str | None=None, path: Path | None=None) -> AgentFileLevel
 def state_level(cfg: 'AgentConfig | None', *, node: str, path: Path | None=None) -> AgentFileLevel | None

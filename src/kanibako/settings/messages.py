@@ -201,6 +201,7 @@ WARN_CONFIG_BAD_ENTRIES = "%s stores entries that are not keys (spec §0):\n  %s
                                                     # the file path, the entries
 WARN_CONFIG_ILL_TYPED_ENTRIES = "%s stores values their keys refuse (spec §2a):\n  %s"
                                                     # the file path, the entries
+ERR_STORED_NON_SCALAR = "a %s where one %s value goes"   # the shape, the key's type
 #: The OUT-of-chain refusal's tail — what it did not do, and the two cures.
 ERR_CONFIG_BAD_ENTRIES_TAIL = (
                         "\nNothing was written. Remove those entries by editing the file, or "
@@ -208,10 +209,10 @@ ERR_CONFIG_BAD_ENTRIES_TAIL = (
 #: The HARD arm: a bad entry the value's own upstream chain REACHES, which ``--force``
 #: does not reach.  Names the broken upstream so it can be repointed or repaired.
 ERR_CONFIG_CHAIN_BAD_ENTRY = (
-                        "the edited value's own upstream chain reaches %s, which is not a "
-                        "key, so this set is refused too (spec §2a):\n%s\n"
-                        "Name an upstream that is a key, or remove that entry by editing "
-                        "the file. --force does not set a value whose own chain is broken.")
+                        "the edited value's own upstream chain reaches %s, a bad entry, so "
+                        "this set is refused too (spec §2a):\n%s\n"
+                        "Name another upstream, or fix that entry by editing the file. "
+                        "--force does not set a value whose own chain is broken.")
                                                     # the broken upstream, the entries
 ERR_PROJECT_NO_PATH =   "Project path '%s' does not exist." # the path that does not exist
 ERR_PROJECT_BAD_DESIGNATION = "Invalid box designation %r: it is neither a box name nor a path."

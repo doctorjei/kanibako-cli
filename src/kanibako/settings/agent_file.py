@@ -904,6 +904,14 @@ def contributed_tables(raw: Any) -> dict:
     return {k: v for k, v in raw.items() if str(k) in _CONTRIBUTED}
 
 
+def scope_view(raw: Any, *, node: str) -> dict:
+    """:func:`contributed_tables` with the root spelled as the ``agent.<node>`` table it is."""
+    tables = contributed_tables(raw)
+    scope = tables.get(FILE_SCOPE)
+    tables[FILE_SCOPE] = {**(scope if isinstance(scope, dict) else {}), node: tables.pop(_ROOT, None)}
+    return tables
+
+
 def _refuse_stray_roots(raw: dict, *, node: str | None, path: Path | None) -> None:
     """RAISE on a key at the FILE's top level that the file neither contributes nor drops (spec §0).
 

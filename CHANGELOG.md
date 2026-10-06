@@ -28,8 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`set` now refuses (exit 1, was 0) when a settings file it reads stores a value its key refuses** —
   a list or map at a single-valued key (`workset.auth.path: [a]`), a non-boolean at a boolean key, a list at an
   `env.<VAR>`, or a null at a key the launch refuses a null at. It names the entry and the file and writes
-  nothing; `--force` warns and writes, and setting that key itself is still the cure. `get` warns on the same
-  entries. This applies to `system`, `workset`, and `box set`.
+  nothing; `--force` warns and writes, and setting that key itself is still the cure. A value whose own
+  `{key}` chain reaches such an entry is refused even with `--force`. `get` warns on the same entries. This
+  applies to `system`, `workset`, `box`, and `agent set`.
 
 - **`workset.*` directory keys set in the system settings file now apply everywhere.** `kanibako system set
   workset.boxes=…` (and logs, workspaces, registry, channelroot, channels.*, canon, template, vault_ro,
