@@ -734,7 +734,11 @@ class Workset:
 # ---------------------------------------------------------------------------
 
 def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset:
-    """Build the :class:`Workset` for the globally-registered *name* rooted at *root*."""
+    """Build the :class:`Workset` for the globally-registered *name* rooted at *root*.
+
+    A root storing the standalone ``workset.registry`` null still lists its members, from
+    the default registry path: every member guard (``workset rm`` included) counts them here.
+    """
     # ⚑ A root still carrying a RETIRED identity table refuses here, with the named
     # cure — it is the load path, not detection, that a 1.6/1.7 user reaches first
     # (their workset IS globally registered, so detection resolves it fine).
@@ -743,10 +747,8 @@ def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workse
     settings_doc = load_workset_settings_doc(root)
     ws = Workset(name=name, root=root, early_system=early_system)
     from kanibako.launch.box_resolve import standalone_settings_present
-    if standalone_settings_present(root):
-        return ws
     registry_path = workset_registry.resolve_workset_registry_path(
-        root, settings_doc, early=ws.early_scope,
+        root, None if standalone_settings_present(root) else settings_doc, early=ws.early_scope,
     )
     # ⚑ Members come from ``boxes:``, which is the WHOLE of what that file holds, and
     # the path is recorded there exactly once.
