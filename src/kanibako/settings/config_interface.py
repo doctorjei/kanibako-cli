@@ -53,6 +53,7 @@ from kanibako.settings.messages import (
     ERR_PER_OWNER_SET,
     PER_OWNER_SET_WORDS,
     WARN_CONFIG_BAD_ENTRIES,
+    WARN_CONFIG_ILL_TYPED_ENTRIES,
     WARN_WORKSET_SET_MAKES_STANDALONE,
 )
 from kanibako.settings.config_display import (
@@ -86,6 +87,7 @@ from kanibako.settings.config_dest import (
 )
 from kanibako.settings.config_keys import (
     CoercionError,
+    KEY_TYPES,
     _KEY_ROUTES,
     _SCOPE_WRITE_ALLOWED,
     _SETTINGS_SCOPE_TOKENS,
@@ -150,6 +152,7 @@ from kanibako.errors import KanibakoError, UserCanceled
 from kanibako.log import get_logger
 from kanibako.settings.kb_store import SCOPE_CONTAINMENT, __MISSING__
 from kanibako.settings.settings_categories import (
+    _value_shape,
     refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_keyspace import (
@@ -679,11 +682,16 @@ class _BadEntries(NamedTuple):
     names: "list[str]"
     #: reads a dotted STORED value, most-specific file first (§2 precedence)
     stored: "Callable[[str], object]"
+    #: ``(file path, one "key = value: reason" line per entry)`` for :func:`_ill_typed_stored_entries`
+    ill_typed: "list[tuple[Path | None, list[str]]]"
 
     def warn_reports(self) -> "list[str]":
-        """One :data:`~kanibako.settings.messages.WARN_CONFIG_BAD_ENTRIES` line per file."""
+        """One report per file and finding, undeclared entries first."""
         return [
             WARN_CONFIG_BAD_ENTRIES % (path, "\n  ".join(lines)) for path, lines in self.files
+        ] + [
+            WARN_CONFIG_ILL_TYPED_ENTRIES % (path, "\n  ".join(lines))
+            for path, lines in self.ill_typed
         ]
 
     def chain_block(self) -> str:
@@ -730,6 +738,7 @@ def _cascade_bad_entries(
     for level, path in files:
         _quiet_drop_announcements(path, ConfigLevel(level))
     grouped: "list[tuple[Path | None, list[str]]]" = []
+    ill_typed: "list[tuple[Path | None, list[str]]]" = []
     names: list[str] = []
     views: list[dict] = []
     for read in read_settings_files(files, purpose=ReadPurpose.DISPLAY):
@@ -744,8 +753,14 @@ def _cascade_bad_entries(
         if kept:
             grouped.append((read.path, [f"{shown} = {v}" for _segs, shown, v in kept]))
             names.extend(".".join(segs) for segs, _shown, _v in kept)
+        typed = [
+            line for segs, line in sorted(_ill_typed_stored_entries(read.view).items())
+            if not _overwritten_by(edited, segs)
+        ]
+        if typed:
+            ill_typed.append((read.path, typed))
     return _BadEntries(
-        grouped, names, lambda dotted: _first_dotted(views, dotted),
+        grouped, names, lambda dotted: _first_dotted(views, dotted), ill_typed,
     )
 
 
@@ -1280,7 +1295,7 @@ def get_config_value(
             box_path=None,
         )
     except KanibakoError:
-        bad = _BadEntries([], [], lambda _dotted: None)  # that file's own reader refuses it
+        bad = _BadEntries([], [], lambda _dotted: None, [])  # that file's own reader refuses it
     for report in bad.warn_reports():
         _log.warning("Warning: %s", report)
 
@@ -1933,8 +1948,8 @@ def set_config_value(
             box_path=cascade_box_path, edited=canonical,
         )
     except KanibakoError:
-        bad = _BadEntries([], [], lambda _dotted: None)  # that file's own reader refuses it
-    if bad.files:
+        bad = _BadEntries([], [], lambda _dotted: None, [])  # that file's own reader refuses it
+    if bad.files or bad.ill_typed:
         on_chain = chain_reaches(
             value, bad.names, key=canonical, stored=bad.stored,
         )
@@ -2824,6 +2839,61 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
 
     _walk(data, ())
     return out
+
+
+def _ill_typed_stored_entries(data: dict) -> dict[tuple[str, ...], str]:
+    """DECLARED entries STORED in a settings doc holding a value their key's own validators
+    refuse — ``segments → "key = value: reason"`` (keyspec §2a); the twin of
+    :func:`_undeclared_stored_entries`, which judges the NAME."""
+    from kanibako.settings.settings_keyspace_probe import keyspace_verdict
+
+    out: dict[tuple[str, ...], str] = {}
+
+    def _walk(node: dict, parent: tuple[str, ...]) -> None:
+        family = parent[-1] if is_var_table(parent, oracle=keyspace_verdict) else None
+        for k, v in node.items():
+            if "." in str(k) or (not parent and str(k) == _LAYER1_TABLE):
+                continue
+            segments = (*parent, str(k))
+            key = ".".join(segments)
+            reason = _stored_value_reason(key, v, family=family)
+            if reason is not None:
+                out[segments] = f"{key} = {render_stored_scalar(v)}: {reason}"
+            elif isinstance(v, dict) and family is None and key not in KEY_TYPES:
+                _walk(v, segments)
+
+    _walk(data, ())
+    return out
+
+
+def _stored_value_reason(key: str, value: object, *, family: "str | None") -> "str | None":
+    """Why a set-time validator refuses *value* STORED at the declared *key*, or ``None``.
+
+    ⚑ workset.registry's null is the standalone MARKER (system-design § Detection & import).
+    """
+    from kanibako.settings.settings_resolve import SettingsError
+
+    if family is not None:
+        try:
+            refuse_non_scalar_family_value(key, family, value)
+        except SettingsError as exc:
+            return str(exc)
+        return None
+    kind = KEY_TYPES.get(key)
+    if kind is None and key not in _BOX_SCALAR_FIELDS:
+        return None
+    if isinstance(value, (dict, list)):
+        return f"a {_value_shape(value)} where one {kind or 'scalar'} value goes"
+    if value is None:
+        if refuses_null_box_scalar(key):
+            return ERR_BOX_SCALAR_NULL_REASON
+        if refuses_null_path_key(key) and key != "workset.registry":
+            return ERR_CONFIG_NULL_PATH_REASON
+        return None
+    coerced = _coerce_value(key, str(value).lower() if isinstance(value, bool) else str(value))
+    if isinstance(coerced, CoercionError):
+        return coerced.message.removeprefix("Error: ")
+    return None
 
 
 def _misplaced_config_entries(data: dict) -> dict[str, str]:
