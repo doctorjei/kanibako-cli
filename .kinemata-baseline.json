@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-10-11",
   "by": "Jei Blanchard",
-  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains. 2026-09-30: until moved to 2026-10-04 (Sunday) on his word this session, at his instruction; it covers the 610 findings carried in this file. 2026-10-03: until moved to 2026-10-11 on his word (140th). 2026-10-06 (151st), director (Kirobo) ruling: three per-owner-default-reaches-anchor shape findings accepted - meta.box.container: <W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity); meta.agent.default.path and meta.agent.shell.path: literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change).",
+  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains. 2026-09-30: until moved to 2026-10-04 (Sunday) on his word this session, at his instruction; it covers the 610 findings carried in this file. 2026-10-03: until moved to 2026-10-11 on his word (140th). 2026-10-06 (151st), director (Kirobo) ruling: three per-owner-default-reaches-anchor shape findings accepted - meta.box.container: <W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity); meta.agent.default.path and meta.agent.shell.path: literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change). 2026-10-06 (152nd, task 152-write-baseline), director (Kirobo): `kinemata baseline --prune` dropped 18 records no longer present (15 claims, two WORKSPACES_PATH, one XDG_DATA_HOME); until unchanged.",
   "findings": [
     {
       "registry": "canonical",
@@ -93,13 +93,6 @@
       "entry": "claim:path",
       "antipattern": "agent.yaml",
       "path": "MIGRATION.md",
-      "text": "- an agent's own **`agent.yaml`** contributes its `self:` table and nothing else, so a top-level"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "agent.yaml",
-      "path": "MIGRATION.md",
       "text": "`agent: default: transform_settings:`, or in an agent's own `agent.yaml` under `self:`."
     },
     {
@@ -108,13 +101,6 @@
       "antipattern": "agent.yaml",
       "path": "MIGRATION.md",
       "text": "`workset.yaml`, `agent.yaml` \u2014 while the system tier keeps `settings.yaml` (\u00a72.45)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "agent.yaml",
-      "path": "MIGRATION.md",
-      "text": "agent's `agent.yaml`, the system's `<data>/global/settings.yaml` (\u00a72.45) and the machine-wide"
     },
     {
       "registry": "claims",
@@ -388,13 +374,6 @@
       "antipattern": "box.yaml",
       "path": "MIGRATION.md",
       "text": "in that box's `box.yaml`."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "box.yaml",
-      "path": "MIGRATION.md",
-      "text": "is the merge of all of them. By tier those are a box's `box.yaml`, a workset's `workset.yaml`, an"
     },
     {
       "registry": "claims",
@@ -703,13 +682,6 @@
       "entry": "claim:path",
       "antipattern": "box_data/",
       "path": "MIGRATION.md",
-      "text": "standalone tree, place `settings.yaml` at the root, keep a `box_data/` dir"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "box_data/",
-      "path": "MIGRATION.md",
       "text": "the `<box>.jsonl` helper log inside `box_data/`."
     },
     {
@@ -725,13 +697,6 @@
       "antipattern": "box_data/",
       "path": "MIGRATION.md",
       "text": "\u00a74.5 for the standalone walk marker (`box_data/` dir + `<root>/settings.yaml`)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "box_data/",
-      "path": "MIGRATION.md",
-      "text": "\u2691 **The standalone walk marker is now a `box_data/` directory PLUS a"
     },
     {
       "registry": "claims",
@@ -885,20 +850,6 @@
       "entry": "claim:path",
       "antipattern": "box_data/",
       "path": "llm-docs/kanibako/project/workset.py.md",
-      "text": "`box_data/` wholesale; that is a retained path, documented in MIGRATION.md, not a wider rmtree."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "box_data/",
-      "path": "llm-docs/kanibako/project/workset.py.md",
-      "text": "standalone log lands outside `box_data/` and therefore survives `box rm --purge`, which removes"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "box_data/",
-      "path": "llm-docs/kanibako/project/workset.py.md",
       "text": "\u2691 The in-place `box_data/` marker STAYS (intrinsic identity). While the `boxes:` entry exists,"
     },
     {
@@ -1011,13 +962,6 @@
       "entry": "claim:path",
       "antipattern": "box_data/",
       "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "tears a standalone box down by removing `box_data/` wholesale \u2014 so the log file survives it, the"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "box_data/",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
       "text": "the resolved `workset.workspaces`, default `@meta.workset.path/workspace`), a `box_data/` marker dir"
     },
     {
@@ -1033,13 +977,6 @@
       "antipattern": "box_data/",
       "path": "llm-docs/kanibako/settings/paths.py.md",
       "text": "\u2691 The ROOT `workset.yaml` (the standalone marker, alongside `box_data/`) is MATERIALIZED"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "box_data/",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "\ud83d\uded1 A repointed standalone `workset.logs` puts the log OUTSIDE `box_data/`, and `box rm --purge`"
     },
     {
       "registry": "claims",
@@ -1492,6 +1429,34 @@
     {
       "registry": "claims",
       "entry": "claim:path",
+      "antipattern": "global/",
+      "path": "MIGRATION.md",
+      "text": "files are. This lists every candidate under a store, and deliberately skips `global/`, which must"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/",
+      "path": "llm-docs/kanibako/settings/messages.py.md",
+      "text": "\u2691 There is no `config.global` key. Its children inline `@config.data/global/...`, and the `global/`"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/",
+      "path": "llm-docs/kanibako/settings/paths.py.md",
+      "text": "`@config.data/global/...` (the `global/` dir is created on demand by the atomic writer when those"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/",
+      "path": "llm-docs/kanibako/settings/paths.py.md",
+      "text": "`global` is ELIMINATED as a key \u2014 its children inline `@config.data/global/...`, and the `global/`"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
       "antipattern": "global/base_template/",
       "path": "MIGRATION.md",
       "text": "12. **The box template root moved and restructured** (`global/base_template/` \u2192"
@@ -1612,13 +1577,6 @@
       "registry": "claims",
       "entry": "claim:path",
       "antipattern": "global/settings.yaml",
-      "path": "README.md",
-      "text": "edit `global/settings.yaml` directly."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/settings.yaml",
       "path": "llm-docs/kanibako/settings/config.py.md",
       "text": "* **The SETTINGS (behavior) set** \u2014 `/etc/kanibako/settings_base.yaml` < `global/settings.yaml` <"
     },
@@ -1649,6 +1607,27 @@
       "antipattern": "global/settings.yaml",
       "path": "llm-docs/kanibako/settings/config_interface.py.md",
       "text": "nested SCOPE tables) are cleared from (`@config.settings` = `global/settings.yaml`), while CONFIG"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/template/box/home/",
+      "path": "MIGRATION.md",
+      "text": "`global/template/box/home/`). Existing boxes are untouched (seeded once, long ago). The"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/template/box/home/",
+      "path": "MIGRATION.md",
+      "text": "and the box-home seed lives two levels down (`global/template/box/home/`). What actually"
+    },
+    {
+      "registry": "claims",
+      "entry": "claim:path",
+      "antipattern": "global/template/box/home/",
+      "path": "MIGRATION.md",
+      "text": "exfiltrate e.g. an SSH key into a box home). If your `global/template/box/home/`,"
     },
     {
       "registry": "claims",
@@ -2649,13 +2628,6 @@
       "entry": "claim:path",
       "antipattern": "settings.yaml",
       "path": "MIGRATION.md",
-      "text": "box's `settings.yaml` (`launch/box_resolve.py:standalone_settings_present`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings.yaml",
-      "path": "MIGRATION.md",
       "text": "correction below).** At 1.6.0 the per-box `settings.yaml` stored construct-time box"
     },
     {
@@ -2692,13 +2664,6 @@
       "antipattern": "settings.yaml",
       "path": "MIGRATION.md",
       "text": "root holds the kanibako artifacts (`settings.yaml`, `box_data/`, `vault/`); your"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings.yaml",
-      "path": "MIGRATION.md",
-      "text": "standalone tree, place `settings.yaml` at the root, keep a `box_data/` dir"
     },
     {
       "registry": "claims",
@@ -3328,13 +3293,6 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "MIGRATION.md",
-      "text": "is the merge of all of them. By tier those are a box's `box.yaml`, a workset's `workset.yaml`, an"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "workset.yaml",
-      "path": "MIGRATION.md",
       "text": "left on the 1.6.0/1.7.x shape **hard-refuses**. If you are coming from a `workset.yaml`, skip the"
     },
     {
@@ -3616,13 +3574,6 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "llm-docs/kanibako/project/workset.py.md",
-      "text": "`workspaces_repoint` is the RAW `workset.workspaces` repoint captured from the root `workset.yaml`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "workset.yaml",
-      "path": "llm-docs/kanibako/project/workset.py.md",
       "text": "and reading `workset.yaml` once per arm opens a window for the two to disagree about the same"
     },
     {
@@ -3889,13 +3840,6 @@
       "entry": "claim:path",
       "antipattern": "workspace/",
       "path": "MIGRATION.md",
-      "text": "beside it, and put your files under `workspace/`. Drop any `layout:` field \u2014"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "workspace/",
-      "path": "MIGRATION.md",
       "text": "metadata file is at the project root, alongside `workspace/` and `vault/`."
     },
     {
@@ -4118,6 +4062,27 @@
       "text": "shell"
     },
     {
+      "registry": "shape:keyspace:per-owner-default-reaches-anchor",
+      "entry": "meta.agent.default.path",
+      "antipattern": "",
+      "path": "keyspace",
+      "text": "per-owner-default-reaches-anchor: meta.agent.default.path"
+    },
+    {
+      "registry": "shape:keyspace:per-owner-default-reaches-anchor",
+      "entry": "meta.agent.shell.path",
+      "antipattern": "",
+      "path": "keyspace",
+      "text": "per-owner-default-reaches-anchor: meta.agent.shell.path"
+    },
+    {
+      "registry": "shape:keyspace:per-owner-default-reaches-anchor",
+      "entry": "meta.box.container",
+      "antipattern": "",
+      "path": "keyspace",
+      "text": "per-owner-default-reaches-anchor: meta.box.container"
+    },
+    {
       "registry": "store-layout",
       "entry": "IGNORE_FILE",
       "antipattern": "\\.gitignore",
@@ -4142,20 +4107,6 @@
       "registry": "store-layout",
       "entry": "LOGS_PATH",
       "antipattern": "logs",
-      "path": "src/kanibako/settings/settings_keyspace.py",
-      "text": "\"workspaces\", \"boxes\", \"logs\", \"registry\", \"template\", \"canon\","
-    },
-    {
-      "registry": "store-layout",
-      "entry": "WORKSPACES_PATH",
-      "antipattern": "workspaces",
-      "path": "src/kanibako/settings/config_keys.py",
-      "text": "\"workset.workspaces\": ((\"workset\",), \"workspaces\"),"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "WORKSPACES_PATH",
-      "antipattern": "workspaces",
       "path": "src/kanibako/settings/settings_keyspace.py",
       "text": "\"workspaces\", \"boxes\", \"logs\", \"registry\", \"template\", \"canon\","
     },
@@ -4199,13 +4150,6 @@
       "entry": "XDG_DATA_HOME",
       "antipattern": "XDG_DATA_HOME",
       "path": "src/kanibako/settings/config.py",
-      "text": "global_path, data_home=xdg(\"XDG_DATA_HOME\", \".local/share\"),"
-    },
-    {
-      "registry": "store-layout",
-      "entry": "XDG_DATA_HOME",
-      "antipattern": "XDG_DATA_HOME",
-      "path": "src/kanibako/settings/config.py",
       "text": "global_path, data_home=xdg(\"XDG_DATA_HOME\", \".local/share\"), home=Path.home(),"
     },
     {
@@ -4228,79 +4172,6 @@
       "antipattern": "XDG_STATE_HOME",
       "path": "src/kanibako/box_supervisor.py",
       "text": "(\"XDG_STATE_HOME\", \".local/state\", \"state\"),"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/template/box/home/",
-      "path": "MIGRATION.md",
-      "text": "`global/template/box/home/`). Existing boxes are untouched (seeded once, long ago). The"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/template/box/home/",
-      "path": "MIGRATION.md",
-      "text": "and the box-home seed lives two levels down (`global/template/box/home/`). What actually"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/template/box/home/",
-      "path": "MIGRATION.md",
-      "text": "exfiltrate e.g. an SSH key into a box home). If your `global/template/box/home/`,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/",
-      "path": "MIGRATION.md",
-      "text": "files are. This lists every candidate under a store, and deliberately skips `global/`, which must"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/",
-      "path": "llm-docs/kanibako/settings/messages.py.md",
-      "text": "\u2691 There is no `config.global` key. Its children inline `@config.data/global/...`, and the `global/`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "`global` is ELIMINATED as a key \u2014 its children inline `@config.data/global/...`, and the `global/`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "global/",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "`@config.data/global/...` (the `global/` dir is created on demand by the atomic writer when those"
-    },
-    {
-      "registry": "shape:keyspace:per-owner-default-reaches-anchor",
-      "entry": "meta.box.container",
-      "antipattern": "",
-      "path": "keyspace",
-      "text": "per-owner-default-reaches-anchor: meta.box.container",
-      "note": "<W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity)"
-    },
-    {
-      "registry": "shape:keyspace:per-owner-default-reaches-anchor",
-      "entry": "meta.agent.default.path",
-      "antipattern": "",
-      "path": "keyspace",
-      "text": "per-owner-default-reaches-anchor: meta.agent.default.path",
-      "note": "literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change)"
-    },
-    {
-      "registry": "shape:keyspace:per-owner-default-reaches-anchor",
-      "entry": "meta.agent.shell.path",
-      "antipattern": "",
-      "path": "keyspace",
-      "text": "per-owner-default-reaches-anchor: meta.agent.shell.path",
-      "note": "literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change)"
     }
   ]
 }
