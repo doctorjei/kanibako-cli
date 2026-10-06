@@ -324,7 +324,9 @@ class _Expander:
         self.refs_read: RefsRead = {}
         self.dest_keys: DestKeys = {}
         self._deps: dict[str, frozenset[str]] = {}
+        self._height: dict[str, int] = {}
         self._reading: list[set[str]] = []
+        self._reach: list[int] = []
         # The message spelling of each leaf being expanded, innermost last.
         self._leaf_labels: list[str] = []
 
@@ -426,7 +428,7 @@ class _Expander:
         re-walked with blind referents taken as absent; every memo the walk fills is
         dropped, since its values stand on that assumption.
         """
-        saved = (dict(self._memo), dict(self._deps), dict(self.errors),
+        saved = (dict(self._memo), dict(self._deps), dict(self._height), dict(self.errors),
                  dict(self.null_sources), dict(self.refs_read), dict(self.dest_keys),
                  [set(reading) for reading in self._reading])
         self._blind_absent = True
@@ -441,7 +443,7 @@ class _Expander:
             return str(exc)
         finally:
             self._blind_absent = False
-            (self._memo, self._deps, self.errors, self.null_sources,
+            (self._memo, self._deps, self._height, self.errors, self.null_sources,
              self.refs_read, self.dest_keys, self._reading) = saved
         return None
 
@@ -655,7 +657,7 @@ class _Expander:
         result is a terminal. MEMOIZED by dotted path — the fixpoint. 3-state: an
         absent path → :data:`_ABSENT`; a present-None leaf → ``None``; else the
         expanded value. The depth cap (``MAX_REF_DEPTH``) bounds pathological
-        non-cyclic chains.
+        non-cyclic chains, a memo hit counting its referent's own depth (*_height*).
 
         *chain* is the in-progress ref trail, ending in *dotted*: already checked
         and appended by the caller, mirroring ``expand_expr``'s contract.
@@ -674,9 +676,10 @@ class _Expander:
         for reading in self._reading:
             reading.add(dotted)
             reading.update(self._deps.get(dotted, ()))
-        if dotted in self._memo:
-            return self._memo[dotted]
-        if len(chain) > MAX_REF_DEPTH:
+        reach = len(chain) + (self._height.get(dotted, 0) if dotted in self._memo else 0)
+        if self._reach:
+            self._reach[-1] = max(self._reach[-1], reach)
+        if reach > MAX_REF_DEPTH:
             if self._collect_errors:
                 raise _LenientDefect(
                     f"@-reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
@@ -686,6 +689,8 @@ class _Expander:
                 f"@-reference depth cap ({MAX_REF_DEPTH}) exceeded resolving "
                 f"'{dotted}'."
             )
+        if dotted in self._memo:
+            return self._memo[dotted]
         raw = self._lookup_raw(dotted)
         if raw is _ABSENT and self._derive is not None:
             derived = self._derived(dotted, chain=chain)
@@ -723,11 +728,16 @@ class _Expander:
         # ``_expand_node``: a bare ``resolved = raw`` would ALIAS the input tree
         # (S19) and would leave the subtree's own tokens unexpanded.
         self._reading.append(set())
+        self._reach.append(len(chain))
         try:
             if isinstance(raw, KeyStore):
-                resolved: StoreValue | _Absent = self._expand_node(
-                    raw, path=tuple(dotted.split("."))
-                )
+                outer, self._reach = self._reach, []
+                try:
+                    resolved: StoreValue | _Absent = self._expand_node(
+                        raw, path=tuple(dotted.split("."))
+                    )
+                finally:
+                    self._reach = outer
             elif isinstance(raw, Bind):
                 resolved = self._expand_bind(raw, chain=chain)
             elif isinstance(raw, BindEntry):
@@ -741,9 +751,24 @@ class _Expander:
                 resolved = raw  # int / float / bool / None / list — verbatim terminal.
         finally:
             deps = self._reading.pop()
+            reach = self._pop_reach()
+        return self._settle(dotted, resolved, deps, reach - len(chain))
+
+    def _pop_reach(self) -> int:
+        """Close the innermost reach frame, carrying its deepest chain to the frame above."""
+        reach = self._reach.pop()
+        if self._reach:
+            self._reach[-1] = max(self._reach[-1], reach)
+        return reach
+
+    def _settle(
+        self, dotted: str, resolved: StoreValue | _Absent, deps: set[str], height: int,
+    ) -> StoreValue | _Absent:
+        """Memoize *dotted*: its value, its transitive *deps*, and its chain *height*."""
         self._deps[dotted] = frozenset(deps)
         for reading in self._reading:
             reading.update(deps)
+        self._height[dotted] = height
         self._memo[dotted] = resolved
         return resolved
 
@@ -756,18 +781,15 @@ class _Expander:
             return __MISSING__ if got is _ABSENT else got
 
         self._reading.append(set())
+        self._reach.append(len(chain))
         try:
             got = self._derive(dotted, read)
         finally:
             deps = self._reading.pop()
+            reach = self._pop_reach()
         if got is __MISSING__:
             return _ABSENT
-        self._deps[dotted] = frozenset(deps)
-        for reading in self._reading:
-            reading.update(deps)
-        resolved = cast(StoreValue, got)
-        self._memo[dotted] = resolved
-        return resolved
+        return self._settle(dotted, cast(StoreValue, got), deps, reach - len(chain))
 
     def _lookup_raw(self, dotted: str) -> StoreValue | _Absent:
         """Read the RAW (unexpanded) value at snapshot path *dotted*, 3-state.

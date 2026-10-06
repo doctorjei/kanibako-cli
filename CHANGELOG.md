@@ -567,6 +567,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The `{key}`-reference depth cap (64) no longer depends on the order keys resolve in.** A reference
+  that reached an already-resolved key skipped the depth that key stood on, so with a stored 70-deep
+  `box.env.V*` chain, `system set box.shell=/s/{box.env.V0}` was accepted and written, though launch then
+  refused it; a 200-deep chain was refused. Both are now refused at `set`, as at launch.
+
 - **A per-owner value refused in the system settings file now gives a cure that works on a first run.**
   The refusal said `kanibako stop --all` stops every running box even when a settings file is refused.
   On a first run (no `kanibako.cfg` yet), `stop --all`, `system set`, `system reset`, and `workset set` exit 1 with the
