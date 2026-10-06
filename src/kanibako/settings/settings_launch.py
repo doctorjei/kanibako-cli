@@ -1564,8 +1564,8 @@ def _refuse_inherited_per_owner(
                     owner, agent = key_owner(dotted)
                     judge(dotted, value, owner, agent, tier=tier, path=path, key=dotted)
             if not (is_node and dotted.endswith((".bindings.ro", ".bindings.rw"))
-                    and is_terminal_category_key(dotted)):
-                continue
+                    and is_terminal_category_key(dotted)) or dotted in seen:
+                continue  # in *seen*: a more specific level reset the whole arm
             entries = snapshot_leaf(level, dotted)
             floor_entries = snapshot_leaf(floor_store, dotted) if floor_store else None
             for dest, entry in dict.items(entries) if isinstance(entries, dict) else ():

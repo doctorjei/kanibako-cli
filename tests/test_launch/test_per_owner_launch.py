@@ -13,7 +13,14 @@ from pathlib import Path
 import pytest
 
 from kanibako.settings.config_io import dump_doc, load_doc
-from kanibako.settings.paths import box_workset_settings_paths, resolve_project
+from kanibako.project.workset import add_project, create_workset
+from kanibako.settings.paths import (
+    WorksetSpec,
+    box_workset_settings_paths,
+    resolve_project,
+    resolve_standalone_project,
+    resolve_workset_project,
+)
 from kanibako.settings.settings_launch import snapshot_leaf
 from kanibako.settings.settings_resolve import SettingsError
 from kanibako.targets.shell import ShellTarget
@@ -51,6 +58,22 @@ def _merge_into(path: Path, table: dict) -> Path:
 @pytest.fixture
 def box(std, config, project_dir):
     return resolve_project(std, config, str(project_dir), initialize=True)
+
+
+@pytest.fixture
+def named_box(std, config, tmp_home):
+    ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
+    source = tmp_home / "original-project"
+    source.mkdir()
+    add_project(ws, "cool-app", source)
+    return resolve_workset_project(
+        WorksetSpec.from_workset(ws), "cool-app", std, config, initialize=True,
+    )
+
+
+@pytest.fixture
+def standalone_box(std, config, project_dir, credentials_dir):
+    return resolve_standalone_project(std, config, str(project_dir), initialize=True)
 
 
 def _refusal(std, proj) -> str:
@@ -154,6 +177,14 @@ class TestWhoseValueIsJudged:
         _merge_into(box_file, {"box": {"bindings": {"rw": {"/data": own}}}})
         _launch(std, box)
 
+    def test_a_whole_arm_reset_shadows_every_entry_below_it(self, std, box):
+        """``box.bindings.rw: null`` in the box file drops the arm (``settings_merge``), so
+        the system file's entry is not what the box inherits."""
+        box_file, _ = box_workset_settings_paths(box)
+        _merge_into(std.settings, {"box": {"bindings": {"rw": {"/data": ["/srv/data"]}}}})
+        _merge_into(box_file, {"box": {"bindings": {"rw": None}}})
+        _launch(std, box)
+
     def test_a_per_owner_key_from_the_system_file_is_refused(self, std, box, tmp_path):
         """A KEY, not an entry: ``box.canon`` is box-owned."""
         system = _merge_into(std.settings, {"box": {"canon": "/srv/canon"}})
@@ -180,3 +211,26 @@ class TestWhoseValueIsJudged:
         """Case 4 row 1's class: ``box.image`` is shared."""
         _merge_into(std.settings, {"box": {"image": "example.org/rig:1"}})
         _launch(std, box)
+
+
+class TestTheWorksetFileByMode:
+    """A workset file is judged in the launching box's mode (keyspec §0 anchors)."""
+
+    _ENTRY = "/srv/data/{meta.workset.path}"
+
+    def test_a_workset_anchor_alone_reaches_a_standalone_box(self, std, standalone_box):
+        """Keyspec §0: in standalone a workset anchor alone suffices."""
+        _, workset = box_workset_settings_paths(standalone_box)
+        _merge_into(workset, {"box": {"bindings": {"rw": {"/data": [self._ENTRY]}}}})
+        _launch(std, standalone_box)
+
+    def test_a_workset_anchor_alone_does_not_reach_a_named_box(self, std, named_box):
+        _, workset = box_workset_settings_paths(named_box)
+        _merge_into(workset, {"box": {"bindings": {"rw": {"/data": [self._ENTRY]}}}})
+        message = _refusal(std, named_box)
+        assert f"box.bindings.rw[/data] is set to {self._ENTRY!r} in {workset}" in message
+
+    def test_a_literal_in_a_standalone_workset_file_is_refused(self, std, standalone_box):
+        _, workset = box_workset_settings_paths(standalone_box)
+        _merge_into(workset, {"box": {"canon": "/x"}})
+        assert f"box.canon is set to '/x' in {workset}" in _refusal(std, standalone_box)
