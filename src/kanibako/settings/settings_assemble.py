@@ -439,14 +439,13 @@ def _retired_behavior_cure(
     entry's own path), never the agent being RESOLVED (*subject*) — a file may store
     another agent's. Only the agent file's root stores no node and falls back to
     *subject*. ``access`` is an AGENT-scope key (spec §2d), so every level writes it
-    under that node.
+    under that node — EXCEPT the reserved ``default`` tier, which has no node to write
+    under and is addressed by its bare key at the system scope.
     """
     named = node or subject
     agent = display_agent_ref(named) if named else "<agent>"
     if agent == _AGENT_DEFAULT_SUB and level not in PREF_LEGAL_LEVELS:
-        # ⚑ The reserved any-agent tier owns NO persona store, so the cure must not
-        # address it as one: `agent set default access=…` is refused rc 1. The tier's
-        # default is written at the SYSTEM scope as the BARE key (spec §2d).
+        # ⚑ `agent set default …` is refused rc 1 (no persona store); the tier's default is the SYSTEM-scope BARE key.
         return f"kanibako system set {successor}={tier}"
     if level == "agent":
         return f"kanibako agent set {agent} {successor}={tier}"
