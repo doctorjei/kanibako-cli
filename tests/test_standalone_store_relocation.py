@@ -182,8 +182,8 @@ class TestBoxRmReadsTheStore:
             self, config, std, tmp_home):
         """⚑ THE SECOND DOOR: ``rm --purge`` of a parked entry, addressed by NAME.
 
-        Its existence check composed ``box_data/``, so with the store moved and the LOCATOR
-        marker still in place it deleted the marker — a directory the box never used — and
+        Its existence check composed ``box_data/``, so with the store moved and an empty
+        ``box_data/`` left behind it deleted that directory — one the box never used — and
         left the real store behind under a success message.
         """
         from kanibako.project import registry_store
@@ -328,7 +328,7 @@ class TestProjectPluginsFollowTheStore:
 
     def test_the_locator_markers_plugins_dir_is_no_longer_scanned(
             self, config, std, tmp_home, plugin_source):
-        """The leftover ``box_data/`` marker is not the box's store, so it is not its plugins."""
+        """A leftover ``box_data/`` is not the box's store, so it is not its plugins."""
         from kanibako.targets import discover_targets
 
         root = _make_standalone(config, std, tmp_home, "pl_locator")

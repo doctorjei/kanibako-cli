@@ -44,9 +44,8 @@ def _relocate_store(root: Path, value: str) -> Path:
     """MOVE the store to ``<root>/<value>`` and point ``workset.boxes`` there VERBATIM.
 
     ``value`` is a relative ref, not an absolute path, so the case reads as the user's own
-    ``workset.yaml``.  The leftover ``box_data/`` stays: the spec makes it an ordinary
-    directory the user may keep or remove — detection reads the root's ``workset.yaml``
-    registry null, not this leaf — so leaving it is the shape a relocating user has.
+    ``workset.yaml``.  An empty ``box_data/`` is left at the root, the shape a relocating
+    user can have; once the key points elsewhere it is an ordinary directory.
     """
     store = root / value
     store.mkdir()
@@ -183,8 +182,8 @@ class TestTheWorkspaceCopyOmitsTheStore:
             self, config, std, tmp_home, capsys):
         """⚑ THE INVERSE: an unrelocated box keeps losing ``box_data/`` and nothing else.
 
-        The locator exclusion is not the fix for a repointed store and must not be traded
-        away for it.
+        Excluding the default-leaf store is not the fix for a repointed store and must not
+        be traded away for it.
         """
         from kanibako.project.workset import create_workset
 
@@ -211,7 +210,7 @@ class TestTheWorkspaceCopyOmitsTheStore:
 
         ⚑ AND THE ONLY ``box_data`` THIS NAMES IS THE ONE THE KEY POINTS AT.  Here
         ``workset.boxes`` is repointed to ``outside_ws/box_data``, so THAT path is the
-        store and is excluded; the locator at ``<root>/box_data`` is a different path in a
+        store and is excluded; the leftover ``<root>/box_data`` is a different path in a
         tree this walk never visits, and is not.  An exclusion is a resolved path the walk
         is visiting — never the bare name, which is what used to take a user's ``box_data``
         at any depth.
@@ -239,13 +238,13 @@ class TestTheWorkspaceCopyOmitsTheStore:
         assert "store" not in skipped, "a store reached through `..` names nothing here"
         # ⚑ The repointed store IS this path, so it IS excluded — by resolved path.
         assert "box_data" in skipped
-        # ⚑ AND the locator, at a different path in an unvisited tree, is NOT what the
+        # ⚑ AND a `box_data` at a different path in an unvisited tree is NOT what the
         # name alone would have skipped: a user's own `box_data` elsewhere survives.
         user_dir = tmp_home / "user_code" / "box_data"
         user_dir.mkdir(parents=True)
         assert "box_data" not in set(
             ignore(str(user_dir.parent), ["code.py", "box_data"])), (
-            "a box_data that is neither the store nor the locator is the USER's own")
+            "a box_data that is not the resolved store is the USER's own")
         assert store.is_dir()
 
 
@@ -385,7 +384,7 @@ class TestTheCopyExcludesTheStoreByPathNotByName:
 
     def test_a_relocated_store_and_a_user_box_data_are_told_apart(
             self, config, std, tmp_home):
-        """⚑ BOTH AT ONCE: the resolved store goes, the user's identically-named one stays."""
+        """⚑ BOTH AT ONCE: the resolved store stays out, every ``box_data`` of the user's travels."""
         from kanibako.project.workset import create_workset
 
         root = _standalone(config, std, tmp_home, "both_at_once")
@@ -401,7 +400,7 @@ class TestTheCopyExcludesTheStoreByPathNotByName:
         assert rc == 0
         dup_ws = ws.workspaces_dir / "both_at_once"
         assert not (dup_ws / "store").exists(), "the box's resolved store stays out"
-        assert not (dup_ws / "box_data").exists(), "the composed locator stays out"
+        assert (dup_ws / "box_data").is_dir(), "the leftover default leaf travels as content"
         assert (dup_ws / "src" / "box_data" / "user_code.py").is_file(), (
             "the user's own directory of the same name travels")
         assert (store / "MY_STORE_DATA.txt").read_text() == "the box's own metadata\n"
@@ -570,7 +569,6 @@ class TestAMoveKeepsAUserOwnedBoxData:
         assert list(dest.rglob("app.py")), "ordinary workspace content still travels"
 
     def test_a_standalone_box_move_takes_its_store_rather_than_stranding_it(
-
             self, config, std, tmp_home):
         """⚑ THE INVERSE, and the one a MOVE actually risks: the exclusion must not strand
         the store at a source the move then deletes.
@@ -590,32 +588,26 @@ class TestAMoveKeepsAUserOwnedBoxData:
         assert rc == 0
         assert (dest / "box_data" / "PRECIOUS.txt").read_text() == "must arrive\n"
 
-    def test_a_standalone_move_still_excludes_the_superseded_default_leaf(
+    def test_a_standalone_move_carries_the_superseded_default_leaf_intact(
             self, config, std, tmp_home):
-        """⚑ ARM (b) OF THE RULED EXCLUSION, at the very arm D1 changed.
+        """⚑ DATA SAFETY: a ``box_data/`` left after the store was repointed TRAVELS.
 
-        A standalone box whose store is REPOINTED away from the default leaf leaves
-        ``<root>/box_data`` holding the box's OWN superseded metadata — a stale ``home/``
-        and box tier.  Mode-aware resolution must still exclude that leaf from the copy:
-        it is the box's stale metadata, not the user's, and dropping the term would drag
-        it into the destination.  The RESOLVED store is untouched at the source.
+        Once ``workset.boxes`` points elsewhere, ``<root>/box_data`` is not the store but
+        ordinary content the user may keep files in.  Excluding it from the copy and then
+        retiring the source deleted that file at rc 0; the base carries it.
         """
         root = _standalone(config, std, tmp_home, "mv_superseded")
         _relocate_store(root, "store")
-        (root / "box_data" / "home").mkdir(parents=True, exist_ok=True)
-        (root / "box_data" / "home" / "STALE.md").write_text("stale home\n")
-        (root / "box_data" / "box.yaml").write_text("box: {}\n")
+        (root / "box_data" / "stale.txt").write_text("the user's leftover\n")
         _workspace_at(root)          # the superseded leaf sits INSIDE the copied tree
 
         dest = tmp_home / "mv_superseded_dest"
         rc = _cli("box", "move", str(root), str(dest), "--force")
 
         assert rc == 0
-        assert not (dest / "box_data").exists(), (
-            "the superseded default leaf must not travel with the move")
-        assert not (dest / "box_data" / "home" / "STALE.md").exists()
-        # ⚑ The RESOLVED store is the one that moves — to the destination under the name
-        # the key gives it, carrying its own content.
+        landed = sorted(dest.rglob("stale.txt"))
+        assert landed, "a move must not drop the leftover box_data/ and delete its source"
+        assert landed[0].read_text() == "the user's leftover\n"
         assert (dest / "store" / "MY_STORE_DATA.txt").read_text() == "the box's own metadata\n"
 
 

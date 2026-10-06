@@ -455,28 +455,16 @@ def _workspace_copy_ignore(
     """A workspace copy's *ignore*: never carry the box's OWN store into a workspace.
 
     ⚑⚑ BY PATH, NEVER BY NAME.  ``ignore_patterns("box_data")`` matched that name at ANY
-    depth and silently dropped the user's own ``src/box_data/``.  At most two RESOLVED
-    paths are excluded: the store **as resolved for ITS mode** (:func:`box_metadata_dir`
-    — a primary's sits OUTSIDE its workspace, so it excludes nothing and the user's own
-    ``box_data/`` travels), and the superseded default leaf ``<root>/box_data``, ONLY for
-    a STANDALONE box whose store was REPOINTED away from it — never while it IS the store.
-
-    ⚑ NEITHER IS A DETECTION MARKER: a standalone root is the one whose own
-    ``workset.yaml`` stores the ``workset.registry`` null.  The gate is ``_path_in_tree``
-    against *copied_root*, the only test meaning "this walk can reach it", and *ignore*
-    matches the resolved PATH, so an unvisited directory cannot be named at all.
+    depth and silently dropped the user's own ``src/box_data/``.  The ONE path excluded is
+    the store **as resolved for ITS mode** (:func:`box_metadata_dir`), and only when it
+    lies inside *copied_root* (``_path_in_tree``).  A primary's store sits OUTSIDE its
+    workspace, so it excludes nothing.  A ``box_data/`` left behind after the store was
+    repointed is ordinary content and travels: excluding it, then retiring the source,
+    deleted whatever the user kept there.
     """
     store = box_metadata_dir(mode, metadata_root, early=early).resolve()
     copied = copied_root.resolve()
-    excluded = [store]
-    if mode is BoxMode.standalone:
-        default_leaf = (metadata_root / STANDALONE_META_DIR).resolve()
-        if default_leaf != store:
-            excluded.append(default_leaf)
-    inside = tuple(
-        path for path in excluded
-        if path != copied and _path_in_tree(path, copied)
-    )
+    inside = (store,) if store != copied and _path_in_tree(store, copied) else ()
 
     def ignore(directory: str, names: list[str]) -> set[str]:
         here = Path(directory).resolve()
