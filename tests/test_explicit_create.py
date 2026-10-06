@@ -1218,3 +1218,25 @@ class TestNamedInTreeNullWorkspaceHasNoPath:
         proj = _resolve_existing_box(std, config, str(tmp_home / "project"))
         assert proj is not None and proj.name == "project"
         assert proj.project_path == (tmp_home / "project").resolve()
+
+
+class TestCreateRefusesPerOwnerBeforeTheDir:
+    """A primary ``create <path>`` refused by an inherited per-owner key leaves no ``<path>``."""
+
+    @pytest.mark.parametrize("key", ["registry", "canon", "channels.chat"])
+    def test_refused_and_path_absent(self, config_file, tmp_home, credentials_dir, capsys, key):
+        from kanibako.cli import main
+        from kanibako.settings.config_io import dump_doc
+
+        _config, std = _std(config_file)
+        head, _, leaf = key.partition(".")
+        std.settings.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(std.settings, {"workset": {head: {leaf: "/srv/x"} if leaf else "/srv/x"}})
+        target = tmp_home / "new"
+        capsys.readouterr()
+
+        with pytest.raises(SystemExit) as exc:
+            main(["create", str(target)])
+        assert exc.value.code == 1
+        assert f"workset.{key}" in capsys.readouterr().err
+        assert not target.exists()
