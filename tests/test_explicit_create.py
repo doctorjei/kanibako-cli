@@ -1226,8 +1226,8 @@ class TestUnregisteredStandaloneRegisterHint:
     Registration at create is opt-in for a standalone box (§D4a), so this line is
     the only thing that tells the user how to adopt the box they just made.  Its
     operand is the box ROOT, and a root is not one shell word whenever it holds a
-    space — pasted unquoted, ``register`` adopts the root's PREFIX, a path that is
-    not this box.
+    space — pasted unquoted, ``register`` rejects the words after the space as
+    extra arguments (rc 2, "unrecognized arguments") and adopts nothing.
     """
 
     @staticmethod
