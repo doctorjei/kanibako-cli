@@ -98,7 +98,7 @@ class TestCase3MailboxesFromTheSystem:
         before = _digest(seeded.settings)
         message = _system_set(self.KEY, value, seeded)
         _refused(message, self.KEY, value, seeded.settings, f"{value}/{{meta.workset.name}}")
-        assert "every channel partition" in message, message
+        assert ("every channel partition" if value == "/srv/mb" else "partition unnamed") in message
         assert _digest(seeded.settings) == before
 
     @pytest.mark.parametrize("value", _forms("/srv/mb/<meta.workset.name>"))
@@ -271,6 +271,11 @@ class TestTheCureThroughTheCli:
          "would give every box one shared path"),
         ("workset.boxes", "/x/{meta.workset.name}", "/x/{meta.workset.name}/{meta.workset.path}",
          "would give every standalone box one shared path"),
+        ("workset.channels.mailboxes", "/x/{meta.workset.path}",
+         "/x/{meta.workset.path}/{meta.workset.name}",
+         "would leave the channel partition unnamed, because the value does not reach partition "
+         "identity. A channel partition is keyed by its working set's name, {meta.workset.name}, "
+         "not its path."),
     ])
     def test_the_refusal_is_true_and_its_cure_is_written(self, cli, key, value, cure, sharers):
         before = _digest(cli.settings)
