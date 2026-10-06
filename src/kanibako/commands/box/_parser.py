@@ -1548,7 +1548,6 @@ def run_list(args: argparse.Namespace) -> int:
     for box_name, root_str in sorted(standalone.items()):
         root = Path(root_str)
         sa_cname = container_name_for_box_name(box_name, WORKSET_SEGMENT_STANDALONE)
-        # ⚑ REPORT: it must never blank the listing.
         running = sa_cname is not None and sa_cname in running_containers
         status = "active" if running else ("stopped" if root.is_dir() else "missing")
         if active_only and status != "active":
@@ -2263,7 +2262,6 @@ def _format_credential_age(creds_path: Path) -> str:
 def _check_container_running(proj) -> tuple[bool, str]:
     """Is a kanibako container running for this project? Returns ``(is_running, detail)``."""
     container_name = container_name_for(proj)
-    # ⚑ REPORT the absent value; ``None`` is :func:`render_container_name`'s contract.
     if container_name is None:
         return False, "no container name (the box-name rule renders none)"
     try:

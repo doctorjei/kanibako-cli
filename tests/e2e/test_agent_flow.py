@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tests.e2e.conftest import (
+    box_container,
     e2e_requires,
     podman_exec,
     run_kanibako,
@@ -48,11 +49,11 @@ class TestEntrypoint:
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-entrypoint", timeout=15)
+        wait_for_container(box_container("e2e-entrypoint"), timeout=15)
 
         # Check process tree inside container
         ps_result = podman_exec(
-            "kanibako-e2e-entrypoint", ["ps", "aux"]
+            box_container("e2e-entrypoint"), ["ps", "aux"]
         )
         assert ps_result.returncode == 0
 
@@ -90,11 +91,11 @@ class TestCredentials:
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-creds", timeout=15)
+        wait_for_container(box_container("e2e-creds"), timeout=15)
 
         # Check that credential file exists inside the container
         result = podman_exec(
-            "kanibako-e2e-creds",
+            box_container("e2e-creds"),
             ["test", "-f", "/home/agent/.claude/.credentials.json"],
         )
         assert result.returncode == 0, (
@@ -103,7 +104,7 @@ class TestCredentials:
 
         # Verify it contains our test token
         cat_result = podman_exec(
-            "kanibako-e2e-creds",
+            box_container("e2e-creds"),
             ["cat", "/home/agent/.claude/.credentials.json"],
         )
         assert "e2e-test-token" in cat_result.stdout

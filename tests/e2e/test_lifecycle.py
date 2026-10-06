@@ -12,6 +12,7 @@ import subprocess
 import pytest
 
 from tests.e2e.conftest import (
+    box_container,
     e2e_requires,
     podman_exec,
     run_kanibako,
@@ -50,7 +51,7 @@ class TestPersistentLaunch:
         # but the container should still be running.
 
         # Verify container is running
-        container_name = "kanibako-e2e-persist"
+        container_name = box_container("e2e-persist")
         wait_for_container(container_name, timeout=15)
 
         # Verify tmux session exists inside the container
@@ -78,7 +79,7 @@ class TestPersistentLaunch:
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-stop", timeout=15)
+        wait_for_container(box_container("e2e-stop"), timeout=15)
 
         # Stop it
         result = run_kanibako(["stop", "e2e-stop"], env=env)
@@ -86,7 +87,7 @@ class TestPersistentLaunch:
 
         # Verify container is gone
         inspect = subprocess.run(
-            ["podman", "inspect", "kanibako-e2e-stop"],
+            ["podman", "inspect", box_container("e2e-stop")],
             capture_output=True,
             timeout=5,
         )
@@ -144,7 +145,7 @@ class TestReattach:
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-reattach", timeout=15)
+        wait_for_container(box_container("e2e-reattach"), timeout=15)
 
         # Second start (reattach attempt — will fail without TTY)
         run_kanibako(
@@ -155,7 +156,7 @@ class TestReattach:
         # Verify only one container with this name
         ps_result = subprocess.run(
             ["podman", "ps", "-a",
-             "--filter", "name=kanibako-e2e-reattach",
+             "--filter", f"name={box_container('e2e-reattach')}",
              "--format", "{{.Names}}"],
             capture_output=True,
             text=True,
@@ -185,7 +186,7 @@ class TestShell:
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-shell", timeout=15)
+        wait_for_container(box_container("e2e-shell"), timeout=15)
 
         # Run a one-shot command via shell
         result = run_kanibako(
@@ -216,12 +217,12 @@ class TestStopAndRestart:
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-restart", timeout=15)
+        wait_for_container(box_container("e2e-restart"), timeout=15)
 
         # Get first container ID
         id1 = subprocess.run(
             ["podman", "inspect", "--format", "{{.Id}}",
-             "kanibako-e2e-restart"],
+             box_container("e2e-restart")],
             capture_output=True,
             text=True,
             timeout=5,
@@ -236,12 +237,12 @@ class TestStopAndRestart:
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-restart", timeout=15)
+        wait_for_container(box_container("e2e-restart"), timeout=15)
 
         # Get second container ID
         id2 = subprocess.run(
             ["podman", "inspect", "--format", "{{.Id}}",
-             "kanibako-e2e-restart"],
+             box_container("e2e-restart")],
             capture_output=True,
             text=True,
             timeout=5,

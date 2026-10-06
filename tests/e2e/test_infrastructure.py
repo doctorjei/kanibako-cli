@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from tests.e2e.conftest import (
+    box_container,
     e2e_requires,
     resolve_box_dir,
     run_kanibako,
@@ -34,7 +35,7 @@ class TestMountStubs:
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-stubs", timeout=15)
+        wait_for_container(box_container("e2e-stubs"), timeout=15)
 
         # Resolve the box metadata dir THROUGH the real path resolver (boxes are
         # workset-scoped: .../kanibako/<workset>/boxes/<name>, not the legacy

@@ -571,12 +571,8 @@ RESERVED_WORKSET_IDENTIFIERS = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_AL
 #: these two literals, and a second spelling of a path segment is a second carrier.
 WORKSET_PARTITION_TOKENS = frozenset({WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE})
 
-#: Reserved RENDERED SEGMENTS — the ``<W>`` a container name carries for a box that is
-#: not in a named workset (``utils.WORKSET_SEGMENT_PRIMARY`` / ``_STANDALONE``).  A named
-#: workset of this name would render the same ``<W>`` for every box of one name in both
-#: worksets, so the two would be ONE container.
-#: ⚑ IMPORTED from :mod:`kanibako.utils`, never re-spelled: that module owns the render,
-#: and a second copy of these two literals is a second carrier free to drift.
+#: Reserved RENDERED SEGMENTS — the ``<W>`` of a primary or standalone box's container
+#: name; a named workset of this name would render the same container names.
 WORKSET_RENDERED_SEGMENTS = frozenset({
     WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
 })

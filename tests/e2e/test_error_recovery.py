@@ -8,6 +8,7 @@ import subprocess
 import pytest
 
 from tests.e2e.conftest import (
+    box_container,
     e2e_requires,
     run_kanibako,
     SUBPROCESS_TIMEOUT,
@@ -69,9 +70,9 @@ class TestContainerDeath:
 
         # Prompt teardown: the crashed box's container is GONE afterwards (the
         # two-state lifecycle tears an exited box down; nothing lingers).
-        assert not _container_exists("kanibako-e2e-death"), (
+        assert not _container_exists(box_container("e2e-death")), (
             "Expected the crashed box's container to be torn down after the "
-            "failed start, but 'kanibako-e2e-death' still exists."
+            f"failed start, but '{box_container('e2e-death')}' still exists."
         )
 
 # NOTE: the former ``TestNoConversationRetry`` (Test 10) was REMOVED with the

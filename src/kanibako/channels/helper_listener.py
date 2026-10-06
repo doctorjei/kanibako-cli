@@ -27,9 +27,7 @@ class HelperContext:
 
     runtime: ContainerRuntime
     image: str
-    #: The DIRECTOR box's ``(<W>, <B>)`` identity pair.  A helper's container name is
-    #: rendered from it plus the request's structured ``helper_num`` — never appended to
-    #: a rendered box name, which would make the rendering the only carrier of identity.
+    #: The DIRECTOR box's ``(<W>, <B>)`` pair; a helper's name renders from it.
     container_name_segments: tuple[str, str]
     shell_path: Path      # director's shell_path (parent of helpers/)
     helpers_dir: Path     # absolute host path to helpers/ inside shell_path
@@ -294,8 +292,6 @@ class HelperHub:
         container_name = render_container_name(
             *ctx.container_name_segments, helper_num=helper_num,
         )
-        # ⚑ ADDRESSABLE, and unreachable: the hub exists only for a STARTED director.
-        # The ``None`` guard is :func:`render_container_name`'s contract.
         if container_name is None:
             raise ContainerError(
                 f"director box {ctx.container_name_segments[1]!r} renders no helper "

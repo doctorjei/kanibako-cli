@@ -41,6 +41,7 @@ from pathlib import Path
 import pytest
 
 from tests.e2e.conftest import (
+    box_container,
     _active_env,
     _podman,
     e2e_requires,
@@ -51,10 +52,6 @@ from tests.e2e.conftest import (
 pytestmark = [pytest.mark.e2e, *e2e_requires]
 
 GUEST_HOME = "/home/agent"
-
-
-def container_name(box: str) -> str:
-    return "kanibako-" + box
 
 
 def rm(name: str) -> None:
@@ -207,7 +204,7 @@ def assert_agent_chapter_bound_ro(cfg: dict, box: str) -> None:
         f"the bound chapter source {m['Source']} carries no ROM_AGENT.md"
     )
     in_box = podman_exec(
-        container_name(box),
+        box_container(box),
         ["cat", f"{CANON_AGENT_DEST}/ROM_AGENT.md"],
     ).stdout
     assert "Core Tome" in in_box, (
@@ -235,7 +232,7 @@ def assert_canon_locked_down(box: str) -> None:
     those dirs yet; the seeds half does, so it is now live.
     """
     refused = podman_exec(
-        container_name(box),
+        box_container(box),
         ["sh", "-c", "mkdir ~/canon/scratch 2>&1; echo rc=$?"],
     ).stdout
     assert "rc=0" not in refused, (
@@ -243,7 +240,7 @@ def assert_canon_locked_down(box: str) -> None:
     )
 
     owners = podman_exec(
-        container_name(box),
+        box_container(box),
         ["sh", "-c", "stat -c %u ~/canon ~/canon/charter"],
     ).stdout.split()
     assert owners == ["0", "0"], (
@@ -296,7 +293,7 @@ def assert_canon_books_writable(box: str) -> None:
     is allowed to write inside ``~/canon``.
     """
     out = podman_exec(
-        container_name(box),
+        box_container(box),
         ["sh", "-c",
          "touch ~/canon/notebook/.probe 2>&1 && echo nb=ok; "
          "touch ~/canon/workbook/.probe 2>&1 && echo wb=ok; "
@@ -308,7 +305,7 @@ def assert_canon_books_writable(box: str) -> None:
         f"~/canon/handbook must be READ-ONLY in-box, got {out!r}"
     )
     seeded = podman_exec(
-        container_name(box),
+        box_container(box),
         ["sh", "-c", "cat ~/canon/notebook/LOCAL_CONTENTS.md"],
     ).stdout
     assert "Notebook" in seeded, (
@@ -387,7 +384,7 @@ def assert_flatten_resolves_every_import(
         f"not have flattened anything: seed={seed!r} final={final!r}"
     )
     result = podman_exec(
-        container_name(box),
+        box_container(box),
         ["sh", "-c", f'python3 {FLATTENER_IN_BOX} "$1" "$2"', "sh", seed, final],
     )
     assert result.returncode == 0, (
@@ -418,7 +415,7 @@ def test_claude_kickoff_loader_delivery(e2e_env):
         env=env,
         timeout=90,
     )
-    cfg = safe_inspect(container_name(box))
+    cfg = safe_inspect(box_container(box))
     assert cfg is not None, (
         f"no container created; rc={res.returncode} stderr={res.stderr[-300:]!r}"
     )
@@ -437,7 +434,7 @@ def test_claude_kickoff_loader_delivery(e2e_env):
         assert_no_skip_if_absent_warnings(res.stderr)
         assert_flatten_resolves_every_import(cfg, box)
     finally:
-        rm(container_name(box))
+        rm(box_container(box))
 
 
 def test_goose_kickoff_loader_delivery(goose_e2e_env):
@@ -459,7 +456,7 @@ def test_goose_kickoff_loader_delivery(goose_e2e_env):
         env=env,
         timeout=90,
     )
-    cfg = safe_inspect(container_name(box))
+    cfg = safe_inspect(box_container(box))
     assert cfg is not None, (
         f"no container created; rc={res.returncode} stderr={res.stderr[-300:]!r}"
     )
@@ -481,4 +478,4 @@ def test_goose_kickoff_loader_delivery(goose_e2e_env):
             env_of(cfg).get("CONTEXT_FILE_NAMES", "[]")
         )
     finally:
-        rm(container_name(box))
+        rm(box_container(box))

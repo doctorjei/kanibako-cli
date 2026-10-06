@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plain `get` answers only what the command scope's file stores, and neither scope can store these
   keys. **Printed-line change:** `box get <box> agent.<node>.<key>` and `workset get <workset>
   agent.<node>.<key>` now print `(not set)`, rc 0. `agent get` still reads the agent's own file.
+
+- **Container and helper-socket names are rendered from the box's workset and name as
+  `kb-<workset>-<box>`, with every `-` written `--`** (keyspec `meta.box.container`, was
+  `meta.box.container_name`). They replace `kanibako-<box>` and `kanibako-ronin-<escaped root>`, so
+  two boxes of one name in two worksets get distinct containers, and `primary` and `standalone` are
+  now reserved workset names. A directory with a workset skeleton and a reserved name is no longer
+  imported silently: it prints one warning naming the directory. **No alias:** `stop --all`, `box
+  list`, and `box ps` see only `kb-` names, so a container a pre-1.8.0 release started is invisible
+  to them, and `start` refuses while one runs for the box, printing `<runtime> stop <old name>`. A
+  box name that is empty or starts with `-` renders no container name: `start` and `stop` refuse it
+  (rc 1) with the command that renames it, `box list` lists it as not running, and `stop --all` names
+  it once, in any mode, and continues. See *Containers are renamed `kb-<workset>-<box>`; a pre-1.8.0
+  container is invisible* in `MIGRATION.md`.
+
 - **`system set`, `get`, and `reset` on `agent.<node>.*` use the system settings file.** They used
   to write and clear `agents/<node>/agent.yaml`, and `get` read that file first; per keyspec §2a
   they now work on `<data>/global/settings.yaml` alone, under `agent: <node>:`. **Printed-line

@@ -48,10 +48,11 @@ import pytest
 
 from tests.e2e.conftest import (
     _podman,
+    box_container,
     e2e_requires,
     run_kanibako,
 )
-from tests.e2e.test_instructions_delivery import container_name, rm, run_install
+from tests.e2e.test_instructions_delivery import rm, run_install
 
 pytestmark = [pytest.mark.e2e, *e2e_requires]
 
@@ -237,7 +238,7 @@ def test_codex_delivery_real_box(e2e_env):
             f"stderr={r.stderr[-300:]!r})"
         )
     finally:
-        rm(container_name(box))
+        rm(box_container(box))
 
 
 def test_codex_box_has_charter_pid_helper(e2e_env):
@@ -251,7 +252,7 @@ def test_codex_box_has_charter_pid_helper(e2e_env):
     env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-rom"
     _seed_codex_stub(e2e_env)
     run_install(env)
-    name = container_name(box)
+    name = box_container(box)
 
     r = run_kanibako(["create", str(project), "--name", box], env=env)
     assert r.returncode == 0, f"create failed: {r.stderr}"
@@ -272,7 +273,7 @@ def test_simulated_panel_marker_lifecycle(e2e_env):
     surfaces gone → TEARDOWN (container exits)."""
     env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-watch"
     run_install(env)
-    name = container_name(box)
+    name = box_container(box)
 
     r = run_kanibako(["create", str(project), "--name", box], env=env)
     assert r.returncode == 0, f"create failed: {r.stderr}"
@@ -501,7 +502,7 @@ def test_codex_ppid_marker_real_cli(e2e_env):
     env, project, box = e2e_env["env"], e2e_env["project"], "codexpanel-ppid"
     _forward_real_codex_creds(e2e_env)
     run_install(env)
-    name = container_name(box)
+    name = box_container(box)
     r = run_kanibako(["create", str(project), "--name", box], env=env)
     assert r.returncode == 0, f"create failed: {r.stderr}"
     try:

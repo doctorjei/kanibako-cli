@@ -15,6 +15,7 @@ import subprocess
 import pytest
 
 from tests.e2e.conftest import (
+    box_container,
     e2e_requires,
     run_kanibako,
     wait_for_container,
@@ -43,7 +44,7 @@ class TestShellExecIntoRunning:
              "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        container_name = "kanibako-e2e-exec"
+        container_name = box_container("e2e-exec")
         wait_for_container(container_name, timeout=15)
 
         # Capture the container Id before exec.
