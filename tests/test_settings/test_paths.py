@@ -3086,41 +3086,31 @@ class TestBoxShapeRefusalPrecedesSetup:
         # MUTATION: move ``_init_project`` back above the read and this reds.
         assert calls == ["read_box_enable_vault", "_init_project"]
 
-    def test_the_primary_door_reads_a_box_tier_its_own_guard_proved_absent(
-        self, config_file, tmp_home, monkeypatch,
+    @pytest.mark.parametrize("register", [False, True])
+    def test_a_scalar_box_tier_refuses_the_primary_door_with_no_shell_left_behind(
+        self, config_file, tmp_home, register,
     ):
-        """The primary door's read is handed an ABSENT box tier, so it cannot refuse.
+        """The primary door refuses a scalar ``box`` with NOTHING of the setup on disk.
 
-        ⚑ WHY THIS DOOR'S REFUSAL IS UNREACHABLE: the body runs only while
-        ``project_dir_path`` does not exist, and the box tier is a file INSIDE it — so the
-        read short-circuits on its absent-file arm, and now also sees that the parent it
-        would have to be inside is absent too.  Ordering the read first is what makes both
-        facts true at the moment of the read; a future widening of that guard is what
-        would revive the refusal here.
+        ⚑ REACHABLE through ``name_override``: the door's guard tests the pre-name dir,
+        then switches to ``boxes/<name>``, which may already hold a box tier.  ``box
+        extract --name`` takes this path with ``enable_vault=None``.
         """
+        from kanibako.errors import ConfigError
+
         config = load_config(config_file)
         std = load_std_paths(config)
         project = tmp_home / "primarydoor2"
         project.mkdir()
-        seen: list = []
+        metadata_path = std.boxes / "foo"
+        toml = _scalar_box_tier(metadata_path)
 
-        import kanibako.settings.paths as paths_mod
-
-        real_read = paths_mod.read_box_enable_vault
-
-        def _read(path, *args, **kwargs):
-            seen.append((path, path.exists(), path.parent.is_dir()))
-            return real_read(path, *args, **kwargs)
-
-        monkeypatch.setattr(paths_mod, "read_box_enable_vault", _read)
-
-        resolve_project(std, config, project_dir=str(project), initialize=True)
-
-        assert len(seen) == 1
-        toml, toml_exists, parent_exists = seen[0]
-        assert toml.name == BOX_META_FILE
-        assert toml_exists is False
-        assert parent_exists is False
+        with pytest.raises(ConfigError) as exc:
+            resolve_project(std, config, project_dir=str(project), initialize=True,
+                            name_override="foo", register=register)
+        assert "holds 42 at 'box'" in str(exc.value)
+        assert not (metadata_path / "home").exists()
+        assert toml.read_text() == "box: 42\n"
 
     def test_a_table_box_tier_still_completes_the_named_door_setup(
         self, config_file, tmp_home,
