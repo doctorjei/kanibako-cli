@@ -14,7 +14,8 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
                                               WARN_BOX_BAD_KUID, WARN_BOX_NO_VAULT,
 
                                               ERR_SETTINGS_BAD_PATH, ERR_SETTINGS_BAD_REF,
-                                              ERR_CONFIG_NO_FILE, ERR_PROJECT_NO_PATH,
+                                              ERR_CONFIG_NO_FILE, ERR_CONFIG_NULL_PATH_REASON,
+                                              ERR_PROJECT_NO_PATH,
                                               ERR_PROJECT_BAD_DESIGNATION,
                                               ERR_PROJECT_NEW_HOME, ERR_PROJECT_REG_HOME,
                                               ERR_PROJECT_NAME_USED,
@@ -499,13 +500,14 @@ def _refused_null_path_value_error(key: str, default: str, *,
     gives a null path key no meaning either way, so both raise THIS.  *referent* names the
     key the value pointed at, when the null arrived that way: it is the line the user must
     read, since their own line holds a reference and not a null.
+
+    The reason is ``ERR_CONFIG_NULL_PATH_REASON``, shared with every other null-path door.
     """
     via = (f" Its value references {referent}, which is null, so the value is null too."
            if referent else "")
     return (
-        f"{key} is set to <None>, which is not a path. A <None> is a value: "
-        f"it does not fall back to the default.{via} Delete the line to take the "
-        f"default ({default}), or set a path."
+        f"{key} is set to <None>, which is not a path. {ERR_CONFIG_NULL_PATH_REASON}"
+        f"{via} Delete the line to take the default ({default}), or set a path."
     )
 
 
