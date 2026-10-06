@@ -1596,11 +1596,15 @@ class TestPrecreateMountStubs:
         shell.mkdir()
         project = tmp_path / "project"
         project.mkdir()
-        # Pre-existing dest symlink (as a baked image would ship).
+        # Pre-existing dest symlink (as a baked image would ship). The target is
+        # under tmp_path so the link is live on every host, not only where that
+        # absolute path happens to exist.
         bin_dir = shell / ".local" / "bin"
         bin_dir.mkdir(parents=True)
+        version_dir = tmp_path / "share" / "claude" / "versions" / "2.1.177"
+        version_dir.mkdir(parents=True)
         link = bin_dir / "claude"
-        link.symlink_to("/home/agent/.local/share/claude/versions/2.1.177")
+        link.symlink_to(version_dir)
         assert link.is_symlink()
 
         src_file = tmp_path / "claude-launcher"
@@ -2245,3 +2249,306 @@ class TestGuestDestToHost:
             assert _guest_dest_to_host(
                 "/home/agent/workspacefoo/x", shell, project, **kw
             ) == shell / "workspacefoo" / "x"
+
+
+class TestSymlinkedParentRefusal:
+    """A mount dest nested under a symlinked parent is refused, not stubbed.
+
+    ⚑ Every link target here is built under ``tmp_path``, so no test turns on
+    whether some host happens to have a directory at a fixed absolute path.
+    """
+
+    GUEST_DEST = "/home/agent/canon/notebook"
+    GUEST_WS_DEST = "/home/agent/workspace/canon/notebook"
+
+    @staticmethod
+    def _roots(tmp_path):
+        """A home, a project dir and a source dir, with the workspace stub parent."""
+        shell = tmp_path / "shell"
+        project = tmp_path / "project"
+        src = tmp_path / "src"
+        for d in (shell, project, src):
+            d.mkdir()
+        (shell / "workspace").mkdir()  # GUEST_WORKSPACE_RELPATH exists, as on a real box
+        return shell, project, src
+
+    @staticmethod
+    def _stubs(shell, project, src, dest):
+        from kanibako.runtime.container import _precreate_mount_stubs
+        from kanibako.targets.base import Mount
+        _precreate_mount_stubs(
+            shell, project, [Mount(source=src, destination=dest, options="")],
+            enable_vault=False,
+            vault_ro_path=shell / "no-ro",
+            vault_rw_path=shell / "no-rw",
+            tmpfs_masks=[],
+        )
+
+    def test_relative_dangling_symlinked_parent_refused_naming_parent_and_target(
+        self, tmp_path,
+    ):
+        """A RELATIVE dangling parent resolving inside the home refuses, naming both.
+
+        The stub's ``mkdir`` used to fail on the LINK, which was logged at debug and
+        swallowed, so the launch continued and failed later with a podman error naming
+        neither the link nor the destination.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (shell / "canon").symlink_to("workspace/wiki")  # absent, inside the home
+
+        with pytest.raises(ContainerError) as exc:
+            self._stubs(shell, project, src, self.GUEST_DEST)
+
+        message = str(exc.value)
+        assert str(shell / "canon") in message
+        assert "workspace/wiki" in message
+        # Nothing was created: the refusal is read-only.
+        assert (shell / "canon").is_symlink()
+        assert not (shell / "canon" / "notebook").exists()
+
+    def test_absolute_dangling_symlinked_parent_inside_the_box_home_refused(self, tmp_path):
+        """An ABSOLUTE dangling parent inside the home refuses, like the relative one."""
+        shell, project, src = self._roots(tmp_path)
+        (shell / "canon").symlink_to(shell / "realtarget")  # absolute, absent, inside
+
+        with pytest.raises(ContainerError) as exc:
+            self._stubs(shell, project, src, self.GUEST_DEST)
+
+        message = str(exc.value)
+        assert str(shell / "canon") in message
+        assert str(shell / "realtarget") in message
+        assert (shell / "canon").is_symlink()
+
+    def test_workspace_side_dangling_parent_refused_by_the_project_directory(self, tmp_path):
+        """A workspace-side dangling parent refuses, and is named as the project dir.
+
+        The project directory is the OTHER root and the OTHER noun: calling it the box
+        home named a root the bind was never under.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (project / "notes").mkdir()
+        (project / "canon").symlink_to("notes/wiki")  # absent, inside the project dir
+
+        with pytest.raises(ContainerError) as exc:
+            self._stubs(shell, project, src, self.GUEST_WS_DEST)
+
+        message = str(exc.value)
+        assert f"the project directory is {project}" in message
+        assert "box home" not in message
+        assert (project / "canon").is_symlink()
+        assert not (project / "canon" / "notebook").exists()
+
+    def test_dangling_link_deeper_in_a_chain_refused_at_the_nearest_link(self, tmp_path):
+        """A live link whose own target is dangling is refused, named at the NEAREST link.
+
+        Only the first link on the way up is judged, so the message names the one the
+        user has to replace.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (shell / "canon").symlink_to(shell / "b")
+        (shell / "b").symlink_to(shell / "gone")  # live link, dangling resolution
+
+        with pytest.raises(ContainerError) as exc:
+            self._stubs(shell, project, src, self.GUEST_DEST)
+
+        message = str(exc.value)
+        assert str(shell / "canon") in message
+        assert str(shell / "b") in message
+        assert not (shell / "b" / "notebook").exists()
+
+    def test_a_live_link_is_stubbed_where_a_dangling_one_is_refused(self, tmp_path):
+        """Liveness is the only difference: the same shape, one link live, one not.
+
+        A link resolving inside the box home puts the stub where the box home owns it,
+        so it is stubbed. The refusal is about a link with nowhere to put it.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (shell / "realtarget").mkdir()
+        (shell / "canon").symlink_to(shell / "realtarget")
+        (shell / "dangle").symlink_to(shell / "nowhere")
+
+        self._stubs(shell, project, src, self.GUEST_DEST)
+        assert (shell / "realtarget" / "notebook").is_dir()
+
+        with pytest.raises(ContainerError):
+            self._stubs(shell, project, src, "/home/agent/dangle/notebook")
+
+    def test_symlinked_parent_leading_outside_the_box_home_refused(self, tmp_path):
+        """A live link that leaves the box home is refused, naming the box home."""
+        shell, project, src = self._roots(tmp_path)
+        (project / "realtarget").mkdir()
+        (shell / "canon").symlink_to(project / "realtarget")
+
+        with pytest.raises(ContainerError, match="is a symlink to") as exc:
+            self._stubs(shell, project, src, self.GUEST_DEST)
+
+        assert f"the box home is {shell}" in str(exc.value)
+        assert (shell / "canon").is_symlink()
+
+    def test_symlinked_parent_inside_the_box_home_is_not_refused(self, tmp_path):
+        """A symlinked parent that still lands inside the box home is stubbed.
+
+        The refusal is about WHERE the bind lands. A link resolving inside the
+        box home puts the stub where the box home owns it, so it is stubbed —
+        and ``_loosen_parents`` still stops at the link rather than chmodding
+        through it.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (shell / "realtarget").mkdir()
+        (shell / "canon").symlink_to(shell / "realtarget")
+
+        self._stubs(shell, project, src, self.GUEST_DEST)
+
+        assert (shell / "canon").is_symlink()
+        assert (shell / "realtarget" / "notebook").is_dir()
+
+    def test_symlink_at_the_dest_itself_is_still_cleared(self, tmp_path):
+        """A symlink AT the dest is _clear_symlink's to remove, so it is not refused.
+
+        The walk starts at the dest's PARENT, so a dangling link AT the dest is never
+        judged — it is removed and the dir is made in its place.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (shell / "canon").symlink_to(shell / "gone")
+
+        self._stubs(shell, project, src, "/home/agent/canon")
+
+        assert (shell / "canon").is_dir()
+        assert not (shell / "canon").is_symlink()
+
+    def test_real_parents_are_stubbed(self, tmp_path):
+        """A dest whose parents are real directories is stubbed as before."""
+        shell, project, src = self._roots(tmp_path)
+
+        self._stubs(shell, project, src, self.GUEST_DEST)
+
+        assert (shell / "canon" / "notebook").is_dir()
+
+    def test_run_refuses_a_dangling_symlinked_parent(self, tmp_path):
+        """The production caller refuses too, so the launch never reaches podman."""
+        from kanibako.runtime.container import ContainerRuntime
+        from kanibako.targets.base import Mount
+        shell, project, src = self._roots(tmp_path)
+        (shell / "canon").symlink_to("workspace/wiki")
+        rt = ContainerRuntime(command="/bin/true")
+
+        with patch("kanibako.runtime.container.subprocess.run") as launched:
+            with pytest.raises(ContainerError, match="is a symlink to"):
+                rt.run(
+                    "img",
+                    shell_path=shell,
+                    project_path=project,
+                    vault_ro_path=None,
+                    vault_rw_path=None,
+                    extra_mounts=[Mount(source=src, destination=self.GUEST_DEST,
+                                        options="")],
+                    tmpfs_masks=[],
+                    enable_vault=False,
+                )
+
+        launched.assert_not_called()
+        assert not (shell / "canon" / "notebook").exists()
+
+    def test_grandparent_symlink_leading_outside_the_box_home_refused(self, tmp_path):
+        """A symlink ABOVE the immediate parent is refused, and nothing is written out.
+
+        The walk is by path position, so a link at any depth between the stub and the
+        root is judged. A link at the GRANDPARENT used to be reached by no refusal at
+        all: the stub was then created under the link's target, outside the home.
+        """
+        shell, project, src = self._roots(tmp_path)
+        outside = tmp_path / "outside"
+        (outside / "sub").mkdir(parents=True)
+        (shell / "dl").symlink_to(outside)  # the GRANDPARATH of dl/sub/notebook
+
+        with pytest.raises(ContainerError, match="is a symlink to") as exc:
+            self._stubs(shell, project, src, "/home/agent/dl/sub/notebook")
+
+        message = str(exc.value)
+        assert str(shell / "dl") in message
+        assert str(outside) in message
+        assert f"the box home is {shell}" in message
+        # The refusal is read-only, and the write it prevents is the host path.
+        assert (shell / "dl").is_symlink()
+        assert not (outside / "sub" / "notebook").exists()
+
+    def test_grandparent_dangling_symlink_outside_the_box_home_refused(self, tmp_path):
+        """A grandparent link whose target is ABSENT is refused on the same terms.
+
+        Its stub had nowhere to go, so ``mkdir`` failed on the link itself at
+        ``[Errno 17]``, which the stub helpers log at debug and swallow — the launch
+        then failed naming neither the link nor the destination.
+        """
+        shell, project, src = self._roots(tmp_path)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (shell / "dl").symlink_to(outside / "gone")  # absolute, absent, outside
+
+        with pytest.raises(
+            ContainerError, match="does not resolve to an existing directory"
+        ) as exc:
+            self._stubs(shell, project, src, "/home/agent/dl/sub/notebook")
+
+        assert str(shell / "dl") in str(exc.value)
+        assert (shell / "dl").is_symlink()
+
+    def test_symlinked_parent_to_a_regular_file_refused(self, tmp_path):
+        """A symlink pointing at a FILE is refused like a dangling one.
+
+        A file is not a directory a stub can be made under, so ``mkdir`` failed on it
+        at ``[Errno 20]``, logged at debug and swallowed.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (shell / "afile").write_text("x")
+        (shell / "canon").symlink_to("afile")
+
+        with pytest.raises(
+            ContainerError, match="does not resolve to an existing directory"
+        ) as exc:
+            self._stubs(shell, project, src, self.GUEST_DEST)
+
+        assert str(shell / "canon") in str(exc.value)
+        assert (shell / "canon").is_symlink()
+
+    def test_grandparent_symlink_inside_the_box_home_is_not_refused(self, tmp_path):
+        """A grandparent link that still lands inside the home is stubbed.
+
+        The walk is by path position, so it now judges links at every depth; only
+        WHERE the link lands decides. A live in-home link is stubbed where it points.
+        """
+        shell, project, src = self._roots(tmp_path)
+        (shell / "realtarget" / "sub").mkdir(parents=True)
+        (shell / "dl").symlink_to(shell / "realtarget")
+
+        self._stubs(shell, project, src, "/home/agent/dl/sub/notebook")
+
+        assert (shell / "dl").is_symlink()
+        assert (shell / "realtarget" / "sub" / "notebook").is_dir()
+
+    def test_run_refuses_a_grandparent_symlinked_parent_leading_outside(self, tmp_path):
+        """The production caller refuses a grandparent link too, before podman runs."""
+        from kanibako.runtime.container import ContainerRuntime
+        from kanibako.targets.base import Mount
+        shell, project, src = self._roots(tmp_path)
+        outside = tmp_path / "outside"
+        (outside / "sub").mkdir(parents=True)
+        (shell / "dl").symlink_to(outside)
+        rt = ContainerRuntime(command="/bin/true")
+
+        with patch("kanibako.runtime.container.subprocess.run") as launched:
+            with pytest.raises(ContainerError, match="is a symlink to"):
+                rt.run(
+                    "img",
+                    shell_path=shell,
+                    project_path=project,
+                    vault_ro_path=None,
+                    vault_rw_path=None,
+                    extra_mounts=[Mount(source=src,
+                                        destination="/home/agent/dl/sub/notebook",
+                                        options="")],
+                    tmpfs_masks=[],
+                    enable_vault=False,
+                )
+
+        launched.assert_not_called()
+        assert not (outside / "sub" / "notebook").exists()

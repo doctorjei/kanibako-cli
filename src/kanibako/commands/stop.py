@@ -15,7 +15,7 @@ from kanibako.settings.paths import (
     resolve_box_target,
 )
 from kanibako.settings.settings_resolve import SettingsError
-from kanibako.utils import container_name_for
+from kanibako.utils import container_name_for, unrenderable_box_name_refusal
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -218,6 +218,16 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
         _warn_settings(refusal)
 
     container_name = container_name_for(proj)
+    # ⚑ NO legacy-name fallback: 1.8.0 is a clean break, no aliases.  So there is
+    # nothing here to address — say so and name the cure (one carrier, in ``utils``).
+    if container_name is None:
+        print(
+            unrenderable_box_name_refusal(
+                proj.name or "", proj.mode.value, proj.project_path,
+            ),
+            file=sys.stderr,
+        )
+        return 1
 
     lock_file = proj.metadata_path / ".kanibako.lock"
 
@@ -269,8 +279,43 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     return 0
 
 
+def _boxes_rendering_no_name() -> list[str]:
+    """Names of registered boxes, in every mode, that render NO container name.
+
+    ⚑ Enumerating REGISTRY boxes is what lets the sweep SAY it skipped one: such a box
+    has no container, so it never appears in ``list_running``.  The walk is ``box
+    list``'s: an unreadable workset is warned about there, a refused file here.
+    """
+    from kanibako.project.registry_store import load_standalone
+    from kanibako.settings.paths import (BoxMode, _early_scope, iter_workset_projects,
+                                         load_primary_boxes)
+    from kanibako.utils import renders_no_name
+
+    config = load_config(user_config_file())
+    try:
+        std, refusal = _load_paths(config)
+    except ConfigError as exc:
+        _warn_settings(exc)
+        return []
+    if refusal is not None:
+        _warn_settings(refusal)
+    try:
+        names = [*load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)),
+                 *load_standalone(std.registry)]
+        for _ws_name, _ws, members in iter_workset_projects(std, config):
+            names.extend(name for name, _status in members)
+    except ConfigError as exc:
+        _warn_settings(exc)
+        return []
+    return [name for name in names if renders_no_name(name)]
+
+
 def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
     """Stop all running kanibako containers."""
+    # ⚑ SKIP AND CONTINUE: the sweep carries on with every container that has a name.
+    for name in _boxes_rendering_no_name():
+        print(f"Skipped box '{name}': it has no container name under the box-name rule.")
+
     containers = runtime.list_running()
     if not containers:
         print("No running kanibako containers found.")

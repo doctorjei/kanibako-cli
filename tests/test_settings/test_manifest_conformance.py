@@ -587,6 +587,15 @@ def _spec_socket_name(identity: str, run_dir: Path) -> str:
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".sock"
 
 
+def _spec_segment(value: str) -> str:
+    """The companion's own SEGMENT rule: every ``-`` written ``--``.
+
+    Written out here rather than imported, because :func:`_spec_socket_name` exists to
+    be an oracle instead of a second resolver; the template's own separator stays single.
+    """
+    return value.replace("-", "--")
+
+
 def _check_helper_socket_row(raw: object) -> None:
     """The manifest spells the bounded name, and the code computes that name."""
     from kanibako.commands.start import helper_socket_path
@@ -594,15 +603,15 @@ def _check_helper_socket_row(raw: object) -> None:
     cell = _HELPER_SOCKET_CELL.match(str(raw))
     assert cell, f"{HELPER_SOCKET_DEST}: manifest {raw!r} does not spell the bounded name"
     run_dir = _PROBE_ROOT / "run"
-    # meta.workset.name per mode, spelled as the keyspec's channel rows spell it.
-    ws_names = {"primary": "__PRIMARY__", "named": _StubGroup.name,
-                "standalone": "__STANDALONE__"}
+    # The rendered <W> per mode: the bare words, NOT the partition DIRECTORY names
+    # (``channels.channels.WS_TOKEN_*``), which address a path and never a name.
+    ws_names = {"primary": "primary", "named": _StubGroup.name, "standalone": "standalone"}
     for mode, ws_name in ws_names.items():
         for box_name in ("app", "x" * 120, "箱" * 30):
             proj = _StubChannelProject(BoxMode(mode))
             proj.name = box_name
-            identity = (cell["t"].replace("@{meta.box.name}", box_name)
-                        .replace("@{meta.workset.name}", ws_name))
+            identity = (cell["t"].replace("@{meta.box.name}", _spec_segment(box_name))
+                        .replace("@{meta.workset.name}", _spec_segment(ws_name)))
             assert "@" not in identity, f"unrendered ref in {cell['t']!r}"
             want = run_dir / _spec_socket_name(identity, run_dir)
             assert helper_socket_path(proj, run_dir) == want, (mode, box_name)
@@ -1304,13 +1313,13 @@ NO_VALUE_DELIVERY_CONSTRUCTED: frozenset[str] = frozenset({
 })
 
 #: (E9) ``value:`` rows RENDERED off-snapshot, never sourced from it.
-#: ``meta.box.container_name`` has NO producer (``settings_keyspace`` says so at the
-#: ``meta.box`` declaration: it renders in ``utils.container_name_for`` off proj attrs,
+#: ``meta.box.container`` has NO producer (``settings_keyspace`` says so at the
+#: ``meta.box`` declaration: it renders in ``utils.render_container_name`` off proj attrs,
 #: not the store) — and the renderer cannot equal the manifest's ``%if`` template
 #: without a template engine, i.e. a second resolver.  A whole-value ``@``-ref to it
 #: would dangle, which is why nothing floors it.
 NO_VALUE_OFF_SNAPSHOT_RENDER: frozenset[str] = frozenset({
-    "meta.box.container_name",
+    "meta.box.container",
 })
 
 EXEMPT_VALUE_KEYS: frozenset[str] = (
@@ -1368,9 +1377,8 @@ class TestNoValueExemptions:
         """E9: the manifest's ``%if`` template verbatim, and the renderer measured —
         ``container_name_for`` answers off proj attrs (no snapshot in, no ``%if`` out),
         so equality with the template is unstatable without a second resolver."""
-        assert _value("meta.box.container_name") == (
-            "kanibako-{meta.box.name}%if {meta.box.helper_num}: "
-            "-helper-{meta.box.helper_num}%"
+        assert _value("meta.box.container") == (
+            "kb-<W>-<B>%if {meta.box.helper_num}: -helper-{meta.box.helper_num}%"
         )
 
         from types import SimpleNamespace
@@ -1380,13 +1388,15 @@ class TestNoValueExemptions:
         named = SimpleNamespace(
             mode=SimpleNamespace(value="named"), name="conformance-box",
             project_hash="ab" * 32, metadata_path=Path("/ws/conformance-box"),
+            group=SimpleNamespace(name="demo"),
         )
-        assert container_name_for(named) == "kanibako-conformance-box"
+        # the ``-`` inside the box name is the escaped ``--`` the render writes
+        assert container_name_for(named) == "kb-demo-conformance--box"
         standalone = SimpleNamespace(
             mode=SimpleNamespace(value="standalone"), name="7xk9q_ws",
-            project_hash="ab" * 32, metadata_path=Path("/x/y"),
+            project_hash="ab" * 32, metadata_path=Path("/x/y"), group=None,
         )
-        assert container_name_for(standalone) == "kanibako-ronin-x-y"
+        assert container_name_for(standalone) == "kb-standalone-7xk9q_ws"
 
 
 #: The manifest rows carrying NEITHER a ``default:`` nor a ``value:`` — measured ten,
@@ -1455,6 +1465,10 @@ NEITHER_CELL_REASONS: dict[str, str] = {
 #: The kinemata config the ``conformance`` job runs.  A REPOSITORY file, never packaged, so
 #: read from the checkout — which is where CI's ``test`` job runs pytest.
 KINEMATA_CONFIG = Path(__file__).resolve().parents[2] / "kinemata.toml"
+
+#: The SPEC-reading views (``spec-2g-*``, ``agent-<node>-stated``): run locally only, because
+#: their oracles read the keyspace spec, which is not in this repository or in CI.
+KINEMATA_SPEC_CONFIG = Path(__file__).resolve().parents[2] / "kinemata-spec.toml"
 
 #: The workflow that runs it.
 TEST_WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "test.yml"
@@ -1707,9 +1721,11 @@ class TestKinemataCarrier:
             )
         }
         # The `spec-2g-*` views compare the manifest with the SPEC, the authority, so a
-        # baselined finding there would accept spec drift silently.
+        # baselined finding there would accept spec drift silently.  They live in
+        # ``kinemata-spec.toml`` (local only: CI has no spec), which shares this baseline.
+        spec_config = tomllib.loads(KINEMATA_SPEC_CONFIG.read_text(encoding="utf-8"))
         spec_views = {
-            str(parity["registry"]) for parity in _kinemata_config().get("parity", [])
+            str(parity["registry"]) for parity in spec_config.get("parity", [])
             if str(parity["registry"]).startswith("spec-2g-")
         }
         assert spec_views == {"spec-2g-defaults", "spec-2g-keys", "spec-2g-not-keys"}, spec_views

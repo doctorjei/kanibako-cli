@@ -19,6 +19,7 @@ WARN_FALLBACK_RT_DIR = '%s not set; falling back to %s for runtime files ' + '(h
 WARN_RUNDIR_UNUSABLE = '%s not set & ' + RUN_USER_UID_PATH + ' unusable; falling back to temp ' + 'dir %s for runtime files. Set %s to persistent per-user runtime dir to ' + 'silence this.'
 WARN_WS_NO_ROOT = "Warning: workset '%s' root missing: %s"
 WARN_WS_BAD_LOAD = "Warning: failed to load workset '%s': %s"
+WARN_SA_SHADOWED_BY_PATH = "'%s' resolved to the path %s; the registered standalone box of the same " + 'name at %s is shadowed — reach it by its path.'
 WARN_WS_BOX_BAD_NAME = "box name '%s' does not meet the naming rules (%s); it resolves by its " + 'path only, not by that name. Rename it.'
 WARN_BOX_BAD_KUID = "Warning: invalid KUID '%s' for standalone box '%s' (invalid kuid); it " + 'still resolves; fix workset.kuid or set workset.skip_kuid_check=true to ' + 'silence this.'
 WARN_BOX_NO_VAULT = "Warning: cannot find vault for box '%s' (expected at %s); it still " + 'launches without a vault; recreate the directory or set ' + 'box.enable_vault=false to silence.'
@@ -44,7 +45,7 @@ ERR_CONFIG_PATH_REF_SCOPE = "%s is set to %r, which points at '@%s' — outside 
 ERR_CONFIG_REF_ORDER = '%s is set to %r, which points at \'@%s\' — a %s key, which resolves after the %s keys this one belongs to. A key may reference only keys of its own set or of a set resolved before it (system-design "Ordering rule"). Reference one of those keys instead, or set the value you mean.'
 ERR_PER_OWNER_SET = "nothing was written: %s = %r (%s scope, %s) would give every %s one shared path, because the value names no %s identity. %s Spell the identity into the value: %r, or set %s in each %s's own file."
 PER_OWNER_SET_WORDS = {'workset': ('working set', 'working-set', 'Same-named boxes in different working sets, and every standalone box, would share it.', 'working set'), 'partition': ('channel partition', 'partition', 'Same-named boxes in different working sets would share it.', 'working set'), 'box': ('box', 'box', 'Every box would share it.', 'box'), 'agent': ('agent', 'agent', 'Every agent would share it.', 'agent')}
-ERR_PER_OWNER_READ = "%s is set to %r in %s, which gives every %s one shared path, because the value names no %s identity. %s Nothing was changed. Spell the identity into the value: kanibako system set '%s=%s'; or run kanibako system reset %s, then kanibako workset set <workset> '%s=…' in each %s. To stop running boxes meanwhile: kanibako stop --all reads no settings; it lists the running boxes and asks before stopping them."
+ERR_PER_OWNER_READ = "%s is set to %r in %s, which gives every %s one shared path, because the value names no %s identity. %s Nothing was changed. Spell the identity into the value: kanibako system set '%s=%s'; or run kanibako system reset %s, then kanibako workset set <workset> '%s=…' in each %s. To stop running boxes meanwhile: kanibako stop --all stops every running box even when a settings file is refused; it lists them and asks first."
 ERR_PER_OWNER_LAUNCH = "%s is set to %r in %s, which gives every %s one shared path, because the value names no %s identity. %s Nothing was changed. Spell the identity into the value: %r, or put it in each %s's own file%s."
 PER_OWNER_SHARE_TAIL = '; to share one path on purpose, move it to %s'
 ERR_WORKSET_EARLY_SET_HEAD = 'nothing was written: this value could not be read back.\n  %s'
@@ -56,9 +57,9 @@ ERR_PROJECT_BAD_DESIGNATION = 'Invalid box designation %r: it is neither a box n
 ERR_PROJECT_NEW_HOME = 'Refusing to create project rooted at $HOME: this would mount the ' + 'entire home directory as the workspace.\n If you really want a ' + 'project here, use:\nkanibako create --standalone ~ --allow-home'
 ERR_PROJECT_REG_HOME = 'Refusing to register $HOME as a project path: this would mount the ' + 'entire home directory as the workspace.'
 ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
-ERR_PROJECT_PATH_IS_NAMED_BOX = 'Refusing to create a box at %s: it is already the workspace of ' + "named box '%s' in workset '%s', and one path is one project's record. " + "--force does not override this. Use that box ('kanibako box show %s/%s'), " + 'or free the path first:\n  kanibako workset disconnect %s %s --force'
-ERR_PROJECT_DIR_IS_WS = "Name '%s' is already in use by a workset. Box and workset names are " + 'separate namespaces, but this bare name would then resolve to the ' + 'box, shadowing the workset in bare-name lookups. Re-run with --force ' + 'to create the box under this name anyway.'
+ERR_PROJECT_PATH_IS_NAMED_BOX = 'Refusing to create a box at %s: it is already the workspace of ' + "named box '%s' in workset '%s', and one path is one project's record. " + "Use that box ('kanibako box show %s/%s'), " + 'or free the path first:\n  kanibako workset disconnect %s %s --force'
 ERR_WORKSET_NO_PROJECT = "Project '%s' not found in workset '%s'"
+ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX = "it is already the workspace of primary box '%s'; to make it a member of '%s' instead, convert that box ('kanibako box convert %s --workset %s%s', or 'kanibako box convert %s --workset %s --name <member> --move' to give it another name), move it out of the way ('kanibako box move %s <path>'), or drop the box ('kanibako box rm %s')."
 ERR_WORKSET_NO_WORKSET = 'No workset found for path: %s'
 ERR_WORKSET_WS_NOT_BOX = "'%s' is a workset, not a single project box. Name a project inside it " + "(e.g. '%s/<project>') or run the command from a project workspace " + 'under that workset.'
 ERR_WORKSET_NOT_IN_BOX = "Inside workset '%s' but not in a specific project workspace. Change " + 'to a project directory under %s/.'

@@ -415,7 +415,7 @@ KEY_OWNERS: dict[str, str] = {
     "meta.box.inbox": "box",
     "meta.box.share_global": "box",
     "meta.box.share_workset": "box",
-    "meta.box.container_name": "box",
+    "meta.box.container": "box",
     "meta.agent.default.path": "agent",
     "meta.agent.shell.path": "agent",
     "meta.agent.shell.settings": "agent",

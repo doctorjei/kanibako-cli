@@ -23,11 +23,9 @@ function once.  The marker is :func:`~kanibako.project.workset.is_workset_skelet
 Conflict semantics: a name colliding SAME-KIND — with an entity of the same kind
 already registered to a *different* root/path — **REFUSES** the import; nothing is
 mutated and :class:`ImportConflictError` is raised.  An entity already registered to
-its current path is a silent idempotent no-op.  ⚑ A CROSS-KIND collision (a workset
-name matching a primary BOX name) does NOT refuse: it imports and WARNS.  Refusing at
-``workset create`` is affordable because a human typed the name and can retype it; on
-an import nobody typed anything and there is no ``--force`` to offer, so a refusal
-would strand the tree it was meant to recover ([R139]).
+its current path is a silent idempotent no-op.  A workset sharing a primary BOX's name
+imports normally: box and workset names are separate namespaces (spec § Detection &
+import).
 
 Reference: ``llm-docs/kanibako/project/import_reconcile.py.md``.
 """
@@ -38,15 +36,10 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-from kanibako.identifiers import find_identifier
 from kanibako.project import registry_store
-from kanibako.project.names import cross_kind_shadow_hatch, register_name
+from kanibako.project.names import register_name
 from kanibako.errors import KanibakoError
-from kanibako.log import get_logger
 from kanibako.settings.bootstrap import STANDALONE_META_DIR
-from kanibako.settings.workset_dirkeys import EarlyScope
-
-logger = get_logger("import_reconcile")
 
 
 class ImportConflictError(KanibakoError):
@@ -81,8 +74,7 @@ def _conflict(
 # this same idempotent register-if-absent import, then clears it — NO seed.  The
 # op TYPE is what keeps "import never seeds" true: these ops have no seed step in
 # the replay table.  The OPTIONAL ``journal`` argument comes from the resolver
-# call sites (``std.journal``); None degrades to a plain register, byte-identical
-# to the pre-J2 path.
+# call sites (``std.journal``); None degrades to a plain register.
 #
 # HARD INVARIANT: registered ==> no pending entry (the journal is empty at rest).
 
@@ -114,8 +106,8 @@ def _journal_register(
         journal, box_path, op=op, name=name, mode=mode, workset=workset,
     )
     yield
-    # Committing step done (register returned) — clear IMMEDIATELY.  A crash here
-    # leaves a stale entry that the next resolve clears via the same replay.
+    # Committing step done — clear now.  A crash here leaves a stale entry
+    # that the next resolve clears via the same replay.
     journal_mod.clear_entry(journal, box_path)
 
 
@@ -146,7 +138,9 @@ def import_standalone(
 
     *root* is the standalone project root (the dir containing ``box_data/`` and,
     at the root, ``workset.yaml``).  Returns the registered box name, or
-    ``None`` when *root* carries no standalone MARKER.
+    ``None`` when *root* carries no standalone MARKER or an interrupted ``create``
+    is pending for it — that box is ``create --recover``'s, and an import would
+    overwrite its journal entry.
     """
     root = root.resolve()
     root_str = str(root)
@@ -163,6 +157,11 @@ def import_standalone(
 
     if not box_resolve.standalone_settings_present(root):
         return None
+    if journal is not None:
+        from kanibako.launch import journal as journal_mod
+
+        if journal_mod.pending_create(journal, root / STANDALONE_META_DIR) is not None:
+            return None
 
     # ⚑ The LIVE name, by THE one naming rule; an unregistered box has no stored
     # registry name, so a pre-kuid box falls back to its leaf.
@@ -189,7 +188,7 @@ def import_standalone(
 
 def import_named_workset(
     registry: Path, root: Path, *,
-    primary_workset: Path, journal: Path | None = None, early: EarlyScope,
+    journal: Path | None = None,
 ) -> str | None:
     """Reconcile an on-disk workset at *root* against ``registry.worksets``.
 
@@ -198,10 +197,6 @@ def import_named_workset(
     Returns that name, or ``None`` when *root* cannot be imported as a workset —
     an empty or reserved basename, or ``$HOME`` (see the guards below).
     ⚑ Does NOT rewrite the workset-create skeleton; it only registers.
-    ⚑ *primary_workset* is REQUIRED, not defaulted: it is the sole input to the
-    cross-kind check below, and a caller free to omit it would import a shadowed
-    workset without the one warning that tells the user how to reach it.
-    *early* scopes that PRIMARY-membership read; callers pass the primary partition's scope.
     """
     root = root.resolve()
     root_str = str(root)
@@ -215,7 +210,14 @@ def import_named_workset(
     # ordinary directory, and a dir named ``default`` must not fail every command.
     # Declining to import leaves it what it already was: a plain primary-mode dir.
     name = root.name
-    if not name or is_reserved_workset_name(name):
+    if not name:
+        return None
+    if is_reserved_workset_name(name):
+        print(
+            f"Warning: not importing the workset at {root}: its directory name "
+            f"'{name}' is a reserved workset name. Rename the directory to import it.",
+            file=sys.stderr,
+        )
         return None
 
     # ⚑ $HOME is DECLINED here for the same reason, one step earlier than
@@ -237,21 +239,6 @@ def import_named_workset(
             return name
         # SAME-KIND: the name is another WORKSET's.  Refuse, leave the tree on disk.
         raise _conflict("workset", name, root, str(current))
-
-    # CROSS-KIND: the name is a primary BOX's.  Bare-name resolution is deterministic
-    # (box before workset), so this workset lands shadowed — import it anyway and say
-    # so, naming the same escape hatch that resolution names.  ⚑ NOT a refusal: see
-    # the module docstring's conflict paragraph for why create's refusal cannot carry.
-    from kanibako.settings.paths import load_primary_boxes
-
-    # ⚑ Case-blind (spec §0, ⚑ NAMING RULES) — the twin of the shadow WARN in
-    # ``names.resolve_name``, and it must see the same collisions that one does.
-    if find_identifier(name, load_primary_boxes(primary_workset, early=early)) is not None:
-        logger.warning(
-            "imported workset '%s' shares its bare name with a primary box; the "
-            "bare name resolves to the box, so %s.",
-            name, cross_kind_shadow_hatch(name),
-        )
 
     # Register name → root through ``register_name``, the SOLE writer of the global
     # ``worksets`` section — its own $HOME refusal still stands and is simply never

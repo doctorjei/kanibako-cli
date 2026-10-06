@@ -24,7 +24,7 @@ def _build_helper_mounts(ctx: HelperContext, helper_num: int, helpers_dir: Path)
 class HelperContext:
     runtime: ContainerRuntime
     image: str
-    container_name_prefix: str
+    container_name_segments: tuple[str, str]
     shell_path: Path
     helpers_dir: Path
     socket_path: Path

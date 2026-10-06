@@ -67,7 +67,7 @@ def fork_ctx(tmp_path):
     return HelperContext(
         runtime=runtime,
         image="test:latest",
-        container_name_prefix="kanibako-myapp",
+        container_name_segments=("primary", "myapp"),
         shell_path=tmp_path / "shell",
         helpers_dir=helpers_dir,
         socket_path=socket_path,
@@ -127,7 +127,7 @@ def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
     return HelperContext(
         runtime=runtime,
         image="test:latest",
-        container_name_prefix="kanibako-myapp",
+        container_name_segments=("primary", "myapp"),
         shell_path=shell_dir,
         helpers_dir=helpers_dir,
         socket_path=tmp_path / "helper.sock",
@@ -251,7 +251,7 @@ class TestHandleFork:
         ctx = HelperContext(
             runtime=runtime,
             image="test:latest",
-            container_name_prefix="kanibako-test",
+            container_name_segments=("primary", "test"),
             shell_path=tmp_path / "shell",
             helpers_dir=helpers_dir,
             socket_path=tmp_path / "helper.sock",

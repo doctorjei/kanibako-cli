@@ -411,6 +411,46 @@ def run_show(args: argparse.Namespace) -> int:
     return _run_agent_config(args)
 
 
+def _agent_file_verdict_after_edit(
+    path: "Path", agent_id: str, key: str, value: "object"
+) -> "str | None":
+    """The agent file's verdict on the file AS IT WOULD STAND AFTER this edit; ``None`` reads clean.
+
+    §2a keeps one door open: "setting the bad key itself to a valid value is not blocked."  The
+    reader stops at the FIRST bad entry and cannot skip the one this edit replaces, so judging
+    the file as it stands refuses the repair that sentence protects.  Landing the value on a
+    throwaway copy with the real ``write_leaf`` and reading it with the same ``agent_record``
+    answers that without touching the reader's contract (a DOTTED spelling stays refused).
+    Only the READER's verdict is a bad entry; a copy the write cannot land raises ``ConfigError``.
+    """
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    from kanibako.errors import ConfigError, KanibakoError
+    from kanibako.settings.agent_file import AgentFileSlot, write_leaf
+    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+    from kanibako.settings.settings_resolve import SettingsError
+
+    with tempfile.TemporaryDirectory(prefix="kanibako-agentset-") as tmp:
+        probe = Path(tmp) / path.name
+        shutil.copy2(path, probe)
+
+        def real(exc: Exception) -> str:
+            # Errors here name the COPY; the user needs the real path.
+            return str(exc).replace(str(probe), str(path))
+
+        try:
+            write_leaf(AgentFileSlot(probe, key, agent_id), value)
+        except KanibakoError as exc:
+            raise ConfigError(real(exc)) from None
+        try:
+            agent_record(probe, node=agent_id, purpose=ReadPurpose.RESOLVE)
+        except SettingsError as exc:
+            return real(exc)
+    return None
+
+
 def _run_agent_config(args: argparse.Namespace) -> int:
     """Shared agent-config engine dispatch — the get / set / show / reset bodies.
 
@@ -580,6 +620,36 @@ def _run_agent_config(args: argparse.Namespace) -> int:
         if gate_err is not None:
             print(gate_err, file=sys.stderr)
             return 1
+        # ⚑ THE TARGET FILE IS JUDGED BY ITS OWN READER BEFORE ANY WRITE (keyspec §2a): this door
+        # wrote unread, so a stray top-level key or a retired ``auto_approve`` landed at rc 0.
+        # ``agent_record`` is the reader the launch and every read verb use — one file, one verdict.
+        # Two arms: ERROR by default; with ``--force``, WARN and write.  ``set`` never removes it.
+        # ⚑ NOT routed through ``cascade_agent_path`` / ``_cascade_bad_entries``: threading it makes
+        # the set-time snapshot raise out of ``set_config_value``, and the generic view calls a
+        # legitimate ``self.endpoint`` a non-key.  Ruled 2026-10-05: the reader judges this tier.
+        # ⚑ RESERVED ``default`` skipped — it owns no agent store.
+        from kanibako.errors import ConfigError
+        from kanibako.settings.config_dest import check_agent_node
+
+        tier = check_agent_node(agent_id)
+        if tier is None or tier.reason != "reserved":
+            try:
+                bad = _agent_file_verdict_after_edit(path, agent_id, key, value)
+            except ConfigError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            if bad is not None:
+                if not getattr(args, "force", False):
+                    print(f"Error: {bad}", file=sys.stderr)
+                    print(
+                        "  '--force' sets this value anyway; the bad entry stays in the file.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                _log.warning("Warning: %s", bad)
+                _log.warning(
+                    "Warning: the entry above is left in place — 'set' never removes it.",
+                )
         # ⚑⚑ THE ONE SETTER, AND THERE IS NO LONGER A SECOND ARM BESIDE IT. This verb had its
         # OWN writer straight to ``write_leaf``, so none of the set-time validation ran:
         # measured, ``agent set claude canon=@bogus.ref`` stored the dangling reference at rc 0
@@ -606,7 +676,7 @@ def _run_agent_config(args: argparse.Namespace) -> int:
             cascade_agent_name=agent_id,
             command_scope=ConfigLevel.system,
             agents_root=std.agents,
-            # The per-node store is global, so the target is the SYSTEM scope (§2a).
+            # SYSTEM scope routes the engine; the node_store default picks the node's own file.
             std=std,
             force=getattr(args, "force", False),
         )

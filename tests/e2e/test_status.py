@@ -13,6 +13,7 @@ import subprocess
 import pytest
 
 from tests.e2e.conftest import (
+    box_container,
     e2e_requires,
     resolve_box_dir,
     run_kanibako,
@@ -49,7 +50,7 @@ class TestPsReflectsRunningState:
             ["start", name, "-e", "CLAUDE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container(f"kanibako-{name}", timeout=15)
+        wait_for_container(box_container(name), timeout=15)
 
         # ps (table form) should list the active box by name.
         ps_result = run_kanibako(["ps"], env=env)
@@ -93,7 +94,7 @@ class TestRmLifecycle:
         env = e2e_env["env"]
         project = e2e_env["project"]
         name = "e2e-rm"
-        container_name = f"kanibako-{name}"
+        container_name = box_container(name)
 
         result = run_kanibako(
             ["create", str(project), "--name", name],

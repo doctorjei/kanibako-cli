@@ -173,7 +173,7 @@ class TestResolveName:
     def test_primary_takes_precedence_over_workset(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """A primary box (step 2) is found before a workset (step 3)."""
+        """A primary box (step 2) is found before a workset name."""
         primary = tmp_path / "primary_workset"
         ws = tmp_path / "proj"
         ws.mkdir()
@@ -185,13 +185,13 @@ class TestResolveName:
         assert kind == "project"
         assert path == str(ws)
 
-    def test_shadowed_bare_name_returns_box_and_warns(
+    def test_a_name_both_kinds_hold_resolves_to_the_box_without_a_warning(
         self, registry: Path, tmp_path: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Cross-kind shadow (per-kind name policy): a bare name that is BOTH a
-        primary box and a workset resolves to the BOX (step 2 precedes step 3)
-        and emits a ONE-LINE warning naming the shadowed workset."""
+        """Per-kind namespaces (spec § Detection & import): a bare name that is BOTH a
+        primary box and a workset resolves to the BOX (box names come first), and
+        nothing is said — the workset's noun-scoped commands reach it."""
         primary = tmp_path / "primary_workset"
         ws = tmp_path / "proj"
         ws.mkdir()
@@ -202,24 +202,6 @@ class TestResolveName:
             path, kind = resolve_name(registry, "proj", primary_workset=primary,
                     early_system=early_record(tmp_path))
         assert (path, kind) == (str(ws), "project")
-        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-        assert len(warnings) == 1, warnings
-        assert "proj" in warnings[0] and "workset" in warnings[0]
-
-    def test_unshadowed_primary_resolve_does_not_warn(
-        self, registry: Path, tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """A primary box with NO same-named workset resolves silently (the warn
-        fires ONLY on a live collision)."""
-        primary = tmp_path / "primary_workset"
-        ws = tmp_path / "solo"
-        ws.mkdir()
-        _register_primary_box(primary, "solo", ws)
-
-        with caplog.at_level("WARNING"):
-            resolve_name(registry, "solo", primary_workset=primary,
-                    early_system=early_record(tmp_path))
         assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
     def test_unknown_name_raises(self, registry: Path, tmp_path: Path) -> None:
@@ -328,7 +310,7 @@ class TestResolveName:
     ) -> None:
         """A workset-MEMBER box name resolves from OUTSIDE its workset (BUG-B).
 
-        Mutation proof: deleting the step-4 workset-membership fallback in
+        Mutation proof: deleting the step-3 workset-membership fallback in
         ``resolve_name`` makes this raise ``ProjectError`` instead of resolving.
         """
         box_ws = self._register_ws_member(registry, tmp_path, "myws", "cluster2")
@@ -510,7 +492,7 @@ class TestResolveName:
         before a ``workset.workspaces`` repoint) still resolves by cwd context —
         the step-1 consult reads the REGISTERED ``boxes:`` path, never
         re-deriving from the CURRENT composition.  The same name is a member of
-        a SECOND workset, so a step-1 miss would fall through to step 4 and
+        a SECOND workset, so a step-1 miss would fall through to step 3 and
         raise Ambiguous — the mutation proof."""
         from kanibako.settings.config_io import dump_doc, load_doc
 
@@ -535,7 +517,7 @@ class TestResolveName:
         """S-2 (the cwd-context asymmetry): a cwd INSIDE an EXTERNAL repointed
         ``workset.workspaces`` dir is workset context too — the step-1 gate no
         longer requires cwd under the workset ROOT.  Again disambiguated
-        against a second workset's same-named member (a gate miss → step 4 →
+        against a second workset's same-named member (a gate miss → step 3 →
         Ambiguous → RED)."""
         from kanibako.project import workset_registry
         from kanibako.settings.config_io import dump_doc
@@ -559,6 +541,182 @@ class TestResolveName:
                 early_system=early_record(tmp_path))
         assert kind == "project"
         assert Path(path).resolve() == member.resolve()
+
+
+# ---------------------------------------------------------------------------
+# Standalone names (the LAST resolution step)
+# ---------------------------------------------------------------------------
+
+class TestStandaloneNameResolution:
+    """A REGISTERED standalone box resolves by bare name; an UNregistered one does
+    not (system-design § Detection & import: registration is opt-in, and the
+    standalone name is checked AFTER the primary boxes and the workset
+    members — ``box create --standalone --register`` promises name resolution, and
+    until now nothing delivered it)."""
+
+    def _register_standalone(
+        self, registry: Path, tmp_path: Path, name: str, root: Path | None = None,
+    ) -> Path:
+        """Record a standalone box *name* → *root* (default ``tmp_path/<name>``)."""
+        from kanibako.project import registry_store
+
+        root = tmp_path / name if root is None else root
+        root.mkdir(parents=True, exist_ok=True)
+        registry_store.register_standalone(registry, name, root)
+        return root
+
+    def _register_ws_member(
+        self, registry: Path, tmp_path: Path, ws_name: str, box_name: str,
+    ) -> Path:
+        """Register a NAMED workset with one member; return the member workspace."""
+        from kanibako.project import workset_registry
+
+        ws_root = tmp_path / ws_name
+        ws_root.mkdir(exist_ok=True)
+        register_name(registry, ws_name, str(ws_root), section="worksets")
+        member = ws_root / "workspaces" / box_name
+        member.mkdir(parents=True)
+        reg_path = workset_registry.resolve_workset_registry_path(
+            ws_root, None, early=early_record(tmp_path, mode=BoxMode.named, name=ws_name))
+        workset_registry.register_workset_box(reg_path, box_name, member)
+        return member
+
+    def test_a_registered_standalone_resolves_by_name(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """The standalone step: a registered standalone answers to its bare name from anywhere."""
+        root = self._register_standalone(registry, tmp_path, "solo_box")
+
+        path, kind = resolve_name(registry, "solo_box",
+                early_system=early_record(tmp_path))
+        assert kind == "project"
+        assert path == str(root)
+
+    def test_a_registered_standalone_name_is_case_folded(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """§0 NAMING RULES: ``SOLO_BOX`` and ``solo_box`` are the SAME name."""
+        root = self._register_standalone(registry, tmp_path, "solo_box")
+
+        path, kind = resolve_name(registry, "SOLO_BOX",
+                early_system=early_record(tmp_path))
+        assert (path, kind) == (str(root), "project")
+
+    def test_a_registered_standalone_outranks_a_workset_name(
+        self, registry: Path, tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """system-design § Cross-kind name semantics: box and workset names are
+        per-kind namespaces and noun-scoped commands consult only their own, so a
+        box lookup never loses a box name to a same-named workset — and says nothing."""
+        register_name(registry, "solo_box", str(tmp_path / "ws"), section="worksets")
+        root = self._register_standalone(registry, tmp_path, "solo_box")
+
+        with caplog.at_level("WARNING"):
+            path, kind = resolve_name(registry, "solo_box",
+                    early_system=early_record(tmp_path))
+        assert (path, kind) == (str(root), "project")
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert warnings == [], warnings
+
+    def test_a_member_box_outranks_its_workset_s_name(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """A member box sharing its workset's name resolves to the box, not the workset."""
+        member = self._register_ws_member(registry, tmp_path, "same", "same")
+
+        path, kind = resolve_name(registry, "same", cwd=tmp_path.parent,
+                early_system=early_record(tmp_path))
+        assert kind == "project"
+        assert Path(path).resolve() == member.resolve()
+
+    def test_a_workset_name_no_box_holds_still_reports_the_workset(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """Only on a box miss does the workset name answer, so a box verb can name it."""
+        register_name(registry, "lone", str(tmp_path / "ws"), section="worksets")
+
+        assert resolve_name(registry, "lone",
+                early_system=early_record(tmp_path)) == (str(tmp_path / "ws"), "workset")
+
+    def test_the_standalone_step_can_be_skipped(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """``standalone=False`` (a same-named path exists) leaves the name a miss."""
+        self._register_standalone(registry, tmp_path, "solo_box")
+
+        with pytest.raises(ProjectError, match="Unknown project"):
+            resolve_name(registry, "solo_box", standalone=False,
+                    early_system=early_record(tmp_path))
+
+    def test_a_primary_box_outranks_a_registered_standalone(
+        self, registry: Path, tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The collision the spec names: a name that is BOTH a primary box and a
+        registered standalone resolves to the PRIMARY box, and warns."""
+        primary = tmp_path / "primary_workset"
+        workspace = tmp_path / "primary_ws_dir" / "solo_box"
+        workspace.mkdir(parents=True)
+        _register_primary_box(primary, "solo_box", workspace)
+        root = self._register_standalone(
+            registry, tmp_path, "solo_box", root=tmp_path / "sa_root" / "solo_box",
+        )
+
+        with caplog.at_level("WARNING"):
+            path, kind = resolve_name(registry, "solo_box", primary_workset=primary,
+                    early_system=early_record(tmp_path))
+        assert (path, kind) == (str(workspace), "project")
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1, warnings
+        assert "standalone" in warnings[0] and "shadowed" in warnings[0]
+        assert str(root) in warnings[0]
+
+    def test_a_workset_member_outranks_a_registered_standalone(
+        self, registry: Path, tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A workset-MEMBER box (step 3) wins over a same-named registered
+        standalone — the member is the earlier, more specific claim."""
+        member = self._register_ws_member(registry, tmp_path, "myws", "solo_box")
+        self._register_standalone(registry, tmp_path, "solo_box")
+
+        with caplog.at_level("WARNING"):
+            path, kind = resolve_name(registry, "solo_box", cwd=tmp_path,
+                    early_system=early_record(tmp_path))
+        assert kind == "project"
+        assert Path(path).resolve() == member.resolve()
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1, warnings
+        assert "standalone" in warnings[0]
+
+    def test_an_unregistered_standalone_does_not_resolve_by_name(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """PIN (unchanged, and it must STAY unchanged): registration is opt-in, and
+        an unregistered standalone is reachable only by path or from inside its own
+        tree — a bare name for it still misses."""
+        (tmp_path / "unregistered_box").mkdir()
+
+        with pytest.raises(ProjectError, match="Unknown project"):
+            resolve_name(registry, "unregistered_box",
+                    early_system=early_record(tmp_path))
+
+    def test_an_ambiguous_member_name_is_not_broken_by_a_standalone(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """PIN: standing LAST does not settle someone else's tie.  A name that is a
+        member of TWO worksets stays ``AmbiguousNameError`` even when a standalone
+        happens to hold the same name — the standalone is not a tiebreaker."""
+        from kanibako.errors import AmbiguousNameError
+
+        self._register_ws_member(registry, tmp_path, "ws1", "dup")
+        self._register_ws_member(registry, tmp_path, "ws2", "dup")
+        self._register_standalone(registry, tmp_path, "dup")
+
+        with pytest.raises(AmbiguousNameError):
+            resolve_name(registry, "dup", cwd=tmp_path,
+                    early_system=early_record(tmp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -653,7 +811,7 @@ class TestPrimaryBoxNameApi:
 
         primary = tmp_path / "primary_workset"
         ws = tmp_path / "projects" / "myapp"
-        name = assign_primary_box_name(primary, registry, str(ws),
+        name = assign_primary_box_name(primary, str(ws),
                 early=early_record(tmp_path, mode=BoxMode.primary))
         assert name == "myapp"
         assert load_primary_boxes(primary,
@@ -663,59 +821,49 @@ class TestPrimaryBoxNameApi:
         from kanibako.settings.paths import assign_primary_box_name
 
         primary = tmp_path / "primary_workset"
-        assert assign_primary_box_name(primary, registry, "/a/myapp",
+        assert assign_primary_box_name(primary, "/a/myapp",
                 early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp"
-        assert assign_primary_box_name(primary, registry, "/b/myapp",
+        assert assign_primary_box_name(primary, "/b/myapp",
                 early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp2"
 
-    def test_cross_domain_collision_with_workset(
+    def test_auto_name_does_not_skip_a_workset_name(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """A WORKSET name prevents using the same PRIMARY box name (new domain)."""
+        """Per-kind namespaces: a WORKSET name does not push an auto-named PRIMARY box
+        off its basename (spec § Detection & import)."""
         from kanibako.settings.paths import assign_primary_box_name
 
         register_name(registry, "myapp", "/ws", section="worksets")
         primary = tmp_path / "primary_workset"
-        assert assign_primary_box_name(primary, registry, "/proj/myapp",
-                early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp2"
+        assert assign_primary_box_name(primary, "/proj/myapp",
+                early=early_record(tmp_path, mode=BoxMode.primary)) == "myapp"
 
-    def test_register_refuses_workset_name_collision_unless_forced(
+    def test_register_takes_a_workset_name(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """Cross-kind (per-kind name policy, Jei 2026-07-08): an EXPLICIT primary
-        box name that collides with a WORKSET name refuses UNLESS ``force`` — and
-        the refusal teaches ``--force``.  With ``force=True`` it registers."""
+        """Per-kind namespaces: an EXPLICIT primary box name a WORKSET already holds
+        registers (spec § Detection & import)."""
         from kanibako.settings.paths import load_primary_boxes, register_primary_box_name
 
         register_name(registry, "myapp", "/ws", section="worksets")
         primary = tmp_path / "primary_workset"
-        with pytest.raises(ProjectError, match="workset"):
-            register_primary_box_name(primary, registry, "myapp", "/proj/myapp",
-                    early=early_record(tmp_path, mode=BoxMode.primary))
-
-        # --force bypasses the CROSS-KIND refusal → the box registers.
-        register_primary_box_name(
-            primary, registry, "myapp", "/proj/myapp", force=True,
-            early=early_record(tmp_path, mode=BoxMode.primary),
-        )
+        register_primary_box_name(primary, "myapp", "/proj/myapp",
+                early=early_record(tmp_path, mode=BoxMode.primary))
         assert load_primary_boxes(primary,
                 early=early_record(tmp_path, mode=BoxMode.primary))["myapp"] == "/proj/myapp"
 
-    def test_force_never_bypasses_same_kind_primary_collision(
+    def test_same_kind_primary_collision_refuses(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """SAME-kind (two primary boxes, one name) is UNCONDITIONAL — ``force``
-        never bypasses it."""
+        """SAME-kind (two primary boxes, one name) refuses."""
         from kanibako.settings.paths import register_primary_box_name
 
         primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, registry, "myapp", "/a/myapp",
+        register_primary_box_name(primary, "myapp", "/a/myapp",
                 early=early_record(tmp_path, mode=BoxMode.primary))
         with pytest.raises(ProjectError, match="already registered"):
-            register_primary_box_name(
-                primary, registry, "myapp", "/b/myapp", force=True,
-                early=early_record(tmp_path, mode=BoxMode.primary),
-            )
+            register_primary_box_name(primary, "myapp", "/b/myapp",
+                    early=early_record(tmp_path, mode=BoxMode.primary))
 
     def test_pick_skips_existing_box_dir(
         self, registry: Path, tmp_path: Path
@@ -725,7 +873,7 @@ class TestPrimaryBoxNameApi:
         primary = tmp_path / "primary_workset"
         boxes = tmp_path / "boxes"
         (boxes / "myapp").mkdir(parents=True)  # half-built box, unregistered.
-        name = pick_primary_box_name(primary, registry, "/x/myapp", boxes_dir=boxes,
+        name = pick_primary_box_name(primary, "/x/myapp", boxes_dir=boxes,
                 early=early_record(tmp_path, mode=BoxMode.primary))
         assert name == "myapp2"
 
@@ -738,10 +886,10 @@ class TestPrimaryBoxNameApi:
         )
 
         primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, registry, "myapp", "/p/myapp",
+        register_primary_box_name(primary, "myapp", "/p/myapp",
                 early=early_record(tmp_path, mode=BoxMode.primary))
         # Recovery re-entry: same name → same path is a silent no-op.
-        register_primary_box_name_if_absent(primary, registry, "myapp", "/p/myapp",
+        register_primary_box_name_if_absent(primary, "myapp", "/p/myapp",
                 early=early_record(tmp_path, mode=BoxMode.primary))
 
     def test_if_absent_raises_on_different_path(
@@ -753,11 +901,11 @@ class TestPrimaryBoxNameApi:
         )
 
         primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, registry, "myapp", "/p/myapp",
+        register_primary_box_name(primary, "myapp", "/p/myapp",
                 early=early_record(tmp_path, mode=BoxMode.primary))
         with pytest.raises(ProjectError):
             register_primary_box_name_if_absent(
-                primary, registry, "myapp", "/OTHER/myapp",
+                primary, "myapp", "/OTHER/myapp",
                 early=early_record(tmp_path, mode=BoxMode.primary),
             )
 
@@ -769,7 +917,7 @@ class TestPrimaryBoxNameApi:
         monkeypatch.setenv("HOME", str(home))
         primary = tmp_path / "primary_workset"
         with pytest.raises(ProjectError, match="Refusing to register \\$HOME"):
-            register_primary_box_name(primary, registry, "bad", str(home),
+            register_primary_box_name(primary, "bad", str(home),
                     early=early_record(tmp_path, mode=BoxMode.primary))
 
     def test_unregister(self, registry: Path, tmp_path: Path) -> None:
@@ -780,7 +928,7 @@ class TestPrimaryBoxNameApi:
         )
 
         primary = tmp_path / "primary_workset"
-        register_primary_box_name(primary, registry, "myapp", "/p/myapp",
+        register_primary_box_name(primary, "myapp", "/p/myapp",
                 early=early_record(tmp_path, mode=BoxMode.primary))
         unregister_primary_box_name(primary, "myapp", early=early_record(tmp_path, mode=BoxMode.primary))
         assert "myapp" not in load_primary_boxes(primary,
@@ -1513,7 +1661,7 @@ class TestRmPurgeDeletesTheBoxLogsByName:
         assert run_rm(argparse.Namespace(target="project", purge=False, force=True)) == 0
         assert "project" in load_deregistered(std.registry)
 
-        assert run_register(argparse.Namespace(target="PROJECT", box=None, force=False)) == 0
+        assert run_register(argparse.Namespace(target="PROJECT", box=None)) == 0
 
         # The membership entry, the home it names, and the log names all agree on
         # the STORED spelling; the typed variant is written nowhere.
@@ -1563,7 +1711,7 @@ class TestPurgeStaleDeregisteredGuard:
         (home / "home").mkdir(parents=True, exist_ok=True)
         (home / "home" / "LIVE.txt").write_text("live-box-data")
         register_primary_box_name(
-            std.primary_workset, std.registry, "dup", str(ws),
+            std.primary_workset, "dup", str(ws),
             early=_early_scope(std, BoxMode.primary),
         )
         assert "dup" in load_primary_boxes(std.primary_workset,

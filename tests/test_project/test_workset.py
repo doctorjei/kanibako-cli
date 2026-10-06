@@ -87,59 +87,32 @@ class TestCreateWorkset:
         with pytest.raises(WorksetError, match="already in use"):
             create_workset("same-name", root2, std)
 
-    def test_duplicate_name_raises_even_with_force(self, std, tmp_home):
-        # force overrides the CROSS-KIND check only; same-kind workset
-        # uniqueness stays hard (system-design-1.8.0.md § "Detection &
-        # import", "Cross-kind name semantics").
-        create_workset("same-name", tmp_home / "worksets" / "set1", std)
-
-        with pytest.raises(WorksetError, match="already in use"):
-            create_workset(
-                "same-name", tmp_home / "worksets" / "set2", std, force=True,
-            )
-
     def test_duplicate_name_message_explains_uniqueness(self, std, tmp_home):
         # The collision refusal must be explicit about the clash + uniqueness.
         create_workset("dup", tmp_home / "worksets" / "a", std)
         with pytest.raises(WorksetError, match="must be unique"):
             create_workset("dup", tmp_home / "worksets" / "b", std)
 
-    def test_cross_kind_guard_catches_a_CASE_VARIANT_primary_box(self, std, tmp_home):
-        """⚑ THE ASYMMETRIC COMPARE — a live defect before the §0 naming rules landed.
-
-        The cross-kind guard compared a RAW workset name against primary box keys that
-        were only folded because ``box create`` folded them on the way in.  So a workset
-        named ``Foo`` walked straight past a box named ``foo``, was registered, and then
-        lost every bare-name lookup to the box it was supposed to have been refused for.
-
-        Under spec §0 (``⚑ NAMING RULES``) ``Foo`` and ``foo`` ARE the same name, so
-        this is the collision the guard already means to refuse — it simply could not be
-        seen while one side of the compare was folded and the other was not.
-        """
+    @pytest.mark.parametrize("ws_name", ["foo", "Foo"])
+    def test_a_workset_may_share_a_primary_box_name(
+        self, std, tmp_home, ws_name, caplog: pytest.LogCaptureFixture,
+    ):
+        """Box and workset names are separate namespaces (spec § Detection & import):
+        a workset named like a primary box, in any case, is created without a word."""
+        from kanibako.project import registry_store
         from kanibako.settings.paths import register_primary_box_name
 
         proj = tmp_home / "proj"
         proj.mkdir()
-        register_primary_box_name(std.primary_workset, std.registry, "foo", str(proj),
+        register_primary_box_name(std.primary_workset, "foo", str(proj),
                 early=_early_scope(std, BoxMode.primary))
 
-        root = tmp_home / "worksets" / "Foo"
-        with pytest.raises(WorksetError, match="already in use by a primary box"):
-            create_workset("Foo", root, std)
-        # Refused BEFORE any on-disk side effect, like the exact-case refusal.
-        assert not root.exists()
-
-    def test_cross_kind_case_refusal_names_the_box_as_STORED(self, std, tmp_home):
-        """A user refused for a name they cannot find in ``list`` learns nothing."""
-        from kanibako.settings.paths import register_primary_box_name
-
-        proj = tmp_home / "proj"
-        proj.mkdir()
-        register_primary_box_name(std.primary_workset, std.registry, "foo", str(proj),
-                early=_early_scope(std, BoxMode.primary))
-
-        with pytest.raises(WorksetError, match="the box is named 'foo'"):
-            create_workset("Foo", tmp_home / "worksets" / "Foo", std)
+        root = tmp_home / "worksets" / ws_name
+        with caplog.at_level("WARNING"):
+            ws = create_workset(ws_name, root, std)
+        assert ws.name == ws_name and root.is_dir()
+        assert ws_name in registry_store.load_section(std.registry, "worksets")
+        assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
     def test_same_kind_duplicate_is_case_blind(self, std, tmp_home):
         """§0: workset names collide without regard to case, and the refusal says which."""
@@ -226,9 +199,9 @@ class TestDefaultWorkset:
         proj_b.mkdir()
         # default_workset synthesizes members from the PRIMARY membership (the
         # sole store since the global ``projects:`` section retired).
-        register_primary_box_name(std.primary_workset, std.registry, "alpha", str(proj_a),
+        register_primary_box_name(std.primary_workset, "alpha", str(proj_a),
                 early=_early_scope(std, BoxMode.primary))
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(proj_b),
+        register_primary_box_name(std.primary_workset, "beta", str(proj_b),
                 early=_early_scope(std, BoxMode.primary))
 
         ws = default_workset(std)
@@ -265,21 +238,18 @@ class TestResolveWorksetName:
         with pytest.raises(WorksetError, match="not registered"):
             resolve_workset_name("nope", std)
 
-    def test_noun_scoped_lookup_of_shadowed_name_returns_workset_no_warn(
+    def test_noun_scoped_lookup_of_a_shared_name_returns_workset_no_warn(
         self, std, tmp_home, caplog: pytest.LogCaptureFixture,
     ):
-        """Per-kind name policy: a workset name that is ALSO a primary box name
-        (a bare-name shadow) is still reachable via the NOUN-scoped workset
-        lookup — which returns the WORKSET and never emits the bare-name shadow
-        warning (that warning is bare-name resolution only)."""
+        """Per-kind namespaces: a workset name that is ALSO a primary box name is
+        reached by the NOUN-scoped workset lookup, which returns the WORKSET."""
         from kanibako.settings.paths import register_primary_box_name
 
         proj = tmp_home / "proj"
         proj.mkdir()
-        register_primary_box_name(std.primary_workset, std.registry, "proj", str(proj),
+        register_primary_box_name(std.primary_workset, "proj", str(proj),
                 early=_early_scope(std, BoxMode.primary))
-        # --force: the workset shares the shadowed name deliberately.
-        create_workset("proj", tmp_home / "worksets" / "proj", std, force=True)
+        create_workset("proj", tmp_home / "worksets" / "proj", std)
 
         with caplog.at_level("WARNING"):
             ws = resolve_workset_name("proj", std)

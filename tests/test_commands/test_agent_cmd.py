@@ -386,10 +386,11 @@ class TestTheAgentNounSpellsTheEmptyIdiomsApart:
     env.<VAR>`` printed Python's ``None`` through a fully green suite — over the same file
     where ``system get agent.<node>.env.<VAR>`` printed ``null``.
 
-    ⚑ THE ``system`` VERB IS THE ORACLE, not a second assertion of the same thing.  Both
-    verbs read ONE file, so a pin that only re-states the ``agent`` verb's own output cannot
-    tell a correct rendering from a consistently wrong one; the disagreement is the defect,
-    and the disagreement is what is asserted.
+    ⚑ THE ``system`` VERB IS THE ORACLE, not a second assertion of the same thing.  Each
+    verb reads its OWN scope's file (spec §2a), so both files are seeded with the one table,
+    and a pin that only re-states the ``agent`` verb's own output cannot tell a correct
+    rendering from a consistently wrong one; the disagreement is the defect, and the
+    disagreement is what is asserted.
 
     ⚑ THE ``"None"`` SWEEP IS AN ORACLE TOO: the failure is a repr leaking SOMEWHERE in the
     block, which an equality on one line cannot see.
@@ -426,12 +427,20 @@ class TestTheAgentNounSpellsTheEmptyIdiomsApart:
         return path
 
     @pytest.mark.parametrize("tail", sorted(SPELLINGS))
-    def test_get_answers_what_system_get_answers(self, tail, agent_env, capsys):
-        """``agent get <node> <tail>`` and ``system get agent.<node>.<tail>``, one file."""
+    def test_get_answers_what_system_get_answers(
+        self, tail, agent_env, config_file, capsys,
+    ):
+        """``agent get <node> <tail>`` and ``system get agent.<node>.<tail>``, one table."""
         from kanibako.commands.agent_cmd import run_get
         from kanibako.commands.system_cmd import run_get as system_get
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import load_std_paths
 
         self._seed(agent_env)
+        system_file = load_std_paths(load_config(config_file)).settings
+        system_file.parent.mkdir(parents=True, exist_ok=True)
+        dump_doc(system_file, {"agent": {"claude": self.FILE["self"]}})
         expected = self.SPELLINGS[tail]
 
         capsys.readouterr()
@@ -1900,7 +1909,7 @@ class TestAgentSetNull:
         assert state["model"] is None
 
     def test_null_output_matches_the_system_route_for_the_same_write(
-        self, agent_env, capsys,
+        self, agent_env, config_file, capsys,
     ):
         """⚑ THE COMPARISON, not a second rc-0 assertion: the two routes are run against
         the same key and their OUTPUTS COMPARED, because "it exits 0" says nothing about
@@ -1910,8 +1919,8 @@ class TestAgentSetNull:
         the command line (``model``) where ``system set`` takes the canonical key
         (``agent.claude.model``), and a confirmation may only teach a spelling its own verb
         accepts — the rule its ``=`` arm and its ``reset`` twin already answer by.  The
-        VALUE half, the exit code and the bytes landed in the file are identical, and that
-        is what the assertions below hold.
+        VALUE half, the exit code and the null each verb lands in its own scope's file are
+        identical, and that is what the assertions below hold.
         """
         from kanibako.commands.system_cmd import run_set as system_set
 
@@ -1935,16 +1944,23 @@ class TestAgentSetNull:
         ))
         cap_b = capsys.readouterr()
         assert rc_b == 0, cap_b.err
-        doc_b = self._stored(agent_env)
+        from kanibako.settings.config import load_config
+        from kanibako.settings.config_io import load_doc
+        from kanibako.settings.paths import load_std_paths
+
+        # ``system set`` writes the SYSTEM file (spec §2a), never the agent's own store.
+        assert self._stored(agent_env)["self"]["model"] == "opus"
+        system_doc = load_doc(load_std_paths(load_config(config_file)).settings)
+        doc_b = {"self": system_doc["agent"]["claude"]}
 
         assert out_a == "Set model=null\n"
         assert cap_b.out == "Set agent.claude.model=null\n"
         # ⚑ The ONLY difference is the key each verb accepts: re-spelling this verb's
         # key the way ``system set`` spells it makes the two lines identical.
         assert out_a.replace("model", "agent.claude.model") == cap_b.out
-        # …and the two routes wrote the same bytes to the same file.
-        assert doc_a == doc_b
+        # …and the two routes wrote the same null, each to its own scope's file.
         assert doc_a["self"]["model"] is None
+        assert "model" in doc_b["self"] and doc_b["self"]["model"] is None
 
     def test_null_routes_through_the_one_setter(
         self, agent_env, monkeypatch, capsys,
@@ -2326,21 +2342,39 @@ class TestAgentSetRoutesThroughTheOneSetter:
         """The set-time snapshot must NOT read the node's OWN file, and this is why.
 
         A nested ``self.<sub>:`` sub-table is refused by ``agent_file``'s cascade reader, and the
-        repair verbs deliberately never go through it — a poisoned file can still be fixed
-        from the command line.  MEASURED: threading the agent
+        repair verbs deliberately never go through the CASCADE — a poisoned file can still be
+        fixed from the command line.  MEASURED: threading the agent
         tier into the set-time cascade raises ``SettingsError`` out of ``assemble_levels``, which
         would both break ``set_config_value``'s never-raises contract and take the repair path
         away on the one file that needs it.  MUTATION PROOF: add ``cascade_agent_path=path`` to
         the verb's ``set_config_value`` call and this reddens with that traceback.
+
+        ⚑ WHICH ARM REPAIRS IT is keyspec §2a, not a code choice: "ERROR by default — name it,
+        write nothing, and say ``--force`` will set anyway.  With ``--force``, WARN and write
+        (the value must still pass the checks above).  ``set`` never removes the bad entry."
+        So a plain ``set`` against a poisoned file refuses and names the entry; the repair is
+        ``--force``, which lands the value and LEAVES the poison to be cleared by hand.
         """
         from kanibako.commands.agent_cmd import run_set
 
         _write_sparse(
             agent_env, "claude", {"self": {"claude": {"env": {"FOO": "bar"}}}},
         )
-        rc = run_set(argparse.Namespace(agent_id="claude", key_value="model=opus"))
-        assert rc == 0
-        assert _stored_doc(agent_env)["self"]["model"] == "opus"
+
+        plain = run_set(argparse.Namespace(agent_id="claude", key_value="model=opus"))
+        cap = capsys.readouterr()
+        assert plain == 1
+        assert "self.claude" in cap.err   # names the offending entry
+        assert "--force" in cap.err       # …and says what will set anyway
+        assert "model" not in _stored_doc(agent_env)["self"]  # nothing written
+
+        forced = run_set(argparse.Namespace(
+            agent_id="claude", key_value="model=opus", force=True,
+        ))
+        assert forced == 0
+        doc = _stored_doc(agent_env)
+        assert doc["self"]["model"] == "opus"                    # the repair landed
+        assert doc["self"]["claude"] == {"env": {"FOO": "bar"}}  # poison left in place
 
 
 class TestAgentResetRoutesThroughTheOneSetter:

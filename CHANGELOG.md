@@ -12,6 +12,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`box get` and `workset get` on `agent.<node>.*` no longer read the agent's own file.** They
+  printed the value stored in `agents/<node>/agent.yaml`, another tier's file; per keyspec §2a a
+  plain `get` answers only what the command scope's file stores, and neither scope can store these
+  keys. **Printed-line change:** `box get <box> agent.<node>.<key>` and `workset get <workset>
+  agent.<node>.<key>` now print `(not set)`, rc 0. `agent get` still reads the agent's own file.
+
+- **Container and helper-socket names are rendered from the box's workset and name as
+  `kb-<workset>-<box>`, with every `-` written `--`** (keyspec `meta.box.container`, was
+  `meta.box.container_name`). They replace `kanibako-<box>` and `kanibako-ronin-<escaped root>`, so
+  two boxes of one name in two worksets get distinct containers, and `primary` and `standalone` are
+  now reserved workset names. A directory with a workset skeleton and a reserved name is no longer
+  imported silently: it prints one warning naming the directory. **No alias:** `stop --all`, `box
+  list`, and `box ps` see only `kb-` names, so a container a pre-1.8.0 release started is invisible
+  to them, and `start` refuses while one runs for the box, printing `<runtime> stop <old name>`. A
+  box name that is empty or starts with `-` renders no container name: `start` and `stop` refuse it
+  (rc 1) with the command that renames it, `box list` lists it as not running, and `stop --all` names
+  it once, in any mode, and continues. See *Containers are renamed `kb-<workset>-<box>`; a pre-1.8.0
+  container is invisible* in `MIGRATION.md`.
+
+- **`system set`, `get`, and `reset` on `agent.<node>.*` use the system settings file.** They used
+  to write and clear `agents/<node>/agent.yaml`, and `get` read that file first; per keyspec §2a
+  they now work on `<data>/global/settings.yaml` alone, under `agent: <node>:`. **Printed-line
+  change:** `system get agent.<node>.<key>` answers `(not set)` for a value only the agent's own file
+  holds. `agent set`/`get`/`reset` are unchanged. See *`system set agent.<node>.*` writes the system
+  settings file* in `MIGRATION.md`.
+
+- **A registered standalone box now resolves by its bare name.** `box create --standalone
+  --register` has always promised that registering "index[es] a new STANDALONE box in the
+  registry so it resolves by name from other directories"; nothing delivered it — `box show
+  <name>`, `box move <name>`, and `--box <name>` path-ified the name against the shell's cwd
+  and missed. `resolve_name` now consults the registry's `standalone` section as its LAST
+  step, after the primary boxes and the workset-member boxes
+  (system-design § *Detection & import*, "Box designation & workset path space"), so a
+  registered standalone answers to its name from any directory, while an UNregistered one
+  stays reachable only by path or from inside its own tree, as the spec requires. The
+  `--box` selector used to read that section FIRST, which both duplicated the lookup and
+  inverted the precedence — a registered standalone beat a primary box of the same name; it
+  now goes through the one resolver. **A name collision now prints a warning on stderr**:
+  when the bare name is also a primary box or a workset member, the earlier claim wins and
+  the shadowed registration is named with its root, because the registration says "resolves
+  by name" and the ordering says otherwise. No exit-code change.
+
+- **A box verb reaches a box whose name a workset also holds.** Box and workset names are
+  per-kind namespaces (system-design § *Cross-kind name semantics*), but `resolve_name` checked
+  the `[worksets]` section before the workset-member and registered standalone boxes, so `box info
+  foo` refused with "'foo' is a workset, not a single project box" while a box named `foo`
+  existed. Box names are now checked first; a workset name answers only when no box holds it,
+  and only to name the workset in that refusal. Workset verbs are unchanged.
+
+- **A same-named path outranks a registered standalone name at `--box`.** The spec checks
+  registered standalone names "_after_ primary workset boxes and paths; a warning sounds on
+  collision" (system-design § *Box designation & workset path space*), but `--box foo` resolved
+  the standalone `foo` ahead of a `./foo` folder. It now takes the folder. **A new warning on
+  stderr** names the shadowed standalone box and its root, at `--box` and at a positional
+  designation alike. Primary and workset-member box names still win over a folder at `--box`.
+
+- **`agent set` now refuses an agent file it cannot read.** A `set` whose target
+  `agents/<node>/agent.yaml` carries an entry that is not a key outside the edited value's chain —
+  a stray top-level key, or a retired `auto_approve` — previously answered `Set <key>=<value>` and
+  wrote at exit 0, leaving the bad entry in place to be silently ignored at launch. It now reports
+  the file and the offending entry and writes nothing, exiting 1. The refusal is the agent file's own
+  reader's, the same verdict the launch and `agent show` / `info` / `list` / `get` already reach, so
+  one file keeps one verdict; it names the `self:` alias and the cure. Per keyspec §2a the
+  refusal carries its `--force` arm: with `--force` the same text is reported as a warning and
+  the value is written, and `set` never removes the bad entry — that is the supported repair path
+  for a poisoned agent file. **Setting the bad key itself to a valid value is not blocked**, also per
+  §2a: the entry the edit overwrites is exempt from the refusal, so
+  `self: {model: {x: 1}}` plus `agent set claude model=opus` lands at exit 0 with no warning, while
+  a bad entry anywhere else in the file still refuses it. **Exit code change:** the
+  refused cases move from 0 to 1, and a new `Error: …` line is printed on stderr. A well-shaped file
+  sets exactly as before.
+
+- **`system set`, `workset set`, and `box set` refuse a dotted spelling they do not overwrite.**
+  A settings file storing `box: {"env.X": …}` (or a top-level `box.env.X: …`) let
+  `set box.env.X=…` through at exit 0, as though the edit replaced that entry; it writes
+  `box.env: {X: …}` beside it, and the dotted entry stayed. Per keyspec §2a the dotted entry is
+  now a bad entry like any other: the set reports it and writes nothing, exiting 1, and with
+  `--force` it warns and writes, leaving the entry in place. **Exit code change:** these sets
+  move from 0 to 1. An entry the edit lands at, the key itself or a table above it, is still exempt.
+  A `set` of a pref whose `pref:` table holds the dotted spelling
+  (`pref: {system.agent: …}`) is refused the same way (exit 0 → 1): the write lands beside the
+  entry, which only a hand edit to the nested form cures.
+
+- **A box and a workset may share a name.** Box and workset names are separate namespaces, and
+  only a name already held by the same kind is refused. `box create --name`, `box register`,
+  `kanibako register`, `box move`/`convert --name`, and `workset create` no longer refuse a name a
+  workset (or, for `workset create`, a primary box) already uses, and the `--force` that bypassed
+  that refusal is gone from `box create`, `kanibako create`, `box register`, `kanibako register`,
+  and `workset create`, where it had no other job. An auto-named box no longer skips a workset's
+  name, so a box created in `~/solo` beside a workset `solo` is named `solo`, not `solo2`. A bare
+  name held by both a primary box and a workset still resolves to the box, with no warning;
+  noun-scoped `workset` commands reach the workset. Importing a workset whose name a primary box
+  holds no longer warns.
+
 - **`box remap`, `box move`, `box convert`, and `box duplicate` now say what they refuse.** The
   `--help` text and the README rows for the four relocation commands state the rules the code
   enforces: a destination inside a workset must be the box's own `{workset.workspaces}/<name>`, and
@@ -407,6 +501,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `channels:` row whose source probe answers `null` no longer stops the launch.** A packaged
+  `channels:` row that reads its probed host path directly — the shape a row takes when it carries
+  no `meta_ref` — left a `null` in the bind table when its source key was set to `<None>`, and the
+  launch failed with `bindings.rw entry at '…/channels/common' declares a bare-relative host source
+  'None'`. That row is a STANDARD bind whose source key is null, so the launch now omits the bind
+  and warns once, naming the entry, the source key, and the file that set it — the same behavior
+  every other standard bind gets when only its source is null. Setting the entry to `null` as well
+  omits it without the warning. A row whose source is a literal path is untouched.
+
+- **A `set` refusal names the reference that is really broken.** A value whose references include
+  both a key this command's cascade cannot see and an undeclared key, such as `system set
+  box.canon=/x/{meta.workset.path}/{box.nope}`, was refused naming `@meta.workset.path`. It now
+  names `@box.nope`, directly or through a stored chain, as keyspec §2a requires. A cycle, the
+  reference depth cap, or an unknown `{$NAME}` in the same chain is likewise named in place of the
+  unseen key.
+
+- **`set` no longer refuses a reference to a computed sharing-state key.** A value naming a
+  `meta.*.auth.*_active` key, such as `box set box.env.X={meta.box.auth.global_active}`, was
+  refused as a dangling reference although the launch resolves it. The set-time check now computes
+  those keys the way the launch does. `box set` of a reference to a `meta.box.agent.<key>` mirror
+  key, such as `box.env.X={meta.box.agent.canon}/x`, now exits 0 where it exited 1 when the key is
+  set only in the agent's own settings file or by a built-in agent default: the check reads that
+  file and those defaults as the launch does. A reference to an undeclared key, or to a key nothing
+  sets, is still refused.
+
+- **`box duplicate` and `box archive` read a named member's recorded workspace when
+  `workset.workspaces` is null.** Duplicate copies the files the registry names. When no
+  workspace is recorded, or the recorded directory is gone, it refuses before the confirmation
+  prompt. Archive runs its git checks on that workspace and records it as the project path, so
+  `extract --all` restores the box there.
+
+- **A bind whose destination has a symlinked parent is refused, naming the link and its target.**
+  The check now judges every parent between the mountpoint and the box home or project directory,
+  not only the one directly above the destination, so a link further up is found. A link that leads
+  out of that root, one that does not resolve, and one that resolves to a file rather than a
+  directory are each refused, and a symlink at the destination itself is still replaced by a real
+  directory. A link resolving to a directory inside the root is stubbed where it points, as before.
+  Before, a link above the immediate parent was never reached: a live link leaving the root was
+  stubbed at its target, so a directory was created outside the box home, and a dangling one failed
+  its `mkdir` at `[Errno 17]` with the error logged at debug and dropped, so the launch carried on
+  and failed naming neither the link nor the destination. A link to a file failed the same way, at
+  `[Errno 20]`. The trade: a link whose target exists only inside the box, such as one into the
+  workspace bind, reads as dangling on the host and is refused with the same message.
+
+- **A reference to `meta.box.agent.<key>` or to a computed `meta.*.auth.*_active` key now sees its
+  value at launch.** Before, a value such as a bind source of `{meta.box.agent.canon}/q` resolved the
+  reference as absent and mounted `/q`. An agent key whose value reaches its own mirror is now refused
+  as a cyclic reference.
+
+- **A launch no longer adopts a standalone box whose `create` was interrupted.** Before, the launch
+  printed `Imported standalone box '…'`, dropped the pending create entry, and ran the half-built box.
+  Now any launch of a box with a pending create entry exits 1 and names
+  `kanibako create --standalone --recover <root>` (or the primary form, or for a named box
+  `cd <working-set root> && kanibako create --recover <member>`, which runs from any directory); the
+  entry is kept.
+  `kanibako box register <root>` refuses such a box the same way and names
+  `kanibako create --standalone --recover --register <root>`.
+
 - **The warning for a standard bind set to null offers its source key as the cure only when that key
   can be set to null.** Before, nulling a canon or system channel bind told you to set `system.canon` or
   `system.channels.*` to null as well, and both `system set --null` and the settings read refuse that.
@@ -554,6 +706,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   any other box in the working set. `--move` copies the workspace, then removes the old directory,
   or for a symlink removes only the link and prints `Note: left <target>; it is yours`. `box move`
   now moves the box.
+- **A default-mode box whose workspace sits under a working set's repointed `workset.workspaces`
+  directory can now be converted into that working set or moved.** v1.8.0-rc2 looked the box up in the
+  working set, which does not record it, so `box convert` and `box move` failed with `Project '<box>'
+  not found in workset '<ws>'`; only `box rm` reached it. A member the working set does record there is
+  still that member. Now `box convert <box> --workset <ws>` records it where it stands when its
+  directory is the member directory for its name. When it is not, the in-place convert is refused,
+  because it would copy the workspace and leave the old directory with no box; the refusal names
+  `--move` and `box move` as the cure. `workset connect` on such a directory is still refused, and now
+  names `box convert` (with `--name <directory name>` when the box has another name), `box move`, and
+  `box rm` as the cures.
 
 - **A workset's own `workset.yaml` that is not valid YAML, or is a list or a single value, is now
   refused by every command, not only by `start`.** `workset info`, `workset list`, `workset get`,
@@ -984,6 +1146,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   7`). The command now stops, exit code 1, with `the config file <path> holds /x at 'system',
   where a table of keys belongs`, and the file is left as it was. See `MIGRATION.md` § *2.98 A
   `set` refuses to write under a section the file holds as a value instead of replacing it*.
+
+- **A box lifecycle door refuses a scalar section in the source box's own tier by name, before it
+  builds anything.** In v1.7.2 and v1.8.0-rc2, `box duplicate --to standalone`, `remap`, `move`,
+  and `convert`, given a source whose own `box.yaml` held `box:` as a single value rather than a
+  table of keys, either stopped with a refusal naming the NEW box's `box.yaml`, a file the cure
+  could not fix (on `move`, one that did not exist), or, for a number or a bool such as `box: 42`,
+  raised `TypeError: argument of type 'int' is not iterable`. They now stop, exit code 1, naming
+  the source file: `the config file <path> holds 42 at 'box', where a table of keys belongs, so
+  'box.' keys cannot be written under it. Fix or delete 'box' in that file by hand, then retry`,
+  and the file is left as it was. On `box duplicate --to standalone` the refusal lands before the
+  confirmation prompt and before anything is created or copied, so the retry the cure asks for
+  succeeds. A `box:` section held as `null` is refused the same way, like any non-table.
 
 - **`kanibako workset show` and `kanibako system show` printed a declaration's sources as a Python
   list, under the destination as the file spelled it.** A `caches: {~/.cache/uv/: [uv]}` entry in a
@@ -3242,18 +3416,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file to author it in and the command that reads it back. **Nothing became settable.** The
   per-name spelling `<scope>.<category>.<name>` keeps its own message: that route was *retired*,
   whereas the whole-key spelling never had one.
-
-- **`box get` and `workset get` answered `(not set)` for a per-agent key that was set.** A key
-  naming an agent node — `agent.<node>.model`, `agent.<node>.endpoint`,
-  `agent.<node>.secret_path.<VAR>` — is stored in that node's own `agents/<node>/agent.yaml`, and
-  the read finds that file through the agents root. `system get` passed the agents root; the `box`
-  and `workset` handlers did not, so every such read resolved to nothing and printed `(not set)` at
-  exit 0 — for a value `kanibako system get` reported correctly, on the same key, in the same
-  install. Three nouns over one keyspace, giving two different answers. Both handlers now thread
-  the agents root the way `system get` always has, so the three agree. Nothing else moves: a node
-  key that genuinely is not set still answers `(not set)` at exit 0, and the write verbs are
-  untouched — `set` and `reset` refuse an `agent.*` key from the box or workset scope by name, as
-  they always have, because a config set never writes upward.
 
 - **`--help` advertised `--agent` on 96 commands that refuse it, and `--box` on 82.** `box set`,
   `system get`, `rig list` and most of the rest of the tree listed both flags in the usage line and

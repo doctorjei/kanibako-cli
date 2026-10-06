@@ -20,7 +20,8 @@ This module reads/writes ONLY the ``worksets`` section; the
 callers and preserved across writes by :mod:`kanibako.project.registry_store`.
 :func:`resolve_name` additionally consults the PRIMARY per-workset membership
 (when a *primary_workset* is supplied) so a bare primary-box name still resolves
-at the same precedence the retired ``projects`` section held.
+at the same precedence the retired ``projects`` section held, and LAST the
+``standalone`` section (owned by :mod:`kanibako.project.registry_store`).
 """
 
 from __future__ import annotations
@@ -38,15 +39,6 @@ if TYPE_CHECKING:
     from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
 
 logger = get_logger("names")
-
-
-def cross_kind_shadow_hatch(name: str) -> str:
-    """The ONE spelling of how a name-shadowed workset stays reachable."""
-    # ⚑ TWO sites tell the user this, in different sentences: bare-name resolution
-    # below, and the import-time warning in ``import_reconcile.import_named_workset``.
-    # The escape hatch itself TRAVELS between them, so it is spelled here once (P10) —
-    # a second literal would be a standing promise nobody keeps.
-    return f"reach it via 'kanibako workset <cmd> {name}'"
 
 
 # ---------------------------------------------------------------------------
@@ -238,8 +230,62 @@ def resolve_name(
     primary_workset: Path | None = None,
     *,
     early_system: EarlySystem,
+    standalone: bool = True,
 ) -> tuple[str, str]:
     """Look up a bare name and return ``(path, kind)``.
+
+    Resolution order (system-design § Box designation & workset path space): the box
+    steps of :func:`_resolve_before_standalone`, then a REGISTERED standalone box
+    (skipped unless *standalone*: the caller checks a same-named path first); an
+    unregistered one is reachable only by path.  A registered standalone shadowed
+    by an earlier BOX is warned about (it stays reachable by path).  Box and
+    workset names are per-kind namespaces, so a workset name is matched only when
+    no box holds the name, letting a box verb name the workset in its refusal.
+
+    *kind* is ``"project"`` or ``"workset"``.
+    Raises ``ProjectError`` if no match is found, or ``AmbiguousNameError`` if
+    the name is a member of more than one workset.
+    """
+    try:
+        path, kind = _resolve_before_standalone(
+            registry, name, cwd=cwd, primary_workset=primary_workset,
+            early_system=early_system,
+        )
+    except AmbiguousNameError:
+        # The standalone step is not a tiebreaker for an earlier step's tie.
+        raise
+    except ProjectError:
+        root = registry_store.standalone_root(registry, name) if standalone else None
+        if root is not None:
+            return root, "project"
+        worksets = _load(registry)["worksets"]
+        stored_ws = find_identifier(name, worksets)  # ⚑ case-blind (§0)
+        if stored_ws is None:
+            raise
+        return worksets[stored_ws], "workset"
+
+    shadow = registry_store.standalone_root(registry, name)
+    if (
+        kind == "project" and shadow is not None
+        and Path(shadow).resolve() != Path(path).resolve()
+    ):
+        logger.warning(
+            "bare name '%s' resolved to the box at %s; the registered standalone "
+            "box of the same name at %s is shadowed — reach it by path.",
+            name, path, shadow,
+        )
+    return path, kind
+
+
+def _resolve_before_standalone(
+    registry: Path,
+    name: str,
+    cwd: Path | None = None,
+    primary_workset: Path | None = None,
+    *,
+    early_system: EarlySystem,
+) -> tuple[str, str]:
+    """The box steps of :func:`resolve_name` before the standalone section.
 
     Resolution order:
 
@@ -247,14 +293,13 @@ def resolve_name(
     2. PRIMARY default-mode boxes: a bare name in the primary per-workset
        ``boxes:`` membership (was the retired global ``[projects]`` section) —
        consulted only when *primary_workset* is supplied
-    3. ``[worksets]`` section (workset names)
-    4. Workset-MEMBER boxes: a bare name registered in some NAMED workset's
+    3. Workset-MEMBER boxes: a bare name registered in some NAMED workset's
        per-workset registry ``boxes:`` membership (so a member box is
        addressable from OUTSIDE its workset)
 
-    *kind* is ``"project"`` or ``"workset"``.
-    Raises ``ProjectError`` if no match is found, or ``AmbiguousNameError`` if
-    the name is a member of more than one workset.
+    *kind* is ``"project"``.  Raises ``ProjectError`` if no
+    match is found, or ``AmbiguousNameError`` if the name is a member of more
+    than one workset.
     """
     names = _load(registry)
 
@@ -313,29 +358,11 @@ def resolve_name(
         )
         primary_path = workset_registry.workset_box_path(primary_reg, name)
         if primary_path is not None:
-            # Cross-kind shadow (per-kind name policy, Jei 2026-07-08): a bare
-            # name that is BOTH a primary box and a workset resolves
-            # deterministically to the box (this step precedes the worksets
-            # step).  Warn once so the shadowed workset is not silently missed —
-            # it stays reachable via its noun-scoped ``workset`` commands.
-            # ⚑ Case-blind (§0): under the naming rules ``Foo`` and ``foo`` ARE the same
-            # name, so a case-variant workset is shadowed just as squarely.  The hatch
-            # must print the STORED spelling — it is a command the user will run.
-            shadowed = find_identifier(name, names["worksets"])
-            if shadowed is not None:
-                logger.warning(
-                    "bare name '%s' resolved to the primary box; a workset of "
-                    "the same name is shadowed (%s).",
-                    name, cross_kind_shadow_hatch(shadowed),
-                )
+            # ⚑ Per-kind namespaces (spec § Detection & import): a same-named workset is
+            # not a collision, and its noun-scoped ``workset`` commands reach it.
             return primary_path, "project"
 
-    # 3. Worksets.  ⚑ Case-blind (§0), resolved through the STORED key.
-    stored_ws = find_identifier(name, names["worksets"])
-    if stored_ws is not None:
-        return names["worksets"][stored_ws], "workset"
-
-    # 4. Workset-MEMBER boxes.  A bare name that is a member of a NAMED workset
+    # 3. Workset-MEMBER boxes.  A bare name that is a member of a NAMED workset
     #    is otherwise unaddressable from outside that workset (the cwd-inside
     #    case is handled by step 1) — resolve it to the member's registered
     #    WORKSPACE path, the form ``resolve_project`` takes.

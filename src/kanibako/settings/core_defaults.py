@@ -286,6 +286,27 @@ def add_bind(
 WORKSET_CHANNEL_SOURCES = ("workset_common", "workset_chat", "workset_share")
 
 
+def channel_source_key(dest: str) -> str | None:
+    """The settings key that feeds the packaged ``channels:`` row at guest *dest*.
+
+    Read backward through :func:`paths._floor_field`, so a probe-sourced row maps to
+    the key its probe resolves.  ``None`` for a row no single key feeds: the
+    ``workset_*`` rows and ``inbox``.
+    """
+    from kanibako.settings.config_keys import _KEY_ROUTES
+    from kanibako.settings.paths import _floor_field
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    by_probe = {
+        _floor_field(k): k for k in _KEY_ROUTES if k.startswith("system.channels.")
+    }
+    for row in _load_doc().get("channels", []):
+        if normalize_bind_dest(str(row["box_dest"])) != dest:
+            continue
+        return by_probe.get(str(row["source"]))
+    return None
+
+
 def channel_default_categories(
     std: StandardPaths, proj: ProjectPaths
 ) -> BindArmTable:

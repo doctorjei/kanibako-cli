@@ -24,11 +24,12 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from kanibako.errors import ContainerError
 from kanibako.log import get_logger
+from kanibako.utils import CONTAINER_NAME_PREFIX
 from kanibako.settings.core_defaults import CANON_SEED_DENY_PREFIXES
 from kanibako.settings.settings_resolve import (
     GUEST_GID,
@@ -557,7 +558,9 @@ class ContainerRuntime:
             return None
         return image_ref_or_none(result.stdout)
 
-    def list_running(self, prefix: str = "kanibako-") -> list[tuple[str, str, str]]:
+    def list_running(
+        self, prefix: str = CONTAINER_NAME_PREFIX,
+    ) -> list[tuple[str, str, str]]:
         """Return running containers matching *prefix* as (name, image, status) tuples."""
         result = subprocess.run(
             [
@@ -863,6 +866,101 @@ def _precreate_mount_stubs(
         except OSError as exc:
             logger.debug("stub clear-symlink FAILED: %s (%s)", p, exc)
 
+    def _parents_within(stub: Path, root: Path) -> "Iterator[Path]":
+        """Yield *stub*'s parent dirs up to the first symlink or (excl.) *root*.
+
+        ⚑ Stops at *root* and at the first symlink — never walks above the box home,
+        and never walks THROUGH a link. The walk is by PATH POSITION, not by
+        ``resolve()``: resolving a component FOLLOWS a link further up, so a link
+        above the immediate parent would take the walk out of *root* before the
+        walk ever reached the link itself.
+        """
+        try:
+            # ⚑ POSITION, so a stub outside *root* costs no filesystem probe and the
+            # walk cannot climb past the root: ``relative_to`` succeeding is what
+            # bounds the number of steps.
+            steps = len(stub.relative_to(root).parts)
+        except ValueError:
+            logger.debug("stub walk skip (dest not under root): %s / %s", stub, root)
+            return
+        current = stub.parent
+        for _ in range(steps):
+            if current == root:
+                return
+            # ⚑ A parent we cannot probe is not evidence of a symlink —
+            # ``is_symlink`` re-raises EACCES — so the walk stops there.
+            try:
+                is_link = current.is_symlink()
+            except OSError as exc:
+                logger.debug("stub walk stop (parent unprobeable): %s (%s)", current, exc)
+                return
+            if is_link:
+                yield current
+                return
+            yield current
+            current = current.parent
+
+    def _refused_symlink(stub: Path, root: Path) -> tuple[Path, str] | None:
+        """The nearest symlinked parent of *stub* to refuse, and the reason it is.
+
+        ⚑ Refuses a link LEADING OUT of *root*, one that does not RESOLVE, and one
+        resolving to something that is not a DIRECTORY: a dangling link has nothing
+        to stub under, and a file is not a directory, so ``mkdir`` then fails on the
+        link itself, which the stub helpers log at debug and swallow, so the launch
+        goes on to fail naming neither. A link resolving to a directory INSIDE *root*
+        is stubbed.
+        """
+        try:
+            root_resolved = root.resolve()
+        except OSError:
+            return None
+        for current in _parents_within(stub, root):
+            if not current.is_symlink():
+                continue
+            try:
+                resolved = current.resolve(strict=True)
+            except (OSError, RuntimeError):
+                return current, "unresolvable"
+            if not resolved.is_dir():
+                return current, "unresolvable"
+            try:
+                resolved.relative_to(root_resolved)
+            except ValueError:
+                return current, "outside"
+            return None
+        return None
+
+    def _refuse_symlinked_parent(
+        dest: str, stub: Path, root: Path, root_name: str,
+    ) -> None:
+        """Raise if a parent of *stub* is a symlink the bind must not be stubbed under."""
+        refused = _refused_symlink(stub, root)
+        if refused is None:
+            return
+        parent, reason = refused
+        try:
+            target = os.readlink(parent)
+        except OSError:
+            target = str(parent)
+        if reason == "unresolvable":
+            because = (
+                "which does not resolve to an existing directory, so no stub can "
+                "be made under it and the bind would have no mountpoint at the "
+                "declared destination"
+            )
+        else:
+            because = (
+                "which leads outside it, so a bind stubbed under it would be "
+                "created there and land there instead of at the declared "
+                "destination"
+            )
+        raise ContainerError(
+            f"refusing to mount {dest!r}: the {root_name} is {root}, and the "
+            f"dest's parent {parent} is a symlink to {target!r}, {because}. "
+            f"Replace the symlink with a real directory, or point the bind at a "
+            f"destination whose parents are real directories."
+        )
+
     def _loosen_parents(stub: Path, root: Path) -> None:
         """Add SEARCH bits to *stub*'s parent dirs up to (not incl.) *root*.
 
@@ -874,23 +972,18 @@ def _precreate_mount_stubs(
         except OSError as exc:
             logger.debug("loosen skip (root resolve FAILED): %s (%s)", root, exc)
             return
-        # Start at the stub's PARENT: the stub's own mode is owned by the bind.
-        current = stub.parent
-        while True:
-            # ⚑ Stop AT root, never above: an escaping ancestor resolves OUTSIDE root and
-            # raises ValueError, so we stop rather than chmod beyond the box home.
+        for current in _parents_within(stub, root):
             try:
-                rel = current.resolve().relative_to(root_resolved)
-            except (OSError, ValueError):
-                break
-            if rel == Path("."):
-                # Reached root itself — off-limits, and nothing above it either.
-                break
-            try:
-                # ⚑ A symlinked parent could escape the box home even if it resolves
-                # back inside — stop the walk rather than chmod through it.
                 if current.is_symlink():
                     logger.debug("loosen stop at symlink parent: %s", current)
+                    break
+                # ⚑ The walk is by path position, so containment is re-asserted HERE,
+                # where the mutation is: a parent reached through a link higher up
+                # resolves outside *root*, and its mode is not ours to change.
+                try:
+                    current.resolve().relative_to(root_resolved)
+                except (OSError, ValueError):
+                    logger.debug("loosen stop (parent outside root): %s", current)
                     break
                 perm = stat.S_IMODE(current.stat().st_mode)
                 if perm & 0o011 != 0o011:
@@ -904,7 +997,6 @@ def _precreate_mount_stubs(
                 # Stop the walk: we cannot reason about ancestors we cannot probe.
                 logger.debug("loosen probe/chmod FAILED: %s (%s)", current, exc)
                 break
-            current = current.parent
 
     def _ensure_dir(p: Path, traverse_root: Path | None = None) -> None:
         _clear_symlink(p)
@@ -941,12 +1033,31 @@ def _precreate_mount_stubs(
     def _home_root(dest: str) -> Path | None:
         return None if dest.startswith(workspace_prefix) else shell_path
 
-    # Built-in directory mounts — all shell_path-side, so their loosen walks are no-ops.
-    _ensure_dir(shell_path / GUEST_WORKSPACE_RELPATH, traverse_root=shell_path)
+    def _root_of(dest: str) -> tuple[Path, str]:
+        """The root bounding *dest*'s stub walk, and the name to call that root by.
+
+        ⚑ The two roots are different nouns, and a refusal must not confuse them.
+        """
+        if _home_root(dest) is None:
+            return project_path, "project directory"
+        return shell_path, "box home"
+
+    # ⚑ THE PLAN IS BUILT BEFORE ANY STUB IS MADE, so a refusal creates nothing:
+    # ``mkdir(parents=True)`` under a symlinked parent raises FileExistsError on the
+    # LINK, which was logged at debug and swallowed, and the launch then failed with
+    # a podman error naming neither the link nor the destination.
+    plan: list[tuple[str, Path, bool]] = []  # (dest, host stub path, is_dir)
+
+    def _plan_dir(dest: str, host_path: Path) -> None:
+        # ⚑ The workspace stub is made under the box home, so the box home bounds it too.
+        _refuse_symlinked_parent(dest, host_path, shell_path, "box home")
+        plan.append((dest, host_path, True))
+
+    _plan_dir(GUEST_WORKSPACE, shell_path / GUEST_WORKSPACE_RELPATH)
     if enable_vault:
         # Vault is UNIVERSAL unless disabled, so its dest stubs are always made.
-        _ensure_dir(shell_path / GUEST_VAULT_RO_RELPATH, traverse_root=shell_path)
-        _ensure_dir(shell_path / GUEST_VAULT_RW_RELPATH, traverse_root=shell_path)
+        _plan_dir(GUEST_VAULT_RO, shell_path / GUEST_VAULT_RO_RELPATH)
+        _plan_dir(GUEST_VAULT_RW, shell_path / GUEST_VAULT_RW_RELPATH)
     # ⚑ Mask stubs sit OUTSIDE the vault arm on purpose and must STAY outside: ``run``
     # emits a declared mask vault-or-not, and without its stub the mount fails in LXC.
     for mask in tmpfs_masks:
@@ -954,12 +1065,12 @@ def _precreate_mount_stubs(
         if host_path is None:
             logger.debug("mask stub skip (not under home): %s", mask)
             continue
-        _ensure_dir(host_path, traverse_root=_home_root(mask))
+        root, root_name = _root_of(mask)
+        _refuse_symlinked_parent(mask, host_path, root, root_name)
+        plan.append((mask, host_path, True))
 
     # Extra mounts: pre-create destination stubs.
-    if not extra_mounts:
-        return
-    for mount in extra_mounts:
+    for mount in extra_mounts or []:
         dest = mount.destination
         src = mount.source
         host_path = _guest_dest_to_host(dest, shell_path, project_path)
@@ -977,11 +1088,18 @@ def _precreate_mount_stubs(
             logger.debug("stub skip (not under home): %s → %s", src, dest)
             continue
 
-        if src.is_dir():
-            _ensure_dir(host_path, traverse_root=_home_root(dest))
-        else:
+        is_dir = src.is_dir()
+        if not is_dir:
             logger.debug(
                 "stub file: src=%s is_file=%s is_dir=%s exists=%s → %s",
-                src, src.is_file(), src.is_dir(), src.exists(), host_path,
+                src, src.is_file(), is_dir, src.exists(), host_path,
             )
+        root, root_name = _root_of(dest)
+        _refuse_symlinked_parent(dest, host_path, root, root_name)
+        plan.append((dest, host_path, is_dir))
+
+    for dest, host_path, is_dir in plan:
+        if is_dir:
+            _ensure_dir(host_path, traverse_root=_home_root(dest))
+        else:
             _ensure_file(host_path, traverse_root=_home_root(dest))

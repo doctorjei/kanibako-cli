@@ -339,6 +339,11 @@ def _resolve_watch_context(box: str | None):
     std = load_std_paths(config)
     proj = resolve_box_target(std, config, box, initialize=False)
     container_name = container_name_for(proj)
+    # ⚑ No user to address, so this does what it already does with no agent stamp:
+    # nothing.  A loud refusal here would only spam the log.
+    if container_name is None:
+        log.info("box %s has no container name; nothing to write back", proj.name)
+        return None
 
     # The box's agent comes from its KANIBAKO_AGENT launch stamp (same as stop.py) —
     # it names which plugin's cred lifecycle to run + drives the auth-tier resolution.

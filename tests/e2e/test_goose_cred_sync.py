@@ -27,6 +27,7 @@ import time
 import pytest
 
 from tests.e2e.conftest import (
+    box_container,
     GOOSE_SECRETS_TOKEN,
     e2e_requires,
     podman_exec,
@@ -85,11 +86,11 @@ class TestGooseCredSync:
              "-e", "GOOSE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-goose-seed", timeout=15)
+        wait_for_container(box_container("e2e-goose-seed"), timeout=15)
 
         # The secrets file must exist in the box...
         exists = podman_exec(
-            "kanibako-e2e-goose-seed",
+            box_container("e2e-goose-seed"),
             ["test", "-f", BOX_SECRETS],
         )
         assert exists.returncode == 0, (
@@ -98,7 +99,7 @@ class TestGooseCredSync:
 
         # ...and carry the KNOWN host token (the seed/refresh sync sentinel).
         cat_result = podman_exec(
-            "kanibako-e2e-goose-seed",
+            box_container("e2e-goose-seed"),
             ["cat", BOX_SECRETS],
         )
         assert GOOSE_SECRETS_TOKEN in cat_result.stdout, (
@@ -135,13 +136,13 @@ class TestGooseCredSync:
              "-e", "GOOSE_STUB_MODE=long-running"],
             env=env,
         )
-        wait_for_container("kanibako-e2e-goose-writeback", timeout=15)
+        wait_for_container(box_container("e2e-goose-writeback"), timeout=15)
 
         # Modify the in-box secrets file with a NEW recognizable token, then bump
         # its mtime well past the host file so the mtime_gate lets writeback copy.
         new_token = "e2e-goose-writeback-bobcat-5678"
         write = podman_exec(
-            "kanibako-e2e-goose-writeback",
+            box_container("e2e-goose-writeback"),
             ["sh", "-c",
              f"printf 'ANTHROPIC_API_KEY: {new_token}\\n' > {BOX_SECRETS} && "
              f"touch -d '2099-01-01' {BOX_SECRETS}"],

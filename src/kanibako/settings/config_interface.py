@@ -160,6 +160,7 @@ from kanibako.utils import confirm_prompt
 _log = get_logger(__name__)
 
 if TYPE_CHECKING:
+    from kanibako.settings.agent_file import AgentFileLevel
     from kanibako.settings.settings_launch import LaunchInputs
 
 #: The SET doors whose files ``workset_dirkeys.early_repoint`` reads, so the doors that run
@@ -437,7 +438,6 @@ def _target_scope_anchors(
     if target is None:
         return {}
     from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_expand import expand
 
     # ⚑ THE ANCHOR ONLY NAMES A DIRECTORY IN A REFUSAL that is issued either way, so a
     # cascade that cannot be assembled leaves the anchor spelled, never a crash.
@@ -447,9 +447,7 @@ def _target_scope_anchors(
         )
     except Exception:
         return {}
-    result = expand(_clone_keystore(snapshot), ctx, collect_errors=True)
-    assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
-    expanded, errors = result
+    expanded, errors = _lenient_expand(_clone_keystore(snapshot), ctx, agent_name)
     anchors: dict[str, object] = {}
     for ref in ("meta.workset.path", "meta.box.path"):
         if ref in errors:
@@ -739,7 +737,7 @@ def _cascade_bad_entries(
         kept = [
             (segs, shown, v) for segs, (shown, v)
             in sorted(_undeclared_stored_entries(read.view).items())
-            if not _overwritten_by(edited, ".".join(segs))
+            if not _overwritten_by(edited, segs)
         ]
         if kept:
             grouped.append((read.path, [f"{shown} = {v}" for _segs, shown, v in kept]))
@@ -757,10 +755,47 @@ def _first_dotted(views: "list[dict]", dotted: str) -> object:
     return None
 
 
-def _overwritten_by(edited: "str | None", entry: str) -> bool:
-    """Whether setting *edited* replaces the stored *entry* — the entry is the key itself,
-    a dotted spelling of it (``pref: {"system.agent": …}``), or a non-table above it."""
-    return edited is not None and (edited == entry or edited.startswith(entry + "."))
+def _overwritten_by(edited: "str | None", entry: "tuple[str, ...]") -> bool:
+    """Whether setting *edited* writes at the stored *entry* — the key itself, or the table
+    above it, BY SEGMENT: ``box: {"env.X": …}`` is one segment the write leaves."""
+    return edited is not None and tuple(edited.split("."))[:len(entry)] == entry
+
+
+def _set_time_agent_tier(
+    agent_name: str, agent_path: "Path | None",
+) -> "tuple[Path | None, AgentFileLevel | None, dict[str, str | None] | None, dict[str, str | None] | None]":
+    """The launch's agent tier for *agent_name* whose file is *agent_path*:
+    ``(agent_path, agent_state, behavior_floor, agent_behavior_floor)``, all ``None`` without a file.
+
+    An agent file that does not read is left out, so a ref into it dangles rather than the set
+    raising. The two behavior floors come as the launch's do, only from a plugin that resolves
+    and declares settings.
+    """
+    if agent_path is None:
+        return None, None, None, None
+    from kanibako.agent_ref import harness_of
+    from kanibako.settings.agent_file import state_level
+    from kanibako.settings.core_defaults import behavior_defaults
+    from kanibako.settings.settings_assemble import ReadPurpose, agent_record
+    from kanibako.targets import resolve_target
+    from kanibako.targets.base import descriptor_floor
+
+    agent_state = None
+    if agent_path.exists():
+        try:
+            agent_state = state_level(
+                agent_record(agent_path, node=agent_name, purpose=ReadPurpose.RESOLVE),
+                node=agent_name, path=agent_path,
+            )
+        except KanibakoError:
+            agent_path = None
+    try:
+        descriptors = resolve_target(harness_of(agent_name)).setting_descriptors()
+    except (KeyError, ValueError, KanibakoError):
+        descriptors = None
+    if not descriptors:
+        return agent_path, agent_state, None, None
+    return agent_path, agent_state, behavior_defaults(), descriptor_floor(descriptors)
 
 
 def _set_time_snapshot(
@@ -785,11 +820,16 @@ def _set_time_snapshot(
         from kanibako.settings.settings_assemble import ReadPurpose, cascade_files
         from kanibako.settings.settings_launch import assemble_cascade, fold_floor
 
+        agent_path, agent_state, behavior_floor, agent_behavior_floor = _set_time_agent_tier(
+            agent_name, agent_path,
+        )
         cascade = assemble_cascade(
             agent_name=agent_name,
             floor=fold_floor(
                 subject=target.subject,
                 agent_name=agent_name,
+                behavior_floor=behavior_floor,
+                agent_behavior_floor=agent_behavior_floor,
                 default_categories=dict(target.system_floor),
                 auth_chain=target.auth_chain,
                 meta_runtime=target.meta_runtime,
@@ -805,7 +845,7 @@ def _set_time_snapshot(
             ),
             prefs=target.prefs,
             agent_partial=None,
-            agent_state=None,
+            agent_state=agent_state,
             persona_values=None,
             cli_level=None,
         )
@@ -968,7 +1008,6 @@ def _category_set_lookups(
     target: "LaunchInputs | None" = None,
 ):
     """The set-time lookups over ONE merged cascade snapshot: ``(resolves, raw_bind)``."""
-    from kanibako.settings.settings_expand import expand
 
     base_snapshot, ctx = _set_time_snapshot(
         target=target,
@@ -990,9 +1029,7 @@ def _category_set_lookups(
         except ReservedKeyError as exc:
             # ⚑ A RESERVED leaf name is a set-time DEFECT, not a crash (the H1 never-raises rule).
             return str(exc)
-        result = expand(candidate, ctx, collect_errors=True)
-        assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
-        errors = result[1]
+        errors = _lenient_expand(candidate, ctx, agent_name)[1]
         if key not in errors:
             return None
         unseen = _floor_blind_referents(key, value, candidate, command_scope)
@@ -1003,9 +1040,7 @@ def _category_set_lookups(
                     _set_leaf(supplied, name.split("."), "/")
             except ReservedKeyError:
                 return errors[key]
-            again = expand(supplied, ctx, collect_errors=True)
-            assert isinstance(again, tuple)
-            if key not in again[1]:
+            if key not in _lenient_expand(supplied, ctx, agent_name)[1]:
                 return None
         return errors[key]
 
@@ -1024,6 +1059,18 @@ def _category_set_lookups(
         return node if isinstance(node, Bind) else None
 
     return resolves, raw_bind
+
+
+def _lenient_expand(snapshot: "Any", ctx: "Any", agent_name: str) -> "tuple[Any, dict[str, str]]":
+    """LENIENT ``expand``: ``(expanded, errors)``, deriving the keys the launch derives."""
+    from kanibako.settings.settings_expand import expand
+    from kanibako.settings.settings_launch import post_expand_keys
+
+    result = expand(
+        snapshot, ctx, collect_errors=True, derive=post_expand_keys(snapshot, agent_name),
+    )
+    assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
+    return result
 
 
 def _clone_keystore(store: "Any") -> "Any":
@@ -1152,9 +1199,22 @@ def _node_noun_file_value(
         return None
     if "agent" in cascade_drop_set(command_scope.value):
         return None
-    return _read_slot(
-        canonical, AgentFileSlot(noun_file, slot.tail, slot.node, self_root=False),
-    )
+    return _read_slot(canonical, _noun_file_slot(slot, noun_file))
+
+
+def _noun_file_slot(slot: AgentFileSlot, noun_file: Path) -> AgentFileSlot:
+    """*slot* moved into the NOUN's file, at ``agent: <node>:`` (never ``self:``)."""
+    return AgentFileSlot(noun_file, slot.tail, slot.node, self_root=False)
+
+
+def _system_verb_slot(
+    slot: "AgentFileSlot | str | None", noun_file: "Path | None", node_store: bool,
+) -> "AgentFileSlot | str | None":
+    """The slot a per-node write lands in: the node's own store for the ``agent`` verb,
+    the system file for the ``system`` verb (spec §2a, ladder L2.2 vs L3.1)."""
+    if node_store or noun_file is None or not isinstance(slot, AgentFileSlot):
+        return slot
+    return _noun_file_slot(slot, noun_file)
 
 
 def _stored_shape_for(canonical: str, value: object) -> object:
@@ -1201,6 +1261,7 @@ def get_config_value(
     active_agent: str | None = None,
     cascade_system_path: Path | None = None,
     cascade_workset_path: Path | None = None,
+    node_store: bool = True,
 ) -> str | None:
     """Read one config value STORED AT THIS NOUN, or ``None`` when it is not set there.
 
@@ -1282,7 +1343,7 @@ def get_config_value(
         bind_target = _node_bind_target(canonical, agents_root)
         if bind_target is None:
             return None
-        val = read_leaf(bind_target)
+        val = read_leaf(bind_target) if node_store else None
         if val is not None:
             return val
         return _node_noun_file_value(
@@ -1298,7 +1359,7 @@ def get_config_value(
         secret_target = _node_secret_target(canonical, agents_root)
         if not isinstance(secret_target, AgentFileSlot):
             return None  # no store here, or a refused node — a read reports neither
-        val = _read_slot(canonical, secret_target)
+        val = _read_slot(canonical, secret_target) if node_store else None
         if val is not None:
             return val
         return _node_noun_file_value(
@@ -1316,7 +1377,8 @@ def get_config_value(
             )
         return None
 
-    # ``agent.<node>.<key>`` — the PER-PERSONA agent key (B1), read from the node's own file.
+    # ``agent.<node>.<key>`` — the PER-PERSONA agent key (B1), read from the node's own file
+    # (the noun file alone without *node_store*).
     # ⚑ EXCEPT THE RESERVED ``default`` NODE, WHICH IS NOT A PERSONA: it is the any-agent
     # tier, its value lives in the NOUN's settings file, and there is no
     # ``agents/default/agent.yaml`` to read. It falls THROUGH to the routed read below, where
@@ -1331,7 +1393,7 @@ def get_config_value(
         target = _persona_agent_target(canonical, agents_root, verb="read")
         if not isinstance(target, AgentFileSlot):
             return None
-        val = _read_slot(canonical, target)
+        val = _read_slot(canonical, target) if node_store else None
         if val is not None:
             return val
         return _node_noun_file_value(
@@ -1587,6 +1649,7 @@ def set_config_value(
     ws: Any = None,
     target_error: "str | None" = None,
     force: bool = False,
+    node_store: bool = True,
 ) -> str:
     """Write a config value to the appropriate store; returns a message or error, NEVER raises.
 
@@ -1939,7 +2002,9 @@ def set_config_value(
     # ``agent.<node>.secret_path.<VAR>`` — a SCALAR path write to the node's OWN settings file
     # at the DISCRIMINATED sub-table. ⚑ BEFORE the persona branch.
     if _is_agent_node_secret_key(canonical):
-        secret_target = _node_secret_target(canonical, agents_root)
+        secret_target = _system_verb_slot(
+            _node_secret_target(canonical, agents_root), system_settings_path, node_store,
+        )
         if isinstance(secret_target, str):
             return secret_target  # malformed node ref
         if secret_target is None:
@@ -1972,9 +2037,12 @@ def set_config_value(
         return _set_confirmation(canonical, value)
 
     # ``agent.<node>.<key>`` — the PER-PERSONA key (B1): a VERBATIM write to the node's OWN
-    # ``agents/<node>/agent.yaml``, sparse by construction (``write_nested_key`` is RMW).
+    # ``agents/<node>/agent.yaml`` (the system file without *node_store*), sparse (RMW).
     if _is_persona_agent_key(canonical):
-        target = _persona_agent_target(canonical, agents_root, verb="set")
+        target = _system_verb_slot(
+            _persona_agent_target(canonical, agents_root, verb="set"),
+            system_settings_path, node_store,
+        )
         if isinstance(target, str):
             return target  # malformed node ref
         if target is None:
@@ -2064,6 +2132,7 @@ def reset_config_value(
     cascade_box_path: Path | None = None,
     cascade_agent_name: str = "",
     agents_root: Path | None = None,
+    node_store: bool = True,
 ) -> str:
     """Remove an override for a single key; returns a confirmation or an error, NEVER raises."""
     canonical = resolve_key(key)
@@ -2156,7 +2225,9 @@ def reset_config_value(
     # ``agent.<node>.secret_path.<VAR>`` — remove the stored pointer from the node's OWN file.
     # ⚑ BEFORE the persona branch.
     if _is_agent_node_secret_key(canonical):
-        secret_target = _node_secret_target(canonical, agents_root)
+        secret_target = _system_verb_slot(
+            _node_secret_target(canonical, agents_root), system_settings_path, node_store,
+        )
         if isinstance(secret_target, str):
             return secret_target  # malformed node ref
         if secret_target is None:
@@ -2186,7 +2257,10 @@ def reset_config_value(
     # ``agent.<node>.<key>`` — remove the stored override from the node's OWN settings file
     # (``remove_nested_key`` prunes now-empty tables, keeping the file sparse).
     if _is_persona_agent_key(canonical):
-        target = _persona_agent_target(canonical, agents_root, verb="reset")
+        target = _system_verb_slot(
+            _persona_agent_target(canonical, agents_root, verb="reset"),
+            system_settings_path, node_store,
+        )
         if isinstance(target, str):
             return target  # malformed node ref
         if target is None:
@@ -2353,7 +2427,6 @@ def effective_value(
         return None
     from kanibako.settings.kb_store import Bind
     from kanibako.settings.keystore import KeyStore
-    from kanibako.settings.settings_expand import expand
     from kanibako.settings.settings_assemble import ReadPurpose, cascade_files
     from kanibako.settings.settings_launch import (
         ResolveSubject,
@@ -2438,9 +2511,7 @@ def effective_value(
     found, raw = _reads(snapshot, key_path)
     if not found or isinstance(raw, (Bind, KeyStore, list)) or raw is None:
         return None  # a bind/subtree/list/present-None has no single scalar to print
-    result = expand(snapshot, ctx, collect_errors=True)
-    assert isinstance(result, tuple)  # lenient mode → (snapshot, errors)
-    resolved_snap, errors = result
+    resolved_snap, errors = _lenient_expand(snapshot, ctx, agent_name)
     if canonical in errors:
         return None  # unresolved (dangling ref / cycle) — no guess.
     found, eff = _reads(resolved_snap, key_path)

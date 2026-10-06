@@ -491,7 +491,7 @@ def entry_label(declaration: str, entry: str) -> str:
 # keyspace (spec §0) the DECLARATION is what makes the name legal, and the call
 # sites that will read them are their own seam. Declared-but-unproduced is a
 # state the manifest already describes, as it does for
-# `meta.box.{container_name,helper_num}` below.
+# `meta.box.{container,helper_num}` below.
 DECLARED_META_RUNTIME_LEAVES: Final[frozenset[str]] = frozenset({
     "ws_root", "ws_name", "project_type",
 })
@@ -515,14 +515,14 @@ DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
 # derivation: home does NOT route through `bindings.rw` (spec `:1015`), so the
 # assembly seam builds the pid-0 foundation bind by READING this key, and every
 # launch's home mount resolves through it.
-# ⚑ The last 2 have NO PRODUCER: `container_name` renders in
-# `utils.container_name_for`, off proj attrs, not the store; `helper_num` travels
+# ⚑ The last 2 have NO PRODUCER: `container` renders in
+# `utils.render_container_name`, from proj, not the store; `helper_num` travels
 # in helper messages. Declared-but-unproduced is the state the manifest already
 # describes (JC-B2-3), not an omission.
 DECLARED_META_BOX_LEAVES: Final[frozenset[str]] = frozenset({
     "path", "name", "mode", "workspace", "settings",
     "inbox", "share_global", "share_workset",
-    "home", "container_name", "helper_num",
+    "home", "container", "helper_num",
 })
 DECLARED_META_BOX_AUTH_LEAVES: Final[frozenset[str]] = frozenset({
     "workset_path", "global_active", "workset_active",

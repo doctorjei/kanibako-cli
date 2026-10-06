@@ -290,8 +290,7 @@ class TestNamedWorksetImport:
         capsys.readouterr()
 
         assert import_reconcile.import_named_workset(
-            std.registry, ws_root, primary_workset=std.primary_workset,
-            early=_early_scope(std, BoxMode.primary),
+            std.registry, ws_root,
         ) == "noop"
         assert registry_store.load_section(std.registry, "worksets") == before
         assert capsys.readouterr().err == ""
@@ -312,8 +311,7 @@ class TestNamedWorksetImport:
 
         with pytest.raises(ImportConflictError, match="already registered"):
             import_reconcile.import_named_workset(
-                std.registry, other, primary_workset=std.primary_workset,
-                early=_early_scope(std, BoxMode.primary),
+                std.registry, other,
             )
         # Nothing mutated, and the refused tree is untouched on disk.
         assert registry_store.load_section(std.registry, "worksets") == {
@@ -321,25 +319,21 @@ class TestNamedWorksetImport:
         }
         assert other.is_dir() and (other / "boxes").is_dir()
 
-    def test_cross_kind_collision_imports_and_warns(
+    def test_cross_kind_name_imports_without_a_warning(
         self, std, config, tmp_home, capsys, caplog,
     ):
-        """⚑ CROSS-KIND (the name is a primary BOX's): IMPORT ANYWAY and WARN.
-
-        Nobody typed this name and there is no ``--force`` to offer, so refusing
-        would strand the tree the import exists to recover ([R139]).  The warning
-        names the same escape hatch bare-name resolution names.
-        """
+        """⚑ A workset named like a primary BOX imports normally: box and workset names
+        are separate namespaces (spec § Detection & import), so nothing is said."""
         from kanibako.settings.paths import register_primary_box_name
 
         box_dir = tmp_home / "boxproj"
         box_dir.mkdir()
         register_primary_box_name(
-            std.primary_workset, std.registry, "clash", str(box_dir),
+            std.primary_workset, "clash", str(box_dir),
             early=_early_scope(std, BoxMode.primary),
         )
         ws_root = tmp_home / "worksets" / "clash"
-        create_workset("clash", ws_root, std, force=True)
+        create_workset("scratch", ws_root, std)
         registry_store.save_section(std.registry, "worksets", {})
         capsys.readouterr()
 
@@ -350,38 +344,26 @@ class TestNamedWorksetImport:
         assert registry_store.load_section(std.registry, "worksets") == {
             "clash": str(ws_root.resolve())
         }
-        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
-        assert len(warnings) == 1, warnings
-        assert "clash" in warnings[0] and "primary box" in warnings[0]
-        assert "kanibako workset <cmd> clash" in warnings[0]
-
-    def test_no_cross_kind_warning_without_a_colliding_box(
-        self, std, config, tmp_home, capsys, caplog,
-    ):
-        """The warning fires only on a LIVE collision (parity with resolve_name)."""
-        ws_root = tmp_home / "worksets" / "solo"
-        create_workset("solo", ws_root, std)
-        registry_store.save_section(std.registry, "worksets", {})
-        capsys.readouterr()
-
-        with caplog.at_level("WARNING"):
-            detect_project_mode(ws_root, std, config)
         assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
-    def test_a_reserved_leaf_name_is_not_imported(self, std, tmp_home, capsys):
+    @pytest.mark.parametrize("leaf", ["default", "primary", "standalone"])
+    def test_a_reserved_leaf_name_is_not_imported(self, std, tmp_home, capsys, leaf):
         """⚑ The DERIVED name clears the same bars a typed one does: a directory
-        named for a reserved sentinel is left alone, not registered under it."""
-        root = tmp_home / "holder" / "default"
+        named for a reserved sentinel is left alone, not registered under it —
+        and the skip is SAID once, naming the directory and why."""
+        root = tmp_home / "holder" / leaf
         create_workset("holder-ws", root, std)
         registry_store.save_section(std.registry, "worksets", {})
         capsys.readouterr()
 
         assert import_reconcile.import_named_workset(
-            std.registry, root, primary_workset=std.primary_workset,
-            early=_early_scope(std, BoxMode.primary),
+            std.registry, root,
         ) is None
         assert registry_store.load_section(std.registry, "worksets") == {}
-        assert capsys.readouterr().err == ""
+        err = capsys.readouterr().err
+        assert err.count("Warning: ") == 1, err
+        assert str(root.resolve()) in err, err
+        assert f"'{leaf}' is a reserved workset name" in err, err
 
     def test_a_home_directory_root_is_declined_not_refused(
         self, std, tmp_home, capsys,
@@ -394,8 +376,7 @@ class TestNamedWorksetImport:
         capsys.readouterr()
 
         assert import_reconcile.import_named_workset(
-            std.registry, home, primary_workset=std.primary_workset,
-            early=_early_scope(std, BoxMode.primary),
+            std.registry, home,
         ) is None
         assert registry_store.load_section(std.registry, "worksets") == {}
         assert capsys.readouterr().err == ""

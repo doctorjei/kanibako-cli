@@ -55,11 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
         add_help=False,
     )
 
-    # ``parser_class`` (B-5): every subcommand — and, since add_subparsers
-    # defaults the class to its own parser's type, every NESTED subcommand —
-    # accepts its flags in ANY position, including between two positionals.
-    # Inert for parsers that argparse already interleaves correctly; see
-    # kanibako.commands.flags.hoist_optionals.
+    # ``parser_class`` (B-5): every subcommand, nested ones included, accepts its
+    # flags in ANY position; see kanibako.commands.flags.hoist_optionals.
     from kanibako.commands.flags import OptionsAnywhereParser
 
     subparsers = parser.add_subparsers(
@@ -173,11 +170,6 @@ def build_parser() -> argparse.ArgumentParser:
              "sharing so the host's OAuth token is never seeded into it.",
     )
     create_p.add_argument(
-        "--force", action="store_true",
-        help="Create even if --name is already used by a workset (the box "
-             "shadows that workset in bare-name resolution)",
-    )
-    create_p.add_argument(
         "--recover", action="store_true",
         help="Finish an interrupted 'create' on this path instead of starting a "
              "new box; it keeps the name and settings the first attempt chose",
@@ -205,10 +197,6 @@ def build_parser() -> argparse.ArgumentParser:
     register_p.add_argument(
         "target",
         help="Deregistered box name, or path to a standalone box on disk",
-    )
-    register_p.add_argument(
-        "--force", action="store_true",
-        help="Re-register even if the name is used by a workset",
     )
     register_p.set_defaults(func=run_register)
 
@@ -373,13 +361,8 @@ def _ensure_initialized() -> None:
         (data_path / "containers").mkdir(parents=True, exist_ok=True)
         sys_paths["_primary_boxes"].mkdir(parents=True, exist_ok=True)
 
-        # NOTE (block #3a, JC-3): the channel type-root skeleton is NO LONGER
-        # pre-created here.  ``channelroot`` moved to Layer 2 (a ``system.*`` settings
-        # key), and the launch path already creates the full skeleton — the L7
-        # guarantee-create for the type-root bind sources + ``_seed_channel_files``
-        # for the chat logs (start.py).  No host-side pre-launch consumer of the
-        # skeleton exists (audit: every reader is on the box-launch path), so the
-        # setup/init pre-creation was redundant and is dropped.
+        # The channel type-root skeleton is not pre-created here: the launch path creates
+        # it (start.py), and no host-side pre-launch consumer of it exists.
 
         # Create agents directory and generate default per-agent settings files.
         # Each agent's settings live INSIDE its store dir as

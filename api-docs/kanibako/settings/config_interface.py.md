@@ -16,9 +16,9 @@ _EARLY_KEY_DOORS = frozenset({ConfigLevel.workset, ConfigLevel.system})
 ## Functions
 ```
 def parse_config_arg(arg: str | None, *, set_null: bool=False) -> 'tuple[ConfigAction, str, str | None]'
-def get_config_value(key: str, *, global_config_path: Path, project_toml: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, system_settings_path: Path | None=None, agents_root: Path | None=None, command_scope: 'ConfigLevel | None'=None, active_agent: str | None=None, cascade_system_path: Path | None=None, cascade_workset_path: Path | None=None) -> str | None
-def set_config_value(key: str, value: 'str | None', *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', command_scope: ConfigLevel | None=None, agents_root: Path | None=None, std: Any=None, proj: Any=None, ws: Any=None, target_error: 'str | None'=None, force: bool=False) -> str
-def reset_config_value(key: str, *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, command_scope: ConfigLevel | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', agents_root: Path | None=None) -> str
+def get_config_value(key: str, *, global_config_path: Path, project_toml: Path | None=None, env_global: Path | None=None, env_project: Path | None=None, system_settings_path: Path | None=None, agents_root: Path | None=None, command_scope: 'ConfigLevel | None'=None, active_agent: str | None=None, cascade_system_path: Path | None=None, cascade_workset_path: Path | None=None, node_store: bool=True) -> str | None
+def set_config_value(key: str, value: 'str | None', *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', command_scope: ConfigLevel | None=None, agents_root: Path | None=None, std: Any=None, proj: Any=None, ws: Any=None, target_error: 'str | None'=None, force: bool=False, node_store: bool=True) -> str
+def reset_config_value(key: str, *, config_path: Path, env_path: Path | None=None, system_settings_path: Path | None=None, command_scope: ConfigLevel | None=None, cascade_system_path: Path | None=None, cascade_agent_path: Path | None=None, cascade_workset_path: Path | None=None, cascade_box_path: Path | None=None, cascade_agent_name: str='', agents_root: Path | None=None, node_store: bool=True) -> str
 def effective_value(canonical: str, sections: tuple[str, ...], leaf: str, *, agent_name: str, system_path: Path | None, agent_path: Path | None, workset_path: Path | None, box_path: Path | None, floor: 'Mapping[str, object] | None'=None, inputs: 'LaunchInputs | None'=None) -> 'tuple[str, str] | None'
 def write_system_value(system_settings_path: Path, leaf: str, value: object) -> None
 def reset_all(*, config_path: Path, env_path: Path | None=None, force: bool=False, system_settings_path: Path | None=None, command_scope: 'ConfigLevel | None'=None) -> str
@@ -37,16 +37,20 @@ def _command_tier_files(cmd: 'Path | None', command_scope: 'ConfigLevel | None',
 def _dotted_in(node: object, dotted: str) -> object
 def _cascade_bad_entries(cmd: 'Path | None', command_scope: 'ConfigLevel | None', *, system_path: 'Path | None', workset_path: 'Path | None', box_path: 'Path | None', edited: 'str | None'=None) -> _BadEntries
 def _first_dotted(views: 'list[dict]', dotted: str) -> object
-def _overwritten_by(edited: 'str | None', entry: str) -> bool
+def _overwritten_by(edited: 'str | None', entry: 'tuple[str, ...]') -> bool
+def _set_time_agent_tier(agent_name: str, agent_path: 'Path | None') -> 'tuple[Path | None, AgentFileLevel | None, dict[str, str | None] | None, dict[str, str | None] | None]'
 def _set_time_snapshot(*, target: 'LaunchInputs | None', agent_name: str, agent_path: 'Path | None', config_path: 'Path | None'=None, command_scope: 'ConfigLevel | None'=None, system_settings_path: 'Path | None'=None, system_path: 'Path | None'=None, workset_path: 'Path | None'=None, box_path: 'Path | None'=None) -> 'tuple[Any, Any]'
 def _floor_blind_referents(key: str, value: str, candidate: 'Any', command_scope: 'ConfigLevel | None') -> list[str]
 def _category_set_lookups(config_path: Path, *, canonical: str, command_scope: 'ConfigLevel | None'=None, system_settings_path: Path | None=None, system_path: Path | None=None, agent_path: Path | None=None, workset_path: Path | None=None, box_path: Path | None=None, agent_name: str='', target: 'LaunchInputs | None'=None)
+def _lenient_expand(snapshot: 'Any', ctx: 'Any', agent_name: str) -> 'tuple[Any, dict[str, str]]'
 def _clone_keystore(store: 'Any') -> 'Any'
 def _set_leaf(store: 'Any', parts: list, value: object) -> None
 def _argv_aware(leaf: str, fallback: 'Callable[[object], str]') -> 'Callable[[object], str]'
 def _scalar_family_render(key: str, category: str) -> 'Callable[[object], str]'
 def _read_slot(canonical: str, slot: AgentFileSlot) -> str | None
 def _node_noun_file_value(canonical: str, slot: AgentFileSlot, noun_file: 'Path | None', command_scope: 'ConfigLevel | None') -> 'str | None'
+def _noun_file_slot(slot: AgentFileSlot, noun_file: Path) -> AgentFileSlot
+def _system_verb_slot(slot: 'AgentFileSlot | str | None', noun_file: 'Path | None', node_store: bool) -> 'AgentFileSlot | str | None'
 def _stored_shape_for(canonical: str, value: object) -> object
 def _set_confirmation(display_key: str, value: object) -> str
 def _null_path_key_error(canonical: str, value: 'str | None', *, command_scope: 'ConfigLevel | None', config_path: Path, system_settings_path: 'Path | None') -> 'str | None'

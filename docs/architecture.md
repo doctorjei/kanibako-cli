@@ -10,8 +10,7 @@ subpackage (`settings/`, `runtime/`, `launch/`, `channels/`, `vscode/`); the
 cross-cutting entry points and utilities stay at the package root.
 
 The table is a map for finding your way in, not an inventory, and its coverage
-is uneven: `settings/store_collapse.py` and `persona_store.py` are both central
-and both missing, so an absence here says nothing about a module's weight. Every
+is uneven, so an absence here says nothing about a module's weight. Every
 module's role lives in its own docstring, beside the code; these rows are finding
 aids, not the authority.
 
@@ -20,7 +19,7 @@ aids, not the authority.
 | `cli.py` | Argparse tree, main() entry, `-v` flag |
 | `log.py` | Logging setup (`-v` enables debug output) |
 | `settings/config.py` | YAML config loading, defaults, merge logic (`system.*` config tier); agent resolution (`resolve_agent` validate-or-refuse, `resolve_and_load_settings` two-pass), setup-marker reader |
-| `settings/config_interface.py` | The config/settings VERBS (get/set/reset/show across box, workset, agent, system) plus the set-time cascade probe; `system.*` keys are file-only (refused at set/reset) with a programmatic `write_system_value` for `setup` |
+| `settings/config_interface.py` | The config/settings VERBS (get/set/reset/show across box, workset, agent, system) plus the set-time cascade probe; `system.*` keys set and reset from the CLI like any other scope, with a programmatic `write_system_value` serving `setup` — it is `config.*` keys that are file-only (refused at set/reset) |
 | `settings/config_keys.py` | The CLI-facing key TAXONOMY: family recognizers/parsers, per-family displays and refusals, the scope tables and the routing table. ⚑ Not the closed-keyspace validator — that is `settings_keyspace`, which this layer is constrained to defer to (today reached indirectly via `settings_prefs`) |
 | `settings/config_dest.py` | The ONE destination rule (`DestRoute`/`_write_dest`): which file and nested slot a key's value occupies, for every verb; plus the per-node agent file route |
 | `settings/config_display.py` | The `show` / `--effective` renderers: each `pref` request beside its result, each declaration above the binding it derives |

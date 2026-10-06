@@ -93,7 +93,10 @@ from kanibako.agent_ref import (
 from kanibako.targets import assembly, credsync, resolve_target
 from kanibako.targets.assembly import BindingSourceError
 from kanibako.targets.base import _scrub_endpoint_userinfo, descriptor_floor, has_plugin
-from kanibako.utils import container_name_for, short_hash
+from kanibako.utils import (
+    container_name_for, container_name_segments, legacy_container_names,
+    render_socket_identity, short_hash, unrenderable_box_name_refusal,
+)
 # The box-local AGENT LIVENESS MARKERS directory (per-PID).  Canonically owned by
 # :mod:`kanibako.vscode.vscode_config`, the low-level module that also owns the marker
 # write-side hook command; IMPORTED rather than re-derived so this file's
@@ -1450,12 +1453,9 @@ def _resolve_existing_box(
       launch).  Forward-recovery of an interrupted create belongs to ``create``
       alone (re-running ``create`` completes it); the launch path must treat a
       not-fully-registered box as "no box" → error.  ⚑ This holds for PRIMARY and
-      NAMED (registration IS the signal); STANDALONE is the EXCEPTION — its
-      existence is a disk-marker + ``detect_project_mode``'s ``import_standalone``
-      self-heal, which re-registers a half-created standalone box (and clobbers its
-      create-journal entry) during the resolve, so a half-created STANDALONE box
-      reads as "exists" here and launches.  That is a PRE-EXISTING import-reconcile
-      interaction (not introduced by this gate) — see the explicit-create follow-up.
+      NAMED (registration IS the signal); a half-created STANDALONE box resolves
+      by name from its disk marker, which ``import_standalone`` leaves unregistered,
+      so the caller refuses it on its pending create entry instead.
     * ``warn=False`` — a pure probe never doubles the non-conforming-name flag.
 
     REGISTRATION is the existence signal: a resolved box carries a non-empty
@@ -1597,6 +1597,17 @@ def _store_move_cure(old: Path | None, new: Path) -> str:
     return lead + move
 
 
+def _interrupted_create_error(proj: ProjectPaths, pending: dict) -> str:
+    """The launch refusal for a box whose ``create`` is still pending in the journal."""
+    return (
+        f"Error: box '{proj.name}' has an interrupted 'create' pending (started "
+        f"{pending.get('started_at', '?')} on {pending.get('host', '?')}); a "
+        "launch will not finish it.\n"
+        f"  Finish it:  {recover_cure(proj)}\n"
+        "  Inspect it first:  kanibako box diagnose"
+    )
+
+
 def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> str:
     """The launch-time "no box; run create" error for an ABSENT box target.
 
@@ -1656,7 +1667,7 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
     return f"Error: no box at {target}. To create a new box, run:  {suggest}"
 
 
-def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
+def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None:
     """The launch-time "registered, but its box directory is gone" refusal.
 
     ``None`` when the directory is where the registration says it is.
@@ -1701,8 +1712,12 @@ def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
     # ``<workset root>/boxes`` means the key moved it, and the store may be at the old place.
     if proj.group is not None:
         from kanibako.project.workset import BOXES_DIR_NAME
+        from kanibako.settings.workset_dirkeys import resolve_workset_dir_key
 
-        default_store = proj.group.root / BOXES_DIR_NAME / proj.metadata_path.name
+        default_store = resolve_workset_dir_key(
+            proj.group.root, None, BOXES_DIR_NAME, key=BOXES_DIR_NAME,
+            early=_early_scope(std, proj.mode, proj.group.name),
+        ) / proj.metadata_path.name
         if default_store != proj.metadata_path:
             return head + _store_move_cure(
                 default_store if default_store.is_dir() else None, proj.metadata_path,
@@ -2488,7 +2503,7 @@ def _start_helper_hub(
     helper_ctx = HelperContext(
         runtime=runtime,
         image=image,
-        container_name_prefix=container_name,
+        container_name_segments=container_name_segments(proj),
         shell_path=proj.shell_path,
         helpers_dir=helpers_dir,
         socket_path=socket_path,
@@ -2767,12 +2782,16 @@ def _run_container(
     if _existing is None:
         print(_no_box_error(project_dir, std), file=sys.stderr)
         return 1
+    _interrupted = _pending_create_entry(std, _existing)
+    if _interrupted is not None:
+        print(_interrupted_create_error(_existing, _interrupted), file=sys.stderr)
+        return 1
 
     # MBR-6 (Jei 2026-08-02f, "no, a launch should not silently rebuild
     # anything"): the gate above passes a box whose REGISTRATION survives but
     # whose box DIRECTORY is gone — and the resolve below would rebuild it.
     # Refuse it on the probe, while nothing has been materialized yet.
-    _unbuilt = _unbuilt_box_error(_existing)
+    _unbuilt = _unbuilt_box_error(_existing, std)
     if _unbuilt is not None:
         print(_unbuilt, file=sys.stderr)
         return 1
@@ -2842,6 +2861,24 @@ def _run_container(
 
     logger = get_logger("start")
 
+    # The keyspec row's SECOND obligation — no name, no container to start.  Refused HERE,
+    # ahead of the reattach fast path and before a runtime opens, so every later
+    # ``container_name_for(proj)`` below is reached only for a box that HAS a name.  It
+    # stops nothing: no container carries the name.
+    rendered = container_name_for(proj)
+    if rendered is None:
+        print(
+            unrenderable_box_name_refusal(
+                proj.name or "", proj.mode.value, proj.project_path,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    # ⚑ THE ONE NAME for the rest of this function: every later use is this box's
+    # same name, so the gate above is what makes binding it once safe rather than
+    # implied by line order.
+    container_name: str = rendered
+
     # Detect the container runtime up front: agent resolution below needs it to
     # honor a REATTACH to an already-running persistent box (the box's stored
     # agent supersedes the cascade), and the image step further down needs it
@@ -2880,10 +2917,10 @@ def _run_container(
     # either way.  No container at all is NOT an error — there is nothing to
     # clear, and erroring would make a ``--restart`` alias/script fail purely
     # because it won the race.
-    if restart and runtime.container_exists(container_name_for(proj)):
+    if restart and runtime.container_exists(container_name):
         from kanibako.commands.stop import _stop_one
         _stop_one(runtime, project_dir=project_dir)
-        if runtime.is_running(container_name_for(proj)):
+        if runtime.is_running(container_name):
             print(
                 f"Error: --restart could not stop box '{proj.name}' — it is "
                 f"still running. Stop it manually (`kanibako stop "
@@ -2891,6 +2928,11 @@ def _run_container(
                 file=sys.stderr,
             )
             return 1
+
+    legacy_refusal = _refuse_legacy_container(runtime, proj)
+    if legacy_refusal:
+        print(legacy_refusal, file=sys.stderr)
+        return 1
 
     # Reattach fast-source: for a PERSISTENT box that is ALREADY RUNNING, the
     # box's identity is its container name (agent-independent) and `kanibako
@@ -2910,13 +2952,13 @@ def _run_container(
     # two values: the override gate below must refuse an explicit ``--ephemeral``
     # at a live box, and that invocation is precisely one where the box IS
     # running but a reattach is NOT what would happen.
-    box_running = runtime.is_running(container_name_for(proj))
+    box_running = runtime.is_running(container_name)
     reattach_running = False
     stored_agent: str | None = None
     if persistent and box_running:
         reattach_running = True
         stored_agent = runtime.inspect_env(
-            container_name_for(proj), "KANIBAKO_AGENT"
+            container_name, "KANIBAKO_AGENT"
         )
         if stored_agent:
             # 🛑 CANONICALIZE ON READ, ONCE, AND USE THAT VALUE ONWARDS.
@@ -3341,7 +3383,7 @@ def _run_container(
         #   surfaced after the bootstrap session closes.
         if persistent:
             if _check_launch_baseline(
-                runtime, image, bootstrap_program, container_name_for(proj), std,
+                runtime, image, bootstrap_program, container_name, std,
                 setting=_bootstrap_setting(bootstrap),
             ) is _BOOTSTRAP_MISSING:
                 return 1
@@ -3439,7 +3481,6 @@ def _run_container(
     #     a running agent is precisely the hazard ``reattach_config_notice``
     #     exists to warn about.
     if reattach_running:
-        container_name = container_name_for(proj)
         # ⚑ EVERY ARM BELOW BRANCHES ON ``running_door``, never on the values
         # that decided it.  That is the whole point of the table: the override
         # gate above and this regime read ONE answer, so the gate can never
@@ -3677,7 +3718,6 @@ def _run_container(
     ensure_persona_share_symlinks(std, agent_id, target)
 
     # Deterministic container name for stop/cleanup
-    container_name = container_name_for(proj)
 
     logger.debug("Project: %s (mode=%s)", proj.project_path, proj.mode)
     logger.debug("Image: %s", image)
@@ -5812,7 +5852,7 @@ def _name_new_box_probe(std, proj) -> None:
     if proj.mode is BoxMode.primary:
         from kanibako.settings.paths import pick_primary_box_name
         proj.name = pick_primary_box_name(
-            std.primary_workset, std.registry,
+            std.primary_workset,
             str(proj.project_path), boxes_dir=std.boxes,
             early=_early_scope(std, BoxMode.primary),
         )
@@ -8642,6 +8682,31 @@ def _box_journal_key(proj) -> str:
     return str(Path(proj.shell_path).parent)
 
 
+def _create_designation(probe) -> "tuple[str, str]":
+    """The ``create`` mode flag and the designation that names *probe*'s box."""
+    # ⚑ EVERY CURE LINE NAMES THE ROOT THE USER PASSED, NEVER THE RESOLVED
+    # WORKSPACE: a STANDALONE box's ``<root>/workspace`` is no ``create`` argument,
+    # and a NAMED member is created by its NAME (a path in its space is refused).
+    _standalone = probe.mode is BoxMode.standalone
+    root = str(
+        probe.metadata_path if _standalone
+        else probe.name if probe.mode is BoxMode.named
+        else probe.project_path or "<None>"
+    )
+    return (" --standalone" if _standalone else ""), root
+
+
+def recover_cure(probe) -> str:
+    """The ``kanibako create … --recover`` line that finishes *probe*'s interrupted create."""
+    mode_flag, root = _create_designation(probe)
+    cure = f"kanibako create{mode_flag} --recover {root}"
+    # ⚑ A MEMBER NAME IS READ IN THE CWD'S WORKING SET ONLY, and a launch prints
+    # this from anywhere: the line enters the working set's root itself.
+    if probe.mode is BoxMode.named:
+        return f"cd {shlex.quote(str(probe.group.root))} && {cure}"
+    return cure
+
+
 def _write_create_entry(std, proj) -> None:
     """Write the write-ahead ``create`` journal entry for *proj* (intent)."""
     from kanibako.launch import journal
@@ -8672,24 +8737,17 @@ def _pending_create_entry(std, proj) -> dict | None:
     return journal.pending_create(std.journal, _box_journal_key(proj))
 
 
-def _register_new_box(std, proj, *, force: bool = False) -> None:
+def _register_new_box(std, proj) -> None:
     """Register a freshly-created box (idempotent), mode-appropriate (B3).
 
     The deferred-registration commit step: the create paths resolve with
     ``register=False`` (the resolver creates the dir + meta + sets ``is_new`` but
     does NOT write the registry), seed the home, then call this to register.
 
-    *force* is forwarded to the PRIMARY registration only (the cross-kind
-    workset-name refusal is bypassable; SAME-kind primary-box uniqueness is not).
-    A ``box create --name <workset-name> --force`` create passes it so the
-    deferred commit does not re-refuse what the up-front CLI check already
-    allowed.
-
     Idempotent for the SAME box (recovery re-entry after a crash in the tiny
     register -> clear-entry window leaves the box already registered): PRIMARY
     uses :func:`paths.register_primary_box_name_if_absent` (writes the primary
-    per-workset ``boxes:`` membership — the sole store since the global
-    ``projects:`` section retired; no-op iff the identical name->path mapping is
+    per-workset ``boxes:`` membership, the sole store; no-op iff the identical name->path mapping is
     present, re-raises a real collision); STANDALONE uses
     :func:`registry_store.register_standalone` (already idempotent — overwrites a
     matching name->root).  NAMED boxes carry no deferred registry entry on create
@@ -8707,8 +8765,8 @@ def _register_new_box(std, proj, *, force: bool = False) -> None:
     elif proj.mode is BoxMode.primary:
         from kanibako.settings.paths import register_primary_box_name_if_absent
         register_primary_box_name_if_absent(
-            std.primary_workset, std.registry,
-            proj.name, str(proj.project_path), force=force,
+            std.primary_workset,
+            proj.name, str(proj.project_path),
             early=_early_scope(std, BoxMode.primary),
         )
     # NAMED: no deferred registration on create (membership written at resolve).
@@ -9975,16 +10033,40 @@ def bounded_socket_name(identity: str, run_dir: Path) -> str:
 
 def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path:
     """Return *proj*'s host helper socket, named from ``<box name>-<workset name>``."""
-    from kanibako.channels.channels import workset_name_token
-
     # ``meta.box.name`` is ``proj.name``; a nameless box has no identity to render.
     if not proj.name:
         raise ValueError("box has no name; cannot derive its helper socket name.")
-    socket_path = run_dir / bounded_socket_name(
-        f"{proj.name}-{workset_name_token(proj)}", run_dir,
-    )
+    workset, box = container_name_segments(proj)
+    # ⛔ Never a path join on ``None``; that contract is :func:`render_container_name`'s.
+    identity = render_socket_identity(box, workset)
+    if identity is None:
+        raise ValueError(
+            "box name renders no helper-socket identity; start refuses it first."
+        )
+    socket_path = run_dir / bounded_socket_name(identity, run_dir)
     validate_socket_path(socket_path)
     return socket_path
+
+
+def _refuse_legacy_container(runtime, proj: ProjectPaths) -> str | None:
+    """Return the refusal for a box still running under its pre-``kb-`` name, else ``None``.
+
+    A container started by an earlier release holds a name no current verb addresses,
+    so launching under the rendered one would leave TWO live containers for one box.
+    The cure is named in the message; nothing is stopped here.
+    """
+    box = f"box '{proj.name}'" if proj.name else "this box"
+    for legacy in legacy_container_names(proj):
+        if not runtime.is_running(legacy):
+            continue
+        return (
+            f"Error: {box} is still running as '{legacy}', the name it "
+            f"had before the container naming change. Starting it again would "
+            f"leave two boxes running, so this is refused. Stop it, then start "
+            f"it again:\n"
+            f"  {runtime.cmd} stop {legacy}"
+        )
+    return None
 
 
 def validate_socket_path(socket_path: Path) -> None:

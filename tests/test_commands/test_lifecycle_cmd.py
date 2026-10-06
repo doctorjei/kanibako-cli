@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -414,73 +416,48 @@ class TestLockGuard:
 
 
 # ---------------------------------------------------------------------------
-# F-7: cross-kind (box-vs-workset) name policy on DEFAULT-mode rename edges
+# F-7: per-kind (box-vs-workset) name policy on DEFAULT-mode rename edges
 # ---------------------------------------------------------------------------
 
 class TestConvertMoveCrossKindName:
-    """``box convert/move --default --name <X>`` enforces the SAME per-kind name
-    policy as ``create`` (``system-design-1.8.0.md`` § "Detection & import",
-    "Cross-kind name semantics"; Jei 2026-07-08).
-
-    A ``--name`` that lands a box in primary/default mode and collides with a
-    WORKSET name shadows that workset in bare-name resolution, so it REFUSES
-    unless ``--force``; a SAME-KIND (another primary box) collision refuses
-    UNCONDITIONALLY.  Pre-fix these rename edges ignored ``--name`` and routed
-    through ``assign_primary_box_name`` (basename auto-suffix only), never
-    consulting the cross-kind arm.
+    """``box convert/move --default --name <X>`` follows the SAME per-kind name
+    policy as ``create`` (``system-design-1.8.0.md`` § "Detection & import"):
+    box and workset names are separate namespaces, so a WORKSET's name is
+    taken freely, while a SAME-KIND (another primary box) collision refuses.
     """
 
-    def test_convert_default_name_collides_workset_refuses(self, env):
-        """t1: convert --default --name <workset> without --force → clean rc=1,
-        teaches --force, and mints NO box (refused before any copy)."""
+    def test_convert_default_name_shared_with_a_workset_succeeds(
+        self, env, caplog, monkeypatch,
+    ):
+        """t1: convert --default --name <workset> needs no --force (the confirmation
+        is answered, not forced); both names coexist, a bare resolve hits the BOX,
+        and nothing warns."""
         config, std, tmp_home = env
         create_workset("common", tmp_home / "ws_root", std)
         pdir = _standalone(env)  # standalone source → true mint path
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda _msg: None)
 
-        import io
-        from contextlib import redirect_stderr
-        buf = io.StringIO()
-        with redirect_stderr(buf):
+        with caplog.at_level("WARNING"):
             rc = run_convert(
                 _convert_args(pdir, to_default=True, name="common", force=False)
             )
-        assert rc == 1
-        assert "--force" in buf.getvalue()
-        # No primary box minted under the workset name; workset intact; source
-        # still standalone (nothing copied/registered on refusal).
-        assert "common" not in load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary))
-        assert not (std.boxes / "common").exists()
-        from kanibako.project import registry_store
-        assert "common" in registry_store.load_section(std.registry, "worksets")
-        assert (pdir / "box_data").is_dir()
-
-    def test_convert_default_name_collides_workset_force_shadows(self, env):
-        """t2: with --force the box takes the workset name (deliberate shadow);
-        both coexist and a bare resolve now hits the BOX."""
-        config, std, tmp_home = env
-        create_workset("common", tmp_home / "ws_root", std)
-        pdir = _standalone(env)
-
-        rc = run_convert(
-            _convert_args(pdir, to_default=True, name="common", force=True)
-        )
         assert rc == 0
-        # Box registered under the shadowed name; workset still registered.
         assert "common" in load_primary_boxes(
             std.primary_workset, early=_early_scope(std, BoxMode.primary))
         from kanibako.project import registry_store
         assert "common" in registry_store.load_section(std.registry, "worksets")
-        # Bare resolution is deterministic — the primary box wins (shadow).
         from pathlib import Path
 
         from kanibako.settings.paths import resolve_name
-        _resolved, kind = resolve_name(
-            std.registry, "common", cwd=Path(tmp_home),
-            primary_workset=std.primary_workset,
-            early_system=std.early_system,
-        )
+        with caplog.at_level("WARNING"):
+            _resolved, kind = resolve_name(
+                std.registry, "common", cwd=Path(tmp_home),
+                primary_workset=std.primary_workset,
+                early_system=std.early_system,
+            )
         assert kind == "project"
+        assert [r.getMessage() for r in caplog.records
+                if r.levelname == "WARNING" and "shadow" in r.getMessage()] == []
 
     def test_convert_default_name_collides_primary_box_force_still_refuses(
         self, env,
@@ -507,32 +484,26 @@ class TestConvertMoveCrossKindName:
         ).get("taken") == str(taken_dir)
         assert (pdir / "box_data").is_dir()
 
-    def test_move_default_name_collides_workset_refuses(self, env):
-        """t4: box move --default --name <workset> mirror of t1 — refuses without
-        --force and moves no files."""
+    def test_move_default_name_shared_with_a_workset_succeeds(self, env, monkeypatch):
+        """t4: box move --default --name <workset> mirror of t1 — the move lands
+        under the workset's name (the confirmation is answered, not forced)."""
         config, std, tmp_home = env
         create_workset("common", tmp_home / "ws_root", std)
         pdir = _default(env, name="mvsrc")
         dest = tmp_home / "mv_dest"
+        monkeypatch.setattr("kanibako.utils.confirm_prompt", lambda _msg: None)
 
-        import io
-        from contextlib import redirect_stderr
-        buf = io.StringIO()
-        with redirect_stderr(buf):
-            rc = run_move(
-                _move_args(pdir, dest, to_default=True, name="common", force=False)
-            )
-        assert rc == 1
-        assert "--force" in buf.getvalue()
-        # No copy performed (refused up front); dest absent, source intact.
-        assert not dest.exists()
-        assert pdir.is_dir()
-        assert "common" not in load_primary_boxes(
+        rc = run_move(
+            _move_args(pdir, dest, to_default=True, name="common", force=False)
+        )
+        assert rc == 0
+        assert dest.is_dir()
+        assert "common" in load_primary_boxes(
             std.primary_workset, early=_early_scope(std, BoxMode.primary))
 
     def test_convert_named_workset_name_equals_global_workset_succeeds(self, env):
-        """t5: the cross-kind guard must NOT reach a NAMED-workset target — a
-        project named the same as a global workset still converts."""
+        """t5: a NAMED-workset target named the same as a global workset
+        still converts."""
         config, std, tmp_home = env
         create_workset("tw", tmp_home / "tw_root", std)
         create_workset("gname", tmp_home / "g_root", std)
@@ -1349,3 +1320,388 @@ class TestLandingsThatMustKeepWorking:
         rc = run_convert(_convert_args(str(pdir), to_workset="ws", move=_BARE_MOVE))
         assert rc == 0
         assert (ws.workspaces_dir / "proj" / "file.txt").read_text() == "primary"
+
+
+# ---------------------------------------------------------------------------
+# a PRIMARY box under a repointed workset.workspaces
+# ---------------------------------------------------------------------------
+
+class TestPrimaryBoxUnderARepointedWorkspaces:
+    """A PRIMARY box whose workspace lies inside a registered workset's RESOLVED
+    ``workset.workspaces``.  The path space is where a member MAY live and only a
+    per-workset ``boxes:`` entry makes one a member (spec § Detection & import), so
+    the PRIMARY registry decides — and a member the workset DOES record keeps it."""
+
+    def _repointed(self, env, ws_name, workspaces_dir):
+        """A NAMED workset whose ``workset.workspaces`` is repointed at *workspaces_dir*."""
+        config, std, tmp_home = env
+        ws = create_workset(ws_name, tmp_home / f"{ws_name}_root", std)
+        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": str(workspaces_dir)}})
+        return load_workset(ws.root, ws.name, early_system=std.early_system)
+
+    def _under_repointed(self, env, box="beta", ws_name="wsa", dir_name="extws"):
+        """A primary box whose workspace sits under a repointed ``workset.workspaces``.
+
+        The repointed dir is the box's OWN parent, so a destination beside it is
+        outside the workset's path space.
+        """
+        config, std, tmp_home = env
+        pdir = tmp_home / dir_name / box
+        pdir.mkdir(parents=True)
+        (pdir / "file.txt").write_text("keep")
+        resolve_project(std, config, project_dir=str(pdir), initialize=True)
+        return pdir, self._repointed(env, ws_name, pdir.parent)
+
+    def _recorded_member(self, env, ws_name, data_dir, member):
+        """An in-tree member of a repointed workset whose leaf is ALSO a PRIMARY box."""
+        from kanibako.settings.paths import (
+            WorksetSpec, register_primary_box_name, resolve_workset_project,
+        )
+
+        config, std, tmp_home = env
+        ws = self._repointed(env, ws_name, data_dir)
+        leaf = data_dir / member
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("member")
+        add_project(ws, member, leaf, std)
+        resolve_workset_project(
+            WorksetSpec.from_workset(ws), member, std, config, initialize=True,
+        )
+        register_primary_box_name(std.primary_workset, member, leaf, early=_early_scope(std, BoxMode.primary))
+        return ws, leaf
+
+    def test_the_primary_registry_decides_not_the_workset_path_space(self, env):
+        """The ordering this pins: the path space DOES claim the dir, and the PRIMARY
+        registry decides anyway — a bare containment is not a membership record."""
+        from kanibako.settings.paths import detect_project_mode
+
+        config, std, tmp_home = env
+        pdir, ws = self._under_repointed(env)
+        assert detect_project_mode(pdir, std, config).mode is BoxMode.named
+        state = resolve_lifecycle_target("beta", std, config)
+        assert state.mode is BoxMode.primary
+        assert state.name == "beta"
+        assert state.ws is None
+
+    def test_the_path_form_resolves_too(self, env):
+        """PIN: the workspace path reaches the same box the bare name does."""
+        config, std, tmp_home = env
+        pdir, ws = self._under_repointed(env)
+        assert resolve_lifecycle_target(str(pdir), std, config).mode is BoxMode.primary
+
+    def test_move_reaches_the_box(self, env, capsys):
+        """PIN: ``box move`` relocates the box instead of refusing to find it."""
+        config, std, tmp_home = env
+        pdir, ws = self._under_repointed(env)
+        dest = tmp_home / "moved"
+        assert run_move(_move_args("beta", dest)) == 0
+        assert (dest / "file.txt").read_text() == "keep"
+        assert not pdir.exists()
+        assert str(dest.resolve()) in load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)).values()
+
+    def test_convert_under_another_name_refuses_rather_than_copy_the_workspace(
+        self, env, capsys
+    ):
+        """PIN: an in-place convert under another name would leave the source tree
+        behind with no box owning it, so it refuses instead of copying."""
+        config, std, tmp_home = env
+        pdir, ws = self._under_repointed(env)
+        rc = run_convert(_convert_args("beta", to_workset="wsa", name="beta2"))
+        assert rc == 1
+        # ⚑ ON THE FILESYSTEM, not just the return code: the copy this refuses is
+        # invisible to a membership-only assertion.
+        assert not (pdir.parent / "beta2").exists()
+        assert (pdir / "file.txt").read_text() == "keep"
+        assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))["beta"] == str(pdir)
+        assert not any(p.name == "beta2" for p in load_workset(ws.root, "wsa", early_system=std.early_system).projects)
+
+    def test_convert_under_another_name_with_move_lands_one_tree(self, env):
+        """PIN: the route the refusal names — ``--move`` — relocates the tree, so
+        exactly one workspace exists and the member owns it."""
+        config, std, tmp_home = env
+        pdir, ws = self._under_repointed(env)
+        rc = run_convert(
+            _convert_args("beta", to_workset="wsa", name="beta2", move=_BARE_MOVE)
+        )
+        assert rc == 0
+        assert not pdir.exists()
+        assert [p.name for p in pdir.parent.iterdir()] == ["beta2"]
+        assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+        assert any(p.name == "beta2" for p in load_workset(ws.root, "wsa", early_system=std.early_system).projects)
+
+    def test_convert_in_place_under_its_own_name_records_where_it_stands(self, env):
+        """PIN: the box's own path IS the landing leaf, so the same-name convert
+        records it there and copies nothing."""
+        config, std, tmp_home = env
+        pdir, ws = self._under_repointed(env)
+        rc = run_convert(_convert_args("beta", to_workset="wsa"))
+        assert rc == 0
+        assert (pdir / "file.txt").read_text() == "keep"
+        assert [q.name for q in pdir.parent.iterdir()] == ["beta"]
+        assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+        member = next(
+            p for p in load_workset(ws.root, "wsa", early_system=std.early_system).projects if p.name == "beta"
+        )
+        assert Path(member.source_path).resolve() == pdir.resolve()
+
+    def test_a_recorded_member_keeps_the_workset(self, env):
+        """PIN: a member the workset records at this path is NOT stolen by the
+        PRIMARY registry, even when the same path is a primary box."""
+        config, std, tmp_home = env
+        ws, leaf = self._recorded_member(env, "wsa2", tmp_home / "wsdata", "alpha")
+        state = resolve_lifecycle_target("alpha", std, config)
+        assert state.mode is BoxMode.named
+        assert state.owner == "workset:wsa2"
+        assert state.workspace_path == leaf.resolve()
+
+    def test_a_connected_external_member_keeps_the_workset(self, env):
+        """PIN: the EXTERNAL connect record is a membership too — the one no path
+        containment finds, since the leaf is outside every workset root."""
+        from kanibako.settings.paths import (
+            WorksetSpec, register_primary_box_name, resolve_workset_project,
+        )
+
+        config, std, tmp_home = env
+        ws = create_workset("wsa3", tmp_home / "wsa3_root", std)
+        leaf = tmp_home / "extmem" / "delta"
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("member")
+        add_project(ws, "delta", leaf, std)
+        resolve_workset_project(
+            WorksetSpec.from_workset(ws), "delta", std, config, initialize=True,
+        )
+        register_primary_box_name(std.primary_workset, "delta", leaf, early=_early_scope(std, BoxMode.primary))
+        state = resolve_lifecycle_target("delta", std, config)
+        assert state.mode is BoxMode.named
+        assert state.owner == "workset:wsa3"
+
+
+# ---------------------------------------------------------------------------
+# a refusal's cure is the next command the user runs
+# ---------------------------------------------------------------------------
+
+def _printed_routes(err):
+    """The ``kanibako box …`` commands a refusal printed, in the order printed."""
+    return re.findall(r"`(kanibako box (?:convert|move) [^`]+)`", err)
+
+
+def _run_printed(route, *, move_dest=None):
+    """Re-dispatch a printed route to the entry point it names.
+
+    PIN BY RUNNING, NOT BY TEXT: the argv the refusal printed is what reaches
+    ``run_convert`` / ``run_move``.  Only ``<path>`` is filled in — a refusal
+    prints a placeholder where the user supplies their own destination — and
+    ``force`` stands in for the confirmation a human types.
+    """
+    argv = route.split()[2:]  # drop the leading `kanibako box`
+    verb, rest = argv[0], list(argv[1:])
+    if move_dest is not None:
+        rest = [move_dest if a == "<path>" else a for a in rest]
+
+    def flag(name):
+        return rest[rest.index(name) + 1] if name in rest else None
+
+    if verb == "convert":
+        return run_convert(_convert_args(
+            rest[0], to_workset=flag("--workset"),
+            move=(_BARE_MOVE if "--move" in rest else None),
+            name=flag("--name"),
+        ))
+    return run_move(_move_args(
+        rest[0], rest[1], to_workset=flag("--workset"), name=flag("--name"),
+    ))
+
+
+def _standalone_under_repointed(env, box="beta", ws_name="wsa", dir_name="extws"):
+    """A STANDALONE box whose ROOT sits under a repointed ``workset.workspaces``.
+
+    The repointed dir is the box root's own parent, so a destination beside it
+    is outside the workset's path space.
+    """
+    config, std, tmp_home = env
+    root = tmp_home / dir_name / box
+    root.mkdir(parents=True)
+    (root / "file.txt").write_text("keep")
+    proj = resolve_standalone_project(
+        std, config, project_dir=str(root), initialize=True,
+    )
+    ws = create_workset(ws_name, tmp_home / f"{ws_name}_root", std)
+    dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": str(root.parent)}})
+    return proj, load_workset(ws.root, ws.name, early_system=std.early_system)
+
+
+class TestRefusalCuresReachTheBoxTheyName:
+    """Every command an in-tree refusal prints, RUN as printed.
+
+    A bare box NAME is not a reference every mode answers to, so the reference
+    a refusal prints is the one its source's mode resolves.
+    """
+
+    def _in_place_refusal(self, env, capsys):
+        config, std, tmp_home = env
+        assert run_convert(_convert_args(str(tmp_home / "extws" / "beta"),
+                                         to_workset="wsa")) == 1
+        return _printed_routes(capsys.readouterr().err)
+
+    def _in_tree_refusal(self, env, capsys):
+        config, std, tmp_home = env
+        assert run_move(_move_args(
+            str(tmp_home / "extws" / "beta"), tmp_home / "extws" / "other",
+            to_workset="wsa",
+        )) == 1
+        return _printed_routes(capsys.readouterr().err)
+
+    @pytest.mark.parametrize("route_index", [0, 1])
+    def test_both_in_place_convert_cures_run_for_a_standalone_source(
+        self, env, capsys, route_index,
+    ):
+        """PIN: each cure the in-place convert names, run as printed, lands the
+        standalone box."""
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        routes = self._in_place_refusal(env, capsys)
+        assert len(routes) == 2
+
+        move_dest = tmp_home / "elsewhere" / "beta"
+        assert _run_printed(routes[route_index], move_dest=str(move_dest)) == 0
+
+        members = load_workset(ws.root, "wsa", early_system=std.early_system).projects
+        if routes[route_index].split()[2] == "convert":
+            # the member now stands at the workset's own leaf
+            assert [p.name for p in members] == [proj.name]
+            assert Path(members[0].source_path).resolve() == (
+                tmp_home / "extws" / proj.name
+            ).resolve()
+        else:
+            # moved OUT of the workset: standalone again, at the path the user gave
+            assert members == []
+            from kanibako.project import registry_store
+
+            assert list(registry_store.load_standalone(std.registry).values()) == [
+                str(move_dest)
+            ]
+
+    @pytest.mark.parametrize("route_index", [0, 1])
+    def test_both_in_tree_landing_cures_run_for_a_standalone_source(
+        self, env, capsys, route_index,
+    ):
+        """PIN: each cure the in-tree-landing refusal names, run as printed, puts
+        the member at the leaf the refusal named."""
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        routes = self._in_tree_refusal(env, capsys)
+        assert len(routes) == 2
+
+        assert _run_printed(routes[route_index]) == 0
+
+        members = load_workset(ws.root, "wsa", early_system=std.early_system).projects
+        assert [p.name for p in members] == [proj.name]
+        leaf = tmp_home / "extws" / proj.name
+        assert Path(members[0].source_path).resolve() == leaf.resolve()
+        assert not (tmp_home / "extws" / "other").exists()
+
+    def test_the_cure_is_a_reference_the_resolver_takes_back(self, env, capsys):
+        """PIN: the reference printed resolves to the SAME box the refusal fired
+        on, and the box's own workspace path does NOT — it is nested under the
+        root, so a root inside a workset's path space makes the mode read from
+        the path space rather than from the box."""
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        for route in self._in_place_refusal(env, capsys):
+            again = resolve_lifecycle_target(route.split()[3], std, config)
+            assert again.mode is BoxMode.standalone
+            assert again.name == proj.name
+        from kanibako.errors import WorksetError
+
+        with pytest.raises(WorksetError):
+            resolve_lifecycle_target(
+                str(tmp_home / "extws" / "beta" / "workspace"), std, config,
+            )
+
+    def test_an_unregistered_standalone_is_not_reachable_by_name(
+        self, env, capsys,
+    ):
+        """PIN: why the cure prints a path.  An UNregistered standalone is in no
+        registry the lifecycle route reads, so its bare name is path-ified against
+        the shell's cwd and misses; the box stays reachable by path (spec
+        § Detection & import: unregistered ⇒ path or ancestor-walk only)."""
+        from kanibako.errors import ProjectError
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        registry_store.unregister_standalone(std.registry, proj.name)
+        assert proj.name not in registry_store.load_standalone(std.registry)
+        with pytest.raises(ProjectError):
+            resolve_lifecycle_target(proj.name, std, config)
+
+    def test_a_registered_standalone_is_reachable_by_name(self, env, capsys):
+        """The other side of that same door: once the standalone IS registered,
+        ``box create --standalone --register``'s promise holds — the bare name
+        resolves to the box instead of being path-ified against the cwd."""
+        from kanibako.project import registry_store
+
+        config, std, tmp_home = env
+        proj, ws = _standalone_under_repointed(env)
+        root = tmp_home / "extws" / "beta"
+        assert proj.name in registry_store.load_standalone(std.registry)
+
+        state = resolve_lifecycle_target(proj.name, std, config)
+        assert state.mode is BoxMode.standalone
+        assert state.name == proj.name
+        assert Path(state.metadata_path).resolve() == root.resolve()
+
+    @pytest.mark.parametrize("owner", ["beta", "foo"])
+    def test_the_connect_in_place_cure_runs(self, env, capsys, owner):
+        """PIN: ``workset connect`` on a primary box's in-tree leaf prints an in-place
+        convert that lands the box at that leaf, whether or not its name is the leaf's."""
+        from kanibako.commands.workset_cmd import run_connect
+
+        config, std, tmp_home = env
+        leaf = tmp_home / "extws" / "beta"
+        leaf.mkdir(parents=True)
+        (leaf / "file.txt").write_text("keep")
+        resolve_project(std, config, project_dir=str(leaf), initialize=True,
+                        name_override=owner)
+        ws = create_workset("wsa", tmp_home / "wsa_root", std)
+        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": str(leaf.parent)}})
+        assert run_connect(argparse.Namespace(
+            workset="wsa", source=str(leaf), project_name=None, force=False,
+        )) == 1
+        err = capsys.readouterr().err
+        route = re.findall(r"'(kanibako box convert [^']+)'", err)[0]
+
+        assert _run_printed(route) == 0
+        members = load_workset(ws.root, "wsa", early_system=std.early_system).projects
+        assert [p.name for p in members] == ["beta"]
+        assert Path(members[0].source_path).resolve() == leaf.resolve()
+        assert (leaf / "file.txt").read_text() == "keep"
+        assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+
+
+class TestRelocationOutOfTheLandingLeaf:
+    """A box moving OUT of the leaf it stands in is not a collision with itself."""
+
+    def test_box_move_out_of_the_repointed_leaf_is_exempt(self, env):
+        """PIN: the unregistered-leaf exemption reads no relocation test.  The
+        whole workspace moves, the workset records the new path as an EXTERNAL
+        member, the in-path-space leaf is left as a link to it, and exactly one
+        copy of the tree exists."""
+        config, std, tmp_home = env
+        pdir = tmp_home / "extws" / "beta"
+        pdir.mkdir(parents=True)
+        (pdir / "file.txt").write_text("keep")
+        resolve_project(std, config, project_dir=str(pdir), initialize=True)
+        ws = create_workset("wsa", tmp_home / "wsa_root", std)
+        dump_doc(ws.root / "workset.yaml", {"workset": {"workspaces": str(pdir.parent)}})
+
+        dest = tmp_home / "elsewhere" / "beta"
+        assert run_move(_move_args("beta", dest, to_workset="wsa")) == 0
+
+        assert pdir.is_symlink()
+        assert pdir.resolve() == dest.resolve()
+        assert (dest / "file.txt").read_text() == "keep"
+        assert load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)) == {}
+        member = next(p for p in load_workset(ws.root, "wsa", early_system=std.early_system).projects
+                      if p.name == "beta")
+        assert Path(member.source_path).resolve() == dest.resolve()

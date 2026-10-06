@@ -2586,46 +2586,19 @@ source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
 section = "keys"
 where = { holds = "kinemata_views:declares_no_floor_value" }
 
-# FACT: the manifest's `system.*` rows agree with the keyspace SPEC's §2g table,
-# the authority they project. Three views of one row set, each with one oracle
-# over `kinemata_views.system_settings_rows` (the spec read by heading and
-# column; KANI_CANON names the canon root, which CI clones from the wiki):
-# `spec-2g-defaults` compares the 15 stated defaults (a `null` row has no spec
-# value to compare), `spec-2g-keys` the 17-key membership, and
-# `spec-2g-not-keys` the two names the table declares are NOT keys.
-[[registry]]
-name = "spec-2g-defaults"
-kind = "yaml-mapping"
-source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
-section = "keys"
-where = { holds = "kinemata_views:system_value_row" }
-
-[[registry]]
-name = "spec-2g-keys"
-kind = "yaml-mapping"
-source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
-section = "keys"
-where = { id_matches = '^system\.' }
-
-[[registry]]
-name = "spec-2g-not-keys"
-kind = "yaml-mapping"
-source = "src/kanibako/data/rom/settings/keyspace-manifest.yaml"
-section = "keys"
-where = { id_matches = '^system\.' }
-
 # ---------------------------------------------------------------------------
 # THE PARITY ORACLES. Each one runs a command that prints what the CODE really
 # produces and compares that set against what a registry above DECLARES. The
-# three `spec-2g-*` oracles are the exception: they print what the keyspace SPEC
-# states, the authority the manifest's `system.*` rows project.
+# views whose oracle reads the keyspace SPEC instead (`spec-2g-*`,
+# `agent-<node>-stated`) live in `kinemata-spec.toml`: the spec is not in this
+# repository, so CI cannot run them.
 #
 # 🛑 NOTHING BELOW THIS LINE MAY BE A `[[registry]]`, AND THAT IS NOT COSMETIC.
 # These are TOML TABLES: every key after a `[[parity]]` or `[[gate]]` header
 # belongs to that table, not to the registry above it. Keep new `[[registry]]`
 # tables ABOVE this line and new `[claims]` keys up beside `[claims]`.
 #
-# ⚑ AN ORACLE READS THE CODE (OR, FOR `spec-2g-*`, THE SPEC), NEVER THE FILE IT
+# ⚑ AN ORACLE READS THE CODE, NEVER THE FILE IT
 # IS BEING CHECKED AGAINST. One that parsed `keyspace-manifest.yaml` would
 # compare that file with itself and pass for a tree in any state -- and a vacuous run is indistinguishable from a
 # clean one, which is the failure mode this whole adoption exists to avoid.
@@ -5372,130 +5345,6 @@ for key in sorted(produced):
     print(f"kanibako-fresh-path: {key}")
 """]
 extract = '(?m)^kanibako-fresh-path: (.+)$'
-
-# THE SPEC IS THE AUTHORITY HERE, so `authority = "produced"`: the oracle prints
-# the §2g table and the manifest is the claim. NOT EXPRESSIBLE, and so not
-# compared: the `(unset)` value halves, the Notes column, and the type/set/scope
-# cells and behavior prose the table does not carry. A missing spec, a moved
-# heading or a reshaped table exits the oracle nonzero.
-[[parity]]
-registry = "spec-2g-defaults"
-command = ["{python}", "-c", """
-from kinemata_views import system_settings_rows
-for kind, key, default in system_settings_rows():
-    if kind == "value":
-        print(f"keyspec-2g: {key}={default}")
-"""]
-extract = '(?m)^keyspec-2g: ([^\s=]+)=(.+)$'
-field = "default"
-authority = "produced"
-translate = { map = { "True" = "true", "False" = "false" } }
-
-[[parity]]
-registry = "spec-2g-keys"
-command = ["{python}", "-c", """
-from kinemata_views import system_settings_rows
-for kind, key, _ in system_settings_rows():
-    if kind != "not-key":
-        print(f"keyspec-2g-key: {key}")
-"""]
-extract = '(?m)^keyspec-2g-key: (.+)$'
-
-[[parity]]
-registry = "spec-2g-not-keys"
-command = ["{python}", "-c", """
-from kinemata_views import system_settings_rows
-for kind, key, _ in system_settings_rows():
-    if kind == "not-key":
-        print(f"keyspec-2g-not-key: {key}")
-"""]
-extract = '(?m)^keyspec-2g-not-key: (.+)$'
-relation = "disjoint"
-
-# FACT: each shipped node's descriptor states the defaults keyspec §2d states for
-# it, at `agent.<node>.*`. One view per node, and the cell CLASSIFICATION lives in
-# `kinemata_views.classify_spec_cell` -- these tables name the views and restate
-# none of its rules (P10). The spec is the authority here, so
-# `authority = "produced"` exactly as for `spec-2g-*`: the oracle prints §2d and
-# the descriptor is the claim.
-# The view compares the STATED literals (`label`, `transform`, the `env.*` rows,
-# the pseudo-agent's `access`/`allow_helpers`/`bootstrap`). A default stated where
-# §2d states none -- claude `model: "opus"`, the row the conformance board probes --
-# is a produced value with no spec row behind it, and reds here.
-# KEYS ARE NOT COMPARED: §2d ¶1 and §0 let a plugin define its own
-# `agent.<agent>.*` leaves (goose's `provider`), so a descriptor key §2d does not
-# name is legal, not a finding.
-# NOT EXPRESSIBLE, and so not compared: the dest-keyed `[dest]` entries, the
-# `access`/`model`/`endpoint` realization prose, the `bootstrap` notes, and
-# `agent.<node>.canon`'s `@`-ref (its arm is dynamic, per `pseudo_tier_defaults`).
-# A missing spec, a moved heading or a marker that moved exits the oracle nonzero.
-[[registry]]
-name = "agent-claude-stated"
-kind = "import"
-target = "kinemata_views:AgentStatedDefaults"
-node = "claude"
-
-[[registry]]
-name = "agent-codex-stated"
-kind = "import"
-target = "kinemata_views:AgentStatedDefaults"
-node = "codex"
-
-[[registry]]
-name = "agent-goose-stated"
-kind = "import"
-target = "kinemata_views:AgentStatedDefaults"
-node = "goose"
-
-[[registry]]
-name = "agent-shell-stated"
-kind = "import"
-target = "kinemata_views:AgentStatedDefaults"
-node = "shell"
-
-[[parity]]
-registry = "agent-claude-stated"
-command = ["{python}", "-c", """
-from kinemata_views import node_spec_defaults
-for key, value in node_spec_defaults("claude").items():
-    print(f"keyspec-2d: {key}={value}")
-"""]
-extract = '(?m)^keyspec-2d: (\S+)=(.+)$'
-field = "default"
-authority = "produced"
-
-[[parity]]
-registry = "agent-codex-stated"
-command = ["{python}", "-c", """
-from kinemata_views import node_spec_defaults
-for key, value in node_spec_defaults("codex").items():
-    print(f"keyspec-2d: {key}={value}")
-"""]
-extract = '(?m)^keyspec-2d: (\S+)=(.+)$'
-field = "default"
-authority = "produced"
-
-[[parity]]
-registry = "agent-goose-stated"
-command = ["{python}", "-c", """
-from kinemata_views import node_spec_defaults
-for key, value in node_spec_defaults("goose").items():
-    print(f"keyspec-2d: {key}={value}")
-"""]
-extract = '(?m)^keyspec-2d: (\S+)=(.+)$'
-field = "default"
-authority = "produced"
-
-[[parity]]
-registry = "agent-shell-stated"
-command = ["{python}", "-c", """
-from kinemata_views import node_spec_defaults
-for key, value in node_spec_defaults("shell").items():
-    print(f"keyspec-2d: {key}={value}")
-"""]
-extract = '(?m)^keyspec-2d: (\S+)=(.+)$'
-field = "default"
-authority = "produced"
 
 # ---------------------------------------------------------------------------
 # THE SHAPE RULES. `[[shape]]` reads only the declaration and asks whether it is
