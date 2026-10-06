@@ -38,8 +38,8 @@ def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool
 def _resolve_primary_state(root: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
 def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None
 def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
-def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, is_external: bool=False, workspace: Path | None=None) -> ProjectState
-def _workspace_copy_ignore(metadata_root: Path, copied_root: Path) -> Callable[[str, list[str]], set[str]]
+def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, early: EarlyScope, is_external: bool=False, workspace: Path | None=None) -> ProjectState
+def _workspace_copy_ignore(metadata_root: Path, copied_root: Path, *, early: EarlyScope) -> Callable[[str, list[str]], set[str]]
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
@@ -48,7 +48,7 @@ def _retire_old_workspace(old: Path, landed: Path) -> None
 def _apply_ownership_and_markers(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, target_mode: BoxMode, target_ws: Workset | None, new_name: str, new_workspace: Path, relocating: bool, dest: Path | None, requested_name: str='') -> ProjectState
 def _unwind_box_tree(path: Path) -> None
 def _copy_metadata(src_metadata: Path, src_shell: Path, dst_metadata: Path, *, shell_into_metadata: bool, home_leaf: str='home', unwind: _Unwind) -> Path
-def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> None
+def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path, *, early: EarlyScope) -> None
 def _vault_leaf_has_contents(leaf: Path) -> bool
 def _copy_vault_leaf_contents(src: Path, dst: Path | None) -> None
 def _vault_copy_failure_message(src: Path, dst: Path, err: shutil.Error) -> str
@@ -64,9 +64,9 @@ def _remove_old_metadata(state: ProjectState, std: StandardPaths, config: Bootst
 def _retire_old_store(ws: Workset, name: str, dst_vault: tuple[Path | None, Path | None], vault_enabled: bool=True, *, reraise: bool=False) -> None
 def _report_store_leftovers(ws: Workset, name: str, err: OSError | None=None, *, keep: list[tuple[Path, str]] | None=None) -> None
 def _to_default(state: ProjectState, std: StandardPaths, config: BootstrapConfig, unwind: _Unwind, *, new_name: str, new_workspace: Path, requested_name: str='') -> ProjectState
-def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None) -> Path
-def _resolve_standalone_boxes(root: Path, doc: Mapping[str, Any] | None) -> Path
-def _standalone_root_artifacts(root: Path) -> list[tuple[str, Path, bool]]
+def _resolve_standalone_workspaces(root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope) -> Path
+def _resolve_standalone_boxes(root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope) -> Path
+def _standalone_root_artifacts(root: Path, *, early: EarlyScope) -> list[tuple[str, Path, bool]]
 def _artifact_claiming(child: Path, artifacts: list[tuple[str, Path, bool]]) -> tuple[str, Path, bool] | None
 def _consolidate_workspace_subdir(root: Path, workspace_subdir: Path, unwind: _Unwind, *, early: EarlyScope) -> None
 def _undo_consolidate(src_dir: Path, dest_dir: Path, moved: list[Path]) -> None

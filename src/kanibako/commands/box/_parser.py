@@ -1757,10 +1757,9 @@ def _teardown_standalone_box(
     from kanibako.settings.paths import (
         report_retained_store, standalone_store_teardown_plan)
 
-    # ⚑ RESOLVED, and only a store STRICTLY BELOW *root* is removed — the split and its
-    # reason are :func:`standalone_store_teardown_plan`'s.  A ``None`` store therefore
-    # means RETAINED, so the ROOT workset.yaml must stay: unlinking it now would strand a
-    # box whose metadata is still on disk.
+    # ⚑ Only a store STRICTLY BELOW *root* is removed — the split and its reason are
+    # :func:`standalone_store_teardown_plan`'s.  A ``None`` store means RETAINED, so the
+    # ROOT workset.yaml must stay.
     metadata_dir, retained_store = standalone_store_teardown_plan(root, early=early)
     removable_vault, retained_vault, logs_dir, box_name = plan
     # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
@@ -1865,7 +1864,8 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
         return 1
 
     if kind == "standalone":
-        exists = standalone_box_store(root).is_dir()
+        exists = standalone_box_store(
+            root, early=_early_scope(std, BoxMode.standalone)).is_dir()
     else:
         exists = metadata_dir.is_dir()
 

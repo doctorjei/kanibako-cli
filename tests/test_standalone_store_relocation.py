@@ -21,7 +21,8 @@ from pathlib import Path
 import pytest
 
 from kanibako.settings.config_io import write_nested_key
-from kanibako.settings.paths import resolve_standalone_project
+from kanibako.settings.paths import (
+    BoxMode, _early_scope, resolve_standalone_project)
 
 
 def _make_standalone(config, std, tmp_home, leaf: str) -> Path:
@@ -274,7 +275,8 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
         via = tmp_home / "esc_symlinked_root_link"
         via.symlink_to(root)
 
-        removable, retained = standalone_store_teardown_plan(via)
+        removable, retained = standalone_store_teardown_plan(
+            via, early=_early_scope(std, BoxMode.standalone))
 
         assert removable == store.resolve()
         assert retained is None
@@ -291,7 +293,8 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
         via = tmp_home / "esc_real_spelling_link"
         via.symlink_to(root)
 
-        removable, retained = standalone_store_teardown_plan(via)
+        removable, retained = standalone_store_teardown_plan(
+            via, early=_early_scope(std, BoxMode.standalone))
 
         assert removable == store.resolve()
         assert retained is None

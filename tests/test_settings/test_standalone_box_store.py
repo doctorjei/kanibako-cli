@@ -25,6 +25,7 @@ from kanibako.commands import clean as clean_cmd
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import (
     BoxMode,
+    _early_scope,
     box_metadata_dir,
     box_workset_settings_paths,
     resolve_standalone_project,
@@ -64,7 +65,9 @@ class TestTheStoreFollowsTheKey:
         """The common case is unchanged: no ``workset.boxes``, so ``<root>/box_data``."""
         root, _name = _make_standalone(config, std, tmp_home, "sa_default")
 
-        assert box_metadata_dir(BoxMode.standalone, root) == root / "box_data"
+        assert box_metadata_dir(
+            BoxMode.standalone, root, early=_early_scope(std, BoxMode.standalone)
+        ) == root / "box_data"
 
     def test_home_follows_a_repoint(self, config, std, tmp_home):
         """Home is spelled once against the store, so it moves with the key."""
@@ -90,7 +93,9 @@ class TestTheStoreFollowsTheKey:
         root, _name = _make_standalone(config, std, tmp_home, "sa_meta")
         store = _relocate(root, tmp_home / "meta_store")
 
-        assert box_metadata_dir(BoxMode.standalone, root) == store
+        assert box_metadata_dir(
+            BoxMode.standalone, root, early=_early_scope(std, BoxMode.standalone)
+        ) == store
 
 
 class TestPurgeWithARelocatedStore:

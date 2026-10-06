@@ -27,7 +27,8 @@ from pathlib import Path
 import pytest
 
 from kanibako.settings.config_io import write_nested_key
-from kanibako.settings.paths import resolve_standalone_project
+from kanibako.settings.paths import (
+    BoxMode, _early_scope, resolve_standalone_project)
 
 
 def _standalone(config, std, tmp_home, leaf: str, *, register: bool = True):
@@ -95,7 +96,9 @@ class TestTheJournalKeyFollowsTheStore:
             std.journal, key, op="create", name=root.name, mode="standalone",
         )
 
-        got = import_reconcile.import_standalone(std.registry, root, journal=std.journal)
+        got = import_reconcile.import_standalone(
+            std.registry, root, journal=std.journal,
+            early=_early_scope(std, BoxMode.standalone))
 
         assert got is None, "a pending create is create --recover's box, not an import's"
         assert registry_store.standalone_name_for_root(std.registry, root.resolve()) is None
@@ -109,7 +112,9 @@ class TestTheJournalKeyFollowsTheStore:
         root = _standalone(config, std, tmp_home, "jk_default", register=False)
         assert (root / "box_data").is_dir()
 
-        got = import_reconcile.import_standalone(std.registry, root, journal=std.journal)
+        got = import_reconcile.import_standalone(
+            std.registry, root, journal=std.journal,
+            early=_early_scope(std, BoxMode.standalone))
 
         assert got is not None, "an unregistered on-disk box is importable"
         assert registry_store.standalone_name_for_root(std.registry, root.resolve()) == got
@@ -133,7 +138,9 @@ class TestTheJournalKeyFollowsTheStore:
             std.journal, key, op="import", name=root.name, mode="standalone",
         )
 
-        import_reconcile.import_standalone(std.registry, root, journal=std.journal)
+        import_reconcile.import_standalone(
+            std.registry, root, journal=std.journal,
+            early=_early_scope(std, BoxMode.standalone))
 
         assert journal_mod.pending_entry(std.journal, key) is None
 
@@ -200,6 +207,13 @@ class TestTheWorkspaceCopyOmitsTheStore:
 
         The containment test is the one ``standalone_store_teardown_plan`` uses, so a store
         reached through ``..`` or a symlinked parent cannot name a directory in the copy.
+
+        ⚑ AND THE ONLY ``box_data`` THIS NAMES IS THE ONE THE KEY POINTS AT.  Here
+        ``workset.boxes`` is repointed to ``outside_ws/box_data``, so THAT path is the
+        store and is excluded; the locator at ``<root>/box_data`` is a different path in a
+        tree this walk never visits, and is not.  An exclusion is a resolved path the walk
+        is visiting — never the bare name, which is what used to take a user's ``box_data``
+        at any depth.
         """
         from kanibako.commands.box._lifecycle import _workspace_copy_ignore
         from kanibako.settings.paths import resolve_standalone_project as _r
@@ -209,16 +223,28 @@ class TestTheWorkspaceCopyOmitsTheStore:
         elsewhere = tmp_home / "outside_ws"
         elsewhere.mkdir()
         (elsewhere / "code.py").write_text("x\n")
+        (elsewhere / "box_data").mkdir()
+        (elsewhere / "box_data" / "USER_FILE.txt").write_text("mine\n")
         # The store leaves the root by spelling, and the copied tree is elsewhere.
         write_nested_key(root / "workset.yaml", ("workset",), "boxes",
                          "@meta.workset.path/../outside_ws/box_data")
-        (tmp_home / "outside_ws" / "box_data").mkdir()
         _r(std, config, str(root))
 
-        ignore = _workspace_copy_ignore(root.resolve(), elsewhere.resolve())
+        ignore = _workspace_copy_ignore(
+            root.resolve(), elsewhere.resolve(),
+            early=_early_scope(std, BoxMode.standalone))
 
-        assert "store" not in set(ignore(str(elsewhere), ["code.py", "store"]))
-        assert "box_data" in set(ignore(str(elsewhere), ["code.py", "box_data"]))
+        skipped = set(ignore(str(elsewhere), ["code.py", "store", "box_data"]))
+        assert "store" not in skipped, "a store reached through `..` names nothing here"
+        # ⚑ The repointed store IS this path, so it IS excluded — by resolved path.
+        assert "box_data" in skipped
+        # ⚑ AND the locator, at a different path in an unvisited tree, is NOT what the
+        # name alone would have skipped: a user's own `box_data` elsewhere survives.
+        user_dir = tmp_home / "user_code" / "box_data"
+        user_dir.mkdir(parents=True)
+        assert "box_data" not in set(
+            ignore(str(user_dir.parent), ["code.py", "box_data"])), (
+            "a box_data that is neither the store nor the locator is the USER's own")
         assert store.is_dir()
 
 
@@ -251,7 +277,8 @@ class TestTheRootSweepKeepsTheStore:
             "boxes": "@meta.workset.path/store",
             "workspaces": "@meta.workset.path/nested",
         }})
-        assert standalone_box_store(root) == store
+        assert standalone_box_store(
+            root, early=_early_scope(std, BoxMode.standalone)) == store
 
         state = resolve_lifecycle_target(str(root), std, config)
         new = execute_lifecycle(
@@ -317,6 +344,122 @@ class TestTheRootSweepKeepsTheStore:
         })
 
         with pytest.raises(SettingsError, match="workset.boxes"):
-            _standalone_root_artifacts(root)
+            _standalone_root_artifacts(
+                root, early=_early_scope(std, BoxMode.standalone))
 
         assert (root / "file.txt").read_text() == "mine", "nothing is swept on the refusal"
+
+class TestTheCopyExcludesTheStoreByPathNotByName:
+    """A box's own store is excluded BY PATH; a user's own ``box_data/`` is not."""
+
+    def test_a_nested_user_box_data_survives_a_duplicate(self, config, std, tmp_home):
+        """⚑ DATA SAFETY, PINNED THROUGH THE REAL DOOR: the user's own code travels.
+
+        ``shutil.ignore_patterns("box_data")`` matches that NAME at any depth, so a
+        duplicate silently dropped the source's own ``src/box_data/`` — code the box never
+        used and kanibako never wrote.
+        """
+        from kanibako.project.workset import create_workset
+
+        root = _standalone(config, std, tmp_home, "nested_user")
+        # The user's OWN directories, named as kanibako's own store.
+        (root / "src" / "box_data").mkdir(parents=True)
+        (root / "src" / "box_data" / "user_code.py").write_text(
+            "print('mine')\n")
+        (root / "lib" / "box_data").mkdir(parents=True)
+        (root / "lib" / "box_data" / "NOTES.md").write_text("mine\n")
+        _workspace_at(root)          # the store sits inside the tree being copied
+        ws = create_workset("wsn", tmp_home / "wsn_root", std)
+
+        rc = _cli("box", "duplicate", str(root), str(tmp_home / "dup_nested"),
+                  "--to", "named", "--workset", "wsn", "--force")
+
+        assert rc == 0
+        dup_ws = ws.workspaces_dir / "nested_user"
+        assert (dup_ws / "src" / "box_data" / "user_code.py").read_text() == "print('mine')\n"
+        assert (dup_ws / "lib" / "box_data" / "NOTES.md").read_text() == "mine\n"
+        # ⚑ AND the box's OWN store is still excluded — the fix is not "copy everything".
+        assert not (dup_ws / "box_data").exists()
+        assert (root / "box_data").is_dir()
+
+    def test_a_relocated_store_and_a_user_box_data_are_told_apart(
+            self, config, std, tmp_home):
+        """⚑ BOTH AT ONCE: the resolved store goes, the user's identically-named one stays."""
+        from kanibako.project.workset import create_workset
+
+        root = _standalone(config, std, tmp_home, "both_at_once")
+        store = _relocate_store(root, "store")
+        (root / "src" / "box_data").mkdir(parents=True)
+        (root / "src" / "box_data" / "user_code.py").write_text("print('mine')\n")
+        _workspace_at(root)
+        ws = create_workset("wsb", tmp_home / "wsb_root", std)
+
+        rc = _cli("box", "duplicate", str(root), str(tmp_home / "dup_both"),
+                  "--to", "named", "--workset", "wsb", "--force")
+
+        assert rc == 0
+        dup_ws = ws.workspaces_dir / "both_at_once"
+        assert not (dup_ws / "store").exists(), "the box's resolved store stays out"
+        assert not (dup_ws / "box_data").exists(), "the composed locator stays out"
+        assert (dup_ws / "src" / "box_data" / "user_code.py").is_file(), (
+            "the user's own directory of the same name travels")
+        assert (store / "MY_STORE_DATA.txt").read_text() == "the box's own metadata\n"
+
+    def test_convert_to_workset_leaves_the_store_at_the_source(
+            self, config, std, tmp_home):
+        """⚑ THE CONVERT DOOR, UNTESTED UNTIL NOW (mutation row 2b).
+
+        Convert copies the root's top-level files down into the new workspace dir.  With an
+        IN-TREE relocated store, that sweep carried the store along — the box's own
+        metadata and home duplicated into a workspace — unless the same path-anchored
+        exclusion applies here too.
+        """
+        from kanibako.commands.box._lifecycle import (
+            TargetSpec, execute_lifecycle, resolve_lifecycle_target,
+        )
+        from kanibako.project.workset import create_workset
+        from kanibako.settings.config_io import dump_doc
+
+        ws = create_workset("cw", tmp_home / "cw_root", std)
+        root = tmp_home / "conv_store"
+        root.mkdir()
+        (root / "file.txt").write_text("mine")
+        from kanibako.settings.paths import resolve_project
+        resolve_project(std, config, project_dir=str(root), initialize=True)
+        store = root / "store"
+        store.mkdir()
+        (store / "MY_OWN_THINGS.md").write_text("the user's own data\n")
+        (store / "home").mkdir()
+        (store / "home" / "notes.md").write_text("HOME\n")
+        (store / "box.yaml").write_text("box: {}\n")
+        dump_doc(root / "workset.yaml", {"workset": {
+            "boxes": "@meta.workset.path/store",
+            "workspaces": "@meta.workset.path/nested",
+        }})
+
+        state = resolve_lifecycle_target(str(root), std, config)
+        new = execute_lifecycle(
+            state, TargetSpec(location=ws.workspaces_dir / "conv_store", ownership="cw", name="conv_store"),
+            std, config, confirm=lambda *a, **k: True,
+        )
+        nested = new.workspace_path
+        assert nested.is_dir(), "the destination workspace dir was created"
+        assert nested != root, "the destination is a DIFFERENT directory from the source"
+        # ⚑ DATA SAFETY: ABSENT from the destination workspace...
+        assert not (nested / "store").exists(), (
+            "the box's own store must not be copied into the destination workspace")
+        assert not (nested / "store" / "MY_OWN_THINGS.md").exists()
+        assert not (nested / "store" / "home").exists()
+        # ⚑ ... and NOT duplicated: exactly one copy of the store exists, wherever the
+        # convert left it.  A convert MOVES a workspace, so the store's own content is
+        # either at the source (metadata carried across) or gone with it — what must
+        # never happen is a SECOND copy inside the destination workspace.
+        assert not (nested / "store" / "box.yaml").exists(), (
+            "no second copy of the box's own box tier inside the workspace")
+        assert not (nested / "store" / "home" / "notes.md").exists()
+        if store.is_dir():
+            assert (store / "MY_OWN_THINGS.md").read_text() == "the user's own data\n"
+            assert (store / "home" / "notes.md").read_text() == "HOME\n"
+            assert (store / "box.yaml").is_file()
+        # The user's own file did sweep down — the store is not the user's file.
+        assert (nested / "file.txt").read_text() == "mine"

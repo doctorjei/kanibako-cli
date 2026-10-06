@@ -3071,8 +3071,20 @@ def test_standalone_box_tier_is_the_LAST_cascade_level(tmp_path):
     dump_doc(literal_ws, {"box": {"image": "root/img:1"}})
     dump_doc(literal_box, {"box": {"image": "box/img:2"}})
 
+    from kanibako.channels.channels import WS_TOKEN_STANDALONE
+    from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
+
+    # ⚑ A COMPOSED layout — no ``workset.boxes`` to resolve — so the scope carries no
+    # tier and the box tier is the spec's default leaf, which is exactly what this test
+    # pins.
+    early = EarlyScope(
+        EarlySystem(tier={}, file=literal_ws, system_paths={}),
+        WS_TOKEN_STANDALONE,
+    )
+
     def _image():
-        box_tier, ws_tier = _box_settings_files(BoxMode.standalone, root, None)
+        box_tier, ws_tier = _box_settings_files(
+            BoxMode.standalone, root, None, early=early)
         snap = build_launch_snapshot(
             agent_name="claude", ctx=_ctx(), system_path=None, agent_path=None,
             workset_path=ws_tier, box_path=box_tier,

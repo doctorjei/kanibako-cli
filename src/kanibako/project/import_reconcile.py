@@ -137,7 +137,7 @@ def _clear_stale_import(journal: Path | None, box_path: Path) -> None:
 
 def import_standalone(
     registry: Path, root: Path, *, journal: Path | None = None,
-    early: "EarlyScope | None" = None,
+    early: "EarlyScope",
 ) -> str | None:
     """Reconcile an on-disk standalone box at *root* against ``registry.standalone``.
 
@@ -150,8 +150,7 @@ def import_standalone(
     root = root.resolve()
     root_str = str(root)
     # ⚑ The journal KEY is the RESOLVED store, and it MUST agree with
-    # ``commands/start.py::_box_journal_key`` (``shell_path.parent``): that is the key
-    # ``create`` writes and ``create --recover`` reads, and it moves with ``workset.boxes``.
+    # ``commands/start.py::_box_journal_key`` (``shell_path.parent``).
     store = standalone_box_store(root, early=early)
 
     # Already registered to this exact root → no-op; clear any stale J2 entry.

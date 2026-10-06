@@ -450,30 +450,31 @@ def _state_from_paths(
 # ---------------------------------------------------------------------------
 
 def _workspace_copy_ignore(
-    metadata_root: Path, copied_root: Path,
+    metadata_root: Path, copied_root: Path, *, early: EarlyScope,
 ) -> Callable[[str, list[str]], set[str]]:
     """A workspace copy's *ignore*: never carry the box's OWN store into a workspace.
 
-    ``box_data/`` is the composed standalone store and stays excluded whatever
-    ``workset.boxes`` says — it is the spec's standalone LOCATOR, and dropping the locator
-    stops working the day the key does.  A store the key moved to another in-tree leaf is
-    excluded by its path RELATIVE TO THE COPIED TREE, so no second copy of the box's
-    metadata and home lands beside the workspace it was copied for.
+    ⚑⚑ BY PATH, NEVER BY NAME.  ``shutil.ignore_patterns("box_data")`` matched that name
+    at ANY depth, so a duplicate or a convert silently dropped the user's own
+    ``src/box_data/``.  The two candidates are the composed ``<root>/box_data`` LOCATOR
+    (excluded whatever ``workset.boxes`` says) and the leaf the key resolved to.
 
-    ⚑ Containment is :func:`kanibako.project.workset._path_in_tree`, STRICTLY BELOW the
-    copied root: a store that IS the copied root is the whole tree, and a store outside it
-    is in no tree being copied.
+    ⚑ The gate is ``_path_in_tree`` against *copied_root* — the only test that means
+    "this walk can reach it" — and :func:`ignore` matches the resolved PATH, so a
+    an unvisited directory cannot be named at all.
     """
-    composed = shutil.ignore_patterns(STANDALONE_META_DIR)
-    resolved = standalone_box_store(metadata_root).resolve()
+    resolved = standalone_box_store(metadata_root, early=early).resolve()
     copied = copied_root.resolve()
-    below = resolved != copied and _path_in_tree(resolved, copied)
+    locator = (metadata_root / STANDALONE_META_DIR).resolve()
+    inside = tuple(
+        path for path in (locator, resolved)
+        if path != copied and _path_in_tree(path, copied)
+    )
 
     def ignore(directory: str, names: list[str]) -> set[str]:
-        skipped = set(composed(directory, names))
-        if below and Path(directory).resolve() == resolved.parent:
-            skipped.add(resolved.name)
-        return skipped
+        here = Path(directory).resolve()
+        return {n for path in inside if path.parent == here for n in names
+                if here / n == path}
 
     return ignore
 
@@ -518,7 +519,8 @@ def copy_into_workset(
             dst_workspace = workspace
             ignore = None
             if source_mode == BoxMode.standalone:
-                ignore = _workspace_copy_ignore(metadata_path, source_path)
+                ignore = _workspace_copy_ignore(
+                    metadata_path, source_path, early=_early_scope(std, BoxMode.standalone))
             copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
         _unwind_target_member(ws, proj_name, existed)
@@ -985,7 +987,18 @@ def _run_steps(
                 f"Note: left {old}; remap deletes nothing", file=sys.stderr))
     elif relocating and dest is not None and not state.is_external:
         src = state.workspace_path
-        copy_tree_keeping_links(src, dest)
+        # ⚑⚑ THE PATH-ANCHORED IGNORE, or this copy carries the box's OWN store into the
+        # destination workspace, at the DEFAULT layout too.  The layout root is *src*:
+        # ``workset.boxes`` is carried by the root whose ``workset.yaml`` declares it.
+        copy_tree_keeping_links(
+            src, dest,
+            ignore=_workspace_copy_ignore(
+                src, src,
+                early=EarlyScope(std.early_system, _state_ws_token(state))),
+        )
+        # ⚑⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATED: the copy refuses an existing
+        # ``dest`` (``dirs_exist_ok`` left False), so this rmtree is registered for a
+        # destination this operation built.
         unwind.push(lambda: shutil.rmtree(dest, ignore_errors=True))
         new_workspace = dest
     elif relocating and dest is not None and state.is_external:
@@ -1165,7 +1178,9 @@ def _copy_metadata(
     return dst_shell
 
 
-def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> None:
+def _deliver_carried_box_settings(
+    state: ProjectState, dst_box_tier: Path, *, early: EarlyScope,
+) -> None:
     """Write the source box's carried box-scope settings to *dst_box_tier* (M-8)."""
     from kanibako.settings.config import carried_box_settings
     from kanibako.settings.config_io import dump_doc
@@ -1173,7 +1188,7 @@ def _deliver_carried_box_settings(state: ProjectState, dst_box_tier: Path) -> No
 
     # ⚑ ``group=None`` is harmless: only the WORKSET tier is derived from the group, and
     # the carry reads the BOX tier alone — ProjectState carries no ProjectGroup anyway.
-    src_box, _ = _box_settings_files(state.mode, state.metadata_path, None)
+    src_box, _ = _box_settings_files(state.mode, state.metadata_path, None, early=early)
     carried = carried_box_settings(src_box)
     if carried:
         dump_doc(dst_box_tier, carried)
@@ -1749,7 +1764,7 @@ def _to_default(
     # those differ (root vs ``box_data/``), and the root would drag workspace+vault into
     # the box dir AND land the source's WORKSET-tier file at the dest's BOX tier (M-8).
     src_meta_dir = box_metadata_dir(state.mode, state.metadata_path,
-                                    early=_early_scope(std, state.mode))
+                                    early=EarlyScope(std.early_system, _state_ws_token(state)))
     # Name reused in place ⇒ the metadata IS already at the destination; copying it
     # would be a failing copy-onto-self.
     if dst_metadata.resolve() == state.metadata_path.resolve():
@@ -1759,7 +1774,9 @@ def _to_default(
             src_meta_dir, state.shell_path, dst_metadata,
             shell_into_metadata=True, unwind=unwind,
         )
-        _deliver_carried_box_settings(state, dst_metadata / BOX_META_FILE)
+        _deliver_carried_box_settings(
+            state, dst_metadata / BOX_META_FILE,
+            early=EarlyScope(std.early_system, _state_ws_token(state)))
 
     # Phase 5 fixed PRIMARY table: vault under @config.primary_workset.
     _dst_shell, vault_ro, vault_rw = _primary_box_paths(
@@ -1802,10 +1819,9 @@ def _to_default(
 
 
 #: kanibako artifacts a standalone root keeps whatever ``workset.*`` says: ``box_data/``,
-#: the spec's standalone detection LOCATOR — a MARKER, not the store
-#: (``system-design``); and three FILES: the marker beside it, the legacy root box
-#: tier (drift I), the lock.  They STAY at the root when a convert consolidates everything
-#: else into the workspace dir (drift H).
+#: the spec's detection LOCATOR (a MARKER, not the store); and three FILES — the marker
+#: beside it, the legacy root box tier (drift I), the lock.  They STAY at the root when a
+#: convert consolidates everything else into the workspace dir (drift H).
 #: ⚑⚑ EVERY OTHER ARTIFACT AT THE ROOT IS A DECLARED, REPOINTABLE ``workset.*`` DIRECTORY
 #: KEY AND IS ANSWERED BY :func:`_standalone_root_artifacts`, NEVER BY A NAME.  A leaf name
 #: cannot express ``workset.vault_ro: store/ro`` — the root child is then ``store``, a name
@@ -1835,27 +1851,22 @@ def _resolve_standalone_workspaces(
 
 
 def _resolve_standalone_boxes(
-    root: Path, doc: Mapping[str, Any] | None,
+    root: Path, doc: Mapping[str, Any] | None, *, early: EarlyScope,
 ) -> Path:
-    """``workset.boxes`` for a STANDALONE root — ``standalone=True`` selects the box's own
-    store default, and the resolver is the same one
-    :func:`kanibako.settings.paths.standalone_box_store` reads the key through.
-    """
-    return resolve_workset_boxes(root, doc, standalone=True)
+    """``workset.boxes`` for a STANDALONE root — the resolver ``standalone_box_store`` reads
+    the key through, so the sweep and the box agree on where the store is."""
+    return resolve_workset_boxes(root, doc, standalone=True, early=early)
 
 
 #: The ``workset.*`` DIRECTORY keys a STANDALONE root materializes UNDER ITSELF, each paired
 #: with the resolver that answers it.  ⚑ A standalone root is a degenerate workset root
-#: (``settings/paths.py::_standalone_box_paths``), so these are ordinary workset keys.
-#: ⚑ Derived from the rule "which keys does standalone mode resolve at the root", not from an
-#: inventory of today's directories: ``logs``/``template``/``channelroot`` are absent because
-#: standalone does not materialize them — each resolver says so in its own docstring, and that
-#: is the source to re-read if this list is ever questioned.
-#: ⚑ ``boxes`` is HERE and not held by :data:`_STANDALONE_FIXED_ARTIFACTS` alone: ``box_data/``
-#: is that set's member because it is the detection LOCATOR, which no key moves, while the
-#: STORE behind it answers to ``workset.boxes``.  One name cannot carry both, and a name filter
-#: that stops at the locator sweeps a repointed store — the box's own metadata and home —
-#: into the workspace dir.
+#: (``settings/paths.py::_standalone_box_paths``), so these are ordinary workset keys;
+#: ``logs``/``template``/``channelroot`` are absent because standalone does not materialize
+#: them — each resolver's docstring is the source.
+#: ⚑ ``boxes`` is HERE and not held by :data:`_STANDALONE_FIXED_ARTIFACTS` alone: that set
+#: holds ``box_data/`` as the detection LOCATOR, which no key moves, while the STORE behind
+#: it answers to ``workset.boxes``.  A name filter that stops at the locator sweeps a
+#: repointed store into the workspace dir.
 _STANDALONE_ROOT_DIR_KEYS = (
     ("workset.workspaces", _resolve_standalone_workspaces),
     ("workset.boxes", _resolve_standalone_boxes),
@@ -2050,7 +2061,7 @@ def _to_standalone(
     # ⚑ The box METADATA DIR (``box_data/`` for a standalone source) — the ROOT would
     # strand ``<dst>/box_data/box_data/`` on a standalone→standalone move.
     src_meta_dir = box_metadata_dir(state.mode, state.metadata_path,
-                                    early=_early_scope(std, state.mode))
+                                    early=EarlyScope(std.early_system, _state_ws_token(state)))
     # ⚑⚑ REUSED IN PLACE — a standalone box renamed AT ITS OWN ROOT.  Everything below
     # that treats *root* as freshly converted is then wrong twice over.
     reused_in_place = dst_metadata.resolve() == src_meta_dir.resolve()
@@ -2069,7 +2080,9 @@ def _to_standalone(
         # IS the destination's BOX TIER (spec §2c — @meta.box.path for standalone IS
         # ``box_data/``). Deleting it discards the box's settings; detection reads the ROOT
         # file (§5), which ``establish_standalone`` writes below.
-        _deliver_carried_box_settings(state, dst_metadata / BOX_META_FILE)
+        _deliver_carried_box_settings(
+            state, dst_metadata / BOX_META_FILE,
+            early=EarlyScope(std.early_system, _state_ws_token(state)))
 
     # Establish identity + meta + registration through the shared core; it writes
     # ``workset.kuid`` to <root>/workset.yaml and a sparse ``box.enable_vault`` to the box
@@ -2154,7 +2167,7 @@ def _to_workset(
     # ⚑ The box METADATA DIR, not ``metadata_path``: for a standalone source those differ
     # (root vs ``box_data/``) — see :func:`box_metadata_dir` (M-8).
     metadata_source = box_metadata_dir(state.mode, state.metadata_path,
-                                        early=_early_scope(std, state.mode))
+                                        early=EarlyScope(std.early_system, _state_ws_token(state)))
     shell_source = state.shell_path
 
     source_is_workset = state.mode == BoxMode.named
@@ -2266,7 +2279,8 @@ def _to_workset(
     )
     # ⚑ The copy above cannot supply a STANDALONE source's box settings — its box tier is
     # a different file from the root one a pre-P2 box stored them in (M-8).
-    _deliver_carried_box_settings(state, dst_project / BOX_META_FILE)
+    _deliver_carried_box_settings(
+        state, dst_project / BOX_META_FILE, early=EarlyScope(std.early_system, _state_ws_token(state)))
     dst_shell = dst_project / "home"
     if shell_source.is_dir():
         copy_tree_keeping_links(shell_source, dst_shell, dirs_exist_ok=True)
@@ -2277,7 +2291,9 @@ def _to_workset(
         dst_workspace = in_tree_leaf
         ignore = None
         if state.mode == BoxMode.standalone:
-            ignore = _workspace_copy_ignore(state.metadata_path, state.workspace_path)
+            ignore = _workspace_copy_ignore(
+                state.metadata_path, state.workspace_path,
+                early=EarlyScope(std.early_system, _state_ws_token(state)))
         copy_tree_keeping_links(
             state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True,
         )

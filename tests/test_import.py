@@ -80,7 +80,7 @@ class TestStandaloneImport:
             std.registry, "standalone", {name: "/some/other/root"},
         )
         with pytest.raises(ImportConflictError, match="rename"):
-            import_reconcile.import_standalone(std.registry, project_dir)
+            import_reconcile.import_standalone(std.registry, project_dir, early=_early_scope(std, BoxMode.standalone))
         # Refusal must NOT mutate the registry.
         assert registry_store.load_standalone(std.registry) == {
             name: "/some/other/root"
@@ -102,7 +102,7 @@ class TestStandaloneImport:
         dump_doc(meta_file, {"box": {"enable_vault": True}, "workset": {"registry": None}})
         capsys.readouterr()
 
-        name = import_reconcile.import_standalone(std.registry, project_dir)
+        name = import_reconcile.import_standalone(std.registry, project_dir, early=_early_scope(std, BoxMode.standalone))
         # Falls back to the current dir leaf (no kuid stored).
         assert name == project_dir.resolve().name
         # Import does NOT write project.name back to disk (sparse model).
@@ -129,7 +129,7 @@ class TestStandaloneImport:
         dump_doc(meta_file, {"workset": {"kuid": box_kuid, "registry": None}})
         capsys.readouterr()
 
-        name = import_reconcile.import_standalone(std.registry, project_dir)
+        name = import_reconcile.import_standalone(std.registry, project_dir, early=_early_scope(std, BoxMode.standalone))
         expected = box_identity.compose_standalone_name(
             box_kuid, project_dir.resolve(),
         )
@@ -141,7 +141,7 @@ class TestStandaloneImport:
 
     def test_no_metadata_returns_none(self, std, config, project_dir):
         # box_data/ absent → nothing to import.
-        assert import_reconcile.import_standalone(std.registry, project_dir) is None
+        assert import_reconcile.import_standalone(std.registry, project_dir, early=_early_scope(std, BoxMode.standalone)) is None
 
     def test_moved_standalone_rebases_resolved_paths(
         self, std, config, tmp_home, credentials_dir, capsys,
@@ -159,7 +159,7 @@ class TestStandaloneImport:
         registry_store.save_section(std.registry, "standalone", {})
         capsys.readouterr()
         # Import + resolve from the NEW location.
-        import_reconcile.import_standalone(std.registry, moved)
+        import_reconcile.import_standalone(std.registry, moved, early=_early_scope(std, BoxMode.standalone))
         resolved = resolve_standalone_project(
             std, config, str(moved), initialize=False,
         )
