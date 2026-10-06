@@ -139,16 +139,13 @@ def read_spawn_budget(path: Path) -> SpawnBudget | None:
 def write_spawn_budget(path: Path, budget: SpawnBudget) -> None:
     """Write *budget* as the two declared ``system.helpers.*`` keys.
 
-    🛑 DELIBERATELY NOT ``config_io.write_nested_key``, and the reason is the guard on
-    that seam rather than convenience.  It is the one write primitive for a CASCADE
-    settings file, allowlisted so that a runtime-computed DEFAULT cannot be persisted
-    into one (``tests/test_settings/test_defaults_enforcement.py``) — and a child's
-    budget IS runtime-computed, ``child_budget`` of whatever the parent resolved.
     ⚑ *path* is never a cascade file: it is the per-child DELIVERY document at
     ``helpers/<N>/spawn.yaml``, mounted RO into that helper and read back by explicit
-    path.  No cascade assembles it, so nothing this writes can reach a user's settings.
-    Routing it through the guarded seam would ask that guard to bless the exact write it
-    exists to catch; writing a cascade file from here would be the end run.
+    path.  No cascade assembles it, so nothing this writes can reach a user's settings,
+    and the guard on every ``config_io`` writer
+    (``tests/test_settings/test_defaults_enforcement.py``) exempts this file as
+    non-settings.  A child's budget is runtime-computed (``child_budget``), so writing a
+    cascade file from here would be the defaults leak that guard exists to catch.
     """
     doc = load_doc(path)
     node = doc
