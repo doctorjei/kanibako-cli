@@ -8693,10 +8693,18 @@ def _create_designation(probe) -> "tuple[str, str]":
     return (" --standalone" if _standalone else ""), root
 
 
+def _create_cure(mode_flag: str, root: str, *flags: str) -> str:
+    """The ``kanibako create …`` line that acts on *root*, *flags* between the mode and it."""
+    # ⚑ A CURE IS PASTED, NOT READ: *root* may carry a space or a metacharacter, and
+    # an unquoted one prints a line that does not run as printed.
+    extra = f" {' '.join(flags)}" if flags else ""
+    return f"kanibako create{mode_flag}{extra} {shlex.quote(root)}"
+
+
 def recover_cure(probe) -> str:
     """The ``kanibako create … --recover`` line that finishes *probe*'s interrupted create."""
     mode_flag, root = _create_designation(probe)
-    cure = f"kanibako create{mode_flag} --recover {root}"
+    cure = _create_cure(mode_flag, root, "--recover")
     # ⚑ A MEMBER NAME IS READ IN THE CWD'S WORKING SET ONLY, and a launch prints
     # this from anywhere: the line enters the working set's root itself.
     if probe.mode is BoxMode.named:
