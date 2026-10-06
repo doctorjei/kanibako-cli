@@ -2614,7 +2614,7 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "MIGRATION.md",
-      "text": "the per-box file, `workset.yaml` for a standalone root: \u00a72.45, line 2774.)"
+      "text": "the per-box file, `workset.yaml` for a standalone root:"
     },
     {
       "registry": "claims",
@@ -2699,7 +2699,7 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "MIGRATION.md",
-      "text": "\u2691 **And that settings file is itself `workset.yaml` in v1.8.0 \u2014 see \u00a72.45 (line 2774).**"
+      "text": "\u2691 **And that settings file is itself `workset.yaml` in v1.8.0 \u2014 see"
     },
     {
       "registry": "claims",
