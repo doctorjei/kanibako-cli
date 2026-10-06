@@ -509,7 +509,7 @@ def _shape_phrase(value: object) -> str:
 
 
 def is_scalar_family_value(value: object) -> bool:
-    """True iff *value* is a shape the two SCALAR families may hold (spec §2a).
+    """True iff *value* is a shape an ``env.<VAR>`` key may hold (spec §2a).
 
     ⚑ A present-``None`` IS one: it is the tri-state OMIT a reset writes, which every
     reader already spells ``null``, and refusing it would refuse the unset idiom.
@@ -544,7 +544,7 @@ def is_path_key_value(value: object) -> bool:
 def refuse_non_scalar_family_value(
     key: str, category: str, value: object,
 ) -> None:
-    """Refuse a value *key* may not hold — the two SCALAR families or a PATH key (§2a).
+    """Refuse a value *key* may not hold — the two name-parametric families or a PATH key (§2a).
 
     *category* is ``"env"``, ``"secret_path"`` or ``"path"``; *key* is the WHOLE dotted key, which
     is the only thing the message names — §2a: *"A non-scalar (list, map, etc) is
@@ -568,8 +568,8 @@ def refuse_non_scalar_family_value(
     """
     from kanibako.settings.settings_resolve import SettingsError
 
-    if (is_path_key_value(value) if category == "path"
-            else is_scalar_family_value(value)):
+    if (is_scalar_family_value(value) if category == "env"
+            else is_path_key_value(value)):
         return
     shape = _shape_phrase(value)
     if category == "path":

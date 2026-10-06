@@ -65,8 +65,8 @@ class TestSystemDoor:
         scalar key"* reaches every non-string — not only the two non-scalars. ⭐ THE SHAPE
         IS THE FILE'S OWN WORD, so ``8080`` is answered ``an integer`` and not ``int``.
 
-        Mutation: point ``config_interface._path_value_reason`` back at a list/map test of
-        its own → every row BUILDS the set: rc 0 and the file is rewritten.
+        Mutation: judge the ``path`` category with ``is_scalar_family_value`` instead of
+        ``is_path_key_value`` → every row BUILDS the set: rc 0 and the file is rewritten.
         """
         path = _system_file(cli)
         path.write_text(f"system:\n  agent: shell\n  cache: {value}\n")
@@ -82,8 +82,9 @@ class TestSystemDoor:
         outside the edited value's upstream chain is *"ERROR by default — name it, write
         nothing"* — so an unrelated ``set`` is refused by an entry it never touched.
 
-        Mutation: drop the ``_path_value_reason`` repoint onto the §2a carrier → ``rc`` is 0
-        and ``system.canon = 8080`` is rewritten as a string.
+        Mutation: stop routing the ``path`` category through the §2a carrier
+        ``refuse_non_scalar_family_value`` → ``rc`` is 0 and ``system.canon = 8080`` is
+        rewritten as a string.
         """
         path = _system_file(cli)
         path.write_text("system:\n  canon: 8080\n")
@@ -91,6 +92,31 @@ class TestSystemDoor:
         proc = cli("system", "set", "system.agent=claude")
         _assert_refused(proc, path, before, "system.canon = 8080")
         assert "an integer" in proc.stderr, proc.stderr
+
+    def test_an_int_at_a_secret_path_key_refuses_beside_one_at_env(self, cli):
+        """``system.secret_path.T: 8080`` refuses the set door; ``system.env.PORT`` builds.
+
+        ⭐ ONE VALUE, TWO KEYS, and only the key's own DECLARED TYPE separates them: a
+        ``secret_path.<VAR>`` key is typed ``path``, so keyspec §2a's *"a type mismatch for
+        a typed scalar key"* reaches an INT and the stored scan refuses it naming the key
+        and the shape.  ``env.<VAR>`` is SCALAR, and §2a refuses only *"a non-scalar (list,
+        map, etc)"*, so the SAME ``8080`` there keeps building.
+
+        Mutation: judge the ``secret_path`` category with ``is_scalar_family_value`` → this
+        row BUILDS the set: rc 0 and the file is rewritten.
+        """
+        path = _system_file(cli)
+        path.write_text("system:\n  agent: shell\n  secret_path:\n    T: 8080\n")
+        before = path.read_bytes()
+        proc = cli("system", "set", "system.agent=claude")
+        _assert_refused(proc, path, before, "system.secret_path.T = 8080")
+        assert "an integer" in proc.stderr, proc.stderr
+
+        # ⭐ THE CONTROL, and it is the row that keeps the cure narrow: the same integer
+        # at the SCALAR family is legal, so a blanket "refuse every int" cannot pass here.
+        env_path = _system_file(cli)
+        env_path.write_text("system:\n  agent: shell\n  env:\n    PORT: 8080\n")
+        assert cli("system", "set", "system.agent=claude").returncode == 0
 
     def test_force_warns_and_writes(self, cli):
         path = _system_file(cli)
