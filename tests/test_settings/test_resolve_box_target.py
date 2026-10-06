@@ -604,3 +604,63 @@ class TestDesignationRoute:
     def test_nul_designation_is_refused(self, std, config):
         with pytest.raises(ProjectError, match="neither a box name nor a path"):
             resolve_box_target(std, config, "foo\0bar")
+
+
+# ---------------------------------------------------------------------------
+# Per-kind namespaces: a box verb never loses a box name to a workset name
+# ---------------------------------------------------------------------------
+
+def _cli(argv, capsys):
+    """``cli.main`` to completion; return ``(exit_code, stdout, stderr)``."""
+    from kanibako import cli
+
+    capsys.readouterr()
+    try:
+        cli.main(argv)
+        code = 0
+    except SystemExit as exc:
+        code = exc.code
+    out = capsys.readouterr()
+    return code, out.out, out.err
+
+
+class TestBoxAndWorksetShareAName:
+    """system-design § Cross-kind name semantics: box and workset names are PER-KIND
+    namespaces, and noun-scoped commands consult only their own."""
+
+    def _standalone_and_workset(self, std, tmp_home, capsys, name="foo"):
+        sa_root = tmp_home / "sa" / name
+        sa_root.mkdir(parents=True)
+        (sa_root / "box_data").mkdir()
+        (sa_root / "workset.yaml").write_text("box:\n  image: ghcr.io/x:1\n")
+        registry_store.register_standalone(std.registry, name, sa_root)
+        ws_root = tmp_home / "worksets" / name
+        code, _out, err = _cli(["workset", "create", "--name", name, str(ws_root)], capsys)
+        assert code == 0, err
+        return sa_root, ws_root
+
+    def test_a_box_verb_reaches_a_registered_standalone_a_workset_names_too(
+        self, std, tmp_home, credentials_dir, capsys,
+    ):
+        sa_root, _ws_root = self._standalone_and_workset(std, tmp_home, capsys)
+        code, out, err = _cli(["box", "info", "foo"], capsys)
+        assert code == 0, err
+        assert str(sa_root) in out, out
+
+    def test_a_workset_verb_still_reaches_the_workset(
+        self, std, tmp_home, credentials_dir, capsys,
+    ):
+        _sa_root, ws_root = self._standalone_and_workset(std, tmp_home, capsys)
+        code, out, err = _cli(["workset", "info", "foo"], capsys)
+        assert code == 0, err
+        assert str(ws_root) in out, out
+
+    def test_a_workset_name_alone_still_names_its_cure_at_a_box_verb(
+        self, tmp_home, credentials_dir, capsys,
+    ):
+        code, _out, err = _cli(["workset", "create", "--name", "lone",
+                                str(tmp_home / "worksets" / "lone")], capsys)
+        assert code == 0, err
+        code, _out, err = _cli(["box", "info", "lone"], capsys)
+        assert code != 0
+        assert "'lone' is a workset, not a single project box" in err, err

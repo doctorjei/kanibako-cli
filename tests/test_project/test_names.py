@@ -169,7 +169,7 @@ class TestResolveName:
     def test_primary_takes_precedence_over_workset(
         self, registry: Path, tmp_path: Path
     ) -> None:
-        """A primary box (step 2) is found before a workset (step 3)."""
+        """A primary box (step 2) is found before a workset name."""
         primary = tmp_path / "primary_workset"
         ws = tmp_path / "proj"
         ws.mkdir()
@@ -185,7 +185,7 @@ class TestResolveName:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Per-kind namespaces (spec § Detection & import): a bare name that is BOTH a
-        primary box and a workset resolves to the BOX (step 2 precedes step 3), and
+        primary box and a workset resolves to the BOX (box names come first), and
         nothing is said — the workset's noun-scoped commands reach it."""
         primary = tmp_path / "primary_workset"
         ws = tmp_path / "proj"
@@ -299,7 +299,7 @@ class TestResolveName:
     ) -> None:
         """A workset-MEMBER box name resolves from OUTSIDE its workset (BUG-B).
 
-        Mutation proof: deleting the step-4 workset-membership fallback in
+        Mutation proof: deleting the step-3 workset-membership fallback in
         ``resolve_name`` makes this raise ``ProjectError`` instead of resolving.
         """
         box_ws = self._register_ws_member(registry, tmp_path, "myws", "cluster2")
@@ -476,7 +476,7 @@ class TestResolveName:
         before a ``workset.workspaces`` repoint) still resolves by cwd context —
         the step-1 consult reads the REGISTERED ``boxes:`` path, never
         re-deriving from the CURRENT composition.  The same name is a member of
-        a SECOND workset, so a step-1 miss would fall through to step 4 and
+        a SECOND workset, so a step-1 miss would fall through to step 3 and
         raise Ambiguous — the mutation proof."""
         from kanibako.settings.config_io import dump_doc, load_doc
 
@@ -500,7 +500,7 @@ class TestResolveName:
         """S-2 (the cwd-context asymmetry): a cwd INSIDE an EXTERNAL repointed
         ``workset.workspaces`` dir is workset context too — the step-1 gate no
         longer requires cwd under the workset ROOT.  Again disambiguated
-        against a second workset's same-named member (a gate miss → step 4 →
+        against a second workset's same-named member (a gate miss → step 3 →
         Ambiguous → RED)."""
         from kanibako.project import workset_registry
         from kanibako.settings.config_io import dump_doc
@@ -531,7 +531,7 @@ class TestResolveName:
 class TestStandaloneNameResolution:
     """A REGISTERED standalone box resolves by bare name; an UNregistered one does
     not (system-design § Detection & import: registration is opt-in, and the
-    standalone name is checked AFTER the primary boxes, the worksets, and their
+    standalone name is checked AFTER the primary boxes and the workset
     members — ``box create --standalone --register`` promises name resolution, and
     until now nothing delivered it)."""
 
@@ -564,7 +564,7 @@ class TestStandaloneNameResolution:
     def test_a_registered_standalone_resolves_by_name(
         self, registry: Path, tmp_path: Path,
     ) -> None:
-        """Step 5: a registered standalone answers to its bare name from anywhere."""
+        """The standalone step: a registered standalone answers to its bare name from anywhere."""
         root = self._register_standalone(registry, tmp_path, "solo_box")
 
         path, kind = resolve_name(registry, "solo_box")
@@ -580,21 +580,39 @@ class TestStandaloneNameResolution:
         path, kind = resolve_name(registry, "SOLO_BOX")
         assert (path, kind) == (str(root), "project")
 
-    def test_a_workset_outranks_a_registered_standalone(
+    def test_a_registered_standalone_outranks_a_workset_name(
         self, registry: Path, tmp_path: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """The standalone step is LAST: a same-named workset (step 3) wins, with NO
-        warning — box and workset names are per-kind namespaces (spec § Detection &
-        import), so a box sharing a workset's name is not a collision."""
+        """system-design § Cross-kind name semantics: box and workset names are
+        per-kind namespaces and noun-scoped commands consult only their own, so a
+        box lookup never loses a box name to a same-named workset — and says nothing."""
         register_name(registry, "solo_box", str(tmp_path / "ws"), section="worksets")
-        self._register_standalone(registry, tmp_path, "solo_box")
+        root = self._register_standalone(registry, tmp_path, "solo_box")
 
         with caplog.at_level("WARNING"):
             path, kind = resolve_name(registry, "solo_box")
-        assert (path, kind) == (str(tmp_path / "ws"), "workset")
+        assert (path, kind) == (str(root), "project")
         warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
         assert warnings == [], warnings
+
+    def test_a_member_box_outranks_its_workset_s_name(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """A member box sharing its workset's name resolves to the box, not the workset."""
+        member = self._register_ws_member(registry, tmp_path, "same", "same")
+
+        path, kind = resolve_name(registry, "same", cwd=tmp_path.parent)
+        assert kind == "project"
+        assert Path(path).resolve() == member.resolve()
+
+    def test_a_workset_name_no_box_holds_still_reports_the_workset(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """Only on a box miss does the workset name answer, so a box verb can name it."""
+        register_name(registry, "lone", str(tmp_path / "ws"), section="worksets")
+
+        assert resolve_name(registry, "lone") == (str(tmp_path / "ws"), "workset")
 
     def test_a_primary_box_outranks_a_registered_standalone(
         self, registry: Path, tmp_path: Path,
@@ -622,7 +640,7 @@ class TestStandaloneNameResolution:
         self, registry: Path, tmp_path: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """A workset-MEMBER box (step 4) wins over a same-named registered
+        """A workset-MEMBER box (step 3) wins over a same-named registered
         standalone — the member is the earlier, more specific claim."""
         member = self._register_ws_member(registry, tmp_path, "myws", "solo_box")
         self._register_standalone(registry, tmp_path, "solo_box")

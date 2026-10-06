@@ -220,11 +220,12 @@ def resolve_name(
 ) -> tuple[str, str]:
     """Look up a bare name and return ``(path, kind)``.
 
-    Resolution order (system-design § Detection & import): steps 1-4 of
-    :func:`_resolve_before_standalone`, then a REGISTERED standalone box LAST; an
+    Resolution order (system-design § Box designation & workset path space): the box
+    steps of :func:`_resolve_before_standalone`, then a REGISTERED standalone box; an
     unregistered one is reachable only by path.  A registered standalone shadowed
-    by an earlier BOX is warned about (it stays reachable by path); a workset
-    winning is not a collision, as box and workset names are per-kind namespaces.
+    by an earlier BOX is warned about (it stays reachable by path).  Box and
+    workset names are per-kind namespaces, so a workset name is matched only when
+    no box holds the name, letting a box verb name the workset in its refusal.
 
     *kind* is ``"project"`` or ``"workset"``.
     Raises ``ProjectError`` if no match is found, or ``AmbiguousNameError`` if
@@ -239,9 +240,13 @@ def resolve_name(
         raise
     except ProjectError:
         root = registry_store.standalone_root(registry, name)
-        if root is None:
+        if root is not None:
+            return root, "project"
+        worksets = _load(registry)["worksets"]
+        stored_ws = find_identifier(name, worksets)  # ⚑ case-blind (§0)
+        if stored_ws is None:
             raise
-        return root, "project"
+        return worksets[stored_ws], "workset"
 
     shadow = registry_store.standalone_root(registry, name)
     if (
@@ -262,7 +267,7 @@ def _resolve_before_standalone(
     cwd: Path | None = None,
     primary_workset: Path | None = None,
 ) -> tuple[str, str]:
-    """Steps 1-4 of :func:`resolve_name` — everything but the standalone section.
+    """The box steps of :func:`resolve_name` before the standalone section.
 
     Resolution order:
 
@@ -270,12 +275,11 @@ def _resolve_before_standalone(
     2. PRIMARY default-mode boxes: a bare name in the primary per-workset
        ``boxes:`` membership (was the retired global ``[projects]`` section) —
        consulted only when *primary_workset* is supplied
-    3. ``[worksets]`` section (workset names)
-    4. Workset-MEMBER boxes: a bare name registered in some NAMED workset's
+    3. Workset-MEMBER boxes: a bare name registered in some NAMED workset's
        per-workset registry ``boxes:`` membership (so a member box is
        addressable from OUTSIDE its workset)
 
-    *kind* is ``"project"`` or ``"workset"``.  Raises ``ProjectError`` if no
+    *kind* is ``"project"``.  Raises ``ProjectError`` if no
     match is found, or ``AmbiguousNameError`` if the name is a member of more
     than one workset.
     """
@@ -337,12 +341,7 @@ def _resolve_before_standalone(
             # not a collision, and its noun-scoped ``workset`` commands reach it.
             return primary_path, "project"
 
-    # 3. Worksets.  ⚑ Case-blind (§0), resolved through the STORED key.
-    stored_ws = find_identifier(name, names["worksets"])
-    if stored_ws is not None:
-        return names["worksets"][stored_ws], "workset"
-
-    # 4. Workset-MEMBER boxes.  A bare name that is a member of a NAMED workset
+    # 3. Workset-MEMBER boxes.  A bare name that is a member of a NAMED workset
     #    is otherwise unaddressable from outside that workset (the cwd-inside
     #    case is handled by step 1) — resolve it to the member's registered
     #    WORKSPACE path, the form ``resolve_project`` takes.
