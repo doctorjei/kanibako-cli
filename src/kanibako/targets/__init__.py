@@ -239,6 +239,24 @@ def _scan_directory_plugins(
                 )
 
 
+def _standalone_root_from(path: Path) -> Path | None:
+    """The standalone ROOT at or above *path*, or ``None`` if no ancestor qualifies.
+
+    ⚑ SD's ONE predicate: the root whose OWN ``workset.yaml`` stores the
+    ``workset.registry`` null.  Needed because this seam is handed
+    ``proj.project_path`` — the WORKSPACE of a standalone box — while
+    ``workset.boxes`` is carried by the ROOT's file.  Walking is what turns the
+    workspace it is given into the root the store can actually be answered from.
+    """
+    from kanibako.settings.paths import _is_standalone_meta_dir
+
+    candidate = Path(path).resolve()
+    for ancestor in (candidate, *candidate.parents):
+        if _is_standalone_meta_dir(ancestor):
+            return ancestor
+    return None
+
+
 def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]]:
     """Scan entry points, plugin modules, and directories for targets.
 
@@ -344,11 +362,15 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
 
     _scan_directory_plugins(resolve_data_path() / "plugins", targets, declared)
 
-    # Project-level file-drop plugins.  Absence is not an error.
+    # Project-level file-drop plugins.  Absence is not an error.  ⚑ Resolved from the
+    # standalone ROOT, never from *project_path* as handed in: production passes
+    # ``proj.project_path`` — the WORKSPACE — and answering the store off that reads a
+    # ``workset.yaml`` that never carried the key.  Public signature unchanged.
     if project_path is not None:
+        store_root = _standalone_root_from(project_path) or project_path
         _scan_directory_plugins(
             standalone_box_store(
-                project_path, early=total_standalone_early(),
+                store_root, early=total_standalone_early(),
             ) / "plugins", targets, declared,
         )
 
