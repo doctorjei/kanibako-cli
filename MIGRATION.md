@@ -6686,7 +6686,7 @@ after the move it still refuses, though nothing is lost.
 ### A working set directory value in the system settings file must name its working set
 
 **Read this if your system settings file sets a `workset.*` directory key to a plain path, or a
-command now exits 1 with "names no working-set identity".**
+command now exits 1 with "does not reach working-set identity".**
 
 **What changed.** Keyspec §0 "Per-owner resources": a directory every working set inherits must spell
 the working set into its path, or every working set shares one directory, and same-named boxes in
@@ -6712,7 +6712,7 @@ checked.
 
 ```
 $ kanibako box list
-Error: workset.boxes is set to '/srv/kb' in /home/you/.local/share/kanibako/global/settings.yaml, which gives every working set one shared path, because the value names no working-set identity. Same-named boxes in different working sets, and every standalone box, would share it. Nothing was changed. Spell the identity into the value: kanibako system set 'workset.boxes=/srv/kb/{meta.workset.path}'; or run kanibako system reset workset.boxes, then kanibako workset set <workset> 'workset.boxes=…' in each working set. To stop running boxes meanwhile: kanibako stop --all stops every running box even when a settings file is refused; it lists them and asks first.
+Error: workset.boxes is set to '/srv/kb' in /home/you/.local/share/kanibako/global/settings.yaml, which gives every working set one shared path, because the value does not reach working-set identity. Same-named boxes in different working sets, and every standalone box, would share it. Nothing was changed. Spell the identity into the value: kanibako system set 'workset.boxes=/srv/kb/{meta.workset.path}'; or run kanibako system reset workset.boxes, then kanibako workset set <workset> 'workset.boxes=…' in each working set. To stop running boxes meanwhile: kanibako stop --all stops every running box even when a settings file is refused; it lists them and asks first.
 ```
 
 **What to do.** Run `system set` with the spelling the message prints, or run `system reset <key>`

@@ -58,7 +58,7 @@ def usable_box_store_value(value: object) -> bool
 def refuses_box_store_value(canonical: str, value: object) -> bool
 def chain_reaches(value: object, targets: Iterable[str], *, key: str, stored: 'Callable[[str], object]') -> list[str]
 def reaches_identity(value: object, owner: str, mode: 'BoxMode', *, key: str, stored: 'Callable[[str], object]') -> bool
-def uniform_anchor(level: str, agent: 'str | None') -> str
+def identity_cure(value: str, level: str, agent: 'str | None', *, key: str, stored: 'Callable[[str], object]') -> str
 def key_owner(key: str) -> 'tuple[str, str | None]'
 def refuses_null_box_scalar(canonical: str) -> bool
 def system_path_ref_error(canonical: str, value: 'str | None') -> 'str | None'

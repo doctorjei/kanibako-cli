@@ -71,13 +71,13 @@ from kanibako.settings.config import (
     box_scalar_defaults_floor,
     load_config,
     config_base_path,
+    identity_cure,
     key_owner,
     null_path_keys_error,
     reaches_identity,
     refuses_null_box_scalar,
     refuses_null_path_key,
     settings_base_path,
-    uniform_anchor,
     usable_box_store_value,
     user_config_file,
 )
@@ -1536,7 +1536,7 @@ def _refuse_inherited_per_owner(
         noun, identity, shared_by, file_owner = PER_OWNER_SET_WORDS[owner]
         refusals.append(ERR_PER_OWNER_LAUNCH % (
             name, value, path if path is not None else "a settings file", noun, identity,
-            shared_by, f"{value.rstrip('/')}/{uniform_anchor(owner, agent)}", file_owner,
+            shared_by, identity_cure(value, owner, agent, key=key, stored=stored), file_owner,
             tail,
         ))
 

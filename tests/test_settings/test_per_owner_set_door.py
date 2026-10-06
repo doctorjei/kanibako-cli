@@ -8,7 +8,10 @@ spellings (``@x`` and ``{x}``): both grammars are live until braced step 5.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -111,13 +114,18 @@ class TestCase4Sharing:
         assert KEY_OWNERS["workset.template"] == "shared"
         assert _system_set("workset.template", "/srv/tmpl", seeded) == "Set workset.template=/srv/tmpl"
 
-    @pytest.mark.parametrize("value", ["/srv/c", *_forms("/srv/c/<meta.workset.path>"),
-                                       *_forms("/srv/c/<meta.box.name>")])
-    def test_a_box_key_naming_no_box_is_refused_and_nothing_is_written(self, value, seeded):
+    @pytest.mark.parametrize(("value", "lacking"), [
+        ("/srv/c", "{meta.workset.path}/{meta.box.name}"),
+        *((v, "{meta.box.name}") for v in _forms("/srv/c/<meta.workset.path>")),
+        *((v, "{meta.workset.path}") for v in _forms("/srv/c/<meta.box.name>")),
+    ])
+    def test_a_box_key_naming_no_box_is_refused_and_nothing_is_written(
+        self, value, lacking, seeded,
+    ):
         before = _digest(seeded.settings)
         message = _system_set("box.canon", value, seeded)
-        _refused(message, "box.canon", value, seeded.settings,
-                 f"{value}/{{meta.workset.path}}/{{meta.box.name}}")
+        _refused(message, "box.canon", value, seeded.settings, f"{value}/{lacking}")
+        assert "does not reach box identity" in message, message
         assert _digest(seeded.settings) == before
 
     @pytest.mark.parametrize("value", _forms("/srv/c/<meta.workset.path>/<meta.box.name>"))
@@ -126,12 +134,17 @@ class TestCase4Sharing:
 
 
 class TestTheWorksetDoor:
-    @pytest.mark.parametrize("value", ["/srv/c", *_forms("<workset.boxes>/c")])
-    def test_a_box_key_naming_no_box_is_refused_and_nothing_is_written(self, value, ws, std):
+    @pytest.mark.parametrize(("value", "lacking"), [
+        ("/srv/c", "{meta.workset.path}/{meta.box.name}"),
+        *((v, "{meta.box.name}") for v in _forms("<workset.boxes>/c")),
+    ])
+    def test_a_box_key_naming_no_box_is_refused_and_nothing_is_written(
+        self, value, lacking, ws, std,
+    ):
         file = ws.root / WORKSET_META_FILE
         before = _digest(file)
         message = _workset_set("box.canon", value, ws, std)
-        _refused(message, "box.canon", value, file, f"{value}/{{meta.workset.path}}/{{meta.box.name}}")
+        _refused(message, "box.canon", value, file, f"{value}/{lacking}")
         assert "workset scope" in message, message
         assert _digest(file) == before
 
@@ -216,3 +229,47 @@ class TestOnlyTheFloorsBlindnessIsForgiven:
         before = _digest(file)
         assert _workset_set("box.canon", "{box.shell}", ws, std).startswith("Error:")
         assert _digest(file) == before
+
+
+class TestTheCureThroughTheCli:
+    """The refusal names what the value lacks and its cure adds only that: a stored 70-deep
+    ``box.env`` chain before ``{meta.box.name}`` lacks the workset anchor alone, and an anchor
+    the value already holds is never spelled twice."""
+
+    @pytest.fixture
+    def cli(self, tmp_path):
+        home = tmp_path / "home"
+        home.mkdir()
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "KANIBAKO"))}
+        env.update(HOME=str(home), XDG_RUNTIME_DIR=str(tmp_path),
+                   PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"))
+
+        def run(*args: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [sys.executable, "-m", "kanibako", *args], env=env, cwd=home,
+                capture_output=True, text=True, timeout=300, check=False,
+            )
+
+        assert run("system", "get", "system.agent").returncode == 0
+        chain = {f"V{i}": f"{{box.env.V{i + 1}}}" for i in range(69)} | {"V69": "seg"}
+        settings = home / ".local/share/kanibako/global/settings.yaml"
+        doc = (yaml.safe_load(settings.read_text()) if settings.exists() else None) or {}
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(yaml.safe_dump(doc | {"box": {"env": chain}}))
+        run.settings = settings  # type: ignore[attr-defined]
+        return run
+
+    @pytest.mark.parametrize(("value", "cure"), [
+        ("/x/{box.env.V0}/{meta.box.name}", "/x/{box.env.V0}/{meta.box.name}/{meta.workset.path}"),
+        ("/x/{meta.workset.path}", "/x/{meta.workset.path}/{meta.box.name}"),
+    ])
+    def test_the_refusal_is_true_and_its_cure_is_written(self, cli, value, cure):
+        before = _digest(cli.settings)
+        refused = cli("system", "set", f"box.canon={value}")
+        assert refused.returncode == 1, refused.stderr
+        assert "does not reach box identity" in refused.stderr, refused.stderr
+        assert "names no box identity" not in refused.stderr, refused.stderr
+        assert f"Spell the identity into the value: {cure!r}" in refused.stderr, refused.stderr
+        assert _digest(cli.settings) == before
+        written = cli("system", "set", f"box.canon={cure}")
+        assert written.returncode == 0, written.stderr

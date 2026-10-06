@@ -45,7 +45,7 @@ class TestLoadStdPaths:
             load_std_paths(load_config(config_file))
         text = str(excinfo.value)
         assert text.startswith(f"workset.boxes is set to '/srv/kb' in {std.settings},"), text
-        assert "names no working-set identity" in text
+        assert "does not reach working-set identity" in text
         # The cure order: the anchored system value, the reset-then-each-workset form, stop --all.
         cure = text.index("kanibako system set 'workset.boxes=/srv/kb/{meta.workset.path}'")
         reset = text.index("kanibako system reset workset.boxes")
@@ -109,7 +109,7 @@ class TestRefuseInheritedPerOwner:
             refuse_inherited_per_owner(
                 tmp_path, _scope({"workset.channels.mailboxes": "/srv/mb"}, settings),
             )
-        assert "names no partition identity" in str(excinfo.value)
+        assert "does not reach partition identity" in str(excinfo.value)
         assert "'workset.channels.mailboxes=/srv/mb/{meta.workset.name}'" in str(excinfo.value)
         refuse_inherited_per_owner(tmp_path, _scope(
             {"workset.channels.mailboxes": "/srv/mb/" + _ref(form, "meta.workset.name")}, settings,

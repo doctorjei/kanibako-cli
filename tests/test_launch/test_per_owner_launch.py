@@ -91,7 +91,7 @@ class TestCaseFourAtStart:
         system = _merge_into(std.settings, {"box": {"bindings": {"rw": {"/data": [src]}}}})
         message = _refusal(std, box)
         assert f"box.bindings.rw[/data] is set to {src!r} in {system}" in message
-        assert "names no box identity" in message
+        assert "does not reach box identity" in message
         assert "system.bindings.rw" in message  # sharing on purpose has a shared key
 
     def test_a_declared_per_box_entry_overridden_from_above_is_refused(
@@ -159,7 +159,7 @@ class TestWhoseValueIsJudged:
         )
         message = _refusal(std, box)
         assert f"workset.bindings.rw[/data] is set to {src!r} in {system}" in message
-        assert "names no working-set identity" in message
+        assert "does not reach working-set identity" in message
 
     def test_the_box_s_own_entry_is_accepted(self, std, box, tmp_path):
         box_file, _ = box_workset_settings_paths(box)
@@ -282,7 +282,7 @@ class TestDeclaredPluginBindRows:
             _launch_with(std, box, _descriptor("box"))
         message = str(excinfo.value)
         assert f"bindings.ro[/ref] is set to {src!r} in {system}" in message
-        assert "names no box identity" in message
+        assert "does not reach box identity" in message
         assert f"{src}/{{meta.workset.path}}/{{meta.box.name}}" in message
 
     def test_a_per_agent_plugin_row_names_the_active_agent_in_its_cure(
