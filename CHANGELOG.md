@@ -588,6 +588,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`start` no longer tells a standalone box whose `workset.boxes` points at a directory that does not exist that
+  "nothing is registered under it"** or suggests `kanibako create`; it names the repoint and prints a move cure. A null
+  `workset.boxes` now carries its own refusal.
+
 - **The "Not registered" hint after an unregistered standalone `create` now shell-quotes the box root,** so its
   `kanibako box register` command runs as printed. An unquoted root with a space was rejected as extra arguments,
   and one holding `;`, `$( )`, or a backtick ran that text as a second command when pasted.
