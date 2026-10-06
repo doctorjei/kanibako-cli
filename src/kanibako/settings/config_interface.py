@@ -44,6 +44,7 @@ from kanibako.settings.messages import (
     ERR_BOX_STORE_EMPTY_REASON,
     ERR_BOX_STORE_SET_HEAD,
     ERR_WORKSET_EARLY_SET_HEAD,
+    ERR_WORKSET_SET_MAKES_STANDALONE,
     ERR_BOX_STORE_TRAILING_REASON,
     ERR_CONFIG_BAD_ENTRIES_TAIL,
     ERR_CONFIG_CHAIN_BAD_ENTRY,
@@ -52,6 +53,7 @@ from kanibako.settings.messages import (
     ERR_PER_OWNER_SET,
     PER_OWNER_SET_WORDS,
     WARN_CONFIG_BAD_ENTRIES,
+    WARN_WORKSET_SET_MAKES_STANDALONE,
 )
 from kanibako.settings.config_display import (
     _nested_settings_overrides,
@@ -1822,10 +1824,18 @@ def set_config_value(
     if state_err is not None:
         return state_err
 
+    # ⚑ A stored null ``workset.registry`` DEFINES standalone (system-design § Detection & import).
+    makes_standalone = (canonical == "workset.registry" and value is None
+                        and command_scope is ConfigLevel.workset
+                        and ws is not None and not ws.is_default)
+    if makes_standalone and not force:
+        return "Error: " + ERR_WORKSET_SET_MAKES_STANDALONE % ws.name
+    if makes_standalone:
+        _log.warning(WARN_WORKSET_SET_MAKES_STANDALONE, ws.name)
     # ⚑ A ``--null`` at a PATH KEY THE LAUNCH REFUSES A NULL AT (spec §2a); see
     # :func:`_null_path_key_error`.  This call sits AFTER every NAME-level refusal above,
     # so a retired or wrong-scope spelling still gets its own.
-    null_err = _null_path_key_error(
+    null_err = None if makes_standalone else _null_path_key_error(
         canonical, value,
         command_scope=command_scope, config_path=config_path,
         system_settings_path=system_settings_path,

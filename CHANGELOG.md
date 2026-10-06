@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings cascade (the system settings file) does not count. Removing the line makes the root read as not
   standalone.
 
+- **`kanibako workset set <name> workset.registry --null` on a named working set is refused**, warning that it
+  would make the working set standalone; `--force` writes it.
+
 - **`workset.*` directory keys set in the system settings file now apply everywhere.** `kanibako system set
   workset.boxes=…` (and logs, workspaces, registry, channelroot, channels.*, canon, template, vault_ro,
   vault_rw) is now read by `create`, `workset connect`, `workset create`, `box list`, and box detection, not
