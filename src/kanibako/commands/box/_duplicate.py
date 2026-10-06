@@ -15,7 +15,7 @@ from kanibako.settings.config import (
     read_box_enable_vault,
 )
 from kanibako.identifiers import find_identifier
-from kanibako.settings.config_io import dump_doc
+from kanibako.settings.config_io import dump_doc, refuse_scalar_sections
 from kanibako.runtime.container import remove_box_tree
 from kanibako.settings.core_defaults import materialize_canon_skeleton
 from kanibako.tree_copy import copy_tree_keeping_links, failed_entries
@@ -798,6 +798,16 @@ def run_duplicate(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+
+    # The source's box tier must be a SHAPE the destination can hold: this path copies
+    # the metadata verbatim (copy_tree_keeping_links below), so the new box's box tier IS
+    # the source's file, and a ``box`` that is not a table would land there as the new
+    # box's authored settings with rc 0.  ``refuse_scalar_sections`` is the guard
+    # ``carried_box_settings`` asks, so one stored ``box`` value has one answer however it
+    # is reached.  Asked HERE because it is the last point before anything is written: the
+    # workspace copy, the name registration and the metadata copy are all below, and
+    # ``_unwind_local_name`` restores only a name this path has already minted.
+    refuse_scalar_sections(source_project_dir / BOX_META_FILE, ("box",))
 
     if args.force:
         refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
