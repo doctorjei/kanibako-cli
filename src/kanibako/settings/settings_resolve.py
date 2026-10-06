@@ -954,6 +954,7 @@ def delete_before_set_step(entry: str, *, where: Any,
         "retired entry still stored in the files it reads."
         if checks_file else
         "The fix below is a `set`, and it does not refuse this entry — nothing blocks "
-        "the write. Delete the entry and re-run this command."
+        "the write. Delete the entry, then run the fix below: deleting it alone loses "
+        "the setting."
     )
     return f"  Delete the {entry} from {where} FIRST{stranded}. {why}"
