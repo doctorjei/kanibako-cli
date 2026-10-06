@@ -783,8 +783,9 @@ def refuse_reserved_registered_name(name: str, root: Path, *, early_system: Earl
     verb = "box remap --force" if moved else "box info"
     steps += [f"cd {new_root / rel} && kanibako {verb}" for _, rel in in_tree]
     if in_tree:
-        tail = (f"The first '{verb}' imports the working set under its directory "
-                f"name; each one re-records that box.")
+        tail = (f"The first '{verb}' imports the working set under its directory name; "
+                + ("each one re-points that box at its new path." if moved
+                   else "the others only confirm each box."))
     else:
         steps.append(f"cd {new_root} && kanibako box info")
         tail = ("The last command imports the working set under its directory name, "

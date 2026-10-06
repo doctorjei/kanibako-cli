@@ -6715,7 +6715,7 @@ Error: Working set 'primary' is registered under a reserved name. … Register t
   kanibako workset rm primary --force
   mv /home/you/ws/primary /home/you/ws/<new name>
   cd /home/you/ws/<new name>/workspaces/api && kanibako box remap --force
-The first 'box remap --force' imports the working set under its directory name; each one re-records that box. …
+The first 'box remap --force' imports the working set under its directory name; each one re-points that box at its new path. …
 ```
 
 **What to do.** Pick the new name and run the printed lines in order. `workset rm` without `--purge`
