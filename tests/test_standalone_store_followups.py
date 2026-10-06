@@ -463,3 +463,197 @@ class TestTheCopyExcludesTheStoreByPathNotByName:
             assert (store / "box.yaml").is_file()
         # The user's own file did sweep down — the store is not the user's file.
         assert (nested / "file.txt").read_text() == "mine"
+
+
+class TestAMoveKeepsAUserOwnedBoxData:
+    """⚑ D1, DATA SAFETY. A top-level ``box_data/`` is the USER'S directory unless the
+    ``workset.boxes`` key resolves there.
+
+    STEP-2 of ``box move`` applies the store exclusion to EVERY relocating source and
+    anchors it on the workspace rather than the box root.  A PRIMARY box's own
+    ``box_data/`` is therefore dropped from the copy and deleted with the source:
+    ``rc 0``, the source gone, the destination missing the user's file.  Base kept it.
+
+    ⚑ THE FIRST TWO CASES ARE ``xfail(strict)``: the defect is REPRODUCED but the fix
+    is not landed, because each candidate fix trades one green pin for another.  The
+    third case is green and pins the inverse — that a store is not stranded by the
+    exclusion — so whichever way the ruling goes, that must stay true.
+
+    ⚑ Asserted on what SURVIVES at the destination, never on the exit code — every one
+    of these returns 0 whether or not the file is still there.
+    """
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="D1 UNFIXED — awaiting a ruling. Reproduced: a PRIMARY box's own "
+               "box_data/ is excluded from the copy and deleted with the source. "
+               "The prescribed fix (standalone-only guard, anchored on the box root) "
+               "fixes these two and breaks "
+               "test_convert_to_workset_leaves_the_store_at_the_source, whose "
+               "source resolves as mode=primary with standalone-shaped keys. "
+               "Needs the spec's answer on which shape governs.")
+    def test_a_primary_box_move_keeps_its_own_top_level_box_data(
+            self, config, std, tmp_home):
+        from kanibako.settings.paths import resolve_project
+
+        src = tmp_home / "proj"
+        src.mkdir()
+        (src / "app.py").write_text("code\n")
+        (src / "box_data").mkdir()
+        (src / "box_data" / "mine.txt").write_text("the user's own file\n")
+        resolve_project(std, config, project_dir=str(src), initialize=True)
+
+        dest = tmp_home / "proj2"
+        rc = _cli("box", "move", str(src), str(dest), "--force")
+
+        assert rc == 0
+        assert (dest / "box_data" / "mine.txt").is_file(), (
+            "a primary box's own box_data/ must travel with the move, not be excluded "
+            "from the copy and deleted with the source")
+        assert (dest / "box_data" / "mine.txt").read_text() == "the user's own file\n"
+        assert (dest / "app.py").read_text() == "code\n"
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="D1 UNFIXED — awaiting a ruling. Same defect as the primary case: "
+               "the in-tree named member loses its own box_data/ on the move.")
+    def test_an_in_tree_named_box_move_keeps_its_own_top_level_box_data(
+            self, config, std, tmp_home):
+        """An IN-TREE NAMED box: its workspace leaf's ``box_data/`` is the user's too.
+
+        Registered with ``add_project`` and moved OUT of the workset — an in-tree
+        ``<new>`` has to be the member's own ``{workset.workspaces}/<name>``, which
+        is not a move at all.
+        """
+        from kanibako.project.workset import add_project, create_workset
+
+        ws = create_workset("wskeep", tmp_home / "wskeep_root", std)
+        member = ws.workspaces_dir / "alpha"
+        member.mkdir(parents=True)
+        (member / "app.py").write_text("code\n")
+        (member / "box_data").mkdir()
+        (member / "box_data" / "mine.txt").write_text("the user's own file\n")
+        add_project(ws, "alpha", member, std)
+
+        dest = tmp_home / "moved_out"
+        rc = _cli("box", "move", str(member), str(dest), "--force")
+
+        assert rc == 0
+        assert (dest / "box_data" / "mine.txt").read_text() == "the user's own file\n"
+        assert (dest / "app.py").read_text() == "code\n"
+
+    def test_a_standalone_box_move_takes_its_store_rather_than_stranding_it(
+            self, config, std, tmp_home):
+        """⚑ THE INVERSE, and the one a MOVE actually risks: the exclusion must not strand
+        the store at a source the move then deletes.
+
+        With ``workset.workspaces`` repointed AT the root, the store sits INSIDE the
+        tree being copied — precisely where an over-broad exclusion would drop it and
+        the source cleanup would take it with.  It arrives instead.
+        """
+        root = _standalone(config, std, tmp_home, "mv_travel")
+        store = root / "box_data"
+        (store / "PRECIOUS.txt").write_text("must arrive\n")
+        _workspace_at(root)
+
+        dest = tmp_home / "mv_external"
+        rc = _cli("box", "move", str(root), str(dest), "--force")
+
+        assert rc == 0
+        assert (dest / "box_data" / "PRECIOUS.txt").read_text() == "must arrive\n"
+
+
+class TestStandalonePurgeKeepsThePerOwnerRefusal:
+    """⚑ D2. ``25c770f1`` dropped the per-owner refusal from ``_rm_standalone``.
+
+    With it gone, ``box rm <sa> --purge --force`` purged a standalone store while the
+    SYSTEM tier handed a per-owner key a value that reaches no owner identity — the
+    state keyspec §0 forbids a deleting verb to act on.  Base refused with rc 1 and
+    changed nothing; the series deleted.
+
+    ⚑ Pinned through THIS door on purpose: ``test_per_owner_read_door.py`` did not
+    catch the removal, so a read-tier test is not evidence that the verb is guarded.
+    """
+
+    def _share_the_system_mailboxes(self, tmp_home):
+        """Hand-write a SYSTEM-tier per-owner value the set door would refuse to create."""
+        from kanibako.settings.config import system_settings_path
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        sysf = system_settings_path()
+        sysf.parent.mkdir(parents=True, exist_ok=True)
+        doc = load_doc(sysf) if sysf.exists() else {}
+        doc.setdefault("workset", {}).setdefault("channels", {})
+        doc["workset"]["channels"]["mailboxes"] = str(tmp_home / "shared_mailboxes")
+        dump_doc(sysf, doc)
+        return sysf
+
+    def test_the_purge_refuses_and_changes_nothing(self, config, std, tmp_home):
+        from kanibako.cli import main
+
+        root = _standalone(config, std, tmp_home, "po_purge")
+        store = root / "box_data"
+        (store / "PRECIOUS.txt").write_text("do not delete me\n")
+        self._share_the_system_mailboxes(tmp_home)
+
+        with pytest.raises(SystemExit) as excinfo:
+            main(["box", "rm", str(root), "--purge", "--force"])
+
+        assert excinfo.value.code != 0, (
+            "a system-tier per-owner value that reaches no owner identity must stop "
+            "the purge; the series returned 0 and deleted")
+        assert (store / "PRECIOUS.txt").read_text() == "do not delete me\n", (
+            "the refusal runs BEFORE the unregister and the delete, so nothing is gone")
+
+    def test_the_purge_still_runs_with_no_inherited_value(self, config, std, tmp_home):
+        """⚑ THE INVERSE: the guard is not "never purge". An ordinary purge still works."""
+        root = _standalone(config, std, tmp_home, "po_normal")
+        store = root / "box_data"
+        (store / "PRECIOUS.txt").write_text("delete me\n")
+
+        rc = _cli("box", "rm", str(root), "--purge", "--force")
+
+        assert rc == 0
+        assert not store.exists(), "an ordinary standalone purge still removes the store"
+
+
+class TestATeardownPlanFollowsASystemTierRepoint:
+    """⚑ D4, ruling (c): a SYSTEM-tier ``workset.boxes`` repoint reaches the teardown.
+
+    The behavior works — the reviewer probed ``system set 'workset.boxes=...'`` and
+    saw the store move.  What was missing is a pin that the PLAN the purge acts on is
+    computed against the repointed store, so the verb deletes what the key names and
+    leaves what it does not.  Red without threading the system tier through.
+    """
+
+    def test_the_plan_targets_the_repointed_store(self, config, std, tmp_home,
+                                                config_file):
+        from kanibako.settings.config import load_config, system_settings_path
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import (
+            load_std_paths, standalone_store_teardown_plan,
+        )
+
+        sysf = system_settings_path()
+        sysf.parent.mkdir(parents=True, exist_ok=True)
+        doc = load_doc(sysf) if sysf.exists() else {}
+        doc.setdefault("workset", {})
+        doc["workset"]["boxes"] = "@meta.workset.path/sysstore"
+        dump_doc(sysf, doc)
+        # The EARLY SYSTEM TIER is read when ``std`` is built, so the fixture predates
+        # the repoint written above.  Rebuild both or the plan reads a tier without it.
+        config = load_config(config_file)
+        std = load_std_paths(config)
+
+        root = _standalone(config, std, tmp_home, "tp_repoint")
+        sysstore = root / "sysstore"
+        sysstore.mkdir(exist_ok=True)
+        (sysstore / "PRECIOUS.txt").write_text("the repointed store\n")
+
+        removable, retained = standalone_store_teardown_plan(
+            root, early=_early_scope(std, BoxMode.standalone))
+
+        rendered = f"removable={removable!r} retained={retained!r}"
+        assert removable is not None and "sysstore" in str(removable), (
+            f"the teardown plan must name the repointed store, got: {rendered}")
+        assert (sysstore / "PRECIOUS.txt").read_text() == "the repointed store\n"
