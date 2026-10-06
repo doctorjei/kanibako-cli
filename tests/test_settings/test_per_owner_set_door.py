@@ -232,7 +232,7 @@ class TestOnlyTheFloorsBlindnessIsForgiven:
 
 
 class TestTheCureThroughTheCli:
-    """The refusal names what the value lacks and its cure adds only that: a stored 70-deep
+    """The refusal names what the value lacks and its cure adds only that: a stored 40-deep
     ``box.env`` chain before ``{meta.box.name}`` lacks the workset anchor alone, and an anchor
     the value already holds is never spelled twice."""
 
@@ -251,7 +251,7 @@ class TestTheCureThroughTheCli:
             )
 
         assert run("system", "get", "system.agent").returncode == 0
-        chain = {f"V{i}": f"{{box.env.V{i + 1}}}" for i in range(69)} | {"V69": "seg"}
+        chain = {f"V{i}": f"{{box.env.V{i + 1}}}" for i in range(39)} | {"V39": "seg"}
         settings = home / ".local/share/kanibako/global/settings.yaml"
         doc = (yaml.safe_load(settings.read_text()) if settings.exists() else None) or {}
         settings.parent.mkdir(parents=True, exist_ok=True)
