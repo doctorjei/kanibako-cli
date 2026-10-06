@@ -47,15 +47,15 @@ class AgentConfig:
     """
 
     run_args: list[str] | None = None
-    state: dict[str, str | None] = field(default_factory=dict)
+    state: dict[str, str | bool | None] = field(default_factory=dict)
     # ⚑ `env` is the READ side of the `agent` verbs, NOT a delivery route: env
     # reaches the box through the collapse's arbitrated slots (MBR-1 P3).
-    # ⚑ `str | None` LIKE ITS SIBLING BELOW, and for the same reason: a present-`None`
-    # is the DECLARED suppression state (spec §2h), so the record must be able to hold
-    # one. Typed `dict[str, str]`, this field forced `load` to `str()` it into the word
-    # `"None"` and the two tables gave different answers for one idiom.
-    env: dict[str, str | None] = field(default_factory=dict)
-    secret_path: dict[str, str | None] = field(default_factory=dict)
+    # ⚑ `str | bool | None` LIKE ITS SIBLINGS, one arm per STORED SPELLING: a
+    # present-`None` is the DECLARED suppression state (spec §2h) and a bool is a
+    # stored one, so the record must hold both UNRENDERED. Typed `dict[str, str]`,
+    # this field forced `load` to `str()` them into `"None"` and `True`.
+    env: dict[str, str | bool | None] = field(default_factory=dict)
+    secret_path: dict[str, str | bool | None] = field(default_factory=dict)
     transform_settings: dict = field(default_factory=dict)
     # ⚑ Carried OPAQUELY through read→write; no live producer
     # today.  A guard against a shape change, not dead code.

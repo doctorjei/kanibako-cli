@@ -7497,3 +7497,37 @@ class TestAFloorNullAddressNamesTheFileKeyBehindIt:
     def test_a_floor_null_nobody_wrote_is_silent(self, tmp_path, caplog):
         """A ``<None>`` the floor itself supplies is not SET by anyone: §2a is silent."""
         assert self._resolve(tmp_path, caplog) == (set(), [])
+
+
+def test_a_stored_env_bool_is_delivered_as_the_string_it_has_always_been():
+    """A stored YAML bool reaches a harness as ``True``, not ``true``.
+
+    The ``get`` routes print a bool lowercase; the EXPORT does not, and must not: this is
+    the value a container's environment receives, and ``True`` is the spelling it has
+    always had. The two surfaces are separate — ``get`` reads the agent record, the export
+    is built from the raw tiers here and stringified by ``isinstance`` — so a fix to the
+    record's rendering cannot move this line.
+    """
+    snap = KeyStore({"box": {"env": {"ON": True, "OFF": False, "S": "true", "N": 0}}})
+    entries = snapshot_category_entries(snap, active_agent="claude", box_ctx=_ctx())
+    envs = {e.box_dest: e.options for e in entries if e.category == "env"}
+    assert envs == {"ON": "True", "OFF": "False", "S": "true", "N": "0"}
+    assert all(isinstance(v, str) for v in envs.values())
+
+
+def test_a_behavior_bool_is_stringified_by_the_reader_that_declares_the_dict():
+    """``effective_behavior`` is typed ``dict[str, str]``, so a bool in the snapshot and
+    the same text as a string reach every consumer identically.
+
+    ⚑ THIS IS WHY WIDENING THE RECORD IS SAFE FOR THE LAUNCH. ``state_level`` hands a real
+    bool into the snapshot where it used to hand ``"True"``; the reader that turns the
+    snapshot into the assembler input stringifies, so the assembler cannot tell them apart
+    and no consumer is reached by the change.
+    """
+    def _snap(model):
+        return KeyStore({"agent": {"claude": {"model": model}}})
+
+    from_str = effective_behavior(_snap("True"), active_agent="claude")
+    from_bool = effective_behavior(_snap(True), active_agent="claude")
+    assert from_str == from_bool == {"model": "True"}
+    assert effective_behavior(_snap("false"), active_agent="claude") == {"model": "false"}
