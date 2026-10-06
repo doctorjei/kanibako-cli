@@ -70,7 +70,7 @@ from kanibako.settings.settings_keyspace import (
 from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_prefs import PREF_LEGAL_LEVELS, PREF_ROOT, refuse_pref_table
 from kanibako.settings.settings_resolve import (
-    SET_READS_ITS_OWN_FILE,
+    SET_TARGETS_ITS_OWN_FILE,
     SettingsError,
     check_bind_map,
     delete_before_set_step,
@@ -385,7 +385,7 @@ def refuse_retired_keys(
             + delete_before_set_step(
                 f"`{': '.join(parts)}` entry", where=where,
                 parents=_file_spelled_parents(parts),
-                checks_file=level in SET_READS_ITS_OWN_FILE,
+                checks_file=level in SET_TARGETS_ITS_OWN_FILE,
             )
             + f"\n  Fix: {cure}"
         )
@@ -476,6 +476,22 @@ def _retired_behavior_cure(
     return f"kanibako system set agent.{agent}.{successor}={tier}"
 
 
+def _behavior_cure_checks_file(level: str, *, node: str | None, subject: str | None) -> bool:
+    """Whether :func:`_retired_behavior_cure`'s cure for THIS ARM writes the file the stale
+    entry is stored in — the one fact that decides whether the delete's ``set`` refuses.
+
+    ⚑ NOT A LEVEL TABLE, and the ``agent`` tier is why: the cure writes the persona the entry
+    is stored under, so one entry refuses under its own persona and succeeds under another's.
+    Which persona, and the reserved ``default`` tier, are the cure's own.
+    """
+    if level in SET_TARGETS_ITS_OWN_FILE:
+        return True
+    if level != "agent":
+        return False
+    named = node or subject
+    return named == subject and named != _AGENT_DEFAULT_SUB
+
+
 def refuse_retired_behavior_keys(
     raw: Any, *, level: str, path: Path | None, subject: str | None = None,
     box_name: str | None = None,
@@ -536,7 +552,9 @@ def refuse_retired_behavior_keys(
                     f"`{spelling}` entry",
                     where=path if path is not None else "<settings>",
                     parents=_file_spelled_parents(parts),
-                    checks_file=level in SET_READS_ITS_OWN_FILE,
+                    checks_file=_behavior_cure_checks_file(
+                        level, node=node, subject=subject,
+                    ),
                 )
                 + f"\n  Fix: {cure}"
             )
