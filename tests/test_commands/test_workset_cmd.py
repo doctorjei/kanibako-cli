@@ -2543,16 +2543,12 @@ class TestWorksetPreviewResolvesTheDeclarationRoot:
         assert f"{ws.root}/refdir -> /opt/ref" in out
 
 
-class TestWorksetGetThreadsTheAgentsRoot:
-    """``workset get <ws> agent.<node>.<key>`` reads the node's own file.
+class TestWorksetGetAnswersOnlyTheWorksetFile:
+    """``workset get <ws> agent.<node>.<key>`` answers "(not set)" over the node's file.
 
-    The twin of the box noun's pin. The per-node families live in
-    ``agents/<node>/agent.yaml``, reachable only through ``get_config_value``'s
-    ``agents_root``; the handler withheld it, so the read answered "(not set)" at
-    rc 0 for a value ``system get`` reported correctly on the same key.
-
-    ⚑ MUTATION-PROVED: drop ``agents_root=std.agents`` from the ``get`` branch of
-    ``commands/workset_cmd.py`` and the read-back test reds on "(not set)".
+    The twin of the box noun's pin. Spec §2a: plain ``get`` returns the value STORED
+    at the command scope's file, "never another tier's value"; the workset scope
+    cannot store the key, and ``agents/<node>/agent.yaml`` is the agent scope's file.
     """
 
     def _ws_and_agents_root(self, config_file, tmp_home, name):
@@ -2561,8 +2557,7 @@ class TestWorksetGetThreadsTheAgentsRoot:
         return std.agents
 
     def _write_node(self, agents_root, key, value):
-        """Write through the PRODUCTION set route, so this pins the read rather than
-        a hand-built file shape the writer would never produce."""
+        """Write the node's own file through the PRODUCTION ``agent`` route."""
         from kanibako.settings.config_interface import set_config_value
         from kanibako.settings.config_keys import ConfigLevel
 
@@ -2573,31 +2568,32 @@ class TestWorksetGetThreadsTheAgentsRoot:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
+        assert (agents_root / "claude" / "agent.yaml").is_file()
 
-    def test_a_persona_agent_key_reads_back(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_get
+    def _get(self, ws, key):
+        from kanibako.cli import build_parser
 
-        agents_root = self._ws_and_agents_root(config_file, tmp_home, "nodews")
-        self._write_node(agents_root, "agent.claude.model", "opus-test")
+        args = build_parser().parse_args(["workset", "get", ws, key])
+        return args.func(args)
 
-        rc = run_get(argparse.Namespace(workset="nodews", key="agent.claude.model"))
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert captured.out.strip() == "opus-test"
-        assert "(not set)" not in captured.err
-
-    def test_an_unset_node_key_is_still_honestly_not_set(
-        self, config_file, tmp_home, capsys,
+    @pytest.mark.parametrize("key, value", [
+        ("agent.claude.model", "opus-test"),
+        ("agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN", "/host/token"),
+    ])
+    def test_a_node_file_value_is_not_set_at_the_workset(
+        self, config_file, tmp_home, capsys, key, value,
     ):
-        """The threading must not fabricate: with nothing stored, "(not set)"
-        stays "(not set)"."""
-        from kanibako.commands.workset_cmd import run_get
+        agents_root = self._ws_and_agents_root(config_file, tmp_home, "nodews")
+        self._write_node(agents_root, key, value)
 
+        assert self._get("nodews", key) == 0
+        captured = capsys.readouterr()
+        assert value not in captured.out
+        assert "(not set)" in captured.err
+
+    def test_an_unset_node_key_is_not_set(self, config_file, tmp_home, capsys):
         self._ws_and_agents_root(config_file, tmp_home, "nonodews")
-        rc = run_get(argparse.Namespace(
-            workset="nonodews", key="agent.claude.model",
-        ))
-        assert rc == 0
+        assert self._get("nonodews", "agent.claude.model") == 0
         assert "(not set)" in capsys.readouterr().err
 
 
