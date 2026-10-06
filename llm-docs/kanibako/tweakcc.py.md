@@ -35,7 +35,7 @@ constant leaves core with it and the plugin's declaration is unchanged.
 | the `agent.<agent>.caches` entry at `@system.cache/tweakcc` | its OUTPUT — the patched binary. An ENTRY of a terminal dest-keyed key, never a key of its own |
 
 Unrelated despite the name: the claude plugin's `transform_cred` hook, a credential-file
-CONTENT filter (`packages/agent-claude/.../credentials.py`).
+CONTENT filter (`packages/agent-claude/src/kanibako/plugins/claude/credentials.py`).
 
 ## The gate
 

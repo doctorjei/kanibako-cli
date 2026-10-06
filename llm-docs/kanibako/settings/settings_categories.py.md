@@ -24,7 +24,7 @@ emission sits at the launch seam and the vocabulary sits here.
 The OLD by-NAME `LevelView` resolver was RETIRED long before the reconcile was — it was wrong
 in a number of cases, which is why the snapshot pipeline replaced it. Its frozen, non-shipping
 remnant lives ONLY in `tests/test_flawed_oracle.py` as a drift tripwire, NOT a correctness
-authority. (⚑ That path read `tests/support/flawed_oracle.py` until 6-R3; the module moved in
+authority. (⚑ That path was `tests/support/flawed_oracle.py` until 6-R3; the module moved in
 beside the tests that drive it so the retired model occupies exactly ONE file, and a stale
 `.pyc` under `tests/support/__pycache__` is all that is left at the old location.) The
 `settings_shares` / `settings_seeds` wrapper modules it used to feed were retired in 7c — the

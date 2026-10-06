@@ -67,7 +67,7 @@ was moved, unmodified, to **`salvage/deprecation.py`** (with its test at
 `salvage/test_deprecations.py`) — dormant, not deleted. See `salvage/README.md`.
 
 **When the first real deprecation is declared,** reactivate it: move
-`salvage/deprecation.py` back to `src/kanibako/deprecation.py` and
+`salvage/deprecation.py` back to its former home, `src/kanibako/deprecation.py`, and
 `salvage/test_deprecations.py` back to `tests/`, then update this section. The
 machinery it restores:
 
