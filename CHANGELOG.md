@@ -2245,6 +2245,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   v1.8.0 guide's per-area sequence, where they belong; their text is unchanged apart from one
   dead anchor in the cure table.
 
+- A non-string value at a path key (`system.canon: 8080`, `system.secret_path.T: 8080`, a list,
+  or a map) is refused by name at every door that reads a settings file, saying which key holds
+  what and to give one quoted path. `env.<VAR>` still takes any scalar, so `env.PORT: 8080`
+  builds; `secret_path.<VAR>` is judged as the path key it is.
+
 ### Added
 
 - **For plugin authors: a descriptor `bindings` row's `owner:` is now read and enforced.** It is
