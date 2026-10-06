@@ -547,6 +547,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A v1.7-era host is hard-blocked until `kanibako setup` runs.** v1.7.x kept its setup marker in
+  `~/.config/kanibako_config.yaml`, which v1.8.0 does not read, so an upgrader got only the "isn't set up
+  yet" advisory and could launch on a store setup never rebuilt. While that file exists and the system
+  settings file holds no marker, `start`, `create`, and `agent reauth` now exit 1 with `too old to
+  auto-update. Re-run 'kanibako setup'`. This is a migration guard for this release only.
 - **A `channels:` row whose source probe answers `null` no longer stops the launch.** A packaged
   `channels:` row that reads its probed host path directly — the shape a row takes when it carries
   no `meta_ref` — left a `null` in the bind table when its source key was set to `<None>`, and the

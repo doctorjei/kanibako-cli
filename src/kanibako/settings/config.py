@@ -807,20 +807,27 @@ def read_setup_completed(settings_path: Path | None) -> str | None:
 # RETIRED (R-38, M-23); the protection folds into ``setup_compat_gate`` below.
 
 
-def setup_compat_gate(settings_path: Path | None) -> str | None:
+def setup_compat_gate(
+    settings_path: Path | None, legacy_config: Path | None = None,
+) -> str | None:
     """Run the 5-band setup/config compatibility gate; a returned string is a NON-BLOCKING advisory.
 
     ⚑ Every comparison is by BASE version, so a dev/rc build of the same base
     as the released marker reads as ``==``, not "from the future".
     ⚑ *settings_path* is the SYSTEM SETTINGS file, the marker's home since 2026-08-26
-    (:func:`read_setup_completed`) — this gate knows exactly one file, as it always did.
+    (:func:`read_setup_completed`).
+    ⚑ ONE-RELEASE MIGRATION GUARD (v1.8.0): with no marker there, an existing v1.7-era
+    *legacy_config* (``kanibako_config.yaml``, where v1.7.x initialized and kept its
+    marker) reads as below ``SETUP_BCV``, so an upgrader is hard-blocked until setup runs.
     """
     from kanibako import SETUP_BCV, SETUP_FCV, __version__
     from kanibako.errors import ConfigError
 
     marker = read_setup_completed(settings_path)
     if marker is None:
-        return "kanibako isn't set up yet. Run 'kanibako setup' to get started."
+        if legacy_config is None or not legacy_config.exists():
+            return "kanibako isn't set up yet. Run 'kanibako setup' to get started."
+        raise _setup_too_old(read_setup_completed(legacy_config) or legacy_config.name)
 
     from packaging.version import InvalidVersion, Version
 
@@ -855,7 +862,11 @@ def setup_compat_gate(settings_path: Path | None) -> str | None:
         return None
     if config_ver >= bcv:
         return "kanibako setup is out of date — re-run 'kanibako setup'."
-    raise ConfigError(
+    raise _setup_too_old(marker)
+
+
+def _setup_too_old(marker: str) -> ConfigError:
+    return ConfigError(
         f"This kanibako config ({marker}) is too old to auto-update. "
         "Re-run 'kanibako setup' before agent commands."
     )

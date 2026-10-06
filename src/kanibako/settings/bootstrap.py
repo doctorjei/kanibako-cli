@@ -37,6 +37,7 @@ XDG_SPEC_DEFAULTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # The user bootstrap config file, resolved under ``$XDG_CONFIG_HOME`` (spec §1).
 CONFIG_FILE = "kanibako.cfg"
+LEGACY_CONFIG_FILE = "kanibako_config.yaml"
 
 # The machine-wide site directory and its two base files.
 # ⚑ Compose both from the DIR — it is spelled once.
