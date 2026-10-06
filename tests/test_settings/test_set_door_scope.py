@@ -682,6 +682,17 @@ class TestADefectInATableReferentIsTheReferrersDefect:
         assert message.startswith("Error:") and "cyclic @-reference" in message, message
         assert "B:" not in files["system"].read_text()
 
+    def test_the_trail_into_the_table_lends_its_leaves_no_depth(self, tmp_path, std):
+        files = _files(tmp_path)
+        files["system"].write_text(
+            "box:\n  env:\n    B: '{agent.default.env}'\nagent:\n  default:\n    env:\n"
+            + "".join(f"      V{i}: /{{agent.default.env.V{i + 1}}}\n" for i in range(2, 63))
+            + "      V63: /end\n")
+        value = "/{agent.default.env.V2}"
+        message = _set("agent.default.env.V1", value, files, ConfigLevel.system, std=std)
+        assert not message.startswith("Error:"), message
+        assert value in files["system"].read_text()
+
     def test_a_clean_table_is_accepted(self, tmp_path, std):
         files = _files(tmp_path)
         self._stored(files)

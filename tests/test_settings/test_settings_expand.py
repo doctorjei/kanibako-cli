@@ -958,6 +958,23 @@ def test_a_subtree_referent_does_not_lend_its_leaves_depth() -> None:
     assert errors == {}, errors
 
 
+@pytest.mark.parametrize("referrer_first", [True, False], ids=["referrer-first", "table-first"])
+@pytest.mark.parametrize("lenient", [True, False], ids=["lenient", "strict"])
+def test_a_long_trail_into_a_table_lends_its_leaves_no_depth(referrer_first, lenient) -> None:
+    trail = {"z": KeyStore({f"Z{i}": f"/{{z.Z{i + 1}}}" for i in range(30)} | {"Z30": "{x}"})}
+    rest = {
+        "c": KeyStore({f"C{i}": f"/{{c.C{i + 1}}}" for i in range(60)} | {"C60": "/end"}),
+        "t": KeyStore({"leaf": "/{c.C0}"}),
+        "x": "{t}",
+    }
+    snap = KeyStore(trail | rest if referrer_first else rest | trail)
+    if lenient:
+        _expanded, errors = expand(snap, _ctx(), collect_errors=True)
+        assert errors == {}, errors
+    else:
+        expand(snap, _ctx())
+
+
 # ---------------------------------------------------------------------------
 # ``pref.*`` — never participates in resolution as a derivable key (spec §2h)
 # ---------------------------------------------------------------------------
