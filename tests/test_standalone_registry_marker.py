@@ -8,6 +8,7 @@ root ``workset.yaml``, detection reads THAT file's own key (never the cascade), 
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -201,11 +202,14 @@ class TestForcedNullReadsStandalone:
         assert _cli(["workset", "info", "ws3"]) == 0
 
 
-def _tree(root: Path) -> dict[str, bytes | None]:
-    return {
-        str(p.relative_to(root)): (p.read_bytes() if p.is_file() else None)
-        for p in sorted(root.rglob("*"))
-    }
+def _tree(root: Path) -> dict[str, bytes | str | None]:
+    out: dict[str, bytes | str | None] = {}
+    for dirpath, dirs, files in os.walk(root):
+        for leaf in dirs + files:
+            p = Path(dirpath) / leaf
+            out[str(p.relative_to(root))] = (
+                "-> " + os.readlink(p) if p.is_symlink() else p.read_bytes() if p.is_file() else None)
+    return out
 
 
 class TestForcedNullKeepsTheMemberGuard:
@@ -235,3 +239,27 @@ class TestForcedNullKeepsTheMemberGuard:
         assert _cli(["workset", "rm", "ws4", *purge]) == 1
         assert "1 project(s)" in capsys.readouterr().err
         assert _tree(root) == before
+
+    @pytest.mark.parametrize("remove_files", [[], ["--remove-files"]])
+    def test_disconnect_is_refused_before_any_change(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch, remove_files,
+    ):
+        root = self._populated(tmp_home, force_null=True)
+        assert (root / "workspaces" / "m1").is_symlink()
+        before = _tree(tmp_home)
+        monkeypatch.setattr("builtins.input", lambda *_a: "yes")
+        capsys.readouterr()
+        assert _cli(["workset", "disconnect", "ws4", "m1", *remove_files]) == 1
+        assert "workset.registry" in capsys.readouterr().err
+        assert _tree(tmp_home) == before
+
+    def test_connect_is_refused_before_the_journal_entry(
+        self, config_file, tmp_home, credentials_dir, capsys,
+    ):
+        self._populated(tmp_home, force_null=True)
+        (tmp_home / "home" / "m2").mkdir()
+        before = _tree(tmp_home)
+        capsys.readouterr()
+        assert _cli(["workset", "connect", "ws4", str(tmp_home / "home" / "m2")]) == 1
+        assert "workset.registry" in capsys.readouterr().err
+        assert _tree(tmp_home) == before
