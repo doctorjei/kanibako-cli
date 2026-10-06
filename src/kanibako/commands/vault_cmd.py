@@ -14,6 +14,7 @@ from kanibako.snapshots import (
     list_snapshots,
     prune_snapshots,
     restore_snapshot,
+    snapshots_to_prune,
 )
 from kanibako.utils import confirm_prompt
 
@@ -198,12 +199,7 @@ def run_prune(args: argparse.Namespace) -> int:
     if vault_rw is None:
         return 1
 
-    names = [name for name, _ts, _size in list_snapshots(vault_rw)]
-    if args.keep <= 0:
-        doomed = names
-    else:
-        doomed = names[:-args.keep] if len(names) > args.keep else []
-
+    doomed = snapshots_to_prune(vault_rw, args.keep)
     if doomed and not _confirm_destructive(
         getattr(args, "force", False),
         f"Delete {len(doomed)} snapshot(s), keeping {args.keep} most recent?\n"
