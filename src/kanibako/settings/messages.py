@@ -199,6 +199,8 @@ WARN_WORKSET_SET_MAKES_STANDALONE = (
 # says about them.  ``config.chain_reaches`` separates the two arms below.
 WARN_CONFIG_BAD_ENTRIES = "%s stores entries that are not keys (spec §0):\n  %s"
                                                     # the file path, the entries
+WARN_CONFIG_ILL_TYPED_ENTRIES = "%s stores values their keys refuse (spec §2a):\n  %s"
+                                                    # the file path, the entries
 #: The OUT-of-chain refusal's tail — what it did not do, and the two cures.
 ERR_CONFIG_BAD_ENTRIES_TAIL = (
                         "\nNothing was written. Remove those entries by editing the file, or "
