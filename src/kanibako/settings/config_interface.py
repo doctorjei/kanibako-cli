@@ -55,6 +55,7 @@ from kanibako.settings.messages import (
     PER_OWNER_SET_WORDS,
     WARN_CONFIG_BAD_ENTRIES,
     WARN_CONFIG_ILL_TYPED_ENTRIES,
+    WARN_CONFIG_UNRESOLVABLE_ENTRIES,
     WARN_WORKSET_SET_MAKES_STANDALONE,
 )
 from kanibako.settings.config_display import (
@@ -685,6 +686,8 @@ class _BadEntries(NamedTuple):
     stored: "Callable[[str], object]"
     #: ``(file path, one "key = value: reason" line per entry)`` for :func:`_ill_typed_stored_entries`
     ill_typed: "list[tuple[Path | None, list[str]]]"
+    #: the same lines for a stored entry the lenient ``expand`` marks (:func:`_set_time_defects`)
+    unresolvable: "list[tuple[Path | None, list[str]]]" = []
 
     def warn_reports(self) -> "list[str]":
         """One report per file and finding, undeclared entries first."""
@@ -693,13 +696,16 @@ class _BadEntries(NamedTuple):
         ] + [
             WARN_CONFIG_ILL_TYPED_ENTRIES % (path, "\n  ".join(lines))
             for path, lines in self.ill_typed
+        ] + [
+            WARN_CONFIG_UNRESOLVABLE_ENTRIES % (path, "\n  ".join(lines))
+            for path, lines in self.unresolvable
         ]
 
     def chain_block(self) -> str:
         """The same entries, nested under their file — for a message that already has a lead."""
         return "\n".join(
             f"  {path} stores:\n    " + "\n    ".join(lines)
-            for path, lines in [*self.files, *self.ill_typed]
+            for path, lines in [*self.files, *self.ill_typed, *self.unresolvable]
         )
 
 
@@ -711,6 +717,7 @@ def _cascade_bad_entries(
     workset_path: "Path | None",
     box_path: "Path | None",
     edited: "str | None" = None,
+    defects: "Callable[[], Mapping[str, str]] | None" = None,
 ) -> _BadEntries:
     """Keyspec §2a: the entries ``set`` judges and ``get`` warns on, per settings file the
     command reads — one report each, from the view the CASCADE reads, so a table the cascade
@@ -725,6 +732,11 @@ def _cascade_bad_entries(
     §0 drops — and a bad-entry scan is not a ``show``, so those lines belong to whichever
     door the user actually ran (:func:`_quiet_drop_announcements` takes them; the drop still
     happens).
+
+    *defects* yields the lenient ``expand``'s marks (:func:`_set_time_defects`), called after
+    the announcements are taken and only once no file stores an undeclared entry, which is
+    not a key to assemble; each is reported under the most-specific file that stores it, and
+    one no file stores is left out.
     """
     from kanibako.settings.settings_assemble import ReadPurpose, read_settings_files
 
@@ -743,11 +755,13 @@ def _cascade_bad_entries(
     ill_typed: "list[tuple[Path | None, list[str]]]" = []
     names: list[str] = []
     views: list[dict] = []
+    paths: "list[Path | None]" = []
     workset_files = {path for level, path in files if level == "workset"}
     for read in read_settings_files(files, purpose=ReadPurpose.DISPLAY):
         if not isinstance(read.view, dict):
             continue
         views.insert(0, read.view)  # most-specific first — the cascade's precedence
+        paths.insert(0, read.path)
         kept = [
             (segs, shown, v) for segs, (shown, v)
             in sorted(_undeclared_stored_entries(read.view).items())
@@ -764,8 +778,24 @@ def _cascade_bad_entries(
         if typed:
             ill_typed.append((read.path, [line for _segs, line in typed]))
             names.extend(".".join(segs) for segs, _line in typed)
+    try:
+        marks = dict(defects()) if defects and not grouped else {}
+    except KanibakoError:
+        marks = {}  # a cascade that does not assemble is the launch's refusal, not this scan's
+    marked: "dict[Path | None, list[str]]" = {}
+    for dotted, reason in sorted(marks.items()):
+        if _overwritten_by(edited, tuple(dotted.split("."))):
+            continue
+        holder = next((i for i, view in enumerate(views)
+                       if _dotted_in(view, dotted) is not None), None)
+        if holder is None:
+            continue
+        stored = render_stored_scalar(_dotted_in(views[holder], dotted))
+        marked.setdefault(paths[holder], []).append(f"{dotted} = {stored}: {reason}")
+        names.append(dotted)
     return _BadEntries(
         grouped, names, lambda dotted: _first_dotted(views, dotted), ill_typed,
+        list(marked.items()),
     )
 
 
@@ -1097,6 +1127,45 @@ def _lenient_expand(snapshot: "Any", ctx: "Any", agent_name: str) -> "tuple[Any,
     return result
 
 
+def _set_time_defects(
+    config_path: "Path | None",
+    *,
+    edit: "tuple[str, object] | None",
+    command_scope: "ConfigLevel | None",
+    system_settings_path: "Path | None",
+    system_path: "Path | None",
+    workset_path: "Path | None",
+    box_path: "Path | None",
+    agent_name: str,
+    agent_path: "Path | None" = None,
+    target: "LaunchInputs | None" = None,
+) -> "dict[str, str]":
+    """Keyspec §2a: what the lenient ``expand`` of the command's snapshot MARKS, *edit*
+    ``(key, value)`` applied first, ``{dotted: reason}`` — forgiving cascade blindness
+    exactly as the edited value's probe does (:func:`_category_set_lookups`)."""
+    from kanibako.settings.settings_expand import is_cascade_blindness
+
+    snapshot, ctx = _set_time_snapshot(
+        target=target, agent_name=agent_name, agent_path=agent_path, config_path=config_path,
+        command_scope=command_scope, system_settings_path=system_settings_path,
+        system_path=system_path, workset_path=workset_path, box_path=box_path,
+    )
+    if edit is not None:
+        _set_leaf(snapshot, edit[0].split("."), edit[1])
+    errors = _lenient_expand(_clone_keystore(snapshot), ctx, agent_name)[1]
+    unseen = {
+        dotted: _floor_blind_referents(dotted, raw, snapshot, command_scope)
+        for dotted, reason in errors.items()
+        if is_cascade_blindness(reason) and isinstance(raw := snapshot_leaf(snapshot, dotted), str)
+    }
+    forgiven = {dotted for dotted, names in unseen.items() if names}
+    if forgiven:
+        for name in {name for dotted in forgiven for name in unseen[dotted]}:
+            _set_leaf(snapshot, name.split("."), "/")
+        forgiven -= set(_lenient_expand(snapshot, ctx, agent_name)[1])
+    return {k: r for k, r in errors.items() if k not in forgiven}
+
+
 def _clone_keystore(store: "Any") -> "Any":
     """Deep-clone a :class:`KeyStore` — nested nodes rebuilt, immutable leaves shared (S19)."""
     from kanibako.settings.keystore import KeyStore
@@ -1298,6 +1367,12 @@ def get_config_value(
             noun_settings_file(project_toml, system_settings_path), command_scope,
             system_path=cascade_system_path, workset_path=cascade_workset_path,
             box_path=None,
+            defects=lambda: _set_time_defects(
+                project_toml or global_config_path, edit=None, command_scope=command_scope,
+                system_settings_path=system_settings_path, system_path=cascade_system_path,
+                workset_path=cascade_workset_path, box_path=None,
+                agent_name=active_agent or "",
+            ),
         )
     except KanibakoError:
         bad = _BadEntries([], [], lambda _dotted: None, [])  # that file's own reader refuses it
@@ -1951,10 +2026,18 @@ def set_config_value(
             noun_settings_file(config_path, system_settings_path), command_scope,
             system_path=cascade_system_path, workset_path=cascade_workset_path,
             box_path=cascade_box_path, edited=canonical,
+            defects=lambda: _set_time_defects(
+                config_path, edit=(canonical, value) if _probes_at_set_time(canonical) else None,
+                command_scope=command_scope,
+                system_settings_path=system_settings_path, system_path=cascade_system_path,
+                workset_path=cascade_workset_path, box_path=cascade_box_path,
+                agent_name=cascade_agent_name, agent_path=cascade_agent_path,
+                target=set_target,
+            ),
         )
     except KanibakoError:
         bad = _BadEntries([], [], lambda _dotted: None, [])  # that file's own reader refuses it
-    if bad.files or bad.ill_typed:
+    if bad.files or bad.ill_typed or bad.unresolvable:
         on_chain = chain_reaches(
             value, bad.names, key=canonical, stored=bad.stored,
         )
