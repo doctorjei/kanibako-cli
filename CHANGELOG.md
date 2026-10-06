@@ -588,6 +588,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`stop --all` no longer hides every mode's skip lines when one registry will not parse.** Each registry
+  read is now separate, so an unreadable file warns and costs only the skip lines of the modes it feeds.
+  The global `registry.yaml` feeds both standalone and named boxes, so it still costs both and is warned
+  about once for each.
+
 - **`box vault restore` and `box vault prune` now confirm before they delete.** Both documented `--force`
   as skipping a prompt that did not exist. Each now asks you to type `yes` and exits 2 on any other answer
   or a closed stdin; `--force` skips only the prompt. A snapshot name that does not exist still fails with
