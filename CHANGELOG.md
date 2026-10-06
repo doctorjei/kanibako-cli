@@ -588,6 +588,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box extract` no longer writes an inherited `box.enable_vault` into a standalone box's settings.**
+  Extracting into a standalone root with no box store wrote the system or workset value (`false`) into the
+  box's own settings file, though the key stays absent there unless the user sets it. The extract still
+  honors that value; it no longer stores it. `--no-vault`, move, duplicate, and convert are unchanged.
+
 - **`set` now refuses a whole-table reference whose table holds a broken key.** With a stored
   `agent.default.env.Y: '{agent.default.env.Y}'`, `system set box.env.B={agent.default.env}` was accepted and
   written, though launch refused it; it is now refused, naming the broken key inside the table. A table that
