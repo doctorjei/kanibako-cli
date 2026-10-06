@@ -930,6 +930,7 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             agents_root=std.agents, node_store=False,
             command_scope=ConfigLevel.workset,
             cascade_system_path=std.settings,
+            std=std, ws=ws,
         )
         if val is not None:
             print(val)

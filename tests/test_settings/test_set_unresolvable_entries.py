@@ -105,3 +105,48 @@ def test_a_downward_default_the_cascade_cannot_see_is_not_a_bad_entry(cli):
     proc = cli("system", "set", "system.agent=claude")
     assert proc.returncode == 0, proc.stderr
     assert "do not resolve" not in proc.stderr, proc.stderr
+
+
+def _box_file(cli) -> Path:
+    proj = cli.home / "proj"
+    proj.mkdir()
+    assert cli("box", "create", "--name", "b1", str(proj)).returncode == 0
+    return cli.home / ".local/share/kanibako/primary_workset/boxes/b1/box.yaml"
+
+
+@pytest.mark.parametrize("system, box", [
+    ("", '  env:\n    N: "{meta.box.name}"\n'),
+    ("box:\n  shell: /s/{meta.workset.path}\n", ""),
+    ('box:\n  env:\n    P: "{meta.box.path}/x"\n', ""),
+    ('box:\n  env:\n    WS: "{workset.vault_ro}"\n', ""),
+], ids=["box-name", "system-workset-path", "system-box-path", "system-workset-key"])
+def test_box_get_says_nothing_about_a_ref_its_box_resolves(cli, system, box):
+    """``box get`` judges the stored values against the box, as ``box set`` does, so an
+    anchor only the box supplies is not reported. Red on a get that judged them target-less."""
+    box_file = _box_file(cli)
+    if system:
+        _system_file(cli).write_text(system)
+    box_file.write_text("box:\n  shell: zsh\n" + box)
+    proc = cli("box", "get", "b1", "box.env.Z")
+    assert proc.returncode == 0, proc.stderr
+    assert "do not resolve" not in proc.stderr, proc.stderr
+    assert "do not resolve" not in cli("box", "set", "b1", "box.shell=bash").stderr
+
+
+class TestWorksetDoor:
+    @pytest.fixture
+    def ws_file(self, cli):
+        assert cli("workset", "create", "ws1").returncode == 0
+        return cli.home / "ws1" / "workset.yaml"
+
+    def test_get_warns_on_a_genuinely_missing_ref(self, cli, ws_file):
+        ws_file.write_text('workset:\n  env:\n    X: "{workset.env.FOO}"\n')
+        proc = cli("workset", "get", "ws1", "workset.vault_rw")
+        assert proc.returncode == 0, proc.stderr
+        assert "do not resolve" in proc.stderr and "workset.env.X" in proc.stderr, proc.stderr
+
+    def test_get_says_nothing_about_a_box_default_the_working_set_cannot_see(self, cli, ws_file):
+        ws_file.write_text('box:\n  env:\n    N: "{meta.box.name}"\n')
+        proc = cli("workset", "get", "ws1", "workset.vault_rw")
+        assert proc.returncode == 0, proc.stderr
+        assert "do not resolve" not in proc.stderr, proc.stderr

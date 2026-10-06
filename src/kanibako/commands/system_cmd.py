@@ -293,6 +293,21 @@ def _agent_node_error(key: str, *, verb: str) -> str | None:
     return scope_key_refusal(key, reason, ConfigLevel.system, verb=verb, cure="")
 
 
+def _system_target_std(cf):
+    """``(std, error)`` for the system scope's set-time resolve, which ``set`` and ``get``
+    share (spec §2a). A stored value that stops it loading yields ``(None, reason)``, and
+    the setter applies its one rule for a target that cannot be built: validate without
+    it, so the ``set`` that REPAIRS that value still runs."""
+    from kanibako.errors import KanibakoError
+    from kanibako.settings.config import load_config
+    from kanibako.settings.paths import load_std_paths
+
+    try:
+        return load_std_paths(load_config(cf)), None
+    except KanibakoError as exc:
+        return None, str(exc)
+
+
 def _run_system_config(args: argparse.Namespace) -> int:
     """Shared global-config engine dispatch.
 
@@ -474,6 +489,7 @@ def _run_system_config(args: argparse.Namespace) -> int:
             # that withholds it leaves the rule inferring the scope from a path
             # being non-None -- which is exactly how get and set drifted apart.
             command_scope=ConfigLevel.system,
+            std=_system_target_std(cf)[0],
         )
         if val is None:
             print(f"{key}: (not set)")
@@ -522,20 +538,8 @@ def _run_system_config(args: argparse.Namespace) -> int:
         # ``℘`` in the keyspace, and the setter parses the CANONICAL form.
         # ⚑ THE SYSTEM SCOPE IS THE TARGET (spec §2a), and its resolve needs ``std``,
         # which this verb deliberately does not hold (the foundation note above). It is
-        # loaded HERE for the set-time resolve alone. A stored value that stops it
-        # loading is handed over as *target_error*, and the setter applies its one rule
-        # for a target that cannot be built: validate without it, so the ``set`` that
-        # REPAIRS that value still runs.
-        from kanibako.errors import KanibakoError
-        from kanibako.settings.config import load_config
-        from kanibako.settings.paths import load_std_paths
-
-        set_std = None
-        set_std_error: str | None = None
-        try:
-            set_std = load_std_paths(load_config(cf))
-        except KanibakoError as exc:
-            set_std_error = str(exc)
+        # loaded for the set-time resolve (:func:`_system_target_std`).
+        set_std, set_std_error = _system_target_std(cf)
         msg = set_config_value(
             key, value, config_path=cf,
             system_settings_path=ssp,
