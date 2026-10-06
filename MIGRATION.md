@@ -7564,7 +7564,9 @@ as `settings.yaml`, instead of as a sibling file next to it. This makes
 `plugins/`/`cache/` stores) rather than a `<agent>.yaml` file sitting next to an
 `<agent>/` directory.
 
-⚑ **The filename is superseded in v1.8.0 — see §2.45 (line 2774).** The per-agent file
+⚑ **The filename is superseded in v1.8.0 — see
+"2.45 Each settings file is now named for its tier"
+in the v1.8.0 guide.** The per-agent file
 is now `agent.yaml`; only the leaf name changed, so the store-dir move described here is
 still the right move. If you are coming to v1.8.0 from pre-1.6.0, run the loop below and
 then §2.45's agent rename — a file left as `agents/<agent>/settings.yaml` is not read at
@@ -7607,7 +7609,9 @@ restructured. The PRIMARY workset (§4) absorbs the old top-level box/log/vault 
 
 ### 3.1 Key renames / new / deleted
 
-⚑ **Superseded in v1.8.0 (see §2.1, line 197).** Five of the "New `system.*`" spellings
+⚑ **Superseded in v1.8.0 (see
+"2.67 Anything in `kanibako.cfg` that is not a declared `config.*` key stops the command"
+in the v1.8.0 guide).** Five of the "New `system.*`" spellings
 below moved again, to a `config.*` prefix (`config.data`, `config.agents`,
 `config.registry`, `config.settings`, `config.primary_workset` —
 `settings_keyspace.py` `DECLARED_CONFIG_LEAVES`); they are marked below. The rest of
@@ -7619,7 +7623,7 @@ this table (the `system.channelroot`/`system.channels.*`, `system.backup`,
 | `system.path.data` | `system.data` → **`config.data`** | rename only |
 | `system.path.crabs` | `system.agents` → **`config.agents`** | + crab→agent (§2) |
 | `system.path.comms` | `system.channelroot` | renamed + rebuilt (see §7); type roots under `system.channels.*` |
-| `system.path.templates` | `system.base_template` → **`system.template`** | ⚑ **superseded in v1.8.0 — see §2.5 (line 460).** (1.6.0 re-pointed it to `@system.global/base_template`; the live key names a template ROOT, not that file — `@system.global` itself is also gone, see the row below.) |
+| `system.path.templates` | `system.base_template` → **`system.template`** | ⚑ **superseded in v1.8.0 — see "2.5 Template and per-agent store moves" in the v1.8.0 guide.** (1.6.0 re-pointed it to `@system.global/base_template`; the live key names a template ROOT, not that file — `@system.global` itself is also gone, see the row below.) |
 | `system.path.ws_hints` | `system.registry` → **`config.registry`** | absorbed into the consolidated registry (§5) |
 | `system.path.boxes` | **DELETED** | → `@config.primary_workset/boxes` (§4) |
 | `system.path.share_ro` | **DELETED** | subsumed by `@workset.vault_ro` / category `shared` |
@@ -7637,7 +7641,8 @@ Also **deleted from the top level** (now under the PRIMARY workset): `system.box
 
 ### 3.2 `system.default_agent` (renamed setting)
 
-⚑ **This rename direction is BACKWARDS — superseded in v1.8.0, see §2.1 (line 202).**
+⚑ **This rename direction is BACKWARDS — superseded in v1.8.0, see
+"2.1 Settings keys renamed or retired" in the v1.8.0 guide.**
 The rest of this subsection describes the 1.6.0-era rename (`system.agent` →
 `system.default_agent`) as if it were still live. It is not: as of v1.8.0,
 **`system.default_agent` is the RETIRED spelling and `system.agent` is the live
@@ -7689,10 +7694,15 @@ suitable dir and **warns** — it is not silently substituted.
 
 ### 3.4 New `@system.data` tree
 
-⚑ **`@system.data` superseded in v1.8.0 — see §2.1 (line 197), now `@config.data`.**
+⚑ **`@system.data` superseded in v1.8.0 — see
+"2.67 Anything in `kanibako.cfg` that is not a declared `config.*` key stops the command"
+in the v1.8.0 guide, now `@config.data`.**
 The tree below is otherwise still the 1.6.0-era layout described in this section;
-later v1.8.0 moves inside it (e.g. the template directory, §2.5 line 460, where `base_template/` is renamed;
-it is now `template/`; and the per-tier settings filenames, §2.45 line 2774) are not reflected in the diagram —
+later v1.8.0 moves inside it (e.g. the template directory, "2.5 Template and per-agent
+store moves" in the v1.8.0 guide, where `base_template/` is renamed; it is now
+`template/`; and the per-tier settings filenames,
+"2.45 Each settings file is now named for its tier"
+in the v1.8.0 guide) are not reflected in the diagram —
 the two `settings.yaml` files under `primary_workset/` are now `workset.yaml` and
 `box.yaml`, while `global/settings.yaml` keeps its name.
 
@@ -7761,7 +7771,9 @@ $XDG_DATA_HOME/kanibako/primary_workset/   ← @config.primary_workset (= @meta.
 # the box WORKSPACE stays external: meta.box.workspace = your real project dir → ~/workspace
 ```
 
-⚑ **Both `settings.yaml` files above are superseded in v1.8.0 — see §2.45 (line 2774):**
+⚑ **Both `settings.yaml` files above are superseded in v1.8.0 — see
+"2.45 Each settings file is now named for its tier"
+in the v1.8.0 guide:**
 the workset-root file is now `workset.yaml` and the per-box file `box.yaml`.
 
 Move each primary box's home dir to `primary_workset/boxes/<box>/home/`, its vault to
@@ -7786,7 +7798,9 @@ unchanged; only the directory leaf moved.)
 └── logs/<box>.jsonl
 ```
 
-⚑ **Both `settings.yaml` files above are superseded in v1.8.0 — see §2.45 (line 2774):**
+⚑ **Both `settings.yaml` files above are superseded in v1.8.0 — see
+"2.45 Each settings file is now named for its tier"
+in the v1.8.0 guide:**
 the workset-root file is now `workset.yaml` and the per-box file `box.yaml`.
 
 **NAMED workset vault path order changed `vault/<box>/{ro,rw}` → `vault/{ro,rw}/<box>`.**
@@ -7828,7 +7842,9 @@ left on the 1.6.0/1.7.x shape **hard-refuses**. If you are coming from a `workse
 fold described above and go straight to §2.43: put `name` / `created` / `projects` into
 `registry.yaml` and merge only the old `config.yaml` keys into `settings.yaml`.
 
-⚑ **And that settings file is itself `workset.yaml` in v1.8.0 — see §2.45 (line 2774).**
+⚑ **And that settings file is itself `workset.yaml` in v1.8.0 — see
+"2.45 Each settings file is now named for its tier"
+in the v1.8.0 guide.**
 It carries the same name as the retired pre-1.6.0 identity file but is a different file:
 it holds the old `config.yaml` keys only, never `name` / `created` / `projects`, which go
 to `registry.yaml`. A NAMED workset's per-box files become `box.yaml` at the same time.
@@ -7907,7 +7923,9 @@ group_auth/metadata/...) is replaced by a per-box **`settings.yaml`** in **every
 mode. Its on-disk shape (the `[project]` + `[resolved]` sections it actually carries)
 is detailed in §9 — read that section before hand-editing it. (Both filenames are
 superseded in v1.8.0, which names each settings file for its own tier — `box.yaml` for
-the per-box file, `workset.yaml` for a standalone root: §2.45, line 2774.)
+the per-box file, `workset.yaml` for a standalone root:
+"2.45 Each settings file is now named for its tier"
+in the v1.8.0 guide.)
 
 Drop `layout` entirely; translate `mode` per §4.1; the path fields are derived from
 the fixed per-mode tables, not user-edited. (Where the file lives: primary →
@@ -7962,7 +7980,7 @@ so a moved/imported standalone tree carries its helper log with it.
 
 The separate name/registry stores merge into one `registry.yaml` at
 `@config.registry` (`@config.data/global/registry.yaml` today; `@system.global`
-does not resolve — see §3.1, the `system.global` row, line 2931).
+does not resolve — see "3.1 Key renames / new / deleted" in this guide, the `system.settings` row).
 
 ⚑ **Superseded in v1.8.0.** The table below reflects the 1.6.0-era merge; the
 sections have moved again since. The canonical, current section list is
@@ -8020,7 +8038,9 @@ What this means for you:
 
 - **Detection is an ancestor-walk**, not a registry lookup. Standalone is detected by
   walking up for a `box_data/` dir + a root `settings.yaml` (in v1.8.0 that root file is
-  `workset.yaml`, §2.45 line 2774) — presence only, no
+  `workset.yaml`,
+  "2.45 Each settings file is now named for its tier"
+  in the v1.8.0 guide) — presence only, no
   `mode` field is read (§4.5); named by a workset root's four-directory skeleton
   (`boxes/`, the workspaces dir, `vault/`, `logs/`) — also presence only in v1.8.0,
   where a workset root carries no identity table at all (§2.43); primary by
@@ -8057,7 +8077,8 @@ types across 2 scopes (system + workset), surfaced in-box under `~/channels/` an
 
 ### 7.1 Key + path renames
 
-⚑ **`system.channels.commons` superseded in v1.8.0 — see §2.3 (line 326).** The
+⚑ **`system.channels.commons` superseded in v1.8.0 — see
+"2.3 Channel rename: `commons` → `common`" in the v1.8.0 guide.** The
 channel itself was renamed again, `commons` → `common`, on both host paths and
 the settings key.
 
@@ -8092,7 +8113,8 @@ tighten the write paths without moving the in-box paths.)
 
 ### 7.3 In-box layout: `~/comms/` → `~/channels/`
 
-⚑ **`commons/` superseded in v1.8.0 — see §2.3 (line 326).** Every old `commons/` path
+⚑ **`commons/` superseded in v1.8.0 — see
+"2.3 Channel rename: `commons` → `common`" in the v1.8.0 guide.** Every old `commons/` path
 in the diagram below (both the system and workset trees) is `common/` as of
 v1.8.0.
 
@@ -8187,7 +8209,8 @@ section: **your host agent config no longer flows into boxes.**
 
 ### 8.1 Layered seed-once template
 
-⚑ **`@system.base_template` superseded in v1.8.0 — see §2.5 (line 460).** The key
+⚑ **`@system.base_template` superseded in v1.8.0 — see
+"2.5 Template and per-agent store moves" in the v1.8.0 guide.** The key
 is retired; the live key is `system.template`, and it now names a template
 **root** two levels up from the box-home seed (`global/template/box/home/`), not
 the box-home dir directly.
@@ -8208,7 +8231,8 @@ below).
 
 ### 8.2 Content moves (a rename, not a loss)
 
-⚑ **`@system.base_template` superseded in v1.8.0 — see §2.5 (line 460).** Same
+⚑ **`@system.base_template` superseded in v1.8.0 — see
+"2.5 Template and per-agent store moves" in the v1.8.0 guide.** Same
 correction as §8.1 above: the live key is `system.template`, naming the template
 root, not the flat box-home dir this row implies.
 
