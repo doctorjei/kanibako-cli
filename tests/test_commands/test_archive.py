@@ -209,10 +209,10 @@ class TestArchiveExtended:
         config = load_config(config_file)
         load_std_paths(config)
         project_dir = tmp_home / "project"
-        # Standalone marker: box_data/ dir + ROOT workset.yaml (drift I).
+        # Standalone marker: the ROOT workset.yaml's stored registry null.
         kanibako_dir = project_dir / "box_data"
         kanibako_dir.mkdir(parents=True)
-        (project_dir / "workset.yaml").write_text('project:\n  mode: "standalone"\n')
+        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
         (kanibako_dir / "data.txt").write_text("standalone-data")
 
         archive_path = str(tmp_home / "dec.txz")

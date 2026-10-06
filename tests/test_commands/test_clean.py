@@ -207,8 +207,8 @@ class TestCleanExtended:
         project_dir = tmp_home / "project"
         kanibako_dir = project_dir / "box_data"
         kanibako_dir.mkdir(parents=True)
-        # Standalone marker: box_data/ dir + ROOT workset.yaml (drift I).
-        (project_dir / "workset.yaml").write_text('project:\n  mode: "standalone"\n')
+        # Standalone marker: the ROOT workset.yaml's stored registry null.
+        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
         (kanibako_dir / "data.txt").write_text("session-data")
 
         args = argparse.Namespace(

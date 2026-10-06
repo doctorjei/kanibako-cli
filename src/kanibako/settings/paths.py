@@ -1641,7 +1641,7 @@ def _find_local_ancestor(target: Path, std: StandardPaths) -> Path | None:
 
 
 def _is_standalone_meta_dir(root: Path) -> bool:
-    """True only if *root* carries the standalone box MARKER: ``box_data/`` AND a root settings file."""
+    """True only if *root*'s own ``workset.yaml`` stores the standalone ``workset.registry`` null."""
     from kanibako.launch import box_resolve
     return box_resolve.standalone_settings_present(root)
 
@@ -1701,7 +1701,7 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
             if ws_after is not None:
                 return ws_after
 
-        # STANDALONE: the in-place marker (presence-only since D4); a bare box_data/ is NOT enough.
+        # STANDALONE: the root file's own stored ``workset.registry`` null; box_data/ is not the marker.
         if _is_standalone_meta_dir(current):
             import_reconcile.import_standalone(std.registry, current, journal=std.journal)
             return DetectionResult(BoxMode.standalone, current)

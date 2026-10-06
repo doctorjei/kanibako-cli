@@ -115,7 +115,7 @@ class TestStandaloneSites:
     ):
         root = tmp_home / "lone"
         (root / STANDALONE_META_DIR).mkdir(parents=True)
-        (root / WORKSET_META_FILE).write_text("box: {}\n")
+        (root / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
         proj = paths.resolve_standalone_project(std, load_config(config_file), str(root))
         paths.box_logs_location(std, proj)
         assert set(early_reads) == {WS_TOKEN_STANDALONE}

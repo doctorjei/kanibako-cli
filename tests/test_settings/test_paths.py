@@ -576,10 +576,10 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "project"
-        # Drift I marker: a box_data/ dir + a ROOT workset.yaml (mode=standalone).
+        # Marker: a ROOT workset.yaml storing workset.registry as null.
         (project_dir / "box_data").mkdir(parents=True)
         (project_dir / WORKSET_META_FILE).write_text(
-            'project:\n  mode: "standalone"\n'
+            'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
         )
 
         result = detect_project_mode(project_dir.resolve(), std, config)
@@ -679,7 +679,7 @@ class TestDetectBoxMode:
         project_dir = tmp_home / "project"
         (project_dir / "box_data").mkdir(parents=True)
         (project_dir / WORKSET_META_FILE).write_text(
-            'project:\n  mode: "standalone"\n'
+            'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
         )
 
         subdir = project_dir / "src" / "deep" / "nested"
@@ -696,19 +696,19 @@ class TestDetectBoxMode:
         config = load_config(config_file)
         std = load_std_paths(config)
 
-        # Outer project has box_data marker + root workset.yaml
+        # Outer project has the root workset.yaml registry-null marker
         outer = tmp_home / "project"
         (outer / "box_data").mkdir(parents=True)
         (outer / WORKSET_META_FILE).write_text(
-            'project:\n  mode: "standalone"\n'
+            'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
         )
 
-        # Inner project also has box_data marker + root workset.yaml
+        # Inner project also has the registry-null marker
         inner = outer / "subproject"
         inner.mkdir()
         (inner / "box_data").mkdir()
         (inner / WORKSET_META_FILE).write_text(
-            'project:\n  mode: "standalone"\n'
+            'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
         )
 
         # Detection from inner/ should find inner's marker
@@ -778,7 +778,7 @@ class TestDetectBoxMode:
         # Place a marker ABOVE home (at tmp_home level)
         (tmp_home / "box_data").mkdir(exist_ok=True)
         (tmp_home / "box_data" / BOX_META_FILE).write_text(
-            'project:\n  mode: "standalone"\n'
+            'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
         )
 
         # project_dir is under home
@@ -846,7 +846,7 @@ class TestDetectBoxMode:
         inner = ws_root / "innerstand"
         (inner / "box_data").mkdir(parents=True)
         (inner / WORKSET_META_FILE).write_text(
-            'project:\n  mode: "standalone"\n'
+            'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
         )
 
         result = detect_project_mode(inner.resolve(), std, config)
@@ -898,11 +898,11 @@ class TestDetectBoxMode:
         ws = create_workset("my-set", tmp_home / "worksets" / "my-set", std)
 
         # A standalone box at an EXTERNAL dir (outside the workset tree): the
-        # in-place marker (box_data/ + root workset.yaml) plus a global
+        # in-place marker (the root workset.yaml registry null) plus a global
         # standalone: registration (its pre-connect resolved state).
         external = (tmp_home / "standalone_box").resolve()
         (external / "box_data").mkdir(parents=True)
-        (external / WORKSET_META_FILE).write_text("project: {}\n")
+        (external / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
         registry_store.register_standalone(
             std.registry, "kx_standalone_box", external
         )
@@ -1051,7 +1051,7 @@ class TestResolveAnyProject:
         project_dir = tmp_home / "project"
         (project_dir / "box_data").mkdir(parents=True)
         (project_dir / WORKSET_META_FILE).write_text(
-            'project:\n  mode: "standalone"\n'
+            'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
         )
 
         proj = resolve_any_project(std, config, project_dir=str(project_dir), initialize=False)
@@ -1154,7 +1154,7 @@ class TestResolveAnyProject:
         project_dir = tmp_home / "project"
         (project_dir / "box_data").mkdir(parents=True)
         (project_dir / WORKSET_META_FILE).write_text(
-            'project:\n  mode: "standalone"\n'
+            'project:\n  mode: "standalone"\nworkset:\n  registry: null\n'
         )
 
         subdir = project_dir / "src"
@@ -2047,8 +2047,8 @@ class TestMissingVaultAdvisoryIsGuarded:
 
 class TestP5aStandalonePresenceSwitch:
     """Mutation proof for the _is_standalone_meta_dir presence switch (site
-    1306): detection is now by box_data/ + a root workset.yaml PRESENCE, no longer by
-    a stored box.mode == "standalone" field."""
+    1306): detection is by the root workset.yaml's own stored ``workset.registry`` null,
+    no longer by a stored box.mode == "standalone" field."""
 
     def test_presence_detects_without_mode_field(self, tmp_home):
         from kanibako.settings.config import dump_doc
@@ -2057,7 +2057,7 @@ class TestP5aStandalonePresenceSwitch:
         (root / STANDALONE_META_DIR).mkdir(parents=True)
         # A workset.yaml with NO project.mode = "standalone" declaration.  The
         # OLD field-reading impl returned False here; the presence impl → True.
-        dump_doc(root / WORKSET_META_FILE, {"box": {"image": "x"}})
+        dump_doc(root / WORKSET_META_FILE, {"box": {"image": "x"}, "workset": {"registry": None}})
         assert _is_standalone_meta_dir(root) is True
 
     def test_missing_settings_is_not_standalone(self, tmp_home):
@@ -2073,7 +2073,7 @@ class TestP5aStandalonePresenceSwitch:
         root = tmp_home / "box"
         root.mkdir()
         dump_doc(root / WORKSET_META_FILE, {"box": {"image": "x"}})
-        # workset.yaml present but NO box_data/ → not a standalone marker.
+        # workset.yaml present but NO stored ``workset.registry`` null → not standalone.
         assert _is_standalone_meta_dir(root) is False
 
 
@@ -2197,7 +2197,7 @@ class TestBoxWorksetSettingsPaths:
 
 class TestStandaloneDetectionIsRootFileOnly:
     """``system-design-1.8.0.md`` § "Detection & import": STANDALONE detection =
-    the ``box_data/`` marker DIR + the ROOT
+    the stored ``workset.registry`` null in the ROOT
     ``workset.yaml`` (the WORKSET-tier file).  P2 introduces a BOX-tier file at
     ``box_data/box.yaml``; detection must NOT come to depend on it, or the
     ancestor-walk that finds a standalone project at all would break."""
@@ -2208,7 +2208,7 @@ class TestStandaloneDetectionIsRootFileOnly:
 
         root = tmp_home / "sa"
         (root / STANDALONE_META_DIR).mkdir(parents=True)
-        dump_doc(root / WORKSET_META_FILE, {"workset": {"kuid": "abcde"}})
+        dump_doc(root / WORKSET_META_FILE, {"workset": {"kuid": "abcde", "registry": None}})
         # No box_data/box.yaml at all — the ABSENT-BY-DEFAULT shape.
         assert not (root / STANDALONE_META_DIR / BOX_META_FILE).exists()
         assert _is_standalone_meta_dir(root) is True
@@ -2234,7 +2234,7 @@ class TestStandaloneDetectionIsRootFileOnly:
 
         root = tmp_home / "sa"
         (root / STANDALONE_META_DIR).mkdir(parents=True)
-        dump_doc(root / WORKSET_META_FILE, {"workset": {"kuid": "abcde"}})
+        dump_doc(root / WORKSET_META_FILE, {"workset": {"kuid": "abcde", "registry": None}})
         dump_doc(root / STANDALONE_META_DIR / BOX_META_FILE, {"box": {"image": "x"}})
         assert _is_standalone_meta_dir(root) is True
 

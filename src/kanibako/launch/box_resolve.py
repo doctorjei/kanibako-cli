@@ -14,11 +14,11 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from kanibako.errors import ConfigError
 from kanibako.project import registry_store, workset_registry
 from kanibako.settings.config import WORKSET_META_FILE, BootstrapConfig
 from kanibako.settings.config_io import load_doc
 from kanibako.settings.paths import (
-    STANDALONE_META_DIR,
     BoxMode,
     DetectionResult,
     StandardPaths,
@@ -32,15 +32,19 @@ _PRIMARY_WORKSET_NAME = "default"
 
 
 def standalone_settings_present(project_dir: Path) -> bool:
-    """True iff *project_dir* carries the standalone box MARKER (presence only).
+    """True iff *project_dir*'s OWN ``workset.yaml`` stores ``workset.registry`` as null.
 
-    ⚑ Mirrors :func:`kanibako.settings.paths._is_standalone_meta_dir` but must NOT
-    read ``project.mode`` — under D4 the FILE's existence is the signal and that
-    field is going away.  Highest-precedence detection signal; see the llm-doc.
+    ⚑ That stored null DEFINES standalone (system-design § Detection & import): this
+    file only, never the cascade, so a null in a containing or system file never counts.
     """
-    return (project_dir / STANDALONE_META_DIR).is_dir() and (
-        project_dir / WORKSET_META_FILE
-    ).is_file()
+    settings = project_dir / WORKSET_META_FILE
+    if not settings.is_file():
+        return False
+    try:
+        table = load_doc(settings).get("workset")
+    except ConfigError:
+        return False
+    return isinstance(table, dict) and "registry" in table and table["registry"] is None
 
 
 def _enumerate_worksets(
@@ -173,7 +177,7 @@ def detect_box_mode(
     Standalone marker, else workset-registry ownership, else the treewalk, else
     ``None`` (not a box).  The four cases in full: the llm-doc.
     """
-    # 1. Standalone by in-place settings-file presence (OVERRIDES everything).
+    # 1. Standalone by the root file's own stored ``workset.registry`` null (OVERRIDES everything).
     if standalone_settings_present(project_dir):
         return DetectionResult(BoxMode.standalone, project_dir.resolve())
 
