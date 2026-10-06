@@ -521,20 +521,13 @@ class TestBoxGetIsWiredToTheClosedKeyspace:
         assert "undeclared" not in capsys.readouterr().out
 
 
-class TestBoxGetThreadsTheAgentsRoot:
-    """``box get agent.<node>.<key>`` reads the node's own file.
+class TestBoxGetAnswersOnlyTheBoxFile:
+    """``box get agent.<node>.<key>`` answers "(not set)" over a value in the node's file.
 
-    The per-node families live in ``agents/<node>/agent.yaml``, reachable only
-    through ``get_config_value``'s ``agents_root``. The handler withheld it, so
-    every read of a node key resolved its target to ``None`` and printed
-    "(not set)" at rc 0 for a value that IS stored — while ``system get``, the
-    one handler that threads it, answered the SAME key correctly.
-
-    ⚑ MUTATION-PROVED: drop ``agents_root=std.agents`` from the ``get`` branch of
-    ``commands/box/_parser.py`` and the two read-back tests red on "(not set)".
-    ⚑ There is no per-node BIND case here on purpose: the closed-keyspace read gate
-    refuses ``agent.<node>.bindings.ro.<dest>`` by name at every noun (the family is
-    TERMINAL and dest-keyed), so that engine arm is unreachable from any handler.
+    Spec §2a: plain ``get`` returns the value STORED at the command scope's file,
+    "never another tier's value". ``agents/<node>/agent.yaml`` is the agent scope's
+    file, and the box scope cannot store the key (it outranks the agent level), so
+    the read reported a value the box file does not hold.
     """
 
     def _box_and_agents_root(self, config_file, tmp_home):
@@ -547,8 +540,7 @@ class TestBoxGetThreadsTheAgentsRoot:
         return project_dir, std.agents
 
     def _write_node(self, agents_root, key, value):
-        """Write through the PRODUCTION set route, so this pins the read, not a
-        hand-built file shape the writer would never produce."""
+        """Write the node's own file through the PRODUCTION ``agent`` route."""
         from kanibako.settings.config_interface import set_config_value
         from kanibako.settings.config_keys import ConfigLevel
 
@@ -559,48 +551,34 @@ class TestBoxGetThreadsTheAgentsRoot:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
+        assert (agents_root / "claude" / "agent.yaml").is_file()
 
-    def test_a_persona_agent_key_reads_back(
-        self, config_file, tmp_home, credentials_dir, capsys,
+    def _get(self, project_dir, key):
+        from kanibako import cli
+
+        args = cli.build_parser().parse_args(["box", "get", project_dir, key])
+        return args.func(args)
+
+    @pytest.mark.parametrize("key, value", [
+        ("agent.claude.model", "opus-test"),
+        ("agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN", "/host/token"),
+    ])
+    def test_a_node_file_value_is_not_set_at_the_box(
+        self, config_file, tmp_home, credentials_dir, capsys, key, value,
     ):
-        from kanibako.commands.box._parser import run_get
-
         project_dir, agents_root = self._box_and_agents_root(config_file, tmp_home)
-        self._write_node(agents_root, "agent.claude.model", "opus-test")
+        self._write_node(agents_root, key, value)
 
-        rc = run_get(argparse.Namespace(args=[project_dir, "agent.claude.model"]))
-        assert rc == 0
+        assert self._get(project_dir, key) == 0
         captured = capsys.readouterr()
-        assert captured.out.strip() == "opus-test"
-        assert "(not set)" not in captured.err
+        assert value not in captured.out
+        assert "(not set)" in captured.err
 
-    def test_a_node_secret_path_reads_back(
+    def test_an_unset_node_key_is_not_set(
         self, config_file, tmp_home, credentials_dir, capsys,
     ):
-        from kanibako.commands.box._parser import run_get
-
-        project_dir, agents_root = self._box_and_agents_root(config_file, tmp_home)
-        self._write_node(
-            agents_root,
-            "agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN", "/host/token",
-        )
-
-        rc = run_get(argparse.Namespace(args=[
-            project_dir, "agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN",
-        ]))
-        assert rc == 0
-        assert capsys.readouterr().out.strip() == "/host/token"
-
-    def test_an_unset_node_key_is_still_honestly_not_set(
-        self, config_file, tmp_home, credentials_dir, capsys,
-    ):
-        """The threading must not fabricate: with nothing stored, "(not set)"
-        stays "(not set)"."""
-        from kanibako.commands.box._parser import run_get
-
         project_dir, _ = self._box_and_agents_root(config_file, tmp_home)
-        rc = run_get(argparse.Namespace(args=[project_dir, "agent.claude.model"]))
-        assert rc == 0
+        assert self._get(project_dir, "agent.claude.model") == 0
         assert "(not set)" in capsys.readouterr().err
 
 

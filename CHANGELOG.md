@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`box get` and `workset get` on `agent.<node>.*` no longer read the agent's own file.** They
+  printed the value stored in `agents/<node>/agent.yaml`, another tier's file; per keyspec §2a a
+  plain `get` answers only what the command scope's file stores, and neither scope can store these
+  keys. **Printed-line change:** `box get <box> agent.<node>.<key>` and `workset get <workset>
+  agent.<node>.<key>` now print `(not set)`, rc 0. `agent get` still reads the agent's own file.
 - **`system set`, `get`, and `reset` on `agent.<node>.*` use the system settings file.** They used
   to write and clear `agents/<node>/agent.yaml`, and `get` read that file first; per keyspec §2a
   they now work on `<data>/global/settings.yaml` alone, under `agent: <node>:`. **Printed-line
