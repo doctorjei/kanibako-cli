@@ -911,6 +911,24 @@ def test_strict_depth_cap_does_not_depend_on_memo_order(shell_first) -> None:
         expand(_deep_chain(63, shell_first=shell_first), _ctx())
 
 
+@pytest.mark.parametrize("referrer_first", [True, False])
+def test_strict_depth_cap_counts_the_longer_path_into_a_memoized_referent(
+    referrer_first,
+) -> None:
+    # ``a`` reaches ``d.D0`` twice: through ``b`` (short, memoizes the ``d`` chain) and
+    # through ``p`` (21 hops). The longer path is 73 deep, so launch must refuse it.
+    pairs = [
+        ("a", "/{b}/{p.P0}"),
+        ("b", "/{d.D0}"),
+        ("p", KeyStore({**{f"P{i}": f"/{{p.P{i + 1}}}" for i in range(20)},
+                        "P20": "/{d.D0}"})),
+        ("d", KeyStore({**{f"D{i}": f"/{{d.D{i + 1}}}" for i in range(50)},
+                        "D50": "/end"})),
+    ]
+    snap = KeyStore(pairs if referrer_first else pairs[::-1])
+    with pytest.raises(SettingsError, match="depth cap"):
+        expand(snap, _ctx())
+
 def test_a_subtree_referent_does_not_lend_its_leaves_depth() -> None:
     # A whole-table referent's leaves start chains of their own; their depth is not
     # the referring chain's, so a short chain through the table stays under the cap.

@@ -568,9 +568,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **The `{key}`-reference depth cap (64) no longer depends on the order keys resolve in.** A reference
-  that reached an already-resolved key skipped the depth that key stood on, so with a stored 70-deep
-  `box.env.V*` chain, `system set box.shell=/s/{box.env.V0}` was accepted and written, though launch then
-  refused it; a 200-deep chain was refused. Both are now refused at `set`, as at launch.
+  that reached an already-resolved key skipped the depth that key stood on, so a chain past the cap passed
+  whenever its tail had resolved first. With a stored 70-deep `box.env.V*` chain,
+  `system set box.shell=/s/{box.env.V0}` was accepted and written, while a 200-deep chain was refused.
+  Launch had the same gap: a key reaching one referent by both a short and a long path launched although
+  the long path passed the cap. Both `set` and launch now refuse such chains, so stored settings that
+  launched before can now be refused; shorten the chain below 64 references.
 
 - **A per-owner value refused in the system settings file now gives a cure that works on a first run.**
   The refusal said `kanibako stop --all` stops every running box even when a settings file is refused.
