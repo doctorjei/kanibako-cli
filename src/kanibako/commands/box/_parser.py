@@ -1085,6 +1085,8 @@ def run_create(args: argparse.Namespace) -> int:
     if project_dir is not None and _named_spec is None:
         target = Path(project_dir)
         if not target.exists():
+            if not args.standalone:
+                refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
             target.mkdir(parents=True)
 
     from kanibako.commands.start import (

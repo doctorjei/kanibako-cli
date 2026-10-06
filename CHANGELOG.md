@@ -599,6 +599,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anything is made or registered, naming the key and the file, as `create` does for `workset.boxes` and
   `workset.logs`. A value anchored with `{meta.workset.path}` still creates.
 
+- **A refused `create <path>` no longer leaves an empty `<path>` behind.** When the system settings file set a
+  per-owner workset key, such as `workset.registry`, `workset.canon`, or `workset.channels.chat`, to a value that
+  reaches no owner, `create` refused, but only after it had made the directory. It now refuses before making it.
+
 - **`set` now refuses a whole-table reference whose table holds a broken key.** With a stored
   `agent.default.env.Y: '{agent.default.env.Y}'`, `system set box.env.B={agent.default.env}` was accepted and
   written, though launch refused it; it is now refused, naming the broken key inside the table. A table that
