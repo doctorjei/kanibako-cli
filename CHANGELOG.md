@@ -590,7 +590,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `box.agent_name`, `system.default_agent`) and an agent file's nested-table refusal whose fix IS
   a `set` now name the file to delete from first, then give the fix. A nested-table refusal whose
   fix is a hand edit — move the content up one level, or write it in the system file — keeps the
-  fix first: a delete printed ahead of it would destroy what the user was just told to move.
+  fix first: a delete printed ahead of it would destroy what the user was just told to move. The
+  delete now names the tables ABOVE the entry as well — `agent: default:` and `agent:`, say, when
+  the entry deleted was `agent: default: default_agent` — because a table left with nothing under
+  it parses as null, and a null there is refused in its own right. Naming only the leaf left the
+  file stranded in a state the printed `set` then refused, with nothing pointing at the cause.
 
 - **A stored `agent.default.auto_approve` is cured with a command that runs.** At the agent level
   the cure printed `kanibako agent set default access=…`, which the CLI refuses with exit 1 —

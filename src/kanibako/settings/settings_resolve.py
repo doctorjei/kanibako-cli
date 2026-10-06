@@ -913,3 +913,37 @@ def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
     ⚑ NO CALLERS — ``settings_launch`` defines and uses its own same-named twin (see the doc).
     """
     raise SettingsError(f"@-refs are not supported in behavior settings: {ref}")
+
+
+def delete_before_set_step(entry: str, *, where: Any,
+                          parents: "Sequence[str]" = ()) -> str:
+    """The delete-before-the-``set`` step, naming every parent that delete can leave empty.
+
+    ⚑ THE PARENTS ARE PART OF THE CURE, NOT A COURTESY. YAML reads a key with nothing
+    under it as a NULL, and a null at a settings key is refused in its own right — so a
+    delete that names only the leaf can leave the file in a state that refuses the very
+    ``set`` this step is clearing the way for. Following the printed sequence literally,
+    the user gets ``stores entries that are not keys … Nothing was written`` at the fix
+    step, with no hint that the half-empty parent is what refused it, and no route out of
+    the pair they were told to follow. Naming the parents makes the sequence RUNNABLE
+    top to bottom, which is the whole point of printing it in that order.
+
+    *entry* is the thing to delete, spelled as the site spells it and carrying its own
+    noun (``the `agent: default: default_agent` entry`` / ``the `self.foo` table``), so
+    each site keeps the spelling its message already uses. *parents* are the ancestor
+    tables, innermost first, already spelled for the file; empty for a top-level leaf,
+    which has no parent to strand.
+    """
+    stranded = (
+        f" — and {' / '.join(parents)} with it, if that leaves "
+        f"{'it' if len(parents) == 1 else 'them'} empty: a table left with nothing "
+        f"under it parses as null, and a null there is refused the same way"
+    ) if parents else ""
+    # ⚑ "the files it reads", NOT "that file": the stale entry is not always among them.
+    # A retired table spelled in one agent's file can be cured by a ``set`` that lands in
+    # ANOTHER's and succeeds first — a reason false half the time erodes the whole message.
+    return (
+        f"  Delete the {entry} from {where} FIRST{stranded}. The fix below is a "
+        f"`set`, and §2a refuses a write that collides with a retired entry still "
+        f"stored in the files it reads."
+    )
