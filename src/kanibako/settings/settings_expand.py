@@ -489,11 +489,10 @@ class _Expander:
 
         Returns the expanded terminal, ``None`` (present-None inherited from a
         referenced key), or :data:`_ABSENT` (the caller DROPS the key). The
-        ``chain`` ends at this leaf's own dotted path, after the trail into any table
-        referent holding it, so a self-referential whole-value ``@`` is a cycle, not an
-        infinite recurse.
+        ``chain`` starts at this leaf's own dotted path so a self-referential
+        whole-value ``@`` is a cycle, not an infinite recurse.
         """
-        chain = (*self._table_chain, ".".join(path))
+        chain = (".".join(path),)
         if isinstance(value, Bind):
             return self._expand_bind(value, chain=chain)
         if isinstance(value, BindEntry):
@@ -668,8 +667,8 @@ class _Expander:
         # CYCLE GUARD (B7 — whole-value AND embedded paths): a PRIOR occurrence of
         # *dotted* means we re-entered a ref still in progress. ⚑ Checked BEFORE
         # the memo so a cycle can never be masked by a half-built memo entry.
-        if dotted in chain[:-1]:
-            cycle = " -> ".join(chain)
+        if dotted in chain[:-1] or dotted in self._table_chain:
+            cycle = " -> ".join((*self._table_chain, *chain))
             if self._collect_errors:
                 # LENIENT (Q9): RECORD, do not raise. The guard still fires here,
                 # so the pass TERMINATES rather than re-entering the ref.
@@ -751,13 +750,15 @@ class _Expander:
         return self._settle(dotted, resolved, deps, reach - len(chain))
 
     def _expand_table(self, raw: KeyStore, dotted: str, *, chain: tuple[str, ...]) -> KeyStore:
-        """Expand the table referent at *dotted*, its leaves continuing *chain*.
+        """Expand the table referent at *dotted*; its leaves' cycle guard sees *chain*.
+
+        Their depth is measured from each leaf, not from the referring chain.
 
         LENIENT: a defect in one of its leaves is also a defect of the key referring to
         the table (spec §2a), so the first one that is not cascade blindness is raised.
         """
         outer = (self._reach, self._table_chain, self.errors)
-        self._reach, self._table_chain, self.errors = [], chain, {}
+        self._reach, self._table_chain, self.errors = [], (*self._table_chain, *chain), {}
         try:
             resolved = self._expand_node(raw, path=tuple(dotted.split(".")))
         finally:

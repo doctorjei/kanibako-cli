@@ -67,6 +67,7 @@ class _Expander:
     def _expand_str(self, value: str, *, space: str, chain: tuple[str, ...], null_refs: list[str] | None=None) -> StoreValue | _Absent
     def _resolve_whole_value_var(self, name: str) -> StoreValue | _Absent
     def _resolve_ref(self, dotted: str, *, chain: tuple[str, ...], absent_ok: bool=False) -> StoreValue | _Absent
+    def _expand_table(self, raw: KeyStore, dotted: str, *, chain: tuple[str, ...]) -> KeyStore
     def _pop_reach(self) -> int
     def _settle(self, dotted: str, resolved: StoreValue | _Absent, deps: set[str], height: int) -> StoreValue | _Absent
     def _derived(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent
