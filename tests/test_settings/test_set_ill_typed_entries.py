@@ -53,6 +53,45 @@ class TestSystemDoor:
         _assert_refused(cli("system", "set", "system.agent=claude"), path, before,
                         "system.cache = ['x']")
 
+    @pytest.mark.parametrize(
+        "value,entry,shape", [(8080, "system.cache = 8080", "an integer"),
+                              ("true", "system.cache = true", "a boolean"),
+                              ("1.5", "system.cache = 1.5", "a number")],
+    )
+    def test_a_scalar_at_a_path_key_refuses_and_writes_nothing(self, cli, value, entry, shape):
+        """An INT, BOOL and FLOAT at a PATH key refuse on the same arm a list does.
+
+        A PATH key is typed ``path``, so keyspec §2a's *"a type mismatch for a typed
+        scalar key"* reaches every non-string — not only the two non-scalars. ⭐ THE SHAPE
+        IS THE FILE'S OWN WORD, so ``8080`` is answered ``an integer`` and not ``int``.
+
+        Mutation: point ``config_interface._path_value_reason`` back at a list/map test of
+        its own → every row BUILDS the set: rc 0 and the file is rewritten.
+        """
+        path = _system_file(cli)
+        path.write_text(f"system:\n  agent: shell\n  cache: {value}\n")
+        before = path.read_bytes()
+        proc = cli("system", "set", "system.agent=claude")
+        _assert_refused(proc, path, before, entry)
+        assert shape in proc.stderr, proc.stderr
+
+    def test_an_int_at_a_layer2_path_key_refuses_and_writes_nothing(self, cli):
+        """The board's own case: ``system.canon: 8080`` refuses a set that edits ANOTHER key.
+
+        ⭐ OUT-OF-CHAIN, which is the arm that matters: keyspec §2a says a bad entry
+        outside the edited value's upstream chain is *"ERROR by default — name it, write
+        nothing"* — so an unrelated ``set`` is refused by an entry it never touched.
+
+        Mutation: drop the ``_path_value_reason`` repoint onto the §2a carrier → ``rc`` is 0
+        and ``system.canon = 8080`` is rewritten as a string.
+        """
+        path = _system_file(cli)
+        path.write_text("system:\n  canon: 8080\n")
+        before = path.read_bytes()
+        proc = cli("system", "set", "system.agent=claude")
+        _assert_refused(proc, path, before, "system.canon = 8080")
+        assert "an integer" in proc.stderr, proc.stderr
+
     def test_force_warns_and_writes(self, cli):
         path = _system_file(cli)
         path.write_text("system:\n  agent: shell\n  cache: [x]\n")

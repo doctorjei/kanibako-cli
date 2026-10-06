@@ -69,10 +69,11 @@ def _present_scalar_fields(path: Path) -> dict[str, object]
 def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) -> object
 def _system_settings_path(global_path: Path) -> Path | None
 def _split_config_key(flat_key: str) -> tuple[str, str]
-def _flatten_leaves(data: dict, prefix: str='') -> dict[str, object]
+def _flatten_leaves(data: dict, prefix: str='', *, with_nodes: bool=False) -> dict[str, object]
 def _flatten_dotted(data: dict, prefix: str='') -> dict[str, str]
 def _agent_of(key: str) -> str
 def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None
+def _refuse_non_string_path_keys(path: Path, table: dict, prefix: str, path_keys: Iterable[str]) -> None
 def _resolution_set(dotted: str) -> 'str | None'
 ```
 

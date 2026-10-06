@@ -21,8 +21,8 @@ def early_tier(doc: Mapping[str, Any] | None) -> dict[str, str | None]
 def early_system(set_values: Mapping[str, str | None], resolved: Mapping[str, Path], *, system_refusal: str | None=None) -> EarlySystem
 def resolve_workset_dir_key(workset_root: Path, repoint: str | None, default_leaf: str, *, key: str, where: Path | None=None, standalone: bool | None=None, workset_settings: Mapping[str, Any] | None=None, early: EarlyScope) -> Path
 def early_key_set_error(canonical: str, value: str | None, *, written_file: Path, standalone_reads: bool, early_system: EarlySystem | None, std_error: str | None=None, workset_name: str | None=None) -> str | None
-def _stored_repoint(doc: Mapping[str, Any] | None, key: str) -> str | None | _Unset
-def _refuse_unanchored(workset_settings: Mapping[str, Any] | None, key: str, value: str, *, early: EarlyScope) -> None
+def _stored_repoint(doc: Mapping[str, Any] | None, key: str, *, where: Path | None=None) -> str | None | _Unset
+def _refuse_unanchored(workset_settings: Mapping[str, Any] | None, key: str, value: str, *, early: EarlyScope, where: Path | None=None) -> None
 def _host_ctx() -> ResolveCtx
 def _expand_early(workset_root: Path, doc: Mapping[str, Any] | None, value: str, *, key: str, standalone: bool | None, chain: tuple[str, ...], early: EarlyScope) -> str
 def _system_path(ref: str, system: EarlySystem) -> str

@@ -214,6 +214,7 @@ def bootstrap_config_paths(path: Path) -> dict[str, str]:
         return {}
     if not isinstance(table, dict):
         raise ConfigError(ERR_CONFIG_LAYER1_TABLE % (path, table))
+    _refuse_non_string_path_keys(path, table, _LAYER1_TABLE, CONFIG_PATH_DEFAULTS)
     paths = _flatten_dotted(table, _LAYER1_TABLE)
     undeclared = sorted(key for key in paths if key not in CONFIG_PATH_DEFAULTS)
     if undeclared:
@@ -244,6 +245,7 @@ def system_table_set_values(settings_path: Path, doc: dict) -> dict[str, str | N
     table = doc.get("system")
     if not isinstance(table, dict):
         return {}
+    _refuse_non_string_path_keys(settings_path, table, "system", SYSTEM_PATH_DEFAULTS)
     _refuse_null_paths(settings_path, table, "system", SYSTEM_PATH_DEFAULTS)
     # ⚑ A NULL AT AN ADMITTED KEY CARRIES AS ``None``, never as ``"None"``: the value is a
     # bind's SOURCE, and §0 resolves an embedded reference to a present ``<None>`` to
@@ -985,7 +987,8 @@ def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> No
     dump_doc(path, existing)
 
 
-def _flatten_leaves(data: dict, prefix: str = "") -> dict[str, object]:
+def _flatten_leaves(data: dict, prefix: str = "", *, with_nodes: bool = False,
+                    ) -> dict[str, object]:
     """Flatten a nested dict into DOTTED-key form, each leaf AS STORED.
 
     ⚑ THE ONE WALK: :func:`_flatten_dotted` is this with its leaves stringified, so the keys
@@ -996,12 +999,18 @@ def _flatten_leaves(data: dict, prefix: str = "") -> dict[str, object]:
     ⚑ ``str(k)`` ON THE UNPREFIXED ARM: a YAML key need not be a string, and only the
     f-string arm stringified one — so a top-level ``1: x`` handed an ``int`` to callers
     that sort and join (:func:`_layer1_settings_keys`).
+
+    ⚑ *with_nodes* ALSO REPORTS A ``dict`` POSITION AS ITS OWN ENTRY before descending: a
+    MAP IS OTHERWISE INVISIBLE HERE, its leaf spelled one segment deeper — which is how a
+    ``{x: null}`` at a path key built silently.  Only a caller judging a VALUE wants it.
     """
     out: dict[str, object] = {}
     for k, v in data.items():
         key = f"{prefix}.{k}" if prefix else str(k)
         if isinstance(v, dict):
-            out.update(_flatten_leaves(v, key))
+            if with_nodes:
+                out[key] = v
+            out.update(_flatten_leaves(v, key, with_nodes=with_nodes))
         else:
             out[key] = v
     return out
@@ -1286,6 +1295,32 @@ def _refuse_null_paths(path: Path, table: dict, prefix: str, path_keys: Iterable
     )
     if error is not None:
         raise ConfigError(error)
+
+
+def _refuse_non_string_path_keys(
+    path: Path, table: dict, prefix: str, path_keys: Iterable[str],
+) -> None:
+    """Refuse a value at any of *path_keys* in *table* that is not a shape a PATH key holds.
+
+    ⚑ IT ASKS BEFORE THE STRINGIFY: :func:`_flatten_dotted` hands its callers ``str(v)``,
+    so a list reached the bare-relative arm as the repr ``"['x']"`` — a path the user never
+    wrote — and a map vanished into its own children.  🛑 :class:`ConfigError`, the one this
+    file's other refusals raise, so ``paths._path_tier_set_values`` treats a type defect as
+    it treats the null one beside it.  ⚑ The sentence is the ONE §2a carrier's
+    (:func:`~kanibako.settings.agent_config.ambiguous_path_shape_error`), so this arm and
+    the launch sweep cannot drift.  A present ``None`` is NOT this refusal — the tri-state
+    OMIT belongs to :func:`_refuse_null_paths` beside it.  ⚑ *path_keys* IS the declared
+    tier (:data:`CONFIG_PATH_DEFAULTS`, :data:`SYSTEM_PATH_DEFAULTS`), so a new key carries
+    its own admission and no key OUTSIDE the tier is judged.
+    """
+    from kanibako.settings.agent_config import ambiguous_path_shape_error
+    from kanibako.settings.settings_categories import is_path_key_value
+
+    leaves = _flatten_leaves(table, prefix, with_nodes=True)
+    for key in path_keys:
+        if key not in leaves or is_path_key_value(leaves[key]):
+            continue
+        raise ConfigError(ambiguous_path_shape_error(key, leaves[key], where=str(path)))
 
 
 def system_path_ref_error(canonical: str, value: "str | None") -> "str | None":

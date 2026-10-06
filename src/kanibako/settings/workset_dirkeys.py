@@ -64,13 +64,24 @@ WORKSET_EARLY_KEYS: frozenset[str] = frozenset({
 })
 
 
-def _stored_repoint(doc: Mapping[str, Any] | None, key: str) -> str | None | _Unset:
+def _stored_repoint(
+    doc: Mapping[str, Any] | None, key: str, *, where: Path | None = None,
+) -> str | None | _Unset:
     """The RAW ``workset.<key>`` stored in *doc*, at the key's routed slot.
 
     A string; ``None`` for a PRESENT ``<None>``; :data:`UNSET` when absent, empty, or
     *doc* is ``None``.
+
+    ⚑ IT ASKS :func:`~kanibako.settings.settings_categories.is_path_key_value` BEFORE THE
+    ``str()`` BELOW: ``str()`` is too late, so a ``{x: null}`` reached
+    :func:`resolve_workset_dir_key` as the repr ``"{'x': None}"`` — a STRING, which the
+    bare-relative arm judged as a path the user never wrote.  Through the ONE §2a carrier;
+    *where* names the file when the caller holds it.
     """
+    from kanibako.settings.agent_config import ambiguous_path_shape_error
     from kanibako.settings.config_keys import _KEY_ROUTES
+    from kanibako.settings.settings_categories import is_path_key_value
+    from kanibako.settings.settings_resolve import SettingsError
 
     sections, slot = _KEY_ROUTES[f"workset.{key}"]
     node: object = doc
@@ -85,6 +96,10 @@ def _stored_repoint(doc: Mapping[str, Any] | None, key: str) -> str | None | _Un
         return None
     if value is UNSET or not value:
         return UNSET
+    if not is_path_key_value(value):
+        raise SettingsError(ambiguous_path_shape_error(
+            f"workset.{key}", value, where=str(where) if where is not None else None,
+        ))
     return str(value)
 
 
@@ -103,17 +118,18 @@ def early_repoint(
     if key not in WORKSET_EARLY_KEYS:
         raise ValueError(f"workset.{key} is not a workset early key")
     own_file = workset_root / WORKSET_META_FILE
-    value = _stored_repoint(workset_settings, key)
+    value = _stored_repoint(workset_settings, key, where=own_file)
     if value is not UNSET:
         return value, own_file
     value = early.system.tier.get(f"workset.{key}", UNSET)
     if isinstance(value, str):
-        _refuse_unanchored(workset_settings, key, value, early=early)
+        _refuse_unanchored(workset_settings, key, value, early=early, where=own_file)
     return value, (own_file if value is UNSET else early.system.file)
 
 
 def _refuse_unanchored(
     workset_settings: Mapping[str, Any] | None, key: str, value: str, *, early: EarlyScope,
+    where: Path | None = None,
 ) -> None:
     """Keyspec §0 "Per-owner resources" at the read door: refuse an inherited *value* of
     ``workset.<key>`` that reaches no owner identity, naming the file.
@@ -135,7 +151,7 @@ def _refuse_unanchored(
         referent = ref.removeprefix("workset.")
         if referent == ref or referent not in WORKSET_EARLY_KEYS:
             return None
-        raw = _stored_repoint(workset_settings, referent)
+        raw = _stored_repoint(workset_settings, referent, where=where)
         return early.system.tier.get(ref) if isinstance(raw, _Unset) else raw
 
     if all(reaches_identity(value, owner, mode, key=dotted, stored=stored) for mode in BoxMode):

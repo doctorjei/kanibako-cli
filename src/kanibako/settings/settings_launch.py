@@ -55,6 +55,7 @@ from kanibako.agent_ref import (
     ADDRESSABLE_PSEUDO_AGENTS, GENERAL_SLOT, display_agent_ref, harness_of, with_harness,
 )
 from kanibako.settings.agent_config import (
+    ambiguous_path_shape_error,
     ambiguous_path_value_error,
     is_unambiguous_path_value,
     store_dirname,
@@ -117,6 +118,7 @@ from kanibako.settings.settings_categories import (
     SECRET_MOUNT_DIR,
     CategoryEntry,
     _bind_options,
+    is_path_key_value,
     refuse_non_scalar_family_value,
 )
 from kanibako.settings.settings_cli_level import build_cli_level, guard_cli_level
@@ -1314,10 +1316,14 @@ def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]:
     ⚑ A SEGMENT WITH A DOT STOPS THE KEY: it is data (a bind destination), never key
     path — the same rule ``settings_keyspace.classify_store_path`` applies. The
     oracle cannot catch it: ``("box", "secret_path.X")`` joins to a declared key.
+
+    ⚑⚑ A PATH KEY HOLDING A **NODE** IS RETURNED TOO, carrying the node itself: that
+    is the shape a MAPPING takes, the walk descending into it so the key stops being a
+    LEAF and a leaves-only sweep would never see it.
     """
     leaves: list[tuple[str, object]] = []
     for segments, is_node in walk_store_paths(store):
-        if is_node or any("." in seg for seg in segments):
+        if any("." in seg for seg in segments):
             continue
         key = ".".join(segments)
         if is_path_valued_key(key) and keyspace_verdict(key).cls is KeyClass.KEY:
@@ -1364,13 +1370,26 @@ def _refuse_ambiguous_path_values(
     moment the level above it is removed.
     ⚑ The test is on the STORED spelling: ``$XDG_DATA_HOME/x`` is legal even where that
     variable answers something odd, and the message quotes what the user typed.
-    ⚑ ONLY A NON-EMPTY STRING IS JUDGED. ``None`` is a reset or a standalone pin. A
-    non-scalar is not judged here: ``refuse_non_scalar_family_value`` refuses one by name
-    in the ``env`` and ``secret_path`` families; the Layer-1/Layer-2 read stringifies
-    one (``config._flatten_dotted``) and ``paths._refuse_bare_relative`` refuses the
-    string as a bare relative; at any other path key (``workset.auth.path``,
-    ``box.canon``) this resolve passes it through and nothing refuses it by name.
+    ⚑ ONLY A NON-EMPTY STRING IS JUDGED FOR AMBIGUITY. ``None`` is a reset or a
+    standalone pin. A value that is NOT a string is a TYPE mismatch and takes the other
+    arm below, never this one — the two cannot both answer one key.
+    ⚑⚑ A NON-SCALAR IS REFUSED BY NAME, through the ONE §2a carrier at its ``path``
+    category, for EVERY path key this sweep walks.  ⚑ IT RAISES FIRST, ON THE FIRST
+    OFFENDER, BECAUSE IT NAMES THE KEY AND THE WRONG TYPE and the bare-relative arm
+    cannot.  ⚑ THE READERS UPSTREAM DO NOT ANSWER FOR IT: the Layer-1/2 tiers
+    (``config._refuse_non_string_path_keys``) and the workset early keys
+    (``workset_dirkeys._stored_repoint``) ask the same predicate on their own doors.
     """
+    for level, path, floor_store in written:
+        for key, value in _path_key_leaves(level):
+            if is_path_key_value(value):
+                continue
+            if floor_store is not None and snapshot_leaf(floor_store, key) == value:
+                continue
+            raise SettingsError(ambiguous_path_shape_error(
+                key, value, where=str(path) if path is not None else None,
+            ))
+
     offenders = [
         (key, value, path)
         for level, path, floor_store in written

@@ -37,6 +37,7 @@ _NON_TERMINAL_CATEGORY_ALT = '|'.join((c.replace('.', '\\.') for c in _NON_TERMI
 _RETIRED_CATEGORY_ALT = '|'.join((c.replace('.', '\\.') for c in RETIRED_BIND_CATEGORIES))
 _SCOPE_APPLY_ORDER = {'system': 0, 'agent': 1, 'workset': 2, 'box': 3}
 _RULE_CHANGE_RELEASE: Final[str] = '1.8.0'
+_ARTICLE_SHAPES: 'tuple[tuple[type, str], ...]' = ((bool, 'a boolean'), (int, 'an integer'), (float, 'a number'))
 _REMEDY_WRAP: Final[int] = 80
 ```
 
@@ -54,6 +55,7 @@ def gate_credential_delivery(entries: list[CategoryEntry], deliver_creds: bool) 
 def secret_path_winners(entries: list[CategoryEntry]) -> list[CategoryEntry]
 def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]
 def is_scalar_family_value(value: object) -> bool
+def is_path_key_value(value: object) -> bool
 def refuse_non_scalar_family_value(key: str, category: str, value: object) -> None
 def refuse_env_secret_twins(entries: list[CategoryEntry]) -> None
 def launch_deliveries(entries: list[CategoryEntry], *, agent_dests: frozenset[str], narrow_bindings: 'dict[str, object] | None'=None, declared_by: 'dict[str, str] | None'=None, dest_keys: 'dict[tuple[str, ...], str] | None'=None) -> LaunchDeliveries
@@ -66,6 +68,7 @@ def declaration_delivery(decl_key: str) -> Delivery
 def effective_bindings_and_template_sources(snapshot: 'KeyStore') -> 'tuple[Any, ...]'
 def _bind_options(category: str) -> str
 def _value_shape(value: object) -> str
+def _shape_phrase(value: object) -> str
 def _most_specific(entries: list[CategoryEntry]) -> CategoryEntry
 def _entry_lines(entries: list[CategoryEntry]) -> str
 def _and_list(keys: list[str]) -> str
