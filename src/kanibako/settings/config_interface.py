@@ -2901,7 +2901,7 @@ def _stored_value_reason(key: str, value: object, *, family: "str | None") -> "s
         return _path_value_reason(value)
     if isinstance(value, (dict, list)):
         return ERR_STORED_NON_SCALAR % (_value_shape(value), kind or "scalar")
-    coerced = _coerce_value(key, str(value).lower() if isinstance(value, bool) else str(value))
+    coerced = _coerce_value(key, ("true" if value else "false") if isinstance(value, bool) else str(value))
     if isinstance(coerced, CoercionError):
         return coerced.message.removeprefix("Error: ")
     return None
