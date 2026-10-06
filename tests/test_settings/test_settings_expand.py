@@ -929,6 +929,7 @@ def test_strict_depth_cap_counts_the_longer_path_into_a_memoized_referent(
     with pytest.raises(SettingsError, match="depth cap"):
         expand(snap, _ctx())
 
+
 def test_a_subtree_referent_does_not_lend_its_leaves_depth() -> None:
     # A whole-table referent's leaves start chains of their own; their depth is not
     # the referring chain's, so a short chain through the table stays under the cap.
