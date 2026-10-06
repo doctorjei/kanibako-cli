@@ -147,7 +147,13 @@ already enforced that (`STUBBORN_INPLACE_MSG`). A standard move `copytree`s the 
 
 * **`records_only`** — files presumed already at `dest`; copy and remove nothing.
 * **internal relocate** — `copytree` the workspace to `dest`, push an `rmtree(dest)` unwind. The old
-  tree is deleted only by STEP 5's success-only retire.
+  tree is deleted only by STEP 5's success-only retire. ⚑ **When the target is STANDALONE and the
+  source is not workspace-at-root, the copy is aimed at the workspace dir that root resolves
+  (`_resolve_standalone_workspaces(dest, None, …)`), not at the root itself** — onto the root, a
+  user's own `<workspace>/box_data/` lands ON the store path and the store copy merges over it by
+  name, which `--purge` then deletes. `new_workspace` stays `dest` either way; `_to_standalone`
+  resolves the workspace dir itself, so the two agree. Workspace-at-root is exempt: there `box_data`
+  IS the store and the ignore already keeps it out of the copy.
 * **external relocate** — the "workspace" is the USER'S OWN directory. It is NEVER moved, only
   re-recorded; `dest` becomes the new recorded location when it is the destination of an
   internalizing move. Re-pointing an external project to some other external location is out of
