@@ -132,6 +132,14 @@ class _LenientDefect(Exception):
         self.blind = blind  # a DECLARED referent this cascade cannot see
 
 
+class _ExpandedShapeError(SettingsError):
+    """A refusal of what a value EXPANDED to, not of a reference in it.
+
+    After an absent referent substitutes ``""`` it is a consequence of that absence, so
+    :meth:`_Expander._defect_past_blindness` does not report it as a defect of its own.
+    """
+
+
 def _is_whole_value_ref(value: str) -> str | None:
     """Return the dotted ref name iff *value* IS exactly one whole-value ``@``-ref.
 
@@ -393,7 +401,7 @@ class _Expander:
                 # would silently DELETE the first, a data loss no downstream check
                 # can see. Raised even in LENIENT mode: the fault is the PAIR, so
                 # there is no single owning leaf to attribute it to.
-                raise SettingsError(
+                raise _ExpandedShapeError(
                     f"Two bindings under {'.'.join(path) or '<root>'} resolve to "
                     f"the same destination {out_key!r}; the second entry "
                     f"({key!r}) would silently replace the first."
@@ -413,19 +421,22 @@ class _Expander:
         dropped, since its values stand on that assumption.
         """
         saved = (dict(self._memo), dict(self._deps), dict(self.errors),
-                 dict(self.null_sources), dict(self.refs_read), dict(self.dest_keys))
+                 dict(self.null_sources), dict(self.refs_read), dict(self.dest_keys),
+                 [set(reading) for reading in self._reading])
         self._blind_absent = True
         try:
             if self._expand_dest_key(key, value, chain=path, seed=seed) is not None:
                 self._expand_leaf(value, path=path)
         except _LenientDefect as exc:
             return exc.reason
-        except SettingsError:
-            return None  # a consequence of the absence taken above, not a defect of its own
+        except _ExpandedShapeError:
+            return None
+        except SettingsError as exc:
+            return str(exc)
         finally:
             self._blind_absent = False
-            (self._memo, self._deps, self.errors,
-             self.null_sources, self.refs_read, self.dest_keys) = saved
+            (self._memo, self._deps, self.errors, self.null_sources,
+             self.refs_read, self.dest_keys, self._reading) = saved
         return None
 
     def _expand_dest_key(
@@ -455,7 +466,7 @@ class _Expander:
             return None
         if dest is _ABSENT or dest is None:
             state = "an absent" if dest is _ABSENT else "a present-None"
-            raise SettingsError(
+            raise _ExpandedShapeError(
                 f"Binding destination {key!r} references {state} config key; "
                 f"a box destination cannot resolve to no path."
             )
@@ -506,7 +517,7 @@ class _Expander:
         if not expanded or expanded[0] == "/":
             return
         became = "" if raw == expanded else f", which resolved to {expanded!r}"
-        raise SettingsError(
+        raise _ExpandedShapeError(
             f"{chain[0]} declares the host source {raw!r}{became} — a BARE RELATIVE "
             f"path. A stored source must resolve on its own (spec §2a): "
             f"{BARE_RELATIVE_SOURCE_HAZARD}. Set the path key it dereferences to an "
@@ -532,7 +543,7 @@ class _Expander:
         # dest, which is a mount foot-gun.
         if box is _ABSENT or box is None:
             state = "an absent" if box is _ABSENT else "a present-None"
-            raise SettingsError(
+            raise _ExpandedShapeError(
                 f"Bind box_dest {bind.box!r} references {state} config key; "
                 f"a box destination cannot resolve to no path."
             )

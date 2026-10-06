@@ -49,6 +49,8 @@ class _Absent:
 class _LenientDefect(Exception):
     def __init__(self, reason: str, *, blind: bool=False) -> None
 
+class _ExpandedShapeError(SettingsError):
+
 class _Expander:
     def __init__(self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, derive: Derive | None=None) -> None
 
