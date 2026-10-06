@@ -2250,6 +2250,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what and to give one quoted path. `env.<VAR>` still takes any scalar, so `env.PORT: 8080`
   builds; `secret_path.<VAR>` is judged as the path key it is.
 
+- A list or map at `system.channels.common` or `workset.channels.common` (the channel type-root,
+  one path) gets the path-key refusal naming the key, instead of the bind parser's "must have 2
+  or 3 elements"; through `pref.` it gets the "not requestable" refusal like any other
+  non-requestable key. `system.common` / `workset.common` bind maps are unchanged.
+
 ### Added
 
 - **For plugin authors: a descriptor `bindings` row's `owner:` is now read and enforced.** It is
