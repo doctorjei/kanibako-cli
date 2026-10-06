@@ -610,6 +610,25 @@ class TestTheRefusalNamesTheReallyBrokenRef:
         message = self._refused(files, "/x/{box.shell}", std)
         assert "'@meta.workset.path'" in message, message
 
+    @pytest.mark.parametrize("stored, phrase", [
+        ("box:\n  shell: /s/{meta.workset.path}/{box.image}\n  image: /i/{box.shell}\n",
+         "Cyclic @-reference"),
+        ("box:\n  shell: /s/{meta.workset.path}/{$NOPE_UNKNOWN}\n",
+         "Unknown variable: $NOPE_UNKNOWN"),
+        ("box:\n  shell: /s/{meta.workset.path}/{box.env.V0}\n  env:\n"
+         + "".join(f"    V{i}: /{{box.env.V{i + 1}}}\n" for i in range(70))
+         + "    V70: /{meta.workset.path}/end\n",
+         "depth cap"),
+    ], ids=["cycle", "unknown-variable", "depth-cap"])
+    def test_a_stored_chain_names_the_defect_behind_the_blind_ref(
+        self, tmp_path, std, stored, phrase,
+    ):
+        files = _files(tmp_path)
+        files["system"].write_text(stored)
+        message = self._refused(files, "/x/{box.shell}", std)
+        assert phrase in message, message
+        assert "@meta.workset.path" not in message, message
+
 
 def _root_store(value, *, at: str = "workset.boxes") -> KeyStore:
     """A resolved snapshot holding *value* at *at*, with the other root key usable."""

@@ -492,7 +492,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A `set` refusal names the reference that is really broken.** A value whose references include
   both a key this command's cascade cannot see and an undeclared key, such as `system set
   box.canon=/x/{meta.workset.path}/{box.nope}`, was refused naming `@meta.workset.path`. It now
-  names `@box.nope`, directly or through a stored chain, as keyspec §2a requires.
+  names `@box.nope`, directly or through a stored chain, as keyspec §2a requires. A cycle, the
+  reference depth cap, or an unknown `{$NAME}` in the same chain is likewise named in place of the
+  unseen key.
 
 - **`set` no longer refuses a reference to a computed sharing-state key.** A value naming a
   `meta.*.auth.*_active` key, such as `box set box.env.X={meta.box.auth.global_active}`, was
