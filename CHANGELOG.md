@@ -2230,6 +2230,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own vault in place, proceed as before. See *A relocation refuses to leave a disabled vault's
   data behind* in [MIGRATION.md](MIGRATION.md).
 
+- MIGRATION.md cites its own sections by heading text and guide, not by line number. The
+  line-number pointers in the 1.6.0 guide had drifted into the wrong sections as the file grew;
+  three also named the wrong section and now name the right one (2.67 for the `config.*`
+  spellings, 3.1's `system.settings` row for `@system.global`).
+
+- The binary-transform and flattened-directives sections moved from the 1.6.0 guide into the
+  v1.8.0 guide's per-area sequence, where they belong; their text is unchanged apart from one
+  dead anchor in the cure table.
+
 ### Added
 
 - **For plugin authors: a descriptor `bindings` row's `owner:` is now read and enforced.** It is
