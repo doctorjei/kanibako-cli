@@ -1078,6 +1078,19 @@ def bind_dest_families() -> dict[str, str]:
     }
 
 
+def bind_dest_owners() -> dict[str, str]:
+    """``{normalized box_dest: owner}`` — the ``owner:`` cell of every declared bind row
+    (keyspec §0 "Per-owner resources"); a row with none (generated machinery) is absent."""
+    from kanibako.settings.settings_resolve import normalize_bind_dest
+
+    return {
+        normalize_bind_dest(str(entry["box_dest"])): str(entry["owner"])
+        for table in BIND_TABLES
+        for entry in _load_doc().get(table) or []
+        if "owner" in entry
+    }
+
+
 #: The declarative tables whose EVERY row is an INTERNAL bind (spec §2c: not a user key,
 #: not repointable) — the kanibako CLI trio and the kickoff slot.
 _INTERNAL_BIND_TABLES = ("kani", "kickoff")

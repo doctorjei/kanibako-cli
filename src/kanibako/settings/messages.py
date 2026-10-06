@@ -178,6 +178,15 @@ ERR_PER_OWNER_READ = (
                         "meanwhile: kanibako stop --all reads no settings; it lists the "
                         "running boxes and asks before stopping them.")
                                                     # key, value, file, the words, the cure
+#: The LAUNCH twin, for a key or bind entry any containing settings file holds.
+ERR_PER_OWNER_LAUNCH = (
+                        "%s is set to %r in %s, which gives every %s one shared path, "
+                        "because the value names no %s identity. %s Nothing was changed. "
+                        "Spell the identity into the value: %r, or put it in each %s's "
+                        "own file%s.")
+                                                    # the key, value, file, words, cure, tail
+#: The tail for an undeclared entry: its shared category key, for sharing on purpose.
+PER_OWNER_SHARE_TAIL = "; to share one path on purpose, move it to %s"
 #: The SET door's lead for ``workset_dirkeys.early_key_set_error``'s refusal.
 ERR_WORKSET_EARLY_SET_HEAD = (
                         "nothing was written: this value could not be read back.\n  %s")
