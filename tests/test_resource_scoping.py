@@ -213,7 +213,7 @@ class TestBuildEffectiveState:
     (``start._effective_behavior_for_display``, block 7c — the snapshot-based
     successor to the retired ``_build_effective_state`` precedence walk). The
     discriminated ``agent.<name>.*`` / ``agent.default.*`` file shapes
-    (``write_agent_setting``) feed the snapshot; the §2d active-over-default pick
+    (``config_io.write_nested_key``) feed the snapshot; the §2d active-over-default pick
     yields the launch-correct effective state."""
 
     def _make_target(self, descriptors, name="claude"):
@@ -228,13 +228,13 @@ class TestBuildEffectiveState:
         The callers pass it as ``system_settings_path`` — the ``global/settings.yaml``
         tier — so it is named like one; ``kanibako.cfg`` carries ``config.*`` alone.
         """
-        from kanibako.settings.config import write_agent_setting
+        from kanibako.settings.config_io import write_nested_key
 
         ssp = tmp_path / "settings.yaml"
         ssp.write_text("")
         if settings:
             for k, v in settings.items():
-                write_agent_setting(ssp, k, v, "claude")
+                write_nested_key(ssp, ("agent", "claude"), k, v)
         return ssp
 
     def _make_workset_config(self, box, settings=None, agent="claude"):
@@ -269,14 +269,14 @@ class TestBuildEffectiveState:
         directly: that is an upward write dropped at RESOLVE, spec §0.) ⮕ P7: this
         used the ``box.agent.*`` mirror, which spec §2b RETIRED.
         """
-        from kanibako.settings.config import write_project_config
+        from kanibako.settings.config import persist_creation_flags
         from kanibako.settings.config_io import dump_doc, load_doc
 
         std, proj = _real_primary_box(tmp_path / "box")
         box_file = box_workset_settings_paths(proj)[0]
         # A minimal box-tier settings file (P8b sparse create writes no identity
         # section; the pref requests below are what this scoping test cares about).
-        write_project_config(box_file, "base:image")
+        persist_creation_flags(box_file, materializing=True, image="base:image")
         if settings:
             doc = load_doc(box_file)
             node = doc.setdefault("pref", {}).setdefault("agent", {}).setdefault(
@@ -531,14 +531,14 @@ class TestBuildEffectiveState:
         agent.default tables (system ⊃ agent). (A box file may not set agent.*;
         see test_box_override_does_not_bleed_across_agents.)"""
         from kanibako.commands.start import _effective_behavior_for_display as _build_effective_state
-        from kanibako.settings.config import write_agent_setting
+        from kanibako.settings.config_io import write_nested_key
 
         descriptors = [
             TargetSetting(key="model", description="Model", default="opus"),
         ]
         # Any-agent default + a claude-specific override, both on the system file.
         ssp = self._make_system_settings(tmp_path, settings={"model": "sonnet"})
-        write_agent_setting(ssp, "model", "haiku", "default")
+        write_nested_key(ssp, ("agent", "default"), "model", "haiku")
         box_file = self._make_box_file(tmp_path / "proj")
         agent_cfg = AgentConfig()
 
@@ -678,7 +678,7 @@ class TestXdgFallbackRegression:
         ``$XDG_CACHE_HOME`` value through the agent tier, and ``template`` is
         the path-valued leaf, so a path value reads honestly there.
         """
-        from kanibako.settings.config import write_project_config
+        from kanibako.settings.config import persist_creation_flags
 
         target = MagicMock()
         target.setting_descriptors.return_value = [
@@ -701,7 +701,7 @@ class TestXdgFallbackRegression:
         box_file = box_workset_settings_paths(proj)[0]
         # A minimal box-tier settings file (P8b sparse create writes no identity
         # section); the XDG expansion under test rides the global/agent tiers.
-        write_project_config(box_file, "base:image")
+        persist_creation_flags(box_file, materializing=True, image="base:image")
         return target, AgentConfig(), {
             "std": std, "proj": proj, "selection_level": None,
         }, ssp

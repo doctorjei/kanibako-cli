@@ -69,11 +69,10 @@ _SANCTIONED: dict[tuple[str, str], int] = {
     # ``kanibako setup`` records the chosen agent as system-scope user intent.
     ("src/kanibako/commands/setup_cmd.py", "write_nested_key"): 1,
     # ``persist_creation_flags`` (the §1A create exception), ``write_box_enable_vault``
-    # (sparse ``false``), ``unset_project_config_key`` (reset), and two writers with no
-    # shipped caller: ``write_project_config_key`` and ``write_agent_setting``.  ONE site,
-    # ``write_box_enable_vault``'s ``false`` arm (``config.py:479``), is split 7 + 1 by
+    # (sparse ``false``), and ``unset_project_config_key`` (reset).  ONE site,
+    # ``write_box_enable_vault``'s ``false`` arm (``config.py:476``), is split 4 + 1 by
     # caller: ``--no-vault``/move/duplicate/convert sanctioned, extract QUARANTINED below.
-    (_CONFIG, "dump_doc"): 7,
+    (_CONFIG, "dump_doc"): 4,
     # ``workset create --image/--no-vault`` and ``workset share add``/``remove``.
     ("src/kanibako/commands/workset_cmd.py", "dump_doc"): 3,
     # CARRY: ``box duplicate`` / ``box move`` rewrite the box tier the user authored, minus
@@ -89,7 +88,7 @@ _SANCTIONED: dict[tuple[str, str], int] = {
 #: QUARANTINED settings writes — real defaults leaks, named here until src is fixed.  Do
 #: NOT add entries: the cure is to move the value into a defaults file.
 _QUARANTINED: dict[tuple[str, str], int] = {
-    # ``config.py:479`` reached from ``box extract`` (``restore.py`` → ``resolve_any_project``
+    # ``config.py:476`` reached from ``box extract`` (``restore.py`` → ``resolve_any_project``
     # → ``resolve_standalone_project(initialize=True, enable_vault=None)``), which passes the
     # RESOLVED ``box.enable_vault`` cascade value to ``establish_standalone``, so an upper-tier
     # ``false`` is written to the box tier ("absent ... unless the user sets it").  No create

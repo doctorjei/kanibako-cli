@@ -26,8 +26,6 @@ from kanibako.settings.config import (
     read_agent_settings,
     write_box_enable_vault,
     write_global_config,
-    write_project_config,
-    write_agent_setting,
 )
 from kanibako.settings.settings_launch import load_merged_config
 from kanibako.settings.bootstrap import CONFIG_PATH_DEFAULTS, SYSTEM_PATH_DEFAULTS
@@ -869,7 +867,7 @@ class TestMergedConfig:
         project_path = tmp_path / BOX_META_FILE
 
         write_global_config(global_path)
-        write_project_config(project_path, "my-image:v2")
+        dump_doc(project_path, {"box": {"image": "my-image:v2"}})
 
         merged = load_merged_config(project_path)
         assert merged.box_image == "my-image:v2"
@@ -879,7 +877,7 @@ class TestMergedConfig:
         project_path = tmp_path / BOX_META_FILE
 
         write_global_config(global_path)
-        write_project_config(project_path, "my-image:v2")
+        dump_doc(project_path, {"box": {"image": "my-image:v2"}})
 
         merged = load_merged_config(project_path,
             cli_overrides={"box_image": "cli-image:v3"},
@@ -892,7 +890,7 @@ class TestMergedConfig:
         project_path = tmp_path / BOX_META_FILE
 
         write_global_config(global_path)
-        write_project_config(project_path, "my-image:v2")
+        dump_doc(project_path, {"box": {"image": "my-image:v2"}})
 
         baseline = load_merged_config(project_path)
         with_none = load_merged_config(project_path, workset_path=None)
@@ -904,7 +902,7 @@ class TestMergedConfig:
         workset_path = tmp_path / "ws-config.yaml"
 
         write_global_config(global_path)
-        write_project_config(workset_path, "ws-image:v1")
+        dump_doc(workset_path, {"box": {"image": "ws-image:v1"}})
 
         merged = load_merged_config(workset_path=workset_path)
         assert merged.box_image == "ws-image:v1"
@@ -915,8 +913,8 @@ class TestMergedConfig:
         project_path = tmp_path / BOX_META_FILE
 
         write_global_config(global_path)
-        write_project_config(workset_path, "ws-image:v1")
-        write_project_config(project_path, "proj-image:v2")
+        dump_doc(workset_path, {"box": {"image": "ws-image:v1"}})
+        dump_doc(project_path, {"box": {"image": "proj-image:v2"}})
 
         merged = load_merged_config(project_path, workset_path=workset_path
         )
@@ -927,7 +925,7 @@ class TestMergedConfig:
         workset_path = tmp_path / "ws-config.yaml"
 
         write_global_config(global_path)
-        write_project_config(workset_path, "ws-image:v1")
+        dump_doc(workset_path, {"box": {"image": "ws-image:v1"}})
 
         merged = load_merged_config(workset_path=workset_path,
             cli_overrides={"box_image": "cli-image:v3"},
@@ -941,7 +939,7 @@ class TestMergedConfig:
         missing_workset = tmp_path / "no-such-config.yaml"
 
         write_global_config(global_path)
-        write_project_config(project_path, "my-image:v2")
+        dump_doc(project_path, {"box": {"image": "my-image:v2"}})
 
         baseline = load_merged_config(project_path)
         with_missing = load_merged_config(project_path, workset_path=missing_workset
@@ -1133,44 +1131,6 @@ class TestPresentScalarFields:
         path = tmp_path / BOX_META_FILE
         path.write_text("box:\n  enable_vault: false\n")
         assert _present_scalar_fields(path) == {"box_enable_vault": False}
-
-
-class TestWriteProjectConfig:
-    def test_creates_new(self, tmp_path):
-        path = tmp_path / BOX_META_FILE
-        write_project_config(path, "new-image:latest")
-        assert _present_scalar_fields(path)["box_image"] == "new-image:latest"
-
-    def test_updates_existing(self, tmp_path):
-        path = tmp_path / BOX_META_FILE
-        write_project_config(path, "first:latest")
-        write_project_config(path, "second:latest")
-        assert _present_scalar_fields(path)["box_image"] == "second:latest"
-
-    def test_update_existing_image(self, tmp_path):
-        p = tmp_path / BOX_META_FILE
-        write_project_config(p, "img:v1")
-        assert "image: img:v1" in p.read_text()
-        write_project_config(p, "img:v2")
-        text = p.read_text()
-        assert "image: img:v2" in text
-        assert "img:v1" not in text
-
-    def test_add_image_to_container_section(self, tmp_path):
-        # A real table: an empty ``box:`` header parses as null, which is refused.
-        p = tmp_path / BOX_META_FILE
-        p.write_text("box:\n  shell: bash\n")
-        write_project_config(p, "new:img")
-        text = p.read_text()
-        assert "image: new:img" in text
-        assert "shell: bash" in text
-
-    def test_create_new_file(self, tmp_path):
-        p = tmp_path / "sub" / BOX_META_FILE
-        write_project_config(p, "fresh:v1")
-        assert p.exists()
-        assert "box:" in p.read_text()
-        assert "image: fresh:v1" in p.read_text()
 
 
 class TestBoxEnableVault:
@@ -1483,46 +1443,20 @@ class TestConfigFilePath:
 class TestTargetSettings:
     """Tests for target setting override storage in box.yaml."""
 
-    def _write_base_toml(self, path):
-        """Write a minimal box.yaml for testing."""
-        write_project_config(path, "base:image")
+    def _write_base_toml(self, path, agent=None):
+        """Write a minimal box.yaml for testing, with an optional ``agent`` table."""
+        data: dict = {"box": {"image": "base:image"}}
+        if agent is not None:
+            data["agent"] = agent
+        dump_doc(path, data)
 
     def test_round_trip(self, tmp_path):
-        """Write and read back agent-keyed target settings."""
+        """Read back agent-keyed target settings."""
         p = tmp_path / BOX_META_FILE
-        self._write_base_toml(p)
-        write_agent_setting(p, "model", "sonnet", "claude")
-        write_agent_setting(p, "access", "permissive", "claude")
+        self._write_base_toml(p, {"claude": {"model": "sonnet", "access": "permissive"}})
 
         settings = read_agent_settings(p, "claude")
         assert settings == {"model": "sonnet", "access": "permissive"}
-
-    @pytest.mark.parametrize("text, dotted, found", [
-        ("agent: /x\n", "agent", "/x"),
-        ("agent:\n  claude: /x\n", "agent.claude", "/x"),
-    ])
-    def test_a_scalar_at_either_walked_level_refuses_rather_than_being_replaced(
-        self, tmp_path, text, dotted, found,
-    ):
-        """``write_agent_setting`` walks TWO levels; a scalar at EITHER refuses by name and
-        leaves the file byte-identical.
-
-        Before the fix both were replace-a-scalar sites — the ``agent`` table itself, and the
-        per-agent ``agent.<name>`` sub-table beneath it.  One
-        :func:`refuse_scalar_sections` call over the walked tuple covers both.
-        MUTATION: drop that call in ``write_agent_setting`` and BOTH params red.
-        """
-        p = tmp_path / BOX_META_FILE
-        p.write_text(text)
-
-        with pytest.raises(ConfigError) as exc:
-            write_agent_setting(p, "model", "sonnet", "claude")
-        assert str(exc.value) == (
-            f"the config file {p} holds {found} at '{dotted}', where a table of keys belongs, "
-            f"so '{dotted}.' keys cannot be written under it. "
-            f"Fix or delete '{dotted}' in that file by hand, then retry."
-        )
-        assert p.read_text() == text
 
     def test_backward_compat_no_section(self, tmp_path):
         """box.yaml without a [agent] section returns empty dict."""
@@ -1551,8 +1485,7 @@ class TestTargetSettings:
     def test_default_tier_applies_to_any_agent(self, tmp_path):
         """agent.default values apply to every agent unless overridden."""
         p = tmp_path / BOX_META_FILE
-        self._write_base_toml(p)
-        write_agent_setting(p, "model", "sonnet", "default")
+        self._write_base_toml(p, {"default": {"model": "sonnet"}})
 
         assert read_agent_settings(p, "claude") == {"model": "sonnet"}
         assert read_agent_settings(p, "goose") == {"model": "sonnet"}
@@ -1560,9 +1493,7 @@ class TestTargetSettings:
     def test_agent_specific_wins_over_default(self, tmp_path):
         """agent.<agent> overrides agent.default within one file."""
         p = tmp_path / BOX_META_FILE
-        self._write_base_toml(p)
-        write_agent_setting(p, "model", "sonnet", "default")
-        write_agent_setting(p, "model", "opus", "claude")
+        self._write_base_toml(p, {"default": {"model": "sonnet"}, "claude": {"model": "opus"}})
 
         assert read_agent_settings(p, "claude") == {"model": "opus"}
         # A different agent still gets the default tier.
@@ -1590,20 +1521,10 @@ class TestTargetSettings:
     def test_no_bleed_across_agents(self, tmp_path):
         """An override set for one agent does NOT bleed onto another (B3 bug)."""
         p = tmp_path / BOX_META_FILE
-        self._write_base_toml(p)
-        write_agent_setting(p, "model", "sonnet", "claude")
+        self._write_base_toml(p, {"claude": {"model": "sonnet"}})
 
         assert read_agent_settings(p, "claude") == {"model": "sonnet"}
         assert read_agent_settings(p, "goose") == {}
-
-    def test_preserves_other_sections(self, tmp_path):
-        """Writing target settings doesn't clobber other sections."""
-        p = tmp_path / BOX_META_FILE
-        self._write_base_toml(p)
-        write_agent_setting(p, "model", "haiku", "claude")
-
-        # The base box section should still be intact.
-        assert _present_scalar_fields(p)["box_image"] == "base:image"
 
 
 class TestPersistCreationFlags:

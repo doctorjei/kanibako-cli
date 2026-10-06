@@ -10,8 +10,7 @@ from kanibako.settings.config import (
     KanibakoConfig,
     load_config,
     load_project_overrides,
-    write_project_config,
-    write_project_config_key,
+    persist_creation_flags,
 )
 from kanibako.settings.config_io import dump_doc, load_doc
 
@@ -62,7 +61,7 @@ class TestBoxConfigShow:
 
         # Write a project override
         project_toml = proj.metadata_path / "box.yaml"
-        write_project_config(project_toml, "custom:v1")
+        persist_creation_flags(project_toml, materializing=True, image="custom:v1")
 
         args = argparse.Namespace(args=[project_dir], effective=False)
         rc = run_show(args)
@@ -758,7 +757,7 @@ class TestBoxConfigReset:
 
         # Set first
         project_toml = proj.metadata_path / "box.yaml"
-        write_project_config(project_toml, "to-reset:v1")
+        persist_creation_flags(project_toml, materializing=True, image="to-reset:v1")
 
         # Reset. ⚑ The key is spelled with DOTS — the flat ``box_image`` form this
         # case used to pass is not a declared key and every verb refuses it now.
@@ -785,7 +784,7 @@ class TestBoxConfigReset:
 
         # Set a value first, plus two pref REQUESTS (Q86 = (a): --all clears them too).
         project_toml = proj.metadata_path / "box.yaml"
-        write_project_config(project_toml, "override:v1")
+        persist_creation_flags(project_toml, materializing=True, image="override:v1")
         doc = load_doc(project_toml)
         doc["pref"] = {
             "system": {"agent": "goose"}, "agent": {"claude": {"model": "opus"}},
@@ -1081,91 +1080,11 @@ class TestBoxConfigTooManyArgs:
 # config.py utility function tests (carried forward from old test file)
 # ---------------------------------------------------------------------------
 
-class TestWriteProjectConfigKey:
-    """⚑ ASSERTED ON THE DOCUMENT, not through a loader (2026-08-31).
-
-    These used to read the value back with ``load_config``, which is the LAYER-1 reader
-    now — and reading a writer's work through an unrelated reader was always the weaker
-    assertion. ``load_doc`` is what the writer itself round-trips through.
-    """
-
-    # ⚑ ``test_write_paths_key`` LIVED HERE AND IS GONE (2026-08-31). It asserted that
-    # ``write_project_config_key`` writes ``paths_project_toml`` — a spelling the manifest
-    # classes ``not_keys.code_residue``, which nothing now reads, in the very diff whose
-    # point is that an undeclared spelling is not a key. A green test asserting we write one
-    # is a false message. ``_split_config_key``'s ``paths_`` arm survives and is still
-    # covered by ``TestSplitConfigKey`` — that is a string-splitting rule, not a claim that
-    # the key exists.
-
-    def test_write_box_key(self, tmp_path):
-        p = tmp_path / "box.yaml"
-        write_project_config_key(p, "box_image", "myimg:v1")
-        assert load_doc(p) == {"box": {"image": "myimg:v1"}}
-
-    def test_write_shell_key(self, tmp_path):
-        # (⮕ P7: was ``box_agent_name``, retired with spec §2b — the SHAPE under
-        # test is the nested box-table write, not that key.)
-        p = tmp_path / "box.yaml"
-        write_project_config_key(p, "box_shell", "bash")
-        assert load_doc(p) == {"box": {"shell": "bash"}}
-
-    def test_a_second_key_joins_the_section_without_clobbering(self, tmp_path):
-        """A second write lands beside the first, not on top of it.
-
-        ⚑ This was ``test_write_multiple_sections``, which paired ``box_image`` with
-        ``paths_project_toml`` to make two sections. There is no declared second section left
-        to pair with — ``box`` is the only one — so the shape it can honestly assert is
-        section REUSE. The two-section branch of ``write_project_config_key`` is reachable
-        only through the undeclared ``paths_`` spelling and is now uncovered; that is the
-        truthful state, recorded here rather than propped up by a test that writes a non-key.
-        """
-        p = tmp_path / "box.yaml"
-        write_project_config_key(p, "box_image", "multi:v1")
-        write_project_config_key(p, "box_shell", "bash")
-        assert load_doc(p) == {"box": {"image": "multi:v1", "shell": "bash"}}
-
-    def test_update_existing_key(self, tmp_path):
-        p = tmp_path / "box.yaml"
-        write_project_config_key(p, "box_image", "old:v1")
-        write_project_config_key(p, "box_image", "new:v2")
-        assert load_doc(p) == {"box": {"image": "new:v2"}}
-        assert "old:v1" not in p.read_text()
-
-    def test_backward_compat_with_write_project_config(self, tmp_path):
-        """write_project_config (old API) should still work."""
-        p = tmp_path / "box.yaml"
-        write_project_config(p, "compat:v1")
-        assert load_doc(p) == {"box": {"image": "compat:v1"}}
-
-    def test_a_scalar_section_refuses_rather_than_being_replaced(self, tmp_path):
-        """This writer's generic section arm refuses a scalar by name and writes NOTHING.
-
-        Before the fix a scalar where the section table belongs was silently discarded and a
-        fresh table written over it.  Same rule, same wording as
-        ``TestNestedWriteRefusesANonTableSection`` in ``test_settings/test_config.py``.
-        MUTATION: drop the ``refuse_scalar_sections`` call in ``write_project_config_key``
-        and this reds.
-        """
-        from kanibako.errors import ConfigError
-
-        p = tmp_path / "box.yaml"
-        p.write_text("box: /x\n")
-
-        with pytest.raises(ConfigError) as exc:
-            write_project_config_key(p, "box_image", "myimg:v1")
-        assert str(exc.value) == (
-            f"the config file {p} holds /x at 'box', where a table of keys belongs, "
-            f"so 'box.' keys cannot be written under it. "
-            f"Fix or delete 'box' in that file by hand, then retry."
-        )
-        assert p.read_text() == "box: /x\n"
-
-
 class TestUnsetProjectConfigKey:
     def test_unset_removes_key(self, tmp_path):
         from kanibako.settings.config import unset_project_config_key
         p = tmp_path / "box.yaml"
-        write_project_config_key(p, "box_image", "remove-me:v1")
+        dump_doc(p, {"box": {"image": "remove-me:v1"}})
         assert unset_project_config_key(p, "box_image") is True
         # The now-empty section is pruned, so the key resolves to its default again.
         assert load_doc(p) == {}
@@ -1173,7 +1092,7 @@ class TestUnsetProjectConfigKey:
     def test_unset_nonexistent_key(self, tmp_path):
         from kanibako.settings.config import unset_project_config_key
         p = tmp_path / "box.yaml"
-        write_project_config_key(p, "box_image", "keep:v1")
+        dump_doc(p, {"box": {"image": "keep:v1"}})
         assert unset_project_config_key(p, "box_shell") is False
         # Original key should still be there
         assert load_doc(p) == {"box": {"image": "keep:v1"}}
@@ -1186,8 +1105,7 @@ class TestUnsetProjectConfigKey:
     def test_unset_preserves_other_keys(self, tmp_path):
         from kanibako.settings.config import unset_project_config_key
         p = tmp_path / "box.yaml"
-        write_project_config_key(p, "box_image", "img:v1")
-        write_project_config_key(p, "box_shell", "bash")
+        dump_doc(p, {"box": {"image": "img:v1", "shell": "bash"}})
         assert unset_project_config_key(p, "box_image") is True
         assert load_doc(p) == {"box": {"shell": "bash"}}
 
@@ -1201,8 +1119,7 @@ class TestLoadProjectOverrides:
         p = tmp_path / "box.yaml"
         # A value EQUAL to the declared default is not an override — the answer is BY
         # VALUE against the default, not by presence.
-        write_project_config_key(p, "box_image", KanibakoConfig().box_image)
-        write_project_config_key(p, "box_shell", "override:zsh")
+        dump_doc(p, {"box": {"image": KanibakoConfig().box_image, "shell": "override:zsh"}})
         assert load_project_overrides(p) == {"box_shell": "override:zsh"}
 
     def test_a_stored_empty_string_overrides_the_declared_none(self, tmp_path):
@@ -1213,7 +1130,7 @@ class TestLoadProjectOverrides:
         reading that made this a no-op while the default was spelled ``""``.
         """
         p = tmp_path / "box.yaml"
-        write_project_config_key(p, "box_shell", "")
+        dump_doc(p, {"box": {"shell": ""}})
         assert load_project_overrides(p) == {"box_shell": ""}
 
     def test_a_stored_null_is_not_an_override(self, tmp_path):
