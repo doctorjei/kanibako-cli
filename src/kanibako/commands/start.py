@@ -2517,7 +2517,6 @@ def _start_helper_hub(
         project_path=proj.project_path,
         data_path=std.data_path,
         boxes=std.boxes,
-        registry=std.registry,
         primary_workset=std.primary_workset,
         early=_early_scope(std, BoxMode.primary),
     )
