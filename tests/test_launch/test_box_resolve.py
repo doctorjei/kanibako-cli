@@ -28,10 +28,8 @@ from kanibako.settings.paths import BoxMode, STANDALONE_META_DIR, _early_scope
 # ---------------------------------------------------------------------------
 
 def _make_standalone_marker(project_dir: Path) -> None:
-    """Give *project_dir* the presence-only standalone marker.
-
-    The standalone meta dir + the box settings file — NO ``project.mode`` field
-    (the new-model marker is FILE PRESENCE, design D4).
+    """Give *project_dir* the standalone marker: a root ``workset.yaml`` storing
+    ``workset.registry`` as null (plus the ``box_data/`` dir a real box has).
     """
     (project_dir / STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
     (project_dir / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
@@ -74,9 +72,9 @@ class TestStandaloneSettingsPresent:
         assert box_resolve.standalone_settings_present(project_dir) is False
 
     def test_does_not_read_project_mode(self, project_dir):
-        # A settings file WITHOUT any ``project.mode`` field still counts —
-        # presence is the whole signal (would have been False under the legacy
-        # ``_is_standalone_meta_dir`` which required ``box.mode == standalone``).
+        # A settings file WITHOUT any ``project.mode`` field still counts — the
+        # stored ``workset.registry`` null is the whole signal (the legacy
+        # ``_is_standalone_meta_dir`` required ``box.mode == standalone``).
         (project_dir / STANDALONE_META_DIR).mkdir()
         (project_dir / WORKSET_META_FILE).write_text(
             "box:\n  enable_vault: false\nworkset:\n  registry: null\n")

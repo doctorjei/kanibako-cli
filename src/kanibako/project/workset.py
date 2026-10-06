@@ -742,6 +742,9 @@ def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workse
     refuse_retired_workset_identity(root)
     settings_doc = load_workset_settings_doc(root)
     ws = Workset(name=name, root=root, early_system=early_system)
+    from kanibako.launch.box_resolve import standalone_settings_present
+    if standalone_settings_present(root):
+        return ws
     registry_path = workset_registry.resolve_workset_registry_path(
         root, settings_doc, early=ws.early_scope,
     )
