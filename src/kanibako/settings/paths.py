@@ -223,7 +223,7 @@ def standalone_box_store(root: Path, *, early: EarlyScope) -> Path:
 
     ⭐ THE ONE PLACE A STANDALONE STORE PATH IS ANSWERED; every reader and deleter goes
     through here or :func:`box_metadata_dir`, which calls it.  Composing ``box_data/``
-    instead names a directory the box never uses.  ⚑ Deferred import: the paths/workset
+    instead names a directory the box never uses.  Deferred import: the paths/workset
     cycle.
     """
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_boxes
@@ -240,10 +240,9 @@ def standalone_store_teardown_plan(
     ⚑⚑ ONLY A STORE STRICTLY BELOW *root* IS REMOVABLE; anything else is the USER'S OWN
     directory and no verb ``rm -rf``\\ s it on their behalf — the line
     ``standalone_vault_teardown`` draws for a vault arm and ``delete_workset`` for a
-    workset store.  BOTH ENDS ARE RESOLVED, because the key is answered as it was SPELLED:
-    ``@meta.workset.path/../store`` and a symlinked parent component each name a directory
-    outside the root while reading as a descendant of it.  ``None`` on either arm means
-    there is nothing to act on.
+    workset store.  BOTH ENDS ARE RESOLVED: the key is answered as it was SPELLED, so
+    ``@meta.workset.path/../store`` or a symlinked parent reads as a descendant while
+    sitting outside the root.  ``None`` on either arm means nothing to act on.
     """
     from kanibako.project.workset import _path_in_tree
 
@@ -275,9 +274,9 @@ def box_metadata_dir(mode: BoxMode, metadata_path: Path, *,
                      early: EarlyScope) -> Path:
     """The DIR holding a box's own metadata — home, session state, box tier.
 
-    ⚑ *early* is read on the STANDALONE arm ONLY — the arm that answers the store through
+    ⚑ *early* is read on the STANDALONE arm ONLY — the one that answers the store through
     ``workset.boxes``; the primary/named arm is ``metadata_path`` itself.  Required rather
-    than optional-plus-assert: that pattern only fails at runtime, on the one arm that needs it.
+    than optional-plus-assert, which only fails at runtime on that arm.
     """
     if mode is not BoxMode.standalone:
         return metadata_path
@@ -301,13 +300,9 @@ def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]:
     """The :class:`ProjectPaths` ADAPTER over :func:`_box_settings_files` (no logic of its own).
 
     ⚑ Reads the scope off *proj* rather than taking one: the standalone box tier sits in
-    the RESOLVED store, so answering it is this seam's job on every mode, and a caller
-    holding only a ``ProjectPaths`` is the normal case.
-
-    ⚑ ``getattr`` because a caller may pass a STAND-IN for a resolved project (a
-    ``SimpleNamespace`` naming the paths it needs), and such a stand-in carries no scope —
-    which is fine, because the arm that needs one is STANDALONE and a stand-in that
-    answers for a standalone box is the caller's own modeling choice.
+    the RESOLVED store, so answering it is this seam's job on every mode.  ``getattr``
+    because a caller may pass a STAND-IN (a ``SimpleNamespace`` naming the paths it needs)
+    that carries no scope — fine, the arm that needs one is STANDALONE.
     """
     return _box_settings_files(proj.mode, proj.metadata_path, proj.group,
                                early=getattr(proj, "_early", None))

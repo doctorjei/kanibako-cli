@@ -6883,9 +6883,9 @@ directory was read from the composed default leaf, so for a box with a relocated
 never loaded, and one dropped in the leftover default leaf was loaded even though the box had
 stopped using it. Both follow the resolved store now.
 
-**Detection changed in the same release, and it no longer looks for `box_data/`.** A standalone
-root is the root whose own `workset.yaml` stores the `workset.registry` null. `box_data/` is the
-default leaf of the `workset.boxes` key, not a marker, so a box whose store was relocated is
+**Detection changed in the same release, and it no longer looks for `<root>/box_data`.** A standalone
+root is the root whose own `<root>/workset.yaml` stores the `workset.registry` null. `<root>/box_data`
+is the default leaf of the `workset.boxes` key, not a marker, so a box whose store was relocated is
 discovered whether or not `<root>/box_data` still exists.
 
 **What to do.** For a box you already relocated, nothing must change: move the data to the path

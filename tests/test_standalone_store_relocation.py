@@ -111,8 +111,8 @@ class TestBoxRmReadsTheStore:
             self, config, std, tmp_home):
         """⚑ THE PIN: ``rm --purge`` takes the RESOLVED store, and takes only it.
 
-        Base composed ``<root>/box_data``, so it removed the LOCATOR marker and left the
-        box's real metadata on disk — the teardown reported success over a live store.
+        Base composed ``<root>/box_data``, so it removed the composed DEFAULT LEAF and left
+        the box's real metadata on disk — the teardown reported success over a live store.
         """
         root = _make_standalone(config, std, tmp_home, "rm_inside")
         store = _relocate(root, root / "inside_store")

@@ -241,10 +241,9 @@ def resolve_workset_boxes(
     ⚑ THE FLAG SELECTS A DEFAULT LEAF, NOTHING ELSE — the same shape as
     ``resolve_workset_workspaces``: spec §2c gives standalone
     ``@meta.workset.path/box_data`` where primary/named get ``.../boxes``.
-    ⚑ Readers and deleters repoint through ``standalone_box_store``.  ⚑ DETECTION does
-    NOT compose ``box_data/``: since SD a standalone root is the root whose own
-    ``workset.yaml`` stores the ``workset.registry`` null.  ``box_data`` is this key's
-    DEFAULT LEAF and nothing more — a directory of that name marks nothing.
+    ⚑ DETECTION does NOT compose ``box_data/``: a standalone root is the one whose own
+    ``workset.yaml`` stores the ``workset.registry`` null.  This key's DEFAULT LEAF marks
+    nothing.
 
     🛑 A present ``<None>`` REFUSES, naming the key and the file ([R177], Q96): every box's
     home and settings live under this dir, so there is no box without it, and taking the
