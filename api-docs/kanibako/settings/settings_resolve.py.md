@@ -23,6 +23,7 @@ BOX_PINNED_STATE_RELPATH = f'{BOX_PINNED_ROOT_RELPATH}/state'
 MAX_REF_DEPTH = 64
 UNSET = _Unset()
 DEFAULT_TERM = 'xterm'
+SET_TARGETS_ITS_OWN_FILE: 'frozenset[str]' = frozenset({'system', 'workset', 'box'})
 _VAR_NAME_RE = re.compile('[A-Za-z_][A-Za-z0-9_]*')
 _REF_SEG = f'[{SEGMENT_CHAR_CLASS}{CANONICAL_SEP}]+'
 _REF_NAME_RE = re.compile(f'{_REF_SEG}(?:\\.{_REF_SEG})*')
@@ -52,7 +53,7 @@ def match_braced(expr: str, i: int) -> tuple[Literal['ref', 'var'], str, int] | 
 def expand_expr(expr: str, *, space: Literal['host', 'guest'], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str], chain: tuple[str, ...]=(), defer_env: bool=False) -> str
 def resolve_var(name: str, ctx: ResolveCtx) -> str | _Unset
 def resolve_value(key: str, *, levels: list[LevelView], ctx: ResolveCtx, lookup: Callable[[str, tuple[str, ...]], str]) -> ResolvedValue | _Unset
-def delete_before_set_step(entry: str, *, where: Any, parents: 'Sequence[str]'=()) -> str
+def delete_before_set_step(entry: str, *, where: Any, parents: 'Sequence[str]'=(), checks_file: bool=False) -> str
 def _host_term() -> str
 def _host_colorterm() -> str | None
 def _unescape(s: str) -> str

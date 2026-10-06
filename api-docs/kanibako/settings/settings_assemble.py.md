@@ -59,6 +59,7 @@ def _nested_present(raw: Any, parts: 'tuple[str, ...]') -> Any
 def _file_spelled_parents(parts: 'tuple[str, ...]') -> 'list[str]'
 def _behavior_leaf_sites(raw: Any, leaf: str) -> 'list[tuple[tuple[str, ...], Any]]'
 def _retired_behavior_cure(successor: str, *, level: str, tier: str, subject: str | None, box_name: str | None=None, node: str | None=None) -> str
+def _behavior_cure_checks_file(level: str, *, node: str | None, subject: str | None) -> bool
 def _warn_upward_drops(raw: Any, *, file_scope: str, path: Path | None) -> None
 def _node_table(raw: dict, address: tuple[str, ...]) -> dict | None
 def _refuse_table_at_scalar_leaf(table: dict, *, prefix: str, path: Path | None) -> None
