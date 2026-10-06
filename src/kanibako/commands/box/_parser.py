@@ -2188,17 +2188,11 @@ def _box_register_cure(target: str) -> str:
 
 
 def _box_rm_purge_cure(target: str) -> str:
-    """The ``--purge`` sibling of :func:`_box_register_cure`."""
     return f"kanibako box rm {shlex.quote(target)} --purge"
 
 
 def _retained_box_cures(target: str) -> "tuple[str, str]":
-    """The restore/delete PAIR offered for a retained box, both operands quoted.
-
-    ⚑ A CURE IS PASTED, NOT READ: *target* may carry a space or a metacharacter,
-    and an unquoted one prints a line that does not run as printed.  Every door
-    that offers the pair renders it here, so the pair cannot drift apart.
-    """
+    """The restore/delete PAIR; every retained-box door renders it here."""
     return _box_register_cure(target), _box_rm_purge_cure(target)
 
 
