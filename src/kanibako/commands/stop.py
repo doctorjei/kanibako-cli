@@ -7,7 +7,7 @@ import sys
 
 from kanibako.settings.config import user_config_file, load_config, BootstrapConfig
 from kanibako.runtime.container import ContainerRuntime
-from kanibako.errors import ConfigError, ContainerError
+from kanibako.errors import ConfigError, ContainerError, KanibakoError, ProjectError, WorksetError
 from kanibako.settings.paths import (
     ProjectPaths,
     StandardPaths,
@@ -167,7 +167,7 @@ def _writeback_on_stop(
         pass
 
 
-def _warn_settings(exc: ConfigError) -> None:
+def _warn_settings(exc: KanibakoError) -> None:
     """A settings refusal, in its OWN words (P10), under an advisory prefix."""
     print(f"Warning: {exc}", file=sys.stderr)
 
@@ -291,22 +291,18 @@ def _boxes_rendering_no_name() -> list[str]:
                                          load_primary_boxes)
     from kanibako.utils import renders_no_name
 
-    config = load_config(user_config_file())
     try:
+        config = load_config(user_config_file())
         std, refusal = _load_paths(config)
-    except ConfigError as exc:
-        _warn_settings(exc)
-        return []
-    if refusal is not None:
-        _warn_settings(refusal)
-    try:
         names = [*load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)),
                  *load_standalone(std.registry)]
         for _ws_name, _ws, members in iter_workset_projects(std, config):
             names.extend(name for name, _status in members)
-    except ConfigError as exc:
+    except (ConfigError, SettingsError, WorksetError, ProjectError) as exc:
         _warn_settings(exc)
         return []
+    if refusal is not None:
+        _warn_settings(refusal)
     return [name for name in names if renders_no_name(name)]
 
 

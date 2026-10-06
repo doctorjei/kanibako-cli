@@ -620,7 +620,11 @@ class TestTheRefusalNamesTheReallyBrokenRef:
          "Cyclic @-reference"),
         ("box:\n  shell: /s/{meta.workset.path}/{$NOPE_UNKNOWN}\n",
          "Unknown variable: $NOPE_UNKNOWN"),
-    ], ids=["cycle", "unknown-variable"])
+        ("box:\n  shell: /s/{meta.workset.path}/{box.env.V0}\n  env:\n"
+         + "".join(f"    V{i}: /{{box.env.V{i + 1}}}\n" for i in range(70))
+         + "    V70: /{meta.workset.path}/end\n",
+         "depth cap"),
+    ], ids=["cycle", "unknown-variable", "depth-cap"])
     def test_a_stored_chain_names_the_defect_behind_the_blind_ref(
         self, tmp_path, std, stored, phrase,
     ):
@@ -629,16 +633,6 @@ class TestTheRefusalNamesTheReallyBrokenRef:
         message = self._refused(files, self._CHAIN, std)
         assert phrase in message, message
         assert "@meta.workset.path" not in message, message
-
-    def test_a_deep_stored_chain_behind_the_blind_ref_is_accepted(self, tmp_path, std):
-        files = _files(tmp_path)
-        files["system"].write_text(
-            "box:\n  shell: /s/{meta.workset.path}/{box.env.V0}\n  env:\n"
-            + "".join(f"    V{i}: /{{box.env.V{i + 1}}}\n" for i in range(70))
-            + "    V70: /{meta.workset.path}/end\n"
-        )
-        message = _set("box.canon", self._CHAIN, files, ConfigLevel.system, std=std)
-        assert not message.startswith("Error:"), message
 
 
 def _root_store(value, *, at: str = "workset.boxes") -> KeyStore:

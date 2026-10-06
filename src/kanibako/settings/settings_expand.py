@@ -103,6 +103,12 @@ def _absent_reason(dotted: str) -> str | None:
 
 _NOT_IN_CASCADE = "declared in the keyspace, but not in this command's cascade"
 
+
+def is_cascade_blindness(reason: str) -> bool:
+    """Whether a LENIENT error *reason* is cascade blindness alone, with no defect behind it."""
+    return reason.endswith(f"({_NOT_IN_CASCADE})")
+
+
 #: The top-level table holding ``pref.*`` REQUESTS (spec §2h): carried through
 #: UNEXPANDED and never ``@``-referenceable. Spelled here rather than imported —
 #: a ``settings_prefs`` import would cycle through the settings stack.
