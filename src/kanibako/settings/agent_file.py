@@ -905,10 +905,19 @@ def contributed_tables(raw: Any) -> dict:
 
 
 def scope_view(raw: Any, *, node: str) -> dict:
-    """:func:`contributed_tables` with the root spelled as the ``agent.<node>`` table it is."""
+    """:func:`contributed_tables` with the root and every ``agent:`` spelling of *node* merged
+    as the one ``agent.<node>`` table they are."""
     tables = contributed_tables(raw)
+    root = tables.pop(_ROOT, None)
+    own = root if isinstance(root, dict) else {}
     scope = tables.get(FILE_SCOPE)
-    tables[FILE_SCOPE] = {**(scope if isinstance(scope, dict) else {}), node: tables.pop(_ROOT, None)}
+    others = {}
+    for seg, sub in scope.items() if isinstance(scope, dict) else ():
+        if isinstance(sub, dict) and _node_identity(seg) == _node_identity(node):
+            own = deep_merge(own, sub)
+        else:
+            others[seg] = sub
+    tables[FILE_SCOPE] = {**others, node: own}
     return tables
 
 
