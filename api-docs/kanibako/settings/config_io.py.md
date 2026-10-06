@@ -22,6 +22,7 @@ def yaml_problem(exc: yaml.YAMLError) -> str
 def parse_doc_text(text: str) -> object
 def load_doc(path: Path | None) -> dict
 def dump_doc(path: Path, data: dict) -> None
+def dump_doc_commented(path: Path, data: dict, sections: tuple[str, ...], key: str, comment: str) -> None
 def write_root_key(path: Path, key: str, value: object) -> None
 def remove_root_key(path: Path, key: str) -> bool
 def refuse_scalar_sections(path: Path, sections: tuple[str, ...], *, data: dict | None=None) -> None
@@ -34,6 +35,7 @@ def read_stored_leaf(noun_file: 'Path | None', sections: tuple[str, ...], leaf: 
 def render_stored_pref(v: object) -> str
 def read_stored_pref(noun_file: 'Path | None', sections: tuple[str, ...], leaf: str, *, render: 'Callable[[object], str]'=render_stored_pref) -> str | None
 def _guard_document(data: object) -> None
+def _dump_text(data: dict) -> str
 def _resolved_section(table: dict, section: str) -> str
 ```
 

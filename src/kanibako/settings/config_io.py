@@ -272,11 +272,41 @@ def load_doc(path: Path | None) -> dict:
     return data
 
 
-def dump_doc(path: Path, data: dict) -> None:
-    """Serialize *data* to *path* as YAML, atomically (creates parent dirs)."""
-    text = yaml.safe_dump(
+def _dump_text(data: dict) -> str:
+    return yaml.safe_dump(
         data, sort_keys=False, default_flow_style=False, allow_unicode=True,
     )
+
+
+def dump_doc(path: Path, data: dict) -> None:
+    """Serialize *data* to *path* as YAML, atomically (creates parent dirs)."""
+    atomic_write_text(path, _dump_text(data))
+
+
+def dump_doc_commented(
+    path: Path, data: dict, sections: tuple[str, ...], key: str, comment: str,
+) -> None:
+    """:func:`dump_doc`, with ``# comment`` ending *key*'s line in the *sections* table.
+
+    Raises ConfigError, writing nothing, unless that line occurs exactly once.
+    """
+    lines = _dump_text(data).splitlines(keepends=True)
+    hits: list[int] = []
+    depth = 0
+    for i, line in enumerate(lines):
+        indent = (len(line) - len(line.lstrip(" "))) // 2
+        if indent < depth:
+            depth = indent
+        if depth < len(sections) and indent == depth and line.strip() == f"{sections[depth]}:":
+            depth += 1
+        elif depth == len(sections) and indent == depth and line.lstrip().startswith(f"{key}:"):
+            hits.append(i)
+    if len(hits) != 1:
+        raise ConfigError(f"{'.'.join((*sections, key))} is not one line of {path}'s text")
+    lines[hits[0]] = lines[hits[0]].rstrip("\n") + f"  # {comment}\n"
+    text = "".join(lines)
+    if yaml.safe_load(text) != data:
+        raise ConfigError(f"commenting {'.'.join((*sections, key))} changed {path}'s content")
     atomic_write_text(path, text)
 
 
