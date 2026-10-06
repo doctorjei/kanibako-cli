@@ -294,10 +294,8 @@ def _agent_node_error(key: str, *, verb: str) -> str | None:
 
 
 def _system_target_std(cf):
-    """``(std, error)`` for the system scope's set-time resolve, which ``set`` and ``get``
-    share (spec §2a). A stored value that stops it loading yields ``(None, reason)``, and
-    the setter applies its one rule for a target that cannot be built: validate without
-    it, so the ``set`` that REPAIRS that value still runs."""
+    """``(std, error)`` for the system scope's target (spec §2a), shared by ``set`` and
+    ``get``; ``(None, reason)`` when a stored value stops it loading."""
     from kanibako.errors import KanibakoError
     from kanibako.settings.config import load_config
     from kanibako.settings.paths import load_std_paths
