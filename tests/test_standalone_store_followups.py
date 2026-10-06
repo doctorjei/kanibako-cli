@@ -531,7 +531,7 @@ class TestAMoveKeepsAUserOwnedBoxData:
 
     def test_a_default_layout_standalone_move_keeps_its_user_box_data(
             self, config, std, tmp_home):
-        """⚑ R1 — THE SAME SEAM ONE LAYOUT DEEPER, AND IT IS STILL A DELETION.
+        """⚑ R1, TIGHTENED to the placement the 154th ruled (DATA SAFETY).
 
         A DEFAULT-LAYOUT standalone keeps its workspace at ``<root>/workspace``, so the
         workspace is NOT the root.  ``box_metadata_dir`` answers a standalone store from
@@ -545,15 +545,23 @@ class TestAMoveKeepsAUserOwnedBoxData:
         travels.  ``metadata_path`` IS the standalone root here; ``workspace_path`` is one
         level below it.
 
-        ⚑ Pinned on SURVIVAL + content, per the 153rd ruling.  It currently lands at
-        ``<dest>/box_data/``, merged into the store — placement is pre-existing (base does
-        the same) and boarded as its own DATA SAFETY row, so this asserts the file arrives
-        anywhere intact rather than naming a path no shipped version produced.
+        ⚑ THE OTHER HALF, AND THE REASON THIS ROW IS HIGH PRIORITY: aiming the copy at the
+        workspace is not enough to name.  Copying the workspace ONTO the destination ROOT
+        lands the user's ``box_data/`` AT the store path, where the store copy merges with
+        ``dirs_exist_ok=True`` — measured at base, ``home/.bashrc`` came out STORECOPY and
+        the USERCOPY was gone at rc 0, and a later ``box rm --purge`` then deletes user
+        content as if it were the box's own.  So the copy is aimed at the workspace dir
+        the target resolves, and this asserts BOTH halves: the user's tree rides WITH the
+        workspace, byte-identical, and the store holds the box's own metadata and NOTHING
+        the user owns.
         """
         root = _standalone(config, std, tmp_home, "mv_default_layout")
+        (root / "box_data" / "home").mkdir(parents=True, exist_ok=True)
+        (root / "box_data" / "home" / ".bashrc").write_text("STORECOPY\n")
         workspace = root / "workspace"
         workspace.mkdir(parents=True, exist_ok=True)
-        (workspace / "box_data").mkdir()
+        (workspace / "box_data" / "home").mkdir(parents=True)
+        (workspace / "box_data" / "home" / ".bashrc").write_text("USERCOPY\n")
         (workspace / "box_data" / "mine.txt").write_text("the user's own file\n")
         (workspace / "app.py").write_text("code\n")
 
@@ -561,12 +569,104 @@ class TestAMoveKeepsAUserOwnedBoxData:
         rc = _cli("box", "move", str(root), str(dest), "--force")
 
         assert rc == 0
-        landed = sorted(dest.rglob("mine.txt"))
-        assert landed, (
-            "a default-layout standalone move must not drop the user's own "
-            "workspace/box_data/ out of the copy and then delete it with the source")
-        assert landed[0].read_text() == "the user's own file\n"
-        assert list(dest.rglob("app.py")), "ordinary workspace content still travels"
+        # The user's directory travels WITH the workspace, byte-identical.
+        assert (dest / "workspace" / "box_data" / "mine.txt").read_text() == \
+            "the user's own file\n"
+        assert (dest / "workspace" / "box_data" / "home" / ".bashrc").read_text() == \
+            "USERCOPY\n"
+        assert (dest / "workspace" / "app.py").read_text() == "code\n"
+        # The store is the BOX's. Nothing the user owns was hoisted onto it, and the
+        # colliding name carries the store's own bytes, never the user's.
+        store = dest / "box_data"
+        assert not (store / "mine.txt").exists(), \
+            "a user file must not be hoisted into the store where --purge reaches it"
+        assert not (store / "home" / ".bashrc").exists() or \
+            (store / "home" / ".bashrc").read_text() == "STORECOPY\n"
+
+    def test_a_purge_after_the_move_reaches_the_store_but_not_the_users_files(
+            self, config, std, tmp_home):
+        """⚑ THE CONSEQUENCE THAT MADE THIS HIGH PRIORITY: ``box rm --purge`` must delete
+        the STORE, not the user's ``box_data/``.  While the user's tree sat merged into
+        the store, purging the box deleted it; riding in the workspace instead, it stays.
+        """
+        root = _standalone(config, std, tmp_home, "mv_purge_user")
+        (root / "box_data" / "home").mkdir(parents=True, exist_ok=True)
+        (root / "box_data" / "home" / ".bashrc").write_text("STORECOPY\n")
+        user_leaf = root / "workspace" / "box_data" / "home"
+        user_leaf.mkdir(parents=True)
+        (user_leaf / ".bashrc").write_text("USERCOPY\n")
+        (root / "workspace" / "box_data" / "mine.txt").write_text("the user's own file\n")
+
+        dest = tmp_home / "mv_purge_dest"
+        assert _cli("box", "move", str(root), str(dest), "--force") == 0
+        assert _cli("box", "rm", str(dest), "--purge", "--force") == 0
+
+        assert not (dest / "box_data").exists(), "the purge should have taken the store"
+        assert (dest / "workspace" / "box_data" / "mine.txt").read_text() == \
+            "the user's own file\n"
+        assert (dest / "workspace" / "box_data" / "home" / ".bashrc").read_text() == \
+            "USERCOPY\n"
+
+    def test_a_primary_move_to_standalone_keeps_the_users_box_data_off_the_store(
+            self, config, std, tmp_home):
+        """⚑ THE SAME BUG THROUGH THE PRIMARY DOOR (154th seam: ``box move <primary>
+        --standalone`` measured rc 0 with the STORE's bytes winning at ``:1169``).
+
+        A primary's project dir carries no ignore for a ``box_data/`` the USER made —
+        the primary's own store lives in the workset's boxes dir, not in the project —
+        so on base STEP 2 carried it onto the standalone store path and the store copy
+        overwrote it by name.  A primary's workspace is not its metadata root either,
+        so the aimed copy takes it to the workspace dir and the collision never forms:
+        no refusal needed, and the user's file rides with the workspace, byte-identical.
+        """
+        from kanibako.settings.paths import resolve_project
+
+        proj = tmp_home / "primary_to_sa"
+        proj.mkdir()
+        (proj / "app.py").write_text("code\n")
+        (proj / "box_data").mkdir()
+        (proj / "box_data" / "mine.txt").write_text("the user's own file\n")
+        resolve_project(std, config, project_dir=str(proj), initialize=True)
+
+        dest = tmp_home / "primary_sa_dest"
+        rc = _cli("box", "move", str(proj), str(dest), "--standalone", "--force")
+
+        assert rc == 0
+        assert (dest / "workspace" / "box_data" / "mine.txt").read_text() == \
+            "the user's own file\n"
+        assert not (dest / "box_data" / "mine.txt").exists(), (
+            "a primary->standalone move must not land the user's box_data on the store")
+        assert (dest / "workspace" / "app.py").read_text() == "code\n"
+
+    def test_an_inplace_convert_to_standalone_refuses_a_root_box_data(
+            self, config, std, tmp_home):
+        """⚑ Seam step 3.  Converting a PRIMARY IN PLACE to standalone where the root
+        already holds ``box_data/`` collides with certainty: that directory is the
+        user's and the store would be written INTO it.  Refuse, and the user's file is
+        untouched.  Contrast the repointed-store pin above, where the resolved store is
+        a path the user DECLARED — merging there is the whole point.
+        """
+        from kanibako.commands.box._lifecycle import (
+            INPLACE, TargetSpec, execute_lifecycle, resolve_lifecycle_target,
+        )
+        from kanibako.errors import ProjectError
+        from kanibako.settings.paths import resolve_project
+
+        root = tmp_home / "convert_root"
+        root.mkdir()
+        (root / "file.txt").write_text("mine")
+        resolve_project(std, config, project_dir=str(root), initialize=True)
+        (root / "box_data").mkdir()
+        (root / "box_data" / "mine.txt").write_text("the user's own file\n")
+
+        state = resolve_lifecycle_target(str(root), std, config)
+        with pytest.raises(ProjectError):
+            execute_lifecycle(
+                state, TargetSpec(location=INPLACE, ownership="standalone"),
+                std, config, confirm=lambda *a, **k: True,
+            )
+        assert (root / "box_data" / "mine.txt").read_text() == "the user's own file\n"
+        assert (root / "file.txt").read_text() == "mine"
 
     def test_a_standalone_box_move_takes_its_store_rather_than_stranding_it(
             self, config, std, tmp_home):

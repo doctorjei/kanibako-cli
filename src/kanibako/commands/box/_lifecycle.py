@@ -983,12 +983,21 @@ def _run_steps(
                 f"Note: left {old}; remap deletes nothing", file=sys.stderr))
     elif relocating and dest is not None and not state.is_external:
         src = state.workspace_path
+        # ⚑⚑ AIM THE COPY AT THE WORKSPACE, NOT THE ROOT: onto the root, a user's
+        # ``<workspace>/box_data/`` lands ON the store path and the store copy merges
+        # over it by name, which ``--purge`` then deletes.  Workspace-at-root is exempt.
+        landing = dest
+        if (target_mode is BoxMode.standalone
+                and src.resolve() != state.metadata_path.resolve()):
+            landing = _resolve_standalone_workspaces(
+                dest, None, early=_early_scope(std, BoxMode.standalone),
+            )
         # ⚑⚑ THE PATH-ANCHORED IGNORE, rooted on ``state.metadata_path``, NOT *src*: at
         # the DEFAULT layout a standalone's workspace sits one level below the root that
         # carries ``workset.boxes``, so *src* answered the store as the USER'S
         # ``<workspace>/box_data`` and this move deleted it (R1).
         copy_tree_keeping_links(
-            src, dest,
+            src, landing,
             ignore=_workspace_copy_ignore(
                 state.metadata_path, src, mode=state.mode,
                 early=EarlyScope(std.early_system, _state_ws_token(state))),
@@ -2059,6 +2068,20 @@ def _to_standalone(
     # that treats *root* as freshly converted is then wrong twice over.
     reused_in_place = dst_metadata.resolve() == src_meta_dir.resolve()
     if not reused_in_place:
+        # ⚑⚑ THE LAST DOOR.  A NON-EMPTY store at the DEFAULT leaf this
+        # transaction did not just carry there is somebody else's — on a PRIMARY
+        # source STEP 2 has no ignore for it.  Merging overwrites the user's files
+        # by name and later purges them.  A REPOINTED store is the store by
+        # declaration, so only the default leaf guards.
+        if (dst_metadata == root / STANDALONE_META_DIR and dst_metadata.is_dir()
+                and any(dst_metadata.iterdir())):
+            raise ProjectError(
+                f"Cannot lay this box's store at {dst_metadata}: a non-empty "
+                f"directory already sits there and it is not this box's store. "
+                f"Merging would overwrite the user's files by name and later delete "
+                f"them with the store. Move {dst_metadata} aside, or repoint "
+                f"workset.boxes, and run it again."
+            )
         # ⚑ The sweep exists because the source's project files sit AT the root on an
         # in-place convert.  A root that is ALREADY this box's standalone root does NOT:
         # its files are in the workspace dir and everything left beside them is
