@@ -581,10 +581,11 @@ def _assert_primary_home_free_for_create(std, name: str) -> None:
     # ⚑ ORDER: this refusal MUST precede the pending-create allow below — a STALE
     # create entry would FALSE-ALLOW a merge into a deregistered box's home.
     if registry_store.lookup_deregistered(std.registry, name) is not None:
+        register_cure, purge_cure = _retained_box_cures(name)
         raise ProjectError(
             f"a box named '{name}' already exists as a deregistered box "
-            f"(metadata retained by 'rm'); run 'kanibako box register {name}' to "
-            f"recover it or 'kanibako box rm {name} --purge' to delete it, then "
+            f"(metadata retained by 'rm'); run '{register_cure}' to "
+            f"recover it or '{purge_cure}' to delete it, then "
             f"retry."
         )
 
@@ -1827,9 +1828,10 @@ def _purge_deregistered(std, name: str, entry: dict, args: argparse.Namespace) -
 
     if not args.purge:
         print(f"'{name}' is already deregistered (metadata retained at {metadata}).")
+        register_cure, purge_cure = _retained_box_cures(name)
         print(
-            f"Restore it with 'kanibako box register {name}', "
-            f"or delete it with 'kanibako box rm {name} --purge'."
+            f"Restore it with '{register_cure}', "
+            f"or delete it with '{purge_cure}'."
         )
         return 0
 
@@ -1994,10 +1996,11 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
             image=image,
             deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )
+        register_cure, purge_cure = _retained_box_cures(box_name)
         print(
             f"Deregistered '{box_name}' (metadata retained). "
-            f"Restore it with 'kanibako box register {box_name}', "
-            f"or delete it with 'kanibako box rm {box_name} --purge'."
+            f"Restore it with '{register_cure}', "
+            f"or delete it with '{purge_cure}'."
         )
     return 0
 
@@ -2102,10 +2105,11 @@ def run_rm(args: argparse.Namespace) -> int:
                 image=image,
                 deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
             )
+            register_cure, purge_cure = _retained_box_cures(name)
             print(
                 f"Deregistered '{name}' (metadata retained). "
-                f"Restore it with 'kanibako box register {name}', "
-                f"or delete it with 'kanibako box rm {name} --purge'."
+                f"Restore it with '{register_cure}', "
+                f"or delete it with '{purge_cure}'."
             )
 
     return 0
@@ -2181,6 +2185,21 @@ def _readopt_deregistered(std, name: str, entry: dict) -> int:
 
 def _box_register_cure(target: str) -> str:
     return f"kanibako box register {shlex.quote(target)}"
+
+
+def _box_rm_purge_cure(target: str) -> str:
+    """The ``--purge`` sibling of :func:`_box_register_cure`."""
+    return f"kanibako box rm {shlex.quote(target)} --purge"
+
+
+def _retained_box_cures(target: str) -> "tuple[str, str]":
+    """The restore/delete PAIR offered for a retained box, both operands quoted.
+
+    ⚑ A CURE IS PASTED, NOT READ: *target* may carry a space or a metacharacter,
+    and an unquoted one prints a line that does not run as printed.  Every door
+    that offers the pair renders it here, so the pair cannot drift apart.
+    """
+    return _box_register_cure(target), _box_rm_purge_cure(target)
 
 
 def run_register(args: argparse.Namespace) -> int:

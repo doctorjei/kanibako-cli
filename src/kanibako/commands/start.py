@@ -1676,7 +1676,7 @@ def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> 
                 "is registered under it.\n"
                 "  If this is an unregistered standalone box, register it "
                 "first:  kanibako box register <path-to-its-box-root>\n"
-                f"  Otherwise create a new box:  kanibako create {project_dir}"
+                f"  Otherwise create a new box:  kanibako create {shlex.quote(project_dir)}"
             )
         target = str(Path(project_dir).resolve())
         suggest = f"kanibako create {shlex.quote(project_dir)}"
