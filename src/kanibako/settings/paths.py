@@ -61,8 +61,9 @@ from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          XDG_SPEC_DEFAULTS, XDG_STATE_HOME)
 from kanibako.settings import bootstrap
 
-#: RE-EXPORT: ``commands.box._parser`` reads the marker/store leaf from here, and
-#: ``bootstrap`` stays the designated path-literal carrier it is defined in.
+#: RE-EXPORT of the path-literal carrier it is defined in.  Its consumers are
+#: ``launch.box_resolve`` (the standalone MARKER) and ``commands.box._lifecycle``; the
+#: store that holds it is answered by :func:`standalone_box_store`, not by this name.
 STANDALONE_META_DIR = bootstrap.STANDALONE_META_DIR
 
 if TYPE_CHECKING:
@@ -243,18 +244,24 @@ def standalone_store_teardown_plan(
 ) -> tuple[Path | None, Path | None]:
     """The standalone box store as ``(removable, retained)`` for a teardown — ONE split.
 
-    ⚑⚑ A store OUTSIDE *root* is the USER'S OWN directory and no verb ``rm -rf``\\ s it on
-    their behalf — the line ``standalone_vault_teardown`` draws for a vault arm and
-    ``delete_workset`` for a workset store.  Resolving the store is what makes this
-    reachable: at the composed default it was under the root by construction.  ``None`` on
-    either arm means there is nothing to act on.
+    ⚑⚑ ONLY A STORE STRICTLY BELOW *root* IS REMOVABLE, and the test is on the RESOLVED
+    paths: anything else is the USER'S OWN directory and no verb ``rm -rf``\\ s it on their
+    behalf — the line ``standalone_vault_teardown`` draws for a vault arm and
+    ``delete_workset`` for a workset store.  Both ends are resolved because
+    :func:`~kanibako.project.workset.resolve_workset_boxes` hands back the value as it was
+    SPELLED: ``@meta.workset.path/../store``, and a parent component that is a symlink out
+    of the tree, both name a directory outside the root while reading as descendants of it.
+    ``None`` on either arm means there is nothing to act on.
     """
+from kanibako.project.workset import _path_in_tree
+
     store = standalone_box_store(root, early=early)
     if not store.is_dir() or store.is_symlink():
         return None, None
-    if root in store.parents:
-        return store, None
-    return None, store
+    resolved = store.resolve()
+    if resolved != root.resolve() and _path_in_tree(resolved, root):
+        return resolved, None
+    return None, resolved
 
 
 def report_retained_store(store: Path, root: Path) -> None:
@@ -263,8 +270,8 @@ def report_retained_store(store: Path, root: Path) -> None:
     """
     import sys
 
-    print(f"Note: left the box store at {store} in place — outside {root} "
-          f"and is yours to remove.", file=sys.stderr)
+    print(f"Note: left the box store at {store} in place — not strictly inside {root}, "
+          f"so it is yours to remove.", file=sys.stderr)
 
 
 def _standalone_settings_files(root: Path, *, early: EarlyScope) -> tuple[Path, Path]:

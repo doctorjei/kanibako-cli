@@ -180,7 +180,7 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
 
     if proj.mode is BoxMode.standalone:
         # metadata_path is the project ROOT — remove ONLY the in-tree kanibako
-        # artifacts (box_data/ + root workset.yaml + vault/), never the root.
+        # artifacts (the box store + root workset.yaml + vault/), never the root.
         from kanibako.project.workset import (
             report_retained_vaults,
             standalone_vault_teardown,
@@ -195,13 +195,17 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
         # ⚑ The store holds the box home + its root-owned canon skeleton (J-7), so its
 # removal needs the podman-unshare escalation, not a bare rmtree; the split
         # between a removable store and a retained one is the plan's own.
-        removable_store, retained_store = standalone_store_teardown_plan(
+removable_store, retained_store = standalone_store_teardown_plan(
             root, early=_early_scope(std, BoxMode.standalone))
-        if removable_store is not None and not remove_box_tree(removable_store):
-            _warn_undeleted(removable_store)
+        if removable_store is not None:
+            if not remove_box_tree(removable_store):
+                _warn_undeleted(removable_store)
+            # ⚑ WITH THE STORE GONE THE ROOT IS UNWORKABLE, so its workset.yaml goes too.
+            # A RETAINED store leaves the box whole: unlinking would strand metadata that
+            # is still on disk — the same line ``box rm --purge`` draws.
+            (root / WORKSET_META_FILE).unlink(missing_ok=True)
         if retained_store is not None:
             report_retained_store(retained_store, root)
-        (root / WORKSET_META_FILE).unlink(missing_ok=True)
         for vault_dir in removable_vault:
             shutil.rmtree(vault_dir, ignore_errors=True)
         report_retained_vaults(root, retained_vault)
