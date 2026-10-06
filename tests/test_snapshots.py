@@ -11,6 +11,7 @@ import pytest
 
 from kanibako import snapshots as snapshots_mod
 from kanibako.snapshots import (
+    UnsafeSnapshotNameError,
     _test_reflink,
     auto_snapshot,
     create_snapshot,
@@ -18,6 +19,7 @@ from kanibako.snapshots import (
     list_snapshots,
     prune_snapshots,
     restore_snapshot,
+    snapshots_to_prune,
 )
 
 
@@ -750,3 +752,121 @@ class TestSnapshotSymlinks:
         assert (vault_rw / "live_only.txt").read_text() == "must-survive"
         assert not (vault_rw / "dirlink").exists()
         assert (outside / "deep" / "nested.txt").read_text() == "nested"
+
+
+# ---------------------------------------------------------------------------
+# A name that escapes .versions/ must never be restored (task-snaptraversal)
+# ---------------------------------------------------------------------------
+
+
+class TestUnsafeSnapshotNames:
+    """``restore`` replaces share-rw wholesale, so an escaping name IS data loss.
+
+    Measured on base: every case below replaced the live share-rw with the
+    outside directory at rc 0, unprompted -- the CLI only prompts for names
+    ``list`` already knows, and an escaping name never appears there.
+    """
+
+    @staticmethod
+    def _vault(tmp_path: Path) -> tuple[Path, Path, Path]:
+        """share-rw with content, one good snapshot, one outside payload."""
+        vault_rw = tmp_path / "vault" / "share-rw"
+        _populate_rw(vault_rw)
+        versions = vault_rw.parent / ".versions"
+        _make_dir_snapshot(versions, "20260101T000000Z", vault_rw)
+        outside = tmp_path / "evil"
+        outside.mkdir()
+        (outside / "attacker.txt").write_text("owned")
+        return vault_rw, versions, outside
+
+    @pytest.mark.parametrize("bad", [
+        "../../../evil",
+        "../../../../../../evil",
+        ".",
+        "..",
+        "",
+        "   ",
+        "20260101T000000Z/../20260101T000000Z",
+    ])
+    def test_refuses_any_name_that_is_not_a_direct_child(
+        self, tmp_path: Path, bad: str,
+    ) -> None:
+        vault_rw, _versions, _outside = self._vault(tmp_path)
+
+        with pytest.raises(UnsafeSnapshotNameError):
+            restore_snapshot(vault_rw, bad)
+
+        assert (vault_rw / "file1.txt").read_text() == "hello"
+        assert (vault_rw / "subdir" / "file2.txt").read_text() == "world"
+
+    def test_refuses_an_absolute_name_that_exists(self, tmp_path: Path) -> None:
+        vault_rw, _versions, outside = self._vault(tmp_path)
+
+        with pytest.raises(UnsafeSnapshotNameError, match="absolute"):
+            restore_snapshot(vault_rw, str(outside))
+
+        assert (vault_rw / "file1.txt").read_text() == "hello"
+
+    def test_refuses_a_symlink_pointing_out_of_versions(
+        self, tmp_path: Path,
+    ) -> None:
+        vault_rw, versions, outside = self._vault(tmp_path)
+        (versions / "evil-link").symlink_to(outside, target_is_directory=True)
+
+        with pytest.raises(UnsafeSnapshotNameError, match="outside"):
+            restore_snapshot(vault_rw, "evil-link")
+
+        assert (vault_rw / "file1.txt").read_text() == "hello"
+
+    def test_refusal_writes_nothing(self, tmp_path: Path) -> None:
+        """The check runs FIRST: no staging, no backup, no moved live entry."""
+        vault_rw, _versions, _outside = self._vault(tmp_path)
+        before = sorted(p.name for p in vault_rw.iterdir())
+
+        with pytest.raises(UnsafeSnapshotNameError):
+            restore_snapshot(vault_rw, "..")
+
+        assert sorted(p.name for p in vault_rw.iterdir()) == before
+        leftovers = [
+            p.name for p in vault_rw.parent.iterdir() if ".restore." in p.name
+        ]
+        assert leftovers == []
+
+    def test_a_direct_child_still_restores(self, tmp_path: Path) -> None:
+        """The guard must not refuse the name ``list`` hands the user."""
+        vault_rw, _versions, _outside = self._vault(tmp_path)
+        (vault_rw / "file1.txt").write_text("drifted")
+
+        restore_snapshot(vault_rw, "20260101T000000Z")
+
+        assert (vault_rw / "file1.txt").read_text() == "hello"
+
+    def test_an_internal_link_is_not_an_escape(self, tmp_path: Path) -> None:
+        """``latest -> <snapshot>`` stays inside the dir, so it still restores."""
+        vault_rw, versions, _outside = self._vault(tmp_path)
+        (vault_rw / "file1.txt").write_text("drifted")
+        (versions / "latest").symlink_to(
+            versions / "20260101T000000Z", target_is_directory=True,
+        )
+
+        restore_snapshot(vault_rw, "latest")
+
+        assert (vault_rw / "file1.txt").read_text() == "hello"
+
+    def test_prune_skips_a_link_and_spares_its_target(
+        self, tmp_path: Path,
+    ) -> None:
+        vault_rw, versions, outside = self._vault(tmp_path)
+        for name in ("20260102T000000Z", "20260103T000000Z"):
+            _make_dir_snapshot(versions, name, vault_rw)
+        (versions / "evil-link").symlink_to(outside, target_is_directory=True)
+
+        doomed = snapshots_to_prune(vault_rw, max_keep=1)
+        assert [p.name for p in doomed] == [
+            "20260101T000000Z", "20260102T000000Z",
+        ]
+
+        assert prune_snapshots(vault_rw, max_keep=1) == 2
+        assert (outside / "attacker.txt").read_text() == "owned"
+        assert (versions / "evil-link").is_symlink()
+        assert (versions / "20260103T000000Z").is_dir()

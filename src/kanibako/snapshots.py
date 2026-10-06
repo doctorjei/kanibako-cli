@@ -27,10 +27,20 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from kanibako.errors import KanibakoError
 from kanibako.log import get_logger
 from kanibako.tree_copy import copy_tree_keeping_links
 
 logger = get_logger("snapshots")
+
+
+class UnsafeSnapshotNameError(KanibakoError):
+    """A snapshot name that would resolve OUTSIDE the snapshots directory.
+
+    ``restore`` replaces share-rw wholesale, so a name that escapes
+    ``.versions/`` replaces the user's data with another directory's contents.
+    """
+
 
 
 # Default maximum number of snapshots to retain.
@@ -45,6 +55,28 @@ _DEFAULT_MAX_SNAPSHOTS = 5
 def _versions_dir(vault_rw_path: Path) -> Path:
     """Return the .versions/ directory for a vault share-rw path."""
     return vault_rw_path.parent / ".versions"
+
+
+def _snapshot_child(versions: Path, name: str) -> Path:
+    """Return ``versions / name``, refusing anything that is not a DIRECT child.
+
+    The lexical check covers an empty/whitespace name, an absolute path, and any
+    name carrying a separator or a ``.``/``..`` component -- ``Path(name).name``
+    is the last component, so it equals *name* only for a plain child name.  The
+    resolved check follows symlinks, which the lexical one cannot see.
+    """
+    if not name.strip() or Path(name).name != name:
+        raise UnsafeSnapshotNameError(
+            f"Refused snapshot name {name!r}: pass a snapshot name listed by "
+            f"'kanibako box vault list', not a path, an absolute path, '.' or '..'."
+        )
+    candidate = versions / name
+    if candidate.resolve().parent != versions.resolve():
+        raise UnsafeSnapshotNameError(
+            f"Refused snapshot {name!r}: it resolves to {candidate.resolve()}, "
+            f"outside the snapshots directory {versions.resolve()}."
+        )
+    return candidate
 
 
 def _force_writable_dirs(root: Path) -> None:
@@ -224,7 +256,8 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
     """Restore *vault_rw_path* from the named directory snapshot.
 
     The current contents of share-rw are replaced with the snapshot contents.
-    Raises ``FileNotFoundError`` if the snapshot does not exist.
+    Raises :class:`UnsafeSnapshotNameError` if *snapshot_name* is not a direct
+    child of the snapshots dir, ``FileNotFoundError`` if it does not exist.
 
     The restore is rollback-safe: the snapshot contents are first built in
     a temporary staging directory, the live contents are moved aside to a
@@ -235,7 +268,7 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
     are swapped.
     """
     versions = _versions_dir(vault_rw_path)
-    snapshot = versions / snapshot_name
+    snapshot = _snapshot_child(versions, snapshot_name)
 
     if not snapshot.is_dir():
         raise FileNotFoundError(f"Snapshot not found: {snapshot_name}")
@@ -291,14 +324,23 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
 
 
 def snapshots_to_prune(vault_rw_path: Path, max_keep: int) -> list[Path]:
-    """What :func:`prune_snapshots` removes for *max_keep*, oldest first."""
+    """What :func:`prune_snapshots` removes for *max_keep*, oldest first.
+
+    A symlink planted in the snapshots dir is skipped, not deleted, and not
+    counted toward *max_keep*.
+    """
     versions = _versions_dir(vault_rw_path)
     if not versions.is_dir():
         return []
-    all_snapshots = sorted(
-        (f for f in versions.iterdir() if f.is_dir()),
-        key=lambda p: p.name,
-    )
+    all_snapshots: list[Path] = []
+    for entry in versions.iterdir():
+        if not entry.is_dir():
+            continue
+        try:
+            all_snapshots.append(_snapshot_child(versions, entry.name))
+        except UnsafeSnapshotNameError as exc:
+            logger.warning("Skipping in prune: %s", exc)
+    all_snapshots.sort(key=lambda p: p.name)
     if max_keep <= 0:
         return all_snapshots
     return all_snapshots[:-max_keep] if len(all_snapshots) > max_keep else []
