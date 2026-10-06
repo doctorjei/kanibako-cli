@@ -34,7 +34,7 @@ def box_tree_materialized(proj: ProjectPaths) -> bool
 def standalone_box_store(root: Path, *, early: EarlyScope) -> Path
 def standalone_store_teardown_plan(root: Path, *, early: EarlyScope) -> tuple[Path | None, Path | None]
 def report_retained_store(store: Path, root: Path) -> None
-def box_metadata_dir(mode: BoxMode, metadata_path: Path, *, early: EarlyScope | None=None) -> Path
+def box_metadata_dir(mode: BoxMode, metadata_path: Path, *, early: EarlyScope) -> Path
 def box_workset_settings_paths(proj: ProjectPaths) -> tuple[Path, Path | None]
 def resolve_box_enable_vault(global_path: Path, *, box_path: Path, workset_path: Path | None) -> bool
 def resolve_xdg(var_name: str, spec_default_suffix: str | None) -> Path
