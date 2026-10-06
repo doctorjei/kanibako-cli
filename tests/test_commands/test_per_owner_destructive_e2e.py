@@ -28,6 +28,7 @@ import pytest
 import yaml
 
 from kanibako.cli import main
+from kanibako.project.registry_store import load_deregistered
 from kanibako.settings.config import WORKSET_META_FILE, load_config
 from kanibako.settings.config_io import dump_doc, load_doc
 from kanibako.settings.paths import load_std_paths, resolve_project
@@ -68,9 +69,11 @@ class World:
     w2_root: Path
     leaf: Path
     primary: Path
+    primary_meta: Path
     archive: Path
     primary_archive: Path
     dup: Path
+    marker: Path
     roots: list[Path]
 
     def hashes(self) -> dict[Path, str]:
@@ -139,7 +142,8 @@ def world(config_file, tmp_home, credentials_dir, runtime, capsys) -> World:
     runtime.reset_mock()
     return World(
         std=std, w1_root=worksets[0].root, w2_root=worksets[1].root, leaf=leaf,
-        primary=primary, archive=archive, primary_archive=primary_archive, dup=dup,
+        primary=primary, primary_meta=proj.metadata_path, archive=archive,
+        primary_archive=primary_archive, dup=dup, marker=worksets[0].projects_dir / "a" / "marker",
         roots=[worksets[0].root, worksets[1].root, std.primary_workset, std.registry,
                tmp_home / "work", dup, archive, primary_archive],
     )
@@ -197,6 +201,13 @@ class TestStateB:
         assert world.hashes() == before
 
 
+def _collide_mailboxes(world: World) -> None:
+    """The partition-key state: the system file holds a collided ``workset.channels.mailboxes``."""
+    world.std.settings.write_text(yaml.safe_dump(
+        {"workset": {"channels": {"mailboxes": str(world.dup.parent / "mb")}}},
+    ))
+
+
 _PRIMARY_VERBS = {
     "box-rm-purge": lambda w: ["box", "rm", "p", "--purge", "--force"],
     "workset-delete-purge": lambda w: ["workset", "rm", "w1", "--purge", "--force"],
@@ -221,10 +232,8 @@ class TestStateBPartitionKey:
     """
 
     @pytest.mark.parametrize("verb", list(_PRIMARY_VERBS))
-    def test_the_verb_refuses_and_deletes_nothing(self, world, runtime, capsys, tmp_home, verb):
-        world.std.settings.write_text(yaml.safe_dump(
-            {"workset": {"channels": {"mailboxes": str(tmp_home / "mb")}}},
-        ))
+    def test_the_verb_refuses_and_deletes_nothing(self, world, runtime, capsys, verb):
+        _collide_mailboxes(world)
         before = world.hashes()
 
         rc = _run(_PRIMARY_VERBS[verb](world))
@@ -234,6 +243,126 @@ class TestStateBPartitionKey:
         assert "workset.channels.mailboxes is set to" in err, err
         assert str(world.std.settings) in err, err
         assert world.hashes() == before
+        assert _stopped_or_removed(runtime) == []
+
+
+def _own_mailboxes(root: Path) -> None:
+    """*root*'s workset owns ``workset.channels.mailboxes``, so it inherits nothing to refuse."""
+    meta = root / WORKSET_META_FILE
+    doc = load_doc(meta) or {}
+    doc.setdefault("workset", {}).setdefault("channels", {})["mailboxes"] = (
+        "@meta.workset.path/channels/mailboxes")
+    dump_doc(meta, doc)
+
+
+def _settled(*argvs: list[str]):
+    """A setup that runs *argvs* while the system file collides nothing."""
+    def setup(world: World) -> None:
+        world.std.settings.write_text("{}\n")
+        for argv in argvs:
+            assert _run(argv) == 0, argv
+    return setup
+
+
+def _write(path_of, text: str = "kept"):
+    def setup(world: World) -> None:
+        path = path_of(world)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    return setup
+
+
+def _stray_q(w: World) -> Path:
+    return w.leaf.parent / "q" / "f.txt"
+
+
+_TO_STANDALONE = lambda w: ["box", "convert", str(w.primary), "--standalone", "--force"]  # noqa: E731
+
+# Each case: a setup run before the collision, the verb, and a path the verb deletes or
+# overwrites if nothing refuses.  Every case reaches a check the primary-box cases above do not.
+_GUARD_CASES = {
+    "named-clean": (None, lambda w: ["box", "purge", str(w.leaf), "--force"],
+                    lambda w: w.marker),
+    "named-box-move": (None, lambda w: ["box", "move", str(w.leaf),
+                                        str(w.dup.parent / "moved" / "a"), "--force"],
+                       lambda w: w.leaf / "f.txt"),
+    "named-box-convert": (None, lambda w: ["box", "convert", str(w.leaf), "--standalone",
+                                           "--force"],
+                          lambda w: w.marker),
+    "named-restore": (_write(lambda w: w.leaf / "new.txt"),
+                      lambda w: ["box", "extract", str(w.archive), str(w.leaf), "--force"],
+                      lambda w: w.leaf / "new.txt"),
+    "named-duplicate-force": (None,
+                              lambda w: ["box", "duplicate", str(w.leaf), str(w.dup), "--force"],
+                              lambda w: w.dup / "f.txt"),
+    "duplicate-into-workset": (_write(_stray_q),
+                               lambda w: ["box", "duplicate", str(w.primary),
+                                          str(w.dup.parent / "unused"), "--to", "named",
+                                          "--workset", "w1", "--name", "q", "--force"],
+                               _stray_q),
+    "duplicate-cross-mode": (_write(lambda w: w.dup / "workspace" / "f.txt"),
+                             lambda w: ["box", "duplicate", str(w.primary), str(w.dup),
+                                        "--to", "standalone", "--force"],
+                             lambda w: w.dup / "workspace" / "f.txt"),
+    "convert-to-workset": (lambda w: _own_mailboxes(w.std.primary_workset),
+                           lambda w: ["box", "convert", str(w.primary), "--workset", "w1",
+                                      "--force"],
+                           lambda w: w.primary_meta),
+    "convert-to-primary": (lambda w: _own_mailboxes(w.w1_root),
+                           lambda w: ["box", "convert", str(w.leaf), "--default", "--move",
+                                      str(w.dup.parent / "moved" / "a"), "--force"],
+                           lambda w: w.marker),
+    "convert-to-standalone": (lambda w: _own_mailboxes(w.w1_root),
+                              lambda w: ["box", "convert", str(w.leaf), "--standalone",
+                                         "--move", str(w.dup.parent / "moved" / "a"), "--force"],
+                              lambda w: w.marker),
+    "rm-standalone": (lambda w: _settled(_TO_STANDALONE(w))(w),
+                      lambda w: ["box", "rm", str(w.primary), "--purge", "--force"],
+                      lambda w: w.primary / "box_data"),
+    "rm-deregistered-primary": (_settled(["box", "rm", "p"]),
+                                lambda w: ["box", "rm", "p", "--purge", "--force"],
+                                lambda w: w.primary_meta),
+    "rm-deregistered-standalone": (
+        lambda w: _settled(_TO_STANDALONE(w), ["box", "rm", str(w.primary)])(w),
+        lambda w: ["box", "rm", *load_deregistered(w.std.registry), "--purge", "--force"],
+        lambda w: w.primary / "box_data"),
+    "clean-all-named-only": (_settled(["box", "rm", "p", "--purge", "--force"]),
+                             lambda w: ["box", "purge", "--all", "--force"],
+                             lambda w: w.marker),
+    "disconnect-remove-files": (None, lambda w: ["workset", "disconnect", "w1", "a",
+                                                 "--remove-files", "--force"],
+                                lambda w: w.marker),
+}
+
+
+class TestPartitionKeyReachesEveryCheck:
+    """The partition-key state against named box ``a``, a duplicate into a workset, a
+    standalone and a deregistered ``box rm --purge``, ``box purge --all`` with data in named
+    worksets only, a ``box convert`` whose source owns the key so only the target's check
+    stands, and ``workset disconnect --remove-files``.
+    """
+
+    @pytest.mark.parametrize("case", list(_GUARD_CASES))
+    def test_the_verb_refuses_and_deletes_nothing(self, world, runtime, capsys, case):
+        setup, argv, victim_of = _GUARD_CASES[case]
+        if setup is not None:
+            setup(world)
+        _collide_mailboxes(world)
+        victim = victim_of(world)
+        kept = _tree_hash(victim)
+        assert kept != "absent", victim
+        capsys.readouterr()
+        runtime.reset_mock()
+        before = world.hashes()
+
+        rc = _run(argv(world))
+
+        err = capsys.readouterr().err
+        assert _tree_hash(victim) == kept, f"DELETED OR OVERWRITTEN {victim}; rc={rc}; {err}"
+        assert world.hashes() == before
+        assert rc != 0, err
+        assert "workset.channels.mailboxes is set to" in err, err
+        assert str(world.std.settings) in err, err
         assert _stopped_or_removed(runtime) == []
 
 
