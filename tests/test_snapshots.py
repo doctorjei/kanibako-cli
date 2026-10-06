@@ -870,3 +870,37 @@ class TestUnsafeSnapshotNames:
         assert (outside / "attacker.txt").read_text() == "owned"
         assert (versions / "evil-link").is_symlink()
         assert (versions / "20260103T000000Z").is_dir()
+
+    def test_prune_does_not_count_an_inward_link(self, tmp_path: Path) -> None:
+        """``zz-latest -> <snapshot>`` sorts last; it must not take a keep slot."""
+        vault_rw, versions, _outside = self._vault(tmp_path)
+        for name in ("20260102T000000Z", "20260103T000000Z"):
+            _make_dir_snapshot(versions, name, vault_rw)
+        (versions / "zz-latest").symlink_to(
+            versions / "20260103T000000Z", target_is_directory=True,
+        )
+
+        doomed = snapshots_to_prune(vault_rw, max_keep=1)
+        assert [p.name for p in doomed] == [
+            "20260101T000000Z", "20260102T000000Z",
+        ]
+
+        assert prune_snapshots(vault_rw, max_keep=1) == 2
+        assert (versions / "20260103T000000Z").is_dir()
+        assert (versions / "zz-latest").is_symlink()
+        assert (versions / "zz-latest").exists()
+
+    def test_link_dest_never_picks_a_link(self, tmp_path: Path) -> None:
+        vault_rw, versions, outside = self._vault(tmp_path)
+        (versions / "zz-inward").symlink_to(
+            versions / "20260101T000000Z", target_is_directory=True,
+        )
+        (versions / "zz-outward").symlink_to(outside, target_is_directory=True)
+
+        with patch("kanibako.snapshots.subprocess.run") as run:
+            snapshots_mod._snapshot_hardlink(vault_rw, versions, "20260102T000000Z")
+
+        cmd = run.call_args.args[0]
+        assert cmd[cmd.index("--link-dest") + 1] == str(
+            versions / "20260101T000000Z",
+        )

@@ -169,9 +169,9 @@ def _snapshot_reflink(vault_rw_path: Path, versions: Path, ts: str) -> Path:
 def _snapshot_hardlink(vault_rw_path: Path, versions: Path, ts: str) -> Path:
     """Create a snapshot using hardlinks (fast for unchanged files)."""
     dest = versions / ts
-    # Find the most recent directory snapshot for --link-dest.
+    # Newest non-link snapshot for --link-dest.
     existing = sorted(
-        (d for d in versions.iterdir() if d.is_dir()),
+        (d for d in versions.iterdir() if d.is_dir() and not d.is_symlink()),
         key=lambda p: p.name,
     )
     link_dest = existing[-1] if existing else None
@@ -326,20 +326,17 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
 def snapshots_to_prune(vault_rw_path: Path, max_keep: int) -> list[Path]:
     """What :func:`prune_snapshots` removes for *max_keep*, oldest first.
 
-    A symlink planted in the snapshots dir is skipped, not deleted, and not
-    counted toward *max_keep*.
+    Any symlink there is skipped: never counted, never deleted.
     """
     versions = _versions_dir(vault_rw_path)
     if not versions.is_dir():
         return []
     all_snapshots: list[Path] = []
     for entry in versions.iterdir():
-        if not entry.is_dir():
-            continue
-        try:
-            all_snapshots.append(_snapshot_child(versions, entry.name))
-        except UnsafeSnapshotNameError as exc:
-            logger.warning("Skipping in prune: %s", exc)
+        if entry.is_symlink():
+            logger.warning("Skipping in prune: %s is a symlink.", entry)
+        elif entry.is_dir():
+            all_snapshots.append(entry)
     all_snapshots.sort(key=lambda p: p.name)
     if max_keep <= 0:
         return all_snapshots
