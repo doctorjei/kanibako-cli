@@ -697,6 +697,46 @@ def system_value_row(entry: Any) -> bool:
     return entry.id.startswith("system.") and entry.extra.get("default") is not None
 
 
+# DESIGN § 7: the construct-time spellings, written at the instance's own level at create.
+_CONSTRUCT_TIME = frozenset({
+    "<generated at creation>", "<construct-time>", "<the user's real project dir>",
+})
+_AGENT = "anyagent"
+
+
+def _mode_arm(row: Any, mode: str) -> Any:
+    """*row*'s `default:` (else `value:`) for *mode*, with `<agent>` spelled `_AGENT`."""
+    cell = row.get("default")
+    if cell is None:
+        cell = row.get("value")
+    arm = cell.get(mode) if isinstance(cell, dict) else cell
+    return arm.replace("<agent>", _AGENT) if isinstance(arm, str) else arm
+
+
+def default_reaches_anchor(entry: Any) -> bool:
+    """Every per-mode arm of a per-owner row reaches its owner's identity (keyspec §0).
+
+    One judgment, `config.reaches_identity`, read through the manifest's own arms.
+    """
+    from kanibako.settings.config import reaches_identity
+    from kanibako.settings.keyspace_manifest import manifest_doc
+    from kanibako.settings.paths import BoxMode
+
+    rows = manifest_doc()["keys"]
+    key = entry.id.replace("<agent>", _AGENT)
+    for mode in BoxMode:
+        def stored(name: str, mode: str = mode.value) -> Any:
+            row = rows.get(name) or rows.get(name.replace(f".{_AGENT}.", ".<agent>."))
+            return _mode_arm(row, mode) if isinstance(row, dict) else None
+
+        arm = _mode_arm(entry.extra, mode.value)
+        if arm is None or arm in _CONSTRUCT_TIME:
+            continue
+        if not reaches_identity(arm, entry.extra["owner"], mode, key=key, stored=stored):
+            return False
+    return True
+
+
 def _keyspec_extract() -> Any:
     """`scripts/keyspec-extract.py`, the owner of the spec locator and the fence-aware
     section parser (P10). Importing it reads no credential and opens no connection."""

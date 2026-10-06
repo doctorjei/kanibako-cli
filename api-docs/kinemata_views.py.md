@@ -20,6 +20,8 @@ _DELIVERY_HEADS = frozenset({'bindings', 'masks', 'caches', 'seeded', 'synced', 
 _FIXED_SCOPES = frozenset({'config', 'system', 'workset', 'box'})
 _CLI_TYPED = frozenset({'bool', 'int', 'path'})
 _ROOT_ATTRIBUTE = {'primary': 'primary_workset', 'named': 'group_root', 'standalone': 'metadata_path'}
+_CONSTRUCT_TIME = frozenset({'<generated at creation>', '<construct-time>', "<the user's real project dir>"})
+_AGENT = 'anyagent'
 _VALUE_END = re.compile('\\s{2,}')
 _BRACES = re.compile('^(?P<head>[^{}]*)\\{(?P<alts>[^{}]+)\\}(?P<tail>[^{}]*)$')
 _SENTINEL_VALUES: tuple[object, ...] = (None, True, False, {})
@@ -49,6 +51,7 @@ def fresh_launch_snapshots() -> Any
 def snapshot_paths(snapshot: Any) -> Any
 def declares_no_floor_value(entry: Any) -> bool
 def system_value_row(entry: Any) -> bool
+def default_reaches_anchor(entry: Any) -> bool
 def spec_table(section: str, columns: tuple[str, ...]) -> list[dict[str, str]]
 def system_settings_rows() -> list[tuple[str, str, str]]
 def expand_braces(key: str) -> list[str]
@@ -67,6 +70,7 @@ def owner_rows(source: str) -> list[tuple[str, dict[str, Any]]]
 def synced_cells() -> dict[str, dict[str, Any]]
 def _standalone_arm(entry: Any) -> tuple[bool, Any]
 def _root_or_decoy(mode: str, attribute: str) -> Any
+def _mode_arm(row: Any, mode: str) -> Any
 def _keyspec_extract() -> Any
 def _strip_html_comments(lines: list[str]) -> list[str]
 def _node_fence_marker(node: str) -> str

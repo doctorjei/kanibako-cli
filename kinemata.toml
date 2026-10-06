@@ -5473,6 +5473,15 @@ registry = "keyspace"
   field = "owner"
   choices = ["box", "workset", "partition", "agent", "shared"]
 
+  # FACT: every per-mode arm of a per-owner row's `default:`/`value:` reaches its
+  # owner's identity anchors. AUTHORITY: keyspec §0 "Per-owner resources"; DESIGN
+  # § 8 rule 3. The walk is `config.reaches_identity`, the doors' own judgment.
+  # CATCHES: a per-owner default that a containing scope would share.
+  [[shape.rule]]
+  name = "per-owner-default-reaches-anchor"
+  when = { field = "owner", matches = "^(box|workset|partition|agent)$" }
+  holds = "kinemata_views:default_reaches_anchor"
+
 # ---------------------------------------------------------------------------
 # FACT: the nine delivery families split into TWO KEY SHAPES, and each shape is
 # declared by a pair of flags. Seven are bind-shaped -- `masks`, `bindings.ro`,
