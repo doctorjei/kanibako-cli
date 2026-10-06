@@ -61,9 +61,8 @@ from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          XDG_SPEC_DEFAULTS, XDG_STATE_HOME)
 from kanibako.settings import bootstrap
 
-#: RE-EXPORT of the path-literal carrier it is defined in.  Its consumers are
-#: ``launch.box_resolve`` (the standalone MARKER) and ``commands.box._lifecycle``; the
-#: store that holds it is answered by :func:`standalone_box_store`, not by this name.
+#: RE-EXPORT of the path-literal carrier it is defined in.  Consumers: the standalone
+#: MARKER read in ``launch.box_resolve``, and ``commands.box._lifecycle``.
 STANDALONE_META_DIR = bootstrap.STANDALONE_META_DIR
 
 if TYPE_CHECKING:
@@ -229,9 +228,9 @@ def standalone_box_store(root: Path, *, early: EarlyScope) -> Path:
     """The RESOLVED ``workset.boxes`` of the standalone box rooted at *root* — ITS store.
 
     ⭐ THE ONE PLACE A STANDALONE STORE PATH IS ANSWERED; every reader and deleter goes
-    through here or through :func:`box_metadata_dir`, which calls it.  Composing
-    ``box_data/`` instead reads a directory the box does not use — for a deleter, one the
-    user never nominated.  ⚑ Deferred import: the documented paths/workset cycle.
+    through here or :func:`box_metadata_dir`, which calls it.  Composing ``box_data/``
+    instead names a directory the box never uses.  ⚑ Deferred import: the paths/workset
+    cycle.
     """
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_boxes
 
@@ -244,16 +243,15 @@ def standalone_store_teardown_plan(
 ) -> tuple[Path | None, Path | None]:
     """The standalone box store as ``(removable, retained)`` for a teardown — ONE split.
 
-    ⚑⚑ ONLY A STORE STRICTLY BELOW *root* IS REMOVABLE, and the test is on the RESOLVED
-    paths: anything else is the USER'S OWN directory and no verb ``rm -rf``\\ s it on their
-    behalf — the line ``standalone_vault_teardown`` draws for a vault arm and
-    ``delete_workset`` for a workset store.  Both ends are resolved because
-    :func:`~kanibako.project.workset.resolve_workset_boxes` hands back the value as it was
-    SPELLED: ``@meta.workset.path/../store``, and a parent component that is a symlink out
-    of the tree, both name a directory outside the root while reading as descendants of it.
-    ``None`` on either arm means there is nothing to act on.
+    ⚑⚑ ONLY A STORE STRICTLY BELOW *root* IS REMOVABLE; anything else is the USER'S OWN
+    directory and no verb ``rm -rf``\\ s it on their behalf — the line
+    ``standalone_vault_teardown`` draws for a vault arm and ``delete_workset`` for a
+    workset store.  BOTH ENDS ARE RESOLVED, because the key is answered as it was SPELLED:
+    ``@meta.workset.path/../store`` and a symlinked parent component each name a directory
+    outside the root while reading as a descendant of it.  ``None`` on either arm means
+    there is nothing to act on.
     """
-from kanibako.project.workset import _path_in_tree
+    from kanibako.project.workset import _path_in_tree
 
     store = standalone_box_store(root, early=early)
     if not store.is_dir() or store.is_symlink():
@@ -265,8 +263,8 @@ from kanibako.project.workset import _path_in_tree
 
 
 def report_retained_store(store: Path, root: Path) -> None:
-    """Print the retained-store Note: ONE text, and it names the STORE —
-    ``report_retained_vault`` would announce a store as a vault.
+    """Print the retained-store Note: ONE text, naming the STORE — ``report_retained_vault``
+    would announce a store as a vault.
     """
     import sys
 
@@ -987,10 +985,9 @@ def _path_tier_set_values(user_config_path: Path, *, data_home: Path, home: Path
     ``update`` BELOW.  ``system.{template,canon,runtime,cache,backup,channelroot}`` and
     ``system.channels.*`` are Layer-2 SETTINGS keys (spec §2g: "set in settings files at
     the ``system`` cascade level"), and ``config set system.canon=…`` writes them to
-    ``@config.settings``.  Until 2026-08-23 the path tier read the CONFIG files ONLY, so
-    that write reached the launch cascade and NOT :class:`StandardPaths` — a repoint that
-    was accepted, persisted, and half-effective.  A settable key whose set does not reach
-    the thing it names is worse than a refusal, because it never confesses.
+    ``@config.settings`` — the tier that must reach them, or a repoint is accepted,
+    persisted, and half-effective.  A settable key whose set does not reach the thing it
+    names is worse than a refusal, because it never confesses.
 
     ⚑ THE LAYER-1 RESOLVE RUNS TWICE ON PURPOSE, and it is not a wasted read: locating the
     settings file IS ``@config.settings``, so the foundation must resolve before the file
@@ -1468,12 +1465,8 @@ def helper_log_path(std: StandardPaths, proj: ProjectPaths) -> Path | None:
 
     ⚑⚑ THIS IS THE HUB'S WRITER, and the MOUNT it must agree with is the spec's own
     spelling ``@workset.logs/@{meta.box.name}.jsonl`` (``data/rom/settings/core-defaults.yaml``,
-    ``helpers``).  While an arm COMPOSED its directory the two disagreed the moment a
-    user repointed ``workset.logs`` — the mount moved and the writer did not (migration
-    M-14).  ⚑ ALL THREE arms now RESOLVE the key, so there is one answer in every mode.
-    STANDALONE resolves it against the degenerate workset rooted at the project dir,
-    whose declared default is ``@workset.boxes`` = ``box_data/`` — the same directory
-    the composed form named, now reached through the key that may move it.
+    ``helpers``).  ⚑ ALL THREE arms RESOLVE the key, so there is one answer in every mode.
+    STANDALONE resolves it against the degenerate workset rooted at the project dir.
     """
     logs_dir, box = box_logs_location(std, proj)
     return None if logs_dir is None else box_log_files(logs_dir, box).helper
@@ -2551,8 +2544,8 @@ def _init_standalone_project(std: StandardPaths, metadata_path: Path, shell_path
     """First-time standalone project setup: all state inside the project dir (vault included).
 
     ⚑ *workset_root* owns the ``vault/`` skeleton and is passed APART from *metadata_path*:
-    a repointed ``workset.boxes`` puts the store outside the root, so deriving the root from
-    the store's parent would hand ``write_vault_gitignore`` the store's own directory.
+    a repointed store's parent is not the root, so deriving it would stamp
+    ``write_vault_gitignore`` on the store.
     """
     _init_common(std, metadata_path, shell_path, vault_ro_path, vault_rw_path, project_path,
                  enable_vault=enable_vault, vault_root=workset_root)
