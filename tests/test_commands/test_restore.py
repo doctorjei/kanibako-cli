@@ -9,6 +9,8 @@ import tarfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 
 from kanibako.settings.config import load_config
 from kanibako.errors import UserCanceled
@@ -260,6 +262,31 @@ class TestExtract:
         ) == 0
 
         assert (std.boxes / "chosen" / "mydata.txt").read_text() == "payload"
+
+    def test_name_onto_a_scalar_box_tier_refuses_with_no_shell_left_behind(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """``--name`` onto an unregistered box dir whose box tier is a scalar refuses
+        before any setup: no ``home/`` is bootstrapped beside the bad ``box.yaml``."""
+        from kanibako.errors import ConfigError
+        from kanibako.settings.config import BOX_META_FILE
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        src = tmp_home / "shapesrc"
+        src.mkdir()
+        archive_path, _ = self._archive_of(std, config, tmp_home, src)
+        box_dir = std.boxes / "foo"
+        box_dir.mkdir(parents=True)
+        (box_dir / BOX_META_FILE).write_text("box: 42\n")
+
+        dest_ws = tmp_home / "shapedest"
+        dest_ws.mkdir()
+        with pytest.raises(ConfigError) as exc:
+            self._extract(file=archive_path, path=str(dest_ws), name="foo")
+        assert "holds 42 at 'box'" in str(exc.value)
+        assert not (box_dir / "home").exists()
+        assert sorted(p.name for p in box_dir.iterdir()) == [BOX_META_FILE]
 
     def test_extract_into_an_already_registered_workspace_restores_in_place(
         self, config_file, tmp_home, credentials_dir,
