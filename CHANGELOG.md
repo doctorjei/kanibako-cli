@@ -588,6 +588,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The "Not registered" hint after an unregistered standalone `create` now shell-quotes the box root,** so its
+  `kanibako box register` command runs as printed. An unquoted root with a space was rejected as extra arguments,
+  and one holding `;`, `$( )`, or a backtick ran that text as a second command when pasted.
+
+- **`workset ls` no longer shows a registry entry that fails to load as an empty workset.** It names the entry and
+  the reason on stderr, shows `ERROR` in the PROJECTS column, and keeps listing the other worksets.
+
+- **A bare `box duplicate <src> <dst>` refuses a source whose `box` setting is not a table,** naming the file and
+  section, before anything is copied, named, or registered. Before, the value was copied into the new box at rc 0.
+
 - **`box rm` and `box duplicate` refuse a `box:` that is not a table, naming the file.** They used to drop the bad
   value silently (`rm` parked a deregistered entry with no image) or copy it into the new box. The refusal comes
   before the registry, the workspace, or the name is touched, so fixing the file and retrying works. A bare
