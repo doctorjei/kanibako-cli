@@ -1319,3 +1319,36 @@ class TestLoadBehavior:
             agent_defaults.load_behavior(package, filename)
         assert "mapping" in str(exc.value)
         assert "str" in str(exc.value)
+
+
+class TestBindingOwnerCell:
+    """Keyspec §0: a declared bind row carries its ``owner:`` cell into :class:`Binding`."""
+
+    _ROW = (
+        "descriptor:\n"
+        "  command: [\"probe\"]\n"
+        "  bindings:\n"
+        "    - key: ref\n"
+        "      origin: literal\n"
+        "      literal_src: /srv/ref\n"
+        "      box_dest: /ref\n"
+        "      kind: dir\n"
+        "      scope: agent\n"
+    )
+
+    @pytest.mark.parametrize("owner", ["box", "workset", "partition", "agent", "shared"])
+    def test_the_owner_cell_is_kept(self, declfile, owner):
+        package, filename = declfile(self._ROW + f"      owner: {owner}\n")
+        (row,) = agent_defaults.load_descriptor(package, filename).bindings
+        assert row.owner == owner
+
+    def test_a_row_without_one_is_shared(self, declfile):
+        package, filename = declfile(self._ROW)
+        (row,) = agent_defaults.load_descriptor(package, filename).bindings
+        assert row.owner == "shared"
+
+    def test_an_unknown_owner_is_refused_by_name(self, declfile):
+        package, filename = declfile(self._ROW + "      owner: boxes\n")
+        with pytest.raises(SettingsError) as exc:
+            agent_defaults.load_descriptor(package, filename)
+        assert "'boxes'" in str(exc.value) and "'ref'" in str(exc.value)

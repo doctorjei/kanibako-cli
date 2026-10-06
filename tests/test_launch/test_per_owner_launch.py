@@ -234,3 +234,106 @@ class TestTheWorksetFileByMode:
         _, workset = box_workset_settings_paths(standalone_box)
         _merge_into(workset, {"box": {"canon": "/x"}})
         assert f"box.canon is set to '/x' in {workset}" in _refusal(std, standalone_box)
+
+
+def _descriptor(owner: str):
+    """An in-test plugin descriptor declaring ONE ``/ref`` bind row owned by *owner*."""
+    from kanibako.targets.base import (
+        BindKind, BindScope, Binding, HostSrcOrigin, PluginDescriptor,
+    )
+
+    row = Binding(
+        key="ref", origin=HostSrcOrigin.LITERAL, box_dest="/ref", kind=BindKind.DIR,
+        scope=BindScope.AGENT, literal_src=Path("/srv/plugin-ref"), owner=owner,
+    )
+    return PluginDescriptor(command=("claude",), bindings=(row,), mode={"start": ()})
+
+
+def _launch_with(std, proj, desc):
+    from kanibako.commands.start import _resolve_launch_snapshot
+
+    snapshot, _ = _resolve_launch_snapshot(
+        std=std, proj=proj, agent_name="claude", system_settings_path=std.settings,
+        agent_cfg_path=None, desc=desc, install=None, target=ShellTarget(),
+        agent_cfg=None, deliver_creds=True, cli_level=None,
+    )
+    return snapshot
+
+
+_SHIPPED = [
+    ("kanibako.plugins.claude", "claude-defaults.yaml"),
+    ("kanibako.plugins.codex", "codex-defaults.yaml"),
+    ("kanibako.plugins.goose", "goose-defaults.yaml"),
+]
+
+
+class TestDeclaredPluginBindRows:
+    """Keyspec §0: a DECLARED ``agent.<agent>.*`` bind entry is judged by its row's owner."""
+
+    @pytest.mark.parametrize("node", ["claude", "default"])
+    def test_a_per_box_plugin_row_written_from_above_is_refused(
+        self, std, box, tmp_path, node,
+    ):
+        src = str(tmp_path / "srv" / "ref")
+        system = _merge_into(
+            std.settings, {"agent": {node: {"bindings": {"ro": {"/ref": [src]}}}}},
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            _launch_with(std, box, _descriptor("box"))
+        message = str(excinfo.value)
+        assert f"bindings.ro[/ref] is set to {src!r} in {system}" in message
+        assert "names no box identity" in message
+        assert f"{src}/{{meta.workset.path}}/{{meta.box.name}}" in message
+
+    def test_a_per_agent_plugin_row_names_the_active_agent_in_its_cure(
+        self, std, box, tmp_path,
+    ):
+        src = str(tmp_path / "srv" / "ref")
+        _merge_into(
+            std.settings, {"agent": {"default": {"bindings": {"ro": {"/ref": [src]}}}}},
+        )
+        with pytest.raises(SettingsError) as excinfo:
+            _launch_with(std, box, _descriptor("agent"))
+        assert f"{src}/{{meta.agent.claude.name}}" in str(excinfo.value)
+
+    def test_a_per_box_plugin_row_in_the_box_s_own_file_is_accepted(
+        self, std, box, tmp_path,
+    ):
+        box_file, _ = box_workset_settings_paths(box)
+        src = str(tmp_path / "srv" / "ref")
+        _merge_into(box_file, {"agent": {"claude": {"bindings": {"ro": {"/ref": [src]}}}}})
+        _launch_with(std, box, _descriptor("box"))
+
+    def test_a_shared_plugin_row_written_from_above_is_accepted(self, std, box, tmp_path):
+        src = str(tmp_path / "srv" / "ref")
+        _merge_into(
+            std.settings, {"agent": {"claude": {"bindings": {"ro": {"/ref": [src]}}}}},
+        )
+        snapshot = _launch_with(std, box, _descriptor("shared"))
+        assert snapshot_leaf(snapshot, "agent.claude.bindings.ro")["/ref"].src == src
+
+    def test_another_agent_s_entry_is_not_judged_by_the_active_descriptor(
+        self, std, box, tmp_path,
+    ):
+        src = str(tmp_path / "srv" / "ref")
+        _merge_into(
+            std.settings, {"agent": {"goose": {"bindings": {"ro": {"/ref": [src]}}}}},
+        )
+        _launch_with(std, box, _descriptor("box"))
+
+    @pytest.mark.parametrize(("package", "filename"), _SHIPPED)
+    def test_every_shipped_plugin_row_is_shared(self, package, filename):
+        from kanibako.settings.agent_defaults import load_descriptor
+
+        desc = load_descriptor(package, filename)
+        assert desc.bindings
+        assert {b.owner for b in desc.bindings} == {"shared"}
+
+    def test_a_shipped_plugin_row_written_from_above_is_accepted(self, std, box, tmp_path):
+        from kanibako.settings.agent_defaults import load_descriptor
+
+        desc = load_descriptor(*_SHIPPED[0])
+        src = str(tmp_path / "srv" / "share")
+        dest = desc.bindings[0].box_dest
+        _merge_into(std.settings, {"agent": {"claude": {"bindings": {"ro": {dest: [src]}}}}})
+        _launch_with(std, box, desc)

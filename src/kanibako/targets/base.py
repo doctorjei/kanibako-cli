@@ -124,6 +124,7 @@ class Binding:
     scope: BindScope
     ro: bool = True
     literal_src: Path | None = None   # only when origin == LITERAL
+    owner: str = "shared"
 
 
 class Channel(Enum):

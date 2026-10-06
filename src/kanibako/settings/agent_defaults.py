@@ -46,6 +46,7 @@ from kanibako.settings.agent_config import (
 )
 from kanibako.settings.config_io import parse_packaged
 from kanibako.settings.core_defaults import add_bind, behavior_defaults
+from kanibako.settings.messages import PER_OWNER_SET_WORDS
 from kanibako.settings.settings_keyspace import (
     ACCESS_TIERS,
     is_terminal_category_tail,
@@ -105,6 +106,12 @@ def _build_binding(entry: dict[str, Any], package: str) -> Binding:
         literal_src = Path(literal)
     else:
         literal_src = None
+    owner = entry.get("owner", "shared")
+    if owner != "shared" and owner not in PER_OWNER_SET_WORDS:
+        raise SettingsError(
+            f"bindings {entry['key']!r}: owner {owner!r} is not one of "
+            f"{', '.join(map(repr, ('shared', *PER_OWNER_SET_WORDS)))}."
+        )
     return Binding(
         key=entry["key"],
         origin=HostSrcOrigin(entry["origin"]),
@@ -113,6 +120,7 @@ def _build_binding(entry: dict[str, Any], package: str) -> Binding:
         scope=BindScope(entry["scope"]),
         ro=bool(entry.get("ro", True)),
         literal_src=literal_src,
+        owner=owner,
     )
 
 

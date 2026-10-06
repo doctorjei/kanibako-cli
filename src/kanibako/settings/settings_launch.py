@@ -1415,6 +1415,8 @@ def refuse_read_time_faults(
     files: Sequence[SettingsFile],
     subject: ResolveSubject,
     tiers: Sequence[str],
+    active_agent: str = "",
+    plugin_owners: Mapping[str, str] | None = None,
 ) -> None:
     """RAISE for any stored value a resolve may not proceed with.
 
@@ -1423,7 +1425,7 @@ def refuse_read_time_faults(
     refusal (:func:`_refuse_undeclared_snapshot`, over *expanded*), then §2c's entry at
     an internal bind's dest (:func:`_refuse_internal_bind_entries`, over *written*), then
     §0's per-owner values (:func:`_refuse_inherited_per_owner`, over *written*, each level's
-    scope in *tiers*).
+    scope in *tiers*, and *plugin_owners* the active descriptor's declared bind rows).
     ⚑ ONE CARRIER OF THE ORDER: the launch (:func:`build_launch_snapshot`) and the workset preview
     (``commands/workset_cmd._workset_preview_entries``) both call this, so a resolve
     route cannot run one refusal and skip the other.
@@ -1438,7 +1440,9 @@ def refuse_read_time_faults(
         expanded, files=files, written=written, subject=subject,
     )
     _refuse_internal_bind_entries(written)
-    _refuse_inherited_per_owner(written, tiers, expanded)
+    _refuse_inherited_per_owner(
+        written, tiers, expanded, active_agent=active_agent, plugin_owners=plugin_owners or {},
+    )
 
 
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
@@ -1490,7 +1494,8 @@ _CATEGORY_OWNER: Final[dict[str, str]] = {"box": "box", "workset": "workset", "s
 
 
 def _refuse_inherited_per_owner(
-    written: Sequence[_WrittenLevel], tiers: Sequence[str], expanded: KeyStore,
+    written: Sequence[_WrittenLevel], tiers: Sequence[str], expanded: KeyStore, *,
+    active_agent: str, plugin_owners: Mapping[str, str],
 ) -> None:
     """RAISE naming every per-owner key and ``bindings.ro``/``bindings.rw`` entry whose WINNING
     value a containing scope's file stores and which reaches no owner identity (keyspec §0
@@ -1500,8 +1505,9 @@ def _refuse_inherited_per_owner(
     written levels' raw values. A file judges every mode it feeds: a workset file this box's
     mode, any other file all three. A declared entry's owner is its row's
     (:func:`core_defaults.bind_dest_owners`); an undeclared one takes its category key's. An
-    entry under ``agent.<agent>.*`` is not judged: undeclared ones are exempt, and every
-    declared plugin bind row is ``shared``.
+    entry under ``agent.default.*`` or ``agent.<active_agent>.*`` is judged only at a dest
+    *plugin_owners* declares (the active descriptor's rows, by normalized dest); any other
+    ``agent.<agent>.*`` entry is not.
     """
     def stored(ref: str) -> object:
         for level, _path, _floor in written:
@@ -1553,7 +1559,9 @@ def _refuse_inherited_per_owner(
                 if (dotted, norm) in seen:
                     continue
                 seen.add((dotted, norm))
-                if segments[0] == "agent" or entry is None or (
+                plugin_row = segments[0] == "agent" and norm in plugin_owners and (
+                    segments[1] in ("default", active_agent))
+                if (segments[0] == "agent" and not plugin_row) or entry is None or (
                     isinstance(floor_entries, dict)
                     and dict.get(floor_entries, dest, __MISSING__) == entry
                 ):
@@ -1562,11 +1570,15 @@ def _refuse_inherited_per_owner(
                     src, _opts = unpack_bind_entry(entry)
                 except SettingsError:
                     continue  # malformed: its own refusal names it
+                label = entry_label(shown_key(dotted), dest)
+                if plugin_row:
+                    judge(label, src, plugin_owners[norm], active_agent, tier=tier, path=path,
+                          key=f"agent.{active_agent}.{dotted.split('.', 2)[2]}")
+                    continue
                 owner = declared.get(norm, _CATEGORY_OWNER.get(segments[0], "shared"))
                 tail = "" if norm in declared else PER_OWNER_SHARE_TAIL % (
                     f"system.{dotted.partition('.')[2]}")
-                judge(entry_label(shown_key(dotted), dest), src, owner, None,
-                      tier=tier, path=path, key=dotted, tail=tail)
+                judge(label, src, owner, None, tier=tier, path=path, key=dotted, tail=tail)
     if refusals:
         raise SettingsError("\n\n".join(refusals))
 
@@ -2419,6 +2431,7 @@ def build_launch_snapshot(
     refs_read: RefsRead | None = None,
     dest_keys: DestKeys | None = None,
     written_out: "list[_WrittenLevel] | None" = None,
+    descriptor: "PluginDescriptor | None" = None,
 ) -> KeyStore:
     """Build the ONE expanded launch snapshot.
 
@@ -2468,6 +2481,8 @@ def build_launch_snapshot(
 
     *written_out*, when given, receives the cascade's labeled levels, most-specific-first,
     so a caller can name the file whose value won (:func:`_none_setter`).
+
+    *descriptor* is the ACTIVE plugin's; its bind rows' owners join §0's per-owner refusal.
 
     *cli_level* is the §1A **top-most input level** — above every settings file AND
     every pref. :func:`~kanibako.settings.settings_cli_level.guard_cli_level` is
@@ -2562,6 +2577,10 @@ def build_launch_snapshot(
     # the ORACLE so the refusal arms exactly what was measured.
     refuse_read_time_faults(
         written, expanded, ctx=ctx, files=files, subject=subject, tiers=cascade.tiers,
+        active_agent=agent_name, plugin_owners={
+            normalize_bind_dest(b.box_dest): b.owner
+            for b in (descriptor.bindings if descriptor is not None else ())
+        },
     )
     refuse_undeclared_per_file(files)
     _warn_lone_none_standard_binds(

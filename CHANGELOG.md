@@ -2140,6 +2140,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **For plugin authors: a descriptor `bindings` row's `owner:` is now read and enforced.** It is
+  one of `box`, `workset`, `partition`, `agent`, or `shared`, and defaults to `shared`; any other
+  value fails the plugin's load, naming the row. `Binding` has a matching `owner` field, defaulting
+  to `"shared"`. When a row is not `shared`, a settings file above its owner that sets that
+  destination under `agent.default.bindings` or `agent.<agent>.bindings` must spell the owner's
+  identity into the source, as a core bind row's must, or the launch is refused. Every shipped
+  plugin row is `shared`, so no box changes.
 - **A missing import inside a plugin's charter chapter now warns.** Inside `~/canon/charter/agent/`,
   an `__IMPORT__` or `__IMPORTSECTION__` whose target is a file inside the chapter that does not
   exist now prints a warning on stderr naming the file, the line, and the missing path.
