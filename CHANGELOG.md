@@ -583,6 +583,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reference depth cap, or an unknown `{$NAME}` in the same chain is likewise named in place of the
   unseen key.
 
+- **A retired-entry cure now prints the delete before the set.** Two cures told the user to run
+  the `set` first and delete the stale entry afterwards. The `set` reads the file the stale entry
+  is still sitting in, and keyspec §2a refuses a write that collides with it, so following the
+  printed sequence top to bottom failed at step one. The retired-file-key refusal (`box.agent`,
+  `box.agent_name`, `system.default_agent`) and an agent file's nested-table refusal now name the
+  file to delete from first, then give the fix.
+
+- **A stored `agent.default.auto_approve` is cured with a command that runs.** At the agent level
+  the cure printed `kanibako agent set default access=…`, which the CLI refuses with exit 1 —
+  `default` is the reserved any-agent tier and owns no persona store. That tier's default is
+  written at the system scope as the bare key, so the cure now prints
+  `kanibako system set access=…`. A `pref.agent.default.*` request is unchanged; it spells its
+  node as data and needs no bare key.
+
 - **`set` no longer refuses a reference to a computed sharing-state key.** A value naming a
   `meta.*.auth.*_active` key, such as `box set box.env.X={meta.box.auth.global_active}`, was
   refused as a dangling reference although the launch resolves it. The set-time check now computes
