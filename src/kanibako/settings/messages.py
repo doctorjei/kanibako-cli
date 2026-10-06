@@ -183,9 +183,8 @@ PER_OWNER_SHARERS = {
     ("box", "own+standalone"): ("give the boxes of each working set one shared path", "The "
                                 "boxes of each working set, and every standalone box, would "
                                 "share it."),
-    ("agent", "none"): ("give every agent one shared path", "Every agent would share it."),
-    ("agent", "workset"): ("give the agents of each working set one shared path", "The agents "
-                           "of each working set would share it."),
+    ("agent", "none"): ("give different agents one shared path", "Different agents would "
+                        "share it."),
 }
 #: The READ door's twin, for a value the system file already holds; the same words per owner.
 ERR_PER_OWNER_READ = (
