@@ -408,13 +408,12 @@ class HelperHub:
             ctx.project_path is None
             or ctx.data_path is None
             or ctx.boxes is None
-            or ctx.registry is None
             or ctx.primary_workset is None
         ):
             return {
                 "status": "error",
                 "message": (
-                    "fork requires project_path, data_path, boxes, registry "
+                    "fork requires project_path, data_path, boxes "
                     "and primary_workset"
                 ),
             }
