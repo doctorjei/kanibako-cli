@@ -147,3 +147,45 @@ def test_a_standalone_boxs_null_registry_marker_is_not_a_bad_entry(cli):
     assert "registry: null" in (proj / "workset.yaml").read_text()
     proc = cli("box", "set", str(proj), "box.shell=bash")
     assert proc.returncode == 0, proc.stderr
+
+
+def test_a_null_workset_registry_in_the_system_file_is_refused(cli):
+    path = _system_file(cli)
+    path.write_text("system:\n  agent: shell\nworkset:\n  registry: null\n")
+    before = path.read_bytes()
+    _assert_refused(cli("system", "set", "system.agent=claude"), path, before,
+                    "workset.registry = null")
+
+
+def test_force_does_not_set_a_value_whose_chain_reaches_an_ill_typed_entry(cli):
+    path = _system_file(cli)
+    path.write_text("system:\n  agent: shell\n  cache: [x]\n")
+    before = path.read_bytes()
+    proc = cli("system", "set", "--force", "system.backup={system.cache}/b")
+    assert proc.returncode == 1, proc.stderr
+    assert "upstream chain reaches system.cache" in proc.stderr
+    assert path.read_bytes() == before
+
+
+class TestAgentDoor:
+    @pytest.fixture
+    def agent_file(self, cli):
+        path = cli.home / ".local/share/kanibako/agents/shell/agent.yaml"
+        path.write_text("self:\n  env:\n    FOO: [a]\n")
+        return path
+
+    def test_refused_and_nothing_written(self, cli, agent_file):
+        before = agent_file.read_bytes()
+        _assert_refused(cli("agent", "set", "shell", "model=x"), agent_file, before,
+                        "agent.shell.env.FOO = ['a']")
+
+    def test_force_warns_and_writes(self, cli, agent_file):
+        proc = cli("agent", "set", "--force", "shell", "model=x")
+        assert proc.returncode == 0, proc.stderr
+        assert "Warning:" in proc.stderr and "agent.shell.env.FOO" in proc.stderr
+        assert "model: x" in agent_file.read_text()
+
+    def test_setting_the_bad_key_itself_is_the_repair(self, cli, agent_file):
+        proc = cli("agent", "set", "shell", "env.FOO=b")
+        assert proc.returncode == 0, proc.stderr
+        assert "FOO: b" in agent_file.read_text()
