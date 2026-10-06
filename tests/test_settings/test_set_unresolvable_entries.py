@@ -150,3 +150,11 @@ class TestWorksetDoor:
         proc = cli("workset", "get", "ws1", "workset.vault_rw")
         assert proc.returncode == 0, proc.stderr
         assert "do not resolve" not in proc.stderr, proc.stderr
+
+
+def test_box_get_warns_on_a_genuinely_missing_ref(cli):
+    box_file = _box_file(cli)
+    box_file.write_text('box:\n  shell: zsh\n  env:\n    X: "{workset.env.FOO}"\n')
+    proc = cli("box", "get", "b1", "box.env.Z")
+    assert proc.returncode == 0, proc.stderr
+    assert "do not resolve" in proc.stderr and "box.env.X" in proc.stderr, proc.stderr
