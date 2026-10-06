@@ -590,7 +590,7 @@ class TestCoreBehaviorDefaults:
 
         from kanibako.commands.start import _effective_behavior_for_display
         from kanibako.settings.agent_config import AgentConfig
-        from kanibako.settings.config import write_project_config
+        from kanibako.settings.config import persist_creation_flags
         from kanibako.settings.paths import box_workset_settings_paths, resolve_project
         from kanibako.targets.base import TargetSetting
 
@@ -601,7 +601,9 @@ class TestCoreBehaviorDefaults:
             TargetSetting(key="bootstrap", description="Multiplexer", default="screen"),
         ]
         proj = resolve_project(std, config, str(project_dir), initialize=True)
-        write_project_config(box_workset_settings_paths(proj)[0], "base:image")
+        persist_creation_flags(
+            box_workset_settings_paths(proj)[0], materializing=True, image="base:image",
+        )
 
         effective = _effective_behavior_for_display(
             target, AgentConfig(), std=std, proj=proj,

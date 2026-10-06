@@ -84,12 +84,9 @@ class KanibakoConfig:
     # ``""`` a user cannot tell from a value.
     box_shell: str | None = _DEFAULTS["box_shell"]
     box_share_images: bool = False
-    # ⚑ THE CARRIER OF ``box.enable_vault``'s DECLARED DEFAULT (2026-08-29).  It used to
-    # live inside ``read_box_enable_vault``'s ``return True``, which made the reader the
-    # only carrier — so the key answered at NO launch terminus and a base- or system-tier
-    # value could not reach the vault binds at all.  It is a field here for the same
-    # reason ``box_share_images`` is: the field default IS the floor the keyspace
-    # resolves from (:func:`box_scalar_defaults_floor`).
+    # ⚑ THE CARRIER OF ``box.enable_vault``'s DECLARED DEFAULT, for the same reason
+    # ``box_share_images`` is: the field default IS the floor the keyspace resolves from
+    # (:func:`box_scalar_defaults_floor`), so base- and system-tier values reach a launch.
     box_enable_vault: bool = True
 
 
@@ -403,17 +400,8 @@ def _system_settings_path(global_path: Path) -> Path | None:
 def write_global_config(path: Path) -> None:
     """Create the bootstrap config file EMPTY — it may carry ``config.*`` and nothing else."""
     # ⚑⚑ THE FILE CANNOT HAVE SETTINGS (Jei, 2026-08-26: "kanibako_config.yaml <-- cannot
-    # have settings. Period.").  It used to be created carrying THREE tables:
-    #
-    #   ``config:``  — a VERBATIM copy of ``bootstrap.CONFIG_PATH_DEFAULTS``
-    #   ``system:``  — a verbatim copy of six of the eleven ``SYSTEM_PATH_DEFAULTS`` rows
-    #   ``box:``     — the box scalars at their own ``KanibakoConfig`` field defaults
-    #
-    # The first was Layer-1's own content written at its own default — a fourth carrier of
-    # a value ``paths.resolve_config_paths`` already holds as the ``LevelView`` defaults it
-    # layers stored values over, so writing it moved nothing and made every default edit
-    # need a matching edit here.  The other two were SETTINGS (spec §2g / §2b) in the
-    # Layer-1 file, which is the thing the ruling forbids outright.
+    # have settings. Period.").  Its ``config.*`` defaults live in
+    # ``paths.resolve_config_paths``'s ``LevelView``, not here.
     #
     # ⚑ THERE IS NO ``cfg`` PARAMETER ANY MORE, and that is the ruling in the signature: a
     # ``KanibakoConfig`` is settings, so there is nothing it could legitimately contribute
@@ -430,11 +418,6 @@ def write_global_config(path: Path) -> None:
     # appended ``config:`` block a YAML error.  Written through the SAME atomic writer
     # ``dump_doc`` delegates to, so the create is atomic either way.
     atomic_write_text(path, "")
-
-
-def write_project_config(path: Path, image: str) -> None:
-    """Write or update a box.yaml with the given image."""
-    write_project_config_key(path, "box_image", image)
 
 
 def persist_creation_flags(
@@ -500,12 +483,8 @@ def read_box_enable_vault(path: Path) -> bool:
     🛑 Do NOT give this a workset-tier fallback again, and do NOT route it through the
     cascade: either one pins an INHERITED workset default as a box-scope override at the
     destination, which is exactly the corruption :func:`carried_box_settings` exists to
-    prevent.  ⚑ It HAD a *default_from* parameter until 2026-08-29 — the R2 downward
-    default (spec §0 "Directional view/set across CONTAINMENT levels") that made
-    ``workset create --no-vault`` reach contained boxes.  That capability did not go: it
-    MOVED to ``paths.resolve_box_enable_vault``, where the workset tier is one cascade level
-    among four rather than a second hand-opened file.  The parameter went with it because
-    the only remaining thing it could do here is the corruption above.
+    prevent.  The R2 downward default (``workset create --no-vault`` reaching contained
+    boxes) is ``paths.resolve_box_enable_vault``'s, as one cascade level among four.
     """
     if not path.exists():
         return True
@@ -578,24 +557,6 @@ def _split_config_key(flat_key: str) -> tuple[str, str]:
             key = flat_key[len(prefix):]
             return section, key
     return "", flat_key
-
-
-def write_project_config_key(path: Path, flat_key: str, value: str) -> None:
-    """Write or update a single key in a box.yaml (*flat_key* is underscore-joined)."""
-    section, key = _split_config_key(flat_key)
-    data = load_doc(path)
-    if not section:
-        # Top-level scalar field (no recognized section prefix).
-        data[key] = value
-        dump_doc(path, data)
-        return
-    refuse_scalar_sections(path, (section,), data=data)
-    sec = data.get(section)
-    if not isinstance(sec, dict):
-        sec = {}
-        data[section] = sec
-    sec[key] = value
-    dump_doc(path, data)
 
 
 def unset_project_config_key(path: Path, flat_key: str) -> bool:
@@ -963,28 +924,6 @@ def resolve_agent(
         "Or name one for a single run with '--agent <name>'.\n"
         "'kanibako shell' reaches the box's container without an agent."
     )
-
-
-def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None:
-    """Write a single agent-state override under ``agent.<agent_name>``, preserving every other section.
-
-    A present non-table at EITHER level it walks — ``agent`` itself, or ``agent.<agent_name>`` —
-    refuses by name (:func:`refuse_scalar_sections`) and leaves the file byte-identical, rather
-    than throwing away what the user wrote to build the table.
-    """
-    existing = load_doc(path)
-    # ⚑ ONE refusal covers BOTH levels this writer walks; both were replace-a-scalar sites.
-    refuse_scalar_sections(path, ("agent", agent_name), data=existing)
-    agent = existing.get("agent")
-    if not isinstance(agent, dict):
-        agent = {}
-        existing["agent"] = agent
-    agent_sec = agent.get(agent_name)
-    if not isinstance(agent_sec, dict):
-        agent_sec = {}
-        agent[agent_name] = agent_sec
-    agent_sec[key] = value
-    dump_doc(path, existing)
 
 
 def _flatten_leaves(data: dict, prefix: str = "", *, with_nodes: bool = False,

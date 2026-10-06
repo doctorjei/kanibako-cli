@@ -522,9 +522,7 @@ class TestProjectMeta:
     ):
         """A ``box.image`` override coexists with sparse create: it is written to
         the ``box:`` table with NO ``project:``/``resolved:`` section alongside."""
-        from kanibako.settings.config import (
-            write_project_config,
-        )
+        from kanibako.settings.config import persist_creation_flags
         from kanibako.settings.settings_launch import load_merged_config
         from kanibako.settings.config_io import load_doc
         config = load_config(config_file)
@@ -534,7 +532,7 @@ class TestProjectMeta:
 
         # Write a container image override (sparse box-scope key).
         project_toml = proj.metadata_path / BOX_META_FILE
-        write_project_config(project_toml, "custom-image:v1")
+        persist_creation_flags(project_toml, materializing=True, image="custom-image:v1")
 
         merged = load_merged_config(project_toml)
         assert merged.box_image == "custom-image:v1"

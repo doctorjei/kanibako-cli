@@ -33,14 +33,12 @@ def settings_base_path() -> Path
 def load_config(path: Path) -> BootstrapConfig
 def box_scalar_defaults_floor() -> dict[str, object]
 def write_global_config(path: Path) -> None
-def write_project_config(path: Path, image: str) -> None
 def persist_creation_flags(box_settings_path: Path, *, materializing: bool, image: str | None=None, share_images: bool | None=None) -> None
 def write_box_enable_vault(path: Path, enable_vault: bool=True) -> None
 def read_box_enable_vault(path: Path) -> bool
 def carried_box_settings(box_tier: Path) -> dict
 def read_workset_kuid(path: Path) -> str
 def read_workset_skip_kuid_check(path: Path) -> bool
-def write_project_config_key(path: Path, flat_key: str, value: str) -> None
 def unset_project_config_key(path: Path, flat_key: str) -> bool
 def load_project_overrides(path: Path) -> dict[str, object]
 def read_agent_settings(path: Path, agent_name: str) -> dict[str, str]
@@ -51,7 +49,6 @@ def read_system_helpers(settings_path: Path | None) -> dict[str, int]
 def read_setup_completed(settings_path: Path | None) -> str | None
 def setup_compat_gate(settings_path: Path | None, legacy_config: Path | None=None) -> str | None
 def resolve_agent(*, explicit_agent: str | None, requested: str | None=None, project_path: Path | None=None) -> str
-def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None
 def null_path_keys_error(path: Path, keys: Iterable[str], *, cure: str=ERR_CONFIG_NULL_PATH_CURE, head: 'str | None'=None, read_head: str=ERR_CONFIG_NULL_PATH_HEAD) -> 'str | None'
 def refuses_null_path_key(canonical: str) -> bool
 def usable_box_store_value(value: object) -> bool
