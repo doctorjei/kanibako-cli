@@ -104,6 +104,7 @@ def _unregister_workset_box_membership(ws_root: Path, box_name: str) -> None
 def _init_workset_project(std: StandardPaths, metadata_path: Path, shell_path: Path) -> None
 def _find_workset_for_path(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
 def _resolve_workset_or_connected(project_dir: Path, std: StandardPaths) -> tuple[_WorksetLike, str | None]
+def _warn_standalone_shadowed(std: StandardPaths, value: str) -> None
 def _resolve_designated_path(std: StandardPaths, config: BootstrapConfig, raw: str, *, initialize: bool, register: bool, name_override: str | None=None) -> ProjectPaths
 def _flag_nonconforming(proj: ProjectPaths) -> ProjectPaths
 def _flag_invalid_kuid(proj: ProjectPaths) -> ProjectPaths

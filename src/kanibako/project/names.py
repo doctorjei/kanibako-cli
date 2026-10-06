@@ -217,11 +217,14 @@ def resolve_name(
     name: str,
     cwd: Path | None = None,
     primary_workset: Path | None = None,
+    *,
+    standalone: bool = True,
 ) -> tuple[str, str]:
     """Look up a bare name and return ``(path, kind)``.
 
     Resolution order (system-design § Box designation & workset path space): the box
-    steps of :func:`_resolve_before_standalone`, then a REGISTERED standalone box; an
+    steps of :func:`_resolve_before_standalone`, then a REGISTERED standalone box
+    (skipped unless *standalone*: the caller checks a same-named path first); an
     unregistered one is reachable only by path.  A registered standalone shadowed
     by an earlier BOX is warned about (it stays reachable by path).  Box and
     workset names are per-kind namespaces, so a workset name is matched only when
@@ -239,7 +242,7 @@ def resolve_name(
         # The standalone step is not a tiebreaker for an earlier step's tie.
         raise
     except ProjectError:
-        root = registry_store.standalone_root(registry, name)
+        root = registry_store.standalone_root(registry, name) if standalone else None
         if root is not None:
             return root, "project"
         worksets = _load(registry)["worksets"]

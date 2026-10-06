@@ -36,6 +36,8 @@ WARN_RUNDIR_UNUSABLE = ("%s not set & " + RUN_USER_UID_PATH + " unusable; fallin
 
 WARN_WS_NO_ROOT =       "Warning: workset '%s' root missing: %s" # workset name, root
 WARN_WS_BAD_LOAD =      "Warning: failed to load workset '%s': %s" # workset name, exception
+WARN_SA_SHADOWED_BY_PATH = ("'%s' resolved to the path %s; the registered standalone box of the same " +
+                            "name at %s is shadowed — reach it by its path.")  # name, path, root
 WARN_WS_BOX_BAD_NAME = ("box name '%s' does not meet the naming rules (%s); it resolves by its " +
                         "path only, not by that name. Rename it.")           # box name, box_name_reason()
 

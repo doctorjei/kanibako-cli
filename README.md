@@ -585,6 +585,8 @@ in-tree, so it needs no registry entry and can be moved or copied anywhere.
 The registry entry is only a shortcut for addressing the box **by name from
 another directory**; add it at create time with `--register` (which is also
 what makes `--name` meaningful), or later with `kanibako box register <path>`.
+A registered name is checked last: a primary box of the same name, or a
+same-named path, wins, with a warning naming the shadowed standalone box.
 
 ```bash
 kanibako create --standalone --register --name myproj ~/myproj

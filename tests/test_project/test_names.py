@@ -614,6 +614,15 @@ class TestStandaloneNameResolution:
 
         assert resolve_name(registry, "lone") == (str(tmp_path / "ws"), "workset")
 
+    def test_the_standalone_step_can_be_skipped(
+        self, registry: Path, tmp_path: Path,
+    ) -> None:
+        """``standalone=False`` (a same-named path exists) leaves the name a miss."""
+        self._register_standalone(registry, tmp_path, "solo_box")
+
+        with pytest.raises(ProjectError, match="Unknown project"):
+            resolve_name(registry, "solo_box", standalone=False)
+
     def test_a_primary_box_outranks_a_registered_standalone(
         self, registry: Path, tmp_path: Path,
         caplog: pytest.LogCaptureFixture,

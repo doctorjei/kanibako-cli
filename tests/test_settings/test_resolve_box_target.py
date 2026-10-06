@@ -213,28 +213,62 @@ class TestWorksetMemberFromOutside:
 
 
 # ---------------------------------------------------------------------------
-# NAME precedence (name wins over a same-named relative path)
+# NAME precedence (a box name wins over a same-named relative path, except a standalone's)
 # ---------------------------------------------------------------------------
 
 class TestNamePrecedence:
-    def test_name_wins_over_relative_path(
-        self, std, config, tmp_home, monkeypatch,
+    def test_a_same_named_path_outranks_a_registered_standalone_name(
+        self, std, config, tmp_home, monkeypatch, caplog,
     ):
-        # A standalone box named e.g. "ab2c3_clash" lives elsewhere...
+        """system-design § Box designation & workset path space: "Registered standalone
+        box names are checked _after_ primary workset boxes and paths; a warning sounds
+        on collision."  So ``./<name>`` wins at the ``--box`` door, and the shadowed
+        standalone is named."""
         box_name, sa_root = _make_standalone(std, tmp_home, leaf="elsewhere")
-
-        # ...and a DIFFERENT directory of the same basename exists in cwd.
         cwd = tmp_home / "cwd"
         cwd.mkdir()
         clash_dir = cwd / box_name
         clash_dir.mkdir()
         monkeypatch.chdir(cwd)
 
-        # Bare token == the box name: NAME precedence -> the standalone box,
-        # NOT the relative ./<box_name> directory.
-        proj = resolve_box_target(std, config, box_name)
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_box_target(std, config, box_name)
+        assert proj.project_path == clash_dir.resolve()
+        shadowed = [r.getMessage() for r in caplog.records
+                    if r.levelname == "WARNING" and "standalone" in r.getMessage()]
+        assert len(shadowed) == 1, shadowed
+        assert str(sa_root) in shadowed[0]
+
+    def test_the_positional_door_warns_when_a_path_shadows_a_standalone_name(
+        self, std, config, tmp_home, monkeypatch, caplog,
+    ):
+        box_name, sa_root = _make_standalone(std, tmp_home, leaf="elsewhere")
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        (cwd / box_name).mkdir()
+        monkeypatch.chdir(cwd)
+
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_any_project(std, config, box_name)
+        assert proj.project_path == (cwd / box_name).resolve()
+        shadowed = [r.getMessage() for r in caplog.records
+                    if r.levelname == "WARNING" and "standalone" in r.getMessage()]
+        assert len(shadowed) == 1, shadowed
+        assert str(sa_root) in shadowed[0]
+
+    def test_a_standalone_name_with_no_same_named_path_still_resolves(
+        self, std, config, tmp_home, monkeypatch, caplog,
+    ):
+        box_name, sa_root = _make_standalone(std, tmp_home, leaf="elsewhere")
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_box_target(std, config, box_name)
         assert proj.mode is BoxMode.standalone
         assert proj.metadata_path == sa_root.resolve()
+        assert not [r for r in caplog.records if "shadowed" in r.getMessage()]
 
     def test_workset_member_name_wins_over_folder(
         self, std, config, tmp_home, monkeypatch,
