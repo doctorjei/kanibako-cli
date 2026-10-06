@@ -1544,8 +1544,8 @@ def _remove_old_metadata(
                 registry_store.unregister_standalone(std.registry, state.name)
             except Exception:  # noqa: BLE001
                 pass
-# ⚑⚑ RESOLVED, and only a store STRICTLY BELOW *root* is removed: the split and
-        # its reason are :func:`standalone_store_teardown_plan`'s, not restated here.
+        # ⚑ Resolved; the strictly-below split and its reason are
+        # :func:`standalone_store_teardown_plan`'s.
         removable_store, retained_store = standalone_store_teardown_plan(
             root, early=_early_scope(std, BoxMode.standalone))
         if removable_store is not None:
@@ -1770,16 +1770,17 @@ def _to_default(
     )
 
 
-#: ⚑ kanibako artifacts at a standalone root whose names NO KEY CAN REPOINT: the box dir
-#: (spec §2c fixes it at ``box_data/``), the detection marker beside it, the legacy root
-#: box tier (drift I) and the lock.  They STAY at the root when a convert consolidates
-#: everything else into the workspace dir (drift H).
+#: kanibako artifacts a standalone root keeps whatever ``workset.*`` says: ``box_data/``,
+#: the spec's standalone detection LOCATOR — a MARKER, not the store
+#: (``system-design``); and three FILES: the marker beside it, the legacy root box
+#: tier (drift I), the lock.  They STAY at the root when a convert consolidates everything
+#: else into the workspace dir (drift H).
 #: ⚑⚑ EVERY OTHER ARTIFACT AT THE ROOT IS A DECLARED, REPOINTABLE ``workset.*`` DIRECTORY
 #: KEY AND IS ANSWERED BY :func:`_standalone_root_artifacts`, NEVER BY A NAME.  A leaf name
 #: cannot express ``workset.vault_ro: store/ro`` — the root child is then ``store``, a name
 #: no list holds — and cannot express an absolute repoint at all.
 _STANDALONE_FIXED_ARTIFACTS = frozenset({
-    STANDALONE_META_DIR,   # box_data/
+    STANDALONE_META_DIR,   # box_data/ — the detection LOCATOR
     WORKSET_META_FILE,      # the workset meta (drift I — at the root)
     BOX_META_FILE,          # the box meta (drift I — at the root)
     ".kanibako.lock",       # lock file
@@ -1806,8 +1807,8 @@ def _resolve_standalone_workspaces(
 #: with the resolver that answers it.  ⚑ A standalone root is a degenerate workset root
 #: (``settings/paths.py::_standalone_box_paths``), so these are ordinary workset keys.
 #: ⚑ Derived from the rule "which keys does standalone mode resolve at the root", not from an
-#: inventory of today's directories: ``boxes`` is absent because §2c fixes the standalone box
-#: dir at :data:`STANDALONE_META_DIR` (above), and ``logs``/``template``/``channelroot`` are
+#: inventory of today's directories: ``boxes`` is absent because the standalone box dir
+#: keeps its ``box_data/`` LOCATOR at the root above, and ``logs``/``template``/``channelroot`` are
 #: absent because standalone does not materialize them — each resolver says so in its own
 #: docstring, and that is the source to re-read if this list is ever questioned.
 _STANDALONE_ROOT_DIR_KEYS = (

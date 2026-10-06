@@ -125,11 +125,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read from — and deleted at — a directory it did not use. They now resolve the key through the
   same `resolve_workset_boxes` the `workset.logs` default already chains through, and a box created
   with a repointed store stamps its `vault/` skeleton at the box root rather than at the store's
-  parent. **A relocated store is no longer deleted by a teardown.** Where the store lies outside the
-  box root it is the user's own directory, so `purge` and the `box move`/`convert` source teardown
-  keep it and name it (`Note: left the box store at … in place`) instead of removing it — the same
-  line the vault arms already took. A store that lies strictly below the root is still removed,
-  whether or not it was relocated. A `workset.boxes` that is `<null>` still refuses by name. An
+  parent. **A teardown only deletes a store that sits strictly below the box root.** Compared as
+  *resolved* paths, so a value that spells its way out of the tree — a `..` segment, or a parent
+  component that is a symlink elsewhere — counts as outside, and so does the root itself. A store
+  that is not strictly below the root is a directory you nominated, so `box rm --purge`,
+  `kanibako box purge` and the `box move`/`convert` source teardown keep it and name it
+  (`Note: left the box store at … in place`) instead of removing it — the same line the vault arms
+  already took. A store that *is* strictly below the root is removed, relocated or not. The
+  doors differ in what they leave behind: `box rm --purge` and `kanibako box purge` keep the root
+  `workset.yaml` so the box stays whole; `box move` and `box convert` remove it, because the box
+  has left. A `workset.boxes` that is `<null>` still refuses by name. An
   existing standalone box whose store was never repointed is unaffected: with the key unset the
   resolved store is `<root>/box_data`. **Detection is unchanged** and still uses the `box_data/`
   marker as its locator, so a box whose store is relocated is found only while that marker is in
