@@ -61,8 +61,8 @@ from kanibako.settings.bootstrap import (BASHRC_FILE, CONFIG_PATH_DEFAULTS,
                                          XDG_SPEC_DEFAULTS, XDG_STATE_HOME)
 from kanibako.settings import bootstrap
 
-#: RE-EXPORT of the path-literal carrier it is defined in.  Consumers: the standalone
-#: MARKER read in ``launch.box_resolve``, and ``commands.box._lifecycle``.
+#: RE-EXPORT of the path-literal carrier it is defined in.  Consumer:
+#: ``commands.box._lifecycle``.
 STANDALONE_META_DIR = bootstrap.STANDALONE_META_DIR
 
 if TYPE_CHECKING:
