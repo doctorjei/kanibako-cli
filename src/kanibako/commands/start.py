@@ -1565,10 +1565,10 @@ def _store_move_cure(old: Path | None, new: Path) -> str:
     """The cure lines for a box store a ``workset.boxes`` repoint left behind (decision 8).
 
     *old* is a store found on disk, else ``None``: the old place is then the key's earlier
-    value, which nothing records, and the line carries a ``<old store>`` placeholder.  The
-    ``mkdir -p`` is load-bearing: a repointed parent need not exist, and ``mv`` into a
-    missing parent fails.  There is no Rebuild line: it would build an empty box while the
-    data sits at the old place.
+    value, which nothing records, and the line carries the ``OLD_STORE`` token, which a
+    shell reads as a plain word (``<old store>`` would be a redirect).  The ``mkdir -p`` is
+    load-bearing: a repointed parent need not exist, and ``mv`` into a missing parent
+    fails.  No move is printed onto an existing path or into the old store itself.
     """
     if old is not None:
         found = f"  Its store is still at {old}.\n"
@@ -1576,19 +1576,25 @@ def _store_move_cure(old: Path | None, new: Path) -> str:
     else:
         found = ("  Its store may still be where workset.boxes used to point; a "
                  "rebuild would make an empty box.\n")
-        q_old = "<old store>"
+        q_old = "OLD_STORE"
     lead = (
         "  workset.boxes is not at its default, so this box's store need not be "
         "where this launch looks for it.\n"
         f"{found}"
     )
     if new.exists():
-        return lead + (f"  It belongs at {new}, which already exists; a move would put "
-                       "it inside that directory, so none is offered.")
-    return lead + (
+        return lead + (f"  It belongs at {new}, which already exists; a move would not "
+                       "land it at that path, so none is offered.")
+    if old is not None and old in new.parents:
+        return lead + (f"  It belongs at {new}, inside its old place; a directory cannot "
+                       "be moved into itself, so no move is offered.")
+    move = (
         "  Move it, with the box stopped:  "
         f"mkdir -p {shlex.quote(str(new.parent))} && mv {q_old} {shlex.quote(str(new))}"
     )
+    if old is None:
+        move += "\n  (Replace OLD_STORE with the directory workset.boxes used to name.)"
+    return lead + move
 
 
 def _no_box_error(project_dir: str | None, std: StandardPaths | None = None) -> str:
