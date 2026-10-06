@@ -256,6 +256,28 @@ class TestNamePrecedence:
         assert len(shadowed) == 1, shadowed
         assert str(sa_root) in shadowed[0]
 
+    def test_a_path_shadowing_a_standalone_a_workset_also_names_still_warns(
+        self, std, config, tmp_home, monkeypatch, caplog,
+    ):
+        """Standalone ``foo`` + workset ``foo`` + folder ``./foo``: at ``--box`` the
+        folder wins and the shadowed standalone is named exactly once."""
+        from kanibako.project.workset import create_workset
+
+        box_name, sa_root = _make_standalone(std, tmp_home, leaf="elsewhere")
+        create_workset(box_name, tmp_home / "worksets" / box_name, std)
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        (cwd / box_name).mkdir()
+        monkeypatch.chdir(cwd)
+
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_box_target(std, config, box_name)
+        assert proj.project_path == (cwd / box_name).resolve()
+        shadowed = [r.getMessage() for r in caplog.records
+                    if r.levelname == "WARNING" and "standalone" in r.getMessage()]
+        assert len(shadowed) == 1, shadowed
+        assert str(sa_root) in shadowed[0]
+
     def test_a_standalone_name_with_no_same_named_path_still_resolves(
         self, std, config, tmp_home, monkeypatch, caplog,
     ):

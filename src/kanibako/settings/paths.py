@@ -2062,6 +2062,7 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
         return resolved
     if kind == KIND_WORKSET and not on_disk:
         raise WorksetError(ERR_WORKSET_WS_NOT_BOX % (value, value))
+    _warn_standalone_shadowed(std, value)
     return value
 
 

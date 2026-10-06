@@ -400,7 +400,7 @@ error, not a silent no-op).
 |------|-------------|
 | `-v, --verbose` | Show debug output (target detection, container command) |
 | `--agent NAME` | Top-precedence agent override; wins over the cascade. See [Agent Selection](#agent-selection) for how long a given command makes it last. |
-| `--box NAME-OR-PATH` | Universal subject/anchor selector -- act on a box that isn't your cwd, by box name (precedence) or path. See [Agent Selection](#agent-selection). |
+| `--box NAME-OR-PATH` | Universal subject/anchor selector -- act on a box that isn't your cwd, by box name (precedence, except that a registered standalone name yields to a same-named path) or path. See [Agent Selection](#agent-selection). |
 
 > **`setup` keeps its own `--agent`** flag (it persists the chosen default rather
 > than overriding for one run).
@@ -585,8 +585,9 @@ in-tree, so it needs no registry entry and can be moved or copied anywhere.
 The registry entry is only a shortcut for addressing the box **by name from
 another directory**; add it at create time with `--register` (which is also
 what makes `--name` meaningful), or later with `kanibako box register <path>`.
-A registered name is checked last: a primary box of the same name, or a
-same-named path, wins, with a warning naming the shadowed standalone box.
+A registered name is checked last: a primary or workset-member box of the
+same name wins, and so does a same-named path, even at `--box`; a warning
+names the shadowed standalone box.
 
 ```bash
 kanibako create --standalone --register --name myproj ~/myproj
