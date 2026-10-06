@@ -273,13 +273,80 @@ def test_a_pref_request_still_spells_the_reserved_tier_as_data(level) -> None:
     assert "pref.agent.default.access=full" in cure
 
 
+
 # --------------------------------------------------------------------------- #
-# 4 · THE BAR: each site, end to end — store, refuse, RUN THE PRINTED STEPS, re-open
+# 4 · THE BAR: each site, end to end — store, refuse, DO WHAT THE MESSAGE SAYS,
+#     re-open
 # --------------------------------------------------------------------------- #
+# ⚑ THE STEPS ARE PERFORMED AS PRINTED, not by a shortcut that reaches the same end.
+# The first version of these tests unlinked the whole file, or rewrote it with extra
+# content, and marked that "# the printed delete step". It was not. Deleting the named
+# entry ALONE strands its parent holding nothing, which YAML reads as a null, and the
+# fix the very same message prints then refuses: "stores entries that are not keys …
+# Nothing was written". A test that walks a different route than the one it certifies
+# certifies nothing — which is how that got past a green run.
+#
+# So the delete is PARSED OUT OF THE MESSAGE and applied to the file as described,
+# leaf first and then any parent the leaf's removal leaves empty, exactly as the
+# sentence says. Nothing is unlinked and nothing is added.
+
+_DELETE_STEP = re.compile(
+    r"Delete the `(?P<entry>[^`]+)` (?:entry|table) from (?P<where>\S+) FIRST"
+    r"(?: — and (?P<parents>.+?) with it)?",
+)
+
+
+def _spelling_parts(spelling: str) -> "list[str]":
+    """A quoted key back into its path segments, whichever of the file's spellings it is."""
+    return spelling.split(": ") if ": " in spelling else spelling.split(".")
+
+
+def perform_printed_delete(path: Path, refusal: str) -> "tuple[list, list]":
+    """Apply the message's own delete step to the file at *path*, literally.
+
+    Returns ``(entry, parents)`` so a test can say what it just did.
+    """
+    import yaml
+
+    from kanibako.settings.config_io import dump_doc
+
+    found = _DELETE_STEP.search(refusal)
+    assert found, f"no delete step to perform in:\n{refusal}"
+    entry = _spelling_parts(found.group("entry"))
+    parents = []
+    for spelled in (found.group("parents") or "").split("/"):
+        spelled = spelled.strip().strip("`")
+        if not spelled:
+            continue
+        segments = _spelling_parts(spelled)
+        # A parent is quoted WITH its YAML colon ("`agent: default:`"); the colon is the
+        # table's, not part of the key's name.
+        if segments[-1].endswith(":"):
+            segments[-1] = segments[-1][:-1]
+        parents.append(segments)
+
+    doc = yaml.safe_load(path.read_text()) or {}
+    holder = doc
+    for part in entry[:-1]:
+        holder = holder[part]
+    assert entry[-1] in holder, f"the message names {entry}, which the file does not hold"
+    del holder[entry[-1]]
+
+    for parent in parents:                       # innermost first, as printed
+        spot = doc
+        for part in parent[:-1]:
+            spot = spot.get(part, {})
+        stranded = spot.get(parent[-1])
+        if isinstance(stranded, dict) and not stranded:
+            del spot[parent[-1]]                 # the parent the delete stranded
+
+    dump_doc(path, doc)
+    return entry, parents
+
 
 def test_the_file_key_site_cures_itself_end_to_end(tree, tmp_path) -> None:
     """``agent.default.default_agent`` stored in the real SYSTEM file, refused by the
-    real selection door, cured by the steps that message printed."""
+    real selection door, cured by doing exactly what that message told the user to do."""
     stale = tree.write_system("agent:\n  default:\n    default_agent: claude\n")
     proj = tmp_path / "proj"
     proj.mkdir()
@@ -288,8 +355,13 @@ def test_the_file_key_site_cures_itself_end_to_end(tree, tmp_path) -> None:
     refusal = first.stdout + first.stderr
     assert first.returncode != 0, f"the stale key was not refused:\n{refusal}"
     assert "'system.default_agent' is RETIRED" in refusal
+    assert "agent: default:" in refusal, (
+        "the delete step does not name the parent it can strand"
+    )
 
-    stale.unlink()                                   # the printed delete step
+    entry, parents = perform_printed_delete(stale, refusal)
+    assert entry == ["agent", "default", "default_agent"]
+    assert parents == [["agent", "default"], ["agent"]]
     printed, cure = tree.run_printed_cure(refusal)
     assert cure.returncode == 0, f"{printed!r} failed:\n{cure.stdout}{cure.stderr}"
 
@@ -309,13 +381,15 @@ def test_the_nested_set_arm_cures_itself_end_to_end(tree) -> None:
     assert first.returncode != 0, f"the nested table was not refused:\n{refusal}"
     assert "`self.claude.env` is not a settings key" in refusal
 
-    stale_file.write_text("self:\n  model: sh\n")    # the printed delete step
+    entry, parents = perform_printed_delete(stale_file, refusal)
+    assert entry == ["self", "claude"]
+    assert parents == [["self"]], "the `self:` root is the parent this delete strands"
     printed, cure = tree.run_printed_cure(refusal)
     assert cure.returncode == 0, f"{printed!r} failed:\n{cure.stdout}{cure.stderr}"
 
     again = tree.cli("agent", "show", "shell")
     assert again.returncode == 0, f"the door still refuses:\n{again.stdout}{again.stderr}"
-    assert "`self.claude" not in again.stdout + again.stderr
+    assert "holds null" not in again.stdout + again.stderr
     read = tree.cli("agent", "get", "claude", "env.KANI_PROBE")
     assert read.returncode == 0, f"the cured key will not read back:\n{read.stderr}"
     assert read.stdout.strip() == printed.split("=", 1)[1], (
@@ -327,6 +401,10 @@ def test_the_nested_hand_edit_arm_cures_itself_end_to_end(tree) -> None:
     """No command to run: the printed steps ARE the file edit. Follow them in the
     printed order — move the content up, THEN delete the sub-table — and the door
     opens with the moved content readable."""
+    import yaml
+
+    from kanibako.settings.config_io import dump_doc
+
     stale_file = tree.agent_file("shell")
     stale_file.write_text("self:\n  foo:\n    model: opus\n")
 
@@ -336,43 +414,48 @@ def test_the_nested_hand_edit_arm_cures_itself_end_to_end(tree) -> None:
     assert "UP ONE LEVEL" in refusal
     assert refusal.index("Fix: ") < refusal.index("then delete the `self.foo` table")
 
-    stale_file.write_text("self:\n  model: opus\n")  # move up, then delete `foo`
+    # The MOVE the fix describes, then the delete it describes — in that order.
+    doc = yaml.safe_load(stale_file.read_text())
+    doc["self"].update(doc["self"].pop("foo"))
+    dump_doc(stale_file, doc)
     again = tree.cli("agent", "show", "shell")
     assert again.returncode == 0, f"the door still refuses:\n{again.stdout}{again.stderr}"
     assert "model = opus" in again.stdout, "the moved content is not what the door reads"
 
 
-def test_the_reserved_default_site_cures_itself_end_to_end(tree) -> None:
-    """The reserved tier's retired ``auto_approve`` refuses the LAUNCH snapshot; the
-    printed bare-key cure sets the tier it names and the snapshot builds."""
-    from kanibako.settings.settings_launch import build_launch_snapshot
-    from kanibako.settings.settings_resolve import ResolveCtx
+def test_the_reserved_default_site_cures_itself_end_to_end(tree, tmp_path) -> None:
+    """Site 4, through a REAL CLI DOOR: ``workset show --effective`` builds the same
+    launch snapshot the launch does, so the retired ``auto_approve`` refuses it, the
+    printed bare-key cure sets the tier it names, and the same verb then reads clean.
 
+    ⚑ NO CONTAINER NEEDED. An earlier note claimed this site could only be driven
+    in-process because the launch needs docker; that was simply unchecked — the
+    ``--effective`` preview runs the very same ``build_launch_snapshot``.
+    """
+    ws = "ws1"
+    created = tree.cli("workset", "create", ws)
+    assert created.returncode == 0, f"workset create failed:\n{created.stdout}{created.stderr}"
     tree.write_system("agent:\n  default:\n    auto_approve: true\n")
-    ctx = ResolveCtx(agent_name="claude", workset_name=None, host_home="/home/host",
-                    xdg={"XDG_DATA_HOME": "/data"})
 
     def door():
-        try:
-            build_launch_snapshot(
-                agent_name="claude", ctx=ctx, system_path=tree.system_path,
-                agent_path=None, workset_path=None, box_path=None,
-            )
-        except SettingsError as exc:
-            return str(exc)
-        return None
+        return tree.cli("workset", "show", str(ws), "--effective")
 
-    refusal = door()
-    assert refusal is not None and "'auto_approve' is RETIRED" in refusal, (
-        f"the stale tier entry was not refused: {refusal!r}"
-    )
+    first = door()
+    refusal = first.stdout + first.stderr
+    assert first.returncode != 0, f"the stale tier entry was not refused:\n{refusal}"
+    assert "'auto_approve' is RETIRED" in refusal
 
-    tree.system_path.unlink()                        # the printed delete step
+    entry, parents = perform_printed_delete(tree.system_path, refusal)
+    assert entry == ["agent", "default", "auto_approve"]
+    assert parents == [["agent", "default"], ["agent"]]
     printed, cure = tree.run_printed_cure(refusal)
     assert "system set access=full" in printed
     assert cure.returncode == 0, f"{printed!r} failed:\n{cure.stdout}{cure.stderr}"
 
-    assert door() is None, "the launch door still refuses after its own cure"
+    again = door()
+    assert "is RETIRED" not in again.stdout + again.stderr, (
+        f"the door still refuses after its own cure:\n{again.stdout}{again.stderr}"
+    )
     read = tree.cli("system", "get", "agent.default.access")
     assert read.returncode == 0 and read.stdout.strip() == "agent.default.access=full", (
         "the cure set a tier other than the one it named"

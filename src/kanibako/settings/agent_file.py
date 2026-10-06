@@ -37,6 +37,7 @@ from kanibako.settings.settings_drops import cascade_drop_set, contained_scopes
 from kanibako.settings.settings_resolve import (
     SettingsError,
     check_bind_tables,
+    delete_before_set_step,
     normalize_bind_dest,
 )
 from kanibako.utils import deep_merge
@@ -815,10 +816,15 @@ def _nested_table_steps(
     cure = _nested_agent_cure(category, sub_key, var=var, value=value)
     where = path if path is not None else "the agent settings file"
     if cure.lstrip().startswith("kanibako "):
+        # ⚑ The parent here is the file's own ``self:`` root: delete the sub-table and
+        # nothing else, and the file is left as ``self:`` with nothing under it — a null
+        # root, refused in its own right, on the very verb this step just cleared the way for.
         return (
-            f"  Delete the `{file_spelling(sub_key)}` table from {where} FIRST — the "
-            f"`set` below reads that file, and the stale entry refuses the write.\n"
-            f"  Fix: {cure}"
+            delete_before_set_step(
+                f"`{file_spelling(sub_key)}` table", where=where,
+                parents=[f"`{_ROOT}:`"],
+            )
+            + f"\n  Fix: {cure}"
         )
     return (
         f"  Fix: {cure}\n"

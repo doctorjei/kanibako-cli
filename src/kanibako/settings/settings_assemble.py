@@ -72,6 +72,7 @@ from kanibako.settings.settings_prefs import PREF_LEGAL_LEVELS, PREF_ROOT, refus
 from kanibako.settings.settings_resolve import (
     SettingsError,
     check_bind_map,
+    delete_before_set_step,
     normalize_bind_dest,
     refuse_dest_spelled_twice,
     refuse_scalar_at_table_key,
@@ -334,6 +335,19 @@ _MIRROR_STORY = (
 )
 
 
+def _file_spelled_parents(parts: "tuple[str, ...]") -> "list[str]":
+    """The ancestor tables of a file-key, innermost first, spelled the way the FILE spells them.
+
+    ``("agent", "default", "default_agent")`` → ``["`agent: default:`", "`agent:`"]`` — the
+    two tables a literal delete of the leaf can strand holding nothing, which YAML then reads
+    as ``null``. See :func:`delete_before_set_step` for why naming them is part of the cure.
+    """
+    return [
+        f"`{': '.join(parts[:n])}:`"
+        for n in range(len(parts) - 1, 0, -1)
+    ]
+
+
 def refuse_retired_keys(
     raw: Any, *, level: str, path: Path | None, box_name: str | None = None,
 ) -> None:
@@ -367,9 +381,11 @@ def refuse_retired_keys(
             f"{where} "
             f"(as `{': '.join(parts)}:`).\n"
             f"{_MIRROR_STORY if mirror is not None else _SELECTION_STORY}\n"
-            f"  Delete the `{': '.join(parts)}` entry from {where} FIRST — the `set` "
-            f"below reads that file, and the stale entry refuses the write.\n"
-            f"  Fix: {cure}"
+            + delete_before_set_step(
+                f"`{': '.join(parts)}` entry", where=where,
+                parents=_file_spelled_parents(parts),
+            )
+            + f"\n  Fix: {cure}"
         )
 
 
@@ -514,9 +530,12 @@ def refuse_retired_behavior_keys(
                 f"box would come up at the DEFAULT tier and a deliberately "
                 f"restricted box would silently run permissive.\n"
                 f"  {value_line}\n"
-                f"  Delete the `{spelling}` entry from {path} FIRST — the `set` "
-                f"below reads that file, and the stale entry refuses the write.\n"
-                f"  Fix: {cure}"
+                + delete_before_set_step(
+                    f"`{spelling}` entry",
+                    where=path if path is not None else "<settings>",
+                    parents=_file_spelled_parents(parts),
+                )
+                + f"\n  Fix: {cure}"
             )
 
 
