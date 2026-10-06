@@ -236,19 +236,42 @@ def _make_box(name: str, root: Path) -> Path:
     return _std().boxes / name
 
 
+def _make_standalone_box(root: Path) -> str:
+    """Create a REAL standalone box at *root*; return its registered name."""
+    from kanibako.project import registry_store
+    from kanibako.settings.config import load_config, user_config_file
+    from kanibako.settings.paths import resolve_standalone_project
+
+    root.mkdir(parents=True, exist_ok=True)
+    resolve_standalone_project(_std(), load_config(user_config_file()), str(root),
+                               initialize=True)
+    name = registry_store.standalone_name_for_root(_std().registry, root)
+    assert name is not None
+    return name
+
+
+def _primary_index() -> dict[str, str]:
+    """The REAL primary name index, as ``box rm`` reads it."""
+    from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
+
+    std = _std()
+    return load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary))
+
+
 class TestRealDoors:
     """Both refusals reached through the real CLI, asserted on the FILESYSTEM."""
 
-    def test_box_rm_refuses_a_scalar_box_tier_instead_of_deregistering(
+    def test_box_rm_refuses_a_scalar_box_tier_while_the_box_is_still_registered(
         self, tmp_path, monkeypatch,
     ):
-        """``box rm`` on a malformed box tier NAMES the section and parks no blob.
+        """``box rm`` on a malformed box tier refuses BEFORE the unregister.
 
         ⚑ THE DOOR.  ``box rm`` without ``--purge`` retains metadata and parks a
-        ``deregistered`` row so ``box register`` can readopt; that row's ``image`` is
-        exactly what this read supplies.  A malformed ``box`` used to be answered
-        ``None``, so the row was parked with no image and rc 0 said nothing was wrong.
-        MUTATION: drop the guard in ``_read_box_image`` and this reds with rc 0.
+        ``deregistered`` row whose ``image`` this read supplies.  The refusal must fire
+        while the box is still in the primary index: after the unregister no readopt
+        row would be parked, and nothing in the CLI could find the box again.
+        MUTATION: drop the guard in ``_read_box_image`` and this reds with rc 0; move
+        the read back below ``unregister_primary_box_name`` and it reds on the index.
         """
         from kanibako.project import registry_store
 
@@ -263,24 +286,68 @@ class TestRealDoors:
         assert "holds /x at 'box', where a table of keys belongs" in res.stderr
         assert f"{tier}" in res.stderr, "the refusal must NAME the file to fix by hand"
         assert tier.read_text() == "box: /x\n", "the malformed file was rewritten"
-        assert registry_store.load_deregistered(_std().registry) == {}, (
-            "a readopt row was parked for a box whose settings were never read"
-        )
+        assert "scalarbox" in _primary_index(), "the refusal left the box unregistered"
+        assert registry_store.load_deregistered(_std().registry) == {}
 
-    def test_box_duplicate_refuses_a_scalar_box_tier_instead_of_carrying_it(
+        tier.write_text("box: {}\n")
+        res = _cli(env, "box", "rm", "scalarbox")
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert "scalarbox" not in _primary_index()
+        res = _cli(env, "box", "register", "scalarbox")
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert "scalarbox" in _primary_index()
+
+    def test_standalone_box_rm_refuses_a_scalar_box_tier_while_still_registered(
         self, tmp_path, monkeypatch,
     ):
-        """``box duplicate --to primary`` refuses rather than carry a scalar into the new box.
+        """The standalone ``box rm`` refuses BEFORE ``unregister_standalone``.
+
+        MUTATION: move the ``_read_box_image_tiered`` read back below the unregister
+        and this reds on the standalone registry.
+        """
+        from kanibako.project import registry_store
+        from kanibako.settings.paths import BoxMode, _early_scope, _standalone_settings_files
+
+        env = _make_env(tmp_path, monkeypatch)
+        root = tmp_path / "ws" / "sabox"
+        name = _make_standalone_box(root)
+        tier, _ = _standalone_settings_files(root, early=_early_scope(_std(), BoxMode.standalone))
+        tier.write_text("box: /x\n")
+
+        res = _cli(env, "box", "rm", name)
+
+        assert res.returncode == 1, res.stdout + res.stderr
+        assert "holds /x at 'box', where a table of keys belongs" in res.stderr
+        assert tier.read_text() == "box: /x\n"
+        assert name in registry_store.load_standalone(_std().registry), (
+            "the refusal left the box unregistered"
+        )
+        assert registry_store.load_deregistered(_std().registry) == {}
+
+        tier.write_text("box: {}\n")
+        res = _cli(env, "box", "rm", name)
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert name not in registry_store.load_standalone(_std().registry)
+        res = _cli(env, "box", "register", name)
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert name in registry_store.load_standalone(_std().registry)
+
+    def test_box_duplicate_refuses_a_scalar_box_tier_before_any_side_effect(
+        self, tmp_path, monkeypatch,
+    ):
+        """``box duplicate --to primary`` refuses before it registers or copies anything.
 
         ⚑ THE DOOR.  ``--to primary`` is the route that reads the source's box tier and
-        writes the destination's, so it is where a carried value becomes the NEW box's
-        authored settings.  Used to complete with rc 0 and a destination ``box.yaml``
-        holding the source's ``/x``.
-        MUTATION: drop the guard in ``carried_box_settings`` and this reds with rc 0.
+        writes the destination's.  The read must come before the name assignment and
+        the workspace copy: the caller unwinds only ``ProjectError``/``OSError``, so a
+        later refusal left an orphan name and workspace that blocked the retry.
+        MUTATION: drop the guard in ``carried_box_settings`` and this reds with rc 0;
+        move the read back into ``_duplicate_to_local`` and it reds on the orphan.
         """
         env = _make_env(tmp_path, monkeypatch)
         src = tmp_path / "ws" / "srcbox"
         src_boxes = _make_box("srcbox", src)
+        (src / "file.txt").write_text("payload\n")
         (src_boxes / "box.yaml").write_text("box: /x\n")
         dst = tmp_path / "ws" / "dstbox"
 
@@ -289,5 +356,13 @@ class TestRealDoors:
 
         assert res.returncode == 1, res.stdout + res.stderr
         assert "holds /x at 'box', where a table of keys belongs" in res.stderr
-        carried_to = _std().boxes / "dstbox" / "box.yaml"
-        assert not carried_to.exists(), f"the source's /x crossed: {carried_to.read_text()}"
+        assert set(_primary_index()) == {"srcbox"}, "the refusal left a name behind"
+        assert not dst.exists(), "the refusal left the workspace copy behind"
+        assert not (_std().boxes / "dstbox").exists()
+
+        (src_boxes / "box.yaml").write_text("box: {}\n")
+        res = _cli(env, "box", "duplicate", str(src), str(dst),
+                   "--to", "primary", stdin="yes\n")
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert (dst / "file.txt").read_text() == "payload\n"
+        assert len(_primary_index()) == 2

@@ -1960,6 +1960,10 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     plan = None
     if args.purge and root_path is not None and metadata_dir is not None and metadata_dir.is_dir():
         plan = _standalone_teardown_plan(root_path, box_name, early=_early_scope(std, BoxMode.standalone))
+    image = (_read_box_image_tiered(
+        *_standalone_settings_files(root_path, early=_early_scope(std, BoxMode.standalone))
+    ) if not args.purge and root_path is not None and metadata_dir is not None
+        and metadata_dir.is_dir() else None)
     registry_store.unregister_standalone(std.registry, box_name)
     print(f"Removed '{box_name}' from the registry")
 
@@ -1987,12 +1991,7 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
             kind="standalone",
             workspace=str(root_path),
             metadata=str(root_path),
-            # Best-effort capture for a later readopt; either read failing is ``None``.
-            image=_read_box_image_tiered(
-                *_standalone_settings_files(
-                    root_path, early=_early_scope(std, BoxMode.standalone)
-                )
-            ),
+            image=image,
             deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
         )
         print(
@@ -2066,12 +2065,13 @@ def run_rm(args: argparse.Namespace) -> int:
         refuse_inherited_per_owner(std.primary_workset, _early_scope(std, BoxMode.primary))
     print(f"Removing project: {name} ({path})")
 
+    metadata_dir = std.boxes / name
+    image = (_read_box_image(_box_settings_files(BoxMode.primary, metadata_dir, None)[0])
+             if not args.purge and metadata_dir.is_dir() else None)
     unregister_primary_box_name(std.primary_workset, name, early=_early_scope(std, BoxMode.primary))
     print(f"Removed '{name}' from the registry")
 
     if args.purge:
-        metadata_dir = std.boxes / name
-
         if metadata_dir.is_dir():
             if not args.force:
                 from kanibako.errors import UserCanceled
@@ -2092,7 +2092,6 @@ def run_rm(args: argparse.Namespace) -> int:
     else:
         # No --purge: retain the metadata and park a ``deregistered`` entry, so a later
         # `rm --purge` / `register` finds it BY NAME.
-        metadata_dir = std.boxes / name
         if metadata_dir.is_dir():
             registry_store.register_deregistered(
                 std.registry,
@@ -2100,9 +2099,7 @@ def run_rm(args: argparse.Namespace) -> int:
                 kind="primary",
                 workspace=path,
                 metadata=str(metadata_dir),
-                image=_read_box_image(
-                    _box_settings_files(BoxMode.primary, metadata_dir, None)[0],
-                ),
+                image=image,
                 deregistered_at=datetime.now(tz=timezone.utc).isoformat(),
             )
             print(

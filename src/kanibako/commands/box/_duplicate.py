@@ -161,6 +161,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
     src_enable_vault = (
         _source_authored_vault(src_proj) if target_mode == BoxMode.standalone else None
     )
+    carried = carried_box_settings(box_workset_settings_paths(src_proj)[0])
 
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
@@ -206,7 +207,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             assert dest_workspace is not None  # a nulling root refused before the prompt
             _merge_workspace(workspace_src, dest_workspace, args.force)
         _duplicate_to_standalone(
-            src_proj, new_path, std, args.force, src_enable_vault,
+            src_proj, new_path, std, args.force, src_enable_vault, carried,
         )
     else:
         # PRIMARY (local) target.  F-3: copy the workspace and lay down the
@@ -220,7 +221,7 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         try:
             if not args.bare and workspace_src is not None and workspace_src.is_dir():
                 _merge_workspace(workspace_src, new_path, args.force)
-            _duplicate_to_local(src_proj, new_path, std, config, args.force)
+            _duplicate_to_local(src_proj, new_path, std, config, args.force, carried)
         except FileExistsError:
             # F-3 (NIT): a no-force copy onto a pre-existing (unregistered) dir
             # raises FileExistsError from copytree — surface the friendly
@@ -276,7 +277,7 @@ def _source_authored_vault(src_proj) -> bool:
     return read_box_enable_vault(src_box)
 
 
-def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault):
+def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault, carried):
     """Establish a fresh standalone box at *new_path*.
 
     A duplicate is a NEW box, so this mirrors ``create --standalone`` /
@@ -300,8 +301,6 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault):
     from kanibako.settings.paths import establish_standalone, standalone_box_store, write_vault_gitignore
     from kanibako.utils import write_project_gitignore
 
-    src_box, _ = box_workset_settings_paths(src_proj)
-
     dst_metadata = standalone_box_store(
         new_path, early=_early_scope(std, BoxMode.standalone))
     dst_shell = dst_metadata / "home"
@@ -312,10 +311,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault):
     # Ensure new_path exists for bare duplicates.
     new_path.mkdir(parents=True, exist_ok=True)
 
-    # Copy the source box metadata into box_data/ — preserving misc session
-    # files — but NOT the lock, the home (copied separately below), or the
-    # source box.yaml (the destination's box tier is written from
-    # ``carried_box_settings`` below, identity-stripped).
+    # Copy the source box metadata into box_data/, but NOT the lock, the home (copied
+    # below), or the source box.yaml (the box tier is written from *carried* below).
     if force and dst_metadata.is_dir() and not remove_box_tree(dst_metadata):
         # The copytree below uses dirs_exist_ok=True, so a silently-failed removal
         # would MERGE the new box into the old one rather than replace it.
@@ -355,7 +352,6 @@ def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault):
     # below writes the destination ROOT fresh — so such a key does not reach the duplicate
     # at all; that is the rule, not a gap.  ``establish_standalone`` also read-modify-writes
     # ``box.enable_vault`` into this SAME box-tier file, preserving what was carried.
-    carried = carried_box_settings(src_box)
     dst_box_settings = dst_metadata / BOX_META_FILE
     if carried:
         if force and dst_box_settings.exists():
@@ -446,7 +442,7 @@ def _assert_dup_home_free(std, name: str) -> None:
         raise
 
 
-def _duplicate_to_local(src_proj, new_path, std, config, force):
+def _duplicate_to_local(src_proj, new_path, std, config, force, carried):
     """Copy metadata into default-mode layout for new_path.
 
     ⚑ The source's VAULT is not carried, and that is CONFIRMED INTENDED
@@ -476,8 +472,6 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     # <metadata_path>/box.yaml otherwise — the BOX TIER ONLY.  A standalone source's
     # root-stored ``box.*`` belongs to the workset scope it is leaving, so it does not
     # travel; the destination resolves the PRIMARY workset's tier instead.
-    src_box, _ = box_workset_settings_paths(src_proj)
-    carried = carried_box_settings(src_box)
     src_meta_dir = box_metadata_dir(src_proj.mode, src_proj.metadata_path,
                                     early=src_proj._require_early())
 
@@ -660,6 +654,7 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     src_enable_vault = (
         _source_authored_vault(src_proj) if target_mode == BoxMode.standalone else None
     )
+    carried = carried_box_settings(box_workset_settings_paths(src_proj)[0])
 
     # Copy workspace (unless --bare).  Copy from the member's RECORDED workspace, not
     # the RESOLVED one: a null ``workset.workspaces`` leaves ``project_path`` None while
@@ -704,12 +699,12 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
         _duplicate_to_standalone(
-            src_proj, new_path, std, args.force, src_enable_vault,
+            src_proj, new_path, std, args.force, src_enable_vault, carried,
         )
     else:
         from kanibako.errors import ProjectError
         try:
-            _duplicate_to_local(src_proj, new_path, std, config, args.force)
+            _duplicate_to_local(src_proj, new_path, std, config, args.force, carried)
         except ProjectError as e:
             # A local target onto a deregistered/orphaned (or name-colliding) home
             # is refused with register/purge guidance rather than clobbered.
