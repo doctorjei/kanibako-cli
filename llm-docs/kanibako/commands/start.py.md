@@ -1857,8 +1857,8 @@ message carries that refusal instead of the create.
 
 ### Each clause of the cure is load-bearing
 
-⚑ **The `box_data/` clause** is what keeps the REBUILD arm off a live box tree, which is exactly what
-makes the suggested `box rm` safe to name: that arm fires only with `box_data/` gone, so
+⚑ **The clause that the default `box_data/` leaf is gone** keeps the REBUILD arm off a live box tree,
+which is exactly what makes the suggested `box rm` safe to name: that arm fires only with `box_data/` gone, so
 `_rm_standalone`'s deregistered-park arm is gated OFF (its `metadata_dir.is_dir()` test fails), the
 `rm` drops the registry entry and touches NOTHING on disk. Widening THAT arm would turn the suggestion
 into the destructive parking variant. The question-2 arm never reaches `box rm` — it answers with a
