@@ -12,6 +12,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`workset.*` directory keys set in the system settings file now apply everywhere.** `kanibako system set
+  workset.boxes=…` (and logs, workspaces, registry, channelroot, channels.*, canon, template, vault_ro,
+  vault_rw) is now read by `create`, `workset connect`, `workset create`, `box list`, and box detection, not
+  only by the launch. A working set's own `workset.yaml` still wins, a `null` there included. Before, those
+  commands used the default directory while the launch used the system value. See *`workset.*` directory
+  keys set with `system set` now reach every reader* in `MIGRATION.md`.
+
+- **A working set directory key may reference another one** (`@workset.channelroot/chat`,
+  `@workset.boxes/logs`), its working set's name (`{meta.workset.name}`), or a system path key
+  (`{system.channels.mailboxes}`); a cycle is refused, naming the chain.
+
+- **A standalone box's `workset.logs` default is now `@workset.boxes`** (was `@meta.box.path`; same
+  directory, `box_data/`).
+
+- **A working set directory value that names no working set is refused wherever it would be shared.**
+  Keyspec §0 "Per-owner resources": a value every working set inherits must spell the working set
+  into the path, or every working set gets one shared directory. Every working set directory key but
+  `workset.template` is checked. `system set workset.boxes=/srv/kb` exits 1, writes nothing, and
+  prints a spelling that works (`'/srv/kb/{meta.workset.path}'`); a working set's own file may still
+  hold a plain path. A value the system settings file already holds is refused by every reader that
+  reads it, naming the file: a plain `workset.boxes` there makes `box list`, `create`, `stop <box>`,
+  and nearly every other command exit 1 until you change it with `system set` or `system reset`.
+  The deleting and moving verbs (`box rm --purge`, `box purge`, `box move`, `box convert`, `box
+  extract`, `box duplicate --force`, `workset rm --purge`, and `workset disconnect --remove-files`)
+  check every working set they touch before their first change. `start` applies the same test to
+  each per-owner key and bind entry a settings file of a wider scope holds, naming the file and the
+  entry. `stop --all` still stops every running box; it writes back no in-box login. See *A working set directory value in the system settings file
+  must name its working set* in `MIGRATION.md`.
+
+- **`start` offers a move, not a rebuild, when `workset.boxes` is not at its default.** A
+  registered box whose store is missing was offered `box rm` and `create`, which make an empty box
+  while the old store may sit where `workset.boxes` used to point. The refusal now prints `mkdir -p
+  … && mv <old store> <new store>`, naming the old store when it is still at the default place, and
+  offers no move onto a path that exists. The rebuild line is printed only while `workset.boxes` is at
+  its default. For a standalone box the move does not yet help: the launch still looks for its store
+  only at `<root>/box_data`, so after the move it still refuses, and nothing is lost.
+
 - **`box get` and `workset get` on `agent.<node>.*` no longer read the agent's own file.** They
   printed the value stored in `agents/<node>/agent.yaml`, another tier's file; per keyspec §2a a
   plain `get` answers only what the command scope's file stores, and neither scope can store these
