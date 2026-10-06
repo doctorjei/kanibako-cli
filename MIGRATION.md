@@ -7103,6 +7103,77 @@ package moves the set together. That makes ordering load-bearing:
    agent — and asks you to upgrade the `kanibako-agent-*` packages to match the base first, then to
    report it to the plugin's author if that does not cure it.
 
+### 2.108 Binary transforms are selected by the `transform` key
+
+Which binary transform runs for an agent is now chosen by the
+`agent.<agent>.transform` key. The claude plugin declares `transform: tweakcc`,
+so **claude boxes are unaffected** — the patcher runs exactly as before.
+
+Previously the patcher was gated only on `transform_settings` being non-empty,
+so **any** agent with that table set had claude's tweakcc patcher run against
+its binary. It now runs only when `transform` names `tweakcc`.
+
+| If you have                                                   | What changes                                                                    | What to do                                                                                    |
+|-----------------------------------------------------------------|----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| A claude box (with or without `transform_settings`)              | Nothing                                                                           | Nothing                                                                                           |
+| A goose or codex box with a `transform_settings` table            | claude's patcher no longer runs against that agent's binary, and kanibako warns | Remove the `transform_settings` table from that agent's settings, or set `agent.<agent>.transform` if a transform exists for it |
+
+Running claude's binary patcher against a non-claude binary was never intended;
+the key makes the choice explicit rather than inferred.
+
+### 2.109 The flattened directives file: no generated headings, a new link form
+
+Kanibako assembles your directive tree — the kickoff plus everything it imports —
+into the single file it hands the agent. The **sources you edit are unchanged**;
+what changed is the shape of the assembled artifact.
+
+#### What changed
+
+Each imported chapter used to be emitted under a machine-generated heading
+(`## canon_bible_general_directives_ROM_GENERAL_md`), and every reference to it
+became a link to that anchor. Chapters are now emitted under **their own**
+headings, so the assembled file reads as one outline rather than a list of
+slugs.
+
+A new import form both includes a file **and** links to it:
+
+```markdown
+1.1 [Identity & Environment](@general/directives/IDENTITY.md)
+```
+
+which produces the heading `## 1.1 Identity & Environment` and a link that
+resolves to it. Outside a numbered list the display text is used on its own
+(`[Release Notes](@notes.md)` → `## Release Notes`). Heading depth is the level
+of the heading enclosing the list, plus how deeply the row is nested within it,
+so an included chapter always sits **beneath** the section that included it.
+
+Two kinds of file now contribute **no section**: one that is only comments and
+whitespace, and an index that is nothing but imports. Their imports are still
+followed. When a chapter that a numbered row points at is left out, **the row is
+dropped and the rows after it renumber**, so a reader never sees a number
+pointing at a section that is not in the file.
+
+#### What you need to do
+
+| If you have | What changes | What to do |
+|---|---|---|
+| Directive sources using plain `@path` imports | Nothing — `@path` still includes the file exactly as before; it produces no link and no heading | Nothing |
+| A hand-written link to a generated anchor, e.g. `[see](#canon_handbook_general_directives_rules_CANON_md)` | That anchor no longer exists, so the link goes nowhere | Point it at the heading the chapter itself generates — that heading's slug, lower-cased with spaces turned into hyphens, which is what `kanibako.scripts.import-directives.gfm_anchor` computes for every emitted heading. A chapter a numbered row pulls in emits its heading with the row's number on it, and the number's dots are dropped with the spaces: a `1.1 Identity & Environment` chapter emits `## 1.1 Identity & Environment`, so its anchor is `#11-identity--environment`. Or convert the import to `[Display Text](@path)` and let the assembler write the link for you |
+| A stub chapter that is only comments (the stock `ROM_AGENT.md` / `SYS_AGENT.md` placeholders) | It no longer contributes an empty section, and a numbered row pointing at it is dropped | Nothing, unless you want the section: give the file real content and it reappears on the next reload |
+| A numbered index whose rows you refer to by number elsewhere | Numbers can shift when an empty chapter's row is dropped | Refer to chapters by name rather than by number, or give the empty chapter content |
+
+Nothing here requires an edit to a working directive tree. The one case that
+breaks silently is a hand-written `#canon_*_md` fragment link, because the
+anchor it names is no longer generated.
+
+#### Why
+
+The generated headings were an artifact of assembly, not something an author
+chose: they named files rather than subject matter, they nested by accident of
+path depth rather than by meaning, and a placeholder chapter produced a heading
+with nothing under it. Letting each chapter carry its own heading, and leaving
+out what has no content, makes the assembled file say what is actually in it.
+
 ### 3.1 Core module paths moved (package-ification) — the flat compatibility shims are DELETED
 
 v1.8.0 promotes the flat `src/kanibako/*.py` modules into coarse domain subpackages
@@ -8280,8 +8351,8 @@ is for:
 
 See "The canon books — where your instruction files now live" in the [v1.8.0
 guide](#migrating-to-kanibako-v180) for the layout and each scope's source, and
-§14, "The flattened directives file: no generated headings, a new link form", for
-what the flattener makes of them.
+"2.109 The flattened directives file: no generated headings, a new link form" in
+the [v1.8.0 guide](#migrating-to-kanibako-v180) for what the flattener makes of them.
 
 ⚑ **Inside the canon, a template layer may seed the notebook and the workbook
 only.** The charter and the handbook reach the box as read-only binds, not as
@@ -8611,76 +8682,3 @@ kanibako system set system.env.<VAR>=<value>
 ```
 
 (`$XDG_CONFIG_HOME` defaults to `~/.config`. Adjust if you set it explicitly.)
-
----
-
-## 13. Binary transforms are selected by the `transform` key
-
-Which binary transform runs for an agent is now chosen by the
-`agent.<agent>.transform` key. The claude plugin declares `transform: tweakcc`,
-so **claude boxes are unaffected** — the patcher runs exactly as before.
-
-Previously the patcher was gated only on `transform_settings` being non-empty,
-so **any** agent with that table set had claude's tweakcc patcher run against
-its binary. It now runs only when `transform` names `tweakcc`.
-
-| If you have                                                   | What changes                                                                    | What to do                                                                                    |
-|-----------------------------------------------------------------|----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
-| A claude box (with or without `transform_settings`)              | Nothing                                                                           | Nothing                                                                                           |
-| A goose or codex box with a `transform_settings` table            | claude's patcher no longer runs against that agent's binary, and kanibako warns | Remove the `transform_settings` table from that agent's settings, or set `agent.<agent>.transform` if a transform exists for it |
-
-Running claude's binary patcher against a non-claude binary was never intended;
-the key makes the choice explicit rather than inferred.
-
-## 14. The flattened directives file: no generated headings, a new link form
-
-Kanibako assembles your directive tree — the kickoff plus everything it imports —
-into the single file it hands the agent. The **sources you edit are unchanged**;
-what changed is the shape of the assembled artifact.
-
-### What changed
-
-Each imported chapter used to be emitted under a machine-generated heading
-(`## canon_bible_general_directives_ROM_GENERAL_md`), and every reference to it
-became a link to that anchor. Chapters are now emitted under **their own**
-headings, so the assembled file reads as one outline rather than a list of
-slugs.
-
-A new import form both includes a file **and** links to it:
-
-```markdown
-1.1 [Identity & Environment](@general/directives/IDENTITY.md)
-```
-
-which produces the heading `## 1.1 Identity & Environment` and a link that
-resolves to it. Outside a numbered list the display text is used on its own
-(`[Release Notes](@notes.md)` → `## Release Notes`). Heading depth is the level
-of the heading enclosing the list, plus how deeply the row is nested within it,
-so an included chapter always sits **beneath** the section that included it.
-
-Two kinds of file now contribute **no section**: one that is only comments and
-whitespace, and an index that is nothing but imports. Their imports are still
-followed. When a chapter that a numbered row points at is left out, **the row is
-dropped and the rows after it renumber**, so a reader never sees a number
-pointing at a section that is not in the file.
-
-### What you need to do
-
-| If you have | What changes | What to do |
-|---|---|---|
-| Directive sources using plain `@path` imports | Nothing — `@path` still includes the file exactly as before; it produces no link and no heading | Nothing |
-| A hand-written link to a generated anchor, e.g. `[see](#canon_handbook_general_directives_rules_CANON_md)` | That anchor no longer exists, so the link goes nowhere | Point it at the chapter's own heading (`#canon-structure`), or convert the import to `[Display Text](@path)` and link to the heading that generates |
-| A stub chapter that is only comments (the stock `ROM_AGENT.md` / `SYS_AGENT.md` placeholders) | It no longer contributes an empty section, and a numbered row pointing at it is dropped | Nothing, unless you want the section: give the file real content and it reappears on the next reload |
-| A numbered index whose rows you refer to by number elsewhere | Numbers can shift when an empty chapter's row is dropped | Refer to chapters by name rather than by number, or give the empty chapter content |
-
-Nothing here requires an edit to a working directive tree. The one case that
-breaks silently is a hand-written `#canon_*_md` fragment link, because the
-anchor it names is no longer generated.
-
-### Why
-
-The generated headings were an artifact of assembly, not something an author
-chose: they named files rather than subject matter, they nested by accident of
-path depth rather than by meaning, and a placeholder chapter produced a heading
-with nothing under it. Letting each chapter carry its own heading, and leaving
-out what has no content, makes the assembled file say what is actually in it.
