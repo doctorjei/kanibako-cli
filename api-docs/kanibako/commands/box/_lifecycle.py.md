@@ -39,7 +39,7 @@ def _resolve_primary_state(root: Path, std: StandardPaths, config: BootstrapConf
 def _default_state_from_meta(workspace: Path, std: StandardPaths) -> ProjectState | None
 def _resolve_workset_state(raw_path: Path, std: StandardPaths, config: BootstrapConfig) -> ProjectState
 def _state_from_paths(owner: str, proj: ProjectPaths, *, ws: Workset | None, early: EarlyScope, is_external: bool=False, workspace: Path | None=None) -> ProjectState
-def _workspace_copy_ignore(metadata_root: Path, copied_root: Path, *, early: EarlyScope) -> Callable[[str, list[str]], set[str]]
+def _workspace_copy_ignore(metadata_root: Path, copied_root: Path, *, mode: BoxMode, early: EarlyScope) -> Callable[[str, list[str]], set[str]]
 def _resolve_target_workset(name: str, std: StandardPaths) -> Workset
 def _cure_ref(state: ProjectState) -> str
 def _validate(state: ProjectState, spec: TargetSpec, std: StandardPaths, config: BootstrapConfig, *, force: bool, cwd: Path) -> dict
