@@ -634,6 +634,21 @@ class TestTheRefusalNamesTheReallyBrokenRef:
         assert phrase in message, message
         assert "@meta.workset.path" not in message, message
 
+    @pytest.mark.parametrize("stored, ref, phrase", [
+        ("", "{$NOPE_UNKNOWN}", "Unknown variable: $NOPE_UNKNOWN"),
+        ("box:\n  shell: /s/{box.image}\n  image: /i/{box.shell}\n", "{box.shell}",
+         "Cyclic @-reference"),
+    ], ids=["unknown-variable", "cycle"])
+    def test_a_direct_value_names_the_defect_beside_the_blind_ref(
+        self, tmp_path, std, stored, ref, phrase,
+    ):
+        files = _files(tmp_path)
+        if stored:
+            files["system"].write_text(stored)
+        message = self._refused(files, f"/x/{{meta.workset.path}}/{{meta.box.name}}/{ref}", std)
+        assert phrase in message, message
+        assert "@meta.workset.path" not in message, message
+
 
 def _root_store(value, *, at: str = "workset.boxes") -> KeyStore:
     """A resolved snapshot holding *value* at *at*, with the other root key usable."""
