@@ -588,6 +588,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A printed cure now quotes the box name it names.** `box rm` and `box create` printed `kanibako box register <name>`
+  and `kanibako box rm <name> --purge` with the name interpolated raw, and a box created from a path is registered under
+  that path's basename verbatim — `kanibako create 'q$(id)'` exits 0 and leaves a box named `q$(id)`. Pasted as printed,
+  that is a command substitution, not a cure. `start`'s name-shaped miss had the same shape. `code --remote`'s
+  `ssh … kanibako create <box>` hint now quotes the box for the remote shell as well as the local one, since ssh hands
+  its trailing words to the remote shell to parse again. A `box` or `start` cure whose name needs no quoting is
+  unchanged; the `ssh` hint now also carries `--` before the host.
+
 - **`box move` and `box move <primary> --standalone` no longer land a user's own `<workspace>/box_data/` on the standalone
   store path.** It previously merged into the store, so a colliding file was silently overwritten and a later
   `box rm --purge` deleted the user's content; the copy now aims at the workspace the target resolves. An in-place
