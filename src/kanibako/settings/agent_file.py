@@ -768,8 +768,8 @@ def _nested_agent_cure(
     from kanibako.settings.config_keys import AGENT_DEFAULT_SUB
 
     if category is None:
-        # ⚑ It must not prescribe the DELETION — the caller's closing line already does,
-        # and a cure that also said "delete it" read as "delete the content".
+        # ⚑ A MOVE, not a set: the caller keeps this arm's delete AFTER the fix, since
+        # deleting first would destroy the content being moved up.
         return (
             f"move what is inside it UP ONE LEVEL. The state knobs sit DIRECTLY under "
             f"`{_ROOT}:` (`model: opus`), and so does every category table;"
@@ -800,6 +800,30 @@ def _refused_category(sub_tbl: dict) -> str | None:
     File order, not sorted: it names the table the user wrote first.
     """
     return next((k for k in sub_tbl if k in _FLAT_AGENT_CATEGORIES), None)
+
+
+def _nested_table_steps(
+    category: str | None, sub_key: str, *, var: str, value: str, path: Path | None
+) -> str:
+    """The fix + delete pair, in the order THIS arm's cure actually needs.
+
+    ⚑ Delete-first is correct ONLY when the cure is a runnable ``set``: that command
+    reads the file the stale table is still in, so the stale entry refuses the write.
+    The other arms MOVE the content (up one level, or into the SYSTEM file) or hand-edit
+    it — deleting first would destroy what the user was just told to move.
+    """
+    cure = _nested_agent_cure(category, sub_key, var=var, value=value)
+    where = path if path is not None else "the agent settings file"
+    if cure.lstrip().startswith("kanibako "):
+        return (
+            f"  Delete the `{file_spelling(sub_key)}` table from {where} FIRST — the "
+            f"`set` below reads that file, and the stale entry refuses the write.\n"
+            f"  Fix: {cure}"
+        )
+    return (
+        f"  Fix: {cure}\n"
+        f"  then delete the `{file_spelling(sub_key)}` table from {where}."
+    )
 
 
 def _refuse_nested_tables(
@@ -863,10 +887,7 @@ def _refuse_nested_tables(
             f"{path if path is not None else '<agent settings>'}; it holds: "
             f"{held}.\n"
             f"{history}\n"
-            f"  Delete the `{file_spelling(sub_key)}` table from "
-            f"{path if path is not None else 'the agent settings file'} FIRST — the "
-            f"`set` below reads that file, and the stale entry refuses the write.\n"
-            f"  Fix: {_nested_agent_cure(category, sub_key, var=var, value=value)}"
+            f"{_nested_table_steps(category, sub_key, var=var, value=value, path=path)}"
         )
 
 

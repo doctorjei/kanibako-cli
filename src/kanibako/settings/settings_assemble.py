@@ -365,9 +365,9 @@ def refuse_retired_keys(
         raise SettingsError(
             f"'{key}' is RETIRED and is still set in the {level} settings file "
             f"{where} "
-            f"(as `{' '.join(parts)}:`).\n"
+            f"(as `{': '.join(parts)}:`).\n"
             f"{_MIRROR_STORY if mirror is not None else _SELECTION_STORY}\n"
-            f"  Delete the `{' '.join(parts)}` entry from {where} FIRST — the `set` "
+            f"  Delete the `{': '.join(parts)}` entry from {where} FIRST — the `set` "
             f"below reads that file, and the stale entry refuses the write.\n"
             f"  Fix: {cure}"
         )
@@ -445,7 +445,6 @@ def _retired_behavior_cure(
     named = node or subject
     agent = display_agent_ref(named) if named else "<agent>"
     if agent == _AGENT_DEFAULT_SUB and level not in PREF_LEGAL_LEVELS:
-        # ⚑ `agent set default …` is refused rc 1 (no persona store); the tier's default is the SYSTEM-scope BARE key.
         return f"kanibako system set {successor}={tier}"
     if level == "agent":
         return f"kanibako agent set {agent} {successor}={tier}"
