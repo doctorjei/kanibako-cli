@@ -7,7 +7,9 @@ _Signatures only: no comments, no docstrings, no bodies._
 ## Variables
 
 ```
-_DASH_ESCAPE = '-.'
+WORKSET_SEGMENT_PRIMARY = 'primary'
+WORKSET_SEGMENT_STANDALONE = 'standalone'
+CONTAINER_NAME_PREFIX = 'kb-'
 _GITIGNORE_ENTRIES = ['box_data/']
 ```
 
@@ -17,10 +19,16 @@ def cp_if_newer(src: str | os.PathLike, dst: str | os.PathLike) -> bool
 def confirm_prompt(message: str) -> None
 def deep_merge(base: dict, override: dict) -> dict
 def short_hash(full_hash: str, length: int=8) -> str
-def container_name_for_box_name(name: str) -> str
-def container_name_for_standalone_root(root: Path) -> str
-def container_name_for(proj: ProjectPaths) -> str
+def renders_no_name(box: str) -> bool
+def unrenderable_box_name_refusal(box: str, mode: str, path: Path | None) -> str
+def name_segment(segment: str) -> str
+def workset_segment(mode: str, group_name: str | None) -> str
+def render_container_name(workset: str, box: str, helper_num: int | None=None) -> str | None
+def render_socket_identity(box: str, workset: str) -> str | None
+def container_name_for_box_name(name: str, workset: str) -> str | None
+def container_name_segments(proj: ProjectPaths) -> tuple[str, str]
+def container_name_for(proj: ProjectPaths) -> str | None
+def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]
 def project_hash(project_path: str) -> str
-def escape_path(path: str) -> str
 def write_project_gitignore(project_path: Path) -> None
 ```

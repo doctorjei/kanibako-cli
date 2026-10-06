@@ -13,5 +13,5 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
 def _peek_archive_info(archive_file: Path) -> dict[str, str] | None
 def _restore_all(std, config, args) -> int
 def _parse_info(info_file: Path) -> dict[str, str]
-def _validate_git_state(proj, info: dict[str, str], force: bool) -> int
+def _validate_git_state(workspace: Path | None, info: dict[str, str], force: bool) -> int
 ```

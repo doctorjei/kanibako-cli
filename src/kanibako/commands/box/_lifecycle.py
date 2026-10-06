@@ -44,9 +44,11 @@ from kanibako.settings.paths import (
     ProjectPaths,
     StandardPaths,
     WorksetSpec,
+    _WorksetLike,
     _find_workset_for_path,
     _primary_box_paths,
     _register_workset_box_membership,
+    _workset_box_name_for_workspace,
     _workset_box_paths,
     _box_settings_files,
     _default_project_group,
@@ -268,6 +270,12 @@ def resolve_lifecycle_target(
     detection = detect_project_mode(raw_path, std, config)
 
     if detection.mode == BoxMode.named:
+        # ⚑ A ``workset.workspaces`` path is where a member MAY live; only a ``boxes:``
+        # record makes one (spec § Detection & import).  Unrecorded, the primary decides.
+        if (primary_box_name_for_workspace(std.primary_workset, str(raw_path),
+                                           early=_early_scope(std, BoxMode.primary)) is not None
+                and not _workset_records_member_at(raw_path, std)):
+            return _resolve_primary_state(raw_path, std, config)
         return _resolve_workset_state(raw_path, std, config)
     if detection.mode == BoxMode.standalone:
         proj = resolve_standalone_project(
@@ -275,8 +283,27 @@ def resolve_lifecycle_target(
         )
         return _state_from_paths("standalone", proj, ws=None, early=_early_scope(std, BoxMode.standalone))
 
-    # default mode
-    root = detection.project_root
+    return _resolve_primary_state(detection.project_root, std, config)
+
+
+def _workset_records_member_at(resolved: Path, std: StandardPaths) -> bool:
+    """Whether a workset records a member at *resolved*: in-tree or an external connect."""
+    from kanibako.launch import box_resolve
+
+    if box_resolve.find_connected_external_box(resolved, std) is not None:
+        return True
+    try:
+        ws, _ = _find_workset_for_path(resolved, std)  # type: ignore[assignment]
+    except WorksetError:
+        return False
+    return _workset_box_name_for_workspace(
+        ws.root, str(resolved), early=_early_scope(std, BoxMode.named, ws.name)) is not None
+
+
+def _resolve_primary_state(
+    root: Path, std: StandardPaths, config: BootstrapConfig,
+) -> ProjectState:
+    """Resolve a PRIMARY (default-mode) workspace to a :class:`ProjectState`."""
     if not root.is_dir():
         # ⚑ Workspace dir gone (moved before `remap`): resolve_project requires it, so
         # fall back to the registered metadata alone.
@@ -306,10 +333,8 @@ def _default_state_from_meta(
     shell_path, vault_ro, vault_rw = _primary_box_paths(std, metadata_path, name)
     # ⚑ The GROUP is the PRIMARY workset — the same one ``resolve_project`` derives — so
     # this fallback resolves ``box.enable_vault`` through the SAME CASCADE the launch path
-    # uses.  Passing ``None`` here made a ``remap`` answer differently depending only on
-    # whether the workspace dir was still on disk; reading the two tiers DIRECTLY (which
-    # this did until 2026-08-29) made it answer differently from ``resolve_project``
-    # whenever a base- or system-tier value existed, which is the same defect one tier up.
+    # uses, so a ``remap`` answers as ``resolve_project`` does whether or not the
+    # workspace dir is still on disk.
     box_tier, workset_tier = _box_settings_files(
         BoxMode.primary, metadata_path, _default_project_group(std),
     )
@@ -352,12 +377,31 @@ def _resolve_workset_state(
     proj = resolve_workset_project(
         WorksetSpec.from_workset(ws), proj_name, std, config, initialize=False,
     )
-    assert proj.project_path is not None  # only a standalone box can lack a workspace
-    is_external = not is_in_tree_workspace(ws, proj.project_path)
+    recorded = recorded_workspace_for(ws, proj_name, proj.project_path)
+    if recorded is None:
+        refuse_null_workspaces(ws.root, f"a workspace for '{proj_name}'",
+                               early=_early_scope(std, BoxMode.named, ws.name))
+    assert recorded is not None  # refused on the line above
+    is_external = not is_in_tree_workspace(ws, recorded)
     return _state_from_paths(
         owner_token(BoxMode.named, ws.name), proj, ws=ws,
         early=_early_scope(std, BoxMode.named, ws.name), is_external=is_external,
+        workspace=recorded,
     )
+
+
+def recorded_workspace_for(
+    ws: "_WorksetLike", box_name: str, resolved: Path | None,
+) -> Path | None:
+    """The member's recorded ``source_path`` — its files — else *resolved*.
+
+    Shared by lifecycle, ``box duplicate``, and ``box archive``: a null
+    ``workset.workspaces`` nulls the resolved path, never the ``boxes:`` row.
+    """
+    for member in ws.projects:
+        if member.name == box_name:
+            return member.source_path
+    return resolved
 
 
 def _state_from_paths(
@@ -367,21 +411,24 @@ def _state_from_paths(
     ws: Workset | None,
     early: EarlyScope,
     is_external: bool = False,
+    workspace: Path | None = None,
 ) -> ProjectState:
     # ⚑ ``proj.vault_enabled()`` is the RESOLVED value; re-read the BOX TIER alone for what
     # the box authored, so a lifecycle op never persists the workset's default as a
     # box-scope override (see ``ProjectState.box_authored_vault``).
     box_tier, _ = box_workset_settings_paths(proj)
-    if proj.project_path is None:
+    # ⚑ A named caller passes its recorded *workspace*.
+    recorded = workspace if workspace is not None else proj.project_path
+    if recorded is None:
         # A standalone root that nulls ``workset.workspaces``: no workspace to move or copy.
         refuse_null_workspaces(proj.metadata_path, f"a workspace for '{proj.name}'",
                                standalone=True, early=early)
-    assert proj.project_path is not None  # refused on the line above
+    assert recorded is not None  # only a standalone box can lack a workspace
     return ProjectState(
         owner=owner,
         mode=proj.mode,
-        name=proj.name or proj.project_path.name,
-        workspace_path=proj.project_path,
+        name=proj.name or recorded.name,
+        workspace_path=recorded,
         metadata_path=proj.metadata_path,
         shell_path=proj.shell_path,
         vault_ro=proj.vault_ro_path,
@@ -503,6 +550,17 @@ def _resolve_target_workset(
     return load_workset(registry[stored], stored, early_system=std.early_system)
 
 
+def _cure_ref(state: ProjectState) -> str:
+    """The reference a printed cure reaches *state* by.
+
+    ⚑ A standalone's name is in no registry the route reads, and its nested workspace
+    resolves through the path space its root sits in, so it is the box root.
+    """
+    if state.mode is BoxMode.standalone:
+        return str(state.metadata_path)
+    return state.name
+
+
 def _validate(
     state: ProjectState,
     spec: TargetSpec,
@@ -620,7 +678,8 @@ def _validate(
                 and dest != (ws_dir / new_name).resolve()):
             leaf = ws_dir / new_name
             rename = "" if _same_box_name(new_name, state.name) else f" --name {new_name}"
-            bare = (f"kanibako box convert {state.name} --workset {target_ws.name} "
+            ref = _cure_ref(state)
+            bare = (f"kanibako box convert {ref} --workset {target_ws.name} "
                     f"--move{rename}")
             if spec.records_only:
                 advice = (f"Move the files to `{leaf}` and run `kanibako box remap` "
@@ -628,13 +687,35 @@ def _validate(
             elif spec.verb == "convert":
                 advice = f"Run `{bare}`"
             else:
-                advice = (f"Run `kanibako box move {state.name} {leaf} --workset "
+                advice = (f"Run `kanibako box move {ref} {leaf} --workset "
                           f"{target_ws.name}{rename}` (or `{bare}`)")
             raise ProjectError(
                 f"Refusing to record {dest} for a workset member: inside workset "
-                f"'{target_ws.name}' a box lives at `{leaf}`, and no other in-tree "
-                f"path is the workspace the box records. {advice}, or choose a "
-                "destination outside the workset."
+                f"'{target_ws.name}' a member would live at `{leaf}`, and no other "
+                f"in-tree path is the workspace the box records. {advice}, or "
+                "choose a destination outside the workset."
+            )
+
+    # --- ⚑ an IN-PLACE convert records the box only where it stands: any other leaf
+    #     copies the tree in and orphans the source's tree.  A relocation moves it.
+    if (target_mode == BoxMode.named and target_ws is not None
+            and not relocating and not spec.records_only
+            and state.mode is not BoxMode.named):
+        landing_leaf = target_ws.workspaces_dir
+        if (landing_leaf is not None
+                and is_in_tree_workspace(target_ws, state.workspace_path)
+                and (landing_leaf / new_name).resolve() != state.workspace_path.resolve()):
+            rename = "" if _same_box_name(new_name, state.name) else f" --name {new_name}"
+            ref = _cure_ref(state)
+            raise ProjectError(
+                f"Refusing to convert '{state.name}' in place: a member of workset "
+                f"'{target_ws.name}' would live at {(landing_leaf / new_name)}, and "
+                f"'{state.name}' already has its workspace at "
+                f"{state.workspace_path} — an in-place convert would leave that tree "
+                f"behind with no box owning it. Run `kanibako box convert "
+                f"{ref} --workset {target_ws.name}{rename} --move` to move it "
+                f"there, or `kanibako box move {ref} <path>` to move it out of "
+                f"the workset."
             )
 
     # --- membership guard: refuse landing inside a workset the project is
@@ -721,7 +802,8 @@ def _validate(
     # --- an UNREGISTERED leaf of the target's new name is the same collision on disk:
     #     ``add_project`` adopts whatever is already there.  ⚑ ``records_only`` is exempt
     #     (its files ARE meant to be at *dest*), and so is a leaf that IS the source's
-    #     own — the same-workset, same-name case releases and re-records it.
+    #     own — the same-workset, same-name case releases and re-records it — and so is
+    #     the source's own workspace as the landing leaf, kept or vacated alike.
     if (
         not spec.records_only
         and target_mode == BoxMode.named
@@ -734,6 +816,10 @@ def _validate(
                 leaf for leaf in _member_leaves(state.ws, state.name)
                 if leaf is not None
             )
+        landing_leaf = target_ws.workspaces_dir
+        if (landing_leaf is not None
+                and (landing_leaf / new_name).resolve() == state.workspace_path.resolve()):
+            own = own | {state.workspace_path}
         taken = [p for p in sorted(_existing_member_leaves(target_ws, new_name))
                  if p not in own]
         if taken:
@@ -743,7 +829,7 @@ def _validate(
                 "Move it aside, or choose another name."
             )
 
-    # --- cross-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
+    # --- same-kind name policy on a DEFAULT-mode --name rename edge (F-7) ---
     # ⚑ Checked UP FRONT so a name refusal costs no file copy.
     requested_name = spec.name or ""
     # The reuse-in-place edges, whose teardown is skipped: the box keeps its own vault.
@@ -754,8 +840,8 @@ def _validate(
     if target_mode == BoxMode.primary:
         landing_ws = dest if dest is not None else state.workspace_path
         mint = _default_rename_name(state, std, landing_ws, requested_name)
-        # ⚑ FIX1: a same-name relocate reuses the SOURCE's OWN registration — self-reuse,
-        # not a collision, so it is exempt from the same-kind guard.
+        # ⚑ FIX1: a same-name relocate reuses the SOURCE's OWN registration, so it is
+        # exempt from the same-kind guard.
         own_name = _primary_source_own_name(state, std)
         # ⚑ The same-path edge reuses the box in place too (``_to_default``).
         landed = _primary_name_at(state, std, landing_ws)
@@ -765,8 +851,8 @@ def _validate(
         )
         if mint is not None and not _same_box_name(mint, own_name):
             check_primary_box_name_free(
-                std.primary_workset, std.registry, mint, str(landing_ws),
-                force=force, early=_early_scope(std, BoxMode.primary),
+                std.primary_workset, mint, str(landing_ws),
+                early=_early_scope(std, BoxMode.primary),
             )
 
     # --- a disabled vault that still holds data would be left behind (Q64) ---
@@ -791,7 +877,6 @@ def _validate(
         "relocating": relocating,
         "no_owner_change": no_owner_change,
         "new_name": new_name,
-        "force": force,
         # ⚑ The EXPLICIT --name (empty when absent) — distinct from ``new_name``, which
         # defaults to the source name. Standalone needs the distinction (R1/R3).
         "requested_name": requested_name,
@@ -852,7 +937,6 @@ def _run_steps(
     relocating: bool = plan["relocating"]
     new_name: str = plan["new_name"]
     requested_name: str = plan["requested_name"]
-    force: bool = plan["force"]
 
     # --- STEP 2 — Move files (only when relocating a real workspace tree) ---
     records_only: bool = spec.records_only
@@ -921,7 +1005,6 @@ def _run_steps(
         relocating=relocating,
         dest=dest,
         requested_name=requested_name,
-        force=force,
     )
 
     # --- STEP 4b — Relocate this box's OWN channel partition (best-effort, D-M10).
@@ -986,7 +1069,6 @@ def _apply_ownership_and_markers(
     relocating: bool,
     dest: Path | None,
     requested_name: str = "",
-    force: bool = False,
 ) -> ProjectState:
     """Re-root metadata/shell/vault into the target owner + rewrite markers."""
     if target_mode == BoxMode.named:
@@ -1010,7 +1092,7 @@ def _apply_ownership_and_markers(
     return _to_default(
         state, std, config, unwind,
         new_name=new_name, new_workspace=new_workspace,
-        requested_name=requested_name, force=force,
+        requested_name=requested_name,
     )
 
 
@@ -1587,7 +1669,6 @@ def _to_default(
     new_name: str,
     new_workspace: Path,
     requested_name: str = "",
-    force: bool = False,
 ) -> ProjectState:
     """Convert/relocate the project so its owner becomes the default workset."""
     # ⚑ ORDER: decide the mint BEFORE the reuse-unregister below, or the same-path reuse
@@ -1614,13 +1695,13 @@ def _to_default(
     # Honored --name goes through the per-kind guard; else the auto-suffix path.
     if mint is not None:
         register_primary_box_name(
-            std.primary_workset, std.registry, mint, new_workspace, force=force,
+            std.primary_workset, mint, new_workspace,
             early=_early_scope(std, BoxMode.primary),
         )
         project_name = mint
     else:
         project_name = assign_primary_box_name(
-            std.primary_workset, std.registry, str(new_workspace), early=_early_scope(std, BoxMode.primary),
+            std.primary_workset, str(new_workspace), early=_early_scope(std, BoxMode.primary),
         )
     unwind.push(lambda: _safe_unregister(std, project_name))
     dst_metadata = std.boxes / project_name

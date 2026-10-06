@@ -115,56 +115,33 @@ class TestWorksetCreate:
         err = capsys.readouterr().err
         assert "already in use" in err
 
-    def test_create_refuses_primary_box_name_collision(
-        self, config_file, tmp_home, capsys
+    def test_create_takes_a_primary_box_name(
+        self, config_file, tmp_home, capsys, caplog
     ):
-        """Cross-kind (per-kind name policy, Jei 2026-07-08): a new workset whose
-        name is ALREADY a primary box name refuses (teaching --force), leaving no
-        on-disk skeleton."""
+        """Box and workset names are separate namespaces (spec § Detection & import):
+        a workset named like a primary box is created, and nothing is said."""
         from kanibako.commands.workset_cmd import run_create
         from kanibako.settings.paths import load_std_paths, register_primary_box_name
 
         config = load_config(config_file)
         std = load_std_paths(config)
         register_primary_box_name(
-            std.primary_workset, std.registry, "common", str(tmp_home / "box"),
+            std.primary_workset, "common", str(tmp_home / "box"),
             early=_early_scope(std, BoxMode.primary),
         )
 
         ws_root = tmp_home / "shared_ws"
         args = argparse.Namespace(
             path=str(ws_root), name="common",
-            standalone=False, image=None, no_vault=False, force=False,
+            standalone=False, image=None, no_vault=False,
         )
-        rc = run_create(args)
-        assert rc == 1
-        err = capsys.readouterr().err
-        assert "primary box" in err and "--force" in err
-        # Refused before side effects — no workset skeleton on disk.
-        assert not ws_root.exists()
-
-    def test_create_force_allows_primary_box_name_collision(
-        self, config_file, tmp_home, capsys
-    ):
-        """--force lets a workset take a primary-box name (deliberate shadow)."""
-        from kanibako.commands.workset_cmd import run_create
-        from kanibako.settings.paths import load_std_paths, register_primary_box_name
-
-        config = load_config(config_file)
-        std = load_std_paths(config)
-        register_primary_box_name(
-            std.primary_workset, std.registry, "common", str(tmp_home / "box"),
-            early=_early_scope(std, BoxMode.primary),
-        )
-
-        ws_root = tmp_home / "shared_ws"
-        args = argparse.Namespace(
-            path=str(ws_root), name="common",
-            standalone=False, image=None, no_vault=False, force=True,
-        )
-        rc = run_create(args)
+        with caplog.at_level("WARNING"):
+            rc = run_create(args)
         assert rc == 0
-        assert "Created working set" in capsys.readouterr().out
+        captured = capsys.readouterr()
+        assert "Created working set" in captured.out
+        assert "primary box" not in captured.err
+        assert [r for r in caplog.records if r.levelname == "WARNING"] == []
         assert ws_root.resolve().is_dir()
 
     def test_create_reserved_sentinel_error(self, config_file, tmp_home, capsys):
@@ -1019,7 +996,7 @@ class TestWorksetConnect:
         outside = (tmp_home / "extws3").resolve()
         leaf = outside / "beta"
         leaf.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(leaf),
+        register_primary_box_name(std.primary_workset, "beta", str(leaf),
                 early=_early_scope(std, BoxMode.primary))
         root = (tmp_home / "ws_pb").resolve()
         create_workset("pb", root, std)
@@ -1036,6 +1013,69 @@ class TestWorksetConnect:
         assert _workset_boxes(reloaded) == {}
         assert not (reloaded.projects_dir / "beta").exists()
         assert journal.read_journal(std.journal) == {}
+
+    def test_connect_in_tree_cure_names_the_operations_that_reach_the_box(
+        self, config_file, tmp_home, capsys,
+    ):
+        """The refusal's cure names ``convert``, ``move`` and ``rm`` — the three
+        operations that reach a box whose workspace is a primary box's, wherever the
+        workset's path space puts it.  ONE message for both arms of the refusal."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import create_workset
+        from kanibako.settings.config_io import dump_doc
+        from kanibako.settings.paths import register_primary_box_name
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        outside = (tmp_home / "extws_cure").resolve()
+        leaf = outside / "beta"
+        leaf.mkdir(parents=True)
+        register_primary_box_name(std.primary_workset, "beta", str(leaf),
+                                  early=_early_scope(std, BoxMode.primary))
+        root = (tmp_home / "ws_cure").resolve()
+        create_workset("cure", root, std)
+        dump_doc(root / "workset.yaml", {"workset": {"workspaces": str(outside)}})
+
+        args = argparse.Namespace(
+            workset="cure", source=str(leaf), project_name="beta", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "kanibako box convert beta --workset cure" in err
+        assert "kanibako box move beta <path>" in err
+        assert "kanibako box rm beta" in err
+        # ⚑ A rename under a new member name must name the RELOCATING form: the
+        # in-place ``--name`` convert is refused, so advising it would be a dead end.
+        assert "kanibako box convert beta --workset cure --name <member> --move" in err
+        assert "--workset cure --name" not in err.replace(
+            "kanibako box convert beta --workset cure --name <member> --move", ""
+        )
+
+    def test_connect_external_cure_names_the_same_operations(
+        self, config_file, tmp_home, capsys,
+    ):
+        """PIN: the EXTERNAL arm states the SAME cure, from the one constant."""
+        from kanibako.commands.workset_cmd import run_connect
+        from kanibako.project.workset import create_workset
+        from kanibako.settings.paths import register_primary_box_name
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        leaf = (tmp_home / "elsewhere" / "gamma").resolve()
+        leaf.mkdir(parents=True)
+        register_primary_box_name(std.primary_workset, "gamma", str(leaf),
+                                  early=_early_scope(std, BoxMode.primary))
+        root = (tmp_home / "ws_ext_cure").resolve()
+        create_workset("extcure", root, std)
+
+        args = argparse.Namespace(
+            workset="extcure", source=str(leaf), project_name="gamma", force=False,
+        )
+        assert run_connect(args) == 1
+        err = capsys.readouterr().err
+        assert "kanibako box convert gamma --workset extcure" in err
+        assert "kanibako box move gamma <path>" in err
+        assert "kanibako box rm gamma" in err
 
     def test_connect_in_tree_leaf_another_workset_connects_refuses(
         self, config_file, tmp_home, capsys,
@@ -1079,7 +1119,7 @@ class TestWorksetConnect:
         std = load_std_paths(config)
         ext = (tmp_home / "ext_pb" / "beta").resolve()
         ext.mkdir(parents=True)
-        register_primary_box_name(std.primary_workset, std.registry, "beta", str(ext),
+        register_primary_box_name(std.primary_workset, "beta", str(ext),
                 early=_early_scope(std, BoxMode.primary))
         create_workset("xpb", (tmp_home / "ws_xpb").resolve(), std)
 
@@ -2513,16 +2553,12 @@ class TestWorksetPreviewResolvesTheDeclarationRoot:
         assert f"{ws.root}/refdir -> /opt/ref" in out
 
 
-class TestWorksetGetThreadsTheAgentsRoot:
-    """``workset get <ws> agent.<node>.<key>`` reads the node's own file.
+class TestWorksetGetAnswersOnlyTheWorksetFile:
+    """``workset get <ws> agent.<node>.<key>`` answers "(not set)" over the node's file.
 
-    The twin of the box noun's pin. The per-node families live in
-    ``agents/<node>/agent.yaml``, reachable only through ``get_config_value``'s
-    ``agents_root``; the handler withheld it, so the read answered "(not set)" at
-    rc 0 for a value ``system get`` reported correctly on the same key.
-
-    ⚑ MUTATION-PROVED: drop ``agents_root=std.agents`` from the ``get`` branch of
-    ``commands/workset_cmd.py`` and the read-back test reds on "(not set)".
+    The twin of the box noun's pin. Spec §2a: plain ``get`` returns the value STORED
+    at the command scope's file, "never another tier's value"; the workset scope
+    cannot store the key, and ``agents/<node>/agent.yaml`` is the agent scope's file.
     """
 
     def _ws_and_agents_root(self, config_file, tmp_home, name):
@@ -2531,8 +2567,7 @@ class TestWorksetGetThreadsTheAgentsRoot:
         return std.agents
 
     def _write_node(self, agents_root, key, value):
-        """Write through the PRODUCTION set route, so this pins the read rather than
-        a hand-built file shape the writer would never produce."""
+        """Write the node's own file through the PRODUCTION ``agent`` route."""
         from kanibako.settings.config_interface import set_config_value
         from kanibako.settings.config_keys import ConfigLevel
 
@@ -2543,31 +2578,32 @@ class TestWorksetGetThreadsTheAgentsRoot:
             agents_root=agents_root,
         )
         assert not msg.startswith("Error:"), msg
+        assert (agents_root / "claude" / "agent.yaml").is_file()
 
-    def test_a_persona_agent_key_reads_back(self, config_file, tmp_home, capsys):
-        from kanibako.commands.workset_cmd import run_get
+    def _get(self, ws, key):
+        from kanibako.cli import build_parser
 
-        agents_root = self._ws_and_agents_root(config_file, tmp_home, "nodews")
-        self._write_node(agents_root, "agent.claude.model", "opus-test")
+        args = build_parser().parse_args(["workset", "get", ws, key])
+        return args.func(args)
 
-        rc = run_get(argparse.Namespace(workset="nodews", key="agent.claude.model"))
-        assert rc == 0
-        captured = capsys.readouterr()
-        assert captured.out.strip() == "opus-test"
-        assert "(not set)" not in captured.err
-
-    def test_an_unset_node_key_is_still_honestly_not_set(
-        self, config_file, tmp_home, capsys,
+    @pytest.mark.parametrize("key, value", [
+        ("agent.claude.model", "opus-test"),
+        ("agent.claude.secret_path.ANTHROPIC_AUTH_TOKEN", "/host/token"),
+    ])
+    def test_a_node_file_value_is_not_set_at_the_workset(
+        self, config_file, tmp_home, capsys, key, value,
     ):
-        """The threading must not fabricate: with nothing stored, "(not set)"
-        stays "(not set)"."""
-        from kanibako.commands.workset_cmd import run_get
+        agents_root = self._ws_and_agents_root(config_file, tmp_home, "nodews")
+        self._write_node(agents_root, key, value)
 
+        assert self._get("nodews", key) == 0
+        captured = capsys.readouterr()
+        assert value not in captured.out
+        assert "(not set)" in captured.err
+
+    def test_an_unset_node_key_is_not_set(self, config_file, tmp_home, capsys):
         self._ws_and_agents_root(config_file, tmp_home, "nonodews")
-        rc = run_get(argparse.Namespace(
-            workset="nonodews", key="agent.claude.model",
-        ))
-        assert rc == 0
+        assert self._get("nonodews", "agent.claude.model") == 0
         assert "(not set)" in capsys.readouterr().err
 
 

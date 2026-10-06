@@ -19,6 +19,7 @@ _SYSTEM_SHARE_ALLOWED_KEY = 'system.auth.share_allowed'
 _BOX_MODES: frozenset[str] = frozenset((mode.value for mode in BoxMode))
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset({'common', 'chat', 'broadcast', 'share', 'mailboxes', 'share_global'})
 _WORKSET_LOCAL_CHANNEL_LEAVES: frozenset[str] = _WORKSET_CHANNEL_LEAVES - {'mailboxes', 'share_global'}
+_AUTH_ACTIVE_KEYS: Final = ('meta.workset.auth.global_active', 'meta.box.auth.global_active', 'meta.box.auth.workset_active')
 _TIER_SCOPE: Final[dict[str, str]] = {'box': 'box', 'workset': 'workset', 'agent': 'agent', 'agent.default': 'agent', 'system': 'system', 'base': 'system'}
 _CATEGORY_OWNER: Final[dict[str, str]] = {'box': 'box', 'workset': 'workset', 'system': 'shared'}
 _BOX_NAME_KEYS: Final = ('meta.box.name', 'meta.box.inbox', 'meta.box.share_global', 'meta.box.share_workset')
@@ -68,6 +69,7 @@ def build_launch_snapshot(*, agent_name: str, ctx: ResolveCtx, system_path: Path
 def reset_none_warnings() -> None
 def resolve_selected_agent(*, ctx: ResolveCtx, system_path: Path | None, workset_path: Path | None, box_path: Path | None, prefs: 'Sequence[PrefRequest] | None'=None, valid_agents: 'Collection[str] | None'=None) -> object
 def snapshot_leaf(snapshot: KeyStore, dotted: str) -> object
+def post_expand_keys(snapshot: KeyStore, active_agent: str) -> Derive
 def behavior_pick(snapshot: KeyStore, *, active_agent: str, key: str) -> 'tuple[str | None, object]'
 def behavior_slot(snapshot: KeyStore, *, active_agent: str, key: str) -> 'str | None'
 def effective_behavior(snapshot: KeyStore, *, active_agent: str, keys: 'list[str] | None'=None) -> dict[str, str]
@@ -78,6 +80,8 @@ def resolve_box_scalars(*, workset_path: Path | None, box_path: Path | None, cli
 def load_merged_config(project_path: Path | None=None, *, workset_path: Path | None=None, cli_overrides: 'dict[str, object] | None'=None, inputs: LaunchInputs | None=None, agent_name: str=GENERAL_SLOT, agent_path: Path | None=None, refuse_null_scalars: bool=True) -> KanibakoConfig
 def _is_bind_floor_key(key: str) -> bool
 def _read_auth_inputs(snapshot: KeyStore) -> _AuthInputs
+def _auth_inputs(read: Callable[[str], object], *, floor: bool) -> _AuthInputs
+def _auth_active_values(inputs: _AuthInputs) -> tuple[bool, bool, bool]
 def _materialize_auth_active(snapshot: KeyStore) -> None
 def _loaded_tiers(files: Sequence[SettingsFile]) -> tuple[SettingsFile, ...]
 def _refuse_undeclared_snapshot(store: KeyStore, *, files: Sequence[SettingsFile], written: Sequence[_WrittenLevel], subject: ResolveSubject) -> None
@@ -95,6 +99,7 @@ def _agent_identity(agent_name: str, project_path: Path | None) -> dict[str, obj
 def _workset_floors(std, *, mode: str, ws_token: str, ws_root: Path, local_channels: 'WorksetChannels | None', agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_workset_floors(std, proj, agent_name: str) -> tuple[dict[str, object], dict[str, object], dict[str, object]]
 def _box_inputs(*, std, proj, agent_name: str, system_path: Path | None) -> LaunchInputs
+def _floored_bind_entry(dest: str, entry: object) -> object
 def _internal_floor_binds(floor: Mapping[str, object]) -> dict[str, object]
 def _warn_once(message: str) -> None
 def _none_setter(written: Sequence[_WrittenLevel], key: str, dest: str | None) -> str | None
@@ -105,6 +110,8 @@ def _warn_rootless_channel_binds(rootless: Sequence[tuple[str, str]], expanded: 
 def _warn_null_ref_secrets(merged: KeyStore, expanded: KeyStore, *, active_agent: str, written: Sequence[_WrittenLevel], ctx: ResolveCtx) -> None
 def _assert_box_root_resolved(snapshot: KeyStore) -> None
 def _materialize_box_agent_mirror(snapshot: KeyStore, *, active_agent: str) -> None
+def _mirror_sources(snapshot: KeyStore, active_agent: str) -> tuple[KeyStore, object]
+def _source_keys(node: KeyStore, prefix: str) -> KeyStore
 def _drop_non_mirror_keys(effective: KeyStore) -> None
 def _mirror_fill(box_node: KeyStore, agent_node: KeyStore) -> None
 def _agent_state_partial(level: AgentFileLevel | None) -> KeyStore | None

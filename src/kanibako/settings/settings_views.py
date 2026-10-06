@@ -470,7 +470,7 @@ class MetaBoxView(FiniteView):
     The RO identity anchors materialized for the box (spec §2c; §0 meta-RO).
     ``mode`` is surfaced from ``@meta.runtime.project_type`` (spec §2b — it was
     the settable ``box.mode``); ``workspace`` / ``inbox`` are the dests that
-    ``box.bindings.rw`` routes through. ``container_name`` / ``helper_num`` are
+    ``box.bindings.rw`` routes through. ``container`` / ``helper_num`` are
     a non-bind RENDER and are NOT materialized here (JC-B2-3).
 
     ⚑ ``settings`` is UNIFORM in every mode; standalone's

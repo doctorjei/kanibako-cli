@@ -339,10 +339,11 @@ On first `--remote` use, kanibako asks to point
 unaffected — the wrapper is a pass-through to `podman` except for remote
 attach windows).
 
-If a remote attach fails, check the dispatch log at
-`~/.local/state/kanibako/vscode-remote/dispatch.log` (or under
-`$XDG_STATE_HOME`) — one line per engine call showing the resolved route and
-context.
+If a remote attach fails, check `vscode-remote/dispatch.log` under the
+`system.state` key, which defaults to `$XDG_STATE_HOME/kanibako` --
+`~/.local/state/kanibako/vscode-remote/dispatch.log` when `XDG_STATE_HOME` is
+unset, and wherever you have repointed that key otherwise. One line per engine
+call, showing the resolved route and context.
 
 > **First attach:** the first time VS Code attaches to a given container it
 > shows a workspace-trust dialog you must click through. In headless or
@@ -399,7 +400,7 @@ error, not a silent no-op).
 |------|-------------|
 | `-v, --verbose` | Show debug output (target detection, container command) |
 | `--agent NAME` | Top-precedence agent override; wins over the cascade. See [Agent Selection](#agent-selection) for how long a given command makes it last. |
-| `--box NAME-OR-PATH` | Universal subject/anchor selector -- act on a box that isn't your cwd, by box name (precedence) or path. See [Agent Selection](#agent-selection). |
+| `--box NAME-OR-PATH` | Universal subject/anchor selector -- act on a box that isn't your cwd, by box name (precedence, except that a registered standalone name yields to a same-named path) or path. See [Agent Selection](#agent-selection). |
 
 > **`setup` keeps its own `--agent`** flag (it persists the chosen default rather
 > than overriding for one run).
@@ -501,9 +502,10 @@ Non-TTY runs (CI / headless) skip the prompt gracefully.
 `setup` records a completion marker; agent-requiring commands print a non-blocking
 nudge to run `setup` if it has never been run, then proceed.
 
-Because `system.*` keys are **file-only** (see [Configuration](#configuration)),
-the default agent is *not* settable via `kanibako system set` -- use `setup` or
-edit `global/settings.yaml` directly.
+`system.agent` is an ordinary `system.*` key, so the default agent is settable
+from the CLI as well as by `setup` -- `kanibako system set system.agent=<name>`.
+It is `config.*` keys that are **file-only** (see
+[Configuration](#configuration)).
 
 ## Project Modes
 
@@ -583,6 +585,9 @@ in-tree, so it needs no registry entry and can be moved or copied anywhere.
 The registry entry is only a shortcut for addressing the box **by name from
 another directory**; add it at create time with `--register` (which is also
 what makes `--name` meaningful), or later with `kanibako box register <path>`.
+A registered name is checked last: a primary or workset-member box of the
+same name wins, and so does a same-named path, even at `--box`; a warning
+names the shadowed standalone box.
 
 ```bash
 kanibako create --standalone --register --name myproj ~/myproj
@@ -790,6 +795,7 @@ self:
   access: "editing"         # permission tier: restricted | editing | full (default)
   env:
     # KEY: "value"          # raw env vars injected into the box
+  # transform: "tweakcc"    # WHICH binary transform runs (tweakcc only)
   transform_settings:
     # enabled: false        # enable tweakcc binary patching
     # config: "~/.tweakcc/config.json"  # external tweakcc config file
@@ -805,8 +811,17 @@ self:
   `system < agent.<agent> < workset < box` with the target's declared defaults
   as the floor.
 - `self.env:` -- environment variables injected into the box
+- `self.transform:` -- WHICH binary transform runs, named. Claude's plugin
+  names `tweakcc` by default, the one transform kanibako implements; a name it
+  does not implement applies no transform, and the launch warns rather than
+  passing silently. Naming it patches nothing on its own:
+  `transform_settings.enabled` turns tweakcc on.
 - `self.transform_settings:` -- optional tweakcc integration for binary patching
-  (see [docs/tweakcc.md](docs/tweakcc.md))
+  (see [docs/tweakcc.md](docs/tweakcc.md)). Three things share the word
+  "transform", and are worth naming apart: this table is the transform's config
+  INPUT, `transform` above names WHICH transform runs, and the patched binary is
+  its OUTPUT, held as an entry of `agent.<agent>.caches` (an entry, never a key
+  of its own).
 
 Per-agent common dirs/caches are declared by the plugin (`agent.<agent>.common` /
 `agent.<agent>.caches` — one key per category, holding a map keyed by box destination) and

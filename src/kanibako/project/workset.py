@@ -61,6 +61,7 @@ from kanibako.settings.settings_resolve import SettingsError
 from kanibako.settings.workset_dirkeys import (
     EarlyScope, EarlySystem, early_repoint, refuse_inherited_per_owner, resolve_workset_dir_key,
 )
+from kanibako.utils import WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE
 # ⚑ FORWARD edge of a documented cycle: ``settings/paths.py`` breaks it by DEFERRING
 # its ``project.workset`` imports into function bodies — do not add a module-scope
 # edge back this way.
@@ -100,13 +101,12 @@ _BOXES_REF = f"workset.{BOXES_DIR_NAME}"
 # ⚑ The ONE skeleton dir that names NO KEY: the keyspec declares ``workset.vault_ro``
 # and ``workset.vault_rw`` (``@meta.workset.path/vault/{ro,rw}``) and no ``workset.vault``
 # at all, so ``vault/`` is only their shared DEFAULT PARENT — there is nothing to resolve
-# it through and it is always ``<root>/vault``.  ⚑ DELIBERATE, not an oversight: it keeps
+# it through and it is always ``<root>/vault``.  ⚑ DELIBERATE: it keeps
 # the skeleton a SINGLE list that ``create_workset`` stamps and ``is_workset_skeleton``
-# tests, at the cost of one honestly-documented non-key.
+# tests.
 # ⚑⚑ THE PARENT IS THE NON-KEY; THE TWO ARMS ARE NOT.  ``vault_ro`` and ``vault_rw`` are
 # declared, CLI-settable, repointable keys, so the arms are RESOLVED below and nothing may
-# compose ``_VAULT_LEAF / ro`` again — that composition WAS the defect: a repoint was
-# accepted by the settings file and ignored by the filesystem.
+# compose ``_VAULT_LEAF / ro`` again, or a repoint is ignored by the filesystem.
 _VAULT_LEAF = bootstrap.VAULT_PATH
 _VAULT_RO_KEY = "vault_ro"
 _VAULT_RW_KEY = "vault_rw"
@@ -573,8 +573,16 @@ RESERVED_WORKSET_IDENTIFIERS = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_AL
 #: these two literals, and a second spelling of a path segment is a second carrier.
 WORKSET_PARTITION_TOKENS = frozenset({WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE})
 
+#: Reserved RENDERED SEGMENTS — the ``<W>`` of a primary or standalone box's container
+#: name; a named workset of this name would render the same container names.
+WORKSET_RENDERED_SEGMENTS = frozenset({
+    WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE,
+})
+
 #: Every name a user may not give a workset — the refusal's subject, and its message.
-RESERVED_WORKSET_NAMES = RESERVED_WORKSET_IDENTIFIERS | WORKSET_PARTITION_TOKENS
+RESERVED_WORKSET_NAMES = (
+    RESERVED_WORKSET_IDENTIFIERS | WORKSET_PARTITION_TOKENS | WORKSET_RENDERED_SEGMENTS
+)
 
 
 def is_reserved_workset_name(name: str) -> bool:
@@ -829,11 +837,8 @@ def _load_registry(std: StandardPaths) -> dict[str, Path]:
 
 # ---------------------------------------------------------------------------
 # The workset SKELETON — ⚑⚑ ONE definition with TWO consumers: ``create_workset``
-# STAMPS these dirs and :func:`is_workset_skeleton` TESTS for them.  They are a
-# matched pair by construction; a second, hand-copied list of the same leaf names
-# would let the stamp and the test drift, and a drifted test stops finding worksets
-# that are really there — which is how the ancestor walk's NAMED arm went wrong once
-# already ([R139]).
+# STAMPS these dirs and :func:`is_workset_skeleton` TESTS for them, so the stamp and
+# the test cannot drift ([R139]).
 # ---------------------------------------------------------------------------
 
 def _workset_skeleton_dirs(root: Path, *, early: EarlyScope) -> tuple[Path, ...]:
@@ -844,10 +849,8 @@ def _workset_skeleton_dirs(root: Path, *, early: EarlyScope) -> tuple[Path, ...]
     """
     # ⚑⚑ THE RESOLVED DIRS ARE THE LOCATOR (system-design, NAMED arm of "Detect =
     # ancestor-walk").  ``boxes``, ``workspaces`` and ``logs`` are all declared,
-    # repointable workset keys, so the locator must be what each one RESOLVES to.
-    # Testing the literal leaf instead made a root that repointed ``workset.boxes`` or
-    # ``workset.logs`` INVISIBLE to detection: the walk looked for ``<root>/boxes`` and
-    # ``<root>/logs``, which the repoint is precisely what removes.
+    # repointable workset keys, so the locator must be what each one RESOLVES to, or a
+    # repointed root is invisible to detection.
     # ⚑ ``vault`` is the one literal, and correctly so — no key names it (see _VAULT_LEAF).
     # ⚑ ONE read feeds all three resolutions; reading workset.yaml per key would open a
     # window for the three to disagree about the same file.  At create time *root* has no
@@ -887,7 +890,7 @@ def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool:
 # ---------------------------------------------------------------------------
 
 def create_workset(
-    name: str, root: Path, std: StandardPaths, force: bool = False,
+    name: str, root: Path, std: StandardPaths,
 ) -> Workset:
     """Create a new workset directory structure and register it globally."""
     if not name:
@@ -900,7 +903,8 @@ def create_workset(
             "for the primary and standalone partitions. Choose another name."
         )
 
-    # ⚑ Same-kind uniqueness (D-B3): refuse, never auto-suffix.  --force NEVER bypasses this.
+    # ⚑ Same-kind uniqueness (D-B3): refuse, never auto-suffix.  A primary box of the same
+    # name is a separate namespace (spec § Detection & import), so it is not consulted.
     # ⚑ Case-blind (§0, ⚑ NAMING RULES): ``Foo`` collides with a registered ``foo``.
     registry = _load_registry(std)
     held = find_identifier(name, registry)
@@ -913,24 +917,6 @@ def create_workset(
             f"{registry[held]}). Workset names must be unique; choose a "
             "different name."
         )
-
-    # ⚑ Cross-kind guard: a colliding PRIMARY BOX name would shadow this workset in
-    # bare-name resolution.  Refuse unless *force*, BEFORE any on-disk side effect.
-    # ⚑⚑ BOTH SIDES FOLD.  Comparing a raw workset name against box keys assumed already
-    # folded let ``Foo`` walk past a box named ``foo`` — the asymmetric compare §0 closes.
-    if not force:
-        from kanibako.settings.paths import BoxMode, _early_scope, load_primary_boxes
-        shadowing = find_identifier(name, load_primary_boxes(
-            std.primary_workset, early=_early_scope(std, BoxMode.primary)))
-        if shadowing is not None:
-            as_stored = "" if shadowing == name else f" (the box is named '{shadowing}')"
-            raise WorksetError(
-                f"Workset name '{name}' is already in use by a primary box"
-                f"{as_stored}. "
-                f"Box and workset names are separate namespaces, but this bare "
-                f"name would then be shadowed by the box in bare-name "
-                f"resolution. Re-run with --force to use this name anyway."
-            )
 
     root = root.resolve()
     if root.exists():

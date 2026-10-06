@@ -1087,6 +1087,13 @@ def _under_pref(parts: tuple[str, ...]) -> bool:
     return parts[:1] == (PREF_ROOT,)
 
 
+def _pref_agent_segment(parts: tuple[str, ...]) -> str | None:
+    """The agent segment under ``pref.agent`` (ONE segment, §2d, so index 2), else ``None``."""
+    if parts[:2] != (PREF_ROOT, "agent") or len(parts) < 3:
+        return None
+    return parts[2]
+
+
 def _is_bare_scalar_entry(value: Any) -> bool:
     """Is *value* a bind-map entry that is a BARE SCALAR?
 
@@ -1136,6 +1143,7 @@ def _parse_node(
                         sub, category=f"{_DEST_KEYED_CATEGORY}.{key_s}",
                         declared=_at_declared_category((*path, key_s)),
                         defer_shape=for_pref_requests and _under_pref(path),
+                        pref_agent=_pref_agent_segment(path),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1150,6 +1158,7 @@ def _parse_node(
                         root_ref=_declaration_root_ref(path, key_s),
                         declared=_at_declared_category((*path, key_s)),
                         defer_shape=for_pref_requests and _under_pref(path),
+                        pref_agent=_pref_agent_segment(path),
                     )
                     continue
                 _refuse_malformed_category((*path, key_s), sub)
@@ -1200,6 +1209,7 @@ def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore:
 def parse_bind_map(
     raw: Any, *, category: str = "bindings", root_ref: str | None = None,
     declared: bool = True, defer_shape: bool = False,
+    pref_agent: str | None = None,
 ) -> KeyStore:
     """Parse a raw DEST-KEYED category map into a :class:`KeyStore` of :class:`BindEntry`.
 
@@ -1215,6 +1225,9 @@ def parse_bind_map(
     ⚑ *defer_shape* withholds ONLY the bare-scalar entry verdict, carrying that value for
     :func:`~kanibako.settings.settings_prefs.refuse_deferred_pref_shapes`. Every other check
     still runs here, on the WHOLE map.
+
+    ⚑ *pref_agent* is the agent segment this map sits under; BOTH parses pass it, so it is
+    judged before any shape (:func:`~kanibako.settings.settings_prefs.agent_segment_reason`).
     """
     if not isinstance(raw, dict):
         raise SettingsError(
@@ -1222,14 +1235,16 @@ def parse_bind_map(
             f"{{box_dest: [src[, options]]}}, got {type(raw).__name__}: {raw!r}."
         )
     if not defer_shape:
-        check_bind_map(raw, category=category, declared=declared)
+        check_bind_map(raw, category=category, declared=declared, pref_agent=pref_agent)
     else:
         # ⚑ NOT A SHAPE VERDICT, so it runs on the WHOLE map: a destination spelled twice
         # is a fact about the map, and the sub-map cannot see one straddling the carve-out.
         refuse_dest_spelled_twice(raw, category=category)
+        # ⚑⚑ *pref_agent* TOO: this call still judges shapes AT PARSE TIME, and Q2 puts the
+        # name ahead of every shape check.
         check_bind_map(
             {k: v for k, v in raw.items() if not _is_bare_scalar_entry(v)},
-            category=category, declared=declared,
+            category=category, declared=declared, pref_agent=pref_agent,
         )
     store = KeyStore()
     for key, sub in raw.items():

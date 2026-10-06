@@ -10,7 +10,11 @@ import pytest
 
 from kanibako.commands.box._parser import run_list, run_ps
 from kanibako.settings.paths import BoxMode
-from kanibako.utils import container_name_for, container_name_for_box_name
+from kanibako.utils import (
+    WORKSET_SEGMENT_PRIMARY,
+    container_name_for,
+    container_name_for_box_name,
+)
 
 
 @pytest.fixture
@@ -129,7 +133,8 @@ class TestRunList:
         from pathlib import Path
 
         mock_runtime.list_running.return_value = [
-            ("kanibako-myproj", "kanibako-oci:latest", "Up 10 minutes"),
+            (container_name_for_box_name("myproj", WORKSET_SEGMENT_PRIMARY),
+             "kanibako-oci:latest", "Up 10 minutes"),
         ]
         proj_a_path = MagicMock(name="myproj")
         proj_a_dir = MagicMock(spec=Path)
@@ -172,7 +177,8 @@ class TestRunList:
         from pathlib import Path
 
         mock_runtime.list_running.return_value = [
-            ("kanibako-myproj", "kanibako-oci:latest", "Up 10 minutes"),
+            (container_name_for_box_name("myproj", WORKSET_SEGMENT_PRIMARY),
+             "kanibako-oci:latest", "Up 10 minutes"),
         ]
         proj_a_path = MagicMock(name="myproj")
         proj_a_dir = MagicMock(spec=Path)
@@ -300,7 +306,8 @@ class TestRunList:
         from pathlib import Path
 
         mock_runtime.list_running.return_value = [
-            ("kanibako-running", "kanibako-oci:latest", "Up 10 minutes"),
+            (container_name_for_box_name("running", WORKSET_SEGMENT_PRIMARY),
+             "kanibako-oci:latest", "Up 10 minutes"),
         ]
         proj_a_path = MagicMock(name="running")
         proj_a_dir = MagicMock(spec=Path)
@@ -346,10 +353,17 @@ class TestContainerNamePerMode:
     """
 
     @staticmethod
-    def _cname(mode, *, name, root=None):
-        """The container name ``start`` gives a *mode* box — asked of ``container_name_for``."""
-        proj = SimpleNamespace(mode=mode, name=name, metadata_path=root,
-                               project_hash="0" * 64)
+    def _cname(mode, *, name, root=None, workset=None):
+        """The container name ``start`` gives a *mode* box — asked of ``container_name_for``.
+
+        ``group`` is what carries the ``<W>`` segment for a NAMED box; primary and
+        standalone render their own bare word, so ``None`` is right for them.
+        """
+        proj = SimpleNamespace(
+            mode=mode, name=name, metadata_path=root,
+            project_hash="0" * 64,
+            group=None if workset is None else SimpleNamespace(name=workset),
+        )
         return container_name_for(proj)
 
     @staticmethod
@@ -397,11 +411,12 @@ class TestContainerNamePerMode:
 
     def test_container_named_by_box_name_is_not_the_standalone_box(
             self, mock_runtime, tmp_path, capsys):
-        """A ``kanibako-<box name>`` container is NOT the standalone box's container."""
+        """A pre-1.8 ``kanibako-<box name>`` container is NOT the standalone
+        box's container — nor is any other box's."""
         root = tmp_path / "lone-project"
         root.mkdir()
         mock_runtime.list_running.return_value = [
-            (container_name_for_box_name("lone"), "kanibako-oci:latest", "Up 1 minute"),
+            ("kanibako-lone", "kanibako-oci:latest", "Up 1 minute"),
         ]
         rc = self._run(mock_runtime, _PsArgs(), standalone={"lone": str(root)})
         assert rc == 0
@@ -418,7 +433,8 @@ class TestContainerNamePerMode:
         ws = SimpleNamespace(root=tmp_path / "ws", projects=[member])
         mock_runtime.list_running.return_value = [
             (self._cname(BoxMode.primary, name="primbox"), "kanibako-oci:latest", "Up"),
-            (self._cname(BoxMode.named, name="wsbox"), "kanibako-oci:latest", "Up"),
+            (self._cname(BoxMode.named, name="wsbox", workset="myws"),
+             "kanibako-oci:latest", "Up"),
             (self._cname(BoxMode.standalone, name="lone", root=sa_root),
              "kanibako-oci:latest", "Up"),
         ]

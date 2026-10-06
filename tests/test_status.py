@@ -132,6 +132,7 @@ def _mock_proj(*, name="", project_hash="a" * 64, mode="primary",
         name=name,
         project_hash=project_hash,
         mode=SimpleNamespace(value=mode),
+        group=None,
         project_path=Path(project_path),
     )
 
@@ -161,7 +162,7 @@ class TestCheckContainerRunning:
             assert "not running" in detail
 
     def test_container_found_by_name(self):
-        container_name = "kanibako-myapp"
+        container_name = "kb-primary-myapp"
         mock_rt = MagicMock()
         mock_rt.list_running.return_value = [
             (container_name, "test:latest", "Up 5 minutes"),
@@ -180,7 +181,7 @@ class TestCheckContainerRunning:
         """Unnamed project falls back to hash-based container name."""
         mock_rt = MagicMock()
         mock_rt.list_running.return_value = [
-            ("kanibako-aaaaaaaa", "test:latest", "Up 5 minutes"),
+            ("kb-primary-aaaaaaaa", "test:latest", "Up 5 minutes"),
         ]
         with patch(
             "kanibako.commands.box._parser.ContainerRuntime",
@@ -194,7 +195,7 @@ class TestCheckContainerRunning:
     def test_different_container(self):
         mock_rt = MagicMock()
         mock_rt.list_running.return_value = [
-            ("kanibako-bbbbbbbb", "test:latest", "Up 5 minutes"),
+            ("kb-primary-bbbbbbbb", "test:latest", "Up 5 minutes"),
         ]
         mock_rt.container_exists.return_value = False
         with patch(

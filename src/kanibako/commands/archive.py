@@ -50,6 +50,22 @@ def run(args: argparse.Namespace) -> int:
     return _archive_one(std, config, proj, output_file=args.file, args=args)
 
 
+def _recorded_workspace_of(std, proj) -> Path | None:
+    """Where a named member's files are: its RECORDED workspace, else ``project_path``."""
+    from kanibako.commands.box._lifecycle import recorded_workspace_for
+    from kanibako.errors import WorksetError
+    from kanibako.project.workset import load_workset
+    from kanibako.settings.paths import BoxMode
+
+    if proj.mode is not BoxMode.named or proj.group is None or not proj.name:
+        return proj.project_path
+    try:
+        ws = load_workset(proj.group.root, proj.group.name, early_system=std.early_system)
+    except (WorksetError, OSError):
+        return proj.project_path
+    return recorded_workspace_for(ws, proj.name, proj.project_path)
+
+
 def _archive_one(std, config, proj, *, output_file, args) -> int:
     """Archive session data for a single project."""
     if not proj.metadata_path.is_dir():
@@ -66,31 +82,31 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
 
     # Prepare metadata
     info_file = proj.metadata_path / "kanibako-archive-info.txt"
+    # Recorded, not resolved: a null ``workset.workspaces`` leaves ``project_path`` None.
+    workspace = _recorded_workspace_of(std, proj)
     lines = [
-        f"Project path: {proj.project_path or '<None>'}",
+        f"Project path: {workspace or '<None>'}",
         f"Project hash: {proj.project_hash}",
         f"Archive date: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
         "",
     ]
 
-    # Git checks (only if project path exists on disk; a box with no workspace has none)
-    workspace = proj.project_path
     if workspace is not None and workspace.is_dir() and is_git_repo(workspace):
         if not args.allow_uncommitted:
             try:
-                check_uncommitted(proj.project_path)
+                check_uncommitted(workspace)
             except GitError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
 
         if not args.allow_unpushed:
             try:
-                check_unpushed(proj.project_path)
+                check_unpushed(workspace)
             except GitError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
 
-        meta = get_metadata(proj.project_path)
+        meta = get_metadata(workspace)
         if meta:
             lines.append("Git repository: yes")
             lines.append(f"Branch: {meta.branch}")
@@ -101,7 +117,7 @@ def _archive_one(std, config, proj, *, output_file, args) -> int:
     else:
         if workspace is not None and workspace.is_dir():
             print(
-                f"Warning: No git repository detected in {proj.project_path}",
+                f"Warning: No git repository detected in {workspace}",
                 file=sys.stderr,
             )
             print("Only kanibako session data will be archived.", file=sys.stderr)

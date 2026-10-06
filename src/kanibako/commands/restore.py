@@ -137,11 +137,8 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
     # box was already gone — destroy-then-fail. Check before touching anything.
     #
     # ⚑ BUT ONLY WHEN THE NAME IS SOMEONE ELSE'S.  ``check_primary_box_name_free``
-    # refuses on MEMBERSHIP alone — it takes a workspace but uses it only for the
-    # $HOME guard — so asking it about a box's OWN name always refuses.  Naming your
-    # own box on a restore (``extract --name mybox`` into mybox's workspace) is the
-    # single most natural way to spell this command, and unguarded it failed with a
-    # cure that told the user to delete the very box they were restoring.
+    # refuses on MEMBERSHIP alone, so asking it about a box's OWN name always refuses,
+    # and naming your own box (``extract --name mybox`` into its workspace) is natural.
     #
     # The checker is NOT widened: ``box create`` depends on its refuse-on-membership
     # semantics (a create must never land on an existing name).  The re-materialize
@@ -154,8 +151,8 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
         if owner != name:
             try:
                 check_primary_box_name_free(
-                    std.primary_workset, std.registry, name,
-                    str(proj.project_path), force=False, early=early,
+                    std.primary_workset, name,
+                    str(proj.project_path), early=early,
                 )
             except (ProjectError, WorksetError) as e:
                 print(f"Error: {e}", file=sys.stderr)
@@ -196,7 +193,9 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
         info = _parse_info(info_file)
         archive_path = info.get("Project path", "")
         archive_basename = Path(archive_path).name if archive_path else ""
-        current_basename = proj.project_path.name if proj.project_path is not None else ""
+        from kanibako.commands.archive import _recorded_workspace_of
+        workspace = _recorded_workspace_of(std, proj)
+        current_basename = workspace.name if workspace is not None else ""
 
         # Validate hash match
         hash_match = (
@@ -208,7 +207,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             print("Warning: Project path mismatch")
             print()
             print(f"Archive from: {archive_path}")
-            print(f"Restoring to: {proj.project_path or '<None>'}")
+            print(f"Restoring to: {workspace or '<None>'}")
             print()
             try:
                 confirm_prompt("Continue anyway? Type 'yes' to confirm: ")
@@ -219,7 +218,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
         # Validate git state
         git_in_archive = info.get("Git repository", "") == "yes"
         if git_in_archive:
-            rc = _validate_git_state(proj, info, force)
+            rc = _validate_git_state(workspace, info, force)
             if rc != 0:
                 return rc
 
@@ -309,7 +308,7 @@ def _restore_one(std, config, *, project_dir, archive_file, force, name=None) ->
             return 1
 
         print("done.")
-        print(f"Session data restored to {proj.project_path or '<None>'}")
+        print(f"Session data restored to {workspace or '<None>'}")
         print(f"  box: {proj.name} ({proj.mode.value})")
         return 0
 
@@ -411,10 +410,10 @@ def _parse_info(info_file: Path) -> dict[str, str]:
     return result
 
 
-def _validate_git_state(proj, info: dict[str, str], force: bool) -> int:
+def _validate_git_state(workspace: Path | None, info: dict[str, str], force: bool) -> int:
     """Validate git state between archive and workspace. Returns 0 to continue."""
     # A box with no workspace (a null ``workset.workspaces``) has no repo to compare.
-    if proj.project_path is None or not is_git_repo(proj.project_path):
+    if workspace is None or not is_git_repo(workspace):
         if not force:
             print(
                 "Warning: Archive came from a git repository, "
@@ -435,7 +434,7 @@ def _validate_git_state(proj, info: dict[str, str], force: bool) -> int:
     archive_commit = info.get("Commit", "")
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
-        cwd=proj.project_path,
+        cwd=workspace,
         capture_output=True,
         text=True,
     )
@@ -452,7 +451,7 @@ def _validate_git_state(proj, info: dict[str, str], force: bool) -> int:
         print("Current workspace:")
         branch_result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=proj.project_path,
+            cwd=workspace,
             capture_output=True,
             text=True,
         )

@@ -322,6 +322,38 @@ def key_reason(target: str, *, valid_agents: Collection[str]) -> str | None:
     )
 
 
+def agent_segment_reason(
+    name: str,
+    *,
+    valid_agents: Collection[str] | None = None,
+) -> str | None:
+    """§2h — WHY agent segment *name* is refused, or ``None`` if valid.
+
+    ⚑⚑ THE ONE JUDGE of the segment. Both bind-map parses under ``pref.agent.`` reach it,
+    deferred included, AHEAD of every per-entry shape check, lest a shape verdict send the user
+    to reshape an entry whose only defect is its name; on the deferred parse the whole-map
+    twice-spelled-destination check still runs first. So does :func:`allowlist_reason`.
+    """
+    if valid_agents is None:
+        valid_agents = default_valid_agents()
+    if is_valid_agent_segment(name, valid_agents):
+        return None
+    if getattr(valid_agents, "discovery_failed", False):
+        return (
+            f"agent DISCOVERY FAILED, so '{display_agent_ref(name)}' could not be "
+            f"validated. This is an environment fault, not a "
+            f"problem with the name: the plugin registry could not "
+            f"be read. Check the kanibako install (run 'kanibako "
+            f"system diagnose'); the request itself may be fine"
+        )
+    known = ", ".join(map(display_agent_ref, valid_agent_segments(valid_agents)))
+    return (
+        f"it names agent '{display_agent_ref(name)}', which is not a valid agent "
+        f"(valid: {known}). A pref MAY pre-configure an agent this "
+        f"box is not running, but not an unknown one (spec §2h)"
+    )
+
+
 def allowlist_reason(
     target: str,
     *,
@@ -339,25 +371,11 @@ def allowlist_reason(
     pattern = pref_allowlist_entry(target, allowlist=allowlist)
     if pattern is not None:
         if pattern == "agent.*.**":
-            name = target.split(".")[1]
-            if not is_valid_agent_segment(name, valid_agents):
-                if getattr(valid_agents, "discovery_failed", False):
-                    # ⚑ An ENVIRONMENT fault, not a user mistake. Reporting
-                    # "'claude' is not a valid agent" when the plugin registry
-                    # could not be read sends the user to fix a correct name.
-                    return (
-                        f"agent DISCOVERY FAILED, so '{display_agent_ref(name)}' could not be "
-                        f"validated. This is an environment fault, not a "
-                        f"problem with the name: the plugin registry could not "
-                        f"be read. Check the kanibako install (run 'kanibako "
-                        f"system diagnose'); the request itself may be fine"
-                    )
-                known = ", ".join(map(display_agent_ref, valid_agent_segments(valid_agents)))
-                return (
-                    f"it names agent '{display_agent_ref(name)}', which is not a valid agent "
-                    f"(valid: {known}). A pref MAY pre-configure an agent this "
-                    f"box is not running, but not an unknown one (spec §2h)"
-                )
+            reason = agent_segment_reason(
+                target.split(".")[1], valid_agents=valid_agents,
+            )
+            if reason is not None:
+                return reason
         return None
     scope = target.split(".", 1)[0]
     base = (

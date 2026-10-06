@@ -13,7 +13,8 @@ DEFAULT_WORKSET_ID = '__default__'
 DEFAULT_WORKSET_ALIAS = 'default'
 RESERVED_WORKSET_IDENTIFIERS = frozenset({DEFAULT_WORKSET_ID, DEFAULT_WORKSET_ALIAS})
 WORKSET_PARTITION_TOKENS = frozenset({WS_TOKEN_PRIMARY, WS_TOKEN_STANDALONE})
-RESERVED_WORKSET_NAMES = RESERVED_WORKSET_IDENTIFIERS | WORKSET_PARTITION_TOKENS
+WORKSET_RENDERED_SEGMENTS = frozenset({WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE})
+RESERVED_WORKSET_NAMES = RESERVED_WORKSET_IDENTIFIERS | WORKSET_PARTITION_TOKENS | WORKSET_RENDERED_SEGMENTS
 _STANDALONE_BOXES_LEAF = bootstrap.STANDALONE_META_DIR
 _WORKSPACES_LEAF = bootstrap.WORKSPACES_PATH
 _STANDALONE_WORKSPACE_LEAF = bootstrap.WORKSPACE_PATH
@@ -52,7 +53,7 @@ def report_retained_vaults(root: Path, retained: Iterable[Path]) -> None
 def is_reserved_workset_name(name: str) -> bool
 def refuse_retired_workset_identity(root: Path) -> None
 def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool
-def create_workset(name: str, root: Path, std: StandardPaths, force: bool=False) -> Workset
+def create_workset(name: str, root: Path, std: StandardPaths) -> Workset
 def load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workset
 def list_worksets(std: StandardPaths) -> dict[str, Path]
 def default_workset(std: StandardPaths) -> Workset

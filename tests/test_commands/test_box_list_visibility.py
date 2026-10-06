@@ -30,7 +30,9 @@ from kanibako.settings.paths import (
     unregister_primary_box_name,
 )
 from kanibako.project.workset import add_project, create_workset
-from kanibako.utils import container_name_for_box_name, container_name_for_standalone_root
+from kanibako.utils import (
+    WORKSET_SEGMENT_PRIMARY, WORKSET_SEGMENT_STANDALONE, container_name_for_box_name,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -54,22 +56,33 @@ _ALIVE = "alive"     # primary box, workspace folder present
 _GONE = "gone"       # primary box, workspace folder deleted
 _STRAY = "stray"     # primary box with NO membership (no recorded workspace)
 _MEMBER = "member"   # a NAMED workset's member, workspace folder deleted
+_WS_NAME = "demo"    # that workset's name — the member's <W> segment
+_LEGACY = "-legacy"  # a box name the rule no longer allows; it renders NO container name
 
 
 class Sandbox:
     """One box per interesting state, each built by a production resolver."""
 
-    def __init__(self, *, lone_root: Path) -> None:
+    def __init__(self, *, lone_root: Path, lone_name: str) -> None:
         self.lone_root = lone_root
+        self.lone_name = lone_name
 
     def running_containers(self) -> tuple[str, ...]:
-        """Container names for every box in the sandbox — the names ``start`` gives."""
-        return (
-            container_name_for_box_name(_ALIVE),
-            container_name_for_box_name(_GONE),
-            container_name_for_box_name(_STRAY),
-            container_name_for_box_name(_MEMBER),
-            container_name_for_standalone_root(self.lone_root),
+        """Container names for every box in the sandbox — the names ``start`` gives.
+
+        ⚑ A box that renders NO name has no container under 1.8.0, so it contributes
+        none; that is the listing's own premise, not a gap in the fixture.
+        """
+        return tuple(
+            name for name in (
+                container_name_for_box_name(_ALIVE, WORKSET_SEGMENT_PRIMARY),
+                container_name_for_box_name(_GONE, WORKSET_SEGMENT_PRIMARY),
+                container_name_for_box_name(_STRAY, WORKSET_SEGMENT_PRIMARY),
+                container_name_for_box_name(_MEMBER, _WS_NAME),
+                container_name_for_box_name(
+                    self.lone_name, WORKSET_SEGMENT_STANDALONE,
+                ),
+            ) if name is not None
         )
 
 
@@ -79,7 +92,7 @@ def sandbox(config_file, tmp_home, credentials_dir, capsys):
     config = load_config(config_file)
     std = load_std_paths(config)
 
-    for name in (_ALIVE, _GONE, _STRAY):
+    for name in (_ALIVE, _GONE, _STRAY, _LEGACY):
         workspace = tmp_home / name
         workspace.mkdir()
         resolve_project(std, config, project_dir=str(workspace), initialize=True)
@@ -94,21 +107,22 @@ def sandbox(config_file, tmp_home, credentials_dir, capsys):
 
     # A workset member is never ALSO a primary box, and its workspace lives under
     # the workset's own ``workspaces/`` — not at the path handed to ``add_project``.
-    ws = create_workset("demo", tmp_home / "worksets" / "demo", std)
+    ws = create_workset(_WS_NAME, tmp_home / "worksets" / _WS_NAME, std)
     (tmp_home / _MEMBER).mkdir()
     add_project(ws, _MEMBER, tmp_home / _MEMBER)
     shutil.rmtree(ws.workspaces_dir / _MEMBER)
 
-    # A STANDALONE box, whose container is keyed by its root rather than a name.
+    # A STANDALONE box, whose container is keyed by its NAME and the standalone segment.
     lone = tmp_home / "lone"
     lone.mkdir()
-    lone_root = resolve_standalone_project(
+    lone_proj = resolve_standalone_project(
         std, config, str(lone), initialize=True,
-    ).metadata_path
+    )
+    lone_root = lone_proj.metadata_path
     shutil.rmtree(lone_root)
 
     capsys.readouterr()  # the resolvers announce their own setup; the rows are next
-    return Sandbox(lone_root=lone_root)
+    return Sandbox(lone_root=lone_root, lone_name=lone_proj.name)
 
 
 def _primary_name(std, workspace_name: str) -> str:
@@ -346,3 +360,35 @@ def _show_all_help(verb: str) -> str:
     add_parser(root.add_subparsers(dest="command"))
     verb_parser = _subparser(_subparser(root, "box"), verb)
     return str(next(a for a in verb_parser._actions if "-a" in a.option_strings).help)
+
+
+# ---------------------------------------------------------------------------
+# A box name that renders NO container name is REPORTED, never fatal.
+# ---------------------------------------------------------------------------
+
+def test_list_with_one_legacy_box_name_still_lists_every_box(
+    sandbox, tmp_path, monkeypatch, capsys,
+):
+    """One box whose name renders NO name must not blank the listing.
+
+    The listing has no container-name column, so "no name" is the STATUS it already
+    shows for any box that is not running — and every other box is still listed.
+    """
+    out = _cli(["box", "list"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
+    for name in (_ALIVE, _GONE, _STRAY, _LEGACY):
+        assert name in out, (name, out)
+    _row(out, _LEGACY, "stopped")
+    _row(out, _ALIVE, "active")
+
+
+def test_ps_with_one_legacy_box_name_still_lists_the_active_boxes(
+    sandbox, tmp_path, monkeypatch, capsys,
+):
+    """``box ps`` is the ACTIVE-ONLY view, so the offender is simply not in it.
+
+    What matters is that its presence on disk does not blank the view: ``_cli`` fails
+    the test on any non-zero exit, so reaching the assertions IS the rc 0 pin.
+    """
+    out = _cli(["box", "ps"], sandbox.running_containers(), tmp_path, monkeypatch, capsys)
+    _row(out, _ALIVE, "active")
+    assert _LEGACY not in out

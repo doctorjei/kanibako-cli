@@ -66,7 +66,6 @@ _LOADERS = frozenset({
     "standalone_box_names",     # project/registry_store.py   — the same keys, as a set
     "_load_registry",           # project/workset.py          — worksets: as {name: root}
     "list_worksets",            # project/workset.py          — its PUBLIC wrapper
-    "_primary_name_domain",     # settings/paths.py           — the PRIMARY name domain
 })
 
 #: Functions returning the WHOLE registry document, keyed by SECTION rather than by name.

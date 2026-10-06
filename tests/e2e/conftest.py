@@ -25,12 +25,24 @@ from typing import Iterator
 
 import pytest
 
+from kanibako.utils import WORKSET_SEGMENT_PRIMARY, render_container_name
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 E2E_IMAGE = "kanibako-oci:latest"
-CONTAINER_PREFIX = "kanibako-e2e-"
+
+
+def box_container(box: str) -> str:
+    """The container name the product renders for the primary box *box*."""
+    name = render_container_name(WORKSET_SEGMENT_PRIMARY, box)
+    assert name is not None, f"box name {box!r} renders no container name"
+    return name
+
+
+# The ``e2e-<x>`` primary boxes' containers start here (other suite boxes are cleaned up by their own tests).
+CONTAINER_PREFIX = box_container("e2e-")
 # Registry source used to pre-warm E2E_IMAGE into the pinned store when it is
 # not already present there (see ensure_image_in_pinned_store). Overridable so
 # the suite can target a different image ref without editing the file.
@@ -618,7 +630,7 @@ def e2e_env(tmp_path, stub_script, host_storage_conf) -> dict:
         if not name:
             continue
         # Clean up only e2e test containers (not user's real ones)
-        if name.startswith("kanibako-e2e-"):
+        if name.startswith(CONTAINER_PREFIX):
             subprocess.run(
                 [_podman, "rm", "-f", "-t", "1", name],
                 capture_output=True,
@@ -739,7 +751,7 @@ def goose_e2e_env(tmp_path, goose_stub_script, host_storage_conf) -> dict:
         name = name.strip()
         if not name:
             continue
-        if name.startswith("kanibako-e2e-"):
+        if name.startswith(CONTAINER_PREFIX):
             subprocess.run(
                 [_podman, "rm", "-f", "-t", "1", name],
                 capture_output=True,

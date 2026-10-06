@@ -235,8 +235,8 @@ current behavior.
 ```_present_scalar_fields(path: Path) -> dict[str, object]```
 The DECLARED box scalars PRESENT in a SETTINGS file, as field-name → value.
 
-`None` is preserved as the reset sentinel; callers must distinguish it from an absent key (which
-simply will not appear in the returned dict).
+`None` is preserved as a VALUE, not a request for the default (spec §2h); callers must
+distinguish it from an absent key (which simply will not appear in the returned dict).
 
 ⚑⚑ **IT WALKS IN THROUGH `_BOX_SCALAR_FIELDS`' DOTTED SPELLINGS, and that is the closed-keyspace
 half of the 2026-08-31 change.** It used to flatten the whole document into underscore-joined names

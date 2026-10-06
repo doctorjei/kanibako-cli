@@ -350,7 +350,13 @@ inside boxes. In order of likely impact:
 36. **`$KANIBAKO_SHELL` is no longer read, and a host that still sets it gets no warning; set
     `box.shell` instead** — see *2.101 `$KANIBAKO_SHELL` is no longer read; set `box.shell` instead*.
 
-37. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
+37. **Stop every container still running under its pre-1.8.0 name before you rely on `stop --all`,
+    `box list`, or `box ps`.** Container names are rendered anew as `kb-<workset>-<box>`, and those
+    three commands see only the new names, so a container started by v1.7.x is invisible to them —
+    `stop --all` reports nothing to stop and exits 0. Stop each one with `<runtime> stop <old
+    name>` — see *Containers are renamed `kb-<workset>-<box>`; a pre-1.8.0 container is invisible*.
+
+38. Smaller items: standalone boxes' `box get` got truthful (§2.9); a box pointed at a new agent
     keeps the old one's credential files in its home (§2.10); several never-released or
     expected-empty renames (§2.11); two `--null` CLI bugs fixed (§2.14); a customized helper
     entrypoint script moves to `~/canon/notebook/scripts/helper-init.sh` (§2.44);
@@ -396,7 +402,9 @@ inside boxes. In order of likely impact:
     space*; and `create` refuses a directory a named box holds as its workspace — see *`create` in a
     directory connected to a workset is refused*; and an endpoint is read and stored as written, so
     a `\` that escaped a character in it must go — see *An endpoint is text: remove a `\` you
-    wrote to escape a character in it*.
+    wrote to escape a character in it*; and `system set`, `get`, and `reset` on an `agent.<node>.…`
+    key work on the system settings file, not the agent's own file — see *`system set
+    agent.<node>.*` writes the system settings file*.
 
 ---
 
@@ -5936,6 +5944,21 @@ without regard to case; `--force` does not override it, and nothing is written. 
 **What to do.** For a leftover directory, move it aside, or check what is in it and pass `--force`.
 For a registered name, choose another `--name`.
 
+### A box and a workset may share a name; `--force` is gone from create and register
+
+**Read this if `box create`, `kanibako create`, `box register`, `kanibako register`, or
+`workset create` now fails with `unrecognized arguments: --force`.**
+
+**What changed.** Box and workset names are separate namespaces, and only a name the same kind
+already holds is refused. Creating, registering, or renaming a box with a workset's name, or
+creating a workset with a primary box's name, now succeeds without `--force`, and that `--force`
+was removed because bypassing this refusal was its only job. A bare name held by both still
+resolves to the box, with no warning; `kanibako workset <cmd> <name>` reaches the workset. An
+auto-named box no longer skips a workset's name: a new box beside a workset `solo` is named `solo`,
+where it used to be `solo2`.
+
+**What to do.** Drop `--force` from those five commands.
+
 ### A `null` workset vault, canon, template or channel root means no directory
 
 **Read this if a `<workset>/workset.yaml` sets `workset.vault_ro`, `workset.vault_rw`,
@@ -6510,6 +6533,77 @@ and `\` escaped the next character, so `https://user:key@host/v1` had to be writ
 **What to do.** Remove each `\` you wrote as an escape: `https://user:key\@host/v1` becomes
 `https://user:key@host/v1`. An endpoint that referred to another key or variable (`@…`, `$…`, `~`)
 must be written out in full.
+
+### `system set agent.<node>.*` writes the system settings file
+
+**Read this if you have run `kanibako system set` or `system reset` on an `agent.<node>.…` key.**
+
+**What changed.** `kanibako system set agent.<node>.<key>=…` used to write the agent's own
+`agents/<node>/agent.yaml`, and `system get` read that file first. The `system` verbs now work on the
+system settings file alone (`<data>/global/settings.yaml`, under `agent: <node>:`): `set` writes
+there, `reset` clears there, and `get` reports only what that file stores. The agent's own file
+belongs to `kanibako agent set`, `agent get`, and `agent reset`, which have not changed. The
+launch reads both files, and the agent's own file outranks the system file for the same key.
+
+**What to do.** Nothing moves by itself. A value an earlier `system set` wrote is still in
+`agents/<node>/agent.yaml` and still applies; read it with `kanibako agent get <node> <key>`, and
+clear it with `kanibako agent reset <node> <key>`. `kanibako system get agent.<node>.<key>` now
+answers `(not set)` for it. To keep a value at the system scope instead, `system set` it again and
+`agent reset` the old copy, since the agent's own file wins while both hold the key.
+
+### Containers are renamed `kb-<workset>-<box>`; a pre-1.8.0 container is invisible
+
+**Read this if any box is running when you upgrade, or if you address a box's container by name.**
+
+**What changed.** A box's container name is rendered from its workset and its box name as
+`kb-<workset>-<box>`, and every `-` inside either part is written `--`. A primary box's workset part
+is `primary` and a standalone box's is `standalone`, so `primary` and `standalone` are now reserved
+workset names. Helper containers and the helper socket are named from the same two parts.
+
+| Box | v1.7.x | v1.8.0 |
+|---|---|---|
+| primary box `demo` | `kanibako-demo` | `kb-primary-demo` |
+| primary box `a-b` | `kanibako-a-b` | `kb-primary-a--b` |
+| box `api` in workset `team` | `kanibako-api` | `kb-team-api` |
+| standalone box `mybox` | `kanibako-ronin-<escaped root>` | `kb-standalone-mybox` |
+
+There is no alias for the old names. A container v1.7.x started keeps its old name, and the commands
+that list running containers see only `kb-` names:
+
+| Command | What it does with a pre-1.8.0 container that is still running |
+|---|---|
+| `kanibako stop --all` | does not see it: prints `No running kanibako containers found.` and exits 0 |
+| `kanibako box list` | shows its box as `stopped` |
+| `kanibako box ps` | leaves its box out |
+| `kanibako stop <box>` | finds no container under the new name; the old one keeps running |
+| `kanibako start <box>` | refuses, naming the old container and the command that stops it |
+
+`start` refuses because a launch under the new name would leave two containers running for one
+box. Its message names the old container and the container runtime in use, as kanibako found it
+(a path, unless `KANIBAKO_DOCKER_CMD` names it otherwise), for example:
+
+```
+Error: box 'demo' is still running as 'kanibako-demo', the name it had before the container naming change. Starting it again would leave two boxes running, so this is refused. Stop it, then start it again:
+  /usr/bin/podman stop kanibako-demo
+```
+
+A box with no recorded name had a container named `kanibako-<first 8 characters of its project
+hash>`; `start` refuses such a box before this check, so stop that container by hand with the command above.
+
+A box name that is empty or starts with `-`, which the box-name rule no longer allows, renders no
+container name at all. `start` and `stop` refuse such a box and print the command that gives it a
+valid name; `box list` lists it as not running; `stop --all` names it once as skipped and continues.
+
+**What to do.** Before or right after upgrading, list the containers that still carry an old name and
+stop each one with your container runtime, then start the box again; it comes up under its new name.
+
+```
+podman ps --filter name=kanibako-        # or: docker ps --filter name=kanibako-
+podman stop kanibako-<box name>          # or kanibako-ronin-<escaped root> for a standalone box
+kanibako start <box>
+```
+
+`kanibako stop` cannot do this for you: it addresses only the new names.
 
 ---
 
@@ -7793,9 +7887,8 @@ What this means for you:
   already-registered entity **of the same kind** — a workset against a workset, a box
   against a box — kanibako refuses, leaves the tree untouched, and prints a clear
   error. (A future `rename` mechanism — not in 1.6.0 — will resolve collisions.)
-  ⚑ A workset name colliding with a primary BOX name is a different case and does
-  **not** refuse: the import proceeds and warns. Bare-name resolution prefers the box,
-  so reach the workset as `kanibako workset <cmd> <name>`.
+  ⚑ A workset name matching a primary BOX name is not a collision: box and workset
+  names are separate namespaces, so the import proceeds normally.
 
 Practical upshot for migration: after you have hand-moved trees into the new layout
 (§3–§5), you do **not** strictly need to hand-edit the registry for every box — a

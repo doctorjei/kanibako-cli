@@ -496,7 +496,7 @@ def refuse_scalar_at_table_key(
 
 def check_bind_map(
     raw: Mapping[str, Any], *, category: str, where: str | None = None,
-    declared: bool = True,
+    declared: bool = True, pref_agent: str | None = None,
 ) -> None:
     """RAISE on every malformed or doubly-spelled entry of ONE dest-keyed bind map.
 
@@ -514,7 +514,23 @@ def check_bind_map(
     ⚑ *declared* is False for a map whose KEY is not a declared category position
     (``agent.common``, a node with no discriminator): its entries are undeclared keys, so
     a value that is not a list is left to the §0 refusal, which names the whole key.
+
+    ⚑ *pref_agent* is the agent segment the map sits under — ``zippity`` for a
+    ``pref.agent.zippity.<category>`` entry — or ``None`` for every other key. The bind-map
+    parse passes it deferred or not, and it is judged FIRST, by
+    :func:`~kanibako.settings.settings_prefs.agent_segment_reason`, which says why.
     """
+    if pref_agent is not None:
+        # ⚑ FUNCTION-SCOPE: ``settings_prefs`` imports THIS module at module scope, so a
+        # module-scope import back would close a cycle.
+        from kanibako.settings.settings_prefs import agent_segment_reason
+
+        reason = agent_segment_reason(pref_agent)
+        if reason is not None:
+            raise SettingsError(
+                f"{category} entry under pref.agent.{pref_agent}: {reason}."
+                f"{_in_file(where)}"
+            )
     refuse_dest_spelled_twice(raw, category=category, where=where)
     for key, sub in raw.items():
         if sub is None:

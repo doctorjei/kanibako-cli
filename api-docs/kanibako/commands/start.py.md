@@ -40,6 +40,7 @@ def reset_collision_warnings() -> None
 def emit_collision_warnings(collisions) -> None
 def persona_create_verdict(std, config, proj, *, explicit_agent: str | None=None) -> str | None
 def seed_new_box(std, config, proj, *, explicit_agent: str | None=None) -> None
+def recover_cure(probe) -> str
 def bounded_socket_name(identity: str, run_dir: Path) -> str
 def helper_socket_path(proj: ProjectPaths, run_dir: Path) -> Path
 def validate_socket_path(socket_path: Path) -> None
@@ -64,8 +65,9 @@ def _check_box_components(proj) -> str | None
 def _resolve_existing_box(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> ProjectPaths | None
 def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
 def _store_move_cure(old: Path | None, new: Path) -> str
+def _interrupted_create_error(proj: ProjectPaths, pending: dict) -> str
 def _no_box_error(project_dir: str | None, std: StandardPaths | None=None) -> str
-def _unbuilt_box_error(proj: ProjectPaths) -> str | None
+def _unbuilt_box_error(proj: ProjectPaths, std: StandardPaths) -> str | None
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None
 def _launch_issues_path(std, container_name: str) -> Path
 def _check_launch_baseline(runtime, image, bootstrap_program, container_name, std, *, setting: str | None)
@@ -142,10 +144,11 @@ def _launch_seed_list(snapshot: 'KeyStore') -> 'list[CollapsedCopy]'
 def _launch_synced_list(snapshot: 'KeyStore') -> 'list[CollapsedCopy]'
 def _install_box_handbook(*, proj, snapshot: 'KeyStore', agent_id: str, logger) -> None
 def _box_journal_key(proj) -> str
+def _create_designation(probe) -> 'tuple[str, str]'
 def _write_create_entry(std, proj) -> None
 def _clear_create_entry(std, proj) -> None
 def _pending_create_entry(std, proj) -> dict | None
-def _register_new_box(std, proj, *, force: bool=False) -> None
+def _register_new_box(std, proj) -> None
 def _synced_uptodate(src: Path, dest: Path) -> bool
 def _apply_shell_copy(src: Path, dest: Path, *, label: str, name: str, host_src: str, logger, if_absent: bool, skip_if: 'Callable[[Path, Path], bool] | None'=None) -> None
 def _host_copy_dest(box_dest: str, box_root: Path, *, label: str, name: str, logger) -> Path | None
@@ -177,6 +180,7 @@ def _interactive_host() -> bool
 def _restore_host_terminal() -> None
 def _validate_mounts(mounts: list, logger) -> None
 def _rotate_file(path: Path) -> None
+def _refuse_legacy_container(runtime, proj: ProjectPaths) -> str | None
 ```
 
 ## Classes

@@ -6642,15 +6642,13 @@ class TestLaunchSeedGate:
             assert rc == 0
             m_seed.assert_called_once()
 
-    def test_launch_never_completes_interrupted_create(self, start_mocks):
-        """Explicit-create: the launch path no longer resurrects a half-created
-        box.  Even with a PENDING create journal entry (and is_new False — the
-        existing-box relaunch shape), the launch does NOT seed / register / clear —
-        forward-recovery of an interrupted create belongs to ``kanibako create``."""
+    def test_launch_never_completes_interrupted_create(self, start_mocks, capsys):
+        """Explicit-create: the launch path never resurrects a half-created box.
+        With a PENDING create journal entry (and is_new False — the existing-box
+        relaunch shape) the launch REFUSES, naming ``create --recover``, and does
+        NOT seed / register / clear — forward-recovery belongs to ``create``."""
         with start_mocks() as m:
             m.proj.is_new = False
-            # A stale pending create entry would, pre-change, have driven the
-            # launch-side "or _pending_create_entry(...)" resurrection.
             m.pending_create_entry.return_value = {
                 "op": "create", "name": "testproject",
             }
@@ -6660,7 +6658,8 @@ class TestLaunchSeedGate:
                     new_session=False, safe_mode=False, resume_mode=False,
                     extra_args=[],
                 )
-            assert rc == 0
+            assert rc == 1
+            assert "--recover" in capsys.readouterr().err
             m_seed.assert_not_called()
             m.register_new_box.assert_not_called()
             m.write_create_entry.assert_not_called()
@@ -11448,7 +11447,7 @@ class TestReattachFastPath(_RunningBoxDriver):
             assert self._start(detach=True, print_container=True) == 0
             out = capsys.readouterr()
         assert "is already running" in out.err
-        assert out.out.strip().splitlines()[-1] == "kanibako-testproject"
+        assert out.out.strip().splitlines()[-1] == "kb-primary-testproject"
         m.runtime.exec.assert_not_called()
 
     def test_entrypoint_on_a_running_box_execs_instead_of_attaching(
@@ -11523,7 +11522,7 @@ class TestShellAtALiveBoxResolvesFromTheRunningImage(_RunningBoxDriver):
             m.runtime.container_image.return_value = self._LIVE_IMAGE
             self._running(m)
             assert self._shell() == 0
-            m.runtime.container_image.assert_called_once_with("kanibako-testproject")
+            m.runtime.container_image.assert_called_once_with("kb-primary-testproject")
             kwargs = m_resolve.call_args.kwargs
         assert kwargs["image"] == self._LIVE_IMAGE
         # ... and NOT the configured rig the merged config carries.
@@ -12029,7 +12028,7 @@ class TestDetachAtALiveBoxRefusesThePerRunFlags(_RunningBoxDriver):
         assert rc == 0
         assert "Box 'testproject' is already running." in out.err
         assert "cannot be applied" not in out.err
-        assert out.out.strip().splitlines()[-1] == "kanibako-testproject"
+        assert out.out.strip().splitlines()[-1] == "kb-primary-testproject"
         m.runtime.exec.assert_not_called()
 
 
@@ -13054,7 +13053,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         new = tmp_home / "kb3" / "deep" / "project"
         assert proj.metadata_path == new and not new.parent.exists()
 
-        msg = _unbuilt_box_error(proj)
+        msg = _unbuilt_box_error(proj, std)
         assert msg is not None
         assert "Rebuild" not in msg
         assert "kanibako create" not in msg
@@ -13068,7 +13067,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         assert (new / "kept.txt").read_text() == "data"
         assert not marker.exists()
         proj = _resolve_existing_box(std, config, None)
-        assert proj is not None and _unbuilt_box_error(proj) is None
+        assert proj is not None and _unbuilt_box_error(proj, std) is None
 
     def test_repointed_with_no_store_found_still_offers_no_rebuild(
         self, config_file, tmp_home, credentials_dir, protected_canon,
@@ -13086,7 +13085,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         proj = _resolve_existing_box(std, config, None)
         assert proj is not None
 
-        msg = _unbuilt_box_error(proj)
+        msg = _unbuilt_box_error(proj, std)
         assert msg is not None
         assert "Rebuild" not in msg
         assert "where workset.boxes used to point" in msg
@@ -13110,7 +13109,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         proj = _resolve_existing_box(std, config, None)
         assert proj is not None and proj.metadata_path == old / "project"
 
-        msg = _unbuilt_box_error(proj)
+        msg = _unbuilt_box_error(proj, std)
         assert msg is not None
         assert "Rebuild" not in msg
         assert " mv " not in msg
@@ -13132,7 +13131,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         proj = _resolve_existing_box(std, config, None)
         assert proj is not None
 
-        msg = _unbuilt_box_error(proj)
+        msg = _unbuilt_box_error(proj, std)
         assert msg is not None
         assert " mv " not in msg and "Rebuild" not in msg
         assert msg.endswith("which already exists; a move would not land it at that "
@@ -13150,7 +13149,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         proj = _resolve_existing_box(std, config, None)
         assert proj is not None
 
-        msg = _unbuilt_box_error(proj)
+        msg = _unbuilt_box_error(proj, std)
         assert msg is not None
         assert msg.endswith(f"  Rebuild it:  kanibako create {tmp_home / 'project'}")
         assert " mv " not in msg
@@ -13293,7 +13292,7 @@ class TestGoneBoxCureIsSafeAfterARepoint:
             std, config, str(src), initialize=False, register=True, warn=False,
         )
         assert proj.metadata_path == new
-        msg = _unbuilt_box_error(proj)
+        msg = _unbuilt_box_error(proj, std)
         assert msg is not None
         assert "Rebuild" not in msg
         assert "workset disconnect" not in msg
@@ -13305,4 +13304,79 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         proj = resolve_box_target(
             std, config, str(src), initialize=False, register=True, warn=False,
         )
-        assert _unbuilt_box_error(proj) is None
+        assert _unbuilt_box_error(proj, std) is None
+
+
+class TestStartRefusesALegacyRunningContainer:
+    """``start`` refuses while the box still runs under its PRE-``kb-`` container name.
+
+    Launching under the rendered name while the old one is live would leave TWO
+    containers running for one box, so the door refuses and names the cure.
+    Nothing is stopped here — stopping a box is ``stop``'s verb, not ``start``'s.
+    """
+
+    @staticmethod
+    def _start():
+        return _run_container(
+            project_dir=None, entrypoint=None, image_override=None,
+            new_session=False, safe_mode=False, resume_mode=False,
+            extra_args=[],
+        )
+
+    def test_a_legacy_container_still_running_refuses_the_start(
+        self, start_mocks, capsys,
+    ):
+        from kanibako.utils import legacy_container_names
+
+        with start_mocks() as m:
+            m.runtime.cmd = "podman"
+            proj = m.resolve_any_project.return_value
+            legacy = legacy_container_names(proj)[0]
+            m.runtime.live_names.add(legacy)
+            rc = self._start()
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert legacy in err, err
+        assert "two boxes running" in err, err
+        assert f"podman stop {legacy}" in err, err
+        assert "kanibako stop" not in err, err
+        m.runtime.run.assert_not_called()
+
+    def test_the_cure_names_the_runtime_in_use(self, start_mocks, capsys):
+        from kanibako.utils import legacy_container_names
+
+        with start_mocks() as m:
+            m.runtime.cmd = "docker"
+            legacy = legacy_container_names(m.resolve_any_project.return_value)[0]
+            m.runtime.live_names.add(legacy)
+            assert self._start() == 1
+        err = capsys.readouterr().err
+        assert f"  docker stop {legacy}" in err, err
+        assert "podman" not in err, err
+
+    def test_a_nameless_primary_box_never_prints_none(self, start_mocks):
+        """``start`` refuses a nameless box earlier, so the guard is driven directly."""
+        from kanibako.commands.start import _refuse_legacy_container
+        from kanibako.utils import legacy_container_names
+
+        with start_mocks() as m:
+            m.runtime.cmd = "podman"
+            proj = m.resolve_any_project.return_value
+            proj.name = None
+            proj.project_hash = "0123456789abcdef"
+            legacy = legacy_container_names(proj)[0]
+            assert legacy == "kanibako-01234567"
+            m.runtime.live_names.add(legacy)
+            err = _refuse_legacy_container(m.runtime, proj)
+        assert err is not None
+        assert f"podman stop {legacy}" in err, err
+        assert "None" not in err, err
+
+    def test_the_control_nothing_under_the_old_name_starts_normally(
+        self, start_mocks,
+    ):
+        """The other half of the ruling: the guard is INVISIBLE to an ordinary box."""
+        with start_mocks() as m:
+            rc = self._start()
+        assert rc == 0
+        m.runtime.run.assert_called()

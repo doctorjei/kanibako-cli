@@ -50,7 +50,7 @@ class TestLoadStdPaths:
         cure = text.index("kanibako system set 'workset.boxes=/srv/kb/{meta.workset.path}'")
         reset = text.index("kanibako system reset workset.boxes")
         assert cure < reset < text.index("kanibako workset set <workset> 'workset.boxes=")
-        assert "kanibako stop --all reads no settings" in text
+        assert "kanibako stop --all stops every running box even when a settings file is refused" in text
 
     @pytest.mark.parametrize("form", _FORMS)
     def test_the_anchored_cure_is_read(self, std, config_file, form):

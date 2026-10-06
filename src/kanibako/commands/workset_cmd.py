@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from kanibako.commands.flags import add_null_flag, add_set_force_flag
 from kanibako.settings.config import user_config_file, load_config
+from kanibako.settings.messages import ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX
 from kanibako.errors import ConfigError, WorksetError
 from kanibako.settings.paths import (
     BoxMode,
@@ -66,7 +67,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     ws_sub = p.add_subparsers(dest="workset_command", metavar="COMMAND")
 
-    # workset create [path] [--name N] [--standalone] [-i IMAGE] [--no-vault] [--force]
+    # workset create [path] [--name N] [--standalone] [-i IMAGE] [--no-vault]
     create_p = ws_sub.add_parser(
         "create",
         help="Create a new working set",
@@ -95,11 +96,6 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     create_p.add_argument(
         "--no-vault", action="store_true",
         help="Disable vault directories",
-    )
-    create_p.add_argument(
-        "--force", action="store_true",
-        help="Create even if the name is already used by a primary box "
-             "(the box shadows this workset in bare-name resolution)",
     )
     create_p.set_defaults(func=run_create)
 
@@ -413,7 +409,7 @@ def run_create(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        ws = create_workset(name, path, std, force=getattr(args, "force", False))
+        ws = create_workset(name, path, std)
     except WorksetError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -424,7 +420,7 @@ def run_create(args: argparse.Namespace) -> int:
     # ⚑ These flags set BOX-SCOPE keys at the WORKSET tier — ``box.image`` and
     # ``box.enable_vault``.  Both reach a contained box as an OVERRIDABLE DOWNWARD DEFAULT
     # through the ordinary settings cascade (``paths.resolve_box_enable_vault`` for the
-    # vault flag; it was a hand-opened two-file read until 2026-08-29).  A
+    # vault flag).  A
     # top-level ``enable_vault``/``standalone`` is not a declared key at all
     # (spec §0: the keyspace is CLOSED), so it would be carried into the store as
     # an undeclared path, not merely ignored.
@@ -623,18 +619,17 @@ def run_connect(args: argparse.Namespace) -> int:
         print(f"Error: Cannot connect '{source.resolve()}': {present}", file=sys.stderr)
         return 1
 
-    # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected — it would
-    # stay registered beside the new member.  ``box convert`` changes an EXTERNAL
-    # workspace's owner; inside the tree it does not reach the box.
+    # ⚑ ONE BOX PER WORKSPACE: a primary box's workspace is never connected.  In-tree,
+    # the in-place cure must land on THIS leaf, so it carries the leaf's name.
     owner = primary_box_name_for_workspace(std.primary_workset, str(resolved),
                                            early=_early_scope(std, BoxMode.primary))
     if owner is not None:
-        how = (f"remove it first with 'kanibako box rm {owner}'" if in_tree else
-               f"to make it a member of '{ws.name}', run "
-               f"'kanibako box convert {owner} --workset {ws.name}'")
+        rename = f" --name {project_name}" if in_tree and owner != project_name else ""
         print(
-            f"Error: Cannot connect '{resolved}': it is already the workspace of "
-            f"primary box '{owner}'; {how}.",
+            f"Error: Cannot connect '{resolved}': "
+            + ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX % (
+                owner, ws.name, owner, ws.name, rename, owner, ws.name, owner, owner,
+            ),
             file=sys.stderr,
         )
         return 1
@@ -927,15 +922,9 @@ def _run_workset_config(args: argparse.Namespace) -> int:
             key,
             global_config_path=config_file,
             project_toml=ws_config,
-            # ⚑ The AGENTS ROOT, threaded exactly as ``system get`` threads it
-            # (``system_cmd``, off the SAME ``load_std_paths``) — the per-node
-            # families (``agent.<node>.<key>`` and its bind / secret_path
-            # siblings) live in ``agents/<node>/agent.yaml``, and every one of
-            # their read branches resolves through ``agents_root``. Withheld, the
-            # target resolves to ``None`` and the read answered "(not set)" at
-            # rc 0 for a key that IS set — a fabricated answer §0 forbids, and
-            # one that disagreed with ``system get`` on the same key.
-            agents_root=std.agents,
+            # Threaded as ``system get`` threads it, and like it never reading the
+            # node's own file: that is the agent scope's (spec §2a, plain ``get``).
+            agents_root=std.agents, node_store=False,
             command_scope=ConfigLevel.workset,
             cascade_system_path=std.settings,
         )
@@ -1339,12 +1328,7 @@ def _workset_preview_collapse(entries: "list[CategoryEntry]") -> "CollapsedStore
 
     # ⚑⚑ THE ARBITRATION IS THE LAUNCH'S OWN — the same two calls
     # ``commands.start._install_assembly_collapse`` makes, not a second walk.
-    # Until 2026-08-26 this display printed the ENTRY LIST: every stored binding,
-    # pre-collapse, with no mask, no containment and no §0 row applied. So a
-    # workset that ALSO declared ``workset.masks`` over a share's destination
-    # listed that share as a live mount while the box received nothing at all
-    # (rc 0, no message), and one whose declarations a launch REFUSES outright
-    # listed cleanly. ⚑ The COLLISION WARNINGS a launch emits are not raised
+    # ⚑ The COLLISION WARNINGS a launch emits are not raised
     # here: §0's exempt pair is an ambiguity between two ABSTRACT declarations, and a
     # share is never one of the two — the surviving share is unaffected.
     # ⚑ THE ENTRY LIST GOES IN AS WELL, and it buys exactly one thing: the

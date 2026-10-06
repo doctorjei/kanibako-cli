@@ -17,6 +17,7 @@ def add_code_parser(subparsers: argparse._SubParsersAction) -> None
 def run_code(args: argparse.Namespace) -> int
 def _attach_uri(container_name: str, context: str | None=None) -> str
 def _resolve_code_cli() -> str | None
+def _no_container_name(name: str) -> str
 def _extension_for_agent(agent_name: str, project_path) -> str | None
 def _resolve_box_agent_node(runtime, std, proj, container_name: str) -> str | None
 def _resolve_box_vscode_extension(agent_name: str | None, proj) -> str | None

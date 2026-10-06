@@ -33,7 +33,7 @@ def _create_args(path, **over):
     ns = argparse.Namespace(
         path=str(path), standalone=False, no_vault=True,
         name=None, image=None, agent=None, allow_home=False,
-        private=False, force=False, register=False,
+        private=False, register=False,
     )
     for k, v in over.items():
         setattr(ns, k, v)
@@ -46,7 +46,7 @@ _A_KUID = "pznvh"
 
 
 def _register_args(target, **over):
-    ns = argparse.Namespace(target=str(target), box=None, force=False)
+    ns = argparse.Namespace(target=str(target), box=None)
     for k, v in over.items():
         setattr(ns, k, v)
     return ns
@@ -301,7 +301,7 @@ class TestConflictSafety:
         dir_b = tmp_home / "b"
         dir_b.mkdir()
         register_primary_box_name(
-            std.primary_workset, std.registry, "dup", str(dir_b),
+            std.primary_workset, "dup", str(dir_b),
             early=_early_scope(std, BoxMode.primary),
         )
         capsys.readouterr()

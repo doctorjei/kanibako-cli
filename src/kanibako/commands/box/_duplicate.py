@@ -159,6 +159,10 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
         refuse_null_workspaces(new_path, f"a workspace for '{new_path.name}'", standalone=True,
                                early=_early_scope(std, BoxMode.standalone))
 
+    src_enable_vault = (
+        _source_authored_vault(src_proj) if target_mode == BoxMode.standalone else None
+    )
+
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
         print(f"Duplicate project ({mode}) to {target_mode.value} mode:")
@@ -202,7 +206,9 @@ def _run_duplicate_cross_mode(args: argparse.Namespace, std, config) -> int:
             )
             assert dest_workspace is not None  # a nulling root refused before the prompt
             _merge_workspace(workspace_src, dest_workspace, args.force)
-        _duplicate_to_standalone(src_proj, new_path, std, args.force)
+        _duplicate_to_standalone(
+            src_proj, new_path, std, args.force, src_enable_vault,
+        )
     else:
         # PRIMARY (local) target.  F-3: copy the workspace and lay down the
         # metadata inside ONE try that catches BOTH a Guard-1 ProjectError (a late
@@ -260,7 +266,18 @@ def _merge_workspace(src: Path, dst: Path, force: bool) -> None:
         raise ProjectError(f"Could not copy the workspace {src} to {dst}{detail}") from e
 
 
-def _duplicate_to_standalone(src_proj, new_path, std, force):
+def _source_authored_vault(src_proj) -> bool:
+    """What the SOURCE box authored for ``box.enable_vault`` — its BOX TIER, no cascade.
+
+    ⚑ Each duplicate door calls this BEFORE its copy and destination mkdir, so a
+    shape-rule refusal leaves nothing behind — the cure it prints needs a destination the
+    retry can land on.
+    """
+    src_box, _ = box_workset_settings_paths(src_proj)
+    return read_box_enable_vault(src_box)
+
+
+def _duplicate_to_standalone(src_proj, new_path, std, force, src_enable_vault):
     """Establish a fresh standalone box at *new_path*.
 
     A duplicate is a NEW box, so this mirrors ``create --standalone`` /
@@ -283,6 +300,8 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     from kanibako.errors import ProjectError
     from kanibako.settings.paths import establish_standalone, write_vault_gitignore
     from kanibako.utils import write_project_gitignore
+
+    src_box, _ = box_workset_settings_paths(src_proj)
 
     dst_metadata = new_path / STANDALONE_META_DIR
     dst_shell = dst_metadata / "home"
@@ -335,7 +354,6 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     # below writes the destination ROOT fresh — so such a key does not reach the duplicate
     # at all; that is the rule, not a gap.  ``establish_standalone`` also read-modify-writes
     # ``box.enable_vault`` into this SAME box-tier file, preserving what was carried.
-    src_box, _ = box_workset_settings_paths(src_proj)
     carried = carried_box_settings(src_box)
     dst_box_settings = dst_metadata / BOX_META_FILE
     if carried:
@@ -360,7 +378,7 @@ def _duplicate_to_standalone(src_proj, new_path, std, force):
     # genuinely authored ``--no-vault``.
     _box_name, _dst_shell, _dst_vault_ro, dst_vault_rw = establish_standalone(
         std, new_path,
-        enable_vault=read_box_enable_vault(src_box),
+        enable_vault=src_enable_vault,
     )
 
     write_project_gitignore(new_path)
@@ -436,10 +454,9 @@ def _duplicate_to_local(src_proj, new_path, std, config, force):
     """
     # Assign a new name for the duplicate.  The name MUST be registered first
     # because the destination metadata dir is derived from it (std.boxes/<name>).
-    # Registers the PRIMARY membership (the sole store; a duplicate now joins the
-    # membership like any other primary box — closing the old global-only gap).
+    # Registers the PRIMARY membership (the sole store).
     project_name = assign_primary_box_name(
-        std.primary_workset, std.registry, str(new_path), early=_early_scope(std, BoxMode.primary),
+        std.primary_workset, str(new_path), early=_early_scope(std, BoxMode.primary),
     )
     projects_base = std.boxes
     dst_project = projects_base / project_name
@@ -638,6 +655,34 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             print("Aborted.")
             return 2
 
+    src_enable_vault = (
+        _source_authored_vault(src_proj) if target_mode == BoxMode.standalone else None
+    )
+
+    # Copy workspace (unless --bare).  Copy from the member's RECORDED workspace, not
+    # the RESOLVED one: a null ``workset.workspaces`` leaves ``project_path`` None while
+    # the registry's ``boxes:`` row still names the real directory, so guarding on the
+    # resolved value turned "nulled" into "nothing there" and registered an EMPTY box
+    # with no warning at all.  One accessor for lifecycle / duplicate / archive, so the
+    # three cannot drift.  For an ordinary internal member the two are the same path.
+    ws_workspace: Path | None = None
+    if not args.bare:
+        from kanibako.commands.box._lifecycle import recorded_workspace_for
+        from kanibako.project.workset import refuse_null_workspaces
+
+        ws_workspace = recorded_workspace_for(ws, proj_name, src_proj.project_path)
+        if ws_workspace is None:
+            refuse_null_workspaces(ws.root, f"a workspace for '{proj_name}'",
+                                   early=_early_scope(std, BoxMode.named, ws.name))
+        assert ws_workspace is not None  # refused on the line above
+        if not ws_workspace.is_dir():
+            print(
+                f"Error: the recorded workspace {ws_workspace} for "
+                f"{ws.name}/{proj_name} does not exist; nothing to copy.",
+                file=sys.stderr,
+            )
+            return 1
+
     if not args.force:
         mode = "metadata only (bare)" if args.bare else "workspace + metadata"
         print(f"Duplicate workset project ({mode}) to {target_mode.value} mode:")
@@ -650,20 +695,15 @@ def _duplicate_from_workset(args, source_path, new_path, std, config) -> int:
             print("Aborted.")
             return 2
 
-    # Copy workspace (unless --bare).  Copy from the RESOLVED workspace, not a
-    # hardcoded ws.workspaces_dir/proj_name -- for an external-connected source
-    # the latter is only the discoverability symlink, while project_path (set
-    # via resolve_workset_project's meta["workspace"] override) is the live
-    # workspace.  No-op difference for ordinary internal workset sources.
-    if not args.bare:
-        ws_workspace = src_proj.project_path
-        if ws_workspace is not None and ws_workspace.is_dir():
-            _merge_workspace(ws_workspace, new_path, args.force)
+    if ws_workspace is not None:
+        _merge_workspace(ws_workspace, new_path, args.force)
 
     # Copy metadata into target layout.
     # default<->standalone: architectural boundary (centralized vs in-workspace metadata), not re-rooting — kept distinct (#71 B2).
     if target_mode == BoxMode.standalone:
-        _duplicate_to_standalone(src_proj, new_path, std, args.force)
+        _duplicate_to_standalone(
+            src_proj, new_path, std, args.force, src_enable_vault,
+        )
     else:
         from kanibako.errors import ProjectError
         try:
@@ -821,7 +861,7 @@ def run_duplicate(args: argparse.Namespace) -> int:
     from kanibako.errors import ProjectError
     try:
         dup_name = assign_primary_box_name(
-            std.primary_workset, std.registry, str(new_path), early=_early_scope(std, BoxMode.primary),
+            std.primary_workset, str(new_path), early=_early_scope(std, BoxMode.primary),
         )
     except ProjectError as e:
         print(f"Error: {e}", file=sys.stderr)

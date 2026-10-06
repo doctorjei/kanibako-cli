@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from kanibako.channels.helpers import HELPER_SCRIPTS_RELPATH, INIT_SCRIPT_NAME, SPAWN_CONFIG_FILENAME
+from kanibako.errors import ContainerError
 from kanibako.runtime.container import ContainerRuntime
 from kanibako.log import get_logger
 from kanibako.settings.settings_resolve import BOX_PINNED_STATE_RELPATH, GUEST_HOME
 from kanibako.targets.base import Mount
+from kanibako.utils import render_container_name
 
 if TYPE_CHECKING:
     from kanibako.settings.workset_dirkeys import EarlyScope
@@ -28,7 +30,8 @@ class HelperContext:
 
     runtime: ContainerRuntime
     image: str
-    container_name_prefix: str  # e.g. "kanibako-myapp" (project container name)
+    #: The DIRECTOR box's ``(<W>, <B>)`` pair; a helper's name renders from it.
+    container_name_segments: tuple[str, str]
     shell_path: Path      # director's shell_path (parent of helpers/)
     helpers_dir: Path     # absolute host path to helpers/ inside shell_path
     socket_path: Path     # host path to helper.sock
@@ -290,7 +293,14 @@ class HelperHub:
         else:
             helpers_dir_host = ctx.helpers_dir
 
-        container_name = f"{ctx.container_name_prefix}-helper-{helper_num}"
+        container_name = render_container_name(
+            *ctx.container_name_segments, helper_num=helper_num,
+        )
+        if container_name is None:
+            raise ContainerError(
+                f"director box {ctx.container_name_segments[1]!r} renders no helper "
+                f"container name; start refuses such a box."
+            )
 
         mounts = _build_helper_mounts(ctx, helper_num, helpers_dir_host)
 
@@ -459,12 +469,10 @@ class HelperHub:
             if candidate.is_dir() and candidate.parent.resolve() == boxes_base.resolve():
                 source_meta_dir = candidate
 
-        # Assign + register a new name for the fork in the PRIMARY membership
-        # (was global-only before — a fork now joins the membership like any
-        # other primary box).
+        # Assign + register a new name for the fork in the PRIMARY membership.
         try:
             new_name = assign_primary_box_name(
-                ctx.primary_workset, ctx.registry, str(new_path), early=ctx.early,
+                ctx.primary_workset, str(new_path), early=ctx.early,
             )
         except Exception as e:
             return {"status": "error", "message": f"name assignment failed: {e}"}

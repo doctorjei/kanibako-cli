@@ -37,7 +37,7 @@ def _reg_primary(std, name: str, workspace) -> None:
     setup used across these tests.
     """
     register_primary_box_name(
-        std.primary_workset, std.registry, name, str(workspace),
+        std.primary_workset, name, str(workspace),
         early=_early_scope(std, BoxMode.primary),
     )
 

@@ -395,12 +395,12 @@ class TestStateA:
         assert _run(["stop", "a"]) == 1
         err = capsys.readouterr().err
         assert str(world.std.settings) in err, err
-        assert "kanibako stop --all reads no settings" in err, err
+        assert "kanibako stop --all stops every running box even when a settings file is refused" in err, err
         assert _stopped_or_removed(runtime) == []
 
-        runtime.list_running.return_value = [("kanibako-a", "img", "Up")]
+        runtime.list_running.return_value = [("kb-w1-a", "img", "Up")]
         assert _run(["stop", "--all", "--force"]) == 0
-        runtime.stop.assert_called_once_with("kanibako-a")
+        runtime.stop.assert_called_once_with("kb-w1-a")
         assert world.hashes() == before
 
     def test_system_set_cures_it(self, world, capsys):
@@ -434,6 +434,6 @@ class TestStateC:
 
         assert _run(["system", "set", _ANCHORED]) == 0, capsys.readouterr().err
         assert _run(["stop", str(world.leaf)]) == 0, capsys.readouterr().err
-        runtime.stop.assert_called_once_with("kanibako-a")
-        assert not [c for c in runtime.method_calls if "kanibako-decoy" in c[1]]
+        runtime.stop.assert_called_once_with("kb-w1-a")
+        assert not [c for c in runtime.method_calls if "kb-w1-decoy" in c[1]]
         assert world.hashes() == before

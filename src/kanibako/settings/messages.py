@@ -36,6 +36,8 @@ WARN_RUNDIR_UNUSABLE = ("%s not set & " + RUN_USER_UID_PATH + " unusable; fallin
 
 WARN_WS_NO_ROOT =       "Warning: workset '%s' root missing: %s" # workset name, root
 WARN_WS_BAD_LOAD =      "Warning: failed to load workset '%s': %s" # workset name, exception
+WARN_SA_SHADOWED_BY_PATH = ("'%s' resolved to the path %s; the registered standalone box of the same " +
+                            "name at %s is shadowed — reach it by its path.")  # name, path, root
 WARN_WS_BOX_BAD_NAME = ("box name '%s' does not meet the naming rules (%s); it resolves by its " +
                         "path only, not by that name. Rename it.")           # box name, box_name_reason()
 
@@ -52,8 +54,7 @@ WARN_BOX_NO_VAULT =    ("Warning: cannot find vault for box '%s' (expected at %s
 ERR_SETTINGS_BAD_PATH = "Unresolvable %s path: %s" # "config" | "system", key
 ERR_SETTINGS_BAD_REF =  "Unknown @%s-reference: %s" # "" | "config", ref
 ERR_CONFIG_NO_FILE =    "%s is missing. Run any kanibako command to initialize." # config file path
-# ⚑ The LOUD half of R153 (Jei, 2026-08-31). A stale settings table in the Layer-1 file used
-# to be DROPPED in silence, so a box ran a different image than its owner's file said.
+# ⚑ The LOUD half of R153: a stale settings table in the Layer-1 file refuses, never drops.
 # ⚑ THE CURE IS ORDERED, AND THE ORDER IS LOAD-BEARING: the hand-edit comes FIRST. Every
 # verb resolves its paths through this read, ``system set`` included, so a message that
 # led with the command would send the user to a command that refuses for this same reason.
@@ -63,11 +64,8 @@ ERR_CONFIG_LAYER1_SETTINGS = (
                         "Delete those lines from it, then set what you meant with " +
                         "'kanibako system set <key>=<value>', which writes the settings file.")
                                                     # the Layer-1 file path, the offending keys
-# ⚑⚑ THE OTHER DIRECTION OF THE SAME RULE (2026-09-09). The refusal above catches a
-# settings table OUTSIDE ``config:``; an UNDECLARED leaf INSIDE it was accepted in
-# silence, so a bare ``nonsense`` was loud while ``config.nonsense`` was not — one rule
-# with two answers (Convention 0). Spec §1: "The Layer-1 set is exactly the config keys
-# in the table below."
+# ⚑⚑ THE OTHER DIRECTION OF THE SAME RULE: an UNDECLARED leaf INSIDE ``config:`` refuses too
+# (Convention 0). Spec §1: "The Layer-1 set is exactly the config keys in the table below."
 ERR_CONFIG_LAYER1_UNDECLARED = (
                         "%s carries config keys that do not exist:\n  %s\n" +
                         "Layer 1 declares exactly these (spec §1): %s. Fix or delete " +
@@ -175,8 +173,8 @@ ERR_PER_OWNER_READ = (
                         "Spell the identity into the value: kanibako system set "
                         "'%s=%s'; or run kanibako system reset %s, then kanibako workset "
                         "set <workset> '%s=…' in each %s. To stop running boxes "
-                        "meanwhile: kanibako stop --all reads no settings; it lists the "
-                        "running boxes and asks before stopping them.")
+                        "meanwhile: kanibako stop --all stops every running box even when "
+                        "a settings file is refused; it lists them and asks first.")
                                                     # key, value, file, the words, the cure
 #: The LAUNCH twin, for a key or bind entry any containing settings file holds.
 ERR_PER_OWNER_LAUNCH = (
@@ -219,15 +217,18 @@ ERR_PROJECT_NAME_USED = "Name '%s' is already registered"
 # ⚑ "one record per project" (spec § Detection & import) asked at the PATH, not the name.
 ERR_PROJECT_PATH_IS_NAMED_BOX = ("Refusing to create a box at %s: it is already the workspace of " +
                          "named box '%s' in workset '%s', and one path is one project's record. " +
-                         "--force does not override this. Use that box ('kanibako box show %s/%s'), " +
+                         "Use that box ('kanibako box show %s/%s'), " +
                          "or free the path first:\n"
                          "  kanibako workset disconnect %s %s --force") # path, box, workset (ws, box, ws, box)
-ERR_PROJECT_DIR_IS_WS = ("Name '%s' is already in use by a workset. Box and workset names are " +
-                         "separate namespaces, but this bare name would then resolve to the " +
-                         "box, shadowing the workset in bare-name lookups. Re-run with --force " +
-                         "to create the box under this name anyway.") # name
 
 ERR_WORKSET_NO_PROJECT = "Project '%s' not found in workset '%s'" # project name, workset name
+ERR_WS_CONNECT_PATH_IS_PRIMARY_BOX = (
+    "it is already the workspace of primary box '%s'; to make it a member of '%s' "
+    "instead, convert that box ('kanibako box convert %s --workset %s%s', or 'kanibako "
+    "box convert %s --workset %s --name <member> --move' to give it another name), "
+    "move it out of the way ('kanibako box move %s <path>'), or drop the box "
+    "('kanibako box rm %s')."
+) # box, ws, box, ws, ' --name <leaf>' when in-tree under another name, box, ws, box, box
 ERR_WORKSET_NO_WORKSET = "No workset found for path: %s" # project dir
 ERR_WORKSET_WS_NOT_BOX = ("'%s' is a workset, not a single project box. Name a project inside it " +
                           "(e.g. '%s/<project>') or run the command from a project workspace " +

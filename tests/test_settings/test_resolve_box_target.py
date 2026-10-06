@@ -87,6 +87,34 @@ class TestResolveByName:
         proj = resolve_box_target(std, config, "myapp")
         assert proj.project_path == proj_root.resolve()
 
+    def test_a_primary_box_outranks_a_registered_standalone_of_the_same_name(
+        self, std, config, tmp_home, caplog,
+    ):
+        """Spec order at the ``--box`` door (system-design § Detection & import):
+        the PRIMARY box wins over a registered standalone holding the same name,
+        and the shadow is announced.  This door used to read the ``standalone``
+        section FIRST, which inverted that precedence."""
+        from kanibako.project import registry_store
+
+        primary_ws = tmp_home / "solo_box"
+        primary_ws.mkdir()
+        resolve_project(std, config, project_dir=str(primary_ws), initialize=True)
+
+        sa_root = tmp_home / "sa" / "solo_box"
+        sa_root.mkdir(parents=True)
+        (sa_root / "box_data").mkdir()
+        (sa_root / "workset.yaml").write_text("box:\n  image: ghcr.io/x:1\n")
+        registry_store.register_standalone(std.registry, "solo_box", sa_root)
+
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_box_target(std, config, "solo_box")
+        assert proj.mode is BoxMode.primary
+        assert proj.project_path == primary_ws.resolve()
+        shadowed = [r.getMessage() for r in caplog.records
+                    if r.levelname == "WARNING" and "standalone" in r.getMessage()]
+        assert len(shadowed) == 1, shadowed
+        assert str(sa_root) in shadowed[0]
+
 
 # ---------------------------------------------------------------------------
 # PATH resolution
@@ -180,34 +208,90 @@ class TestWorksetMemberFromOutside:
         proj = resolve_box_target(std, config, "cluster2", initialize=False)
         assert proj.mode is BoxMode.named
         assert proj.name == "cluster2"
-        # The container name is now the real kanibako-cluster2, not a hash.
+        # The container name is now the real kb-cluster-cluster2, not a hash.
         from kanibako.utils import container_name_for
-        assert container_name_for(proj) == "kanibako-cluster2"
+        assert container_name_for(proj) == "kb-cluster-cluster2"
 
 
 # ---------------------------------------------------------------------------
-# NAME precedence (name wins over a same-named relative path)
+# NAME precedence (a box name wins over a same-named relative path, except a standalone's)
 # ---------------------------------------------------------------------------
 
 class TestNamePrecedence:
-    def test_name_wins_over_relative_path(
-        self, std, config, tmp_home, monkeypatch,
+    def test_a_same_named_path_outranks_a_registered_standalone_name(
+        self, std, config, tmp_home, monkeypatch, caplog,
     ):
-        # A standalone box named e.g. "ab2c3_clash" lives elsewhere...
+        """system-design § Box designation & workset path space: "Registered standalone
+        box names are checked _after_ primary workset boxes and paths; a warning sounds
+        on collision."  So ``./<name>`` wins at the ``--box`` door, and the shadowed
+        standalone is named."""
         box_name, sa_root = _make_standalone(std, tmp_home, leaf="elsewhere")
-
-        # ...and a DIFFERENT directory of the same basename exists in cwd.
         cwd = tmp_home / "cwd"
         cwd.mkdir()
         clash_dir = cwd / box_name
         clash_dir.mkdir()
         monkeypatch.chdir(cwd)
 
-        # Bare token == the box name: NAME precedence -> the standalone box,
-        # NOT the relative ./<box_name> directory.
-        proj = resolve_box_target(std, config, box_name)
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_box_target(std, config, box_name)
+        assert proj.project_path == clash_dir.resolve()
+        shadowed = [r.getMessage() for r in caplog.records
+                    if r.levelname == "WARNING" and "standalone" in r.getMessage()]
+        assert len(shadowed) == 1, shadowed
+        assert str(sa_root) in shadowed[0]
+
+    def test_the_positional_door_warns_when_a_path_shadows_a_standalone_name(
+        self, std, config, tmp_home, monkeypatch, caplog,
+    ):
+        box_name, sa_root = _make_standalone(std, tmp_home, leaf="elsewhere")
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        (cwd / box_name).mkdir()
+        monkeypatch.chdir(cwd)
+
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_any_project(std, config, box_name)
+        assert proj.project_path == (cwd / box_name).resolve()
+        shadowed = [r.getMessage() for r in caplog.records
+                    if r.levelname == "WARNING" and "standalone" in r.getMessage()]
+        assert len(shadowed) == 1, shadowed
+        assert str(sa_root) in shadowed[0]
+
+    def test_a_path_shadowing_a_standalone_a_workset_also_names_still_warns(
+        self, std, config, tmp_home, monkeypatch, caplog,
+    ):
+        """Standalone ``foo`` + workset ``foo`` + folder ``./foo``: at ``--box`` the
+        folder wins and the shadowed standalone is named exactly once."""
+        from kanibako.project.workset import create_workset
+
+        box_name, sa_root = _make_standalone(std, tmp_home, leaf="elsewhere")
+        create_workset(box_name, tmp_home / "worksets" / box_name, std)
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        (cwd / box_name).mkdir()
+        monkeypatch.chdir(cwd)
+
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_box_target(std, config, box_name)
+        assert proj.project_path == (cwd / box_name).resolve()
+        shadowed = [r.getMessage() for r in caplog.records
+                    if r.levelname == "WARNING" and "standalone" in r.getMessage()]
+        assert len(shadowed) == 1, shadowed
+        assert str(sa_root) in shadowed[0]
+
+    def test_a_standalone_name_with_no_same_named_path_still_resolves(
+        self, std, config, tmp_home, monkeypatch, caplog,
+    ):
+        box_name, sa_root = _make_standalone(std, tmp_home, leaf="elsewhere")
+        cwd = tmp_home / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+
+        with caplog.at_level(logging.WARNING):
+            proj = resolve_box_target(std, config, box_name)
         assert proj.mode is BoxMode.standalone
         assert proj.metadata_path == sa_root.resolve()
+        assert not [r for r in caplog.records if "shadowed" in r.getMessage()]
 
     def test_workset_member_name_wins_over_folder(
         self, std, config, tmp_home, monkeypatch,
@@ -579,3 +663,63 @@ class TestDesignationRoute:
     def test_nul_designation_is_refused(self, std, config):
         with pytest.raises(ProjectError, match="neither a box name nor a path"):
             resolve_box_target(std, config, "foo\0bar")
+
+
+# ---------------------------------------------------------------------------
+# Per-kind namespaces: a box verb never loses a box name to a workset name
+# ---------------------------------------------------------------------------
+
+def _cli(argv, capsys):
+    """``cli.main`` to completion; return ``(exit_code, stdout, stderr)``."""
+    from kanibako import cli
+
+    capsys.readouterr()
+    try:
+        cli.main(argv)
+        code = 0
+    except SystemExit as exc:
+        code = exc.code
+    out = capsys.readouterr()
+    return code, out.out, out.err
+
+
+class TestBoxAndWorksetShareAName:
+    """system-design § Cross-kind name semantics: box and workset names are PER-KIND
+    namespaces, and noun-scoped commands consult only their own."""
+
+    def _standalone_and_workset(self, std, tmp_home, capsys, name="foo"):
+        sa_root = tmp_home / "sa" / name
+        sa_root.mkdir(parents=True)
+        (sa_root / "box_data").mkdir()
+        (sa_root / "workset.yaml").write_text("box:\n  image: ghcr.io/x:1\n")
+        registry_store.register_standalone(std.registry, name, sa_root)
+        ws_root = tmp_home / "worksets" / name
+        code, _out, err = _cli(["workset", "create", "--name", name, str(ws_root)], capsys)
+        assert code == 0, err
+        return sa_root, ws_root
+
+    def test_a_box_verb_reaches_a_registered_standalone_a_workset_names_too(
+        self, std, tmp_home, credentials_dir, capsys,
+    ):
+        sa_root, _ws_root = self._standalone_and_workset(std, tmp_home, capsys)
+        code, out, err = _cli(["box", "info", "foo"], capsys)
+        assert code == 0, err
+        assert str(sa_root) in out, out
+
+    def test_a_workset_verb_still_reaches_the_workset(
+        self, std, tmp_home, credentials_dir, capsys,
+    ):
+        _sa_root, ws_root = self._standalone_and_workset(std, tmp_home, capsys)
+        code, out, err = _cli(["workset", "info", "foo"], capsys)
+        assert code == 0, err
+        assert str(ws_root) in out, out
+
+    def test_a_workset_name_alone_still_names_its_cure_at_a_box_verb(
+        self, tmp_home, credentials_dir, capsys,
+    ):
+        code, _out, err = _cli(["workset", "create", "--name", "lone",
+                                str(tmp_home / "worksets" / "lone")], capsys)
+        assert code == 0, err
+        code, _out, err = _cli(["box", "info", "lone"], capsys)
+        assert code != 0
+        assert "'lone' is a workset, not a single project box" in err, err

@@ -2199,14 +2199,16 @@ keys:
     note: "UNSET for a top-level box; travels as a STRUCTURED field in helper
            messages — never recovered by string-splitting the container name"
     spec: "§2c"
-  meta.box.container_name:
+  meta.box.container:
     namespace: meta
     set: never
     origin: derived
     type: str
     owner: box
-    value: "kanibako-{meta.box.name}%if {meta.box.helper_num}: -helper-{meta.box.helper_num}%"
-    note: "a RENDERING of the identity pair, NEVER a source to parse back from"
+    value: "kb-<W>-<B>%if {meta.box.helper_num}: -helper-{meta.box.helper_num}%"
+    note: "a RENDERING of the identity pair, NEVER a source to parse back from;
+           <W> is primary|standalone|the workset name and <B> the box name, each
+           writing every `-` as `--`"
     spec: "§2c (F5)"
   ## ⚑ THE AGENT IDENTITY ANCHORS ARE `construct_time`, NOT `plugin` (2026-09-08).
   ## `origin` names where the VALUE comes from, and no plugin supplies any of these

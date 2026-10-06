@@ -43,9 +43,9 @@ spec §0/§1/§1A/§2a/§2c/§2h) and the seams S3/S17/S18/S19 are all in
 
 from __future__ import annotations
 
-from typing import overload
+from typing import Callable, cast, overload
 
-from kanibako.settings.kb_store import Bind, BindEntry, StoreValue
+from kanibako.settings.kb_store import Bind, BindEntry, StoreValue, __MISSING__
 from kanibako.settings.keystore import KeyStore
 from kanibako.settings.settings_categories import BARE_RELATIVE_SOURCE_HAZARD
 from kanibako.settings.settings_keyspace import KeyClass, entry_label
@@ -88,20 +88,20 @@ class _Absent:
 _ABSENT: _Absent = _Absent()
 
 
-def _absent_reason(dotted: str) -> str:
-    """Why *dotted* is not in the snapshot — a DECLARED key is NOT a keyspace breach.
+def _absent_reason(dotted: str) -> str | None:
+    """Why *dotted* is not in the snapshot, or ``None`` when it is a DECLARED key.
 
     ⚑ A set-time command judges a value against ITS OWN cascade, so a declared key living
-    in a scope that cascade does not reach is absent BY CONSTRUCTION. Declared is the set
-    door's verdict (:func:`~kanibako.settings.config_keys.scope_key_reason`, agent names
-    discovered); an undeclared name gets that verdict's own reason.
+    in a scope that cascade does not reach is absent BY CONSTRUCTION — not a keyspace
+    breach. Declared is the set door's verdict
+    (:func:`~kanibako.settings.config_keys.scope_key_reason`, agent names discovered).
     """
     from kanibako.settings.config_keys import scope_key_reason
 
-    reason = scope_key_reason(dotted)
-    if reason is None:
-        return "declared in the keyspace, but not in this command's cascade"
-    return reason
+    return scope_key_reason(dotted)
+
+
+_NOT_IN_CASCADE = "declared in the keyspace, but not in this command's cascade"
 
 #: The top-level table holding ``pref.*`` REQUESTS (spec §2h): carried through
 #: UNEXPANDED and never ``@``-referenceable. Spelled here rather than imported —
@@ -126,9 +126,18 @@ class _LenientDefect(Exception):
     raised in strict mode.
     """
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, *, blind: bool = False) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.blind = blind  # a DECLARED referent this cascade cannot see
+
+
+class _ExpandedShapeError(SettingsError):
+    """A refusal of what a value EXPANDED to, not of a reference in it.
+
+    After an absent referent substitutes ``""`` it is a consequence of that absence, so
+    :meth:`_Expander._defect_past_blindness` does not report it as a defect of its own.
+    """
 
 
 def _is_whole_value_ref(value: str) -> str | None:
@@ -204,25 +213,29 @@ NullSources = dict[tuple[str, ...], tuple[str, ...]]
 RefsRead = dict[tuple[str, ...], frozenset[str]]
 #: A bind entry's arm path plus its STORED destination → the arm key it was filed under.
 DestKeys = dict[tuple[str, ...], str]
+#: A key the snapshot holds only after expansion → its value, read through the resolver
+#: it is handed; ``__MISSING__`` for a key it does not derive.
+Derive = Callable[[str, Callable[[str], object]], object]
 
 
 @overload
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None = None,
     refs_read: RefsRead | None = None, dest_keys: DestKeys | None = None,
+    derive: Derive | None = None,
 ) -> KeyStore: ...
 @overload
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool,
     null_sources: NullSources | None = None, refs_read: RefsRead | None = None,
-    dest_keys: DestKeys | None = None,
+    dest_keys: DestKeys | None = None, derive: Derive | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]: ...
 
 
 def expand(
     snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False,
     null_sources: NullSources | None = None, refs_read: RefsRead | None = None,
-    dest_keys: DestKeys | None = None,
+    dest_keys: DestKeys | None = None, derive: Derive | None = None,
 ) -> KeyStore | tuple[KeyStore, dict[str, str]]:
     """Expand *snapshot*'s tokens to terminals, returning a FRESH KeyStore (S19).
 
@@ -251,9 +264,12 @@ def expand(
     was filed under, so a reader holding the stored destination finds the entry
     without expanding it a second time.
 
+    *derive* answers a reference to a key the caller materializes after this pass
+    (:data:`Derive`); it is asked only when the snapshot does not hold the key.
+
     The input snapshot is never mutated (S19).
     """
-    expander = _Expander(snapshot, ctx, collect_errors=collect_errors)
+    expander = _Expander(snapshot, ctx, collect_errors=collect_errors, derive=derive)
     expanded = expander.run()
     if null_sources is not None:
         null_sources.update(expander.null_sources)
@@ -281,10 +297,12 @@ class _Expander:
     """
 
     def __init__(
-        self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False
+        self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool = False,
+        derive: Derive | None = None,
     ) -> None:
         self._snapshot = snapshot
         self._ctx = ctx
+        self._derive = derive
         # Memo: dotted path -> fully-resolved value (or _ABSENT). ⚑ None and
         # _ABSENT are both VALID memo values, so membership is tested with ``in``,
         # never by comparing to a sentinel. A path mid-resolution is not in the
@@ -293,6 +311,7 @@ class _Expander:
         # LENIENT mode (Q9): collect defects instead of raising/silent-drop, keyed
         # by the OWNING leaf's dotted path → human reason.
         self._collect_errors = collect_errors
+        self._blind_absent = False
         self.errors: dict[str, str] = {}
         # E2: a bind entry made ``None`` by its source → the refs that did it.
         self.null_sources: NullSources = {}
@@ -354,6 +373,10 @@ class _Expander:
                         resolved = self._expand_leaf(value, path=child_path)
                     except (_LenientDefect, SettingsError) as exc:
                         reason = exc.reason if isinstance(exc, _LenientDefect) else str(exc)
+                        if isinstance(exc, _LenientDefect) and exc.blind:
+                            reason = self._defect_past_blindness(
+                                key, value, child_path, seed=seed_map,
+                            ) or reason
                         self.errors[".".join(child_path)] = reason
                         continue
                 else:
@@ -378,13 +401,43 @@ class _Expander:
                 # would silently DELETE the first, a data loss no downstream check
                 # can see. Raised even in LENIENT mode: the fault is the PAIR, so
                 # there is no single owning leaf to attribute it to.
-                raise SettingsError(
+                raise _ExpandedShapeError(
                     f"Two bindings under {'.'.join(path) or '<root>'} resolve to "
                     f"the same destination {out_key!r}; the second entry "
                     f"({key!r}) would silently replace the first."
                 )
             out[out_key] = resolved
         return out
+
+    def _defect_past_blindness(
+        self, key: str, value: StoreValue, path: tuple[str, ...], *, seed: bool,
+    ) -> str | None:
+        """The reason of a defect in this leaf's chain that is NOT cascade blindness.
+
+        Spec §2a: a refusal names the broken upstream dependency. A declared referent this
+        cascade cannot see may be forgiven by the set door, so a really broken ref (an
+        undeclared name, a cycle) in the same chain is the one to name. The leaf is
+        re-walked with blind referents taken as absent; every memo the walk fills is
+        dropped, since its values stand on that assumption.
+        """
+        saved = (dict(self._memo), dict(self._deps), dict(self.errors),
+                 dict(self.null_sources), dict(self.refs_read), dict(self.dest_keys),
+                 [set(reading) for reading in self._reading])
+        self._blind_absent = True
+        try:
+            if self._expand_dest_key(key, value, chain=path, seed=seed) is not None:
+                self._expand_leaf(value, path=path)
+        except _LenientDefect as exc:
+            return exc.reason
+        except _ExpandedShapeError:
+            return None
+        except SettingsError as exc:
+            return str(exc)
+        finally:
+            self._blind_absent = False
+            (self._memo, self._deps, self.errors, self.null_sources,
+             self.refs_read, self.dest_keys, self._reading) = saved
+        return None
 
     def _expand_dest_key(
         self, key: str, value: StoreValue, *, chain: tuple[str, ...], seed: bool = False
@@ -413,7 +466,7 @@ class _Expander:
             return None
         if dest is _ABSENT or dest is None:
             state = "an absent" if dest is _ABSENT else "a present-None"
-            raise SettingsError(
+            raise _ExpandedShapeError(
                 f"Binding destination {key!r} references {state} config key; "
                 f"a box destination cannot resolve to no path."
             )
@@ -464,7 +517,7 @@ class _Expander:
         if not expanded or expanded[0] == "/":
             return
         became = "" if raw == expanded else f", which resolved to {expanded!r}"
-        raise SettingsError(
+        raise _ExpandedShapeError(
             f"{chain[0]} declares the host source {raw!r}{became} — a BARE RELATIVE "
             f"path. A stored source must resolve on its own (spec §2a): "
             f"{BARE_RELATIVE_SOURCE_HAZARD}. Set the path key it dereferences to an "
@@ -490,7 +543,7 @@ class _Expander:
         # dest, which is a mount foot-gun.
         if box is _ABSENT or box is None:
             state = "an absent" if box is _ABSENT else "a present-None"
-            raise SettingsError(
+            raise _ExpandedShapeError(
                 f"Bind box_dest {bind.box!r} references {state} config key; "
                 f"a box destination cannot resolve to no path."
             )
@@ -588,7 +641,7 @@ class _Expander:
     # ------------------------------------------------------------------ #
 
     def _resolve_ref(
-        self, dotted: str, *, chain: tuple[str, ...]
+        self, dotted: str, *, chain: tuple[str, ...], absent_ok: bool = False,
     ) -> StoreValue | _Absent:
         """Fully resolve the value at snapshot path *dotted*, transitively (§6h).
 
@@ -600,6 +653,7 @@ class _Expander:
 
         *chain* is the in-progress ref trail, ending in *dotted*: already checked
         and appended by the caller, mirroring ``expand_expr``'s contract.
+        *absent_ok* returns :data:`_ABSENT` for an absent *dotted* in LENIENT mode too.
         """
         # CYCLE GUARD (B7 — whole-value AND embedded paths): a PRIOR occurrence of
         # *dotted* means we re-entered a ref still in progress. ⚑ Checked BEFORE
@@ -627,13 +681,21 @@ class _Expander:
                 f"'{dotted}'."
             )
         raw = self._lookup_raw(dotted)
+        if raw is _ABSENT and self._derive is not None:
+            derived = self._derived(dotted, chain=chain)
+            if derived is not _ABSENT:
+                return derived
         if raw is _ABSENT:
-            if self._collect_errors:
+            if self._collect_errors and not absent_ok:
                 # LENIENT (Q9): a DANGLING ref is a set-time defect to record, NOT
                 # the strict §6b silent drop. Raised so the OWNING leaf gets it.
-                raise _LenientDefect(
-                    f"dangling @-reference '@{dotted}' ({_absent_reason(dotted)})"
-                )
+                reason = _absent_reason(dotted)
+                if reason is not None:
+                    raise _LenientDefect(f"dangling @-reference '@{dotted}' ({reason})")
+                if not self._blind_absent:
+                    raise _LenientDefect(
+                        f"dangling @-reference '@{dotted}' ({_NOT_IN_CASCADE})", blind=True,
+                    )
             # ⚑ Absence propagates (§6b) only from a KEY; a ref that names no key is
             # refused by name (spec §0), never dropped.
             verdict = keyspace_verdict(dotted)
@@ -646,7 +708,8 @@ class _Expander:
                     f"{holder}: '@{dotted}' references no key: "
                     f"{verdict.reason}{trail}."
                 )
-            self._memo[dotted] = _ABSENT
+            if not self._collect_errors:
+                self._memo[dotted] = _ABSENT
             return _ABSENT
         # Resolve the referent's value AS A LEAF, with the cycle chain threaded so
         # a ref back into this path (directly or transitively) is caught.
@@ -675,6 +738,28 @@ class _Expander:
         self._deps[dotted] = frozenset(deps)
         for reading in self._reading:
             reading.update(deps)
+        self._memo[dotted] = resolved
+        return resolved
+
+    def _derived(self, dotted: str, *, chain: tuple[str, ...]) -> StoreValue | _Absent:
+        """Ask *derive* for *dotted*, its reads resolved on this pass and memoized."""
+        assert self._derive is not None
+
+        def read(key: str) -> object:
+            got = self._resolve_ref(key, chain=(*chain, key), absent_ok=True)
+            return __MISSING__ if got is _ABSENT else got
+
+        self._reading.append(set())
+        try:
+            got = self._derive(dotted, read)
+        finally:
+            deps = self._reading.pop()
+        if got is __MISSING__:
+            return _ABSENT
+        self._deps[dotted] = frozenset(deps)
+        for reading in self._reading:
+            reading.update(deps)
+        resolved = cast(StoreValue, got)
         self._memo[dotted] = resolved
         return resolved
 

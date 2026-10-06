@@ -64,6 +64,39 @@ def _reset_agent_discovery_memo():
 
 
 @pytest.fixture(autouse=True)
+def _restore_kanibako_logging():
+    """Undo any logging configuration a test installed, so no handler outlives it.
+
+    ⚑ A HANDLER BOUND TO A STREAM THAT LATER CLOSES.
+    ``log.setup_logging`` — called by ``cli.main`` — builds
+    ``logging.StreamHandler(sys.stderr)`` against whatever ``sys.stderr`` IS at that
+    moment.  A test that calls ``main()`` in-process therefore attaches a handler to
+    PYTEST'S captured stream.  ``capsys`` restores the attribute; nothing removes the
+    handler, so it stays on the ``kanibako`` logger pointing at a stream pytest has
+    since closed.  The next WARNING anywhere in the session then prints
+    ``--- Logging error --- ValueError: I/O operation on closed file`` into THAT
+    test's own captured output — a failure about a stranger's cleanup, in a test
+    that never touched logging.
+
+    🛑 ORDER-DEPENDENT: it needs the leaking test and the victim in one process, so
+    the chunked per-file gate cannot see it.
+
+    ⚑ BOTH SIDES OF THE YIELD: a test neither inherits a logger nor leaves one.
+    Handlers are restored by identity, so anything installed at session scope before
+    the first test survives untouched.  The dropped handler is NOT closed here —
+    its stream belongs to whoever opened it, and closing it could break that owner.
+    """
+    import logging
+
+    logger = logging.getLogger("kanibako")
+    saved_handlers = logger.handlers[:]
+    saved_level = logger.level
+    yield
+    logger.handlers[:] = saved_handlers
+    logger.setLevel(saved_level)
+
+
+@pytest.fixture(autouse=True)
 def _no_magicmock_dir_leak():
     """Fail any test that leaks a ``<MagicMock ...>`` entry into the CWD.
 
@@ -574,6 +607,30 @@ def start_mocks():
                 return _original_run.return_value
             runtime.run.side_effect = _run_side_effect
             m_rt_cls.return_value = runtime
+
+            # ⚑⚑ IS_RUNNING IS NAME-SENSITIVE, AND IT HAS TO BE.  ``start`` asks
+            # about MORE THAN ONE NAME for the same box: ``_refuse_legacy_container``
+            # probes the box's PRE-``kb-`` names before it launches, and a real
+            # runtime answers False for a name the box was never started with.  A
+            # blanket ``True`` here made every "the box is running" test refuse its
+            # own start — 91 reds that were a property of the FAKE, not of the
+            # product.  ⚑ ``return_value`` still governs the box's OWN container, so
+            # crash-path tests that flip it False (and read it back) are untouched;
+            # only a name that is NOT the box's rendered one now answers False.  A
+            # test that wants the legacy refusal says so by putting the OLD name in
+            # ``runtime.live_names``.
+            runtime.live_names = set()
+
+            def _is_running(name=None, *a, **kw):
+                from kanibako.utils import container_name_for
+
+                if name in runtime.live_names:
+                    return True
+                own = container_name_for(m_resolve_any.return_value)
+                if name is not None and name != own:
+                    return False
+                return runtime.is_running.return_value
+            runtime.is_running.side_effect = _is_running
 
             # The std roots the box-store resolution reads (see the note at the
             # top of this factory): REAL paths, so @meta.box.path resolves to

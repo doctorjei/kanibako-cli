@@ -122,9 +122,7 @@ class TestImportBehavioralEquivalence:
         capsys.readouterr()
 
         name = import_reconcile.import_named_workset(
-            std.registry, ws_root,
-            primary_workset=std.primary_workset, journal=std.journal,
-            early=_early_scope(std, BoxMode.primary),
+            std.registry, ws_root, journal=std.journal,
         )
         assert name == "imp"
         assert registry_store.load_section(std.registry, "worksets").get(

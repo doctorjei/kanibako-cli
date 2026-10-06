@@ -567,6 +567,80 @@ class TestOneGrammarForOneValue:
         )
 
 
+class TestTheRefusalNamesTheReallyBrokenRef:
+    """Spec §2a: "Name the broken upstream dependency." A chain holding both a ref this
+    floor cannot see and an undeclared one is refused by the UNDECLARED one — naming the
+    blind ref sends the user to strip an anchor that was never the fault."""
+
+    _BOTH = "/x/{meta.workset.path}/{box.nope}/{meta.box.name}"
+    _STORED_BOTH = "box:\n  shell: /s/{meta.workset.path}/{box.nope}\n"
+    _STORED_BLIND = "box:\n  shell: /s/{meta.workset.path}\n"
+    _CHAIN = "/x/{box.shell}/{meta.box.name}"
+
+    def _refused(self, files, value, std):
+        before = files["system"].read_text() if files["system"].exists() else None
+        message = _set("box.canon", value, files, ConfigLevel.system, std=std)
+        assert message.startswith("Error:"), message
+        after = files["system"].read_text() if files["system"].exists() else None
+        assert after == before, f"{value!r} was WRITTEN: {message}"
+        return message
+
+    def test_a_direct_value_names_the_undeclared_ref(self, tmp_path, std):
+        message = self._refused(_files(tmp_path), self._BOTH, std)
+        assert "'@box.nope'" in message, message
+        assert "@meta.workset.path" not in message, message
+
+    def test_a_stored_chain_names_the_undeclared_ref(self, tmp_path, std):
+        files = _files(tmp_path)
+        files["system"].write_text(self._STORED_BOTH)
+        message = self._refused(files, "/x/{box.shell}", std)
+        assert "'@box.nope'" in message, message
+        assert "@meta.workset.path" not in message, message
+
+    def test_only_the_undeclared_ref_is_refused_as_before(self, tmp_path, std):
+        message = self._refused(_files(tmp_path), "/x/{box.nope}", std)
+        assert "'@box.nope'" in message, message
+
+    def test_only_the_blind_ref_is_accepted_as_before(self, tmp_path, std):
+        files = _files(tmp_path)
+        value = "/x/{meta.workset.path}/{meta.box.name}"
+        message = _set("box.canon", value, files, ConfigLevel.system, std=std)
+        assert not message.startswith("Error:"), message
+        assert value in files["system"].read_text()
+
+    def test_a_stored_chain_with_only_the_blind_ref_is_accepted(self, tmp_path, std):
+        files = _files(tmp_path)
+        files["system"].write_text(self._STORED_BLIND)
+        message = _set("box.canon", self._CHAIN, files, ConfigLevel.system, std=std)
+        assert not message.startswith("Error:"), message
+        assert self._CHAIN in files["system"].read_text()
+
+    @pytest.mark.parametrize("stored, phrase", [
+        ("box:\n  shell: /s/{meta.workset.path}/{box.image}\n  image: /i/{box.shell}\n",
+         "Cyclic @-reference"),
+        ("box:\n  shell: /s/{meta.workset.path}/{$NOPE_UNKNOWN}\n",
+         "Unknown variable: $NOPE_UNKNOWN"),
+    ], ids=["cycle", "unknown-variable"])
+    def test_a_stored_chain_names_the_defect_behind_the_blind_ref(
+        self, tmp_path, std, stored, phrase,
+    ):
+        files = _files(tmp_path)
+        files["system"].write_text(stored)
+        message = self._refused(files, self._CHAIN, std)
+        assert phrase in message, message
+        assert "@meta.workset.path" not in message, message
+
+    def test_a_deep_stored_chain_behind_the_blind_ref_is_accepted(self, tmp_path, std):
+        files = _files(tmp_path)
+        files["system"].write_text(
+            "box:\n  shell: /s/{meta.workset.path}/{box.env.V0}\n  env:\n"
+            + "".join(f"    V{i}: /{{box.env.V{i + 1}}}\n" for i in range(70))
+            + "    V70: /{meta.workset.path}/end\n"
+        )
+        message = _set("box.canon", self._CHAIN, files, ConfigLevel.system, std=std)
+        assert not message.startswith("Error:"), message
+
+
 def _root_store(value, *, at: str = "workset.boxes") -> KeyStore:
     """A resolved snapshot holding *value* at *at*, with the other root key usable."""
     snapshot = KeyStore()

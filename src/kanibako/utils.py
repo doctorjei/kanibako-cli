@@ -1,5 +1,5 @@
-"""Utility functions: cp_if_newer, confirm_prompt, deep_merge, short_hash, path encoding,
-container naming."""
+"""Utility functions: cp_if_newer, confirm_prompt, deep_merge, short_hash, container
+naming."""
 
 from __future__ import annotations
 
@@ -69,65 +69,134 @@ def short_hash(full_hash: str, length: int = 8) -> str:
     return full_hash[:length]
 
 
-def container_name_for_box_name(name: str) -> str:
-    """Container name of a PRIMARY- or NAMED-mode box, keyed by its box *name*.
+#: The ``<W>`` of a primary and a standalone box — not the partition DIRECTORY names.
+WORKSET_SEGMENT_PRIMARY = "primary"
+WORKSET_SEGMENT_STANDALONE = "standalone"
 
-    :func:`container_name_for` also passes a short project hash here for a nameless
-    (legacy) primary box, so *name* is not always a box name.
-    ⚑ NEVER a standalone box — its container is keyed by its ROOT, not its name
-    (:func:`container_name_for_standalone_root`).
+#: Every rendered container name starts with this; ``list_running`` filters on it.
+CONTAINER_NAME_PREFIX = "kb-"
+
+
+def renders_no_name(box: str) -> bool:
+    """True when *box* renders NO name.
+
+    A ``<W>`` ending in ``-`` and a ``<B>`` beginning with ``-`` put the segment boundary
+    inside a run of three dashes, which the opposite reading spells identically; an empty
+    ``<B>`` leaves the same run at the end.  The box-name rule no longer allows either,
+    so both render nothing rather than a name another box could also carry.
     """
-    return f"kanibako-{name}"
+    return isinstance(box, str) and (not box or box.startswith("-"))
 
 
-def container_name_for_standalone_root(root: Path) -> str:
-    """Container name of a STANDALONE box, keyed by its *root* — never by its box name.
+def unrenderable_box_name_refusal(
+    box: str, mode: str, path: Path | None,
+) -> str:
+    """The refusal ``start`` and ``stop`` print for a box that renders no name.
 
-    *root* is the box ROOT (``metadata_path``), NOT its ``workspace/`` subdir.
+    The cure addresses the box by its PROJECT *path*, never by *box*: a leading ``-``
+    reads as a flag.  Without a path the verb prints bare, to run from inside the box."""
+    from kanibako.launch.box_identity import box_name_reason
+
+    reason = box_name_reason(box) or "box name must not be empty"
+    if mode == "standalone":
+        cure = (
+            f"kanibako box convert {path} --standalone --name <new-name>" if path
+            else "kanibako box convert --standalone --name <new-name>"
+        )
+    else:
+        cure = (
+            f"kanibako box move {path} <new-path> --name <new-name>" if path
+            else "kanibako box move <new-path> --name <new-name>"
+        )
+    return (
+        f"Error: box '{box}' has no container name: {reason}. Give the box a valid "
+        f"name, then try again:\n"
+        f"  {cure}"
+    )
+
+
+def name_segment(segment: str) -> str:
+    """Render one SEGMENT of a container or socket name: every ``-`` written ``--``.
+
+    The escape alone does NOT make a two-segment name decodable; :func:`renders_no_name`
+    is what keeps two boxes apart.  An empty segment renders empty.
     """
-    return f"kanibako-ronin-{escape_path(str(root))}"
+    return segment.replace("-", "--")
 
 
-def container_name_for(proj: ProjectPaths) -> str:
-    """Deterministic container name for a project — picks the spelling for its mode.
+def workset_segment(mode: str, group_name: str | None) -> str:
+    """Return the ``<W>`` segment for a box in *mode* whose workset is *group_name*.
 
-    - Primary or named, with a name: ``kanibako-{name}``
-    - Primary, nameless (legacy): ``kanibako-{short_hash}``
-    - Standalone: ``kanibako-ronin-{escape_path(root)}``
-
-    ⚑ A caller holding a registry row rather than a :class:`ProjectPaths` (``box ps``)
-    calls the spelling for its mode directly; it never re-spells one by hand.
+    *mode* is ``BoxMode``'s ``.value``; *group_name* is read only for ``named``.
     """
+    if mode == "primary":
+        return WORKSET_SEGMENT_PRIMARY
+    if mode == "standalone":
+        return WORKSET_SEGMENT_STANDALONE
+    if not group_name:
+        raise ValueError(
+            "NAMED box is missing its workset name; cannot render its workset "
+            "segment."
+        )
+    return group_name
+
+
+def render_container_name(
+    workset: str, box: str, helper_num: int | None = None,
+) -> str | None:
+    """``kb-<W>-<B>`` (plus ``-helper-<n>``), or ``None`` when the box renders NO name.
+
+    ⚑ THE CONTRACT, owned here: ``None`` is a VALUE, not an error.  A door that only
+    REPORTS prints that there is none; a door that ADDRESSES a container must handle
+    ``None`` before it reaches the runtime or a path.
+    """
+    if renders_no_name(box):
+        return None
+    name = f"{CONTAINER_NAME_PREFIX}{name_segment(workset)}-{name_segment(box)}"
+    if helper_num is not None:
+        name += f"-helper-{helper_num}"
+    return name
+
+
+def render_socket_identity(box: str, workset: str) -> str | None:
+    """The helper-socket stem ``<B>-<W>`` (the container's order, reversed), or ``None``."""
+    if renders_no_name(box):
+        return None
+    return f"{name_segment(box)}-{name_segment(workset)}"
+
+
+def container_name_for_box_name(name: str, workset: str) -> str | None:
+    """Container name of box *name* in the ``<W>`` segment *workset*, or ``None``."""
+    return render_container_name(workset, name)
+
+
+def container_name_segments(proj: ProjectPaths) -> tuple[str, str]:
+    """The ``(<W>, <B>)`` pair *proj* renders from; a nameless box's ``<B>`` is its hash."""
+    group_name = proj.group.name if proj.group is not None else None
+    workset = workset_segment(proj.mode.value, group_name)
+    return workset, proj.name or short_hash(proj.project_hash)
+
+
+def container_name_for(proj: ProjectPaths) -> str | None:
+    """Container name for *proj*, or ``None`` (:func:`render_container_name`)."""
+    return render_container_name(*container_name_segments(proj))
+
+
+def legacy_container_names(proj: ProjectPaths) -> tuple[str, ...]:
+    """The pre-1.8.0 names of *proj*'s container — the one carrier of the old spelling.
+
+    ``start`` refuses while one runs (``commands.start._refuse_legacy_container``).
+    """
+    box = proj.name or short_hash(proj.project_hash)
     if proj.mode.value == "standalone":
-        return container_name_for_standalone_root(proj.metadata_path)
-    return container_name_for_box_name(proj.name or short_hash(proj.project_hash))
+        escaped = str(proj.metadata_path).lstrip("/").replace("-", "-.").replace("/", "-")
+        return (f"kanibako-ronin-{escaped}",)
+    return (f"kanibako-{box}",)
 
 
 def project_hash(project_path: str) -> str:
     """SHA-256 hex digest of the project path string."""
     return hashlib.sha256(project_path.encode()).hexdigest()
-
-
-# ---------------------------------------------------------------------------
-# Standalone path encoding (for container names)
-# ---------------------------------------------------------------------------
-
-_DASH_ESCAPE = "-."
-
-
-def escape_path(path: str) -> str:
-    """Encode a filesystem path for use in container names.
-
-    - Drop leading ``/``
-    - Escape literal ``-`` → ``-.`` (dash-dot)
-    - Replace ``/`` → ``-``
-
-    Example: ``/home/user/my-project/app`` → ``home-user-my.-project-app``
-    """
-    path = path.lstrip("/")
-    path = path.replace("-", _DASH_ESCAPE)
-    path = path.replace("/", "-")
-    return path
 
 
 # ---------------------------------------------------------------------------
