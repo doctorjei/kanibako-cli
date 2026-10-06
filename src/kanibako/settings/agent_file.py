@@ -863,9 +863,10 @@ def _refuse_nested_tables(
             f"{path if path is not None else '<agent settings>'}; it holds: "
             f"{held}.\n"
             f"{history}\n"
-            f"  Fix: {_nested_agent_cure(category, sub_key, var=var, value=value)}\n"
-            f"  then delete the `{file_spelling(sub_key)}` table from "
-            f"{path if path is not None else 'the agent settings file'}."
+            f"  Delete the `{file_spelling(sub_key)}` table from "
+            f"{path if path is not None else 'the agent settings file'} FIRST — the "
+            f"`set` below reads that file, and the stale entry refuses the write.\n"
+            f"  Fix: {_nested_agent_cure(category, sub_key, var=var, value=value)}"
         )
 
 
