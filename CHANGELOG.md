@@ -3387,18 +3387,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-name spelling `<scope>.<category>.<name>` keeps its own message: that route was *retired*,
   whereas the whole-key spelling never had one.
 
-- **`box get` and `workset get` answered `(not set)` for a per-agent key that was set.** A key
-  naming an agent node — `agent.<node>.model`, `agent.<node>.endpoint`,
-  `agent.<node>.secret_path.<VAR>` — is stored in that node's own `agents/<node>/agent.yaml`, and
-  the read finds that file through the agents root. `system get` passed the agents root; the `box`
-  and `workset` handlers did not, so every such read resolved to nothing and printed `(not set)` at
-  exit 0 — for a value `kanibako system get` reported correctly, on the same key, in the same
-  install. Three nouns over one keyspace, giving two different answers. Both handlers now thread
-  the agents root the way `system get` always has, so the three agree. Nothing else moves: a node
-  key that genuinely is not set still answers `(not set)` at exit 0, and the write verbs are
-  untouched — `set` and `reset` refuse an `agent.*` key from the box or workset scope by name, as
-  they always have, because a config set never writes upward.
-
 - **`--help` advertised `--agent` on 96 commands that refuse it, and `--box` on 82.** `box set`,
   `system get`, `rig list` and most of the rest of the tree listed both flags in the usage line and
   the options list; passing one exited 2 with *"--agent is not valid for 'system get'"*. The
