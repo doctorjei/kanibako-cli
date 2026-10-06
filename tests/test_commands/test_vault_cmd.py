@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-
+import pytest
 
 from kanibako.cli import build_parser
 from kanibako.commands.vault_cmd import (
@@ -13,6 +13,7 @@ from kanibako.commands.vault_cmd import (
 )
 from kanibako.settings.config import load_config
 from kanibako.settings.paths import load_std_paths, resolve_project
+from kanibako.snapshots import UnsafeSnapshotNameError
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +216,52 @@ class TestVaultRestore:
         assert rc == 1
         captured = capsys.readouterr()
         assert "not found" in captured.err.lower()
+
+
+class TestVaultRestoreRefusal:
+    """A name that escapes ``.versions/`` is refused before share-rw is touched."""
+
+    @pytest.mark.parametrize("bad", [
+        "../../../../../../evil", ".", "..", "",
+    ])
+    def test_refused_name_leaves_share_rw(
+        self, config_file, tmp_home, credentials_dir, bad,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+        from kanibako.snapshots import create_snapshot
+        create_snapshot(proj.vault_rw_path)
+        (proj.vault_rw_path / "keepme.txt").write_text("must-survive")
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "restore", bad, str(proj.project_path), "--force",
+        ])
+        with pytest.raises(UnsafeSnapshotNameError):
+            run_restore(args)
+
+        assert (proj.vault_rw_path / "keepme.txt").read_text() == "must-survive"
+        assert (proj.vault_rw_path / "data.txt").read_text() == "hello vault"
+
+    def test_refused_absolute_path_leaves_share_rw(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        proj = _init_project_with_vault(config_file, tmp_home, credentials_dir)
+        from kanibako.snapshots import create_snapshot
+        create_snapshot(proj.vault_rw_path)
+        (proj.vault_rw_path / "keepme.txt").write_text("must-survive")
+        outside = tmp_home / "evil_abs"
+        outside.mkdir()
+        (outside / "attacker.txt").write_text("owned")
+
+        parser = build_parser()
+        args = parser.parse_args([
+            "box", "vault", "restore", str(outside), str(proj.project_path),
+            "--force",
+        ])
+        with pytest.raises(UnsafeSnapshotNameError):
+            run_restore(args)
+
+        assert (proj.vault_rw_path / "keepme.txt").read_text() == "must-survive"
 
 
 # ---------------------------------------------------------------------------

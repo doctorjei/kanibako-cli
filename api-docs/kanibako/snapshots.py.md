@@ -21,9 +21,16 @@ def snapshots_to_prune(vault_rw_path: Path, max_keep: int) -> list[Path]
 def prune_snapshots(vault_rw_path: Path, max_keep: int=_DEFAULT_MAX_SNAPSHOTS) -> int
 def auto_snapshot(vault_rw_path: Path, *, strategy: str='hardlink', max_keep: int=_DEFAULT_MAX_SNAPSHOTS) -> Path | None
 def _versions_dir(vault_rw_path: Path) -> Path
+def _snapshot_child(versions: Path, name: str) -> Path
 def _force_writable_dirs(root: Path) -> None
 def _rmtree_force(path: Path) -> None
 def _test_reflink(path: Path) -> bool
 def _snapshot_reflink(vault_rw_path: Path, versions: Path, ts: str) -> Path
 def _snapshot_hardlink(vault_rw_path: Path, versions: Path, ts: str) -> Path
+```
+
+## Classes
+
+```
+class UnsafeSnapshotNameError(KanibakoError):
 ```
