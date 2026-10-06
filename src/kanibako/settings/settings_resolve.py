@@ -915,12 +915,12 @@ def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
     raise SettingsError(f"@-refs are not supported in behavior settings: {ref}")
 
 
-#: The levels whose printed ``set`` REFUSES the write while the retired entry is still in the
-#: file it writes. Measured end to end through the real CLI at every level, each with the entry
-#: present: these three rc 1. ``agent`` rc 0 — including the arm whose ``set`` writes the very
-#: file the entry sits in — and ``base`` rc 0, its cure always being a ``system set``. The
-#: sentence :func:`delete_before_set_step` prints must not promise a refusal these do not give.
-SET_READS_ITS_OWN_FILE: "frozenset[str]" = frozenset({"system", "workset", "box"})
+#: The levels whose retired-entry cure is ALWAYS a ``set`` into that same level's own file, so
+#: it refuses the write while the entry is there. Measured end to end through the real CLI with
+#: the entry present: these three rc 1. ``base`` is not among them — its cure is always a
+#: ``system set``. The ``agent`` tier is NOT a level decision and lives in
+#: ``_behavior_cure_checks_file``.
+SET_TARGETS_ITS_OWN_FILE: "frozenset[str]" = frozenset({"system", "workset", "box"})
 
 
 def delete_before_set_step(entry: str, *, where: Any,
