@@ -701,11 +701,11 @@ def run_disconnect(args: argparse.Namespace) -> int:
         except Exception:
             member = project_token
 
-    # ⚑ RESOLVED BEFORE ANYTHING IS DELETED: a ``workset.logs`` that does not resolve
-    # refuses the disconnect whole, rather than after the box tree is already gone.
     if args.remove_files:
         from kanibako.settings.workset_dirkeys import refuse_inherited_per_owner
         refuse_inherited_per_owner(ws.root, ws.early_scope)
+    # ⚑ RESOLVED BEFORE ANYTHING IS DELETED: a ``workset.logs`` that does not resolve
+    # refuses the disconnect whole, rather than after the box tree is already gone.
     logs_dir = ws.logs_dir if args.remove_files else None
     if not args.force:
         label = "and remove files " if args.remove_files else ""
