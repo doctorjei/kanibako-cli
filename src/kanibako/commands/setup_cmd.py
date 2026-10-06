@@ -178,13 +178,12 @@ class TemplateStep(Enum):
     def records_completion(self) -> bool:
         """Whether :func:`run_setup` may write the setup-completion marker.
 
-        ⚑ False for :attr:`SKIPPED` ONLY.  Withholding is NOT a gate backstop: an
-        absent marker is the NON-BLOCKING advisory band (:func:`setup_compat_gate`
-        returns "isn't set up yet"; the CLI prints it and proceeds), while the hard
-        block needs a PRESENT marker below ``SETUP_BCV``.  So a headless skip can
-        still leave ``system.agent`` pinned with no template store and no
-        ``agents/<name>`` store, and the next agent command runs on the advisory.
-        Withholding records nothing that store never got an informed chance to reach.
+        ⚑ False for :attr:`SKIPPED` ONLY.  Its effect on :func:`setup_compat_gate`
+        depends on the marker.  ABSENT, with no v1.7 config to refuse: the gate only
+        advises, so a headless skip can leave ``system.agent`` pinned with no template
+        store and no ``agents/<name>`` store, and the next agent command runs on the
+        advisory.  PRESENT below ``SETUP_BCV``: withholding keeps the hard block that
+        recording would clear.  At or above it: no block to keep.
 
         ⚑ The test is POSITIVE membership, not ``is not SKIPPED``: a negative test
         makes every FUTURE member record completion by default, which is the unsafe
@@ -496,8 +495,9 @@ def run_setup(args: argparse.Namespace) -> int:
         # produced three lies at once: the configuration IS initialized -- it is the
         # broken thing -- the rig will NOT be pulled on first use, and the run closed
         # with "Setup Complete" / "You're ready to go!" at rc 0 over a store no
-        # command can resolve.  The completion marker would also have cleared the
-        # ``setup_compat_gate`` BCV block against exactly such a store.
+        # command can resolve.  The completion marker would also have silenced the
+        # ``setup_compat_gate`` advisory (or, over a marker below ``SETUP_BCV``,
+        # cleared its hard block) against exactly such a store.
         #
         # ``KanibakoError`` is the predicate and NOT a §0-specific discriminator:
         # ``errors.py`` defines it as the hierarchy cli.py catches, i.e. the errors

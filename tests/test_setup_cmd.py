@@ -343,8 +343,10 @@ def test_full_setup_non_tty_stale_templates_records_no_marker(
     setup-completion marker unconditional, so a headless ``kanibako setup`` on an
     unmigrated store printed "cannot be updated non-interactively", refreshed
     nothing, and then recorded ``setup_completed = <this build>`` anyway.  That
-    cleared ``setup_compat_gate``'s BCV hard block against a store setup never
-    touched, and the next ``box create`` seeded an empty home, silently.
+    silenced ``setup_compat_gate``'s "isn't set up yet" advisory against a store
+    setup never touched (or, with a marker present below ``SETUP_BCV``, would have
+    cleared its hard block), and the next ``box create`` seeded an empty home
+    without even that nudge.
 
     The existing step-level test exercises ``_run_template_refresh`` in isolation
     and never reaches the marker write — which is exactly why the defect shipped.
