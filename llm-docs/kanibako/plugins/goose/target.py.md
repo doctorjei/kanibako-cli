@@ -14,7 +14,7 @@ misbehavior. The bound removes that pairing only for wheels published from v1.8.
 error stays the safety net and the reason this surface stays small. That is the reason the surface here stays small and the
 declarations stay in the data file.
 
-**Authority:** `specs/settings-keyspace-1.8.0.md` — §2d (the per-agent keyspace: `agent.goose.env.*`,
+**Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §2d (the per-agent keyspace: `agent.goose.env.*`,
 the `synced` category view, which env vars are plugin-declared and which are user preference).
 
 ## The contract path
@@ -230,7 +230,7 @@ in Python; it was removed once nothing dispatched it, and the descriptor rows ar
 ## Relocation pass, 2026-08-20
 
 Comment ratio 66.0% → 50.0%. Everything removed from the source is above, in substance; nothing was
-dropped as false or obsolete. `prose-relocation-check.py`: 179 prose lines at HEAD, 163 removed
+dropped as false or obsolete. `~/canon/notebook/scripts/dev-tools/prose-relocation-check.py`: 179 prose lines at HEAD, 163 removed
 (most of them reflowed rather than cut), **0 scoring below 0.6** against this document.
 
 Kept in the `.py` under the keep test, because each one guards a specific line against a plausible

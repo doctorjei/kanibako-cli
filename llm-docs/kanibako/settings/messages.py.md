@@ -10,7 +10,7 @@ recorded under [Dropped as false](#dropped-as-false) so nobody re-derives them f
 
 **Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §1 (the two-layer path
 foundation and its XDG resolution rule) and §2g (the `system.*` path tier); the standalone
-detection marker is `system-design-1.8.0.md` § "Detection & import". ⚑ **The specs are the LIVE
+detection marker is `~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import". ⚑ **The specs are the LIVE
 authority; read them first.**
 
 ## What the module is
@@ -190,7 +190,7 @@ STANDALONE_META_DIR = 'box_data'
 ```
 The STANDALONE box-store dir name — `@meta.box.path`, and half the detection marker.
 
-Standalone detection (`system-design-1.8.0.md` § "Detection & import") is an ANCESTOR WALK looking
+Standalone detection (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import") is an ANCESTOR WALK looking
 for two things together: *"an ancestor with a `box_data/` marker DIR (the LOCATOR) +
 `workset.yaml` declaring standalone."* This constant is the first half. Renaming it breaks detection
 for every already-created standalone box on disk — a data-layout change, not a code change.

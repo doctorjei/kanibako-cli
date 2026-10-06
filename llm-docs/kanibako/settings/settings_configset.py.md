@@ -17,9 +17,9 @@ The FILE still stores the RAW, unresolved form. Resolution happens for the CHECK
 
 * `~/vault/rw/keystore-design.md` §6d (`config set` + B4 + B5 — PRIMARY), §2 / §6a (files store
   UNRESOLVED).
-* Spec `settings-keyspace-1.8.0.md` §2a (the config-set block: source-only, key-must-exist, value
+* Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2a (the config-set block: source-only, key-must-exist, value
   types), §0 (files store UNRESOLVED).
-* Seams: `plans/keystore-blocks/SEAMS.md`.
+* Seams: `~/canon/workbook/plans/keystore-blocks/SEAMS.md`.
 
 ## The B5 severity split
 

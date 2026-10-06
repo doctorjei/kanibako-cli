@@ -294,8 +294,8 @@ kanibako supplies itself, and a snapshot `build_launch_snapshot` did not build.
 Source went from **79.1%** comment characters (9563/12088) to **59.4%** (3620/6092). Everything above
 was MOVED out of `src/kanibako/settings/agent_config.py`, not deleted.
 
-`prose-relocation-check.py`: **133 prose lines at HEAD, 120 removed, 0 scoring below 0.6** against
-this document — no removed line is orphaned. `prose-pass-check.py`: AST identical with docstrings
+`~/canon/notebook/scripts/dev-tools/prose-relocation-check.py`: **133 prose lines at HEAD, 120 removed, 0 scoring below 0.6** against
+this document — no removed line is orphaned. `~/canon/notebook/scripts/dev-tools/prose-pass-check.py`: AST identical with docstrings
 stripped, **10 docstring-bearing symbols, added=[] removed=[]**, string-literal multiset identical.
 
 **Kept in source under the keep test** — deleting any of these would let a future edit break

@@ -20,7 +20,7 @@ Provenance: block 2a of the KeyStore implementation.
 
 ## Authority
 
-* **Spec `settings-keyspace-1.8.0.md` §2 — the cascade, PRIMARY authority.** The 6-level bracket
+* **Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2 — the cascade, PRIMARY authority.** The 6-level bracket
   `base < system < agent.default < agent.<active> < workset < box`, reversed here to high→low
   precedence. `agent.default` is an EXPLICIT level and both agent layers reuse the same linear
   `__MISSING__` precedence (no nested mini-cascade) — the LEVEL ORDER *is* the precedence.
@@ -36,13 +36,13 @@ Provenance: block 2a of the KeyStore implementation.
   cap was cut 2026-06-29f). Spec §2 states both directly. This module consults no machine path.
   *(The source used to phrase this as "reads NO `machine_config_path()`"; that function no longer
   exists anywhere in the tree, so the symbol name was dropped and the substance kept.)*
-* **`keystore-design.md`** (archived at `notebook/archives/keystore-2026-06/`) §2 (storage —
+* **`~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md`** (archived at `~/canon/notebook/archives/resources/keystore-2026-06/`) §2 (storage —
   partials are `KeyStore`s, binds are `Bind`); §6a (files store UNRESOLVED — refs stay raw); §3
   (`None` semantics — the per-entry reset the merge classifies as an OMIT).
   ⚑ Cite spec §2, not design §4, for the bracket: design §4 still writes it with a 7th `required`
   tier, which S14 and spec §2 cut.
 
-## Seams realized here (`plans/keystore-blocks/SEAMS.md`)
+## Seams realized here (`~/canon/workbook/plans/keystore-blocks/SEAMS.md`)
 
 * **S7** — partials are NESTED `KeyStore`s (not flat dotted dicts); a scope file's nested tables are
   mirrored verbatim into the partial, SCOPE TOKEN KEPT.

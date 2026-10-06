@@ -304,7 +304,7 @@ Read a stored `pref` REQUEST, rendering all THREE empty idioms apart.
 
 absent → `None` (`"(not set)"`) · present-`None` → `"null"` · `""` → `'""'` · else the value.
 
-*Spec check, 2026-08-18: `specs/settings-keyspace-1.8.0.md` §2h reads verbatim* "`config get
+*Spec check, 2026-08-18: `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2h reads verbatim* "`config get
 pref.system.agent` returns the REQUEST" *and continues* "`--effective` shows BOTH the request and the
 resulting value — so *"why did `system.agent` resolve to zippity"* is answerable from the snapshot
 instead of by reading files. This is what closes the 'I set it and nothing happened' failure family."
@@ -361,7 +361,7 @@ that reads as current. Each was measured, not inferred.
 
 ### Completeness sweep
 
-`prose-relocation-check.py`: **69 prose lines at HEAD, 55 removed, 0 scoring below 0.6** against
+`~/canon/notebook/scripts/dev-tools/prose-relocation-check.py`: **69 prose lines at HEAD, 55 removed, 0 scoring below 0.6** against
 this document — no removed line is orphaned. 14 prose lines remain in source: the trimmed module
 docstring, the ten one-line symbol descriptors (`prose-pass-check` check 2 counts 11 docstring-bearing
 symbols — the module plus ten functions, added=[] removed=[]), the two section banners, and the `⚑`

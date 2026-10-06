@@ -228,7 +228,7 @@ re-root / nothing to shim", never as a parse failure.
 
 ## Authority
 
-Spec `settings-keyspace-1.8.0.md` §2d (`agent.<agent>.bindings.{ro,rw}.<key>` — the ONLY agent key
+Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2d (`agent.<agent>.bindings.{ro,rw}.<key>` — the ONLY agent key
 form; §0 forbids a bare `agent.<key>`) and §2a (binding REPRESENTATION);
 `~/vault/rw/keystore-design.md` §2 (binds are structured) and §6a (raw refs). SEAMS
 S1/S2/S3/S7/S8/S9 + S26/S27.

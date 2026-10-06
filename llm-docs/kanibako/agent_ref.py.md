@@ -4,7 +4,7 @@
 is single, dependency-light, pure parser for the grammar; every ref source (explicit `--agent`,
 box/workset/system settings) is normalized before resolver so other code only sees *node-names*.
 
-## Terminology (design SOT ``plans/2026-06-24-agent-variant-DESIGN.md``):
+## Terminology (design SOT ``~/canon/workbook/designs/2026-06-24-agent-variant-DESIGN.md``):
 
 * **harness** — the agent runtime/plugin, right of the separator (``claude``).
   Resolves the target/plugin (``resolve_target`` / ``discover_targets`` key).

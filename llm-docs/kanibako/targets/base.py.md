@@ -20,7 +20,7 @@ The module holds four kinds of thing:
 * the **`Target` ABC** itself, whose default method bodies ARE the contract for a plugin that does
   not override.
 
-**Authority:** `specs/settings-keyspace-1.8.0.md` — §0 (closed keyspace, ONE DEST SPACE / TWO
+**Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §0 (closed keyspace, ONE DEST SPACE / TWO
 DELIVERIES), §1A (CLI level, the projected-surface exception), §2c (the charter chapter bind), §2d
 (the per-agent keyspace this module maps onto). ⚑ The spec is the live authority; read it first.
 

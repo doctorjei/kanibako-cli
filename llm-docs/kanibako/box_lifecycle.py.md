@@ -2,7 +2,7 @@
 
 `box_lifecycle` answers one question for the box's keep-alive PID-1: **which clients are attached
 right now, and did that change since the last tick?** It is the detection half of the always-on
-design (`split-brain-persistence-DESIGN.md`, "Mechanism — PID-1 lifecycle watcher"); the acting half
+design (`~/canon/workbook/designs/split-brain-persistence-DESIGN.md`, "Mechanism — PID-1 lifecycle watcher"); the acting half
 is `box_supervisor`, which imports from here and never re-implements detection.
 
 Two client surfaces are watched today — the in-box VS Code server (a panel / attach) and a tmux

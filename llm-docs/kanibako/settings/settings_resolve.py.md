@@ -6,7 +6,7 @@ destination canonicalizer — plus the two-pass precedence walk and the fixed bo
 that both sides of the host/guest boundary have to agree on. Nothing here touches a file, a
 container, or a settings module; that is what lets everything else import it.
 
-**Authority:** `specs/settings-keyspace-1.8.0.md` — §0 (files store UNRESOLVED; the two layers),
+**Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §0 (files store UNRESOLVED; the two layers),
 §1A (the staged bootstrap order and the CLI level), §2 (the cascade bracket), §2a (the category
 list, dest-keying, per-entry options). ⚑ **The spec is the LIVE authority; read it first.**
 

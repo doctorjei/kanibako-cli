@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-10-11",
   "by": "Jei Blanchard",
-  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains. 2026-09-30: until moved to 2026-10-04 (Sunday) on his word this session, at his instruction; it covers the 610 findings carried in this file. 2026-10-03: until moved to 2026-10-11 on his word (140th). 2026-10-06 (151st), director (Kirobo) ruling: three per-owner-default-reaches-anchor shape findings accepted - meta.box.container: <W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity); meta.agent.default.path and meta.agent.shell.path: literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change). 2026-10-06 (152nd, task 152-write-baseline), director (Kirobo): `kinemata baseline --prune` dropped 18 records no longer present (15 claims, two WORKSPACES_PATH, one XDG_DATA_HOME); until unchanged. Same task: six stale path claims in llm-docs/ and docs/architecture.md were cured in the text (full package paths, or the retired path named as such) and their records pruned. Same task: 21 MIGRATION.md records for retired store paths (base_template/, commons/, rules/, playbook/scripts/, the pre-1.6.0 registry files, kanibako_config.yaml, general.yaml) cured by naming each path as old in its own clause, line count unchanged and no heading touched; records pruned.",
+  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains. 2026-09-30: until moved to 2026-10-04 (Sunday) on his word this session, at his instruction; it covers the 610 findings carried in this file. 2026-10-03: until moved to 2026-10-11 on his word (140th). 2026-10-06 (151st), director (Kirobo) ruling: three per-owner-default-reaches-anchor shape findings accepted - meta.box.container: <W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity); meta.agent.default.path and meta.agent.shell.path: literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change). 2026-10-06 (152nd, task 152-write-baseline), director (Kirobo): `kinemata baseline --prune` dropped 18 records no longer present (15 claims, two WORKSPACES_PATH, one XDG_DATA_HOME); until unchanged. Same task: six stale path claims in llm-docs/ and docs/architecture.md were cured in the text (full package paths, or the retired path named as such) and their records pruned. Same task: 21 MIGRATION.md records for retired store paths (base_template/, commons/, rules/, playbook/scripts/, the pre-1.6.0 registry files, kanibako_config.yaml, general.yaml) cured by naming each path as old in its own clause, line count unchanged and no heading touched; records pruned. Same task: llm-docs citations of canon files outside the repo (the 1.8.0 specs, workbook designs and plans, archived plans, dev-tools scripts) now give the file's full ~/canon/ path, which also corrects the ones that had moved (plans/ to designs/ or archives/); one stale citation in launch/journal.py.md is named as stale. Their records go by prune; the 1 records of other claims on the edited lines were re-recorded with the new line text, director (Kirobo).",
   "findings": [
     {
       "registry": "canonical",
@@ -1114,13 +1114,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "comment-ratio.py",
-      "path": "llm-docs/kanibako/plugins/codex/target.py.md",
-      "text": "`comment-ratio.py`: **62.7% \u2192 52.8%** (19805/31578 \u2192 13018/24662 characters). The module docstring,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "common/",
       "path": "MIGRATION.md",
       "text": "dirs move one level down, into a `common/` subdir of the agent's store dir:"
@@ -1194,76 +1187,6 @@
       "antipattern": "data/logs/",
       "path": "MIGRATION.md",
       "text": "`vault/`). The shared top-level `data/logs/` tree (and the `.../helper-messages.jsonl`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "designs/collapse-implementation-DESIGN.md",
-      "path": "llm-docs/kanibako/settings/store_collapse.py.md",
-      "text": "RULES, verbatim at `designs/collapse-implementation-DESIGN.md` **\u00a77**, with the worked refusability"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "designs/grand-unification-collapse-DESIGN.md",
-      "path": "llm-docs/kanibako/commands/start.py.md",
-      "text": "`designs/collapse-implementation-DESIGN.md` \u00a70/\u00a71 \u00b7 `designs/grand-unification-collapse-DESIGN.md`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "designs/grand-unification-collapse-DESIGN.md",
-      "path": "llm-docs/kanibako/settings/store_collapse.py.md",
-      "text": "**Authority:** `designs/grand-unification-collapse-DESIGN.md` \u00a72 (Jei's algorithm, verbatim) and"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "designs/grand-unification-collapse-DESIGN.md",
-      "path": "llm-docs/kanibako/settings/store_shape.py.md",
-      "text": "`designs/grand-unification-collapse-DESIGN.md` \u00a72/\u00a72a (the consumer) \u00b7"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "designs/persona-grata-autoimport-DESIGN.md",
-      "path": "llm-docs/kanibako/persona_store.py.md",
-      "text": "* `designs/persona-grata-autoimport-DESIGN.md` \u00a71, \u00a72, \u00a73, \u00a74, \u00a75a \u2014 the design SOT."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "designs/persona-grata-autoimport-DESIGN.md",
-      "path": "llm-docs/kanibako/persona_store.py.md",
-      "text": "The design SOT is `designs/persona-grata-autoimport-DESIGN.md` (under `~/canon/workbook/`); the"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "designs/store-shape-producer-DESIGN.md",
-      "path": "llm-docs/kanibako/commands/start.py.md",
-      "text": "**Authority:** `designs/store-shape-producer-DESIGN.md` \u00a79.1 \u00b7 `plans/2026-08-09d-CUTOVER-PLAN.md`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "designs/store-shape-producer-DESIGN.md",
-      "path": "llm-docs/kanibako/settings/store_collapse.py.md",
-      "text": "(2026-08-09d) \u00b7 `designs/store-shape-producer-DESIGN.md` \u00a77 (the input arms) \u00b7 the spec's"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "designs/store-shape-producer-DESIGN.md",
-      "path": "llm-docs/kanibako/settings/store_shape.py.md",
-      "text": "**Authority:** `designs/store-shape-producer-DESIGN.md` (this step) \u00b7"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "directives/PROJECT.md",
-      "path": "llm-docs/kanibako/settings/keyspace_manifest.py.md",
-      "text": "`directives/PROJECT.md` are the authority for that; this module simply hands the whole document"
     },
     {
       "registry": "claims",
@@ -1737,20 +1660,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "keystore-design.md",
-      "path": "llm-docs/kanibako/settings/keystore.py.md",
-      "text": "Historical: `keystore-design.md` \u00a72 (storage model), \u00a73 (`None` semantics \u2014 type-space consequence"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "keystore-design.md",
-      "path": "llm-docs/kanibako/settings/settings_launch.py.md",
-      "text": "Historical: `keystore-design.md` \u00a71 (purpose), \u00a72 (storage model), \u00a74 (resolution), \u00a76g (cascade"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "logs/",
       "path": "MIGRATION.md",
       "text": "(`boxes/`, the workspaces dir, `vault/`, `logs/`) \u2014 also presence only in v1.8.0,"
@@ -1828,125 +1737,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "notebook/archives/keystore-2026-06/",
-      "path": "llm-docs/kanibako/settings/settings_assemble.py.md",
-      "text": "* **`keystore-design.md`** (archived at `notebook/archives/keystore-2026-06/`) \u00a72 (storage \u2014"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "persona-grata-autoimport-BUILD.md",
-      "path": "llm-docs/kanibako/persona_store.py.md",
-      "text": "`persona-grata-autoimport-BUILD.md`, a DIFFERENT document. The procedure that governs any change here is"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/2026-06-23-setup-version-tiers-NEXT.md",
-      "path": "llm-docs/kanibako/settings/config.py.md",
-      "text": "The bands (design `plans/2026-06-23-setup-version-tiers-NEXT.md`):"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/2026-06-24-agent-variant-DESIGN.md",
-      "path": "llm-docs/kanibako/agent_ref.py.md",
-      "text": "## Terminology (design SOT ``plans/2026-06-24-agent-variant-DESIGN.md``):"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/2026-08-09d-CUTOVER-PLAN.md",
-      "path": "llm-docs/kanibako/commands/start.py.md",
-      "text": "**Authority:** `designs/store-shape-producer-DESIGN.md` \u00a79.1 \u00b7 `plans/2026-08-09d-CUTOVER-PLAN.md`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/2026-08-09d-CUTOVER-PLAN.md",
-      "path": "llm-docs/kanibako/commands/start.py.md",
-      "text": "**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` \u00a72.7 \u00b7 collapse `DESIGN` \u00a78.1a (a mask is a void)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/2026-08-09d-CUTOVER-PLAN.md",
-      "path": "llm-docs/kanibako/commands/start.py.md",
-      "text": "**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` \u00a72a-2-SHAPE (decided before dispatch) \u00b7 \u00a72.0e (the"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/2026-08-09d-CUTOVER-PLAN.md",
-      "path": "llm-docs/kanibako/commands/start.py.md",
-      "text": "**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` \u00a72b (consumer 5) \u00b7"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/2026-08-09d-CUTOVER-PLAN.md",
-      "path": "llm-docs/kanibako/commands/start.py.md",
-      "text": "**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` \u00a72b-3-MEASURED (consumer 6) \u00b7"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/2026-08-09d-CUTOVER-PLAN.md",
-      "path": "llm-docs/kanibako/commands/start.py.md",
-      "text": "**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` \u00a76 \"\u00a76 DESIGN PASS\" \u00b7 producer `DESIGN` \u00a77.4"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/2026-08-14-self-rectification-PLAN.md",
-      "path": "llm-docs/kanibako/settings/agent_file.py.md",
-      "text": "Provenance: S1 of the `self` rectification (`plans/2026-08-14-self-rectification-PLAN.md` \u00a73)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/keystore-blocks/SEAMS.md",
-      "path": "llm-docs/kanibako/settings/settings_assemble.py.md",
-      "text": "## Seams realized here (`plans/keystore-blocks/SEAMS.md`)"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/keystore-blocks/SEAMS.md",
-      "path": "llm-docs/kanibako/settings/settings_configset.py.md",
-      "text": "* Seams: `plans/keystore-blocks/SEAMS.md`."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/keystore-blocks/SEAMS.md",
-      "path": "llm-docs/kanibako/settings/settings_expand.py.md",
-      "text": "## Seams realized here (`plans/keystore-blocks/SEAMS.md`)"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/keystore-blocks/SEAMS.md",
-      "path": "llm-docs/kanibako/settings/settings_merge.py.md",
-      "text": "## Seams realized here (`plans/keystore-blocks/SEAMS.md`)"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/lifecycle-journal-DESIGN.md",
-      "path": "llm-docs/kanibako/launch/journal.py.md",
-      "text": "`[A225]`). \u2691 The module docstring cited that document as `plans/lifecycle-journal-DESIGN.md`; it"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "plans/settings-conformance-registry-DESIGN.md",
-      "path": "llm-docs/kanibako/launch/box_resolve.py.md",
-      "text": "The design source is `plans/settings-conformance-registry-DESIGN.md`, and its letters are cited"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "playbook/",
       "path": "MIGRATION.md",
       "text": "### 2.44 Helper boxes: the entrypoint script moved out of `playbook/`"
@@ -1985,55 +1775,6 @@
       "antipattern": "project.yaml",
       "path": "MIGRATION.md",
       "text": "| Per-box meta file | `project.yaml` (mode/layout/paths/...) | per-box `settings.yaml` (`[project]` + `[resolved]` secti"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "prose-pass-check.py",
-      "path": "llm-docs/kanibako/plugins/codex/target.py.md",
-      "text": "`prose-pass-check.py`: all three checks pass \u2014 1666 AST lines identical with docstrings stripped,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "prose-pass-check.py",
-      "path": "llm-docs/kanibako/settings/agent_config.py.md",
-      "text": "this document \u2014 no removed line is orphaned. `prose-pass-check.py`: AST identical with docstrings"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "prose-relocation-check.py",
-      "path": "llm-docs/kanibako/plugins/codex/target.py.md",
-      "text": "`prose-relocation-check.py`: **281 prose lines at HEAD, 233 removed, 0 scoring below 0.6** against"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "prose-relocation-check.py",
-      "path": "llm-docs/kanibako/plugins/goose/target.py.md",
-      "text": "dropped as false or obsolete. `prose-relocation-check.py`: 179 prose lines at HEAD, 163 removed"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "prose-relocation-check.py",
-      "path": "llm-docs/kanibako/project/import_reconcile.py.md",
-      "text": "`prose-relocation-check.py`: every removed prose line is accounted for above. The prose kept in the"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "prose-relocation-check.py",
-      "path": "llm-docs/kanibako/settings/agent_config.py.md",
-      "text": "`prose-relocation-check.py`: **133 prose lines at HEAD, 120 removed, 0 scoring below 0.6** against"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "prose-relocation-check.py",
-      "path": "llm-docs/kanibako/settings/config_io.py.md",
-      "text": "`prose-relocation-check.py`: **69 prose lines at HEAD, 55 removed, 0 scoring below 0.6** against"
     },
     {
       "registry": "claims",
@@ -2318,104 +2059,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/commands/box/_parser.py.md",
-      "text": "Authority: the keyspace spec `settings-keyspace-1.8.0.md` \u00a70 (closed keyspace, single route), \u00a71A"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/commands/workset_cmd.py.md",
-      "text": "Authority: the keyspace spec `settings-keyspace-1.8.0.md` \u00a70 (closed keyspace, single route), \u00a72a"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "`settings-keyspace-1.8.0.md` \u00a70 \"Seed-time vs cascade\", `system-design-1.8.0.md` \u00a7 \"Detection &"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/project/registry_store.py.md",
-      "text": "`settings-keyspace-1.8.0.md` \u00a70 \"Seed-time vs cascade\"; `system-design-1.8.0.md` \u00a7 \"Detection &"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/project/workset.py.md",
-      "text": "holds the user's content. `settings-keyspace-1.8.0.md` \u00a70 \"Seed-time vs cascade\" (registry"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/agent_file.py.md",
-      "text": "* **Spec `settings-keyspace-1.8.0.md` \u00a70** \u2014 closed keyspace: an undeclared key is an ERROR that"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/agent_representation.py.md",
-      "text": "Spec `settings-keyspace-1.8.0.md` \u00a72d (`agent.<agent>.bindings.{ro,rw}.<key>` \u2014 the ONLY agent key"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/config.py.md",
-      "text": "Authority: spec `settings-keyspace-1.8.0.md` \u00a70 (closed keyspace), \u00a71/\u00a71A (the Layer-1 `config.*`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/config_interface.py.md",
-      "text": "Authority: spec `settings-keyspace-1.8.0.md` \u00a70 (closed keyspace, directional enforcement, read"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/settings_assemble.py.md",
-      "text": "* **Spec `settings-keyspace-1.8.0.md` \u00a72 \u2014 the cascade, PRIMARY authority.** The 6-level bracket"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/settings_configset.py.md",
-      "text": "* Spec `settings-keyspace-1.8.0.md` \u00a72a (the config-set block: source-only, key-must-exist, value"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/settings_expand.py.md",
-      "text": "* Spec `settings-keyspace-1.8.0.md` \u00a70, \u00a71 (the box-side XDG line, ~line 94), \u00a72c, \u00a72h, \u00a72a, \u00a71A."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/settings_merge.py.md",
-      "text": "* **Spec `settings-keyspace-1.8.0.md` \u00a72** (cascade \u2014 ends at `box`) / **\u00a72a** (the category list and"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/settings_views.py.md",
-      "text": "`settings-keyspace-1.8.0.md` \u00a72a (categories and their value types)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "settings.yaml",
       "path": "MIGRATION.md",
       "text": "### 4.6 `project.yaml` \u2192 per-box `settings.yaml`"
@@ -2682,111 +2325,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/plugins/goose/target.py.md",
-      "text": "**Authority:** `specs/settings-keyspace-1.8.0.md` \u2014 \u00a72d (the per-agent keyspace: `agent.goose.env.*`,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/project/workset.py.md",
-      "text": "**Authority:** `specs/settings-keyspace-1.8.0.md` \u2014 \u00a72c (per-mode default tables, the workset-root"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/project/workset.py.md",
-      "text": "| 8 | `RESERVED_WORKSET_NAMES` comment | \"the three-mode model (**TARGET** \u00a72c)\" | **STALE CITATION.** There is no \"TARG"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/config_io.py.md",
-      "text": "*Spec check, 2026-08-18: `specs/settings-keyspace-1.8.0.md` \u00a72h reads verbatim* \"`config get"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/kb_store.py.md",
-      "text": "**Authority:** `specs/settings-keyspace-1.8.0.md` \u2014 \u00a70 (directional view/set across CONTAINMENT"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/keyspace_manifest.py.md",
-      "text": "The manifest is the MACHINE-READABLE PROJECTION of `specs/settings-keyspace-1.8.0.md`: one row per"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/keystore.py.md",
-      "text": "**Authority:** `specs/settings-keyspace-1.8.0.md` \u2014 \u00a70 (files store UNRESOLVED; the reserved-name"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/settings_launch.py.md",
-      "text": "**Authority:** `specs/settings-keyspace-1.8.0.md` \u2014 \u00a70 (the CLOSED keyspace), \u00a71, \u00a72 (the cascade),"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/settings_resolve.py.md",
-      "text": "**Authority:** `specs/settings-keyspace-1.8.0.md` \u2014 \u00a70 (files store UNRESOLVED; the two layers),"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/store_shape.py.md",
-      "text": "`specs/settings-keyspace-1.8.0.md` \u00a70 (the collision table)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/settings-keyspace-1.8.0.md",
-      "path": "llm-docs/kanibako/targets/base.py.md",
-      "text": "**Authority:** `specs/settings-keyspace-1.8.0.md` \u2014 \u00a70 (closed keyspace, ONE DEST SPACE / TWO"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "specs/system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/project/workset.py.md",
-      "text": "`specs/system-design-1.8.0.md` \u00a7 \"Detection & import\" (seed at registration), which the keyspec's"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "split-brain-persistence-DESIGN.md",
-      "path": "llm-docs/kanibako/box_lifecycle.py.md",
-      "text": "design (`split-brain-persistence-DESIGN.md`, \"Mechanism \u2014 PID-1 lifecycle watcher\"); the acting half"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "split-brain-persistence-DESIGN.md",
-      "path": "llm-docs/kanibako/box_supervisor.py.md",
-      "text": "(`split-brain-persistence-DESIGN.md`, \"E2 BUILD DESIGN\") makes a box's keep-alive PID-1 a"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "split-brain-persistence-DESIGN.md",
-      "path": "llm-docs/kanibako/box_supervisor.py.md",
-      "text": "Design refs: `split-brain-persistence-DESIGN.md` \u00a785-96, \u00a7108, \u00a7189/\u00a7217, \u00a7267/\u00a7348, \u00a7338-359, \u00a7346,"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "std.boxes/",
       "path": "llm-docs/kanibako/commands/box/_parser.py.md",
       "text": "and is rejected. Strict containment matters because deleting `std.boxes/` itself would take every"
@@ -2797,76 +2335,6 @@
       "antipattern": "std.boxes/",
       "path": "llm-docs/kanibako/commands/box/_parser.py.md",
       "text": "under `std.boxes/`."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/launch/templates.py.md",
-      "text": "`settings-keyspace-1.8.0.md` \u00a70 \"Seed-time vs cascade\", `system-design-1.8.0.md` \u00a7 \"Detection &"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/project/registry_store.py.md",
-      "text": "`settings-keyspace-1.8.0.md` \u00a70 \"Seed-time vs cascade\"; `system-design-1.8.0.md` \u00a7 \"Detection &"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/project/workset.py.md",
-      "text": "MEMBERSHIP is itself the seed signal); `system-design-1.8.0.md` \u00a7 \"Detection & import\", \"Seed = at"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/project/workset.py.md",
-      "text": "`system-design-1.8.0.md` makes a spec clause. It selects a default leaf so the logs default can"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/messages.py.md",
-      "text": "Standalone detection (`system-design-1.8.0.md` \u00a7 \"Detection & import\") is an ANCESTOR WALK looking"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/messages.py.md",
-      "text": "detection marker is `system-design-1.8.0.md` \u00a7 \"Detection & import\". \u2691 **The specs are the LIVE"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "(`system-design-1.8.0.md` \u00a7 \"Detection & import\") \u2014 the other half is the ROOT `workset.yaml`."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "(`system-design-1.8.0.md` \u00a7 \"Detection & import\"; `box_resolve.standalone_settings_present`)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "file detection reads (`system-design-1.8.0.md` \u00a7 \"Detection & import\") and where `workset.kuid`"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "system-design-1.8.0.md",
-      "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "standalone detection marker, `system-design-1.8.0.md` \u00a7 \"Detection & import\"), and a NON-default"
     },
     {
       "registry": "claims",
@@ -3469,7 +2937,7 @@
       "entry": "claim:path",
       "antipattern": "workset.yaml",
       "path": "llm-docs/kanibako/settings/paths.py.md",
-      "text": "(`system-design-1.8.0.md` \u00a7 \"Detection & import\") \u2014 the other half is the ROOT `workset.yaml`."
+      "text": "(`~/canon/workbook/specs/system-design-1.8.0.md` \u00a7 \"Detection & import\") \u2014 the other half is the ROOT `workset.yaml`."
     },
     {
       "registry": "claims",

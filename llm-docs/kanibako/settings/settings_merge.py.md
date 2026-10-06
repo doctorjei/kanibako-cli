@@ -37,7 +37,7 @@ path tier (`settings/paths.py`); it is the launch/settings cascade that no longe
 * **Design §4** — cascade order. The cascade ends at `box`; the former `required` cap is CUT
   (2026-06-29f).
 * **Design §6g** — the merge keys by NAME, distinct from reconcile, which keys by `box_dest`.
-* **Spec `settings-keyspace-1.8.0.md` §2** (cascade — ends at `box`) / **§2a** (the category list and
+* **Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2** (cascade — ends at `box`) / **§2a** (the category list and
   per-name coexistence) / **§2c**.
 
 ## The cascade order this module consumes
@@ -63,7 +63,7 @@ like every other level.
 so the most-specific level is `box` and the merge is a pure highest-precedence-wins union: **no
 level is treated specially anywhere in this module.**
 
-## Seams realized here (`plans/keystore-blocks/SEAMS.md`)
+## Seams realized here (`~/canon/workbook/plans/keystore-blocks/SEAMS.md`)
 
 * **S3** — presence is the UNBOUND `dict.get(level, name, __MISSING__) is not __MISSING__` probe.
   Never the bound `.get` (a key named `get` would shadow the method into a crash) and never

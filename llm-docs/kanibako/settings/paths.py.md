@@ -27,7 +27,7 @@ exist for the same reason: they let this module speak about a workset without im
 
 `box_data` is the STANDALONE box-store dir name. It is `@meta.box.path` for a standalone box (the
 empty leaf of `@workset.boxes`, keyspec §2c) and HALF of the detection marker
-(`system-design-1.8.0.md` § "Detection & import") — the other half is the ROOT `workset.yaml`.
+(`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import") — the other half is the ROOT `workset.yaml`.
 Both must be present; a bare `box_data/` directory is not a marker.
 
 It is defined at the TOP of the module, not inside the detection helper that used to own it, because
@@ -284,7 +284,7 @@ EVERY mode (spec §2c ALL PROJECTS), so the box tier is ALWAYS a real path — n
   `{}` for it, so a standalone box with no box file resolves byte-identically to one with no box
   tier at all. The workset tier is the ROOT `<root>/workset.yaml` — the file that plays the
   WORKSET tier for a degenerate one-box workset, and the file DETECTION reads
-  (`system-design-1.8.0.md` § "Detection & import"; `box_resolve.standalone_settings_present`).
+  (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import"; `box_resolve.standalone_settings_present`).
   A `box.*` key stored THERE still resolves for box scope via R2 downward-defaults (`box` ⊂
   `workset` in `SCOPE_CONTAINMENT` — the workset-tier read KEEPS `box.*`). That is DECLARED DESIGN
   (keyspec §2c), and it is also how a pre-P2 standalone box keeps working with no migration.
@@ -1533,7 +1533,7 @@ The single shared core behind all three standalone paths (`create --standalone`,
    refuse), or a fresh prefix over the supplied string as the leaf;
 2. writes the SPARSE settings, each key AT ITS OWN SCOPE'S TIER (M-8): the workset-scope
    `workset.kuid` into the ROOT `<root>/workset.yaml` (which MATERIALIZES that file — half the
-   standalone detection marker, `system-design-1.8.0.md` § "Detection & import"), and a NON-default
+   standalone detection marker, `~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import"), and a NON-default
    box-scope `box.enable_vault` into the BOX tier `<root>/box_data/box.yaml` — the SAME file
    `config set box.*` writes, so create and set can never disagree. A default-vault box therefore
    writes NO box-tier file at all, which is the spec's "ABSENT BY DEFAULT" (§2c + §4 STANDALONE
@@ -1598,7 +1598,7 @@ no workspace.
 
 The mode-aware tier pair comes from the ONE derivation (M-8): the BOX tier is
 `box_data/box.yaml` (absent by default) and the WORKSET tier is the ROOT `workset.yaml` — the
-file detection reads (`system-design-1.8.0.md` § "Detection & import") and where `workset.kuid`
+file detection reads (`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import") and where `workset.kuid`
 lives.
 
 ⚑ STANDALONE paths are derived from the (current) root, never the stored absolutes: the DEFAULT

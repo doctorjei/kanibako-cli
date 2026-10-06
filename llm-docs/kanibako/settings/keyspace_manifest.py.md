@@ -8,7 +8,7 @@ consumer walks the plain dict it returns.
 
 ## What the manifest IS
 
-The manifest is the MACHINE-READABLE PROJECTION of `specs/settings-keyspace-1.8.0.md`: one row per
+The manifest is the MACHINE-READABLE PROJECTION of `~/canon/workbook/specs/settings-keyspace-1.8.0.md`: one row per
 declared key, plus the category, bind-default and not-a-key tables. Its top-level sections are
 `registry`, `policy`, `categories`, `bindmap_shape`, `keys`, `bind_default_entries`,
 `category_default_entries`, `pref`, `not_keys` and `plugin_contributed`. It is RELEASE AUTHORITY —
@@ -18,7 +18,7 @@ the amendment log.
 ⚑ Some of its rows are MIGRATION DATA rather than a description of today's keyspace — the
 retired-key chains that record what a key used to be spelled. They read like leftovers and are
 not: deleting one loses the only record of a rename. The manifest's own header and
-`directives/PROJECT.md` are the authority for that; this module simply hands the whole document
+`~/canon/notebook/directives/PROJECT.md` are the authority for that; this module simply hands the whole document
 back untouched.
 
 ## It declares NOTHING at runtime

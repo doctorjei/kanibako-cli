@@ -19,11 +19,11 @@ folds into `build_launch_snapshot`'s one floor, so `expand` resolves every `@`-r
 (`effective_behavior`), the launch-grammar read (`meta_agent_grammar`), the auth-source read
 (`resolve_auth_source`), and the category adapter (`snapshot_category_entries`).
 
-**Authority:** `specs/settings-keyspace-1.8.0.md` — §0 (the CLOSED keyspace), §1, §2 (the cascade),
+**Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §0 (the CLOSED keyspace), §1, §2 (the cascade),
 §2a (the categories), §2c (worksets + box bindings per mode). ⚑ **The spec is the LIVE authority;
 read it first.** SEAMS S7/S8/S9/S12/S14/S17/S20/S26/S27 + OS1.
 
-Historical: `keystore-design.md` §1 (purpose), §2 (storage model), §4 (resolution), §6g (cascade
+Historical: `~/canon/notebook/archives/resources/keystore-2026-06/keystore-design.md` §1 (purpose), §2 (storage model), §4 (resolution), §6g (cascade
 MERGE and category RECONCILE kept distinct). ⚑ It is ARCHIVED, at
 `~/canon/notebook/archives/keystore-2026-06/keystore-design.md`. 🛑 **Its §4 writes the cascade
 bracket with a 7th `required` tier that S14 and spec §2 CUT** — so on the cascade the archive is
