@@ -467,9 +467,20 @@ REQUESTS one at the key that resolves earlier (`pref.system.agent`, spec §2h), 
 default is now `system.agent` (§2g). Refusing rather than running: kanibako cannot tell which
 agent you meant, and guessing would launch a DIFFERENT agent and seed that agent's credentials
 into this box.
-  Fix: kanibako box set <box> pref.system.agent=<value>
-  then delete the `box: agent_name` entry from <path>.
+  Delete the `box: agent_name` entry from <path> FIRST — and `box:` with it, if that leaves it
+  empty: a table left with nothing under it parses as null, and a null there is refused the same
+  way. The fix below is a `set`, and §2a refuses a write that collides with a retired entry still
+  stored in the files it reads.
+  Fix: kanibako box set <box> pref.system.agent=claude
 ```
+
+⚑ **The delete comes before the fix, and it names the parent tables too.** The `set` resolves
+through the settings cascade, and §2a refuses a write that collides with a retired entry still
+stored in the files it reads — so the stale line has to go first. And a table left with nothing
+under it parses as `null`, which is refused in its own right: deleting only the leaf can strand
+`box:` here, or `agent: default:` / `agent:` on the system-key cures, in exactly that state — and
+the fix the same message printed then fails with nothing pointing at the cause. Take the parents
+with the leaf when the leaf's removal empties them.
 
 ⚑ **This is the message you get, even though the check that stops you is §2.47's.** A retired key
 is an undeclared key too, so the closed-keyspace refusal reaches it first — and before printing
@@ -515,8 +526,11 @@ settings — it REQUESTS a tweak with `pref.agent.<agent>.<key>` (spec §2h) and
 value back at the read-only `meta.box.agent.<key>` (§2b). Refusing rather than running: an
 undeclared key is not read at all, so this box would come up on the agent's UNTWEAKED settings and
 every override in this table would silently vanish.
+  Delete the `box: agent` entry from <path> FIRST — and `box:` with it, if that leaves it empty: a
+  table left with nothing under it parses as null, and a null there is refused the same way. The
+  fix below is a `set`, and §2a refuses a write that collides with a retired entry still stored in
+  the files it reads.
   Fix: kanibako box set <box> pref.agent.<agent>.model=sonnet
-  then delete the `box: agent` entry from <path>.
 ```
 
 The mirror cure is level-appropriate the same way the selection cure is, and it names **every**
@@ -549,8 +563,11 @@ The RULE CHANGED in kanibako 1.8.0: the permission axis is no longer a boolean �
 is not read at all, so this box would come up at the DEFAULT tier and a deliberately restricted box
 would silently run permissive.
   Your stored `auto_approve: true` means `access: full` (true → full, false → restricted).
+  Delete the `agent.claude.auto_approve` entry from <path> FIRST — and `agent: claude:` / `agent:`
+  with it, if that leaves them empty: a table left with nothing under it parses as null, and a null
+  there is refused the same way. The fix below is a `set`, and §2a refuses a write that collides
+  with a retired entry still stored in the files it reads.
   Fix: kanibako system set access=full
-  then delete the `agent.claude.auto_approve` entry from <path>.
 ```
 
 An unparseable stored value maps to no tier, and the message then names the three you may choose
