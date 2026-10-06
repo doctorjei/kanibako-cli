@@ -470,22 +470,24 @@ def run_list(args: argparse.Namespace) -> int:
     # The default workset is always present (synthesized).
     dflt = default_workset(std)
 
-    # Load each named workset to get project count.
-    rows: list[tuple[str, int, str]] = [
+    # ⚑ A refused entry is NOT an empty one: name it, mark its row, keep sweeping.
+    rows: list[tuple[str, int | None, str]] = [
         (f"{DEFAULT_WORKSET_ALIAS} (default)", len(dflt.projects), "<default workset>"),
     ]
     for name in sorted(registry):
         root = registry[name]
         try:
             ws = load_workset(root, name, early_system=std.early_system)
-            count = len(ws.projects)
-        except WorksetError:
-            count = 0
+            count: int | None = len(ws.projects)
+        except WorksetError as e:
+            print(f"Warning: working set '{name}' could not be read: {e}", file=sys.stderr)
+            count = None
         rows.append((name, count, str(root)))
 
     print(f"{'NAME':<20} {'PROJECTS':>8}  {'ROOT'}")
     for ws_name, ws_count, ws_root in rows:
-        print(f"{ws_name:<20} {ws_count:>8}  {ws_root}")
+        shown = "ERROR" if ws_count is None else ws_count
+        print(f"{ws_name:<20} {shown:>8}  {ws_root}")
     return 0
 
 

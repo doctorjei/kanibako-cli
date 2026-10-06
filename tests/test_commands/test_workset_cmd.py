@@ -391,6 +391,63 @@ class TestWorksetList:
         # Even with no named worksets, the default workset is listed.
         assert out.strip() == "default"
 
+    def test_list_names_a_refused_entry_and_keeps_listing_the_rest(
+        self, config_file, tmp_home, capsys,
+    ):
+        """A registry entry that REFUSES to load is named, not counted as empty."""
+        from kanibako.commands.workset_cmd import run_list
+        from kanibako.project.names import register_name
+
+        std = load_std_paths(load_config(config_file))
+        alpha = create_workset("alpha", tmp_home / "ws_alpha", std)
+        create_workset("beta", tmp_home / "ws_beta", std)
+        src = tmp_home / "proj_src"
+        src.mkdir()
+        add_project(alpha, "myproj", src)
+        # A name ``workset create`` refuses, registered the way a pre-1.8 registry holds
+        # one; and a registered root that is gone.  Both refuse at load.
+        register_name(std.registry, "primary", str(tmp_home / "ws_beta"), section="worksets")
+        register_name(std.registry, "ghostws", str(tmp_home / "ws_gone"), section="worksets")
+
+        rc = run_list(argparse.Namespace(quiet=False))
+        assert rc == 0
+        out, err = capsys.readouterr()
+        assert err.count("Warning:") == 2, err
+        assert "primary" in err and "ghostws" in err, err
+        row = {ln.split()[0]: ln.split() for ln in out.splitlines() if ln.split()}
+        assert row["primary"][1] == "ERROR", out
+        assert row["ghostws"][1] == "ERROR", out
+        # A genuinely EMPTY workset still reads 0, and a populated one its count: the
+        # marker marks an unread entry, not every zero.
+        assert row["beta"][1] == "0", out
+        assert row["alpha"][1] == "1", out
+
+    def test_list_quiet_lists_names_without_loading_each_workset(
+        self, config_file, tmp_home, capsys,
+    ):
+        """``--quiet`` prints NAMES only.
+
+        It never printed a project count, so it never claimed the count a refused
+        entry used to be given; and it must keep working on a store the table path
+        cannot read — loading every workset here would turn a quiet name list into a
+        failing one.
+        """
+        from kanibako.commands.workset_cmd import run_list
+        from kanibako.project.names import register_name
+
+        std = load_std_paths(load_config(config_file))
+        for name in ("alpha", "beta"):
+            create_workset(name, tmp_home / f"ws_{name}", std)
+        register_name(std.registry, "primary", str(tmp_home / "ws_alpha"), section="worksets")
+        (tmp_home / "ws_beta" / "workset.yaml").write_text("workset: [unclosed\n")
+
+        rc = run_list(argparse.Namespace(quiet=True))
+        assert rc == 0
+        out, err = capsys.readouterr()
+        assert sorted(out.split()) == ["alpha", "beta", "default", "primary"]
+        assert "ERROR" not in out
+        assert err == ""
+
 
 class TestWorksetRm:
     def test_rm_success(self, config_file, tmp_home, capsys):
