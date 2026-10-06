@@ -44,8 +44,9 @@ def _relocate_store(root: Path, value: str) -> Path:
     """MOVE the store to ``<root>/<value>`` and point ``workset.boxes`` there VERBATIM.
 
     ``value`` is a relative ref, not an absolute path, so the case reads as the user's own
-    ``workset.yaml``.  The ``box_data/`` LOCATOR stays: the spec keeps it and detection
-    finds the box by it, so leaving it is the shape a relocating user actually has.
+    ``workset.yaml``.  The leftover ``box_data/`` stays: the spec makes it an ordinary
+    directory the user may keep or remove — detection reads the root's ``workset.yaml``
+    registry null, not this leaf — so leaving it is the shape a relocating user has.
     """
     store = root / value
     store.mkdir()
@@ -529,7 +530,47 @@ class TestAMoveKeepsAUserOwnedBoxData:
         assert (dest / "box_data" / "mine.txt").read_text() == "the user's own file\n"
         assert (dest / "app.py").read_text() == "code\n"
 
+    def test_a_default_layout_standalone_move_keeps_its_user_box_data(
+            self, config, std, tmp_home):
+        """⚑ R1 — THE SAME SEAM ONE LAYOUT DEEPER, AND IT IS STILL A DELETION.
+
+        A DEFAULT-LAYOUT standalone keeps its workspace at ``<root>/workspace``, so the
+        workspace is NOT the root.  ``box_metadata_dir`` answers a standalone store from
+        the ROOT's ``workset.yaml``; handed the workspace dir instead it reads
+        ``<root>/workspace/workset.yaml`` (absent), falls back to
+        ``<root>/workspace/box_data`` — the USER'S directory — and excludes it.  The copy
+        then drops the file and STEP 5's retire deletes it with the source: rc 0, gone.
+
+        Rooting the resolver on ``state.metadata_path`` answers ``<root>/box_data``, which
+        sits OUTSIDE the copied tree, so the exclusion lands on nothing and the file
+        travels.  ``metadata_path`` IS the standalone root here; ``workspace_path`` is one
+        level below it.
+
+        ⚑ Pinned on SURVIVAL + content, per the 153rd ruling.  It currently lands at
+        ``<dest>/box_data/``, merged into the store — placement is pre-existing (base does
+        the same) and boarded as its own DATA SAFETY row, so this asserts the file arrives
+        anywhere intact rather than naming a path no shipped version produced.
+        """
+        root = _standalone(config, std, tmp_home, "mv_default_layout")
+        workspace = root / "workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+        (workspace / "box_data").mkdir()
+        (workspace / "box_data" / "mine.txt").write_text("the user's own file\n")
+        (workspace / "app.py").write_text("code\n")
+
+        dest = tmp_home / "mv_default_dest"
+        rc = _cli("box", "move", str(root), str(dest), "--force")
+
+        assert rc == 0
+        landed = sorted(dest.rglob("mine.txt"))
+        assert landed, (
+            "a default-layout standalone move must not drop the user's own "
+            "workspace/box_data/ out of the copy and then delete it with the source")
+        assert landed[0].read_text() == "the user's own file\n"
+        assert list(dest.rglob("app.py")), "ordinary workspace content still travels"
+
     def test_a_standalone_box_move_takes_its_store_rather_than_stranding_it(
+
             self, config, std, tmp_home):
         """⚑ THE INVERSE, and the one a MOVE actually risks: the exclusion must not strand
         the store at a source the move then deletes.

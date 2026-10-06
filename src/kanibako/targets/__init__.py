@@ -243,10 +243,9 @@ def _standalone_root_from(path: Path) -> Path | None:
     """The standalone ROOT at or above *path*, or ``None`` if no ancestor qualifies.
 
     ⚑ SD's ONE predicate: the root whose OWN ``workset.yaml`` stores the
-    ``workset.registry`` null.  Needed because this seam is handed
-    ``proj.project_path`` — the WORKSPACE of a standalone box — while
-    ``workset.boxes`` is carried by the ROOT's file.  Walking is what turns the
-    workspace it is given into the root the store can actually be answered from.
+    ``workset.registry`` null.  This seam is handed ``proj.project_path`` — the WORKSPACE
+    — while ``workset.boxes`` is carried by the ROOT's file, so walking is what makes the
+    store answerable.
     """
     from kanibako.settings.paths import _is_standalone_meta_dir
 

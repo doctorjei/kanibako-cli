@@ -454,26 +454,17 @@ def _workspace_copy_ignore(
 ) -> Callable[[str, list[str]], set[str]]:
     """A workspace copy's *ignore*: never carry the box's OWN store into a workspace.
 
-    ⚑⚑ BY PATH, NEVER BY NAME.  ``shutil.ignore_patterns("box_data")`` matched that name
-    at ANY depth, so a duplicate or a convert silently dropped the user's own
-    ``src/box_data/``.  At most two paths are excluded, each a RESOLVED path:
+    ⚑⚑ BY PATH, NEVER BY NAME.  ``ignore_patterns("box_data")`` matched that name at ANY
+    depth and silently dropped the user's own ``src/box_data/``.  At most two RESOLVED
+    paths are excluded: the store **as resolved for ITS mode** (:func:`box_metadata_dir`
+    — a primary's sits OUTSIDE its workspace, so it excludes nothing and the user's own
+    ``box_data/`` travels), and the superseded default leaf ``<root>/box_data``, ONLY for
+    a STANDALONE box whose store was REPOINTED away from it — never while it IS the store.
 
-    * the box's store **as resolved for ITS mode** (:func:`box_metadata_dir`) —
-      ``workset.boxes`` for a standalone box, ``metadata_path`` for a primary or named
-      one.  A primary box's store sits OUTSIDE its workspace, so this excludes nothing
-      there and the user's own ``box_data/`` travels with the copy.
-    * the **superseded default leaf** ``<root>/box_data``, and only for a STANDALONE box
-      whose store was REPOINTED away from it — what a repoint leaves there is the box's
-      own stale ``home/`` and box tier.  Never excluded while it IS the live store, and
-      never for a primary or named box.
-
-    ⚑ NEITHER PATH IS A DETECTION MARKER.  Since SD a standalone root is the root whose
-    own ``workset.yaml`` stores the ``workset.registry`` null; ``box_data`` is only this
-    key's default leaf.
-
-    ⚑ The gate is ``_path_in_tree`` against *copied_root* — the only test that means
-    "this walk can reach it" — and :func:`ignore` matches the resolved PATH, so an
-    unvisited directory cannot be named at all.
+    ⚑ NEITHER IS A DETECTION MARKER: a standalone root is the one whose own
+    ``workset.yaml`` stores the ``workset.registry`` null.  The gate is ``_path_in_tree``
+    against *copied_root*, the only test meaning "this walk can reach it", and *ignore*
+    matches the resolved PATH, so an unvisited directory cannot be named at all.
     """
     store = box_metadata_dir(mode, metadata_root, early=early).resolve()
     copied = copied_root.resolve()
@@ -1004,21 +995,17 @@ def _run_steps(
                 f"Note: left {old}; remap deletes nothing", file=sys.stderr))
     elif relocating and dest is not None and not state.is_external:
         src = state.workspace_path
-        # ⚑⚑ THE PATH-ANCHORED IGNORE, or this copy carries the box's OWN store into the
-        # destination workspace, at the DEFAULT layout too.  The layout root is *src*:
-        # ``workset.boxes`` is carried by the root whose ``workset.yaml`` declares it.
-        # ⚑ This arm runs for EVERY relocating source, so the store is resolved FOR THE
-        # SOURCE'S MODE: a primary or named source resolves outside the workspace and
-        # excludes nothing, leaving its user's own top-level ``box_data/`` to travel (D1).
+        # ⚑⚑ THE PATH-ANCHORED IGNORE, rooted on ``state.metadata_path``, NOT *src*: at
+        # the DEFAULT layout a standalone's workspace sits one level below the root that
+        # carries ``workset.boxes``, so *src* answered the store as the USER'S
+        # ``<workspace>/box_data`` and this move deleted it (R1).
         copy_tree_keeping_links(
             src, dest,
             ignore=_workspace_copy_ignore(
-                src, src, mode=state.mode,
+                state.metadata_path, src, mode=state.mode,
                 early=EarlyScope(std.early_system, _state_ws_token(state))),
         )
-        # ⚑⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATED: the copy refuses an existing
-        # ``dest`` (``dirs_exist_ok`` left False), so this rmtree is registered for a
-        # destination this operation built.
+        # ⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATED: the copy refuses an existing dest.
         unwind.push(lambda: shutil.rmtree(dest, ignore_errors=True))
         new_workspace = dest
     elif relocating and dest is not None and state.is_external:
@@ -1838,10 +1825,10 @@ def _to_default(
     )
 
 
-#: kanibako artifacts a standalone root keeps whatever ``workset.*`` says: ``box_data/``,
-#: the spec's detection LOCATOR (a MARKER, not the store); and three FILES — the marker
-#: beside it, the legacy root box tier (drift I), the lock.  They STAY at the root when a
-#: convert consolidates everything else into the workspace dir (drift H).
+#: What a standalone root keeps whatever ``workset.*`` says: the ``workset.boxes`` DEFAULT
+#: leaf ``box_data/`` (NOT a detection marker — detection reads the root's own
+#: ``workset.yaml`` registry null), plus the workset meta, the legacy root box tier (drift
+#: I) and the lock.  They STAY at the root when a convert consolidates the rest (drift H).
 #: ⚑⚑ EVERY OTHER ARTIFACT AT THE ROOT IS A DECLARED, REPOINTABLE ``workset.*`` DIRECTORY
 #: KEY AND IS ANSWERED BY :func:`_standalone_root_artifacts`, NEVER BY A NAME.  A leaf name
 #: cannot express ``workset.vault_ro: store/ro`` — the root child is then ``store``, a name
@@ -1878,15 +1865,13 @@ def _resolve_standalone_boxes(
     return resolve_workset_boxes(root, doc, standalone=True, early=early)
 
 
-#: The ``workset.*`` DIRECTORY keys a STANDALONE root materializes UNDER ITSELF, each paired
-#: with the resolver that answers it.  ⚑ A standalone root is a degenerate workset root
-#: (``settings/paths.py::_standalone_box_paths``), so these are ordinary workset keys;
-#: ``logs``/``template``/``channelroot`` are absent because standalone does not materialize
-#: them — each resolver's docstring is the source.
-#: ⚑ ``boxes`` is HERE and not held by :data:`_STANDALONE_FIXED_ARTIFACTS` alone: that set
-#: holds ``box_data/`` as the detection LOCATOR, which no key moves, while the STORE behind
-#: it answers to ``workset.boxes``.  A name filter that stops at the locator sweeps a
-#: repointed store into the workspace dir.
+#: The ``workset.*`` DIRECTORY keys a STANDALONE root materializes UNDER ITSELF, each
+#: paired with its resolver — a standalone root is a degenerate workset root
+#: (``_standalone_box_paths``), so these are ordinary workset keys, and
+#: ``logs``/``template``/``channelroot`` are absent because standalone makes none.
+#: ⚑ ``boxes`` is HERE, not only in :data:`_STANDALONE_FIXED_ARTIFACTS`: that set holds a
+#: LEAF NAME no key moves, while the STORE answers to ``workset.boxes`` wherever the user
+#: put it — a leaf-name filter swept a repointed store into the workspace dir.
 _STANDALONE_ROOT_DIR_KEYS = (
     ("workset.workspaces", _resolve_standalone_workspaces),
     ("workset.boxes", _resolve_standalone_boxes),
