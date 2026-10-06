@@ -516,7 +516,7 @@ DECLARED_META_WORKSET_LEAVES: Final[frozenset[str]] = frozenset({
 # assembly seam builds the pid-0 foundation bind by READING this key, and every
 # launch's home mount resolves through it.
 # ⚑ The last 2 have NO PRODUCER: `container` renders in
-# `utils.render_container_name`, off proj attrs, not the store; `helper_num` travels
+# `utils.render_container_name`, from proj, not the store; `helper_num` travels
 # in helper messages. Declared-but-unproduced is the state the manifest already
 # describes (JC-B2-3), not an omission.
 DECLARED_META_BOX_LEAVES: Final[frozenset[str]] = frozenset({
