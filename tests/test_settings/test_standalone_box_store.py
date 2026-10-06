@@ -48,8 +48,8 @@ def _relocate(root: Path, target: Path, *, keep_locator: bool = True) -> Path:
     shutil.move(str(root / "box_data"), str(target / "box_data"))
     write_nested_key(root / "workset.yaml", ("workset",), "boxes", str(target / "box_data"))
     if keep_locator:
-        # The spec keeps ``box_data/`` as the detection LOCATOR, so a relocating user
-        # leaves it — and detection is how a teardown is reached at all.
+        # A relocating user can leave an empty ``box_data/`` behind; once the key points
+        # elsewhere it is an ordinary directory, not the store.
         (root / "box_data").mkdir(exist_ok=True)
     return target / "box_data"
 
