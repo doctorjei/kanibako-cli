@@ -6661,7 +6661,8 @@ checked.
 - `system set workset.boxes=/srv/kb` exits 1 and writes nothing. A working set's own file may still
   hold a plain path (`workset set <workset> workset.boxes=/srv/kb`).
 - A value the system file already holds is refused by every reader that reads it, naming the file.
-  A plain `workset.boxes`, `workset.logs`, `workset.vault_ro`, or `workset.vault_rw` is read by almost
+  A plain `workset.boxes`, `workset.logs`, `workset.registry`, `workset.vault_ro`, or `workset.vault_rw` is
+  read by almost
   every command, `box list`, `create`, and `stop <box>` included; the other keys refuse where they are
   read.
 - `box rm --purge`, `box purge`, `box move`, `box convert`, `box extract`, `box duplicate --force`,

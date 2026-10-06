@@ -38,7 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extract`, `box duplicate --force`, `workset rm --purge`, and `workset disconnect --remove-files`)
   check every working set they touch before their first change. `start` applies the same test to
   each per-owner key and bind entry a settings file of a wider scope holds, naming the file and the
-  entry. `stop --all` still stops every running box; it writes back no in-box login. See *A working set directory value in the system settings file
+  entry. `stop --all` still stops every running box; it writes back no in-box login. See *A working set
+  directory value in the system settings file
   must name its working set* in `MIGRATION.md`.
 
 - **`start` offers a move, not a rebuild, when `workset.boxes` is not at its default.** A
