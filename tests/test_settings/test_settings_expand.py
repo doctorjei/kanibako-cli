@@ -542,6 +542,19 @@ def test_whole_value_cycle_raises_with_chain() -> None:
     assert "a" in msg and "b" in msg
 
 
+def test_a_table_referent_holding_its_referrer_is_a_cycle() -> None:
+    snap = KeyStore({"t": KeyStore({"a": "x", "b": "@t"})})
+    with pytest.raises(SettingsError, match="Cyclic @-reference: t.b -> t -> t.b -> t"):
+        expand(snap, _ctx())
+
+
+def test_a_lenient_table_referent_defect_is_the_referrers_too() -> None:
+    snap = KeyStore({"t": KeyStore({"a": "x", "b": "@t.b"}), "r": "@t"})
+    _, errors = expand(snap, _ctx(), collect_errors=True)
+    assert set(errors) == {"t.b", "r"}
+    assert errors["r"].startswith("t.b, in the table '@t': cyclic @-reference"), errors
+
+
 def test_self_cycle_whole_value_raises() -> None:
     snap = KeyStore({"a": "@a"})
     with pytest.raises(SettingsError):

@@ -329,6 +329,7 @@ class _Expander:
         self._reach: list[int] = []
         # The message spelling of each leaf being expanded, innermost last.
         self._leaf_labels: list[str] = []
+        self._table_chain: tuple[str, ...] = ()
 
     # ------------------------------------------------------------------ #
     # Tree walk — build the fresh expanded snapshot                      #
@@ -488,10 +489,11 @@ class _Expander:
 
         Returns the expanded terminal, ``None`` (present-None inherited from a
         referenced key), or :data:`_ABSENT` (the caller DROPS the key). The
-        ``chain`` starts at this leaf's own dotted path so a self-referential
-        whole-value ``@`` is a cycle, not an infinite recurse.
+        ``chain`` ends at this leaf's own dotted path, after the trail into any table
+        referent holding it, so a self-referential whole-value ``@`` is a cycle, not an
+        infinite recurse.
         """
-        chain = (".".join(path),)
+        chain = (*self._table_chain, ".".join(path))
         if isinstance(value, Bind):
             return self._expand_bind(value, chain=chain)
         if isinstance(value, BindEntry):
@@ -731,13 +733,7 @@ class _Expander:
         self._reach.append(len(chain))
         try:
             if isinstance(raw, KeyStore):
-                outer, self._reach = self._reach, []
-                try:
-                    resolved: StoreValue | _Absent = self._expand_node(
-                        raw, path=tuple(dotted.split("."))
-                    )
-                finally:
-                    self._reach = outer
+                resolved: StoreValue | _Absent = self._expand_table(raw, dotted, chain=chain)
             elif isinstance(raw, Bind):
                 resolved = self._expand_bind(raw, chain=chain)
             elif isinstance(raw, BindEntry):
@@ -753,6 +749,25 @@ class _Expander:
             deps = self._reading.pop()
             reach = self._pop_reach()
         return self._settle(dotted, resolved, deps, reach - len(chain))
+
+    def _expand_table(self, raw: KeyStore, dotted: str, *, chain: tuple[str, ...]) -> KeyStore:
+        """Expand the table referent at *dotted*, its leaves continuing *chain*.
+
+        LENIENT: a defect in one of its leaves is also a defect of the key referring to
+        the table (spec §2a), so the first one that is not cascade blindness is raised.
+        """
+        outer = (self._reach, self._table_chain, self.errors)
+        self._reach, self._table_chain, self.errors = [], chain, {}
+        try:
+            resolved = self._expand_node(raw, path=tuple(dotted.split(".")))
+        finally:
+            inner = self.errors
+            self._reach, self._table_chain, self.errors = outer
+            self.errors.update(inner)
+        for leaf, reason in inner.items():
+            if not is_cascade_blindness(reason):
+                raise _LenientDefect(f"{leaf}, in the table '@{dotted}': {reason}")
+        return resolved
 
     def _pop_reach(self) -> int:
         """Close the innermost reach frame, carrying its deepest chain to the frame above."""

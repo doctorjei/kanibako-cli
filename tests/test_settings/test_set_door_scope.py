@@ -650,6 +650,53 @@ class TestTheRefusalNamesTheReallyBrokenRef:
         assert "@meta.workset.path" not in message, message
 
 
+class TestADefectInATableReferentIsTheReferrersDefect:
+    """Spec §2a: the edited value's own upstream chain includes every leaf of a table it
+    references whole, so a broken leaf there refuses the set, named."""
+
+    _TABLE = "agent:\n  default:\n    env:\n      X: x\n"
+    _VALUE = "{agent.default.env}"
+
+    def _stored(self, files, extra=""):
+        files["system"].write_text(self._TABLE + extra)
+        return files["system"].read_text()
+
+    @pytest.mark.parametrize("extra, phrase", [
+        ("      Y: '{agent.default.env.Y}'\n", "cyclic @-reference"),
+        ("      Y: '{box.nope}'\n", "dangling @-reference '@box.nope'"),
+        ("".join(f"      V{i}: /{{agent.default.env.V{i + 1}}}\n" for i in range(70))
+         + "      V70: end\n", "depth cap"),
+    ], ids=["cycle", "undeclared", "depth-cap"])
+    def test_a_broken_leaf_refuses_and_is_named(self, tmp_path, std, extra, phrase):
+        files = _files(tmp_path)
+        before = self._stored(files, extra)
+        message = _set("box.env.B", self._VALUE, files, ConfigLevel.system, std=std)
+        assert message.startswith("Error:"), message
+        assert "agent.default.env." in message and phrase in message, message
+        assert files["system"].read_text() == before
+
+    def test_a_table_holding_its_referrer_is_a_cycle_not_a_crash(self, tmp_path, std):
+        files = _files(tmp_path)
+        files["system"].write_text("box:\n  env:\n    A: a\n")
+        message = _set("box.env.B", "{box.env}", files, ConfigLevel.system, std=std)
+        assert message.startswith("Error:") and "cyclic @-reference" in message, message
+        assert "B:" not in files["system"].read_text()
+
+    def test_a_clean_table_is_accepted(self, tmp_path, std):
+        files = _files(tmp_path)
+        self._stored(files)
+        message = _set("box.env.B", self._VALUE, files, ConfigLevel.system, std=std)
+        assert not message.startswith("Error:"), message
+        assert self._VALUE in files["system"].read_text()
+
+    def test_a_leaf_only_blind_here_is_accepted(self, tmp_path, std):
+        files = _files(tmp_path)
+        self._stored(files, "      Y: /s/{meta.workset.path}\n")
+        message = _set("box.env.B", self._VALUE, files, ConfigLevel.system, std=std)
+        assert not message.startswith("Error:"), message
+        assert self._VALUE in files["system"].read_text()
+
+
 def _root_store(value, *, at: str = "workset.boxes") -> KeyStore:
     """A resolved snapshot holding *value* at *at*, with the other root key usable."""
     snapshot = KeyStore()
