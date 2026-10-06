@@ -2779,6 +2779,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             active_agent=_get_agent_name or None,
             cascade_system_path=std.settings,
             cascade_workset_path=workset_path,
+            std=std, proj=proj,
         )
         # ⚑ Name the value with the canonical redirect form, so the READ teaches the
         # request — mirroring the refusal message ``set`` prints.
