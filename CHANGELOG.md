@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A standalone box's root `workset.yaml` now records `registry: null`** beside `workset.kuid`, written at
   `create` as `registry: null  # REMOVING THIS WILL BREAK A STANDALONE BOX!`.
 
+- **Standalone detection reads that line.** A directory is a standalone box root when its own `workset.yaml`
+  stores `workset.registry` as null; `box_data/` is no longer the marker, and a null reached through the
+  settings cascade (the system settings file) does not count. Removing the line makes the root read as not
+  standalone.
+
 - **`workset.*` directory keys set in the system settings file now apply everywhere.** `kanibako system set
   workset.boxes=…` (and logs, workspaces, registry, channelroot, channels.*, canon, template, vault_ro,
   vault_rw) is now read by `create`, `workset connect`, `workset create`, `box list`, and box detection, not

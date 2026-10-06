@@ -151,7 +151,7 @@ class TestCheckBoxComponents:
         (root / "box_data").mkdir(parents=True)
         # box_data present but NO workset.yaml → not recognized as a box.
         assert not box_resolve.standalone_settings_present(root)
-        (root / "workset.yaml").write_text("project: {mode: standalone}\n")
+        (root / "workset.yaml").write_text("workset:\n  registry: null\n")
         assert box_resolve.standalone_settings_present(root)
 
     def test_wired_into_run_container(self, start_mocks, tmp_path, capsys):

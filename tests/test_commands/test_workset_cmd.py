@@ -1147,7 +1147,7 @@ class TestWorksetConnect:
         external = (tmp_home / "sa_box").resolve()
         external.mkdir()
         (external / "box_data").mkdir()
-        (external / "workset.yaml").write_text("project: {}\n")
+        (external / "workset.yaml").write_text("workset:\n  registry: null\n")
 
         args = argparse.Namespace(
             workset="saws", source=str(external), project_name="sb", force=False,
@@ -1172,7 +1172,7 @@ class TestWorksetConnect:
         external = (tmp_home / "sa_box2").resolve()
         external.mkdir()
         (external / "box_data").mkdir()
-        (external / "workset.yaml").write_text("project: {}\n")
+        (external / "workset.yaml").write_text("workset:\n  registry: null\n")
 
         args = argparse.Namespace(
             workset="saws2", source=str(external), project_name="sb", force=True,

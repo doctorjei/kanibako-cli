@@ -103,7 +103,8 @@ class TestResolveByName:
         sa_root = tmp_home / "sa" / "solo_box"
         sa_root.mkdir(parents=True)
         (sa_root / "box_data").mkdir()
-        (sa_root / "workset.yaml").write_text("box:\n  image: ghcr.io/x:1\n")
+        (sa_root / "workset.yaml").write_text(
+            "box:\n  image: ghcr.io/x:1\nworkset:\n  registry: null\n")
         registry_store.register_standalone(std.registry, "solo_box", sa_root)
 
         with caplog.at_level(logging.WARNING):
@@ -395,13 +396,13 @@ class TestNonConformingNameFlagged:
         root.mkdir()
         (root / "box_data").mkdir()
         bad_name = "bad name"  # contains whitespace -> non-conforming
-        # Materialize the sparse standalone marker (box_data/ + workset.yaml)
+        # Materialize the sparse standalone marker (the root workset.yaml registry null)
         # and register the bad name directly (bypassing the validating create
         # path, as a pre-existing box would be).  P8b/Option A: the name comes
-        # from the registry key, not on-disk meta — the marker file only needs to
-        # exist, and it carries no ``workset.kuid`` so the registry key wins.
+        # from the registry key, not on-disk meta — the marker file only needs its
+        # registry null, and it carries no ``workset.kuid`` so the registry key wins.
         from kanibako.settings.config import WORKSET_META_FILE
-        (root / WORKSET_META_FILE).write_text("")
+        (root / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
         registry_store.register_standalone(std.registry, bad_name, root)
 
         # A name that fails the box-name rule is a PATH designation, so the box is
@@ -691,7 +692,8 @@ class TestBoxAndWorksetShareAName:
         sa_root = tmp_home / "sa" / name
         sa_root.mkdir(parents=True)
         (sa_root / "box_data").mkdir()
-        (sa_root / "workset.yaml").write_text("box:\n  image: ghcr.io/x:1\n")
+        (sa_root / "workset.yaml").write_text(
+            "box:\n  image: ghcr.io/x:1\nworkset:\n  registry: null\n")
         registry_store.register_standalone(std.registry, name, sa_root)
         ws_root = tmp_home / "worksets" / name
         code, _out, err = _cli(["workset", "create", "--name", name, str(ws_root)], capsys)

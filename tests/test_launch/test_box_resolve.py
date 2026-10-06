@@ -34,7 +34,7 @@ def _make_standalone_marker(project_dir: Path) -> None:
     (the new-model marker is FILE PRESENCE, design D4).
     """
     (project_dir / STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
-    (project_dir / WORKSET_META_FILE).write_text("box: {}\n")
+    (project_dir / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
 
 
 def _make_named_workset(std, root: Path, name: str) -> Path:
@@ -68,7 +68,8 @@ class TestStandaloneSettingsPresent:
         (project_dir / STANDALONE_META_DIR).mkdir()
         assert box_resolve.standalone_settings_present(project_dir) is False
 
-    def test_false_when_no_meta_dir(self, project_dir):
+    def test_false_without_the_registry_null(self, project_dir):
+        (project_dir / STANDALONE_META_DIR).mkdir()
         (project_dir / WORKSET_META_FILE).write_text("box: {}\n")
         assert box_resolve.standalone_settings_present(project_dir) is False
 
@@ -77,7 +78,8 @@ class TestStandaloneSettingsPresent:
         # presence is the whole signal (would have been False under the legacy
         # ``_is_standalone_meta_dir`` which required ``box.mode == standalone``).
         (project_dir / STANDALONE_META_DIR).mkdir()
-        (project_dir / WORKSET_META_FILE).write_text("box:\n  enable_vault: false\n")
+        (project_dir / WORKSET_META_FILE).write_text(
+            "box:\n  enable_vault: false\nworkset:\n  registry: null\n")
         assert box_resolve.standalone_settings_present(project_dir) is True
 
 
@@ -206,7 +208,7 @@ class TestResolveBoxIdentity:
         # (the leaf tracks the dir; the kuid is the stable prefix). Mutation:
         # revert box_resolve to ``registered_name or box_root.name`` → this goes RED.
         (project_dir / STANDALONE_META_DIR).mkdir(parents=True, exist_ok=True)
-        (project_dir / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n")
+        (project_dir / WORKSET_META_FILE).write_text("workset:\n  kuid: abcde\n  registry: null\n")
         registry_store.register_standalone(
             std.registry, "abcde_oldleaf", project_dir.resolve()
         )
@@ -237,7 +239,8 @@ class TestResolveBoxIdentity:
         # ``project.mode`` field, so build that ancestor marker here.
         box_root = tmp_home / "sabox"
         (box_root / STANDALONE_META_DIR).mkdir(parents=True)
-        (box_root / WORKSET_META_FILE).write_text("project:\n  mode: standalone\n")
+        (box_root / WORKSET_META_FILE).write_text(
+            "project:\n  mode: standalone\nworkset:\n  registry: null\n")
         registry_store.register_standalone(std.registry, "sakey", box_root.resolve())
         subdir = box_root / "deep" / "sub"
         subdir.mkdir(parents=True)

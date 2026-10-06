@@ -320,15 +320,13 @@ class TestDetectionFalsePositives:
     def test_box_data_marker_with_toml_is_valid(
         self, config_file, tmp_home,
     ):
-        """box_data/ dir + a ROOT workset.yaml (drift I) is a valid marker."""
+        """A ROOT workset.yaml storing workset.registry as null is a valid marker."""
         config = load_config(config_file)
         std = load_std_paths(config)
         project_dir = tmp_home / "myproject"
         project_dir.mkdir()
         (project_dir / "box_data").mkdir()
-        (project_dir / "workset.yaml").write_text(
-            'project:\n  mode: "standalone"\n'
-        )
+        (project_dir / "workset.yaml").write_text('workset:\n  registry: null\n')
 
         result = detect_project_mode(project_dir.resolve(), std, config)
         assert result.mode is BoxMode.standalone

@@ -512,7 +512,7 @@ class TestAddProjectConnectGuard:
 
         dir_path.mkdir(parents=True, exist_ok=True)
         (dir_path / STANDALONE_META_DIR).mkdir()
-        (dir_path / WORKSET_META_FILE).write_text("project: {}\n")
+        (dir_path / WORKSET_META_FILE).write_text("workset:\n  registry: null\n")
         assert standalone_settings_present(dir_path)  # marker is real
 
     def test_refuses_standalone_marked_external_source(self, std, tmp_home):

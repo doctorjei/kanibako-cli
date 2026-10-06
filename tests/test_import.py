@@ -89,7 +89,7 @@ class TestStandaloneImport:
     def test_prekuid_tree_falls_back_to_dir_leaf(
         self, std, config, project_dir, capsys,
     ):
-        # A hand-built / pre-kuid standalone tree: the box_data/ marker + a
+        # A hand-built / pre-kuid standalone tree: the registry-null marker in a
         # workset.yaml carrying NO workset.kuid (P8b: import composes kuid-first
         # and, absent a stored kuid — the SENTINEL — falls back to the dir leaf,
         # mirroring box_resolve.resolve_box_identity; it does NOT persist a name).
@@ -98,8 +98,8 @@ class TestStandaloneImport:
         box_data = project_dir / "box_data"
         box_data.mkdir(parents=True)
         meta_file = project_dir / "workset.yaml"
-        # A sparse workset.yaml with a box: table but no workset.kuid.
-        dump_doc(meta_file, {"box": {"enable_vault": True}})
+        # A sparse workset.yaml with a box: table, the registry null, but no workset.kuid.
+        dump_doc(meta_file, {"box": {"enable_vault": True}, "workset": {"registry": None}})
         capsys.readouterr()
 
         name = import_reconcile.import_standalone(std.registry, project_dir)
@@ -126,7 +126,7 @@ class TestStandaloneImport:
         box_data.mkdir(parents=True)
         meta_file = project_dir / "workset.yaml"
         box_kuid = kuid.generate()
-        dump_doc(meta_file, {"workset": {"kuid": box_kuid}})
+        dump_doc(meta_file, {"workset": {"kuid": box_kuid, "registry": None}})
         capsys.readouterr()
 
         name = import_reconcile.import_standalone(std.registry, project_dir)
