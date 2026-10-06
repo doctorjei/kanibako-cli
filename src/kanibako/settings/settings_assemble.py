@@ -70,6 +70,7 @@ from kanibako.settings.settings_keyspace import (
 from kanibako.settings.settings_keyspace_probe import keyspace_verdict
 from kanibako.settings.settings_prefs import PREF_LEGAL_LEVELS, PREF_ROOT, refuse_pref_table
 from kanibako.settings.settings_resolve import (
+    SET_READS_ITS_OWN_FILE,
     SettingsError,
     check_bind_map,
     delete_before_set_step,
@@ -384,6 +385,7 @@ def refuse_retired_keys(
             + delete_before_set_step(
                 f"`{': '.join(parts)}` entry", where=where,
                 parents=_file_spelled_parents(parts),
+                checks_file=level in SET_READS_ITS_OWN_FILE,
             )
             + f"\n  Fix: {cure}"
         )
@@ -534,6 +536,7 @@ def refuse_retired_behavior_keys(
                     f"`{spelling}` entry",
                     where=path if path is not None else "<settings>",
                     parents=_file_spelled_parents(parts),
+                    checks_file=level in SET_READS_ITS_OWN_FILE,
                 )
                 + f"\n  Fix: {cure}"
             )
