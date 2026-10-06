@@ -339,14 +339,17 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     # ``resolve_data_path`` is PURE and TOTAL (creates nothing, never raises, degrades to
     # the default): discovery runs on every command, including before a config file exists,
     # so it must not acquire a failure mode here.
-    from kanibako.settings.paths import resolve_data_path, standalone_box_store
+    from kanibako.settings.paths import (
+        resolve_data_path, standalone_box_store, total_standalone_early)
 
     _scan_directory_plugins(resolve_data_path() / "plugins", targets, declared)
 
     # Project-level file-drop plugins.  Absence is not an error.
     if project_path is not None:
         _scan_directory_plugins(
-            standalone_box_store(project_path) / "plugins", targets, declared,
+            standalone_box_store(
+                project_path, early=total_standalone_early(),
+            ) / "plugins", targets, declared,
         )
 
     return targets

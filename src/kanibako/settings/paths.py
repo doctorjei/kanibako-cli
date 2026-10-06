@@ -1134,6 +1134,34 @@ def resolve_data_path(*, config_home: Path | None = None,
         return dh / KANIBAKO_PATH
 
 
+def total_standalone_early() -> "EarlyScope":
+    """The STANDALONE :class:`EarlyScope` for a reader that holds no ``StandardPaths``.
+
+    :func:`resolve_data_path`'s contract, for the tier rather than the path: PURE and
+    TOTAL — creates nothing, never raises.  ``load_std_paths`` REQUIRES a config file,
+    and the plugin scan runs on paths where it is unavailable, so the one caller that
+    needs a scope without ``std`` degrades to the same default the composed store names.
+    """
+    from kanibako.channels.channels import WS_TOKEN_STANDALONE
+    from kanibako.settings.workset_dirkeys import EarlyScope, EarlySystem
+
+    try:
+        config_file = user_config_file()
+        dh = xdg(XDG_DATA_HOME, XDG_SPEC_DEFAULTS[XDG_DATA_HOME])
+        resolved, record = load_system_tier(
+            config_file, data_home=dh, home=Path.home())
+        return EarlyScope(record, WS_TOKEN_STANDALONE)
+    except Exception:
+        # ⚑ The SAME tier an unreadable config yields everywhere else: no ``workset.*``
+        # repoint, so a repointed store is not visible here — never worse than the
+        # composed default this replaces.
+        return EarlyScope(
+            EarlySystem(tier={}, file=Path.home() / KANIBAKO_PATH / "config.yaml",
+                        system_paths={}),
+            WS_TOKEN_STANDALONE,
+        )
+
+
 def resolve_state_path(*, config_home: Path | None = None,
                        data_home: Path | None = None) -> Path:
     """The resolved ``system.state`` DIRECTORY — PURE and TOTAL; creates nothing, never raises.
@@ -1745,7 +1773,9 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
     # OVERRIDES workset TREE membership.  Only this dir; ancestors are the step-5 walk.
     if _is_standalone_meta_dir(resolved):
         from kanibako.project import import_reconcile
-        import_reconcile.import_standalone(std.registry, resolved, journal=std.journal)
+        import_reconcile.import_standalone(
+            std.registry, resolved, journal=std.journal,
+            early=_early_scope(std, BoxMode.standalone))
         return DetectionResult(BoxMode.standalone, resolved)
 
     # 3. Workset check (no walk needed — relative_to handles subdirs).
@@ -1777,7 +1807,9 @@ def detect_project_mode(project_dir: Path, std: StandardPaths,
 
         # STANDALONE: the root file's own stored ``workset.registry`` null; box_data/ is not the marker.
         if _is_standalone_meta_dir(current):
-            import_reconcile.import_standalone(std.registry, current, journal=std.journal)
+            import_reconcile.import_standalone(
+                std.registry, current, journal=std.journal,
+                early=_early_scope(std, BoxMode.standalone))
             return DetectionResult(BoxMode.standalone, current)
 
         # NAMED: an unregistered workset root; import it, then the standard check resolves it.

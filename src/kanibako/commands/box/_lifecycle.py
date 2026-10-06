@@ -90,12 +90,14 @@ from kanibako.project.workset import (
     _member_store_bases,
     report_retained_vault,
     report_retained_vaults,
+    resolve_workset_boxes,
     resolve_workset_canon,
     resolve_workset_vault_pair,
     resolve_workset_vault_ro,
     resolve_workset_vault_rw,
     resolve_workset_workspaces,
     standalone_vault_teardown,
+    _path_in_tree,
 )
 
 
@@ -447,6 +449,35 @@ def _state_from_paths(
 # Std-aware workset copy helper for ``box duplicate``
 # ---------------------------------------------------------------------------
 
+def _workspace_copy_ignore(
+    metadata_root: Path, copied_root: Path,
+) -> Callable[[str, list[str]], set[str]]:
+    """A workspace copy's *ignore*: never carry the box's OWN store into a workspace.
+
+    ``box_data/`` is the composed standalone store and stays excluded whatever
+    ``workset.boxes`` says — it is the spec's standalone LOCATOR, and dropping the locator
+    stops working the day the key does.  A store the key moved to another in-tree leaf is
+    excluded by its path RELATIVE TO THE COPIED TREE, so no second copy of the box's
+    metadata and home lands beside the workspace it was copied for.
+
+    ⚑ Containment is :func:`kanibako.project.workset._path_in_tree`, STRICTLY BELOW the
+    copied root: a store that IS the copied root is the whole tree, and a store outside it
+    is in no tree being copied.
+    """
+    composed = shutil.ignore_patterns(STANDALONE_META_DIR)
+    resolved = standalone_box_store(metadata_root).resolve()
+    copied = copied_root.resolve()
+    below = resolved != copied and _path_in_tree(resolved, copied)
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        skipped = set(composed(directory, names))
+        if below and Path(directory).resolve() == resolved.parent:
+            skipped.add(resolved.name)
+        return skipped
+
+    return ignore
+
+
 def copy_into_workset(
     ws: Workset,
     proj_name: str,
@@ -487,7 +518,7 @@ def copy_into_workset(
             dst_workspace = workspace
             ignore = None
             if source_mode == BoxMode.standalone:
-                ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
+                ignore = _workspace_copy_ignore(metadata_path, source_path)
             copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
         _unwind_target_member(ws, proj_name, existed)
@@ -1803,16 +1834,31 @@ def _resolve_standalone_workspaces(
     return workspaces
 
 
+def _resolve_standalone_boxes(
+    root: Path, doc: Mapping[str, Any] | None,
+) -> Path:
+    """``workset.boxes`` for a STANDALONE root — ``standalone=True`` selects the box's own
+    store default, and the resolver is the same one
+    :func:`kanibako.settings.paths.standalone_box_store` reads the key through.
+    """
+    return resolve_workset_boxes(root, doc, standalone=True)
+
+
 #: The ``workset.*`` DIRECTORY keys a STANDALONE root materializes UNDER ITSELF, each paired
 #: with the resolver that answers it.  ⚑ A standalone root is a degenerate workset root
 #: (``settings/paths.py::_standalone_box_paths``), so these are ordinary workset keys.
 #: ⚑ Derived from the rule "which keys does standalone mode resolve at the root", not from an
-#: inventory of today's directories: ``boxes`` is absent because the standalone box dir
-#: keeps its ``box_data/`` LOCATOR at the root above, and ``logs``/``template``/``channelroot`` are
-#: absent because standalone does not materialize them — each resolver says so in its own
-#: docstring, and that is the source to re-read if this list is ever questioned.
+#: inventory of today's directories: ``logs``/``template``/``channelroot`` are absent because
+#: standalone does not materialize them — each resolver says so in its own docstring, and that
+#: is the source to re-read if this list is ever questioned.
+#: ⚑ ``boxes`` is HERE and not held by :data:`_STANDALONE_FIXED_ARTIFACTS` alone: ``box_data/``
+#: is that set's member because it is the detection LOCATOR, which no key moves, while the
+#: STORE behind it answers to ``workset.boxes``.  One name cannot carry both, and a name filter
+#: that stops at the locator sweeps a repointed store — the box's own metadata and home —
+#: into the workspace dir.
 _STANDALONE_ROOT_DIR_KEYS = (
     ("workset.workspaces", _resolve_standalone_workspaces),
+    ("workset.boxes", _resolve_standalone_boxes),
     ("workset.vault_ro", resolve_workset_vault_ro),
     ("workset.vault_rw", resolve_workset_vault_rw),
     ("workset.canon", resolve_workset_canon),
@@ -2231,7 +2277,7 @@ def _to_workset(
         dst_workspace = in_tree_leaf
         ignore = None
         if state.mode == BoxMode.standalone:
-            ignore = shutil.ignore_patterns(STANDALONE_META_DIR)
+            ignore = _workspace_copy_ignore(state.metadata_path, state.workspace_path)
         copy_tree_keeping_links(
             state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True,
         )
