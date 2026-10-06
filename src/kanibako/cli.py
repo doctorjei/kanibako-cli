@@ -446,7 +446,7 @@ def _setup_nudge(args: argparse.Namespace) -> None:
 
     Fires only for the agent-requiring commands (those in
     :data:`~kanibako.commands.flags.AGENT_FLAG_COMMANDS` — ``start``,
-    ``box start``, ``agent reauth``), i.e. the ones that run the unified agent
+    ``box start``, ``create``, ``box create``, ``agent reauth``), i.e. the ones that run the unified agent
     resolver.  ``shell`` and ``setup`` itself, plus pure config/list commands,
     are intentionally excluded.
 

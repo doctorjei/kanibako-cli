@@ -1595,20 +1595,28 @@ class TestLegacySetupMarkerGuard:
         "system:\n  setup_completed: 1.7.2\n",
         "system: {}\nbox:\n  agent_name: ''\n",
     ], ids=["v1.7.2-marker", "v1.7-init-no-marker"])
-    def test_v17_host_is_hard_blocked_naming_setup(self, tmp_home, monkeypatch, capsys, body):
+    def test_v17_host_is_hard_blocked_naming_the_cure(self, tmp_home, monkeypatch, capsys, body):
         from kanibako.settings.config import user_config_file
 
-        self._legacy(tmp_home, body)
+        legacy = self._legacy(tmp_home, body)
         calls = self._launches(monkeypatch)
         assert self._main(["start"]) == 1
         err = capsys.readouterr().err
-        assert err.startswith("Error: ")
-        assert "too old to auto-update" in err
-        assert "kanibako setup" in err
+        assert f"Error: {legacy} " in err
+        assert f"Rename it to {user_config_file()}" in err
+        assert err.index("kanibako.cfg") < err.index("kanibako setup")
+        assert "too old" not in err
         assert calls == []
         assert not user_config_file().exists()
 
-    def test_setup_clears_the_block(self, tmp_home, monkeypatch, capsys):
+    def test_the_cure_in_order_clears_the_block_and_keeps_config_data(
+        self, tmp_home, monkeypatch, capsys,
+    ):
+        from pathlib import Path
+
+        from kanibako.settings.config import user_config_file
+        from kanibako.settings.paths import load_system_config, xdg
+
         monkeypatch.setattr(
             "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman"),
         )
@@ -1616,16 +1624,31 @@ class TestLegacySetupMarkerGuard:
             "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig"),
         )
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-        self._legacy(tmp_home, "system:\n  setup_completed: 1.7.2\n")
+        custom = tmp_home / "customdata"
+        legacy = self._legacy(
+            tmp_home,
+            f"config:\n  data: {custom}\nsystem:\n  setup_completed: 1.7.2\n"
+            "box:\n  agent_name: ''\n",
+        )
         calls = self._launches(monkeypatch)
         assert self._main(["start"]) == 1
         assert calls == []
         capsys.readouterr()
+        legacy.unlink()
+        user_config_file().write_text(f"config:\n  data: {custom}\n")
         assert self._main(["setup", "--agent", "shell", "--refresh-templates"]) == 0
         capsys.readouterr()
         assert self._main(["start"]) == 0
         assert len(calls) == 1
-        assert "too old" not in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert "Error" not in err and "set up" not in err
+        resolved = load_system_config(
+            user_config_file(), data_home=xdg("XDG_DATA_HOME", ".local/share"),
+            home=Path.home(),
+        )
+        assert resolved["config.data"] == custom
+        assert resolved["config.settings"].is_file()
+        assert not (tmp_home / "data" / "kanibako").exists()
 
     def test_fresh_host_keeps_the_advisory(self, tmp_home, monkeypatch, capsys):
         calls = self._launches(monkeypatch)
