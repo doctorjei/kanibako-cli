@@ -6712,7 +6712,7 @@ checked.
 
 ```
 $ kanibako box list
-Error: workset.boxes is set to '/srv/kb' in /home/you/.local/share/kanibako/global/settings.yaml, which would give every working set one shared path, because the value does not reach working-set identity. Same-named boxes in different working sets, and every standalone box, would share it. Nothing was changed. Spell the identity into the value: kanibako system set 'workset.boxes=/srv/kb/{meta.workset.path}'; or run kanibako system reset workset.boxes, then kanibako workset set <workset> 'workset.boxes=…' in each working set. To stop running boxes meanwhile: kanibako stop --all stops every running box even when a settings file is refused; it lists them and asks first. On a first run (no kanibako.cfg yet), these commands refuse too: edit that file by hand.
+Error: workset.boxes is set to '/srv/kb' in /home/you/.local/share/kanibako/global/settings.yaml, which would give every working set one shared path, because the value does not reach working-set identity. Same-named boxes in different working sets, and every standalone box, would share it. Nothing was changed. Spell the identity into the value: kanibako system set 'workset.boxes=/srv/kb/{meta.workset.path}'; or run kanibako system reset workset.boxes, then kanibako workset set <workset> 'workset.boxes=…' in each working set. To stop running boxes meanwhile: kanibako stop --all stops every running box even when a settings file is refused; it lists them and asks first. On a first run (no kanibako.cfg yet), these commands refuse too: edit the system settings file by hand.
 ```
 
 **What to do.** Run `system set` with the spelling the message prints, or run `system reset <key>`
