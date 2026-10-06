@@ -35,11 +35,25 @@ def _make_standalone(config, std, tmp_home, leaf: str) -> Path:
     return root
 
 
+def _workspace_of(config, std, root: Path) -> Path:
+    """THE path production hands ``discover_targets``: ``proj.project_path``.
+
+    For a standalone box that is the WORKSPACE, not the root, so a scan that answers
+    the store off the argument as given reads a ``workset.yaml`` that never carried
+    ``workset.boxes``.  Deriving it here rather than spelling ``root / "workspace"``
+    keeps the test pinned to what callers actually pass, not to a layout guess.
+    """
+    return resolve_standalone_project(
+        std, config, str(root), initialize=False).project_path
+
+
 def _relocate(root: Path, target: Path) -> Path:
     """MOVE the store to ``target/box_data`` and point ``workset.boxes`` there.
 
-    The ``box_data/`` LOCATOR is left in place: the spec keeps it, so it is the shape a
-    relocating user actually has — and it is what detection finds the box by.
+    The leftover ``box_data/`` is left in place because that is the shape a
+    relocating user actually has.  ⚑ It is NOT what detection finds the box by:
+    since SD the root's own ``workset.registry`` null defines it, so this leftover
+    directory is inert — which is why these cases can assert against it.
     """
     target.mkdir(parents=True)
     (target / "UNRELATED_USER_FILE.txt").write_text("not kanibako's\n")
@@ -310,7 +324,7 @@ class TestProjectPluginsFollowTheStore:
         store = _relocate(root, root / "moved_store")
         _drop_plugin(store / "plugins", "movedplug.py", "movedplug", plugin_source)
 
-        assert "movedplug" in discover_targets(root)
+        assert "movedplug" in discover_targets(_workspace_of(config, std, root))
 
     def test_the_locator_markers_plugins_dir_is_no_longer_scanned(
             self, config, std, tmp_home, plugin_source):
@@ -321,7 +335,7 @@ class TestProjectPluginsFollowTheStore:
         _relocate(root, root / "moved_store")
         _drop_plugin(root / "box_data" / "plugins", "stale.py", "stalebag", plugin_source)
 
-        assert "stalebag" not in discover_targets(root)
+        assert "stalebag" not in discover_targets(_workspace_of(config, std, root))
 
     def test_a_plugins_dir_is_only_read(self, config, std, tmp_home, plugin_source):
         """Discovery is a scan: every other entry in the plugins dir survives it."""
@@ -335,7 +349,7 @@ class TestProjectPluginsFollowTheStore:
         (plugins / "subdir").mkdir()
         (plugins / "subdir" / "holiday.jpg").write_text("mine\n")
 
-        assert "okplug" in discover_targets(root)
+        assert "okplug" in discover_targets(_workspace_of(config, std, root))
         assert (plugins / "USER_NOTES.md").is_file()
         assert (plugins / "subdir" / "holiday.jpg").is_file()
 
@@ -347,4 +361,4 @@ class TestProjectPluginsFollowTheStore:
         root = _make_standalone(config, std, tmp_home, "pl_default")
         _drop_plugin(root / "box_data" / "plugins", "defplug.py", "defplug", plugin_source)
 
-        assert "defplug" in discover_targets(root)
+        assert "defplug" in discover_targets(_workspace_of(config, std, root))
