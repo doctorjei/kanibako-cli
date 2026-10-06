@@ -2971,19 +2971,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at fault.** The message asserted `the endpoint rejected the token` and pointed at the persona's
   `.secret_path` — the one thing a refusal does *not* identify. It now names the refusal and hands
   you the evidence instead: the HTTP status, the endpoint, the model actually sent (or `(omitted)`),
-  the token path, and the provider's own error text, followed by a plain statement that the status
-  does not say which input was at fault. **What you will see** on a refused launch:
+  the token path, where the endpoint and model were read from, and the provider's own error text,
+  followed by a plain statement that the status does not say which input was at fault. **What you
+  will see** on a refused launch:
 
   ```
   Error: persona 'navigator+claude' cannot be loaded — the endpoint refused the probe with HTTP 403.
     endpoint  https://api.example.edu
     model     sonnet
     token     ~/tokens/navigator
-    provider: team not allowed to access model. This team can only access models=[…]
+    The endpoint and model above came from the settings cascade (the endpoint and model keys under agent.navigator+claude or agent.default, from a settings file or the persona-grata store).
+    provider: {"error":{"message":"team not allowed to access model. This team can only access models=['flux.1-dev', 'gemma-4-31b-it', 'gpt-oss-120b']"}}
     An HTTP 403 means the endpoint refused this request — it does not say which input was at fault.
   ```
 
-  The same block is appended to the create-time warning and to an inconclusive launch warning when
+  ⚑ The `provider:` line is the provider's body re-serialized, so it carries the JSON envelope the
+  endpoint sent — `targets.base._provider_text` reads a body for its *meaning* and prints that, not
+  the provider's own bytes. **The create door prints the same block with one line changed:** it
+  names the persona store rather than the settings cascade (`kanibako.commands.box._parser`
+  `_check_persona_store_for_create`). The same block also rides the inconclusive launch warning when
   the endpoint answered something. Every header value your request carried is scrubbed out of the
   provider's text before it is printed, not just the bearer token, and the scrub reads the body as
   the provider *meant* it rather than as the provider's encoder spelled it — so an escaped spelling
