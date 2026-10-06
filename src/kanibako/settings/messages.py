@@ -156,7 +156,7 @@ ERR_CONFIG_REF_ORDER = (
 #: The SET door's per-owner refusal (keyspec §0 "Per-owner resources"), and its words per owner.
 ERR_PER_OWNER_SET = (
                         "nothing was written: %s = %r (%s scope, %s) would give every %s "
-                        "one shared path, because the value names no %s identity. %s Spell "
+                        "one shared path, because the value does not reach %s identity. %s Spell "
                         "the identity into the value: %r, or set %s in each %s's own file.")
 PER_OWNER_SET_WORDS = {
     "workset": ("working set", "working-set", "Same-named boxes in different working sets, "
@@ -169,7 +169,7 @@ PER_OWNER_SET_WORDS = {
 #: The READ door's twin, for a value the system file already holds; the same words per owner.
 ERR_PER_OWNER_READ = (
                         "%s is set to %r in %s, which gives every %s one shared path, "
-                        "because the value names no %s identity. %s Nothing was changed. "
+                        "because the value does not reach %s identity. %s Nothing was changed. "
                         "Spell the identity into the value: kanibako system set "
                         "'%s=%s'; or run kanibako system reset %s, then kanibako workset "
                         "set <workset> '%s=…' in each %s. To stop running boxes "
@@ -179,7 +179,7 @@ ERR_PER_OWNER_READ = (
 #: The LAUNCH twin, for a key or bind entry any containing settings file holds.
 ERR_PER_OWNER_LAUNCH = (
                         "%s is set to %r in %s, which gives every %s one shared path, "
-                        "because the value names no %s identity. %s Nothing was changed. "
+                        "because the value does not reach %s identity. %s Nothing was changed. "
                         "Spell the identity into the value: %r, or put it in each %s's "
                         "own file%s.")
                                                     # the key, value, file, words, cure, tail

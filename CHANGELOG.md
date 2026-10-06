@@ -567,6 +567,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A refused per-owner value now says it does not reach its owner's identity, and its cure adds only what
+  it lacks.** `system set box.canon=/x/{meta.box.name}` said the value "names no box identity"; a box name
+  alone is not box identity, because box names repeat across working sets, so the cure now appends only
+  `{meta.workset.path}`. An anchor the value already holds is no longer spelled twice: the cure for
+  `/x/{meta.workset.path}` was `/x/{meta.workset.path}/{meta.workset.path}/{meta.box.name}` and is now
+  `/x/{meta.workset.path}/{meta.box.name}`. The same holds for the read door and `start`.
+
 - **A v1.7-era host is hard-blocked until its config file is renamed and `kanibako setup` runs.**
   v1.7.x kept its setup marker in `~/.config/kanibako_config.yaml`, which v1.8.0 does not read, so an
   upgrader got only the "isn't set up yet" advisory and could launch on a store setup never rebuilt.

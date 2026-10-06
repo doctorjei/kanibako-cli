@@ -26,6 +26,7 @@ from kanibako.settings.config import (
     load_config,
     load_project_overrides,
     null_path_keys_error,
+    identity_cure,
     reaches_identity,
     read_agent_settings,
     ref_order_error,
@@ -33,7 +34,6 @@ from kanibako.settings.config import (
     refuses_null_box_scalar,
     refuses_null_path_key,
     system_path_ref_error,
-    uniform_anchor,
     unset_project_config_key,
 )
 from kanibako.agent_ref import GENERAL_SLOT, display_agent_ref
@@ -1647,7 +1647,7 @@ def _per_owner_set_error(
     if all(reaches_identity(value, owner, mode, key=key, stored=stored) for mode in modes):
         return None
     noun, identity, shared_by, file_owner = PER_OWNER_SET_WORDS[owner]
-    cure = f"{value.rstrip('/')}/{uniform_anchor(owner, agent)}"
+    cure = identity_cure(value, owner, agent, key=key, stored=stored)
     return "Error: " + ERR_PER_OWNER_SET % (
         canonical, value, command_scope.value, written, noun, identity, shared_by, cure,
         canonical, file_owner,

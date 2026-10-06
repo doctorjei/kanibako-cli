@@ -1186,14 +1186,23 @@ def reaches_identity(
     return any(alt <= reached for alt in wanted)
 
 
-def uniform_anchor(level: str, agent: "str | None") -> str:
-    """The anchor spelling that reaches *level* in every box mode, for a cure."""
+def identity_cure(
+    value: str, level: str, agent: "str | None", *, key: str, stored: "Callable[[str], object]",
+) -> str:
+    """*value* with the anchors it lacks appended, so it reaches *level* in every box mode."""
     from kanibako.settings.kb_store import IDENTITY_ANCHORS, IDENTITY_PAIRED
+    from kanibako.settings.paths import BoxMode
 
-    common = set.intersection(*(set(anchors) for anchors in IDENTITY_ANCHORS[level].values()))
-    spelled = "{" + min(common).replace("<agent>", agent or "<agent>") + "}"
-    paired = sorted(set(IDENTITY_PAIRED.get(level, {}).values()))
-    return "/".join([*(uniform_anchor(p, agent) for p in paired), spelled])
+    def lacking(lvl: str) -> list[str]:
+        if all(reaches_identity(value, lvl, m, key=key, stored=stored) for m in BoxMode):
+            return []
+        common = set.intersection(*(set(anchors) for anchors in IDENTITY_ANCHORS[lvl].values()))
+        anchor = min(common).replace("<agent>", agent or "<agent>")
+        paired = sorted(set(IDENTITY_PAIRED.get(lvl, {}).values()))
+        own = [] if chain_reaches(value, {anchor}, key=key, stored=stored) else ["{" + anchor + "}"]
+        return [*(a for p in paired for a in lacking(p)), *own]
+
+    return "/".join([value.rstrip("/"), *lacking(level)])
 
 
 def key_owner(key: str) -> "tuple[str, str | None]":
