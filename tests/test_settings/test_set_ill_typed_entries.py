@@ -189,3 +189,15 @@ class TestAgentDoor:
         proc = cli("agent", "set", "shell", "env.FOO=b")
         assert proc.returncode == 0, proc.stderr
         assert "FOO: b" in agent_file.read_text()
+
+
+@pytest.mark.parametrize("body", [
+    "self:\n  model: y\nagent:\n  shell:\n    env:\n      FOO: [a]\n",
+    "agent:\n  shell:\n    env:\n      FOO: [a]\n",
+    "self:\n  model: y\nagent:\n  Shell:\n    env:\n      FOO: [a]\n",
+])
+def test_the_agent_door_reads_the_files_own_agent_table_too(cli, body):
+    path = cli.home / ".local/share/kanibako/agents/shell/agent.yaml"
+    path.write_text(body)
+    before = path.read_bytes()
+    _assert_refused(cli("agent", "set", "shell", "model=x"), path, before, "env.FOO = ['a']")
