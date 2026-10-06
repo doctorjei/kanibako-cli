@@ -179,30 +179,28 @@ def _purge_one(std, config, path: str, *, force: bool) -> int:
     remove_box_logs(*box_logs_location(std, proj))
 
     if proj.mode is BoxMode.standalone:
-        # metadata_path is the project ROOT — remove ONLY the in-tree kanibako
-        # artifacts (the box store + root workset.yaml + vault/), never the root.
+        # metadata_path is the project ROOT — remove ONLY the in-tree kanibako artifacts,
+        # never the root.  ⚑ THE ROOT FILE GOES ONLY WITH THE STORE: a retained store
+        # leaves the box whole, and unlinking under it would strand metadata still on disk.
         from kanibako.project.workset import (
             report_retained_vaults,
             standalone_vault_teardown,
         )
 
         root = proj.metadata_path
-        # ⚑⚑ RESOLVE THE VAULT FIRST: the root workset.yaml unlinked below is the only
-        # carrier of a ``workset.vault_*`` repoint, and ``root/"vault"`` is not the
-        # box's vault once one is set.
+        # ⚑⚑ RESOLVE THE VAULT FIRST: the root workset.yaml carries the only copy of a
+        # ``workset.vault_*`` repoint, and ``root/"vault"`` is not the box's vault once
+        # one is set.
         removable_vault, retained_vault = standalone_vault_teardown(
             root, early=_early_scope(std, BoxMode.standalone))
         # ⚑ The store holds the box home + its root-owned canon skeleton (J-7), so its
-# removal needs the podman-unshare escalation, not a bare rmtree; the split
+        # removal needs the podman-unshare escalation, not a bare rmtree; the split
         # between a removable store and a retained one is the plan's own.
-removable_store, retained_store = standalone_store_teardown_plan(
+        removable_store, retained_store = standalone_store_teardown_plan(
             root, early=_early_scope(std, BoxMode.standalone))
         if removable_store is not None:
             if not remove_box_tree(removable_store):
                 _warn_undeleted(removable_store)
-            # ⚑ WITH THE STORE GONE THE ROOT IS UNWORKABLE, so its workset.yaml goes too.
-            # A RETAINED store leaves the box whole: unlinking would strand metadata that
-            # is still on disk — the same line ``box rm --purge`` draws.
             (root / WORKSET_META_FILE).unlink(missing_ok=True)
         if retained_store is not None:
             report_retained_store(retained_store, root)
@@ -314,8 +312,7 @@ def _purge_all(std, config, *, force: bool) -> int:
                     _warn_undeleted(project_dir)
                 # ⚑ NAMED logs — the RESOLVED ``workset.logs``, which is what the
                 # box's helpers.jsonl mount is bound from; the default leaf is
-                # ``<root>/logs``, and purging that while the log lives at a repoint
-                # left the file behind AND removed one the box never wrote.
+                # ``<root>/logs``, not the box's own directory.
                 remove_box_logs(logs_dir, proj_name)
                 print("done.")
                 removed += 1

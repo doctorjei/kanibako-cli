@@ -253,7 +253,7 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     2. ``kanibako.plugins.*`` module scan (bind-mount fallback)
     3. User directory (``<config.data>/plugins/``, by default
        ``~/.local/share/kanibako/plugins/``)
-    4. Project directory (the project's RESOLVED box store, ``.../plugins/``)
+    4. Project directory (its RESOLVED store's ``plugins/``)
     """
     targets: dict[str, type[Target]] = {}
     # node -> (declared name, tier), so ``_register`` can tell a CASE COLLISION from
@@ -335,11 +335,8 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
     _scan_plugin_modules(targets, declared)
 
     # User-level file-drop plugins, under the ``config.data`` directory the user actually
-    # configured — never the XDG data base plus a hardcoded "kanibako" leaf ([R155]).  The
-    # store a user repoints ``config.data`` to was not scanned at all before, so a plugin
-    # dropped there simply never appeared, and one left in the default store was loaded
-    # instead without a word.
-    # ⚑ ``resolve_data_path`` is PURE and TOTAL (creates nothing, never raises, degrades to
+    # configured — never the XDG data base plus a hardcoded "kanibako" leaf ([R155]).  ⚑
+    # ``resolve_data_path`` is PURE and TOTAL (creates nothing, never raises, degrades to
     # the default): discovery runs on every command, including before a config file exists,
     # so it must not acquire a failure mode here.
     from kanibako.settings.paths import resolve_data_path, standalone_box_store
@@ -348,7 +345,6 @@ def discover_targets(project_path: Path | None = None) -> dict[str, type[Target]
 
     # Project-level file-drop plugins.  Absence is not an error.
     if project_path is not None:
-        # ⚑ RESOLVED; composing the leaf instead is ``standalone_box_store``'s own case.
         _scan_directory_plugins(
             standalone_box_store(project_path) / "plugins", targets, declared,
         )

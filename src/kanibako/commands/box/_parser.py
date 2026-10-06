@@ -1729,14 +1729,12 @@ def _standalone_teardown_plan(
 ) -> _StandaloneTeardown:
     """Resolve what :func:`_teardown_standalone_box` deletes — vault split, logs dir, box name.
 
-    ⚑⚑ RESOLVE BEFORE ANYTHING IS DELETED — or unregistered.  Two reasons, and both bite:
-    the root workset.yaml unlinked by the teardown carries the ``workset.vault_*`` and
-    ``workset.logs`` repoints and the kuid the box's name is composed from, so a later read
-    answers the composed default; and an UNRESOLVABLE value (a bare-relative repoint, a
-    null ``workset.boxes`` the standalone logs default chains through) raises here, which
-    must happen while the box is still whole.  Resolving after the metadata purge left a
-    half-removed box behind the traceback; resolving after ``box rm``'s unregister left a
-    box that was neither registered nor parked as deregistered.
+    ⚑⚑ RESOLVE BEFORE ANYTHING IS DELETED — or unregistered.  The root workset.yaml the
+    teardown unlinks carries the ``workset.vault_*`` and ``workset.logs`` repoints and the
+    kuid the box's name is composed from, so a later read answers the composed default;
+    and an UNRESOLVABLE value (a bare-relative repoint, a null ``workset.boxes`` the
+    standalone logs default chains through) raises here, which must happen while the box
+    is still whole.
     """
     from kanibako.launch.box_resolve import standalone_box_name
     from kanibako.project.workset import standalone_vault_teardown
@@ -1759,8 +1757,10 @@ def _teardown_standalone_box(
     from kanibako.settings.paths import (
         report_retained_store, standalone_store_teardown_plan)
 
-# ⚑⚑ RESOLVED, and only a store STRICTLY BELOW *root* is removed: the split and its
-    # reason are :func:`standalone_store_teardown_plan`'s, not restated here.
+    # ⚑ RESOLVED, and only a store STRICTLY BELOW *root* is removed — the split and its
+    # reason are :func:`standalone_store_teardown_plan`'s.  A ``None`` store therefore
+    # means RETAINED, so the ROOT workset.yaml must stay: unlinking it now would strand a
+    # box whose metadata is still on disk.
     metadata_dir, retained_store = standalone_store_teardown_plan(root, early=early)
     removable_vault, retained_vault, logs_dir, box_name = plan
     # ⚑ Logs are deleted by NAME, so a log under a ``workset.logs`` pointed outside
@@ -1770,8 +1770,6 @@ def _teardown_standalone_box(
     if retained_store is not None:
         report_retained_store(retained_store, root)
     if metadata_dir is None:
-        # ⚑ Nothing in-root to remove: the store was retained above, and unlinking the
-        # ROOT workset.yaml now would strand a box whose metadata is still on disk.
         return False
     if _purge_dir(metadata_dir):
         print(f"Removed metadata: {metadata_dir}")
