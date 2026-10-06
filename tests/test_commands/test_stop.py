@@ -1015,6 +1015,62 @@ class TestStopAllSkipsABoxThatRendersNoName:
         assert "Stopped kb-primary-other" in out
         live_runtime.stop.assert_called_once_with("kb-primary-other")
 
+    def test_all_names_a_named_workset_member_that_renders_no_name(
+        self, std, tmp_home, live_runtime, capsys,
+    ):
+        """The skip line covers every mode, not only primary boxes: a NAMED member."""
+        from kanibako.project.workset import add_project, create_workset
+
+        ws = create_workset("team", tmp_home / "worksets" / "team", std)
+        (tmp_home / "-member").mkdir()
+        add_project(ws, "-member", tmp_home / "-member")
+        live_runtime.list_running.return_value = [
+            ("kb-team-api", "img:latest", "Up 1 minute"),
+        ]
+        capsys.readouterr()
+
+        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+        out = capsys.readouterr().out
+        assert "Skipped box '-member'" in out
+        live_runtime.stop.assert_called_once_with("kb-team-api")
+
+    def test_all_names_a_standalone_box_that_renders_no_name(
+        self, std, tmp_home, live_runtime, capsys,
+    ):
+        """... and a STANDALONE box, read from the registry ``box list`` reads."""
+        from kanibako.project.registry_store import register_standalone
+
+        register_standalone(std.registry, "-solo", tmp_home / "solo")
+        live_runtime.list_running.return_value = [
+            ("kb-standalone-other", "img:latest", "Up 1 minute"),
+        ]
+        capsys.readouterr()
+
+        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+        out = capsys.readouterr().out
+        assert "Skipped box '-solo'" in out
+        live_runtime.stop.assert_called_once_with("kb-standalone-other")
+
+    def test_an_unreadable_registry_is_said_and_the_sweep_continues(
+        self, std, live_runtime, capsys,
+    ):
+        """The walk only names skipped boxes, so a refused file is WARNED, never hidden."""
+        std.registry.parent.mkdir(parents=True, exist_ok=True)
+        std.registry.write_text("- one\n- two\n")
+        live_runtime.list_running.return_value = [
+            ("kb-primary-other", "img:latest", "Up 1 minute"),
+        ]
+        capsys.readouterr()
+
+        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+        captured = capsys.readouterr()
+        assert "Warning: " in captured.err, captured.err
+        assert str(std.registry) in captured.err, captured.err
+        live_runtime.stop.assert_called_once_with("kb-primary-other")
+
     def test_all_still_stops_the_rest_when_no_box_is_skipped(
         self, live_runtime, capsys,
     ):

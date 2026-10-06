@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 from kanibako.settings.config import user_config_file, load_config, BootstrapConfig
 from kanibako.runtime.container import ContainerRuntime
@@ -280,31 +279,35 @@ def _stop_one(runtime: ContainerRuntime, *, project_dir: str | None) -> int:
     return 0
 
 
-def _boxes_rendering_no_name() -> list[tuple[str, str, Path | None]]:
-    """Registered boxes whose name renders NO name, as ``(name, mode, path)``.
+def _boxes_rendering_no_name() -> list[str]:
+    """Names of registered boxes, in every mode, that render NO container name.
 
     ⚑ Enumerating REGISTRY boxes is what lets the sweep SAY it skipped one: such a box
-    has no container, so it never appears in ``list_running``.
+    has no container, so it never appears in ``list_running``.  The walk is ``box
+    list``'s: an unreadable workset is warned about there, a refused file here.
     """
-    from kanibako.settings.config import user_config_file, load_config
-    from kanibako.settings.paths import load_primary_boxes, load_std_paths
+    from kanibako.project.registry_store import load_standalone
+    from kanibako.settings.paths import iter_workset_projects, load_primary_boxes
     from kanibako.utils import renders_no_name
 
+    config = load_config(user_config_file())
+    std, refusal = _load_paths(config)
+    if refusal is not None:
+        _warn_settings(refusal)
     try:
-        std = load_std_paths(load_config(user_config_file()))
-    except Exception:
+        names = [*load_primary_boxes(std.primary_workset), *load_standalone(std.registry)]
+        for _ws_name, _ws, members in iter_workset_projects(std, config):
+            names.extend(name for name, _status in members)
+    except ConfigError as exc:
+        _warn_settings(exc)
         return []
-    skipped: list[tuple[str, str, Path | None]] = []
-    for name in load_primary_boxes(std.primary_workset):
-        if renders_no_name(name):
-            skipped.append((name, "primary", None))
-    return skipped
+    return [name for name in names if renders_no_name(name)]
 
 
 def _stop_all(runtime: ContainerRuntime, *, force: bool = False) -> int:
     """Stop all running kanibako containers."""
     # ⚑ SKIP AND CONTINUE: the sweep carries on with every container that has a name.
-    for name, _mode, _path in _boxes_rendering_no_name():
+    for name in _boxes_rendering_no_name():
         print(f"Skipped box '{name}': it has no container name under the box-name rule.")
 
     containers = runtime.list_running()

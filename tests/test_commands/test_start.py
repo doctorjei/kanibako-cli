@@ -12999,6 +12999,7 @@ class TestStartRefusesALegacyRunningContainer:
         from kanibako.utils import legacy_container_names
 
         with start_mocks() as m:
+            m.runtime.cmd = "podman"
             proj = m.resolve_any_project.return_value
             legacy = legacy_container_names(proj)[0]
             m.runtime.live_names.add(legacy)
@@ -13008,7 +13009,38 @@ class TestStartRefusesALegacyRunningContainer:
         assert legacy in err, err
         assert "two boxes running" in err, err
         assert f"podman stop {legacy}" in err, err
+        assert "kanibako stop" not in err, err
         m.runtime.run.assert_not_called()
+
+    def test_the_cure_names_the_runtime_in_use(self, start_mocks, capsys):
+        from kanibako.utils import legacy_container_names
+
+        with start_mocks() as m:
+            m.runtime.cmd = "docker"
+            legacy = legacy_container_names(m.resolve_any_project.return_value)[0]
+            m.runtime.live_names.add(legacy)
+            assert self._start() == 1
+        err = capsys.readouterr().err
+        assert f"  docker stop {legacy}" in err, err
+        assert "podman" not in err, err
+
+    def test_a_nameless_primary_box_never_prints_none(self, start_mocks):
+        """``start`` refuses a nameless box earlier, so the guard is driven directly."""
+        from kanibako.commands.start import _refuse_legacy_container
+        from kanibako.utils import legacy_container_names
+
+        with start_mocks() as m:
+            m.runtime.cmd = "podman"
+            proj = m.resolve_any_project.return_value
+            proj.name = None
+            proj.project_hash = "0123456789abcdef"
+            legacy = legacy_container_names(proj)[0]
+            assert legacy == "kanibako-01234567"
+            m.runtime.live_names.add(legacy)
+            err = _refuse_legacy_container(m.runtime, proj)
+        assert err is not None
+        assert f"podman stop {legacy}" in err, err
+        assert "None" not in err, err
 
     def test_the_control_nothing_under_the_old_name_starts_normally(
         self, start_mocks,

@@ -36,6 +36,8 @@ import pytest
 pexpect = pytest.importorskip("pexpect")
 
 from tests.e2e.conftest import (  # noqa: E402
+    CONTAINER_PREFIX,
+    box_container,
     e2e_requires,
     run_kanibako,
     write_e2e_settings_files,
@@ -52,10 +54,10 @@ _LIVE_FIXTURE_DIR = Path(__file__).parent / "fixtures" / "live-agent"
 _LIVE_PLUGIN_SRC = _LIVE_FIXTURE_DIR / "live.py"
 _LIVE_EXE_SRC = _LIVE_FIXTURE_DIR / "live-agent"
 
-# The live box's container name.  A `kanibako create --name live-box` box is
-# named `kanibako-<name>`, NOT the `kanibako-e2e-` prefix the suite-wide e2e
-# teardown matches, so the live_env teardown removes this name explicitly.
-_LIVE_BOX_NAME = "kanibako-live-box"
+# The live box's container name.  A `kanibako create --name live-box` box does
+# NOT carry the CONTAINER_PREFIX the suite-wide e2e teardown matches, so the
+# live_env teardown removes this name explicitly.
+_LIVE_BOX_NAME = box_container("live-box")
 
 # Budget for the interactive `kanibako start` under a PTY.  Modeled on the
 # prototype probe (90s): covers a cold first container start (fuse-overlayfs
@@ -155,7 +157,7 @@ def dead_env(tmp_path, host_storage_conf) -> dict:
     )
     for name in result.stdout.strip().splitlines():
         name = name.strip()
-        if name.startswith("kanibako-e2e-"):
+        if name.startswith(CONTAINER_PREFIX):
             subprocess.run(
                 [podman, "rm", "-f", "-t", "1", name],
                 capture_output=True,
@@ -223,9 +225,9 @@ class TestInteractiveAttachOnDeath:
         # Prompt teardown: the crashed box's container is GONE afterwards (the
         # two-state lifecycle tears an exited box down; the user lands back in
         # the shell with no dead pane and no lingering container).
-        assert "kanibako-dead-box" not in _all_containers(), (
+        assert box_container("dead-box") not in _all_containers(), (
             "Expected the crashed box's container to be torn down after the "
-            "failed PTY launch, but 'kanibako-dead-box' still exists."
+            f"failed PTY launch, but '{box_container('dead-box')}' still exists."
         )
 
 
@@ -305,8 +307,8 @@ def live_env(tmp_path, host_storage_conf) -> dict:
         "tmp_path": tmp_path,
     }
 
-    # Teardown: the live box is named `kanibako-live-box` (NOT the
-    # `kanibako-e2e-` prefix the suite teardown / dead_env match), so the
+    # Teardown: the live box's container (_LIVE_BOX_NAME) lacks the
+    # CONTAINER_PREFIX the suite teardown / dead_env match, so the
     # prefix sweep would leave it running forever.  Remove it explicitly here
     # so the test cleans up after itself even on failure; then also do the
     # prefix sweep for parity with dead_env.
@@ -328,7 +330,7 @@ def live_env(tmp_path, host_storage_conf) -> dict:
     )
     for name in result.stdout.strip().splitlines():
         name = name.strip()
-        if name.startswith("kanibako-e2e-"):
+        if name.startswith(CONTAINER_PREFIX):
             subprocess.run(
                 [podman, "rm", "-f", "-t", "1", name],
                 capture_output=True,

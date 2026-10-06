@@ -46,6 +46,7 @@ from typing import Iterator
 import pytest
 
 from tests.e2e.conftest import (
+    box_container,
     e2e_requires,
     run_kanibako,
     wait_for_container,
@@ -251,7 +252,7 @@ class TestSeedAtCreate:
         env = e2e_env["env"]
         project = e2e_env["project"]
         name = "e2e-seed-clobber"
-        container = f"kanibako-{name}"
+        container = box_container(name)
 
         host_seed = _make_host_seed(e2e_env["tmp_path"])
         _write_seed_config(env, host_seed)
@@ -302,7 +303,7 @@ class TestSeedAtCreate:
         env = e2e_env["env"]
         project = e2e_env["project"]
         name = "e2e-seed-delete"
-        container = f"kanibako-{name}"
+        container = box_container(name)
 
         host_seed = _make_host_seed(e2e_env["tmp_path"])
         _write_seed_config(env, host_seed)

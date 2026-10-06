@@ -126,7 +126,7 @@ class TestLazyPrep:
         finally:
             # Best-effort cleanup so the suite stays clean; never fail the
             # test on cleanup errors. (e2e_env teardown removes the box's
-            # container by the kanibako-e2e- prefix.)
+            # container by the suite's CONTAINER_PREFIX.)
             subprocess.run(
                 [_podman, "rmi", "-f", TEMPLATE_IMAGE],
                 capture_output=True,

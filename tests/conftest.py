@@ -621,13 +621,11 @@ def start_mocks():
             runtime.live_names = set()
 
             def _is_running(name=None, *a, **kw):
+                from kanibako.utils import container_name_for
+
                 if name in runtime.live_names:
                     return True
-                try:
-                    from kanibako.utils import container_name_for
-                    own = container_name_for(m_resolve_any.return_value)
-                except Exception:
-                    return runtime.is_running.return_value
+                own = container_name_for(m_resolve_any.return_value)
                 if name is not None and name != own:
                     return False
                 return runtime.is_running.return_value

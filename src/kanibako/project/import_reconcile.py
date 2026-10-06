@@ -210,7 +210,14 @@ def import_named_workset(
     # ordinary directory, and a dir named ``default`` must not fail every command.
     # Declining to import leaves it what it already was: a plain primary-mode dir.
     name = root.name
-    if not name or is_reserved_workset_name(name):
+    if not name:
+        return None
+    if is_reserved_workset_name(name):
+        print(
+            f"Warning: not importing the workset at {root}: its directory name "
+            f"'{name}' is a reserved workset name. Rename the directory to import it.",
+            file=sys.stderr,
+        )
         return None
 
     # ⚑ $HOME is DECLINED here for the same reason, one step earlier than

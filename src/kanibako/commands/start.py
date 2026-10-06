@@ -9978,16 +9978,16 @@ def _refuse_legacy_container(runtime, proj: ProjectPaths) -> str | None:
     so launching under the rendered one would leave TWO live containers for one box.
     The cure is named in the message; nothing is stopped here.
     """
+    box = f"box '{proj.name}'" if proj.name else "this box"
     for legacy in legacy_container_names(proj):
         if not runtime.is_running(legacy):
             continue
         return (
-            f"Error: box '{proj.name}' is still running as '{legacy}', the name it "
+            f"Error: {box} is still running as '{legacy}', the name it "
             f"had before the container naming change. Starting it again would "
             f"leave two boxes running, so this is refused. Stop it, then start "
             f"it again:\n"
-            f"  kanibako stop {proj.name}\n"
-            f"  podman stop {legacy}"
+            f"  {runtime.cmd} stop {legacy}"
         )
     return None
 

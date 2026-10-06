@@ -343,10 +343,12 @@ class TestNamedWorksetImport:
         }
         assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
-    def test_a_reserved_leaf_name_is_not_imported(self, std, tmp_home, capsys):
+    @pytest.mark.parametrize("leaf", ["default", "primary", "standalone"])
+    def test_a_reserved_leaf_name_is_not_imported(self, std, tmp_home, capsys, leaf):
         """⚑ The DERIVED name clears the same bars a typed one does: a directory
-        named for a reserved sentinel is left alone, not registered under it."""
-        root = tmp_home / "holder" / "default"
+        named for a reserved sentinel is left alone, not registered under it —
+        and the skip is SAID once, naming the directory and why."""
+        root = tmp_home / "holder" / leaf
         create_workset("holder-ws", root, std)
         registry_store.save_section(std.registry, "worksets", {})
         capsys.readouterr()
@@ -355,7 +357,10 @@ class TestNamedWorksetImport:
             std.registry, root,
         ) is None
         assert registry_store.load_section(std.registry, "worksets") == {}
-        assert capsys.readouterr().err == ""
+        err = capsys.readouterr().err
+        assert err.count("Warning: ") == 1, err
+        assert str(root.resolve()) in err, err
+        assert f"'{leaf}' is a reserved workset name" in err, err
 
     def test_a_home_directory_root_is_declined_not_refused(
         self, std, tmp_home, capsys,

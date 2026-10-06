@@ -2064,7 +2064,7 @@ def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir
                         name_override: str | None = None) -> ProjectPaths:
     """Auto-detect project mode and resolve paths accordingly."""
     # An unknown name on the READ path is refused rather than path-ified into a phantom
-    # ``kanibako-<hash>`` box; the CREATE path (*initialize*) still path-ifies it.
+    # hash-named box; the CREATE path (*initialize*) still path-ifies it.
     raw = resolve_designation(std, project_dir, unknown_name_is_path=initialize)
     return _resolve_designated_path(std, config, raw, initialize=initialize,
                                     register=register, name_override=name_override)
