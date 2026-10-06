@@ -231,7 +231,7 @@ class TestTheWorkspaceCopyOmitsTheStore:
         _r(std, config, str(root))
 
         ignore = _workspace_copy_ignore(
-            root.resolve(), elsewhere.resolve(),
+            root.resolve(), elsewhere.resolve(), mode=BoxMode.standalone,
             early=_early_scope(std, BoxMode.standalone))
 
         skipped = set(ignore(str(elsewhere), ["code.py", "store", "box_data"]))
@@ -413,29 +413,34 @@ class TestTheCopyExcludesTheStoreByPathNotByName:
         IN-TREE relocated store, that sweep carried the store along — the box's own
         metadata and home duplicated into a workspace — unless the same path-anchored
         exclusion applies here too.
+
+        ⚑ RE-SHAPED TO A SHAPE A REAL COMMAND PRODUCES (ruled 153).  This pin used to
+        build a PRIMARY project whose OWN ``workset.yaml`` declared ``boxes``/
+        ``workspaces``.  No command on main can make that shape: ``resolve_project(…,
+        initialize=True)`` writes NOTHING under a primary project's own root (measured —
+        the tree is empty), and the real write verb, ``workset set <ws>
+        workset.boxes=…``, writes the WORKSET's settings file under the data dir, not the
+        user's project root.  Hand-dumped into the project root it still does not change the
+        mode, because a primary workset is found by its registry entry FIRST
+        (system-design § "Detection & import").  Under the ruled rule that ``root/store``
+        would be the USER's own directory, and copying it would be CORRECT — so the old
+        shape asserted the opposite of the rule about a tree no command can create.
+
+        The reachable shape carrying the same hazard is a STANDALONE box whose store is
+        repointed in-tree: ``box create`` (``resolve_standalone_project(…,
+        initialize=True)``) then a ``workset.boxes`` repoint — exactly what
+        :func:`_relocate_store` builds for the sibling pins.  The assertion is unchanged.
         """
         from kanibako.commands.box._lifecycle import (
             TargetSpec, execute_lifecycle, resolve_lifecycle_target,
         )
         from kanibako.project.workset import create_workset
-        from kanibako.settings.config_io import dump_doc
 
         ws = create_workset("cw", tmp_home / "cw_root", std)
-        root = tmp_home / "conv_store"
-        root.mkdir()
+        root = _standalone(config, std, tmp_home, "conv_store")
+        store = _relocate_store(root, "store")
         (root / "file.txt").write_text("mine")
-        from kanibako.settings.paths import resolve_project
-        resolve_project(std, config, project_dir=str(root), initialize=True)
-        store = root / "store"
-        store.mkdir()
-        (store / "MY_OWN_THINGS.md").write_text("the user's own data\n")
-        (store / "home").mkdir()
-        (store / "home" / "notes.md").write_text("HOME\n")
-        (store / "box.yaml").write_text("box: {}\n")
-        dump_doc(root / "workset.yaml", {"workset": {
-            "boxes": "@meta.workset.path/store",
-            "workspaces": "@meta.workset.path/nested",
-        }})
+        _workspace_at(root)          # the store sits INSIDE the tree being copied
 
         state = resolve_lifecycle_target(str(root), std, config)
         new = execute_lifecycle(
@@ -448,7 +453,7 @@ class TestTheCopyExcludesTheStoreByPathNotByName:
         # ⚑ DATA SAFETY: ABSENT from the destination workspace...
         assert not (nested / "store").exists(), (
             "the box's own store must not be copied into the destination workspace")
-        assert not (nested / "store" / "MY_OWN_THINGS.md").exists()
+        assert not (nested / "store" / "MY_STORE_DATA.txt").exists()
         assert not (nested / "store" / "home").exists()
         # ⚑ ... and NOT duplicated: exactly one copy of the store exists, wherever the
         # convert left it.  A convert MOVES a workspace, so the store's own content is
@@ -458,7 +463,7 @@ class TestTheCopyExcludesTheStoreByPathNotByName:
             "no second copy of the box's own box tier inside the workspace")
         assert not (nested / "store" / "home" / "notes.md").exists()
         if store.is_dir():
-            assert (store / "MY_OWN_THINGS.md").read_text() == "the user's own data\n"
+            assert (store / "MY_STORE_DATA.txt").read_text() == "the box's own metadata\n"
             assert (store / "home" / "notes.md").read_text() == "HOME\n"
             assert (store / "box.yaml").is_file()
         # The user's own file did sweep down — the store is not the user's file.
@@ -469,29 +474,15 @@ class TestAMoveKeepsAUserOwnedBoxData:
     """⚑ D1, DATA SAFETY. A top-level ``box_data/`` is the USER'S directory unless the
     ``workset.boxes`` key resolves there.
 
-    STEP-2 of ``box move`` applies the store exclusion to EVERY relocating source and
-    anchors it on the workspace rather than the box root.  A PRIMARY box's own
-    ``box_data/`` is therefore dropped from the copy and deleted with the source:
-    ``rc 0``, the source gone, the destination missing the user's file.  Base kept it.
-
-    ⚑ THE FIRST TWO CASES ARE ``xfail(strict)``: the defect is REPRODUCED but the fix
-    is not landed, because each candidate fix trades one green pin for another.  The
-    third case is green and pins the inverse — that a store is not stranded by the
-    exclusion — so whichever way the ruling goes, that must stay true.
+    STEP-2 of ``box move`` applies the store exclusion to EVERY relocating source, so it
+    resolves the store FOR THE SOURCE'S MODE rather than composing the standalone default
+    leaf.  A primary or named box resolves its store OUTSIDE its workspace, so the
+    exclusion lands on nothing and the user's own ``box_data/`` travels.
 
     ⚑ Asserted on what SURVIVES at the destination, never on the exit code — every one
     of these returns 0 whether or not the file is still there.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D1 UNFIXED — awaiting a ruling. Reproduced: a PRIMARY box's own "
-               "box_data/ is excluded from the copy and deleted with the source. "
-               "The prescribed fix (standalone-only guard, anchored on the box root) "
-               "fixes these two and breaks "
-               "test_convert_to_workset_leaves_the_store_at_the_source, whose "
-               "source resolves as mode=primary with standalone-shaped keys. "
-               "Needs the spec's answer on which shape governs.")
     def test_a_primary_box_move_keeps_its_own_top_level_box_data(
             self, config, std, tmp_home):
         from kanibako.settings.paths import resolve_project
@@ -513,10 +504,6 @@ class TestAMoveKeepsAUserOwnedBoxData:
         assert (dest / "box_data" / "mine.txt").read_text() == "the user's own file\n"
         assert (dest / "app.py").read_text() == "code\n"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D1 UNFIXED — awaiting a ruling. Same defect as the primary case: "
-               "the in-tree named member loses its own box_data/ on the move.")
     def test_an_in_tree_named_box_move_keeps_its_own_top_level_box_data(
             self, config, std, tmp_home):
         """An IN-TREE NAMED box: its workspace leaf's ``box_data/`` is the user's too.
@@ -561,6 +548,34 @@ class TestAMoveKeepsAUserOwnedBoxData:
 
         assert rc == 0
         assert (dest / "box_data" / "PRECIOUS.txt").read_text() == "must arrive\n"
+
+    def test_a_standalone_move_still_excludes_the_superseded_default_leaf(
+            self, config, std, tmp_home):
+        """⚑ ARM (b) OF THE RULED EXCLUSION, at the very arm D1 changed.
+
+        A standalone box whose store is REPOINTED away from the default leaf leaves
+        ``<root>/box_data`` holding the box's OWN superseded metadata — a stale ``home/``
+        and box tier.  Mode-aware resolution must still exclude that leaf from the copy:
+        it is the box's stale metadata, not the user's, and dropping the term would drag
+        it into the destination.  The RESOLVED store is untouched at the source.
+        """
+        root = _standalone(config, std, tmp_home, "mv_superseded")
+        _relocate_store(root, "store")
+        (root / "box_data" / "home").mkdir(parents=True, exist_ok=True)
+        (root / "box_data" / "home" / "STALE.md").write_text("stale home\n")
+        (root / "box_data" / "box.yaml").write_text("box: {}\n")
+        _workspace_at(root)          # the superseded leaf sits INSIDE the copied tree
+
+        dest = tmp_home / "mv_superseded_dest"
+        rc = _cli("box", "move", str(root), str(dest), "--force")
+
+        assert rc == 0
+        assert not (dest / "box_data").exists(), (
+            "the superseded default leaf must not travel with the move")
+        assert not (dest / "box_data" / "home" / "STALE.md").exists()
+        # ⚑ The RESOLVED store is the one that moves — to the destination under the name
+        # the key gives it, carrying its own content.
+        assert (dest / "store" / "MY_STORE_DATA.txt").read_text() == "the box's own metadata\n"
 
 
 class TestStandalonePurgeKeepsThePerOwnerRefusal:
