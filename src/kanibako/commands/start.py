@@ -1491,20 +1491,18 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     branch the generic "no box" message suggests ``kanibako create <name>``, which
     creates a DIRECTORY literally named ``<name>`` in the CWD.
 
-    ⚑ The ``box_data/`` clause is LOAD-BEARING, not a convenience: it guarantees the
-    branch can never fire while a live box tree is on disk, which is what makes the
-    suggested ``box rm`` safe to name.  Widening the gate would turn the suggestion
-    into the destructive parking variant.
+    ⚑ THE GATE IS THE DEFAULT ``box_data/`` LEAF, never the key-resolved store: a
+    key-resolved gate reads the REPOINT, so a store already at the key reads as healthy and
+    a repointed box falls into the Rebuild.  Decision 8 pins the Rebuild to that default.
 
     ⚑ ``--name`` and ``--register`` are BOTH load-bearing in the cure and indivisible
     — without the pair the box comes back under a NEW kuid, unregistered.  Both
     commands are on ONE ``&&`` line so they cannot be half-followed.
 
-    See ``llm-docs/kanibako/commands/start.py.md``, "``_broken_standalone_error``",
-    for the two grammars and each clause of the cure.
+    See ``llm-docs/kanibako/commands/start.py.md`` for the two grammars and the cure.
     """
     from kanibako.project import registry_store
-    from kanibako.settings.paths import BoxMode, box_metadata_dir
+    from kanibako.settings.paths import BoxMode, STANDALONE_META_DIR
 
     entries = registry_store.load_standalone(std.registry)
     # ⚑ Case-blind (spec §0), and *name* becomes the STORED spelling — it keys the
@@ -1522,23 +1520,20 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     if name is None:
         return None
     root = Path(entries[name])
-    # ONE derivation of "where a standalone box's metadata lives" — the same
-    # helper the resolvers and the lifecycle verbs use; no second ``box_data``
-    # literal to drift.
-    box_data = box_metadata_dir(BoxMode.standalone, root,
-                               early=_early_scope(std, BoxMode.standalone))
-    if box_data.is_dir():
+    # ⚑ The DEFAULT LEAF, not the resolved store — see the docstring.
+    default_leaf = root / STANDALONE_META_DIR
+    if default_leaf.is_dir():
         return None
     head = (
         f"Error: box '{name}' is registered as a standalone box at {root}, but "
-        f"its box data ({box_data}) is gone.\n"
+        f"its box data ({default_leaf}) is gone.\n"
         "  A launch will not rebuild it — rebuilding a box is a repair, and a "
         "repair has to be asked for by name.\n"
     )
     # ⚑ Decision 8 (DATA-LOSS HAZARD): the Rebuild below makes an EMPTY box_data/, so it
-    # is offered only while ``workset.boxes`` is at its default.  The store follows the key
-    # (``meta.box.path`` IS ``{workset.boxes}``), so the move goes TO the key's dir, never
-    # from it: a dir the key names may be the user's own.
+    # is offered only while ``workset.boxes`` is at its default.  The cure resolves the
+    # store THROUGH the key (``meta.box.path`` IS ``{workset.boxes}``), so the move goes TO
+    # the key's dir, never from it: a dir the key names may be the user's own.
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_boxes
     from kanibako.settings.settings_resolve import SettingsError
 
@@ -1549,7 +1544,7 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
         )
     except SettingsError as exc:
         return head + textwrap.indent(str(exc), "  ")
-    if boxes != box_data:
+    if boxes != default_leaf:
         return head + _store_move_cure(None, boxes)
     q_name = shlex.quote(name)
     q_root = shlex.quote(str(root))
