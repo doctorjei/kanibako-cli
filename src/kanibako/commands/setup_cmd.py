@@ -178,14 +178,13 @@ class TemplateStep(Enum):
     def records_completion(self) -> bool:
         """Whether :func:`run_setup` may write the setup-completion marker.
 
-        ⚑ False for :attr:`SKIPPED` ONLY.  Withholding the marker is what keeps
-        the ``setup_compat_gate`` BCV block erroring on an unmigrated store — the
-        backstop that makes "a new box seeds empty" unreachable WITHOUT an informed
-        decline.  (A decline reaches a byte-identical on-disk state by the user's
-        own knowing choice, and withholding is a no-op when the stored marker
-        already clears the gate.)  Recording completion for a run that silently
-        skipped the template step would clear that block against a store setup
-        never touched.
+        ⚑ False for :attr:`SKIPPED` ONLY.  Withholding is NOT a gate backstop: an
+        absent marker is the NON-BLOCKING advisory band (:func:`setup_compat_gate`
+        returns "isn't set up yet"; the CLI prints it and proceeds), while the hard
+        block needs a PRESENT marker below ``SETUP_BCV``.  So a headless skip can
+        still leave ``system.agent`` pinned with no template store and no
+        ``agents/<name>`` store, and the next agent command runs on the advisory.
+        Withholding records nothing that store never got an informed chance to reach.
 
         ⚑ The test is POSITIVE membership, not ``is not SKIPPED``: a negative test
         makes every FUTURE member record completion by default, which is the unsafe
@@ -531,9 +530,9 @@ def run_setup(args: argparse.Namespace) -> int:
     print()
 
     # Mark setup complete — but ONLY when Step 5 reached a settled state (see
-    # ``TemplateStep.records_completion``).  A non-TTY skip could not ask, did not
-    # refresh, and must therefore record NOTHING: the withheld marker is what keeps
-    # ``setup_compat_gate``'s BCV hard block erroring on an unmigrated store.
+    # ``TemplateStep.records_completion``, which says what withholding does NOT
+    # buy: an absent marker nudges, it does not block).  A non-TTY skip could not
+    # ask and did not refresh, so it records NOTHING and the run reports rc 1.
     # Records the running build's version string.
     recorded = template_step.records_completion
     write_failed = False
