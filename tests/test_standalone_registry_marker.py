@@ -199,3 +199,39 @@ class TestForcedNullReadsStandalone:
         assert box_resolve.standalone_settings_present(root) is False
         assert "Mode:         standalone" not in _info(root / "workspaces", capsys)
         assert _cli(["workset", "info", "ws3"]) == 0
+
+
+def _tree(root: Path) -> dict[str, bytes | None]:
+    return {
+        str(p.relative_to(root)): (p.read_bytes() if p.is_file() else None)
+        for p in sorted(root.rglob("*"))
+    }
+
+
+class TestForcedNullKeepsTheMemberGuard:
+    """A forced null hides a populated workset's members from detection, never from ``workset rm``."""
+
+    def _populated(self, tmp_home, *, force_null: bool) -> Path:
+        root = tmp_home / "home" / "ws4"
+        assert _cli(["workset", "create", str(root), "--name", "ws4"]) == 0
+        src = tmp_home / "home" / "m1"
+        src.mkdir()
+        assert _cli(["workset", "connect", "ws4", str(src)]) == 0
+        (root / "boxes" / "m1").mkdir(parents=True, exist_ok=True)
+        (root / "boxes" / "m1" / "keep.txt").write_text("keep")
+        if force_null:
+            assert _cli(["workset", "set", "ws4", "workset.registry", "--null", "--force"]) == 0
+        return root
+
+    @pytest.mark.parametrize("force_null", [True, False])
+    @pytest.mark.parametrize("purge", [[], ["--purge"]])
+    def test_rm_without_force_is_refused_and_the_tree_survives(
+        self, config_file, tmp_home, credentials_dir, capsys, monkeypatch, force_null, purge,
+    ):
+        root = self._populated(tmp_home, force_null=force_null)
+        before = _tree(root)
+        monkeypatch.setattr("builtins.input", lambda *_a: "yes")
+        capsys.readouterr()
+        assert _cli(["workset", "rm", "ws4", *purge]) == 1
+        assert "1 project(s)" in capsys.readouterr().err
+        assert _tree(root) == before
