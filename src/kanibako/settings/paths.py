@@ -40,7 +40,7 @@ from kanibako.settings.config import (WORKSET_META_FILE, BOX_META_FILE, Bootstra
                                       read_workset_skip_kuid_check, write_box_enable_vault)
 
 from kanibako.errors import (AmbiguousNameError, ConfigError, ProjectError,
-                             WorksetError)
+                             ReservedWorksetNameError, WorksetError)
 from kanibako.settings.agent_config import (ambiguous_path_value_error,
                                             is_unambiguous_path_value)
 from kanibako.settings.settings_resolve import (LevelView, ResolveCtx, SettingsError,
@@ -2104,6 +2104,8 @@ def _resolve_workset_or_connected(project_dir: Path,
     """Resolve *project_dir* to its owning workset, honoring external connects."""
     try:
         ws, proj_name = _find_workset_for_path(project_dir, std)
+    except ReservedWorksetNameError:
+        raise
     except WorksetError:
         ws, proj_name = None, None
     if ws is None or proj_name is None:

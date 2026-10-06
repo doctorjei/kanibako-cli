@@ -33,6 +33,8 @@ class WorksetError(KanibakoError):
 
 class LegacyWorksetIdentityError(WorksetError):
 
+class ReservedWorksetNameError(WorksetError):
+
 class LegacyRegistryIdentityError(WorksetError):
 
 class UserCanceled(KanibakoError):

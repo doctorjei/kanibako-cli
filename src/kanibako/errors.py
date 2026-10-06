@@ -64,6 +64,10 @@ class LegacyWorksetIdentityError(WorksetError):
     """A workset root's ``workset.yaml`` still carries a RETIRED workset identity table."""
 
 
+class ReservedWorksetNameError(WorksetError):
+    """A registered workset carries a name 1.8 reserves; the message carries the cure."""
+
+
 class LegacyRegistryIdentityError(WorksetError):
     """A per-workset ``registry.yaml`` still carries a RETIRED ``workset:``/``projects:`` section."""
 

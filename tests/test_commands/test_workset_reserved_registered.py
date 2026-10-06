@@ -70,25 +70,30 @@ def _worksets() -> dict[str, str]:
     return dict(read_names(_registry())["worksets"])
 
 
-def _make_workset(env: dict[str, str], name: str, root: Path) -> tuple[Path, Path]:
-    """A real workset with one connected box ``ext`` and one in-tree box ``intree``."""
+def _make_workset(env: dict[str, str], name: str, root: Path,
+                  *, with_in_tree: bool = True) -> tuple[Path, Path | None]:
+    """A real workset with a connected box ``ext`` and, optionally, an in-tree box ``intree``."""
     made = _cli(env, "workset", "create", str(root), "--name", name)
     assert made.returncode == 0, made.stderr
     external = root.parent / f"{name}-src"
     external.mkdir()
-    in_tree = root / "workspaces" / "intree"
-    in_tree.mkdir(parents=True)
-    for box, source in (("ext", external), ("intree", in_tree)):
+    in_tree = root / "workspaces" / "intree" if with_in_tree else None
+    members: list[tuple[str, Path]] = [("ext", external)]
+    if in_tree is not None:
+        in_tree.mkdir(parents=True)
+        members.append(("intree", in_tree))
+    for box, source in members:
         done = _cli(env, "workset", "connect", name, str(source), "--name", box)
         assert done.returncode == 0, done.stderr
     return external, in_tree
 
 
-def _plant_legacy(env: dict[str, str], legacy: str, root: Path) -> tuple[Path, Path]:
+def _plant_legacy(env: dict[str, str], legacy: str, root: Path,
+                  *, with_in_tree: bool = True) -> tuple[Path, Path | None]:
     """What a 1.7 registry holds: a workset registered under *legacy*."""
     from kanibako.project.names import register_name, unregister_name
 
-    sources = _make_workset(env, "staging", root)
+    sources = _make_workset(env, "staging", root, with_in_tree=with_in_tree)
     unregister_name(_registry(), "staging", section="worksets")
     register_name(_registry(), legacy, str(root), section="worksets")
     return sources
@@ -98,49 +103,51 @@ def _run_cure(env: dict[str, str], stderr: str) -> None:
     """Execute the refusal's indented cure lines, in order, with ``<new name>`` filled in."""
     lines = [ln.strip() for ln in stderr.splitlines() if ln.startswith("  ")]
     assert lines, stderr
-    old_root = None
+    outputs = ""
     for line in lines:
         line = line.replace("<new name>", NEW_NAME)
         if line.startswith("mv "):
             _, old_root, new_root = shlex.split(line)
             shutil.move(old_root, new_root)
-        elif line.startswith("# then, in "):
-            target = Path(line.split("# then, in ", 1)[1].split("/registry.yaml", 1)[0])
-            old_prefix = line.split("starts with ", 1)[1].split(" to start with ", 1)[0]
-            new_prefix = line.rsplit(" to start with ", 1)[1]
-            reg = target / "registry.yaml"
-            reg.write_text(reg.read_text().replace(old_prefix, new_prefix))
-        elif line.startswith("cd "):
-            where, command = line[3:].split(" && ", 1)
-            argv = shlex.split(command)
-            assert argv[0] == "kanibako", line
-            result = _cli(env, *argv[1:], cwd=Path(where))
-            assert "Imported workset" in result.stderr + result.stdout, result
+            continue
+        where = None
+        if line.startswith("cd "):
+            target, line = line[3:].split(" && ", 1)
+            where = Path(target)
+        argv = shlex.split(line)
+        assert argv[0] == "kanibako", line
+        result = _cli(env, *argv[1:], cwd=where)
+        outputs += result.stdout + result.stderr
+        if where is not None and where.name != "intree":
+            assert "not in a specific project workspace" in result.stderr, result
         else:
-            argv = shlex.split(line)
-            assert argv[0] == "kanibako", line
-            result = _cli(env, *argv[1:])
             assert result.returncode == 0, result.stderr
+    assert "Imported workset" in outputs, outputs
 
 
-@pytest.mark.parametrize(("legacy", "leaf"), [
-    ("primary", "primary"),
-    ("standalone", "sa-root"),
+@pytest.mark.parametrize(("legacy", "leaf", "with_in_tree"), [
+    ("primary", "primary", True),
+    ("standalone", "sa-root", True),
+    ("primary", "primary", False),
 ])
 def test_reserved_registered_workset_is_refused_then_cured(
-    env: dict[str, str], legacy: str, leaf: str,
+    env: dict[str, str], legacy: str, leaf: str, with_in_tree: bool,
 ) -> None:
     home = Path(env["HOME"])
     root = home / "ws" / leaf
     root.parent.mkdir()
-    external, in_tree = _plant_legacy(env, legacy, root)
+    external, in_tree = _plant_legacy(env, legacy, root, with_in_tree=with_in_tree)
 
-    refused = _cli(env, "box", "info", cwd=external)
-    assert refused.returncode == 1
-    assert f"Working set '{legacy}' is registered under a reserved name" in refused.stderr
-    assert f"kanibako workset rm {legacy} --force" in refused.stderr
-    assert f"kb-{legacy}-ext" not in refused.stdout
+    doors = [external, root] + ([in_tree] if in_tree is not None else [])
+    for door in doors:
+        refused = _cli(env, "box", "info", cwd=door)
+        assert refused.returncode == 1, (door, refused.stdout)
+        assert f"Working set '{legacy}' is registered under a reserved name" in refused.stderr
+        assert f"kanibako workset rm {legacy} --force" in refused.stderr
+        assert "No workset found" not in refused.stderr
+        assert "default" not in refused.stderr.split(":", 2)[1]
     assert ("  mv " in refused.stderr) == (leaf == legacy)
+    assert ("box remap --force" in refused.stderr) == (leaf == legacy and with_in_tree)
 
     listed = _cli(env, "workset", "list")
     assert listed.returncode == 0, listed.stderr
@@ -150,9 +157,10 @@ def test_reserved_registered_workset_is_refused_then_cured(
 
     expected = NEW_NAME if leaf == legacy else leaf
     assert sorted(_worksets()) == [expected]
-    for source, box in ((external, "ext"),
-                        (in_tree if leaf != legacy else home / "ws" / NEW_NAME / "workspaces" / "intree",
-                         "intree")):
+    resolved: list[tuple[Path, str]] = [(external, "ext")]
+    if with_in_tree:
+        resolved.append((home / "ws" / expected / "workspaces" / "intree", "intree"))
+    for source, box in resolved:
         info = _cli(env, "box", "info", cwd=source)
         assert info.returncode == 0, info.stderr
         assert f"kb-{expected.replace('-', '--')}-{box}" in info.stdout
