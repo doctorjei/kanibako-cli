@@ -168,26 +168,23 @@ def test_a_non_string_at_a_workset_early_path_key_is_refused_by_name_at_the_cli(
     assert "BARE RELATIVE" not in printed, printed
 
 
-def test_a_list_at_a_bind_shaped_early_key_refuses_before_the_shape_check(
+def test_a_list_at_workset_channels_common_gets_the_path_key_refusal(
     tmp_home, config_file, capsys,
 ):
-    """A LIST at ``workset.channels.common`` refuses EARLIER, on the bind parser's own arm.
+    """A LIST at ``workset.channels.common`` is a PATH-key type mismatch, not a malformed bind.
 
-    ``channels.*`` is bind-shaped, so the file READ refuses a list there as a malformed
-    bind rather than as a §2a type mismatch. ⭐ BOTH THINGS IT NAMES ARE PINNED HERE: the
-    FILE the user has to edit, and the dotted KEY, which
-    ``settings_assemble._unpack_bind_named`` adds because ``_parse_node`` is the only
-    frame that holds the key's segments — ``unpack_bind`` itself sees a bare leaf.
+    Spec §2a: the ``channels.`` segment discriminates the CHANNEL type-root from the
+    ``<scope>.common`` MOUNT category.
 
-    Mutation: drop the key from ``_unpack_bind_named``'s re-raise → the ``channels.common``
-    assertion goes red and the FILE assertion stays green.
+    Mutation: key ``_parse_node``'s bind-leaf branch on the bare ``common`` token again →
+    the bind parser's arity refusal answers instead.
     """
     root = _registered_ws(tmp_home, capsys)
     _write(root / "workset.yaml", _workset_body("channels.common", ["x"]))
     rc, printed = _cli(DOOR, tmp_home, capsys)
     assert rc != 0
-    assert "workset.yaml" in printed, printed
-    assert "channels.common" in printed, printed
+    assert "workset.channels.common" in printed, printed
+    assert "give one quoted path" in printed, printed
 
 
 def test_a_string_at_a_workset_early_path_key_still_reaches_the_bare_relative_arm(

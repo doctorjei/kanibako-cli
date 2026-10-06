@@ -117,23 +117,30 @@ def test_a_non_string_at_a_path_key_is_refused_naming_key_and_type(
     assert repr(value) not in msg, msg
 
 
-def test_a_list_at_a_bind_shaped_path_key_is_refused_by_the_bind_parser(tmp_path):
-    """A LIST at ``system.channels.common`` refuses on the bind parser's own arm.
+def test_a_list_at_system_channels_common_gets_the_path_key_refusal(tmp_path):
+    """A LIST at ``system.channels.common`` is a PATH-key type mismatch, not a malformed bind.
 
-    ``common`` is a bind-shaped category, so the file READ refuses a list there as a
-    malformed bind — the repr is quoted, and the KEY is named by
-    ``settings_assemble._unpack_bind_named``, which is the only frame holding the key's
-    segments. ⭐ ``settings_resolve.unpack_bind`` keeps its own signature and its own
-    sentence; only the key is added, on the route that has one.
+    Spec §2a: ``<scope>.common`` is the MOUNT category; ``system.channels.common`` is the
+    CHANNEL type-root, and the ``channels.`` segment is the discriminator.
 
-    Mutation: drop the key from ``_unpack_bind_named``'s re-raise → the
-    ``system.channels.common`` assertion goes red.
+    Mutation: key ``_parse_node``'s bind-leaf branch on the bare ``common`` token again →
+    the bind parser's "2 or 3 elements" arity refusal answers instead.
     """
     with pytest.raises(SettingsError) as exc:
         _snapshot(tmp_path, system_file={"system": {"channels": {"common": ["a"]}}})
     msg = str(exc.value)
-    assert "['a']" in msg
     assert "system.channels.common" in msg, msg
+    assert "give one quoted path" in msg, msg
+    assert "elements" not in msg, msg
+
+
+def test_a_map_at_system_common_still_parses_as_a_bind_map():
+    """The control: the MOUNT category ``system.common`` keeps its bind-map parse."""
+    from kanibako.settings.settings_assemble import _parse_node
+    from kanibako.settings.kb_store import BindEntry
+
+    parsed = _parse_node({"system": {"common": {"/x": ["/h"]}}}, in_binds=False)
+    assert isinstance(parsed["system"]["common"]["/x"], BindEntry)
 
 
 def test_a_map_at_system_channels_common_is_refused_not_built(tmp_path):
