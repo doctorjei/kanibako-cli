@@ -9,6 +9,7 @@ Prose for these symbols lives in `llm-docs/kanibako/settings/settings_expand.py.
 
 ```
 _ABSENT: _Absent = _Absent()
+_NOT_IN_CASCADE = "declared in the keyspace, but not in this command's cascade"
 _PREF_ROOT = 'pref'
 _SEEDED = 'seeded'
 ```
@@ -29,7 +30,7 @@ def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | N
 @overload
 def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
 def expand(snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None) -> KeyStore | tuple[KeyStore, dict[str, str]]
-def _absent_reason(dotted: str) -> str
+def _absent_reason(dotted: str) -> str | None
 def _is_whole_value_ref(value: str) -> str | None
 def _is_whole_value_var(value: str) -> str | None
 def _whole_braced(value: str, kind: str) -> str | None
@@ -46,7 +47,7 @@ class _Absent:
     def __repr__(self) -> str
 
 class _LenientDefect(Exception):
-    def __init__(self, reason: str) -> None
+    def __init__(self, reason: str, *, blind: bool=False) -> None
 
 class _Expander:
     def __init__(self, snapshot: KeyStore, ctx: ResolveCtx, *, collect_errors: bool=False, derive: Derive | None=None) -> None
@@ -54,6 +55,7 @@ class _Expander:
     def run(self) -> KeyStore
 
     def _expand_node(self, node: KeyStore, *, path: tuple[str, ...]) -> KeyStore
+    def _defect_past_blindness(self, key: str, value: StoreValue, path: tuple[str, ...], *, seed: bool) -> str | None
     def _expand_dest_key(self, key: str, value: StoreValue, *, chain: tuple[str, ...], seed: bool=False) -> str | None
     def _expand_leaf(self, value: StoreValue, *, path: tuple[str, ...]) -> StoreValue | _Absent
     def _refuse_relative_host_src(self, raw: str, expanded: str, *, chain: tuple[str, ...]) -> None

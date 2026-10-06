@@ -88,20 +88,20 @@ class _Absent:
 _ABSENT: _Absent = _Absent()
 
 
-def _absent_reason(dotted: str) -> str:
-    """Why *dotted* is not in the snapshot — a DECLARED key is NOT a keyspace breach.
+def _absent_reason(dotted: str) -> str | None:
+    """Why *dotted* is not in the snapshot, or ``None`` when it is a DECLARED key.
 
     ⚑ A set-time command judges a value against ITS OWN cascade, so a declared key living
-    in a scope that cascade does not reach is absent BY CONSTRUCTION. Declared is the set
-    door's verdict (:func:`~kanibako.settings.config_keys.scope_key_reason`, agent names
-    discovered); an undeclared name gets that verdict's own reason.
+    in a scope that cascade does not reach is absent BY CONSTRUCTION — not a keyspace
+    breach. Declared is the set door's verdict
+    (:func:`~kanibako.settings.config_keys.scope_key_reason`, agent names discovered).
     """
     from kanibako.settings.config_keys import scope_key_reason
 
-    reason = scope_key_reason(dotted)
-    if reason is None:
-        return "declared in the keyspace, but not in this command's cascade"
-    return reason
+    return scope_key_reason(dotted)
+
+
+_NOT_IN_CASCADE = "declared in the keyspace, but not in this command's cascade"
 
 #: The top-level table holding ``pref.*`` REQUESTS (spec §2h): carried through
 #: UNEXPANDED and never ``@``-referenceable. Spelled here rather than imported —
@@ -126,9 +126,10 @@ class _LenientDefect(Exception):
     raised in strict mode.
     """
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, *, blind: bool = False) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.blind = blind  # a DECLARED referent this cascade cannot see
 
 
 def _is_whole_value_ref(value: str) -> str | None:
@@ -302,6 +303,7 @@ class _Expander:
         # LENIENT mode (Q9): collect defects instead of raising/silent-drop, keyed
         # by the OWNING leaf's dotted path → human reason.
         self._collect_errors = collect_errors
+        self._blind_absent = False
         self.errors: dict[str, str] = {}
         # E2: a bind entry made ``None`` by its source → the refs that did it.
         self.null_sources: NullSources = {}
@@ -363,6 +365,10 @@ class _Expander:
                         resolved = self._expand_leaf(value, path=child_path)
                     except (_LenientDefect, SettingsError) as exc:
                         reason = exc.reason if isinstance(exc, _LenientDefect) else str(exc)
+                        if isinstance(exc, _LenientDefect) and exc.blind:
+                            reason = self._defect_past_blindness(
+                                key, value, child_path, seed=seed_map,
+                            ) or reason
                         self.errors[".".join(child_path)] = reason
                         continue
                 else:
@@ -394,6 +400,33 @@ class _Expander:
                 )
             out[out_key] = resolved
         return out
+
+    def _defect_past_blindness(
+        self, key: str, value: StoreValue, path: tuple[str, ...], *, seed: bool,
+    ) -> str | None:
+        """The reason of a defect in this leaf's chain that is NOT cascade blindness.
+
+        Spec §2a: a refusal names the broken upstream dependency. A declared referent this
+        cascade cannot see may be forgiven by the set door, so a really broken ref (an
+        undeclared name, a cycle) in the same chain is the one to name. The leaf is
+        re-walked with blind referents taken as absent; every memo the walk fills is
+        dropped, since its values stand on that assumption.
+        """
+        saved = (dict(self._memo), dict(self._deps), dict(self.errors),
+                 dict(self.null_sources), dict(self.refs_read), dict(self.dest_keys))
+        self._blind_absent = True
+        try:
+            if self._expand_dest_key(key, value, chain=path, seed=seed) is not None:
+                self._expand_leaf(value, path=path)
+        except _LenientDefect as exc:
+            return exc.reason
+        except SettingsError:
+            return None  # a consequence of the absence taken above, not a defect of its own
+        finally:
+            self._blind_absent = False
+            (self._memo, self._deps, self.errors,
+             self.null_sources, self.refs_read, self.dest_keys) = saved
+        return None
 
     def _expand_dest_key(
         self, key: str, value: StoreValue, *, chain: tuple[str, ...], seed: bool = False
@@ -645,9 +678,13 @@ class _Expander:
             if self._collect_errors and not absent_ok:
                 # LENIENT (Q9): a DANGLING ref is a set-time defect to record, NOT
                 # the strict §6b silent drop. Raised so the OWNING leaf gets it.
-                raise _LenientDefect(
-                    f"dangling @-reference '@{dotted}' ({_absent_reason(dotted)})"
-                )
+                reason = _absent_reason(dotted)
+                if reason is not None:
+                    raise _LenientDefect(f"dangling @-reference '@{dotted}' ({reason})")
+                if not self._blind_absent:
+                    raise _LenientDefect(
+                        f"dangling @-reference '@{dotted}' ({_NOT_IN_CASCADE})", blind=True,
+                    )
             # ⚑ Absence propagates (§6b) only from a KEY; a ref that names no key is
             # refused by name (spec §0), never dropped.
             verdict = keyspace_verdict(dotted)

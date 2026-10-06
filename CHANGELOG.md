@@ -489,6 +489,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every other standard bind gets when only its source is null. Setting the entry to `null` as well
   omits it without the warning. A row whose source is a literal path is untouched.
 
+- **A `set` refusal names the reference that is really broken.** A value whose references include
+  both a key this command's cascade cannot see and an undeclared key, such as `system set
+  box.canon=/x/{meta.workset.path}/{box.nope}`, was refused naming `@meta.workset.path`. It now
+  names `@box.nope`, directly or through a stored chain, as keyspec §2a requires.
+
 - **`set` no longer refuses a reference to a computed sharing-state key.** A value naming a
   `meta.*.auth.*_active` key, such as `box set box.env.X={meta.box.auth.global_active}`, was
   refused as a dangling reference although the launch resolves it. The set-time check now computes
