@@ -242,19 +242,26 @@ class TestTheRetainedBoxPairIsQuoted:
     def test_pasting_the_printed_pair_does_not_run_the_operand(
         self, door, name, tmp_home, config_file, credentials_dir, capsys, tmp_path
     ):
-        """⭐ THE EXECUTION: the pasted pair leaves no marker and one argv.
+        """⭐ THE EXECUTION: pasting either half leaves no marker and one argv.
 
-        The paste runs in its own directory, so an operand that ran its own
-        command would leave ``pwned`` beside it; the recorded HOME says the
-        child inherited the throwaway one and not this session's.
+        BOTH halves are pasted, each into its own directory, so an operand that
+        ran its own command would leave ``pwned`` beside it — and the ``--purge``
+        half is included because it is the one that deletes.  The recorded HOME
+        says the child inherited the throwaway one and not this session's.
         """
-        register, _purge = _printed_pair(door, name, capsys)
+        register, purge = _printed_pair(door, name, capsys)
 
-        argv, paste_cwd, child_home = _paste(register, tmp_path / "paste")
+        for half, expected in (
+            (register, ["box", "register", name]),
+            (purge, ["box", "rm", name, "--purge"]),
+        ):
+            argv, paste_cwd, child_home = _paste(half, tmp_path / f"paste-{len(expected)}")
 
-        assert not (paste_cwd / _MARKER).exists(), "the pasted cure ran injected text"
-        assert argv == ["box", "register", name]
-        assert child_home == str(tmp_path / "paste" / "childhome")
+            assert not (paste_cwd / _MARKER).exists(), (
+                f"the pasted cure ran injected text: {half}"
+            )
+            assert argv == expected
+            assert child_home == str(tmp_path / f"paste-{len(expected)}" / "childhome")
 
 
 def test_the_three_shared_doors_print_one_identical_sentence(
