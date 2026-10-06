@@ -13265,6 +13265,67 @@ class TestGoneBoxCureIsSafeAfterARepoint:
         assert " mv " not in msg
         assert "workset.boxes" in msg and "null" in msg
 
+    def test_standalone_leaf_present_with_key_at_a_missing_dir_names_the_repoint(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """Question 2 (the 154th addendum): the leaf is HERE with data and the key
+        names a dir that is NOT there.  The single-question gate read a present
+        leaf as HEALTHY, so the box fell through to the generic "nothing is
+        registered under it" message — false, since the registry does hold it, and
+        its ``create <name>`` pastes a mkdir of a box named after the token.  The
+        cure moves the leaf TO the key's place; nothing is copied over user content.
+        """
+        from kanibako.commands.start import _no_box_error
+        from kanibako.settings.config_io import dump_doc
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        (root / "box_data" / "kept.txt").write_text("user data")
+        missing = tmp_home / "gone" / "store"
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(missing)}})
+
+        msg = _no_box_error(name, std)
+        assert "kanibako create" not in msg
+        assert "nothing is registered" not in msg
+        assert f"its box data is at {root / 'box_data'}" in msg
+        assert str(missing) in msg
+        assert msg.endswith(
+            f"Move it, with the box stopped:  mkdir -p {missing.parent} && "
+            f"mv {root / 'box_data'} {missing}"
+        )
+        # Run the printed cure as a user pastes it: the data arrives, whole.
+        assert self._run_move_line(msg) == 0
+        assert (missing / "kept.txt").read_text() == "user data"
+        assert not (root / "box_data").exists()
+
+    def test_standalone_leaf_present_under_a_null_key_names_the_refusal_not_a_create(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """A null key resolves to NO store, which is question 2 failing with no
+        move to offer: the message carries the refusal, never the create."""
+        from kanibako.commands.start import _no_box_error
+        from kanibako.settings.config_io import dump_doc
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        (root / "box_data" / "kept.txt").write_text("user data")
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": None}})
+
+        msg = _no_box_error(name, std)
+        assert "kanibako create" not in msg
+        assert "nothing is registered" not in msg
+        assert "workset.boxes" in msg and "null" in msg
+        assert " mv " not in msg
+        assert (root / "box_data" / "kept.txt").read_text() == "user data"
+
+    def test_a_healthy_standalone_answers_neither_question(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """Leaf present AND the key at its default: BROKEN is false, so the gate
+        returns ``None`` and the generic message still owns the call."""
+        from kanibako.commands.start import _broken_standalone_error
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        assert _broken_standalone_error(std, name) is None
+
     def test_named_box_repointed_offers_the_move_and_no_rebuild(
         self, config_file, tmp_home, credentials_dir, protected_canon,
     ):

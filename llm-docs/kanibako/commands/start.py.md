@@ -1842,13 +1842,27 @@ running THAT creates a directory literally named `<name>` in the CWD with a PRIM
 (`commands/box/_parser.py` uses the spec as a path). Two grammars, one token: `start` resolves a bare
 token in the NAME grammar, `create` resolves it in the PATH grammar.
 
+### Two questions, and the cure branches on which
+
+BROKEN is not one test. **Question 1: is the default `box_data/` leaf gone?** **Question 2: is the
+key-resolved store missing?** Both pass → nothing is broken, `None`. Question 1 fails → the Rebuild
+(boxes at its default) or the stopped-box move (repointed), exactly as decision 8 ruled. Question 2
+fails ALONE — the leaf is HERE with the data and `workset.boxes` names a dir that is not there — and
+until the 154th addendum the gate asked only question 1, so a present leaf read as HEALTHY and the box
+fell through to the generic "nothing is registered under it" message. That message is false (the
+registry does hold the name) and its `create <name>` pastes a mkdir of a box named after the token.
+The cure for this shape moves the leaf TO the key's place, so the user's data is neither copied onto
+anything nor left stranded. A null key answers question 2 with a refusal and no move to offer; the
+message carries that refusal instead of the create.
+
 ### Each clause of the cure is load-bearing
 
-⚑ **The `box_data/` clause** guarantees the branch can never fire while a live box tree is on disk,
-which is exactly what makes the suggested `box rm` safe to name: with `box_data/` gone,
-`_rm_standalone`'s deregistered-park arm is gated OFF (its `metadata_dir.is_dir()` test fails), so
-the `rm` drops the registry entry and touches NOTHING on disk. Widening the gate would turn the
-suggestion into the destructive parking variant.
+⚑ **The `box_data/` clause** is what keeps the REBUILD arm off a live box tree, which is exactly what
+makes the suggested `box rm` safe to name: that arm fires only with `box_data/` gone, so
+`_rm_standalone`'s deregistered-park arm is gated OFF (its `metadata_dir.is_dir()` test fails), the
+`rm` drops the registry entry and touches NOTHING on disk. Widening THAT arm would turn the suggestion
+into the destructive parking variant. The question-2 arm never reaches `box rm` — it answers with a
+move — so a present leaf cannot make the `rm` unsafe.
 
 ⚑ **`--name`** — `validate_standalone_name` / `resolve_standalone_name` accept a verbatim canonical
 `<kuid>_<leaf>` and return it AS-IS, so re-creating with the old name preserves the box's kuid, its
