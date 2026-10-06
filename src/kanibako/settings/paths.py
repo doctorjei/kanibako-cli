@@ -1370,12 +1370,12 @@ def resolve_project(std: StandardPaths, config: BootstrapConfig, project_dir: st
         _dir_existed = project_dir_path.is_dir()
 
         assert resolved_vault is not None
+        # ⚑ ORDER IS THE SHAPE RULE: the refusal is asked BEFORE the setup (:2084).
+        persist_vault = (enable_vault if enable_vault is not None
+                         else read_box_enable_vault(project_toml))
         _init_project(std, metadata_path, shell_path, vault_ro_path,
                       vault_rw_path, project_path, enable_vault=resolved_vault)
-        write_box_enable_vault(
-            project_toml,
-            enable_vault if enable_vault is not None else read_box_enable_vault(project_toml),
-        )
+        write_box_enable_vault(project_toml, persist_vault)
         # Register the PRIMARY membership (name → workspace) — the SOLE store, idempotent.
         # The except-arm is the belt-and-suspenders unwind for a Guard-1 refusal.
         if register:
@@ -2057,11 +2057,14 @@ def resolve_workset_project(ws: WorksetSpec, project_name: str, std: StandardPat
 
     is_new = False
     if initialize and not shell_path.is_dir():
+        # ⚑ THE REFUSAL PRECEDES THE SETUP: ``read_box_enable_vault`` judges the SHAPE of
+        # ``box`` (``config.refuse_scalar_sections``, spec §0), and this guard lets the box
+        # tier EXIST with ``home/`` still absent — so a hand-written scalar would otherwise
+        # leave ``home/`` and its bootstrapped shell behind for a retry to find.
+        persist_vault = (enable_vault if enable_vault is not None
+                         else read_box_enable_vault(project_toml))
         _init_workset_project(std, metadata_path, shell_path)
-        write_box_enable_vault(
-            project_toml,
-            enable_vault if enable_vault is not None else read_box_enable_vault(project_toml),
-        )
+        write_box_enable_vault(project_toml, persist_vault)
         # P5a dual-register (idempotent), the SOLE identity record; *workspace* seeds external.
         _register_workset_box_membership(ws.root, project_name, workspace, early=ws_early)
         is_new = True
