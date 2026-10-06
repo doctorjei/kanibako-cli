@@ -145,6 +145,7 @@ def _launch_synced_list(snapshot: 'KeyStore') -> 'list[CollapsedCopy]'
 def _install_box_handbook(*, proj, snapshot: 'KeyStore', agent_id: str, logger) -> None
 def _box_journal_key(proj) -> str
 def _create_designation(probe) -> 'tuple[str, str]'
+def _create_cure(mode_flag: str, root: str, *flags: str) -> str
 def _write_create_entry(std, proj) -> None
 def _clear_create_entry(std, proj) -> None
 def _pending_create_entry(std, proj) -> dict | None

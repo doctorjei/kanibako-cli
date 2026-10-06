@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import shlex
 from pathlib import Path
 
 import pytest
@@ -2094,6 +2095,17 @@ class TestCuresAreRunnable:
             path.mkdir()
         return path
 
+    def _spaced_root(self, tmp_home, standalone):
+        """A root that is not ONE shell word, whose leaf name stays a legal box name.
+
+        The space sits in the PARENT so what breaks is the quoting of the cure line
+        alone; a spaced leaf would make the box NAME illegal and fail for a second,
+        unrelated reason.
+        """
+        path = tmp_home / ("sa box" if standalone else "project box") / "sa"
+        path.mkdir(parents=True)
+        return path
+
     def _interrupted(self, config_file, tmp_home, standalone):
         std = self._std(config_file)
         path = self._root(tmp_home, standalone)
@@ -2162,10 +2174,128 @@ class TestCuresAreRunnable:
             _create_args(root, standalone=True, recover=True, no_vault=False)
         ) == 1
         err = capsys.readouterr().err
-        assert f"kanibako start {root}" in _cure_lines(err, "start")
+        assert f"kanibako start {shlex.quote(str(root))}" in _cure_lines(err, "start")
         parsed = build_parser().parse_args(_printed_cure(err, "start"))
         assert parsed.project == str(root)
         assert (root / "box_data").is_dir()
+
+    # ⚑ A ROOT IS NOT ONE SHELL WORD whenever it holds a space or a metacharacter,
+    # and every cure below names a root the user typed.  ``shlex.quote`` is what makes
+    # the printed line mean what it says; without it a spaced root pastes as TWO
+    # operands, which reads as a create in ``<root-prefix>`` for a box named after
+    # the suffix — a plausible line that finishes an attempt somewhere else.
+    @pytest.mark.parametrize("standalone", [False, True], ids=["primary", "standalone"])
+    def test_the_pending_create_cure_at_a_spaced_root_finishes_that_root(
+        self, standalone, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """The ``--recover`` cure at a root that is not one word still names the root.
+
+        Pinned as a RUN, because only the run can say the box at the SPACED root is
+        the attempt that was finished — a cure pointing one directory up is a green
+        string match and a wrong box.
+        """
+        from kanibako.commands.box._parser import run_create
+        from kanibako.project import registry_store
+
+        std = self._std(config_file)
+        path = self._spaced_root(tmp_home, standalone)
+        proj = _simulate_interrupted_create(
+            std, self._config(config_file), standalone=standalone, path=path,
+            register_box=False,
+        )
+        box_key = _box_journal_key(proj)
+        capsys.readouterr()
+
+        assert run_create(
+            _create_args(path, standalone=standalone, no_vault=False)
+        ) == 1
+        err = capsys.readouterr().err
+        sa = " --standalone" if standalone else ""
+        assert (
+            f"kanibako create{sa} --recover {shlex.quote(str(path))}"
+            in _cure_lines(err, "create")
+        )
+
+        assert _run_printed_cure(err, "create") == 0
+        assert journal.pending_create(std.journal, box_key) is None
+        if standalone:
+            assert (path / "box_data").is_dir()
+            assert registry_store.load_standalone(std.registry) == {}
+        else:
+            assert path.name in _primary_names(std)
+
+    @pytest.mark.parametrize(
+        "materialized", [True, False], ids=["nothing_to_recover", "no_interrupted_create"],
+    )
+    def test_the_no_pending_create_cures_name_a_spaced_root(
+        self, materialized, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """``--recover`` with no pending entry still prints a root-bearing command.
+
+        Both refusals reach the shell with that root: the complete box's ``start``
+        line and the empty tree's ``create`` line.  Pinned as a PARSE, because a
+        space-split root silently parses as a DIFFERENT project rather than raising.
+        """
+        from kanibako.cli import build_parser
+        from kanibako.commands.box._parser import run_create
+        from kanibako.commands.start import _clear_create_entry, _register_new_box
+
+        std = self._std(config_file)
+        root = self._spaced_root(tmp_home, standalone=True)
+        if materialized:
+            proj = _simulate_interrupted_create(
+                std, self._config(config_file), standalone=True, path=root,
+                register_box=False,
+            )
+            _register_new_box(std, proj)
+            _clear_create_entry(std, proj)
+            assert journal.read_journal(std.journal) == {}
+        capsys.readouterr()
+
+        assert run_create(
+            _create_args(root, standalone=True, recover=True, no_vault=False)
+        ) == 1
+        err = capsys.readouterr().err
+        if materialized:
+            assert f"kanibako start {shlex.quote(str(root))}" in _cure_lines(err, "start")
+        else:
+            assert (
+                f"kanibako create --standalone {shlex.quote(str(root))}"
+                in _cure_lines(err, "create")
+            )
+        parsed = build_parser().parse_args(
+            _printed_cure(err, "start" if materialized else "create")
+        )
+        assert getattr(parsed, "project" if materialized else "path") == str(root)
+
+    def test_the_register_cure_at_a_spaced_root_finishes_and_registers_that_root(
+        self, config_file, tmp_home, credentials_dir, capsys
+    ):
+        """``register`` owes the pending-create refusal the same line ``--recover``
+        prints, plus ``--register``, so it carries the same quoting — and running it
+        leaves the box both finished and indexed."""
+        from kanibako.commands.box._parser import run_register
+        from kanibako.project import registry_store
+
+        std = self._std(config_file)
+        root = self._spaced_root(tmp_home, standalone=True)
+        proj = _simulate_interrupted_create(
+            std, self._config(config_file), standalone=True, path=root,
+            register_box=False,
+        )
+        box_key = _box_journal_key(proj)
+        capsys.readouterr()
+
+        assert run_register(argparse.Namespace(target=str(root), box=None)) == 1
+        err = capsys.readouterr().err
+        assert (
+            f"kanibako create --standalone --recover --register "
+            f"{shlex.quote(str(root))}" in _cure_lines(err, "create")
+        )
+
+        assert _run_printed_cure(err, "create") == 0
+        assert journal.pending_create(std.journal, box_key) is None
+        assert registry_store.load_standalone(std.registry)
 
     def test_the_no_vault_cure_turns_the_vault_off(
         self, config_file, tmp_home, credentials_dir, capsys

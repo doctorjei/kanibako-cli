@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import shlex
 import shutil
 import sys
 from collections.abc import Callable
@@ -723,7 +724,7 @@ def _create_recovery_refusal(
     non-materializing probe, before anything is written.
     """
     from kanibako.commands.start import (
-        _box_journal_key, _create_designation, recover_cure,
+        _box_journal_key, _create_cure, _create_designation, recover_cure,
     )
 
     recover = bool(getattr(args, "recover", False))
@@ -741,12 +742,12 @@ def _create_recovery_refusal(
             return (
                 f"Error: --recover found nothing to recover at {root} — the box "
                 f"there is complete.\n"
-                f"  kanibako start {root}"
+                f"  kanibako start {shlex.quote(root)}"
             )
         return (
             f"Error: --recover found no interrupted 'create' for {root}.\n"
             f"  kanibako box diagnose\n"
-            f"  kanibako create{mode_flag} {root}"
+            f"  {_create_cure(mode_flag, root)}"
         )
 
     if recover and not given:
@@ -2183,6 +2184,7 @@ def run_register(args: argparse.Namespace) -> int:
     """⚑ Re-register a box: INDEX-ONLY and SEED-FREE, by NAME (readopt) or PATH (standalone)."""
     from kanibako.project import registry_store
     from kanibako.launch.box_resolve import standalone_settings_present
+    from kanibako.commands.start import _create_cure
 
     config_file = user_config_file()
     config = load_config(config_file)
@@ -2252,7 +2254,7 @@ def run_register(args: argparse.Namespace) -> int:
                 print(
                     f"Error: an interrupted 'create' is pending for {root}; "
                     "finish it and register it in one step:\n"
-                    f"  kanibako create --standalone --recover --register {root}",
+                    f"  {_create_cure(' --standalone', str(root), '--recover', '--register')}",
                     file=sys.stderr,
                 )
                 return 1
