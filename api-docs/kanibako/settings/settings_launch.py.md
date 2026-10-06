@@ -19,6 +19,8 @@ _SYSTEM_SHARE_ALLOWED_KEY = 'system.auth.share_allowed'
 _BOX_MODES: frozenset[str] = frozenset((mode.value for mode in BoxMode))
 _WORKSET_CHANNEL_LEAVES: frozenset[str] = frozenset({'common', 'chat', 'broadcast', 'share', 'mailboxes', 'share_global'})
 _WORKSET_LOCAL_CHANNEL_LEAVES: frozenset[str] = _WORKSET_CHANNEL_LEAVES - {'mailboxes', 'share_global'}
+_TIER_SCOPE: Final[dict[str, str]] = {'box': 'box', 'workset': 'workset', 'agent': 'agent', 'agent.default': 'agent', 'system': 'system', 'base': 'system'}
+_CATEGORY_OWNER: Final[dict[str, str]] = {'box': 'box', 'workset': 'workset', 'system': 'shared'}
 _BOX_NAME_KEYS: Final = ('meta.box.name', 'meta.box.inbox', 'meta.box.share_global', 'meta.box.share_workset')
 _BOX_ONLY_PREFIXES: Final = ('meta.box.',)
 _WORKSET_ONLY_PREFIXES: Final = ('meta.workset.', 'workset.')
@@ -50,7 +52,7 @@ def meta_identity_floor(*, box_name: str, project_path: str | None, inbox: str |
 def meta_agent_identity_floor(agent_name: str, agent_real_name: str | None, agent_auth_share_support: bool) -> dict[str, object]
 def workset_anchor_floor(*, mode: str, channelroot: str | None=None, workspaces: str | None=None, workset_channels: Mapping[str, str | None] | None=None) -> dict[str, object]
 def resolve_auth_source(snapshot: KeyStore, *, mode: str | None=None) -> AuthSource
-def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[SettingsFile], subject: ResolveSubject) -> None
+def refuse_read_time_faults(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx, files: Sequence[SettingsFile], subject: ResolveSubject, tiers: Sequence[str]) -> None
 def internal_bind_refusals(arm: str, entries: dict[str, object], *, where: str, when: Literal['write', 'stored'], floor_entries: dict[str, object] | None=None) -> list[str]
 def depends_on_the_box(refs: Collection[str], *, in_workset: bool) -> bool
 @overload
@@ -84,6 +86,7 @@ def _carrying_files(findings: Sequence[tuple[tuple[str, ...], Judgment]], writte
 def _path_key_leaves(store: KeyStore) -> list[tuple[str, object]]
 def _refuse_ambiguous_path_values(written: Sequence[_WrittenLevel], expanded: KeyStore, *, ctx: ResolveCtx) -> None
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None
+def _refuse_inherited_per_owner(written: Sequence[_WrittenLevel], tiers: Sequence[str], expanded: KeyStore) -> None
 def _workset_channel_floor_values(part: 'WorksetPartition', wch: 'WorksetChannels | None') -> 'tuple[str | None, dict[str, str | None]]'
 def _workset_workspaces_floor_value(mode: str, ws_root_literal: 'str | None', *, early: EarlyScope) -> 'str | None'
 def _box_less_omits(key: str, *, in_workset: bool) -> bool

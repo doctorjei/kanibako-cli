@@ -70,6 +70,7 @@ def canon_skeleton_rels() -> tuple[tuple[str, bool], ...]
 def materialize_canon_skeleton(shell_path: Path, *, logger: 'logging.Logger | None'=None, quiet: bool=False) -> None
 def materialize_canon_skeleton_if_present(shell_path: Path, *, logger: 'logging.Logger | None'=None) -> None
 def bind_dest_families() -> dict[str, str]
+def bind_dest_owners() -> dict[str, str]
 def internal_bind_keys() -> frozenset[tuple[str, str]]
 def helper_bind_dests() -> frozenset[str]
 def image_bind_dests() -> frozenset[str]

@@ -1182,6 +1182,19 @@ def uniform_anchor(level: str, agent: "str | None") -> str:
     return "/".join([*(uniform_anchor(p, agent) for p in paired), spelled])
 
 
+def key_owner(key: str) -> "tuple[str, str | None]":
+    """*key*'s owner, read from ``KEY_OWNERS`` (an agent key through its ``<agent>`` row), and
+    the agent it names; an unlisted key is ``shared``."""
+    from kanibako.settings.config_keys import KEY_OWNERS
+
+    try:
+        agent: "str | None" = _agent_of(key)
+    except ValueError:
+        agent = None
+    row = key if agent is None else key.replace(f"agent.{agent}.", "agent.<agent>.", 1)
+    return KEY_OWNERS.get(key, KEY_OWNERS.get(row, "shared")), agent
+
+
 def _agent_of(key: str) -> str:
     """The agent an ``agent.<a>.…`` or ``meta.agent.<a>.…`` key belongs to."""
     parts = key.split(".")

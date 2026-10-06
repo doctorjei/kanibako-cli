@@ -71,10 +71,13 @@ from kanibako.settings.config import (
     box_scalar_defaults_floor,
     load_config,
     config_base_path,
+    key_owner,
     null_path_keys_error,
+    reaches_identity,
     refuses_null_box_scalar,
     refuses_null_path_key,
     settings_base_path,
+    uniform_anchor,
     usable_box_store_value,
     user_config_file,
 )
@@ -84,6 +87,9 @@ from kanibako.settings.keystore import KeyStore
 from kanibako.settings.messages import (
     ERR_BOX_STORE_EMPTY_REASON,
     ERR_BOX_STORE_TRAILING_REASON,
+    ERR_PER_OWNER_LAUNCH,
+    PER_OWNER_SET_WORDS,
+    PER_OWNER_SHARE_TAIL,
 )
 from kanibako.settings.paths import (
     BoxMode,
@@ -138,6 +144,7 @@ from kanibako.settings.settings_resolve import (
     is_verbatim_text,
     literal_expr,
     normalize_bind_dest,
+    unpack_bind_entry,
 )
 from kanibako.settings.messages import (
     ERR_BOX_SCALAR_NULL_CURE,
@@ -1427,13 +1434,16 @@ def refuse_read_time_faults(
     ctx: ResolveCtx,
     files: Sequence[SettingsFile],
     subject: ResolveSubject,
+    tiers: Sequence[str],
 ) -> None:
     """RAISE for any stored value a resolve may not proceed with.
 
     The READ-TIME refusals, IN ORDER. Runs after ``expand``: [R147]'s bare-relative sweep
     (:func:`_refuse_ambiguous_path_values`, over *written*), then §0's undeclared-key
     refusal (:func:`_refuse_undeclared_snapshot`, over *expanded*), then §2c's entry at
-    an internal bind's dest (:func:`_refuse_internal_bind_entries`, over *written*).
+    an internal bind's dest (:func:`_refuse_internal_bind_entries`, over *written*), then
+    §0's per-owner values (:func:`_refuse_inherited_per_owner`, over *written*, each level's
+    scope in *tiers*).
     ⚑ ONE CARRIER OF THE ORDER: the launch (:func:`build_launch_snapshot`) and the workset preview
     (``commands/workset_cmd._workset_preview_entries``) both call this, so a resolve
     route cannot run one refusal and skip the other.
@@ -1448,6 +1458,7 @@ def refuse_read_time_faults(
         expanded, files=files, written=written, subject=subject,
     )
     _refuse_internal_bind_entries(written)
+    _refuse_inherited_per_owner(written, tiers, expanded)
 
 
 def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
@@ -1487,6 +1498,97 @@ def _refuse_internal_bind_entries(written: Sequence[_WrittenLevel]) -> None:
             ))
     if refusals:
         raise SettingsError("\n".join(refusals))
+
+
+#: The containment scope each ``written`` tier's file speaks for.
+_TIER_SCOPE: Final[dict[str, str]] = {
+    "box": "box", "workset": "workset", "agent": "agent", "agent.default": "agent",
+    "system": "system", "base": "system",
+}
+#: The owner of an UNDECLARED entry, by its category key's scope (keyspec §0).
+_CATEGORY_OWNER: Final[dict[str, str]] = {"box": "box", "workset": "workset", "system": "shared"}
+
+
+def _refuse_inherited_per_owner(
+    written: Sequence[_WrittenLevel], tiers: Sequence[str], expanded: KeyStore,
+) -> None:
+    """RAISE naming every per-owner key and ``bindings.ro``/``bindings.rw`` entry whose WINNING
+    value a containing scope's file stores and which reaches no owner identity (keyspec §0
+    "Per-owner resources").
+
+    The set door's judgment, :func:`~kanibako.settings.config.reaches_identity`, through the
+    written levels' raw values. A file judges every mode it feeds: a workset file this box's
+    mode, any other file all three. A declared entry's owner is its row's
+    (:func:`core_defaults.bind_dest_owners`); an undeclared one takes its category key's. An
+    entry under ``agent.<agent>.*`` is not judged: undeclared ones are exempt, and every
+    declared plugin bind row is ``shared``.
+    """
+    def stored(ref: str) -> object:
+        for level, _path, _floor in written:
+            value = snapshot_leaf(level, ref)
+            if value is not __MISSING__:
+                return value
+        return None
+
+    mode = snapshot_leaf(expanded, "meta.box.mode")
+    declared = core_defaults.bind_dest_owners()
+    rank = SCOPE_CONTAINMENT.index
+    seen: set[object] = set()
+    refusals: list[str] = []
+
+    def judge(name: str, value: object, owner: str, agent: "str | None", *,
+              tier: str, path: Path | None, key: str, tail: str = "") -> None:
+        scope = _TIER_SCOPE[tier]
+        if owner == "shared" or not isinstance(value, str) or not value:
+            return
+        if rank(scope) >= rank("workset" if owner == "partition" else owner):
+            return
+        modes = (BoxMode(mode),) if scope == "workset" and isinstance(mode, str) else (
+            (BoxMode.primary, BoxMode.named) if scope == "workset" else tuple(BoxMode))
+        if all(reaches_identity(value, owner, m, key=key, stored=stored) for m in modes):
+            return
+        noun, identity, shared_by, file_owner = PER_OWNER_SET_WORDS[owner]
+        refusals.append(ERR_PER_OWNER_LAUNCH % (
+            name, value, path if path is not None else "a settings file", noun, identity,
+            shared_by, f"{value.rstrip('/')}/{uniform_anchor(owner, agent)}", file_owner,
+            tail,
+        ))
+
+    for (level, path, floor_store), tier in zip(written, tiers):
+        for segments, is_node in walk_store_paths(level):
+            dotted = ".".join(segments)
+            if not is_node and not any("." in seg for seg in segments) and dotted not in seen:
+                seen.add(dotted)
+                value = snapshot_leaf(level, dotted)
+                if floor_store is None or snapshot_leaf(floor_store, dotted) != value:
+                    owner, agent = key_owner(dotted)
+                    judge(dotted, value, owner, agent, tier=tier, path=path, key=dotted)
+            if not (is_node and dotted.endswith((".bindings.ro", ".bindings.rw"))
+                    and is_terminal_category_key(dotted)):
+                continue
+            entries = snapshot_leaf(level, dotted)
+            floor_entries = snapshot_leaf(floor_store, dotted) if floor_store else None
+            for dest, entry in dict.items(entries) if isinstance(entries, dict) else ():
+                norm = normalize_bind_dest(dest)
+                if (dotted, norm) in seen:
+                    continue
+                seen.add((dotted, norm))
+                if segments[0] == "agent" or entry is None or (
+                    isinstance(floor_entries, dict)
+                    and dict.get(floor_entries, dest, __MISSING__) == entry
+                ):
+                    continue
+                try:
+                    src, _opts = unpack_bind_entry(entry)
+                except SettingsError:
+                    continue  # malformed: its own refusal names it
+                owner = declared.get(norm, _CATEGORY_OWNER.get(segments[0], "shared"))
+                tail = "" if norm in declared else PER_OWNER_SHARE_TAIL % (
+                    f"system.{dotted.partition('.')[2]}")
+                judge(entry_label(shown_key(dotted), dest), src, owner, None,
+                      tier=tier, path=path, key=dotted, tail=tail)
+    if refusals:
+        raise SettingsError("\n\n".join(refusals))
 
 
 def internal_bind_refusals(
@@ -2453,7 +2555,7 @@ def build_launch_snapshot(
     # of it: the probe is REPORT-ONLY by its own module contract, and the two share
     # the ORACLE so the refusal arms exactly what was measured.
     refuse_read_time_faults(
-        written, expanded, ctx=ctx, files=files, subject=subject,
+        written, expanded, ctx=ctx, files=files, subject=subject, tiers=cascade.tiers,
     )
     refuse_undeclared_per_file(files)
     _warn_lone_none_standard_binds(

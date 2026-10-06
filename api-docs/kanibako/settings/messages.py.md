@@ -45,6 +45,8 @@ ERR_CONFIG_REF_ORDER = '%s is set to %r, which points at \'@%s\' — a %s key, w
 ERR_PER_OWNER_SET = "nothing was written: %s = %r (%s scope, %s) would give every %s one shared path, because the value names no %s identity. %s Spell the identity into the value: %r, or set %s in each %s's own file."
 PER_OWNER_SET_WORDS = {'workset': ('working set', 'working-set', 'Same-named boxes in different working sets, and every standalone box, would share it.', 'working set'), 'partition': ('channel partition', 'partition', 'Same-named boxes in different working sets would share it.', 'working set'), 'box': ('box', 'box', 'Every box would share it.', 'box'), 'agent': ('agent', 'agent', 'Every agent would share it.', 'agent')}
 ERR_PER_OWNER_READ = "%s is set to %r in %s, which gives every %s one shared path, because the value names no %s identity. %s Nothing was changed. Spell the identity into the value: kanibako system set '%s=%s'; or run kanibako system reset %s, then kanibako workset set <workset> '%s=…' in each %s. To stop running boxes meanwhile: kanibako stop --all reads no settings; it lists the running boxes and asks before stopping them."
+ERR_PER_OWNER_LAUNCH = "%s is set to %r in %s, which gives every %s one shared path, because the value names no %s identity. %s Nothing was changed. Spell the identity into the value: %r, or put it in each %s's own file%s."
+PER_OWNER_SHARE_TAIL = '; to share one path on purpose, move it to %s'
 ERR_WORKSET_EARLY_SET_HEAD = 'nothing was written: this value could not be read back.\n  %s'
 WARN_CONFIG_BAD_ENTRIES = '%s stores entries that are not keys (spec §0):\n  %s'
 ERR_CONFIG_BAD_ENTRIES_TAIL = '\nNothing was written. Remove those entries by editing the file, or rerun with --force to set anyway.'

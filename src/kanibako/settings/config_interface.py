@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping, NamedTuple
 from kanibako.settings.config import (
     _BOX_SCALAR_FIELDS,
     _LAYER1_TABLE,
-    _agent_of,
     agent_settings_of,
     chain_reaches,
+    key_owner,
     load_config,
     load_project_overrides,
     null_path_keys_error,
@@ -130,7 +130,6 @@ from kanibako.settings.config_keys import (
     is_config_file_only_key,
     resolve_key,
     ConfigLevel,
-    KEY_OWNERS,
 )
 from kanibako.settings.config_io import (
     count_leaves,
@@ -1547,12 +1546,7 @@ def _per_owner_set_error(
     from kanibako.settings.paths import BoxMode
 
     key = canonical.removeprefix(f"{PREF_ROOT}.")
-    try:
-        agent: "str | None" = _agent_of(key)
-    except ValueError:
-        agent = None
-    row = key if agent is None else key.replace(f"agent.{agent}.", "agent.<agent>.", 1)
-    owner = KEY_OWNERS.get(key, KEY_OWNERS.get(row, "shared"))
+    owner, agent = key_owner(key)
     if value is None or owner == "shared" or command_scope is None:
         return None
     rank = SCOPE_CONTAINMENT.index
@@ -2050,8 +2044,7 @@ def set_config_value(
         write_nested_key(dest.file, dest.sections, dest.leaf, typed)
     else:
         write_root_key(dest.file, dest.leaf, typed)
-    # ⚑ THE CANONICAL KEY, never a re-flattened one — this branch is where an underscore
-    # spelling no verb accepts used to reach the user. The rule it broke is stated once, on
+    # ⚑ THE CANONICAL KEY, never a re-flattened one: the rule is stated once, on
     # :func:`_set_confirmation`.
     # ⚑ *value*, not *typed*: the RAW string the user typed round-trips by construction,
     # where the coerced form would answer ``true`` with ``True``.
@@ -2225,7 +2218,7 @@ def reset_config_value(
 
     # The setup VERSION MARKER — cleared from the system settings file's ``system:`` table,
     # the same slot set wrote. ⚑ This is the "user-resettable" half of spec §2g's own
-    # description of the key, and it was refused outright until 2026-08-23.
+    # description of the key.
     if canonical == SETUP_MARKER_KEY:
         dest = _reset_dest(canonical, command_scope, config_path, system_settings_path)
         if remove_nested_key(dest.file, dest.sections, dest.leaf):
@@ -2741,8 +2734,7 @@ def _undeclared_stored_entries(data: dict) -> dict[tuple[str, ...], tuple[str, s
             if isinstance(v, dict) and v:
                 _walk(v, segments)
             else:
-                # THROUGH ``get``'s own renderer, so one value has one spelling — the rule
-                # three hand-kept arms here used to restate, one of which had drifted.
+                # THROUGH ``get``'s own renderer, so one value has one spelling.
                 # Spelled JOINED: below a dotted ``<VAR>`` name that is the older spelling,
                 # left as-is pending the deferred dotted-var treatment.
                 out[segments] = (".".join(display_segments(segments)), render_stored_scalar(v))
