@@ -588,6 +588,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`box move` and `box move <primary> --standalone` no longer land a user's own `<workspace>/box_data/` on the standalone
+  store path.** It previously merged into the store, so a colliding file was silently overwritten and a later
+  `box rm --purge` deleted the user's content; the copy now aims at the workspace the target resolves. An in-place
+  `box convert --standalone` whose root already holds a non-empty `box_data/` is refused rather than merged into.
+
 - **`start` no longer tells a standalone box whose `workset.boxes` points at a directory that does not exist that
   "nothing is registered under it"** or suggests `kanibako create`; it names the repoint and prints a move cure. A null
   `workset.boxes` now carries its own refusal.
