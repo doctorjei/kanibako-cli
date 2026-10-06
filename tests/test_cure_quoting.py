@@ -291,29 +291,31 @@ def test_the_three_shared_doors_print_one_identical_sentence(
 class TestTheOtherTwoCuresAreQuoted:
     """The ``start`` and ``code --remote`` cures carry operands the CLI never validates."""
 
-    def test_the_start_create_cure_renders_its_operand_through_shlex(
-        self, tmp_home, config_file, credentials_dir
-    ):
-        """GUARD, not a reproduced injection: this door is name-gated.
+    @pytest.mark.parametrize(
+        "designation", ["unregistered_box", "ws/box", "a\0b"],
+        ids=["identifier", "qualified", "nul_bearing"],
+    )
+    def test_the_start_create_cure_quotes_the_operand_it_is_handed(self, designation):
+        """This door is name-gated, so only a NUL-bearing operand needs quoting.
 
-        ``_no_box_error`` reaches this line only when
-        :func:`designation_route` is not PATH, which for a non-empty value means
-        an IDENTIFIER or a ``<workset>/<box>`` pair of them — and
-        :func:`is_valid_box_name` refuses every shell metacharacter and all
-        whitespace.  So ``shlex.quote`` here is a no-op for every operand the CLI
-        can deliver; the line is pinned so the branch keeps the rule its PATH
-        sibling already used, and a hostile value lands on that sibling instead
-        (see ``test_a_path_operand_takes_the_quoted_sibling``).
+        The line is reached only when :func:`designation_route` is not PATH,
+        which for a non-empty value is an IDENTIFIER, a ``<workset>/<box>`` pair
+        of them, or a NUL-bearing INVALID — and :func:`is_valid_box_name`
+        refuses whitespace and every shell metacharacter, so the first two are
+        already quote-clean.  The NUL case is the one that still needs it, and it
+        is pinned here so the branch cannot go back to printing its operand raw;
+        a hostile ``$( )`` designation is a PATH and takes the quoted sibling.
         """
         from kanibako.commands.start import _no_box_error
 
-        name = "unregistered_box"
-        message = _no_box_error(name)
+        message = _no_box_error(designation)
         line = next(
             ln for ln in message.splitlines() if "Otherwise create a new box" in ln
         )
 
-        assert line.strip() == f"Otherwise create a new box:  kanibako create {shlex.quote(name)}"
+        assert line.strip() == (
+            f"Otherwise create a new box:  kanibako create {shlex.quote(designation)}"
+        )
 
     @pytest.mark.parametrize("name", _HOSTILE)
     def test_a_path_operand_takes_the_quoted_sibling(self, name, tmp_path):
