@@ -73,6 +73,7 @@ def _under_pref(parts: tuple[str, ...]) -> bool
 def _pref_agent_segment(parts: tuple[str, ...]) -> str | None
 def _is_bare_scalar_entry(value: Any) -> bool
 def _at_declared_category(parts: tuple[str, ...]) -> bool
+def _at_bind_leaf(parts: tuple[str, ...], *, in_binds: bool) -> bool
 def _parse_node(value: Any, *, in_binds: bool, dest_keyed: bool=False, at_bindings: bool=False, path: tuple[str, ...]=(), for_pref_requests: bool=False) -> Any
 def _parse_marker_map(raw: dict, *, path: tuple[str, ...]) -> KeyStore
 def _declared_source(src: str, category: str, dest: str, root_ref: str | None) -> str

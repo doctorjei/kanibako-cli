@@ -1168,9 +1168,10 @@ def _at_bind_leaf(parts: tuple[str, ...], *, in_binds: bool) -> bool:
     """
     if in_binds or parts[-1] not in BIND_LEAF_CATEGORIES:
         return False
-    if _at_declared_category(parts):
+    key = ".".join(parts[1:] if _under_pref(parts) else parts)
+    if is_terminal_category_key(key):
         return True
-    return key_class(".".join(parts), valid_agents=()).cls is not KeyClass.KEY
+    return key_class(key, valid_agents=()).cls is not KeyClass.KEY
 
 
 def _parse_node(
