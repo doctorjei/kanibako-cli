@@ -136,7 +136,7 @@ class TestHelperFork:
             runtime=MagicMock(), image="test:latest", container_name_segments=("primary", "myapp"),
             shell_path=shell, helpers_dir=shell / "helpers", socket_path=tmp_home / "h.sock",
             project_path=workspace, data_path=std.data_path, boxes=std.boxes,
-            registry=std.registry, primary_workset=std.primary_workset,
+            primary_workset=std.primary_workset,
             early=paths._early_scope(std, BoxMode.primary),
         )
         assert hub._handle_fork({"name": "two"})["status"] == "ok"

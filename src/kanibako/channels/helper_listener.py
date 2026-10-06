@@ -47,7 +47,6 @@ class HelperContext:
     project_path: Path | None = None   # host-side workspace directory
     data_path: Path | None = None      # kanibako data root (~/.local/share/kanibako/)
     boxes: Path | None = None          # resolved PRIMARY workset.boxes (std.boxes)
-    registry: Path | None = None       # resolved config.registry file (std.registry)
     primary_workset: Path | None = None  # resolved config.primary_workset (std.primary_workset)
     early: EarlyScope = field(kw_only=True)  # the PRIMARY early scope (paths._early_scope)
 

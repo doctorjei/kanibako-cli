@@ -74,7 +74,6 @@ def fork_ctx(tmp_path):
         binary_mounts=[],
         project_path=project_path,
         data_path=data_path,
-        registry=data_path / "global" / "registry.yaml",
         boxes=data_path / "boxes",
         primary_workset=data_path / "primary_workset",
         early=early_record(tmp_path, mode=BoxMode.primary),
@@ -105,9 +104,6 @@ def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
     boxes = data_path / boxes_leaf
     boxes.mkdir(parents=True)
 
-    registry = data_path / "global" / "registry.yaml"
-    registry.parent.mkdir(parents=True, exist_ok=True)
-    registry.write_text("worksets: {}\n")
     # PRIMARY membership is EMPTY: the reverse lookup misses, so the fork can only
     # reach its source metadata through the shell_path fallback.
     primary_reg = data_path / "primary_workset" / "registry.yaml"
@@ -134,7 +130,6 @@ def _fallback_ctx(tmp_path: Path, boxes_leaf: str) -> HelperContext:
         binary_mounts=[],
         project_path=project_path,
         data_path=data_path,
-        registry=registry,
         boxes=boxes,
         primary_workset=data_path / "primary_workset",
         early=early_record(tmp_path, mode=BoxMode.primary),
@@ -242,20 +237,6 @@ class TestHandleFork:
         resp = _send(sock_path, {"action": "fork", "name": "a.b"})
         assert resp["status"] == "error"
         assert "invalid" in resp["message"]
-
-    def test_fork_succeeds_without_registry(self, fork_hub):
-        """An absent registry is not a precondition: the fork reads no registry file.
-
-        The fork's only membership write goes to the PRIMARY per-workset file, so a
-        context carrying no ``registry`` must still fork.
-        """
-        hub, sock_path, ctx = fork_hub
-        ctx.registry = None
-
-        resp = _send(sock_path, {"action": "fork", "name": "noreg"})
-
-        assert resp["status"] == "ok"
-        assert Path(resp["path"]).is_dir()
 
     def test_fork_returns_error_when_project_path_not_set(self, tmp_path):
         """Fork fails gracefully when context lacks project_path."""

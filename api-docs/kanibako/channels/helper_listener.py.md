@@ -36,7 +36,6 @@ class HelperContext:
     project_path: Path | None = None
     data_path: Path | None = None
     boxes: Path | None = None
-    registry: Path | None = None
     primary_workset: Path | None = None
     early: EarlyScope = field(kw_only=True)
 
