@@ -2239,6 +2239,7 @@ def run_register(args: argparse.Namespace) -> int:
             try:
                 sa_name = import_reconcile.import_standalone(
                     std.registry, root, journal=std.journal,
+                    early=_early_scope(std, BoxMode.standalone),
                 )
             except import_reconcile.ImportConflictError as e:
                 print(f"Error: {e}", file=sys.stderr)

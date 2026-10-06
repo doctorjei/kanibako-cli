@@ -35,11 +35,15 @@ from __future__ import annotations
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from kanibako.project import registry_store
 from kanibako.project.names import register_name
 from kanibako.errors import KanibakoError
-from kanibako.settings.bootstrap import STANDALONE_META_DIR
+from kanibako.settings.paths import standalone_box_store
+
+if TYPE_CHECKING:
+    from kanibako.settings.workset_dirkeys import EarlyScope
 
 
 class ImportConflictError(KanibakoError):
@@ -145,11 +149,15 @@ def import_standalone(
     """
     root = root.resolve()
     root_str = str(root)
+    # ⚑ The journal KEY is the RESOLVED store, and it MUST agree with
+    # ``commands/start.py::_box_journal_key`` (``shell_path.parent``): that is the key
+    # ``create`` writes and ``create --recover`` reads, and it moves with ``workset.boxes``.
+    store = standalone_box_store(root, early=early)
 
     # Already registered to this exact root → no-op; clear any stale J2 entry.
     existing_name = registry_store.standalone_name_for_root(registry, root)
     if existing_name is not None:
-        _clear_stale_import(journal, root / STANDALONE_META_DIR)
+        _clear_stale_import(journal, store)
         return existing_name
 
     # ⚑ Gate on the standalone MARKER (design D4): the box's own settings FILE is
@@ -161,7 +169,7 @@ def import_standalone(
     if journal is not None:
         from kanibako.launch import journal as journal_mod
 
-        if journal_mod.pending_create(journal, root / STANDALONE_META_DIR) is not None:
+        if journal_mod.pending_create(journal, store) is not None:
             return None
 
     # ⚑ The LIVE name, by THE one naming rule; an unregistered box has no stored
@@ -175,7 +183,7 @@ def import_standalone(
 
     # J2 write-ahead: register-only, NO seed — the box is already seeded on disk.
     with _journal_register(
-        journal, root / STANDALONE_META_DIR,
+        journal, store,
         op="import", name=name, mode="standalone",
     ):
         registry_store.register_standalone(registry, name, root)
