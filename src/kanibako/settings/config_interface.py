@@ -1074,8 +1074,6 @@ def _category_set_lookups(
     )
 
     def resolves(key: str, value: str) -> "str | None":
-        from kanibako.settings.settings_expand import is_cascade_blindness
-
         # Apply the candidate into a FRESH copy (S19), lenient-expand, read the key's defect.
         candidate = _clone_keystore(base_snapshot)
         try:
@@ -1084,18 +1082,10 @@ def _category_set_lookups(
             # ⚑ A RESERVED leaf name is a set-time DEFECT, not a crash (the H1 never-raises rule).
             return str(exc)
         errors = _lenient_expand(candidate, ctx, agent_name)[1]
-        if key not in errors:
+        if key not in errors or _blindness_forgiven(
+            {key: errors[key]}, candidate, ctx, agent_name, command_scope,
+        ):
             return None
-        unseen = _floor_blind_referents(key, value, candidate, command_scope)
-        if unseen and is_cascade_blindness(errors[key]):
-            supplied = _clone_keystore(candidate)
-            try:
-                for name in unseen:
-                    _set_leaf(supplied, name.split("."), "/")
-            except ReservedKeyError:
-                return errors[key]
-            if key not in _lenient_expand(supplied, ctx, agent_name)[1]:
-                return None
         return errors[key]
 
     def raw_bind(key: str) -> "Any | None":
@@ -1142,9 +1132,7 @@ def _set_time_defects(
 ) -> "dict[str, str]":
     """Keyspec §2a: what the lenient ``expand`` of the command's snapshot MARKS, *edit*
     ``(key, value)`` applied first, ``{dotted: reason}`` — forgiving cascade blindness
-    exactly as the edited value's probe does (:func:`_category_set_lookups`)."""
-    from kanibako.settings.settings_expand import is_cascade_blindness
-
+    exactly as the edited value's probe does (:func:`_blindness_forgiven`)."""
     snapshot, ctx = _set_time_snapshot(
         target=target, agent_name=agent_name, agent_path=agent_path, config_path=config_path,
         command_scope=command_scope, system_settings_path=system_settings_path,
@@ -1153,17 +1141,34 @@ def _set_time_defects(
     if edit is not None:
         _set_leaf(snapshot, edit[0].split("."), edit[1])
     errors = _lenient_expand(_clone_keystore(snapshot), ctx, agent_name)[1]
-    unseen = {
-        dotted: _floor_blind_referents(dotted, raw, snapshot, command_scope)
-        for dotted, reason in errors.items()
-        if is_cascade_blindness(reason) and isinstance(raw := snapshot_leaf(snapshot, dotted), str)
-    }
-    forgiven = {dotted for dotted, names in unseen.items() if names}
-    if forgiven:
-        for name in {name for dotted in forgiven for name in unseen[dotted]}:
-            _set_leaf(snapshot, name.split("."), "/")
-        forgiven -= set(_lenient_expand(snapshot, ctx, agent_name)[1])
+    forgiven = _blindness_forgiven(errors, snapshot, ctx, agent_name, command_scope)
     return {k: r for k, r in errors.items() if k not in forgiven}
+
+
+def _blindness_forgiven(
+    errors: "Mapping[str, str]", candidate: "Any", ctx: "Any", agent_name: str,
+    command_scope: "ConfigLevel | None",
+) -> "set[str]":
+    """The keys of *errors* whose defect is this floor's cascade blindness alone: a blind
+    reason that clears once its unseen referents (:func:`_floor_blind_referents`) are
+    supplied. A reserved referent name forgives nothing."""
+    from kanibako.settings.settings_expand import is_cascade_blindness
+
+    unseen = {
+        dotted: names for dotted, reason in errors.items()
+        if is_cascade_blindness(reason)
+        and isinstance(raw := snapshot_leaf(candidate, dotted), str)
+        and (names := _floor_blind_referents(dotted, raw, candidate, command_scope))
+    }
+    if not unseen:
+        return set()
+    supplied = _clone_keystore(candidate)
+    try:
+        for name in {name for names in unseen.values() for name in names}:
+            _set_leaf(supplied, name.split("."), "/")
+    except ReservedKeyError:
+        return set()
+    return set(unseen) - set(_lenient_expand(supplied, ctx, agent_name)[1])
 
 
 def _clone_keystore(store: "Any") -> "Any":
@@ -1355,24 +1360,40 @@ def get_config_value(
     cascade_system_path: Path | None = None,
     cascade_workset_path: Path | None = None,
     node_store: bool = True,
+    std: Any = None,
+    proj: Any = None,
+    ws: Any = None,
 ) -> str | None:
     """Read one config value STORED AT THIS NOUN, or ``None`` when it is not set there.
 
     Warns, and reads on, when a file the noun's ``set`` would judge stores an entry that
     is not a key (spec §2a); the ``cascade_*`` files are the tiers above the noun's own.
+    *std*, *proj* and *ws* name the command's target as for :func:`set_config_value`; a
+    value that does not resolve is judged against that target only, so without *std*
+    it is not reported.
     """
     canonical = resolve_key(key)
+
+    def defects() -> "dict[str, str]":
+        from kanibako.settings.agent_config import agent_settings_path
+
+        agent_name = active_agent or ""
+        system_path = cascade_system_path or system_settings_path
+        return _set_time_defects(
+            project_toml or global_config_path, edit=None, command_scope=command_scope,
+            system_settings_path=system_settings_path, system_path=system_path,
+            workset_path=cascade_workset_path, box_path=None, agent_name=agent_name,
+            agent_path=agent_settings_path(std.agents, agent_name) if agent_name else None,
+            target=_set_time_target(
+                std=std, proj=proj, ws=ws, agent_name=agent_name, system_path=system_path,
+            ),
+        )
+
     try:
         bad = _cascade_bad_entries(
             noun_settings_file(project_toml, system_settings_path), command_scope,
             system_path=cascade_system_path, workset_path=cascade_workset_path,
-            box_path=None,
-            defects=lambda: _set_time_defects(
-                project_toml or global_config_path, edit=None, command_scope=command_scope,
-                system_settings_path=system_settings_path, system_path=cascade_system_path,
-                workset_path=cascade_workset_path, box_path=None,
-                agent_name=active_agent or "",
-            ),
+            box_path=None, defects=None if std is None else defects,
         )
     except KanibakoError:
         bad = _BadEntries([], [], lambda _dotted: None, [])  # that file's own reader refuses it

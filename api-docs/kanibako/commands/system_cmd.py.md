@@ -14,5 +14,6 @@ def run_get(args: argparse.Namespace) -> int
 def run_show(args: argparse.Namespace) -> int
 def run_defaults(args: argparse.Namespace) -> int
 def _agent_node_error(key: str, *, verb: str) -> str | None
+def _system_target_std(cf)
 def _run_system_config(args: argparse.Namespace) -> int
 ```
