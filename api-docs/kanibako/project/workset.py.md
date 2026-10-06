@@ -51,6 +51,7 @@ def retained_vault_reason(root: Path, vault: Path) -> str
 def report_retained_vault(vault: Path, why: str) -> None
 def report_retained_vaults(root: Path, retained: Iterable[Path]) -> None
 def is_reserved_workset_name(name: str) -> bool
+def refuse_reserved_registered_name(name: str, root: Path) -> None
 def refuse_retired_workset_identity(root: Path) -> None
 def is_workset_skeleton(root: Path, *, early: EarlyScope) -> bool
 def create_workset(name: str, root: Path, std: StandardPaths) -> Workset

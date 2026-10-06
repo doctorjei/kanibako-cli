@@ -736,6 +736,7 @@ def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workse
     # ⚑ A root still carrying a RETIRED identity table refuses here, with the named
     # cure — it is the load path, not detection, that a 1.6/1.7 user reaches first
     # (their workset IS globally registered, so detection resolves it fine).
+    refuse_reserved_registered_name(name, root)
     refuse_retired_workset_identity(root)
     settings_doc = load_workset_settings_doc(root)
     ws = Workset(name=name, root=root, early_system=early_system)
@@ -751,6 +752,42 @@ def _load_workset(root: Path, name: str, *, early_system: EarlySystem) -> Workse
         ).items()
     ]
     return ws
+
+
+def refuse_reserved_registered_name(name: str, root: Path) -> None:
+    """RAISE when a pre-1.8 registry entry carries a name ``create`` now refuses.
+
+    ``default`` and ``__default__`` are exempt: they were reserved before 1.8, and
+    ``workset rm`` cannot address them, so this cure would not run.
+    """
+    if not is_reserved_workset_name(name):
+        return
+    if find_identifier(name, RESERVED_WORKSET_IDENTIFIERS) is not None:
+        return
+    if is_reserved_workset_name(root.name):
+        new_root = root.parent / "<new name>"
+        move = (
+            f"  mv {root} {new_root}\n"
+            f"  # then, in {new_root / 'registry.yaml'}, change each box path that "
+            f"starts with {root}/ to start with {new_root}/\n"
+        )
+    else:
+        new_root, move = root, ""
+    raise WorksetError(
+        f"Working set '{name}' is registered under a reserved name. The names "
+        f"{', '.join(sorted(RESERVED_WORKSET_NAMES))} belong to the primary and "
+        f"standalone partitions: a working set called '{name}' would share their "
+        f"container names (kb-<workset>-<box>) or channel addresses. kanibako 1.7 "
+        f"accepted the name; 1.8 refuses it. Register the working set again under "
+        f"its directory name; its files stay where they are:\n"
+        f"  kanibako workset rm {name} --force\n"
+        f"{move}"
+        f"  cd {new_root} && kanibako box info\n"
+        f"The last command imports the working set and names it after the directory; "
+        f"it then says you are not inside a project, which is expected. "
+        f"See MIGRATION.md, 'A working set named primary or standalone must be "
+        f"registered again'."
+    )
 
 
 def refuse_retired_workset_identity(root: Path) -> None:

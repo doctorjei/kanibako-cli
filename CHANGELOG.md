@@ -69,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it once, in any mode, and continues. See *Containers are renamed `kb-<workset>-<box>`; a pre-1.8.0
   container is invisible* in `MIGRATION.md`.
 
+- **A working set already registered under a reserved name (`primary`, `standalone`) refuses every
+  command that loads it.** Before, only `workset create` and the import checked the name, so a
+  working set a pre-1.8.0 release registered as `primary` kept working and its boxes' containers
+  took primary boxes' names. The refusal prints the commands that register it again under its
+  directory name; `workset list` still shows it and `workset rm` still removes it. See *A working
+  set named primary or standalone must be registered again* in `MIGRATION.md`.
+
 - **`system set`, `get`, and `reset` on `agent.<node>.*` use the system settings file.** They used
   to write and clear `agents/<node>/agent.yaml`, and `get` read that file first; per keyspec §2a
   they now work on `<data>/global/settings.yaml` alone, under `agent: <node>:`. **Printed-line
