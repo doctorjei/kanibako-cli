@@ -621,7 +621,7 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
     # through ``str()``: that turned a ``model: null`` into the four-byte string
     # ``"None"``, a bogus model id the launch cascade took as real.
     cfg.state = {
-        k: (v if v is None else str(v))
+        k: (v if v is None or isinstance(v, bool) else str(v))
         for k, v in agent_sec.items()
         if k not in _ROOT_TABLES and not isinstance(v, dict)
     }
@@ -642,7 +642,7 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
     # The two tables disagreed about one idiom while sitting two lines apart.
     env_sub = agent_sec.get("env", {})
     cfg.env = {
-        k: (v if v is None else str(v)) for k, v in env_sub.items()
+        k: (v if v is None or isinstance(v, bool) else str(v)) for k, v in env_sub.items()
     } if isinstance(env_sub, dict) else {}
     # secret_path: VAR -> host PATH pointer, read DIRECTLY from the root's
     # ``secret_path`` table (spec §2a SECRET category).  A plain string path; the
@@ -653,7 +653,7 @@ def record(level: AgentFileLevel, *, node: str) -> AgentConfig:
     # see ``AgentConfig.secret_path``.
     secret_sub = agent_sec.get("secret_path", {})
     cfg.secret_path = {
-        k: (v if v is None else str(v)) for k, v in secret_sub.items()
+        k: (v if v is None or isinstance(v, bool) else str(v)) for k, v in secret_sub.items()
     } if isinstance(secret_sub, dict) else {}
     transform_sub = agent_sec.get("transform_settings", {})
     cfg.transform_settings = (

@@ -1752,3 +1752,115 @@ class TestOneNodeTwoSpellings:
         dump_doc(slot.path, {"agent": {"goose": {"model": "g"}, "default": {"model": "d"}}})
         assert read_leaf(slot) is None
         assert agent_record(slot.path, node="claude", purpose=ReadPurpose.RESOLVE).state == {}
+
+
+class TestAStoredBoolReachesTheVerbUnrendered:
+    """A stored YAML bool is carried by the RECORD as a bool, so ``get``/``show``/``info``
+    can spell it the way every other ``get`` route does.
+
+    The record used to coerce every leaf through ``str()``, which turned a YAML ``true``
+    into the four-byte string ``True`` — indistinguishable, in the record, from a user who
+    wrote ``"True"``. The two must render DIFFERENTLY (``true`` vs ``True``), so the
+    distinction has to survive the load; no renderer can recover it afterwards. (Mutation:
+    restore ``v if v is None else str(v)`` at any of the three tables and this class red.)
+    """
+
+    def _file(self, tmp_path, body):
+        p = tmp_path / "claude" / "agent.yaml"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("self:\n" + body)
+        return agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE)
+
+    def test_env_bool_is_carried_as_a_bool(self, tmp_path):
+        # ⚑ NOT `ON:`/`OFF:` — YAML 1.1 reads those as boolean KEYS, so the VAR names
+        # here are prefixed to keep them strings. Only VALUES are coerced, never keys.
+        cfg = self._file(tmp_path, "  env:\n    FLAG_ON: true\n    FLAG_OFF: false\n")
+        assert cfg.env["FLAG_ON"] is True
+        assert cfg.env["FLAG_OFF"] is False
+
+    def test_state_bool_is_carried_as_a_bool(self, tmp_path):
+        assert self._file(tmp_path, "  model: true\n").state["model"] is True
+
+    def test_secret_path_bool_is_carried_as_a_bool(self, tmp_path):
+        cfg = self._file(tmp_path, "  secret_path:\n    TOKEN: true\n")
+        assert cfg.secret_path["TOKEN"] is True
+
+    def test_the_state_bool_renders_through_the_show_pair(self, tmp_path):
+        from kanibako.settings.agent_file import stored_leaf_display
+        assert stored_leaf_display("model", self._file(
+            tmp_path, "  model: true\n").state["model"]) == "true"
+
+
+class TestEveryNeighbourOfABoolIsUntouched:
+    """Only a real bool changes. Its neighbours — the values that merely LOOK like one —
+    were already rendered correctly and must stay byte-identical.
+
+    ⚑ THE STRING TRAP, pinned: a truthiness test would read ``"false"`` and ``0`` as
+    falsy and print ``false``'s neighbour as ``true``. Each row here is one value the
+    widening must leave exactly as it found it.
+    """
+
+    ROWS = [
+        # (yaml, what `get` must print) — the ten stored spellings and their neighbours.
+        ("true", "true"),
+        ("false", "false"),
+        ('"false"', "false"),
+        ('"true"', "true"),
+        ('"True"', "True"),
+        ('"None"', "None"),
+        ("0", "0"),
+        ("1", "1"),
+        ("null", "null"),
+        ('""', '""'),
+        # A non-bool that looks bool-ish: a YAML 1.1 reader would call these True, and
+        # only quoting keeps them strings. A truthy test would print `true` for each.
+        ('"TRUE"', "TRUE"),
+        ('"yes"', "yes"),
+        ('"true "', "true "),
+    ]
+
+    def _file(self, tmp_path, body):
+        p = tmp_path / "claude" / "agent.yaml"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("self:\n" + body)
+        return agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE)
+
+    @pytest.mark.parametrize("stored, rendered", ROWS)
+    def test_an_env_value_renders_exactly_as_before(self, tmp_path, stored, rendered):
+        from kanibako.settings.agent_file import stored_leaf_display
+        cfg = self._file(tmp_path, f"  env:\n    V: {stored}\n")
+        assert stored_leaf_display("env.V", cfg.env["V"]) == rendered
+
+    def test_an_absent_key_is_still_not_reported_as_a_value(self, tmp_path):
+        from kanibako.settings.agent_file import stored_leaf_display
+        cfg = self._file(tmp_path, "  env:\n    V: true\n")
+        # A missing VAR answers None, and the READ decides that is "(not set)" —
+        # the renderer's own `null` spelling must not be reachable by accident.
+        assert cfg.env.get("ABSENT") is None
+        assert stored_leaf_display("env.ABSENT", None) == "null"
+
+
+class TestTheLaunchStillReceivesAString:
+    """What a stored bool is WHEN HANDED TO THE LAUNCH does not change.
+
+    The record carrying a bool is a READ-side fix; the env family the launch exports is
+    built from the raw tiers in ``settings_launch`` and stringified there. So a stored
+    ``true`` still reaches a harness as the string ``True`` — the spelling it has always
+    had — while ``get`` prints ``true``. (Mutation: make ``state_level`` carry the record's
+    ``env`` table, or lowercase at the delivery site, and this reds.)
+    """
+
+    def test_a_stored_bool_is_not_in_the_records_state(self, tmp_path):
+        p = tmp_path / "claude" / "agent.yaml"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("self:\n  model: true\n  env:\n    FLAG_ON: true\n")
+        level = state_level(
+            agent_record(p, node="claude", purpose=ReadPurpose.RESOLVE),
+            node="claude", path=p,
+        )
+        # `env` is a root TABLE, so it is not flat state and cannot ride the
+        # behaviour snapshot as an env variable — a bool in `state` is a BEHAVIOR
+        # value, never an exported one.
+        assert level.table == {"model": True}
+        assert "FLAG_ON" not in level.table
+        assert "env" not in level.table
