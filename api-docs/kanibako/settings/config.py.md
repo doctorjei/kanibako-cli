@@ -49,7 +49,7 @@ def system_settings_path() -> Path
 def read_system_agent(system_path: Path | None) -> str | None
 def read_system_helpers(settings_path: Path | None) -> dict[str, int]
 def read_setup_completed(settings_path: Path | None) -> str | None
-def setup_compat_gate(settings_path: Path | None) -> str | None
+def setup_compat_gate(settings_path: Path | None, legacy_config: Path | None=None) -> str | None
 def resolve_agent(*, explicit_agent: str | None, requested: str | None=None, project_path: Path | None=None) -> str
 def write_agent_setting(path: Path, key: str, value: str, agent_name: str) -> None
 def null_path_keys_error(path: Path, keys: Iterable[str], *, cure: str=ERR_CONFIG_NULL_PATH_CURE, head: 'str | None'=None, read_head: str=ERR_CONFIG_NULL_PATH_HEAD) -> 'str | None'
@@ -69,6 +69,7 @@ def _present_scalar_fields(path: Path) -> dict[str, object]
 def _typed_box_scalar(defaults: KanibakoConfig, field_name: str, value: object) -> object
 def _system_settings_path(global_path: Path) -> Path | None
 def _split_config_key(flat_key: str) -> tuple[str, str]
+def _setup_too_old(marker: str) -> ConfigError
 def _flatten_leaves(data: dict, prefix: str='') -> dict[str, object]
 def _flatten_dotted(data: dict, prefix: str='') -> dict[str, str]
 def _agent_of(key: str) -> str

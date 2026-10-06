@@ -472,6 +472,7 @@ def _setup_nudge(args: argparse.Namespace) -> None:
     try:
         from pathlib import Path
 
+        from kanibako.settings.bootstrap import LEGACY_CONFIG_FILE
         from kanibako.settings.config import user_config_file, setup_compat_gate
         from kanibako.settings.paths import load_system_config, xdg
 
@@ -492,7 +493,7 @@ def _setup_nudge(args: argparse.Namespace) -> None:
         # RETIRED (R-38): packaged-template drift is now announced by the bands
         # above — a content change bumps ``SETUP_FCV`` (nudge), a structural one
         # ``SETUP_BCV`` (hard block).  ``setup_compat_gate`` is the ONE gate.
-        message = setup_compat_gate(settings_path)
+        message = setup_compat_gate(settings_path, cf.with_name(LEGACY_CONFIG_FILE))
     except KanibakoError:
         # Deliberate ERROR band — propagate so the CLI surfaces rc1.
         raise

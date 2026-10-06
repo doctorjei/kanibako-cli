@@ -47,10 +47,12 @@ mount category, and `system.base_template`. Directory layouts also move, on the 
 inside boxes. In order of likely impact:
 
 1. **Your first `kanibako start` (or `create`, or `agent reauth`) after upgrading is a hard error
-   until you run `kanibako setup`.** v1.8.0 raises the setup baseline (`SETUP_BCV`), so the
-   `setup_completed` marker your v1.7.2 config recorded is too old for the running build and
-   the setup-compatibility gate hard-blocks: `Error: This kanibako config (1.7.2) is too old
-   to auto-update. Re-run 'kanibako setup' before agent commands.` (rc 1). This is deliberate
+   until you run `kanibako setup`.** v1.8.0 raises the setup baseline (`SETUP_BCV`), and a host
+   whose v1.7.x `~/.config/kanibako_config.yaml` is still in place reads as too old for the
+   running build, with or without the `setup_completed` marker v1.7.2 recorded there. The
+   setup-compatibility gate hard-blocks: `Error: This kanibako config (1.7.2) is too old
+   to auto-update. Re-run 'kanibako setup' before agent commands.` (rc 1; with no marker in
+   the file, the parentheses name the file instead). This is deliberate
    — setup is what installs the new host-store layout (§2.12). Run `kanibako setup` once,
    right after upgrading. Headless: `kanibako setup --refresh-templates` (add
    `--agent <name>` to skip the menu). ⚑ Pass `--refresh-templates` on a headless run: a
@@ -58,8 +60,8 @@ inside boxes. In order of likely impact:
    nothing, prints `Setup Incomplete` and exits **rc 1**, so the block stays up (§2.12).
    🛑 **Rename one file, then check it, before you run that `kanibako setup`.** The bootstrap
    config file is `~/.config/kanibako.cfg` in v1.8.0; through v1.7.2 it was
-   `~/.config/kanibako_config.yaml`, and the old name is not read at all (§2.68) — leave it
-   as it is and every command runs as though you had never configured a host. So rename it
+   `~/.config/kanibako_config.yaml`, and nothing but that gate reads the old name (§2.68) — leave it
+   as it is and every command that gate lets through runs as though you had never configured a host. So rename it
    first: `mv ~/.config/kanibako_config.yaml ~/.config/kanibako.cfg`.
    Then look at what is in it. Through v1.7.2 kanibako wrote settings there too: initializing
    a host emitted `system:` and `box:` tables, and setup recorded its marker as
@@ -69,8 +71,10 @@ inside boxes. In order of likely impact:
    `~/.config/kanibako.cfg` and look: **if any top-level table other than `config:` is in it,
    delete that table** — and if you ever hand-edited the `config:` table itself, read the key names
    under it, because an unrecognized one is refused now as well (§2.67). A `setup_completed` marker
-   is not worth carrying across — the release
-   raises the setup baseline anyway, so a v1.7.2 value is refused as too old wherever it sits.
+   is not worth carrying across: v1.8.0 refuses a v1.7.2 value as too old.
+   ⚑ **Run `setup` straight after the rename.** The old file is the gate's only sign of a v1.7
+   host, so once it is renamed a forgotten `setup` gets the non-blocking advisory
+   `kanibako isn't set up yet. Run 'kanibako setup' to get started.` instead of a stop.
    ⚑ **Let that `setup` choose a default agent; do not skip the menu.** v1.8.0 never picks an agent
    implicitly, so a host with no `system.agent` refuses every bare launch even when exactly one
    plugin is installed — which is what v1.7.2 launched for you (§2.74, "One installed agent is no
@@ -1082,10 +1086,13 @@ the restructured `agents/<agent>/{template,canon/handbook}` stores — are insta
 init or by `kanibako setup`, **never by `pip install`** (installing a package runs no code),
 and the lazy first-run installer never re-fires on an already-initialized host. The designed
 trigger for an upgrade is `setup`, and the **setup-compatibility gate forces it**: v1.8.0
-raises the setup baseline (`SETUP_BCV`), so the `setup_completed` marker your v1.7.2 config
-recorded is too old for the running build and every `start` / `box start` / `create` /
-`box create` / `agent reauth` hard-errors (rc 1) with `This kanibako config (1.7.2)
-is too old to auto-update. Re-run 'kanibako setup' before agent commands.`
+raises the setup baseline (`SETUP_BCV`), so a host whose v1.7.x `~/.config/kanibako_config.yaml`
+is still in place, with or without the `setup_completed` marker v1.7.2 recorded there, is too old
+for the running build, and every `start` / `box start` / `create` / `box create` / `agent reauth`
+hard-errors (rc 1) with `This kanibako config (1.7.2) is too old to auto-update. Re-run
+'kanibako setup' before agent commands.` This is a one-release migration guard. The rename
+§1's item 1 asks for removes the file it looks for, so after the rename and before `setup`, these
+commands print the non-blocking advisory instead.
 
 ⚑ The separate per-digest **template-staleness gate of the v1.7.x line is retired**. It read
 and wrote an undeclared `system.templates_stamp` key — a closed-keyspace violation — and
@@ -4587,8 +4594,9 @@ sudo mv /etc/kanibako/config_base.yaml /etc/kanibako/base.cfg     # only if you 
 Most installs have no site file. An `mv` that reports a missing source is a file you never had,
 and there is nothing to carry.
 
-**What you see if you don't.** Nothing. There is no compatibility read and no detection: a file
-left under the old name is not read, not reported, and not mentioned at launch. Kanibako runs on
+**What you see if you don't.** The setup gate's hard error and nothing else. Until `kanibako
+setup` runs, `start`, `create`, and `agent reauth` refuse with `too old to auto-update` (§2.12),
+and that error does not tell you to rename the file. The file's contents are never read: kanibako runs on
 the default layout, exactly as though you had never configured it. So if your `config.data`
 pointed the store somewhere other than `$XDG_DATA_HOME/kanibako`, the next command looks in the
 default location and finds a host with no boxes, no worksets and no agents in it. **The failure

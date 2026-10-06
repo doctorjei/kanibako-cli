@@ -14,6 +14,7 @@ XDG_STATE_HOME = 'XDG_STATE_HOME'
 XDG_CACHE_HOME = 'XDG_CACHE_HOME'
 XDG_SPEC_DEFAULTS: dict[str, str] = {XDG_DATA_HOME: '.local/share', XDG_CONFIG_HOME: '.config', XDG_STATE_HOME: '.local/state', XDG_CACHE_HOME: '.cache'}
 CONFIG_FILE = 'kanibako.cfg'
+LEGACY_CONFIG_FILE = 'kanibako_config.yaml'
 SITE_CONFIG_DIR = '/etc/kanibako'
 SITE_CONFIG_FILE = 'base.cfg'
 SITE_SETTINGS_FILE = 'settings_base.yaml'

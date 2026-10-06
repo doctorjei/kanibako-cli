@@ -1565,6 +1565,100 @@ class TestSetupNudge:
         assert capsys.readouterr().err == ""
 
 
+class TestLegacySetupMarkerGuard:
+    """One-release migration guard: a v1.7-era host reads below ``SETUP_BCV`` until setup runs.
+
+    v1.7.2 initialized ``$XDG_CONFIG_HOME/kanibako_config.yaml`` and wrote its marker
+    there as ``system: setup_completed:`` (``git show v1.7.2:src/kanibako/config.py``).
+    """
+
+    def _legacy(self, tmp_home, body):
+        path = tmp_home / "config" / "kanibako_config.yaml"
+        path.write_text(body)
+        return path
+
+    def _launches(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "kanibako.commands.start.run_start", lambda args: calls.append(args) or 0,
+        )
+        return calls
+
+    def _main(self, argv):
+        from kanibako.cli import main
+
+        with pytest.raises(SystemExit) as exc:
+            main(argv)
+        return exc.value.code
+
+    @pytest.mark.parametrize("body", [
+        "system:\n  setup_completed: 1.7.2\n",
+        "system: {}\nbox:\n  agent_name: ''\n",
+    ], ids=["v1.7.2-marker", "v1.7-init-no-marker"])
+    def test_v17_host_is_hard_blocked_naming_setup(self, tmp_home, monkeypatch, capsys, body):
+        from kanibako.settings.config import user_config_file
+
+        self._legacy(tmp_home, body)
+        calls = self._launches(monkeypatch)
+        assert self._main(["start"]) == 1
+        err = capsys.readouterr().err
+        assert err.startswith("Error: ")
+        assert "too old to auto-update" in err
+        assert "kanibako setup" in err
+        assert calls == []
+        assert not user_config_file().exists()
+
+    def test_setup_clears_the_block(self, tmp_home, monkeypatch, capsys):
+        monkeypatch.setattr(
+            "kanibako.commands.diagnose._check_runtime", lambda: ("ok", "podman"),
+        )
+        monkeypatch.setattr(
+            "kanibako.commands.diagnose._check_image", lambda cfg: ("ok", "rig"),
+        )
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        self._legacy(tmp_home, "system:\n  setup_completed: 1.7.2\n")
+        calls = self._launches(monkeypatch)
+        assert self._main(["start"]) == 1
+        assert calls == []
+        capsys.readouterr()
+        assert self._main(["setup", "--agent", "shell", "--refresh-templates"]) == 0
+        capsys.readouterr()
+        assert self._main(["start"]) == 0
+        assert len(calls) == 1
+        assert "too old" not in capsys.readouterr().err
+
+    def test_fresh_host_keeps_the_advisory(self, tmp_home, monkeypatch, capsys):
+        calls = self._launches(monkeypatch)
+        assert self._main(["start"]) == 0
+        assert len(calls) == 1
+        assert "kanibako isn't set up yet" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("legacy", [False, True], ids=["no-legacy-file", "legacy-file-left"])
+    def test_current_marker_host_is_unchanged(self, tmp_home, monkeypatch, capsys, legacy):
+        from pathlib import Path
+
+        from packaging.version import Version
+
+        import kanibako
+        from kanibako.settings.config import user_config_file
+        from kanibako.settings.config_interface import write_system_value
+        from kanibako.settings.paths import load_system_config, xdg
+
+        if legacy:
+            self._legacy(tmp_home, "system:\n  setup_completed: 1.7.2\n")
+        settings = load_system_config(
+            user_config_file(), data_home=xdg("XDG_DATA_HOME", ".local/share"),
+            home=Path.home(),
+        )["config.settings"]
+        write_system_value(
+            settings, "setup_completed", Version(kanibako.__version__).base_version,
+        )
+        calls = self._launches(monkeypatch)
+        assert self._main(["start"]) == 0
+        assert len(calls) == 1
+        assert capsys.readouterr().err == ""
+
+
 class TestTemplateStalenessRetired:
     """R-38: the HARD template-staleness gate is GONE from ``_setup_nudge``.
 
