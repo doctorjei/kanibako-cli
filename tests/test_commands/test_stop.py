@@ -1232,3 +1232,112 @@ class TestStopAllSkipsABoxThatRendersNoName:
         out = capsys.readouterr().out
         assert "Skipped box" not in out
         assert "Stopped kb-primary-other" in out
+
+
+class TestStopAllIsolatesARegistryRefusal:
+    """A registry that will not parse costs its OWN mode's skip lines, and no other."""
+
+    live_runtime = TestStopABoxThatRendersNoName.live_runtime
+
+    @staticmethod
+    def _one_box_in_every_mode(std, config, tmp_home):
+        """A PRIMARY, a STANDALONE and a NAMED box, all rendering no container name."""
+        from kanibako.project.registry_store import register_standalone
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.paths import resolve_project
+
+        workspace = tmp_home / "work" / "-legacy"
+        workspace.mkdir(parents=True)
+        resolve_project(std, config, project_dir=str(workspace), initialize=True)
+
+        (tmp_home / "solo").mkdir()
+        register_standalone(std.registry, "-solo", tmp_home / "solo")
+
+        ws = create_workset("team", tmp_home / "worksets" / "team", std)
+        (tmp_home / "-member").mkdir()
+        add_project(ws, "-member", tmp_home / "-member")
+
+    @staticmethod
+    def _primary_registry(std):
+        """The PRIMARY workset's membership file — the one ``load_primary_boxes`` reads."""
+        return std.primary_workset / "registry.yaml"
+
+    def test_a_broken_primary_registry_costs_only_the_primary_lines(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        """The NAMED and STANDALONE skip lines survive the PRIMARY registry's refusal."""
+        self._one_box_in_every_mode(std, config, tmp_home)
+        registry = self._primary_registry(std)
+        assert registry.is_file(), registry
+        registry.write_text("- not a mapping\n")
+        live_runtime.list_running.return_value = [
+            ("kb-primary-other", "img:latest", "Up 1 minute"),
+        ]
+        capsys.readouterr()
+
+        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+        out = capsys.readouterr().out
+        assert "Skipped box '-solo'" in out, out
+        assert "Skipped box '-member'" in out, out
+        live_runtime.stop.assert_called_once_with("kb-primary-other")
+
+    def test_the_refused_source_is_still_warned_about_and_the_sweep_goes_on(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        """ISOLATION, NOT SILENCE: the broken registry is named, and the sweep runs."""
+        self._one_box_in_every_mode(std, config, tmp_home)
+        registry = self._primary_registry(std)
+        registry.write_text("- not a mapping\n")
+        live_runtime.list_running.return_value = [
+            ("kb-primary-other", "img:latest", "Up 1 minute"),
+        ]
+        capsys.readouterr()
+
+        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+        captured = capsys.readouterr()
+        assert "Warning: " in captured.err, captured.err
+        assert str(registry) in captured.err, captured.err
+        assert "Stopped kb-primary-other" in captured.out, captured.out
+
+    def test_a_broken_global_registry_costs_only_the_lines_it_feeds(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        """The PRIMARY line survives a broken global registry; that file feeds the other two.
+
+        The global ``registry.yaml`` holds BOTH the ``standalone:`` and the ``worksets:``
+        sections, so one refusal legitimately costs the STANDALONE and NAMED reads
+        together.  It must not reach the PRIMARY workset's own registry.
+        """
+        self._one_box_in_every_mode(std, config, tmp_home)
+        std.registry.parent.mkdir(parents=True, exist_ok=True)
+        std.registry.write_text("- not a mapping\n")
+        live_runtime.list_running.return_value = [
+            ("kb-primary-other", "img:latest", "Up 1 minute"),
+        ]
+        capsys.readouterr()
+
+        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+        out = capsys.readouterr().out
+        assert "Skipped box '-legacy'" in out, out
+        assert "Skipped box '-solo'" not in out, out
+        assert "Skipped box '-member'" not in out, out
+        live_runtime.stop.assert_called_once_with("kb-primary-other")
+
+    def test_every_mode_is_still_named_when_no_registry_refuses(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        """A guard on the walk itself: with every registry readable, all three appear."""
+        self._one_box_in_every_mode(std, config, tmp_home)
+        live_runtime.list_running.return_value = [
+            ("kb-primary-other", "img:latest", "Up 1 minute"),
+        ]
+        capsys.readouterr()
+
+        assert TestStopABoxThatRendersNoName._drive_stop_all(live_runtime) == 0
+
+        out = capsys.readouterr().out
+        for name in ("-legacy", "-solo", "-member"):
+            assert f"Skipped box '{name}'" in out, out

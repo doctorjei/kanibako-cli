@@ -285,6 +285,9 @@ def _boxes_rendering_no_name() -> list[str]:
     ⚑ Enumerating REGISTRY boxes is what lets the sweep SAY it skipped one: such a box
     has no container, so it never appears in ``list_running``.  The walk is ``box
     list``'s: an unreadable workset is warned about there, a refused file here.
+
+    ⚑ ONE SOURCE, ONE REFUSAL: the three mode reads each carry their OWN ``try``, so a
+    registry that will not parse costs its OWN skip lines and no other mode's.
     """
     from kanibako.project.registry_store import load_standalone
     from kanibako.settings.paths import (BoxMode, _early_scope, iter_workset_projects,
@@ -294,13 +297,29 @@ def _boxes_rendering_no_name() -> list[str]:
     try:
         config = load_config(user_config_file())
         std, refusal = _load_paths(config)
-        names = [*load_primary_boxes(std.primary_workset, early=_early_scope(std, BoxMode.primary)),
-                 *load_standalone(std.registry)]
+    except (ConfigError, SettingsError, WorksetError, ProjectError) as exc:
+        _warn_settings(exc)
+        return []
+
+    names: list[str] = []
+    try:
+        names.extend(load_primary_boxes(
+            std.primary_workset, early=_early_scope(std, BoxMode.primary),
+        ))
+    except (ConfigError, SettingsError, WorksetError, ProjectError) as exc:
+        _warn_settings(exc)
+
+    try:
+        names.extend(load_standalone(std.registry))
+    except (ConfigError, SettingsError, WorksetError, ProjectError) as exc:
+        _warn_settings(exc)
+
+    try:
         for _ws_name, _ws, members in iter_workset_projects(std, config):
             names.extend(name for name, _status in members)
     except (ConfigError, SettingsError, WorksetError, ProjectError) as exc:
         _warn_settings(exc)
-        return []
+
     if refusal is not None:
         _warn_settings(refusal)
     return [name for name in names if renders_no_name(name)]
