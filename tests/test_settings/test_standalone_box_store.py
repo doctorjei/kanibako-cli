@@ -123,6 +123,33 @@ class TestPurgeWithARelocatedStore:
         assert str(store) in err
         assert str(root) in err
 
+    def test_purge_keeps_the_root_file_when_the_store_is_kept(self, config, std, tmp_home):
+        """⚑ SAME LINE ``box rm --purge`` DRAWS: a kept store leaves the box whole.
+
+        The ROOT ``workset.yaml`` carries the repoint itself, so unlinking it while the
+        box's metadata survives leaves a box that answers to the composed default again.
+        """
+        root, _name = _make_standalone(config, std, tmp_home, "sa_purge_keeps_root")
+        store = _relocate(root, tmp_home / "kept_store")
+
+        rc = _purge(root)
+
+        assert rc == 0
+        assert store.is_dir()
+        assert (root / "workset.yaml").is_file()
+        assert (root / "user_code.py").is_file()
+
+    def test_purge_removes_the_root_file_when_the_store_is_removed(
+            self, config, std, tmp_home):
+        """The inverse: with the store gone the root is unworkable, so its file goes too."""
+        root, _name = _make_standalone(config, std, tmp_home, "sa_purge_drops_root")
+        _relocate(root, root / "inside_store")
+
+        rc = _purge(root)
+
+        assert rc == 0
+        assert not (root / "workset.yaml").exists()
+
     def test_a_store_relocated_inside_the_root_is_removed(self, config, std, tmp_home):
         """The inverse: a store strictly below the root IS kanibako's, so it goes — and
         only it goes: an unrelated sibling in the same parent survives."""
