@@ -578,7 +578,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{meta.workset.path}`. An anchor the value already holds is no longer spelled twice: the cure for
   `/x/{meta.workset.path}` was `/x/{meta.workset.path}/{meta.workset.path}/{meta.box.name}` and is now
   `/x/{meta.workset.path}/{meta.box.name}`, and `/x/{meta.workset.name}` now gets
-  `/x/{meta.workset.name}/{meta.box.name}`. The same holds for the read door and `start`.
+  `/x/{meta.workset.name}/{meta.box.name}`. A channel-partition value on the working set's path
+  (`workset.channels.mailboxes=/srv/mb/{meta.workset.path}`) now says it leaves the partition unnamed,
+  because a partition is keyed by `{meta.workset.name}`, not that boxes would share it. The same holds for the
+  read door and `start`.
 
 - **A v1.7-era host is hard-blocked until its config file is renamed and `kanibako setup` runs.**
   v1.7.x kept its setup marker in `~/.config/kanibako_config.yaml`, which v1.8.0 does not read, so an
