@@ -16,6 +16,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -269,6 +273,30 @@ class TestTheTempCopyPathNeverReachesTheUser:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
         return path
+
+    def test_a_warning_from_the_copy_names_the_real_file_through_the_cli(self, tmp_path):
+        """The reader's WARNINGS on the copy — a capitalized node, a dropped ``pref`` table —
+        name the real file too, as its errors do."""
+        home = tmp_path / "home"
+        path = home / ".local/share/kanibako/agents/claude/agent.yaml"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            "self:\n  model: x\nagent:\n  Claude:\n    env:\n      A: b\n"
+            "pref:\n  agent:\n    claude:\n      model: y\n"
+        )
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "KANIBAKO"))}
+        env.update(HOME=str(home), XDG_RUNTIME_DIR=str(tmp_path),
+                   PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src"))
+        proc = subprocess.run(
+            [sys.executable, "-m", "kanibako", "agent", "set", "claude", "model=opus"],
+            env=env, cwd=home, capture_output=True, text=True, timeout=300, check=False,
+        )
+        err = proc.stdout + proc.stderr
+
+        assert proc.returncode == 0, err
+        assert f"Settings file {path} spells 'agent.Claude'" in err, err
+        assert f"agent settings file {path}:" in err, err
+        assert self._TEMP_PREFIX not in err, f"temp path leaked: {err}"
 
     def test_unparseable_yaml_names_the_real_file_and_not_the_temp_copy(
         self, agent_door, capsys,

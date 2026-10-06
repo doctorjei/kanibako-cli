@@ -439,19 +439,32 @@ def _agent_file_verdict_after_edit(
         probe = Path(tmp) / path.name
         shutil.copy2(path, probe)
 
-        def real(exc: Exception) -> str:
-            # Errors here name the COPY; the user needs the real path.
-            return str(exc).replace(str(probe), str(path))
+        def real(text: object) -> str:
+            # Errors and warnings here name the COPY; the user needs the real path.
+            return str(text).replace(str(probe), str(path))
 
+        class RealPath(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                record.msg, record.args = real(record.getMessage()), ()
+                return True
+
+        rewrite = RealPath()
+        handlers = {*logging.getLogger("kanibako").handlers, *logging.getLogger().handlers}
+        for handler in handlers:
+            handler.addFilter(rewrite)
         try:
-            write_leaf(AgentFileSlot(probe, key, agent_id), value)
-        except KanibakoError as exc:
-            raise ConfigError(real(exc)) from None
-        try:
-            agent_record(probe, node=agent_id, purpose=ReadPurpose.RESOLVE)
-        except SettingsError as exc:
-            return real(exc)
-        typed = _ill_typed_stored_entries(scope_view(load_doc(probe), node=agent_id))
+            try:
+                write_leaf(AgentFileSlot(probe, key, agent_id), value)
+            except KanibakoError as exc:
+                raise ConfigError(real(exc)) from None
+            try:
+                agent_record(probe, node=agent_id, purpose=ReadPurpose.RESOLVE)
+            except SettingsError as exc:
+                return real(exc)
+            typed = _ill_typed_stored_entries(scope_view(load_doc(probe), node=agent_id))
+        finally:
+            for handler in handlers:
+                handler.removeFilter(rewrite)
     if typed:
         return WARN_CONFIG_ILL_TYPED_ENTRIES % (path, "\n  ".join(typed.values()))
     return None
