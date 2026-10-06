@@ -100,6 +100,60 @@ def _paste(command: str, scratch: Path, stub: str = "kanibako") -> "tuple[list[s
     )
 
 
+def _paste_over_ssh(command: str, scratch: Path) -> "tuple[str, list[str], Path]":
+    """Paste an ``ssh`` cure; return the destination and the REMOTE argv.
+
+    The ``ssh`` stub behaves like ssh(1): it drops its options, ``--``, and the
+    destination, then hands the remaining args, joined by spaces, to a shell —
+    the remote re-parse a local-only quote does not survive.  The "remote"
+    ``kanibako`` records the argv that second shell built.
+    """
+    stub_dir = scratch / "stubbin"
+    stub_dir.mkdir(parents=True, exist_ok=True)
+    dest_dump = scratch / "dest.dump"
+    argv_dump = scratch / "argv.dump"
+    argv_dump.write_bytes(b"")
+    ssh = stub_dir / "ssh"
+    ssh.write_text(
+        "#!/bin/sh\n"
+        "while [ $# -gt 0 ]; do\n"
+        "  case \"$1\" in\n"
+        "    --) shift; break ;;\n"
+        "    -[BbcDEeFIiJLlmOoPpQRSWw]) shift 2 ;;\n"
+        "    -*) shift ;;\n"
+        "    *) break ;;\n"
+        "  esac\n"
+        "done\n"
+        "printf '%s' \"$1\" > " + shlex.quote(str(dest_dump)) + "\n"
+        "shift\n"
+        "exec /bin/sh -c \"$*\"\n"
+    )
+    ssh.chmod(0o755)
+    kanibako = stub_dir / "kanibako"
+    kanibako.write_text(
+        "#!/bin/sh\n"
+        "{ printf '%s\\0' kanibako; for a in \"$@\"; do printf '%s\\0' \"$a\"; done; } > "
+        + shlex.quote(str(argv_dump)) + "\n"
+    )
+    kanibako.chmod(0o755)
+
+    paste_cwd = scratch / "pastecwd"
+    paste_cwd.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["/bin/sh", "-c", command],
+        cwd=str(paste_cwd),
+        env={"PATH": f"{stub_dir}:/usr/bin:/bin", "HOME": str(scratch)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return (
+        dest_dump.read_text() if dest_dump.exists() else "",
+        [a for a in argv_dump.read_bytes().decode().split("\0") if a],
+        paste_cwd,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Door drivers — the shipped parser and the real handlers, on a real std.
 # ---------------------------------------------------------------------------
@@ -331,14 +385,20 @@ class TestTheOtherTwoCuresAreQuoted:
         assert not (paste_cwd / _MARKER).exists(), "the pasted cure ran injected text"
         assert argv == ["create", name]
 
-    def test_the_remote_create_cure_quotes_both_operands(self, tmp_home, capsys, tmp_path):
-        """``--remote`` and ``--box`` are free-form, so BOTH operands need quoting."""
+    @pytest.mark.parametrize("box", [f"web$(touch {_MARKER})", "a b'c"])
+    def test_the_remote_create_cure_survives_both_shells(self, box, tmp_home, capsys, tmp_path):
+        """``--remote`` and ``--box`` are free-form; the box crosses TWO shells.
+
+        ssh joins its trailing args with spaces and the REMOTE shell re-parses
+        them, so the box needs a second quoting layer that a local-only quote
+        lacks.  The pasted cure runs through an ``ssh`` stub that behaves like
+        ssh(1) and a recording ``kanibako`` on the "remote" side.
+        """
         from types import SimpleNamespace
 
         from kanibako.commands.code_cmd import _run_code_remote
 
         dest = f"myhost;>{_MARKER}"
-        box = f"web;>{_MARKER}"
         failed = SimpleNamespace(
             returncode=1, stderr="Error: no box at /home/u/webapp.", stdout="",
         )
@@ -367,11 +427,10 @@ class TestTheOtherTwoCuresAreQuoted:
         )
         cure = hint.split("e.g.:", 1)[1].strip()
 
-        assert shlex.split(cure) == ["ssh", dest, "kanibako", "create", box]
-
-        argv, paste_cwd, _home = _paste(cure, tmp_path / "paste", "ssh")
+        remote_dest, remote_argv, paste_cwd = _paste_over_ssh(cure, tmp_path / "paste")
         assert not (paste_cwd / _MARKER).exists(), "the pasted cure ran injected text"
-        assert argv == [dest, "kanibako", "create", box]
+        assert remote_dest == dest
+        assert remote_argv == ["kanibako", "create", box]
 
 
 @pytest.mark.parametrize("name", [_SAFE, "q;>pwned"])
