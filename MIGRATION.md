@@ -1093,7 +1093,7 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   ```
 
   The doors differ in what they leave behind: `box rm --purge` and `kanibako box purge` keep the
-  root `workset.yaml` so the box stays whole, while `box move` and `box convert` remove it — the
+  box's root settings file, so the box stays whole; `box move` and `box convert` remove it — the
   box has left. See **Standalone boxes: a relocated store is read where it is, and never deleted
   for you**.
   🛑 **A value that cannot be resolved now stops these commands instead of being ignored.** In
@@ -6868,15 +6868,15 @@ not.
 
 **What each door leaves behind differs, so read the one you use.**
 
-| Door | Store not strictly below the root |
+| Door | Store not strictly below the box root |
 |---|---|
-| `box rm --purge` | root `workset.yaml` kept, box left whole |
-| `kanibako box purge` | root `workset.yaml` kept, box left whole |
-| `box move` / `box convert` | root `workset.yaml` removed — the box has left; the store stays where it is and is named |
+| `box rm --purge` | the box's root settings file is kept, and the box is left whole |
+| `kanibako box purge` | the box's root settings file is kept, and the box is left whole |
+| `box move` / `box convert` | that file is removed — the box has left; the store stays where it is and is named |
 
-A store removed by any of them takes the root `workset.yaml` with it: with the store gone the root
-is no longer a box, and that file carries the repoint. Remove it by hand only if you are removing
-the whole box.
+A store removed by any of them takes that root file with it: with the store gone the root is no
+longer a box, and the file carries the repoint. Remove it by hand only if you are removing the
+whole box.
 
 **The project plugin dir moved with the store.** A plugin dropped in a project's plugins
 directory was read from the composed default leaf, so for a box with a relocated store it was
