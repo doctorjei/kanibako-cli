@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from kanibako.errors import UserCanceled
 from kanibako.settings.config import user_config_file, load_config
 from kanibako.settings.paths import load_std_paths, resolve_any_project
 from kanibako.snapshots import (
@@ -14,6 +15,7 @@ from kanibako.snapshots import (
     prune_snapshots,
     restore_snapshot,
 )
+from kanibako.utils import confirm_prompt
 
 
 def add_vault_subparser(parent_sub: argparse._SubParsersAction) -> None:
@@ -153,11 +155,32 @@ def run_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _confirm_destructive(force: bool, message: str) -> bool:
+    """Gate a destructive vault command; ``force`` skips the prompt and nothing else."""
+    if force:
+        return True
+    try:
+        confirm_prompt(message)
+    except UserCanceled:
+        print("Aborted.")
+        return False
+    return True
+
+
 def run_restore(args: argparse.Namespace) -> int:
     project_dir = getattr(args, "project", None)
     vault_rw = _resolve_vault_rw(project_dir)
     if vault_rw is None:
         return 1
+
+    known = {name for name, _ts, _size in list_snapshots(vault_rw)}
+    if args.name in known and not _confirm_destructive(
+        getattr(args, "force", False),
+        f"Replace share-rw contents with snapshot {args.name}?\n"
+        "This cannot be undone.\n"
+        "Type 'yes' to confirm: ",
+    ):
+        return 2
 
     try:
         restore_snapshot(vault_rw, args.name)
@@ -174,6 +197,20 @@ def run_prune(args: argparse.Namespace) -> int:
     vault_rw = _resolve_vault_rw(project_dir)
     if vault_rw is None:
         return 1
+
+    names = [name for name, _ts, _size in list_snapshots(vault_rw)]
+    if args.keep <= 0:
+        doomed = names
+    else:
+        doomed = names[:-args.keep] if len(names) > args.keep else []
+
+    if doomed and not _confirm_destructive(
+        getattr(args, "force", False),
+        f"Delete {len(doomed)} snapshot(s), keeping {args.keep} most recent?\n"
+        "This cannot be undone.\n"
+        "Type 'yes' to confirm: ",
+    ):
+        return 2
 
     removed = prune_snapshots(vault_rw, max_keep=args.keep)
     if removed:
