@@ -567,6 +567,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`agent set`'s warnings about the agent file name the real file.** A warning raised while checking the
+  edit (a capitalized `agent.<Node>`, a dropped `pref` table) named a temporary copy under
+  `/tmp/kanibako-agentset-…` instead of the agent's `agent.yaml`; its errors already named the real file.
+
 - **A refused per-owner value now says it does not reach its owner's identity, and its cure adds only what
   it lacks.** `system set box.canon=/x/{meta.box.name}` said the value "names no box identity"; a box name
   alone is not box identity, because box names repeat across working sets, so the cure now appends only
