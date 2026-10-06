@@ -4,11 +4,11 @@ The "grand unification": four per-scope `StoreShape`s plus the home bind, merged
 bindings map and TWO scope-ordered copy LISTS. Scope order — `system`, `agent`, `workset`, `box` — IS
 the precedence; a later scope beats an earlier one.
 
-**Authority:** `designs/grand-unification-collapse-DESIGN.md` §2 (Jei's algorithm, verbatim) and
+**Authority:** `~/canon/workbook/designs/grand-unification-collapse-DESIGN.md` §2 (Jei's algorithm, verbatim) and
 **§2a, which supersedes §2's head** · its §0 ruling 1 (parent-first per scope) · the SUBSUMPTION
-RULES, verbatim at `designs/collapse-implementation-DESIGN.md` **§7**, with the worked refusability
+RULES, verbatim at `~/canon/workbook/designs/collapse-implementation-DESIGN.md` **§7**, with the worked refusability
 table and the operations at **§8** · **§9, which rules that copies apply to the HOME bind ALONE**
-(2026-08-09d) · `designs/store-shape-producer-DESIGN.md` §7 (the input arms) · the spec's
+(2026-08-09d) · `~/canon/workbook/designs/store-shape-producer-DESIGN.md` §7 (the input arms) · the spec's
 `meta.assembly.*` rows and the **2026-08-10b** amendment, which splits the copy output in two and
 moves `synced` to the far end of the fold.
 

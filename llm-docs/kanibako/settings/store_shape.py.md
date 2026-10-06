@@ -9,9 +9,9 @@ carrying CONCRETE mount options. A `StoreShapeSet` holds one per scope over
 This module builds one per scope and **stops there**: it never compares two scopes, because
 comparing scopes is the grand-unification collapse's whole job (roadmap step 6).
 
-**Authority:** `designs/store-shape-producer-DESIGN.md` (this step) ·
-`designs/grand-unification-collapse-DESIGN.md` §2/§2a (the consumer) ·
-`specs/settings-keyspace-1.8.0.md` §0 (the collision table).
+**Authority:** `~/canon/workbook/designs/store-shape-producer-DESIGN.md` (this step) ·
+`~/canon/workbook/designs/grand-unification-collapse-DESIGN.md` §2/§2a (the consumer) ·
+`~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 (the collision table).
 
 ## Status: CONSUMED — all three SHAPE-FED leaves, and there is no second route left
 

@@ -13,7 +13,7 @@ The source keeps one-line descriptors and `⚑` markers only. The reasons live h
 ## Why this module exists
 
 A box used to die with its agent session. The always-on-instance design
-(`split-brain-persistence-DESIGN.md`, "E2 BUILD DESIGN") makes a box's keep-alive PID-1 a
+(`~/canon/workbook/designs/split-brain-persistence-DESIGN.md`, "E2 BUILD DESIGN") makes a box's keep-alive PID-1 a
 **SUPERVISOR**: it runs the agent in a DETACHED tmux session, watches client attach/detach via
 `kanibako.box_lifecycle`, and SELF-HEALS the agent (restart with `--continue` plus a continue-marker)
 when it dies — so the box persists independent of any one agent session. Design principle **B**: only
@@ -112,7 +112,7 @@ marker PID. The **REVERSE** direction (a CLI newcomer over a live-panel incumben
 has no panel injection vector, so it stays LOG-ONLY (deferred). `kill_agent_session` is BOTH the
 total-teardown kill and the 4b eviction primitive.
 
-Design refs: `split-brain-persistence-DESIGN.md` §85-96, §108, §189/§217, §267/§348, §338-359, §346,
+Design refs: `~/canon/workbook/designs/split-brain-persistence-DESIGN.md` §85-96, §108, §189/§217, §267/§348, §338-359, §346,
 §89-96, §86-88. ⚑ Those `§` numbers are LINE numbers into that design doc, and the doc has been
 edited since; spot-checked this pass, §85-96 · §267 · §346 land in the right region, §108 lands
 adjacent. Treat them as approximate pointers, not addresses.

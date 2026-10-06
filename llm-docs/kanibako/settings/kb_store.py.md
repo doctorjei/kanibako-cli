@@ -10,7 +10,7 @@ It imports nothing from the settings stack beyond the container itself, `keystor
 the stack's other leaf: everything from `config_keys` to `store_collapse` can reach it without
 cycling.
 
-**Authority:** `specs/settings-keyspace-1.8.0.md` — §0 (directional view/set across CONTAINMENT
+**Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §0 (directional view/set across CONTAINMENT
 levels), §2a (category list + value types). ⚑ **The spec is the LIVE authority; read it first.**
 
 ## Why this is a separate module from `keystore`

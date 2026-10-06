@@ -13,7 +13,7 @@ INDEX-ONLY — a re-register that re-seeded would clobber the user's home. Secon
 `--purge` retains the metadata** and parks a `deregistered` entry, so a name can outlive its
 membership; the guards that make that safe are the bulk of this module's care.
 
-Authority: the keyspace spec `settings-keyspace-1.8.0.md` §0 (closed keyspace, single route), §1A
+Authority: the keyspace spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 (closed keyspace, single route), §1A
 (CLI level and the create exception), §2h (`pref.*` requests); the box-lifecycle design items I2
 (readopt) and I4 (the home-reuse data-loss guard); the J1 lifecycle journal.
 

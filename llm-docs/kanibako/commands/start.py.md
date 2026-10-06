@@ -7,7 +7,7 @@ not describe the module as a whole; each section names the seam it covers and no
 
 ## `_launch_bind_map` / `_bind_map_from_mounts` — the emitter consumes the SHAPE (cutover 2a-2)
 
-**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §2a-2-SHAPE (decided before dispatch) · §2.0e (the
+**Authority:** `~/canon/workbook/plans/2026-08-09d-CUTOVER-PLAN.md` §2a-2-SHAPE (decided before dispatch) · §2.0e (the
 narrow resolves have no collapsed node) · §2.0g (the four fields the collapsed shape drops).
 
 ### What the switch is
@@ -118,7 +118,7 @@ folds and is in no scope's shape, so no arm ever appends to its options.
 
 **Authority:** Jei's roadmap step 6, verbatim — *"implement a 'grand unification function' … that
 will **merge the information, but not perform the action**"* ·
-`designs/collapse-implementation-DESIGN.md` §0/§1 · `designs/grand-unification-collapse-DESIGN.md`
+`~/canon/workbook/designs/collapse-implementation-DESIGN.md` §0/§1 · `~/canon/workbook/designs/grand-unification-collapse-DESIGN.md`
 §2a (home is pid 0).
 
 ### What it is
@@ -396,7 +396,7 @@ and rides its own gate (2b-1).
 
 ## `_emit_category_mounts` — the MISSING-SOURCE POLICY travels as a parameter (cutover step 3)
 
-**Authority:** `designs/store-shape-producer-DESIGN.md` §9.1 · `plans/2026-08-09d-CUTOVER-PLAN.md`
+**Authority:** `~/canon/workbook/designs/store-shape-producer-DESIGN.md` §9.1 · `~/canon/workbook/plans/2026-08-09d-CUTOVER-PLAN.md`
 §3 and §2.0g. **Precondition of 2a-2**, not a later step.
 
 ### What moved
@@ -453,7 +453,7 @@ too. A policy that varied by call site would decide one destination two ways.
 
 ## `LaunchDeliveries` — the consumers leave the reconcile (6-R2), which is then DELETED (6-R3)
 
-**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §6 "§6 DESIGN PASS" · producer `DESIGN` §7.4
+**Authority:** `~/canon/workbook/plans/2026-08-09d-CUTOVER-PLAN.md` §6 "§6 DESIGN PASS" · producer `DESIGN` §7.4
 (`secret_path` is PARKED out of the disk-store shape) · §9.1 (what is not a settings key is PASSED).
 
 ### What the switch is
@@ -711,7 +711,7 @@ Measured both ways.
 
 ## `_bind_map_masks` — the mask arm comes off the SAME map (cutover 2a-4)
 
-**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §2.7 · collapse `DESIGN` §8.1a (a mask is a void).
+**Authority:** `~/canon/workbook/plans/2026-08-09d-CUTOVER-PLAN.md` §2.7 · collapse `DESIGN` §8.1a (a mask is a void).
 
 ### What moved
 
@@ -761,7 +761,7 @@ masks, so only this arm can observe the deletion.
 
 ## `_launch_seed_list` / `_snapshot_assembly_seeded` — the seed applier consumes the LEAF (cutover 2b-2)
 
-**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §2b (consumer 5) ·
+**Authority:** `~/canon/workbook/plans/2026-08-09d-CUTOVER-PLAN.md` §2b (consumer 5) ·
 `~/canon/workbook/specs/settings-keyspace-1.8.0.md:147-149` (*"both flat scope-ordered lists"*,
 *"nothing is arbitrated at a destination"*) · 2b-1 (the seed leaf's own gate).
 
@@ -845,7 +845,7 @@ fallback on every box — a cutover that moved nothing.
 
 ## `_apply_synced_copies` / `_launch_synced_list` / `_synced_host_dest` — the sync applier consumes the LEAF (cutover 2b-3)
 
-**Authority:** `plans/2026-08-09d-CUTOVER-PLAN.md` §2b-3-MEASURED (consumer 6) ·
+**Authority:** `~/canon/workbook/plans/2026-08-09d-CUTOVER-PLAN.md` §2b-3-MEASURED (consumer 6) ·
 `~/canon/workbook/specs/settings-keyspace-1.8.0.md:147-149` (*"both flat scope-ordered lists"*) ·
 spec §0 *"ONE DEST SPACE, TWO DELIVERIES"*.
 

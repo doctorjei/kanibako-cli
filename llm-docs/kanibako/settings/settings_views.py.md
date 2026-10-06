@@ -11,7 +11,7 @@ the node — the snapshot stays the single source of truth.
 
 Authority: `~/vault/rw/keystore-design.md` §5 (typed access — PRIMARY, including the load-bearing
 `Bind`-not-`Bind|None` coupling) and §6f (resolved `masks` = `set`); spec
-`settings-keyspace-1.8.0.md` §2a (categories and their value types).
+`~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2a (categories and their value types).
 
 ## The three tiers (design §5)
 

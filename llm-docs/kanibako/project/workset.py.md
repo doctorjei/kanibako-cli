@@ -11,9 +11,9 @@ half of a documented import cycle, and several of its public mutators touch more
 most of the notes below are about ORDER and about which of two similar-looking spellings is the real
 one.
 
-**Authority:** `specs/settings-keyspace-1.8.0.md` — §2c (per-mode default tables, the workset-root
+**Authority:** `~/canon/workbook/specs/settings-keyspace-1.8.0.md` — §2c (per-mode default tables, the workset-root
 layout), §3.3 (the `workset.*` dir keys are "real and USED — not hard-coded"); and
-`specs/system-design-1.8.0.md` § "Detection & import" (seed at registration), which the keyspec's
+`~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import" (seed at registration), which the keyspec's
 §5 migrated into whole on 2026-08-20 — the keyspec section is now a pointer, not a carrier.
 ⚑ **The spec is the LIVE authority; read it first.**
 
@@ -136,7 +136,7 @@ default TABLE is the source, never a second literal at a consumer site.
   file in standalone too — the last arm of **migration M-14**, closed 2026-08-30. 🛑 The `boxes`
   flag does NOT make the standalone box STORE repointable end to end: home, the vault teardown,
   `box purge` and standalone DETECTION all still compose the literal `box_data`, which
-  `system-design-1.8.0.md` makes a spec clause. It selects a default leaf so the logs default can
+  `~/canon/workbook/specs/system-design-1.8.0.md` makes a spec clause. It selects a default leaf so the logs default can
   chain through it, and nothing more. A repointed
   standalone log lands outside the `box_data` directory; `box rm --purge` deletes it by name
   before it removes that directory wholesale.
@@ -340,8 +340,8 @@ A project registered inside a workset.
 The unified per-project record (B7): **identity + path ONLY.** ⚑ There is no `seeded` field —
 registry MEMBERSHIP (presence in this list) is itself the seed signal. A box was seeded when
 `create` added it; `connect` adds the record WITHOUT seeding, because the external directory already
-holds the user's content. `settings-keyspace-1.8.0.md` §0 "Seed-time vs cascade" (registry
-MEMBERSHIP is itself the seed signal); `system-design-1.8.0.md` § "Detection & import", "Seed = at
+holds the user's content. `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 "Seed-time vs cascade" (registry
+MEMBERSHIP is itself the seed signal); `~/canon/workbook/specs/system-design-1.8.0.md` § "Detection & import", "Seed = at
 registration" and "One per-project record".
 
 `source_path` is the member's REAL workspace — the `boxes:` row's value, and the one place the
@@ -943,7 +943,7 @@ source was right and the CODE was corrected instead.
 | 5 | `BOXES_DIR_NAME` comment | "two places need it … `Workset.projects_dir` (below) and **`remove_workset`**" | **FALSE on both counts.** There is no `remove_workset` in the codebase (`grep` over `src/` + `tests/`: zero hits); the function is `delete_workset`. And there were THREE use sites, not two — `create_workset` also used it, also without a `Workset` instance. **Corrected**, then SUPERSEDED 2026-08-29: the constant is now the resolver's `default_leaf` argument and nothing else, so the count is ONE and the question of "which sites need the bare leaf" no longer arises. |
 | 6 | `add_project` docstring | "a `workspace` override is written into the project's `settings.yaml`" | **FALSE, and self-contradicted 120 lines later.** The external arm writes no `settings.yaml` at all; the inline comment on the same path states "Sparse create (P8b/Option A): NO settings.yaml identity is written for the connected box — the connection record IS the per-workset `boxes:` entry". A reader trusting the docstring would go looking for a file that is never created. **DROPPED**, and the sparse-create ruling recorded instead. |
 | 7 | `_Unwind` block comment | "These sequences are short (2-5 steps)" | **FALSE number.** `add_project` pushes up to SEVEN (box dir, vault ro, vault rw, symlink, membership, standalone restore, detach). **Corrected to the measured range.** |
-| 8 | `RESERVED_WORKSET_NAMES` comment | "the three-mode model (**TARGET** §2c)" | **STALE CITATION.** There is no "TARGET" document; the sentinels are declared in `specs/settings-keyspace-1.8.0.md` §2c. A §-number with no valid filename is how the wrong file gets read. **Corrected to the spec filename.** |
+| 8 | `RESERVED_WORKSET_NAMES` comment | "the three-mode model (**TARGET** §2c)" | **STALE CITATION.** There is no "TARGET" document; the sentinels are declared in `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §2c. A §-number with no valid filename is how the wrong file gets read. **Corrected to the spec filename.** |
 | 9 | `Connected (external) boxes` banner | a full section-header comment block with **no code beneath it** | Its content was TRUE (verified: `_find_connected_project` / `_load_connected` / `_write_connected` and the global `connected:` section are all absent from `src/`), but a banner over an empty region is a structural false signal — it reads as if it introduces the code that follows, which belongs to `create_workset`. **Content relocated here; the orphan banner removed.** |
 
 ### Deltas found but NOT changed (code, not prose — reported for the director)

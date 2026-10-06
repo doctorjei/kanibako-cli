@@ -19,7 +19,7 @@ resolves at launch goes through the keyspace cascade, not through here; what rem
 bootstrap PATH tables the cascade itself needs in order to locate its files, and (b) the
 pre-cascade readers, each of which documents why it cannot wait for a snapshot.
 
-Authority: spec `settings-keyspace-1.8.0.md` §0 (closed keyspace), §1/§1A (the Layer-1 `config.*`
+Authority: spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 (closed keyspace), §1/§1A (the Layer-1 `config.*`
 foundation + the CLI level), §2b (`box.agent_name` retired), §2c (the box/workset settings-file
 derivation), §2g (the Layer-2 `system.*` path settings + `system.agent`), §2h (`pref.*` requests).
 
@@ -863,7 +863,7 @@ are by BASE version (PEP 440 `packaging.version.Version` — the project's own v
 `1.6.0.dev25` / `1.6.0-rc1`, are PEP 440), so a dev/rc build of the same base as the released
 marker reads as `==`, not "from the future".
 
-The bands (design `plans/2026-06-23-setup-version-tiers-NEXT.md`):
+The bands (design `~/canon/notebook/archives/plans/2026-06-23-setup-version-tiers-NEXT.md`):
 
 * `ConfigVer > CurrentVer` → **raise** :class:`~kanibako.errors.ConfigError` (config from a NEWER
   build than is running).

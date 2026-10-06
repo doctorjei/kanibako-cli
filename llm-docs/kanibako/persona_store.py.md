@@ -5,10 +5,10 @@ tree that holds harness-NATIVE config per persona and per harness. kanibako does
 standard and does not write into it — it CONSUMES it. Everything in this module is a pure read
 against that tree, with no box, no network, and no probe.
 
-The design SOT is `designs/persona-grata-autoimport-DESIGN.md` (under `~/canon/workbook/`); the
+The design SOT is `~/canon/workbook/designs/persona-grata-autoimport-DESIGN.md`; the
 sections cited below (§1 through §5a) are its sections. ⚑ The module docstring cited it as
 `plans/…-DESIGN.md` until 2026-08-20 — a stale pointer: `plans/` holds
-`persona-grata-autoimport-BUILD.md`, a DIFFERENT document. The procedure that governs any change here is
+`~/canon/notebook/archives/plans/persona-grata-autoimport-BUILD.md`, a DIFFERENT document. The procedure that governs any change here is
 `~/canon/notebook/procedures/persona-resolution-model.md`, and it outranks this document.
 
 ## The one invariant: persona values are LIVE, never persisted
@@ -261,7 +261,7 @@ of refusing a box that actually works:
 ## Related reading
 
 * `~/canon/notebook/procedures/persona-resolution-model.md` — the governing procedure.
-* `designs/persona-grata-autoimport-DESIGN.md` §1, §2, §3, §4, §5a — the design SOT.
+* `~/canon/workbook/designs/persona-grata-autoimport-DESIGN.md` §1, §2, §3, §4, §5a — the design SOT.
 * `llm-docs/kanibako/agent_ref.py.md` — the `persona+harness` ref grammar this module normalizes
   through.
 * `kanibako.targets.base` — `Target.read_persona_settings` and `PersonaReadOutcome`, the harness

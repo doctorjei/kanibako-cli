@@ -375,10 +375,10 @@ chains.
 * `~/vault/rw/keystore-design.md` §6h (transitive expansion + cycle — PRIMARY), §6a (CONFIG-vs-ENV
   split; box-side `$XDG` / `~` deferred), §6b (whole-value vs embedded `@`-ref shapes), §3 (the
   3-state).
-* Spec `settings-keyspace-1.8.0.md` §0, §1 (the box-side XDG line, ~line 94), §2c, §2h, §2a, §1A.
+* Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0, §1 (the box-side XDG line, ~line 94), §2c, §2h, §2a, §1A.
 * The merged snapshot this pass consumes is `settings_merge`'s raw output (`d33db5c`).
 
-## Seams realized here (`plans/keystore-blocks/SEAMS.md`)
+## Seams realized here (`~/canon/workbook/plans/keystore-blocks/SEAMS.md`)
 
 * **S17** — box-side `$XDG` / `~` left RAW in `Bind.box`; `@`-refs expand BOTH sides. The concrete
   realization of S12's deferral contract.

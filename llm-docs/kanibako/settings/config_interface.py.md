@@ -7,7 +7,7 @@ direction, retired routes, value shape), the set-time resolution probe, and the 
 modes. It decides nothing about WHAT a key is — the closed keyspace, the routing tables and the
 refusal wordings live in `config_keys`, and the file-and-slot rule lives in `config_dest`.
 
-Authority: spec `settings-keyspace-1.8.0.md` §0 (closed keyspace, directional enforcement, read
+Authority: spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 (closed keyspace, directional enforcement, read
 verbs), §2a (categories + value types), §2b (`meta.box.agent.*`), §2h (`pref.*` requests).
 
 ## The argument grammar

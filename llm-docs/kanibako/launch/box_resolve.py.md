@@ -18,7 +18,7 @@ mode.
 
 ## Where the rules come from
 
-The design source is `plans/settings-conformance-registry-DESIGN.md`, and its letters are cited
+The design source is `~/canon/workbook/designs/settings-conformance-registry-DESIGN.md`, and its letters are cited
 throughout the source because each one is a decision that would otherwise look arbitrary:
 
 * **D0/D1** — the primary workset is NON-EXCEPTIONAL. It is anchored by `config.primary_workset`

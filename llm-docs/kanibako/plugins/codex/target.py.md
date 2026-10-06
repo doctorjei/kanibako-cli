@@ -304,15 +304,15 @@ change to the default could never reach an existing box.
 
 ## Completeness sweep (relocation pass, 2026-08-20)
 
-`comment-ratio.py`: **62.7% → 52.8%** (19805/31578 → 13018/24662 characters). The module docstring,
+`~/canon/notebook/scripts/dev-tools/comment-ratio.py`: **62.7% → 52.8%** (19805/31578 → 13018/24662 characters). The module docstring,
 `detect`, `has_resumable_session`, `verify_persona` and the `_CODEX_DESCRIPTOR` block comment
 carried most of the relocated bulk.
 
-`prose-relocation-check.py`: **281 prose lines at HEAD, 233 removed, 0 scoring below 0.6** against
+`~/canon/notebook/scripts/dev-tools/prose-relocation-check.py`: **281 prose lines at HEAD, 233 removed, 0 scoring below 0.6** against
 this document — no removed line is orphaned. (Note the doc path: this is a plugin package, so the
 mirror drops everything up to and including the first `src` component, and the checker's default
 guess must be overridden with `--doc llm-docs/kanibako/plugins/codex/target.py.md`.)
-`prose-pass-check.py`: all three checks pass — 1666 AST lines identical with docstrings stripped,
+`~/canon/notebook/scripts/dev-tools/prose-pass-check.py`: all three checks pass — 1666 AST lines identical with docstrings stripped,
 26 symbols with `added=[] removed=[]`, 104 string literals multiset-identical.
 
 **Deliberate duplication drops — nothing else was cut:**

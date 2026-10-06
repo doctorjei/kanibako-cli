@@ -8,7 +8,7 @@ reference. This module exists so that is true BY CONSTRUCTION rather than by dis
 only place a `self` string appears in shipped source, and `test_agent_file_boundary.py`'s AST census
 pins that.
 
-Provenance: S1 of the `self` rectification (`plans/2026-08-14-self-rectification-PLAN.md` §3).
+Provenance: S1 of the `self` rectification (`~/canon/notebook/archives/plans/2026-08-14-self-rectification-PLAN.md` §3).
 Six independent sites used to spell the file's shape — and `agent_file_route`'s own docstring
 claimed to be the only one (defect D-1). The six are `agent_file_route` (now the `_read_address` / `_write_address` pair),
 `load_agent_config` (`load`), `write_agent_config` (`save`), `settings_assemble._BEHAVIOR_TABLE_SHAPES`' row (now `ROOT_SECTIONS`), `settings_assemble._agent_partial` (its shape
@@ -16,7 +16,7 @@ half is now `level_table`), and `agent reset --all`'s raw surgery (now `clear_ov
 
 ## Authority
 
-* **Spec `settings-keyspace-1.8.0.md` §0** — closed keyspace: an undeclared key is an ERROR that
+* **Spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0** — closed keyspace: an undeclared key is an ERROR that
   NAMES it. The nested refusal below is §0 applied to a spelling that never named a key.
 * **Spec §2d** — the ONLY two agent key forms are `agent.default.<key>` and `agent.<agent>.<key>`.
 * **Spec §2a** — the SECRET / ENV categories and the bind-shaped categories' representation.

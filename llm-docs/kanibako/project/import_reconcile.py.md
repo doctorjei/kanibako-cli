@@ -219,7 +219,7 @@ the standalone one. A workset has no single `home/`, so the entry is keyed on th
 
 ## Completeness sweep
 
-`prose-relocation-check.py`: every removed prose line is accounted for above. The prose kept in the
+`~/canon/notebook/scripts/dev-tools/prose-relocation-check.py`: every removed prose line is accounted for above. The prose kept in the
 source is the trimmed module docstring, the one-line descriptor on each docstring-bearing symbol,
 the section banners, and the short `⚑` / HARD INVARIANT markers whose deletion would let a future
 edit break something silently at that exact line:

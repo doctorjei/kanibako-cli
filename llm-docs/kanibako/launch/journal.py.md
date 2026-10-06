@@ -8,7 +8,7 @@ It makes no decisions. Every recovery decision lives in the callers — `command
 of them writes the intent down.
 
 Design authority: `~/canon/workbook/designs/lifecycle-journal-DESIGN.md` (Jei-blessed 2026-06-30b,
-`[A225]`). ⚑ The module docstring cited that document as `plans/lifecycle-journal-DESIGN.md`; it
+`[A225]`). ⚑ The module docstring cited that document by the stale path `plans/lifecycle-journal-DESIGN.md`; it
 lives in `designs/`, not `plans/`. The pointer in source now names this file instead, and this is
 the one place the design path is spelled.
 

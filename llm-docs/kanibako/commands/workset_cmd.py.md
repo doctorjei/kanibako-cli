@@ -12,7 +12,7 @@ in it and every write here must MERGE rather than overwrite. Second, **a share i
 BY ITS BOX DESTINATION** (R-10): a binding has no entry name, so the destination is the identity,
 the `share list` DEST column, and the `share rm` argument, all at once.
 
-Authority: the keyspace spec `settings-keyspace-1.8.0.md` §0 (closed keyspace, single route), §2a
+Authority: the keyspace spec `~/canon/workbook/specs/settings-keyspace-1.8.0.md` §0 (closed keyspace, single route), §2a
 (bind entry shape, self-resolving sources, the canonicalize-the-destination-not-the-source rule),
 §2c (`meta.workset.settings`), §2h (`pref.*` requests); the disk-store rulings R-3/R-4/R-6/R-10/R-11
 and R-39; the J2 lifecycle journal.
