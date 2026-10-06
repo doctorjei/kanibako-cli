@@ -1797,15 +1797,17 @@ def _teardown_standalone_box(
 
 
 def _read_box_image(settings_file: Path) -> str | None:
-    """Best-effort read of a box's ``box.image`` from its box.yaml; failure is ``None``."""
-    try:
-        from kanibako.settings.config_io import load_doc
+    """The box's ``box.image``: ``None`` if unreadable, refusing if ``box`` is not a table."""
+    from kanibako.settings.config_io import load_doc, refuse_scalar_sections
 
+    try:
         data = load_doc(settings_file)
-        image = dict(data.get("box", {})).get("image")
-        return str(image) if image else None
     except Exception:  # noqa: BLE001 - image capture is best-effort
         return None
+    refuse_scalar_sections(settings_file, ("box",), data=data)
+    box_tbl = data.get("box")
+    image = box_tbl.get("image") if isinstance(box_tbl, dict) else None
+    return str(image) if image else None
 
 
 def _read_box_image_tiered(box_tier: Path, workset_tier: Path) -> str | None:

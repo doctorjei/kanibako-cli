@@ -516,8 +516,10 @@ def carried_box_settings(box_tier: Path) -> dict:
     a box that leaves the workset loses it, because the value was the workset's.
     ⚑ *box_tier* is a ``box.yaml``, so a ``workset:`` section in it is a scope
     violation — dropped rather than carried into the destination's identity.
+    ⚑⚑ A non-table ``box`` REFUSES by name (:func:`read_box_enable_vault`).
     """
     doc = dict(load_doc(box_tier))
+    refuse_scalar_sections(box_tier, ("box",), data=doc)
     doc.pop("workset", None)
     return doc
 
