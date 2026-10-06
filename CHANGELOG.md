@@ -587,8 +587,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the `set` first and delete the stale entry afterwards. The `set` reads the file the stale entry
   is still sitting in, and keyspec §2a refuses a write that collides with it, so following the
   printed sequence top to bottom failed at step one. The retired-file-key refusal (`box.agent`,
-  `box.agent_name`, `system.default_agent`) and an agent file's nested-table refusal now name the
-  file to delete from first, then give the fix.
+  `box.agent_name`, `system.default_agent`) and an agent file's nested-table refusal whose fix IS
+  a `set` now name the file to delete from first, then give the fix. A nested-table refusal whose
+  fix is a hand edit — move the content up one level, or write it in the system file — keeps the
+  fix first: a delete printed ahead of it would destroy what the user was just told to move.
 
 - **A stored `agent.default.auto_approve` is cured with a command that runs.** At the agent level
   the cure printed `kanibako agent set default access=…`, which the CLI refuses with exit 1 —
