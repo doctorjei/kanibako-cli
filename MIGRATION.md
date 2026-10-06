@@ -8109,13 +8109,12 @@ What this means for you:
 
 - **Detection is an ancestor-walk**, not a registry lookup. Standalone is detected by
   walking up for a `box_data/` dir + a root `settings.yaml` (in v1.8.0 that root file is
-  `workset.yaml`,
-  "2.45 Each settings file is now named for its tier"
-  in the v1.8.0 guide) — presence only, no
-  `mode` field is read (§4.5); named by a workset root's four-directory skeleton
+  `workset.yaml`) — presence only, no `mode` field is read (§4.5); named by a workset
+  root's four-directory skeleton
   (`boxes/`, the workspaces dir, `vault/`, `logs/`) — also presence only in v1.8.0,
   where a workset root carries no identity table at all (§2.43); primary by
-  reconciling the central boxes dir against the registry.
+  reconciling the central boxes dir against the registry. ⚑ The v1.8.0 name is
+  "2.45 Each settings file is now named for its tier" in the v1.8.0 guide.
 - **A detected workset takes its DIRECTORY's name** (v1.8.0). Nothing under the root
   records a name any more, so the import uses the root's directory basename — the same
   default `workset create` applies when you give it a path and no `--name`. Rename the
