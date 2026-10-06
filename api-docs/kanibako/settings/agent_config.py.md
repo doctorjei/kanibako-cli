@@ -25,6 +25,7 @@ def agent_category_root_ref(agent: str, category: str) -> str
 def is_self_resolving(src: str) -> bool
 def is_unambiguous_path_value(value: str) -> bool
 def ambiguous_path_value_error(key: str, value: str, *, anchor: str, anchor_ref: str | None=None, where: str | None=None, anchor_label: str=DEFAULT_ROOT_LABEL) -> str
+def ambiguous_path_shape_error(key: str, value: object, *, where: str | None=None) -> str
 def root_relative_source(src: str, root_ref: str) -> str
 def agent_config_path(data_path: Path, agent_id: str, paths_agents: str='agents') -> Path
 ```

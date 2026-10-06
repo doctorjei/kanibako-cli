@@ -466,19 +466,46 @@ def secret_path_deliveries(entries: list[CategoryEntry]) -> list[CategoryEntry]:
     return delivered
 
 
+#: A refused value's shape as the FILE spells it, paired with the article a sentence
+#: reads it with.  ⚑ ``bool`` LEADS because it is an ``int`` subclass, so an ``int`` test
+#: would answer ``True`` with the wrong word.
+_ARTICLE_SHAPES: "tuple[tuple[type, str], ...]" = (
+    (bool, "a boolean"),
+    (int, "an integer"),
+    (float, "a number"),
+)
+
+
 def _value_shape(value: object) -> str:
     """A USER-FACING name for a refused value's shape — never a class name.
 
-    ``KeyStore`` is the merged store's node type and means nothing to someone reading
-    the YAML they wrote, where the same thing is a MAP; ``Bind``/``BindEntry`` are
-    ``tuple`` subclasses and read as LISTS in a file.  The two names below are the two
-    spellings a settings file actually has for a non-scalar.
+    ``KeyStore`` is the merged store's node type and means nothing to someone reading the
+    YAML they wrote, where the same thing is a MAP; ``Bind``/``BindEntry`` are ``tuple``
+    subclasses and read as LISTS in a file.
+
+    ⚑ A SCALAR IS A USER WORD TOO: a file says ``8080``, ``true``, ``1.5`` and never
+    ``int`` / ``bool`` / ``float``.
     """
     if isinstance(value, dict):
         return "map"
     if isinstance(value, (list, tuple)):
         return "list"
+    for shape_type, phrase in _ARTICLE_SHAPES:
+        if isinstance(value, shape_type):
+            return phrase.split(" ", 1)[1]
     return type(value).__name__
+
+
+def _shape_phrase(value: object) -> str:
+    """:func:`_value_shape` WITH ITS ARTICLE — the carrier's one way to name a shape.
+
+    🛑 A CALLER SPELLS ``holds {phrase}``, never ``holds a {shape}``: the article belongs
+    to the word, so a caller that supplies its own cannot get it wrong.
+    """
+    for shape_type, phrase in _ARTICLE_SHAPES:
+        if isinstance(value, shape_type):
+            return phrase
+    return f"a {_value_shape(value)}"
 
 
 def is_scalar_family_value(value: object) -> bool:
@@ -496,12 +523,30 @@ def is_scalar_family_value(value: object) -> bool:
     return value is None or isinstance(value, (str, int, float, bool))
 
 
+def is_path_key_value(value: object) -> bool:
+    """True iff *value* is a shape a PATH key may hold.
+
+    ⚑ STRICTER THAN :func:`is_scalar_family_value`, and the families differ BECAUSE their
+    declared types do.  For the two SCALAR families §2a refuses only *"a non-scalar (list,
+    map, etc)"*, so an unquoted ``8080`` at ``box.env.PORT`` stays the value it has always
+    been.  A PATH key is not SCALAR but TYPED ``path``, and §2a's set-time rule makes
+    *"a type mismatch for a typed scalar key"* a hard error — so an INT, FLOAT or BOOL is a
+    mismatch here where it is not one at ``env``.
+    ⚑⚑ A NAME-PARAMETRIC FAMILY IS NOT A REASON TO LEAVE A VALUE LOOSE: a
+    ``secret_path.<VAR>`` key is typed ``path`` and judged by THIS predicate, so
+    ``box.secret_path.T: 8080`` REFUSES while ``box.env.PORT: 8080`` does not.
+
+    ⚑ A PRESENT ``None`` IS STILL LEGAL: the tri-state OMIT a reset writes.
+    """
+    return value is None or isinstance(value, str)
+
+
 def refuse_non_scalar_family_value(
     key: str, category: str, value: object,
 ) -> None:
-    """Refuse a NON-SCALAR stored at *key*, one of the two SCALAR families (spec §2a).
+    """Refuse a value *key* may not hold — the two SCALAR families or a PATH key (§2a).
 
-    *category* is ``"env"`` or ``"secret_path"``; *key* is the WHOLE dotted key, which
+    *category* is ``"env"``, ``"secret_path"`` or ``"path"``; *key* is the WHOLE dotted key, which
     is the only thing the message names — §2a: *"A non-scalar (list, map, etc) is
     REFUSED at resolve and the key is named, irrespective of origin (settings file,
     plugin, CLI, etc)."*  ⚑ IRRESPECTIVE OF ORIGIN IS THE RULE'S REACH, NOT A SECOND
@@ -523,20 +568,28 @@ def refuse_non_scalar_family_value(
     """
     from kanibako.settings.settings_resolve import SettingsError
 
-    if is_scalar_family_value(value):
+    if (is_path_key_value(value) if category == "path"
+            else is_scalar_family_value(value)):
         return
-    shape = _value_shape(value)
+    shape = _shape_phrase(value)
+    if category == "path":
+        raise SettingsError(
+            f"{key} holds {shape}; a PATH key takes ONE path spelled as a string "
+            f"(keyspec §2a: a type mismatch for a typed scalar key is a hard error). "
+            f"Its value is never coerced into a string, so {shape} names no "
+            f"directory to use: give one quoted path."
+        )
     if category == "env":
         raise SettingsError(
-            f"{key} holds a {shape}; the env.<VAR> family is SCALAR (spec §2a) and "
+            f"{key} holds {shape}; the env.<VAR> family is SCALAR (spec §2a) and "
             f"an environment variable is a STRING. Its value is never coerced into "
             f"a string nor shell-split, so write ONE quoted value - 'x y' is one "
             f"variable holding two words, not two values."
         )
     raise SettingsError(
-        f"{key} holds a {shape}; the secret_path.<VAR> family is SCALAR (spec §2a) "
+        f"{key} holds {shape}; the secret_path.<VAR> family is SCALAR (spec §2a) "
         f"and its value is ONE host path - the file the box exports the variable "
-        f"from. Its value is never coerced into a string, so a {shape} names no "
+        f"from. Its value is never coerced into a string, so {shape} names no "
         f"host file to mount: give a single path, and declare a second "
         f"secret_path.<VAR> key for a second secret."
     )

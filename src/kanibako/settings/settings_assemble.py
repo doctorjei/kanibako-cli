@@ -564,13 +564,12 @@ def stored_config_entries(raw: Any) -> dict[str, object]:
     """The top-level ``config:`` table a SETTINGS document carries, as ``config.<key> → value``;
     empty ⇒ the document carries none.
 
-    ⚑ READ AS THE LAYER-1 READER READS IT — the same walk (``config._flatten_leaves``, which
-    that reader's ``_flatten_dotted`` stringifies), so the entries named here are the ones
-    ``kanibako.cfg`` would accept or refuse if moved there. The values are the leaves AS
-    STORED, for the stored view to render as it renders any stored value. A table that
-    flattens to nothing — ``config:``,
-    ``config: {}``, a ``config:`` whose only leaves are empty tables — or a non-table ``config:``
-    is named by the TABLE name, ``config``, carrying the value as stored.
+    ⚑ READ AS THE LAYER-1 READER READS IT — the same walk (``config._flatten_leaves``), so
+    these are the entries ``kanibako.cfg`` would accept or refuse if moved there; the values
+    are the leaves AS STORED. ⚑ ONE DIVERGENCE, AND IT IS THE READER'S: a MAP at a
+    ``config.*`` key is a type mismatch ``bootstrap_config_paths`` refuses by name, and
+    this view walks leaves only, so there is nothing to show for one. A table that flattens
+    to nothing, or a non-table ``config:``, is named by the TABLE name.
 
     ONE reading, two consumers: :func:`refuse_config_table` (the resolve) and the stored view
     (``config_interface``), so the two cannot disagree about which lines are meant.
@@ -1232,7 +1231,13 @@ def _parse_node(
         if dest_keyed:
             src, entry_opts = unpack_bind_entry(value)
             return BindEntry(src, entry_opts)
-        host, box, opts = unpack_bind(value)
+        try:
+            host, box, opts = unpack_bind(value)
+        except SettingsError as exc:
+            # ⚑ THE PARSE SEAM IS THE ONLY FRAME HOLDING THE KEY: a bind leaf is a bare
+            # ``[host_src, box_dest]``, so ``unpack_bind`` sees no path.  🛑 ITS SIGNATURE AND
+            # MESSAGE STAND; only the key is added, here.
+            raise SettingsError(f"{'.'.join(path)}: {exc}") from exc
         return Bind(host, box, opts)
     # Scalar / None / genuine list[str] — stored verbatim (a list is not descended).
     return value

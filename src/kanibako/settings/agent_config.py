@@ -265,6 +265,46 @@ def ambiguous_path_value_error(
     )
 
 
+def ambiguous_path_shape_error(key: str, value: object, *, where: str | None = None) -> str:
+    """The §2a TYPE refusal for a non-string *value* stored at PATH key *key*.
+
+    ⚑ THE SENTENCE IS NOT WRITTEN HERE.  It is
+    :func:`~kanibako.settings.settings_categories.refuse_non_scalar_family_value`'s, at its
+    ``path`` category, called and caught: the two SCALAR families and the path keys share
+    ONE carrier, so a key answered here and a key answered there cannot drift into two
+    messages for one rule.  *where* names the file the value was read from, which the
+    carrier has no route to and the cure here is a hand-edit.
+
+    ⛔ **TOTAL, AND IT SAYS SO: a value a PATH key MAY hold has no refusal to render, so
+    this RAISES :class:`ValueError` rather than returning a sentence about a legal value.**
+    Every caller reaches it through :func:`~kanibako.settings.settings_categories.is_path_key_value`
+    FIRST, so the raise is unreachable from production and marks a caller that skipped the
+    predicate — a message built here without asking would describe a shape the rule does
+    not refuse, which is the one sentence nobody can act on.
+    """
+    from kanibako.settings.settings_categories import (
+        is_path_key_value,
+        refuse_non_scalar_family_value,
+    )
+    from kanibako.settings.settings_resolve import SettingsError
+
+    if is_path_key_value(value):
+        raise ValueError(
+            f"ambiguous_path_shape_error({key!r}, {value!r}): a PATH key may hold that "
+            f"value, so there is no §2a type refusal to render; ask "
+            f"is_path_key_value first"
+        )
+    try:
+        refuse_non_scalar_family_value(key, "path", value)
+    except SettingsError as exc:
+        # ⚑ THE PATH TAKEN ON EVERY CALL, and the only honest way to read the carrier's
+        # sentence: the guard above has refused a value a PATH key may hold, so what
+        # arrives here is one the carrier DOES refuse, and it raises.  A caller that
+        # reached this function skipping the guard got the ValueError above, not silence.
+        message = str(exc)
+    return f"{message} (in {where})" if where else message
+
+
 def root_relative_source(src: str, root_ref: str) -> str:
     """Root a BARE RELATIVE *src* under *root_ref*; return it unchanged otherwise.
 
