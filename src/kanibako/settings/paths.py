@@ -272,15 +272,15 @@ def _standalone_settings_files(root: Path, *, early: EarlyScope) -> tuple[Path, 
 
 
 def box_metadata_dir(mode: BoxMode, metadata_path: Path, *,
-                     early: EarlyScope | None = None) -> Path:
+                     early: EarlyScope) -> Path:
     """The DIR holding a box's own metadata — home, session state, box tier.
 
     ⚑ *early* is read on the STANDALONE arm ONLY — the arm that answers the store through
-    ``workset.boxes``; the primary/named arm is ``metadata_path`` itself.
+    ``workset.boxes``; the primary/named arm is ``metadata_path`` itself.  Required rather
+    than optional-plus-assert: that pattern only fails at runtime, on the one arm that needs it.
     """
     if mode is not BoxMode.standalone:
         return metadata_path
-    assert early is not None, "the standalone store is resolved, so it needs its scope"
     return standalone_box_store(metadata_path, early=early)
 
 

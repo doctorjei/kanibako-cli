@@ -1948,6 +1948,8 @@ def _rm_standalone(std, box_name: str, root, args: argparse.Namespace) -> int:
     root_path = Path(root) if root is not None else None
     metadata_dir = (standalone_box_store(root_path, early=_early_scope(std, BoxMode.standalone))
                     if root_path is not None else None)
+    if args.purge and root_path is not None:
+        refuse_inherited_per_owner(root_path, _early_scope(std, BoxMode.standalone))
     # ⚑ Resolved BEFORE the unregister: a teardown that refuses stops ``rm`` while the
     # box is still registered (see :func:`_standalone_teardown_plan`).
     plan = None
