@@ -450,32 +450,40 @@ def _state_from_paths(
 # ---------------------------------------------------------------------------
 
 def _workspace_copy_ignore(
-    metadata_root: Path, copied_root: Path, *, early: EarlyScope,
+    metadata_root: Path, copied_root: Path, *, mode: BoxMode, early: EarlyScope,
 ) -> Callable[[str, list[str]], set[str]]:
     """A workspace copy's *ignore*: never carry the box's OWN store into a workspace.
 
     ⚑⚑ BY PATH, NEVER BY NAME.  ``shutil.ignore_patterns("box_data")`` matched that name
     at ANY depth, so a duplicate or a convert silently dropped the user's own
-    ``src/box_data/``.  The two paths excluded are the store ``workset.boxes`` RESOLVES to
-    for *metadata_root*, and the composed ``<root>/box_data`` leaf a repoint leaves behind.
+    ``src/box_data/``.  At most two paths are excluded, each a RESOLVED path:
+
+    * the box's store **as resolved for ITS mode** (:func:`box_metadata_dir`) —
+      ``workset.boxes`` for a standalone box, ``metadata_path`` for a primary or named
+      one.  A primary box's store sits OUTSIDE its workspace, so this excludes nothing
+      there and the user's own ``box_data/`` travels with the copy.
+    * the **superseded default leaf** ``<root>/box_data``, and only for a STANDALONE box
+      whose store was REPOINTED away from it — what a repoint leaves there is the box's
+      own stale ``home/`` and box tier.  Never excluded while it IS the live store, and
+      never for a primary or named box.
 
     ⚑ NEITHER PATH IS A DETECTION MARKER.  Since SD a standalone root is the root whose
     own ``workset.yaml`` stores the ``workset.registry`` null; ``box_data`` is only this
-    key's default leaf.  The composed leaf is excluded because what a repoint leaves there
-    is the box's OWN superseded metadata — a stale ``home/`` and box tier — not because
-    the name means anything.  ⚠ Whether that leftover should travel instead is OPEN; see
-    the letter accompanying this series.  The mode guard, not this term, is what keeps a
-    PRIMARY or NAMED box's own ``box_data/`` out of the exclusion.
+    key's default leaf.
 
     ⚑ The gate is ``_path_in_tree`` against *copied_root* — the only test that means
-    "this walk can reach it" — and :func:`ignore` matches the resolved PATH, so a
-    an unvisited directory cannot be named at all.
+    "this walk can reach it" — and :func:`ignore` matches the resolved PATH, so an
+    unvisited directory cannot be named at all.
     """
-    resolved = standalone_box_store(metadata_root, early=early).resolve()
+    store = box_metadata_dir(mode, metadata_root, early=early).resolve()
     copied = copied_root.resolve()
-    locator = (metadata_root / STANDALONE_META_DIR).resolve()
+    excluded = [store]
+    if mode is BoxMode.standalone:
+        default_leaf = (metadata_root / STANDALONE_META_DIR).resolve()
+        if default_leaf != store:
+            excluded.append(default_leaf)
     inside = tuple(
-        path for path in (locator, resolved)
+        path for path in excluded
         if path != copied and _path_in_tree(path, copied)
     )
 
@@ -528,7 +536,8 @@ def copy_into_workset(
             ignore = None
             if source_mode == BoxMode.standalone:
                 ignore = _workspace_copy_ignore(
-                    metadata_path, source_path, early=_early_scope(std, BoxMode.standalone))
+                    metadata_path, source_path, mode=BoxMode.standalone,
+                    early=_early_scope(std, BoxMode.standalone))
             copy_tree_keeping_links(source_path, dst_workspace, ignore=ignore, dirs_exist_ok=True)
     except BaseException:
         _unwind_target_member(ws, proj_name, existed)
@@ -998,13 +1007,13 @@ def _run_steps(
         # ⚑⚑ THE PATH-ANCHORED IGNORE, or this copy carries the box's OWN store into the
         # destination workspace, at the DEFAULT layout too.  The layout root is *src*:
         # ``workset.boxes`` is carried by the root whose ``workset.yaml`` declares it.
-        # ⚠ D1 IS OPEN: this anchor is wrong for a PRIMARY source whose ``box_data/`` is
-        # the user's own, but a mode guard or a root re-anchor each breaks one of the
-        # existing green convert/duplicate pins.  See the letter with this series.
+        # ⚑ This arm runs for EVERY relocating source, so the store is resolved FOR THE
+        # SOURCE'S MODE: a primary or named source resolves outside the workspace and
+        # excludes nothing, leaving its user's own top-level ``box_data/`` to travel (D1).
         copy_tree_keeping_links(
             src, dest,
             ignore=_workspace_copy_ignore(
-                src, src,
+                src, src, mode=state.mode,
                 early=EarlyScope(std.early_system, _state_ws_token(state))),
         )
         # ⚑⚑ THE UNWIND OWNS ONLY WHAT THIS MOVE CREATED: the copy refuses an existing
@@ -2303,7 +2312,7 @@ def _to_workset(
         ignore = None
         if state.mode == BoxMode.standalone:
             ignore = _workspace_copy_ignore(
-                state.metadata_path, state.workspace_path,
+                state.metadata_path, state.workspace_path, mode=BoxMode.standalone,
                 early=EarlyScope(std.early_system, _state_ws_token(state)))
         copy_tree_keeping_links(
             state.workspace_path, dst_workspace, ignore=ignore, dirs_exist_ok=True,
