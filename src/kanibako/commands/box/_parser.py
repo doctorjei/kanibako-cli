@@ -2795,6 +2795,7 @@ def _run_box_config(args: argparse.Namespace) -> int:
             cascade_agent_name = select_agent(std=std, proj=proj).node
         except Exception:
             cascade_agent_name = ""
+        from kanibako.settings.agent_config import agent_settings_path
 
         msg = set_config_value(
             key, value,
@@ -2802,6 +2803,10 @@ def _run_box_config(args: argparse.Namespace) -> int:
             cascade_system_path=std.settings,
             cascade_workset_path=workset_path,
             cascade_box_path=project_toml,
+            cascade_agent_path=(
+                agent_settings_path(std.agents, cascade_agent_name)
+                if cascade_agent_name else None
+            ),
             cascade_agent_name=cascade_agent_name,
             command_scope=ConfigLevel.box,
             std=std, proj=proj,
