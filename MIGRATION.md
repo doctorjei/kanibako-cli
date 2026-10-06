@@ -6705,8 +6705,8 @@ letter case, or a case variant of `__PRIMARY__` or `__STANDALONE__` such as `__p
 **What changed.** These names belong to the primary and standalone partitions (see *Containers are
 renamed `kb-<workset>-<box>`; a pre-1.8.0 container is invisible*): a working set called `primary`
 would render its boxes' containers as `kb-primary-<box>`, the names primary boxes use. `workset
-create` refuses them, and a working set v1.7.x registered under one now refuses at every command that
-loads it. `workset list` still shows it, with 0 projects, and `workset rm` still removes it.
+create` refuses them, and a working set v1.7.x registered under one now refuses at every command
+that loads it. `workset list` still shows it, with 0 projects, and `workset rm` still removes it.
 
 **What you see.**
 
@@ -6714,16 +6714,18 @@ loads it. `workset list` still shows it, with 0 projects, and `workset rm` still
 Error: Working set 'primary' is registered under a reserved name. … Register the working set again under its directory name; its files stay where they are:
   kanibako workset rm primary --force
   mv /home/you/ws/primary /home/you/ws/<new name>
-  # then, in /home/you/ws/<new name>/registry.yaml, change each box path that starts with /home/you/ws/primary/ to start with /home/you/ws/<new name>/
-  cd /home/you/ws/<new name> && kanibako box info
+  cd /home/you/ws/<new name>/workspaces/api && kanibako box remap --force
+The first 'box remap --force' imports the working set under its directory name; each one re-records that box. …
 ```
 
-**What to do.** Run the printed lines in order. `workset rm` without `--purge` only unregisters; the
-tree, its boxes, and their data stay. `box info` run in the root imports the working set under its
-directory name, then exits 1 saying you are not in a project. The `mv` and the
-`<root>/registry.yaml` edit appear only when the directory itself has a reserved name, since an
-import takes the directory's name. Each box keeps its name and data; its container becomes
-`kb-<new name>-<box>`.
+**What to do.** Pick the new name and run the printed lines in order. `workset rm` without `--purge`
+only unregisters; the tree, its boxes, and their data stay. The `mv` appears only when the directory
+itself has a reserved name, since an import takes the directory's name; then the message prints one
+`box remap --force` per box whose workspace is inside the tree, which records its moved path. When
+the directory keeps its name, each of those lines is `box info` instead. A working set with no box
+inside its tree ends with `cd <root> && kanibako box info`, which imports it and then exits 1 saying
+you are not inside a project; that is expected. Each box keeps its name and data; its container
+becomes `kb-<new name>-<box>`.
 
 ---
 
