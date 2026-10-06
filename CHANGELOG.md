@@ -4230,7 +4230,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it. To go the other way, `kanibako box set <box> --null box.env.COLORTERM` leaves the variable
   unset whatever the host says.
   ⚑ And because kanibako declares the variable at box scope, a `COLORTERM` key of your own at
-  **any other** scope is a contested slot and refuses the launch (§2.33) — re-spell it
+  **any other** scope is a contested slot and refuses the launch ([MIGRATION.md](MIGRATION.md) § *2.33 An environment variable may be declared at ONE scope only*) — re-spell it
   `box.env.COLORTERM`. The launch notice about retired `env` files says so too: `COLORTERM` was the
   one line kanibako itself put in them, and it is the one line that must be deleted rather than
   migrated. See [MIGRATION.md](MIGRATION.md) § *2.42 `COLORTERM` passes your host's value through,
@@ -4439,7 +4439,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   indistinguishable from a harness you have not installed**, so both `agent: goose: zippity:` and a
   typo'd `agent: clade: zippity:` resolve on a machine without goose, and `zippity` refuses on one
   with it. There is no list of every agent that will ever exist to check a name against.
-  `agent: default:` is judged everywhere. §2.38 closed this same
+  `agent: default:` is judged everywhere. [MIGRATION.md](MIGRATION.md) § *2.38 The `agent` verbs joined the closed keyspace: `set`, `get` and `reset` refuse what is not a key* closed this same
   passthrough for the per-agent `agent.yaml` file; this is the same rule over every settings file
   and the whole resolved snapshot. See [MIGRATION.md](MIGRATION.md) § *2.47 An undeclared key in a
   settings file now stops the command, and the cure is a hand-edit*.
@@ -5361,7 +5361,7 @@ migration code.** Four released config surfaces are removed outright
   must be normalized (`normalize_bind_dest`): arm keys merge as strings but resolve to paths, so an
   unnormalized `~/x` neither matches nor is matched by an override written `/home/agent/x` — the
   two survive as separate entries and then collide at launch as two bindings on one destination.
-  See `MIGRATION.md` § *3 For plugin authors* item 7.
+  See `MIGRATION.md` § *3. For plugin authors* item 7.
 
 ### Fixed
 
