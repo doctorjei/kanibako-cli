@@ -63,6 +63,7 @@ def _bootstrap_available(program: str | None=None) -> bool
 def _check_box_components(proj) -> str | None
 def _resolve_existing_box(std: StandardPaths, config: BootstrapConfig, project_dir: str | None) -> ProjectPaths | None
 def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
+def _store_move_cure(old: Path | None, new: Path) -> str
 def _no_box_error(project_dir: str | None, std: StandardPaths | None=None) -> str
 def _unbuilt_box_error(proj: ProjectPaths) -> str | None
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None
