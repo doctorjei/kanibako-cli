@@ -1084,7 +1084,18 @@ which**; only the first is a stale key that can stop the resolve, and only in so
   `<box-name>` directory under the arm is ever removed, never the arm itself. For a **standalone**
   box the arm *is* the vault, so an arm pointing outside the box's own root is treated as yours:
   it is kept and named on screen (`Note: left the vault at <path> in place`), and you remove it
-  yourself. An arm inside the root is deleted with the box.
+  yourself. An arm inside the root is deleted with the box. ⚑ `workset.boxes` draws the same
+  line for the box's **store**, on resolved paths and strictly below the root, and the Note is
+  the same shape:
+
+  ```
+  Note: left the box store at /path/to/store/box_data in place — not strictly inside /path/to/box, so it is yours to remove.
+  ```
+
+  The doors differ in what they leave behind: `box rm --purge` and `kanibako box purge` keep the
+  root `workset.yaml` so the box stays whole, while `box move` and `box convert` remove it — the
+  box has left. See **Standalone boxes: a relocated store is read where it is, and never deleted
+  for you**.
   🛑 **A value that cannot be resolved now stops these commands instead of being ignored.** In
   1.7.2 both keys were accepted and never read, so an unresolvable one — `@config.registry/ro`,
   say — sat in a settings file doing nothing. It is read now, and a purge or move refuses by name
@@ -6842,19 +6853,30 @@ the key.
 
 Two things follow that are worth stating plainly.
 
-**A teardown no longer deletes a store that sits outside the box root.** Where the resolved store
-lies outside the root it is a directory you nominated, so `purge`, `box rm --purge` and the
-`box move`/`convert` source teardown leave it and tell you so:
+**A teardown no longer deletes a store that does not sit strictly below the box root.** The
+resolved store is compared with the root as *resolved paths*, so a `workset.boxes` that spells
+its way out of the tree — a `..` segment, or a parent component that is a symlink elsewhere —
+counts as outside, and so does the root itself. Where the store lies outside the root it is a
+directory you nominated, so `box rm --purge`, `kanibako box purge` and the `box move`/`convert`
+source teardown leave it and name it on screen.
 
-```
-Note: left the box store at /path/to/store/box_data in place — outside /path/to/box and is yours to remove.
-```
+That is the same line a relocated `vault_ro`/`vault_rw` arm already took; both Notes are written
+out under **Housekeeping: renames you almost certainly don't carry**. Before, a relocated store
+survived but silently, and the leftover `<root>/box_data` was deleted instead — a directory the
+box had stopped using. A store lying strictly *below* the root is still removed, relocated or
+not.
 
-That is the same line a relocated `vault_ro`/`vault_rw` arm already took (§2.9). Before, a
-relocated store survived but silently, and the leftover `<root>/box_data` was deleted instead — a
-directory the box had stopped using. A store lying strictly *below* the root is still removed,
-relocated or not. A store kept this way leaves the box's own root settings file in place, because
-that file carries the repoint: remove it by hand only if you are removing the whole box.
+**What each door leaves behind differs, so read the one you use.**
+
+| Door | Store not strictly below the root |
+|---|---|
+| `box rm --purge` | root `workset.yaml` kept, box left whole |
+| `kanibako box purge` | root `workset.yaml` kept, box left whole |
+| `box move` / `box convert` | root `workset.yaml` removed — the box has left; the store stays where it is and is named |
+
+A store removed by any of them takes the root `workset.yaml` with it: with the store gone the root
+is no longer a box, and that file carries the repoint. Remove it by hand only if you are removing
+the whole box.
 
 **The project plugin dir moved with the store.** A plugin dropped in a project's plugins
 directory was read from the composed default leaf, so for a box with a relocated store it was
