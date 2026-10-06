@@ -243,6 +243,20 @@ class TestHandleFork:
         assert resp["status"] == "error"
         assert "invalid" in resp["message"]
 
+    def test_fork_succeeds_without_registry(self, fork_hub):
+        """An absent registry is not a precondition: the fork reads no registry file.
+
+        The fork's only membership write goes to the PRIMARY per-workset file, so a
+        context carrying no ``registry`` must still fork.
+        """
+        hub, sock_path, ctx = fork_hub
+        ctx.registry = None
+
+        resp = _send(sock_path, {"action": "fork", "name": "noreg"})
+
+        assert resp["status"] == "ok"
+        assert Path(resp["path"]).is_dir()
+
     def test_fork_returns_error_when_project_path_not_set(self, tmp_path):
         """Fork fails gracefully when context lacks project_path."""
         runtime = MagicMock()
