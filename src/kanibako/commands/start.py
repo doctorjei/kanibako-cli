@@ -1525,7 +1525,8 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     # ONE derivation of "where a standalone box's metadata lives" — the same
     # helper the resolvers and the lifecycle verbs use; no second ``box_data``
     # literal to drift.
-    box_data = box_metadata_dir(BoxMode.standalone, root)
+    box_data = box_metadata_dir(BoxMode.standalone, root,
+                               early=_early_scope(std, BoxMode.standalone))
     if box_data.is_dir():
         return None
     head = (
