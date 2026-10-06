@@ -316,6 +316,21 @@ _GUARD_CASES = {
                               lambda w: ["box", "convert", str(w.leaf), "--standalone",
                                          "--move", str(w.dup.parent / "moved" / "a"), "--force"],
                               lambda w: w.marker),
+    "convert-source-only": (lambda w: _own_mailboxes(w.w1_root),
+                            lambda w: ["box", "convert", str(w.primary), "--workset", "w1",
+                                       "--force"],
+                            lambda w: w.primary_meta),
+    "duplicate-target-only": (lambda w: _own_mailboxes(w.w1_root),
+                              lambda w: ["box", "duplicate", str(w.leaf), str(w.dup), "--force"],
+                              lambda w: w.dup / "f.txt"),
+    "duplicate-source-only": (lambda w: (_own_mailboxes(w.w1_root), _write(_stray_q)(w)),
+                              lambda w: ["box", "duplicate", str(w.primary),
+                                         str(w.dup.parent / "unused"), "--to", "named",
+                                         "--workset", "w1", "--name", "q", "--force"],
+                              _stray_q),
+    "clean-all-primary-only": (lambda w: [_own_mailboxes(r) for r in (w.w1_root, w.w2_root)],
+                               lambda w: ["box", "purge", "--all", "--force"],
+                               lambda w: w.primary_meta),
     "rm-standalone": (lambda w: _settled(_TO_STANDALONE(w))(w),
                       lambda w: ["box", "rm", str(w.primary), "--purge", "--force"],
                       lambda w: w.primary / "box_data"),
@@ -338,8 +353,8 @@ _GUARD_CASES = {
 class TestPartitionKeyReachesEveryCheck:
     """The partition-key state against named box ``a``, a duplicate into a workset, a
     standalone and a deregistered ``box rm --purge``, ``box purge --all`` with data in named
-    worksets only, a ``box convert`` whose source owns the key so only the target's check
-    stands, and ``workset disconnect --remove-files``.
+    worksets only, and ``workset disconnect --remove-files``.  The ``*-only`` cases and the
+    ``convert-to-*`` cases give one side its own key, so the other side's check alone refuses.
     """
 
     @pytest.mark.parametrize("case", list(_GUARD_CASES))
