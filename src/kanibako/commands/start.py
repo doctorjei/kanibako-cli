@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import textwrap
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Literal, NamedTuple, overload
@@ -1527,18 +1528,66 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     box_data = box_metadata_dir(BoxMode.standalone, root)
     if box_data.is_dir():
         return None
-    q_name = shlex.quote(name)
-    q_root = shlex.quote(str(root))
-    return (
+    head = (
         f"Error: box '{name}' is registered as a standalone box at {root}, but "
         f"its box data ({box_data}) is gone.\n"
         "  A launch will not rebuild it — rebuilding a box is a repair, and a "
         "repair has to be asked for by name.\n"
+    )
+    # ⚑ Decision 8 (DATA-LOSS HAZARD): the Rebuild below makes an EMPTY box_data/, so it
+    # is offered only while ``workset.boxes`` is at its default.  The store follows the key
+    # (``meta.box.path`` IS ``{workset.boxes}``), so the move goes TO the key's dir, never
+    # from it: a dir the key names may be the user's own.
+    from kanibako.project.workset import load_workset_settings_doc, resolve_workset_boxes
+    from kanibako.settings.settings_resolve import SettingsError
+
+    try:
+        boxes = resolve_workset_boxes(
+            root, load_workset_settings_doc(root), standalone=True,
+            early=_early_scope(std, BoxMode.standalone),
+        )
+    except SettingsError as exc:
+        return head + textwrap.indent(str(exc), "  ")
+    if boxes != box_data:
+        return head + _store_move_cure(None, boxes)
+    q_name = shlex.quote(name)
+    q_root = shlex.quote(str(root))
+    return head + (
         f"  Rebuild it:  kanibako box rm {q_name} && kanibako create "
         f"--standalone --register --name {q_name} {q_root}\n"
         "  (box_data/ is already gone, so 'box rm' only drops the registry "
         "entry — your workspace/ and vault/ are not touched, and --name keeps "
         "the box's identity and channel address.)"
+    )
+
+
+def _store_move_cure(old: Path | None, new: Path) -> str:
+    """The cure lines for a box store a ``workset.boxes`` repoint left behind (decision 8).
+
+    *old* is a store found on disk, else ``None``: the old place is then the key's earlier
+    value, which nothing records, and the line carries a ``<old store>`` placeholder.  The
+    ``mkdir -p`` is load-bearing: a repointed parent need not exist, and ``mv`` into a
+    missing parent fails.  There is no Rebuild line: it would build an empty box while the
+    data sits at the old place.
+    """
+    if old is not None:
+        found = f"  Its store is still at {old}.\n"
+        q_old = shlex.quote(str(old))
+    else:
+        found = ("  Its store may still be where workset.boxes used to point; a "
+                 "rebuild would make an empty box.\n")
+        q_old = "<old store>"
+    lead = (
+        "  workset.boxes is not at its default, so this box's store need not be "
+        "where this launch looks for it.\n"
+        f"{found}"
+    )
+    if new.exists():
+        return lead + (f"  It belongs at {new}, which already exists; a move would put "
+                       "it inside that directory, so none is offered.")
+    return lead + (
+        "  Move it, with the box stopped:  "
+        f"mkdir -p {shlex.quote(str(new.parent))} && mv {q_old} {shlex.quote(str(new))}"
     )
 
 
@@ -1627,13 +1676,31 @@ def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
     already been deleted: ``kanibako create <workspace>`` rebuilds a PRIMARY box in
     place and keeps its registration, while a NAMED box needs ``workset disconnect`` +
     ``workset connect`` (``create`` refuses there — "project already
-    initialized").
+    initialized").  Both are offered only while ``workset.boxes`` is at its
+    default; see :func:`_store_move_cure` for the repointed case.
     """
     from kanibako.settings.paths import BoxMode
 
     if proj.metadata_path.is_dir():
         return None
     label = proj.name or str(proj.project_path)
+    head = (
+        f"Error: box '{label}' is registered, but its box directory is gone "
+        f"({proj.metadata_path}).\n"
+        "  A launch will not rebuild it — rebuilding a box is a repair, and a "
+        "repair has to be asked for by name.\n"
+    )
+    # ⚑ Decision 8 (DATA-LOSS HAZARD): Rebuild only while ``workset.boxes`` is at its
+    # default.  The box dir is ``<workset.boxes>/<name>``, so a parent other than
+    # ``<workset root>/boxes`` means the key moved it, and the store may be at the old place.
+    if proj.group is not None:
+        from kanibako.project.workset import BOXES_DIR_NAME
+
+        default_store = proj.group.root / BOXES_DIR_NAME / proj.metadata_path.name
+        if default_store != proj.metadata_path:
+            return head + _store_move_cure(
+                default_store if default_store.is_dir() else None, proj.metadata_path,
+            )
     workspace = shlex.quote(str(proj.project_path))
     if proj.mode is BoxMode.named and proj.group is not None:
         ws = shlex.quote(proj.group.name)
@@ -1644,13 +1711,7 @@ def _unbuilt_box_error(proj: ProjectPaths) -> str | None:
         )
     else:
         cure = f"  Rebuild it:  kanibako create {workspace}"
-    return (
-        f"Error: box '{label}' is registered, but its box directory is gone "
-        f"({proj.metadata_path}).\n"
-        "  A launch will not rebuild it — rebuilding a box is a repair, and a "
-        "repair has to be asked for by name.\n"
-        f"{cure}"
-    )
+    return head + cure
 
 
 def _refuse_null_workspace_bind(std, proj: ProjectPaths) -> None:

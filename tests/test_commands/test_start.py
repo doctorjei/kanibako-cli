@@ -12981,3 +12981,283 @@ class TestContainerExitCodeUndeterminable:
         runtime = MagicMock(cmd="podman")
         with patch("kanibako.commands.start.subprocess.run", return_value=done):
             assert _container_exit_code(runtime, "box", undeterminable=None) == 3
+
+
+class TestGoneBoxCureIsSafeAfterARepoint:
+    """Decision 8 (the "box directory is gone" DATA-LOSS HAZARD): a Rebuild line is
+    offered only while ``workset.boxes`` is at its default.  Repointed, the box dir
+    moved without its data, and a Rebuild would build an EMPTY box over a store that
+    still exists, so the cure is the stopped-box move, and it must RUN as printed.
+    """
+
+    @staticmethod
+    def _std(config_file):
+        from kanibako.settings.config import load_config
+        from kanibako.settings.paths import load_std_paths
+
+        config = load_config(config_file)
+        return config, load_std_paths(config)
+
+    @staticmethod
+    def _create(path, *, standalone=False):
+        from kanibako.commands.box._parser import run_create
+
+        ns = argparse.Namespace(
+            path=str(path), standalone=standalone, no_vault=True, name=None,
+            image=None, agent=None, allow_home=False, recover=False,
+            register=standalone,
+        )
+        assert run_create(ns) == 0
+
+    @staticmethod
+    def _repoint_primary_boxes(std, value):
+        """Repoint at the primary workset's OWN level: a system-tier absolute value is
+        refused at the read door (it names no workset identity)."""
+        from kanibako.settings.config_io import dump_doc, load_doc
+
+        ws_file = std.primary_workset / "workset.yaml"
+        doc = load_doc(ws_file) if ws_file.is_file() else {}
+        doc.setdefault("workset", {})["boxes"] = str(value)
+        dump_doc(ws_file, doc)
+
+    @staticmethod
+    def _run_move_line(msg):
+        """RUN the ONE printed move cure in a shell, exactly as a user pastes it."""
+        import subprocess
+
+        lines = [ln.split(":  ", 1)[1] for ln in msg.splitlines()
+                 if ln.strip().startswith("Move it, with the box stopped:")]
+        assert len(lines) == 1, msg
+        return subprocess.run(["sh", "-c", lines[0]], check=False).returncode
+
+    def _primary_box(self, config_file, tmp_home):
+        """A real PRIMARY box with a marker in its store; returns ``(old store, marker)``."""
+        _config, std = self._std(config_file)
+        self._create(tmp_home / "project")
+        old = std.boxes / "project"
+        marker = old / "kept.txt"
+        marker.write_text("data")
+        return old, marker
+
+    def test_repointed_with_the_old_store_present_offers_the_move_and_no_rebuild(
+        self, config_file, tmp_home, credentials_dir, capsys, protected_canon,
+    ):
+        from kanibako.commands.start import _resolve_existing_box, _unbuilt_box_error
+
+        old, marker = self._primary_box(config_file, tmp_home)
+        # The repoint names a new parent, which does not exist yet.
+        config, std = self._std(config_file)
+        self._repoint_primary_boxes(std, tmp_home / "kb3" / "deep")
+        config, std = self._std(config_file)
+        proj = _resolve_existing_box(std, config, None)
+        assert proj is not None
+        new = tmp_home / "kb3" / "deep" / "project"
+        assert proj.metadata_path == new and not new.parent.exists()
+
+        msg = _unbuilt_box_error(proj)
+        assert msg is not None
+        assert "Rebuild" not in msg
+        assert "kanibako create" not in msg
+        assert f"Its store is still at {old}." in msg
+        assert msg.endswith(
+            f"Move it, with the box stopped:  mkdir -p {new.parent} && mv {old} {new}"
+        )
+
+        # The cure, run as printed: the data arrives and the launch gate passes.
+        assert self._run_move_line(msg) == 0
+        assert (new / "kept.txt").read_text() == "data"
+        assert not marker.exists()
+        proj = _resolve_existing_box(std, config, None)
+        assert proj is not None and _unbuilt_box_error(proj) is None
+
+    def test_repointed_with_no_store_found_still_offers_no_rebuild(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        from kanibako.commands.start import _resolve_existing_box, _unbuilt_box_error
+
+        self._create(tmp_home / "project")
+        config, std = self._std(config_file)
+        self._repoint_primary_boxes(std, tmp_home / "kb4")
+        config, std = self._std(config_file)
+        # The default-location store is gone too: the old place is unknowable.
+        from kanibako.runtime.container import remove_box_tree
+
+        assert remove_box_tree(std.primary_workset / "boxes" / "project")
+        proj = _resolve_existing_box(std, config, None)
+        assert proj is not None
+
+        msg = _unbuilt_box_error(proj)
+        assert msg is not None
+        assert "Rebuild" not in msg
+        assert "where workset.boxes used to point" in msg
+        assert msg.endswith(
+            f"mkdir -p {tmp_home / 'kb4'} && mv <old store> {tmp_home / 'kb4' / 'project'}"
+        )
+
+    def test_key_at_its_default_rebuilds_as_today(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        from kanibako.commands.start import _resolve_existing_box, _unbuilt_box_error
+        from kanibako.runtime.container import remove_box_tree
+
+        old, _marker = self._primary_box(config_file, tmp_home)
+        assert remove_box_tree(old)
+        config, std = self._std(config_file)
+        proj = _resolve_existing_box(std, config, None)
+        assert proj is not None
+
+        msg = _unbuilt_box_error(proj)
+        assert msg is not None
+        assert msg.endswith(f"  Rebuild it:  kanibako create {tmp_home / 'project'}")
+        assert " mv " not in msg
+
+    def _standalone(self, config_file, tmp_home):
+        from kanibako.project import registry_store
+
+        root = (tmp_home / "sa-proj").resolve()
+        root.mkdir()
+        self._create(root, standalone=True)
+        _config, std = self._std(config_file)
+        name = registry_store.standalone_name_for_root(std.registry, root)
+        assert name
+        return std, name, root
+
+    def test_standalone_repointed_moves_the_store_to_the_key_dir(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """The store follows ``workset.boxes`` (spec: ``meta.box.path`` IS the key), so the
+        cure moves the old store TO the key's dir and never from it into ``box_data/``."""
+        from kanibako.commands.start import _no_box_error
+        from kanibako.runtime.container import remove_box_tree
+        from kanibako.settings.config_io import dump_doc
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        new = tmp_home / "elsewhere" / "store"
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(new)}})
+        assert remove_box_tree(root / "box_data")
+
+        msg = _no_box_error(name, std)
+        assert "Rebuild" not in msg
+        assert "box rm" not in msg
+        assert f" {root / 'box_data'}\n" not in msg and not msg.endswith(str(root / "box_data"))
+        assert msg.endswith(
+            f"Move it, with the box stopped:  mkdir -p {new.parent} && mv <old store> {new}"
+        )
+
+    def test_standalone_key_dir_already_there_offers_no_move_and_no_rebuild(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """The user followed the key: the store sits at its value.  A ``mv`` into an
+        existing dir would nest, and the reverse would leave the key's place, so neither."""
+        from kanibako.commands.start import _no_box_error
+        from kanibako.settings.config_io import dump_doc
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        (root / "box_data" / "kept.txt").write_text("data")
+        store = tmp_home / "elsewhere" / "store"
+        store.parent.mkdir()
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(store)}})
+        (root / "box_data").rename(store)
+
+        msg = _no_box_error(name, std)
+        assert "Rebuild" not in msg
+        assert " mv " not in msg
+        assert msg.endswith(f"It belongs at {store}, which already exists; a move would "
+                            "put it inside that directory, so none is offered.")
+        assert (store / "kept.txt").read_text() == "data"
+
+    def test_standalone_at_its_default_rebuilds_as_today(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        from kanibako.commands.start import _no_box_error
+        from kanibako.runtime.container import remove_box_tree
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        assert remove_box_tree(root / "box_data")
+
+        msg = _no_box_error(name, std)
+        assert (
+            f"  Rebuild it:  kanibako box rm {name} && kanibako create "
+            f"--standalone --register --name {name} {root}\n"
+        ) in msg
+        assert " mv " not in msg
+
+    def test_standalone_key_at_a_user_dir_is_never_moved(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """A repoint at the user's own dir (here the workspace) is never an ``mv`` source,
+        and nothing is moved into it either."""
+        from kanibako.commands.start import _no_box_error
+        from kanibako.runtime.container import remove_box_tree
+        from kanibako.settings.config_io import dump_doc
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        (root / "workspace" / "mine.txt").write_text("user data")
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": str(root / "workspace")}})
+        assert remove_box_tree(root / "box_data")
+
+        msg = _no_box_error(name, std)
+        assert "Rebuild" not in msg
+        assert " mv " not in msg
+        assert "Its store is still at" not in msg
+        assert f"It belongs at {root / 'workspace'}, which already exists" in msg
+
+    def test_standalone_key_that_will_not_resolve_offers_no_rebuild(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        """A null ``workset.boxes`` refuses; the message carries that refusal and its
+        cure (the SettingsError arm), and neither a Rebuild nor a move."""
+        from kanibako.commands.start import _no_box_error
+        from kanibako.runtime.container import remove_box_tree
+        from kanibako.settings.config_io import dump_doc
+
+        std, name, root = self._standalone(config_file, tmp_home)
+        dump_doc(root / "workset.yaml", {"workset": {"boxes": None}})
+        assert remove_box_tree(root / "box_data")
+
+        msg = _no_box_error(name, std)
+        assert "Rebuild" not in msg
+        assert "box rm" not in msg
+        assert " mv " not in msg
+        assert "workset.boxes" in msg and "null" in msg
+
+    def test_named_box_repointed_offers_the_move_and_no_rebuild(
+        self, config_file, tmp_home, credentials_dir, protected_canon,
+    ):
+        from kanibako.commands.start import _unbuilt_box_error
+        from kanibako.project.workset import add_project, create_workset
+        from kanibako.settings.config_io import dump_doc, load_doc
+        from kanibako.settings.paths import resolve_box_target
+
+        config, std = self._std(config_file)
+        ws = create_workset("wsa", tmp_home / "wsa", std)
+        src = tmp_home / "member"
+        src.mkdir()
+        add_project(ws, "member", src, std)
+        old = ws.root / "boxes" / "member"
+        assert old.is_dir()
+        (old / "kept.txt").write_text("data")
+
+        ws_file = ws.root / "workset.yaml"
+        doc = load_doc(ws_file) if ws_file.is_file() else {}
+        doc.setdefault("workset", {})["boxes"] = str(tmp_home / "nb" / "deep")
+        dump_doc(ws_file, doc)
+        new = tmp_home / "nb" / "deep" / "member"
+
+        proj = resolve_box_target(
+            std, config, str(src), initialize=False, register=True, warn=False,
+        )
+        assert proj.metadata_path == new
+        msg = _unbuilt_box_error(proj)
+        assert msg is not None
+        assert "Rebuild" not in msg
+        assert "workset disconnect" not in msg
+        assert msg.endswith(
+            f"Move it, with the box stopped:  mkdir -p {new.parent} && mv {old} {new}"
+        )
+        assert self._run_move_line(msg) == 0
+        assert (new / "kept.txt").read_text() == "data"
+        proj = resolve_box_target(
+            std, config, str(src), initialize=False, register=True, warn=False,
+        )
+        assert _unbuilt_box_error(proj) is None
