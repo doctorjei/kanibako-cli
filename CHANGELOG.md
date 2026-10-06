@@ -593,6 +593,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box's own settings file, though the key stays absent there unless the user sets it. The extract still
   honors that value; it no longer stores it. `--no-vault`, move, duplicate, and convert are unchanged.
 
+- **`workset create` now refuses a system per-owner value that reaches no working-set identity.** With a
+  plain `workset.registry: /srv/reg.yaml` in the system settings file, `kanibako workset create <path>` printed
+  "Created working set …" and exited 0, though `create` refused the same file. It now refuses before
+  anything is made or registered, naming the key and the file, as `create` does for `workset.boxes` and
+  `workset.logs`. A value anchored with `{meta.workset.path}` still creates.
+
 - **`set` now refuses a whole-table reference whose table holds a broken key.** With a stored
   `agent.default.env.Y: '{agent.default.env.Y}'`, `system set box.env.B={agent.default.env}` was accepted and
   written, though launch refused it; it is now refused, naming the broken key inside the table. A table that

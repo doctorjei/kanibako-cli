@@ -135,3 +135,29 @@ class TestRefuseInheritedPerOwner:
         refuse_inherited_per_owner(
             tmp_path, _scope({"workset.template": "/srv/tmpl"}, tmp_path / "settings.yaml"),
         )
+
+
+class TestWorksetCreate:
+    def _create(self, std, ws_root: Path, capsys) -> tuple[int, str]:
+        from kanibako import cli
+
+        with pytest.raises(SystemExit) as made:
+            cli.main(["workset", "create", str(ws_root), "--name", "kento"])
+        return made.value.code, capsys.readouterr().err
+
+    def test_a_system_registry_literal_is_refused_and_nothing_is_created(self, std, tmp_path, capsys):
+        _write_system(std, {"registry": "/srv/reg.yaml"})
+        code, err = self._create(std, tmp_path / "ws", capsys)
+        assert code == 1
+        assert f"workset.registry is set to '/srv/reg.yaml' in {std.settings}," in err
+        assert "does not reach working-set identity" in err
+        assert not (tmp_path / "ws").exists()
+        assert not std.registry.exists() or "kento" not in std.registry.read_text()
+
+    @pytest.mark.parametrize("form", _FORMS)
+    def test_an_anchored_registry_still_creates(self, std, tmp_path, capsys, form):
+        _write_system(std, {"registry": "/srv/reg/" + _ref(form, "meta.workset.path") + "/r.yaml"})
+        code, _ = self._create(std, tmp_path / "ws", capsys)
+        assert code == 0
+        assert (tmp_path / "ws").is_dir()
+        assert "kento" in std.registry.read_text()

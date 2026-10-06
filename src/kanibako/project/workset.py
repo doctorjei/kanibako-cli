@@ -977,6 +977,7 @@ def create_workset(
     root = root.resolve()
     if root.exists():
         raise WorksetError(f"Workset root already exists: {root}")
+    refuse_inherited_per_owner(root, EarlyScope(std.early_system, name), doc=None)
 
     # Multi-step: disk skeleton, then the ONE global registration.  A crash between
     # them would orphan dirs, so unwind in reverse: all-or-nothing.
