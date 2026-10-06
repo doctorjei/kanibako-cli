@@ -341,7 +341,8 @@ inside boxes. In order of likely impact:
 
 34. **A plain-shell box now writes the canon to `~/AGENTS.md`, overwriting a file already there,
     and on any persistent shell launch a `box.shell` with arguments (`bash -l`), or an
-    `--entrypoint` given as one word with arguments (`--entrypoint "bash -l"`), stops working** —
+    `--entrypoint` given as one word with arguments (`--entrypoint "bash -l"`), stops working**
+    (an ephemeral launch never accepted one, because podman's `--entrypoint` takes one program) —
     see *2.99 A plain-shell box writes the canon to `~/AGENTS.md`*.
 
 35. **`kanibako shell -- <cmd>` now runs `<box shell> -lc <cmd>`, not `/bin/sh -c`, and several
@@ -6156,7 +6157,8 @@ renders the canon into `~/AGENTS.md`, as a real agent renders it into its own in
 `agent.shell.env.KANIBAKO_DIRECTIVE_FINAL`, default `~/AGENTS.md`.
 
 On any persistent shell launch (`kanibako shell`, `--agent shell`, or `--entrypoint`), a
-`box.shell` with arguments, or an `--entrypoint` given as one word with arguments, now fails. The
+`box.shell` with arguments, or an `--entrypoint` given as one word with arguments, now fails; an
+ephemeral launch never accepted one, because podman's `--entrypoint` takes one program. The
 render step runs that value as ONE program word (`exec "$@"`), where tmux used to run a single
 argument through `sh -c`, so a `box.shell` of `bash -l` or `--entrypoint "bash -l"` finds no
 program by that name.
