@@ -6588,7 +6588,7 @@ Error: box 'demo' is still running as 'kanibako-demo', the name it had before th
 ```
 
 A box with no recorded name had a container named `kanibako-<first 8 characters of its project
-hash>`; `start` names it the same way.
+hash>`; `start` refuses such a box before this check, so stop that container by hand with the command above.
 
 A box name that is empty or starts with `-`, which the box-name rule no longer allows, renders no
 container name at all. `start` and `stop` refuse such a box and print the command that gives it a
