@@ -3089,14 +3089,14 @@ class TestBoxShapeRefusalPrecedesSetup:
     def test_the_primary_door_reads_a_box_tier_its_own_guard_proved_absent(
         self, config_file, tmp_home, monkeypatch,
     ):
-        """The primary door's read is handed an ABSENT box tier, and so cannot refuse.
+        """The primary door's read is handed an ABSENT box tier, so it cannot refuse.
 
-        ⚑ WHY THIS IS A GUARD AND NOT A FIX PROOF: the primary door's body runs only while
+        ⚑ WHY THIS DOOR'S REFUSAL IS UNREACHABLE: the body runs only while
         ``project_dir_path`` does not exist, and the box tier is a file INSIDE it — so the
-        read short-circuits on its absent-file arm and the refusal there is unreachable.
-        Ordering the read first keeps the two doors the same shape; it is this fact that
-        makes the primary arm's refusal dead, and a future widening of that guard is what
-        would revive it.
+        read short-circuits on its absent-file arm, and now also sees that the parent it
+        would have to be inside is absent too.  Ordering the read first is what makes both
+        facts true at the moment of the read; a future widening of that guard is what
+        would revive the refusal here.
         """
         config = load_config(config_file)
         std = load_std_paths(config)
