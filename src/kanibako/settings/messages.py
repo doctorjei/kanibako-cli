@@ -194,7 +194,9 @@ ERR_PER_OWNER_READ = (
                         "'%s=%s'; or run kanibako system reset %s, then kanibako workset "
                         "set <workset> '%s=…' in each %s. To stop running boxes "
                         "meanwhile: kanibako stop --all stops every running box even when "
-                        "a settings file is refused; it lists them and asks first.")
+                        "a settings file is refused; it lists them and asks first. On a first "
+                        "run (no kanibako.cfg yet), these commands refuse too: edit that file "
+                        "by hand.")
                                                     # key, value, file, the words, the cure
 #: The LAUNCH twin, for a key or bind entry any containing settings file holds.
 ERR_PER_OWNER_LAUNCH = (

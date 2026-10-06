@@ -567,6 +567,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A per-owner value refused in the system settings file now gives a cure that works on a first run.**
+  The refusal said `kanibako stop --all` stops every running box even when a settings file is refused.
+  On a first run (no `kanibako.cfg` yet), `stop --all`, `system set`, and `system reset` exit 1 with the
+  same refusal, so the message now says so and tells you to edit the file by hand.
+
 - **`agent set`'s warnings about the agent file name the real file.** A warning raised while checking the
   edit (a capitalized `agent.<Node>`, a dropped `pref` table) named a temporary copy under
   `/tmp/kanibako-agentset-…` instead of the agent's `agent.yaml`; its errors already named the real file.
