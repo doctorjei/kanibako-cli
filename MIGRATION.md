@@ -7691,8 +7691,8 @@ suitable dir and **warns** — it is not silently substituted.
 
 ⚑ **`@system.data` superseded in v1.8.0 — see §2.1 (line 197), now `@config.data`.**
 The tree below is otherwise still the 1.6.0-era layout described in this section;
-later v1.8.0 moves inside it (e.g. `base_template/` is renamed; it is now `template/`, §2.5 line 460, and
-the per-tier settings filenames, §2.45 line 2774) are not reflected in the diagram —
+later v1.8.0 moves inside it (e.g. the template directory, §2.5 line 460, where `base_template/` is renamed;
+it is now `template/`; and the per-tier settings filenames, §2.45 line 2774) are not reflected in the diagram —
 the two `settings.yaml` files under `primary_workset/` are now `workset.yaml` and
 `box.yaml`, while `global/settings.yaml` keeps its name.
 
