@@ -886,6 +886,46 @@ def test_lenient_bind_box_dest_xdg_deferred_not_a_defect() -> None:
     assert bind.box == "$XDG_CACHE_HOME/d"  # deferred raw.
 
 
+def _deep_chain(n: int, *, shell_first: bool) -> KeyStore:
+    """``box.shell`` -> ``box.env.V0`` -> ... -> ``box.env.V<n>`` (a terminal)."""
+    env = KeyStore({f"V{i}": f"/{{box.env.V{i + 1}}}" for i in range(n)})
+    env[f"V{n}"] = "/end"
+    pairs = [("shell", "/s/{box.env.V0}"), ("env", env)]
+    return KeyStore({"box": KeyStore(pairs if shell_first else pairs[::-1])})
+
+
+@pytest.mark.parametrize("shell_first", [True, False])
+@pytest.mark.parametrize("n, refused", [(62, set()), (63, {"box.shell"})])
+def test_depth_cap_does_not_depend_on_memo_order(shell_first, n, refused) -> None:
+    # The cap is measured through a memoized referent: resolving the env chain FIRST
+    # must not let ``box.shell`` borrow the memo and skip the depth it stands on.
+    _expanded, errors = expand(_deep_chain(n, shell_first=shell_first), _ctx(),
+                               collect_errors=True)
+    assert set(errors) == refused, errors
+    assert all("depth cap" in reason for reason in errors.values()), errors
+
+
+@pytest.mark.parametrize("shell_first", [True, False])
+def test_strict_depth_cap_does_not_depend_on_memo_order(shell_first) -> None:
+    with pytest.raises(SettingsError, match="depth cap"):
+        expand(_deep_chain(63, shell_first=shell_first), _ctx())
+
+
+def test_a_subtree_referent_does_not_lend_its_leaves_depth() -> None:
+    # A whole-table referent's leaves start chains of their own; their depth is not
+    # the referring chain's, so a short chain through the table stays under the cap.
+    snap = KeyStore({
+        "c": KeyStore({f"C{i}": f"/{{c.C{i + 1}}}" for i in range(60)}),
+        "t": KeyStore({"leaf": "/{c.C0}"}),
+        "x": "{t}",
+        "z": KeyStore({f"Z{i}": f"/{{z.Z{i + 1}}}" for i in range(30)}),
+    })
+    snap["c"]["C60"] = "/end"
+    snap["z"]["Z30"] = "{x}"
+    _expanded, errors = expand(snap, _ctx(), collect_errors=True)
+    assert errors == {}, errors
+
+
 # ---------------------------------------------------------------------------
 # ``pref.*`` — never participates in resolution as a derivable key (spec §2h)
 # ---------------------------------------------------------------------------
