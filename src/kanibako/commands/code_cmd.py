@@ -800,9 +800,8 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
             # Explicit-create (Jei 2026-07-11g): the REMOTE box does not exist and
             # a launch never auto-creates one.  `create` must be run ON THE REMOTE
             # host — make that unambiguous (the bare "run 'kanibako create'" in the
-            # remote stderr reads as a local suggestion otherwise).  ⚑ The quote
-            # marks in the prose are NOT the command's quoting: a cure is pasted,
-            # and --remote/--box are free-form, so both operands need their own.
+            # remote stderr reads as a local suggestion otherwise).  ⚑ A CURE IS PASTED;
+            # quotes above are prose.
             hint = (
                 f"\n  Hint: box '{box}' does not exist on the remote host "
                 f"'{dest}'.  Create it THERE first, e.g.: "
