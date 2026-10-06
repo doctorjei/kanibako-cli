@@ -915,35 +915,45 @@ def _no_lookup(ref: str, chain: tuple[str, ...]) -> str:
     raise SettingsError(f"@-refs are not supported in behavior settings: {ref}")
 
 
+#: The levels whose printed ``set`` REFUSES the write while the retired entry is still in the
+#: file it writes. Measured end to end through the real CLI at every level, each with the entry
+#: present: these three rc 1. ``agent`` rc 0 — including the arm whose ``set`` writes the very
+#: file the entry sits in — and ``base`` rc 0, its cure always being a ``system set``. The
+#: sentence :func:`delete_before_set_step` prints must not promise a refusal these do not give.
+SET_READS_ITS_OWN_FILE: "frozenset[str]" = frozenset({"system", "workset", "box"})
+
+
 def delete_before_set_step(entry: str, *, where: Any,
-                          parents: "Sequence[str]" = ()) -> str:
+                          parents: "Sequence[str]" = (), checks_file: bool = False) -> str:
     """The delete-before-the-``set`` step, naming every parent that delete can leave empty.
 
     ⚑ THE PARENTS ARE PART OF THE CURE, NOT A COURTESY. YAML reads a key with nothing
-    under it as a NULL, and a null at a settings key is refused in its own right — so a
-    delete that names only the leaf can leave the file in a state that refuses the very
-    ``set`` this step is clearing the way for. Following the printed sequence literally,
-    the user gets ``stores entries that are not keys … Nothing was written`` at the fix
-    step, with no hint that the half-empty parent is what refused it, and no route out of
-    the pair they were told to follow. Naming the parents makes the sequence RUNNABLE
-    top to bottom, which is the whole point of printing it in that order.
+    under it as a NULL, and a null under a table key is an entry that is not a key — so a
+    delete that names only the leaf can leave the file holding one. Naming the parents
+    keeps the file a document of keys, which is the whole point of printing them.
 
     *entry* is the thing to delete, spelled as the site spells it and carrying its own
     noun (``the `agent: default: default_agent` entry`` / ``the `self.foo` table``), so
     each site keeps the spelling its message already uses. *parents* are the ancestor
     tables, innermost first, already spelled for the file; empty for a top-level leaf,
-    which has no parent to strand.
+    which has no parent to strand. *checks_file* says the printed ``set`` refuses the write
+    while *entry* is still stored — see the sentence it picks.
     """
     stranded = (
         f" — and {' / '.join(parents)} with it, if that leaves "
         f"{'it' if len(parents) == 1 else 'them'} empty: a table left with nothing "
-        f"under it parses as null, and a null there is refused the same way"
+        f"under it parses as null, and a null under a table key is an entry that is "
+        f"not a key (§0)"
     ) if parents else ""
-    # ⚑ "the files it reads", NOT "that file": the stale entry is not always among them.
-    # A retired table spelled in one agent's file can be cured by a ``set`` that lands in
-    # ANOTHER's and succeeds first — a reason false half the time erodes the whole message.
-    return (
-        f"  Delete the {entry} from {where} FIRST{stranded}. The fix below is a "
-        f"`set`, and §2a refuses a write that collides with a retired entry still "
-        f"stored in the files it reads."
+    # ⚑ ONE SENTENCE PER ARM, each measured end to end through the real CLI: where the
+    # printed ``set`` refuses the write while the entry is there (rc 1) it says so; where
+    # the write succeeds (rc 0) it must not promise a refusal that never comes. Both
+    # sentences name no file, so neither reaches an arm the other does not.
+    why = (
+        "The fix below is a `set`, and §2a refuses a write that collides with a "
+        "retired entry still stored in the files it reads."
+        if checks_file else
+        "The fix below is a `set`, and it does not refuse this entry — nothing blocks "
+        "the write. Delete the entry and re-run this command."
     )
+    return f"  Delete the {entry} from {where} FIRST{stranded}. {why}"
