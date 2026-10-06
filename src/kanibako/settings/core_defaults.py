@@ -287,23 +287,11 @@ WORKSET_CHANNEL_SOURCES = ("workset_common", "workset_chat", "workset_share")
 
 
 def channel_source_key(dest: str) -> str | None:
-    """The settings KEY that supplies the packaged ``channels:`` row at guest *dest*.
+    """The settings key that feeds the packaged ``channels:`` row at guest *dest*.
 
-    ⚑ WHY THIS EXISTS: a row that carries no ``meta_ref`` reads its PROBED source
-    instead, so the table alone does not say which key the row belongs to -- but the
-    row still HAS one, and a consumer that must name or repoint a null source needs it.
-    The answer is the key the shipped ``meta_ref`` of the same row names; for the rows
-    that carry none it is the key that feeds the probe named by the row's ``source``.
-
-    ⚑ READ BACKWARD FROM THE ROUTES, NEVER TYPED OUT: :func:`paths._floor_field` is
-    the one function that says which :class:`~kanibako.settings.paths.StandardPaths`
-    field a settings key resolves into, and the probe names ARE those field names, so
-    inverting it keeps this honest where a hand-written pair would drift.
-
-    ``None`` for a row no single key feeds: the ``workset_*`` probes hang off the
-    workset anchor (whose null :func:`settings_launch._warn_rootless_channel_binds`
-    reports for all three at once) and ``inbox`` is the construct-set read-only
-    ``meta.box.inbox`` (traced by :data:`settings_launch._META_NULL_ORIGIN`).
+    Read backward through :func:`paths._floor_field`, so a probe-sourced row maps to
+    the key its probe resolves.  ``None`` for a row no single key feeds: the
+    ``workset_*`` rows and ``inbox``.
     """
     from kanibako.settings.config_keys import _KEY_ROUTES
     from kanibako.settings.paths import _floor_field

@@ -2153,29 +2153,12 @@ def fold_floor(
 
 
 def _floored_bind_entry(dest: str, entry: object) -> object:
-    """One FLOOR bind entry as it enters the floor -- with a ``<None>`` source repointed.
+    """One floor bind entry, its ``<None>`` source repointed at the row's source key.
 
-    Returns the entry to fold, or ``__MISSING__`` to leave it out.  Anything that is
-    not a null-sourced entry -- a null ENTRY included -- comes back UNCHANGED.
-
-    ⚑ A ``<None>`` SOURCE IS AN OMIT, NEVER A HOST PATH (spec §2a: "any layer whose
-    source/dest is ``<None>`` is SKIPPED").  A packaged ``channels:`` row that reads
-    its PROBE directly leaves the slot's value null when the probe answers nothing --
-    the producer keeps the slot on purpose, since the slot is the standalone-omit gate.
-    Left alone, that null reaches the bind parse and is stringified to the
-    four-character path ``"None"``, which :func:`refuse_unrooted_source` refuses: a
-    HARD LAUNCH FAILURE for a bind the spec omits.
-
-    ⚑ SO IT IS REPPOINTED AT THE SOURCE KEY THE ROW DECLARES, which is what every
-    ``meta_ref`` row already carries.  The ref resolves to the same ``<None>`` through
-    :func:`~kanibako.settings.paths.system_path_floor`, the collapse omits the bind,
-    and :func:`_warn_lone_none_standard_binds` gives the lone null the ONE warning it
-    is owed -- naming the entry, the source key and the file that set it.  Nothing
-    downstream ever holds a ``None`` source: it is a ref string here, exactly as it is
-    for a row that shipped with one.
-
-    ⚑ A row with NO declared source key is a literal-source INTERNAL entry with no key
-    to name, so it is left OUT -- the same omit, without a report nobody can act on.
+    A null probed source is replaced by the ref ``{<key>}`` from
+    :func:`~kanibako.settings.core_defaults.channel_source_key`, so the collapse omits
+    the bind and warns once (keyspec §2a).  Returns ``__MISSING__`` when the row
+    declares no key; any other entry comes back unchanged.
     """
     if not isinstance(entry, (tuple, list)) or not entry or entry[0] is not None:
         return entry
