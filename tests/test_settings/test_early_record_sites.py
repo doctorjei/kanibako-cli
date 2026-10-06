@@ -65,7 +65,7 @@ class TestPrimarySites:
 
     def test_the_primary_name_api(self, std, tmp_home, early_reads):
         early = paths._early_scope(std, BoxMode.primary)
-        name = paths.assign_primary_box_name(std.primary_workset, std.registry,
+        name = paths.assign_primary_box_name(std.primary_workset,
                                              tmp_home / "project", early=early)
         assert paths.primary_box_name_for_workspace(
             std.primary_workset, str(tmp_home / "project"), early=early) == name

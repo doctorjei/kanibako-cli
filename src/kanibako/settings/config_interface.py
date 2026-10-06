@@ -1022,6 +1022,8 @@ def _category_set_lookups(
     )
 
     def resolves(key: str, value: str) -> "str | None":
+        from kanibako.settings.settings_expand import is_cascade_blindness
+
         # Apply the candidate into a FRESH copy (S19), lenient-expand, read the key's defect.
         candidate = _clone_keystore(base_snapshot)
         try:
@@ -1033,7 +1035,7 @@ def _category_set_lookups(
         if key not in errors:
             return None
         unseen = _floor_blind_referents(key, value, candidate, command_scope)
-        if unseen:
+        if unseen and is_cascade_blindness(errors[key]):
             supplied = _clone_keystore(candidate)
             try:
                 for name in unseen:

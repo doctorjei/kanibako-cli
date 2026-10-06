@@ -1001,6 +1001,27 @@ class TestStopUnderAPerOwnerCollision:
         assert str(std.settings) in err, err
         writeback.assert_not_called()
 
+    def test_stop_all_stops_every_running_box_when_the_listing_refuses(
+        self, std, config, tmp_home, live_runtime, capsys,
+    ):
+        """A null primary ``workset.registry`` refuses the skip-line walk's read; the sweep
+        still stops every running box, and the refusal is said once."""
+        from kanibako.settings.config_io import dump_doc
+
+        _workspace, name = TestStopWithMalformedGlobalSettings._primary_box(std, config, tmp_home)
+        dump_doc(std.primary_workset / "workset.yaml", {"workset": {"registry": None}})
+        live_runtime.list_running.return_value = [(f"kb-primary-{name}", "img", "Up")]
+        capsys.readouterr()
+
+        rc, writeback = self._main(live_runtime, ["stop", "--all", "--force"])
+
+        assert rc == 0
+        live_runtime.stop.assert_called_once_with(f"kb-primary-{name}")
+        err = capsys.readouterr().err
+        assert err.count("Warning: ") == 1, err
+        assert "workset.registry" in err, err
+        writeback.assert_not_called()
+
     def test_a_valid_system_registry_survives_a_refused_system_table(
         self, std, config, tmp_home, live_runtime, capsys,
     ):

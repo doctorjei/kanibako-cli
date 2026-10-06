@@ -63,16 +63,15 @@ def scoped_calls(monkeypatch):
     return spy
 
 
-def _team(std, tmp_home: Path, *, force: bool = True):
-    """A NAMED workset ``team``; *force* skips the primary-box check, which is a site of its own."""
-    return workset.create_workset("team", tmp_home / "wsroot", std, force=force)
+def _team(std, tmp_home: Path):
+    """A NAMED workset ``team``."""
+    return workset.create_workset("team", tmp_home / "wsroot", std)
 
 
 class TestWorksetSites:
-    def test_create_reads_the_primary_boxes_under_the_primary_name(self, std, tmp_home,
-                                                                   early_reads):
-        _team(std, tmp_home, force=False)
-        assert set(early_reads) == {"team", WS_TOKEN_PRIMARY}
+    def test_create_reads_only_under_the_new_workset_s_name(self, std, tmp_home, early_reads):
+        _team(std, tmp_home)
+        assert set(early_reads) == {"team"}
 
     def test_the_default_workset(self, std, early_reads):
         assert workset.default_workset(std).is_default
@@ -134,7 +133,7 @@ class TestHelperFork:
         (shell / "helpers").mkdir(parents=True)
         hub = HelperHub()
         hub._ctx = HelperContext(
-            runtime=MagicMock(), image="test:latest", container_name_prefix="kanibako-myapp",
+            runtime=MagicMock(), image="test:latest", container_name_segments=("primary", "myapp"),
             shell_path=shell, helpers_dir=shell / "helpers", socket_path=tmp_home / "h.sock",
             project_path=workspace, data_path=std.data_path, boxes=std.boxes,
             registry=std.registry, primary_workset=std.primary_workset,
@@ -179,15 +178,11 @@ class TestImportSites:
     def test_the_import_pass_reads_the_primary_boxes_under_the_primary_name(
         self, std, tmp_home, scoped_calls,
     ):
-        """The cross-kind check of an imported workset reads the PRIMARY membership.
-
-        ``import_named_workset`` imports ``load_primary_boxes`` at call time, so the spy on
-        ``paths`` sees that call as well as the ancestor walk's: every one must be primary.
-        """
+        """The ancestor walk that imports a workset reads the PRIMARY membership as primary."""
         from kanibako.project import registry_store
 
         root = tmp_home / "found"
-        workset.create_workset("found", root, std, force=True)
+        workset.create_workset("found", root, std)
         registry_store.save_section(std.registry, "worksets", {})
         reads = scoped_calls(paths, "load_primary_boxes")
         assert paths.detect_project_mode(root, std, load_config(std.config_file)).mode is \

@@ -25,6 +25,7 @@ Derive = Callable[[str, Callable[[str], object]], object]
 
 ## Functions
 ```
+def is_cascade_blindness(reason: str) -> bool
 @overload
 def expand(snapshot: KeyStore, ctx: ResolveCtx, *, null_sources: NullSources | None=None, refs_read: RefsRead | None=None, dest_keys: DestKeys | None=None, derive: Derive | None=None) -> KeyStore
 @overload
