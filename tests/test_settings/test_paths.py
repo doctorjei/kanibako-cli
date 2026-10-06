@@ -2969,3 +2969,183 @@ class TestEarlySystemTierIsData:
                 load_system_config(cfg, tolerate_bad_settings=tolerate, **kw)
                 == load_system_tier(cfg, tolerate_bad_settings=tolerate, **kw)[0]
             )
+
+
+# ---------------------------------------------------------------------------
+# A box-tier SHAPE refusal must land BEFORE the first-time setup at both create
+# doors, so a refusal leaves nothing for the retry to trip over.
+# ---------------------------------------------------------------------------
+
+
+def _scalar_box_tier(metadata_path):
+    """Write a scalar ``box`` into *metadata_path*'s own box tier, by hand.
+
+    A settings file is a hand-edit surface, so a scalar section is a state the
+    shape rule exists to judge; nothing sanctioned writes one.
+    """
+    metadata_path.mkdir(parents=True, exist_ok=True)
+    toml = metadata_path / BOX_META_FILE
+    toml.write_text("box: 42\n")
+    return toml
+
+
+def _spy_setup_and_shape_read(monkeypatch, setup_name, calls):
+    """Record which of the shape read / the setup runs first, through both.
+
+    *calls* collects one entry per call, in call order, and each wrapper calls
+    through to the real function so the door behaves as it does in production.
+    """
+    import kanibako.settings.paths as paths_mod
+
+    real_setup = getattr(paths_mod, setup_name)
+    real_read = paths_mod.read_box_enable_vault
+
+    def _setup(*args, **kwargs):
+        calls.append(setup_name)
+        return real_setup(*args, **kwargs)
+
+    def _read(*args, **kwargs):
+        calls.append("read_box_enable_vault")
+        return real_read(*args, **kwargs)
+
+    monkeypatch.setattr(paths_mod, setup_name, _setup)
+    monkeypatch.setattr(paths_mod, "read_box_enable_vault", _read)
+
+
+def _named_member_with_scalar_box(config_file, tmp_home):
+    """A workset member whose box dir carries a scalar ``box`` and NO ``home/``.
+
+    The half-built state the named door's own guard admits: it asks only
+    whether ``home/`` is there, so the box tier may already exist.
+    """
+    from kanibako.project.workset import add_project, create_workset
+
+    config = load_config(config_file)
+    std = load_std_paths(config)
+    ws = create_workset("door-ws", tmp_home / "worksets" / "door-ws", std)
+    add_project(ws, "doormem", tmp_home / "doormem-ws")
+    toml = _scalar_box_tier(ws.projects_dir / "doormem")
+    return config, std, ws, toml
+
+
+class TestBoxShapeRefusalPrecedesSetup:
+    """Both create doors judge the box tier's SHAPE before they build anything."""
+
+    def test_a_scalar_box_tier_refuses_the_named_door_with_no_shell_left_behind(
+        self, config_file, tmp_home,
+    ):
+        """The named door refuses a scalar ``box`` with NOTHING of the setup on disk.
+
+        ⚑ THE DOOR, not the reader called directly: ``resolve_workset_project`` is what
+        ``box create`` and a launch both reach for a named member, and its guard admits a
+        box tier that already exists while ``home/`` does not.  Leaving a bootstrapped
+        ``home/`` behind is what makes the refusal unrecoverable by a plain retry.
+        """
+        from kanibako.errors import ConfigError
+
+        config, std, ws, toml = _named_member_with_scalar_box(config_file, tmp_home)
+        metadata_path = ws.projects_dir / "doormem"
+
+        with pytest.raises(ConfigError) as exc:
+            resolve_workset_project(WorksetSpec.from_workset(ws), "doormem", std, config,
+                                    initialize=True)
+        assert "holds 42 at 'box'" in str(exc.value)
+        assert not (metadata_path / "home").exists()
+        assert toml.read_text() == "box: 42\n"
+
+    def test_the_shape_read_runs_before_the_named_door_setup(
+        self, config_file, tmp_home, monkeypatch,
+    ):
+        """The named door asks the shape question FIRST, so a refusal skips the setup."""
+        from kanibako.errors import ConfigError
+
+        config, std, ws, _toml = _named_member_with_scalar_box(config_file, tmp_home)
+        calls: list = []
+        _spy_setup_and_shape_read(monkeypatch, "_init_workset_project", calls)
+
+        with pytest.raises(ConfigError):
+            resolve_workset_project(WorksetSpec.from_workset(ws), "doormem", std, config,
+                                    initialize=True)
+        # MUTATION: move ``_init_workset_project`` back above the read and this reds.
+        assert calls == ["read_box_enable_vault"]
+
+    def test_the_shape_read_runs_before_the_primary_door_setup(
+        self, config_file, tmp_home, monkeypatch,
+    ):
+        """The primary door asks the same question first, through the same seam."""
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project = tmp_home / "primarydoor"
+        project.mkdir()
+        calls: list = []
+        _spy_setup_and_shape_read(monkeypatch, "_init_project", calls)
+
+        proj = resolve_project(std, config, project_dir=str(project), initialize=True)
+
+        assert proj.is_new is True
+        # MUTATION: move ``_init_project`` back above the read and this reds.
+        assert calls == ["read_box_enable_vault", "_init_project"]
+
+    def test_the_primary_door_reads_a_box_tier_its_own_guard_proved_absent(
+        self, config_file, tmp_home, monkeypatch,
+    ):
+        """The primary door's read is handed an ABSENT box tier, and so cannot refuse.
+
+        ⚑ WHY THIS IS A GUARD AND NOT A FIX PROOF: the primary door's body runs only while
+        ``project_dir_path`` does not exist, and the box tier is a file INSIDE it — so the
+        read short-circuits on its absent-file arm and the refusal there is unreachable.
+        Ordering the read first keeps the two doors the same shape; it is this fact that
+        makes the primary arm's refusal dead, and a future widening of that guard is what
+        would revive it.
+        """
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project = tmp_home / "primarydoor2"
+        project.mkdir()
+        seen: list = []
+
+        import kanibako.settings.paths as paths_mod
+
+        real_read = paths_mod.read_box_enable_vault
+
+        def _read(path, *args, **kwargs):
+            seen.append((path, path.exists(), path.parent.is_dir()))
+            return real_read(path, *args, **kwargs)
+
+        monkeypatch.setattr(paths_mod, "read_box_enable_vault", _read)
+
+        resolve_project(std, config, project_dir=str(project), initialize=True)
+
+        assert len(seen) == 1
+        toml, toml_exists, parent_exists = seen[0]
+        assert toml.name == BOX_META_FILE
+        assert toml_exists is False
+        assert parent_exists is False
+
+    def test_a_table_box_tier_still_completes_the_named_door_setup(
+        self, config_file, tmp_home,
+    ):
+        """Anti-over-refusal at the same door: a real ``box`` table still builds the box.
+
+        ⚑ Without this, a guard that refused every ``box.yaml`` would also satisfy the
+        tests above, so the pair pins the refusal to the SHAPE.
+        """
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        from kanibako.project.workset import add_project, create_workset
+
+        ws = create_workset("table-ws", tmp_home / "worksets" / "table-ws", std)
+        add_project(ws, "tablemem", tmp_home / "tablemem-ws")
+        metadata_path = ws.projects_dir / "tablemem"
+        metadata_path.mkdir(parents=True, exist_ok=True)
+        (metadata_path / BOX_META_FILE).write_text("box:\n  enable_vault: false\n")
+
+        proj = resolve_workset_project(WorksetSpec.from_workset(ws), "tablemem", std,
+                                       config, initialize=True)
+
+        assert proj.is_new is True
+        assert (metadata_path / "home").is_dir()
+        # The read's answer is what the door PERSISTS, so pin the file it left.
+        from kanibako.settings.config_io import load_doc
+
+        assert load_doc(metadata_path / BOX_META_FILE)["box"]["enable_vault"] is False
