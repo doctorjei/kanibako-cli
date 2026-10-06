@@ -61,6 +61,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existed. Box names are now checked first; a workset name answers only when no box holds it,
   and only to name the workset in that refusal. Workset verbs are unchanged.
 
+- **A same-named path outranks a registered standalone name at `--box`.** The spec checks
+  registered standalone names "_after_ primary workset boxes and paths; a warning sounds on
+  collision" (system-design § *Box designation & workset path space*), but `--box foo` resolved
+  the standalone `foo` ahead of a `./foo` folder. It now takes the folder. **A new warning on
+  stderr** names the shadowed standalone box and its root, at `--box` and at a positional
+  designation alike. Primary and workset-member box names still win over a folder at `--box`.
+
 - **`agent set` now refuses an agent file it cannot read.** A `set` whose target
   `agents/<node>/agent.yaml` carries an entry that is not a key outside the edited value's chain —
   a stray top-level key, or a retired `auto_approve` — previously answered `Set <key>=<value>` and

@@ -19,6 +19,7 @@ WARN_FALLBACK_RT_DIR = '%s not set; falling back to %s for runtime files ' + '(h
 WARN_RUNDIR_UNUSABLE = '%s not set & ' + RUN_USER_UID_PATH + ' unusable; falling back to temp ' + 'dir %s for runtime files. Set %s to persistent per-user runtime dir to ' + 'silence this.'
 WARN_WS_NO_ROOT = "Warning: workset '%s' root missing: %s"
 WARN_WS_BAD_LOAD = "Warning: failed to load workset '%s': %s"
+WARN_SA_SHADOWED_BY_PATH = "'%s' resolved to the path %s; the registered standalone box of the same " + 'name at %s is shadowed — reach it by its path.'
 WARN_WS_BOX_BAD_NAME = "box name '%s' does not meet the naming rules (%s); it resolves by its " + 'path only, not by that name. Rename it.'
 WARN_BOX_BAD_KUID = "Warning: invalid KUID '%s' for standalone box '%s' (invalid kuid); it " + 'still resolves; fix workset.kuid or set workset.skip_kuid_check=true to ' + 'silence this.'
 WARN_BOX_NO_VAULT = "Warning: cannot find vault for box '%s' (expected at %s); it still " + 'launches without a vault; recreate the directory or set ' + 'box.enable_vault=false to silence.'

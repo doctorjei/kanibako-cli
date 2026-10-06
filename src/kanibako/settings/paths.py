@@ -10,7 +10,7 @@ from kanibako.settings.messages import (PROFILE_CONTENTS, BASHRC_CONTENTS,
 
                                               WARN_RELATIVE_XDG, WARN_FALLBACK_RT_DIR,
                                               WARN_RUNDIR_UNUSABLE, WARN_WS_NO_ROOT,
-                                              WARN_WS_BAD_LOAD, WARN_WS_BOX_BAD_NAME,
+                                              WARN_WS_BAD_LOAD, WARN_WS_BOX_BAD_NAME, WARN_SA_SHADOWED_BY_PATH,
                                               WARN_BOX_BAD_KUID, WARN_BOX_NO_VAULT,
 
                                               ERR_SETTINGS_BAD_PATH, ERR_SETTINGS_BAD_REF,
@@ -2036,6 +2036,8 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
     if route is DesignationRoute.INVALID:
         raise ProjectError(ERR_PROJECT_BAD_DESIGNATION % value)
     if route is DesignationRoute.PATH:
+        if classify_designation(value) is Designation.IDENTIFIER:
+            _warn_standalone_shadowed(std, value)
         return value
     if route is DesignationRoute.QUALIFIED:
         try:
@@ -2044,12 +2046,16 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
             return value
     on_disk = Path(value).exists()
     try:
+        # A registered standalone name ranks after a same-named path (spec § Box designation).
         resolved, kind = resolve_name(std.registry, value, cwd=Path.cwd(),
-                                      primary_workset=std.primary_workset)
+                                      primary_workset=std.primary_workset, standalone=not on_disk)
     except AmbiguousNameError:
         raise
     except ProjectError:
-        if on_disk or unknown_name_is_path:
+        if on_disk:
+            _warn_standalone_shadowed(std, value)
+            return value
+        if unknown_name_is_path:
             return value
         raise
     if kind == KIND_PROJECT:
@@ -2057,6 +2063,15 @@ def resolve_designation(std: StandardPaths, value: str | None, *, unknown_name_i
     if kind == KIND_WORKSET and not on_disk:
         raise WorksetError(ERR_WORKSET_WS_NOT_BOX % (value, value))
     return value
+
+
+def _warn_standalone_shadowed(std: StandardPaths, value: str) -> None:
+    """Warn when the path *value* outranks a registered standalone box of that name."""
+    from kanibako.project import registry_store
+
+    root = registry_store.standalone_root(std.registry, value)
+    if root is not None and Path(root).resolve() != Path(value).resolve():
+        logger.warning(WARN_SA_SHADOWED_BY_PATH, value, Path(value).resolve(), root)
 
 
 def resolve_any_project(std: StandardPaths, config: BootstrapConfig, project_dir: str | None = None,
@@ -2103,10 +2118,9 @@ def resolve_box_target(std: StandardPaths, config: BootstrapConfig, value: str |
             _flag_missing_vault(proj)
         return proj
 
-    # A registered box name wins over a same-named folder (README: "box name
-    # (precedence) or path"), hence *name_first*.  A registered standalone resolves here
-    # too, through the one resolver, which reads the ``standalone`` section LAST (spec
-    # § Detection & import) — this door used to read it FIRST, ahead of a primary box.
+    # A registered box name wins over a same-named folder, hence *name_first* — except a
+    # registered standalone name, which the spec ranks after primary workset boxes AND
+    # paths (system-design § Box designation & workset path space), so the folder wins.
     raw = resolve_designation(std, value, unknown_name_is_path=initialize, name_first=True)
     return _flag(_resolve_designated_path(std, config, raw, initialize=initialize,
                                           register=register))

@@ -17,7 +17,7 @@ def register_name(registry: Path, name: str, path: str, section: str='worksets')
 def register_name_if_absent(registry: Path, name: str, path: str, section: str='worksets') -> None
 def unregister_name(registry: Path, name: str, section: str='worksets') -> bool
 def lookup_by_path(registry: Path, path: str) -> tuple[str, str] | None
-def resolve_name(registry: Path, name: str, cwd: Path | None=None, primary_workset: Path | None=None) -> tuple[str, str]
+def resolve_name(registry: Path, name: str, cwd: Path | None=None, primary_workset: Path | None=None, *, standalone: bool=True) -> tuple[str, str]
 def resolve_qualified_name(registry: Path, qualified: str) -> tuple[str, str]
 def _load(registry: Path) -> dict[str, dict[str, str]]
 def _save(registry: Path, names: dict[str, dict[str, str]]) -> None
