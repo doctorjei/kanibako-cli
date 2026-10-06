@@ -54,10 +54,9 @@ it however your agent spells itself — a capital is fine and is shown to the us
 the node by lowercasing it, and the node is what spells `<data>/agents/<agent>/` and the
 `agent.<agent>.*` cascade slot. So a plugin named `MyAgent` stores under the node `myagent`, and a
 second plugin calling itself `myagent` claims that node too. What happens then is the ordinary
-discovery precedence (see *Three-tier plugin discovery* in the README): within one tier the second
-is refused with a warning naming both spellings, because order inside a tier is arbitrary; across
-tiers the later tier overrides the earlier one, which is how you shadow an installed plugin with a
-file you drop in your own store.
+discovery precedence (see *Plugin discovery* in the README): within one route the second
+is refused with a warning naming both spellings, because order inside a route is arbitrary;
+across routes the later route overrides the earlier one.
 
 Optional overrides (sensible defaults provided by the base class):
 
@@ -540,7 +539,10 @@ name, not a settings value.
 
 ## Discovery and registration
 
-Kanibako discovers targets in two ways:
+Kanibako discovers targets in two ways.  Both read **installed code**: a `.py`
+file dropped into `<config.data>/plugins/` or into a box store's `plugins/` is
+not a discovery route — it is never imported and does nothing.  Package the
+plugin (see [Packaging](#packaging)) and install it.
 
 ### 1. Entry points (pip-installed plugins)
 

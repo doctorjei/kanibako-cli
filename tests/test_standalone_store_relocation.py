@@ -1,24 +1,22 @@
-"""The two doors that still composed ``box_data/``: ``box rm`` and the project plugin scan.
+"""The doors that composed ``box_data/``: ``box rm`` and ``box purge``.
 
 ``workset.boxes`` is a repointable workset key whose standalone value is the
 ``{meta.workset.path}/box_data`` DEFAULT, so ``box_data/`` names a standalone store only
 while the key is unset.  These pin that ``box purge``/``box rm`` read the key instead of
-composing the leaf, and that a project's file-drop plugins dir hangs off the RESOLVED store.
+composing the leaf.
 
 ⚑ ``box rm --purge`` DELETES, so "resolved" is pinned separately from "allowed to delete":
 each case asserts what is GONE and what SURVIVED, never the exit code alone.
 
 ⚑ EVERY CASE GOES THROUGH A DOOR THAT EXISTS AT THE BASE (``cli.build_parser`` plus
-``args.func``, and ``discover_targets``), so a base run fails on an ASSERTION about
-behaviour rather than on an import of a name this change introduced.
+``args.func``), so a base run fails on an ASSERTION about behaviour rather than on an
+import of a name this change introduced.
 """
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
-
-import pytest
 
 from kanibako.settings.config_io import write_nested_key
 from kanibako.settings.paths import (
@@ -33,18 +31,6 @@ def _make_standalone(config, std, tmp_home, leaf: str) -> Path:
     (root / "USER_DOCS.md").write_text("my notes\n")
     resolve_standalone_project(std, config, str(root), initialize=True)
     return root
-
-
-def _workspace_of(config, std, root: Path) -> Path:
-    """THE path production hands ``discover_targets``: ``proj.project_path``.
-
-    For a standalone box that is the WORKSPACE, not the root, so a scan that answers
-    the store off the argument as given reads a ``workset.yaml`` that never carried
-    ``workset.boxes``.  Deriving it here rather than spelling ``root / "workspace"``
-    keeps the test pinned to what callers actually pass, not to a layout guess.
-    """
-    return resolve_standalone_project(
-        std, config, str(root), initialize=False).project_path
 
 
 def _relocate(root: Path, target: Path) -> Path:
@@ -91,19 +77,6 @@ def _point_at_verbatim(root: Path, value: str, target: Path) -> Path:
     (target / "STORE_DATA.txt").write_text("the box store\n")
     write_nested_key(root / "workset.yaml", ("workset",), "boxes", value)
     return target
-
-
-@pytest.fixture
-def plugin_source():
-    """The repo's own file-drop plugin source — a hand-built Target would not register."""
-    here = Path(__file__).resolve().parent
-    text = (here / "test_targets" / "test_discovery.py").read_text(encoding="utf-8")
-    return text.split("_PLUGIN_SOURCE = '''\\\n")[1].split("\n'''")[0]
-
-
-def _drop_plugin(directory: Path, filename: str, name: str, source: str) -> None:
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / filename).write_text(source.format(name=name), encoding="utf-8")
 
 
 class TestBoxRmReadsTheStore:
@@ -312,53 +285,3 @@ class TestAStoreThatLeavesTheRootIsNeverRemoved:
 
         assert removable == store.resolve()
         assert retained is None
-
-
-class TestProjectPluginsFollowTheStore:
-    def test_the_scan_follows_a_repoint(self, config, std, tmp_home, plugin_source):
-        """A plugin dropped in the RESOLVED store is discovered, as ``discover_targets`` is
-        what asks "is this agent installed?"."""
-        from kanibako.targets import discover_targets
-
-        root = _make_standalone(config, std, tmp_home, "pl_repoint")
-        store = _relocate(root, root / "moved_store")
-        _drop_plugin(store / "plugins", "movedplug.py", "movedplug", plugin_source)
-
-        assert "movedplug" in discover_targets(_workspace_of(config, std, root))
-
-    def test_the_locator_markers_plugins_dir_is_no_longer_scanned(
-            self, config, std, tmp_home, plugin_source):
-        """A leftover ``box_data/`` is not the box's store, so it is not its plugins."""
-        from kanibako.targets import discover_targets
-
-        root = _make_standalone(config, std, tmp_home, "pl_locator")
-        _relocate(root, root / "moved_store")
-        _drop_plugin(root / "box_data" / "plugins", "stale.py", "stalebag", plugin_source)
-
-        assert "stalebag" not in discover_targets(_workspace_of(config, std, root))
-
-    def test_a_plugins_dir_is_only_read(self, config, std, tmp_home, plugin_source):
-        """Discovery is a scan: every other entry in the plugins dir survives it."""
-        from kanibako.targets import discover_targets
-
-        root = _make_standalone(config, std, tmp_home, "pl_readonly")
-        store = _relocate(root, root / "moved_store")
-        plugins = store / "plugins"
-        _drop_plugin(plugins, "okplug.py", "okplug", plugin_source)
-        (plugins / "USER_NOTES.md").write_text("mine\n")
-        (plugins / "subdir").mkdir()
-        (plugins / "subdir" / "holiday.jpg").write_text("mine\n")
-
-        assert "okplug" in discover_targets(_workspace_of(config, std, root))
-        assert (plugins / "USER_NOTES.md").is_file()
-        assert (plugins / "subdir" / "holiday.jpg").is_file()
-
-    def test_an_unrepointed_box_still_scans_the_default_leaf(
-            self, config, std, tmp_home, plugin_source):
-        """⚑ THE COMMON CASE IS UNCHANGED: no ``workset.boxes``, so ``<root>/box_data``."""
-        from kanibako.targets import discover_targets
-
-        root = _make_standalone(config, std, tmp_home, "pl_default")
-        _drop_plugin(root / "box_data" / "plugins", "defplug.py", "defplug", plugin_source)
-
-        assert "defplug" in discover_targets(_workspace_of(config, std, root))

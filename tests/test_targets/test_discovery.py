@@ -20,18 +20,16 @@ from kanibako.targets.base import (
 )
 from kanibako.targets.shell import ShellTarget
 
-from tests.support.filenames import CONFIG_FILENAME
-
 
 def _isolate_config(tmp_path, monkeypatch) -> None:
     """Pin the CONFIG side of the user plugin dir, which is ``config.data``/plugins.
 
-    ⚑ ``XDG_DATA_HOME`` alone no longer determines where the scan looks ([R155]), so an
-    unisolated ``XDG_CONFIG_HOME`` — or the site base under ``/etc`` — would let whatever
-    config happens to be on the box running the suite move the directory away from the one
-    these tests write into.  The two classes that need this floor
-    (``TestAPluginMustHaveThePluginShape``, ``TestDirectoryPluginDiscovery``) each keep an
-    ``autouse`` wrapper so the floor stays scoped to the tests that write plugin files.
+    ⚑ ``XDG_DATA_HOME`` alone does not determine where a ``config.data`` dir resolves
+    ([R155]), so an unisolated ``XDG_CONFIG_HOME`` — or the site base under ``/etc`` —
+    would let whatever config happens to be on the box running the suite move it away
+    from the one these tests write into.  The one class that needs this floor
+    (``TestFileDropDirectoriesAreNotADiscoveryRoute``) keeps an ``autouse`` wrapper so
+    the floor stays scoped to the tests that write plugin files.
     """
     import kanibako.settings.config as cfg_mod
 
@@ -448,37 +446,6 @@ class TestAPluginMustHaveThePluginShape:
     never sees the one target that legitimately has no plugin.
     """
 
-    #: A file-drop plugin with no descriptor — the same class ``_PLUGIN_SOURCE``
-    #: builds, minus the plugin's shape.
-    _NO_DESCRIPTOR_SOURCE = '''\
-from kanibako.targets.base import Target
-
-
-class MyNoDescPlugin(Target):
-    @property
-    def name(self):
-        return "{name}"
-
-    @property
-    def display_name(self):
-        return "No Descriptor {name}"
-
-    def detect(self):
-        return None
-
-    def binary_mounts(self, install):
-        return []
-
-    def refresh_credentials(self, home):
-        pass
-
-    def writeback_credentials(self, home):
-        pass
-
-    def build_cli_args(self, **kwargs):
-        return []
-'''
-
     @pytest.fixture(autouse=True)
     def _clear_warn_dedupe(self):
         from kanibako.targets import _NO_PLUGIN_SHAPE_WARNED
@@ -549,27 +516,6 @@ class MyNoDescPlugin(Target):
         assert targets["fake"] is _FakeTarget
         assert "'nodesc'" in err
         assert "SKIPPED" in err
-
-    def test_a_file_drop_plugin_with_no_descriptor_is_absent(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        plugins = tmp_path / "kanibako" / "plugins"
-        plugins.mkdir(parents=True, exist_ok=True)
-        (plugins / "nodesc.py").write_text(
-            self._NO_DESCRIPTOR_SOURCE.format(name="nodesc")
-        )
-        (plugins / "okplugin.py").write_text(_PLUGIN_SOURCE.format(name="okplugin"))
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-
-        with patch("kanibako.targets.entry_points", return_value=[]):
-            targets = discover_targets()
-        err = capsys.readouterr().err
-
-        assert "nodesc" not in targets
-        assert "'nodesc'" in err
-        assert "SKIPPED" in err
-        # The well-shaped neighbor still lands — the gate costs ONE plugin.
-        assert "okplugin" in targets
 
     def test_a_plugin_with_no_default_entrypoint_is_skipped(self, capsys):
         bad = _mock_entry_point("noentry", self._no_entrypoint_target("noentry"))
@@ -724,7 +670,7 @@ class TestResolveTarget:
                 resolve_target("blank")
 
 
-# ── Helpers for file-drop plugin tests ──────────────────────────────
+# ── A registrable plugin, as BYTES a caller could put on disk ────────
 
 _PLUGIN_SOURCE = '''\
 from kanibako.targets.base import (
@@ -749,8 +695,8 @@ class MyFilePlugin(Target):
     @property
     def descriptor(self):
         # The plugin system's own floor (keyspec §2d): no descriptor, no plugin.
-        # ``targets._register`` refuses one that returns None, so a file-drop
-        # fixture built to test a DIFFERENT refusal must carry this shape too.
+        # ``targets._register`` refuses one that returns None, so a fixture
+        # built to test a DIFFERENT refusal must carry this shape too.
         return PluginDescriptor(
             command=("file-bin",),
             bindings=(
@@ -791,154 +737,57 @@ def _write_plugin(directory: Path, filename: str, name: str) -> None:
     (directory / filename).write_text(_PLUGIN_SOURCE.format(name=name))
 
 
-class TestDirectoryPluginDiscovery:
-    """Tests for file-drop plugin directories."""
+class TestFileDropDirectoriesAreNotADiscoveryRoute:
+    """A ``.py`` file under a plugins directory is INERT DATA, never a plugin.
+
+    ⭐ THE SECURITY PIN.  A plugin is host code, and it loads only from an installed
+    package's ``kanibako.agents`` entry point — so the retired file-drop doors
+    (``<config.data>/plugins/`` and a box store's ``plugins/``) must stay shut.  Both
+    tests drop the SAME ``_PLUGIN_SOURCE`` those doors used to ``exec_module`` and ask
+    for it back, so each one is red on any tree where a scan still reads the directory.
+    """
 
     @pytest.fixture(autouse=True)
     def _isolate_config(self, tmp_path, monkeypatch):
         _isolate_config(tmp_path, monkeypatch)
 
-    def test_user_dir_follows_repointed_config_data(self, tmp_path, monkeypatch):
-        """[R155]: the user scan follows ``config.data``, never the XDG base plus a leaf.
-
-        On the hardcoded reading the configured store was not scanned at all, so a plugin
-        dropped there silently did not exist — and the stale default location won instead.
-        """
-        store = tmp_path / "srv" / "custom_store"
-        _write_plugin(store / "plugins", "repointed.py", "repointed")
-        config_home = tmp_path / "cfg"
-        config_home.mkdir(parents=True, exist_ok=True)
-        (config_home / CONFIG_FILENAME).write_text(f'config:\n  data: "{store}"\n')
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        # The abandoned default location holds a DIFFERENT plugin, so the old reading does
-        # not merely come up empty — it discovers the wrong store's plugin and says nothing.
-        _write_plugin(tmp_path / "data" / "kanibako" / "plugins", "stale.py", "stale")
-
-        with patch("kanibako.targets.entry_points", return_value=[]):
-            targets = discover_targets()
-
-        assert "repointed" in targets
-        assert "stale" not in targets
-
-    def test_discover_user_dir_plugins(self, tmp_path, monkeypatch):
-        """Plugins in user data dir are discovered."""
+    def test_a_py_file_in_the_user_plugins_dir_does_not_load(
+        self, tmp_path, monkeypatch
+    ):
         user_plugins = tmp_path / "kanibako" / "plugins"
         _write_plugin(user_plugins, "myplugin.py", "myplugin")
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
 
         with patch("kanibako.targets.entry_points", return_value=[]):
             targets = discover_targets()
-        assert "myplugin" in targets
+        assert "myplugin" not in targets
 
-    def test_reserved_name_file_drop_plugin_is_skipped(self, tmp_path, monkeypatch):
-        """The reservation holds at the file-drop tier too (keyspec §2d).
-
-        All three discovery tiers assign through ``targets._register``, so this is the
-        same gate the entry-point tier uses — pinned separately because a per-tier copy
-        is exactly how a rule comes to hold in one place and not another.
-        """
-        from kanibako.targets import _RESERVED_NAME_WARNED
-
-        _RESERVED_NAME_WARNED.clear()
-        user_plugins = tmp_path / "kanibako" / "plugins"
-        _write_plugin(user_plugins, "shellplugin.py", "shell")
-        _write_plugin(user_plugins, "okplugin.py", "okplugin")
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-
-        with patch("kanibako.targets.entry_points", return_value=[]):
-            targets = discover_targets()
-        _RESERVED_NAME_WARNED.clear()
-
-        # ⚑ The file-drop rogue is skipped AND the seeded owner keeps the slot.
-        assert targets["shell"] is ShellTarget
-        assert "shellplugin" not in targets
-        assert "okplugin" in targets  # the healthy neighbor still lands
-
-    def test_discover_project_dir_plugins(self, tmp_path):
-        """Plugins in project box_data/plugins/ are discovered."""
+    def test_a_py_file_in_a_box_store_plugins_dir_does_not_load(self, tmp_path):
+        """The PER-BOX door, in the layout it read: the RESOLVED store's ``plugins/``."""
         proj = tmp_path / "myproject"
-        proj_plugins = proj / "box_data" / "plugins"
-        _write_plugin(proj_plugins, "projplugin.py", "projplugin")
+        _write_plugin(proj / "box_data" / "plugins", "projplugin.py", "projplugin")
 
         with patch("kanibako.targets.entry_points", return_value=[]):
             targets = discover_targets(project_path=proj)
-        assert "projplugin" in targets
+        assert "projplugin" not in targets
 
-    def test_project_plugin_overrides_user_plugin(self, tmp_path, monkeypatch):
-        """Project-level plugin overrides user-level with same name."""
-        # User plugin named "common" from user_shared.py
-        user_plugins = tmp_path / "data" / "kanibako" / "plugins"
-        _write_plugin(user_plugins, "user_shared.py", "common")
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    def test_the_same_plugin_source_still_loads_from_an_entry_point(self, tmp_path):
+        """⚑ NON-VACUITY: the file the two tests above drop is a REGISTRABLE plugin.
 
-        # Project plugin also named "common" from proj_shared.py
-        proj = tmp_path / "project"
-        proj_plugins = proj / "box_data" / "plugins"
-        _write_plugin(proj_plugins, "proj_shared.py", "common")
+        The very same ``_PLUGIN_SOURCE`` bytes are loaded as a module and handed to the
+        registry the installed-package route reads — and they land.  So what the door
+        tests prove is the DIRECTORY, not a malformed fixture.
+        """
+        import importlib.util
 
-        with patch("kanibako.targets.entry_points", return_value=[]):
-            targets = discover_targets(project_path=proj)
+        dropped = tmp_path / "dropped.py"
+        dropped.write_text(_PLUGIN_SOURCE.format(name="myplugin"))
+        spec = importlib.util.spec_from_file_location("dropped_myplugin", dropped)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
 
-        assert "common" in targets
-        # The class should come from the project dir, not user dir.
-        # Different filenames produce different module names.
-        cls = targets["common"]
-        assert cls.__module__ == "kanibako_plugin_proj_shared"
-
-    def test_underscore_files_skipped(self, tmp_path, monkeypatch):
-        """Files starting with _ are not loaded as plugins."""
-        user_plugins = tmp_path / "kanibako" / "plugins"
-        _write_plugin(user_plugins, "_private.py", "private")
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-
-        with patch("kanibako.targets.entry_points", return_value=[]):
+        ep = _mock_entry_point("myplugin", module.MyFilePlugin)
+        with patch("kanibako.targets.entry_points", return_value=[ep]):
             targets = discover_targets()
-        assert "private" not in targets
-
-    def test_invalid_plugin_gracefully_handled(self, tmp_path, monkeypatch):
-        """Invalid Python files don't crash discovery."""
-        user_plugins = tmp_path / "kanibako" / "plugins"
-        user_plugins.mkdir(parents=True)
-        (user_plugins / "broken.py").write_text("raise RuntimeError('boom')")
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-
-        with patch("kanibako.targets.entry_points", return_value=[]):
-            # Should not raise
-            targets = discover_targets()
-        assert "broken" not in targets
-
-    def test_discover_targets_default_no_project(self):
-        """discover_targets() without project_path works (backward compat)."""
-        with patch("kanibako.targets.entry_points", return_value=[]):
-            targets = discover_targets()
-        # Should not raise; may be empty or contain module-scanned targets
-        assert isinstance(targets, dict)
-
-    def test_nonexistent_directory_is_ignored(self, tmp_path, monkeypatch):
-        """Nonexistent plugin directories are silently skipped."""
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "nonexistent"))
-
-        with patch("kanibako.targets.entry_points", return_value=[]):
-            targets = discover_targets()
-        assert isinstance(targets, dict)
-
-    def test_get_target_with_project_path(self, tmp_path):
-        """get_target accepts project_path parameter."""
-        proj = tmp_path / "proj"
-        proj_plugins = proj / "box_data" / "plugins"
-        _write_plugin(proj_plugins, "custom.py", "custom")
-
-        with patch("kanibako.targets.entry_points", return_value=[]):
-            cls = get_target("custom", project_path=proj)
-        assert cls is not None
-
-    def test_resolve_target_with_project_path(self, tmp_path):
-        """resolve_target passes project_path through."""
-        proj = tmp_path / "proj"
-        proj_plugins = proj / "box_data" / "plugins"
-        _write_plugin(proj_plugins, "myplugin.py", "myplugin")
-
-        with patch("kanibako.targets.entry_points", return_value=[]):
-            # resolve by name
-            t = resolve_target("myplugin", project_path=proj)
-        assert t.name == "myplugin"
+        assert targets["myplugin"] is module.MyFilePlugin
