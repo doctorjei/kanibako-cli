@@ -41,7 +41,7 @@ def box_container(box: str) -> str:
     return name
 
 
-# Every suite box is a primary box named ``e2e-<x>``, so its container starts here.
+# The ``e2e-<x>`` primary boxes' containers start here (other suite boxes are cleaned up by their own tests).
 CONTAINER_PREFIX = box_container("e2e-")
 # Registry source used to pre-warm E2E_IMAGE into the pinned store when it is
 # not already present there (see ensure_image_in_pinned_store). Overridable so
