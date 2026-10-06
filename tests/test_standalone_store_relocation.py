@@ -65,6 +65,19 @@ def _rm_by_name(name: str, *extra: str) -> int:
     return int(args.func(args) or 0)
 
 
+def _point_at_verbatim(root: Path, value: str, target: Path) -> Path:
+    """Point ``workset.boxes`` at *value* VERBATIM, and materialize what it names.
+
+    Unlike :func:`_relocate` this stores the value as written rather than an absolute
+    path, which is what lets a case spell a store that leaves the root by ``..`` or
+    through a symlinked parent component.
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "STORE_DATA.txt").write_text("the box store\n")
+    write_nested_key(root / "workset.yaml", ("workset",), "boxes", value)
+    return target
+
+
 @pytest.fixture
 def plugin_source():
     """The repo's own file-drop plugin source — a hand-built Target would not register."""
@@ -170,6 +183,118 @@ class TestBoxRmReadsTheStore:
         assert rc == 0
         assert not store.exists(), "the parked root's resolved store must be deleted"
         assert (root / "user_code.py").is_file()
+
+
+class TestAStoreThatLeavesTheRootIsNeverRemoved:
+    """A teardown must not leave the root BY SPELLING.
+
+    ``workset.boxes`` is answered as it was WRITTEN, so a value can name a directory
+    outside the root while its text reads as a descendant of it — ``..`` segments, or a
+    parent component that is a symlink out of the tree.  Every case here asserts the
+    USER'S OWN files, because the verb returns 0 in all of them either way: an exit-code
+    assertion would have passed while the data was gone.
+    """
+
+    def test_a_dotdot_sibling_store_is_the_users_and_survives(
+            self, config, std, tmp_home):
+        """``@meta.workset.path/../<name>`` names a SIBLING project, not this box's store."""
+        root = _make_standalone(config, std, tmp_home, "esc_sibling")
+        sibling = root.parent / f"{root.name}_store"
+        _point_at_verbatim(root, f"@meta.workset.path/../{sibling.name}", sibling)
+        (sibling / "MY_OTHER_PROJECT.md").write_text("not this box's\n")
+
+        rc = _rm(root, "--purge")
+
+        assert rc == 0
+        assert (sibling / "MY_OTHER_PROJECT.md").is_file(), (
+            "a SIBLING of the box is another project's directory")
+        assert (sibling / "STORE_DATA.txt").is_file()
+        assert (root / "user_code.py").is_file()
+
+    def test_a_store_naming_the_roots_parent_spares_the_whole_project(
+            self, config, std, tmp_home):
+        """⚑ THE WORST SPELLING: ``..`` IS THE ROOT'S PARENT, so the root itself is at stake."""
+        root = _make_standalone(config, std, tmp_home, "esc_parent")
+        other = root.parent / "OTHER_PROJECT.txt"
+        other.write_text("another project's data\n")
+        _point_at_verbatim(root, "@meta.workset.path/..", root.parent)
+
+        rc = _rm(root, "--purge")
+
+        assert rc == 0
+        assert root.is_dir(), "the box root is the user's directory"
+        assert (root / "user_code.py").is_file()
+        assert (root / "USER_DOCS.md").is_file()
+        assert other.is_file(), "a teardown of one box took another project's file"
+
+    def test_a_store_behind_a_symlinked_parent_component_is_the_users_and_survives(
+            self, config, std, tmp_home):
+        """A ``via/`` that is a symlink out of the tree puts the store outside the root."""
+        root = _make_standalone(config, std, tmp_home, "esc_symlink")
+        elsewhere = tmp_home / "elsewhere"
+        elsewhere.mkdir()
+        (elsewhere / "MY_DATA.txt").write_text("mine\n")
+        store = elsewhere / "store"
+        (root / "via").symlink_to(elsewhere)
+        _point_at_verbatim(root, "@meta.workset.path/via/store", store)
+
+        rc = _rm(root, "--purge")
+
+        assert rc == 0
+        assert (store / "STORE_DATA.txt").is_file(), (
+            "the store resolves outside the root, so it is not this teardown's to remove")
+        assert (elsewhere / "MY_DATA.txt").is_file()
+        assert (root / "user_code.py").is_file()
+
+    def test_a_store_at_the_root_is_never_removed(self, config, std, tmp_home):
+        """``workset.boxes: '@meta.workset.path'`` nominates the root; only STRICTLY
+        below counts as kanibako's."""
+        root = _make_standalone(config, std, tmp_home, "esc_at_root")
+        _point_at_verbatim(root, "@meta.workset.path", root)
+
+        rc = _rm(root, "--purge")
+
+        assert rc == 0
+        assert root.is_dir()
+        assert (root / "user_code.py").is_file()
+        assert (root / "USER_DOCS.md").is_file()
+
+    def test_the_root_itself_reached_through_a_symlink_still_loses_its_own_store(
+            self, config, std, tmp_home):
+        """⚑ THE INVERSE, so the containment test is not merely the cautious one.
+
+        Resolving must not cost kanibako its own store when the box is ADDRESSED through
+        a symlink: the store is strictly below the resolved root, so it goes.
+        """
+        from kanibako.settings.paths import standalone_store_teardown_plan
+
+        root = _make_standalone(config, std, tmp_home, "esc_symlinked_root")
+        store = root / "stores" / "box_data"
+        _point_at_verbatim(root, "@meta.workset.path/stores/box_data", store)
+        via = tmp_home / "esc_symlinked_root_link"
+        via.symlink_to(root)
+
+        removable, retained = standalone_store_teardown_plan(via)
+
+        assert removable == store.resolve()
+        assert retained is None
+
+    def test_an_absolute_store_path_below_a_symlinked_root_is_still_removed(
+            self, config, std, tmp_home):
+        """The same box, spelled by its REAL path — strictly below the resolved root, so
+        kanibako's own store and removable."""
+        from kanibako.settings.paths import standalone_store_teardown_plan
+
+        root = _make_standalone(config, std, tmp_home, "esc_real_spelling")
+        store = root / "stores" / "box_data"
+        _point_at_verbatim(root, str(store), store)
+        via = tmp_home / "esc_real_spelling_link"
+        via.symlink_to(root)
+
+        removable, retained = standalone_store_teardown_plan(via)
+
+        assert removable == store.resolve()
+        assert retained is None
 
 
 class TestProjectPluginsFollowTheStore:
