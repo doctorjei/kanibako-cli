@@ -1,26 +1,28 @@
-"""ENFORCEMENT guardrail: who may write settings through the closed write seam (D1-6).
+"""ENFORCEMENT guardrail: who may write a settings file through ``config_io`` (D1-6).
 
-``config_io.write_nested_key`` is the ONE primitive that puts a value into a
-settings FILE.  "Defaults live in defaults files" (T1) is therefore enforceable
-at exactly one syntactic point: the set of call sites of that seam.  A default
-that is written at runtime is a default that does not live in a defaults file —
-it lives in whatever code happened to run — so any NEW caller of this seam is
-either a sanctioned write surface (``config set``, ``setup``, box registration)
-or a defaults leak, and the two must not be told apart by reading a diff.
+"Defaults live in defaults files" (T1): a value written at runtime lives in whatever code
+ran, not in a defaults file.  ``settings/config_io.py`` holds SIX file writers —
+``write_nested_key``, ``remove_nested_key``, ``write_root_key``, ``remove_root_key``,
+``dump_doc``, and ``dump_doc_commented`` — and the four mutators compose ``dump_doc``.
+Every ``config_io`` write to disk is therefore a CALL to one of the six, so the guard is
+the set of those call sites, keyed per (file, writer) and counted.
 
-This module scans ``src/kanibako/`` and every plugin's ``packages/*/src/kanibako/``
-for CALLS to the seam and asserts the caller set is EXACTLY the named allowlist
-below.  Adding a call site anywhere else goes RED naming the file.
+Each shipped call site is exactly one of:
 
-Scope note: the guard covers the SHIPPED source trees only.  Tests call the seam
-freely (they are building fixtures, not shipping behavior), the DEFINITION site
-is excluded by construction (a ``def`` is not a ``Call``), and so are ``from
-… import write_nested_key`` lines (an ``ImportFrom`` is not a ``Call`` either) —
-the scan is an AST walk, not a grep, so neither needs an allowlist exemption.
+- a SANCTIONED settings write: user intent (``config set``/``unset``/``reset``,
+  ``agent`` writes and resets, ``setup``, ``workset share``, the creation flags a user
+  typed), a lifecycle CARRY of a box tier the user already authored (move, duplicate), or
+  IDENTITY written at create (the standalone root ``workset.yaml``, below);
+- a QUARANTINED settings write: a real defaults leak, allowlisted only so it stays named;
+- a write in a NON-SETTINGS file (journal, registries, a delivery document), exempt per
+  file with its reason.
 
-Indent note: 4 spaces, matching every sibling in ``tests/test_settings/``
-(house style is 2, but the file it pairs with — ``test_defaults_golden.py`` —
-and the rest of this directory are 4).
+Anything else goes RED naming ``path:line``.  A ``def`` is not a ``Call`` and neither is
+an ``ImportFrom``, so the scan (an AST walk over the shipped trees, tests excluded) needs
+no exemption for either.  NOT SEEN: callers of a WRAPPER that itself calls a writer (e.g.
+``config.write_box_enable_vault``) and writes that bypass ``config_io`` altogether.
+
+Indent note: 4 spaces, matching every sibling in ``tests/test_settings/``.
 """
 
 from __future__ import annotations
@@ -31,68 +33,85 @@ from pathlib import Path
 
 from tests.support.repo import REPO_ROOT
 
-#: The seam.  A fixed syntactic token: the guard is only meaningful while this
-#: name IS the single file-write primitive.
-_SEAM = "write_nested_key"
+#: The writers.  Fixed syntactic tokens: every ``config_io`` file write is a call to one.
+_WRITERS = (
+    "write_nested_key", "remove_nested_key", "write_root_key", "remove_root_key",
+    "dump_doc", "dump_doc_commented",
+)
 
-#: Where the seam is defined.  Scanned like any other file — it must show up with
-#: ZERO call sites, which is what proves the scan is running at all (see
-#: :meth:`TestSeamScan.test_the_scan_reaches_the_definition_site_and_counts_no_call`).
+#: Where the writers are defined.  Scanned like any other file; its only calls are the
+#: composition below, which is what proves the scan reads files at all.
 _DEFINITION_SITE = "src/kanibako/settings/config_io.py"
 
-#: The SANCTIONED write surfaces, keyed by repo-relative path → expected number of
-#: call sites in that file.
-#:
-#: Counts, not just paths, and not line numbers: line numbers drift on any edit
-#: above them and would make this a nuisance, but a bare path SET would silently
-#: allow a brand-new defaults write dropped into an already-sanctioned file —
-#: which is the same violation the guard exists to catch.  A count changes only
-#: when someone adds or removes a write, and that is exactly the review moment.
-_SANCTIONED: dict[str, int] = {
-    # ``kanibako config set`` and friends — the user-intent write path.  Seven
-    # sites: the per-scope dispatch arms plus the system-scope leaf write.
-    # ⚑ 6 → 7 on 2026-08-23, and the JUSTIFICATION the guard asks for: the new site
-    # is the setup MARKER's own ``set`` arm (`SETUP_MARKER_KEY`), which writes
-    # ``system.setup_completed`` into the ``system:`` table of the SYSTEM SETTINGS
-    # file (that arm named the Layer-1 config file until 2026-08-26, when the
-    # marker's storage moved to ``@config.settings`` per spec §2g; the COUNT is
-    # unaffected — the arm moved its destination, not its call site).
-    # It records USER INTENT in the strictest sense — it runs only when a user typed
-    # ``system set system.setup_completed=…`` — and it writes no default: the key has
-    # none (spec §2g: unset means setup has never run). It is a new ARM on an already
-    # sanctioned surface, not a new surface, which is exactly the case this count
-    # exists to surface for review rather than to forbid.
-    # ⚑ 7 → 8 on 2026-09-19, REVIEWED AND JUSTIFIED RATHER THAN RENUMBERED. The new site is
-    # the ``agent.default`` tier's ``set`` arm: ``config set agent.default.env.<VAR>=…`` and
-    # its ``secret_path`` twin now have a real route, so the value a user TYPED is written to
-    # the slot ``_write_dest`` resolves. It records USER INTENT in the strictest sense — it is
-    # reached only from the ``set`` verb, it writes no default (the families have none), and
-    # the spec sanctions the route: §0's ``standard`` clause and §2a's scope list both name
-    # ``agent.default``, and the manifest carries ``cli_set: true`` on both rows.
-    # 🛑 It is a new ARM on an already sanctioned surface, not a new surface.
-    "src/kanibako/settings/config_interface.py": 8,
-    # The agent settings file writer (``agents/<node>/agent.yaml``), which by
-    # the FILE-PURITY invariant may only ever carry user-intent values.
-    "src/kanibako/settings/agent_file.py": 1,
+#: The definition site's own composition: the four mutators each end in ``dump_doc``.
+_COMPOSITION: dict[tuple[str, str], int] = {(_DEFINITION_SITE, "dump_doc"): 4}
+
+_CONFIG_INTERFACE = "src/kanibako/settings/config_interface.py"
+_AGENT_FILE = "src/kanibako/settings/agent_file.py"
+_CONFIG = "src/kanibako/settings/config.py"
+
+#: SANCTIONED settings writes, (repo-relative path, writer) → call-site count.  Counts, not
+#: line numbers: a count changes only when a write is added or removed — the review moment.
+_SANCTIONED: dict[tuple[str, str], int] = {
+    # ``config set``/``unset``/``reset`` at every scope — user intent.  The eighth
+    # ``write_nested_key`` arm is ``system set system.setup_completed`` (no default, §2g);
+    # ``agent.default`` env/secret_path ``set`` arms ride the same dispatch (§0, §2a).
+    (_CONFIG_INTERFACE, "write_nested_key"): 8,
+    (_CONFIG_INTERFACE, "write_root_key"): 1,
+    (_CONFIG_INTERFACE, "remove_nested_key"): 8,
+    (_CONFIG_INTERFACE, "remove_root_key"): 1,
+    (_CONFIG_INTERFACE, "dump_doc"): 1,  # ``reset --all`` dropping whole scope tables
+    # ``agents/<node>/agent.yaml`` — user intent only (FILE-PURITY): leaf write/remove, ``save``
+    # of a generated config every Target returns EMPTY, and ``agent reset --all``.
+    (_AGENT_FILE, "write_nested_key"): 1,
+    (_AGENT_FILE, "remove_nested_key"): 1,
+    (_AGENT_FILE, "dump_doc"): 2,
     # ``kanibako setup`` records the chosen agent as system-scope user intent.
-    "src/kanibako/commands/setup_cmd.py": 1,
+    ("src/kanibako/commands/setup_cmd.py", "write_nested_key"): 1,
+    # ``persist_creation_flags`` (the §1A create exception), ``write_box_enable_vault``
+    # (sparse ``false``), ``unset_project_config_key`` (reset), and two writers with no
+    # shipped caller: ``write_project_config_key`` and ``write_agent_setting``.  ONE site,
+    # ``write_box_enable_vault``'s ``false`` arm (``config.py:479``), is split 7 + 1 by
+    # caller: ``--no-vault``/move/duplicate/convert sanctioned, extract QUARANTINED below.
+    (_CONFIG, "dump_doc"): 7,
+    # ``workset create --image/--no-vault`` and ``workset share add``/``remove``.
+    ("src/kanibako/commands/workset_cmd.py", "dump_doc"): 3,
+    # CARRY: ``box duplicate`` / ``box move`` rewrite the box tier the user authored, minus
+    # any ``workset:`` section (``config.carried_box_settings``).
+    ("src/kanibako/commands/box/_duplicate.py", "dump_doc"): 2,
+    ("src/kanibako/commands/box/_lifecycle.py", "dump_doc"): 1,
+    # IDENTITY, not a default: standalone create writes ``workset.kuid`` (GENERATED at
+    # creation) and ``workset.registry: null``, whose stored presence DEFINES standalone
+    # (keyspec §2c, both rows; mode is identity, not behavior).  Do not "fix" it.
+    ("src/kanibako/settings/paths.py", "dump_doc_commented"): 1,
 }
 
-#: QUARANTINED EXCEPTIONS — **EMPTY, and that is the point.**
-#:
-#: It held exactly one: the COLORTERM first-run write in ``cli.py``, a WRITTEN
-#: VALUE standing in for a default, i.e. precisely the thing this guard forbids.
-#: MBR-2's D1-4 deleted that call site and this entry with it (the removal was
-#: self-enforcing — the stale-entry test below reds on an allowlist file with zero
-#: call sites), so the allowlist is exception-free and the guard is exact.
-#:
-#: Do NOT add entries here.  A new entry means a defaults write outside the
-#: defaults system; the cure is to move the value into a defaults file, not to
-#: re-open this table.
-_QUARANTINED: dict[str, int] = {}
+#: QUARANTINED settings writes — real defaults leaks, named here until src is fixed.  Do
+#: NOT add entries: the cure is to move the value into a defaults file.
+_QUARANTINED: dict[tuple[str, str], int] = {
+    # ``config.py:479`` reached from ``box extract`` (``restore.py`` → ``resolve_any_project``
+    # → ``resolve_standalone_project(initialize=True, enable_vault=None)``), which passes the
+    # RESOLVED ``box.enable_vault`` cascade value to ``establish_standalone``, so an upper-tier
+    # ``false`` is written to the box tier ("absent ... unless the user sets it").  No create
+    # path reaches it (``box create`` passes an explicit flag value), and extract then
+    # re-copies ``box_data``, so the persisted effect is nil today.  The fix is in
+    # ``paths.py``; this count will not move by itself: return the 1 to ``_SANCTIONED``.
+    (_CONFIG, "dump_doc"): 1,
+}
 
-#: Everything permitted to call the seam.
-_ALLOWLIST: dict[str, int] = {**_SANCTIONED, **_QUARANTINED}
+#: Files whose writer calls write NO settings file, path → reason.  Per file, any writer.
+_NON_SETTINGS: dict[str, str] = {
+    "src/kanibako/launch/journal.py": "the lifecycle journal (config.journal)",
+    "src/kanibako/project/registry_store.py": "the name registry (config.registry)",
+    "src/kanibako/project/workset_registry.py": "a workset's registry.yaml",
+    "src/kanibako/channels/helpers.py": "a helper's spawn.yaml delivery doc, no cascade tier",
+}
+
+#: Everything permitted, summed: one (file, writer) may hold sanctioned AND quarantined sites.
+_ALLOWLIST: dict[tuple[str, str], int] = {
+    key: _SANCTIONED.get(key, 0) + _QUARANTINED.get(key, 0)
+    for key in {*_SANCTIONED, *_QUARANTINED}
+}
 
 
 def _scan_roots() -> list[Path]:
@@ -103,14 +122,9 @@ def _scan_roots() -> list[Path]:
 
 
 @cache
-def _call_sites() -> dict[str, list[int]]:
-    """Repo-relative path → sorted line numbers of every CALL to the seam.
-
-    An AST walk rather than a regex: it counts calls only, so the ``def`` and the
-    ``from … import`` lines are excluded by construction, and a mention inside a
-    docstring or comment cannot produce a phantom hit.
-    """
-    found: dict[str, list[int]] = {}
+def _call_sites() -> dict[tuple[str, str], list[int]]:
+    """(repo-relative path, writer) → sorted line numbers of every CALL to that writer."""
+    found: dict[tuple[str, str], list[int]] = {}
     for root in _scan_roots():
         for py in sorted(root.rglob("*.py")):
             tree = ast.parse(py.read_text(), filename=str(py))
@@ -123,15 +137,20 @@ def _call_sites() -> dict[str, list[int]]:
                     else func.attr if isinstance(func, ast.Attribute)
                     else None
                 )
-                if name == _SEAM:
+                if name in _WRITERS:
                     rel = py.relative_to(REPO_ROOT).as_posix()
-                    found.setdefault(rel, []).append(node.lineno)
-    return {rel: sorted(lines) for rel, lines in found.items()}
+                    found.setdefault((rel, name), []).append(node.lineno)
+    return {key: sorted(lines) for key, lines in found.items()}
 
 
-def _cite(rel: str) -> str:
-    """``path:line,line`` for an error message."""
-    return f"{rel}:{','.join(str(n) for n in _call_sites().get(rel, []))}"
+def _files_with_calls() -> set[str]:
+    return {rel for rel, _ in _call_sites()}
+
+
+def _cite(key: tuple[str, str]) -> str:
+    """``path:line,line (writer)`` for an error message."""
+    rel, writer = key
+    return f"{rel}:{','.join(str(n) for n in _call_sites().get(key, []))} ({writer})"
 
 
 class TestSeamScan:
@@ -145,71 +164,80 @@ class TestSeamScan:
             f"expected the core tree plus at least one plugin tree, got {_scan_roots()}"
         )
 
-    def test_the_scan_reaches_the_definition_site_and_counts_no_call(self):
-        """``config_io.py`` is scanned, defines the seam, and CALLS it zero times.
+    def test_the_scan_reaches_the_definition_site_and_counts_only_its_composition(self):
+        """``config_io.py`` defines every writer and calls them only as ``_COMPOSITION`` says.
 
-        The anti-vacuity check: it proves the walk actually reads files (the seam
-        name is in this one) while confirming that a ``def`` is not counted as a
-        call.  Without it, a broken scan returning ``{}`` would pass every
-        assertion below.
+        The anti-vacuity check: a broken scan returning ``{}`` would pass every test below.
         """
         definition = REPO_ROOT / _DEFINITION_SITE
-        assert definition.is_file(), f"seam definition not found at {definition}"
-        assert f"def {_SEAM}(" in definition.read_text(), (
-            f"{_DEFINITION_SITE} no longer defines {_SEAM} — the seam moved; "
-            f"re-point _DEFINITION_SITE and re-derive the allowlist"
+        assert definition.is_file(), f"writer definitions not found at {definition}"
+        text = definition.read_text()
+        undefined = [w for w in _WRITERS if f"def {w}(" not in text]
+        assert not undefined, (
+            f"{_DEFINITION_SITE} no longer defines {undefined} — a writer moved; re-point "
+            f"_DEFINITION_SITE and re-derive the allowlist"
         )
-        assert _DEFINITION_SITE not in _call_sites(), (
-            f"the definition site must contribute no CALL sites, found "
-            f"{_cite(_DEFINITION_SITE)}"
+        own = {
+            key: len(lines) for key, lines in _call_sites().items()
+            if key[0] == _DEFINITION_SITE
+        }
+        assert own == _COMPOSITION, (
+            f"{_DEFINITION_SITE}'s own writer calls changed: expected {_COMPOSITION}, "
+            f"found {own}"
         )
-        assert _call_sites(), (
-            "the scan found no call sites at all — the walk is broken or the seam "
-            "was renamed; it is not credible that shipped code never writes settings"
+        assert set(_call_sites()) - set(_COMPOSITION), (
+            "the scan found no call site outside the definition — the walk is broken"
         )
+
+    def test_the_lists_do_not_overlap(self):
+        """A file is settings or non-settings, never both; the definition site is neither."""
+        allowlisted = {rel for rel, _ in _ALLOWLIST}
+        both = sorted(allowlisted & set(_NON_SETTINGS))
+        assert not both, f"in both the allowlist and _NON_SETTINGS: {both}"
+        assert _DEFINITION_SITE not in allowlisted | set(_NON_SETTINGS)
 
 
 class TestWriteSeamCallers:
-    """The caller set of the settings write seam is EXACTLY the allowlist."""
+    """The writer call set is EXACTLY the allowlist plus the non-settings files."""
 
-    def test_no_write_nested_key_caller_outside_the_allowlist(self):
-        """A new caller is a defaults write outside the defaults system."""
-        unexpected = sorted(set(_call_sites()) - set(_ALLOWLIST))
+    def test_no_writer_call_outside_the_allowlist(self):
+        """A new settings write is a defaults write outside the defaults system."""
+        unexpected = sorted(
+            key for key in _call_sites()
+            if key not in _ALLOWLIST and key not in _COMPOSITION
+            and key[0] not in _NON_SETTINGS
+        )
         assert not unexpected, (
-            f"{_SEAM} called outside the sanctioned write surfaces:\n  "
-            + "\n  ".join(_cite(rel) for rel in unexpected)
-            + f"\n\nDefaults live in defaults files ({_DEFINITION_SITE} is the closed "
-            f"write seam). If this really is a new user-intent write surface, add it to "
-            f"_SANCTIONED with a comment saying whose intent it records — do not add it "
-            f"to _QUARANTINED."
+            "config_io writer called outside the sanctioned write surfaces:\n  "
+            + "\n  ".join(_cite(key) for key in unexpected)
+            + "\n\nDefaults live in defaults files. A new user-intent surface goes in "
+            "_SANCTIONED with whose intent it records; a file that writes no settings "
+            "file goes in _NON_SETTINGS with its reason — never _QUARANTINED."
         )
 
     def test_every_allowlist_entry_still_has_a_call_site(self):
-        """No STALE entry: an allowlisted file with zero calls fails.
-
-        This is what made the ``cli.py`` quarantine self-verifying — when D1-4
-        deleted the COLORTERM write it red until the entry went too.  It keeps
-        earning its place on the SANCTIONED rows: a write surface that moves out
-        of its file leaves an entry that permits a future write nobody reviewed.
-        """
-        stale = sorted(rel for rel in _ALLOWLIST if rel not in _call_sites())
+        """No STALE entry in either list: a write that moved leaves a permit nobody reviewed."""
+        stale = sorted(
+            [_cite(key) for key in _ALLOWLIST if key not in _call_sites()]
+            + [rel for rel in _NON_SETTINGS if rel not in _files_with_calls()]
+        )
         assert not stale, (
-            f"allowlist entries with NO {_SEAM} call site (the write moved or was "
-            f"deleted — remove the entry):\n  " + "\n  ".join(stale)
+            "allowlist entries with NO writer call site (the write moved or was "
+            "deleted — remove the entry):\n  " + "\n  ".join(stale)
         )
 
     def test_call_site_counts_match_the_allowlist(self):
-        """Per-file counts pin a write ADDED to an already-sanctioned file."""
+        """Per-(file, writer) counts pin a write ADDED to an already-sanctioned file."""
         drifted = {
-            rel: (expected, len(_call_sites()[rel]))
-            for rel, expected in _ALLOWLIST.items()
-            if rel in _call_sites() and len(_call_sites()[rel]) != expected
+            key: (expected, len(_call_sites()[key]))
+            for key, expected in _ALLOWLIST.items()
+            if key in _call_sites() and len(_call_sites()[key]) != expected
         }
         assert not drifted, (
-            f"{_SEAM} call-site COUNT changed (expected, actual):\n  "
+            "config_io writer call-site COUNT changed (expected, actual):\n  "
             + "\n  ".join(
-                f"{_cite(rel)} — expected {exp}, found {act}"
-                for rel, (exp, act) in sorted(drifted.items())
+                f"{_cite(key)} — expected {exp}, found {act}"
+                for key, (exp, act) in sorted(drifted.items())
             )
             + "\n\nA count that GREW is a new write: justify it as user intent before "
             "updating the number."
