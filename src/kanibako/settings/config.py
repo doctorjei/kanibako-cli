@@ -1221,7 +1221,7 @@ def identity_gap(
         case = "own+standalone" if BoxMode.standalone in failing else "own"
     elif failing == [BoxMode.standalone]:
         case = "standalone"
-    elif level != "workset" and all(
+    elif level == "partition" and all(
         reaches_identity(value, "workset", m, key=key, stored=stored) for m in BoxMode
     ):
         case = "workset"

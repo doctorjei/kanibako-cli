@@ -296,19 +296,24 @@ class TestDeclaredPluginBindRows:
             _launch_with(std, box, _descriptor("agent"))
         assert f"{src}/{{meta.agent.claude.name}}" in str(excinfo.value)
 
-    def test_a_per_agent_row_on_the_workset_path_says_the_working_set_s_agents_share_it(
-        self, std, box, tmp_path,
+    @pytest.mark.parametrize("anchors", [
+        "", "/{meta.workset.path}", "/{meta.workset.name}", "/{meta.box.name}",
+        "/{meta.workset.path}/{meta.box.name}",
+    ], ids=["none", "ws-path", "ws-name", "box-name", "box"])
+    def test_a_per_agent_row_lacking_the_agent_says_different_agents_share_it(
+        self, std, box, tmp_path, anchors,
     ):
-        src = f"{tmp_path / 'srv' / 'ref'}/{{meta.workset.path}}"
+        src = f"{tmp_path / 'srv' / 'ref'}{anchors}"
         _merge_into(
             std.settings, {"agent": {"default": {"bindings": {"ro": {"/ref": [src]}}}}},
         )
         with pytest.raises(SettingsError) as excinfo:
             _launch_with(std, box, _descriptor("agent"))
         message = str(excinfo.value)
-        assert "which would give the agents of each working set one shared path" in message
-        assert "Every agent would share it" not in message
-        assert f"{src}/{{meta.agent.claude.name}}" in message
+        assert "which would give different agents one shared path" in message, message
+        assert "Different agents would share it." in message, message
+        assert "Every agent" not in message and "of each working set" not in message, message
+        assert f"{src}/{{meta.agent.claude.name}}" in message, message
 
     def test_a_per_box_plugin_row_in_the_box_s_own_file_is_accepted(
         self, std, box, tmp_path,
