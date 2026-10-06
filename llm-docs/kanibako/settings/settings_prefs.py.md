@@ -33,9 +33,9 @@ NOT, because a pref's value is an INPUT to resolution.
 `TestPrefRecomputeNotDelta.test_a_key_derived_from_a_prefd_value_updates` is the discriminator —
 its own docstring calls itself *"THE discriminator for the delta implementation"*.
 
-⚑ CORRECTED in the 2026-08-20 relocation pass: the source docstring cited
-`tests/test_settings_prefs.py` `test_pref_propagates_to_a_derived_key`, and neither that path nor
-that test name exists in the tree.
+⚑ CORRECTED in the 2026-08-20 relocation pass: the source docstring cited a path
+and a test name that do not exist in the tree, `tests/test_settings_prefs.py` and
+`test_pref_propagates_to_a_derived_key`.
 
 ### Placement
 

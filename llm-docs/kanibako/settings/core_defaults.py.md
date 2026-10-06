@@ -1,6 +1,6 @@
 # Core Defaults — the shipped launch-floor tables, and the box-create canon skeleton
 
-_thin reader of `kanibako.data/rom/settings/core-defaults.yaml`, plus the `~/canon` skeleton J-7 specifies_
+_thin reader of `src/kanibako/data/rom/settings/core-defaults.yaml`, plus the `~/canon` skeleton J-7 specifies_
 
 ⚠️ **RELOCATION PASS, 2026-08-11.** Every explanatory paragraph that used to live in
 `src/kanibako/settings/core_defaults.py` is here; the source keeps one-line descriptors and `⚑`

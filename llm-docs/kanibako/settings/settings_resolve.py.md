@@ -199,7 +199,8 @@ expands to `GUEST_HOME`. Respelling one redeclares three keys and hard-errors ev
 takes "single source of truth" literally here will be wrong about the images.
 
 ⚑ **The two agent-plugin sites are deliberately NOT converted.**
-`packages/agent-claude/…/target.py` and `packages/agent-codex/…/target.py` still compose
+`packages/agent-claude/src/kanibako/plugins/claude/target.py` and
+`packages/agent-codex/src/kanibako/plugins/codex/target.py` still compose
 `f"{GUEST_HOME}/workspace"` through a function-local import. Plugins pin `kanibako-cli` with no
 upper bound, so a new plugin on an old core would raise `ImportError` mid-launch — a late failure
 bought for no additional guarantee, since `GUEST_HOME` is already the shared carrier there.

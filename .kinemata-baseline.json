@@ -2,7 +2,7 @@
   "version": 1,
   "until": "2026-10-11",
   "by": "Jei Blanchard",
-  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains. 2026-09-30: until moved to 2026-10-04 (Sunday) on his word this session, at his instruction; it covers the 610 findings carried in this file. 2026-10-03: until moved to 2026-10-11 on his word (140th). 2026-10-06 (151st), director (Kirobo) ruling: three per-owner-default-reaches-anchor shape findings accepted - meta.box.container: <W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity); meta.agent.default.path and meta.agent.shell.path: literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change). 2026-10-06 (152nd, task 152-write-baseline), director (Kirobo): `kinemata baseline --prune` dropped 18 records no longer present (15 claims, two WORKSPACES_PATH, one XDG_DATA_HOME); until unchanged.",
+  "note": "Q59: parity reserved-agent-names shell disagreement accepted short-term; live carrier is the no_agent scrub row until scoping vocabulary (ii) exists; until extended to 2026-09-30 on his word (Q66), which covered only the three parity disagreements. keyspace registry closed (authored 2026-09-22, kind-import row step 4) - the pre-existing undeclared:keyspace strays (filename-shaped identifiers) accepted by the director (Kirobo) as day-one cost; Q67 answered 2026-09-24 (candidates are whole key-shaped literals and @-refs, filenames are declared constants), and the entries then left were declaration homes of meta-files / agent-plugin-files / docker-context-files constants that undeclared could not see across registries - reported to kinemata 2026-09-24 (from-kanibako-2026-09-24-undeclared-flags-another-registrys-declaration-home.md); vscode_remote.py's meta.json became the docker-context-files constant DOCKER_CONTEXT_META_FILE later that day, after the letter, and its declaration line was the same gap. 2026-09-24: the nine system._boxes / system._primary_* records (live code uses of manifest not_keys.code_residue names, accepted earlier that day by the director (Kirobo)) were cleared the same day by renaming the four path-tier table entries to the non-key names _primary_boxes / _primary_vault_ro / _primary_vault_rw / _primary_logs; no record of them remains. The re-record also offered 10 claims + 3 api-doc parity findings from concurrent commits; left for their owners, not accepted here. 2026-09-24, kinemata 0.4.1: `kinemata baseline --prune` dropped the five filename declaration-line records (box.yaml, workset.yaml, config.toml, config.yaml, meta.json) once keyspace's defer_to handed them to the filenames registry, and one canon-layout record, templates.py's `_CANON_CHAPTER_LEAF = \"handbook\"`, which now reads core_defaults.HANDBOOK_REL; no undeclared:keyspace record remains. 2026-09-30: until moved to 2026-10-04 (Sunday) on his word this session, at his instruction; it covers the 610 findings carried in this file. 2026-10-03: until moved to 2026-10-11 on his word (140th). 2026-10-06 (151st), director (Kirobo) ruling: three per-owner-default-reaches-anchor shape findings accepted - meta.box.container: <W>/<B> are rendered placeholders, not refs (DESIGN \u00a7 7; renderer reaches the box identity); meta.agent.default.path and meta.agent.shell.path: literal agent name equals the agent identity for a fixed node; spec spelling via {meta.agent.<x>.name} is a candidate tidy (no behavior change). 2026-10-06 (152nd, task 152-write-baseline), director (Kirobo): `kinemata baseline --prune` dropped 18 records no longer present (15 claims, two WORKSPACES_PATH, one XDG_DATA_HOME); until unchanged. Same task: six stale path claims in llm-docs/ and docs/architecture.md were cured in the text (full package paths, or the retired path named as such) and their records pruned.",
   "findings": [
     {
       "registry": "canonical",
@@ -1821,13 +1821,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "kanibako.data/rom/settings/core-defaults.yaml",
-      "path": "llm-docs/kanibako/settings/core_defaults.py.md",
-      "text": "_thin reader of `kanibako.data/rom/settings/core-defaults.yaml`, plus the `~/canon` skeleton J-7 specifies_"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "kanibako.yaml",
       "path": "MIGRATION.md",
       "text": "| Config files | one `kanibako.yaml` (paths + behavior mixed) | **config** files (`system.*` only) vs **settings** files"
@@ -1957,20 +1950,6 @@
       "antipattern": "notebook/archives/keystore-2026-06/",
       "path": "llm-docs/kanibako/settings/settings_assemble.py.md",
       "text": "* **`keystore-design.md`** (archived at `notebook/archives/keystore-2026-06/`) \u00a72 (storage \u2014"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "packages/agent-claude/.../credentials.py",
-      "path": "llm-docs/kanibako/tweakcc.py.md",
-      "text": "CONTENT filter (`packages/agent-claude/.../credentials.py`)."
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "packages/agent-codex/\u2026/target.py",
-      "path": "llm-docs/kanibako/settings/settings_resolve.py.md",
-      "text": "`packages/agent-claude/\u2026/target.py` and `packages/agent-codex/\u2026/target.py` still compose"
     },
     {
       "registry": "claims",
@@ -2948,13 +2927,6 @@
     {
       "registry": "claims",
       "entry": "claim:path",
-      "antipattern": "src/kanibako/deprecation.py",
-      "path": "docs/architecture.md",
-      "text": "`salvage/deprecation.py` back to `src/kanibako/deprecation.py` and"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
       "antipattern": "std.boxes/",
       "path": "llm-docs/kanibako/commands/box/_parser.py.md",
       "text": "and is rejected. Strict containment matters because deleting `std.boxes/` itself would take every"
@@ -3042,20 +3014,6 @@
       "antipattern": "temp/",
       "path": "src/kanibako/data/templates/system/canon/handbook/general/directives/LOWER_CANON.md",
       "text": "| `temp/` | Temporary storage (volatile between sessions) | No |"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "tests/support/flawed_oracle.py",
-      "path": "llm-docs/kanibako/settings/settings_categories.py.md",
-      "text": "authority. (\u2691 That path read `tests/support/flawed_oracle.py` until 6-R3; the module moved in"
-    },
-    {
-      "registry": "claims",
-      "entry": "claim:path",
-      "antipattern": "tests/test_settings_prefs.py",
-      "path": "llm-docs/kanibako/settings/settings_prefs.py.md",
-      "text": "`tests/test_settings_prefs.py` `test_pref_propagates_to_a_derived_key`, and neither that path nor"
     },
     {
       "registry": "claims",
