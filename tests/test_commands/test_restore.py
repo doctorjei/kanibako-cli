@@ -589,3 +589,33 @@ class TestExtractExtended:
         dec_proj = resolve_any_project(std, config, project_dir=project_dir, initialize=False)
         assert dec_proj.mode.value == "standalone"
         assert (dec_proj.metadata_path / "data.txt").read_text() == "restore-me"
+
+    def test_extract_into_a_fresh_standalone_root_persists_no_resolved_vault_default(
+        self, config_file, tmp_home, credentials_dir,
+    ):
+        """An upper-tier ``box.enable_vault: false`` is resolved for the create, never written to the box tier."""
+        from kanibako.commands.archive import run as archive_run
+        from kanibako.commands.restore import run as extract_run
+        from kanibako.settings import paths
+        from kanibako.settings.config import system_settings_path
+
+        config = load_config(config_file)
+        std = load_std_paths(config)
+        project_dir = str(tmp_home / "project")
+        proj = resolve_standalone_project(std, config, project_dir=project_dir, initialize=True)
+        archive_path = str(tmp_home / "vault-default.txz")
+        assert archive_run(argparse.Namespace(
+            path=project_dir, file=archive_path, all_projects=False,
+            allow_uncommitted=True, allow_unpushed=True, force=True,
+        )) == 0
+        shutil.rmtree(paths.standalone_box_store(Path(project_dir), early=proj._early))
+        system_settings_path().parent.mkdir(parents=True, exist_ok=True)
+        system_settings_path().write_text("box:\n  enable_vault: false\n")
+
+        with patch.object(paths, "establish_standalone", wraps=paths.establish_standalone) as est, \
+                patch.object(paths, "write_box_enable_vault", wraps=paths.write_box_enable_vault) as wbev:
+            assert extract_run(argparse.Namespace(
+                file=archive_path, path=project_dir, name=None, all_archives=False, force=True,
+            )) == 0
+        assert est.call_count == 1, "the extract did not reach the standalone create"
+        assert wbev.call_args_list == [], f"box.enable_vault written: {wbev.call_args_list}"

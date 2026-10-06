@@ -2422,7 +2422,7 @@ def _flag_missing_vault(proj: ProjectPaths) -> ProjectPaths:
 STANDALONE_REGISTRY_COMMENT = "REMOVING THIS WILL BREAK A STANDALONE BOX!"
 
 
-def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool,
+def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool | None,
                          name: str = "",
                          register: bool = True) -> tuple[str, Path, Path | None, Path | None]:
     """Establish a standalone box at *root*: identity + meta + registration (the shared core)."""
@@ -2437,9 +2437,10 @@ def establish_standalone(std: StandardPaths, root: Path, *, enable_vault: bool,
 
     box_settings, settings_file = _standalone_settings_files(
         root, early=_early_scope(std, BoxMode.standalone))
-    # ⚑ Sparse create, EACH KEY AT ITS OWN SCOPE'S TIER (M-8): box-scope ``box.enable_vault``
-    # to the BOX tier — the same file ``config set box.*`` writes.
-    write_box_enable_vault(box_settings, enable_vault)
+    # ⚑ Sparse create, EACH KEY AT ITS OWN SCOPE'S TIER (M-8): an AUTHORED ``box.enable_vault``
+    # to the BOX tier — the same file ``config set box.*`` writes; ``None`` authors nothing.
+    if enable_vault is not None:
+        write_box_enable_vault(box_settings, enable_vault)
     # ⚑ The workset-scope kuid goes to the ROOT file, beside the stored ``workset.registry``
     # null that DEFINES standalone (``system-design-1.8.0.md`` § "Detection & import").
     from kanibako.settings.config_io import dump_doc_commented, load_doc, refuse_scalar_sections
@@ -2540,7 +2541,7 @@ def resolve_standalone_project(std: StandardPaths, config: BootstrapConfig,
                                  workset_root=root)
         # Identity + meta + registration via the shared establish core (fresh identity here).
         box_name, shell_path, vault_ro_path, vault_rw_path = establish_standalone(
-            std, root, enable_vault=resolved_vault, name=requested_name, register=register)
+            std, root, enable_vault=enable_vault, name=requested_name, register=register)
         is_new = True
 
     if initialize:
