@@ -498,7 +498,7 @@ def test_remote_no_box_surfaces_remote_create_hint(capsys):
     # The verbatim remote stderr is shown AND a remote-oriented hint is added.
     assert "no box at /home/u/webapp" in err
     assert "does not exist on the remote host" in err
-    assert f"ssh {dest} kanibako create webapp" in err
+    assert f"ssh -- {dest} kanibako create webapp" in err
 
 
 # --- the settings refusal reaching a `kanibako code` user -------------------

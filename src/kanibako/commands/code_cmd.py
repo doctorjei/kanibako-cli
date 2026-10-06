@@ -800,12 +800,13 @@ def _run_code_remote(args: argparse.Namespace, dest: str) -> int:
             # Explicit-create (Jei 2026-07-11g): the REMOTE box does not exist and
             # a launch never auto-creates one.  `create` must be run ON THE REMOTE
             # host — make that unambiguous (the bare "run 'kanibako create'" in the
-            # remote stderr reads as a local suggestion otherwise).  ⚑ A CURE IS PASTED;
-            # quotes above are prose.
+            # remote stderr reads as a local suggestion otherwise).  ⚑ A CURE IS PASTED
+            # through TWO shells: ssh_command's rule, minus its mux options, quoted again.
+            ssh_argv = vr.ssh_command(dest, ["kanibako", "create", box])
+            cure = shlex.join(["ssh", *ssh_argv[ssh_argv.index("--"):]])
             hint = (
                 f"\n  Hint: box '{box}' does not exist on the remote host "
-                f"'{dest}'.  Create it THERE first, e.g.: "
-                f"ssh {shlex.quote(dest)} kanibako create {shlex.quote(box)}"
+                f"'{dest}'.  Create it THERE first, e.g.: {cure}"
             )
         message = vr.format_remote_failure(
             "kanibako start --detach --warm-only", dest, stderr,
