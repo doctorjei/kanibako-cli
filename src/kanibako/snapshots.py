@@ -290,6 +290,20 @@ def restore_snapshot(vault_rw_path: Path, snapshot_name: str) -> None:
         shutil.rmtree(backup, ignore_errors=True)
 
 
+def snapshots_to_prune(vault_rw_path: Path, max_keep: int) -> list[Path]:
+    """What :func:`prune_snapshots` removes for *max_keep*, oldest first."""
+    versions = _versions_dir(vault_rw_path)
+    if not versions.is_dir():
+        return []
+    all_snapshots = sorted(
+        (f for f in versions.iterdir() if f.is_dir()),
+        key=lambda p: p.name,
+    )
+    if max_keep <= 0:
+        return all_snapshots
+    return all_snapshots[:-max_keep] if len(all_snapshots) > max_keep else []
+
+
 def prune_snapshots(
     vault_rw_path: Path, max_keep: int = _DEFAULT_MAX_SNAPSHOTS,
 ) -> int:
@@ -297,20 +311,8 @@ def prune_snapshots(
 
     Returns the number of snapshots removed.
     """
-    versions = _versions_dir(vault_rw_path)
-    if not versions.is_dir():
-        return 0
-
-    all_snapshots = sorted(
-        (f for f in versions.iterdir() if f.is_dir()),
-        key=lambda p: p.name,
-    )
-    if max_keep <= 0:
-        to_remove = all_snapshots
-    else:
-        to_remove = all_snapshots[:-max_keep] if len(all_snapshots) > max_keep else []
     removed = 0
-    for old in to_remove:
+    for old in snapshots_to_prune(vault_rw_path, max_keep):
         # Pruning is HOUSEKEEPING and runs inside the launch path
         # (``auto_snapshot`` <- ``start._run_container``).  Failing to reclaim an
         # OLD snapshot is never a reason to refuse to start a box, so a failure
