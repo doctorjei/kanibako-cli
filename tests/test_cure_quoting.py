@@ -284,15 +284,37 @@ def test_the_three_shared_doors_print_one_identical_sentence(
 class TestTheOtherTwoCuresAreQuoted:
     """The ``start`` and ``code --remote`` cures carry operands the CLI never validates."""
 
-    @pytest.mark.parametrize("name", _HOSTILE)
-    def test_the_start_create_cure_carries_one_operand(self, name, tmp_path):
+    def test_the_start_create_cure_renders_its_operand_through_shlex(
+        self, tmp_home, config_file, credentials_dir
+    ):
+        """GUARD, not a reproduced injection: this door is name-gated.
+
+        ``_no_box_error`` reaches this line only when
+        :func:`designation_route` is not PATH, which for a non-empty value means
+        an IDENTIFIER or a ``<workset>/<box>`` pair of them — and
+        :func:`is_valid_box_name` refuses every shell metacharacter and all
+        whitespace.  So ``shlex.quote`` here is a no-op for every operand the CLI
+        can deliver; the line is pinned so the branch keeps the rule its PATH
+        sibling already used, and a hostile value lands on that sibling instead
+        (see ``test_a_path_operand_takes_the_quoted_sibling``).
+        """
         from kanibako.commands.start import _no_box_error
 
+        name = "unregistered_box"
         message = _no_box_error(name)
         line = next(
             ln for ln in message.splitlines() if "Otherwise create a new box" in ln
         )
-        cure = line.split("new box:")[1].strip()
+
+        assert line.strip() == f"Otherwise create a new box:  kanibako create {shlex.quote(name)}"
+
+    @pytest.mark.parametrize("name", _HOSTILE)
+    def test_a_path_operand_takes_the_quoted_sibling(self, name, tmp_path):
+        """A hostile operand is a PATH, so it reaches the line that already quoted."""
+        from kanibako.commands.start import _no_box_error
+
+        message = _no_box_error(name)
+        cure = message.rsplit("To create a new box, run:", 1)[1].strip()
 
         assert shlex.split(cure) == ["kanibako", "create", name]
 
@@ -311,7 +333,7 @@ class TestTheOtherTwoCuresAreQuoted:
         failed = SimpleNamespace(
             returncode=1, stderr="Error: no box at /home/u/webapp.", stdout="",
         )
-        args = argparse.Namespace(project="webapp", box=box, remote=dest)
+        args = argparse.Namespace(project=None, box=box, remote=dest)
         with (
             patch("kanibako.commands.code_cmd._resolve_code_cli", return_value="/usr/bin/code"),
             patch("kanibako.commands.code_cmd.shutil.which", return_value="/usr/bin/podman"),
@@ -331,9 +353,10 @@ class TestTheOtherTwoCuresAreQuoted:
             patch("kanibako.vscode.vscode_remote.remote_run_kanibako", return_value=failed),
         ):
             assert _run_code_remote(args, dest) == 1
-        cure = next(
-            ln for ln in capsys.readouterr().err.splitlines() if ln.startswith("ssh ")
+        hint = next(
+            ln for ln in capsys.readouterr().err.splitlines() if "Create it THERE" in ln
         )
+        cure = hint.split("e.g.:", 1)[1].strip()
 
         assert shlex.split(cure) == ["ssh", dest, "kanibako", "create", box]
 
