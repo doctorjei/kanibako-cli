@@ -520,9 +520,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`set` no longer refuses a reference to a computed sharing-state key.** A value naming a
   `meta.*.auth.*_active` key, such as `box set box.env.X={meta.box.auth.global_active}`, was
   refused as a dangling reference although the launch resolves it. The set-time check now computes
-  those keys the way the launch does. A reference to a `meta.box.agent.<key>` mirror key is still
-  refused at set time, because the check does not yet read the agent's settings. A reference to an
-  undeclared key is still refused.
+  those keys the way the launch does. `box set` of a reference to a `meta.box.agent.<key>` mirror
+  key, such as `box.env.X={meta.box.agent.canon}/x`, now exits 0 where it exited 1 when the key is
+  set only in the agent's own settings file or by a built-in agent default: the check reads that
+  file and those defaults as the launch does. A reference to an undeclared key, or to a key nothing
+  sets, is still refused.
 
 - **`box duplicate` and `box archive` read a named member's recorded workspace when
   `workset.workspaces` is null.** Duplicate copies the files the registry names. When no
