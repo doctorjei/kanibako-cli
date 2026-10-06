@@ -1491,9 +1491,15 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     branch the generic "no box" message suggests ``kanibako create <name>``, which
     creates a DIRECTORY literally named ``<name>`` in the CWD.
 
-    ⚑ THE GATE IS THE DEFAULT ``box_data/`` LEAF, never the key-resolved store: a
-    key-resolved gate reads the REPOINT, so a store already at the key reads as healthy and
-    a repointed box falls into the Rebuild.  Decision 8 pins the Rebuild to that default.
+    ⚑ TWO QUESTIONS decide BROKEN, and the cure branches on WHICH one fails: is
+    the DEFAULT ``box_data/`` leaf gone, and is the KEY-RESOLVED store missing?
+    The Rebuild arm stays pinned to the default leaf (decision 8) — a key-resolved
+    Rebuild gate reads the REPOINT, so a repointed box would get an empty rebuild
+    over a store that still exists.  The second question is the 154th addendum: a
+    box whose leaf is PRESENT but whose key points at a dir that does not exist is
+    also broken, and without it that box fell through to the generic "nothing is
+    registered under it" message — false, and its ``create <name>`` suggestion
+    mkdirs a box named after the token in the CWD.
 
     ⚑ ``--name`` and ``--register`` are BOTH load-bearing in the cure and indivisible
     — without the pair the box comes back under a NEW kuid, unregistered.  Both
@@ -1522,20 +1528,30 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
     root = Path(entries[name])
     # ⚑ The DEFAULT LEAF, not the resolved store — see the docstring.
     default_leaf = root / STANDALONE_META_DIR
-    if default_leaf.is_dir():
-        return None
-    head = (
-        f"Error: box '{name}' is registered as a standalone box at {root}, but "
-        f"its box data ({default_leaf}) is gone.\n"
-        "  A launch will not rebuild it — rebuilding a box is a repair, and a "
-        "repair has to be asked for by name.\n"
-    )
+    leaf_present = default_leaf.is_dir()
     # ⚑ Decision 8 (DATA-LOSS HAZARD): the Rebuild below makes an EMPTY box_data/, so it
     # is offered only while ``workset.boxes`` is at its default.  The cure resolves the
     # store THROUGH the key (``meta.box.path`` IS ``{workset.boxes}``), so the move goes TO
     # the key's dir, never from it: a dir the key names may be the user's own.
     from kanibako.project.workset import load_workset_settings_doc, resolve_workset_boxes
     from kanibako.settings.settings_resolve import SettingsError
+
+    gone_head = (
+        f"Error: box '{name}' is registered as a standalone box at {root}, but "
+        f"its box data ({default_leaf}) is gone.\n"
+        "  A launch will not rebuild it — rebuilding a box is a repair, and a "
+        "repair has to be asked for by name.\n"
+    )
+    # ⚑ The second question's head.  The leaf is HERE, so no line may read as if it
+    # were gone; the data is reachable by hand and only the KEY is wrong.
+    here_head = (
+        f"Error: box '{name}' is registered as a standalone box at {root}, and its "
+        f"box data is at {default_leaf}, but this launch cannot reach it: "
+        "workset.boxes does not resolve to that directory.\n"
+        "  A launch will not repair that on its own, and a repair has to be asked "
+        "for by name.\n"
+    )
+    head = here_head if leaf_present else gone_head
 
     try:
         boxes = resolve_workset_boxes(
@@ -1544,6 +1560,13 @@ def _broken_standalone_error(std: StandardPaths, project_dir: str) -> str | None
         )
     except SettingsError as exc:
         return head + textwrap.indent(str(exc), "  ")
+    if leaf_present:
+        if boxes.is_dir():
+            return None
+        # ⚑ Question 2 alone: the leaf holds the data and the key names a dir that
+        # is not there.  The cure moves the leaf TO the key's place, so the user's
+        # content is never copied onto anything and never left stranded.
+        return head + _store_move_cure(default_leaf, boxes)
     if boxes != default_leaf:
         return head + _store_move_cure(None, boxes)
     q_name = shlex.quote(name)
