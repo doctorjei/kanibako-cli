@@ -74,8 +74,6 @@ _SANCTIONED: dict[str, int] = {
     # The agent settings file writer (``agents/<node>/agent.yaml``), which by
     # the FILE-PURITY invariant may only ever carry user-intent values.
     "src/kanibako/settings/agent_file.py": 1,
-    # Standalone box registration stamps the generated ``workset.kuid``.
-    "src/kanibako/settings/paths.py": 1,
     # ``kanibako setup`` records the chosen agent as system-scope user intent.
     "src/kanibako/commands/setup_cmd.py": 1,
 }
